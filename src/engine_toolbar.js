@@ -1,6 +1,8 @@
 // engine_toolbar.js - סרגל תצוגת עמודים בסגנון PDF.js
 // מבוסס על prosemirror-edition/src/main.js מהמקור האחרון.
 
+import { downloadPagesAsPdf } from "./pdf_export.js";
+
 export function setupPdfToolbar(pagesContainer) {
   const toolbar = {
     pageInput: document.getElementById("pdf-page-input"),
@@ -9,6 +11,7 @@ export function setupPdfToolbar(pagesContainer) {
     zoom: 1,
     total: 0,
   };
+  let thumbObserver = null;
 
   function applyZoom() {
     const pages = pagesContainer.querySelectorAll(".page");
@@ -80,9 +83,54 @@ export function setupPdfToolbar(pagesContainer) {
     applyZoom();
   }
 
+  function getPageElement(index) {
+    if (typeof pagesContainer.__getPageElement === "function") {
+      return pagesContainer.__getPageElement(index);
+    }
+    return pagesContainer.querySelector(`.page[data-page-index="${index}"]`);
+  }
+
+  function renderThumb(mini, index) {
+    if (!mini || mini.dataset.thumbReady === "1") return;
+    if (typeof pagesContainer.__realizePage === "function") {
+      pagesContainer.__realizePage(index);
+    }
+    const page = getPageElement(index);
+    if (!page || page.classList.contains("page-placeholder")) return;
+
+    const clone = page.cloneNode(true);
+    clone.classList.add("pdf-thumb-page");
+    clone.style.zoom = "1";
+    clone.style.width = "380px";
+    clone.style.height = "537px";
+    clone.style.flex = "none";
+    clone.style.transform = "scale(1)";
+
+    mini.innerHTML = "";
+    mini.appendChild(clone);
+    mini.dataset.thumbReady = "1";
+
+    requestAnimationFrame(() => {
+      const scale = (mini.clientWidth || 132) / 380;
+      clone.style.transform = `scale(${scale})`;
+    });
+  }
+
   function rebuildSidebar() {
     const sidebar = document.getElementById("pdf-sidebar");
     if (!sidebar) return;
+    if (thumbObserver) thumbObserver.disconnect();
+    thumbObserver = "IntersectionObserver" in window
+      ? new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const mini = entry.target;
+          thumbObserver.unobserve(mini);
+          const idx = parseInt(mini.dataset.pageIndex || "0", 10);
+          requestAnimationFrame(() => renderThumb(mini, idx));
+        }
+      }, { root: sidebar, rootMargin: "120px 0px" })
+      : null;
     sidebar.innerHTML = "";
     for (let i = 0; i < toolbar.total; i++) {
       const t = document.createElement("button");
@@ -91,12 +139,15 @@ export function setupPdfToolbar(pagesContainer) {
       t.dataset.pageIndex = String(i);
       const mini = document.createElement("div");
       mini.className = "pdf-thumb-mini";
+      mini.dataset.pageIndex = String(i);
       t.appendChild(mini);
       const lbl = document.createElement("span");
       lbl.textContent = String(i + 1);
       t.appendChild(lbl);
       t.addEventListener("click", () => goToPage(i + 1));
       sidebar.appendChild(t);
+      if (thumbObserver) thumbObserver.observe(mini);
+      else setTimeout(() => renderThumb(mini, i), 0);
     }
     highlightActiveThumb();
   }
@@ -258,16 +309,21 @@ export function setupPdfToolbar(pagesContainer) {
     realizeAllPages();
     setTimeout(() => window.print(), 50);
   });
-  document.getElementById("pdf-download")?.addEventListener("click", () => {
+  document.getElementById("pdf-download")?.addEventListener("click", async (ev) => {
     realizeAllPages();
-    const html = `<!DOCTYPE html><html lang="he"><head><meta charset="utf-8"><title>תצוגה</title><link rel="stylesheet" href="styles.css"></head><body>${pagesContainer.outerHTML}</body></html>`;
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "preview.html";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const btn = ev.currentTarget;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "מכין PDF...";
+    try {
+      await downloadPagesAsPdf(pagesContainer, { filename: "ravtext-preview.pdf" });
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      alert(`שגיאת הורדת PDF: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
   });
 
   const sidebar = document.getElementById("pdf-sidebar");

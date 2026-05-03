@@ -12,27 +12,36 @@
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
-  <body>
+  <body class="light-theme">
     <header class="app-header">
-      <h1 data-i18n="appTitle">עורך משולב - TipTap + Engine</h1>
-      <div class="status">
-        עורך רב-טקסט, זרמים ומנוע הדפסה בעימוד חי.
+      <h1>עורך משולב - TipTap + Engine</h1>
+      <div id="status" class="status status-row" dir="rtl">
+        טען טקסט ולחץ "רנדר עמודים" כדי לראות את התצוגה.
       </div>
     </header>
 
     <main class="main">
       <section class="panel">
-        <div class="ribbon-tabs" dir="rtl">
-          <button type="button" data-ribbon-tab="file">קובץ</button>
-          <button type="button" data-ribbon-tab="home">בית</button>
-          <button type="button" data-ribbon-tab="insert">הוספה</button>
-          <button type="button" data-ribbon-tab="layout">פריסה</button>
-          <button type="button" data-ribbon-tab="streams">זרמים</button>
-          <button type="button" data-ribbon-tab="view">תצוגה</button>
-          <button type="button" data-ribbon-tab="tools">כלים</button>
+        <div class="toolbar source-stream-toolbar" dir="rtl">
+          <span class="stream-label-static">סמן כזרם:</span>
+          <button type="button" data-stream="01" class="btn-stream stream-color-1">01</button>
+          <button type="button" data-stream="02" class="btn-stream stream-color-2">02</button>
+          <button type="button" data-stream="03" class="btn-stream stream-color-3">03</button>
+          <button type="button" data-stream="04" class="btn-stream stream-color-4">04</button>
+          <button type="button" data-stream="05" class="btn-stream stream-color-5">05</button>
+          <button type="button" data-stream="06" class="btn-stream stream-color-6">06</button>
+          <input
+            type="number"
+            id="custom-stream-input"
+            min="1"
+            max="999"
+            placeholder="מס׳"
+            class="custom-stream-input"
+          />
+          <button type="button" id="btn-custom-stream">סמן</button>
         </div>
         <div class="toolbar" dir="rtl">
-          <span class="tb-group" data-tab="home" data-title="טקסט">
+          <span class="tb-group" data-title="טקסט">
             <button data-cmd="bold" title="מודגש"><b>B</b></button>
             <button data-cmd="italic" title="נטוי"><i>I</i></button>
             <button data-cmd="underline" title="קו תחתון"><u>U</u></button>
@@ -41,7 +50,7 @@
             <button data-cmd="sub" title="כתב תחתי">x₂</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="home" data-title="צבע">
+          <span class="tb-group" data-title="צבע">
             <button data-cmd="color-red" title="טקסט אדום" style="color:#dc2626">A</button>
             <button data-cmd="color-blue" title="טקסט כחול" style="color:#2563eb">A</button>
             <button data-cmd="color-green" title="טקסט ירוק" style="color:#16a34a">A</button>
@@ -49,14 +58,14 @@
             <button data-cmd="color-clear" title="ניקוי צבע">A×</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="home" data-title="רקע">
+          <span class="tb-group" data-title="רקע">
             <button data-cmd="bg-yellow" title="רקע צהוב" style="background:#fef08a;color:#000">●</button>
             <button data-cmd="bg-cyan" title="רקע ציאן" style="background:#a5f3fc;color:#000">●</button>
             <button data-cmd="bg-pink" title="רקע ורוד" style="background:#fbcfe8;color:#000">●</button>
             <button data-cmd="bg-clear" title="ניקוי רקע">●×</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="home" data-title="כותרות">
+          <span class="tb-group" data-title="כותרות">
             <button data-cmd="h1">H1</button>
             <button data-cmd="h2">H2</button>
             <button data-cmd="h3">H3</button>
@@ -65,7 +74,7 @@
             <button data-cmd="h6">H6</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="layout" data-title="רשימות">
+          <span class="tb-group" data-title="רשימות">
             <button data-cmd="bullet" title="נקודות">•</button>
             <button data-cmd="ordered" title="ממוספרת">1.</button>
             <button data-cmd="check" title="וי">✓</button>
@@ -73,19 +82,19 @@
             <button data-cmd="indent-out" title="הזחה החוצה">⇦⇦</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="layout" data-title="יישור">
+          <span class="tb-group" data-title="יישור">
             <button data-cmd="align-right" title="ימין">⇨</button>
             <button data-cmd="align-center" title="מרכז">↔</button>
             <button data-cmd="align-left" title="שמאל">⇦</button>
             <button data-cmd="align-justify" title="מוצדק">═</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="layout" data-title="כיוון">
+          <span class="tb-group" data-title="כיוון">
             <button data-cmd="rtl">RTL</button>
             <button data-cmd="ltr">LTR</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="insert" data-title="בלוקים">
+          <span class="tb-group" data-title="בלוקים">
             <button data-cmd="blockquote" title="ציטוט">❝</button>
             <button data-cmd="code-block" title="קוד">⟨/⟩</button>
             <button data-cmd="link" title="קישור">🔗</button>
@@ -95,13 +104,13 @@
             <button data-cmd="formula" title="נוסחה">∑</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="home" data-title="גופן">
+          <span class="tb-group" data-title="גופן">
             <button data-cmd="font-david">David</button>
             <button data-cmd="font-frank">Frank</button>
             <button data-cmd="font-segoe">Segoe</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="home" data-title="גודל">
+          <span class="tb-group" data-title="גודל">
             <button data-cmd="size-down-double" title="−2">−−</button>
             <button data-cmd="size-down" title="−1">−</button>
             <span id="fs-label" style="margin:0 6px;font-weight:bold">16</span>
@@ -109,19 +118,17 @@
             <button data-cmd="size-up-double" title="+2">++</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="view" data-title="כללי">
+          <span class="tb-group" data-title="כללי">
             <button data-cmd="theme-toggle" title="בהיר/כהה">☀️/🌙</button>
-            <button data-cmd="lang-toggle" id="lang-btn" title="עברית/English">EN</button>
-            <button data-cmd="preview-toggle" title="מצב תצוגה">תצוגה</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="home" data-title="ניהול">
+          <span class="tb-group" data-title="ניהול">
             <button data-cmd="clear" title="ניקוי עיצוב">⌫</button>
             <button data-cmd="undo" title="ביטול">↶</button>
             <button data-cmd="redo" title="חזרה">↷</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="streams" data-title="זרמים">
+          <span class="tb-group" data-title="זרמים">
             <button data-cmd="stream-01" class="stream-btn s1" title="זרם 01">01</button>
             <button data-cmd="stream-02" class="stream-btn s2" title="זרם 02">02</button>
             <button data-cmd="stream-03" class="stream-btn s3" title="זרם 03">03</button>
@@ -134,27 +141,18 @@
             <button data-cmd="stream-clear" title="הסר סימן">×</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="streams" data-title="ניווט סימנים">
-            <button data-cmd="marker-prev" title="סימן קודם בראשי">⇧ ראשי</button>
-            <button data-cmd="marker-next" title="סימן הבא בראשי">⇩ ראשי</button>
+          <span class="tb-group" data-title="ניווט סימנים">
             <button data-cmd="stream-prev" title="סימן קודם">▲</button>
             <button data-cmd="stream-next" title="סימן הבא">▼</button>
             <button data-cmd="stream-count" title="ספירה">∑</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="tools" data-title="זיהוי אוטומטי">
+          <span class="tb-group" data-title="זיהוי אוטומטי">
             <button data-cmd="auto-parse" title="הדבק טקסט גולמי וזהה דפוסים">📥 הדבק וזהה</button>
             <button data-cmd="auto-parse-paste" title="זהה דפוסים בתוכן הקיים">🔍 זהה תוכן</button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-tab="file" data-title="קובץ">
-            <button data-cmd="word-import" class="primary" data-i18n="import">טען Word</button>
-            <button data-cmd="word-export" data-i18n="export">שמור Word</button>
-            <button data-cmd="toggle-merge" class="blue" data-i18n="merge">מזג / פרק</button>
-            <button data-cmd="split-notes-advanced" class="teal" data-i18n="split">הפרד הערות</button>
-          </span>
-          <span class="sep"></span>
-          <span class="tb-group" data-tab="file" data-title="פעולות">
+          <span class="tb-group" data-title="פעולות">
             <button data-cmd="load-sample" class="primary">טען דוגמה</button>
             <button data-cmd="load-sample-shulchan">שו"ע</button>
             <button data-cmd="load-sample-talmud">גמרא</button>
@@ -176,12 +174,39 @@
           <span style="flex:1"></span>
           <button data-cmd="pane-clear-storage" title="אפס מצב חלוניות">↺ איפוס</button>
         </div>
-        <div id="stream-settings-panel" class="stream-settings-panel" dir="rtl"></div>
+        <div class="toolbar bottom-toolbar source-bottom-toolbar" dir="rtl">
+          <button type="button" id="btn-load-internal">טען דוגמה</button>
+          <button type="button" id="btn-load-inline">טען טקסט inline</button>
+          <button type="button" id="btn-load-shulchan">טען שו״ע</button>
+          <button type="button" id="btn-load-talmud">טען גמרא</button>
+          <button type="button" id="btn-render">רנדר עמודים</button>
+          <label class="toolbar-checkbox">
+            <input type="checkbox" id="mishna-wrap-toggle" />
+            משנה ברורה: גלישה
+          </label>
+          <label class="mishna-levels-control">
+            <span>רמות:</span>
+            <input
+              type="text"
+              id="mishna-levels-input"
+              placeholder="01,02 | 03,04"
+              title="כל רמה מופרדת בקו אנכי. לדוגמה: 01,02 | 03,04"
+            />
+          </label>
+        </div>
+        <div id="stream-columns-panel" class="toolbar stream-columns-toolbar" dir="rtl"></div>
+        <div class="toolbar stress-toolbar" dir="rtl">
+          <span class="stress-label">בדיקת עומס:</span>
+          <button type="button" data-mul="3" class="btn-stress">×3</button>
+          <button type="button" data-mul="10" class="btn-stress">×10</button>
+          <button type="button" data-mul="30" class="btn-stress">×30</button>
+          <button type="button" data-mul="100" class="btn-stress">×100</button>
+        </div>
         <div id="panes-container" class="panes-container" dir="rtl"></div>
       </section>
 
       <aside class="panel preview-pane">
-        <h2>תצוגת עמודים</h2>
+        <h2>תצוגה</h2>
         <div id="pdf-toolbar" class="pdf-toolbar" dir="rtl">
           <button type="button" id="pdf-sidebar-toggle" title="לוח צד" class="pdf-tb-btn">☰</button>
           <span class="pdf-tb-sep"></span>
@@ -205,6 +230,7 @@
             <option value="1.25">125%</option>
             <option value="1.5">150%</option>
             <option value="2">200%</option>
+            <option value="3">300%</option>
           </select>
           <button type="button" id="pdf-zoom-in" title="הגדל" class="pdf-tb-btn">+</button>
           <span class="pdf-tb-sep"></span>
@@ -214,7 +240,7 @@
           <span id="pdf-find-status" class="pdf-tb-find-status"></span>
           <span class="pdf-tb-sep"></span>
           <button type="button" id="pdf-print" title="הדפס" class="pdf-tb-btn">⎙</button>
-          <button type="button" id="pdf-download" title="הורד HTML" class="pdf-tb-btn">⬇</button>
+          <button type="button" id="pdf-download" title="הורד PDF" class="pdf-tb-btn">⬇ PDF</button>
         </div>
         <div class="pdf-body">
           <div id="pdf-sidebar" class="pdf-sidebar" hidden></div>

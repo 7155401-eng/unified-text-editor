@@ -46,7 +46,7 @@ function buildEditorExtensions() {
 }
 
 export class Pane {
-  constructor({ id, streamCode, symbol, label, dir, onFocus, onChange }) {
+  constructor({ id, streamCode, symbol, label, dir, markerBarCollapsed, onFocus, onChange }) {
     this.id = id || nextPaneId();
     this.streamCode = streamCode;
     this.symbol = symbol || (streamCode ? `@${streamCode}` : "");
@@ -58,6 +58,8 @@ export class Pane {
     this.editor = null;
     this._body = null;
     this._markerBar = null;
+    this._markerToggle = null;
+    this.markerBarCollapsed = !!markerBarCollapsed;
     this._manager = null;
   }
 
@@ -108,6 +110,18 @@ export class Pane {
     spacer.style.flex = "1";
     header.appendChild(spacer);
 
+    const markerToggle = document.createElement("button");
+    markerToggle.type = "button";
+    markerToggle.className = "pane-marker-toggle";
+    markerToggle.title = "מזער רשימת מספרי הערות";
+    markerToggle.addEventListener("click", () => {
+      this.markerBarCollapsed = !this.markerBarCollapsed;
+      this._applyMarkerBarState();
+      this._save();
+    });
+    this._markerToggle = markerToggle;
+    header.appendChild(markerToggle);
+
     if (this.streamCode) {
       const close = document.createElement("button");
       close.className = "pane-close";
@@ -134,6 +148,7 @@ export class Pane {
     this.element.appendChild(markerBar);
     this.element.appendChild(body);
     parent.appendChild(this.element);
+    this._applyMarkerBarState();
 
     this.editor = new Editor({
       element: body,
@@ -169,6 +184,7 @@ export class Pane {
       symbol: this.symbol,
       label: this.label,
       dir: this.dir,
+      markerBarCollapsed: this.markerBarCollapsed,
       content: this.editor ? this.editor.getJSON() : null,
     };
   }
@@ -198,10 +214,25 @@ export class Pane {
     requestAnimationFrame(() => { mgr.syncBusy = false; });
   }
 
+  _applyMarkerBarState() {
+    if (this.element) {
+      this.element.classList.toggle("marker-bar-collapsed", this.markerBarCollapsed);
+    }
+    if (this._markerToggle) {
+      this._markerToggle.textContent = this.markerBarCollapsed ? "מס׳ ▾" : "מס׳ ▴";
+      this._markerToggle.title = this.markerBarCollapsed
+        ? "הצג רשימת מספרי הערות"
+        : "מזער רשימת מספרי הערות";
+    }
+  }
+
   updateMarkerBar() {
     if (!this._markerBar || !this.editor) return;
 
     const all = findAllStreamMarks(this.editor.state);
+    if (this._markerToggle) {
+      this._markerToggle.disabled = all.length === 0;
+    }
     const bySym = new Map();
     for (const m of all) {
       const sym = m.symbol || `@${m.streamCode}`;
@@ -266,7 +297,9 @@ export class Pane {
   }
 
   _save() {
-    // מעודכן ע"י המנהל בעת שינוי
+    if (this._manager && typeof this._manager._save === "function") {
+      this._manager._save();
+    }
   }
 
   _requestRemove() {
@@ -463,6 +496,7 @@ export class PaneManager {
         symbol: ps.symbol,
         label: ps.label,
         dir: ps.dir,
+        markerBarCollapsed: ps.markerBarCollapsed,
       });
       if (pane && ps.content) pane.load(ps.content);
     }

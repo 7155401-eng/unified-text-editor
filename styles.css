@@ -9,27 +9,130 @@
   --btn-h: #2A3D6E;
   --ed-bg: #0D1929;
   --ed-fg: #E2E8F0;
+  --ravtext-ui-font-family: "David Libre", "Frank Ruhl Libre", "Segoe UI", sans-serif;
+  --ravtext-editor-font-family: "David Libre", "Frank Ruhl Libre", serif;
+  --ravtext-page-font-family: "Frank Ruhl Libre", "David Libre", serif;
+  --ravtext-editor-size: 16px;
+  --ravtext-page-main-size: 12px;
+  --ravtext-page-stream-size: 10px;
 }
 
 body.light-theme {
-  --bg: #F3F4F6;
+  --bg: #EEF2F8;
   --panel: #FFFFFF;
-  --border: #E5E7EB;
-  --gold: #D97706;
-  --txt: #111827;
-  --muted: #6B7280;
-  --btn: #E5E7EB;
-  --btn-h: #D1D5DB;
-  --ed-bg: #F9FAFB;
+  --border: #D4DCE8;
+  --gold: #185ABD;
+  --txt: #1F2937;
+  --muted: #5E6A7D;
+  --btn: #F7F9FD;
+  --btn-h: #E7F0FF;
+  --ed-bg: #FFFFFF;
   --ed-fg: #1F2937;
 }
 
-body.light-theme .toolbar button { color: #111827; }
-body.light-theme .pane-header { background: rgba(0,0,0,0.04); }
-body.light-theme .panes-toolbar { background: rgba(0,0,0,0.05); }
-body.light-theme .marker-bar { background: rgba(0,0,0,0.05); color: #6B7280; }
+body.light-theme {
+  background:
+    linear-gradient(#FFFFFF, #F6F8FC 76px, #EEF2F8 76px),
+    #EEF2F8;
+}
+body.light-theme .app-header {
+  background: #FFFFFF;
+  border-bottom: 1px solid #C8D4E3;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.8), 0 2px 10px rgba(31,41,55,0.05);
+}
+body.light-theme .app-header h1 { color: #185ABD; }
+body.light-theme .status-row {
+  background: #F7FAFF;
+  border-color: #D7E2F2;
+  color: #364152;
+}
+body.light-theme .panel {
+  background: #FFFFFF;
+  border-color: #D4DCE8;
+  box-shadow: 0 1px 2px rgba(31,41,55,0.08);
+}
+body.light-theme .toolbar,
+body.light-theme .panes-toolbar {
+  background: #F3F6FB;
+  border: 1px solid #D6DFEC;
+  border-radius: 4px;
+  padding: 7px 8px;
+}
+body.light-theme .tb-group {
+  background: #FFFFFF;
+  border-color: #D6DFEC;
+}
+body.light-theme .tb-group::before {
+  color: #185ABD;
+  background: #FFFFFF;
+}
+body.light-theme .toolbar button,
+body.light-theme .panes-toolbar button {
+  color: #1F2937;
+  background: #FFFFFF;
+  border-color: #C8D4E3;
+}
+body.light-theme .toolbar button:hover,
+body.light-theme .panes-toolbar button:hover,
+body.light-theme .pane-marker-toggle:hover {
+  background: #E7F0FF;
+  border-color: #8FB8F6;
+}
+body.light-theme .toolbar button.primary,
+body.light-theme .toolbar button.active,
+body.light-theme .panes-toolbar button.primary,
+body.light-theme .panes-toolbar button.active {
+  background: #185ABD;
+  border-color: #185ABD;
+  color: #FFFFFF;
+}
+body.light-theme .pane {
+  background: #FFFFFF;
+  border-color: #CDD7E6;
+}
+body.light-theme .pane-header {
+  background: #F7F9FD;
+  border-bottom-color: #D6DFEC;
+}
+body.light-theme .pane-body {
+  background: #FFFFFF;
+  color: #1F2937;
+}
+body.light-theme .panes-container {
+  background: #FAFBFE;
+  border: 1px solid #D6DFEC;
+  border-radius: 6px;
+  padding: 8px 8px 10px;
+}
+body.light-theme .marker-bar {
+  background: #F7F9FD;
+  color: #5E6A7D;
+  border-bottom-color: #E0E6EF;
+}
+body.light-theme .pane-marker-toggle {
+  background: #FFFFFF;
+  color: #455468;
+  border-color: #C8D4E3;
+}
+body.light-theme .pdf-toolbar {
+  background: #2B579A;
+  color: #FFFFFF;
+}
+body.light-theme .pdf-tb-btn,
+body.light-theme .pdf-tb-zoom-select,
+body.light-theme .pdf-tb-find {
+  background: #FFFFFF;
+  color: #1F2937;
+  border-color: #C8D4E3;
+}
+body.light-theme .pdf-tb-btn:hover {
+  background: #E7F0FF;
+}
+body.light-theme .pages-container {
+  background: #E7ECF4;
+}
 body.light-theme .ctx-menu { background: #FFFFFF; }
-body.light-theme .toast { background: #FFFFFF; color: #D97706; }
+body.light-theme .toast { background: #FFFFFF; color: #185ABD; border-color: #185ABD; }
 
 * { box-sizing: border-box; }
 
@@ -38,14 +141,14 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--txt);
-  font-family: "David Libre", "Frank Ruhl Libre", "Segoe UI", sans-serif;
+  font-family: var(--ravtext-ui-font-family);
   direction: ltr;
   max-width: 100vw;
   overflow-x: hidden;
 }
 
 .editor, .editor .ProseMirror {
-  font-family: "David Libre", "Frank Ruhl Libre", "Times New Roman", serif;
+  font-family: var(--ravtext-editor-font-family);
   font-feature-settings: "kern" 1, "liga" 1;
   unicode-bidi: plaintext;
 }
@@ -67,6 +170,14 @@ html, body {
 .status {
   color: var(--muted);
   font-size: 13px;
+}
+
+.status-row {
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-align: right;
 }
 
 .main {
@@ -93,6 +204,9 @@ html, body {
 
 .main > .panel:not(.preview-pane) {
   grid-area: editor;
+  min-height: calc(100vh - 128px);
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-pane {
@@ -137,6 +251,11 @@ html, body {
   background: #444;
 }
 
+.pdf-tb-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .pdf-tb-sep {
   width: 1px;
   height: 18px;
@@ -168,6 +287,13 @@ html, body {
   font-size: 13px;
 }
 
+.pdf-tb-zoom-label {
+  min-width: 44px;
+  text-align: center;
+  font-size: 13px;
+  color: #ccc;
+}
+
 .pdf-tb-zoom-select,
 .pdf-tb-find {
   background: #1c1c1c;
@@ -191,12 +317,15 @@ html, body {
 }
 
 .pdf-sidebar {
-  width: 120px;
-  flex: 0 0 120px;
+  width: 160px;
+  flex: 0 0 160px;
   background: #1c1c1c;
   color: #ddd;
   overflow-y: auto;
   padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .pdf-sidebar[hidden] {
@@ -227,7 +356,8 @@ html, body {
 
 .pdf-thumb-mini {
   width: 100%;
-  height: 80px;
+  aspect-ratio: 380 / 537;
+  height: auto;
   background: repeating-linear-gradient(
     -45deg,
     #f5f5f5 0px,
@@ -237,6 +367,18 @@ html, body {
   );
   margin-bottom: 4px;
   border: 1px solid #ddd;
+  overflow: hidden;
+  position: relative;
+}
+
+.pdf-thumb-page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  box-shadow: none;
+  pointer-events: none;
+  transform-origin: top left;
 }
 
 mark.pdf-find-hit {
@@ -317,7 +459,7 @@ mark.pdf-find-hit-current {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-family: var(--ravtext-page-font-family);
   overflow: hidden;
   color: #222;
 }
@@ -329,7 +471,7 @@ mark.pdf-find-hit-current {
 }
 
 .page-main {
-  font-size: 12px;
+  font-size: var(--ravtext-page-main-size);
   line-height: 1.55;
   direction: rtl;
   text-align: right;
@@ -358,20 +500,50 @@ mark.pdf-find-hit-current {
   gap: 4px;
 }
 
-.page-streams[data-layout="side-by-side"],
-.page-streams[data-layout="mishna"] {
-  flex-direction: initial;
+.mishna-wrap-page .page-streams {
+  display: block;
+  overflow: hidden;
 }
 
-.page-streams[data-layout="side-by-side"] .stream,
-.page-streams[data-layout="mishna"] .stream {
-  min-width: 0;
+.mishna-wrap-page .mishna-level {
+  display: block;
+  clear: both;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.mishna-wrap-page .mishna-level::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+
+.mishna-wrap-page .stream {
+  margin-bottom: 4px;
+}
+
+.mishna-wrap-page .stream.mishna-float {
+  width: 46%;
+  margin-bottom: 4px;
+}
+
+.mishna-wrap-page .stream.mishna-float[style*="right"] {
+  margin-left: 8px;
+}
+
+.mishna-wrap-page .stream.mishna-float[style*="left"] {
+  margin-right: 8px;
+}
+
+.mishna-wrap-page .stream.mishna-flow {
+  display: block;
+  overflow: visible;
 }
 
 .stream {
   padding: 2px 8px 4px 8px;
   border-radius: 2px;
-  font-size: 10px;
+  font-size: var(--ravtext-page-stream-size);
   line-height: 1.4;
   direction: rtl;
   text-align: justify;
@@ -515,46 +687,12 @@ mark.pdf-find-hit-current {
   font-size: 18px;
 }
 
-.ribbon-tabs {
-  display: flex;
-  gap: 2px;
-  align-items: end;
-  border-bottom: 1px solid var(--border);
-  min-width: 0;
-  overflow-x: auto;
-}
-
-.ribbon-tabs button {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid transparent;
-  border-bottom: 0;
-  border-radius: 6px 6px 0 0;
-  padding: 7px 14px;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.ribbon-tabs button:hover {
-  color: var(--txt);
-  background: rgba(255,255,255,0.05);
-}
-
-.ribbon-tabs button.active {
-  color: var(--txt);
-  background: rgba(0,0,0,0.18);
-  border-color: var(--border);
-}
-
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   margin-bottom: 12px;
-  padding-top: 12px;
   min-width: 0;
   max-width: 100%;
 }
@@ -589,21 +727,115 @@ mark.pdf-find-hit-current {
 }
 .toolbar button.primary:hover { background: #C5A028; }
 
-.toolbar button.blue,
-.panes-toolbar button.blue {
-  background: #2563eb;
-  color: #fff;
-}
-
-.toolbar button.teal,
-.panes-toolbar button.teal {
-  background: #0f766e;
-  color: #fff;
-}
-
 .toolbar button.stream-btn {
   font-weight: 700;
   min-width: 30px;
+}
+
+.stream-label-static,
+.stress-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.btn-stream {
+  min-width: 38px;
+  font-weight: 600;
+}
+
+.custom-stream-input {
+  width: 60px;
+  font: inherit;
+  font-size: 14px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-align: center;
+  background: var(--bg);
+  color: var(--txt);
+}
+
+.bottom-toolbar {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.toolbar-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mishna-levels-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.mishna-levels-control input {
+  width: 150px;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--txt);
+  direction: ltr;
+  text-align: left;
+}
+
+.stress-toolbar {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.btn-stress {
+  font-size: 13px !important;
+  padding: 4px 10px !important;
+}
+
+.stream-columns-toolbar {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.stream-settings-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.stream-settings-code {
+  min-width: 24px;
+  color: var(--gold);
+}
+
+.stream-col-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+}
+
+.stream-col-input input {
+  width: 40px;
+  font: inherit;
+  font-size: 13px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-align: center;
+  background: var(--bg);
+  color: var(--txt);
 }
 .toolbar button.s1 { background: #FEE2E2; color: #7F1D1D; }
 .toolbar button.s2 { background: #DBEAFE; color: #1E3A8A; }
@@ -663,11 +895,16 @@ mark.pdf-find-hit-current {
   flex-wrap: wrap;
   border-bottom: 1px solid var(--border);
   min-height: 26px;
+  flex: 0 0 auto;
   direction: ltr;
   align-items: center;
 }
 
 .marker-bar:empty {
+  display: none;
+}
+
+.marker-bar-collapsed .marker-bar {
   display: none;
 }
 
@@ -782,7 +1019,7 @@ mark.pdf-find-hit-current {
   border-radius: 8px;
   min-height: 400px;
   padding: 18px 22px;
-  font-size: 18px;
+  font-size: var(--ravtext-editor-size);
   line-height: 1.7;
 }
 
@@ -806,21 +1043,29 @@ mark.pdf-find-hit-current {
   display: flex;
   flex-direction: row;
   gap: 0;
-  min-height: 400px;
-  max-height: calc(100vh - 200px);
+  flex: 1 1 auto;
+  height: calc(100vh - 360px);
+  min-height: 420px;
   align-items: stretch;
   min-width: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 8px;
+  scrollbar-gutter: stable;
 }
 
 .pane {
-  flex: 1 1 0;
-  min-width: 100px;
+  flex: 0 0 360px;
+  width: 360px;
+  min-width: 280px;
   background: var(--ed-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .resizer {
@@ -846,6 +1091,7 @@ mark.pdf-find-hit-current {
 
 .pane-header {
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   align-items: center;
   padding: 6px 10px;
@@ -888,106 +1134,45 @@ mark.pdf-find-hit-current {
   padding: 2px 6px;
   border-radius: 4px;
 }
+.pane-marker-toggle {
+  background: var(--btn);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.pane-marker-toggle:hover {
+  color: var(--txt);
+  background: var(--btn-h);
+}
+.pane-marker-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .pane-close:hover {
   color: #f87171;
   background: rgba(239,68,68,0.15);
 }
 
 .pane-body {
+  flex: 1 1 auto;
   padding: 14px 18px;
-  font-size: 16px;
+  font-size: var(--ravtext-editor-size);
   line-height: 1.7;
-  font-family: "David Libre", "Frank Ruhl Libre", serif;
+  font-family: var(--ravtext-editor-font-family);
   unicode-bidi: plaintext;
   min-height: 60px;
-  max-height: 340px;
+  max-height: none;
   overflow: auto;
 }
-.pane-body .ProseMirror { outline: none; min-height: 40px; }
-
-.stream-settings-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 8px 0;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: rgba(0,0,0,0.16);
-  max-height: 190px;
-  overflow: auto;
-}
-
-.stream-settings-header {
-  color: var(--gold);
-  font-weight: 700;
-  font-size: 13px;
-}
-
-.stream-settings-global,
-.stream-settings-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.stream-settings-row {
-  border-top: 1px solid var(--border);
-  padding-top: 7px;
-}
-
-.stream-settings-code {
-  min-width: 32px;
-  color: var(--gold);
-  font-size: 13px;
-}
-
-.stream-setting-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.stream-setting-control input,
-.stream-setting-control select {
-  width: 62px;
-  background: var(--bg);
-  color: var(--txt);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 3px 5px;
-  font: inherit;
-  font-size: 12px;
-}
-
-.stream-setting-control input[type="checkbox"] {
-  width: auto;
-}
-
-.stream-setting-control select {
-  width: auto;
-  min-width: 130px;
-}
-
-.stream-separator-input {
-  max-width: 54px;
-}
-
-.stream-settings-empty {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-body.preview-mode .toolbar,
-body.preview-mode .panes-toolbar,
-body.preview-mode .stream-settings-panel,
-body.preview-mode .pane-header,
-body.preview-mode .marker-bar {
-  opacity: 0.62;
+.pane-body .ProseMirror {
+  outline: none;
+  min-height: 100%;
 }
 
 .ctx-menu {

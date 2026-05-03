@@ -1,5 +1,6 @@
 import { domPack, DOM_PAGE_GEOM } from "./engine/dom_packer.js";
 import { renderPages } from "./engine/renderer.js";
+import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -75,7 +76,8 @@ function extractStreamNotes(streamPane) {
   if (!sym) return [];
   const fullText = streamPane.editor.state.doc.textContent;
   const parts = fullText.split(sym);
-  if (parts.length > 0 && parts[0].trim() === '') parts.shift();
+  if (parts.length <= 1) return [stripDisplayNum(fullText)].filter(Boolean);
+  parts.shift();
   return parts.map(stripDisplayNum).filter(Boolean);
 }
 
@@ -86,12 +88,8 @@ function ensureEngineStreamSettings(paneManager) {
     window.__STREAM_SETTINGS__[p.streamCode] = {
       cols: 1,
       minLinesForCols: 3,
-      colGap: 8,
       inline: true,
-      separator: " ",
       lastLineCenter: true,
-      firstNoteAsTitle: false,
-      enabled: true,
       ...(window.__STREAM_SETTINGS__[p.streamCode] || {}),
     };
   }
@@ -123,10 +121,8 @@ export function paneManagerToPackerContent(paneManager) {
       const code = marker.code;
       const idx = noteCounters[code] || 0;
       const noteText = streamNotes[code] && streamNotes[code][idx];
-      const settings = window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code];
-      const streamEnabled = !settings || settings.enabled !== false;
 
-      if (streamEnabled && noteText !== undefined) {
+      if (noteText !== undefined) {
         notes.push({ stream: code, text: noteText, anchor });
         noteCounters[code] = idx + 1;
       } else {
@@ -134,9 +130,6 @@ export function paneManagerToPackerContent(paneManager) {
       }
 
       prevEnd = marker.atInPara + marker.sym.length;
-      while (prevEnd < paragraphText.length && paragraphText[prevEnd] === ' ') {
-        prevEnd++;
-      }
     }
 
     mainTextNet += paragraphText.substring(prevEnd);
@@ -259,6 +252,8 @@ let _debounceTimer = null;
 
 export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi = null) {
   if (_debounceTimer) clearTimeout(_debounceTimer);
+  const statusEl = document.getElementById("status");
+  if (statusEl) statusEl.textContent = "מרענן...";
   _debounceTimer = setTimeout(() => {
     _renderToken++;
     const myToken = _renderToken;
@@ -289,7 +284,18 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
 
     const t2 = performance.now();
     renderPages(pages, pagesContainer);
+    applyMishnaWrapToPages(pagesContainer);
     const t3 = performance.now();
+    const statusEl = document.getElementById("status");
+    if (statusEl) {
+      const utils = pages.map((p) => (p.total / DOM_PAGE_GEOM.maxPageHeight) * 100);
+      const avg = utils.length ? utils.reduce((a, b) => a + b, 0) / utils.length : 0;
+      const allStreams = new Set();
+      for (const p of pages) for (const c of Object.keys(p.streams || {})) allStreams.add(c);
+      const streams = Array.from(allStreams).sort((a, b) => parseInt(a) - parseInt(b)).join(", ") || "אין";
+      statusEl.textContent =
+        `${pages.length} עמודים, ניצול ממוצע ${avg.toFixed(1)}% — זרמים: ${streams}`;
+    }
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
       detail: { pages, content },
     }));

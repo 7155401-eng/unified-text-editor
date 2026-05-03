@@ -39,13 +39,12 @@ export function initResizer(resizer) {
       newNextWidth = startWidthNext + dx;
     }
 
-    const parentWidth = resizer.parentElement.clientWidth;
-    const prevPct = (newPrevWidth / parentWidth) * 100;
-    const nextPct = (newNextWidth / parentWidth) * 100;
-
-    if (prevPct > 5 && nextPct > 5) {
-      prevPane.style.flex = `0 0 ${prevPct}%`;
-      nextPane.style.flex = `0 0 ${nextPct}%`;
+    const minPaneWidth = 280;
+    if (newPrevWidth >= minPaneWidth && newNextWidth >= minPaneWidth) {
+      prevPane.style.flex = `0 0 ${newPrevWidth}px`;
+      prevPane.style.width = `${newPrevWidth}px`;
+      nextPane.style.flex = `0 0 ${newNextWidth}px`;
+      nextPane.style.width = `${newNextWidth}px`;
     }
   }
 

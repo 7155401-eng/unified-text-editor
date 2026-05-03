@@ -7,29 +7,24 @@ import { findAllStreamMarks, countByStream, jumpToNextMarker, colorForStream } f
 import { parseRawTextToHTML } from "./stream_parser.js";
 import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByMarkers, mergeBackToText } from "./stream_split.js";
 import { applyLineMode } from "./line_mode.js";
-import { setLang, toggleLang, getCurrentLang, applyLangToPanes } from "./i18n.js";
-import { toggleMerge } from "./merge_mode.js";
-import { splitNotesAdvanced } from "./split_notes.js";
-import { importWord, exportWord } from "./word_io.js";
-import { initStreamSettings, updateStreamSettingsPanel } from "./stream_settings.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
-import { scheduleEngineRender, setupPageClickHandler } from "./engine_bridge.js";
+import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc } from "./engine_bridge.js";
 import { loadSampleByName } from "./sample_loader.js";
+import { parseAuto, parseInternalFormat } from "./engine/parser.js";
+import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
+import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
+import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 // בלוני צד הוסרו — בועות עכשיו inline (data-num מעל כל סימן)
 
-const HEBREW_SAMPLE_MAIN = `
-  <h1>דֻּגְמָה תּוֹרָנִית עִם זְרָמִים</h1>
-  <p>פסקה ראשונה — זה הטקסט הראשי. @01 הערה ראשונה לזרם הראשון, פירוש מקובל. @02 הערה שונה לחלוטין, מתייחסת לפרשנות חלופית.</p>
-  <p>פסקה שנייה. @01 שוב הערה לזרם הראשון, המשך הדיון. @03 הערה לזרם שלישי, מקור צדדי.</p>
-  <p>פסקה שלישית מסכמת. @02 הערה נוספת לזרם השני, סיכום הפרשנות החלופית. @01 הערה אחרונה לזרם הראשון.</p>
-  <p>זוהי דוגמה למצב המשולב. לחץ "✂ פצל לחלוניות" כדי לראות את ההערות עוברות לחלוניות נפרדות לפי הזרם שלהן.</p>
-`;
+const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ואת הארץ
+@01 רש"י, שבת פח ע"א
+@02 בשביל התורה ובשביל ישראל שנקראו ראשית
+@03 בכת"י: בראשית ברא אלקים
 
-const STREAM_SAMPLES = {
-  "01": "<p>תוכן זרם 01 — הערה ראשונה. זה תוכן שיוצג בחלונית נפרדת.</p>",
-  "02": "<p>תוכן זרם 02 — הערה שנייה.</p>",
-  "03": "<p>תוכן זרם 03 — הערות סוף.</p>",
-};
+@MAIN והארץ היתה תהו ובהו וחשך על פני תהום
+@01 חגיגה יב ע"א
+@02 תהו - לשון תמיהה. בהו - לשון בהלה
+`;
 
 // === אתחול ===
 const container = document.querySelector("#panes-container");
@@ -39,9 +34,7 @@ const pagesContainer = document.querySelector("#pages-container");
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
 
-if (localStorage.getItem("ravtext.theme") === "light") {
-  document.body.classList.add("light-theme");
-}
+document.body.classList.toggle("light-theme", localStorage.getItem("ravtext.theme") !== "dark");
 
 function isLegacyDemoState() {
   if (paneManager.count() !== 1) return false;
@@ -56,31 +49,67 @@ if (!loadedFromStorage || isLegacyDemoState()) {
   loadSampleByName(paneManager, "hebrew");
 }
 
-let _fontSize = parseInt(localStorage.getItem("ravtext.fontSize") || "16", 10);
+const FONT_STACKS = {
+  "David Libre": '"David Libre", "Frank Ruhl Libre", serif',
+  "Frank Ruhl Libre": '"Frank Ruhl Libre", "David Libre", serif',
+  "Segoe UI": '"Segoe UI", "David Libre", "Frank Ruhl Libre", sans-serif',
+};
 
-function applyFontSize(size) {
-  _fontSize = Math.max(10, Math.min(40, size));
-  for (const p of paneManager.panes) {
-    if (!p.element) continue;
-    p.element.querySelector(".pane-body").style.fontSize = _fontSize + "px";
+let _fontSize = parseInt(localStorage.getItem("ravtext.fontSize") || "16", 10);
+let _fontFamily = localStorage.getItem("ravtext.fontFamily") || FONT_STACKS["David Libre"];
+
+function pageMainSizeFor(editorSize) {
+  return Math.max(8, Math.min(30, Math.round(editorSize * 0.75)));
+}
+
+function pageStreamSizeFor(editorSize) {
+  return Math.max(7, Math.min(24, Math.round(editorSize * 0.62)));
+}
+
+function applyTypography({ rerender = false } = {}) {
+  const cssVars = {
+    "--ravtext-editor-font-family": _fontFamily,
+    "--ravtext-page-font-family": _fontFamily,
+    "--ravtext-editor-size": _fontSize + "px",
+    "--ravtext-page-main-size": pageMainSizeFor(_fontSize) + "px",
+    "--ravtext-page-stream-size": pageStreamSizeFor(_fontSize) + "px",
+  };
+  for (const [name, value] of Object.entries(cssVars)) {
+    document.documentElement.style.setProperty(name, value);
+    pagesContainer?.style.setProperty(name, value);
   }
+
+  for (const p of paneManager.panes) {
+    const body = p.element && p.element.querySelector(".pane-body");
+    if (!body) continue;
+    body.style.fontSize = _fontSize + "px";
+    body.style.fontFamily = _fontFamily;
+  }
+
   const lbl = document.getElementById("fs-label");
   if (lbl) lbl.textContent = String(_fontSize);
   localStorage.setItem("ravtext.fontSize", String(_fontSize));
+  localStorage.setItem("ravtext.fontFamily", _fontFamily);
+
+  if (rerender) rerenderPages();
 }
 
-applyFontSize(_fontSize);
-initStreamSettings(paneManager);
-setLang(getCurrentLang());
-applyLangToPanes(paneManager);
-updateStreamSettingsPanel(paneManager, [], () => {
-  rerenderPages();
-});
+function setGlobalFontFamily(fontName, options = {}) {
+  _fontFamily = FONT_STACKS[fontName] || fontName;
+  applyTypography(options);
+}
 
-let _previewMode = false;
+function applyFontSize(size, options = {}) {
+  _fontSize = Math.max(10, Math.min(40, size));
+  applyTypography(options);
+}
+
+applyTypography();
 
 function rerenderPages() {
-  initStreamSettings(paneManager);
+  for (const p of paneManager.panes) {
+    if (p.streamCode) ensureOriginalStreamSettings(p.streamCode);
+  }
   scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi);
 }
 
@@ -90,9 +119,7 @@ paneManager.on("change", () => {
 });
 
 window.addEventListener("ravtext:engine-rendered", (ev) => {
-  updateStreamSettingsPanel(paneManager, ev.detail?.pages || [], () => {
-    rerenderPages();
-  });
+  updateOriginalStreamColumnsPanel(ev.detail?.pages || [], rerenderPages);
 });
 
 setTimeout(() => {
@@ -106,66 +133,78 @@ function activeChain() {
   return ed.chain().focus();
 }
 
-function jumpMarkerInMain(dir) {
-  const main = paneManager.getMainPane();
-  const editor = main && main.editor;
-  if (!editor) return;
-  const markers = findAllStreamMarks(editor.state);
-  if (markers.length === 0) return;
-  const pos = editor.state.selection.from;
-  let idx = dir > 0
-    ? markers.findIndex((m) => m.from > pos)
-    : [...markers].reverse().findIndex((m) => m.from < pos);
-  if (dir < 0 && idx >= 0) idx = markers.length - 1 - idx;
-  if (idx < 0) idx = dir > 0 ? 0 : markers.length - 1;
-  const target = markers[idx];
-  editor.commands.setTextSelection({ from: target.from, to: target.to });
-  editor.commands.scrollIntoView();
-  editor.commands.focus();
+function resetToSingleMainPane() {
+  paneManager.load({
+    version: 1,
+    activeId: "sample-main",
+    panes: [
+      {
+        id: "sample-main",
+        streamCode: null,
+        symbol: "",
+        label: "ראשי",
+        content: { type: "doc", content: [{ type: "paragraph" }] },
+      },
+    ],
+  });
 }
 
-function setPreviewMode(next) {
-  _previewMode = !!next;
-  document.body.classList.toggle("preview-mode", _previewMode);
-  for (const pane of paneManager.panes) {
-    if (pane.editor && typeof pane.editor.setEditable === "function") {
-      pane.editor.setEditable(!_previewMode);
-    }
-  }
-  const btn = document.querySelector('[data-cmd="preview-toggle"]');
-  if (btn) btn.classList.toggle("active", _previewMode);
+function loadEngineDoc(engineDoc) {
+  resetToSingleMainPane();
+  paneManagerFromEngineDoc(paneManager, engineDoc);
+  rerenderPages();
 }
 
-function setupRibbonTabs() {
-  const tabs = Array.from(document.querySelectorAll("[data-ribbon-tab]"));
-  const groups = Array.from(document.querySelectorAll(".toolbar .tb-group[data-tab]"));
-  if (tabs.length === 0 || groups.length === 0) return;
+document.querySelectorAll(".btn-stream").forEach((btn) => {
+  btn.addEventListener("mousedown", (e) => e.preventDefault());
+  btn.addEventListener("click", () => {
+    activeChain()?.toggleStream(btn.dataset.stream).run();
+  });
+});
 
-  const showTab = (tabName) => {
-    if (!tabs.some((tab) => tab.dataset.ribbonTab === tabName)) tabName = "home";
-    for (const tab of tabs) {
-      tab.classList.toggle("active", tab.dataset.ribbonTab === tabName);
+const customStreamInput = document.getElementById("custom-stream-input");
+const btnCustomStream = document.getElementById("btn-custom-stream");
+if (btnCustomStream && customStreamInput) {
+  btnCustomStream.addEventListener("mousedown", (e) => e.preventDefault());
+  btnCustomStream.addEventListener("click", () => {
+    let n = parseInt(customStreamInput.value, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 999) {
+      customStreamInput.focus();
+      return;
     }
-    for (const group of groups) {
-      group.hidden = group.dataset.tab !== tabName;
-    }
-    document.querySelectorAll(".toolbar .sep").forEach((sep) => {
-      sep.hidden = true;
-    });
-  };
-
-  for (const tab of tabs) {
-    tab.addEventListener("click", () => showTab(tab.dataset.ribbonTab));
-  }
-  showTab(localStorage.getItem("ravtext.ribbon.tab") || "home");
-  for (const tab of tabs) {
-    tab.addEventListener("click", () => {
-      localStorage.setItem("ravtext.ribbon.tab", tab.dataset.ribbonTab);
-    });
-  }
+    activeChain()?.toggleStream(String(n).padStart(2, "0")).run();
+  });
 }
 
-setupRibbonTabs();
+document.getElementById("btn-load-internal")?.addEventListener("click", () => {
+  loadEngineDoc(parseInternalFormat(INTERNAL_SAMPLE));
+});
+
+document.getElementById("btn-load-inline")?.addEventListener("click", () => {
+  loadSampleByName(paneManager, "hebrew");
+  rerenderPages();
+});
+
+document.getElementById("btn-load-shulchan")?.addEventListener("click", () => {
+  loadSampleByName(paneManager, "shulchan");
+  rerenderPages();
+});
+
+document.getElementById("btn-load-talmud")?.addEventListener("click", () => {
+  loadSampleByName(paneManager, "talmud");
+  rerenderPages();
+});
+
+document.getElementById("btn-render")?.addEventListener("click", rerenderPages);
+wireMishnaWrapToggle(rerenderPages);
+
+document.querySelectorAll(".btn-stress").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const mul = parseInt(btn.dataset.mul, 10);
+    const big = Array(mul).fill(inlineSampleText).join("\n\n");
+    loadEngineDoc(parseAuto(big));
+  });
+});
 
 // === Toolbar ===
 // document-level delegation: תופס כל לחצן [data-cmd] בכל סרגל בדף
@@ -236,30 +275,30 @@ document.addEventListener("click", (ev) => {
       break;
     }
     case "clear":          ed && ed.clearNodes().unsetAllMarks().run(); break;
-    case "font-david":     ed && ed.setFontFamily("David Libre").run(); break;
-    case "font-frank":     ed && ed.setFontFamily("Frank Ruhl Libre").run(); break;
-    case "font-segoe":     ed && ed.setFontFamily("Segoe UI").run(); break;
+    case "font-david":
+      ed && ed.setFontFamily("David Libre").run();
+      setGlobalFontFamily("David Libre", { rerender: true });
+      break;
+    case "font-frank":
+      ed && ed.setFontFamily("Frank Ruhl Libre").run();
+      setGlobalFontFamily("Frank Ruhl Libre", { rerender: true });
+      break;
+    case "font-segoe":
+      ed && ed.setFontFamily("Segoe UI").run();
+      setGlobalFontFamily("Segoe UI", { rerender: true });
+      break;
     case "size-12":        ed && ed.setFontSize("12px").run(); break;
     case "size-15":        ed && ed.setFontSize("15px").run(); break;
     case "size-18":        ed && ed.setFontSize("18px").run(); break;
     case "size-24":        ed && ed.setFontSize("24px").run(); break;
-    case "size-down-double": applyFontSize(_fontSize - 2); break;
-    case "size-down":        applyFontSize(_fontSize - 1); break;
-    case "size-up":          applyFontSize(_fontSize + 1); break;
-    case "size-up-double":   applyFontSize(_fontSize + 2); break;
+    case "size-down-double": applyFontSize(_fontSize - 2, { rerender: true }); break;
+    case "size-down":        applyFontSize(_fontSize - 1, { rerender: true }); break;
+    case "size-up":          applyFontSize(_fontSize + 1, { rerender: true }); break;
+    case "size-up-double":   applyFontSize(_fontSize + 2, { rerender: true }); break;
     case "theme-toggle": {
       document.body.classList.toggle("light-theme");
       const isLight = document.body.classList.contains("light-theme");
       localStorage.setItem("ravtext.theme", isLight ? "light" : "dark");
-      break;
-    }
-    case "lang-toggle": {
-      toggleLang();
-      applyLangToPanes(paneManager);
-      break;
-    }
-    case "preview-toggle": {
-      setPreviewMode(!_previewMode);
       break;
     }
     case "diag-toggle": {
@@ -290,30 +329,6 @@ document.addEventListener("click", (ev) => {
     }
     case "engine-render": {
       rerenderPages();
-      break;
-    }
-    case "word-import": {
-      importWord(paneManager).then((ok) => {
-        if (ok) rerenderPages();
-      });
-      break;
-    }
-    case "word-export": {
-      exportWord(paneManager);
-      break;
-    }
-    case "toggle-merge": {
-      const ok = toggleMerge(paneManager);
-      if (ok) {
-        btn.classList.toggle("active", paneManager.merged);
-        rerenderPages();
-      }
-      break;
-    }
-    case "split-notes-advanced": {
-      splitNotesAdvanced(paneManager).then((ok) => {
-        if (ok) rerenderPages();
-      });
       break;
     }
     case "export-json": {
@@ -349,8 +364,6 @@ document.addEventListener("click", (ev) => {
       if (e) jumpToNextMarker(e.view, -1);
       break;
     }
-    case "marker-next":    jumpMarkerInMain(+1); break;
-    case "marker-prev":    jumpMarkerInMain(-1); break;
     case "stream-count":   {
       const e = paneManager.getActiveEditor();
       if (!e) break;
@@ -403,8 +416,7 @@ document.addEventListener("click", (ev) => {
       });
       if (pane) {
         pane.editor.commands.setContent(`<p>תוכן זרם ${padded}…</p>`);
-        initStreamSettings(paneManager);
-        updateStreamSettingsPanel(paneManager, [], () => rerenderPages());
+        ensureOriginalStreamSettings(padded);
       }
       break;
     }

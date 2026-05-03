@@ -70,3 +70,28 @@ node_modules/html-docx-js/dist/html-docx.js:13147:0: ERROR: With statements cann
 [2m21:36:27[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/word_io.js[22m
 [2m21:36:27[22m [36m[1m[vite][22m[39m [32m✨ new dependencies optimized: [33mmammoth/mammoth.browser.js[32m[39m
 [2m21:36:27[22m [36m[1m[vite][22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m22:35:11[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/dom_packer.js[22m
+[2m22:35:11[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/renderer.js[22m
+[2m22:36:16[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine_bridge.js[22m
+[2m22:36:49[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m22:37:18[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m22:37:32[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m22:38:29[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m22:39:03[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m22:39:18[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m22:39:34[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m22:39:50[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m22:40:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/i18n.js[22m
+[2m22:40:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/merge_mode.js[22m
+[2m22:40:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/split_notes.js[22m
+[2m22:40:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/stream_settings.js[22m
+[2m22:40:00[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/word_io.js[22m
+[2m22:40:43[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m22:41:02[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m22:41:08[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m22:41:14[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m22:41:26[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine_bridge.js[22m
+[2m22:46:47[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine_bridge.js[22m
+[2m22:46:54[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m22:47:01[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m22:47:09[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m

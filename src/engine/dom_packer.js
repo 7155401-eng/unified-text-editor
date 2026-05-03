@@ -43,56 +43,6 @@ function estimateStreamLines(notes, charsPerLine = 52) {
   return lines;
 }
 
-function getStreamSettings(streamCode) {
-  return (typeof window !== "undefined" &&
-    window.__STREAM_SETTINGS__ &&
-    window.__STREAM_SETTINGS__[streamCode]) || {};
-}
-
-function getPageLayoutSettings() {
-  return (typeof window !== "undefined" && window.__PAGE_LAYOUT_SETTINGS__) || {};
-}
-
-function asPositiveInt(value, fallback, max = 99) {
-  const n = parseInt(value, 10);
-  if (!Number.isFinite(n) || n < 1) return fallback;
-  return Math.min(n, max);
-}
-
-function applyMainLayout(main) {
-  const layout = getPageLayoutSettings();
-  const cols = asPositiveInt(layout.mainColumns, 1, 3);
-  if (cols > 1) {
-    main.style.columnCount = cols;
-    main.style.columnGap = "14px";
-  }
-}
-
-function applyStreamsLayout(streamsWrap) {
-  const layout = getPageLayoutSettings().streamsLayout || "side-by-side";
-  streamsWrap.dataset.layout = layout;
-  if (layout === "stacked") return;
-  streamsWrap.style.display = "grid";
-  streamsWrap.style.gridTemplateColumns = layout === "mishna"
-    ? "minmax(0, 1fr) minmax(0, 1fr)"
-    : "repeat(auto-fit, minmax(72px, 1fr))";
-  streamsWrap.style.alignItems = "end";
-}
-
-function prepareNotesAndTitle(streamCode, notesArr, settings) {
-  let titleText = streamCode;
-  let notes = notesArr;
-  if (settings.firstNoteAsTitle && notesArr.length > 0) {
-    const titleIdx = notesArr.findIndex((tup) => !(tup[4] === 1 || tup[4] === true));
-    if (titleIdx >= 0) {
-      const candidate = (notesArr[titleIdx][1] || "").trim();
-      titleText = candidate || streamCode;
-      notes = notesArr.filter((_, idx) => idx !== titleIdx);
-    }
-  }
-  return { titleText, notes };
-}
-
 function buildMeasurePage(mainSegments, streams) {
   const page = document.createElement("div");
   page.className = "page measure-page";
@@ -102,7 +52,6 @@ function buildMeasurePage(mainSegments, streams) {
 
   const main = document.createElement("div");
   main.className = "page-main";
-  applyMainLayout(main);
   let lastIdx = null;
   let lastP = null;
   for (const seg of mainSegments) {
@@ -125,25 +74,19 @@ function buildMeasurePage(mainSegments, streams) {
   if (codes.length > 0) {
     const streamsWrap = document.createElement("div");
     streamsWrap.className = "page-streams";
-    applyStreamsLayout(streamsWrap);
     for (const code of codes) {
-      const settings = getStreamSettings(code);
-      if (settings.enabled === false) continue;
-      const prepared = prepareNotesAndTitle(code, streams[code], settings);
-      const notes = prepared.notes;
-
       const s = document.createElement("div");
       s.className = `stream stream-color-${streamColorIndex(code)}`;
       s.dataset.stream = code;
 
-      const userCols = asPositiveInt(settings.cols, 1, 6);
-      const colGap = Number.isFinite(Number(settings.colGap)) ? Math.max(0, Number(settings.colGap)) : 8;
+      const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
+      const userCols = settings.cols || 1;
       const minLines = typeof settings.minLinesForCols === "number" ? settings.minLinesForCols : 3;
-      const estLines = estimateStreamLines(notes);
+      const estLines = estimateStreamLines(streams[code]);
       const cols = estLines >= minLines ? userCols : 1;
       if (cols > 1) {
         s.style.columnCount = cols;
-        s.style.columnGap = `${colGap}px`;
+        s.style.columnGap = "8px";
       }
       // Default = center last line (matches CSS default). User can opt out
       // per-stream → fall back to plain right-align (no stretching).
@@ -154,23 +97,21 @@ function buildMeasurePage(mainSegments, streams) {
 
       const title = document.createElement("div");
       title.className = "stream-title";
-      title.textContent = prepared.titleText;
+      title.textContent = code;
       s.appendChild(title);
 
       // Default = inline (continuous notes); user can toggle off per-stream.
       const notesInline = typeof settings.inline === "boolean" ? settings.inline : true;
-      const separator = typeof settings.separator === "string" ? settings.separator : " ";
       const displayNum = (tup) =>
         typeof tup[3] === "number" && tup[3] > 0 ? tup[3] : tup[0];
       const isCont = (tup) => tup[4] === 1 || tup[4] === true;
       function appendNoteContent(parent, tup, leadingSpace) {
         const text = tup[1] || "";
-        const lead = leadingSpace ? separator : "";
         if (isCont(tup)) {
-          parent.appendChild(document.createTextNode(lead + text));
+          parent.appendChild(document.createTextNode((leadingSpace ? " " : "") + text));
           return;
         }
-        const prefix = lead + `[${displayNum(tup)}] `;
+        const prefix = (leadingSpace ? " " : "") + `[${displayNum(tup)}] `;
         parent.appendChild(document.createTextNode(prefix));
         const trimmed = text.replace(/^\s+/, "");
         const spaceIdx = trimmed.indexOf(" ");
@@ -190,10 +131,10 @@ function buildMeasurePage(mainSegments, streams) {
       if (notesInline) {
         const noteAll = document.createElement("div");
         noteAll.className = "note note-inline";
-        notes.forEach((tup, i) => appendNoteContent(noteAll, tup, i > 0));
+        streams[code].forEach((tup, i) => appendNoteContent(noteAll, tup, i > 0));
         s.appendChild(noteAll);
       } else {
-        for (const tup of notes) {
+        for (const tup of streams[code]) {
           const note = document.createElement("div");
           note.className = "note";
           appendNoteContent(note, tup, false);
@@ -202,7 +143,7 @@ function buildMeasurePage(mainSegments, streams) {
       }
       streamsWrap.appendChild(s);
     }
-    if (streamsWrap.children.length > 0) page.appendChild(streamsWrap);
+    page.appendChild(streamsWrap);
   }
   return page;
 }

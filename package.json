@@ -22,8 +22,6 @@
     "@tiptap/extension-underline": "^3.22.5",
     "@tiptap/extension-youtube": "^3.22.5",
     "@tiptap/starter-kit": "^3.22.5",
-    "html-docx-js": "^0.3.1",
-    "mammoth": "^1.6.0",
     "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.39.1",
