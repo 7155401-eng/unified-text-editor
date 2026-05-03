@@ -1,0 +1,35 @@
+{
+  "name": "tiptap-sandbox",
+  "version": "0.1.0",
+  "description": "Hebrew TipTap demo for engine-into-editor stage 5",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173 --open",
+    "build": "vite build",
+    "preview": "vite preview --port 5173"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.22.5",
+    "@tiptap/extension-color": "^3.22.5",
+    "@tiptap/extension-image": "^3.22.5",
+    "@tiptap/extension-link": "^3.22.5",
+    "@tiptap/extension-subscript": "^3.22.5",
+    "@tiptap/extension-superscript": "^3.22.5",
+    "@tiptap/extension-task-item": "^3.22.5",
+    "@tiptap/extension-task-list": "^3.22.5",
+    "@tiptap/extension-text-align": "^3.22.5",
+    "@tiptap/extension-text-style": "^3.22.5",
+    "@tiptap/extension-underline": "^3.22.5",
+    "@tiptap/extension-youtube": "^3.22.5",
+    "@tiptap/starter-kit": "^3.22.5",
+    "html-docx-js": "^0.3.1",
+    "mammoth": "^1.6.0",
+    "prosemirror-model": "^1.24.1",
+    "prosemirror-state": "^1.4.3",
+    "prosemirror-view": "^1.39.1",
+    "vite-plugin-singlefile": "^2.3.3"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
+  }
+}

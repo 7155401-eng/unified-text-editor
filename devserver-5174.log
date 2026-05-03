@@ -1,0 +1,72 @@
+
+> tiptap-sandbox@0.1.0 dev
+> vite --port 5173 --open --host 127.0.0.1 --port 5174
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m250[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5174[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+[2m16:50:32[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/stream_split.js[22m
+[2m16:50:32[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m16:50:58[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m16:51:28[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m18:59:56[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m18:59:57[22m [36m[1m[vite][22m[39m [32m✨ new dependencies optimized: [33mprosemirror-model[32m[39m
+[2m18:59:57[22m [36m[1m[vite][22m[39m [32m✨ optimized dependencies changed. reloading[39m
+[2m19:00:57[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m19:07:19[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/pane_manager.js[22m
+[2m19:07:25[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m19:07:41[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m19:07:58[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m19:08:08[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m19:08:15[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m19:08:22[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m19:11:19[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m19:14:02[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m19:17:39[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m19:17:49[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m21:26:24[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+X [ERROR] With statements cannot be used with the "esm" output format due to strict mode
+
+    node_modules/html-docx-js/dist/html-docx.js:13103:0:
+      13103 │ with(obj||{}){
+            ╵ ~~~~
+
+X [ERROR] With statements cannot be used with the "esm" output format due to strict mode
+
+    node_modules/html-docx-js/dist/html-docx.js:13133:0:
+      13133 │ with(obj||{}){
+            ╵ ~~~~
+
+X [ERROR] With statements cannot be used with the "esm" output format due to strict mode
+
+    node_modules/html-docx-js/dist/html-docx.js:13147:0:
+      13147 │ with(obj||{}){
+            ╵ ~~~~
+
+[2m21:26:24[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: Build failed with 3 errors:
+node_modules/html-docx-js/dist/html-docx.js:13103:0: ERROR: With statements cannot be used with the "esm" output format due to strict mode
+node_modules/html-docx-js/dist/html-docx.js:13133:0: ERROR: With statements cannot be used with the "esm" output format due to strict mode
+node_modules/html-docx-js/dist/html-docx.js:13147:0: ERROR: With statements cannot be used with the "esm" output format due to strict mode
+    at failureErrorWithLog (C:\Users\User\Documents\Codex\2026-05-03\new-chat\project_audit\work-files-claude-fix-engine-into-editor\tiptap_sandbox\node_modules\esbuild\lib\main.js:1472:15)
+    at C:\Users\User\Documents\Codex\2026-05-03\new-chat\project_audit\work-files-claude-fix-engine-into-editor\tiptap_sandbox\node_modules\esbuild\lib\main.js:945:25
+    at C:\Users\User\Documents\Codex\2026-05-03\new-chat\project_audit\work-files-claude-fix-engine-into-editor\tiptap_sandbox\node_modules\esbuild\lib\main.js:1353:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)[39m
+[2m21:29:40[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine_bridge.js[22m
+[2m21:30:24[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m21:30:51[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m21:31:01[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/pane_manager.js[22m
+[2m21:31:08[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m21:31:51[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2mindex.html[22m
+[2m21:31:59[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/main.js[22m
+[2m21:33:04[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m21:33:21[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m21:34:09[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/renderer.js[22m
+[2m21:34:28[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/dom_packer.js[22m
+[2m21:34:55[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/engine/dom_packer.js[22m
+[2m21:35:05[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/styles.css?direct[22m
+[2m21:36:27[22m [36m[1m[vite][22m[39m [32mpage reload [39m[2msrc/word_io.js[22m
+[2m21:36:27[22m [36m[1m[vite][22m[39m [32m✨ new dependencies optimized: [33mmammoth/mammoth.browser.js[32m[39m
+[2m21:36:27[22m [36m[1m[vite][22m[39m [32m✨ optimized dependencies changed. reloading[39m
