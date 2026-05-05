@@ -785,13 +785,18 @@ mark.pdf-find-hit-current {
 /* חלקי הכתר (ראש הפרשן ב-50% רוחב) */
 .talmud-layout.talmud-with-crown > .stream.talmud-crown-portion {
   /* float ו-width מוגדרים inline ע"י JS */
-  text-align: justify;
+  text-align: justify !important;
   /* יישור מלא גם בשורה האחרונה — כי החיתוך הוא באמצע משפט,
      ובלי זה השורה האחרונה תהיה לא מיושרת לשני הצדדים. */
-  text-align-last: justify;
-  text-justify: inter-word;
+  text-align-last: justify !important;
+  text-justify: inter-word !important;
   /* רציפות חזותית: ביטול רווח תחתון כדי להידבק לגוף */
   padding-bottom: 0 !important;
+}
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note,
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note-inline,
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note-part {
+  text-align-last: justify !important;
 }
 /* הפרשן בכתר משמאל מסומן עם talmud-left */
 .talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right {
