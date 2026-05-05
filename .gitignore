@@ -28,3 +28,17 @@ debug-*.png
 debug-*.ps1
 tatus
 bject CreationTime, LastWriteTime, Length, FullName*
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+.env
+.env.*
+*.log
+.DS_Store
+chrome-talmud-debug-profile/
+chrome-verify-profile/
+debug-*.png
+debug-*.ps1
+bject CreationTime, LastWriteTime, Length, FullName*
