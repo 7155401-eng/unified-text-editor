@@ -1,28 +1,35 @@
 /**
- * talmud_layout.js — תבנית תצוגת תלמוד
+ * talmud_layout.js — תבנית תצוגת תלמוד (כתר + מרכזי + שני פרשנים)
  *
- * מבנה: טקסט ראשי (גמרא) בחלק עליון מרכזי,
- *        ומתחתיו הזרמים מסודרים ב"פרסה": שניים בשורה (ימין/שמאל)
- *        בדומה לדף הגמרא המסורתי.
+ * מבנה (כברירת מחדל):
+ *   • הזרם המרכזי T תופס 42% במרכז
+ *   • שני זרמי פרשנות A (ימין) ו-B (שמאל) תופסים 29% כל אחד
+ *   • הכתר: 4 שורות עליונות שבהן A=50% ו-B=50% (ללא T)
+ *   • זרמים שאינם בקונפיג נשארים מתחת לבלוק התלמוד בסדר המקורי
+ *   • כשהתבנית כבויה — הכל חוזר לסדר המקורי בלי שיורים
  *
- * ניתן לקבוע אילו זרמים ימוקמו ב-right ואילו ב-left
- * דרך ממשק ה-UI (input עם כינויים).
- * אם לא הוגדר — חלוקה אוטומטית: מספרי זרמים אי-זוגיים ימינה, זוגיים שמאלה.
+ * פורמט הקלט (שדה "זרמים"):
+ *   "01 | 02 | 03"   ← T | פרשן ימין | פרשן שמאל
+ *   "01 | 02, 03"    ← T | שני פרשנים (הראשון ימין, השני שמאל)
+ *   "01 | 02"        ← T | פרשן בודד
  *
- * API:
- *   applyTalmudLayoutToPage(pageEl)
- *   applyTalmudLayoutToPages(container)
- *   wireTalmudLayoutToggle(onChange)
- *   isTalmudLayoutEnabled() → bool
- *   setTalmudLayoutEnabled(bool)
- *   getTalmudSideText() → string   ("01,03 | 02,04")
- *   setTalmudSideText(string)
+ * כללי שמירה (אסור להפר):
+ *   • לעולם לא innerHTML='' על page-streams
+ *   • הזזת DOM רק עם appendChild / insertBefore
+ *   • במצב כבוי או בלי קונפיג: רק unwrap של talmud-block + ניקוי data-attrs
+ *     שלנו, *לא* נוגעים בסדר הזרמים, *לא* נוגעים ב-mishna-level וכו'
+ *   • לא נוגעים בשום DOM מחוץ ל-.page-streams של העמוד
  */
 
-const STORAGE_KEY = "ravtext.talmudLayout";
-const SIDES_KEY   = "ravtext.talmudLayout.sides";
+const STORAGE_KEY      = "ravtext.talmudLayout";
+const SIDES_KEY        = "ravtext.talmudLayout.sides";
+const CROWN_LINES_KEY  = "ravtext.talmudLayout.crownLines";
+const MAIN_WIDTH_KEY   = "ravtext.talmudLayout.mainWidth";
 
-// ─── State getters/setters ─────────────────────────────────────────────────
+const DEFAULT_CROWN_LINES = 4;
+const DEFAULT_MAIN_WIDTH  = 42;
+
+// ─── State getters / setters ──────────────────────────────────────────────
 
 export function isTalmudLayoutEnabled() {
   return localStorage.getItem(STORAGE_KEY) === "1";
@@ -40,153 +47,225 @@ export function setTalmudSideText(value) {
   localStorage.setItem(SIDES_KEY, value || "");
 }
 
-// ─── Parsing ───────────────────────────────────────────────────────────────
+export function getTalmudCrownLines() {
+  const raw = localStorage.getItem(CROWN_LINES_KEY);
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 20) return DEFAULT_CROWN_LINES;
+  return n;
+}
 
-/**
- * parseTalmudSides()
- * מנתח מחרוזת "01,03 | 02,04" (חלק ראשון=ימין, שני=שמאל)
- * ומחזיר { right: Set<code>, left: Set<code> }
- */
+export function setTalmudCrownLines(value) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 20) {
+    localStorage.removeItem(CROWN_LINES_KEY);
+    return;
+  }
+  localStorage.setItem(CROWN_LINES_KEY, String(n));
+}
+
+export function getTalmudMainWidth() {
+  const raw = localStorage.getItem(MAIN_WIDTH_KEY);
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 20 || n > 80) return DEFAULT_MAIN_WIDTH;
+  return n;
+}
+
+export function setTalmudMainWidth(value) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 20 || n > 80) {
+    localStorage.removeItem(MAIN_WIDTH_KEY);
+    return;
+  }
+  localStorage.setItem(MAIN_WIDTH_KEY, String(n));
+}
+
+// ─── Parsing ──────────────────────────────────────────────────────────────
+
 function normalizeCode(raw) {
   const n = parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 1) return null;
   return String(n).padStart(2, "0");
 }
 
-function parseTalmudSides() {
+function extractCodes(str) {
+  return (str.match(/\d{1,3}/g) || []).map(normalizeCode).filter(Boolean);
+}
+
+/** מחזיר { main, right, left } או null אם הקלט לא חוקי */
+function parseTalmudConfig() {
   const raw = getTalmudSideText().trim();
-  if (!raw) return { right: new Set(), left: new Set() };
-
+  if (!raw) return null;
   const parts = raw.split(/\|/);
-  const extract = (str) =>
-    (str.match(/\d{1,3}/g) || []).map(normalizeCode).filter(Boolean);
 
-  const rightCodes = extract(parts[0] || "");
-  const leftCodes  = extract(parts[1] || "");
+  const mainCodes = extractCodes(parts[0] || "");
+  const main = mainCodes[0] || null;
+  if (!main) return null;
 
-  return {
-    right: new Set(rightCodes),
-    left:  new Set(leftCodes),
-  };
+  let right = null;
+  let left  = null;
+
+  if (parts.length >= 3) {
+    right = extractCodes(parts[1] || "")[0] || null;
+    left  = extractCodes(parts[2] || "")[0] || null;
+  } else if (parts.length === 2) {
+    const rest = extractCodes(parts[1] || "");
+    right = rest[0] || null;
+    left  = rest[1] || null;
+  } else {
+    const rest = mainCodes.slice(1);
+    right = rest[0] || null;
+    left  = rest[1] || null;
+  }
+
+  return { main, right, left };
 }
 
-// ─── DOM helpers ──────────────────────────────────────────────────────────
+// ─── DOM helpers (talmud-only) ────────────────────────────────────────────
 
-function resetTalmudPage(pageEl) {
+function codeForStream(streamEl) {
+  return streamEl.getAttribute("data-stream") || "";
+}
+
+function clearTalmudMarks(streamEl) {
+  streamEl.classList.remove(
+    "talmud-main",
+    "talmud-perush-right",
+    "talmud-perush-left"
+  );
+  streamEl.removeAttribute("data-talmud-role");
+}
+
+/**
+ * מוציא את הזרמים מתוך כל .talmud-block ומחזיר אותם ישירות ל-streamsWrap
+ * *לפני* הבלוק. מסיר את הבלוק. לא נוגע ב-.mishna-level או בשום דבר אחר.
+ */
+function unwrapTalmudBlocks(streamsWrap) {
+  const blocks = Array.from(
+    streamsWrap.querySelectorAll(":scope > .talmud-block")
+  );
+  for (const block of blocks) {
+    const innerStreams = Array.from(
+      block.querySelectorAll(":scope > .stream")
+    );
+    for (const s of innerStreams) {
+      streamsWrap.insertBefore(s, block);
+    }
+    block.remove();
+  }
+}
+
+/** מנקה את כל סימוני התלמוד מהעמוד — בלי לגעת בסדר הזרמים. */
+function cleanTalmudFromPage(pageEl, streamsWrap) {
+  unwrapTalmudBlocks(streamsWrap);
+  // מנקה data-attrs/classes על *כל* הזרמים של העמוד, לא משנה איפה הם
+  // (גם אלו שיושבים בתוך .mishna-level)
+  pageEl.querySelectorAll(".stream").forEach(clearTalmudMarks);
   pageEl.classList.remove("talmud-layout-page");
-  const streamsWrap = pageEl.querySelector(".page-streams");
-  if (!streamsWrap) return;
-
-  // מחזיר את כל הזרמים ישירות ל-streamsWrap (מוציא מ-rows)
-  const rows = Array.from(streamsWrap.querySelectorAll(":scope > .talmud-row"));
-  for (const row of rows) {
-    const streams = Array.from(row.querySelectorAll(":scope > .stream"));
-    for (const s of streams) streamsWrap.insertBefore(s, row);
-    row.remove();
-  }
-
-  // מאפס סטייל על כל זרם
-  for (const s of streamsWrap.querySelectorAll(":scope > .stream")) {
-    s.removeAttribute("data-talmud-side");
-    s.style.flex = "";
-    s.style.width = "";
-    s.style.minWidth = "";
-    s.style.maxWidth = "";
-  }
+  pageEl.style.removeProperty("--talmud-crown-lines");
+  pageEl.style.removeProperty("--talmud-main-width");
 }
 
-// ─── Core layout ─────────────────────────────────────────────────────────
+// ─── Core layout ──────────────────────────────────────────────────────────
 
 export function applyTalmudLayoutToPage(pageEl) {
-  // תמיד מאפסים קודם — כדי לאפשר חזרה ל-default ולמשנה-ברורה בלי שיורים
-  resetTalmudPage(pageEl);
-
-  if (!isTalmudLayoutEnabled()) return;
-
   const streamsWrap = pageEl && pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
 
-  const streams = Array.from(streamsWrap.querySelectorAll(":scope > .stream"));
-  if (streams.length === 0) return;
+  // 1. ניקוי תלמוד בלבד — *אסור* לגעת בסדר זרמים או בעטיפות של תבניות אחרות.
+  cleanTalmudFromPage(pageEl, streamsWrap);
 
-  // קביעת צדדים
-  const { right, left } = parseTalmudSides();
+  // 2. כבוי? → סיימנו, מחזירים את ה-DOM כפי שהיה לפני קריאתנו.
+  if (!isTalmudLayoutEnabled()) return;
 
-  function sideFor(code) {
-    if (right.size > 0 || left.size > 0) {
-      if (right.has(code)) return "right";
-      if (left.has(code))  return "left";
-      return "right"; // ברירת מחדל — ימין
-    }
-    // אוטומטי: אי-זוגי=ימין, זוגי=שמאל
-    const n = parseInt(code, 10);
-    return n % 2 === 1 ? "right" : "left";
+  // 3. אין קונפיג חוקי? → סיימנו (לא משנים סדר).
+  const config = parseTalmudConfig();
+  if (!config) return;
+
+  // 4. מאתרים את T, A, B *רק* בין הזרמים שנמצאים ישירות תחת streamsWrap.
+  //    זרם שכבר עטוף בתבנית אחרת (למשל .mishna-level) — לא לוקחים, כדי
+  //    לא לשבור את התבנית האחרת.
+  const directStreams = Array.from(
+    streamsWrap.querySelectorAll(":scope > .stream")
+  );
+  const byCode = new Map();
+  for (const s of directStreams) {
+    const code = codeForStream(s);
+    if (code && !byCode.has(code)) byCode.set(code, s);
   }
 
-  const rightStreams = [];
-  const leftStreams  = [];
+  const mainEl  = config.main  ? (byCode.get(config.main)  || null) : null;
+  const rightEl = config.right ? (byCode.get(config.right) || null) : null;
+  const leftEl  = config.left  ? (byCode.get(config.left)  || null) : null;
 
-  for (const s of streams) {
-    const code = s.getAttribute("data-stream") || "";
-    const side = sideFor(code);
-    s.setAttribute("data-talmud-side", side);
-    if (side === "right") rightStreams.push(s);
-    else leftStreams.push(s);
+  // 5. אם אף זרם רלוונטי לא פנוי → לא בונים בלוק (ולא משנים שום דבר).
+  if (!mainEl && !rightEl && !leftEl) return;
+
+  // 6. בונים את בלוק התלמוד.
+  const block = document.createElement("div");
+  block.className = "talmud-block";
+  block.dataset.talmudBlock = "1";
+
+  if (rightEl) {
+    rightEl.classList.add("talmud-perush-right");
+    rightEl.dataset.talmudRole = "right";
+    block.appendChild(rightEl);
+  }
+  if (mainEl) {
+    mainEl.classList.add("talmud-main");
+    mainEl.dataset.talmudRole = "main";
+    block.appendChild(mainEl);
+  }
+  if (leftEl) {
+    leftEl.classList.add("talmud-perush-left");
+    leftEl.dataset.talmudRole = "left";
+    block.appendChild(leftEl);
   }
 
-  // בונה שורות: זוגות ימין+שמאל
-  const rowCount = Math.max(rightStreams.length, leftStreams.length);
-
+  // 7. מסמנים את העמוד עם הקונפיג.
   pageEl.classList.add("talmud-layout-page");
+  pageEl.style.setProperty("--talmud-crown-lines", String(getTalmudCrownLines()));
+  pageEl.style.setProperty("--talmud-main-width",  String(getTalmudMainWidth()) + "%");
 
-  for (let i = 0; i < rowCount; i++) {
-    const row = document.createElement("div");
-    row.className = "talmud-row";
-
-    // RTL: ימין מגיע ראשון ב-DOM ← מוצג בצד ימין
-    if (rightStreams[i]) {
-      rightStreams[i].style.flex = "1";
-      row.appendChild(rightStreams[i]);
-    } else {
-      const ph = document.createElement("div");
-      ph.className = "talmud-col-placeholder";
-      row.appendChild(ph);
-    }
-
-    if (leftStreams[i]) {
-      leftStreams[i].style.flex = "1";
-      row.appendChild(leftStreams[i]);
-    }
-
-    streamsWrap.appendChild(row);
-  }
+  // 8. מכניסים את הבלוק *בראש* streamsWrap (מעל .mishna-level וכו').
+  streamsWrap.insertBefore(block, streamsWrap.firstChild);
 }
 
 export function applyTalmudLayoutToPages(container) {
-  container.querySelectorAll(".page").forEach((page) => applyTalmudLayoutToPage(page));
+  container.querySelectorAll(".page").forEach((page) =>
+    applyTalmudLayoutToPage(page)
+  );
 
-  // עוטף את __realizePage כדי לחשב layout גם לעמודים שנוצרים בגלילה
   const baseRealize = container.__realizePage;
-  if (typeof baseRealize === "function" && !baseRealize.__talmudWrapped) {
-    const wrapped = function (idx) {
-      baseRealize(idx);
-      const page = container.querySelector(`.page[data-page-index="${idx}"]`);
-      if (page) applyTalmudLayoutToPage(page);
-    };
-    wrapped.__talmudWrapped = true;
-    container.__realizePage = wrapped;
-  }
+  if (typeof baseRealize !== "function" || baseRealize.__talmudWrapped) return;
+
+  const wrapped = function (idx) {
+    baseRealize(idx);
+    const page = container.querySelector(`.page[data-page-index="${idx}"]`);
+    if (page) applyTalmudLayoutToPage(page);
+  };
+  wrapped.__talmudWrapped = true;
+  container.__realizePage = wrapped;
 }
 
 // ─── UI wiring ────────────────────────────────────────────────────────────
 
 export function wireTalmudLayoutToggle(onChange) {
-  const toggle     = document.getElementById("talmud-layout-toggle");
-  const sidesInput = document.getElementById("talmud-sides-input");
+  const toggle      = document.getElementById("talmud-layout-toggle");
+  const sidesInput  = document.getElementById("talmud-sides-input");
+  const crownInput  = document.getElementById("talmud-crown-input");
+  const widthInput  = document.getElementById("talmud-main-width-input");
   if (!toggle) return;
 
   toggle.checked = isTalmudLayoutEnabled();
   if (sidesInput) sidesInput.value = getTalmudSideText();
+  if (crownInput) {
+    const v = getTalmudCrownLines();
+    crownInput.value = v === DEFAULT_CROWN_LINES ? "" : String(v);
+  }
+  if (widthInput) {
+    const v = getTalmudMainWidth();
+    widthInput.value = v === DEFAULT_MAIN_WIDTH ? "" : String(v);
+  }
 
   toggle.addEventListener("change", () => {
     setTalmudLayoutEnabled(toggle.checked);
@@ -197,10 +276,19 @@ export function wireTalmudLayoutToggle(onChange) {
     setTalmudSideText(sidesInput.value);
     onChange && onChange();
   });
-
   sidesInput?.addEventListener("keydown", (ev) => {
     if (ev.key !== "Enter") return;
     ev.preventDefault();
     sidesInput.blur();
+  });
+
+  crownInput?.addEventListener("change", () => {
+    setTalmudCrownLines(crownInput.value);
+    if (isTalmudLayoutEnabled()) onChange && onChange();
+  });
+
+  widthInput?.addEventListener("change", () => {
+    setTalmudMainWidth(widthInput.value);
+    if (isTalmudLayoutEnabled()) onChange && onChange();
   });
 }

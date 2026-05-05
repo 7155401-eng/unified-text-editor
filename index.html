@@ -195,15 +195,39 @@
           </label>
           <label class="toolbar-checkbox">
             <input type="checkbox" id="talmud-layout-toggle" />
-            תלמוד: שורות ימין/שמאל
+            תלמוד: עיטור פרשנים
           </label>
           <label class="talmud-sides-control">
-            <span>צדדים:</span>
+            <span>זרמים:</span>
             <input
               type="text"
               id="talmud-sides-input"
-              placeholder="01,03 | 02,04"
-              title="זרמי ימין | זרמי שמאל — לדוגמה: 01,03 | 02,04"
+              placeholder="01 | 02 | 03"
+              title="זרם מרכזי | פרשן ימין | פרשן שמאל — לדוגמה: 01 | 02 | 03"
+            />
+          </label>
+          <label class="talmud-sides-control">
+            <span>כתר:</span>
+            <input
+              type="number"
+              id="talmud-crown-input"
+              min="0"
+              max="20"
+              step="1"
+              placeholder="4"
+              title="מספר שורות הכתר (פרשנים מתחילים מעל הזרם המרכזי)"
+            />
+          </label>
+          <label class="talmud-sides-control">
+            <span>רוחב מרכזי %:</span>
+            <input
+              type="number"
+              id="talmud-main-width-input"
+              min="20"
+              max="80"
+              step="1"
+              placeholder="42"
+              title="אחוז רוחב הזרם המרכזי (ברירת מחדל 42%)"
             />
           </label>
         </div>
