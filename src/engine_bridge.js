@@ -284,10 +284,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
 
     const t2 = performance.now();
     renderPages(pages, pagesContainer);
+    // תלמוד רץ *לפני* משנה־ברורה כדי שהזרמים שלו ייקחו את מקומם בראש העמוד
+    // לפני שמשנה־ברורה תעטוף זרמים אחרים. כך שתי התבניות יכולות לחיות יחד.
+    applyTalmudLayoutToPages(pagesContainer);
     applyMishnaWrapToPages(pagesContainer);
     const t3 = performance.now();
     const statusEl = document.getElementById("status");
-    applyTalmudLayoutToPages(pagesContainer);
     if (statusEl) {
       const utils = pages.map((p) => (p.total / DOM_PAGE_GEOM.maxPageHeight) * 100);
       const avg = utils.length ? utils.reduce((a, b) => a + b, 0) / utils.length : 0;
