@@ -325,8 +325,11 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
   const fragment = range.extractContents();
 
   const bodyEl = document.createElement("div");
-  bodyEl.className = `stream talmud-commentary talmud-body-portion ${sideClass}`;
-  bodyEl.dataset.talmudBodyOf = streamEl.getAttribute("data-stream") || "";
+  // לוקחים את כל הקלאסים של הזרם המקורי כדי שיורש את הסגנון (צבע, גבולות, וכו')
+  bodyEl.className = `${streamEl.className} talmud-body-portion ${sideClass}`;
+  const code = streamEl.getAttribute("data-stream") || "";
+  if (code) bodyEl.setAttribute("data-stream", code);
+  bodyEl.dataset.talmudBodyOf = code;
   bodyEl.dataset.talmudRole = "commentary-body";
   bodyEl.appendChild(fragment);
 
@@ -621,9 +624,19 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     // יש כתר — מחלקים כל פרשן בנקודה המדויקת של שורה N+1
     block.classList.add("talmud-with-crown");
 
-    // ספירת שורות מדויקת — כל פרשן בכתר יקבל בדיוק crownLines שורות תוכן
-    const splitPointA = findCrownSplitByLineCount(streamA, crownLines);
-    const splitPointB = findCrownSplitByLineCount(streamB, crownLines);
+    // חיתוך לפי גובה Y בפיקסלים: title + crownLines * lineH הוא תחתית השורה ה-N
+    const styleAearly = getComputedStyle(streamA);
+    const lineHAearly = parseFloat(styleAearly.lineHeight) || (parseFloat(styleAearly.fontSize) * 1.4) || 14;
+    const titleAHearly = (streamA.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
+    const targetAH = titleAHearly + crownLines * lineHAearly;
+
+    const styleBearly = getComputedStyle(streamB);
+    const lineHBearly = parseFloat(styleBearly.lineHeight) || (parseFloat(styleBearly.fontSize) * 1.4) || 14;
+    const titleBHearly = (streamB.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
+    const targetBH = titleBHearly + crownLines * lineHBearly;
+
+    const splitPointA = findSplitAtPixelYInElement(streamA, targetAH);
+    const splitPointB = findSplitAtPixelYInElement(streamB, targetBH);
 
     // streamA + streamB נשארים כ-crown_portion ב-50% רוחב
     streamA.classList.add("talmud-crown-portion");
@@ -678,8 +691,11 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       const splitPoint = findSplitAtPixelYInElement(bodyEl, targetYInBody);
       if (!splitPoint) return null;
       const expandedEl = document.createElement("div");
-      expandedEl.className = `stream talmud-commentary talmud-body-expanded ${sideClass}`;
-      expandedEl.dataset.talmudBodyOf = bodyEl.dataset.talmudBodyOf;
+      // ירושת קלאסים של הגוף כדי שתישמר אחידות חזותית
+      expandedEl.className = `${bodyEl.className.replace("talmud-body-portion", "")} talmud-body-expanded ${sideClass}`.replace(/\s+/g, " ").trim();
+      const code = bodyEl.dataset.talmudBodyOf;
+      if (code) expandedEl.setAttribute("data-stream", code);
+      expandedEl.dataset.talmudBodyOf = code;
       expandedEl.dataset.talmudRole = "commentary-expanded";
       expandedEl.style.float = side;
       expandedEl.style.clear = side;
