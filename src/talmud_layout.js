@@ -10,8 +10,8 @@ const SIDE_MODE_KEY     = "ravtext.talmudLayout.sideMode";
 const SIDE_GAP_KEY      = "ravtext.talmudLayout.sideGap";
 const DEFAULT_SIDE_GAP  = 12; // px — רווח בין ראשי לפרשנים שבצדדים (ברירת מחדל מקובלת לתלמוד)
 // סף לקיום כתר: כל פרשן צריך להכיל לפחות (crownLines + EXTRA) שורות תוכן
-// במידה ב-50% רוחב, אחרת אין כתר וכל ה-3 הזרמים מתחילים משורה ראשונה.
-const CROWN_EXTRA_LINES = 2;
+// ב-50% רוחב. ערך 0 משמעו: מספיק לכסות את הכתר עצמו.
+const CROWN_EXTRA_LINES = 0;
 
 import {
   originalOrder,
@@ -622,9 +622,14 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     // אין כתר בכלל — מחזירים לרוחב 29% וכל ה-3 מתחילים יחד מלמעלה
     block.classList.add("talmud-no-crown");
     streamA.style.width = `${sideWidth}%`;
+    streamA.style.clear = sideA;
     streamB.style.width = `${sideWidth}%`;
+    streamB.style.clear = sideB;
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
+    // ה-DOM צריך שהפרשנים יבואו לפני main כדי שיהיו במצב "ליד" main
+    block.insertBefore(streamA, mainEl);
+    block.insertBefore(streamB, mainEl);
   } else if (oneLongOneShort) {
     // אחד ארוך אחד קצר: הארוך תופס את כל הכתר ברוחב מלא, הקצר מתחיל
     // במקביל לראשי (לא בכתר).
