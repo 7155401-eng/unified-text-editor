@@ -777,6 +777,45 @@ mark.pdf-find-hit-current {
   margin-top: 0 !important;
 }
 
+/* כשיש כתר — הראשי לא צריך margin-top, הוא נדחף טבעית ע"י ה-crown floats */
+.talmud-layout.talmud-with-crown .page-main.talmud-main {
+  margin-top: 0 !important;
+}
+
+/* חלקי הכתר (ראש הפרשן ב-50% רוחב) */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion {
+  /* float ו-width מוגדרים inline ע"י JS */
+  text-align: justify;
+  text-align-last: center;
+  text-justify: inter-word;
+}
+/* הפרשן בכתר משמאל מסומן עם talmud-left */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right {
+  padding-left: 3px;
+  /* רווח מ-main מוגדר על הגוף, לא על הכתר (כי בכתר אין main בצד) */
+  margin-left: 0;
+}
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-left {
+  padding-right: 3px;
+  margin-right: 0;
+}
+
+/* גוף הפרשן (29% רוחב, מתחת לכתר, צמוד ל-main) */
+.talmud-layout.talmud-with-crown > .talmud-body-portion {
+  /* float, width, clear מוגדרים inline ע"י JS */
+  text-align: justify;
+  text-align-last: center;
+  text-justify: inter-word;
+}
+.talmud-layout.talmud-with-crown > .talmud-body-portion.talmud-right {
+  padding-left: 3px;
+  margin-left: var(--talmud-side-gap, 12px);
+}
+.talmud-layout.talmud-with-crown > .talmud-body-portion.talmud-left {
+  padding-right: 3px;
+  margin-right: var(--talmud-side-gap, 12px);
+}
+
 /* סימון ויזואלי לעמוד שיש בו חריגה (טופלל ע"י overflow:hidden של .page).
    המסגרת האדומה מאותתת לפיתוח. בעתיד התוכן יידחף אוטומטית לעמוד הבא. */
 .talmud-layout-page.talmud-page-overflow {

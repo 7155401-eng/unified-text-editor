@@ -9,8 +9,9 @@ const MAIN_WIDTH_KEY    = "ravtext.talmudLayout.mainWidth";
 const SIDE_MODE_KEY     = "ravtext.talmudLayout.sideMode";
 const SIDE_GAP_KEY      = "ravtext.talmudLayout.sideGap";
 const DEFAULT_SIDE_GAP  = 12; // px — רווח בין ראשי לפרשנים שבצדדים (ברירת מחדל מקובלת לתלמוד)
-// סף תווים: כששני הפרשנים יחד מתחת לסף — אין דחיפת כתר, כל ה-3 מתחילים מלמעלה
-const SHORT_COMMENTARY_TOTAL_CHARS = 60;
+// סף לקיום כתר: כל פרשן צריך להכיל לפחות (crownLines + EXTRA) שורות תוכן
+// במידה ב-50% רוחב, אחרת אין כתר וכל ה-3 הזרמים מתחילים משורה ראשונה.
+const CROWN_EXTRA_LINES = 2;
 
 import {
   originalOrder,
@@ -121,7 +122,8 @@ function orderedSides(streamsWrap) {
 function resetStream(el) {
   el.classList.remove(
     "talmud-commentary", "talmud-right", "talmud-left",
-    "talmud-commentary-float", "talmud-commentary-flow"
+    "talmud-commentary-float", "talmud-commentary-flow",
+    "talmud-crown-portion", "talmud-fits-in-crown"
   );
   el.removeAttribute("data-talmud-role");
   el.style.float = "";
@@ -141,6 +143,18 @@ function unwrapTalmudLayout(pageEl) {
   if (!block) return;
 
   const streamsWrap = pageEl.querySelector(".page-streams");
+
+  // לפני כל דבר: ממזגים body-portions בחזרה לזרם המקורי שלהם.
+  // body-portion הוא <div data-talmud-body-of="<code>"> עם ילדי תוכן שנגזרו מהזרם.
+  Array.from(block.querySelectorAll(":scope > [data-talmud-body-of]")).forEach((bodyEl) => {
+    const code = bodyEl.dataset.talmudBodyOf;
+    const parent = block.querySelector(`:scope > .stream[data-stream="${code}"]:not([data-talmud-body-of])`);
+    if (parent) {
+      while (bodyEl.firstChild) parent.appendChild(bodyEl.firstChild);
+    }
+    bodyEl.remove();
+  });
+
   // Move .page-main back to page level (before streamsWrap)
   const main = block.querySelector(":scope > .page-main");
   if (main) {
@@ -153,6 +167,122 @@ function unwrapTalmudLayout(pageEl) {
     streamsWrap?.appendChild(s);
   });
   block.remove();
+}
+
+// ─────────────────────────────────────────────
+//  Crown content split (the heart of Talmud crown)
+// ─────────────────────────────────────────────
+
+/**
+ * מודד היכן קצוות תוכן הפרשן חוצים את גובה הכתר ב-50% רוחב.
+ * מחזיר אינדקס הילד הראשון שאינו נכנס לכתר; null אם כל התוכן נכנס.
+ */
+function measureSplitIndex(streamEl, crownLines, blockWidthPx) {
+  if (crownLines <= 0) return 0;
+  if (!blockWidthPx) return null;
+
+  const wideWidth = Math.max(40, blockWidthPx * 0.5);
+  const clone = streamEl.cloneNode(true);
+  clone.style.cssText = [
+    "position:absolute",
+    "top:-99999px",
+    "left:-99999px",
+    `width:${wideWidth}px`,
+    "visibility:hidden",
+    "float:none",
+    "margin:0",
+    "padding-left:3px",
+    "padding-right:3px",
+    "box-sizing:border-box",
+  ].join(";");
+  clone.classList.remove("talmud-crown-portion", "talmud-fits-in-crown");
+  document.body.appendChild(clone);
+
+  const cloneRect = clone.getBoundingClientRect();
+  const titleEl = clone.querySelector(":scope > .stream-title");
+  const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
+  const styleObj = getComputedStyle(clone);
+  const lineH = parseFloat(styleObj.lineHeight) || (parseFloat(styleObj.fontSize) * 1.4) || 14;
+  const targetH = titleH + crownLines * lineH;
+
+  const cloneChildren = Array.from(clone.children).filter((c) => !c.classList?.contains("stream-title"));
+  let splitIdx = cloneChildren.length;
+  for (let i = 0; i < cloneChildren.length; i++) {
+    const r = cloneChildren[i].getBoundingClientRect();
+    const childBottom = r.bottom - cloneRect.top;
+    if (childBottom > targetH + 1) {
+      splitIdx = i;
+      break;
+    }
+  }
+  document.body.removeChild(clone);
+
+  // אם רק הפסקה הראשונה כבר חורגת — נכריח אותה לכתר (אחרת הכתר יישאר ריק)
+  if (splitIdx === 0 && cloneChildren.length > 0) splitIdx = 1;
+
+  return splitIdx;
+}
+
+/**
+ * מחלק streamEl לשני חלקים: הראש (נשאר ב-streamEl) והגוף (חדש).
+ * מחזיר { fitsInCrown, bodyEl } — bodyEl יהיה null אם אין מה לחתוך.
+ */
+function splitStreamForCrown(streamEl, crownLines, blockWidthPx, sideClass) {
+  const splitIdx = measureSplitIndex(streamEl, crownLines, blockWidthPx);
+  const titleEl = streamEl.querySelector(":scope > .stream-title");
+  const contentChildren = Array.from(streamEl.children).filter((c) => !c.classList?.contains("stream-title"));
+
+  if (splitIdx == null) {
+    return { fitsInCrown: false, bodyEl: null };
+  }
+  if (splitIdx >= contentChildren.length || contentChildren.length === 0) {
+    // כל התוכן נכנס לכתר — פשוט להרחיב את הזרם ל-50%
+    return { fitsInCrown: true, bodyEl: null };
+  }
+
+  // יוצרים אלמנט גוף חדש שמכיל את החלק שלא נכנס לכתר
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "stream talmud-commentary talmud-body-portion " + sideClass;
+  bodyEl.dataset.talmudBodyOf = streamEl.getAttribute("data-stream") || "";
+  bodyEl.dataset.talmudRole = "commentary-body";
+  for (let i = splitIdx; i < contentChildren.length; i++) {
+    bodyEl.appendChild(contentChildren[i]);
+  }
+  return { fitsInCrown: false, bodyEl };
+}
+
+/**
+ * בודק האם הפרשן ארוך מספיק כדי להצדיק כתר אמיתי.
+ * הקריטריון: גובה התוכן ב-50% רוחב >= title + (crownLines + EXTRA) שורות.
+ * זה דינמי לחלוטין — לא תלוי בספירת תווים, אלא במדידת DOM אמיתית.
+ */
+function commentaryFillsCrownPlusExtra(streamEl, crownLines, blockWidthPx) {
+  if (!blockWidthPx || crownLines <= 0) return false;
+  const wideWidth = Math.max(40, blockWidthPx * 0.5);
+  const clone = streamEl.cloneNode(true);
+  clone.style.cssText = [
+    "position:absolute",
+    "top:-99999px",
+    "left:-99999px",
+    `width:${wideWidth}px`,
+    "visibility:hidden",
+    "float:none",
+    "margin:0",
+    "padding-left:3px",
+    "padding-right:3px",
+    "box-sizing:border-box",
+  ].join(";");
+  clone.classList.remove("talmud-crown-portion", "talmud-fits-in-crown");
+  document.body.appendChild(clone);
+
+  const titleH = (clone.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
+  const styleObj = getComputedStyle(clone);
+  const lineH = parseFloat(styleObj.lineHeight) || (parseFloat(styleObj.fontSize) * 1.4) || 14;
+  const requiredH = titleH + (crownLines + CROWN_EXTRA_LINES) * lineH;
+  const totalH = clone.getBoundingClientRect().height;
+
+  document.body.removeChild(clone);
+  return totalH >= requiredH;
 }
 
 // ─────────────────────────────────────────────
@@ -289,10 +419,11 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   const sideWidth = ((100 - mainWidth) / 2).toFixed(4);
   const sides     = orderedSides(streamsWrap); // e.g. ["right","left"]
   const sideGap   = getTalmudSideGap();
+  const crownLines = getTalmudCrownLines();
 
   block.style.setProperty("--talmud-main-width",      `${mainWidth}%`);
   block.style.setProperty("--talmud-side-width",      `${sideWidth}%`);
-  block.style.setProperty("--talmud-crown-lines",     String(getTalmudCrownLines()));
+  block.style.setProperty("--talmud-crown-lines",     String(crownLines));
   block.style.setProperty("--talmud-side-gap",        `${sideGap}px`);
 
   // Sort by original DOM order so A is always the first-defined stream
@@ -301,50 +432,94 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   );
   const [streamA, streamB] = sorted;
   const [sideA, sideB]     = sides;
+  const sideAClass = sideA === "right" ? "talmud-right" : "talmud-left";
+  const sideBClass = sideB === "right" ? "talmud-right" : "talmud-left";
 
-  streamA.classList.add("talmud-commentary", sideA === "right" ? "talmud-right" : "talmud-left");
+  streamA.classList.add("talmud-commentary", sideAClass);
   streamA.dataset.talmudRole = "commentary-a";
-  streamA.style.float  = sideA;
-  streamA.style.width  = `${sideWidth}%`;
-
-  streamB.classList.add("talmud-commentary", sideB === "right" ? "talmud-right" : "talmud-left");
+  streamB.classList.add("talmud-commentary", sideBClass);
   streamB.dataset.talmudRole = "commentary-b";
-  streamB.style.float  = sideB;
-  streamB.style.width  = `${sideWidth}%`;
 
-  // Append floats BEFORE the main so they appear alongside it
+  // הוספת זרמים זמנית לבלוק (לפני המדידה — צריך להיות בעץ ה-DOM כדי שמדידות יעבדו).
+  // הבלוק עצמו עוד לא בעמוד, אבל נכניס אותו זמנית כדי לקבל רוחב.
   block.appendChild(streamA);
   block.appendChild(streamB);
-
-  mainEl.classList.add("talmud-main");
-  mainEl.dataset.talmudRole = "main";
-  // margin-top will be set by CSS var --talmud-crown-offset
   block.appendChild(mainEl);
 
-  // Compare lengths to set size-hint classes used by the engine
+  // נכניס את הבלוק ל-streamsWrap.parentElement (=pageEl) זמנית כדי לקבל רוחב.
+  const tempParent = streamsWrap.parentElement;
+  tempParent.insertBefore(block, streamsWrap);
+  const blockWidthPx = block.getBoundingClientRect().width;
+  // נסיר זמנית — נחזיר אחרי הסידור
+  block.remove();
+
+  // החלטה דינמית: האם שני הפרשנים ארוכים מספיק לכתר אמיתי?
+  const aFitsCrown = commentaryFillsCrownPlusExtra(streamA, crownLines, blockWidthPx);
+  const bFitsCrown = commentaryFillsCrownPlusExtra(streamB, crownLines, blockWidthPx);
+  const doCrown    = aFitsCrown && bFitsCrown && crownLines > 0;
+
+  // ננקה את ה-block ונבנה אותו מחדש לפי ההחלטה
+  while (block.firstChild) block.removeChild(block.firstChild);
+
+  if (!doCrown) {
+    // אין כתר — שני הפרשנים בצדדים 29% מהרגע הראשון, ראשי באמצע 42%, כל ה-3 מהשורה הראשונה
+    block.classList.add("talmud-no-crown");
+    streamA.style.float = sideA;
+    streamA.style.width = `${sideWidth}%`;
+    streamB.style.float = sideB;
+    streamB.style.width = `${sideWidth}%`;
+
+    block.appendChild(streamA);
+    block.appendChild(streamB);
+    mainEl.classList.add("talmud-main");
+    mainEl.dataset.talmudRole = "main";
+    block.appendChild(mainEl);
+  } else {
+    // יש כתר — מחלקים כל פרשן ל: ראש (50% רחב, ב-crown) + גוף (29% רחב, מתחת לכתר)
+    block.classList.add("talmud-with-crown");
+
+    const splitA = splitStreamForCrown(streamA, crownLines, blockWidthPx, sideAClass);
+    const splitB = splitStreamForCrown(streamB, crownLines, blockWidthPx, sideBClass);
+
+    // הכתר: streamA נשאר עם החלק שנכנס לכתר; הופך ל-50% רוחב
+    streamA.classList.add("talmud-crown-portion");
+    streamA.style.float = sideA;
+    streamA.style.width = "50%";
+
+    streamB.classList.add("talmud-crown-portion");
+    streamB.style.float = sideB;
+    streamB.style.width = "50%";
+
+    block.appendChild(streamA);
+    block.appendChild(streamB);
+
+    // הגוף: אם נוצר אלמנט body, מציבים אותו עם clear לאותו צד, רוחב 29%
+    if (splitA.bodyEl) {
+      splitA.bodyEl.style.float = sideA;
+      splitA.bodyEl.style.width = `${sideWidth}%`;
+      splitA.bodyEl.style.clear = sideA;
+      block.appendChild(splitA.bodyEl);
+    }
+    if (splitB.bodyEl) {
+      splitB.bodyEl.style.float = sideB;
+      splitB.bodyEl.style.width = `${sideWidth}%`;
+      splitB.bodyEl.style.clear = sideB;
+      block.appendChild(splitB.bodyEl);
+    }
+
+    // הראשי: זורם באופן טבעי מתחת לכתר (ה-floats של 50%+50% דוחפים אותו)
+    mainEl.classList.add("talmud-main");
+    mainEl.dataset.talmudRole = "main";
+    block.appendChild(mainEl);
+  }
+
+  // קלאסים מידע (לעתיד — להתרחבות צד כשהראשי קצר)
   const lenA = streamTextLength(streamA);
   const lenB = streamTextLength(streamB);
   const lenM = mainEl ? (mainEl.textContent || "").trim().length : 0;
-
-  // Which commentary is shorter (finishes first)?
   if (lenA < lenB && lenA < lenM) block.classList.add("talmud-a-short");
   if (lenB < lenA && lenB < lenM) block.classList.add("talmud-b-short");
   if (lenM < lenA && lenM < lenB) block.classList.add("talmud-main-short");
-
-  // אם שני הפרשנים יחד קצרים מאוד — אין דחיפת כתר; כל ה-3 מתחילים מלמעלה.
-  // הסימון ב-CSS מבטל את ה-margin-top של main וגם מבטל את הקריאה ל-scheduleCrownOffset
-  // (מטופל למטה).
-  if ((lenA + lenB) < SHORT_COMMENTARY_TOTAL_CHARS) {
-    block.classList.add("talmud-no-crown");
-  }
-
-  // אם הפרשנים גדולים — מחשבים את אורך הכתר. אחרת מאפסים את ה-offset
-  // (כי כל ה-3 מתחילים מלמעלה).
-  if (block.classList.contains("talmud-no-crown")) {
-    block.style.setProperty("--talmud-crown-offset", "0px");
-  } else {
-    scheduleCrownOffset(block);
-  }
 }
 
 // ─────────────────────────────────────────────
