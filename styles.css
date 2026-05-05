@@ -846,7 +846,7 @@ mark.pdf-find-hit-current {
 .toolbar button.s7 { background: #FCE7F3; color: #831843; }
 .toolbar button.s8 { background: #E5E7EB; color: #1F2937; }
 
-/* === בועות זרם — מספר רץ של ההערה מעל כל סימן === */
+/* === ×‘×•×¢×•×ª ×–×¨× â€” ×ž×¡×¤×¨ ×¨×¥ ×©×œ ×”×”×¢×¨×” ×ž×¢×œ ×›×œ ×¡×™×ž×Ÿ === */
 .pane-body span.stream-marker,
 .editor span.stream-marker {
   position: relative;
@@ -863,7 +863,7 @@ mark.pdf-find-hit-current {
   z-index: 10;
 }
 
-/* בועה — מציגה את ה‑num (מספר רץ של ההערה) מעל הסימן */
+/* ×‘×•×¢×” â€” ×ž×¦×™×’×” ××ª ×”â€‘num (×ž×¡×¤×¨ ×¨×¥ ×©×œ ×”×”×¢×¨×”) ×ž×¢×œ ×”×¡×™×ž×Ÿ */
 .pane-body span.stream-marker[data-num]::after,
 .editor span.stream-marker[data-num]::after {
   content: attr(data-num);
@@ -884,7 +884,7 @@ mark.pdf-find-hit-current {
   white-space: nowrap;
 }
 
-/* === marker-bar — סרגל badges מתחת לכל header של חלונית === */
+/* === marker-bar â€” ×¡×¨×’×œ badges ×ž×ª×—×ª ×œ×›×œ header ×©×œ ×—×œ×•× ×™×ª === */
 .marker-bar {
   font-size: 12px;
   padding: 4px 12px;
@@ -951,15 +951,15 @@ mark.pdf-find-hit-current {
 .mc-4 .badge { background: #fdcb6e; color: #000; }
 .mc-5 .badge { background: #636e72; }
 
-/* מצב שורות — \n פיזי לפני כל סימן (מתבצע לוגית; CSS משלים) */
+/* ×ž×¦×‘ ×©×•×¨×•×ª â€” \n ×¤×™×–×™ ×œ×¤× ×™ ×›×œ ×¡×™×ž×Ÿ (×ž×ª×‘×¦×¢ ×œ×•×’×™×ª; CSS ×ž×©×œ×™×) */
 .pane-body.line-mode .stream-marker {
   display: block;
   margin-top: 8px;
 }
 
-/* (הסרנו את הבלונים בצד — הוחלפו בבועה רץ מעל הסימן) */
+/* (×”×¡×¨× ×• ××ª ×”×‘×œ×•× ×™× ×‘×¦×“ â€” ×”×•×—×œ×¤×• ×‘×‘×•×¢×” ×¨×¥ ×ž×¢×œ ×”×¡×™×ž×Ÿ) */
 
-/* פעימה מיידית בעת זיהוי טרי */
+/* ×¤×¢×™×ž×” ×ž×™×™×“×™×ª ×‘×¢×ª ×–×™×”×•×™ ×˜×¨×™ */
 .pane-body span.stream-marker.fresh,
 .editor span.stream-marker.fresh {
   animation: stream-pulse 1.2s ease-out;
@@ -970,7 +970,7 @@ mark.pdf-find-hit-current {
   100% { box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent; }
 }
 
-/* === תיבת הודעה בפינה === */
+/* === ×ª×™×‘×ª ×”×•×“×¢×” ×‘×¤×™× ×” === */
 .toast {
   position: fixed;
   bottom: 18px;
