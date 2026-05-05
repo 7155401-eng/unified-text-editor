@@ -8,6 +8,7 @@ const CROWN_LINES_KEY   = "ravtext.talmudLayout.crownLines";
 const MAIN_WIDTH_KEY    = "ravtext.talmudLayout.mainWidth";
 const SIDE_MODE_KEY     = "ravtext.talmudLayout.sideMode";
 const SIDE_GAP_KEY      = "ravtext.talmudLayout.sideGap";
+const PRESERVE_BREAKS_KEY = "ravtext.talmudLayout.preserveBreaks";
 const DEFAULT_SIDE_GAP  = 12; // px — רווח בין ראשי לפרשנים שבצדדים (ברירת מחדל מקובלת לתלמוד)
 // סף לקיום כתר: כל פרשן צריך להכיל לפחות (crownLines + EXTRA) שורות תוכן
 // ב-50% רוחב. ערך 0 משמעו: מספיק לכסות את הכתר עצמו.
@@ -73,6 +74,15 @@ export function setTalmudSideGap(value) {
     return;
   }
   localStorage.setItem(SIDE_GAP_KEY, String(n));
+}
+
+export function isTalmudPreserveBreaks() {
+  // ברירת מחדל true (לכבד שבירות) אם לא הוגדר
+  const v = localStorage.getItem(PRESERVE_BREAKS_KEY);
+  return v === null ? true : v === "1";
+}
+export function setTalmudPreserveBreaks(enabled) {
+  localStorage.setItem(PRESERVE_BREAKS_KEY, enabled ? "1" : "0");
 }
 
 // ─────────────────────────────────────────────
@@ -612,6 +622,11 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   const tempParent = streamsWrap.parentElement;
   tempParent.insertBefore(block, streamsWrap);
 
+  // הגדרת המשתמש: לכבד שבירות פסקה (לא להדביק הערות יחד)
+  if (isTalmudPreserveBreaks()) {
+    block.classList.add("talmud-preserve-breaks");
+  }
+
   // שלב 2: בדיקה דינמית — האם שני הפרשנים ארוכים מספיק לכתר?
   const aFitsCrown = commentaryFillsCrownPlusExtraLive(streamA, crownLines);
   const bFitsCrown = commentaryFillsCrownPlusExtraLive(streamB, crownLines);
@@ -749,13 +764,37 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       return expandedEl;
     }
 
-    // יוצרים את שני אלמנטי expanded ומכניסים כ-floats רגילים.
-    // אם יש שניהם — לפעמים הם נערמים אנכית (באג ידוע של float source position).
-    // נטפל בזה בעתיד עם גישה אחרת אם צריך.
+    // יוצרים את שני אלמנטי expanded.  שינוי לפתור באג השרשור האנכי:
+    // השני יקבל position:absolute כדי לעמוד באותו Y כמו הראשון.
     const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
     const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
-    if (expandedA) block.insertBefore(expandedA, mainEl);
-    if (expandedB) block.insertBefore(expandedB, mainEl);
+    if (expandedA && expandedB) {
+      // שניהם ממשיכים — שני floats לאותה Y. הראשון נשאר float רגיל,
+      // השני absolute באותו Y בצד הנגדי.
+      block.insertBefore(expandedA, mainEl);
+      // נמדוד את ה-Y של expandedA כדי למקם את expandedB באותו Y
+      const aRect = expandedA.getBoundingClientRect();
+      const aTop = aRect.top - blockRect.top;
+      // expandedB: position:absolute, אותו top, צד נגדי
+      expandedB.style.float = "none";
+      expandedB.style.clear = "none";
+      expandedB.style.position = "absolute";
+      expandedB.style.top = `${aTop}px`;
+      if (sideB === "left") {
+        expandedB.style.left = "0";
+        expandedB.style.right = "auto";
+      } else {
+        expandedB.style.right = "0";
+        expandedB.style.left = "auto";
+      }
+      expandedB.style.width = expandedWidthCss;
+      block.style.position = "relative";
+      block.appendChild(expandedB);
+    } else if (expandedA) {
+      block.insertBefore(expandedA, mainEl);
+    } else if (expandedB) {
+      block.insertBefore(expandedB, mainEl);
+    }
 
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
@@ -917,6 +956,7 @@ export function wireTalmudLayoutControls(onChange) {
   const widthInput   = document.getElementById("talmud-main-width-input");
   const sideSelect   = document.getElementById("talmud-side-mode-select");
   const gapInput     = document.getElementById("talmud-side-gap-input");
+  const breaksToggle = document.getElementById("talmud-preserve-breaks");
 
   if (!toggle) return;
 
@@ -927,6 +967,7 @@ export function wireTalmudLayoutControls(onChange) {
   if (widthInput)   widthInput.value   = getTalmudMainWidth();
   if (sideSelect)   sideSelect.value   = getTalmudSideMode();
   if (gapInput)     gapInput.value     = getTalmudSideGap();
+  if (breaksToggle) breaksToggle.checked = isTalmudPreserveBreaks();
 
   const commit = () => onChange?.();
 
@@ -958,6 +999,10 @@ export function wireTalmudLayoutControls(onChange) {
   gapInput?.addEventListener("change", () => {
     setTalmudSideGap(gapInput.value);
     gapInput.value = getTalmudSideGap();
+    commit();
+  });
+  breaksToggle?.addEventListener("change", () => {
+    setTalmudPreserveBreaks(breaksToggle.checked);
     commit();
   });
 }
