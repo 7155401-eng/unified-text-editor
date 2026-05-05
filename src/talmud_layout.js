@@ -729,9 +729,11 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     streamA.style.clear = sideA;
     streamB.style.width = `${sideWidth}%`;
     streamB.style.clear = sideB;
+    // רווחים inline בין הצדדים לראשי
+    if (sideA === "right") streamA.style.marginLeft = `${sideGap}px`; else streamA.style.marginRight = `${sideGap}px`;
+    if (sideB === "right") streamB.style.marginLeft = `${sideGap}px`; else streamB.style.marginRight = `${sideGap}px`;
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
-    // ה-DOM צריך שהפרשנים יבואו לפני main כדי שיהיו במצב "ליד" main
     block.insertBefore(streamA, mainEl);
     block.insertBefore(streamB, mainEl);
   } else if (oneLongOneShort) {
