@@ -770,7 +770,9 @@ mark.pdf-find-hit-current {
   display: block;
   /* Crown offset: computed by JS and stored in --talmud-crown-offset */
   margin-top: var(--talmud-crown-offset, 0px);
-  overflow: hidden;
+  /* overflow:visible כדי שהטקסט המרכזי יגלוש סביב ה-floats של הפרשנים
+     מעליו ומתחתיו, ולא ייווצר מצב של 3 עמודות נפרדות. */
+  overflow: visible;
   box-sizing: border-box;
   text-align: justify;
   text-align-last: center;
@@ -833,7 +835,7 @@ mark.pdf-find-hit-current {
   }
   .talmud-layout-page .page-main.talmud-main {
     margin-top: var(--talmud-crown-offset, 0px) !important;
-    overflow: hidden !important;
+    overflow: visible !important;
   }
   .talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
     float: none !important;
@@ -1047,7 +1049,7 @@ mark.pdf-find-hit-current {
     position: static !important;
     width: auto !important;
     margin: var(--talmud-crown-offset, 0px) 0 0 0 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
   }
 
   body:not(.print-with-background) .page,
