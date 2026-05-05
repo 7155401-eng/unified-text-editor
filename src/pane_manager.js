@@ -7,23 +7,101 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TextStyle, Color, BackgroundColor, FontFamily, FontSize } from "@tiptap/extension-text-style";
 import TextAlign from "@tiptap/extension-text-align";
+import Underline from "@tiptap/extension-underline";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import Image from "@tiptap/extension-image";
+import Link from "@tiptap/extension-link";
 import Youtube from "@tiptap/extension-youtube";
 import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js";
-import { initResizer } from "./resizer.js";
+import { initMainStreamResizer, initResizer } from "./resizer.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
+const MAX_BOOT_STORAGE_BYTES = 900000;
 
 let _paneIdCounter = 0;
 
 function nextPaneId() {
   _paneIdCounter++;
   return `pane-${Date.now().toString(36)}-${_paneIdCounter}`;
+}
+
+function isStorageDisabled() {
+  return typeof window !== "undefined" && window.__RAVTEXT_STORAGE_DISABLED__ === true;
+}
+
+function escapeSelectorValue(value) {
+  if (typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function") {
+    return window.CSS.escape(String(value));
+  }
+  return String(value).replace(/["\\]/g, "\\$&");
+}
+
+function paneScrollRange(body) {
+  const prose = body?.querySelector(".ProseMirror");
+  const contentHeight = prose
+    ? Math.max(prose.scrollHeight, prose.getBoundingClientRect().height)
+    : body.scrollHeight;
+  return Math.max(0, contentHeight - body.clientHeight);
+}
+
+function visibleMarkerAnchor(body) {
+  if (!body) return null;
+  const markers = Array.from(body.querySelectorAll(".stream-marker[data-stream][data-num]"));
+  if (markers.length === 0) return null;
+  const viewport = body.getBoundingClientRect();
+  const targetY = viewport.top + viewport.height * 0.5;
+  let best = null;
+  let bestDist = Infinity;
+
+  for (const marker of markers) {
+    const rect = marker.getBoundingClientRect();
+    if (rect.bottom < viewport.top || rect.top > viewport.bottom) continue;
+    const dist = Math.abs(rect.top - targetY);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = { marker, rect };
+    }
+  }
+
+  if (!best) return null;
+  const code = best.marker.getAttribute("data-stream");
+  const num = parseInt(best.marker.getAttribute("data-num") || "", 10);
+  if (!code || !Number.isFinite(num)) return null;
+  return {
+    code,
+    num,
+    offsetRatio: Math.max(0, Math.min(1, (best.rect.top - viewport.top) / Math.max(1, viewport.height))),
+  };
+}
+
+function scrollPaneToAnchor(pane, anchor) {
+  if (!pane?._body || !anchor?.code || !Number.isFinite(anchor.num)) return false;
+  const body = pane._body;
+  const code = escapeSelectorValue(anchor.code);
+  const num = escapeSelectorValue(anchor.num);
+  let target = body.querySelector(`.stream-marker[data-stream="${code}"][data-num="${num}"]`);
+  if (!target && pane.streamCode === anchor.code) {
+    target = body.querySelector(`.stream-marker[data-num="${num}"]`);
+  }
+  if (!target) return false;
+
+  const bodyRect = body.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+  const desiredTop = bodyRect.top + bodyRect.height * Math.max(0.05, Math.min(0.45, anchor.offsetRatio ?? 0.25));
+  const maxScroll = paneScrollRange(body);
+  body.scrollTop = Math.max(0, Math.min(maxScroll, body.scrollTop + targetRect.top - desiredTop));
+  return true;
+}
+
+function syncPaneByFraction(sourceBody, targetBody) {
+  const sourceMax = paneScrollRange(sourceBody);
+  const targetMax = paneScrollRange(targetBody);
+  const fraction = sourceMax > 0 ? sourceBody.scrollTop / sourceMax : 0;
+  targetBody.scrollTop = Math.max(0, Math.min(targetMax, fraction * targetMax));
 }
 
 function buildEditorExtensions() {
@@ -35,18 +113,20 @@ function buildEditorExtensions() {
     FontFamily,
     FontSize,
     TextAlign.configure({ types: ["heading", "paragraph"] }),
+    Underline,
     Superscript,
     Subscript,
     TaskList,
     TaskItem.configure({ nested: true }),
     Image.configure({ allowBase64: true }),
+    Link.configure({ openOnClick: false }),
     Youtube.configure({ controls: true, nocookie: true }),
     StreamMark,
   ];
 }
 
 export class Pane {
-  constructor({ id, streamCode, symbol, label, dir, markerBarCollapsed, onFocus, onChange }) {
+  constructor({ id, streamCode, symbol, label, dir, markerBarCollapsed, content, onFocus, onChange }) {
     this.id = id || nextPaneId();
     this.streamCode = streamCode;
     this.symbol = symbol || (streamCode ? `@${streamCode}` : "");
@@ -59,17 +139,23 @@ export class Pane {
     this._body = null;
     this._markerBar = null;
     this._markerToggle = null;
-    this.markerBarCollapsed = !!markerBarCollapsed;
+    this._markerTimer = null;
+    this.initialContent = content;
+    this.markerBarCollapsed = markerBarCollapsed === undefined ? true : !!markerBarCollapsed;
     this._manager = null;
   }
 
   mount(parent) {
     this.element = document.createElement("section");
     this.element.className = "pane";
+    if (!this.streamCode) {
+      this.element.classList.add("main-pane");
+    }
     this.element.dataset.paneId = this.id;
 
     const header = document.createElement("div");
     header.className = "pane-header";
+    this._header = header;
 
     const chip = document.createElement("span");
     chip.className = "pane-chip";
@@ -91,6 +177,10 @@ export class Pane {
     header.appendChild(labelEl);
 
     if (this.streamCode) {
+      header.draggable = true;
+      header.classList.add("pane-drag-handle");
+      header.title = "גרור כדי לסדר חלוניות זרמים";
+
       const symInput = document.createElement("input");
       symInput.className = "pane-symbol";
       symInput.value = this.symbol;
@@ -117,6 +207,7 @@ export class Pane {
     markerToggle.addEventListener("click", () => {
       this.markerBarCollapsed = !this.markerBarCollapsed;
       this._applyMarkerBarState();
+      if (!this.markerBarCollapsed) this.updateMarkerBar();
       this._save();
     });
     this._markerToggle = markerToggle;
@@ -153,26 +244,59 @@ export class Pane {
     this.editor = new Editor({
       element: body,
       extensions: buildEditorExtensions(),
-      content: this.streamCode
+      content: this.initialContent !== undefined
+        ? this.initialContent
+        : this.streamCode
         ? `<p>תוכן זרם ${this.streamCode}…</p>`
         : "<p>תוכן ראשי. לחץ \"טען דוגמה\" או הקלד.</p>",
       onFocus: () => this.onFocus(this),
       onUpdate: () => {
         this.onChange(this);
-        this._save();
-        this.updateMarkerBar();
+        this.scheduleMarkerBarUpdate();
       },
     });
 
     this.editor.storage.streamMark.symbol = this.symbol || null;
     this.editor.storage.streamMark.streamCode = this.streamCode || null;
+    this._scheduleInitialStreamScan();
 
     body.addEventListener("scroll", () => this._onScroll());
     body.addEventListener("contextmenu", (ev) => this._onContextMenu(ev));
+    if (this.streamCode) {
+      header.addEventListener("dragstart", (ev) => this._onDragStart(ev));
+      header.addEventListener("dragend", () => this._manager?.clearDragState());
+      this.element.addEventListener("dragover", (ev) => this._onDragOver(ev));
+      this.element.addEventListener("dragleave", () => this._clearDropHint());
+      this.element.addEventListener("drop", (ev) => this._onDrop(ev));
+    }
     this.updateMarkerBar();
   }
 
+  _scheduleInitialStreamScan() {
+    if (!this.editor) return;
+    if (typeof window !== "undefined" && window.__STREAM_MARK_SCAN_DISABLED__) return;
+    const docSize = this.editor.state.doc.content.size;
+    if (docSize > 120000) return;
+    const text = this.editor.state.doc.textBetween(0, docSize, "\n", "\n");
+    const symbol = (this.symbol || "").trim();
+    const hasMarker = symbol ? text.includes(symbol) : /@\d{1,3}/.test(text);
+    if (!hasMarker) return;
+    const run = () => {
+      if (!this.editor) return;
+      this.editor.view.dispatch(this.editor.state.tr.setMeta("forceStreamMarkScan", true));
+    };
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      window.requestIdleCallback(run, { timeout: 1200 });
+    } else {
+      setTimeout(run, 0);
+    }
+  }
+
   destroy() {
+    if (this._markerTimer) {
+      clearTimeout(this._markerTimer);
+      this._markerTimer = null;
+    }
     if (this.editor) { this.editor.destroy(); this.editor = null; }
     if (this.element) { this.element.remove(); this.element = null; }
   }
@@ -190,7 +314,11 @@ export class Pane {
   }
 
   load(content) {
-    if (this.editor && content) this.editor.commands.setContent(content);
+    if (this.editor && content) {
+      this.editor.commands.setContent(content, { emitUpdate: false });
+      this._scheduleInitialStreamScan();
+      this.scheduleMarkerBarUpdate({ immediate: true });
+    }
   }
 
   setDir(dir) {
@@ -204,12 +332,11 @@ export class Pane {
     if (!mgr || !mgr.syncEnabled || mgr.syncBusy) return;
     mgr.syncBusy = true;
     const body = this._body;
-    const maxScroll = body.scrollHeight - body.clientHeight;
-    const fraction = maxScroll > 0 ? body.scrollTop / maxScroll : 0;
+    const anchor = visibleMarkerAnchor(body);
     for (const other of mgr.panes) {
       if (other === this || !other._body) continue;
-      const otherMax = other._body.scrollHeight - other._body.clientHeight;
-      other._body.scrollTop = fraction * otherMax;
+      if (anchor && scrollPaneToAnchor(other, anchor)) continue;
+      syncPaneByFraction(body, other._body);
     }
     requestAnimationFrame(() => { mgr.syncBusy = false; });
   }
@@ -228,6 +355,11 @@ export class Pane {
 
   updateMarkerBar() {
     if (!this._markerBar || !this.editor) return;
+    if (this.markerBarCollapsed) {
+      this._markerBar.innerHTML = "";
+      if (this._markerToggle) this._markerToggle.disabled = false;
+      return;
+    }
 
     const all = findAllStreamMarks(this.editor.state);
     if (this._markerToggle) {
@@ -265,6 +397,17 @@ export class Pane {
       this._markerBar.appendChild(span);
       ci++;
     }
+  }
+
+  scheduleMarkerBarUpdate({ immediate = false } = {}) {
+    if (!this._markerBar || this.markerBarCollapsed) return;
+    if (this._markerTimer) clearTimeout(this._markerTimer);
+    const run = () => {
+      this._markerTimer = null;
+      this.updateMarkerBar();
+    };
+    if (immediate) run();
+    else this._markerTimer = setTimeout(run, 250);
   }
 
   jumpToNth(sym, n) {
@@ -305,6 +448,49 @@ export class Pane {
   _requestRemove() {
     const ev = new CustomEvent("pane-remove-request", { detail: { id: this.id }, bubbles: true });
     if (this.element) this.element.dispatchEvent(ev);
+  }
+
+  _onDragStart(ev) {
+    if (!this.streamCode || !this._manager) return;
+    if (ev.target.closest("input, button")) {
+      ev.preventDefault();
+      return;
+    }
+    this._manager._dragPaneId = this.id;
+    this.element.classList.add("dragging-pane");
+    ev.dataTransfer.effectAllowed = "move";
+    ev.dataTransfer.setData("text/plain", this.id);
+  }
+
+  _onDragOver(ev) {
+    const mgr = this._manager;
+    const dragId = mgr?._dragPaneId || ev.dataTransfer.getData("text/plain");
+    if (!mgr || !this.streamCode || !dragId || dragId === this.id) return;
+
+    const dragged = mgr.panes.find(p => p.id === dragId);
+    if (!dragged?.streamCode) return;
+
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = "move";
+    const rect = this.element.getBoundingClientRect();
+    const midpoint = rect.left + rect.width / 2;
+    this._dropPosition = ev.clientX < midpoint ? "after" : "before";
+    this.element.classList.toggle("drag-over-before", this._dropPosition === "before");
+    this.element.classList.toggle("drag-over-after", this._dropPosition === "after");
+  }
+
+  _onDrop(ev) {
+    const mgr = this._manager;
+    const dragId = mgr?._dragPaneId || ev.dataTransfer.getData("text/plain");
+    if (!mgr || !dragId || dragId === this.id) return;
+    ev.preventDefault();
+    mgr.reorderPane(dragId, this.id, this._dropPosition || "before");
+    mgr.clearDragState();
+  }
+
+  _clearDropHint() {
+    if (!this.element) return;
+    this.element.classList.remove("drag-over-before", "drag-over-after");
   }
 
   _onContextMenu(ev) {
@@ -353,11 +539,17 @@ export class PaneManager {
     this.container = container;
     this.panes = [];
     this.activePane = null;
-    this._listeners = { change: [] };
+    this._listeners = { change: [], focus: [] };
     this.syncEnabled = false;
     this.syncBusy = false;
     this.lineMode = false;
     this.merged = false;
+    this._dragPaneId = null;
+    this._batchDepth = 0;
+    this._pendingChange = false;
+    this._pendingMarkerRefresh = false;
+    this._savePending = false;
+    this._saveTimer = null;
 
     container.addEventListener("pane-remove-request", (ev) => {
       this.removePane(ev.detail.id);
@@ -365,9 +557,34 @@ export class PaneManager {
   }
 
   on(event, fn) { this._listeners[event].push(fn); }
-  _emit(event) { for (const fn of this._listeners[event] || []) fn(this); }
+  _emit(event) {
+    if (event === "change" && this._batchDepth > 0) {
+      this._pendingChange = true;
+      return;
+    }
+    for (const fn of this._listeners[event] || []) fn(this);
+  }
 
   count() { return this.panes.length; }
+
+  _beginBatch() {
+    this._batchDepth++;
+  }
+
+  _endBatch() {
+    if (this._batchDepth > 0) this._batchDepth--;
+    if (this._batchDepth > 0) return;
+    if (this._pendingMarkerRefresh) {
+      this._pendingMarkerRefresh = false;
+      this._refreshAllMarkerBars();
+    }
+    this._updateLayoutClasses();
+    if (this._savePending) this._save();
+    if (this._pendingChange) {
+      this._pendingChange = false;
+      for (const fn of this._listeners.change || []) fn(this);
+    }
+  }
 
   addPane(opts = {}) {
     if (this.panes.length >= MAX_PANES) {
@@ -382,7 +599,17 @@ export class PaneManager {
       opts.symbol = "";
     }
 
-    if (this.panes.length >= 1) {
+    const streamPaneCount = this.panes.filter(p => p.streamCode).length;
+    if (opts.streamCode && streamPaneCount === 0) {
+      const mainPane = this.getMainPane();
+      if (mainPane?.element && !this.container.querySelector(".main-stream-resizer")) {
+        const mainResizer = document.createElement("div");
+        mainResizer.className = "main-stream-resizer";
+        this.container.appendChild(mainResizer);
+        initMainStreamResizer(mainResizer);
+      }
+    }
+    if (opts.streamCode && streamPaneCount >= 1) {
       const resizer = document.createElement("div");
       resizer.className = "resizer";
       this.container.appendChild(resizer);
@@ -391,7 +618,7 @@ export class PaneManager {
 
     const onFocus = (p) => {
       this.activePane = p;
-      this._emit("change");
+      this._emit("focus");
     };
     const onChange = () => {
       this._save();
@@ -407,9 +634,16 @@ export class PaneManager {
       pane._body.classList.add("line-mode");
     }
 
-    this._save();
-    this._emit("change");
-    this._refreshAllMarkerBars();
+    if (this._batchDepth > 0) {
+      this._savePending = true;
+      this._pendingChange = true;
+      this._pendingMarkerRefresh = true;
+    } else {
+      this._save();
+      this._emit("change");
+      this._refreshAllMarkerBars();
+      this._updateLayoutClasses();
+    }
     return pane;
   }
 
@@ -422,10 +656,13 @@ export class PaneManager {
       return false;
     }
 
-    if (pane.element && pane.element.previousElementSibling) {
-      const sibling = pane.element.previousElementSibling;
-      if (sibling.classList.contains("resizer")) {
-        sibling.remove();
+    if (pane.element) {
+      const prev = pane.element.previousElementSibling;
+      const next = pane.element.nextElementSibling;
+      if (prev && prev.classList.contains("resizer")) {
+        prev.remove();
+      } else if (next && next.classList.contains("resizer")) {
+        next.remove();
       }
     }
 
@@ -437,7 +674,33 @@ export class PaneManager {
     this._save();
     this._emit("change");
     this._refreshAllMarkerBars();
+    this._updateLayoutClasses();
     return true;
+  }
+
+  reorderPane(dragId, targetId, position = "before") {
+    if (!dragId || !targetId || dragId === targetId) return false;
+    const state = this.serialize();
+    const mainPanes = state.panes.filter(p => !p.streamCode);
+    const streamPanes = state.panes.filter(p => p.streamCode);
+    const dragIndex = streamPanes.findIndex(p => p.id === dragId);
+    if (dragIndex === -1) return false;
+    const [dragged] = streamPanes.splice(dragIndex, 1);
+    let targetIndex = streamPanes.findIndex(p => p.id === targetId);
+    if (targetIndex === -1) return false;
+    if (position === "after") targetIndex++;
+    streamPanes.splice(targetIndex, 0, dragged);
+    state.panes = [...mainPanes, ...streamPanes];
+    state.activeId = dragId;
+    this.load(state);
+    return true;
+  }
+
+  clearDragState() {
+    this._dragPaneId = null;
+    for (const p of this.panes) {
+      p.element?.classList.remove("dragging-pane", "drag-over-before", "drag-over-after");
+    }
   }
 
   getActiveEditor() {
@@ -464,6 +727,15 @@ export class PaneManager {
     }
   }
 
+  _updateLayoutClasses() {
+    const hasStreams = this.panes.some(p => p.streamCode);
+    this.container.classList.toggle("has-stream-panes", hasStreams);
+    const mainResizer = this.container.querySelector(".main-stream-resizer");
+    if (mainResizer && !hasStreams) {
+      mainResizer.remove();
+    }
+  }
+
   nextAvailableStreamCode() {
     const used = new Set(this.panes
       .filter(p => p.streamCode)
@@ -485,39 +757,83 @@ export class PaneManager {
 
   load(state) {
     // משחזר חלוניות מ‑state — לא קוטל את הראשית הנוכחית אם קיימת
-    for (const p of [...this.panes]) p.destroy();
-    this.container.innerHTML = "";
-    this.panes = [];
-    this.activePane = null;
+    this._beginBatch();
+    try {
+      for (const p of [...this.panes]) p.destroy();
+      this.container.innerHTML = "";
+      this.panes = [];
+      this.activePane = null;
     for (const ps of state.panes || []) {
-      const pane = this.addPane({
+      this.addPane({
         id: ps.id,
         streamCode: ps.streamCode,
         symbol: ps.symbol,
         label: ps.label,
         dir: ps.dir,
         markerBarCollapsed: ps.markerBarCollapsed,
+        content: ps.content,
       });
-      if (pane && ps.content) pane.load(ps.content);
     }
     if (state.activeId) {
       const a = this.panes.find(p => p.id === state.activeId);
       if (a) this.activePane = a;
     }
+      this._pendingChange = true;
+      this._pendingMarkerRefresh = true;
+      this._savePending = true;
+    } finally {
+      this._endBatch();
+    }
   }
 
-  _save() {
+  _writeStorageNow() {
+    if (isStorageDisabled()) {
+      this._savePending = false;
+      return;
+    }
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.serialize()));
+      this._savePending = false;
     } catch (e) {
       console.warn("[paneManager] save failed:", e);
     }
   }
 
+  _save({ immediate = false } = {}) {
+    this._savePending = true;
+    if (this._batchDepth > 0) return;
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    if (immediate) {
+      this._saveTimer = null;
+      this._writeStorageNow();
+      return;
+    }
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
+      this._writeStorageNow();
+    }, 350);
+  }
+
+  flushSave() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    if (this._savePending) this._writeStorageNow();
+  }
+
   loadFromStorage() {
+    if (isStorageDisabled()) return false;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
+      if (raw.length > MAX_BOOT_STORAGE_BYTES) {
+        const backupKey = `${STORAGE_KEY}.oversized.${Date.now()}`;
+        try { localStorage.setItem(backupKey, raw); } catch {}
+        localStorage.removeItem(STORAGE_KEY);
+        console.warn(`[paneManager] skipped oversized saved state (${raw.length} bytes), backup=${backupKey}`);
+        return false;
+      }
       this.load(JSON.parse(raw));
       return true;
     } catch (e) {
@@ -527,6 +843,11 @@ export class PaneManager {
   }
 
   clearStorage() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    this._savePending = false;
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
 }

@@ -1,18 +1,18 @@
+import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
+
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
 const PDF_PAGE_WIDTH = 595.28;
 const PDF_PAGE_HEIGHT = 841.89;
+const EXPORT_FONT_STACK = '"David", "Times New Roman", "Arial", serif';
+const PDF_EXPORT_DPI = 240;
+const PDF_JPEG_QUALITY = 0.985;
+const A4_WIDTH_INCHES = 210 / 25.4;
+const PDF_EXPORT_SCALE = (PDF_EXPORT_DPI * A4_WIDTH_INCHES) / PAGE_CSS_WIDTH;
 
 function stringBytes(str) {
   const out = new Uint8Array(str.length);
   for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i) & 0xff;
-  return out;
-}
-
-function base64ToBytes(base64) {
-  const bin = atob(base64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
 
@@ -32,7 +32,14 @@ function collectCssText() {
   for (const sheet of Array.from(document.styleSheets)) {
     try {
       for (const rule of Array.from(sheet.cssRules || [])) {
-        css.push(rule.cssText);
+        if (
+          rule.cssText &&
+          !/@font-face/i.test(rule.cssText) &&
+          !/@import/i.test(rule.cssText) &&
+          !/url\(/i.test(rule.cssText)
+        ) {
+          css.push(rule.cssText);
+        }
       }
     } catch {
       // Cross-origin font stylesheets are not readable; the page still renders with fallback fonts.
@@ -41,17 +48,44 @@ function collectCssText() {
 
   const root = getComputedStyle(document.documentElement);
   const vars = [
-    "--ravtext-page-font-family",
     "--ravtext-page-main-size",
     "--ravtext-page-stream-size",
+    "--ravtext-page-margin-top",
+    "--ravtext-page-margin-right",
+    "--ravtext-page-margin-bottom",
+    "--ravtext-page-margin-left",
   ]
     .map((name) => `${name}: ${root.getPropertyValue(name).trim()};`)
     .join("");
 
-  css.push(`:root{${vars}}`);
+  css.push(`:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}`);
   css.push("html,body{margin:0;padding:0;background:#fff;}");
-  css.push(".page{margin:0!important;box-shadow:none!important;zoom:1!important;}");
+  css.push(".page,.page *{font-family:var(--ravtext-page-font-family)!important;background-image:none!important;}");
+  css.push(".page{margin:0!important;box-shadow:none!important;zoom:1!important;content-visibility:visible!important;contain-intrinsic-size:auto!important;padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;}");
+  css.push(".pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}");
+  css.push("body.ravtext-export-clean .page,body.ravtext-export-clean .page *:not(.ravtext-demo-print-mark){background:transparent!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important;}");
   return css.join("\n");
+}
+
+function replaceWithPlaceholder(el, label = "") {
+  const w = parseFloat(el.getAttribute("width") || el.style.width || "") || el.naturalWidth || el.videoWidth || 80;
+  const h = parseFloat(el.getAttribute("height") || el.style.height || "") || el.naturalHeight || el.videoHeight || 40;
+  const box = document.createElement("div");
+  box.className = "pdf-export-media-placeholder";
+  box.textContent = label;
+  box.style.width = `${Math.max(24, w)}px`;
+  box.style.height = `${Math.max(18, h)}px`;
+  el.replaceWith(box);
+}
+
+function sanitizeCloneForPdf(clone) {
+  clone.querySelectorAll("img").forEach((img) => replaceWithPlaceholder(img, img.alt || ""));
+  clone.querySelectorAll("video, iframe, canvas").forEach((el) => replaceWithPlaceholder(el, ""));
+  clone.querySelectorAll("[style]").forEach((el) => {
+    if (/url\(/i.test(el.style.backgroundImage || "")) {
+      el.style.backgroundImage = "none";
+    }
+  });
 }
 
 function imageLoaded(img) {
@@ -62,8 +96,82 @@ function imageLoaded(img) {
   });
 }
 
-async function renderPageToJpeg(pageEl, cssText, scale = 2) {
+function svgImageUrl(svg) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function canvasToJpegBytes(canvas, quality = PDF_JPEG_QUALITY) {
+  return new Promise((resolve, reject) => {
+    try {
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          reject(new Error("לא ניתן ליצור תמונת PDF"));
+          return;
+        }
+        try {
+          resolve(new Uint8Array(await blob.arrayBuffer()));
+        } catch (err) {
+          reject(err);
+        }
+      }, "image/jpeg", quality);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function deflateBytes(bytes) {
+  if (!("CompressionStream" in window)) return null;
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+function canvasToRgbBytes(canvas, ctx) {
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const rgb = new Uint8Array(canvas.width * canvas.height * 3);
+  let out = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    if (alpha === 255) {
+      rgb[out++] = data[i];
+      rgb[out++] = data[i + 1];
+      rgb[out++] = data[i + 2];
+    } else {
+      const invAlpha = 255 - alpha;
+      rgb[out++] = Math.round((data[i] * alpha + 255 * invAlpha) / 255);
+      rgb[out++] = Math.round((data[i + 1] * alpha + 255 * invAlpha) / 255);
+      rgb[out++] = Math.round((data[i + 2] * alpha + 255 * invAlpha) / 255);
+    }
+  }
+  return rgb;
+}
+
+async function canvasToPdfImage(canvas, ctx) {
+  try {
+    const rgb = canvasToRgbBytes(canvas, ctx);
+    const compressed = await deflateBytes(rgb);
+    if (compressed) {
+      return {
+        bytes: compressed,
+        filter: "FlateDecode",
+      };
+    }
+  } catch (err) {
+    console.warn("Lossless PDF image export failed, falling back to JPEG:", err);
+  }
+  return {
+    bytes: await canvasToJpegBytes(canvas),
+    filter: "DCTDecode",
+  };
+}
+
+async function renderPageToPdfImage(pageEl, cssText, scale = PDF_EXPORT_SCALE, { includeBackgrounds = false } = {}) {
   const clone = pageEl.cloneNode(true);
+  sanitizeCloneForPdf(clone);
+  if (isDemoMode()) {
+    ensureDemoAccess();
+    applyDemoWatermarkToElement(clone);
+  }
   clone.style.zoom = "1";
   clone.style.width = `${PAGE_CSS_WIDTH}px`;
   clone.style.height = `${PAGE_CSS_HEIGHT}px`;
@@ -71,41 +179,43 @@ async function renderPageToJpeg(pageEl, cssText, scale = 2) {
   clone.style.margin = "0";
   clone.style.boxShadow = "none";
 
-  const bodyClass = document.body.className || "";
+  const bodyClass = [
+    document.body.className || "",
+    includeBackgrounds ? "" : "ravtext-export-clean",
+  ].filter(Boolean).join(" ");
   const html =
     `<html xmlns="http://www.w3.org/1999/xhtml" dir="rtl">` +
     `<head><style>${cssText}</style></head>` +
     `<body class="${bodyClass}">${clone.outerHTML}</body></html>`;
+  const targetWidth = Math.round(PAGE_CSS_WIDTH * scale);
+  const targetHeight = Math.round(PAGE_CSS_HEIGHT * scale);
 
   const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${PAGE_CSS_WIDTH}" height="${PAGE_CSS_HEIGHT}" viewBox="0 0 ${PAGE_CSS_WIDTH} ${PAGE_CSS_HEIGHT}">` +
-    `<foreignObject width="100%" height="100%">${html}</foreignObject>` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${targetWidth}" height="${targetHeight}" viewBox="0 0 ${PAGE_CSS_WIDTH} ${PAGE_CSS_HEIGHT}">` +
+    `<foreignObject width="${PAGE_CSS_WIDTH}" height="${PAGE_CSS_HEIGHT}">${html}</foreignObject>` +
     `</svg>`;
 
-  const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
-  try {
-    const img = new Image();
-    img.src = url;
-    await imageLoaded(img);
+  const img = new Image();
+  img.decoding = "sync";
+  img.src = svgImageUrl(svg);
+  await imageLoaded(img);
 
-    const canvas = document.createElement("canvas");
-    canvas.width = PAGE_CSS_WIDTH * scale;
-    canvas.height = PAGE_CSS_HEIGHT * scale;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const pdfImage = await canvasToPdfImage(canvas, ctx);
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    const base64 = dataUrl.substring(dataUrl.indexOf(",") + 1);
-    return {
-      width: canvas.width,
-      height: canvas.height,
-      bytes: base64ToBytes(base64),
-    };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  return {
+    width: canvas.width,
+    height: canvas.height,
+    ...pdfImage,
+  };
 }
 
 function buildPdf(images) {
@@ -128,7 +238,7 @@ function buildPdf(images) {
     objectChunks[imageObj - 1] = [
       stringBytes(
         `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
-        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.bytes.length} >>\nstream\n`
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Interpolate false /Filter /${img.filter} /Length ${img.bytes.length} >>\nstream\n`
       ),
       img.bytes,
       stringBytes("\nendstream"),
@@ -185,15 +295,45 @@ function buildPdf(images) {
   return new Blob([concatBytes(chunks)], { type: "application/pdf" });
 }
 
-export async function downloadPagesAsPdf(pagesContainer, { filename = "ravtext-preview.pdf" } = {}) {
-  if (document.fonts && document.fonts.ready) await document.fonts.ready;
+function nextFrame() {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function waitForExportFonts(timeoutMs = 2500) {
+  if (!document.fonts || !document.fonts.ready) return;
+  await Promise.race([
+    document.fonts.ready,
+    new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
+function isCanvasSecurityError(err) {
+  return /tainted|toDataURL|canvas/i.test(err?.message || "");
+}
+
+export async function downloadPagesAsPdf(
+  pagesContainer,
+  { filename = "ravtext-preview.pdf", onProgress = null, fallbackToPrint = false, includeBackgrounds = false } = {}
+) {
+  await waitForExportFonts();
   const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder)"));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
   const cssText = collectCssText();
   const images = [];
-  for (const page of pages) {
-    images.push(await renderPageToJpeg(page, cssText));
+  try {
+    for (let i = 0; i < pages.length; i++) {
+      onProgress && onProgress(i + 1, pages.length);
+      await nextFrame();
+      images.push(await renderPageToPdfImage(pages[i], cssText, PDF_EXPORT_SCALE, { includeBackgrounds }));
+    }
+  } catch (err) {
+    if (fallbackToPrint && isCanvasSecurityError(err)) {
+      await nextFrame();
+      window.print();
+      return { fallback: "print" };
+    }
+    throw err;
   }
 
   const pdfBlob = buildPdf(images);
@@ -205,4 +345,5 @@ export async function downloadPagesAsPdf(pagesContainer, { filename = "ravtext-p
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { fallback: null };
 }

@@ -1,5 +1,6 @@
 const STORAGE_KEY = "ravtext.mishnaWrap";
 const LEVELS_KEY = "ravtext.mishnaWrap.levels";
+import { applyFloatFlowLevel, originalOrder, streamTextLength, widthForFlowFloat } from "./flow_layout.js";
 
 export function isMishnaWrapEnabled() {
   return localStorage.getItem(STORAGE_KEY) === "1";
@@ -31,26 +32,18 @@ function parseMishnaLevels() {
     .filter((level) => level.length >= 2);
 }
 
-function streamTextLength(streamEl) {
-  const clone = streamEl.cloneNode(true);
-  clone.querySelector(".stream-title")?.remove();
-  return (clone.textContent || "").trim().length;
+function defaultMishnaLevels(streams) {
+  const codes = streams.map(codeForStream).filter(Boolean);
+  return codes.length >= 2 ? [Array.from(new Set(codes))] : [];
 }
 
 function resetStream(streamEl) {
-  streamEl.classList.remove("mishna-float", "mishna-flow");
+  streamEl.classList.remove("mishna-float", "mishna-flow", "mishna-right", "mishna-left");
   streamEl.removeAttribute("data-mishna-role");
   streamEl.style.float = "";
   streamEl.style.width = "";
   streamEl.style.margin = "";
   streamEl.style.clear = "";
-}
-
-function originalOrder(streamEl, idx) {
-  if (!streamEl.dataset.originalOrder) {
-    streamEl.dataset.originalOrder = String(idx);
-  }
-  return parseInt(streamEl.dataset.originalOrder, 10) || 0;
 }
 
 function unwrapLevels(streamsWrap) {
@@ -66,6 +59,32 @@ function codeForStream(streamEl) {
   return streamEl.getAttribute("data-stream") || "";
 }
 
+function settingsForStream(streamEl) {
+  const code = codeForStream(streamEl);
+  return (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
+}
+
+function pageNumberFor(streamsWrap) {
+  const pageEl = streamsWrap.closest(".page");
+  const idx = parseInt(pageEl?.dataset.pageIndex || "0", 10);
+  return Number.isFinite(idx) ? idx + 1 : 1;
+}
+
+function sideForStream(streamEl, idx, streamsWrap) {
+  const side = settingsForStream(streamEl).mishnaSide || "auto";
+  if (side === "right" || side === "left") return side;
+  const pageNo = pageNumberFor(streamsWrap);
+  if (side === "outer") return pageNo % 2 === 1 ? "left" : "right";
+  if (side === "inner") return pageNo % 2 === 1 ? "right" : "left";
+  return idx % 2 === 0 ? "right" : "left";
+}
+
+function widthForStream(streamEl, levelCount) {
+  const width = Number(settingsForStream(streamEl).mishnaWidth || 0);
+  if (Number.isFinite(width) && width > 0) return `${Math.max(10, Math.min(95, width))}%`;
+  return widthForFlowFloat(levelCount);
+}
+
 function layoutLevel(streamsWrap, levelStreams, levelIndex) {
   if (levelStreams.length === 0) return;
 
@@ -73,26 +92,18 @@ function layoutLevel(streamsWrap, levelStreams, levelIndex) {
   levelEl.className = "mishna-level";
   levelEl.dataset.level = String(levelIndex + 1);
 
-  const measured = levelStreams
-    .map((stream) => ({ stream, len: streamTextLength(stream) }))
-    .sort((a, b) => b.len - a.len);
-  const mainFlow = measured[0].stream;
-  const floats = measured
-    .slice(1)
-    .sort((a, b) => originalOrder(a.stream, 0) - originalOrder(b.stream, 0))
-    .map((item) => item.stream);
-
-  for (const stream of floats) levelEl.appendChild(stream);
-  levelEl.appendChild(mainFlow);
-
-  floats.forEach((stream, idx) => {
-    stream.classList.add("mishna-float");
-    stream.dataset.mishnaRole = "float";
-    stream.style.float = idx % 2 === 0 ? "right" : "left";
-    stream.style.width = "46%";
+  applyFloatFlowLevel({
+    container: levelEl,
+    streams: levelStreams,
+    streamsWrap,
+    sideForStream,
+    floatClass: "mishna-float",
+    flowClass: "mishna-flow",
+    rightClass: "mishna-right",
+    leftClass: "mishna-left",
+    roleDataset: "mishnaRole",
+    widthForStream,
   });
-  mainFlow.classList.add("mishna-flow");
-  mainFlow.dataset.mishnaRole = "flow";
   streamsWrap.appendChild(levelEl);
 }
 
@@ -107,16 +118,7 @@ export function applyMishnaWrapToPage(pageEl) {
     resetStream(stream);
   });
 
-  if (!isMishnaWrapEnabled() || streams.length < 2) {
-    pageEl.classList.remove("mishna-wrap-page");
-    streams
-      .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
-      .forEach((stream) => streamsWrap.appendChild(stream));
-    return;
-  }
-
-  const levels = parseMishnaLevels();
-  if (levels.length === 0) {
+  if (!isMishnaWrapEnabled()) {
     pageEl.classList.remove("mishna-wrap-page");
     streams
       .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
@@ -126,9 +128,25 @@ export function applyMishnaWrapToPage(pageEl) {
 
   pageEl.classList.add("mishna-wrap-page");
 
+  if (streams.length < 2) {
+    streams
+      .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
+      .forEach((stream) => streamsWrap.appendChild(stream));
+    return;
+  }
+
+  const levels = parseMishnaLevels();
+  const effectiveLevels = levels.length ? levels : defaultMishnaLevels(streams);
+  if (effectiveLevels.length === 0) {
+    streams
+      .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
+      .forEach((stream) => streamsWrap.appendChild(stream));
+    return;
+  }
+
   const byCode = new Map(streams.map((stream) => [codeForStream(stream), stream]));
   const used = new Set();
-  levels.forEach((codes, levelIndex) => {
+  effectiveLevels.forEach((codes, levelIndex) => {
     const levelStreams = codes.map((code) => byCode.get(code)).filter(Boolean);
     levelStreams.forEach((stream) => used.add(stream));
     layoutLevel(streamsWrap, levelStreams, levelIndex);
@@ -141,14 +159,27 @@ export function applyMishnaWrapToPage(pageEl) {
 }
 
 export function applyMishnaWrapToPages(container) {
-  container.querySelectorAll(".page").forEach((page) => applyMishnaWrapToPage(page));
+  if (!isMishnaWrapEnabled()) return;
+  container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => applyMishnaWrapToPage(page));
+
+  const prevProcessor = container.__processRealizedPage;
+  if (!prevProcessor || !prevProcessor.__mishnaWrapped) {
+    const processor = function (page, idx) {
+      if (typeof prevProcessor === "function") prevProcessor(page, idx);
+      applyMishnaWrapToPage(page);
+    };
+    processor.__mishnaWrapped = true;
+    container.__processRealizedPage = processor;
+  }
 
   const baseRealize = container.__realizePage;
   if (typeof baseRealize !== "function" || baseRealize.__mishnaWrapped) return;
 
   const wrapped = function (idx) {
     baseRealize(idx);
-    const page = container.querySelector(`.page[data-page-index="${idx}"]`);
+    const page = typeof container.__getPageElement === "function"
+      ? container.__getPageElement(idx)
+      : container.querySelector(`.page[data-page-index="${idx}"]`);
     if (page) applyMishnaWrapToPage(page);
   };
   wrapped.__mishnaWrapped = true;

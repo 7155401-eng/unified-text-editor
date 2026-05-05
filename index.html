@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>עורך משולב - TipTap + Engine</title>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="/bridge_shim.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -14,8 +16,8 @@
   </head>
   <body class="light-theme">
     <header class="app-header">
-      <h1>עורך משולב - TipTap + Engine</h1>
-      <div id="status" class="status status-row" dir="rtl">
+      <h1 data-i18n="appTitle">עורך משולב - TipTap + Engine</h1>
+      <div id="status" class="status status-row" dir="rtl" data-i18n="status">
         טען טקסט ולחץ "רנדר עמודים" כדי לראות את התצוגה.
       </div>
     </header>
@@ -23,7 +25,7 @@
     <main class="main">
       <section class="panel">
         <div class="toolbar source-stream-toolbar" dir="rtl">
-          <span class="stream-label-static">סמן כזרם:</span>
+          <span class="stream-label-static" data-i18n="markAsStream">סמן כזרם:</span>
           <button type="button" data-stream="01" class="btn-stream stream-color-1">01</button>
           <button type="button" data-stream="02" class="btn-stream stream-color-2">02</button>
           <button type="button" data-stream="03" class="btn-stream stream-color-3">03</button>
@@ -38,7 +40,7 @@
             placeholder="מס׳"
             class="custom-stream-input"
           />
-          <button type="button" id="btn-custom-stream">סמן</button>
+          <button type="button" id="btn-custom-stream" data-i18n="mark">סמן</button>
         </div>
         <div class="toolbar" dir="rtl">
           <span class="tb-group" data-title="טקסט">
@@ -91,7 +93,6 @@
           <span class="sep"></span>
           <span class="tb-group" data-title="כיוון">
             <button data-cmd="rtl">RTL</button>
-            <button data-cmd="ltr">LTR</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="בלוקים">
@@ -108,6 +109,8 @@
             <button data-cmd="font-david">David</button>
             <button data-cmd="font-frank">Frank</button>
             <button data-cmd="font-segoe">Segoe</button>
+            <select id="local-font-select" class="font-gallery-select" title="גופנים במחשב"></select>
+            <button type="button" id="local-font-load" title="רענן גופנים">↻</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="גודל">
@@ -116,10 +119,16 @@
             <span id="fs-label" style="margin:0 6px;font-weight:bold">16</span>
             <button data-cmd="size-up" title="+1">+</button>
             <button data-cmd="size-up-double" title="+2">++</button>
+            <span class="size-direct-sep"></span>
+            <button data-cmd="size-12">12</button>
+            <button data-cmd="size-15">15</button>
+            <button data-cmd="size-18">18</button>
+            <button data-cmd="size-24">24</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כללי">
             <button data-cmd="theme-toggle" title="בהיר/כהה">☀️/🌙</button>
+            <button data-cmd="lang-toggle" id="langBtn" title="שפה">EN</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="ניהול">
@@ -152,40 +161,60 @@
             <button data-cmd="auto-parse-paste" title="זהה דפוסים בתוכן הקיים">🔍 זהה תוכן</button>
           </span>
           <span class="sep"></span>
+          <span class="tb-group" data-title="Word">
+            <button data-cmd="word-import" data-i18n="wordImport">טען מ-Word</button>
+            <button data-cmd="word-export" data-i18n="wordExport">שמור ל-Word</button>
+          </span>
+          <span class="sep"></span>
           <span class="tb-group" data-title="פעולות">
-            <button data-cmd="load-sample" class="primary">טען דוגמה</button>
-            <button data-cmd="load-sample-shulchan">שו"ע</button>
-            <button data-cmd="load-sample-talmud">גמרא</button>
-            <button data-cmd="engine-render" class="primary">רענן עמודים</button>
-            <button data-cmd="export-json">JSON</button>
-            <button data-cmd="round-trip">round-trip</button>
-            <button data-cmd="diag-toggle" title="פתח/סגור אבחון">אבחון</button>
+            <button data-cmd="load-sample" class="primary" data-i18n="loadSample">טען דוגמה</button>
+            <button data-cmd="load-sample-shulchan" data-i18n="loadShulchan">שו"ע</button>
+            <button data-cmd="load-sample-talmud" data-i18n="loadTalmud">גמרא</button>
+            <button data-cmd="engine-render" class="primary" data-i18n="renderPages">רענן עמודים</button>
+            <button data-cmd="export-json" data-i18n="json">JSON</button>
+            <button data-cmd="round-trip" data-i18n="roundTrip">round-trip</button>
+            <button data-cmd="diag-toggle" title="פתח/סגור אבחון" data-i18n="diagnostics">אבחון</button>
           </span>
         </div>
         <div class="panes-toolbar">
-          <button data-cmd="pane-add" class="primary" title="הוסף חלונית עם זרם">+ חלונית</button>
-          <button data-cmd="pane-remove" title="מחק חלונית פעילה">✕ הסר חלונית</button>
+          <button data-cmd="pane-add" class="primary" title="הוסף חלונית עם זרם" data-i18n="addPane">+ חלונית</button>
+          <button data-cmd="pane-remove" title="מחק חלונית פעילה" data-i18n="removePane">✕ הסר חלונית</button>
           <span class="sep" style="height:24px;width:1px;background:var(--border)"></span>
-          <button data-cmd="split-to-panes" class="primary" title="פצל את הראשי לחלוניות לפי @NN">✂ פצל לחלוניות</button>
-          <button data-cmd="merge-from-panes" title="אחד את החלוניות חזרה לראשי">⤺ אחד</button>
-          <button data-cmd="sync-toggle" id="sync-btn" title="סנכרון גלילה בין חלוניות">🔗 גלילה</button>
-          <button data-cmd="lines-toggle" title="מצב שורות — שורה לכל הערה">☷ שורות</button>
+          <button data-cmd="split-to-panes" class="primary" title="פצל את הראשי לחלוניות לפי @NN" data-i18n="split">✂ פצל לחלוניות</button>
+          <button data-cmd="split-special-notes" title="הפרד הערות מתוך הזרם הראשון לפי סימן פנימי" data-i18n="splitNotes">✂ הפרד הערות</button>
+          <button data-cmd="merge-toggle" id="merge-toggle-btn" title="מזג הערות לתוך הראשי או פרק חזרה" data-i18n="mergeToggle">🔗 מזג / פרק</button>
+          <button data-cmd="merge-from-panes" title="אחד את החלוניות חזרה לראשי" data-i18n="merge">⤺ אחד</button>
+          <button data-cmd="preview-toggle" id="preview-toggle-btn" title="מצב קריאה" data-i18n="preview">👁 תצוגה</button>
+          <button data-cmd="tools-toggle" id="expand-tools-btn" title="כלים מורחבים">⚙ כלים</button>
+          <button data-cmd="sync-toggle" id="sync-btn" title="סנכרון גלילה בין חלוניות" data-i18n="sync">🔗 גלילה</button>
+          <button data-cmd="pane-layout-toggle" id="pane-layout-btn" title="החלף בין זרמים זה לצד זה לבין זרמים זה תחת זה">▥ זרמים לרוחב</button>
+          <button data-cmd="lines-toggle" title="מצב שורות — שורה לכל הערה" data-i18n="lines">☷ שורות</button>
           <span class="pane-status">@01 בכל מקום מזוהה אוטומטית • Tab בתוך @NN לקפיצה</span>
           <span style="flex:1"></span>
-          <button data-cmd="pane-clear-storage" title="אפס מצב חלוניות">↺ איפוס</button>
+          <button data-cmd="pane-clear-storage" title="אפס מצב חלוניות" data-i18n="reset">↺ איפוס</button>
+        </div>
+        <div id="expanded-tools" class="expanded-tools" hidden>
+          <button data-cmd="show-stats">סטטיסטיקות</button>
+          <button data-cmd="advanced-search">חיפוש בפלט</button>
+          <button data-cmd="text-formatter">עיצוב טקסט</button>
+          <button data-cmd="theme-selector">ערכת תצוגה</button>
+          <button data-cmd="quick-actions">פעולות</button>
+          <button data-cmd="link-manager">קישור</button>
+          <button data-cmd="edit-history">היסטוריה</button>
+          <button data-cmd="advanced-settings">הגדרות</button>
         </div>
         <div class="toolbar bottom-toolbar source-bottom-toolbar" dir="rtl">
-          <button type="button" id="btn-load-internal">טען דוגמה</button>
-          <button type="button" id="btn-load-inline">טען טקסט inline</button>
-          <button type="button" id="btn-load-shulchan">טען שו״ע</button>
-          <button type="button" id="btn-load-talmud">טען גמרא</button>
-          <button type="button" id="btn-render">רנדר עמודים</button>
+          <button type="button" id="btn-load-internal" data-i18n="loadSample">טען דוגמה</button>
+          <button type="button" id="btn-load-inline" data-i18n="loadInline">טען טקסט inline</button>
+          <button type="button" id="btn-load-shulchan" data-i18n="loadShulchan">טען שו״ע</button>
+          <button type="button" id="btn-load-talmud" data-i18n="loadTalmud">טען גמרא</button>
+          <button type="button" id="btn-render" data-i18n="renderPages">רנדר עמודים</button>
           <label class="toolbar-checkbox">
             <input type="checkbox" id="mishna-wrap-toggle" />
-            משנה ברורה: גלישה
+            <span data-i18n="mishnaWrap">משנה ברורה: גלישה</span>
           </label>
           <label class="mishna-levels-control">
-            <span>רמות:</span>
+            <span data-i18n="levels">רמות:</span>
             <input
               type="text"
               id="mishna-levels-input"
@@ -193,10 +222,113 @@
               title="כל רמה מופרדת בקו אנכי. לדוגמה: 01,02 | 03,04"
             />
           </label>
+          <label class="toolbar-checkbox">
+            <input type="checkbox" id="talmud-layout-toggle" />
+            <span>תלמוד: צורת הדף</span>
+          </label>
+          <label class="mishna-levels-control">
+            <span>זרמי תלמוד:</span>
+            <input
+              type="text"
+              id="talmud-streams-input"
+              placeholder="01,02"
+              title="עד שני זרמים שיוצבו כפרשני תלמוד"
+            />
+          </label>
+          <label class="opw-control">
+            <span>כתר:</span>
+            <input type="number" id="talmud-crown-lines-input" min="0" max="12" value="4" />
+          </label>
+          <label class="opw-control">
+            <span>ראשי %:</span>
+            <input type="number" id="talmud-main-width-input" min="20" max="80" value="42" />
+          </label>
+          <label class="opw-control">
+            <span>צדדים:</span>
+            <select id="talmud-side-mode-select">
+              <option value="auto">אוטו</option>
+              <option value="right-left">ימין/שמאל</option>
+              <option value="inner-outer">פנימי/חיצוני</option>
+            </select>
+          </label>
+        </div>
+        <div id="opening-word-controls" class="toolbar opening-word-toolbar" dir="rtl">
+          <label class="toolbar-checkbox">
+            <input type="checkbox" id="opw-enabled" />
+            <span>מילה פותחת</span>
+          </label>
+          <label class="opw-control">
+            <span>יעד:</span>
+            <select id="opw-target">
+              <option value="word">מילה</option>
+              <option value="letter">אות</option>
+              <option value="words">מילים</option>
+            </select>
+          </label>
+          <label class="opw-control">
+            <span>N:</span>
+            <input type="number" id="opw-count" min="1" max="12" value="1" />
+          </label>
+          <label class="opw-control">
+            <span>סגנון:</span>
+            <input type="text" id="opw-style" placeholder="Word style" />
+          </label>
+          <label class="opw-control">
+            <span>מצב:</span>
+            <select id="opw-position">
+              <option value="raised">מוגבהת</option>
+              <option value="dropped">נפתחת</option>
+            </select>
+          </label>
+          <label class="opw-control">
+            <span>גודל %:</span>
+            <input type="number" id="opw-size" min="80" max="500" value="200" />
+          </label>
+          <label class="opw-control">
+            <span>גופן:</span>
+            <select id="opw-font">
+              <option value="inherit">כמו הטקסט</option>
+              <option value="David">David</option>
+              <option value="David Libre">David Libre</option>
+              <option value="Frank Ruhl Libre">Frank</option>
+              <option value="Segoe UI">Segoe</option>
+            </select>
+          </label>
+          <label class="opw-control">
+            <span>משקל:</span>
+            <select id="opw-weight">
+              <option value="normal">רגיל</option>
+              <option value="bold">מודגש</option>
+              <option value="heavy">כבד</option>
+            </select>
+          </label>
+          <label class="opw-control">
+            <span>שורות:</span>
+            <input type="number" id="opw-drop-lines" min="1" max="8" value="2" />
+          </label>
+          <label class="opw-control">
+            <span>רווח em:</span>
+            <input type="number" id="opw-space-after" min="0" max="4" step="0.1" value="0.3" />
+          </label>
+          <label class="opw-control">
+            <span>תחולה:</span>
+            <select id="opw-scope">
+              <option value="first">פסקה ראשונה</option>
+              <option value="all">כל פסקה</option>
+            </select>
+          </label>
+          <label class="toolbar-checkbox">
+            <input type="checkbox" id="opw-skip-headings" checked />
+            <span>דלג כותרות</span>
+          </label>
+          <label class="opw-control">
+            <span>סף קצר:</span>
+            <input type="number" id="opw-heading-min" min="0" max="500" value="80" />
+          </label>
         </div>
         <div id="stream-columns-panel" class="toolbar stream-columns-toolbar" dir="rtl"></div>
         <div class="toolbar stress-toolbar" dir="rtl">
-          <span class="stress-label">בדיקת עומס:</span>
+          <span class="stress-label" data-i18n="stress">בדיקת עומס:</span>
           <button type="button" data-mul="3" class="btn-stress">×3</button>
           <button type="button" data-mul="10" class="btn-stress">×10</button>
           <button type="button" data-mul="30" class="btn-stress">×30</button>
@@ -206,7 +338,7 @@
       </section>
 
       <aside class="panel preview-pane">
-        <h2>תצוגה</h2>
+        <h2 data-i18n="preview">תצוגה</h2>
         <div id="pdf-toolbar" class="pdf-toolbar" dir="rtl">
           <button type="button" id="pdf-sidebar-toggle" title="לוח צד" class="pdf-tb-btn">☰</button>
           <span class="pdf-tb-sep"></span>
@@ -250,6 +382,18 @@
         </div>
       </aside>
     </main>
+
+    <section class="modal-overlay" id="word-import-modal">
+      <div class="modal" dir="rtl">
+        <h2 data-i18n="wordImportTitle">טעינה מקובץ Word</h2>
+        <p class="modal-desc" data-i18n="wordImportDesc">סמן זרמים והגדר סימן קישור:</p>
+        <div id="word-stream-list"></div>
+        <div class="modal-btns">
+          <button type="button" id="word-import-confirm" data-i18n="load">טען</button>
+          <button type="button" id="word-import-cancel" data-i18n="cancel">ביטול</button>
+        </div>
+      </div>
+    </section>
 
     <section id="diagnostics-panel" class="diag-panel diag" hidden>
       <div class="diag-panel-inner">

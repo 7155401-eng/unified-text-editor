@@ -1,9 +1,11 @@
-// Real-time DOM-measurement page packer with paragraph splitting.
+﻿// Real-time DOM-measurement page packer with paragraph splitting.
 // Mimics word-processor pagination: each page is filled to the bottom margin,
 // paragraphs are split at word boundaries when needed, and each note
 // is placed on the same page as the spot in the body where it anchors.
 
 import { streamColorIndex } from "./schema.js";
+import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layout.js";
+import { applyTalmudLayoutToPage, isTalmudLayoutEnabled } from "../talmud_layout.js";
 
 // Pack to ~15px below the rendered page height to leave a safety buffer for
 // sub-pixel rounding / margin-collapse / font-metric drift between the
@@ -11,10 +13,87 @@ import { streamColorIndex } from "./schema.js";
 // frequent 5-15px overflows on dense pages.
 export const DOM_PAGE_GEOM = {
   pageWidth: 380, // must match CSS .page width
-  maxPageHeight: 522, // CSS .page height is 537 — leave 15px buffer
+  pageHeight: 537,
+  maxPageHeight: 531,
 };
 
 let _measureRoot = null;
+let _measureCache = null;
+let _pageMeasureCache = null;
+let _measureStats = null;
+let _activeContentMeta = [];
+const MAX_MEASURE_CACHE_ENTRIES = 2500;
+const MAX_MEASURE_CACHE_TEXT_LENGTH = 12000;
+const MIN_CONTINUED_MAIN_CHARS = 44;
+const MIN_CONTINUED_MAIN_WORDS = 4;
+const MIN_FORWARD_LAST_LINE_FILL = 0.72;
+const MIN_NOTE_SPLIT_LINE_FILL = 0.72;
+const MAX_SPLIT_REFINE_STEPS = 32;
+const MAX_NOTE_SPLIT_REFINE_STEPS = 14;
+const MISHNA_WRAP_HEIGHT_SAFETY = 10;
+const TALMUD_LAYOUT_HEIGHT_SAFETY = 0;
+const MAIN_LINE_PROBE_EXTRA_CHARS = 260;
+const LINE_RECT_TOLERANCE = 2;
+
+function cssPxVar(name, fallback) {
+  if (typeof window === "undefined" || !window.getComputedStyle) return fallback;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function getDomPageGeom() {
+  const pageWidth = cssPxVar("--ravtext-page-width", DOM_PAGE_GEOM.pageWidth);
+  const pageHeight = cssPxVar("--ravtext-page-height", DOM_PAGE_GEOM.pageHeight);
+  const safety = cssPxVar("--ravtext-page-pack-safety", 6);
+  return {
+    pageWidth,
+    pageHeight,
+    maxPageHeight: Math.max(360, pageHeight - Math.max(0, safety)),
+  };
+}
+
+function hashAppend(hash, value) {
+  const s = String(value ?? "");
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function blockMetaFor(idx) {
+  return _activeContentMeta[idx] || {};
+}
+
+function mainBlockTagFor(idx) {
+  const meta = blockMetaFor(idx);
+  if (meta.blockType !== "heading") return "p";
+  const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
+  return `h${level}`;
+}
+
+function streamTitleForCode(code) {
+  const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
+  return (labels && labels[code]) || code;
+}
+
+function shouldMeasureMishnaWrap() {
+  try {
+    return typeof window !== "undefined" && isMishnaWrapEnabled();
+  } catch (_err) {
+    return false;
+  }
+}
+
+function shouldMeasureTalmudLayout() {
+  try {
+    return typeof window !== "undefined" && isTalmudLayoutEnabled();
+  } catch (_err) {
+    return false;
+  }
+}
+
 function getMeasureRoot() {
   if (!_measureRoot) {
     _measureRoot = document.createElement("div");
@@ -24,9 +103,51 @@ function getMeasureRoot() {
     _measureRoot.style.left = "-99999px";
     _measureRoot.style.top = "0";
     _measureRoot.style.width = "1000px";
+    _measureRoot.style.contain = "layout style";
     document.body.appendChild(_measureRoot);
   }
   return _measureRoot;
+}
+
+function makeMeasureKey(mainSegments, streams) {
+  let parts = 0;
+  let textLen = 0;
+  for (const seg of mainSegments || []) {
+    parts++;
+    textLen += (seg.text || "").length;
+    if (textLen > MAX_MEASURE_CACHE_TEXT_LENGTH) return null;
+  }
+  const codes = Object.keys(streams || {}).sort();
+  for (const code of codes) {
+    for (const tup of streams[code] || []) {
+      parts++;
+      textLen += (tup[1] || "").length;
+      if (textLen > MAX_MEASURE_CACHE_TEXT_LENGTH) return null;
+    }
+  }
+
+  let hash = 2166136261;
+  hash = hashAppend(hash, shouldMeasureTalmudLayout() ? "talmud:1" : "talmud:0");
+  hash = hashAppend(hash, shouldMeasureMishnaWrap() ? "mishna:1" : "mishna:0");
+  for (const seg of mainSegments || []) {
+    const text = seg.text || "";
+    hash = hashAppend(hash, seg.idx);
+    hash = hashAppend(hash, text.length);
+    hash = hashAppend(hash, text);
+  }
+  for (const code of codes) {
+    hash = hashAppend(hash, code);
+    for (const tup of streams[code] || []) {
+      const text = tup[1] || "";
+      hash = hashAppend(hash, tup[0]);
+      hash = hashAppend(hash, tup[2]);
+      hash = hashAppend(hash, tup[3]);
+      hash = hashAppend(hash, tup[4]);
+      hash = hashAppend(hash, text.length);
+      hash = hashAppend(hash, text);
+    }
+  }
+  return `${parts}:${textLen}:${hash.toString(36)}`;
 }
 
 // Estimate how many rendered lines a list of notes would occupy in a single
@@ -58,7 +179,7 @@ function buildMeasurePage(mainSegments, streams) {
     if (seg.idx === lastIdx && lastP) {
       lastP.textContent += " " + seg.text;
     } else {
-      const p = document.createElement("p");
+      const p = document.createElement(mainBlockTagFor(seg.idx));
       p.textContent = seg.text;
       main.appendChild(p);
       lastP = p;
@@ -97,7 +218,7 @@ function buildMeasurePage(mainSegments, streams) {
 
       const title = document.createElement("div");
       title.className = "stream-title";
-      title.textContent = code;
+      title.textContent = streamTitleForCode(code);
       s.appendChild(title);
 
       // Default = inline (continuous notes); user can toggle off per-stream.
@@ -145,19 +266,41 @@ function buildMeasurePage(mainSegments, streams) {
     }
     page.appendChild(streamsWrap);
   }
+  if (shouldMeasureTalmudLayout()) applyTalmudLayoutToPage(page);
+  if (shouldMeasureMishnaWrap()) applyMishnaWrapToPage(page);
   return page;
 }
 
-function measureHeight(mainSegments, streams) {
+function measureHeight(mainSegments, streams, opts = {}) {
+  let cacheKey = null;
+  if (_measureCache) {
+    cacheKey = makeMeasureKey(mainSegments, streams);
+    if (!opts.forceRender && cacheKey) {
+      const cached = _measureCache.get(cacheKey);
+      if (cached !== undefined) {
+        if (_measureStats) _measureStats.hits++;
+        return cached;
+      }
+    }
+  }
+  if (_measureStats) _measureStats.misses++;
+
   const root = getMeasureRoot();
-  root.innerHTML = "";
+  root.replaceChildren();
   const dom = buildMeasurePage(mainSegments, streams);
   root.appendChild(dom);
-  void dom.offsetHeight;
   // Use scrollHeight to capture the FULL natural content height, including
   // any sub-pixel rounding or margin collapse that getBoundingClientRect may
   // truncate when the page has overflow:hidden.
-  return Math.max(dom.scrollHeight, dom.getBoundingClientRect().height);
+  const height = Math.max(dom.scrollHeight, dom.getBoundingClientRect().height);
+  if (
+    _measureCache &&
+    cacheKey &&
+    _measureCache.size < MAX_MEASURE_CACHE_ENTRIES
+  ) {
+    _measureCache.set(cacheKey, height);
+  }
+  return height;
 }
 
 // Returns the last-line fill ratio (0..1) for the LAST <p> in page-main
@@ -179,6 +322,34 @@ function lastMainLineFillRatio() {
   if (maxWidth <= 0) return 1;
   const lastRect = rects[rects.length - 1];
   return lastRect.width / maxWidth;
+}
+
+function lineFillRatioForElement(el) {
+  if (!el) return 1;
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const rects = Array.from(range.getClientRects())
+    .filter((r) => r.width > 1 && r.height > 1);
+  range.detach();
+  if (rects.length <= 1) return 1;
+  let maxWidth = 0;
+  for (const r of rects) if (r.width > maxWidth) maxWidth = r.width;
+  if (maxWidth <= 0) return 1;
+  return rects[rects.length - 1].width / maxWidth;
+}
+
+function lastStreamLineFillRatio(streamCode = null) {
+  const root = _measureRoot;
+  if (!root) return 1;
+  let scope = root;
+  if (streamCode !== null && streamCode !== undefined) {
+    const wanted = String(streamCode);
+    scope = Array.from(root.querySelectorAll(".stream"))
+      .find((stream) => stream.getAttribute("data-stream") === wanted) || root;
+  }
+  const notes = scope.querySelectorAll(".stream .note-inline, .stream .note, .note-inline, .note");
+  if (notes.length === 0) return 1;
+  return lineFillRatioForElement(notes[notes.length - 1]);
 }
 
 function cloneStreams(streams) {
@@ -212,7 +383,187 @@ function adjustToWordBoundary(text, end) {
   return i;
 }
 
-function findMaxFittingPrefix(prevSegments, prevStreams, paraIdx, text, notes, prefixOffset, maxHeight) {
+function wordCount(text) {
+  return (String(text || "").match(/\S+/g) || []).length;
+}
+
+function previousWordBoundaryBefore(text, end) {
+  let i = Math.max(0, Math.min(end, text.length));
+  while (i > 0 && /\s/.test(text[i - 1])) i--;
+  while (i > 0 && !/\s/.test(text[i - 1])) i--;
+  return i;
+}
+
+function nextWordBoundaryAfter(text, start) {
+  let i = Math.max(0, Math.min(start, text.length));
+  while (i < text.length && /\s/.test(text[i])) i++;
+  while (i < text.length && !/\s/.test(text[i])) i++;
+  return i;
+}
+
+function hasEnoughTextBeforeContinuation(text, end) {
+  if (end >= text.length) return true;
+  const part = text.substring(0, end).trim();
+  return part.length >= MIN_CONTINUED_MAIN_CHARS &&
+    wordCount(part) >= MIN_CONTINUED_MAIN_WORDS;
+}
+
+function hasAnchoredNoteBefore(notes, prefixOffset, end) {
+  const limit = prefixOffset + end;
+  return notes.some((n) => typeof n.anchor === "number" && n.anchor < limit);
+}
+
+function lastAnchorBefore(notes, end) {
+  let anchor = null;
+  for (const n of notes || []) {
+    if (typeof n.anchor !== "number" || n.anchor >= end) continue;
+    if (anchor === null || n.anchor > anchor) anchor = n.anchor;
+  }
+  return anchor;
+}
+
+function firstAnchorAtOrAfter(notes, end) {
+  let anchor = null;
+  for (const n of notes || []) {
+    if (typeof n.anchor !== "number" || n.anchor < end) continue;
+    if (anchor === null || n.anchor < anchor) anchor = n.anchor;
+  }
+  return anchor;
+}
+
+function firstTextNode(el) {
+  if (!el) return null;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  return walker.nextNode();
+}
+
+function rectForChar(textNode, offset) {
+  const len = textNode?.textContent?.length || 0;
+  if (!len) return null;
+  const starts = [];
+  const base = Math.max(0, Math.min(offset, len - 1));
+  starts.push(base);
+  if (base > 0) starts.push(base - 1);
+  if (base + 1 < len) starts.push(base + 1);
+  for (const start of starts) {
+    const end = Math.min(start + 1, len);
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, end);
+    const rect = Array.from(range.getClientRects())
+      .find((r) => r.width > 0.5 && r.height > 0.5);
+    range.detach();
+    if (rect) return rect;
+  }
+  return null;
+}
+
+function sameRenderedLine(a, b) {
+  if (!a || !b) return true;
+  const aMid = (a.top + a.bottom) / 2;
+  const bMid = (b.top + b.bottom) / 2;
+  return Math.abs(aMid - bMid) <= Math.max(LINE_RECT_TOLERANCE, Math.min(a.height, b.height) / 2);
+}
+
+function renderedMainLineEndAfterOffset(prevSegments, prevStreams, paraIdx, text, offset) {
+  if (offset >= text.length) return text.length;
+  const probeEnd = Math.min(
+    text.length,
+    Math.max(offset + 1, offset + MAIN_LINE_PROBE_EXTRA_CHARS)
+  );
+  const probeText = text.substring(0, probeEnd);
+  measureHeight(
+    prevSegments.concat([{ idx: paraIdx, text: probeText }]),
+    prevStreams,
+    { forceRender: true }
+  );
+  const main = _measureRoot?.querySelector(".page-main");
+  if (!main) return nextWordBoundaryAfter(text, offset + 1);
+  const blocks = main.querySelectorAll("p,h1,h2,h3,h4,h5,h6");
+  const block = blocks[blocks.length - 1];
+  const textNode = firstTextNode(block);
+  if (!textNode) return nextWordBoundaryAfter(text, offset + 1);
+  const len = textNode.textContent.length;
+  const anchorOffset = Math.max(0, Math.min(offset, len - 1));
+  const anchorRect = rectForChar(textNode, anchorOffset);
+  if (!anchorRect) return nextWordBoundaryAfter(text, offset + 1);
+
+  let lineEnd = probeEnd;
+  for (let pos = anchorOffset + 1; pos < len; pos++) {
+    const rect = rectForChar(textNode, pos);
+    if (!rect) continue;
+    if (!sameRenderedLine(anchorRect, rect)) {
+      lineEnd = pos;
+      break;
+    }
+  }
+
+  const clean = adjustToWordBoundary(text, lineEnd);
+  if (clean > offset) return clean;
+  return nextWordBoundaryAfter(text, offset + 1);
+}
+
+function clampPrefixToSatisfiedAnchorLine(prevSegments, prevStreams, paraIdx, text, notes, end) {
+  if (end <= 0 || end >= text.length) return end;
+  const lastSatisfied = lastAnchorBefore(notes, end);
+  if (lastSatisfied === null) return end;
+  const nextUnsatisfied = firstAnchorAtOrAfter(notes, end);
+  if (nextUnsatisfied === null) return end;
+
+  const lineEnd = renderedMainLineEndAfterOffset(
+    prevSegments,
+    prevStreams,
+    paraIdx,
+    text,
+    lastSatisfied
+  );
+  if (lineEnd <= 0 || lineEnd >= end) return end;
+  return Math.max(lineEnd, nextWordBoundaryAfter(text, lastSatisfied + 1));
+}
+
+function clampPrefixToFirstAnchorLine(prevSegments, prevStreams, paraIdx, text, notes, end) {
+  if (end <= 0 || !notes?.length) return end;
+  let first = null;
+  for (const note of notes) {
+    if (typeof note.anchor !== "number") continue;
+    if (first === null || note.anchor < first) first = note.anchor;
+  }
+  if (first === null || first >= end) return end;
+  const lineEnd = renderedMainLineEndAfterOffset(prevSegments, prevStreams, paraIdx, text, first);
+  if (lineEnd <= 0 || lineEnd >= end) return end;
+  return Math.max(lineEnd, nextWordBoundaryAfter(text, first + 1));
+}
+
+function refineFittingPrefix(prevSegments, prevStreams, paraIdx, text, notes, prefixOffset, maxHeight, maxChars, opts = {}) {
+  if (!opts.avoidAwkwardBreaks || maxChars <= 0 || maxChars >= text.length) {
+    return maxChars;
+  }
+
+  let end = adjustToWordBoundary(text, maxChars);
+  if (end <= 0) end = Math.min(maxChars, text.length);
+
+  let steps = 0;
+  while (end > 0 && steps++ < MAX_SPLIT_REFINE_STEPS) {
+    const tryText = text.substring(0, end).trimEnd();
+    if (!tryText) return 0;
+    const shortAnchoredPrefix =
+      opts.allowShortAnchoredPrefix && hasAnchoredNoteBefore(notes, prefixOffset, end);
+    if (shortAnchoredPrefix || opts.allowShortMainPrefix || hasEnoughTextBeforeContinuation(text, end)) {
+      const tryNotes = notes.filter((n) => n.anchor < prefixOffset + end);
+      const tryAll = prevSegments.concat([{ idx: paraIdx, text: tryText }]);
+      const tryStreams = addNotesToStreams(prevStreams, paraIdx, tryNotes);
+      const h = measureHeight(tryAll, tryStreams);
+      if (h <= maxHeight && lastMainLineFillRatio() >= MIN_FORWARD_LAST_LINE_FILL) {
+        return end;
+      }
+    }
+    end = previousWordBoundaryBefore(text, end - 1);
+  }
+
+  return 0;
+}
+
+function findMaxFittingPrefix(prevSegments, prevStreams, paraIdx, text, notes, prefixOffset, maxHeight, opts = {}) {
   // Binary search for max char count of `text` that fits along with prevSegments.
   let lo = 0;
   let hi = text.length;
@@ -229,7 +580,42 @@ function findMaxFittingPrefix(prevSegments, prevStreams, paraIdx, text, notes, p
       hi = mid - 1;
     }
   }
-  return lo;
+  return refineFittingPrefix(
+    prevSegments,
+    prevStreams,
+    paraIdx,
+    text,
+    notes,
+    prefixOffset,
+    maxHeight,
+    lo,
+    opts
+  );
+}
+
+function refineNoteSplitPrefix(mainSegments, baseStreams, paraIdx, note, maxHeight, maxChars) {
+  if (maxChars <= 0 || maxChars >= note.text.length) return maxChars;
+  let end = adjustToWordBoundary(note.text, maxChars);
+  if (end <= 0) return 0;
+
+  let steps = 0;
+  while (end > 0 && steps++ < MAX_NOTE_SPLIT_REFINE_STEPS) {
+    const prefixText = note.text.substring(0, end).trimEnd();
+    const suffixText = note.text.substring(end).trimStart();
+    if (!prefixText || !suffixText) return 0;
+
+    const tryNote = {
+      ...note,
+      text: prefixText,
+    };
+    const tryStreams = addNotesToStreams(baseStreams, paraIdx, [tryNote]);
+    const h = measureHeight(mainSegments, tryStreams, { forceRender: true });
+    if (h <= maxHeight && lastStreamLineFillRatio(note.stream) >= MIN_NOTE_SPLIT_LINE_FILL) {
+      return end;
+    }
+    end = previousWordBoundaryBefore(note.text, end - 1);
+  }
+  return 0;
 }
 
 // Helper used by domPack(): take an array of notes belonging to paragraph idx
@@ -253,6 +639,7 @@ function buildPageObject(mainSegments, streamsMap, totalH) {
       s.text,
       typeof s.start === "number" ? s.start : 0,
       typeof s.end === "number" ? s.end : (s.text || "").length,
+      blockMetaFor(s.idx),
     ]),
     streams,
     main_h: 0,
@@ -269,10 +656,16 @@ function buildPageObject(mainSegments, streamsMap, totalH) {
  * @returns {Array<Object>} pages
  */
 function forwardPack(content, geom = DOM_PAGE_GEOM) {
+  const packGeom = shouldMeasureTalmudLayout()
+    ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - TALMUD_LAYOUT_HEIGHT_SAFETY) }
+    : geom;
+  geom = packGeom;
   const pages = [];
   let pageMain = []; // [{idx, text}]
   let pageStreams = {}; // code: [[idx, text]]
   let pageHeight = 0;
+  const LONG_NOTE_CHUNK_CHARS = 900;
+  const longNoteSplitCache = new Map();
 
   function finalizePage() {
     const hasMain = pageMain.length > 0;
@@ -296,7 +689,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       if (h <= maxHeight) lo = mid;
       else hi = mid - 1;
     }
-    return lo;
+    return refineNoteSplitPrefix([], {}, 0, { stream, anchor, text }, maxHeight, lo);
   }
 
   // Split a note's text at a word boundary so it can flow across pages.
@@ -328,9 +721,62 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     return [part1, part2];
   }
 
+  function preSplitLongNote(note) {
+    const text = note.text || "";
+    if (text.length <= LONG_NOTE_CHUNK_CHARS) return [note];
+    const key = [
+      note.stream,
+      note.anchor,
+      note.num,
+      note.isContinuation ? 1 : 0,
+      text,
+    ].join("\u0001");
+    const cached = longNoteSplitCache.get(key);
+    if (cached) return cached.map((part) => ({ ...part }));
+
+    const parts = [];
+    let remainingNote = { ...note, text, isContinuation: !!note.isContinuation };
+    let safety = 80;
+    while (remainingNote.text.length > LONG_NOTE_CHUNK_CHARS && safety-- > 0) {
+      const fit = fitNoteCharPrefix(
+        remainingNote.stream,
+        remainingNote.anchor,
+        remainingNote.text,
+        packGeom.maxPageHeight
+      );
+      let end = adjustToWordBoundary(remainingNote.text, fit);
+      if (end <= 0 || end >= remainingNote.text.length) {
+        end = adjustToWordBoundary(remainingNote.text, LONG_NOTE_CHUNK_CHARS);
+      }
+      if (end <= 0 || end >= remainingNote.text.length) break;
+      parts.push({
+        ...remainingNote,
+        text: remainingNote.text.substring(0, end).trimEnd(),
+      });
+      remainingNote = {
+        ...remainingNote,
+        text: remainingNote.text.substring(end).trimStart(),
+        isContinuation: true,
+      };
+    }
+    if (remainingNote.text) {
+      parts.push(remainingNote);
+    }
+    longNoteSplitCache.set(key, parts.map((part) => ({ ...part })));
+    return parts;
+  }
+
   // Find max chars of a single additional note that fit alongside an
   // existing notes-only page state (notesAlready: array of {stream, anchor, text}).
-  function fitNoteCharPrefixAlongside(notesAlready, paraIdx, candidate, maxHeight) {
+  function fitNoteCharPrefixAlongside(
+    notesAlready,
+    paraIdx,
+    candidate,
+    maxHeight,
+    mainSegments = [],
+    baseStreams = null
+  ) {
+    const existingStreams = baseStreams || addNotesToStreams({}, paraIdx, notesAlready);
     let lo = 0;
     let hi = candidate.text.length;
     while (lo < hi) {
@@ -340,12 +786,19 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
         anchor: candidate.anchor,
         text: candidate.text.substring(0, mid),
       };
-      const ts = addNotesToStreams({}, paraIdx, notesAlready.concat([tryNote]));
-      const h = measureHeight([], ts);
+      const ts = addNotesToStreams(existingStreams, paraIdx, [tryNote]);
+      const h = measureHeight(mainSegments, ts);
       if (h <= maxHeight) lo = mid;
       else hi = mid - 1;
     }
-    return lo;
+    return refineNoteSplitPrefix(
+      mainSegments,
+      existingStreams,
+      paraIdx,
+      candidate,
+      maxHeight,
+      lo
+    );
   }
 
   // Distribute a list of notes (all from paragraph paraIdx) across one or more
@@ -355,7 +808,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   // Notes that are too tall to fit (alone OR as the next item that doesn't
   // fit alongside what's already on the page) get split at word boundaries.
   function distributeNotesAcrossPages(paraIdx, notes, geomLocal) {
-    let toPlace = notes.slice();
+    let toPlace = notes.flatMap(preSplitLongNote);
     while (toPlace.length > 0) {
       let lo = 0;
       let hi = toPlace.length;
@@ -434,7 +887,8 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       const remaining = para.mainText.substring(prefix);
       const remainingNotes = para.notes
         .filter((n) => n.anchor >= prefix)
-        .map((n) => ({ ...n, anchor: n.anchor - prefix }));
+        .map((n) => ({ ...n, anchor: n.anchor - prefix }))
+        .flatMap(preSplitLongNote);
 
       if (remaining.length === 0 && remainingNotes.length === 0) break;
 
@@ -449,7 +903,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       const tryStreams = addNotesToStreams(pageStreams, i, remainingNotes);
       const fullH = measureHeight(tryAll, tryStreams);
 
-      if (fullH <= geom.maxPageHeight) {
+      if (fullH <= packGeom.maxPageHeight) {
         pageMain = tryAll;
         pageStreams = tryStreams;
         pageHeight = fullH;
@@ -464,7 +918,8 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
         remaining,
         remainingNotes,
         0,
-        geom.maxPageHeight
+        geom.maxPageHeight,
+        { avoidAwkwardBreaks: true, allowShortAnchoredPrefix: true }
       );
 
       if (fitChars === 0) {
@@ -479,11 +934,21 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
             remaining,
             [],
             0,
-            geom.maxPageHeight
+            geom.maxPageHeight,
+            { avoidAwkwardBreaks: true, allowShortMainPrefix: remainingNotes.length > 0 }
           );
 
           if (fitMainOnly > 0) {
-            const wordEnd2 = adjustToWordBoundary(remaining, fitMainOnly);
+            const cleanEnd2 = adjustToWordBoundary(remaining, fitMainOnly);
+            let wordEnd2 = cleanEnd2 > 0 ? cleanEnd2 : Math.min(fitMainOnly, remaining.length);
+            wordEnd2 = clampPrefixToFirstAnchorLine(
+              pageMain,
+              pageStreams,
+              i,
+              remaining,
+              remainingNotes,
+              wordEnd2
+            );
             const fitText2 = remaining.substring(0, wordEnd2).trimEnd();
             const candidates = remainingNotes.filter((n) => n.anchor < wordEnd2);
 
@@ -511,17 +976,13 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
                 continue;
               }
               // Try splitting this note to fit a prefix.
-              const placedSoFar = [];
-              for (const code of Object.keys(pageStreams)) {
-                for (const [pidx, ptext] of pageStreams[code]) {
-                  placedSoFar.push({ stream: code, anchor: 0, text: ptext });
-                }
-              }
               const fitC = fitNoteCharPrefixAlongside(
-                placedSoFar,
+                [],
                 i,
                 note,
-                geom.maxPageHeight
+                geom.maxPageHeight,
+                pageMain,
+                pageStreams
               );
               if (fitC > 0) {
                 const splitEnd = adjustToWordBoundary(note.text, fitC);
@@ -616,7 +1077,16 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
 
       // fitChars is the most main we can take WITH all of its anchored notes
       // fitting on the same page.
-      const wordEnd = adjustToWordBoundary(remaining, fitChars);
+      const cleanEnd = adjustToWordBoundary(remaining, fitChars);
+      let wordEnd = cleanEnd > 0 ? cleanEnd : Math.min(fitChars, remaining.length);
+      wordEnd = clampPrefixToSatisfiedAnchorLine(
+        pageMain,
+        pageStreams,
+        i,
+        remaining,
+        remainingNotes,
+        wordEnd
+      );
       const fitText = remaining.substring(0, wordEnd).trimEnd();
       const fitNotes = remainingNotes.filter((n) => n.anchor < wordEnd);
 
@@ -689,10 +1159,12 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
             }
             // Try splitting next note
             const fitC = fitNoteCharPrefixAlongside(
-              fitNotes,
+              [],
               i,
               next,
-              geom.maxPageHeight
+              geom.maxPageHeight,
+              newMain,
+              pageStreams
             );
             if (fitC > 0) {
               const splitEnd = adjustToWordBoundary(next.text, fitC);
@@ -755,12 +1227,45 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
 }
 
 export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
-  const pages = forwardPack(content, geom);
-  await rebalancePages(pages, geom, opts);
-  if (typeof opts.isCurrent === "function" && !opts.isCurrent()) return pages;
-  compactTrailingPages(pages, geom);
-  sortStreamNotes(pages);
-  return pages;
+  const prevCache = _measureCache;
+  const prevPageCache = _pageMeasureCache;
+  const prevStats = _measureStats;
+  const prevContentMeta = _activeContentMeta;
+  const debug = typeof window !== "undefined" && window.__DOM_PACK_DEBUG__;
+  _measureCache = new Map();
+  _pageMeasureCache = new WeakMap();
+  _measureStats = { hits: 0, misses: 0, pageHits: 0 };
+  _activeContentMeta = (content || []).map((item) => ({
+    blockType: item?.blockType === "heading" ? "heading" : "paragraph",
+    headingLevel: item?.blockType === "heading" ? Math.max(1, Math.min(6, parseInt(item.headingLevel || 1, 10))) : null,
+  }));
+  if (typeof window !== "undefined") window.__MAIN_BLOCK_META__ = _activeContentMeta;
+  try {
+    const effectiveGeom = shouldMeasureMishnaWrap()
+      ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - MISHNA_WRAP_HEIGHT_SAFETY) }
+      : geom;
+    const pages = forwardPack(content, effectiveGeom);
+    const rebalanceOpts = { ...opts };
+    if (typeof rebalanceOpts.maxPasses !== "number") {
+      rebalanceOpts.maxPasses = pages.length > 8 ? 1 : 3;
+    }
+    if (rebalanceOpts.skipCompact === undefined && pages.length > 8) {
+      rebalanceOpts.skipCompact = true;
+    }
+    await rebalancePages(pages, effectiveGeom, rebalanceOpts);
+    mergeAdjacentNotesOnlyPages(pages, effectiveGeom);
+    if (typeof opts.isCurrent === "function" && !opts.isCurrent()) return pages;
+    sortStreamNotes(pages);
+    if (debug) {
+      console.log(`[domPack] measure cache hits=${_measureStats.hits} pageHits=${_measureStats.pageHits} misses=${_measureStats.misses}`);
+    }
+    return pages;
+  } finally {
+    _measureCache = prevCache;
+    _pageMeasureCache = prevPageCache;
+    _measureStats = prevStats;
+    _activeContentMeta = prevContentMeta;
+  }
 }
 
 // ─── Post-pass: backward rebalance ────────────────────────────────────────
@@ -778,14 +1283,100 @@ function pageDataIsEmpty(p) {
   return !hasMain && !hasNotes;
 }
 
-function measurePageData(p) {
+function knownPageHeight(p) {
+  return Number.isFinite(p?.total) ? p.total : measurePageData(p);
+}
+
+function measurePageData(p, opts = {}) {
+  if (!opts.forceRender && _pageMeasureCache && p && typeof p === "object") {
+    const sig = pageDataMeasureKey(p);
+    const cached = _pageMeasureCache.get(p);
+    if (cached && cached.sig === sig) {
+      if (_measureStats) _measureStats.pageHits++;
+      return cached.height;
+    }
+    const height = measurePageDataUncached(p, opts);
+    _pageMeasureCache.set(p, { sig, height });
+    return height;
+  }
+  return measurePageDataUncached(p, opts);
+}
+
+function pageDataMeasureKey(p) {
+  let hash = 2166136261;
+  let parts = 0;
+  let textLen = 0;
+  for (const seg of p.main || []) {
+    parts++;
+    const text = seg[1] || "";
+    textLen += text.length;
+    hash = hashAppend(hash, seg[0]);
+    hash = hashAppend(hash, seg[2]);
+    hash = hashAppend(hash, seg[3]);
+    hash = hashAppend(hash, text.length);
+    hash = hashAppend(hash, text);
+  }
+  const codes = Object.keys(p.streams || {}).sort();
+  for (const code of codes) {
+    hash = hashAppend(hash, code);
+    const notes = (p.streams[code] && p.streams[code].notes) || [];
+    for (const note of notes) {
+      parts++;
+      const text = note[1] || "";
+      textLen += text.length;
+      hash = hashAppend(hash, note[0]);
+      hash = hashAppend(hash, note[2]);
+      hash = hashAppend(hash, note[3]);
+      hash = hashAppend(hash, note[4]);
+      hash = hashAppend(hash, text.length);
+      hash = hashAppend(hash, text);
+    }
+  }
+  return `${parts}:${textLen}:${hash.toString(36)}`;
+}
+
+function measurePageDataUncached(p, opts = {}) {
   const mainSegs = (p.main || []).map(([idx, text]) => ({ idx, text }));
   const streamsMap = {};
   for (const code of Object.keys(p.streams || {})) {
     const notes = (p.streams[code] && p.streams[code].notes) || [];
     streamsMap[code] = notes.slice();
   }
-  return measureHeight(mainSegs, streamsMap);
+  return measureHeight(mainSegs, streamsMap, opts);
+}
+
+function hasPageNotes(p) {
+  return Object.values(p.streams || {}).some((stream) => (stream?.notes || []).length > 0);
+}
+
+function mergeAdjacentNotesOnlyPages(pages, geom) {
+  if (!Array.isArray(pages) || pages.length < 2) return;
+  let i = 0;
+  let safety = pages.length * 2;
+  while (i < pages.length - 1 && safety-- > 0) {
+    const cur = pages[i];
+    const nxt = pages[i + 1];
+    if ((cur.main || []).length > 0 || (nxt.main || []).length > 0 || !hasPageNotes(cur) || !hasPageNotes(nxt)) {
+      i++;
+      continue;
+    }
+
+    const trial = clonePageData(cur);
+    for (const code of Object.keys(nxt.streams || {})) {
+      if (!trial.streams[code]) trial.streams[code] = { h: 0, notes: [] };
+      trial.streams[code].notes = trial.streams[code].notes.concat(
+        ((nxt.streams[code] && nxt.streams[code].notes) || []).map((note) => note.slice())
+      );
+    }
+    const h = measurePageData(trial);
+    if (h <= geom.maxPageHeight) {
+      trial.total = h;
+      pages[i] = trial;
+      pages.splice(i + 1, 1);
+      continue;
+    }
+    i++;
+  }
 }
 
 function clonePageData(p) {
@@ -1022,7 +1613,13 @@ function tryPullMainBack(cur, nxt, geom) {
     const fstart = typeof f[2] === "number" ? f[2] : 0;
     const fend = typeof f[3] === "number" ? f[3] : ftext.length;
     if (ftext && ftext.length >= 2) {
-      best = binarySearchPrefix(cur, nxt, fpara, ftext, fstart, fend, 0, geom);
+      const earliestPlainStop = findEarliestAnchoredNote(nxt, fpara, fstart, fend);
+      const plainPrefixLimit = earliestPlainStop
+        ? Math.max(0, earliestPlainStop.anchor - fstart)
+        : undefined;
+      best = plainPrefixLimit === 0
+        ? null
+        : binarySearchPrefix(cur, nxt, fpara, ftext, fstart, fend, 0, geom, plainPrefixLimit);
       if (best) {
         cur.main = best.trialCur.main;
         cur.streams = best.trialCur.streams;
@@ -1042,19 +1639,19 @@ function tryPullMainBack(cur, nxt, geom) {
 // emptied by cascade-pulling, pop it. Capped so it stays cheap on big docs.
 function compactTrailingPages(pages, geom) {
   let changed = false;
-  const TAIL_PAIRS = 8;
-  let outerSafety = 5;
+  const TAIL_PAIRS = 5;
+  let outerSafety = 3;
   while (outerSafety-- > 0 && pages.length >= 2) {
     let movedThisRound = false;
     const startN = Math.max(0, pages.length - 1 - TAIL_PAIRS);
-    let passes = 5;
+    let passes = 3;
     while (passes-- > 0) {
       let didPass = false;
       for (let n = startN; n < pages.length - 1; n++) {
         const cur = pages[n];
         const nxt = pages[n + 1];
         if (pullAllAnchoredNotes(cur, nxt, geom, pages, n)) didPass = true;
-        let safety = 10;
+        let safety = 6;
         while (safety-- > 0) {
           if (!tryPushTailToFitAnchoredNote(cur, nxt, geom, pages, n)) break;
           didPass = true;
@@ -1098,7 +1695,7 @@ function findEarliestAnchoredNote(nxt, paraIdx, segStart, segEnd) {
 // After main has been pulled to cur, try to split the now-first anchored note
 // on nxt and place its prefix on cur to absorb whatever gap is left.
 function trySplitFirstAnchoredNoteOntoCur(cur, nxt, paraIdx, geom) {
-  const curHeight = measurePageData(cur);
+  const curHeight = knownPageHeight(cur);
   if (geom.maxPageHeight - curHeight < 30) return false; // not worth it
 
   // Look at all streams; find the note whose anchor is the smallest among those
@@ -1142,8 +1739,11 @@ function trySplitFirstAnchoredNoteOntoCur(cur, nxt, paraIdx, geom) {
     trialCur.streams[target.code].notes.push([paraIdx, part1, target.anchor, tupNum, tupCont]);
     trialNxt.streams[target.code].notes[target.idx] = [paraIdx, part2, target.anchor, tupNum, 1];
 
-    const h = measurePageData(trialCur);
-    if (h <= geom.maxPageHeight) {
+    const h = measurePageData(trialCur, { forceRender: true });
+    if (
+      h <= geom.maxPageHeight &&
+      lastStreamLineFillRatio(target.code) >= MIN_NOTE_SPLIT_LINE_FILL
+    ) {
       best = { trialCur, trialNxt };
       lo = mid + 1;
     } else {
@@ -1292,8 +1892,11 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
     if (!trialCur.streams[earliest.code]) trialCur.streams[earliest.code] = { h: 0, notes: [] };
     trialCur.streams[earliest.code].notes.push([earliest.paraIdx, part1, earliest.anchor, earliest.num, earliest.cont]);
     trialNxt.streams[earliest.code].notes[earliest.idx] = [earliest.paraIdx, part2, earliest.anchor, earliest.num, 1];
-    const h = measurePageData(trialCur);
-    if (h <= geom.maxPageHeight) {
+    const h = measurePageData(trialCur, { forceRender: true });
+    if (
+      h <= geom.maxPageHeight &&
+      lastStreamLineFillRatio(earliest.code) >= MIN_NOTE_SPLIT_LINE_FILL
+    ) {
       best = { trialCur, trialNxt };
       lo = mid + 1;
     } else {
@@ -1347,7 +1950,7 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
   if (!target) return false;
   if (!cur.main || cur.main.length === 0) return false;
 
-  const beforeCurH = measurePageData(cur);
+  const beforeCurH = knownPageHeight(cur);
 
   // Pick cur's last main segment as the push source.
   const lastIdx = cur.main.length - 1;
@@ -1434,8 +2037,11 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
         }
         const t2 = clonePageData(trialCur);
         t2.streams[target.code].notes.push([target.paraIdx, pt, target.anchor, target.num, target.cont]);
-        const h2 = measurePageData(t2);
-        if (h2 <= geom.maxPageHeight) {
+        const h2 = measurePageData(t2, { forceRender: true });
+        if (
+          h2 <= geom.maxPageHeight &&
+          lastStreamLineFillRatio(target.code) >= MIN_NOTE_SPLIT_LINE_FILL
+        ) {
           s_best = { tc: t2, we };
           s_lo = s_mid + 1;
         } else {
@@ -1489,7 +2095,7 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
 
 export async function rebalancePages(pages, geom = DOM_PAGE_GEOM, opts = {}) {
   const gapThreshold = typeof opts.gapThreshold === "number" ? opts.gapThreshold : 10;
-  const maxPasses = typeof opts.maxPasses === "number" ? opts.maxPasses : 6;
+  const maxPasses = typeof opts.maxPasses === "number" ? opts.maxPasses : 4;
   const isCurrent = typeof opts.isCurrent === "function" ? opts.isCurrent : () => true;
   const debug = typeof window !== "undefined" && (window.__REBAL_DEBUG__ || window.__DOM_PACK_DEBUG__);
   // Track per-page dirty state. A pair (n, n+1) is processed only if either
@@ -1506,7 +2112,7 @@ export async function rebalancePages(pages, geom = DOM_PAGE_GEOM, opts = {}) {
       if (!dirty[n] && !dirty[n + 1]) continue;
       const cur = pages[n];
       const nxt = pages[n + 1];
-      const curH = measurePageData(cur);
+      const curH = knownPageHeight(cur);
       const gap = geom.maxPageHeight - curH;
       if (gap < gapThreshold) continue;
       let moved = false;
@@ -1534,20 +2140,20 @@ export async function rebalancePages(pages, geom = DOM_PAGE_GEOM, opts = {}) {
 
       // PHASE 3: if cur still has gap, pull main + anchored-in-moved-range
       // notes from nxt forward to cur (the original behavior).
-      const gapAfter12 = geom.maxPageHeight - measurePageData(cur);
+      const gapAfter12 = geom.maxPageHeight - knownPageHeight(cur);
       if (gapAfter12 >= gapThreshold) {
         if (tryPullMainBack(cur, nxt, geom)) moved = true;
       }
 
       // PHASE 4: a final note-pull (split if needed) for any residual gap.
-      const gapAfter3 = geom.maxPageHeight - measurePageData(cur);
+      const gapAfter3 = geom.maxPageHeight - knownPageHeight(cur);
       if (gapAfter3 >= gapThreshold) {
         if (pullOneAnchoredNote(cur, nxt, geom, pages, n)) moved = true;
       }
 
       if (debug) {
-        const finalH = measurePageData(cur);
-        const nxtH = measurePageData(nxt);
+        const finalH = knownPageHeight(cur);
+        const nxtH = knownPageHeight(nxt);
         console.log(`[rebal] pass=${pass} n=${n} gap=${gap.toFixed(0)}→${(geom.maxPageHeight - finalH).toFixed(0)} moved=${moved} nxtH=${nxtH.toFixed(0)}`);
       }
       if (moved) {
@@ -1566,8 +2172,9 @@ export async function rebalancePages(pages, geom = DOM_PAGE_GEOM, opts = {}) {
     dirty = nextDirty;
   }
   // Final compaction pass: remove the last page if its content can be
-  // squeezed back into earlier pages.
-  compactTrailingPages(pages, geom);
+  // squeezed back into earlier pages. Large documents skip this by default;
+  // the pass is high quality but disproportionately expensive.
+  if (!opts.skipCompact) compactTrailingPages(pages, geom);
   sortStreamNotes(pages);
   return pages;
 }

@@ -2,6 +2,8 @@
 // מבוסס על prosemirror-edition/src/main.js מהמקור האחרון.
 
 import { downloadPagesAsPdf } from "./pdf_export.js";
+import { ensureDemoAccess, prepareDemoPrintWatermark } from "./demo_mode.js";
+import { isOutputBackgroundEnabled } from "./page_settings.js";
 
 export function setupPdfToolbar(pagesContainer) {
   const toolbar = {
@@ -12,6 +14,8 @@ export function setupPdfToolbar(pagesContainer) {
     total: 0,
   };
   let thumbObserver = null;
+  let activeThumbIndex = -1;
+  let scrollRaf = 0;
 
   function applyZoom() {
     const pages = pagesContainer.querySelectorAll(".page");
@@ -24,11 +28,10 @@ export function setupPdfToolbar(pagesContainer) {
   }
 
   function rememberBaseSize() {
-    const pages = pagesContainer.querySelectorAll(".page");
-    for (const p of pages) {
-      if (!p.dataset.baseW) p.dataset.baseW = String(p.offsetWidth || 380);
-      if (!p.dataset.baseH) p.dataset.baseH = String(p.offsetHeight || 537);
-    }
+    const first = getPageElement(0) || pagesContainer.querySelector(".page");
+    if (!first || first.dataset.baseW) return;
+    first.dataset.baseW = String(first.offsetWidth || 380);
+    first.dataset.baseH = String(first.offsetHeight || 537);
   }
 
   function goToPage(n) {
@@ -46,21 +49,18 @@ export function setupPdfToolbar(pagesContainer) {
 
   function updateCurrentPageFromScroll() {
     if (!toolbar.total) return;
-    const containerRect = pagesContainer.getBoundingClientRect();
-    const pages = pagesContainer.querySelectorAll(".page");
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    pages.forEach((p) => {
-      const rect = p.getBoundingClientRect();
-      const dist = Math.abs(rect.top - containerRect.top);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = parseInt(p.dataset.pageIndex || "0", 10);
-      }
-    });
+    const first = getPageElement(0) || pagesContainer.querySelector(".page");
+    if (!first) return;
+    const second = getPageElement(1);
+    const step = second
+      ? Math.max(1, second.offsetTop - first.offsetTop)
+      : Math.max(1, first.offsetHeight + 16);
+    const raw = (pagesContainer.scrollTop - first.offsetTop + 12) / step;
+    const bestIdx = Math.max(0, Math.min(toolbar.total - 1, Math.round(raw)));
     if (toolbar.pageInput && document.activeElement !== toolbar.pageInput) {
       toolbar.pageInput.value = String(bestIdx + 1);
     }
+    highlightActiveThumb(bestIdx);
   }
 
   function fitWidth() {
@@ -150,15 +150,41 @@ export function setupPdfToolbar(pagesContainer) {
       else setTimeout(() => renderThumb(mini, i), 0);
     }
     highlightActiveThumb();
+    requestAnimationFrame(() => {
+      const minis = Array.from(sidebar.querySelectorAll(".pdf-thumb-mini"));
+      minis.slice(0, 4).forEach((mini) => {
+        const idx = parseInt(mini.dataset.pageIndex || "0", 10);
+        renderThumb(mini, idx);
+      });
+    });
   }
 
-  function highlightActiveThumb() {
+  function highlightActiveThumb(activeIndex = null) {
     const sidebar = document.getElementById("pdf-sidebar");
     if (!sidebar || sidebar.hidden) return;
-    const active = parseInt(toolbar.pageInput?.value || "1", 10) - 1;
-    for (const t of sidebar.querySelectorAll(".pdf-thumb")) {
-      const idx = parseInt(t.dataset.pageIndex || "0", 10);
-      t.classList.toggle("active", idx === active);
+    const active = activeIndex === null
+      ? parseInt(toolbar.pageInput?.value || "1", 10) - 1
+      : activeIndex;
+    if (active === activeThumbIndex) return;
+    const prev = sidebar.querySelector(`.pdf-thumb[data-page-index="${activeThumbIndex}"]`);
+    const next = sidebar.querySelector(`.pdf-thumb[data-page-index="${active}"]`);
+    if (prev) prev.classList.remove("active");
+    if (next) next.classList.add("active");
+    activeThumbIndex = active;
+  }
+
+  function scheduleScrollUpdate() {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      updateCurrentPageFromScroll();
+    });
+  }
+
+  function realizePageBatch(start, end) {
+    if (typeof pagesContainer.__realizePage !== "function") return;
+    for (let i = start; i < end; i++) {
+      if (i >= 0 && i < toolbar.total) pagesContainer.__realizePage(i);
     }
   }
 
@@ -245,9 +271,7 @@ export function setupPdfToolbar(pagesContainer) {
   }
 
   function realizeAllPages() {
-    if (typeof pagesContainer.__realizePage === "function") {
-      for (let i = 0; i < toolbar.total; i++) pagesContainer.__realizePage(i);
-    }
+    realizePageBatch(0, toolbar.total);
   }
 
   document.getElementById("pdf-first")?.addEventListener("click", () => goToPage(1));
@@ -306,8 +330,29 @@ export function setupPdfToolbar(pagesContainer) {
   });
 
   document.getElementById("pdf-print")?.addEventListener("click", () => {
-    realizeAllPages();
-    setTimeout(() => window.print(), 50);
+    try {
+      ensureDemoAccess();
+      realizeAllPages();
+      const includeBackgrounds = isOutputBackgroundEnabled();
+      document.body.classList.toggle("print-with-background", includeBackgrounds);
+      const cleanup = prepareDemoPrintWatermark(pagesContainer);
+      let cleaned = false;
+      const cleanupOnce = () => {
+        if (cleaned) return;
+        cleaned = true;
+        cleanup();
+        document.body.classList.remove("print-with-background");
+        window.removeEventListener("afterprint", cleanupOnce);
+      };
+      window.addEventListener("afterprint", cleanupOnce, { once: true });
+      setTimeout(() => {
+        window.print();
+        setTimeout(cleanupOnce, 2500);
+      }, 50);
+    } catch (err) {
+      console.error("PDF print failed:", err);
+      alert(err.message);
+    }
   });
   document.getElementById("pdf-download")?.addEventListener("click", async (ev) => {
     realizeAllPages();
@@ -316,7 +361,13 @@ export function setupPdfToolbar(pagesContainer) {
     btn.disabled = true;
     btn.textContent = "מכין PDF...";
     try {
-      await downloadPagesAsPdf(pagesContainer, { filename: "ravtext-preview.pdf" });
+      await downloadPagesAsPdf(pagesContainer, {
+        filename: "ravtext-preview.pdf",
+        includeBackgrounds: isOutputBackgroundEnabled(),
+        onProgress(page, total) {
+          btn.textContent = `PDF ${page}/${total}`;
+        },
+      });
     } catch (err) {
       console.error("PDF export failed:", err);
       alert(`שגיאת הורדת PDF: ${err.message}`);
@@ -333,21 +384,27 @@ export function setupPdfToolbar(pagesContainer) {
     if (!sidebar.hidden) rebuildSidebar();
   });
 
-  pagesContainer.addEventListener("scroll", () => {
-    updateCurrentPageFromScroll();
-    highlightActiveThumb();
-  });
+  pagesContainer.addEventListener("scroll", scheduleScrollUpdate, { passive: true });
 
   return {
     setTotal(total) {
       toolbar.total = total;
       if (toolbar.pageTotal) toolbar.pageTotal.textContent = `/ ${total}`;
+      activeThumbIndex = -1;
       if (toolbar.pageInput) {
         toolbar.pageInput.max = String(Math.max(1, total));
         if (total === 0) toolbar.pageInput.value = "1";
         else if (parseInt(toolbar.pageInput.value, 10) > total) toolbar.pageInput.value = "1";
       }
-      if (sidebar && !sidebar.hidden) rebuildSidebar();
+      if (sidebar && sidebar.hidden) {
+        if (thumbObserver) {
+          thumbObserver.disconnect();
+          thumbObserver = null;
+        }
+        sidebar.innerHTML = "";
+      } else if (sidebar) {
+        rebuildSidebar();
+      }
     },
     rememberBaseSize,
     applyZoom,

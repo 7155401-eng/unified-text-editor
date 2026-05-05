@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --port 5173 --open",
     "build": "vite build",
-    "preview": "vite preview --port 5173"
+    "preview": "vite preview --port 5173",
+    "verify:pages": "node verify-pages.mjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.22.5",
