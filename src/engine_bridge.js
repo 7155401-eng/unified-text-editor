@@ -233,7 +233,7 @@ export function paneManagerFromEngineDoc(paneManager, engineDoc) {
       pane = paneManager.addPane({
         streamCode: code,
         symbol: sym,
-        label: `זרם ${code}`,
+        label: `×–×¨× ${code}`,
       });
     }
     if (pane && pane.editor && notesByStream[code]) {
@@ -253,7 +253,7 @@ let _debounceTimer = null;
 export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi = null) {
   if (_debounceTimer) clearTimeout(_debounceTimer);
   const statusEl = document.getElementById("status");
-  if (statusEl) statusEl.textContent = "מרענן...";
+  if (statusEl) statusEl.textContent = "×ž×¨×¢× ×Ÿ...";
   _debounceTimer = setTimeout(() => {
     _renderToken++;
     const myToken = _renderToken;
@@ -269,7 +269,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     const t1 = performance.now();
 
     if (content.length === 0) {
-      pagesContainer.innerHTML = '<div class="empty-hint">אין תוכן לרינדור</div>';
+      pagesContainer.innerHTML = '<div class="empty-hint">××™×Ÿ ×ª×•×›×Ÿ ×œ×¨×™× ×“×•×¨</div>';
       if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
       window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
         detail: { pages: [], content: [] },
@@ -292,9 +292,9 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
       const avg = utils.length ? utils.reduce((a, b) => a + b, 0) / utils.length : 0;
       const allStreams = new Set();
       for (const p of pages) for (const c of Object.keys(p.streams || {})) allStreams.add(c);
-      const streams = Array.from(allStreams).sort((a, b) => parseInt(a) - parseInt(b)).join(", ") || "אין";
+      const streams = Array.from(allStreams).sort((a, b) => parseInt(a) - parseInt(b)).join(", ") || "××™×Ÿ";
       statusEl.textContent =
-        `${pages.length} עמודים, ניצול ממוצע ${avg.toFixed(1)}% — זרמים: ${streams}`;
+        `${pages.length} ×¢×ž×•×“×™×, × ×™×¦×•×œ ×ž×ž×•×¦×¢ ${avg.toFixed(1)}% â€” ×–×¨×ž×™×: ${streams}`;
     }
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
       detail: { pages, content },
@@ -311,7 +311,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     console.log(`[engine] ${pages.length} pages | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
   } catch (err) {
     console.error("Engine render error:", err);
-    pagesContainer.innerHTML = `<div class="error-hint">שגיאת רינדור: ${escapeHtml(err.message)}</div>`;
+    pagesContainer.innerHTML = `<div class="error-hint">×©×’×™××ª ×¨×™× ×“×•×¨: ${escapeHtml(err.message)}</div>`;
     if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
       detail: { pages: [], content: [], error: err.message },
