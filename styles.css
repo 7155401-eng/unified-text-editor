@@ -728,8 +728,9 @@ mark.pdf-find-hit-current {
   margin-top: 0;
 }
 
-/* Remaining (non-talmud) streams sit below, full-width */
-.talmud-layout-page .page-streams > .stream {
+/* Remaining (non-talmud) streams sit below, full-width.
+   Selector אחד מאוחד עם :not שרשרת — לא מפעילים בזמן בנייה כדי למנוע race. */
+.talmud-layout-page:not([data-talmud-state="building"]) .page-streams > .stream:not([data-talmud-role]):not(.mishna-float):not(.mishna-flow) {
   display: block;
   float: none !important;
   width: auto !important;
@@ -771,11 +772,12 @@ mark.pdf-find-hit-current {
   /* רווח בין הפרשן השמאלי לטקסט הראשי (בצד ימין של הפרשן) */
   margin-right: var(--talmud-side-gap, 12px) !important;
 }
-/* בכתר אין רווח לכיוון הפנימי (אין main באמצע) */
-.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right {
+/* בכתר אין רווח לכיוון הפנימי (אין main באמצע) — אבל לא ל-body
+   שגם יורש את הקלאס talmud-crown-portion מהשורש */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right:not(.talmud-body-portion):not(.talmud-body-expanded) {
   margin-left: 0 !important;
 }
-.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-left {
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-left:not(.talmud-body-portion):not(.talmud-body-expanded) {
   margin-right: 0 !important;
 }
 

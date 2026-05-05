@@ -190,6 +190,20 @@ function unwrapTalmudLayout(pageEl) {
     }
     otherEl.remove();
   });
+  // תרחיש פרשן יחיד שפוצל ל-2 חצאים בכתר (data-talmud-single-half) —
+  // מאחד את כל התוכן (כולל body/expanded שלו) בחזרה לזרם המקורי, ואז מסיר.
+  Array.from(block.querySelectorAll("[data-talmud-single-half]")).forEach((halfEl) => {
+    const code = halfEl.dataset.talmudSingleHalf;
+    if (!code) return;
+    const original = block.querySelector(`.stream[data-stream="${code}"]:not([data-talmud-single-half]):not([data-talmud-body-of])`);
+    if (original) {
+      // מעבירים תוכן מ-halfEl ל-original (חוץ מ-stream-title שכבר קיים)
+      const halfTitle = halfEl.querySelector(":scope > .stream-title");
+      if (halfTitle) halfTitle.remove();
+      while (halfEl.firstChild) original.appendChild(halfEl.firstChild);
+    }
+    halfEl.remove();
+  });
 
   // Move .page-main back to page level (before streamsWrap)
   const main = block.querySelector(":scope > .page-main");
@@ -466,8 +480,12 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
   const fragment = range.extractContents();
 
   const bodyEl = document.createElement("div");
-  // לוקחים את כל הקלאסים של הזרם המקורי כדי שיורש את הסגנון (צבע, גבולות, וכו')
-  bodyEl.className = `${streamEl.className} talmud-body-portion ${sideClass}`;
+  // יורשים סגנונות מהזרם המקורי, אבל בלי talmud-crown-portion (כי הגוף
+  // הוא לא חלק מהכתר ולא רוצים שכללי הכתר יחולו עליו ויעקפו את margin)
+  const baseClasses = (streamEl.className || "")
+    .split(/\s+/)
+    .filter((c) => c && c !== "talmud-crown-portion");
+  bodyEl.className = `${baseClasses.join(" ")} talmud-body-portion ${sideClass}`;
   const code = streamEl.getAttribute("data-stream") || "";
   if (code) bodyEl.setAttribute("data-stream", code);
   bodyEl.dataset.talmudBodyOf = code;
@@ -583,6 +601,49 @@ function layoutNoMain(block, streamsWrap, commentaryStreams) {
  * SCENARIO B — One commentary + main text.
  * Commentary floats on the inner/right side; main fills the rest.
  */
+/**
+ * מפצל פרשן יחיד לשני חצאים — מחזיר את החצי השני כאלמנט חדש,
+ * משאיר את החצי הראשון בתוך commentary המקורי.
+ * הפיצול בנקודת הפסקה הקרובה ביותר לאמצע (כדי לא לחתוך באמצע פסקה).
+ */
+function splitSingleCommentaryIntoHalves(commentary) {
+  const titleEl = commentary.querySelector(":scope > .stream-title");
+  const contentChildren = Array.from(commentary.children).filter(
+    (c) => !c.classList?.contains("stream-title")
+  );
+  if (contentChildren.length < 2) return null; // אין מה לחלק
+
+  const totalLen = contentChildren.reduce(
+    (sum, c) => sum + (c.textContent || "").length, 0
+  );
+  if (totalLen < 40) return null; // קצר מדי
+
+  const target = totalLen / 2;
+  let cum = 0;
+  let splitIdx = contentChildren.length;
+  for (let i = 0; i < contentChildren.length; i++) {
+    cum += (contentChildren[i].textContent || "").length;
+    if (cum >= target) {
+      splitIdx = i + 1;
+      break;
+    }
+  }
+  if (splitIdx <= 0 || splitIdx >= contentChildren.length) return null;
+
+  const secondHalf = document.createElement("div");
+  secondHalf.className = commentary.className;
+  for (const a of Array.from(commentary.attributes)) {
+    if (a.name !== "style") secondHalf.setAttribute(a.name, a.value);
+  }
+  if (titleEl) secondHalf.appendChild(titleEl.cloneNode(true));
+  for (let i = splitIdx; i < contentChildren.length; i++) {
+    secondHalf.appendChild(contentChildren[i]);
+  }
+  // סימן שזה חצי פיצולי, כדי לטפל ב-unwrap
+  secondHalf.dataset.talmudSingleHalf = commentary.getAttribute("data-stream") || "";
+  return secondHalf;
+}
+
 function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
   block.classList.add("talmud-has-main", "talmud-one-commentary");
 
@@ -835,13 +896,15 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
 
     // חיתוך לפי שורות אמיתיות + הרחבה לשורה מלאה. אם השורה האחרונה
     // היתה יוצאת קצרה (מילה אחת), הפונקציה מרחיבה עד שורה מלאה.
+    // קריטי: מוסיפים את הקלאס talmud-crown-portion *לפני* המדידה כי הוא
+    // מפעיל CSS שמשנה את display של הערות ל-block (preserve-breaks).
+    // בלי זה ספירת השורות תהיה לא מדויקת.
+    streamA.classList.add("talmud-crown-portion");
+    streamB.classList.add("talmud-crown-portion");
+
     // חיתוך מדויק לפי שורות (בלי הרחבה — היא גרמה לחריגות מגבולות העמוד)
     const splitPointA = findOffsetAtLineStart(streamA, crownLines);
     const splitPointB = findOffsetAtLineStart(streamB, crownLines);
-
-    // streamA + streamB נשארים כ-crown_portion ב-50% רוחב
-    streamA.classList.add("talmud-crown-portion");
-    streamB.classList.add("talmud-crown-portion");
 
     // יוצרים body_portion רק אם יש מה לחתוך
     let bodyA = null, bodyB = null;
@@ -908,14 +971,34 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       return expandedEl;
     }
 
-    // expanded כ-floats רגילים (ללא position:absolute) — כדי שהמדידה
-    // של המנוע תכלול את הגובה הנכון. אם שני expanded יוצרים שרשור אנכי
-    // במקום זה ליד זה — זו עדיין בעיה ויזואלית קטנה, אבל החריגה מהעמוד
-    // תיפתר ע"י המנוע שמדד נכון.
+    // expanded כ-floats רגילים. אחרי הצבה — אם שני expanded התשרשרו אנכית
+    // (באג של float source position), נתקן עם absolute positioning של השני
+    // לאותו Y כמו הראשון, בצד הנגדי.
     const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
     const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
     if (expandedA) block.insertBefore(expandedA, mainEl);
     if (expandedB) block.insertBefore(expandedB, mainEl);
+    if (expandedA && expandedB) {
+      const aRect = expandedA.getBoundingClientRect();
+      const bRect = expandedB.getBoundingClientRect();
+      // אם הם לא באותה Y (פער > 5px) — מתקנים את השני ב-absolute
+      if (Math.abs(aRect.top - bRect.top) > 5) {
+        const blockRect2 = block.getBoundingClientRect();
+        const aTopRelative = Math.round(aRect.top - blockRect2.top);
+        block.style.position = "relative";
+        expandedB.style.position = "absolute";
+        expandedB.style.top = `${aTopRelative}px`;
+        expandedB.style.float = "none";
+        expandedB.style.clear = "none";
+        if (sideB === "left") {
+          expandedB.style.left = "0";
+          expandedB.style.right = "auto";
+        } else {
+          expandedB.style.right = "0";
+          expandedB.style.left = "auto";
+        }
+      }
+    }
 
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
@@ -943,6 +1026,9 @@ export function applyTalmudLayoutToPage(pageEl) {
   const streamsWrap = pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
 
+  // 0. סימון מצב "בנייה" כדי ש-CSS שתלוי בכך לא יחיל כללים מוקדם מדי
+  pageEl.dataset.talmudState = "building";
+
   // 1. Undo any previous talmud layout on this page
   unwrapTalmudLayout(pageEl);
   pageEl.classList.remove("talmud-layout-page");
@@ -957,6 +1043,7 @@ export function applyTalmudLayoutToPage(pageEl) {
     allStreams
       .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
       .forEach((s) => streamsWrap.appendChild(s));
+    delete pageEl.dataset.talmudState;
     return;
   }
 
@@ -974,7 +1061,7 @@ export function applyTalmudLayoutToPage(pageEl) {
     const byCode = new Map(allStreams.map((s) => [codeForStream(s), s]));
     talmudStreams = codes.map((c) => byCode.get(c)).filter(Boolean);
   }
-  if (talmudStreams.length === 0) return;
+  if (talmudStreams.length === 0) { delete pageEl.dataset.talmudState; return; }
 
   pageEl.classList.add("talmud-layout-page");
 
@@ -988,7 +1075,16 @@ export function applyTalmudLayoutToPage(pageEl) {
   if (!hasMain) {
     layoutNoMain(block, streamsWrap, talmudStreams);
   } else if (talmudStreams.length === 1) {
-    layoutOneCommentaryWithMain(block, streamsWrap, mainEl, talmudStreams[0]);
+    // פרשן יחיד עם ראשי: פיצול הפרשן לשני חצאים והפעלת אותה לוגיקה
+    // כמו שני פרשנים — כך גם הוא יקבל כתר אמיתי משני הצדדים.
+    const single = talmudStreams[0];
+    const secondHalf = splitSingleCommentaryIntoHalves(single);
+    if (secondHalf) {
+      layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, single, secondHalf);
+    } else {
+      // אין מספיק תוכן לחצי — fallback למקרה הישן
+      layoutOneCommentaryWithMain(block, streamsWrap, mainEl, single);
+    }
   } else {
     layoutTwoCommentariesWithMain(
       block, streamsWrap, mainEl,
@@ -1031,6 +1127,9 @@ export function applyTalmudLayoutToPage(pageEl) {
     requestAnimationFrame(() => requestAnimationFrame(checkOverflow));
   }
   setTimeout(checkOverflow, 200);
+
+  // סיום בנייה
+  delete pageEl.dataset.talmudState;
 }
 
 // ─────────────────────────────────────────────

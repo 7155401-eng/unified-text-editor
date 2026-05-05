@@ -35,8 +35,9 @@ const MISHNA_WRAP_HEIGHT_SAFETY = 10;
 // במקום 29%, רווחים נוספים, body+expanded וכד'). מורידים מ-maxPageHeight
 // כדי שהמנוע יזרוק פחות תוכן לעמוד הזה ויעבור פחות חריגות בפועל.
 // ערך גבוה = יותר עמודים, פחות חריגות, אבל גם יותר רווחים מיותרים.
-// 150 = שמרני יותר כדי לצמצם חריגות. בעתיד נעבור למדידה דינמית פר-עמוד.
-const TALMUD_LAYOUT_HEIGHT_SAFETY = 150;
+// בטיחות מנוע במצב תלמוד. measureHeight כבר מריץ applyTalmudLayoutToPage
+// על page זמני. הערך כאן הוא buffer קטן עבור הבדלי דיוק במדידה.
+const TALMUD_LAYOUT_HEIGHT_SAFETY = 30;
 const MAIN_LINE_PROBE_EXTRA_CHARS = 260;
 const LINE_RECT_TOLERANCE = 2;
 
