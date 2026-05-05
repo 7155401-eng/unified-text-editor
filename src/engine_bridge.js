@@ -9,6 +9,7 @@ import { getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
 import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
+import { repaginateCatastrophicPages } from "./talmud_repagination.js";
 
 // Expose for debug + audit harness.
 if (typeof window !== "undefined") {
@@ -436,6 +437,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // v30-sync: ה-overflow corrector שינה התנהגות לסימון בלבד, וה-overflow check
     // מתבצע כעת סינכרונית בתוך applyTalmudLayoutToPage. הקריאה כאן נשארת
     // כסריקה סופית סינכרונית — בלי RAF, כדי שהמנוע יראה תוצאה אמיתית.
+    correctTalmudOverflow(pagesContainer);
+    // v31-solver: rep-aginate pages with catastrophic overflow (>2× page-height)
+    // by moving tail content to the next page's stream queue and re-laying out.
+    // Lossless — no DOM removed, only moved. Runs synchronously each render.
+    repaginateCatastrophicPages(pagesContainer);
+    // After repagination, re-run final overflow check.
     correctTalmudOverflow(pagesContainer);
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
     const t3 = performance.now();

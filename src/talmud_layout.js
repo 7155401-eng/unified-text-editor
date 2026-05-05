@@ -451,7 +451,7 @@ function findCrownSplitByLineCount(streamEl, targetLines) {
  * האות הראשונה שעוברת את targetYInElement תהיה נקודת החיתוך.
  * משמש לחיתוך הגוף בנקודת תחתית הראשי (התרחבות מתחת לראשי).
  */
-function findSplitAtPixelYInElement(streamEl, targetYInElement) {
+export function findSplitAtPixelYInElement(streamEl, targetYInElement) {
   if (targetYInElement <= 0) return null;
   const elRect = streamEl.getBoundingClientRect();
   const range = document.createRange();
