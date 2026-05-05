@@ -908,37 +908,14 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       return expandedEl;
     }
 
-    // יוצרים את שני אלמנטי expanded.  שינוי לפתור באג השרשור האנכי:
-    // השני יקבל position:absolute כדי לעמוד באותו Y כמו הראשון.
+    // expanded כ-floats רגילים (ללא position:absolute) — כדי שהמדידה
+    // של המנוע תכלול את הגובה הנכון. אם שני expanded יוצרים שרשור אנכי
+    // במקום זה ליד זה — זו עדיין בעיה ויזואלית קטנה, אבל החריגה מהעמוד
+    // תיפתר ע"י המנוע שמדד נכון.
     const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
     const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
-    if (expandedA && expandedB) {
-      // שניהם ממשיכים — שני floats לאותה Y. הראשון נשאר float רגיל,
-      // השני absolute באותו Y בצד הנגדי.
-      block.insertBefore(expandedA, mainEl);
-      // נמדוד את ה-Y של expandedA כדי למקם את expandedB באותו Y
-      const aRect = expandedA.getBoundingClientRect();
-      const aTop = aRect.top - blockRect.top;
-      // expandedB: position:absolute, אותו top, צד נגדי
-      expandedB.style.float = "none";
-      expandedB.style.clear = "none";
-      expandedB.style.position = "absolute";
-      expandedB.style.top = `${aTop}px`;
-      if (sideB === "left") {
-        expandedB.style.left = "0";
-        expandedB.style.right = "auto";
-      } else {
-        expandedB.style.right = "0";
-        expandedB.style.left = "auto";
-      }
-      expandedB.style.width = expandedWidthCss;
-      block.style.position = "relative";
-      block.appendChild(expandedB);
-    } else if (expandedA) {
-      block.insertBefore(expandedA, mainEl);
-    } else if (expandedB) {
-      block.insertBefore(expandedB, mainEl);
-    }
+    if (expandedA) block.insertBefore(expandedA, mainEl);
+    if (expandedB) block.insertBefore(expandedB, mainEl);
 
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
