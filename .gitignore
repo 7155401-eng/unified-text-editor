@@ -27,3 +27,4 @@ chrome-verify-profile/
 debug-*.png
 debug-*.ps1
 tatus
+bject CreationTime, LastWriteTime, Length, FullName*
