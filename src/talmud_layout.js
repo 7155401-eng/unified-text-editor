@@ -206,6 +206,52 @@ function unwrapTalmudLayout(pageEl) {
  *
  * חשוב: streamEl חייב להיות כבר ב-DOM עם רוחב 50% מוגדר.
  */
+/**
+ * חיפוש שורה מדויק לפי שינוי Y בפועל (לא לפי חישוב). הולך תו-תו ומונה
+ * כמה פעמים ה-Y עלה (= שורה חדשה). חוזר עם נקודת החיתוך כשהגענו לתחילת
+ * השורה ה-(targetLines+1).
+ */
+function findOffsetAtLineStart(streamEl, targetLineCount) {
+  if (targetLineCount <= 0) return null;
+  const titleEl = streamEl.querySelector(":scope > .stream-title");
+  const range = document.createRange();
+  let linesSeen = 0;
+  let prevY = -Infinity;
+
+  const walker = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (titleEl && titleEl.contains(node)) return NodeFilter.FILTER_REJECT;
+      return node.textContent && node.textContent.length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  let textNode;
+  while ((textNode = walker.nextNode())) {
+    const len = textNode.length;
+    for (let i = 0; i < len; i++) {
+      range.setStart(textNode, i);
+      range.setEnd(textNode, i + 1);
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) continue;
+      if (rect.top > prevY + 1) {
+        linesSeen++;
+        prevY = rect.top;
+        if (linesSeen === targetLineCount + 1) {
+          // האות הראשונה של השורה השלישית מעל היעד — חיתוך כאן (אחורה לרווח)
+          const text = textNode.textContent;
+          let adjusted = i;
+          while (adjusted > 0 && text[adjusted - 1] !== " " && text[adjusted - 1] !== " ") adjusted--;
+          if (adjusted === 0) adjusted = i;
+          return { node: textNode, offset: adjusted };
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function findCrownSplitByLineCount(streamEl, targetLines) {
   if (targetLines <= 0) return null;
   const titleEl = streamEl.querySelector(":scope > .stream-title");
@@ -624,19 +670,10 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     // יש כתר — מחלקים כל פרשן בנקודה המדויקת של שורה N+1
     block.classList.add("talmud-with-crown");
 
-    // חיתוך לפי גובה Y בפיקסלים: title + crownLines * lineH הוא תחתית השורה ה-N
-    const styleAearly = getComputedStyle(streamA);
-    const lineHAearly = parseFloat(styleAearly.lineHeight) || (parseFloat(styleAearly.fontSize) * 1.4) || 14;
-    const titleAHearly = (streamA.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
-    const targetAH = titleAHearly + crownLines * lineHAearly;
-
-    const styleBearly = getComputedStyle(streamB);
-    const lineHBearly = parseFloat(styleBearly.lineHeight) || (parseFloat(styleBearly.fontSize) * 1.4) || 14;
-    const titleBHearly = (streamB.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
-    const targetBH = titleBHearly + crownLines * lineHBearly;
-
-    const splitPointA = findSplitAtPixelYInElement(streamA, targetAH);
-    const splitPointB = findSplitAtPixelYInElement(streamB, targetBH);
+    // חיתוך לפי שורות אמיתיות שמרונדרות בכל פרשן ב-50% רוחב.
+    // הסופר עובר תו-תו ובודק מתי ה-Y עולה (= שורה חדשה).
+    const splitPointA = findOffsetAtLineStart(streamA, crownLines);
+    const splitPointB = findOffsetAtLineStart(streamB, crownLines);
 
     // streamA + streamB נשארים כ-crown_portion ב-50% רוחב
     streamA.classList.add("talmud-crown-portion");
