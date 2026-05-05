@@ -392,6 +392,10 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
   bodyEl.style.float = side;
   bodyEl.style.width = `${narrowWidthPct}%`;
   bodyEl.style.clear = side;
+  // רווח בין הגוף לראשי — תמיד inline כדי לא להיות תלויים ב-CSS
+  const sideGap = getTalmudSideGap();
+  if (side === "right") bodyEl.style.marginLeft = `${sideGap}px`;
+  else bodyEl.style.marginRight = `${sideGap}px`;
   return bodyEl;
 }
 
@@ -664,13 +668,18 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     longEl.style.float = longSide;
     longEl.style.width = "100%";
     longEl.style.clear = "none";
+    let longBody = null;
     const longSplit = findOffsetAtLineStart(longEl, crownLines);
     if (longSplit) {
-      const longBody = extractBodyAfterSplit(longEl, longSplit, longSideClass, longSide, sideWidth);
+      longBody = extractBodyAfterSplit(longEl, longSplit, longSideClass, longSide, sideWidth);
       // body צמוד לאחר הכתר, ברוחב צר, clear לצד שלו
       longBody.style.float = longSide;
       longBody.style.width = `${sideWidth}%`;
       longBody.style.clear = longSide;
+      // רווח בין הגוף לראשי inline
+      const sideGapInline = getTalmudSideGap();
+      if (longSide === "right") longBody.style.marginLeft = `${sideGapInline}px`;
+      else longBody.style.marginRight = `${sideGapInline}px`;
       block.insertBefore(longBody, mainEl);
     }
 
@@ -679,6 +688,10 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     shortEl.style.float = shortSide;
     shortEl.style.width = `${sideWidth}%`;
     shortEl.style.clear = shortSide;
+    // רווח inline
+    const sideGapInline2 = getTalmudSideGap();
+    if (shortSide === "right") shortEl.style.marginLeft = `${sideGapInline2}px`;
+    else shortEl.style.marginRight = `${sideGapInline2}px`;
     // shortEl כבר ב-DOM (הוא היה streamA או streamB ההתחלתי). מוודאים שהוא לפני main.
     block.insertBefore(shortEl, mainEl);
 
@@ -686,6 +699,49 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     mainEl.dataset.talmudRole = "main";
     // mainEl כבר באמצע — נוודא שהוא בסוף ה-DOM
     block.appendChild(mainEl);
+
+    // הוספת התרחבות מתחת לראשי גם באסימטרי: אם longBody או shortEl
+    // ממשיכים מתחת לראשי, ההמשך עובר לרוחב 100%/50%
+    const blockRectAsym = block.getBoundingClientRect();
+    const mainBottomYAsym = mainEl.getBoundingClientRect().bottom - blockRectAsym.top;
+    function bodyExtBelow(el) {
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      return (r.bottom - blockRectAsym.top) > mainBottomYAsym + 1;
+    }
+    const longExt = bodyExtBelow(longBody);
+    const shortExt = bodyExtBelow(shortEl);
+    const expWAsym = (longExt && shortExt) ? "49.5%" : "100%";
+    function makeAsymExp(el, s, sc) {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const targetY = mainBottomYAsym - (r.top - blockRectAsym.top);
+      if (targetY <= 0) return null;
+      const sp = findSplitAtPixelYInElement(el, targetY);
+      if (!sp) return null;
+      const ex = document.createElement("div");
+      ex.className = `${el.className} talmud-body-expanded ${sc}`.replace("talmud-body-portion", "").replace(/\s+/g, " ").trim();
+      const code = el.getAttribute("data-stream") || "";
+      if (code) ex.setAttribute("data-stream", code);
+      ex.dataset.talmudBodyOf = code;
+      ex.dataset.talmudRole = "commentary-expanded";
+      ex.style.float = s;
+      ex.style.clear = s;
+      ex.style.width = expWAsym;
+      const r2 = document.createRange();
+      r2.setStart(sp.node, sp.offset);
+      r2.setEndAfter(el.lastChild);
+      ex.appendChild(r2.extractContents());
+      return ex;
+    }
+    if (longExt) {
+      const exL = makeAsymExp(longBody, longSide, longSideClass);
+      if (exL) block.insertBefore(exL, mainEl);
+    }
+    if (shortExt) {
+      const exS = makeAsymExp(shortEl, shortSide, shortSide === "right" ? "talmud-right" : "talmud-left");
+      if (exS) block.insertBefore(exS, mainEl);
+    }
   } else {
     // יש כתר — מחלקים כל פרשן בנקודה המדויקת של שורה N+1
     block.classList.add("talmud-with-crown");

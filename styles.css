@@ -795,8 +795,9 @@ mark.pdf-find-hit-current {
   margin-top: 0 !important;
 }
 
-/* חלקי הכתר (ראש הפרשן ב-50% רוחב) */
-.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion {
+/* חלקי הכתר (ראש הפרשן — 50% רוחב במצב סימטרי, 100% במצב אסימטרי) */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion {
   /* float ו-width מוגדרים inline ע"י JS */
   text-align: justify !important;
   /* יישור מלא גם בשורה האחרונה — כי החיתוך הוא באמצע משפט,
@@ -808,7 +809,10 @@ mark.pdf-find-hit-current {
 }
 .talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note,
 .talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note-inline,
-.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note-part {
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note-part,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note-inline,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note-part {
   text-align-last: justify !important;
 }
 

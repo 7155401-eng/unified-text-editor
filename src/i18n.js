@@ -2,7 +2,7 @@ const STORAGE_KEY = "ravtext.lang";
 
 const tr = {
   he: {
-    appTitle: "עורך משולב - TipTap + Engine",
+    appTitle: "רב טקסט לוורד AI",
     status: 'טען טקסט ולחץ "רנדר עמודים" כדי לראות את התצוגה.',
     markAsStream: "סמן כזרם:",
     mark: "סמן",
