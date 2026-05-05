@@ -217,6 +217,32 @@ function unwrapTalmudLayout(pageEl) {
  * חשוב: streamEl חייב להיות כבר ב-DOM עם רוחב 50% מוגדר.
  */
 /**
+ * אם השורה האחרונה בכתר קצרה מדי (< 70% מהרוחב), מבטלים את ה-justify
+ * שלה כדי לא ליצור מתיחה מלאכותית של מעט מילים.
+ */
+function adjustCrownLastLineJustify(crownEl) {
+  if (!crownEl) return;
+  const elRect = crownEl.getBoundingClientRect();
+  const containerWidth = elRect.width;
+  if (!containerWidth) return;
+  const range = document.createRange();
+  range.selectNodeContents(crownEl);
+  const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 || r.height > 0);
+  if (rects.length === 0) return;
+  // השורה האחרונה = ה-rect הכי תחתון
+  let lastRect = rects[0];
+  for (const r of rects) {
+    if (r.bottom > lastRect.bottom) lastRect = r;
+  }
+  const fillRatio = lastRect.width / containerWidth;
+  if (fillRatio < 0.7) {
+    crownEl.style.textAlignLast = "auto";
+  } else {
+    crownEl.style.textAlignLast = "";
+  }
+}
+
+/**
  * חיפוש שורה מדויק לפי שינוי Y בפועל (לא לפי חישוב). הולך תו-תו ומונה
  * כמה פעמים ה-Y עלה (= שורה חדשה). חוזר עם נקודת החיתוך כשהגענו לתחילת
  * השורה ה-(targetLines+1).
@@ -864,6 +890,9 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   if (lenA < lenB && lenA < lenM) block.classList.add("talmud-a-short");
   if (lenB < lenA && lenB < lenM) block.classList.add("talmud-b-short");
   if (lenM < lenA && lenM < lenB) block.classList.add("talmud-main-short");
+
+  // אחרי שהמבנה ב-DOM, מבטלים מתיחה לשורות אחרונות קצרות בכתרים
+  block.querySelectorAll(":scope > .talmud-crown-portion").forEach(adjustCrownLastLineJustify);
 }
 
 // ─────────────────────────────────────────────
