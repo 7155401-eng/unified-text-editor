@@ -1270,3 +1270,27 @@ mark.pdf-find-hit-current {
   direction: ltr;
   text-align: left;
 }
+/* ═══════════════════════════════════════════════════
+   תבנית תלמוד — Talmud Layout
+   ═══════════════════════════════════════════════════ */
+.talmud-layout-page .page-streams { display: block; overflow: hidden; }
+.talmud-layout-page .talmud-row {
+  display: flex; flex-direction: row; gap: 6px;
+  margin-block-end: 6px; align-items: flex-start; width: 100%;
+}
+.talmud-layout-page .stream[data-talmud-side="right"] {
+  border-inline-end: 2px solid rgba(0,0,0,0.12); padding-inline-end: 6px;
+}
+.talmud-layout-page .stream[data-talmud-side="left"] { padding-inline-start: 6px; }
+.talmud-layout-page .talmud-col-placeholder { flex: 1; }
+.talmud-layout-page .talmud-row .stream { flex: 1; min-width: 0; float: none !important; }
+.talmud-layout-page .talmud-row .stream-title { font-size: 0.72em; opacity: 0.6; }
+.talmud-sides-control {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--muted);
+}
+.talmud-sides-control input[type="text"] {
+  width: 150px; font: inherit; font-size: 13px; padding: 4px 7px;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: var(--bg); color: var(--txt); direction: ltr; text-align: left;
+}
