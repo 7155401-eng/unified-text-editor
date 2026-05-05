@@ -174,114 +174,92 @@ function unwrapTalmudLayout(pageEl) {
 // ─────────────────────────────────────────────
 
 /**
- * מודד היכן קצוות תוכן הפרשן חוצים את גובה הכתר ב-50% רוחב.
- * מחזיר אינדקס הילד הראשון שאינו נכנס לכתר; null אם כל התוכן נכנס.
+ * מוצא את הנקודה המדויקת בתוך streamEl (כשהוא מוצג בפועל ב-50% רוחב)
+ * שבה הטקסט עובר את גובה היעד.  משתמש ב-Range API כדי לחתוך גם באמצע מילה.
+ * מחזיר { node, offset } או null אם הכל נכנס.
+ *
+ * חשוב: streamEl חייב להיות כבר ב-DOM עם רוחב 50% מוגדר.
  */
-function measureSplitIndex(streamEl, crownLines, blockWidthPx) {
-  if (crownLines <= 0) return 0;
-  if (!blockWidthPx) return null;
+function findCrownSplitInLiveElement(streamEl, targetBottomPx) {
+  const elRect = streamEl.getBoundingClientRect();
+  const walker = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => node.textContent && node.textContent.length > 0
+      ? NodeFilter.FILTER_ACCEPT
+      : NodeFilter.FILTER_REJECT,
+  });
+  const range = document.createRange();
+  let textNode;
+  while ((textNode = walker.nextNode())) {
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, textNode.length);
+    const lastRect = range.getBoundingClientRect();
+    if (!lastRect.width && !lastRect.height) continue;
+    const lastBottom = lastRect.bottom - elRect.top;
+    if (lastBottom <= targetBottomPx) continue; // כל הצומת נכנס בכתר
 
-  const wideWidth = Math.max(40, blockWidthPx * 0.5);
-  const clone = streamEl.cloneNode(true);
-  clone.style.cssText = [
-    "position:absolute",
-    "top:-99999px",
-    "left:-99999px",
-    `width:${wideWidth}px`,
-    "visibility:hidden",
-    "float:none",
-    "margin:0",
-    "padding-left:3px",
-    "padding-right:3px",
-    "box-sizing:border-box",
-  ].join(";");
-  clone.classList.remove("talmud-crown-portion", "talmud-fits-in-crown");
-  document.body.appendChild(clone);
-
-  const cloneRect = clone.getBoundingClientRect();
-  const titleEl = clone.querySelector(":scope > .stream-title");
-  const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
-  const styleObj = getComputedStyle(clone);
-  const lineH = parseFloat(styleObj.lineHeight) || (parseFloat(styleObj.fontSize) * 1.4) || 14;
-  const targetH = titleH + crownLines * lineH;
-
-  const cloneChildren = Array.from(clone.children).filter((c) => !c.classList?.contains("stream-title"));
-  let splitIdx = cloneChildren.length;
-  for (let i = 0; i < cloneChildren.length; i++) {
-    const r = cloneChildren[i].getBoundingClientRect();
-    const childBottom = r.bottom - cloneRect.top;
-    if (childBottom > targetH + 1) {
-      splitIdx = i;
-      break;
+    // חיפוש בינארי על האות הראשונה שעוברת את הגבול
+    let lo = 1, hi = textNode.length, splitOffset = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, mid);
+      const rects = range.getClientRects();
+      const lr = rects[rects.length - 1];
+      if (!lr || (!lr.width && !lr.height)) { lo = mid + 1; continue; }
+      const bottom = lr.bottom - elRect.top;
+      if (bottom > targetBottomPx) {
+        splitOffset = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    if (splitOffset > 0) {
+      // אחורה לרווח כדי לא לחתוך באמצע מילה
+      const text = textNode.textContent;
+      let adjusted = splitOffset;
+      while (adjusted > 0 && text[adjusted - 1] !== " " && text[adjusted - 1] !== " ") adjusted--;
+      if (adjusted === 0) adjusted = splitOffset; // אין רווח — חיתוך באות
+      return { node: textNode, offset: adjusted };
     }
   }
-  document.body.removeChild(clone);
-
-  // אם רק הפסקה הראשונה כבר חורגת — נכריח אותה לכתר (אחרת הכתר יישאר ריק)
-  if (splitIdx === 0 && cloneChildren.length > 0) splitIdx = 1;
-
-  return splitIdx;
+  return null;
 }
 
 /**
- * מחלק streamEl לשני חלקים: הראש (נשאר ב-streamEl) והגוף (חדש).
- * מחזיר { fitsInCrown, bodyEl } — bodyEl יהיה null אם אין מה לחתוך.
+ * חותך את streamEl בנקודה הנתונה: מחלץ את כל מה שמהנקודה ועד הסוף לתוך
+ * אלמנט body חדש, ומחזיר את ה-body. ה-streamEl נשאר עם החלק העליון בלבד.
  */
-function splitStreamForCrown(streamEl, crownLines, blockWidthPx, sideClass) {
-  const splitIdx = measureSplitIndex(streamEl, crownLines, blockWidthPx);
-  const titleEl = streamEl.querySelector(":scope > .stream-title");
-  const contentChildren = Array.from(streamEl.children).filter((c) => !c.classList?.contains("stream-title"));
+function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidthPct) {
+  const range = document.createRange();
+  range.setStart(splitPoint.node, splitPoint.offset);
+  range.setEndAfter(streamEl.lastChild);
+  const fragment = range.extractContents();
 
-  if (splitIdx == null) {
-    return { fitsInCrown: false, bodyEl: null };
-  }
-  if (splitIdx >= contentChildren.length || contentChildren.length === 0) {
-    // כל התוכן נכנס לכתר — פשוט להרחיב את הזרם ל-50%
-    return { fitsInCrown: true, bodyEl: null };
-  }
-
-  // יוצרים אלמנט גוף חדש שמכיל את החלק שלא נכנס לכתר
   const bodyEl = document.createElement("div");
-  bodyEl.className = "stream talmud-commentary talmud-body-portion " + sideClass;
+  bodyEl.className = `stream talmud-commentary talmud-body-portion ${sideClass}`;
   bodyEl.dataset.talmudBodyOf = streamEl.getAttribute("data-stream") || "";
   bodyEl.dataset.talmudRole = "commentary-body";
-  for (let i = splitIdx; i < contentChildren.length; i++) {
-    bodyEl.appendChild(contentChildren[i]);
-  }
-  return { fitsInCrown: false, bodyEl };
+  bodyEl.appendChild(fragment);
+
+  bodyEl.style.float = side;
+  bodyEl.style.width = `${narrowWidthPct}%`;
+  bodyEl.style.clear = side;
+  return bodyEl;
 }
 
 /**
- * בודק האם הפרשן ארוך מספיק כדי להצדיק כתר אמיתי.
- * הקריטריון: גובה התוכן ב-50% רוחב >= title + (crownLines + EXTRA) שורות.
- * זה דינמי לחלוטין — לא תלוי בספירת תווים, אלא במדידת DOM אמיתית.
+ * בודק האם הפרשן (כשמוצג ב-50% רוחב) ארוך מספיק לכתר אמיתי.
+ * הפרשן חייב להיות כבר במסמך עם הרוחב הנכון.
  */
-function commentaryFillsCrownPlusExtra(streamEl, crownLines, blockWidthPx) {
-  if (!blockWidthPx || crownLines <= 0) return false;
-  const wideWidth = Math.max(40, blockWidthPx * 0.5);
-  const clone = streamEl.cloneNode(true);
-  clone.style.cssText = [
-    "position:absolute",
-    "top:-99999px",
-    "left:-99999px",
-    `width:${wideWidth}px`,
-    "visibility:hidden",
-    "float:none",
-    "margin:0",
-    "padding-left:3px",
-    "padding-right:3px",
-    "box-sizing:border-box",
-  ].join(";");
-  clone.classList.remove("talmud-crown-portion", "talmud-fits-in-crown");
-  document.body.appendChild(clone);
-
-  const titleH = (clone.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
-  const styleObj = getComputedStyle(clone);
+function commentaryFillsCrownPlusExtraLive(streamEl, crownLines) {
+  if (crownLines <= 0) return false;
+  const titleEl = streamEl.querySelector(":scope > .stream-title");
+  const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
+  const styleObj = getComputedStyle(streamEl);
   const lineH = parseFloat(styleObj.lineHeight) || (parseFloat(styleObj.fontSize) * 1.4) || 14;
   const requiredH = titleH + (crownLines + CROWN_EXTRA_LINES) * lineH;
-  const totalH = clone.getBoundingClientRect().height;
-
-  document.body.removeChild(clone);
+  const totalH = streamEl.getBoundingClientRect().height;
   return totalH >= requiredH;
 }
 
@@ -417,7 +395,7 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
 
   const mainWidth = getTalmudMainWidth();
   const sideWidth = ((100 - mainWidth) / 2).toFixed(4);
-  const sides     = orderedSides(streamsWrap); // e.g. ["right","left"]
+  const sides     = orderedSides(streamsWrap);
   const sideGap   = getTalmudSideGap();
   const crownLines = getTalmudCrownLines();
 
@@ -440,80 +418,72 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   streamB.classList.add("talmud-commentary", sideBClass);
   streamB.dataset.talmudRole = "commentary-b";
 
-  // הוספת זרמים זמנית לבלוק (לפני המדידה — צריך להיות בעץ ה-DOM כדי שמדידות יעבדו).
-  // הבלוק עצמו עוד לא בעמוד, אבל נכניס אותו זמנית כדי לקבל רוחב.
+  // שלב 1: מציבים את הזרמים והבלוק זמנית בעץ ה-DOM ב-50% רוחב כדי
+  // למדוד באופן אמיתי איפה השורה ה-N+1 מתחילה.  זה הכרחי בגלל שמדידות
+  // טקסט תלויות בגופן/רוחב/padding בפועל, לא ב-clone מבודד.
+  streamA.style.float = sideA;
+  streamA.style.width = "50%";
+  streamB.style.float = sideB;
+  streamB.style.width = "50%";
+
   block.appendChild(streamA);
   block.appendChild(streamB);
   block.appendChild(mainEl);
 
-  // נכניס את הבלוק ל-streamsWrap.parentElement (=pageEl) זמנית כדי לקבל רוחב.
   const tempParent = streamsWrap.parentElement;
   tempParent.insertBefore(block, streamsWrap);
-  const blockWidthPx = block.getBoundingClientRect().width;
-  // נסיר זמנית — נחזיר אחרי הסידור
-  block.remove();
 
-  // החלטה דינמית: האם שני הפרשנים ארוכים מספיק לכתר אמיתי?
-  const aFitsCrown = commentaryFillsCrownPlusExtra(streamA, crownLines, blockWidthPx);
-  const bFitsCrown = commentaryFillsCrownPlusExtra(streamB, crownLines, blockWidthPx);
+  // שלב 2: בדיקה דינמית — האם שני הפרשנים ארוכים מספיק לכתר?
+  const aFitsCrown = commentaryFillsCrownPlusExtraLive(streamA, crownLines);
+  const bFitsCrown = commentaryFillsCrownPlusExtraLive(streamB, crownLines);
   const doCrown    = aFitsCrown && bFitsCrown && crownLines > 0;
 
-  // ננקה את ה-block ונבנה אותו מחדש לפי ההחלטה
-  while (block.firstChild) block.removeChild(block.firstChild);
-
   if (!doCrown) {
-    // אין כתר — שני הפרשנים בצדדים 29% מהרגע הראשון, ראשי באמצע 42%, כל ה-3 מהשורה הראשונה
+    // אין כתר — מחזירים לרוחב 29% וכל ה-3 מתחילים יחד מלמעלה
     block.classList.add("talmud-no-crown");
-    streamA.style.float = sideA;
     streamA.style.width = `${sideWidth}%`;
-    streamB.style.float = sideB;
     streamB.style.width = `${sideWidth}%`;
-
-    block.appendChild(streamA);
-    block.appendChild(streamB);
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
-    block.appendChild(mainEl);
   } else {
-    // יש כתר — מחלקים כל פרשן ל: ראש (50% רחב, ב-crown) + גוף (29% רחב, מתחת לכתר)
+    // יש כתר — מחלקים כל פרשן בנקודה המדויקת של שורה N+1
     block.classList.add("talmud-with-crown");
 
-    const splitA = splitStreamForCrown(streamA, crownLines, blockWidthPx, sideAClass);
-    const splitB = splitStreamForCrown(streamB, crownLines, blockWidthPx, sideBClass);
+    const titleAH = (streamA.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
+    const styleA = getComputedStyle(streamA);
+    const lineHA = parseFloat(styleA.lineHeight) || (parseFloat(styleA.fontSize) * 1.4) || 14;
+    const targetAH = titleAH + crownLines * lineHA;
 
-    // הכתר: streamA נשאר עם החלק שנכנס לכתר; הופך ל-50% רוחב
+    const titleBH = (streamB.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
+    const styleB = getComputedStyle(streamB);
+    const lineHB = parseFloat(styleB.lineHeight) || (parseFloat(styleB.fontSize) * 1.4) || 14;
+    const targetBH = titleBH + crownLines * lineHB;
+
+    const splitPointA = findCrownSplitInLiveElement(streamA, targetAH);
+    const splitPointB = findCrownSplitInLiveElement(streamB, targetBH);
+
+    // streamA + streamB נשארים כ-crown_portion ב-50% רוחב
     streamA.classList.add("talmud-crown-portion");
-    streamA.style.float = sideA;
-    streamA.style.width = "50%";
-
     streamB.classList.add("talmud-crown-portion");
-    streamB.style.float = sideB;
-    streamB.style.width = "50%";
 
-    block.appendChild(streamA);
-    block.appendChild(streamB);
-
-    // הגוף: אם נוצר אלמנט body, מציבים אותו עם clear לאותו צד, רוחב 29%
-    if (splitA.bodyEl) {
-      splitA.bodyEl.style.float = sideA;
-      splitA.bodyEl.style.width = `${sideWidth}%`;
-      splitA.bodyEl.style.clear = sideA;
-      block.appendChild(splitA.bodyEl);
+    // יוצרים body_portion רק אם יש מה לחתוך
+    let bodyA = null, bodyB = null;
+    if (splitPointA) {
+      bodyA = extractBodyAfterSplit(streamA, splitPointA, sideAClass, sideA, sideWidth);
     }
-    if (splitB.bodyEl) {
-      splitB.bodyEl.style.float = sideB;
-      splitB.bodyEl.style.width = `${sideWidth}%`;
-      splitB.bodyEl.style.clear = sideB;
-      block.appendChild(splitB.bodyEl);
+    if (splitPointB) {
+      bodyB = extractBodyAfterSplit(streamB, splitPointB, sideBClass, sideB, sideWidth);
     }
+    // הכנסה לבלוק לפי הסדר הנכון: ראשי בסוף כדי שיזרום מתחת ל-crowns
+    if (bodyA) block.appendChild(bodyA);
+    if (bodyB) block.appendChild(bodyB);
 
-    // הראשי: זורם באופן טבעי מתחת לכתר (ה-floats של 50%+50% דוחפים אותו)
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
-    block.appendChild(mainEl);
+    block.appendChild(mainEl); // moves to end (dom move)
   }
 
-  // קלאסים מידע (לעתיד — להתרחבות צד כשהראשי קצר)
+  // קלאסים מידע (לטיפול עתידי בהתרחבות צד כשהראשי קצר)
   const lenA = streamTextLength(streamA);
   const lenB = streamTextLength(streamB);
   const lenM = mainEl ? (mainEl.textContent || "").trim().length : 0;
