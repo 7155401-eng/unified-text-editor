@@ -478,6 +478,18 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     if (bodyA) block.appendChild(bodyA);
     if (bodyB) block.appendChild(bodyB);
 
+    // באגים 5+7: לכפות גובה כתר זהה לשני הפרשנים, כדי שהגופים יתחילו
+    // באותה Y ולא יווצר רווח בין כתר A לגוף A (או הסטות אחרות).
+    // הגובה היעד = max(targetAH, targetBH).
+    const equalCrownH = Math.max(targetAH, targetBH);
+    streamA.style.minHeight = `${equalCrownH}px`;
+    streamB.style.minHeight = `${equalCrownH}px`;
+    streamA.style.maxHeight = `${equalCrownH}px`;
+    streamB.style.maxHeight = `${equalCrownH}px`;
+    // overflow:hidden כדי לקצוץ קצוות תוכן שעלולים לחרוג בגלל min/max-height
+    streamA.style.overflow = "hidden";
+    streamB.style.overflow = "hidden";
+
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
     block.appendChild(mainEl); // moves to end (dom move)

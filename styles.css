@@ -788,6 +788,8 @@ mark.pdf-find-hit-current {
   text-align: justify;
   text-align-last: center;
   text-justify: inter-word;
+  /* רציפות חזותית: ביטול רווח תחתון כדי להידבק לגוף */
+  padding-bottom: 0 !important;
 }
 /* הפרשן בכתר משמאל מסומן עם talmud-left */
 .talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right {
@@ -806,6 +808,8 @@ mark.pdf-find-hit-current {
   text-align: justify;
   text-align-last: center;
   text-justify: inter-word;
+  /* רציפות חזותית: ביטול רווח עליון כדי להידבק לכתר */
+  padding-top: 0 !important;
 }
 .talmud-layout.talmud-with-crown > .talmud-body-portion.talmud-right {
   padding-left: 3px;
