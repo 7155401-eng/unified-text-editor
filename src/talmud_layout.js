@@ -1,6 +1,19 @@
-// talmud_layout.js — Talmud page layout (v2, CSS-float based)
+// talmud_layout.js — Talmud page layout (v3 spec-aligned).
 // Built on the same pattern as mishna_wrap_layout.js + flow_layout.js.
-// No pixel measurements, no DOM clones — pure CSS float logic.
+// Integrates Source Ledger (talmud_source_ledger.js) for safe unwrap and
+// adds toggle re-entry guard (bug 21) + invariant assertion at unwrap time.
+
+import {
+  recordSource,
+  recordPart,
+  restoreAll,
+  clearLedger,
+} from "./talmud_source_ledger.js";
+import {
+  registerPackerHook,
+  PACKER_API_VERSION,
+} from "./engine/packer_hooks.js";
+import { correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
 
 const STORAGE_KEY       = "ravtext.talmudLayout";
 const STREAMS_KEY       = "ravtext.talmudLayout.streams";
@@ -150,7 +163,20 @@ function resetMain(mainEl) {
 
 function unwrapTalmudLayout(pageEl) {
   const block = pageEl.querySelector(":scope > .talmud-layout");
-  if (!block) return;
+  if (!block) {
+    // Even if no block, clear any stray talmud datasets so INV-2 stays clean.
+    clearLedger(pageEl);
+    return;
+  }
+  // Try ledger-based restoration first (bug 21: text integrity on toggle).
+  // If the ledger is empty (legacy block, e.g. from before this commit),
+  // we fall through to the class-search path below.
+  try {
+    restoreAll(pageEl);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[talmud unwrap] ledger restore failed, falling back", err);
+  }
 
   const streamsWrap = pageEl.querySelector(".page-streams");
 
@@ -459,15 +485,34 @@ function findSplitAtPixelYInElement(streamEl, targetYInElement) {
  * חותך את streamEl בנקודה הנתונה: מחלץ את כל מה שמהנקודה ועד הסוף לתוך
  * אלמנט body חדש, ומחזיר את ה-body. ה-streamEl נשאר עם החלק העליון בלבד.
  */
-function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidthPct) {
+function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidthPct, ledgerCtx) {
+  // Bug 28 enforcement: never split mid-word. The split helpers already walk
+  // back to a space; here we double-check and fall forward to a clean break
+  // if needed. If absolutely no safe break, we leave streamEl intact.
+  let safeOffset = splitPoint.offset;
+  const text = splitPoint.node.textContent || "";
+  if (safeOffset > 0 && safeOffset < text.length) {
+    const ch = text[safeOffset - 1];
+    if (!/[\s.,;:!?־׀׃׳״ ​­]/.test(ch)) {
+      // Walk further back.
+      let i = safeOffset;
+      while (i > 0 && !/[\s.,;:!?־׀׃׳״ ​­]/.test(text[i - 1])) i--;
+      if (i > 0) safeOffset = i;
+    }
+  }
   const range = document.createRange();
-  range.setStart(splitPoint.node, splitPoint.offset);
+  range.setStart(splitPoint.node, safeOffset);
   range.setEndAfter(streamEl.lastChild);
   const fragment = range.extractContents();
 
   const bodyEl = document.createElement("div");
   // לוקחים את כל הקלאסים של הזרם המקורי כדי שיורש את הסגנון (צבע, גבולות, וכו')
-  bodyEl.className = `${streamEl.className} talmud-body-portion ${sideClass}`;
+  // Bug 22 / INV-6: drop talmud-crown-portion so body doesn't mis-inherit it.
+  const cleanClass = (streamEl.className || "")
+    .split(/\s+/)
+    .filter(c => c && c !== "talmud-crown-portion" && c !== "talmud-crown-full")
+    .join(" ");
+  bodyEl.className = `${cleanClass} talmud-body-portion ${sideClass}`;
   const code = streamEl.getAttribute("data-stream") || "";
   if (code) bodyEl.setAttribute("data-stream", code);
   bodyEl.dataset.talmudBodyOf = code;
@@ -481,6 +526,11 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
   const sideGap = getTalmudSideGap();
   if (side === "right") bodyEl.style.marginLeft = `${sideGap}px`;
   else bodyEl.style.marginRight = `${sideGap}px`;
+  // Source Ledger: link this body to its source if the caller supplied context.
+  if (ledgerCtx && ledgerCtx.pageEl && ledgerCtx.sourceId) {
+    const role = ledgerCtx.partRole || "body";
+    recordPart(ledgerCtx.pageEl, ledgerCtx.sourceId, role, bodyEl);
+  }
   return bodyEl;
 }
 
@@ -633,7 +683,14 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
     const midLines = Math.ceil(totalLines / 2);
     const splitPoint = findCrownSplitByLineCount(commentary, midLines);
     if (splitPoint) {
-      const otherHalf = extractBodyAfterSplit(commentary, splitPoint, sideLeftClass, sideLeft, parseFloat(sideHalf));
+      // Ledger: single-commentary virtual halves share one source.
+      const pageElSC = block.closest(".page");
+      const sourceIdSC = pageElSC ? recordSource(pageElSC, commentary) : "";
+      if (sourceIdSC) recordPart(pageElSC, sourceIdSC, "single-half-1", commentary);
+      const otherHalf = extractBodyAfterSplit(
+        commentary, splitPoint, sideLeftClass, sideLeft, parseFloat(sideHalf),
+        { pageEl: pageElSC, sourceId: sourceIdSC, partRole: "single-half-2" }
+      );
       otherHalf.classList.remove("talmud-body-portion");
       otherHalf.classList.add("talmud-other-side");
       otherHalf.dataset.talmudRole = "commentary-other-side";
@@ -755,10 +812,17 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     longEl.style.float = longSide;
     longEl.style.width = "100%";
     longEl.style.clear = "none";
+    // Ledger snapshot for asymmetric long stream
+    const pageElAsym = block.closest(".page");
+    const sourceIdLong = pageElAsym ? recordSource(pageElAsym, longEl) : "";
+    if (sourceIdLong) recordPart(pageElAsym, sourceIdLong, "crown", longEl);
     let longBody = null;
     const longSplit = findOffsetAtLineStart(longEl, crownLines);
     if (longSplit) {
-      longBody = extractBodyAfterSplit(longEl, longSplit, longSideClass, longSide, sideWidth);
+      longBody = extractBodyAfterSplit(
+        longEl, longSplit, longSideClass, longSide, sideWidth,
+        { pageEl: pageElAsym, sourceId: sourceIdLong }
+      );
       // body צמוד לאחר הכתר, ברוחב צר, clear לצד שלו
       longBody.style.float = longSide;
       longBody.style.width = `${sideWidth}%`;
@@ -844,12 +908,24 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     streamB.classList.add("talmud-crown-portion");
 
     // יוצרים body_portion רק אם יש מה לחתוך
+    // Source Ledger: snapshot each crown stream BEFORE it's split.
+    const pageElForLedger = block.closest(".page");
+    const sourceIdA = pageElForLedger ? recordSource(pageElForLedger, streamA) : "";
+    const sourceIdB = pageElForLedger ? recordSource(pageElForLedger, streamB) : "";
+    if (sourceIdA) recordPart(pageElForLedger, sourceIdA, "crown", streamA);
+    if (sourceIdB) recordPart(pageElForLedger, sourceIdB, "crown", streamB);
     let bodyA = null, bodyB = null;
     if (splitPointA) {
-      bodyA = extractBodyAfterSplit(streamA, splitPointA, sideAClass, sideA, sideWidth);
+      bodyA = extractBodyAfterSplit(
+        streamA, splitPointA, sideAClass, sideA, sideWidth,
+        { pageEl: pageElForLedger, sourceId: sourceIdA }
+      );
     }
     if (splitPointB) {
-      bodyB = extractBodyAfterSplit(streamB, splitPointB, sideBClass, sideB, sideWidth);
+      bodyB = extractBodyAfterSplit(
+        streamB, splitPointB, sideBClass, sideB, sideWidth,
+        { pageEl: pageElForLedger, sourceId: sourceIdB }
+      );
     }
     // קריטי: body חייב להיות בסדר ה-DOM *לפני* mainEl, כדי שיופיע בצמוד לשולי
     // ה-crown ולא אחרי הסיום של main. מעבירים גם את main לסוף.
@@ -917,6 +993,46 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     if (expandedA) block.insertBefore(expandedA, mainEl);
     if (expandedB) block.insertBefore(expandedB, mainEl);
 
+    // Bug 15 / INV-10: ensure two expanded blocks sit side-by-side, not
+    // stacked vertically. Pure float doesn't always achieve this when one
+    // side has more text. We check after insertion and apply a position:
+    // absolute fallback if needed.
+    if (expandedA && expandedB) {
+      // Two RAFs to let the float layout settle.
+      const align = () => {
+        const aRect = expandedA.getBoundingClientRect();
+        const bRect = expandedB.getBoundingClientRect();
+        if (Math.abs(aRect.top - bRect.top) > 5) {
+          // Stacked — pull the second one up using absolute positioning.
+          const blockRect2 = block.getBoundingClientRect();
+          const targetTop = Math.round(Math.min(aRect.top, bRect.top) - blockRect2.top);
+          block.style.position = "relative";
+          // Whichever is lower in the stack gets pulled up.
+          const lower = aRect.top > bRect.top ? expandedA : expandedB;
+          const lowerSide = lower === expandedA ? sideA : sideB;
+          lower.style.position = "absolute";
+          lower.style.top = `${targetTop}px`;
+          lower.style.float = "none";
+          lower.style.clear = "none";
+          if (lowerSide === "left") {
+            lower.style.left = "0";
+            lower.style.right = "auto";
+          } else {
+            lower.style.right = "0";
+            lower.style.left = "auto";
+          }
+          lower.dataset.talmudExpandedAligned = "abs";
+        }
+      };
+      // Try immediately (may already have laid out), then again on RAF.
+      align();
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => requestAnimationFrame(align));
+      }
+      // And once more after the page-level overflow check.
+      setTimeout(align, 250);
+    }
+
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
     block.appendChild(mainEl); // moves to end (dom move)
@@ -938,11 +1054,20 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
 //  Main entry per page
 // ─────────────────────────────────────────────
 
+// Re-entry guard (bug 21 / spec 11.11): a fast user toggle can fire
+// applyTalmudLayoutToPage while a previous invocation is still mutating
+// the same pageEl. We mark the page as "building" and bail re-entrant calls.
+const _buildingPages = new WeakSet();
+
 export function applyTalmudLayoutToPage(pageEl) {
   if (!pageEl) return;
+  if (_buildingPages.has(pageEl)) return; // re-entry guard
   const streamsWrap = pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
 
+  _buildingPages.add(pageEl);
+  pageEl.dataset.talmudState = "building";
+  try {
   // 1. Undo any previous talmud layout on this page
   unwrapTalmudLayout(pageEl);
   pageEl.classList.remove("talmud-layout-page");
@@ -1015,8 +1140,18 @@ export function applyTalmudLayoutToPage(pageEl) {
   //    שתי בדיקות נדחות (rAF + setTimeout) כדי להמתין לפריסה מחושבת.
   const checkOverflow = () => {
     pageEl.classList.remove("talmud-page-overflow");
-    const innerHeight = pageEl.scrollHeight;
+    let innerHeight = pageEl.scrollHeight;
     const outerHeight = pageEl.clientHeight;
+    if (innerHeight > outerHeight + 1) {
+      // Bug 19/29 safety net: try to trim oversized expanded blocks first.
+      // Loop with a budget so we don't infinite-loop on undeletable content.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const trimmed = correctTalmudOverflowOnPage(pageEl);
+        if (!trimmed) break;
+        innerHeight = pageEl.scrollHeight;
+        if (innerHeight <= outerHeight + 1) break;
+      }
+    }
     if (innerHeight > outerHeight + 1) {
       pageEl.classList.add("talmud-page-overflow");
       pageEl.dataset.talmudOverflowPx = String(innerHeight - outerHeight);
@@ -1031,6 +1166,10 @@ export function applyTalmudLayoutToPage(pageEl) {
     requestAnimationFrame(() => requestAnimationFrame(checkOverflow));
   }
   setTimeout(checkOverflow, 200);
+  } finally {
+    delete pageEl.dataset.talmudState;
+    _buildingPages.delete(pageEl);
+  }
 }
 
 // ─────────────────────────────────────────────

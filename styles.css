@@ -712,7 +712,28 @@ mark.pdf-find-hit-current {
   text-align-last: inherit;
 }
 
-/* ============================================================ 
+/* ============================================================
+   TALMUD LAYOUT — v3-spec aligned additions
+   ============================================================ */
+
+/* GPT-2 / spec 6.2: while building, hide leftover streams to avoid
+   flicker from CSS rules that target leftovers transitioning. */
+.talmud-layout-page[data-talmud-state="building"] .page-streams > .stream {
+  visibility: hidden;
+}
+
+/* SVG opening-word stretch (bug 17/18). The <svg class="opening-word-svg">
+   sits inline with text. Do not let it inherit baseline gymnastics. */
+.opening-word-svg {
+  display: inline-block;
+  vertical-align: baseline;
+  overflow: visible;
+}
+.opening-word-svg text {
+  /* RTL anchored at end so the visual right edge aligns with the line. */
+}
+
+/* ============================================================
    TALMUD LAYOUT — CSS patch
    Replace the entire existing .talmud-* block in styles.css
    with this content.

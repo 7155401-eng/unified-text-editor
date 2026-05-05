@@ -4,7 +4,20 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyTalmudLayoutToPages } from "./talmud_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
+import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
 import { getStreamSettings } from "./original_stream_columns.js";
+import { firePackerHook } from "./engine/packer_hooks.js";
+import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
+import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
+
+// Expose for debug + audit harness.
+if (typeof window !== "undefined") {
+  window.__talmudCorrectOverflow = correctTalmudOverflow;
+  window.__talmudCorrectOverflowOnPage = correctTalmudOverflowOnPage;
+}
+
+// Install spec-compliant window.__talmudDebug as soon as bridge loads.
+installTalmudDebugV2();
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -409,10 +422,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
 
     const t2 = performance.now();
     renderPages(pages, pagesContainer);
+    // Spec-compliant phase order: hooks fire around the layout passes so
+    // any future module can hook in without surgery on the packer.
+    await firePackerHook("beforeBuild", { container: pagesContainer, pages });
     applyTalmudLayoutToPages(pagesContainer);
     applyMishnaWrapToPages(pagesContainer);
     applyBalancedColumnsToPages(pagesContainer);
     applyOpeningWordsToPages(pagesContainer);
+    // Bug 17 + 18: cap stretch at 250% and switch to SVG textLength
+    // for visually-correct kerning. Runs AFTER opening_word so it can
+    // upgrade existing .opening-word elements.
+    applyOpeningWordStretchToPages(pagesContainer);
+    // Bug 19/29 safety net: trim talmud expanded blocks that exceed the
+    // page frame (until full Budget Solver lands). Defer to the next
+    // microtask so layout has settled.
+    requestAnimationFrame(() => correctTalmudOverflow(pagesContainer));
+    await firePackerHook("afterBuild", { container: pagesContainer, pages });
     const t3 = performance.now();
     const statusEl = document.getElementById("status");
     if (statusEl) {
