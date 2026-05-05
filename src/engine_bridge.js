@@ -433,10 +433,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // for visually-correct kerning. Runs AFTER opening_word so it can
     // upgrade existing .opening-word elements.
     applyOpeningWordStretchToPages(pagesContainer);
-    // Bug 19/29 safety net: trim talmud expanded blocks that exceed the
-    // page frame (until full Budget Solver lands). Defer to the next
-    // microtask so layout has settled.
-    requestAnimationFrame(() => correctTalmudOverflow(pagesContainer));
+    // v30-sync: ה-overflow corrector שינה התנהגות לסימון בלבד, וה-overflow check
+    // מתבצע כעת סינכרונית בתוך applyTalmudLayoutToPage. הקריאה כאן נשארת
+    // כסריקה סופית סינכרונית — בלי RAF, כדי שהמנוע יראה תוצאה אמיתית.
+    correctTalmudOverflow(pagesContainer);
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
     const t3 = performance.now();
     const statusEl = document.getElementById("status");

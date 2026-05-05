@@ -592,13 +592,12 @@ function computeCrownOffset(block) {
 }
 
 function scheduleCrownOffset(block) {
-  // Multiple rAF passes ensure fonts/layout are stable
+  // v30-sync: רק חישוב סינכרוני אחד עם flush לפניו. ללא rAF/setTimeout —
+  // המנוע מודד את הגובה מיד אחרי הקריאה הזו, וכל עדכון מאוחר יגרום
+  // למדידה שגויה ולחריגה מגבולות העמוד.
+  // קריאה ל-offsetHeight מכריחה את הדפדפן לחשב פריסה עכשיו.
+  void block.offsetHeight;
   computeCrownOffset(block);
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(() => computeCrownOffset(block));
-    requestAnimationFrame(() => requestAnimationFrame(() => computeCrownOffset(block)));
-  }
-  setTimeout(() => computeCrownOffset(block), 100);
 }
 
 // ─────────────────────────────────────────────
@@ -1057,39 +1056,33 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     // side has more text. We check after insertion and apply a position:
     // absolute fallback if needed.
     if (expandedA && expandedB) {
-      // Two RAFs to let the float layout settle.
-      const align = () => {
-        const aRect = expandedA.getBoundingClientRect();
-        const bRect = expandedB.getBoundingClientRect();
-        if (Math.abs(aRect.top - bRect.top) > 5) {
-          // Stacked — pull the second one up using absolute positioning.
-          const blockRect2 = block.getBoundingClientRect();
-          const targetTop = Math.round(Math.min(aRect.top, bRect.top) - blockRect2.top);
-          block.style.position = "relative";
-          // Whichever is lower in the stack gets pulled up.
-          const lower = aRect.top > bRect.top ? expandedA : expandedB;
-          const lowerSide = lower === expandedA ? sideA : sideB;
-          lower.style.position = "absolute";
-          lower.style.top = `${targetTop}px`;
-          lower.style.float = "none";
-          lower.style.clear = "none";
-          if (lowerSide === "left") {
-            lower.style.left = "0";
-            lower.style.right = "auto";
-          } else {
-            lower.style.right = "0";
-            lower.style.left = "auto";
-          }
-          lower.dataset.talmudExpandedAligned = "abs";
+      // v30-sync: בדיקה סינכרונית בלבד — flush + measure + fix מיידי.
+      // ללא RAF/setTimeout, אחרת המנוע מקבל גובה לפני התיקון ומחשב שגוי.
+      void block.offsetHeight; // force layout
+      const aRect = expandedA.getBoundingClientRect();
+      const bRect = expandedB.getBoundingClientRect();
+      if (Math.abs(aRect.top - bRect.top) > 5) {
+        // Stacked — pull the second one up using absolute positioning.
+        const blockRect2 = block.getBoundingClientRect();
+        const targetTop = Math.round(Math.min(aRect.top, bRect.top) - blockRect2.top);
+        block.style.position = "relative";
+        // Whichever is lower in the stack gets pulled up.
+        const lower = aRect.top > bRect.top ? expandedA : expandedB;
+        const lowerSide = lower === expandedA ? sideA : sideB;
+        lower.style.position = "absolute";
+        lower.style.top = `${targetTop}px`;
+        lower.style.float = "none";
+        lower.style.clear = "none";
+        if (lowerSide === "left") {
+          lower.style.left = "0";
+          lower.style.right = "auto";
+        } else {
+          lower.style.right = "0";
+          lower.style.left = "auto";
         }
-      };
-      // Try immediately (may already have laid out), then again on RAF.
-      align();
-      if (typeof requestAnimationFrame === "function") {
-        requestAnimationFrame(() => requestAnimationFrame(align));
+        lower.dataset.talmudExpandedAligned = "abs";
+        void block.offsetHeight; // flush after fix
       }
-      // And once more after the page-level overflow check.
-      setTimeout(align, 250);
     }
 
     mainEl.classList.add("talmud-main");
@@ -1204,32 +1197,24 @@ export function applyTalmudLayoutToPage(pageEl) {
       streamsWrap.appendChild(s);
     });
 
-  // 7. גלאי חריגה: לאחר עידכון הלייאאוט, נבדוק אם תוכן העמוד חורג
-  //    מגבולות העמוד (clipped ע"י overflow:hidden של .page).
-  //    שתי בדיקות נדחות (rAF + setTimeout) כדי להמתין לפריסה מחושבת.
-  const checkOverflow = () => {
-    pageEl.classList.remove("talmud-page-overflow");
-    const innerHeight = pageEl.scrollHeight;
-    const outerHeight = pageEl.clientHeight;
-    if (innerHeight > outerHeight + 1) {
-      // v28-merge: corrector שינה התנהגות — לא מוחק תוכן, רק מסמן.
-      // שמירה על תוכן מלא היא דרישה מפורשת של משה.
-      correctTalmudOverflowOnPage(pageEl);
+  // 7. v30-sync: בדיקת חריגה סינכרונית מיד אחרי בניית הפריסה.
+  //    flush פריסה ואז מודדים. אם יש חריגה — מסמנים בלבד (לא מתקנים מאוחר).
+  //    המנוע יראה את הסימן ויחליט אם להעביר תוכן.
+  void pageEl.offsetHeight; // force layout
+  pageEl.classList.remove("talmud-page-overflow");
+  const innerHeight = pageEl.scrollHeight;
+  const outerHeight = pageEl.clientHeight;
+  if (innerHeight > outerHeight + 1) {
+    // corrector מסמן בלבד — לא מוחק תוכן.
+    correctTalmudOverflowOnPage(pageEl);
+    pageEl.classList.add("talmud-page-overflow");
+    pageEl.dataset.talmudOverflowPx = String(innerHeight - outerHeight);
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn(`[talmud] page overflow: +${innerHeight - outerHeight}px`, pageEl);
     }
-    if (innerHeight > outerHeight + 1) {
-      pageEl.classList.add("talmud-page-overflow");
-      pageEl.dataset.talmudOverflowPx = String(innerHeight - outerHeight);
-      if (typeof console !== "undefined" && console.warn) {
-        console.warn(`[talmud] page overflow: +${innerHeight - outerHeight}px`, pageEl);
-      }
-    } else {
-      pageEl.removeAttribute("data-talmud-overflow-px");
-    }
-  };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(() => requestAnimationFrame(checkOverflow));
+  } else {
+    pageEl.removeAttribute("data-talmud-overflow-px");
   }
-  setTimeout(checkOverflow, 200);
   } finally {
     delete pageEl.dataset.talmudState;
     _buildingPages.delete(pageEl);
