@@ -217,6 +217,37 @@ function unwrapTalmudLayout(pageEl) {
  * חשוב: streamEl חייב להיות כבר ב-DOM עם רוחב 50% מוגדר.
  */
 /**
+ * אחרי בניית הכתר ב-DOM: בודק את השורה האחרונה. אם היא קצרה מדי
+ * (< 70% מהרוחב), מבטל את ה-justify שלה כדי שלא נראה מתיחה מלאכותית
+ * של מילה בודדת. השורה תהיה מיושרת לצידה הטבעי.
+ */
+function adjustCrownLastLineJustify(crownEl) {
+  if (!crownEl) return;
+  const elRect = crownEl.getBoundingClientRect();
+  const containerWidth = elRect.width;
+  if (!containerWidth) return;
+  const range = document.createRange();
+  range.selectNodeContents(crownEl);
+  const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 || r.height > 0);
+  if (rects.length === 0) return;
+  let lastY = -Infinity;
+  for (const r of rects) if (r.bottom > lastY) lastY = r.bottom;
+  let lineMinL = Infinity, lineMaxR = -Infinity;
+  for (const r of rects) {
+    if (Math.abs(r.bottom - lastY) < 2) {
+      if (r.left < lineMinL) lineMinL = r.left;
+      if (r.right > lineMaxR) lineMaxR = r.right;
+    }
+  }
+  const lastLineW = lineMaxR - lineMinL;
+  if (lastLineW / containerWidth < 0.7) {
+    crownEl.style.textAlignLast = "auto";
+  } else {
+    crownEl.style.textAlignLast = "";
+  }
+}
+
+/**
  * עוטף findOffsetAtLineStart: ננסה גם לכלול שורה אחת עד שתיים נוספות
  * אם השורה האחרונה הצפויה צרה מדי. כך הכתר תמיד מסתיים בשורה מלאה,
  * ולא נצטרך למתוח מילה בודדת על פני כל הרוחב.
@@ -723,7 +754,7 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     longEl.style.width = "100%";
     longEl.style.clear = "none";
     let longBody = null;
-    const longSplit = findOffsetForFullLastLine(longEl, crownLines, 2);
+    const longSplit = findOffsetAtLineStart(longEl, crownLines);
     if (longSplit) {
       longBody = extractBodyAfterSplit(longEl, longSplit, longSideClass, longSide, sideWidth);
       // body צמוד לאחר הכתר, ברוחב צר, clear לצד שלו
@@ -802,8 +833,9 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
 
     // חיתוך לפי שורות אמיתיות + הרחבה לשורה מלאה. אם השורה האחרונה
     // היתה יוצאת קצרה (מילה אחת), הפונקציה מרחיבה עד שורה מלאה.
-    const splitPointA = findOffsetForFullLastLine(streamA, crownLines, 2);
-    const splitPointB = findOffsetForFullLastLine(streamB, crownLines, 2);
+    // חיתוך מדויק לפי שורות (בלי הרחבה — היא גרמה לחריגות מגבולות העמוד)
+    const splitPointA = findOffsetAtLineStart(streamA, crownLines);
+    const splitPointB = findOffsetAtLineStart(streamB, crownLines);
 
     // streamA + streamB נשארים כ-crown_portion ב-50% רוחב
     streamA.classList.add("talmud-crown-portion");
@@ -919,6 +951,8 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   if (lenB < lenA && lenB < lenM) block.classList.add("talmud-b-short");
   if (lenM < lenA && lenM < lenB) block.classList.add("talmud-main-short");
 
+  // ביטול מתיחה לשורות אחרונות קצרות (כדי לא ליצור חללים מלאכותיים)
+  block.querySelectorAll(":scope > .talmud-crown-portion").forEach(adjustCrownLastLineJustify);
 }
 
 // ─────────────────────────────────────────────
