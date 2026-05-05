@@ -13,6 +13,7 @@ import { loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
 import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
+import { wireTalmudLayoutToggle } from "./talmud_layout.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 // בלוני צד הוסרו — בועות עכשיו inline (data-num מעל כל סימן)
 
@@ -197,6 +198,7 @@ document.getElementById("btn-load-talmud")?.addEventListener("click", () => {
 
 document.getElementById("btn-render")?.addEventListener("click", rerenderPages);
 wireMishnaWrapToggle(rerenderPages);
+wireTalmudLayoutToggle(rerenderPages);
 
 document.querySelectorAll(".btn-stress").forEach((btn) => {
   btn.addEventListener("click", () => {
