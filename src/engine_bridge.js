@@ -287,6 +287,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     applyMishnaWrapToPages(pagesContainer);
     const t3 = performance.now();
     const statusEl = document.getElementById("status");
+    applyTalmudLayoutToPages(pagesContainer);
     if (statusEl) {
       const utils = pages.map((p) => (p.total / DOM_PAGE_GEOM.maxPageHeight) * 100);
       const avg = utils.length ? utils.reduce((a, b) => a + b, 0) / utils.length : 0;
