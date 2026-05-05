@@ -806,16 +806,17 @@ mark.pdf-find-hit-current {
   text-align-last: justify !important;
 }
 
-/* כשמכבדים שבירות פסקה: ההערות חוזרות להיות בלוקים נפרדים, ולא נדחקת
-   השורה האחרונה של פסקה אמיתית למתיחה. */
-.talmud-layout.talmud-preserve-breaks .stream .note,
-.talmud-layout.talmud-preserve-breaks .stream .note-inline,
-.talmud-layout.talmud-preserve-breaks .stream .note-part {
+/* כשמכבדים שבירות פסקה בכתר: ההערות בכתר חוזרות להיות בלוקים נפרדים,
+   והשורה האחרונה של פסקה אמיתית לא נדחקת למתיחה. רלוונטי רק לכתר עצמו —
+   ה-body וה-expanded מקבלים יחס שונה (ראה הערות נפרדות). */
+.talmud-layout.talmud-preserve-breaks > .stream.talmud-crown-portion .note,
+.talmud-layout.talmud-preserve-breaks > .stream.talmud-crown-portion .note-inline,
+.talmud-layout.talmud-preserve-breaks > .stream.talmud-crown-portion .note-part {
   display: block !important;
   text-align-last: inherit !important;
 }
-/* יוצא מן הכלל: בכתר חצוי באמצע משפט, השורה האחרונה של ה-stream הכולל
-   (לא של פסקה בודדת) עדיין צריכה להיות מיושרת — כי החיתוך הוא לא בסוף פסקה. */
+/* בכתר חצוי באמצע משפט, השורה האחרונה של ה-stream הכולל (לא של פסקה
+   בודדת) עדיין צריכה להיות מיושרת — כי החיתוך הוא לא בסוף פסקה. */
 .talmud-layout.talmud-preserve-breaks.talmud-with-crown > .stream.talmud-crown-portion {
   text-align-last: justify !important;
 }
