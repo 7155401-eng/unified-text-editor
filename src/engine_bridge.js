@@ -1,7 +1,10 @@
-import { domPack, DOM_PAGE_GEOM } from "./engine/dom_packer.js";
+import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { renderPages } from "./engine/renderer.js";
 import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyTalmudLayoutToPages } from "./talmud_layout.js";
+import { applyBalancedColumnsToPages } from "./balanced_columns.js";
+import { applyOpeningWordsToPages } from "./opening_word.js";
+import { getStreamSettings } from "./original_stream_columns.js";
 
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -13,6 +16,36 @@ function escapeHtml(s) {
 
 function stripDisplayNum(s) {
   return s.trim().replace(/^\[\d+\]\s*/, "");
+}
+
+let _docKeyCounter = 0;
+const _docKeys = new WeakMap();
+let _packerContentCache = { sig: "", value: null };
+
+function docKey(doc) {
+  if (!doc || typeof doc !== "object") return "0";
+  let key = _docKeys.get(doc);
+  if (!key) {
+    _docKeyCounter++;
+    key = String(_docKeyCounter);
+    _docKeys.set(doc, key);
+  }
+  return key;
+}
+
+function paneManagerContentSignature(paneManager) {
+  const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+  return paneManager.panes
+    .map((p) => [
+      p.id,
+      p.streamCode || "",
+      p.symbol || "",
+      p.label || "",
+      p.streamCode && settings[p.streamCode]?.title ? settings[p.streamCode].title : "",
+      p.streamCode && settings[p.streamCode]?.firstNoteAsTitle ? "title1" : "",
+      p.editor ? docKey(p.editor.state.doc) : "0",
+    ].join(":"))
+    .join("|");
 }
 
 function extractMainParagraphs(mainPane, paneManager) {
@@ -36,7 +69,12 @@ function extractMainParagraphs(mainPane, paneManager) {
         if (child.isText) paragraphText += child.text;
         return false;
       });
-      paragraphs.push({ paragraphText, markers: [] });
+      paragraphs.push({
+        paragraphText,
+        markers: [],
+        blockType: node.type.name,
+        headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
+      });
       return false;
     });
     return paragraphs;
@@ -64,7 +102,12 @@ function extractMainParagraphs(mainPane, paneManager) {
         atInPara: m.index,
       });
     }
-    paragraphs.push({ paragraphText, markers });
+    paragraphs.push({
+      paragraphText,
+      markers,
+      blockType: node.type.name,
+      headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
+    });
     return false;
   });
 
@@ -82,21 +125,46 @@ function extractStreamNotes(streamPane) {
   return parts.map(stripDisplayNum).filter(Boolean);
 }
 
+function applyFirstNoteAsTitle(code, notes) {
+  const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+  const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
+  const streamSettings = settings[code] || {};
+  const manualTitle = String(streamSettings.title || "").trim();
+  if (manualTitle) {
+    labels[code] = manualTitle;
+    return notes;
+  }
+  if (!streamSettings.firstNoteAsTitle || !notes.length) return notes;
+  const title = stripDisplayNum(notes[0] || "");
+  if (title) labels[code] = title;
+  return notes.slice(1);
+}
+
 function ensureEngineStreamSettings(paneManager) {
-  if (!window.__STREAM_SETTINGS__) window.__STREAM_SETTINGS__ = {};
+  getStreamSettings();
+  if (!window.__STREAM_LABELS__) window.__STREAM_LABELS__ = {};
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
     window.__STREAM_SETTINGS__[p.streamCode] = {
+      title: "",
       cols: 1,
       minLinesForCols: 3,
       inline: true,
       lastLineCenter: true,
+      firstNoteAsTitle: false,
       ...(window.__STREAM_SETTINGS__[p.streamCode] || {}),
     };
+    const manualTitle = String(window.__STREAM_SETTINGS__[p.streamCode].title || "").trim();
+    window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || `זרם ${p.streamCode}`;
   }
 }
 
 export function paneManagerToPackerContent(paneManager) {
+  const sig = paneManagerContentSignature(paneManager);
+  if (_packerContentCache.sig === sig && _packerContentCache.value) {
+    return _packerContentCache.value;
+  }
+
   const mainPane = paneManager.getMainPane();
   if (!mainPane) return [];
 
@@ -104,14 +172,14 @@ export function paneManagerToPackerContent(paneManager) {
   const streamNotes = {};
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
-    streamNotes[p.streamCode] = extractStreamNotes(p);
+    streamNotes[p.streamCode] = applyFirstNoteAsTitle(p.streamCode, extractStreamNotes(p));
   }
 
   const result = [];
   const noteCounters = {};
 
   for (const para of mainParagraphs) {
-    const { paragraphText, markers } = para;
+    const { paragraphText, markers, blockType, headingLevel } = para;
     let mainTextNet = "";
     const notes = [];
     let prevEnd = 0;
@@ -135,7 +203,14 @@ export function paneManagerToPackerContent(paneManager) {
 
     mainTextNet += paragraphText.substring(prevEnd);
     mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
-    if (mainTextNet || notes.length) result.push({ mainText: mainTextNet, notes });
+    if (mainTextNet || notes.length) {
+      result.push({
+        mainText: mainTextNet,
+        notes,
+        blockType: blockType === "heading" ? "heading" : "paragraph",
+        headingLevel: blockType === "heading" ? Math.max(1, Math.min(6, headingLevel || 1)) : null,
+      });
+    }
   }
 
   const displayCounters = {};
@@ -146,6 +221,7 @@ export function paneManagerToPackerContent(paneManager) {
     }
   }
 
+  _packerContentCache = { sig, value: result };
   return result;
 }
 
@@ -172,6 +248,24 @@ export function setupPageClickHandler(paneManager, pagesContainer) {
     const sym = targetPane.symbol || `@${code}`;
     targetPane.jumpToNth(sym, num);
   });
+}
+
+function schedulePaneMarkerRescan(paneManager) {
+  const run = () => {
+    for (const pane of paneManager.panes || []) {
+      const editor = pane.editor;
+      if (!editor) continue;
+      const docSize = editor.state.doc.content.size;
+      if (docSize > 120000) continue;
+      editor.view.dispatch(editor.state.tr.setMeta("forceStreamMarkScan", true));
+      pane.scheduleMarkerBarUpdate?.({ immediate: true });
+    }
+  };
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 1200 });
+  } else {
+    setTimeout(run, 0);
+  }
 }
 
 export function paneManagerFromEngineDoc(paneManager, engineDoc) {
@@ -212,10 +306,28 @@ export function paneManagerFromEngineDoc(paneManager, engineDoc) {
     paragraphs.push({ main: mainParts.join(""), notes });
   });
 
-  const mainHtml = paragraphs.map(p => `<p>${escapeHtml(p.main)}</p>`).join('') || '<p></p>';
+  function paragraphNodeFromText(text) {
+    const value = String(text || "");
+    return value
+      ? { type: "paragraph", content: [{ type: "text", text: value }] }
+      : { type: "paragraph" };
+  }
+
+  function docFromParagraphTexts(items) {
+    return {
+      type: "doc",
+      content: items.length ? items.map(paragraphNodeFromText) : [{ type: "paragraph" }],
+    };
+  }
+
+  if (typeof paneManager._beginBatch === "function") paneManager._beginBatch();
+  const prevScanDisabled = typeof window !== "undefined" ? window.__STREAM_MARK_SCAN_DISABLED__ : false;
+  if (typeof window !== "undefined") window.__STREAM_MARK_SCAN_DISABLED__ = true;
+  try {
+  const mainDoc = docFromParagraphTexts(paragraphs.map((p) => p.main));
   const mainPane = paneManager.getMainPane();
   if (mainPane && mainPane.editor) {
-    mainPane.editor.commands.setContent(mainHtml);
+    mainPane.load(mainDoc);
   }
 
   const notesByStream = {};
@@ -229,20 +341,30 @@ export function paneManagerFromEngineDoc(paneManager, engineDoc) {
   const sortedCodes = [...allStreamCodes].sort((a, b) => parseInt(a) - parseInt(b));
   for (const code of sortedCodes) {
     const sym = `@${code}`;
+    const noteDoc = docFromParagraphTexts(
+      (notesByStream[code] || []).map((text, idx) => `${sym} [${idx + 1}] ${text}`)
+    );
     let pane = paneManager.panes.find(p => p.streamCode === code);
     if (!pane) {
       pane = paneManager.addPane({
         streamCode: code,
         symbol: sym,
+        content: noteDoc,
         label: `זרם ${code}`,
       });
     }
-    if (pane && pane.editor && notesByStream[code]) {
-      const noteHtml = notesByStream[code]
-        .map((text, idx) => `<p>${escapeHtml(sym)} [${idx + 1}] ${escapeHtml(text)}</p>`)
-        .join('');
-      pane.editor.commands.setContent(noteHtml);
+    else if (pane) {
+      pane.load(noteDoc);
     }
+  }
+
+    paneManager._pendingChange = true;
+    paneManager._pendingMarkerRefresh = true;
+    paneManager._savePending = true;
+  } finally {
+    if (typeof window !== "undefined") window.__STREAM_MARK_SCAN_DISABLED__ = prevScanDisabled;
+    if (!prevScanDisabled) schedulePaneMarkerRescan(paneManager);
+    if (typeof paneManager._endBatch === "function") paneManager._endBatch();
   }
 
   return true;
@@ -250,6 +372,7 @@ export function paneManagerFromEngineDoc(paneManager, engineDoc) {
 
 let _renderToken = 0;
 let _debounceTimer = null;
+const LIVE_RENDER_DELAY_MS = 650;
 
 export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi = null) {
   if (_debounceTimer) clearTimeout(_debounceTimer);
@@ -259,7 +382,7 @@ export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi 
     _renderToken++;
     const myToken = _renderToken;
     _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken);
-  }, 200);
+  }, LIVE_RENDER_DELAY_MS);
 }
 
 async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
@@ -278,19 +401,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
       return;
     }
 
-    const pages = await domPack(content, DOM_PAGE_GEOM, {
+    const pageGeom = getDomPageGeom();
+    const pages = await domPack(content, pageGeom, {
       isCurrent: () => myToken === _renderToken,
     });
     if (myToken !== _renderToken) return;
 
     const t2 = performance.now();
     renderPages(pages, pagesContainer);
-    applyMishnaWrapToPages(pagesContainer);
     applyTalmudLayoutToPages(pagesContainer);
+    applyMishnaWrapToPages(pagesContainer);
+    applyBalancedColumnsToPages(pagesContainer);
+    applyOpeningWordsToPages(pagesContainer);
     const t3 = performance.now();
     const statusEl = document.getElementById("status");
     if (statusEl) {
-      const utils = pages.map((p) => (p.total / DOM_PAGE_GEOM.maxPageHeight) * 100);
+      const utils = pages.map((p) => Math.min(100, (p.total / pageGeom.maxPageHeight) * 100));
       const avg = utils.length ? utils.reduce((a, b) => a + b, 0) / utils.length : 0;
       const allStreams = new Set();
       for (const p of pages) for (const c of Object.keys(p.streams || {})) allStreams.add(c);
