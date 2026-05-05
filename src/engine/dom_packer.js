@@ -32,9 +32,12 @@ const MAX_SPLIT_REFINE_STEPS = 32;
 const MAX_NOTE_SPLIT_REFINE_STEPS = 14;
 const MISHNA_WRAP_HEIGHT_SAFETY = 10;
 // במצב תלמוד, התבנית מוסיפה משוקלל גובה לכתר ומבנה (שורות עליונות 50%
-// במקום 29%, רווחים נוספים וכד'). מורידים מ-maxPageHeight כדי שהמנוע
-// יזרוק פחות תוכן לעמוד הזה ויעבור פחות חריגות בפועל.
-const TALMUD_LAYOUT_HEIGHT_SAFETY = 80;
+// במקום 29%, רווחים נוספים, body+expanded וכד'). מורידים מ-maxPageHeight
+// כדי שהמנוע יזרוק פחות תוכן לעמוד הזה ויעבור פחות חריגות בפועל.
+// ערך גבוה = יותר עמודים, פחות חריגות, אבל גם יותר רווחים מיותרים.
+// 100 = איזון: גבוה מדי = רווחים מיותרים, נמוך מדי = חריגות. ערך זה נבחר
+// כפשרה. בעתיד נעבור למדידה דינמית פר-עמוד.
+const TALMUD_LAYOUT_HEIGHT_SAFETY = 100;
 const MAIN_LINE_PROBE_EXTRA_CHARS = 260;
 const LINE_RECT_TOLERANCE = 2;
 

@@ -779,10 +779,10 @@ mark.pdf-find-hit-current {
   margin-right: 0 !important;
 }
 
-/* באסימטרי (ארוך תופס כתר 100%, קצר מתחת לצד ראשי): הפסק שורה בין שני
-   הזרמים, כדי שלא ייראו רכובים זה על זה. */
-.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion.talmud-crown-full {
-  margin-bottom: 1em !important;
+/* באסימטרי: רווח רק בין הזרם הקצר לכתר הארוך (זרמים נפרדים).
+   הגוף של הארוך עצמו צמוד לכתר שלו ללא רווח (הוא המשך של אותו זרם). */
+.talmud-layout.talmud-asymmetric-crown > .talmud-no-crown-side {
+  margin-top: 1em !important;
 }
 
 /* כששני הפרשנים קצרים מאוד — אין דחיפת כתר, כל ה-3 מתחילים מלמעלה */
