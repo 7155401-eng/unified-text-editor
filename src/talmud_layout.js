@@ -148,7 +148,8 @@ function unwrapTalmudLayout(pageEl) {
   // קודם expanded (החלק הרחב מתחת לראשי), אחר כך body (החלק הצר ליד הראשי).
   // הסדר חשוב: expanded הוא ההמשך של body, אז קודם נדחוף את expanded לתוך body,
   // ואחר כך body יידחף לתוך הזרם המקורי.
-  Array.from(block.querySelectorAll(":scope > .talmud-body-expanded[data-talmud-body-of]")).forEach((expEl) => {
+  // expanded יכול להיות ישיר תחת block או בתוך .talmud-expanded-row
+  Array.from(block.querySelectorAll(".talmud-body-expanded[data-talmud-body-of]")).forEach((expEl) => {
     const code = expEl.dataset.talmudBodyOf;
     const body = block.querySelector(
       `:scope > .talmud-body-portion[data-talmud-body-of="${code}"]:not(.talmud-body-expanded)`
@@ -157,6 +158,10 @@ function unwrapTalmudLayout(pageEl) {
       while (expEl.firstChild) body.appendChild(expEl.firstChild);
     }
     expEl.remove();
+  });
+  // הסרת קונטיינר flex אם נשאר ריק
+  Array.from(block.querySelectorAll(":scope > .talmud-expanded-row")).forEach((rowEl) => {
+    if (!rowEl.firstChild) rowEl.remove();
   });
   Array.from(block.querySelectorAll(":scope > .talmud-body-portion[data-talmud-body-of]")).forEach((bodyEl) => {
     const code = bodyEl.dataset.talmudBodyOf;
@@ -254,6 +259,55 @@ function findCrownSplitByLineCount(streamEl, targetLines) {
       let adjusted = splitOffset;
       while (adjusted > 0 && text[adjusted - 1] !== " " && text[adjusted - 1] !== " ") adjusted--;
       if (adjusted === 0) adjusted = splitOffset; // אין רווח — חיתוך באות
+      return { node: textNode, offset: adjusted };
+    }
+  }
+  return null;
+}
+
+/**
+ * מוצא את נקודת החיתוך לפי **גובה Y בפיקסלים בתוך אלמנט**.
+ * האות הראשונה שעוברת את targetYInElement תהיה נקודת החיתוך.
+ * משמש לחיתוך הגוף בנקודת תחתית הראשי (התרחבות מתחת לראשי).
+ */
+function findSplitAtPixelYInElement(streamEl, targetYInElement) {
+  if (targetYInElement <= 0) return null;
+  const elRect = streamEl.getBoundingClientRect();
+  const range = document.createRange();
+  const walker = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => node.textContent && node.textContent.length > 0
+      ? NodeFilter.FILTER_ACCEPT
+      : NodeFilter.FILTER_REJECT,
+  });
+  let textNode;
+  while ((textNode = walker.nextNode())) {
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, textNode.length);
+    const lastRect = range.getBoundingClientRect();
+    if (!lastRect.width && !lastRect.height) continue;
+    const lastBottom = lastRect.bottom - elRect.top;
+    if (lastBottom <= targetYInElement) continue;
+    let lo = 1, hi = textNode.length, splitOffset = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      range.setStart(textNode, 0);
+      range.setEnd(textNode, mid);
+      const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0 || r.height > 0);
+      const lr = rects[rects.length - 1];
+      if (!lr) { lo = mid + 1; continue; }
+      const bottom = lr.bottom - elRect.top;
+      if (bottom > targetYInElement) {
+        splitOffset = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    if (splitOffset > 0) {
+      const text = textNode.textContent;
+      let adjusted = splitOffset;
+      while (adjusted > 0 && text[adjusted - 1] !== " " && text[adjusted - 1] !== " ") adjusted--;
+      if (adjusted === 0) adjusted = splitOffset;
       return { node: textNode, offset: adjusted };
     }
   }
@@ -438,7 +492,8 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
       otherHalf.style.float = sideLeft;
       otherHalf.style.width = `calc(${sideHalf}% - ${halfGap}px)`;
       otherHalf.style.clear = "none";
-      block.appendChild(otherHalf);
+      // לפני mainEl כדי שהוא ייתחיל מאותה Y כמו commentary, לא אחרי main בלוק
+      block.insertBefore(otherHalf, mainEl);
     }
   }
 }
@@ -512,14 +567,56 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   const aFitsCrown = commentaryFillsCrownPlusExtraLive(streamA, crownLines);
   const bFitsCrown = commentaryFillsCrownPlusExtraLive(streamB, crownLines);
   const doCrown    = aFitsCrown && bFitsCrown && crownLines > 0;
+  const oneLongOneShort = crownLines > 0 && (aFitsCrown !== bFitsCrown);
 
-  if (!doCrown) {
-    // אין כתר — מחזירים לרוחב 29% וכל ה-3 מתחילים יחד מלמעלה
+  if (!doCrown && !oneLongOneShort) {
+    // אין כתר בכלל — מחזירים לרוחב 29% וכל ה-3 מתחילים יחד מלמעלה
     block.classList.add("talmud-no-crown");
     streamA.style.width = `${sideWidth}%`;
     streamB.style.width = `${sideWidth}%`;
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
+  } else if (oneLongOneShort) {
+    // אחד ארוך אחד קצר: הארוך תופס את כל הכתר ברוחב מלא, הקצר מתחיל
+    // במקביל לראשי (לא בכתר).
+    block.classList.add("talmud-asymmetric-crown");
+    const longEl   = aFitsCrown ? streamA : streamB;
+    const longSide = aFitsCrown ? sideA   : sideB;
+    const longSideClass = aFitsCrown ? sideAClass : sideBClass;
+    const shortEl   = aFitsCrown ? streamB : streamA;
+    const shortSide = aFitsCrown ? sideB   : sideA;
+
+    // קריטי: הארוך חייב להופיע ראשון ב-DOM (לפני שום דבר אחר)
+    // כדי שהכתר ברוחב 100% יהיה בתוך הצד העליון של הבלוק, לא אחרי הקצר.
+    block.insertBefore(longEl, block.firstChild);
+
+    // הארוך: כתר ברוחב 100% ל-crownLines שורות
+    longEl.classList.add("talmud-crown-portion", "talmud-crown-full");
+    longEl.style.float = longSide;
+    longEl.style.width = "100%";
+    longEl.style.clear = "none";
+    const longSplit = findCrownSplitByLineCount(longEl, crownLines);
+    if (longSplit) {
+      const longBody = extractBodyAfterSplit(longEl, longSplit, longSideClass, longSide, sideWidth);
+      // body צמוד לאחר הכתר, ברוחב צר, clear לצד שלו
+      longBody.style.float = longSide;
+      longBody.style.width = `${sideWidth}%`;
+      longBody.style.clear = longSide;
+      block.insertBefore(longBody, mainEl);
+    }
+
+    // הקצר: clear לצידו כדי להיות מתחת לכתר ה-100% של הארוך
+    shortEl.classList.add("talmud-no-crown-side");
+    shortEl.style.float = shortSide;
+    shortEl.style.width = `${sideWidth}%`;
+    shortEl.style.clear = shortSide;
+    // shortEl כבר ב-DOM (הוא היה streamA או streamB ההתחלתי). מוודאים שהוא לפני main.
+    block.insertBefore(shortEl, mainEl);
+
+    mainEl.classList.add("talmud-main");
+    mainEl.dataset.talmudRole = "main";
+    // mainEl כבר באמצע — נוודא שהוא בסוף ה-DOM
+    block.appendChild(mainEl);
   } else {
     // יש כתר — מחלקים כל פרשן בנקודה המדויקת של שורה N+1
     block.classList.add("talmud-with-crown");
@@ -540,8 +637,10 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     if (splitPointB) {
       bodyB = extractBodyAfterSplit(streamB, splitPointB, sideBClass, sideB, sideWidth);
     }
-    if (bodyA) block.appendChild(bodyA);
-    if (bodyB) block.appendChild(bodyB);
+    // קריטי: body חייב להיות בסדר ה-DOM *לפני* mainEl, כדי שיופיע בצמוד לשולי
+    // ה-crown ולא אחרי הסיום של main. מעבירים גם את main לסוף.
+    if (bodyA) block.insertBefore(bodyA, mainEl);
+    if (bodyB) block.insertBefore(bodyB, mainEl);
 
     // ביטחון: גובה כתר זהה לשני הפרשנים (במקרה שספירת שורות בכל זאת מחזירה הבדל קטן)
     const styleA = getComputedStyle(streamA);
@@ -554,32 +653,51 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     streamA.style.minHeight = `${minCrownH}px`;
     streamB.style.minHeight = `${minCrownH}px`;
 
-    // באג 1: התרחבות הפרשנים מתחת לראשי כשהראשי קצר
-    // אם הגוף ממשיך מתחת לראשי, חותכים אותו שוב בנקודת תחתית הראשי
-    // ויוצרים אלמנט "מורחב" ברוחב 50% שזורם לרוחב המלא של הצד.
+    // באג 1: התרחבות הפרשנים מתחת לראשי כשהראשי קצר.
+    // לפי המשתמש: אם שני הפרשנים ממשיכים מתחת לראשי — כל אחד 50%.
+    // אם רק אחד ממשיך (השני נגמר קודם) — הוא מקבל 100%.
     const blockRect = block.getBoundingClientRect();
     const mainBottomY = mainEl.getBoundingClientRect().bottom - blockRect.top;
 
-    const expandBelowMain = (bodyEl, side, sideClass) => {
-      if (!bodyEl) return;
+    function bodyExtendsBelow(bodyEl) {
+      if (!bodyEl) return false;
+      const r = bodyEl.getBoundingClientRect();
+      return (r.bottom - blockRect.top) > mainBottomY + 1;
+    }
+    const aExtends = bodyExtendsBelow(bodyA);
+    const bExtends = bodyExtendsBelow(bodyB);
+    const expandedWidthCss = (aExtends && bExtends) ? "49.5%" : "100%";
+
+    function makeExpanded(bodyEl, side, sideClass) {
+      if (!bodyEl) return null;
       const bodyRect = bodyEl.getBoundingClientRect();
       const bodyTopY = bodyRect.top - blockRect.top;
       const bodyBottomY = bodyRect.bottom - blockRect.top;
-      if (bodyBottomY <= mainBottomY + 1) return;
-      const linesAlongsideMain = Math.floor((mainBottomY - bodyTopY) / lineHA);
-      if (linesAlongsideMain <= 0) return;
-      const splitPoint = findCrownSplitByLineCount(bodyEl, linesAlongsideMain);
-      if (!splitPoint) return;
-      const expandedEl = extractBodyAfterSplit(bodyEl, splitPoint, sideClass, side, 50);
-      expandedEl.classList.remove("talmud-body-portion");
-      expandedEl.classList.add("talmud-body-expanded");
+      if (bodyBottomY <= mainBottomY + 1) return null;
+      const targetYInBody = mainBottomY - bodyTopY;
+      const splitPoint = findSplitAtPixelYInElement(bodyEl, targetYInBody);
+      if (!splitPoint) return null;
+      const expandedEl = document.createElement("div");
+      expandedEl.className = `stream talmud-commentary talmud-body-expanded ${sideClass}`;
+      expandedEl.dataset.talmudBodyOf = bodyEl.dataset.talmudBodyOf;
       expandedEl.dataset.talmudRole = "commentary-expanded";
-      expandedEl.style.clear = "both";
-      expandedEl.style.width = `calc(50% - ${halfGap}px)`;
-      block.appendChild(expandedEl);
-    };
-    expandBelowMain(bodyA, sideA, sideAClass);
-    expandBelowMain(bodyB, sideB, sideBClass);
+      expandedEl.style.float = side;
+      expandedEl.style.clear = side;
+      expandedEl.style.width = expandedWidthCss;
+      const range = document.createRange();
+      range.setStart(splitPoint.node, splitPoint.offset);
+      range.setEndAfter(bodyEl.lastChild);
+      expandedEl.appendChild(range.extractContents());
+      return expandedEl;
+    }
+
+    // יוצרים את שני אלמנטי expanded ומכניסים כ-floats רגילים.
+    // אם יש שניהם — לפעמים הם נערמים אנכית (באג ידוע של float source position).
+    // נטפל בזה בעתיד עם גישה אחרת אם צריך.
+    const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
+    const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
+    if (expandedA) block.insertBefore(expandedA, mainEl);
+    if (expandedB) block.insertBefore(expandedB, mainEl);
 
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
