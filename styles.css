@@ -712,147 +712,96 @@ mark.pdf-find-hit-current {
   text-align-last: inherit;
 }
 
+/* ============================================================ 
+   TALMUD LAYOUT — CSS patch
+   Replace the entire existing .talmud-* block in styles.css
+   with this content.
+   ============================================================ */
+
+/* Page-level flag */
 .talmud-layout-page .page-streams {
   display: block;
   overflow: visible;
   margin-top: 0;
 }
 
-.talmud-layout-page .page-streams > .stream:not(.mishna-float):not(.mishna-flow),
-.talmud-layout-page .page-streams > .stream:not([data-talmud-role]) {
+/* Remaining (non-talmud) streams sit below, full-width */
+.talmud-layout-page .page-streams > .stream {
   display: block;
-  clear: both;
   float: none !important;
   width: auto !important;
+  clear: both;
   margin: 4px 0 0 0;
 }
 
+/* ── The layout block ── */
 .talmud-layout {
   display: block;
-  position: relative;
-  clear: both;
   overflow: visible;
-  margin-bottom: 0;
-  padding: 0;
+  clear: both;
 }
-
 .talmud-layout::after {
   content: "";
   display: block;
   clear: both;
 }
 
-.talmud-crown {
-  display: grid;
-  grid-template-columns: calc(var(--talmud-side-width) + var(--talmud-half-main-width)) calc(var(--talmud-side-width) + var(--talmud-half-main-width));
-  margin-bottom: 0;
-  overflow: visible;
-}
-
-.talmud-crown-stream {
-  min-width: 0;
-  overflow: visible;
+/* ── Commentary streams (floated) ── */
+.talmud-layout .stream.talmud-commentary {
   box-sizing: border-box;
-  text-align: justify;
-  text-align-last: center;
-}
-
-.talmud-crown-stream.talmud-right {
-  padding-left: 3px;
-}
-
-.talmud-crown-stream.talmud-left {
-  padding-right: 3px;
-}
-
-.talmud-body {
-  display: block;
-  overflow: visible;
-}
-
-.talmud-body::after {
-  content: "";
-  display: block;
-  clear: both;
-}
-
-.talmud-layout-page .talmud-layout .stream {
   margin: 0;
   padding-top: 0;
   padding-bottom: 0;
-  column-count: auto !important;
-  column-gap: normal !important;
-}
-
-.talmud-layout-page .stream.talmud-commentary {
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  box-sizing: border-box;
   text-align: justify;
   text-align-last: center;
   text-justify: inter-word;
   column-count: auto !important;
   column-gap: normal !important;
 }
-
-.talmud-layout-page .stream.talmud-right {
-  margin-left: 0;
+.talmud-layout .stream.talmud-right {
   padding-left: 3px;
 }
-
-.talmud-layout-page .stream.talmud-left {
-  margin-right: 0;
+.talmud-layout .stream.talmud-left {
   padding-right: 3px;
 }
 
-.talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
-  float: none !important;
-  width: 100% !important;
-}
-
-.talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
-  display: block;
-  float: none !important;
-  width: auto !important;
-  overflow: visible;
-}
-
-.talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-commentary {
-  width: var(--talmud-side-width) !important;
-}
-
-.talmud-layout.talmud-has-main.talmud-one-commentary .page-main.talmud-main {
-  width: calc(var(--talmud-main-width) + var(--talmud-side-width));
-}
-
-.talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-left + .page-main.talmud-main {
-  margin-right: 0;
-  margin-left: var(--talmud-side-width);
-}
-
-.talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-right + .page-main.talmud-main {
-  margin-right: var(--talmud-side-width);
-  margin-left: 0;
-}
-
+/* ── Main text (pushed down by crown-offset) ── */
 .talmud-layout-page .page-main.talmud-main {
   display: block;
-  width: auto;
-  margin: var(--talmud-crown-offset, 0px) 0 0 0;
-  clear: none;
+  /* Crown offset: computed by JS and stored in --talmud-crown-offset */
+  margin-top: var(--talmud-crown-offset, 0px);
   overflow: hidden;
   box-sizing: border-box;
   text-align: justify;
   text-align-last: center;
   text-justify: inter-word;
 }
-
 .talmud-layout-page .page-main.talmud-main:empty {
   display: none;
 }
 
-.talmud-layout-page .talmud-layout .stream-title {
+/* ── No main text: commentaries behave like mishna-wrap ── */
+.talmud-layout.talmud-no-main .stream.talmud-commentary-float {
+  margin-bottom: 1.4em;
+}
+.talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
+  display: block;
+  overflow: visible;
+  clear: none;
+}
+.talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
+  float: none !important;
+  width: 100% !important;
+}
+
+/* ── One commentary only (with main) ── */
+.talmud-layout.talmud-has-main.talmud-one-commentary .page-main.talmud-main {
+  /* main fills the rest of the width naturally around the float */
+  margin-top: 0;
+}
+
+/* ── Stream titles inside talmud block ── */
+.talmud-layout .stream-title {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -860,20 +809,44 @@ mark.pdf-find-hit-current {
   text-align: center;
   margin: 0 0 2px 0;
   padding: 0 0 1px 0;
-  break-after: avoid;
   column-span: none;
   white-space: normal;
   font-size: inherit;
   line-height: inherit;
 }
 
-.talmud-layout-page .talmud-layout .stream .note,
-.talmud-layout-page .talmud-layout .stream .note-inline,
-.talmud-layout-page .talmud-layout .stream .note-part {
+/* ── Notes inline ── */
+.talmud-layout .stream .note,
+.talmud-layout .stream .note-inline,
+.talmud-layout .stream .note-part {
   display: inline;
   margin: 0;
   break-inside: auto;
   text-align-last: inherit;
+}
+
+/* ── Print overrides ── */
+@media print {
+  .talmud-layout {
+    position: relative !important;
+    overflow: visible !important;
+  }
+  .talmud-layout-page .page-main.talmud-main {
+    margin-top: var(--talmud-crown-offset, 0px) !important;
+    overflow: hidden !important;
+  }
+  .talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
+    float: none !important;
+    width: 100% !important;
+  }
+  .talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
+    display: block !important;
+    float: none !important;
+    width: auto !important;
+    overflow: visible !important;
+  }
+  .talmud-layout .stream.talmud-right { padding-left: 3px !important; }
+  .talmud-layout .stream.talmud-left  { padding-right: 3px !important; }
 }
 
 .stream {
