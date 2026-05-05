@@ -1,14 +1,27 @@
-const STORAGE_KEY = "ravtext.talmudLayout";
-const STREAMS_KEY = "ravtext.talmudLayout.streams";
-const CROWN_LINES_KEY = "ravtext.talmudLayout.crownLines";
-const MAIN_WIDTH_KEY = "ravtext.talmudLayout.mainWidth";
-const SIDE_MODE_KEY = "ravtext.talmudLayout.sideMode";
-import { applyFloatFlowLevel, originalOrder, streamTextLength, widthForFlowFloat } from "./flow_layout.js";
+// talmud_layout.js — Talmud page layout (v2, CSS-float based)
+// Built on the same pattern as mishna_wrap_layout.js + flow_layout.js.
+// No pixel measurements, no DOM clones — pure CSS float logic.
+
+const STORAGE_KEY       = "ravtext.talmudLayout";
+const STREAMS_KEY       = "ravtext.talmudLayout.streams";
+const CROWN_LINES_KEY   = "ravtext.talmudLayout.crownLines";
+const MAIN_WIDTH_KEY    = "ravtext.talmudLayout.mainWidth";
+const SIDE_MODE_KEY     = "ravtext.talmudLayout.sideMode";
+
+import {
+  originalOrder,
+  streamTextLength,
+  widthForFlowFloat,
+  applyFloatFlowLevel,
+} from "./flow_layout.js";
+
+// ─────────────────────────────────────────────
+//  Persistence helpers
+// ─────────────────────────────────────────────
 
 export function isTalmudLayoutEnabled() {
   return localStorage.getItem(STORAGE_KEY) === "1";
 }
-
 export function setTalmudLayoutEnabled(enabled) {
   localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
 }
@@ -16,7 +29,6 @@ export function setTalmudLayoutEnabled(enabled) {
 export function getTalmudStreamsText() {
   return localStorage.getItem(STREAMS_KEY) || "";
 }
-
 export function setTalmudStreamsText(value) {
   localStorage.setItem(STREAMS_KEY, value || "");
 }
@@ -25,30 +37,29 @@ export function getTalmudCrownLines() {
   const n = parseInt(localStorage.getItem(CROWN_LINES_KEY) || "4", 10);
   return Number.isFinite(n) ? Math.max(0, Math.min(12, n)) : 4;
 }
-
 export function setTalmudCrownLines(value) {
-  const n = Math.max(0, Math.min(12, parseInt(value, 10) || 4));
-  localStorage.setItem(CROWN_LINES_KEY, String(n));
+  localStorage.setItem(CROWN_LINES_KEY, String(Math.max(0, Math.min(12, parseInt(value, 10) || 4))));
 }
 
 export function getTalmudMainWidth() {
   const n = parseFloat(localStorage.getItem(MAIN_WIDTH_KEY) || "42");
   return Number.isFinite(n) ? Math.max(20, Math.min(80, n)) : 42;
 }
-
 export function setTalmudMainWidth(value) {
-  const n = Math.max(20, Math.min(80, parseFloat(value) || 42));
-  localStorage.setItem(MAIN_WIDTH_KEY, String(n));
+  localStorage.setItem(MAIN_WIDTH_KEY, String(Math.max(20, Math.min(80, parseFloat(value) || 42))));
 }
 
 export function getTalmudSideMode() {
-  const value = localStorage.getItem(SIDE_MODE_KEY) || "auto";
-  return ["auto", "right-left", "inner-outer"].includes(value) ? value : "auto";
+  const v = localStorage.getItem(SIDE_MODE_KEY) || "auto";
+  return ["auto", "right-left", "inner-outer"].includes(v) ? v : "auto";
 }
-
 export function setTalmudSideMode(value) {
   localStorage.setItem(SIDE_MODE_KEY, value || "auto");
 }
+
+// ─────────────────────────────────────────────
+//  Internal helpers
+// ─────────────────────────────────────────────
 
 function normalizeCode(raw) {
   const n = parseInt(raw, 10);
@@ -56,136 +67,15 @@ function normalizeCode(raw) {
   return String(n).padStart(2, "0");
 }
 
-function parseTalmudStreams() {
+function parseTalmudStreamCodes() {
   const codes = (getTalmudStreamsText().match(/\d{1,3}/g) || [])
     .map(normalizeCode)
     .filter(Boolean);
-  return Array.from(new Set(codes)).slice(0, 3);
+  return Array.from(new Set(codes)).slice(0, 2); // max 2 commentaries
 }
 
-function defaultTalmudStreams(streams) {
-  return streams
-    .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
-    .slice(0, 2);
-}
-
-function codeForStream(streamEl) {
-  return streamEl.getAttribute("data-stream") || "";
-}
-
-function firstContentTextNode(streamEl) {
-  const root = streamEl.querySelector(":scope .note-inline, :scope .note") || streamEl;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let node;
-  while ((node = walker.nextNode())) {
-    if ((node.textContent || "").trim()) return node;
-  }
-  return null;
-}
-
-function lineBoundaryForTextNode(textNode, maxLines) {
-  const text = textNode?.textContent || "";
-  if (!text || maxLines <= 0) return 0;
-  let best = text.length;
-  let lastTop = null;
-  let lines = 0;
-  for (let i = 1; i <= text.length; i++) {
-    const range = document.createRange();
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, i);
-    const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5);
-    range.detach();
-    const last = rects[rects.length - 1];
-    if (!last) continue;
-    if (lastTop === null || Math.abs(last.top - lastTop) > Math.max(2, last.height / 2)) {
-      lines += 1;
-      lastTop = last.top;
-      if (lines > maxLines) {
-        best = Math.max(0, i - 1);
-        break;
-      }
-    }
-  }
-  while (best > 0 && best < text.length && !/\s/.test(text[best])) best--;
-  return Math.max(0, best);
-}
-
-function createCrownStream(stream, side) {
-  if (!stream.dataset.talmudOriginalHtml) stream.dataset.talmudOriginalHtml = stream.innerHTML;
-  const clone = stream.cloneNode(true);
-  clone.classList.add("talmud-crown-stream", side === "right" ? "talmud-right" : "talmud-left");
-  clone.classList.remove("talmud-commentary");
-  clone.dataset.talmudRole = `${stream.dataset.talmudRole || "commentary"}-crown`;
-  clone.dataset.talmudClone = "crown";
-  clone.style.float = "none";
-  clone.style.width = "";
-  return clone;
-}
-
-function finalizeCrownSplits(block) {
-  const maxLines = getTalmudCrownLines();
-  const pairs = Array.from(block.querySelectorAll(":scope .talmud-crown-stream")).map((crown) => {
-    const code = crown.getAttribute("data-stream");
-    const body = Array.from(block.querySelectorAll(":scope > .stream.talmud-commentary"))
-      .find((stream) => stream.getAttribute("data-stream") === code);
-    return { crown, body };
-  });
-  pairs.forEach(({ crown, body }) => {
-    const crownTextNode = firstContentTextNode(crown);
-    const bodyTextNode = firstContentTextNode(body);
-    if (!crownTextNode || !bodyTextNode) return;
-    const sourceText = crownTextNode.textContent || "";
-    const cut = lineBoundaryForTextNode(crownTextNode, maxLines);
-    if (cut <= 0 || cut >= sourceText.length) return;
-    crownTextNode.textContent = sourceText.slice(0, cut).trimEnd();
-    bodyTextNode.textContent = sourceText.slice(cut).trimStart();
-  });
-}
-
-function resetTalmud(streamEl) {
-  if (streamEl.dataset.talmudOriginalHtml) {
-    streamEl.innerHTML = streamEl.dataset.talmudOriginalHtml;
-    delete streamEl.dataset.talmudOriginalHtml;
-  }
-  streamEl.classList.remove("talmud-commentary", "talmud-main-surrogate", "talmud-right", "talmud-left", "talmud-crown-stream");
-  streamEl.removeAttribute("data-talmud-role");
-  streamEl.removeAttribute("data-talmud-clone");
-  streamEl.style.float = "";
-  streamEl.style.width = "";
-  streamEl.style.margin = "";
-  streamEl.style.clear = "";
-  streamEl.style.height = "";
-  streamEl.style.overflow = "";
-}
-
-function resetMain(mainEl) {
-  if (!mainEl) return;
-  mainEl.classList.remove("talmud-main");
-  mainEl.removeAttribute("data-talmud-role");
-  mainEl.style.width = "";
-  mainEl.style.margin = "";
-  mainEl.style.clear = "";
-  mainEl.style.position = "";
-  mainEl.style.top = "";
-  mainEl.style.right = "";
-}
-
-function unwrapTalmud(streamsWrap) {
-  const pageEl = streamsWrap.closest(".page");
-  const blocks = Array.from(pageEl?.querySelectorAll(":scope > .talmud-layout") || []);
-  for (const block of blocks) {
-    const main = block.querySelector(":scope .page-main");
-    if (main && pageEl) {
-      resetMain(main);
-      pageEl.insertBefore(main, streamsWrap);
-    }
-    const streams = Array.from(block.querySelectorAll(":scope .stream"));
-    for (const stream of streams) {
-      resetTalmud(stream);
-      streamsWrap.appendChild(stream);
-    }
-    block.remove();
-  }
+function codeForStream(el) {
+  return el.getAttribute("data-stream") || "";
 }
 
 function pageNumberFor(streamsWrap) {
@@ -194,205 +84,321 @@ function pageNumberFor(streamsWrap) {
   return Number.isFinite(idx) ? idx + 1 : 1;
 }
 
+/** Returns ["right","left"] or ["left","right"] depending on page parity + setting. */
 function orderedSides(streamsWrap) {
   const mode = getTalmudSideMode();
   if (mode === "right-left") return ["right", "left"];
   const pageNo = pageNumberFor(streamsWrap);
-  if (mode === "inner-outer") return pageNo % 2 === 1 ? ["right", "left"] : ["left", "right"];
+  if (mode === "inner-outer") {
+    // odd page → inner=right, outer=left  |  even page → inner=left, outer=right
+    return pageNo % 2 === 1 ? ["right", "left"] : ["left", "right"];
+  }
+  // "auto" → same as right-left
   return ["right", "left"];
 }
 
-function applySingleCommentary(block, stream) {
+// ─────────────────────────────────────────────
+//  Reset / unwrap
+// ─────────────────────────────────────────────
+
+function resetStream(el) {
+  el.classList.remove(
+    "talmud-commentary", "talmud-right", "talmud-left",
+    "talmud-commentary-float", "talmud-commentary-flow"
+  );
+  el.removeAttribute("data-talmud-role");
+  el.style.float = "";
+  el.style.width = "";
+  el.style.clear = "";
+}
+
+function resetMain(mainEl) {
+  if (!mainEl) return;
+  mainEl.classList.remove("talmud-main");
+  mainEl.removeAttribute("data-talmud-role");
+  mainEl.style.cssText = "";
+}
+
+function unwrapTalmudLayout(pageEl) {
+  const block = pageEl.querySelector(":scope > .talmud-layout");
+  if (!block) return;
+
+  const streamsWrap = pageEl.querySelector(".page-streams");
+  // Move .page-main back to page level (before streamsWrap)
+  const main = block.querySelector(":scope > .page-main");
+  if (main) {
+    resetMain(main);
+    pageEl.insertBefore(main, streamsWrap);
+  }
+  // Move streams back into streamsWrap
+  Array.from(block.querySelectorAll(":scope > .stream")).forEach((s) => {
+    resetStream(s);
+    streamsWrap?.appendChild(s);
+  });
+  block.remove();
+}
+
+// ─────────────────────────────────────────────
+//  Crown offset: pure CSS var, measured lazily
+// ─────────────────────────────────────────────
+
+/**
+ * Computes --talmud-crown-offset (px) so the main text starts
+ * below the crown lines.  Called after the DOM is painted.
+ */
+function computeCrownOffset(block) {
   const crownLines = getTalmudCrownLines();
-  block.classList.add("talmud-single-commentary");
-  block.style.setProperty("--talmud-crown-lines", String(crownLines));
-  stream.classList.add("talmud-commentary", "talmud-right");
-  stream.dataset.talmudRole = "commentary";
-  stream.style.float = "right";
-  stream.style.width = "var(--talmud-side-width)";
-  block.appendChild(stream);
+  if (crownLines <= 0) {
+    block.style.setProperty("--talmud-crown-offset", "0px");
+    return;
+  }
+  // Use the first commentary stream to measure line-height
+  const firstStream = block.querySelector(".stream.talmud-commentary");
+  if (!firstStream) {
+    block.style.setProperty("--talmud-crown-offset", "0px");
+    return;
+  }
+  const style = getComputedStyle(firstStream);
+  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4 || 14;
+  const titleEl = firstStream.querySelector(".stream-title");
+  const titleHeight = titleEl ? titleEl.getBoundingClientRect().height : 0;
+  const offset = Math.ceil(titleHeight + crownLines * lineHeight);
+  block.style.setProperty("--talmud-crown-offset", `${offset}px`);
 }
 
-function widthForNoMainStream(levelCount) {
-  return widthForFlowFloat(levelCount);
+function scheduleCrownOffset(block) {
+  // Multiple rAF passes ensure fonts/layout are stable
+  computeCrownOffset(block);
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => computeCrownOffset(block));
+    requestAnimationFrame(() => requestAnimationFrame(() => computeCrownOffset(block)));
+  }
+  setTimeout(() => computeCrownOffset(block), 100);
 }
 
-function applyNoMainCommentaries(block, streamsWrap, measured) {
+// ─────────────────────────────────────────────
+//  Layout scenarios
+// ─────────────────────────────────────────────
+
+/**
+ * SCENARIO A — No main text on this page.
+ * Two commentaries split 50/50 (or one takes 100%).
+ * Reuse the existing applyFloatFlowLevel from flow_layout.js,
+ * exactly like mishna_wrap_layout.js does.
+ */
+function layoutNoMain(block, streamsWrap, commentaryStreams) {
+  block.classList.add("talmud-no-main");
+
+  if (commentaryStreams.length === 1) {
+    // Single commentary — full width, no float
+    block.classList.add("talmud-one-commentary");
+    const s = commentaryStreams[0];
+    s.classList.add("talmud-commentary");
+    s.dataset.talmudRole = "commentary";
+    s.style.float = "none";
+    s.style.width = "100%";
+    block.appendChild(s);
+    return;
+  }
+
+  // Two commentaries — use applyFloatFlowLevel (same as mishna)
   applyFloatFlowLevel({
     container: block,
-    streams: measured.map((item) => item.stream),
+    streams: commentaryStreams,
     streamsWrap,
-    sideForStream: (_stream, idx, wrap) => orderedSides(wrap)[idx] || (idx % 2 === 0 ? "right" : "left"),
+    sideForStream: (_s, idx) => orderedSides(streamsWrap)[idx] || (idx % 2 === 0 ? "right" : "left"),
     floatClass: "talmud-commentary-float",
-    flowClass: "talmud-commentary-flow",
+    flowClass:  "talmud-commentary-flow",
     rightClass: "talmud-right",
-    leftClass: "talmud-left",
+    leftClass:  "talmud-left",
     roleDataset: "talmudRole",
-    floatRole: "commentary-float",
-    flowRole: "commentary-flow",
-    widthForStream: (_stream, count) => widthForNoMainStream(count),
+    floatRole:  "commentary-float",
+    flowRole:   "commentary-flow",
   });
-  measured.forEach((item) => item.stream.classList.add("talmud-commentary"));
+  commentaryStreams.forEach((s) => s.classList.add("talmud-commentary"));
 }
 
-function updateFlowMetrics(block) {
-  const main = block.querySelector(":scope .page-main.talmud-main");
-  if (!main) return;
-  const streams = Array.from(block.querySelectorAll(":scope .stream.talmud-commentary"));
-  const firstStream = streams[0];
-  let lineHeight = 0;
-  let titleHeight = 0;
-  if (firstStream) {
-    const style = getComputedStyle(firstStream);
-    lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4 || 14;
-    const title = firstStream.querySelector(":scope > .stream-title");
-    if (title) {
-      const titleStyle = getComputedStyle(title);
-      titleHeight =
-        title.getBoundingClientRect().height +
-        (parseFloat(titleStyle.marginTop) || 0) +
-        (parseFloat(titleStyle.marginBottom) || 0);
-    }
-  }
-  const crownOffset = Math.max(0, Math.ceil(titleHeight + getTalmudCrownLines() * lineHeight));
-  block.style.setProperty("--talmud-crown-offset", `${crownOffset}px`);
+/**
+ * SCENARIO B — One commentary + main text.
+ * Commentary floats on the inner/right side; main fills the rest.
+ */
+function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
+  block.classList.add("talmud-has-main", "talmud-one-commentary");
+
+  const mainWidth  = getTalmudMainWidth();
+  const sideWidth  = 100 - mainWidth;
+  const side       = orderedSides(streamsWrap)[0]; // first preferred side
+
+  commentary.classList.add("talmud-commentary", side === "right" ? "talmud-right" : "talmud-left");
+  commentary.dataset.talmudRole = "commentary";
+  commentary.style.float  = side;
+  commentary.style.width  = `${sideWidth.toFixed(4)}%`;
+
+  block.appendChild(commentary);
+
+  mainEl.classList.add("talmud-main");
+  mainEl.dataset.talmudRole = "main";
+  block.appendChild(mainEl);
+
+  // main will reflow naturally around the float — no explicit width needed
 }
 
-function scheduleFlowMetrics(block) {
-  updateFlowMetrics(block);
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(() => updateFlowMetrics(block));
-    requestAnimationFrame(() => requestAnimationFrame(() => updateFlowMetrics(block)));
-  }
-  setTimeout(() => updateFlowMetrics(block), 80);
-  setTimeout(() => updateFlowMetrics(block), 250);
-}
+/**
+ * SCENARIO C — Two commentaries + main text.  The classic Talmud page.
+ *
+ * Crown (first N lines):
+ *   [commentary-A 50%] [commentary-B 50%]
+ *
+ * Body (rest):
+ *   commentary-A floats right at sideWidth%
+ *   commentary-B floats left  at sideWidth%
+ *   main text flows in the center (mainWidth%)
+ *
+ * We achieve the crown entirely with CSS:
+ *   --talmud-crown-offset is set (in px) on the block, and
+ *   .talmud-main has margin-top: var(--talmud-crown-offset)
+ *   The commentaries themselves start at the top and the
+ *   main text is pushed down, so the first N lines of the
+ *   commentaries are visible above the main text — that IS the crown.
+ *
+ * Edge cases (handled via CSS classes):
+ *   .talmud-a-only / .talmud-b-only — one commentary finished first
+ *   When the main ends, the taller commentary expands via CSS.
+ */
+function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, commentaryB) {
+  block.classList.add("talmud-has-main", "talmud-two-commentaries");
 
-function layoutTalmudBlock(pageEl, streamsWrap, talmudStreams) {
-  if (talmudStreams.length === 0) return;
-  const mainEl = pageEl.querySelector(":scope > .page-main");
-  const hasActiveMain = Boolean(mainEl && (mainEl.textContent || "").trim());
-  const block = document.createElement("div");
-  block.className = "talmud-layout talmud-flow-layout";
   const mainWidth = getTalmudMainWidth();
-  block.style.setProperty("--talmud-crown-lines", String(getTalmudCrownLines()));
-  block.style.setProperty("--talmud-main-width", `${mainWidth}%`);
-  block.style.setProperty("--talmud-half-main-width", `${(mainWidth / 2).toFixed(4)}%`);
-  block.style.setProperty("--talmud-side-width", `${((100 - mainWidth) / 2).toFixed(4)}%`);
+  const sideWidth = ((100 - mainWidth) / 2).toFixed(4);
+  const sides     = orderedSides(streamsWrap); // e.g. ["right","left"]
 
-  const measured = talmudStreams.map((stream) => ({ stream, len: streamTextLength(stream) }));
-  block.classList.toggle("talmud-has-main", hasActiveMain);
-  block.classList.toggle("talmud-no-main", !hasActiveMain);
-  block.classList.toggle("talmud-one-commentary", measured.length === 1);
-  block.classList.toggle("talmud-two-commentaries", measured.length >= 2);
+  block.style.setProperty("--talmud-main-width",      `${mainWidth}%`);
+  block.style.setProperty("--talmud-side-width",      `${sideWidth}%`);
+  block.style.setProperty("--talmud-crown-lines",     String(getTalmudCrownLines()));
 
-  if (measured.length === 1) {
-    applySingleCommentary(block, measured[0].stream);
-    if (hasActiveMain) {
-      mainEl.classList.add("talmud-main");
-      mainEl.dataset.talmudRole = "main";
-      block.appendChild(mainEl);
-    }
-    pageEl.insertBefore(block, streamsWrap);
-    return;
-  }
+  // Sort by original DOM order so A is always the first-defined stream
+  const sorted = [commentaryA, commentaryB].sort(
+    (a, b) => originalOrder(a, 0) - originalOrder(b, 0)
+  );
+  const [streamA, streamB] = sorted;
+  const [sideA, sideB]     = sides;
 
-  if (!hasActiveMain) {
-    applyNoMainCommentaries(block, streamsWrap, measured);
-    pageEl.insertBefore(block, streamsWrap);
-    return;
-  }
+  streamA.classList.add("talmud-commentary", sideA === "right" ? "talmud-right" : "talmud-left");
+  streamA.dataset.talmudRole = "commentary-a";
+  streamA.style.float  = sideA;
+  streamA.style.width  = `${sideWidth}%`;
 
-  const sides = orderedSides(streamsWrap);
-  const crownBox = hasActiveMain ? document.createElement("div") : null;
-  if (crownBox) crownBox.className = "talmud-crown";
-  measured
-    .sort((a, b) => originalOrder(a.stream, 0) - originalOrder(b.stream, 0))
-    .forEach((item, idx) => {
-      const side = sides[idx] || (idx % 2 === 0 ? "right" : "left");
-      const stream = item.stream;
-      stream.classList.add("talmud-commentary", side === "right" ? "talmud-right" : "talmud-left");
-      stream.dataset.talmudRole = idx === 0 ? "commentary-a" : "commentary-b";
-      stream.style.float = side;
-      stream.style.width = "var(--talmud-side-width)";
-      if (crownBox) crownBox.appendChild(createCrownStream(stream, side));
-      block.appendChild(stream);
-    });
-  if (crownBox) block.insertBefore(crownBox, block.firstChild);
-  if (hasActiveMain) {
-    mainEl.classList.add("talmud-main");
-    mainEl.dataset.talmudRole = "main";
-    mainEl.style.width = "";
-    mainEl.style.margin = "";
-    block.appendChild(mainEl);
-  }
-  pageEl.insertBefore(block, streamsWrap);
-  if (crownBox) finalizeCrownSplits(block);
-  scheduleFlowMetrics(block);
+  streamB.classList.add("talmud-commentary", sideB === "right" ? "talmud-right" : "talmud-left");
+  streamB.dataset.talmudRole = "commentary-b";
+  streamB.style.float  = sideB;
+  streamB.style.width  = `${sideWidth}%`;
+
+  // Append floats BEFORE the main so they appear alongside it
+  block.appendChild(streamA);
+  block.appendChild(streamB);
+
+  mainEl.classList.add("talmud-main");
+  mainEl.dataset.talmudRole = "main";
+  // margin-top will be set by CSS var --talmud-crown-offset
+  block.appendChild(mainEl);
+
+  // Compare lengths to set size-hint classes used by the engine
+  const lenA = streamTextLength(streamA);
+  const lenB = streamTextLength(streamB);
+  const lenM = mainEl ? (mainEl.textContent || "").trim().length : 0;
+
+  // Which commentary is shorter (finishes first)?
+  if (lenA < lenB && lenA < lenM) block.classList.add("talmud-a-short");
+  if (lenB < lenA && lenB < lenM) block.classList.add("talmud-b-short");
+  if (lenM < lenA && lenM < lenB) block.classList.add("talmud-main-short");
+
+  scheduleCrownOffset(block);
 }
 
-function validateTalmudBlock(pageEl, expectedCommentaries) {
-  const block = pageEl?.querySelector(":scope > .talmud-layout");
-  if (!block) return true;
-  const bodyStreams = Array.from(block.querySelectorAll(":scope > .stream.talmud-commentary"));
-  const main = block.querySelector(":scope > .page-main.talmud-main");
-  if (!main && !block.classList.contains("talmud-no-main")) return false;
-  if (expectedCommentaries >= 2 && bodyStreams.length !== expectedCommentaries) return false;
-  if (bodyStreams.some((stream) => !stream.dataset.talmudRole)) return false;
-  return true;
-}
+// ─────────────────────────────────────────────
+//  Main entry per page
+// ─────────────────────────────────────────────
 
 export function applyTalmudLayoutToPage(pageEl) {
-  const streamsWrap = pageEl && pageEl.querySelector(".page-streams");
+  if (!pageEl) return;
+  const streamsWrap = pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
 
-  unwrapTalmud(streamsWrap);
-  const streams = Array.from(streamsWrap.querySelectorAll(":scope > .stream"));
-  streams.forEach((stream, idx) => {
-    originalOrder(stream, idx);
-    resetTalmud(stream);
-  });
+  // 1. Undo any previous talmud layout on this page
+  unwrapTalmudLayout(pageEl);
+  pageEl.classList.remove("talmud-layout-page");
+
+  // 2. Reset all stream elements
+  const allStreams = Array.from(streamsWrap.querySelectorAll(":scope > .stream"));
+  allStreams.forEach((s, i) => { originalOrder(s, i); resetStream(s); });
   resetMain(pageEl.querySelector(":scope > .page-main"));
 
+  // 3. If disabled, just restore natural order and exit
   if (!isTalmudLayoutEnabled()) {
-    pageEl.classList.remove("talmud-layout-page");
-    streams.sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0)).forEach((stream) => streamsWrap.appendChild(stream));
+    allStreams
+      .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
+      .forEach((s) => streamsWrap.appendChild(s));
     return;
   }
 
-  const codes = parseTalmudStreams();
+  // 4. Resolve which streams are talmud commentaries
+  const codes = parseTalmudStreamCodes();
   if (codes.length === 0) return;
-  const byCode = new Map(streams.map((stream) => [codeForStream(stream), stream]));
-  const explicitStreams = codes.map((code) => byCode.get(code)).filter(Boolean).slice(0, 3);
-  const talmudStreams = explicitStreams;
+
+  const byCode = new Map(allStreams.map((s) => [codeForStream(s), s]));
+  const talmudStreams = codes.map((c) => byCode.get(c)).filter(Boolean);
   if (talmudStreams.length === 0) return;
 
   pageEl.classList.add("talmud-layout-page");
-  const used = new Set(talmudStreams);
-  layoutTalmudBlock(pageEl, streamsWrap, talmudStreams);
-  if (!validateTalmudBlock(pageEl, talmudStreams.length)) {
-    console.warn("Talmud layout validation failed", pageEl);
+
+  // 5. Build the talmud-layout block
+  const mainEl    = pageEl.querySelector(":scope > .page-main");
+  const hasMain   = Boolean(mainEl && (mainEl.textContent || "").trim());
+
+  const block = document.createElement("div");
+  block.className = "talmud-layout";
+
+  if (!hasMain) {
+    layoutNoMain(block, streamsWrap, talmudStreams);
+  } else if (talmudStreams.length === 1) {
+    layoutOneCommentaryWithMain(block, streamsWrap, mainEl, talmudStreams[0]);
+  } else {
+    layoutTwoCommentariesWithMain(
+      block, streamsWrap, mainEl,
+      talmudStreams[0], talmudStreams[1]
+    );
   }
-  streams
-    .filter((stream) => !used.has(stream))
+
+  // Insert the block before the streams wrapper
+  pageEl.insertBefore(block, streamsWrap);
+
+  // 6. Remaining streams (not in talmud layout) go below, as normal
+  const usedSet = new Set(talmudStreams);
+  if (hasMain) usedSet.add(mainEl);
+  allStreams
+    .filter((s) => !usedSet.has(s))
     .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
-    .forEach((stream) => {
-      resetTalmud(stream);
-      stream.style.float = "none";
-      stream.style.width = "";
-      stream.style.clear = "both";
-      streamsWrap.appendChild(stream);
+    .forEach((s) => {
+      s.style.clear = "both";
+      streamsWrap.appendChild(s);
     });
 }
 
+// ─────────────────────────────────────────────
+//  Apply to all pages + hook into virtual scroll
+// ─────────────────────────────────────────────
+
 export function applyTalmudLayoutToPages(container) {
   if (!isTalmudLayoutEnabled()) return;
-  container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => applyTalmudLayoutToPage(page));
+  container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) =>
+    applyTalmudLayoutToPage(page)
+  );
 
-  const prevProcessor = container.__processRealizedPage;
-  if (!prevProcessor || !prevProcessor.__talmudLayout) {
+  // Hook into the page-realization pipeline (same pattern as mishna_wrap_layout.js)
+  if (!container.__processRealizedPage?.__talmudLayout) {
+    const prev = container.__processRealizedPage;
     const processor = function (page, idx) {
-      if (typeof prevProcessor === "function") prevProcessor(page, idx);
+      if (typeof prev === "function") prev(page, idx);
       applyTalmudLayoutToPage(page);
     };
     processor.__talmudLayout = true;
@@ -400,34 +406,42 @@ export function applyTalmudLayoutToPages(container) {
   }
 
   const baseRealize = container.__realizePage;
-  if (typeof baseRealize !== "function" || baseRealize.__talmudLayout) return;
-
-  const wrapped = function (idx) {
-    baseRealize(idx);
-    const page = typeof container.__getPageElement === "function"
-      ? container.__getPageElement(idx)
-      : container.querySelector(`.page[data-page-index="${idx}"]`);
-    if (page) applyTalmudLayoutToPage(page);
-  };
-  wrapped.__talmudLayout = true;
-  container.__realizePage = wrapped;
+  if (typeof baseRealize === "function" && !baseRealize.__talmudLayout) {
+    const wrapped = function (idx) {
+      baseRealize(idx);
+      const page =
+        typeof container.__getPageElement === "function"
+          ? container.__getPageElement(idx)
+          : container.querySelector(`.page[data-page-index="${idx}"]`);
+      if (page) applyTalmudLayoutToPage(page);
+    };
+    wrapped.__talmudLayout = true;
+    container.__realizePage = wrapped;
+  }
 }
 
+// ─────────────────────────────────────────────
+//  UI wiring
+// ─────────────────────────────────────────────
+
 export function wireTalmudLayoutControls(onChange) {
-  const toggle = document.getElementById("talmud-layout-toggle");
+  const toggle       = document.getElementById("talmud-layout-toggle");
   const streamsInput = document.getElementById("talmud-streams-input");
-  const crownInput = document.getElementById("talmud-crown-lines-input");
-  const widthInput = document.getElementById("talmud-main-width-input");
-  const sideSelect = document.getElementById("talmud-side-mode-select");
+  const crownInput   = document.getElementById("talmud-crown-lines-input");
+  const widthInput   = document.getElementById("talmud-main-width-input");
+  const sideSelect   = document.getElementById("talmud-side-mode-select");
+
   if (!toggle) return;
 
+  // Restore saved values into controls
   toggle.checked = isTalmudLayoutEnabled();
   if (streamsInput) streamsInput.value = getTalmudStreamsText();
-  if (crownInput) crownInput.value = getTalmudCrownLines();
-  if (widthInput) widthInput.value = getTalmudMainWidth();
-  if (sideSelect) sideSelect.value = getTalmudSideMode();
+  if (crownInput)   crownInput.value   = getTalmudCrownLines();
+  if (widthInput)   widthInput.value   = getTalmudMainWidth();
+  if (sideSelect)   sideSelect.value   = getTalmudSideMode();
 
-  const commit = () => onChange && onChange();
+  const commit = () => onChange?.();
+
   toggle.addEventListener("change", () => {
     setTalmudLayoutEnabled(toggle.checked);
     commit();
@@ -435,6 +449,9 @@ export function wireTalmudLayoutControls(onChange) {
   streamsInput?.addEventListener("change", () => {
     setTalmudStreamsText(streamsInput.value);
     commit();
+  });
+  streamsInput?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") { ev.preventDefault(); streamsInput.blur(); }
   });
   crownInput?.addEventListener("change", () => {
     setTalmudCrownLines(crownInput.value);
