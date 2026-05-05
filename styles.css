@@ -9,19 +9,9 @@
   --btn-h: #2A3D6E;
   --ed-bg: #0D1929;
   --ed-fg: #E2E8F0;
-  --word-blue: #2B579A;
-  --word-blue-dark: #185ABD;
-  --word-line: #D6DFEC;
   --ravtext-ui-font-family: "David Libre", "Frank Ruhl Libre", "Segoe UI", sans-serif;
   --ravtext-editor-font-family: "David Libre", "Frank Ruhl Libre", serif;
   --ravtext-page-font-family: "Frank Ruhl Libre", "David Libre", serif;
-  --ravtext-page-width: 380px;
-  --ravtext-page-height: 537px;
-  --ravtext-page-pack-safety: 6px;
-  --ravtext-page-margin-top: 22px;
-  --ravtext-page-margin-right: 24px;
-  --ravtext-page-margin-bottom: 18px;
-  --ravtext-page-margin-left: 24px;
   --ravtext-editor-size: 16px;
   --ravtext-page-main-size: 12px;
   --ravtext-page-stream-size: 10px;
@@ -144,70 +134,6 @@ body.light-theme .pages-container {
 body.light-theme .ctx-menu { background: #FFFFFF; }
 body.light-theme .toast { background: #FFFFFF; color: #185ABD; border-color: #185ABD; }
 
-.demo-mode-banner {
-  position: sticky;
-  top: 0;
-  z-index: 12000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  padding: 8px 16px;
-  background: #7f1d1d;
-  color: #fff;
-  border-bottom: 2px solid #fca5a5;
-  font-size: 13px;
-  text-align: center;
-}
-
-.demo-reset-clock {
-  font-weight: 700;
-  color: #fde68a;
-}
-
-.ravtext-demo-print-mark {
-  display: inline !important;
-  color: #991b1b !important;
-  background: rgba(254, 226, 226, 0.92) !important;
-  border: 1px solid rgba(153, 27, 27, 0.45) !important;
-  padding: 0 0.18em !important;
-  margin: 0 0.1em !important;
-  font-weight: 700 !important;
-  white-space: normal !important;
-}
-
-.demo-block-screen {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: #111827;
-  color: #fff;
-}
-
-.demo-block-card {
-  width: min(620px, 94vw);
-  padding: 26px 30px;
-  border: 2px solid #ef4444;
-  border-radius: 8px;
-  background: #1f2937;
-  text-align: center;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-}
-
-.demo-block-card h1 {
-  margin: 0 0 12px;
-  color: #fecaca;
-  font-size: 24px;
-  line-height: 1.35;
-}
-
-.demo-block-card p {
-  margin: 0;
-  font-size: 16px;
-}
-
 * { box-sizing: border-box; }
 
 html, body {
@@ -216,7 +142,7 @@ html, body {
   background: var(--bg);
   color: var(--txt);
   font-family: var(--ravtext-ui-font-family);
-  direction: rtl;
+  direction: ltr;
   max-width: 100vw;
   overflow-x: hidden;
 }
@@ -256,14 +182,14 @@ html, body {
 
 .main {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(440px, 1fr);
-  grid-template-areas: "editor preview";
+  grid-template-columns: minmax(440px, 1fr) minmax(0, 2fr);
+  grid-template-areas: "preview editor";
   gap: 16px;
   padding: 16px 28px;
   align-items: start;
   width: 100%;
   max-width: 100vw;
-  direction: rtl;
+  direction: ltr;
 }
 
 .panel {
@@ -381,21 +307,6 @@ html, body {
 
 .pdf-tb-find {
   width: 140px;
-}
-
-.pdf-output-background-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 6px;
-  border: 1px solid rgba(255,255,255,0.28);
-  border-radius: 3px;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.pdf-output-background-toggle input {
-  margin: 0;
 }
 
 .pdf-body {
@@ -544,11 +455,7 @@ mark.pdf-find-hit-current {
   flex: 0 0 537px;
   background: #fff;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  padding:
-    var(--ravtext-page-margin-top)
-    var(--ravtext-page-margin-right)
-    var(--ravtext-page-margin-bottom)
-    var(--ravtext-page-margin-left);
+  padding: 22px 24px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -557,14 +464,7 @@ mark.pdf-find-hit-current {
   color: #222;
 }
 
-.pages-container > .page:not(.measure-page) {
-  content-visibility: auto;
-  contain-intrinsic-size: 380px 537px;
-}
-
 .page.measure-page {
-  content-visibility: visible;
-  contain-intrinsic-size: auto;
   height: auto;
   min-height: 0;
   flex: initial;
@@ -578,10 +478,6 @@ mark.pdf-find-hit-current {
   margin-bottom: 8px;
 }
 
-.page-main:empty {
-  display: none;
-}
-
 .page-main p {
   direction: rtl;
   margin: 0 0 6px 0;
@@ -591,35 +487,7 @@ mark.pdf-find-hit-current {
   orphans: 2;
 }
 
-.page-main h1,
-.page-main h2,
-.page-main h3,
-.page-main h4,
-.page-main h5,
-.page-main h6 {
-  direction: rtl;
-  margin: 0 0 6px 0;
-  text-align: center;
-  text-align-last: center;
-  font-weight: 700;
-  line-height: 1.35;
-  color: #111;
-}
-
-.page-main h1 { font-size: 1.45em; }
-.page-main h2 { font-size: 1.3em; }
-.page-main h3 { font-size: 1.18em; }
-.page-main h4 { font-size: 1.08em; }
-.page-main h5 { font-size: 1em; }
-.page-main h6 { font-size: 0.94em; }
-
-.page-main p:last-child,
-.page-main h1:last-child,
-.page-main h2:last-child,
-.page-main h3:last-child,
-.page-main h4:last-child,
-.page-main h5:last-child,
-.page-main h6:last-child {
+.page-main p:last-child {
   margin-bottom: 0;
 }
 
@@ -632,21 +500,16 @@ mark.pdf-find-hit-current {
   gap: 4px;
 }
 
-.page-main:empty + .page-streams {
-  margin-top: 0;
-}
-
 .mishna-wrap-page .page-streams {
   display: block;
-  overflow: visible;
-  margin-top: 0;
+  overflow: hidden;
 }
 
 .mishna-wrap-page .mishna-level {
   display: block;
   clear: both;
-  overflow: visible;
-  margin-bottom: 0;
+  overflow: hidden;
+  margin-bottom: 4px;
 }
 
 .mishna-wrap-page .mishna-level::after {
@@ -656,197 +519,25 @@ mark.pdf-find-hit-current {
 }
 
 .mishna-wrap-page .stream {
-  margin: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  text-align: justify;
-  text-align-last: center;
-  text-justify: inter-word;
-  column-count: auto !important;
-  column-gap: normal !important;
+  margin-bottom: 4px;
 }
 
 .mishna-wrap-page .stream.mishna-float {
-  margin-bottom: 1.4em;
+  width: 46%;
+  margin-bottom: 4px;
 }
 
-.mishna-wrap-page .stream.mishna-right {
+.mishna-wrap-page .stream.mishna-float[style*="right"] {
   margin-left: 8px;
 }
 
-.mishna-wrap-page .stream.mishna-left {
+.mishna-wrap-page .stream.mishna-float[style*="left"] {
   margin-right: 8px;
 }
 
 .mishna-wrap-page .stream.mishna-flow {
   display: block;
   overflow: visible;
-}
-
-.mishna-wrap-page .stream-title {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.22);
-  padding-bottom: 1px;
-  margin: 0 0 2px;
-  font-size: inherit;
-  line-height: inherit;
-  column-span: none;
-  text-align: center;
-  text-align-last: center;
-  font-weight: 800;
-  white-space: normal;
-}
-
-.mishna-wrap-page .stream-title::after {
-  content: " ";
-}
-
-.mishna-wrap-page .stream .note,
-.mishna-wrap-page .stream .note-inline,
-.mishna-wrap-page .stream .note-part {
-  display: inline;
-  margin: 0;
-  break-inside: auto;
-  text-align-last: inherit;
-}
-
-/* ============================================================ 
-   TALMUD LAYOUT — CSS patch
-   Replace the entire existing .talmud-* block in styles.css
-   with this content.
-   ============================================================ */
-
-/* Page-level flag */
-.talmud-layout-page .page-streams {
-  display: block;
-  overflow: visible;
-  margin-top: 0;
-}
-
-/* Remaining (non-talmud) streams sit below, full-width */
-.talmud-layout-page .page-streams > .stream {
-  display: block;
-  float: none !important;
-  width: auto !important;
-  clear: both;
-  margin: 4px 0 0 0;
-}
-
-/* ── The layout block ── */
-.talmud-layout {
-  display: block;
-  overflow: visible;
-  clear: both;
-}
-.talmud-layout::after {
-  content: "";
-  display: block;
-  clear: both;
-}
-
-/* ── Commentary streams (floated) ── */
-.talmud-layout .stream.talmud-commentary {
-  box-sizing: border-box;
-  margin: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  text-align: justify;
-  text-align-last: center;
-  text-justify: inter-word;
-  column-count: auto !important;
-  column-gap: normal !important;
-}
-.talmud-layout .stream.talmud-right {
-  padding-left: 3px;
-}
-.talmud-layout .stream.talmud-left {
-  padding-right: 3px;
-}
-
-/* ── Main text (pushed down by crown-offset) ── */
-.talmud-layout-page .page-main.talmud-main {
-  display: block;
-  /* Crown offset: computed by JS and stored in --talmud-crown-offset */
-  margin-top: var(--talmud-crown-offset, 0px);
-  overflow: hidden;
-  box-sizing: border-box;
-  text-align: justify;
-  text-align-last: center;
-  text-justify: inter-word;
-}
-.talmud-layout-page .page-main.talmud-main:empty {
-  display: none;
-}
-
-/* ── No main text: commentaries behave like mishna-wrap ── */
-.talmud-layout.talmud-no-main .stream.talmud-commentary-float {
-  margin-bottom: 1.4em;
-}
-.talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
-  display: block;
-  overflow: visible;
-  clear: none;
-}
-.talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
-  float: none !important;
-  width: 100% !important;
-}
-
-/* ── One commentary only (with main) ── */
-.talmud-layout.talmud-has-main.talmud-one-commentary .page-main.talmud-main {
-  /* main fills the rest of the width naturally around the float */
-  margin-top: 0;
-}
-
-/* ── Stream titles inside talmud block ── */
-.talmud-layout .stream-title {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  font-weight: 700;
-  text-align: center;
-  margin: 0 0 2px 0;
-  padding: 0 0 1px 0;
-  column-span: none;
-  white-space: normal;
-  font-size: inherit;
-  line-height: inherit;
-}
-
-/* ── Notes inline ── */
-.talmud-layout .stream .note,
-.talmud-layout .stream .note-inline,
-.talmud-layout .stream .note-part {
-  display: inline;
-  margin: 0;
-  break-inside: auto;
-  text-align-last: inherit;
-}
-
-/* ── Print overrides ── */
-@media print {
-  .talmud-layout {
-    position: relative !important;
-    overflow: visible !important;
-  }
-  .talmud-layout-page .page-main.talmud-main {
-    margin-top: var(--talmud-crown-offset, 0px) !important;
-    overflow: hidden !important;
-  }
-  .talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
-    float: none !important;
-    width: 100% !important;
-  }
-  .talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
-    display: block !important;
-    float: none !important;
-    width: auto !important;
-    overflow: visible !important;
-  }
-  .talmud-layout .stream.talmud-right { padding-left: 3px !important; }
-  .talmud-layout .stream.talmud-left  { padding-right: 3px !important; }
 }
 
 .stream {
@@ -903,24 +594,12 @@ mark.pdf-find-hit-current {
 .stream-color-5 { background: #fcdada; }
 .stream-color-6 { background: #fde0c2; }
 
-@page {
-  size: A4 portrait;
-  margin: 0;
-}
-
 @media print {
-  html,
   body {
     background: #fff;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: 210mm !important;
-    min-height: 297mm !important;
-    overflow: visible !important;
   }
 
   .app-header,
-  .demo-mode-banner,
   .panel:not(.preview-pane),
   .pdf-toolbar,
   .pdf-sidebar,
@@ -929,133 +608,27 @@ mark.pdf-find-hit-current {
   }
 
   .main {
-    display: block !important;
-    width: 210mm !important;
-    margin: 0 !important;
-    padding: 0 !important;
+    display: block;
+    padding: 0;
   }
 
   .preview-pane {
-    display: block !important;
-    width: 210mm !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    border: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-    box-shadow: none !important;
-  }
-
-  .preview-pane > h2 {
-    display: none !important;
-  }
-
-  .pdf-body {
-    display: block !important;
-    width: 210mm !important;
-    min-height: 0 !important;
-    overflow: visible !important;
+    border: 0;
+    padding: 0;
+    min-height: 0;
   }
 
   .pages-container {
-    display: block !important;
-    width: 210mm !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow: visible !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    background: #fff !important;
-    border-radius: 0 !important;
-    gap: 0 !important;
-    align-items: stretch !important;
+    max-height: none;
+    overflow: visible;
+    background: #fff;
+    padding: 0;
   }
 
   .page {
-    width: 380px !important;
-    height: 537px !important;
-    flex: none !important;
-    margin: 0 !important;
-    padding:
-      var(--ravtext-page-margin-top)
-      var(--ravtext-page-margin-right)
-      var(--ravtext-page-margin-bottom)
-      var(--ravtext-page-margin-left) !important;
-    zoom: 2.088 !important;
-    transform: none !important;
-    transform-origin: top right !important;
-    content-visibility: visible !important;
-    contain-intrinsic-size: auto !important;
-    box-shadow: none !important;
-    border: 0 !important;
+    box-shadow: none;
+    border: 0;
     page-break-after: always;
-    break-after: page;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-
-  .page:last-child {
-    page-break-after: auto;
-    break-after: auto;
-  }
-
-  .talmud-layout {
-    position: relative !important;
-  }
-
-  .talmud-layout-page .stream.talmud-right {
-    margin-left: 0 !important;
-    padding-left: 3px !important;
-  }
-
-  .talmud-layout-page .stream.talmud-left {
-    margin-right: 0 !important;
-    padding-right: 3px !important;
-  }
-
-  .talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
-    float: none !important;
-    width: 100% !important;
-  }
-
-  .talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
-    display: block !important;
-    float: none !important;
-    width: auto !important;
-    overflow: visible !important;
-  }
-
-  .talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-commentary {
-    width: var(--talmud-side-width) !important;
-  }
-
-  .talmud-layout.talmud-has-main.talmud-one-commentary .page-main.talmud-main {
-    width: calc(var(--talmud-main-width) + var(--talmud-side-width)) !important;
-  }
-
-  .talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-left + .page-main.talmud-main {
-    margin-right: 0 !important;
-    margin-left: var(--talmud-side-width) !important;
-  }
-
-  .talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-right + .page-main.talmud-main {
-    margin-right: var(--talmud-side-width) !important;
-    margin-left: 0 !important;
-  }
-
-  .talmud-layout-page .page-main.talmud-main {
-    position: static !important;
-    width: auto !important;
-    margin: var(--talmud-crown-offset, 0px) 0 0 0 !important;
-    overflow: hidden !important;
-  }
-
-  body:not(.print-with-background) .page,
-  body:not(.print-with-background) .page *:not(.ravtext-demo-print-mark) {
-    background: transparent !important;
-    background-color: transparent !important;
-    background-image: none !important;
-    box-shadow: none !important;
   }
 }
 
@@ -1063,8 +636,8 @@ mark.pdf-find-hit-current {
   .main {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "editor"
-      "preview";
+      "preview"
+      "editor";
     padding: 12px;
   }
 
@@ -1114,173 +687,6 @@ mark.pdf-find-hit-current {
   font-size: 18px;
 }
 
-.modal-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(ellipse at center, rgba(15,23,42,0.82), rgba(2,6,23,0.94));
-  z-index: 1000;
-  justify-content: center;
-  align-items: center;
-  backdrop-filter: blur(4px);
-}
-
-.modal-overlay.active {
-  display: flex;
-}
-
-.modal {
-  position: relative;
-  background: var(--panel);
-  border-radius: 12px;
-  padding: 24px 28px;
-  width: 560px;
-  max-width: 92%;
-  max-height: 80vh;
-  overflow: auto;
-  border: 2px solid var(--gold);
-  box-shadow: 0 20px 60px -10px rgba(0,0,0,0.75);
-}
-
-.modal h2 {
-  color: var(--gold);
-  margin: 0 0 12px;
-  font-size: 22px;
-}
-
-.modal-desc {
-  color: var(--muted);
-  margin: 0 0 12px;
-}
-
-.stream-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: var(--bg);
-  border-radius: 8px;
-  margin-bottom: 8px;
-  border: 1px solid transparent;
-}
-
-.stream-row label {
-  flex: 1;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.word-stream-title {
-  font-weight: 700;
-}
-
-.word-stream-meta {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.stream-row input[type="text"] {
-  width: 70px;
-  text-align: center;
-  background: var(--ed-bg);
-  color: var(--gold);
-  border: 1px solid var(--gold);
-  border-radius: 6px;
-  padding: 5px;
-  font-weight: bold;
-}
-
-.modal-btns {
-  display: flex;
-  gap: 12px;
-  margin-top: 20px;
-  justify-content: center;
-}
-
-.modal-btns button {
-  background: var(--btn);
-  color: var(--txt);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px 18px;
-  font: inherit;
-  cursor: pointer;
-}
-
-.modal-btns button:first-child {
-  background: var(--gold);
-  color: #000;
-}
-
-.ribbon-tabs {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  margin: 4px 0 0;
-  padding: 0 8px;
-  background: var(--word-blue);
-  border: 1px solid var(--word-blue-dark);
-  border-bottom: 0;
-  border-radius: 4px 4px 0 0;
-  min-height: 34px;
-}
-
-.ribbon-tabs .ribbon-tab {
-  appearance: none;
-  border: 1px solid transparent;
-  border-bottom: 0;
-  border-radius: 3px 3px 0 0;
-  background: transparent;
-  color: #FFFFFF;
-  padding: 8px 14px 7px;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.ribbon-tabs .ribbon-tab:hover {
-  background: rgba(255,255,255,0.14);
-}
-
-.ribbon-tabs .ribbon-tab.active {
-  background: var(--panel);
-  color: var(--word-blue-dark);
-  border-color: var(--word-line);
-}
-
-.ribbon-toolbar {
-  margin-top: 0;
-  border-radius: 0 0 4px 4px;
-  border-color: var(--word-line);
-  background: var(--panel);
-  padding: 9px 8px 7px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
-}
-
-.ribbon-toolbar .sep {
-  display: none;
-}
-
-.ribbon-hidden {
-  display: none !important;
-}
-
-.width-slider-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 4px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.width-slider-control input {
-  width: 92px;
-  accent-color: var(--word-blue-dark);
-}
-
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -1324,13 +730,6 @@ mark.pdf-find-hit-current {
 .toolbar button.stream-btn {
   font-weight: 700;
   min-width: 30px;
-}
-
-.size-direct-sep {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-  margin: 0 2px;
 }
 
 .stream-label-static,
@@ -1437,183 +836,6 @@ mark.pdf-find-hit-current {
   text-align: center;
   background: var(--bg);
   color: var(--txt);
-}
-
-.stream-col-input input[type="text"] {
-  width: 84px;
-  text-align: right;
-}
-
-.page-margin-settings {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
-.page-margin-input {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.page-margin-input input {
-  width: 48px;
-  font: inherit;
-  font-size: 13px;
-  padding: 2px 4px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  text-align: center;
-  background: var(--bg);
-  color: var(--txt);
-}
-
-.stream-col-select,
-.opw-control select,
-.opw-control input {
-  font: inherit;
-  font-size: 13px;
-  padding: 2px 5px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--bg);
-  color: var(--txt);
-}
-
-.stream-col-select {
-  max-width: 90px;
-}
-
-.opening-word-toolbar {
-  margin-top: 6px;
-  font-size: 13px;
-}
-
-.opw-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-}
-
-.opw-control input {
-  width: 56px;
-  text-align: center;
-}
-
-.opw-control input[type="text"] {
-  width: 96px;
-  text-align: right;
-}
-
-.opw-control select {
-  max-width: 116px;
-}
-
-.font-gallery-select {
-  min-width: 130px;
-  max-width: 220px;
-  font: inherit;
-  font-size: 13px;
-  padding: 5px 7px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
-  color: var(--txt);
-}
-
-.opw-segment {
-  display: inline-block;
-  direction: rtl;
-  line-height: 1;
-}
-
-.opw-host {
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-.opw-raised {
-  vertical-align: baseline;
-}
-
-.opw-dropped {
-  float: right;
-  margin-left: var(--opw-space-after, 0.3em);
-  margin-right: 0;
-  line-height: 0.82;
-  shape-margin: var(--opw-space-after, 0.3em);
-  break-inside: avoid;
-}
-
-.page-main .opw-dropped {
-  margin-top: 0.04em;
-}
-
-.stream .opw-dropped {
-  margin-top: 0.02em;
-}
-
-.opw-center-full {
-  text-align: center;
-  text-align-last: center;
-}
-
-.note-part {
-  display: inline;
-}
-
-.stream-balanced {
-  column-count: auto !important;
-  column-gap: normal !important;
-}
-
-.stream-balanced-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-  direction: rtl;
-}
-
-.stream-balanced-col {
-  min-width: 0;
-  text-align: justify;
-}
-
-.stream-balanced-line {
-  display: block;
-  line-height: inherit;
-  min-height: 1lh;
-}
-
-.stream-balanced-justified {
-  text-align: justify;
-  text-align-last: justify;
-}
-
-.stream-balanced-natural-last {
-  text-align: center;
-  text-align-last: center;
-}
-
-.stream-balanced-natural-last-right {
-  text-align: right;
-  text-align-last: right;
-}
-
-.stream-orphan-line {
-  display: block;
-  margin: 0;
-  padding: 0;
-  line-height: inherit;
-  clear: both;
 }
 .toolbar button.s1 { background: #FEE2E2; color: #7F1D1D; }
 .toolbar button.s2 { background: #DBEAFE; color: #1E3A8A; }
@@ -1789,9 +1011,6 @@ mark.pdf-find-hit-current {
 .toolbar button:hover { background: var(--btn-h); }
 .toolbar button.active { background: var(--gold); color: #000; border-color: var(--gold); }
 .toolbar .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
-.toolbar-attention {
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.45) inset;
-}
 
 .editor {
   background: var(--ed-bg);
@@ -1820,52 +1039,24 @@ mark.pdf-find-hit-current {
   margin-right: 8px;
 }
 
-.expanded-tools {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin: 0 0 8px;
-  padding: 6px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-.expanded-tools[hidden] {
-  display: none;
-}
-.expanded-tools button {
-  background: var(--btn);
-  color: var(--txt);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 9px;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-.expanded-tools button:hover {
-  background: var(--btn-h);
-}
-
 .panes-container {
   display: flex;
   flex-direction: row;
-  flex-wrap: wrap;
   gap: 0;
   flex: 1 1 auto;
   height: calc(100vh - 360px);
   min-height: 420px;
   align-items: stretch;
   min-width: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 8px;
   scrollbar-gutter: stable;
 }
 
 .pane {
-  flex: 1 1 0;
-  width: auto;
+  flex: 0 0 360px;
+  width: 360px;
   min-width: 280px;
   background: var(--ed-bg);
   border: 1px solid var(--border);
@@ -1875,63 +1066,6 @@ mark.pdf-find-hit-current {
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.pane.main-pane {
-  flex: 0 0 100%;
-  width: 100%;
-  min-width: 100%;
-  height: 100%;
-  min-height: 220px;
-  max-height: none;
-  margin-bottom: 10px;
-}
-
-.panes-container.has-stream-panes .pane.main-pane {
-  height: var(--main-pane-share, 42%);
-}
-
-.panes-container.has-stream-panes .pane:not(.main-pane) {
-  flex: 1 1 0;
-  width: auto;
-  min-width: 240px;
-  max-width: none;
-  height: calc(100% - var(--main-pane-share, 42%) - 18px);
-}
-
-.main-stream-resizer {
-  flex: 0 0 100%;
-  height: 8px;
-  min-height: 8px;
-  margin: 0 0 8px;
-  cursor: row-resize;
-  background: transparent;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.main-stream-resizer:hover,
-.main-stream-resizer.dragging {
-  background: var(--gold);
-}
-
-.panes-container.has-stream-panes .resizer {
-  height: calc(100% - var(--main-pane-share, 42%) - 18px);
-}
-
-.panes-container.streams-stacked {
-  align-content: flex-start;
-}
-
-.panes-container.streams-stacked .pane:not(.main-pane) {
-  flex: 0 0 100% !important;
-  width: 100% !important;
-  min-width: 100% !important;
-  height: 320px;
-}
-
-.panes-container.streams-stacked .resizer {
-  display: none;
 }
 
 .resizer {
@@ -1964,26 +1098,6 @@ mark.pdf-find-hit-current {
   background: rgba(255,255,255,0.04);
   border-bottom: 1px solid var(--border);
   font-size: 12px;
-}
-
-.pane-drag-handle {
-  cursor: grab;
-}
-
-.pane-drag-handle:active {
-  cursor: grabbing;
-}
-
-.pane.dragging-pane {
-  opacity: 0.72;
-}
-
-.pane.drag-over-before {
-  box-shadow: inset -4px 0 0 var(--gold);
-}
-
-.pane.drag-over-after {
-  box-shadow: inset 4px 0 0 var(--gold);
 }
 
 .pane-chip {
@@ -2153,6 +1267,70 @@ mark.pdf-find-hit-current {
   font-size: 11px;
   max-height: 260px;
   overflow: auto;
+  direction: ltr;
+  text-align: left;
+}
+
+
+/* ═══════════════════════════════════════════════════
+   תבנית תלמוד — Talmud Layout
+   ═══════════════════════════════════════════════════ */
+
+.talmud-layout-page .page-streams {
+  display: block;
+  overflow: hidden;
+}
+
+.talmud-layout-page .talmud-row {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  margin-block-end: 6px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.talmud-layout-page .stream[data-talmud-side="right"] {
+  border-inline-end: 2px solid rgba(0,0,0,0.12);
+  padding-inline-end: 6px;
+}
+
+.talmud-layout-page .stream[data-talmud-side="left"] {
+  padding-inline-start: 6px;
+}
+
+.talmud-layout-page .talmud-col-placeholder {
+  flex: 1;
+}
+
+.talmud-layout-page .talmud-row .stream {
+  flex: 1;
+  min-width: 0;
+  float: none !important;
+}
+
+.talmud-layout-page .talmud-row .stream-title {
+  font-size: 0.72em;
+  opacity: 0.6;
+}
+
+.talmud-sides-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.talmud-sides-control input[type="text"] {
+  width: 150px;
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--txt);
   direction: ltr;
   text-align: left;
 }
