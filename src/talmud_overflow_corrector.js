@@ -23,6 +23,10 @@ function pageHeightPx(pageEl) {
 }
 
 function correctOnePage(pageEl) {
+  // v28-merge / משה: לא מוחקים תוכן! מסמנים בלבד את הבעיה לטובת הדיבוג
+  // וה-engine. מחיקת תוכן = איבוד טקסט בלתי הפיך, שמשה אסר עליו במפורש
+  // ("שמירה על טקסט מלא"). הפתרון האמיתי הוא Budget Solver שיפעל לפני הפיצול,
+  // לא post-process שמוחק.
   const block = pageEl.querySelector(":scope > .talmud-layout");
   if (!block) return false;
   const overflow = pageEl.scrollHeight - pageEl.clientHeight;
@@ -32,7 +36,10 @@ function correctOnePage(pageEl) {
   const candidates = Array.from(
     block.querySelectorAll(":scope > .talmud-body-expanded, :scope > .talmud-body-portion")
   );
-  if (candidates.length === 0) return false;
+  if (candidates.length === 0) {
+    pageEl.dataset.talmudOverflowCorrected = "no-candidates";
+    return false;
+  }
   candidates.sort(
     (a, b) => b.getBoundingClientRect().height - a.getBoundingClientRect().height
   );
@@ -40,26 +47,16 @@ function correctOnePage(pageEl) {
   const heaviestH = heaviest.getBoundingClientRect().height;
   if (heaviestH <= pageHeightPx(pageEl)) return false;
 
-  // Shrink heaviest to fit ~one screen, capture the trimmed-off content.
-  const limit = SHRINK_TARGET_HEIGHT_PX;
-  // Walk children; remove from the bottom until the cumulative height fits.
-  // We use a simple block-level removal — text nodes are wrapped by the
-  // engine as <p> or similar.
-  const childs = Array.from(heaviest.children);
-  if (childs.length === 0) {
-    // No child elements to peel — fall back to removing the heaviest entirely.
-    heaviest.remove();
-    pageEl.dataset.talmudOverflowCorrected = "removed-heaviest";
-    return true;
+  // סימון בלבד — אסור למחוק תוכן. ה-engine ידע על הסטייה דרך ה-attribute הזה.
+  pageEl.dataset.talmudOverflowCorrected = `flagged-px-${Math.round(overflow)}`;
+  pageEl.dataset.talmudOverflowHeaviestPx = String(Math.round(heaviestH));
+  if (typeof console !== "undefined" && console.warn) {
+    console.warn(
+      `[talmud overflow] page exceeds frame by ${Math.round(overflow)}px — ` +
+      `heaviest body: ${Math.round(heaviestH)}px. Budget Solver integration ` +
+      `needed for proper fix; not deleting content.`
+    );
   }
-  let removed = 0;
-  // From last to first: drop until heaviest fits.
-  for (let i = childs.length - 1; i >= 0; i--) {
-    if (heaviest.getBoundingClientRect().height <= limit) break;
-    childs[i].remove();
-    removed++;
-  }
-  pageEl.dataset.talmudOverflowCorrected = `trimmed-${removed}`;
   return true;
 }
 

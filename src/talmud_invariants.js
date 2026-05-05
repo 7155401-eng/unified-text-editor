@@ -185,21 +185,15 @@ export function invBodyMargin(pageEl) {
 }
 
 /** INV-8: page.scrollHeight ≤ page.clientHeight + 2.
- *  When the engine cannot re-paginate (Budget Solver not yet wired into
- *  packer per spec part 19), asymmetric talmud pages may legitimately
- *  hold more DOM than visually fits. We treat overflow > 2× page-height
- *  as ERROR (catastrophic) and smaller as WARN. The corrector trims
- *  catastrophic cases at apply time. */
+ *  v28-merge: tolerance מוחזר ל-±2 (במקום page-height). הריכוך של ratio<=1
+ *  הסתיר באג אמיתי. כל overflow מעל 2px = שגיאה שדורשת תיקון. */
 export function invNoOverflow(pageEl) {
   const overflow = pageEl.scrollHeight - pageEl.clientHeight;
-  const pageH = Math.max(400, pageEl.clientHeight || 537);
-  const ratio = overflow / pageH;
-  // ok if overflow ≤ 1 page-height (tolerable; engine will absorb on next render)
   return {
     invariant: "INV-8",
     name: "No Overflow",
-    ok: ratio <= 1,
-    detail: `overflow=${overflow}px ratio=${ratio.toFixed(2)}`,
+    ok: overflow <= 2,
+    detail: `overflow=${overflow}px`,
   };
 }
 
@@ -219,14 +213,9 @@ export function invExpandedNeedsMain(pageEl) {
 }
 
 /** INV-10: Two expanded share roughly the same Y.
- *  Skipped on pages with catastrophic overflow (>1 page-height) — those
- *  require Budget Solver integration to redistribute. */
+ *  v28-merge: tolerance מוחזר ל-30px (במקום 200). 200 מסתיר באג אמיתי של
+ *  stacking. אם הסטייה > 30 = הbug ויזואלי שדורש תיקון, לא ריכוך. */
 export function invExpandedParallel(pageEl) {
-  const overflow = pageEl.scrollHeight - pageEl.clientHeight;
-  const pageH = Math.max(400, pageEl.clientHeight || 537);
-  if (overflow > pageH) {
-    return { invariant: "INV-10", name: "Expanded Parallel", ok: true, detail: "n/a (catastrophic overflow)" };
-  }
   const expanded = Array.from(pageEl.querySelectorAll(".talmud-body-expanded"));
   if (expanded.length < 2) {
     return { invariant: "INV-10", name: "Expanded Parallel", ok: true, detail: "n/a" };
@@ -234,19 +223,17 @@ export function invExpandedParallel(pageEl) {
   const tops = expanded.map(e => Math.round(e.getBoundingClientRect().top));
   const max = Math.max(...tops);
   const min = Math.min(...tops);
-  // 200px tolerance for normal pages — alignment is best-effort within
-  // pure-float layout. Per spec INV-10 is WARN-level; severe violations
-  // (>200px) usually mean a stacked-not-aligned layout that needs the
-  // Budget Solver to fix structurally.
   return {
     invariant: "INV-10",
     name: "Expanded Parallel",
-    ok: max - min <= 200,
+    ok: max - min <= 30,
     detail: `tops=${tops.join(",")} delta=${max - min}`,
   };
 }
 
-/** INV-11: Stream title not orphan — at least 1 visual line after. */
+/** INV-11: Stream title not orphan — at least 2 visual lines after.
+ *  v28-merge: לפי המפרט (GPT-6) — כותרת זרם לא יכולה להישאר עם פחות מ-2
+ *  שורות תוכן אחריה. אם כן — להעביר את כל הזרם לעמוד הבא. */
 export function invStreamTitleNotOrphan(pageEl) {
   const streams = Array.from(
     pageEl.querySelectorAll(".talmud-layout .stream:has(> .stream-title)")
@@ -256,16 +243,15 @@ export function invStreamTitleNotOrphan(pageEl) {
   }
   const fails = [];
   for (const s of streams) {
-    // Skip if the stream itself has very little text — it's a legitimately short stream.
-    const totalText = (s.textContent || "").trim();
-    if (totalText.length < 30) continue;
     const title = s.querySelector(":scope > .stream-title");
     if (!title) continue;
-    const titleText = (title.textContent || "").trim();
-    const contentText = totalText.slice(titleText.length).trim();
-    if (contentText.length === 0) {
-      fails.push(s.dataset.stream || "?");
-    }
+    const titleBottom = title.getBoundingClientRect().bottom;
+    const range = document.createRange();
+    range.selectNodeContents(s);
+    const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0);
+    const below = rects.filter(r => r.top > titleBottom + 2);
+    const lines = new Set(below.map(r => Math.round(r.top))).size;
+    if (lines < 2) fails.push(s.dataset.stream || "?");
   }
   return {
     invariant: "INV-11",

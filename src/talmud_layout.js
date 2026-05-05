@@ -216,6 +216,20 @@ function unwrapTalmudLayout(pageEl) {
     }
     otherEl.remove();
   });
+  // v28-merge: תרחיש פרשן יחיד שפוצל ל-2 חצאים בכתר (data-talmud-single-half) —
+  // מאחד את כל התוכן (כולל body/expanded שלו) בחזרה לזרם המקורי, ואז מסיר.
+  Array.from(block.querySelectorAll("[data-talmud-single-half]")).forEach((halfEl) => {
+    const code = halfEl.dataset.talmudSingleHalf;
+    if (!code) return;
+    const original = block.querySelector(`.stream[data-stream="${code}"]:not([data-talmud-single-half]):not([data-talmud-body-of])`);
+    if (original) {
+      // מעבירים תוכן מ-halfEl ל-original (חוץ מ-stream-title שכבר קיים)
+      const halfTitle = halfEl.querySelector(":scope > .stream-title");
+      if (halfTitle) halfTitle.remove();
+      while (halfEl.firstChild) original.appendChild(halfEl.firstChild);
+    }
+    halfEl.remove();
+  });
 
   // Move .page-main back to page level (before streamsWrap)
   const main = block.querySelector(":scope > .page-main");
@@ -627,6 +641,51 @@ function layoutNoMain(block, streamsWrap, commentaryStreams) {
     flowRole:   "commentary-flow",
   });
   commentaryStreams.forEach((s) => s.classList.add("talmud-commentary"));
+}
+
+/**
+ * v28-merge: מפצל פרשן יחיד לשני חצאים — מחזיר את החצי השני כאלמנט חדש,
+ * משאיר את החצי הראשון בתוך commentary המקורי.
+ * הפיצול בנקודת הפסקה הקרובה ביותר לאמצע (כדי לא לחתוך באמצע פסקה).
+ * משמש את ה-dispatch שמעביר פרשן יחיד+ראשי דרך layoutTwoCommentariesWithMain
+ * כך שיקבל כתר אמיתי משני הצדדים.
+ */
+function splitSingleCommentaryIntoHalves(commentary) {
+  const titleEl = commentary.querySelector(":scope > .stream-title");
+  const contentChildren = Array.from(commentary.children).filter(
+    (c) => !c.classList?.contains("stream-title")
+  );
+  if (contentChildren.length < 2) return null; // אין מה לחלק
+
+  const totalLen = contentChildren.reduce(
+    (sum, c) => sum + (c.textContent || "").length, 0
+  );
+  if (totalLen < 40) return null; // קצר מדי
+
+  const target = totalLen / 2;
+  let cum = 0;
+  let splitIdx = contentChildren.length;
+  for (let i = 0; i < contentChildren.length; i++) {
+    cum += (contentChildren[i].textContent || "").length;
+    if (cum >= target) {
+      splitIdx = i + 1;
+      break;
+    }
+  }
+  if (splitIdx <= 0 || splitIdx >= contentChildren.length) return null;
+
+  const secondHalf = document.createElement("div");
+  secondHalf.className = commentary.className;
+  for (const a of Array.from(commentary.attributes)) {
+    if (a.name !== "style") secondHalf.setAttribute(a.name, a.value);
+  }
+  if (titleEl) secondHalf.appendChild(titleEl.cloneNode(true));
+  for (let i = splitIdx; i < contentChildren.length; i++) {
+    secondHalf.appendChild(contentChildren[i]);
+  }
+  // סימן שזה חצי פיצולי, כדי לטפל ב-unwrap
+  secondHalf.dataset.talmudSingleHalf = commentary.getAttribute("data-stream") || "";
+  return secondHalf;
 }
 
 /**
@@ -1113,7 +1172,17 @@ export function applyTalmudLayoutToPage(pageEl) {
   if (!hasMain) {
     layoutNoMain(block, streamsWrap, talmudStreams);
   } else if (talmudStreams.length === 1) {
-    layoutOneCommentaryWithMain(block, streamsWrap, mainEl, talmudStreams[0]);
+    // v28-merge: פרשן יחיד עם ראשי — פיצול הפרשן לשני חצאים והפעלת אותה
+    // לוגיקה כמו שני פרשנים. כך גם הוא יקבל כתר אמיתי משני הצדדים סביב
+    // הראשי, לפי בקשת משה: "פרשן יחיד מתפצל שווה בשווה משני הצדדים".
+    const single = talmudStreams[0];
+    const secondHalf = splitSingleCommentaryIntoHalves(single);
+    if (secondHalf) {
+      layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, single, secondHalf);
+    } else {
+      // אין מספיק תוכן לחצי — fallback למקרה הישן (בצד אחד בלבד)
+      layoutOneCommentaryWithMain(block, streamsWrap, mainEl, single);
+    }
   } else {
     layoutTwoCommentariesWithMain(
       block, streamsWrap, mainEl,
@@ -1140,17 +1209,12 @@ export function applyTalmudLayoutToPage(pageEl) {
   //    שתי בדיקות נדחות (rAF + setTimeout) כדי להמתין לפריסה מחושבת.
   const checkOverflow = () => {
     pageEl.classList.remove("talmud-page-overflow");
-    let innerHeight = pageEl.scrollHeight;
+    const innerHeight = pageEl.scrollHeight;
     const outerHeight = pageEl.clientHeight;
     if (innerHeight > outerHeight + 1) {
-      // Bug 19/29 safety net: try to trim oversized expanded blocks first.
-      // Loop with a budget so we don't infinite-loop on undeletable content.
-      for (let attempt = 0; attempt < 4; attempt++) {
-        const trimmed = correctTalmudOverflowOnPage(pageEl);
-        if (!trimmed) break;
-        innerHeight = pageEl.scrollHeight;
-        if (innerHeight <= outerHeight + 1) break;
-      }
+      // v28-merge: corrector שינה התנהגות — לא מוחק תוכן, רק מסמן.
+      // שמירה על תוכן מלא היא דרישה מפורשת של משה.
+      correctTalmudOverflowOnPage(pageEl);
     }
     if (innerHeight > outerHeight + 1) {
       pageEl.classList.add("talmud-page-overflow");
