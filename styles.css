@@ -719,6 +719,9 @@ mark.pdf-find-hit-current {
    ============================================================ */
 
 /* Page-level flag */
+.talmud-layout-page {
+  position: relative;
+}
 .talmud-layout-page .page-streams {
   display: block;
   overflow: visible;
@@ -760,9 +763,37 @@ mark.pdf-find-hit-current {
 }
 .talmud-layout .stream.talmud-right {
   padding-left: 3px;
+  /* רווח בין הפרשן הימני לטקסט הראשי (בצד שמאל של הפרשן) */
+  margin-left: var(--talmud-side-gap, 12px);
 }
 .talmud-layout .stream.talmud-left {
   padding-right: 3px;
+  /* רווח בין הפרשן השמאלי לטקסט הראשי (בצד ימין של הפרשן) */
+  margin-right: var(--talmud-side-gap, 12px);
+}
+
+/* כששני הפרשנים קצרים מאוד — אין דחיפת כתר, כל ה-3 מתחילים מלמעלה */
+.talmud-layout.talmud-no-crown .page-main.talmud-main {
+  margin-top: 0 !important;
+}
+
+/* סימון ויזואלי לעמוד שיש בו חריגה (טופלל ע"י overflow:hidden של .page).
+   המסגרת האדומה מאותתת לפיתוח. בעתיד התוכן יידחף אוטומטית לעמוד הבא. */
+.talmud-layout-page.talmud-page-overflow {
+  outline: 2px solid #c0392b;
+  outline-offset: -2px;
+}
+.talmud-layout-page.talmud-page-overflow::after {
+  content: "↓ overflow: " attr(data-talmud-overflow-px) "px";
+  position: absolute;
+  bottom: 2px; right: 2px;
+  font-size: 10px;
+  color: #fff;
+  background: #c0392b;
+  padding: 1px 5px;
+  border-radius: 2px;
+  z-index: 999;
+  pointer-events: none;
 }
 
 /* ── Main text (pushed down by crown-offset) ── */

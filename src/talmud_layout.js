@@ -7,6 +7,10 @@ const STREAMS_KEY       = "ravtext.talmudLayout.streams";
 const CROWN_LINES_KEY   = "ravtext.talmudLayout.crownLines";
 const MAIN_WIDTH_KEY    = "ravtext.talmudLayout.mainWidth";
 const SIDE_MODE_KEY     = "ravtext.talmudLayout.sideMode";
+const SIDE_GAP_KEY      = "ravtext.talmudLayout.sideGap";
+const DEFAULT_SIDE_GAP  = 12; // px — רווח בין ראשי לפרשנים שבצדדים (ברירת מחדל מקובלת לתלמוד)
+// סף תווים: כששני הפרשנים יחד מתחת לסף — אין דחיפת כתר, כל ה-3 מתחילים מלמעלה
+const SHORT_COMMENTARY_TOTAL_CHARS = 60;
 
 import {
   originalOrder,
@@ -55,6 +59,19 @@ export function getTalmudSideMode() {
 }
 export function setTalmudSideMode(value) {
   localStorage.setItem(SIDE_MODE_KEY, value || "auto");
+}
+
+export function getTalmudSideGap() {
+  const n = parseFloat(localStorage.getItem(SIDE_GAP_KEY) || String(DEFAULT_SIDE_GAP));
+  return Number.isFinite(n) ? Math.max(0, Math.min(60, n)) : DEFAULT_SIDE_GAP;
+}
+export function setTalmudSideGap(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n < 0 || n > 60) {
+    localStorage.removeItem(SIDE_GAP_KEY);
+    return;
+  }
+  localStorage.setItem(SIDE_GAP_KEY, String(n));
 }
 
 // ─────────────────────────────────────────────
@@ -271,10 +288,12 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   const mainWidth = getTalmudMainWidth();
   const sideWidth = ((100 - mainWidth) / 2).toFixed(4);
   const sides     = orderedSides(streamsWrap); // e.g. ["right","left"]
+  const sideGap   = getTalmudSideGap();
 
   block.style.setProperty("--talmud-main-width",      `${mainWidth}%`);
   block.style.setProperty("--talmud-side-width",      `${sideWidth}%`);
   block.style.setProperty("--talmud-crown-lines",     String(getTalmudCrownLines()));
+  block.style.setProperty("--talmud-side-gap",        `${sideGap}px`);
 
   // Sort by original DOM order so A is always the first-defined stream
   const sorted = [commentaryA, commentaryB].sort(
@@ -312,7 +331,20 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   if (lenB < lenA && lenB < lenM) block.classList.add("talmud-b-short");
   if (lenM < lenA && lenM < lenB) block.classList.add("talmud-main-short");
 
-  scheduleCrownOffset(block);
+  // אם שני הפרשנים יחד קצרים מאוד — אין דחיפת כתר; כל ה-3 מתחילים מלמעלה.
+  // הסימון ב-CSS מבטל את ה-margin-top של main וגם מבטל את הקריאה ל-scheduleCrownOffset
+  // (מטופל למטה).
+  if ((lenA + lenB) < SHORT_COMMENTARY_TOTAL_CHARS) {
+    block.classList.add("talmud-no-crown");
+  }
+
+  // אם הפרשנים גדולים — מחשבים את אורך הכתר. אחרת מאפסים את ה-offset
+  // (כי כל ה-3 מתחילים מלמעלה).
+  if (block.classList.contains("talmud-no-crown")) {
+    block.style.setProperty("--talmud-crown-offset", "0px");
+  } else {
+    scheduleCrownOffset(block);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -390,6 +422,28 @@ export function applyTalmudLayoutToPage(pageEl) {
       s.style.clear = "both";
       streamsWrap.appendChild(s);
     });
+
+  // 7. גלאי חריגה: לאחר עידכון הלייאאוט, נבדוק אם תוכן העמוד חורג
+  //    מגבולות העמוד (clipped ע"י overflow:hidden של .page).
+  //    שתי בדיקות נדחות (rAF + setTimeout) כדי להמתין לפריסה מחושבת.
+  const checkOverflow = () => {
+    pageEl.classList.remove("talmud-page-overflow");
+    const innerHeight = pageEl.scrollHeight;
+    const outerHeight = pageEl.clientHeight;
+    if (innerHeight > outerHeight + 1) {
+      pageEl.classList.add("talmud-page-overflow");
+      pageEl.dataset.talmudOverflowPx = String(innerHeight - outerHeight);
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn(`[talmud] page overflow: +${innerHeight - outerHeight}px`, pageEl);
+      }
+    } else {
+      pageEl.removeAttribute("data-talmud-overflow-px");
+    }
+  };
+  if (typeof requestAnimationFrame === "function") {
+    requestAnimationFrame(() => requestAnimationFrame(checkOverflow));
+  }
+  setTimeout(checkOverflow, 200);
 }
 
 // ─────────────────────────────────────────────
@@ -438,6 +492,7 @@ export function wireTalmudLayoutControls(onChange) {
   const crownInput   = document.getElementById("talmud-crown-lines-input");
   const widthInput   = document.getElementById("talmud-main-width-input");
   const sideSelect   = document.getElementById("talmud-side-mode-select");
+  const gapInput     = document.getElementById("talmud-side-gap-input");
 
   if (!toggle) return;
 
@@ -447,6 +502,7 @@ export function wireTalmudLayoutControls(onChange) {
   if (crownInput)   crownInput.value   = getTalmudCrownLines();
   if (widthInput)   widthInput.value   = getTalmudMainWidth();
   if (sideSelect)   sideSelect.value   = getTalmudSideMode();
+  if (gapInput)     gapInput.value     = getTalmudSideGap();
 
   const commit = () => onChange?.();
 
@@ -473,6 +529,11 @@ export function wireTalmudLayoutControls(onChange) {
   });
   sideSelect?.addEventListener("change", () => {
     setTalmudSideMode(sideSelect.value);
+    commit();
+  });
+  gapInput?.addEventListener("change", () => {
+    setTalmudSideGap(gapInput.value);
+    gapInput.value = getTalmudSideGap();
     commit();
   });
 }
