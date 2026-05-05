@@ -786,7 +786,9 @@ mark.pdf-find-hit-current {
 .talmud-layout.talmud-with-crown > .stream.talmud-crown-portion {
   /* float ו-width מוגדרים inline ע"י JS */
   text-align: justify;
-  text-align-last: center;
+  /* יישור מלא גם בשורה האחרונה — כי החיתוך הוא באמצע משפט,
+     ובלי זה השורה האחרונה תהיה לא מיושרת לשני הצדדים. */
+  text-align-last: justify;
   text-justify: inter-word;
   /* רציפות חזותית: ביטול רווח תחתון כדי להידבק לגוף */
   padding-bottom: 0 !important;
