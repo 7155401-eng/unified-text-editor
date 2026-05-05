@@ -26,12 +26,30 @@ function isTruthyModeValue(value) {
 
 export function isDemoMode() {
   if (typeof window === "undefined") return false;
-  if (window.__RAVTEXT_DEMO_MODE__ === true) return true;
+
   const params = new URLSearchParams(window.location.search || "");
-  if (isTruthyModeValue(params.get("demo")) || isTruthyModeValue(params.get("sandbox")) || isTruthyModeValue(params.get("trial"))) {
+
+  const explicitNormal =
+    isTruthyModeValue(params.get("normal")) ||
+    isTruthyModeValue(params.get("regular")) ||
+    String(params.get("demo") || "").trim() === "0";
+
+  if (explicitNormal) return false;
+
+  if (window.__RAVTEXT_DEMO_MODE__ === false) return false;
+  if (window.__RAVTEXT_DEMO_MODE__ === true) return true;
+
+  if (
+    isTruthyModeValue(params.get("demo")) ||
+    isTruthyModeValue(params.get("sandbox")) ||
+    isTruthyModeValue(params.get("trial"))
+  ) {
     return true;
   }
-  return safeStorageGet(DEMO_MODE_KEY) === "1";
+
+  if (safeStorageGet(DEMO_MODE_KEY) === "0") return false;
+
+  return true;
 }
 
 export function configureDemoGlobals() {
