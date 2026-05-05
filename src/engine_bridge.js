@@ -1,7 +1,7 @@
 import { domPack, DOM_PAGE_GEOM } from "./engine/dom_packer.js";
 import { renderPages } from "./engine/renderer.js";
 import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
-
+import { applyTalmudLayoutToPages } from "./talmud_layout.js";
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
