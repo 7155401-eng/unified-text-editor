@@ -341,12 +341,20 @@ export function applyTalmudLayoutToPage(pageEl) {
     return;
   }
 
-  // 4. Resolve which streams are talmud commentaries
+  // 4. Resolve which streams are talmud commentaries.
+  //    אם המשתמש הפעיל את התלמוד אבל לא מילא את שדה הזרמים,
+  //    מזהים אוטומטית: שני הזרמים הראשונים בעמוד (לפי סדר DOM מקורי).
   const codes = parseTalmudStreamCodes();
-  if (codes.length === 0) return;
-
-  const byCode = new Map(allStreams.map((s) => [codeForStream(s), s]));
-  const talmudStreams = codes.map((c) => byCode.get(c)).filter(Boolean);
+  let talmudStreams;
+  if (codes.length === 0) {
+    talmudStreams = allStreams
+      .slice()
+      .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
+      .slice(0, 2);
+  } else {
+    const byCode = new Map(allStreams.map((s) => [codeForStream(s), s]));
+    talmudStreams = codes.map((c) => byCode.get(c)).filter(Boolean);
+  }
   if (talmudStreams.length === 0) return;
 
   pageEl.classList.add("talmud-layout-page");
