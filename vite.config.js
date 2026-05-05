@@ -1,14 +1,5 @@
-import { defineConfig } from "vite";
-import { viteSingleFile } from "vite-plugin-singlefile";
+import { defineConfig } from 'vite'
 
 export default defineConfig({
-  base: "./",
-  plugins: [viteSingleFile()],
-  build: {
-    cssCodeSplit: false,
-    assetsInlineLimit: 100000000,
-    rollupOptions: {
-      output: { inlineDynamicImports: true },
-    },
-  },
-});
+  base: '/unified-text-editor/',
+})
