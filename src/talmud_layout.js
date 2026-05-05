@@ -664,7 +664,7 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     longEl.style.float = longSide;
     longEl.style.width = "100%";
     longEl.style.clear = "none";
-    const longSplit = findCrownSplitByLineCount(longEl, crownLines);
+    const longSplit = findOffsetAtLineStart(longEl, crownLines);
     if (longSplit) {
       const longBody = extractBodyAfterSplit(longEl, longSplit, longSideClass, longSide, sideWidth);
       // body צמוד לאחר הכתר, ברוחב צר, clear לצד שלו

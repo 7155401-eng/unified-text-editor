@@ -764,12 +764,19 @@ mark.pdf-find-hit-current {
 .talmud-layout .stream.talmud-right {
   padding-left: 3px;
   /* רווח בין הפרשן הימני לטקסט הראשי (בצד שמאל של הפרשן) */
-  margin-left: var(--talmud-side-gap, 12px);
+  margin-left: var(--talmud-side-gap, 12px) !important;
 }
 .talmud-layout .stream.talmud-left {
   padding-right: 3px;
   /* רווח בין הפרשן השמאלי לטקסט הראשי (בצד ימין של הפרשן) */
-  margin-right: var(--talmud-side-gap, 12px);
+  margin-right: var(--talmud-side-gap, 12px) !important;
+}
+/* בכתר אין רווח לכיוון הפנימי (אין main באמצע) */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right {
+  margin-left: 0 !important;
+}
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-left {
+  margin-right: 0 !important;
 }
 
 /* כששני הפרשנים קצרים מאוד — אין דחיפת כתר, כל ה-3 מתחילים מלמעלה */
