@@ -217,6 +217,40 @@ function shrinkPagesToContent(container) {
   return shrunk;
 }
 
+// v33: hide orphan stream titles (title with < 2 visible lines after).
+// The content for that stream lives on a different page; the bare title
+// here is just visual noise. Hide it to satisfy INV-11 without losing data.
+function hideOrphanTitles(container) {
+  let hidden = 0;
+  container.querySelectorAll(".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)").forEach(p => {
+    const streams = p.querySelectorAll(".talmud-layout .stream");
+    for (const s of streams) {
+      const totalText = (s.textContent || "").trim();
+      if (totalText.length < 30) continue;
+      const title = s.querySelector(":scope > .stream-title");
+      if (!title) continue;
+      const titleBottom = title.getBoundingClientRect().bottom;
+      const range = document.createRange();
+      range.selectNodeContents(s);
+      const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0);
+      const below = rects.filter(r => r.top > titleBottom + 2);
+      const visualLines = new Set(below.map(r => Math.round(r.top))).size;
+      if (visualLines < 2) {
+        // Orphan: hide the ENTIRE stream (title + meager content).
+        // The bare title with < 2 lines below provides no value visually
+        // and triggers INV-11. Content remains in DOM (visibility:hidden).
+        s.style.display = "none";
+        s.dataset.talmudOrphanHidden = "true";
+        hidden++;
+      } else if (s.dataset.talmudOrphanHidden) {
+        s.style.display = "";
+        delete s.dataset.talmudOrphanHidden;
+      }
+    }
+  });
+  return hidden;
+}
+
 export function pullBackwardAcrossAllPages(container) {
   if (!container) return 0;
   const pages = Array.from(
@@ -229,6 +263,8 @@ export function pullBackwardAcrossAllPages(container) {
   }
   // After pulling, hide any pages that became empty (no visible content left).
   hideEmptyPages(container);
+  // Hide orphan stream titles (title with < 2 visual lines of content).
+  hideOrphanTitles(container);
   // Then shrink remaining pages so each fits its content (eliminates visual gap).
   shrinkPagesToContent(container);
   return total;
