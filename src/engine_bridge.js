@@ -587,7 +587,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             const newPS = document.createElement("div");
             newPS.className = "page-streams";
             next.appendChild(newPS);
-            cur.parentNode.appendChild(next);
+            // pass 149: להכניס מיד אחרי cur, לא בסוף — אחרת ייכנס אחרי
+            // page-placeholder slots וייעלם מהתצוגה.
+            if (cur.nextSibling) cur.parentNode.insertBefore(next, cur.nextSibling);
+            else cur.parentNode.appendChild(next);
             pages.push(next);
           }
           let nextPS = next.querySelector(":scope > .page-streams");
@@ -702,7 +705,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             const newPS = document.createElement("div");
             newPS.className = "page-streams";
             next.appendChild(newPS);
-            cur.parentNode.appendChild(next);
+            // pass 149: להכניס מיד אחרי cur, לא בסוף — אחרת ייכנס אחרי
+            // page-placeholder slots וייעלם מהתצוגה.
+            if (cur.nextSibling) cur.parentNode.insertBefore(next, cur.nextSibling);
+            else cur.parentNode.appendChild(next);
             pages.push(next);
           }
           let safety = 50;
@@ -775,7 +781,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           np.className = "page-streams";
           newPage.appendChild(np);
         }
-        last.parentNode.appendChild(newPage);
+        // pass 149: להכניס מיד אחרי last, לא בסוף — אחרת ייכנס אחרי
+        // page-placeholder slots וייעלם מהתצוגה.
+        if (last.nextSibling) last.parentNode.insertBefore(newPage, last.nextSibling);
+        else last.parentNode.appendChild(newPage);
         return Array.from(
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
