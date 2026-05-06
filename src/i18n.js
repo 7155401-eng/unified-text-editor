@@ -117,9 +117,14 @@ tr.he = tr.he || {};
 let currentLang = localStorage.getItem(STORAGE_KEY) || "he";
 if (!tr[currentLang]) currentLang = "he";
 
-export function applyLanguage() {
+export function applyLanguage(forceLang) {
+  if (forceLang && tr[forceLang]) currentLang = forceLang;
   document.documentElement.lang = currentLang;
-  document.documentElement.dir = "rtl";
+  // v33: switch direction with language. Hebrew is RTL, English is LTR.
+  document.documentElement.dir = currentLang === "he" ? "rtl" : "ltr";
+  // Also set body class so CSS can target language-specific tweaks.
+  document.body.classList.toggle("lang-he", currentLang === "he");
+  document.body.classList.toggle("lang-en", currentLang === "en");
 
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
@@ -128,9 +133,24 @@ export function applyLanguage() {
     }
   });
 
+  // v33: also translate ribbon tab labels.
+  document.querySelectorAll("[data-ribbon-tab]").forEach(el => {
+    const tabId = el.dataset.ribbonTab;
+    if (tabId && tr[currentLang][tabId]) {
+      // Only update tab buttons (not panels — those have their own content).
+      if (el.classList.contains("ribbon-tab")) {
+        el.textContent = tr[currentLang][tabId];
+      }
+    }
+  });
+
   const btn = document.getElementById("langBtn");
   if (btn) btn.textContent = currentLang === "he" ? "EN" : "HE";
+  // v33: persist language across reloads.
+  localStorage.setItem(STORAGE_KEY, currentLang);
 }
+
+export function getLanguage() { return currentLang; }
 
 export function toggleLanguage() {
   currentLang = currentLang === "he" ? "en" : "he";

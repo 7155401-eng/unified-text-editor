@@ -187,15 +187,16 @@ export function setupSettingsPane() {
     });
   }
 
-  // Language
+  // Language — sync with the actual i18n storage key (ravtext.lang).
   const langSelect = document.getElementById("settings-language");
   if (langSelect) {
-    const saved = localStorage.getItem(STORAGE.language) || "he";
+    const saved = localStorage.getItem("ravtext.lang") || localStorage.getItem(STORAGE.language) || "he";
     langSelect.value = saved;
     langSelect.addEventListener("change", () => {
       const newLang = langSelect.value;
       localStorage.setItem(STORAGE.language, newLang);
-      try { applyLanguage(newLang); } catch (_) {}
+      localStorage.setItem("ravtext.lang", newLang);
+      try { applyLanguage(newLang); } catch (e) { console.error("applyLanguage failed:", e); }
     });
   }
 
