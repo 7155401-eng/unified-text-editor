@@ -156,10 +156,13 @@ function decideCrownMode(streams, hasMain, crownLines, halfWidthCss, fullWidthCs
   if (streams.length === 0) return MODE_NO_TALMUD;
 
   if (streams.length === 1) {
-    // Test if stream is long enough to fill 2-column split (each column at half width × crownLines)
+    // משה כלל #6 תרחיש 1: זרם אחד מתפצל ל-2 טורים אם יש לו ≥4 שורות
+    // ברוחב מלא של כל הדף (לא חצי × 2 שזה הערכה).
+    // תיקון 2026-05-06: מודדים ברוחב מלא כפי שהכלל דורש; וגם ברוחב חצי
+    // לוודא שיש לפחות crownLines×2 שורות (כי הטקסט יזרום בשני טורים).
+    const linesAtFull = measureLinesAtWidth(streams[0], fullWidthCss);
     const linesAtHalf = measureLinesAtWidth(streams[0], halfWidthCss);
-    // Need 2× crownLines because content fills both right then left column
-    if (linesAtHalf >= crownLines * 2) return MODE_SINGLE_SPLIT;
+    if (linesAtFull >= crownLines && linesAtHalf >= crownLines * 2) return MODE_SINGLE_SPLIT;
     return MODE_SINGLE_INLINE;
   }
 
