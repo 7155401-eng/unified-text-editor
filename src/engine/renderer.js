@@ -138,7 +138,7 @@ function mishnaWrapActive() {
   }
 }
 
-function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPage) {
+function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPage, paraIdxFirstPage) {
   const page = document.createElement("div");
   page.className = "page";
   page.setAttribute("dir", "rtl");
@@ -156,6 +156,14 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     } else {
       const p = document.createElement(mainBlockTagFor(tup));
       p.textContent = text;
+      // v33: mark this paragraph as a continuation FROM a previous page
+      // (its idx already appeared on an earlier page). opening_word.js skips
+      // these so we don't apply opening-word styling to mid-sentence text.
+      if (paraIdxFirstPage && pageIndex !== undefined &&
+          typeof paraIdxFirstPage[idx] === "number" &&
+          paraIdxFirstPage[idx] < pageIndex) {
+        p.dataset.continuedFromPrev = "1";
+      }
       main.appendChild(p);
       lastP = p;
       lastIdx = idx;
@@ -203,6 +211,19 @@ function computeLastPageByParaIdx(pages) {
   return last;
 }
 
+// v33: paragraph-idx → first page on which it appears.
+// Used to mark continuation paragraphs so opening_word doesn't apply to them.
+function computeFirstPageByParaIdx(pages) {
+  const first = {};
+  for (let i = 0; i < pages.length; i++) {
+    for (const seg of pages[i].main || []) {
+      const idx = seg[0];
+      if (!(idx in first)) first[idx] = i;
+    }
+  }
+  return first;
+}
+
 function computeLastPageByStreamNum(pages) {
   const last = {};
   for (let i = 0; i < pages.length; i++) {
@@ -227,6 +248,7 @@ export function renderPages(packerOutput, container) {
   container.__processRealizedPage = null;
   container.innerHTML = "";
   const paraLastPage = computeLastPageByParaIdx(packerOutput);
+  const paraFirstPage = computeFirstPageByParaIdx(packerOutput);
   const streamNumLastPage = computeLastPageByStreamNum(packerOutput);
 
   // Force-sync: skip the placeholder/progressive machinery entirely. Used by
@@ -236,7 +258,7 @@ export function renderPages(packerOutput, container) {
     const allFrag = document.createDocumentFragment();
     const realPages = [];
     for (let i = 0; i < packerOutput.length; i++) {
-      const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage);
+      const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
       real.dataset.pageIndex = String(i);
       real.dataset.realized = "1";
       allFrag.appendChild(real);
@@ -277,7 +299,7 @@ export function renderPages(packerOutput, container) {
     const ph = placeholders[i];
     if (!ph || !ph.parentNode || ph.dataset.realized === "1") return;
     if (observer) observer.unobserve(ph);
-    const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage);
+    const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
     real.dataset.pageIndex = String(i);
     real.dataset.realized = "1";
     if (ph.style.zoom) real.style.zoom = ph.style.zoom;

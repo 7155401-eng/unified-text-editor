@@ -525,8 +525,13 @@ function applyToTextElement(el, settings, options = {}) {
 
 function applyMainOpeningWords(pageEl, settings) {
   const paragraphs = Array.from(pageEl.querySelectorAll(".page-main p, .page-main h1, .page-main h2, .page-main h3, .page-main h4, .page-main h5, .page-main h6"));
+  // v33: skip paragraphs that are continuations from a previous page
+  // (renderer marks these with data-continued-from-prev="1"). Applying
+  // opening-word to them causes visual displacement because they're
+  // mid-sentence text, not a real paragraph start.
+  const eligible = paragraphs.filter(p => p.dataset.continuedFromPrev !== "1");
   if (settings.scope === "all") {
-    for (const p of paragraphs) {
+    for (const p of eligible) {
       applyToTextElement(p, settings, {
         skipHeadingElements: true,
         skipLeadingControls: true,
@@ -534,7 +539,7 @@ function applyMainOpeningWords(pageEl, settings) {
     }
     return;
   }
-  for (const p of paragraphs) {
+  for (const p of eligible) {
     if (applyToTextElement(p, settings, {
       skipHeadingElements: true,
       skipLeadingControls: true,

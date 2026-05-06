@@ -235,16 +235,19 @@ function hideOrphanTitles(container) {
       const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0);
       const below = rects.filter(r => r.top > titleBottom + 2);
       const visualLines = new Set(below.map(r => Math.round(r.top))).size;
-      if (visualLines < 2) {
-        // Orphan: hide the ENTIRE stream (title + meager content).
-        // The bare title with < 2 lines below provides no value visually
-        // and triggers INV-11. Content remains in DOM (visibility:hidden).
-        s.style.display = "none";
-        s.dataset.talmudOrphanHidden = "true";
+      // v33-deletion-fix: do NOT hide the entire stream — that DELETES content
+      // visually. Only hide the bare title if there's truly < 30 chars of text
+      // beyond the title itself (title-only orphan).
+      const titleText = (title.textContent || "").trim();
+      const contentText = totalText.slice(titleText.length).trim();
+      if (visualLines < 2 && contentText.length < 5) {
+        // True bare-title orphan — hide just the title, keep content visible.
+        title.style.display = "none";
+        title.dataset.talmudOrphanHidden = "true";
         hidden++;
-      } else if (s.dataset.talmudOrphanHidden) {
-        s.style.display = "";
-        delete s.dataset.talmudOrphanHidden;
+      } else if (title.dataset.talmudOrphanHidden) {
+        title.style.display = "";
+        delete title.dataset.talmudOrphanHidden;
       }
     }
   });
