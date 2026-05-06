@@ -710,16 +710,44 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
         }
         return -1;
       }
+      // Cloud-Chrome כללים #9/#12: זרם שיש לו רק כותרת בלי תוכן (יכול להיווצר
+      // כשה-splitter יוצר container ביעד ואז התוכן מוחזר חזרה, או כשהמשתמש
+      // הגדיר זרם ב-localStorage שאין לו הערות בעמוד הזה). ניקוי בסוף כל
+      // pass מסיר אותם כדי שלא ייראו כותרות יתומות.
+      function streamHasRealContent(streamEl) {
+        const children = streamEl.children;
+        for (let i = 0; i < children.length; i++) {
+          const c = children[i];
+          if (c.classList && c.classList.contains("stream-title")) continue;
+          const t = (c.textContent || "").trim();
+          if (t.length > 0) return true;
+        }
+        return false;
+      }
+      function removeEmptyStreams() {
+        const streams = pagesContainer.querySelectorAll(".stream[data-stream]");
+        streams.forEach((s) => {
+          if (!streamHasRealContent(s)) s.remove();
+        });
+        // מכלי page-streams שנשארו ריקים אחרי הניקוי — להסיר גם אותם
+        const wraps = pagesContainer.querySelectorAll(".page-streams");
+        wraps.forEach((w) => {
+          if (w.querySelector(":scope > .stream[data-stream]") === null) {
+            w.remove();
+          }
+        });
+      }
       // משה כלל #15: סיבובי תיקון לא חוזרים אחורה. כל pass מתחיל מהדף
       // הראשון שיש בו חריגה. דפים תקינים שלפניו לא נוגעים בהם.
       function runFullSplitterPass() {
         try {
           const startIdx = findFirstOverflowIdx();
-          if (startIdx < 0) return;
+          if (startIdx < 0) { removeEmptyStreams(); return; }
           splitPageStreamsBetweenPages(startIdx);
           if (typeof splitBodyExpandedBetweenPages === "function") {
             splitBodyExpandedBetweenPages(startIdx);
           }
+          removeEmptyStreams();
         } catch (e) { console.warn("[splitter] error:", e); }
       }
       function loopUntilStable() {
