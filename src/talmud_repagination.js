@@ -1,3 +1,5 @@
+import { logMove, logEvent } from "./settings_pane.js";
+
 // talmud_repagination.js — v33 redesigned approach.
 //
 // Previous approach (cross-page move) caused text duplication via ledger
@@ -37,6 +39,11 @@ function capOverflowingBodies(pageEl) {
   for (const el of candidates) {
     const h = el.getBoundingClientRect().height;
     if (h > maxBodyH) {
+      logMove("cap-body-height", {
+        el,
+        trigger: "catastrophic overflow > 2× page-height",
+        reason: `body was ${Math.round(h)}px, capped at ${Math.round(maxBodyH)}px`,
+      });
       el.style.maxHeight = `${maxBodyH}px`;
       el.style.overflow = "hidden";
       el.dataset.talmudCappedAt = String(Math.round(maxBodyH));

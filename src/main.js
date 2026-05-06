@@ -420,6 +420,7 @@ function setupRibbonTabs() {
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
+    ["settings", "הגדרות"],
   ];
 
   let tabsBar = document.getElementById("ribbon-tabs");

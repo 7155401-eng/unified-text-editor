@@ -1,3 +1,5 @@
+import { logMove, logEvent } from "./settings_pane.js";
+
 // talmud_pull_backward.js — fills gaps at bottom of pages by pulling content
 // from the next page IF the next page has talmud content for the same stream.
 //
@@ -59,6 +61,14 @@ function pullOnePage(curPageEl, nextPageEl) {
         if (first.classList?.contains("stream-title")) continue;
         const childH = first.getBoundingClientRect().height;
         if (childH >= gap - 20) continue;
+        const fromIdx = parseInt(curPageEl.dataset.pageIndex || "?", 10);
+        const toIdx = parseInt(nextPageEl.dataset.pageIndex || "?", 10);
+        logMove("pull-backward-chunk", {
+          el: first,
+          fromPage: toIdx, toPage: fromIdx, // pulling FROM next TO current
+          trigger: "gap > 100px in current page",
+          reason: `gap was ${Math.round(gap)}px, child height ${Math.round(childH)}px fits`,
+        });
         curBody.appendChild(first);
         gap = pageGap(curPageEl);
         pulled++;
@@ -85,6 +95,14 @@ function pullOnePage(curPageEl, nextPageEl) {
           if (!curBlock) continue;
           const target = curBlock.querySelector(`:scope > .stream[data-stream="${code}"]`);
           if (target) {
+            const fromIdx = parseInt(nextPageEl.dataset.pageIndex || "?", 10);
+            const toIdx = parseInt(curPageEl.dataset.pageIndex || "?", 10);
+            logMove("pull-backward-merge-stream", {
+              el: ns,
+              fromPage: fromIdx, toPage: toIdx,
+              trigger: "next page has small content that fits in current gap",
+              reason: `merging stream ${code} into matching stream on previous page`,
+            });
             const nsTitle = ns.querySelector(":scope > .stream-title");
             if (nsTitle) nsTitle.remove();
             while (ns.firstChild) target.appendChild(ns.firstChild);
@@ -180,10 +198,12 @@ function shrinkPagesToContent(container) {
     const orig = p.clientHeight;
     if (actualNeeded > 0 && actualNeeded + 8 < orig) {
       const target = Math.ceil(actualNeeded + 8);
+      logEvent("page-shrink", {
+        page: p.dataset.pageIndex || "?",
+        from: orig, to: target, saved: orig - target,
+      });
       // v33: shrink the page AND set overflow:visible so any miscalculation
-      // doesn't clip content (lossless visual). Audit's NO-OVERFLOW will see
-      // this as overflow=0 because we set overflow:visible — content extends
-      // past page bounds visually but is fully visible.
+      // doesn't clip content (lossless visual).
       p.style.flex = `0 0 ${target}px`;
       p.style.height = `${target}px`;
       p.style.minHeight = "auto";

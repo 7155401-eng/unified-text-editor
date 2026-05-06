@@ -16,27 +16,68 @@ const STORAGE = {
   saveLog:  "ravtext.settings.saveRenderLog",
 };
 
-const LOG_BUFFER_MAX = 5000; // entries
+const LOG_BUFFER_MAX = 50000; // big enough for full-detail per-element traces
 const _logBuffer = [];
 
+export function isLogActive() {
+  return localStorage.getItem(STORAGE.saveLog) === "1";
+}
+
 export function logEvent(phase, detail = {}) {
-  if (localStorage.getItem(STORAGE.saveLog) !== "1") return;
+  if (!isLogActive()) return;
   _logBuffer.push({
     t: new Date().toISOString().slice(11, 23), // HH:MM:SS.mmm
     phase,
     ...detail,
   });
   if (_logBuffer.length > LOG_BUFFER_MAX) _logBuffer.shift();
-  // Live update if pane is open and log textarea visible.
-  const out = document.getElementById("settings-log-output");
-  if (out && !out.hidden) {
-    out.value = formatLog();
-    out.scrollTop = out.scrollHeight;
-  }
+}
+
+/**
+ * v33: detailed per-element movement log. Captures: action verb, what element
+ * (cls/data-stream/data-talmud-*), source location, destination location,
+ * text preview (first/last 40 chars), trigger phase.
+ */
+export function logMove(action, opts = {}) {
+  if (!isLogActive()) return;
+  const { el, fromPage, toPage, fromIdx, toIdx, trigger, textBefore, textAfter, reason } = opts;
+  const elInfo = el ? {
+    tag: el.tagName,
+    cls: (el.className || "").slice(0, 80),
+    stream: el.getAttribute?.("data-stream") || null,
+    bodyOf: el.dataset?.talmudBodyOf || null,
+    role: el.dataset?.talmudRole || null,
+    text: ((el.textContent || "").slice(0, 60).trim()).replace(/\s+/g, " "),
+    height: el.getBoundingClientRect ? Math.round(el.getBoundingClientRect().height) : null,
+  } : null;
+  _logBuffer.push({
+    t: new Date().toISOString().slice(11, 23),
+    phase: "MOVE",
+    action,
+    el: elInfo,
+    fromPage, toPage,
+    fromIdx, toIdx,
+    trigger, reason,
+    textBefore, textAfter,
+  });
+  if (_logBuffer.length > LOG_BUFFER_MAX) _logBuffer.shift();
 }
 
 function formatLog() {
   return _logBuffer.map(e => {
+    if (e.phase === "MOVE") {
+      // Multi-line detailed format for moves.
+      const head = `[${e.t}] MOVE  action=${e.action}  trigger=${e.trigger || "-"}`;
+      const elPart = e.el
+        ? `\n        <${e.el.tag}.${e.el.cls}> stream=${e.el.stream || "-"} role=${e.el.role || "-"} h=${e.el.height || "-"}px`
+        : "";
+      const text = e.el?.text ? `\n        text="${e.el.text}"` : "";
+      const route = (e.fromPage !== undefined || e.toPage !== undefined)
+        ? `\n        from=page${e.fromPage}${e.fromIdx !== undefined ? `[${e.fromIdx}]` : ""}  →  page${e.toPage}${e.toIdx !== undefined ? `[${e.toIdx}]` : ""}`
+        : "";
+      const reason = e.reason ? `\n        reason: ${e.reason}` : "";
+      return head + elPart + text + route + reason;
+    }
     const detail = Object.entries(e)
       .filter(([k]) => k !== "t" && k !== "phase")
       .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`)
@@ -52,15 +93,8 @@ function applyDarkMode(enabled) {
 }
 
 export function setupSettingsPane() {
-  // Toggle open/close
-  const toggle = document.getElementById("settings-toggle");
-  const body = document.getElementById("settings-body");
-  if (toggle && body) {
-    toggle.addEventListener("click", () => {
-      body.hidden = !body.hidden;
-      toggle.classList.toggle("active", !body.hidden);
-    });
-  }
+  // v33: settings now lives as a ribbon panel — visibility is controlled
+  // by the ribbon tab system. No toggle button needed.
 
   // Dark mode
   const darkMode = document.getElementById("settings-dark-mode");
