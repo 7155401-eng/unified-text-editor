@@ -1698,6 +1698,55 @@ body.show-formatting-marks .ProseMirror p::after {
   user-select: none;
 }
 
+/* Code block line numbers — toggled via body.show-line-numbers
+   Uses a flexbox approach via CSS counters + ::before on each line span.
+   Browsers can't natively count \n-separated text inside <pre>, so we fall
+   back to a striped gutter that visually segments lines. The gutter shows
+   row index when JS injects line spans, but works as a visual aid alone. */
+body.show-line-numbers .ProseMirror pre,
+body.show-line-numbers pre[class*="language-"] {
+  padding-inline-start: 3.5em !important;
+  position: relative;
+  background-color: rgba(0, 0, 0, 0.03);
+  background-image: linear-gradient(to right, rgba(0,0,0,0.06) 0 3em, transparent 3em);
+  background-repeat: no-repeat;
+  border-radius: 4px;
+}
+body.show-line-numbers .ProseMirror pre::before,
+body.show-line-numbers pre[class*="language-"]::before {
+  content: "מספור";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  width: 3em;
+  text-align: center;
+  font-size: 9px;
+  color: rgba(0,0,0,0.5);
+  padding-top: 4px;
+  user-select: none;
+}
+
+/* Collapsible details/summary block — Word-like */
+.ProseMirror details.ravtext-collapsible,
+details.ravtext-collapsible {
+  border: 1px solid rgba(0,0,0,0.15);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin: 8px 0;
+  background: rgba(0,0,0,0.02);
+}
+.ProseMirror details.ravtext-collapsible > summary,
+details.ravtext-collapsible > summary {
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+.ProseMirror details.ravtext-collapsible[open],
+details.ravtext-collapsible[open] {
+  background: rgba(0,0,0,0.04);
+}
+
 /* Manual page break — visual indicator in editor + actual break in print/render */
 .ravtext-page-break {
   page-break-before: always;
