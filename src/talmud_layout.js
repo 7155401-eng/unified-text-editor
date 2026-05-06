@@ -812,7 +812,10 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
   //   ימין-עליון (right crown) → ימין-תחתון (right body)
   //   → שמאל-עליון (left crown) → שמאל-תחתון (left body).
   // משה 2026-05-06 (שני): גם זרם בודד צריך כתר. סף נמוך יותר.
-  if (crownLines > 0 && totalLines >= crownLines + 2) {
+  // Cloud-Claude 2026-05-06: סף +2 גרם לכתר נחתך בלי body כשהזרם
+  // ל-5 שורות. שינוי ל-+1: גם שורה אחת נוספת מעל הכתר זוכה ל-body
+  // (אחרת התוכן נחתך ונאבד).
+  if (crownLines > 0 && totalLines >= crownLines + 1) {
     block.classList.add("talmud-with-crown");
     const halfPct = "50%";
     const pageEl1 = block.closest(".page");
