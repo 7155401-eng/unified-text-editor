@@ -2310,3 +2310,98 @@ mark.pdf-find-hit-current {
   direction: ltr;
   text-align: left;
 }
+
+/* ============================================================
+   v33: Settings pane (display, language, license, debug log)
+   ============================================================ */
+.settings-pane {
+  margin-top: 12px;
+  border-top: 2px solid var(--border, #ccc);
+  padding-top: 8px;
+}
+.settings-toggle {
+  background: transparent;
+  border: 1px solid var(--border, #ccc);
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 6px;
+  font-family: inherit;
+}
+.settings-toggle.active {
+  background: var(--accent, #2c5aa0);
+  color: #fff;
+}
+.settings-body {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--panel-bg, #f8f8f8);
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-section {
+  border-bottom: 1px solid var(--border, #e0e0e0);
+  padding-bottom: 10px;
+}
+.settings-section:last-child { border-bottom: none; padding-bottom: 0; }
+.settings-h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--accent, #2c5aa0);
+  font-weight: 600;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.settings-row span { min-width: 110px; }
+.settings-license-status {
+  font-size: 12px;
+  color: var(--muted, #666);
+  font-style: italic;
+}
+.settings-log-controls {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.settings-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border, #ccc);
+  background: var(--btn-bg, #fff);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
+.settings-btn:hover { background: var(--accent, #2c5aa0); color: #fff; }
+.settings-log-output {
+  width: 100%;
+  height: 200px;
+  font-family: monospace;
+  font-size: 11px;
+  direction: ltr;
+  text-align: left;
+  border: 1px solid var(--border, #ccc);
+  padding: 6px;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+/* Dark theme overrides */
+body.dark-theme {
+  background: #1e1e1e;
+  color: #ddd;
+}
+body.dark-theme .settings-body { background: #2a2a2a; border-color: #555; }
+body.dark-theme .settings-h3 { color: #6cb4ff; }
+body.dark-theme .settings-btn { background: #3a3a3a; color: #ddd; border-color: #555; }
+body.dark-theme .settings-log-output { background: #1a1a1a; color: #ccc; border-color: #555; }
+body.dark-theme .panel { background: #2a2a2a; }
+body.dark-theme .toolbar { background: #333; }

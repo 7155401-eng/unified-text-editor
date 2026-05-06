@@ -11,6 +11,7 @@ import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
 import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
 import { repaginateCatastrophicPages } from "./talmud_repagination.js";
 import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
+import { logEvent } from "./settings_pane.js";
 
 // v33: expose helpers for diagnostic tools to call directly.
 if (typeof window !== "undefined") {
@@ -432,23 +433,35 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
+    logEvent("talmud_layout");
     applyTalmudLayoutToPages(pagesContainer);
+    logEvent("mishna_wrap");
     applyMishnaWrapToPages(pagesContainer);
+    logEvent("balanced_columns");
     applyBalancedColumnsToPages(pagesContainer);
+    logEvent("opening_word");
     applyOpeningWordsToPages(pagesContainer);
     // Bug 17 + 18: cap stretch at 250% and switch to SVG textLength
     // for visually-correct kerning. Runs AFTER opening_word so it can
     // upgrade existing .opening-word elements.
+    logEvent("opening_word_stretch", { pageCount: pagesContainer.querySelectorAll(".page").length });
     applyOpeningWordStretchToPages(pagesContainer);
     // v33: post-process pipeline for "0 overflows + 0 gaps" goal.
     //  1. Cap any catastrophic overflows first (lossless visual cap).
     //  2. Pull content backward to fill gaps from next page (lossless DOM move).
     //  3. Shrink page sizes to fit actual content (with overflow guard).
     //  4. Final cap pass for any new overflows.
+    logEvent("overflow_cap_pass1");
     correctTalmudOverflow(pagesContainer);
     repaginateCatastrophicPages(pagesContainer); // no-op kept for compat
+    logEvent("pull_backward_+_shrink_+_move_orphans");
     pullBackwardAcrossAllPages(pagesContainer);
+    logEvent("overflow_cap_pass2");
     correctTalmudOverflow(pagesContainer);
+    logEvent("render_pipeline_complete", {
+      durationMs: Math.round(performance.now() - t2),
+      pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,
+    });
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
     const t3 = performance.now();
     const statusEl = document.getElementById("status");

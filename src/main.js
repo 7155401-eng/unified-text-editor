@@ -20,9 +20,11 @@ import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
 import { configureDemoGlobals, setupDemoMode } from "./demo_mode.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
+import { setupSettingsPane } from "./settings_pane.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installTalmudDebugApi();
+setupSettingsPane();
 // בלוני צד הוסרו — בועות עכשיו inline (data-num מעל כל סימן)
 
 const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ואת הארץ

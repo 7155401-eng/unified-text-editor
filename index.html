@@ -343,6 +343,44 @@
           <button type="button" data-mul="100" class="btn-stress">×100</button>
         </div>
         <div id="panes-container" class="panes-container" dir="rtl"></div>
+        <!-- v33: settings pane below editor panes (independent UI section) -->
+        <div id="settings-pane" class="settings-pane" dir="rtl">
+          <button type="button" id="settings-toggle" class="settings-toggle">⚙ הגדרות</button>
+          <div id="settings-body" class="settings-body" hidden>
+            <div class="settings-section">
+              <h3 class="settings-h3">תצוגה</h3>
+              <label class="settings-row">
+                <span>מצב כהה:</span>
+                <input type="checkbox" id="settings-dark-mode" />
+              </label>
+              <label class="settings-row">
+                <span>שפה:</span>
+                <select id="settings-language">
+                  <option value="he">עברית</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+            </div>
+            <div class="settings-section">
+              <h3 class="settings-h3">רישיון משתמש</h3>
+              <div class="settings-license-status" id="settings-license-status">לא הוטמע עדיין</div>
+            </div>
+            <div class="settings-section">
+              <h3 class="settings-h3">דיבוג</h3>
+              <label class="settings-row">
+                <span>שמור לוג רינדור:</span>
+                <input type="checkbox" id="settings-save-log" />
+              </label>
+              <div class="settings-log-controls" id="settings-log-controls" hidden>
+                <button type="button" id="settings-log-copy" class="settings-btn">העתק לוג</button>
+                <button type="button" id="settings-log-download" class="settings-btn">הורד לוג</button>
+                <button type="button" id="settings-log-clear" class="settings-btn">נקה לוג</button>
+              </div>
+              <textarea id="settings-log-output" class="settings-log-output" readonly hidden
+                placeholder="הלוג של פעולות הרינדור יופיע כאן…"></textarea>
+            </div>
+          </div>
+        </div>
       </section>
 
       <aside class="panel preview-pane">
