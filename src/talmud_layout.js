@@ -908,7 +908,10 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
       leftCrownRest.style.float = sideLeft;
       leftCrownRest.style.width = `calc(${halfPct} - ${halfGap}px)`;
       leftCrownRest.style.clear = "none";
-      block.insertBefore(leftCrownRest, mainEl);
+      // משה 2026-05-06: כתר שמאל חייב להיות לפני body ימין ב-DOM, אחרת
+      // body ימין דוחף אותו למטה (browser float placement). מצב כמו two-stream:
+      // קודם 2 הכתרים יחד, אחר כך 2 ה-bodies, ואחר כך main.
+      block.insertBefore(leftCrownRest, rightBody);
       // === 3) חיתוך כתר שמאל ב-crownLines, השאר → שמאל-תחתון ===
       const split3 = findOffsetAtLineStart(leftCrownRest, crownLines);
       if (split3) {
