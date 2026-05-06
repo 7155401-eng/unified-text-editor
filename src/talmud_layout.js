@@ -180,15 +180,12 @@ function unwrapTalmudLayout(pageEl) {
 
   const streamsWrap = pageEl.querySelector(".page-streams");
 
-  // לפני כל דבר: ממזגים body-portions ו-body-expanded בחזרה לזרם המקורי.
-  // קודם expanded (החלק הרחב מתחת לראשי), אחר כך body (החלק הצר ליד הראשי).
-  // הסדר חשוב: expanded הוא ההמשך של body, אז קודם נדחוף את expanded לתוך body,
-  // ואחר כך body יידחף לתוך הזרם המקורי.
-  // expanded יכול להיות ישיר תחת block או בתוך .talmud-expanded-row
+  // v33-restructure: streams may now live INSIDE page-main (not just as
+  // direct children of block). Use deep queries (not :scope >) for unwrap.
   Array.from(block.querySelectorAll(".talmud-body-expanded[data-talmud-body-of]")).forEach((expEl) => {
     const code = expEl.dataset.talmudBodyOf;
     const body = block.querySelector(
-      `:scope > .talmud-body-portion[data-talmud-body-of="${code}"]:not(.talmud-body-expanded)`
+      `.talmud-body-portion[data-talmud-body-of="${code}"]:not(.talmud-body-expanded)`
     );
     if (body) {
       while (expEl.firstChild) body.appendChild(expEl.firstChild);
@@ -196,21 +193,20 @@ function unwrapTalmudLayout(pageEl) {
     expEl.remove();
   });
   // הסרת קונטיינר flex אם נשאר ריק
-  Array.from(block.querySelectorAll(":scope > .talmud-expanded-row")).forEach((rowEl) => {
+  Array.from(block.querySelectorAll(".talmud-expanded-row")).forEach((rowEl) => {
     if (!rowEl.firstChild) rowEl.remove();
   });
-  Array.from(block.querySelectorAll(":scope > .talmud-body-portion[data-talmud-body-of]")).forEach((bodyEl) => {
+  Array.from(block.querySelectorAll(".talmud-body-portion[data-talmud-body-of]")).forEach((bodyEl) => {
     const code = bodyEl.dataset.talmudBodyOf;
-    const parent = block.querySelector(`:scope > .stream[data-stream="${code}"]:not([data-talmud-body-of])`);
+    const parent = block.querySelector(`.stream[data-stream="${code}"]:not([data-talmud-body-of])`);
     if (parent) {
       while (bodyEl.firstChild) parent.appendChild(bodyEl.firstChild);
     }
     bodyEl.remove();
   });
-  // תרחיש פרשן יחיד שפוצל לשני הצדדים — מאחד את החצי הנגדי בחזרה
-  Array.from(block.querySelectorAll(":scope > .talmud-other-side[data-talmud-body-of]")).forEach((otherEl) => {
+  Array.from(block.querySelectorAll(".talmud-other-side[data-talmud-body-of]")).forEach((otherEl) => {
     const code = otherEl.dataset.talmudBodyOf;
-    const parent = block.querySelector(`:scope > .stream[data-stream="${code}"]:not([data-talmud-body-of])`);
+    const parent = block.querySelector(`.stream[data-stream="${code}"]:not([data-talmud-body-of])`);
     if (parent) {
       while (otherEl.firstChild) parent.appendChild(otherEl.firstChild);
     }
@@ -238,7 +234,9 @@ function unwrapTalmudLayout(pageEl) {
     pageEl.insertBefore(main, streamsWrap);
   }
   // Move streams back into streamsWrap
-  Array.from(block.querySelectorAll(":scope > .stream")).forEach((s) => {
+  // v33-restructure: streams may be deep inside (e.g. inside page-main),
+  // so scan all .stream descendants — not just direct children.
+  Array.from(block.querySelectorAll(".stream")).forEach((s) => {
     resetStream(s);
     streamsWrap?.appendChild(s);
   });
@@ -1018,13 +1016,23 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
         { pageEl: pageElForLedger, sourceId: sourceIdB }
       );
     }
-    // v33-restructure-pending: Claude analysis recommends moving streams
-    // INSIDE mainEl for proper float-wrap. NOT applied yet — would require
-    // matching changes in unwrap, source ledger, and all stream queries.
-    // Keeping siblings structure for now; the displacement is mitigated
-    // by the overflow-repagination + opening-word continuation skip.
-    if (bodyA) block.insertBefore(bodyA, mainEl);
-    if (bodyB) block.insertBefore(bodyB, mainEl);
+    // v33-RESTRUCTURE: streams must be INSIDE mainEl so the main text
+    // wraps around them as floats. A block element AFTER floats cannot
+    // wrap them — only text content of the SAME block context wraps.
+    // Source order inside mainEl (top→bottom in visual flow):
+    //   crown-right, crown-left, body-right, body-left, [text content], expanded
+    // Insert all 4 floats at the FRONT of mainEl, in correct source order.
+    // We insert in reverse order so the last insertBefore-firstChild puts
+    // them in the desired sequence.
+    if (mainEl && bodyB) mainEl.insertBefore(bodyB, mainEl.firstChild);
+    if (mainEl && bodyA) mainEl.insertBefore(bodyA, mainEl.firstChild);
+    if (mainEl && streamB && streamB.parentNode !== mainEl) {
+      mainEl.insertBefore(streamB, mainEl.firstChild);
+    }
+    if (mainEl && streamA && streamA.parentNode !== mainEl) {
+      mainEl.insertBefore(streamA, mainEl.firstChild);
+    }
+    // Now mainEl: streamA, streamB, bodyA, bodyB, ...text content
 
     // ביטחון: גובה כתר זהה לשני הפרשנים (במקרה שספירת שורות בכל זאת מחזירה הבדל קטן)
     const styleA = getComputedStyle(streamA);
@@ -1084,8 +1092,11 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     // תיפתר ע"י המנוע שמדד נכון.
     const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
     const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
-    if (expandedA) block.insertBefore(expandedA, mainEl);
-    if (expandedB) block.insertBefore(expandedB, mainEl);
+    // v33-RESTRUCTURE: expanded goes at END of mainEl (after text content).
+    if (mainEl) {
+      if (expandedA) mainEl.appendChild(expandedA);
+      if (expandedB) mainEl.appendChild(expandedB);
+    }
 
     // Bug 15 / INV-10: ensure two expanded blocks sit side-by-side, not
     // stacked vertically. Pure float doesn't always achieve this when one
