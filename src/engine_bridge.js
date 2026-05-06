@@ -648,7 +648,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           if (!movedThis && ov > 200) {
             const expanded = cur.querySelectorAll(".talmud-body-expanded, [data-talmud-role='commentary-expanded'], [data-talmud-role='commentary-expanded-lower']");
             for (const exp of Array.from(expanded).reverse()) {
-              const lastNote = Array.from(exp.children).filter(c =>
+              // Cloud-Claude 2026-05-06: לרדת ב-DIV/note wrappers בודדים עד
+              // שמוצאים אוסף ילדים שאפשר לפצל. המקרה הטיפוסי בתלמוד-mode:
+              // <div class="note note-inline"><span data-cont="0">part1</span><span data-cont="1">part2</span>…</div>
+              let pushSrc = exp;
+              for (let depth = 0; depth < 4; depth++) {
+                const realChildren = Array.from(pushSrc.children).filter(c =>
+                  !c.classList?.contains("stream-title")
+                );
+                if (realChildren.length === 1 && /^(DIV|SPAN)$/i.test(realChildren[0].tagName) &&
+                    realChildren[0].children.length > 1) {
+                  pushSrc = realChildren[0];
+                } else {
+                  break;
+                }
+              }
+              const lastNote = Array.from(pushSrc.children).filter(c =>
                 !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
               ).pop();
               if (!lastNote) continue;
@@ -669,9 +684,28 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
                 target.appendChild(title);
                 nextPS.insertBefore(target, nextPS.firstChild);
               }
-              const nextTitle = target.querySelector(":scope > .stream-title");
-              if (nextTitle) target.insertBefore(lastNote, nextTitle.nextSibling);
-              else target.insertBefore(lastNote, target.firstChild);
+              // Cloud-Claude 2026-05-06: אם pushSrc אינו exp עצמו (יש wrapper),
+              // משחזרים את ה-wrapper הזה ב-target כדי לא לאבד עיצוב/data-cont.
+              let dest = target;
+              if (pushSrc !== exp) {
+                const ancestors = [];
+                let p = pushSrc;
+                while (p && p !== exp) { ancestors.unshift(p); p = p.parentElement; }
+                for (const anc of ancestors) {
+                  // נחפש wrapper מקביל ב-target; אם אין — ניצור clone ריק
+                  const sel = anc.tagName.toLowerCase() +
+                    (anc.className ? "." + anc.className.trim().split(/\s+/).join(".") : "");
+                  let existing = dest.querySelector(":scope > " + sel);
+                  if (!existing) {
+                    existing = anc.cloneNode(false); // shallow clone — no children
+                    dest.appendChild(existing);
+                  }
+                  dest = existing;
+                }
+              }
+              const nextTitle = dest.querySelector(":scope > .stream-title");
+              if (nextTitle) dest.insertBefore(lastNote, nextTitle.nextSibling);
+              else dest.insertBefore(lastNote, dest.firstChild);
               _movedThisRender.add(lastNote);
               movedThis = true; pushed = true; break;
             }

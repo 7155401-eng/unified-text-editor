@@ -1505,17 +1505,30 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   );
   const hasRealMain = mainTextChars >= 100;
   if (!hasRealMain) {
-    // GPT 2026-05-06: אין טקסט מרכזי אמיתי — כל גוף/הרחבה הופך ל-100% רוחב.
-    // Cloud-Claude 2026-05-06: גם להוסיף class .talmud-body-expanded כדי
-    // ש-engine_bridge יוכל לדחוף הערה אחרונה אם יש overflow גדול.
-    const allBodies = block.querySelectorAll(".talmud-body-portion, .talmud-body-expanded");
-    allBodies.forEach(b => {
+    // משה 2026-05-06: כשאין main אמיתי — שני זרמים נשארים זה-לצד-זה ב-49.5%
+    // (לא 100% מוערמים, שזה אסור בתכלית). זרם יחיד = 100%.
+    const allBodies = Array.from(block.querySelectorAll(".talmud-body-portion, .talmud-body-expanded"));
+    if (allBodies.length === 1) {
+      const b = allBodies[0];
       b.style.width = "100%";
       b.style.float = "none";
       b.style.clear = "both";
       b.style.marginInline = "0";
       b.classList.add("talmud-body-expanded", "talmud-body-expanded-fullwidth");
-    });
+    } else if (allBodies.length >= 2) {
+      // שני זרמים: כל אחד 49.5%, צף לצדו (right/left), ללא clear שיוצר ערימה.
+      allBodies.forEach((b, i) => {
+        // לבחור צד מתוך הקלאס המקורי, נפילה לימין-שמאל לפי סדר
+        const side = b.classList.contains("talmud-left") ? "left"
+                   : b.classList.contains("talmud-right") ? "right"
+                   : (i === 0 ? "right" : "left");
+        b.style.width = "49.5%";
+        b.style.float = side;
+        b.style.clear = "none";
+        b.style.marginInline = "0";
+        b.classList.add("talmud-body-expanded", "talmud-body-expanded-symmetric");
+      });
+    }
   } else {
     // GPT 2026-05-06: יש main, אבל אם זרם צד ממשיך מתחת ל-mainBottom →
     // לפצל אותו: חלק עליון נשאר 29% ליד main, חלק תחתון 100% מתחת ל-main.
