@@ -215,6 +215,37 @@ document.getElementById("local-font-load")?.addEventListener("click", () => {
   loadLocalFontGallery();
 });
 
+// v33: load font from PC via FontFace API.
+document.getElementById("local-font-upload-btn")?.addEventListener("click", () => {
+  document.getElementById("local-font-upload-input")?.click();
+});
+document.getElementById("local-font-upload-input")?.addEventListener("change", async (ev) => {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const fontName = file.name.replace(/\.(ttf|otf|woff|woff2)$/i, "").replace(/[^\w֐-׿]+/g, "_");
+    const face = new FontFace(fontName, arrayBuffer);
+    await face.load();
+    document.fonts.add(face);
+    // Add to font gallery
+    const select = document.getElementById("local-font-select");
+    if (select) {
+      const opt = document.createElement("option");
+      opt.value = fontName;
+      opt.textContent = fontName + " (לוקאלי)";
+      opt.selected = true;
+      select.appendChild(opt);
+    }
+    activeChain()?.setFontFamily(fontName).run();
+    setGlobalFontFamily(fontName, { rerender: true });
+    alert(`הפונט "${fontName}" נטען בהצלחה.`);
+  } catch (err) {
+    alert(`שגיאה בטעינת פונט: ${err.message}`);
+  }
+  ev.target.value = ""; // reset for next upload
+});
+
 const LIVE_RENDER_KEY = "ravtext.liveRender";
 const LIVE_RENDER_MAX_DOC_SIZE = 60000;
 

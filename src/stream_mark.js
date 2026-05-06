@@ -320,6 +320,21 @@ export function jumpToNextMarker(view, dir = 1) {
   view.dispatch(tr);
   view.focus();
   const el = view.dom.querySelector(`.stream-marker[data-uid="${target.uid}"]`);
-  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (el) {
+    // v33: scroll so the bubble (positioned ABOVE the marker) is also visible.
+    // Default scrollIntoView centers the marker — but the bubble can end up
+    // partially clipped above the viewport. Add a manual top offset.
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // Adjust scroll: shift down so bubble (~30px above marker) is in view.
+    setTimeout(() => {
+      const container = view.dom.closest("[data-scroll-sync],.editor-scroll,.ProseMirror")
+        || view.dom.parentElement;
+      if (container && container.scrollBy) {
+        const rect = el.getBoundingClientRect();
+        const cRect = container.getBoundingClientRect();
+        if (rect.top - cRect.top < 50) container.scrollBy({ top: -50, behavior: 'smooth' });
+      }
+    }, 350);
+  }
   return true;
 }
