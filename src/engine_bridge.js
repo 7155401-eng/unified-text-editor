@@ -571,11 +571,11 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
       // Cloud-Chrome 2026-05-06: page-streams pagination אמיתית.
       // לעבור על כל עמוד; אם page-streams גולש מעבר לדף, להעביר ילדי-זרם
       // האחרונים לעמוד הבא עד שהמכל מתאים. עובד כפעולה ראשונה לפני loops אחרים.
-      function splitPageStreamsBetweenPages() {
+      function splitPageStreamsBetweenPages(startIdx = 0) {
         const pages = Array.from(
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
-        for (let i = 0; i < pages.length; i++) {
+        for (let i = startIdx; i < pages.length; i++) {
           const cur = pages[i];
           const ps = cur.querySelector(":scope > .page-streams");
           if (!ps) continue;
@@ -700,19 +700,28 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
         });
         return sum;
       }
+      function findFirstOverflowIdx() {
+        const pages = Array.from(
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+        );
+        for (let i = 0; i < pages.length; i++) {
+          const ov = pages[i].scrollHeight - pages[i].clientHeight;
+          if (ov > 1) return i;
+        }
+        return -1;
+      }
+      // משה כלל #15: סיבובי תיקון לא חוזרים אחורה. כל pass מתחיל מהדף
+      // הראשון שיש בו חריגה. דפים תקינים שלפניו לא נוגעים בהם.
       function runFullSplitterPass() {
         try {
-          splitPageStreamsBetweenPages();
+          const startIdx = findFirstOverflowIdx();
+          if (startIdx < 0) return;
+          splitPageStreamsBetweenPages(startIdx);
           if (typeof splitBodyExpandedBetweenPages === "function") {
-            splitBodyExpandedBetweenPages();
+            splitBodyExpandedBetweenPages(startIdx);
           }
         } catch (e) { console.warn("[splitter] error:", e); }
       }
-      // TODO (משה 2026-05-06, כלל #15): הלולאה אינה אמורה לחזור אחורה. כל
-      // סיבוב צריך להתחיל מהדף הראשון שיש בו שגיאה והלאה — לא לנגוע בדפים
-      // תקינים שלפניו. הקוד הנוכחי בsplitPageStreamsBetweenPages עובר על כל
-      // הדפים מ-0 והלאה. צריך לשנות את ה-splitters שיקבלו startIdx ויעברו רק
-      // ממנו והלאה. (לא תוקן בpass 153 — דורש refactor של ה-splitters.)
       function loopUntilStable() {
         let prevOverflow = measureTotalOverflow();
         let stableHits = 0;
@@ -736,12 +745,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
       setTimeout(loopUntilStable, 1500);
       // pass 146: גם body-expanded בתוך talmud-layout יכול לגלוש (P5 case).
       // אם ה-body-expanded ארוך מדי, מעבירים note-parts (spans) האחרונים לעמוד הבא.
-      function splitBodyExpandedBetweenPages() {
+      function splitBodyExpandedBetweenPages(startIdx = 0) {
         const pages = Array.from(
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
         window.__SPLIT_BE_DEBUG__ = window.__SPLIT_BE_DEBUG__ || [];
-        for (let i = 0; i < pages.length; i++) {
+        for (let i = startIdx; i < pages.length; i++) {
           const cur = pages[i];
           void cur.offsetHeight;
           let pageOv = cur.scrollHeight - cur.clientHeight;
