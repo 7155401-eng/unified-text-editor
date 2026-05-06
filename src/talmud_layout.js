@@ -597,27 +597,48 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
   return bodyEl;
 }
 
-/** Cloud-Claude 2026-05-06: גובה תקני של כתר = title + crownLines × line.
- *  משמש לכל המקומות שמחשבים crown height (single, two-stream, asym).
- *  fallback של ~17.9px לשורה כשהזרם ריק ולא ניתן למדוד. */
+/** משה 2026-05-06 (pass 152): גובה כתר = בדיוק crownLines שורות שלמות,
+ *  לא יותר ולא פחות. אם זרם לא מדיד, מודדים מאלמנט אחר באותו עמוד
+ *  כדי לקבל את גובה השורה האמיתי לגופן הנוכחי (לא קבוע hardcoded).
+ *  הקבוע 17.9166 נשאר רק כ-last resort כשאי אפשר למדוד שום דבר. */
 const FALLBACK_LINE_HEIGHT_PX = 17.9166;
+function measureLineHeightFromAnyText(rootEl, excludeFn) {
+  if (!rootEl) return 0;
+  const range = document.createRange();
+  const w = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => {
+      if (excludeFn && excludeFn(n)) return NodeFilter.FILTER_REJECT;
+      return n.textContent && n.textContent.trim().length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  let tn;
+  while ((tn = w.nextNode())) {
+    range.setStart(tn, 0); range.setEnd(tn, tn.length);
+    const rcts = Array.from(range.getClientRects()).filter(r => r.height > 0);
+    if (rcts.length) return rcts[0].height;
+  }
+  return 0;
+}
 function computeMinCrownHeight(streamEl, crownLines) {
   const titleEl = streamEl.querySelector(":scope > .stream-title");
   const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
-  const range = document.createRange();
-  const w = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
-    acceptNode: n => titleEl && titleEl.contains(n)
-      ? NodeFilter.FILTER_REJECT
-      : (n.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
-  });
-  const tn = w.nextNode();
-  let oneLineH = 0;
-  if (tn) {
-    range.setStart(tn, 0); range.setEnd(tn, tn.length);
-    const rcts = Array.from(range.getClientRects()).filter(r => r.height > 0);
-    oneLineH = rcts.length ? rcts[0].height : 0;
+  // ניסיון 1: למדוד מתוך הזרם עצמו
+  let oneLineH = measureLineHeightFromAnyText(streamEl,
+    n => titleEl && titleEl.contains(n)
+  );
+  // ניסיון 2: למדוד מתוך אלמנט אחי (זרם שני, main וכו') באותו block
+  if (oneLineH <= 0) {
+    const block = streamEl.closest(".talmud-layout") || streamEl.closest(".page");
+    if (block) {
+      oneLineH = measureLineHeightFromAnyText(block, n => {
+        const sib = n.parentElement?.closest(".stream-title");
+        return sib && sib === titleEl;
+      });
+    }
   }
-  // Cloud-Claude 2026-05-06: fallback קבוע — אחרת outlier 54/55.6 שעדיין שורד
+  // ניסיון 3: fallback קבוע (last resort)
   if (oneLineH <= 0) oneLineH = FALLBACK_LINE_HEIGHT_PX;
   return titleH + oneLineH * crownLines;
 }
