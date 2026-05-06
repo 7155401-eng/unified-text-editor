@@ -659,6 +659,79 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
         }
       }
       splitPageStreamsBetweenPages();
+      // pass 146: גם body-expanded בתוך talmud-layout יכול לגלוש (P5 case).
+      // אם ה-body-expanded ארוך מדי, מעבירים note-parts (spans) האחרונים לעמוד הבא.
+      function splitBodyExpandedBetweenPages() {
+        const pages = Array.from(
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+        );
+        for (let i = 0; i < pages.length; i++) {
+          const cur = pages[i];
+          void cur.offsetHeight;
+          let pageOv = cur.scrollHeight - cur.clientHeight;
+          if (pageOv <= TALMUD_PUSH_THRESHOLD_PX) continue;
+          const expandedList = cur.querySelectorAll(".talmud-body-expanded, [data-talmud-role*='expanded']");
+          if (expandedList.length === 0) continue;
+          // צור/מצא next page
+          let next = pages[i + 1];
+          if (!next) {
+            next = document.createElement("div");
+            next.className = "page talmud-layout-page";
+            next.dir = "rtl";
+            next.dataset.pageIndex = String(pages.length);
+            const newPS = document.createElement("div");
+            newPS.className = "page-streams";
+            next.appendChild(newPS);
+            cur.parentNode.appendChild(next);
+            pages.push(next);
+          }
+          let safety = 50;
+          while (pageOv > TALMUD_PUSH_THRESHOLD_PX && safety-- > 0) {
+            // מוצאים את ה-body-expanded האחרון בעמוד; יורדים בעוטפים בודדים;
+            // מעבירים את הילד האחרון לעמוד הבא (יוצרים stream חדש בpage-streams)
+            const exps = Array.from(cur.querySelectorAll(".talmud-body-expanded"));
+            if (exps.length === 0) break;
+            const exp = exps[exps.length - 1];
+            let pushSrc = exp;
+            for (let depth = 0; depth < 5; depth++) {
+              const realCh = Array.from(pushSrc.children).filter(
+                c => !c.classList?.contains("stream-title")
+              );
+              if (realCh.length === 1 && realCh[0].children.length > 1) {
+                pushSrc = realCh[0];
+              } else break;
+            }
+            const childrenLeft = Array.from(pushSrc.children).filter(
+              c => !c.classList?.contains("stream-title")
+            );
+            if (childrenLeft.length <= 1) break;
+            const lastChild = childrenLeft[childrenLeft.length - 1];
+            // יעד בעמוד הבא: stream חדש בpage-streams עם code זהה
+            const code = exp.dataset.talmudBodyOf || exp.getAttribute("data-stream") || "";
+            const nextPS = next.querySelector(":scope > .page-streams");
+            if (!nextPS) break;
+            let target = code
+              ? nextPS.querySelector(`:scope > .stream[data-stream="${code}"]`)
+              : null;
+            if (!target) {
+              target = document.createElement("div");
+              target.className = `stream stream-color-${(parseInt(code, 10) - 1) % 6 + 1} talmud-body-expanded-continued`;
+              if (code) target.setAttribute("data-stream", code);
+              const title = document.createElement("div");
+              title.className = "stream-title";
+              title.textContent = `זרם ${code} (המשך)`;
+              target.appendChild(title);
+              nextPS.insertBefore(target, nextPS.firstChild);
+            }
+            const nextTitle = target.querySelector(":scope > .stream-title");
+            if (nextTitle) target.insertBefore(lastChild, nextTitle.nextSibling);
+            else target.insertBefore(lastChild, target.firstChild);
+            void cur.offsetHeight;
+            pageOv = cur.scrollHeight - cur.clientHeight;
+          }
+        }
+      }
+      splitBodyExpandedBetweenPages();
       // אם העמוד האחרון חורג — צור עמוד חדש בסוף לקבל את העודף
       function ensureNextPage(allPages) {
         const last = allPages[allPages.length - 1];
