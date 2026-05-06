@@ -87,6 +87,9 @@ const detail = await page.evaluate(() => {
 });
 
 console.log(JSON.stringify(detail, null, 2));
+const splitDbg = await page.evaluate(() => window.__SPLIT_BE_DEBUG__);
+console.log("\n=== SPLIT BE DEBUG ===");
+console.log(JSON.stringify(splitDbg, null, 2));
 console.log("\n=== LOGS ===");
 logs.forEach(l => console.log(l));
 console.log("\n=== ERRORS ===");

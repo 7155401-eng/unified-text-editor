@@ -659,18 +659,38 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
         }
       }
       splitPageStreamsBetweenPages();
+      // pass 147: גם הרצה מאוחרת אחרי settle, כי overflow לפעמים מופיע אחרי
+      // late layout (fonts, dynamic content). 200ms טוב לרוב הדפדפנים.
+      setTimeout(() => {
+        try {
+          splitPageStreamsBetweenPages();
+          if (typeof splitBodyExpandedBetweenPages === "function") {
+            splitBodyExpandedBetweenPages();
+          }
+        } catch (e) { console.warn("late split error:", e); }
+      }, 200);
+      setTimeout(() => {
+        try {
+          splitPageStreamsBetweenPages();
+          if (typeof splitBodyExpandedBetweenPages === "function") {
+            splitBodyExpandedBetweenPages();
+          }
+        } catch (e) {}
+      }, 1500);
       // pass 146: גם body-expanded בתוך talmud-layout יכול לגלוש (P5 case).
       // אם ה-body-expanded ארוך מדי, מעבירים note-parts (spans) האחרונים לעמוד הבא.
       function splitBodyExpandedBetweenPages() {
         const pages = Array.from(
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
+        window.__SPLIT_BE_DEBUG__ = window.__SPLIT_BE_DEBUG__ || [];
         for (let i = 0; i < pages.length; i++) {
           const cur = pages[i];
           void cur.offsetHeight;
           let pageOv = cur.scrollHeight - cur.clientHeight;
           if (pageOv <= TALMUD_PUSH_THRESHOLD_PX) continue;
           const expandedList = cur.querySelectorAll(".talmud-body-expanded, [data-talmud-role*='expanded']");
+          window.__SPLIT_BE_DEBUG__.push({ page: i, ov: pageOv, expCount: expandedList.length });
           if (expandedList.length === 0) continue;
           // צור/מצא next page
           let next = pages[i + 1];
