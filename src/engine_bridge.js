@@ -67,7 +67,7 @@ import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_ove
 import { repaginateCatastrophicPages } from "./talmud_repagination.js";
 import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
 import { repaginateMainOverflow } from "./talmud_overflow_repagination.js";
-import { logEvent } from "./settings_pane.js";
+import { logEvent, logMove } from "./settings_pane.js";
 
 // v33: expose helpers for diagnostic tools to call directly.
 if (typeof window !== "undefined") {
@@ -670,6 +670,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             const nextTitle = dest.querySelector(":scope > .stream-title");
             if (nextTitle) dest.insertBefore(lastChild, nextTitle.nextSibling);
             else dest.insertBefore(lastChild, dest.firstChild);
+            logMove("split_page_streams", {
+              el: lastChild,
+              fromPage: i, toPage: i + 1,
+              trigger: "page-streams-overflow",
+              reason: `pageOv=${Math.round(pageOv)}px stream=${code || "?"}`,
+            });
             void cur.offsetHeight;
             pageOv = cur.scrollHeight - cur.clientHeight;
           }
@@ -852,6 +858,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             const nextTitle = target.querySelector(":scope > .stream-title");
             if (nextTitle) target.insertBefore(lastChild, nextTitle.nextSibling);
             else target.insertBefore(lastChild, target.firstChild);
+            logMove("split_body_expanded", {
+              el: lastChild,
+              fromPage: i, toPage: i + 1,
+              trigger: "body-expanded-overflow",
+              reason: `pageOv=${Math.round(pageOv)}px`,
+            });
             void cur.offsetHeight;
             pageOv = cur.scrollHeight - cur.clientHeight;
           }
