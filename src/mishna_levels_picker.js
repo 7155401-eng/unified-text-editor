@@ -161,11 +161,19 @@ export function setupMishnaLevelsPicker() {
   const picker = document.getElementById(PICKER_ID);
   const addBtn = document.getElementById(ADD_LEVEL_BTN_ID);
   if (!picker || !addBtn) return;
+  // Always render with at least placeholder if empty.
+  defaultsIfEmpty();
   renderPicker();
+  // If still empty after defaults (no streams yet), render an empty
+  // placeholder chip so user sees the visual UI not a blank input area.
+  if (getCurrentLevels().length === 0) {
+    setLevels([["01", "02"]]);
+    renderPicker();
+  }
   document.getElementById(HIDDEN_INPUT_ID)?.addEventListener("change", renderPicker);
   addBtn.addEventListener("click", addLevel);
-  setTimeout(defaultsIfEmpty, 1500);
-  // Re-render on page changes (new streams may become available).
+  // Recheck defaults later when streams arrive.
+  setTimeout(() => { defaultsIfEmpty(); renderPicker(); }, 1500);
   const observer = new MutationObserver(() => {
     clearTimeout(observer._t);
     observer._t = setTimeout(renderPicker, 300);
