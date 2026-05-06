@@ -308,9 +308,15 @@ function installDemoBanner() {
   const banner = document.createElement("div");
   banner.className = "demo-mode-banner";
   banner.dataset.ravtextDemoCanary = "1";
+  const lang = (typeof localStorage !== "undefined" && localStorage.getItem("ravtext.lang")) || document.documentElement.lang || "he";
+  const isEn = lang === "en";
+  const titleText = isEn ? "Trial Mode" : "מצב משתמש ניסיוני";
+  const bodyText = isEn
+    ? "Changes are not saved. The demo resets every minute and every export or print is watermarked."
+    : "השינויים אינם נשמרים. הדמו מתאפס כל דקה, וכל יצוא או הדפסה מסומן.";
   banner.innerHTML = `
-    <strong>מצב משתמש ניסיוני</strong>
-    <span>השינויים אינם נשמרים. הדמו מתאפס כל 3 דקות, וכל יצוא או הדפסה מסומן.</span>
+    <strong>${titleText}</strong>
+    <span>${bodyText}</span>
     <span class="demo-reset-clock" id="demo-reset-clock"></span>
   `;
   document.body.prepend(banner);

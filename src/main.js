@@ -31,6 +31,7 @@ import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
+import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installConsoleGuard();
@@ -1310,6 +1311,14 @@ document.addEventListener("click", async (ev) => {
     case "insert-comment": { insertComment(paneManager); break; }
     case "auto-number-clauses": { autoNumberClauses(paneManager); break; }
     case "insert-chapter-heading": { insertChapterHeading(paneManager); break; }
+    case "insert-table": { insertTablePrompt(paneManager); break; }
+    case "table-add-row-after": { addRowAfter(paneManager.getActiveEditor?.()); break; }
+    case "table-add-row-before": { addRowBefore(paneManager.getActiveEditor?.()); break; }
+    case "table-del-row": { deleteRow(paneManager.getActiveEditor?.()); break; }
+    case "table-add-col-after": { addColumnAfter(paneManager.getActiveEditor?.()); break; }
+    case "table-add-col-before": { addColumnBefore(paneManager.getActiveEditor?.()); break; }
+    case "table-del-col": { deleteColumn(paneManager.getActiveEditor?.()); break; }
+    case "table-del": { deleteTable(paneManager.getActiveEditor?.()); break; }
 
     case "undo":           ed && ed.undo().run(); break;
     case "redo":           ed && ed.redo().run(); break;

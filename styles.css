@@ -1686,8 +1686,13 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   margin: 0 4px;
   min-width: 110px;
 }
-.torah-toolbar button { font-size: 12px; padding: 4px 8px; }
-.torah-toolbar .tb-group { display: inline-flex; align-items: center; gap: 4px; }
+/* Don't override .tb-group styling — let it inherit the standard
+   border/background/title appearance from the global rules. Only
+   tighten the inner alignment so dynamically-built selects+buttons
+   line up with the surrounding chrome. */
+.torah-toolbar .tb-group { align-items: center; gap: 4px; }
+.torah-toolbar .tb-group select,
+.torah-toolbar .tb-group input { vertical-align: middle; }
 
 /* Show formatting marks (paragraph/line-break indicators) */
 body.show-formatting-marks .ProseMirror p::after {
@@ -1765,6 +1770,32 @@ details.ravtext-collapsible[open] {
   background: var(--bg, #fff);
   padding: 0 6px;
   user-select: none;
+}
+
+/* Tables — basic Word-like styling */
+.ProseMirror table.ravtext-table,
+.ravtext-table {
+  border-collapse: collapse;
+  margin: 12px 0;
+  table-layout: fixed;
+  width: 100%;
+  border: 1px solid #94a3b8;
+}
+.ProseMirror table.ravtext-table td,
+.ProseMirror table.ravtext-table th,
+.ravtext-table td,
+.ravtext-table th {
+  border: 1px solid #cbd5e1;
+  padding: 6px 10px;
+  vertical-align: top;
+  min-width: 60px;
+}
+.ProseMirror table.ravtext-table td > p,
+.ravtext-table td > p { margin: 0; }
+.ProseMirror table.ravtext-table tr:first-child td,
+.ravtext-table tr:first-child td {
+  background: rgba(0,0,0,0.04);
+  font-weight: 600;
 }
 
 /* Format painter — armed state */
