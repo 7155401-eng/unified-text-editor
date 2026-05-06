@@ -880,19 +880,20 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
       commentary.style.minHeight = `${exactH}px`;
       commentary.style.overflow = "hidden";
     }
-    // === 2) חיתוך ימין-תחתון בגובה main, מה שעובר → שמאל-עליון ===
-    // משה 2026-05-06: גם אם rightBody לא עובר main, לפצל באמצע כדי שיהיה
-    // leftCrown — כך שהראשי לא יתפוס את המקום של leftCrown.
+    // === 2) משה 2026-05-06: כתר שמאל = crownLines שורות מתוך rightBody ב-50% רוחב.
+    // שיטה ישנה פיצלה לפי mainBottomY → גרמה לאי-איזון בין הכתרים.
+    // שיטה חדשה: רוחבית 50%, מספר שורות זהה לכתר ימין → שני הכתרים שווים.
     const blockRect = block.getBoundingClientRect();
     const mainBottomY = mainEl.getBoundingClientRect().bottom - blockRect.top;
-    const rbRect = rightBody.getBoundingClientRect();
-    const targetYInRB = mainBottomY - (rbRect.top - blockRect.top);
-    let split2 = null;
-    if (targetYInRB > 0) {
-      split2 = findSplitAtPixelYInElement(rightBody, targetYInRB);
-    }
+    // מחליפים זמנית את רוחב rightBody ל-50% כדי למדוד שורות באותו רוחב כמו כתר ימין
+    const _origWidth = rightBody.style.width;
+    rightBody.style.width = `calc(${halfPct} - ${halfGap}px)`;
+    void rightBody.offsetHeight;
+    let split2 = findOffsetAtLineStart(rightBody, crownLines);
+    rightBody.style.width = _origWidth; // החזרה לרוחב המקורי 29%
+    void rightBody.offsetHeight;
     if (!split2) {
-      // אם rightBody לא עבר main, נפצל באמצע גובה rightBody.
+      // נסיגה: אם אין מספיק שורות, פיצול באמצע גובה rightBody
       const rbH = rightBody.getBoundingClientRect().height;
       if (rbH > 30) {
         split2 = findSplitAtPixelYInElement(rightBody, rbH / 2);
