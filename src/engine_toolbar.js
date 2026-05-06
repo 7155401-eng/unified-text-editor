@@ -101,11 +101,20 @@ export function setupPdfToolbar(pagesContainer) {
 
     const clone = page.cloneNode(true);
     clone.classList.add("pdf-thumb-page");
+    // v33: clear all v33 inline-style modifications that might have been set
+    // on the source page (shrink/flex/overflow/dataset) so the thumbnail
+    // shows the canonical 380×537 page even if the source was shrunk.
     clone.style.zoom = "1";
     clone.style.width = "380px";
     clone.style.height = "537px";
     clone.style.flex = "none";
+    clone.style.minHeight = "537px";
+    clone.style.maxHeight = "537px";
+    clone.style.overflow = "hidden";
     clone.style.transform = "scale(1)";
+    clone.style.transformOrigin = "top right"; // RTL anchor
+    delete clone.dataset.talmudPageShrunk;
+    delete clone.dataset.talmudPageHidden;
 
     mini.innerHTML = "";
     mini.appendChild(clone);

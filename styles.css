@@ -919,26 +919,12 @@ mark.pdf-find-hit-current {
 .talmud-layout-page .page-main.talmud-main:empty {
   display: none;
 }
-/* v33: paragraphs inside main are by default block-level. Block elements
-   that come AFTER a float drop below the float instead of wrapping. To
-   make multi-paragraph main wrap continuously, change <p>/<div> to inline.
-   EXCEPT: paragraphs with .opw-host (real opening word) — they keep block
-   layout because opw-dropped floats inside them need block context. */
-.talmud-layout-page .page-main.talmud-main > p:not(.opw-host),
-.talmud-layout-page .page-main.talmud-main > div:not(.talmud-continuation-marker):not(.opw-host) {
-  display: inline;
-}
-.talmud-layout-page .page-main.talmud-main > p:not(.opw-host) + p:not(.opw-host)::before,
-.talmud-layout-page .page-main.talmud-main > div:not(.opw-host) + div:not(.opw-host)::before {
-  content: "\A";
-  white-space: pre;
-}
-/* v33: when an opw-host (real opening word paragraph) follows other inline
-   paragraphs, ensure it doesn't break the inline flow visually. */
-.talmud-layout-page .page-main.talmud-main > .opw-host {
-  display: block;
-  clear: none;
-}
+/* v33-revert: inline-paragraph experiment caused more breakage than fixed.
+   Reverted to default block layout. The displacement bug (text appearing
+   below floats) is now handled at the content level — continuation
+   paragraphs are skipped from opening-word treatment, which was the actual
+   visible cause of displacement. Float-wrapping is left to the browser
+   default behavior. */
 
 /* ── No main text: commentaries behave like mishna-wrap ── */
 .talmud-layout.talmud-no-main .stream.talmud-commentary-float {
@@ -2519,3 +2505,57 @@ body[data-theme] h1, body[data-theme] h2, body[data-theme] h3,
 body[data-theme] h4, body[data-theme] h5, body[data-theme] h6 { color: var(--rt-fg) !important; }
 body[data-theme] .settings-h3 { color: var(--rt-accent) !important; }
 body[data-theme] .settings-license-status { color: var(--rt-fg-muted) !important; }
+
+/* ============================================================
+   v33: Unified button styling — modern, consistent across all UI
+   ============================================================ */
+button:not([class*="ribbon-tab"]):not(.btn-stream):not([class*="size-direct"]):not(.opw-segment),
+.tb-group button,
+.toolbar button,
+.pdf-tb-btn,
+.settings-btn {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  border: 1px solid var(--rt-border, #d0d0d4);
+  background: var(--rt-btn-bg, linear-gradient(180deg, #ffffff 0%, #f5f5f7 100%));
+  color: var(--rt-fg, #1d1d1f);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  line-height: 1.4;
+}
+button:not([class*="ribbon-tab"]):not(.btn-stream):hover,
+.tb-group button:hover,
+.toolbar button:hover,
+.pdf-tb-btn:hover,
+.settings-btn:hover {
+  background: var(--rt-btn-hover, linear-gradient(180deg, #e7eef7 0%, #d4dde8 100%));
+  border-color: var(--rt-accent, #2c5aa0);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+button:not([class*="ribbon-tab"]):not(.btn-stream):active,
+.pdf-tb-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+button.primary,
+button[data-cmd="render-pages"],
+button[data-cmd="engine-render"] {
+  background: linear-gradient(180deg, #4a7fc0 0%, #2c5aa0 100%);
+  color: #fff;
+  border-color: #1e4078;
+}
+button.primary:hover,
+button[data-cmd="engine-render"]:hover {
+  background: linear-gradient(180deg, #5a8fd0 0%, #3c6ab0 100%);
+  border-color: #1e4078;
+}
+button.active,
+.pdf-tb-btn.active {
+  background: var(--rt-accent, #2c5aa0) !important;
+  color: #fff !important;
+  border-color: var(--rt-accent-hover, #1e4078) !important;
+}
