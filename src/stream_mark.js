@@ -4,6 +4,8 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "prosemirror-state";
 
+const AUTO_MARK_FULL_SCAN_LIMIT = 20000;
+
 export const STREAM_PALETTE = [
   { bg: "#FEE2E2", fg: "#7F1D1D", name: "אדום" },
   { bg: "#DBEAFE", fg: "#1E3A8A", name: "כחול" },
@@ -41,6 +43,49 @@ function offsetToPos(offsetMap, offset) {
     }
   }
   return offsetMap.length > 0 ? offsetMap[0].posInDoc : 0;
+}
+
+function hasPotentialMarker(text, userSymbol) {
+  if (!text) return false;
+  if (userSymbol) return String(text).includes(userSymbol);
+  return /@\d{1,3}/.test(String(text));
+}
+
+function rangeHasStreamMark(doc, from, to, markType) {
+  let found = false;
+  const start = Math.max(0, Math.min(doc.content.size, from));
+  const end = Math.max(start, Math.min(doc.content.size, to));
+  if (start === end) return false;
+  doc.nodesBetween(start, end, (node) => {
+    if (found || !node.isText) return false;
+    found = node.marks.some((mk) => mk.type === markType);
+    return !found;
+  });
+  return found;
+}
+
+function transactionsTouchPotentialMarker(transactions, oldState, newState, userSymbol, markType) {
+  for (const tr of transactions) {
+    if (tr.getMeta("forceStreamMarkScan")) return true;
+    for (const map of tr.mapping.maps) {
+      let touched = false;
+      map.forEach((oldStart, oldEnd, newStart, newEnd) => {
+        if (touched) return;
+        const newFrom = Math.max(0, Math.min(newState.doc.content.size, newStart - 8));
+        const newTo = Math.max(newFrom, Math.min(newState.doc.content.size, newEnd + 8));
+        const oldFrom = Math.max(0, Math.min(oldState.doc.content.size, oldStart - 8));
+        const oldTo = Math.max(oldFrom, Math.min(oldState.doc.content.size, oldEnd + 8));
+        const newText = newState.doc.textBetween(newFrom, newTo, "\n", "\n");
+        const oldText = oldState.doc.textBetween(oldFrom, oldTo, "\n", "\n");
+        touched =
+          hasPotentialMarker(newText, userSymbol) ||
+          hasPotentialMarker(oldText, userSymbol) ||
+          rangeHasStreamMark(oldState.doc, oldFrom, oldTo, markType);
+      });
+      if (touched) return true;
+    }
+  }
+  return false;
 }
 
 export const StreamMark = Mark.create({
@@ -127,12 +172,22 @@ export const StreamMark = Mark.create({
       new Plugin({
         key,
         appendTransaction(transactions, oldState, newState) {
-          const docChanged = transactions.some(t => t.docChanged);
-          if (!docChanged) return null;
-
+          if (typeof window !== "undefined" && window.__STREAM_MARK_SCAN_DISABLED__) {
+            return null;
+          }
           const storage = editorRef.storage.streamMark;
           const userSymbol = storage.symbol;
           const userStreamCode = storage.streamCode;
+          const forceScan = transactions.some(t => t.getMeta("forceStreamMarkScan"));
+          const docChanged = transactions.some(t => t.docChanged);
+          if (!docChanged && !forceScan) return null;
+          if (
+            !forceScan &&
+            newState.doc.content.size > AUTO_MARK_FULL_SCAN_LIMIT &&
+            !transactionsTouchPotentialMarker(transactions, oldState, newState, userSymbol, markType)
+          ) {
+            return null;
+          }
 
           const re = userSymbol
             ? new RegExp(escapeRegex(userSymbol), 'g')
@@ -265,6 +320,21 @@ export function jumpToNextMarker(view, dir = 1) {
   view.dispatch(tr);
   view.focus();
   const el = view.dom.querySelector(`.stream-marker[data-uid="${target.uid}"]`);
-  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  if (el) {
+    // v33: scroll so the bubble (positioned ABOVE the marker) is also visible.
+    // Default scrollIntoView centers the marker — but the bubble can end up
+    // partially clipped above the viewport. Add a manual top offset.
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    // Adjust scroll: shift down so bubble (~30px above marker) is in view.
+    setTimeout(() => {
+      const container = view.dom.closest("[data-scroll-sync],.editor-scroll,.ProseMirror")
+        || view.dom.parentElement;
+      if (container && container.scrollBy) {
+        const rect = el.getBoundingClientRect();
+        const cRect = container.getBoundingClientRect();
+        if (rect.top - cRect.top < 50) container.scrollBy({ top: -50, behavior: 'smooth' });
+      }
+    }, 350);
+  }
   return true;
 }

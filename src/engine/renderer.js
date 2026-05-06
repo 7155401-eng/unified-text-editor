@@ -1,20 +1,33 @@
 import { streamColorIndex } from "./schema.js";
 
-function createStreamElement(streamCode, streamData, streamNumLastPage, pageIndex) {
+function streamTitleForCode(code) {
+  const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
+  return (labels && labels[code]) || code;
+}
+
+function mainBlockTagFor(tup) {
+  const idx = tup ? tup[0] : null;
+  const globalMeta =
+    typeof window !== "undefined" && idx !== null && window.__MAIN_BLOCK_META__
+      ? window.__MAIN_BLOCK_META__[idx]
+      : null;
+  const meta = (tup && tup[4]) || globalMeta || {};
+  if (meta.blockType !== "heading") return "p";
+  const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
+  return `h${level}`;
+}
+
+function createStreamElement(streamCode, streamData, streamNumLastPage, pageIndex, options = {}) {
   const wrap = document.createElement("div");
   wrap.className = `stream stream-color-${streamColorIndex(streamCode)}`;
   wrap.setAttribute("data-stream", streamCode);
 
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[streamCode]) || {};
   const userCols = settings.cols || 1;
-  const minLines = typeof settings.minLinesForCols === "number" ? settings.minLinesForCols : 3;
   const notesArr = (streamData && streamData.notes) || [];
-  let estLines = 1;
-  for (const tup of notesArr) {
-    const text = tup[1] || "";
-    estLines += Math.max(1, Math.ceil(text.length / 52));
-  }
-  const cols = estLines >= minLines ? userCols : 1;
+  // משה 2026-05-06: בחירת עמודות לפי הגדרת המשתמש בלבד, ללא הערכת שורות
+  // לפי תווים (החישוב של 52 תווים/שורה לא תאם את המציאות).
+  const cols = userCols;
   if (cols > 1) {
     wrap.style.columnCount = cols;
     wrap.style.columnGap = "8px";
@@ -29,7 +42,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
 
   const title = document.createElement("div");
   title.className = "stream-title";
-  title.textContent = streamCode;
+  title.textContent = streamTitleForCode(streamCode);
   wrap.appendChild(title);
 
   const notes = notesArr;
@@ -65,6 +78,10 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       parent.appendChild(lemma);
     }
   }
+  const artificialLastLine = options.pageHasMain && !mishnaWrapActive()
+    ? "justify"
+    : "right";
+
   // A note's display end is "artificial" if there's another piece with the
   // same num on a later page — its last line should be JUSTIFIED so the cut
   // doesn't look like the note's natural end.
@@ -79,9 +96,17 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   if (notesInline) {
     const noteAll = document.createElement("div");
     noteAll.className = "note note-inline";
-    notes.forEach((tup, i) => appendNoteContent(noteAll, tup, i > 0));
+    notes.forEach((tup, i) => {
+      const part = document.createElement("span");
+      part.className = "note-part";
+      part.dataset.cont = isCont(tup) ? "1" : "0";
+      const num = displayNum(tup);
+      if (num !== undefined && num !== null) part.dataset.noteNum = String(num);
+      appendNoteContent(part, tup, i > 0);
+      noteAll.appendChild(part);
+    });
     if (notes.length > 0 && isArtificialEnd(notes[notes.length - 1])) {
-      noteAll.style.textAlignLast = "justify";
+      noteAll.style.textAlignLast = artificialLastLine;
     }
     wrap.appendChild(noteAll);
   } else {
@@ -90,7 +115,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       note.className = "note";
       appendNoteContent(note, tup, false);
       if (isArtificialEnd(tup)) {
-        note.style.textAlignLast = "justify";
+        note.style.textAlignLast = artificialLastLine;
       }
       wrap.appendChild(note);
     }
@@ -99,10 +124,21 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   return wrap;
 }
 
-function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPage) {
+function mishnaWrapActive() {
+  try {
+    return typeof window !== "undefined" &&
+      window.localStorage &&
+      window.localStorage.getItem("ravtext.mishnaWrap") === "1";
+  } catch (_err) {
+    return false;
+  }
+}
+
+function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPage, paraIdxFirstPage) {
   const page = document.createElement("div");
   page.className = "page";
   page.setAttribute("dir", "rtl");
+  const pageHasMain = (pageData.main || []).length > 0;
 
   const main = document.createElement("div");
   main.className = "page-main";
@@ -114,8 +150,16 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     if (idx === lastIdx && lastP) {
       lastP.textContent += " " + text;
     } else {
-      const p = document.createElement("p");
+      const p = document.createElement(mainBlockTagFor(tup));
       p.textContent = text;
+      // v33: mark this paragraph as a continuation FROM a previous page
+      // (its idx already appeared on an earlier page). opening_word.js skips
+      // these so we don't apply opening-word styling to mid-sentence text.
+      if (paraIdxFirstPage && pageIndex !== undefined &&
+          typeof paraIdxFirstPage[idx] === "number" &&
+          paraIdxFirstPage[idx] < pageIndex) {
+        p.dataset.continuedFromPrev = "1";
+      }
       main.appendChild(p);
       lastP = p;
       lastIdx = idx;
@@ -125,7 +169,8 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     if (paraIdxLastPage && pageIndex !== undefined &&
         typeof paraIdxLastPage[idx] === "number" &&
         paraIdxLastPage[idx] > pageIndex) {
-      lastP.style.textAlignLast = "justify";
+      lastP.dataset.continues = "1";
+      lastP.style.textAlignLast = "right";
     }
   }
   page.appendChild(main);
@@ -142,7 +187,7 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     streamsWrap.className = "page-streams";
     for (const code of codes) {
       streamsWrap.appendChild(
-        createStreamElement(code, pageData.streams[code], streamNumLastPage, pageIndex)
+        createStreamElement(code, pageData.streams[code], streamNumLastPage, pageIndex, { pageHasMain })
       );
     }
     page.appendChild(streamsWrap);
@@ -162,6 +207,19 @@ function computeLastPageByParaIdx(pages) {
   return last;
 }
 
+// v33: paragraph-idx → first page on which it appears.
+// Used to mark continuation paragraphs so opening_word doesn't apply to them.
+function computeFirstPageByParaIdx(pages) {
+  const first = {};
+  for (let i = 0; i < pages.length; i++) {
+    for (const seg of pages[i].main || []) {
+      const idx = seg[0];
+      if (!(idx in first)) first[idx] = i;
+    }
+  }
+  return first;
+}
+
 function computeLastPageByStreamNum(pages) {
   const last = {};
   for (let i = 0; i < pages.length; i++) {
@@ -179,8 +237,14 @@ function computeLastPageByStreamNum(pages) {
 }
 
 export function renderPages(packerOutput, container) {
+  if (container.__pageObserver && typeof container.__pageObserver.disconnect === "function") {
+    container.__pageObserver.disconnect();
+  }
+  container.__pageObserver = null;
+  container.__processRealizedPage = null;
   container.innerHTML = "";
   const paraLastPage = computeLastPageByParaIdx(packerOutput);
+  const paraFirstPage = computeFirstPageByParaIdx(packerOutput);
   const streamNumLastPage = computeLastPageByStreamNum(packerOutput);
 
   // Force-sync: skip the placeholder/progressive machinery entirely. Used by
@@ -190,7 +254,7 @@ export function renderPages(packerOutput, container) {
     const allFrag = document.createDocumentFragment();
     const realPages = [];
     for (let i = 0; i < packerOutput.length; i++) {
-      const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage);
+      const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
       real.dataset.pageIndex = String(i);
       real.dataset.realized = "1";
       allFrag.appendChild(real);
@@ -203,11 +267,10 @@ export function renderPages(packerOutput, container) {
     return;
   }
 
-  // Progressive rendering: every page is created as a same-sized placeholder
-  // so scroll height and page navigation are correct from frame 1. Page 1
-  // is realized immediately (user sees content instantly). The rest are
-  // realized in small batches via setTimeout so the main thread can repaint
-  // and process input events while pages fill in.
+  // True lazy rendering: every page is created as a same-sized placeholder
+  // so scroll height and page navigation are correct from frame 1. Only the
+  // first pages and near-viewport pages are realized; print/download/search
+  // can still force all pages through __realizePage.
   const frag = document.createDocumentFragment();
   const PAGE_W = 380;
   const PAGE_H = 537;
@@ -226,29 +289,43 @@ export function renderPages(packerOutput, container) {
     placeholders.push(ph);
   }
   container.appendChild(frag);
+  let observer = null;
 
   function realize(i) {
     const ph = placeholders[i];
     if (!ph || !ph.parentNode || ph.dataset.realized === "1") return;
-    const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage);
+    if (observer) observer.unobserve(ph);
+    const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
     real.dataset.pageIndex = String(i);
     real.dataset.realized = "1";
     if (ph.style.zoom) real.style.zoom = ph.style.zoom;
     ph.parentNode.replaceChild(real, ph);
     placeholders[i] = real;
+    if (typeof container.__processRealizedPage === "function") {
+      container.__processRealizedPage(real, i);
+    }
   }
 
   realize(0);
+  if (placeholders.length > 1) realize(1);
 
-  const BATCH = 10;
-  let nextIdx = 1;
-  function step() {
-    const end = Math.min(nextIdx + BATCH, packerOutput.length);
-    for (let i = nextIdx; i < end; i++) realize(i);
-    nextIdx = end;
-    if (nextIdx < packerOutput.length) setTimeout(step, 0);
+  if ("IntersectionObserver" in window) {
+    observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const idx = parseInt(entry.target.dataset.pageIndex || "0", 10);
+        realize(idx);
+        if (idx + 1 < placeholders.length) realize(idx + 1);
+      }
+    }, { root: container, rootMargin: "900px 0px" });
+
+    for (let i = 2; i < placeholders.length; i++) {
+      observer.observe(placeholders[i]);
+    }
+    container.__pageObserver = observer;
+  } else {
+    for (let i = 2; i < Math.min(placeholders.length, 5); i++) realize(i);
   }
-  if (placeholders.length > 1) setTimeout(step, 0);
 
   container.__getPageElement = (i) => placeholders[i] || null;
   container.__realizePage = realize;

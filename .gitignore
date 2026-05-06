@@ -1,2 +1,44 @@
 node_modules/
 dist/
+# Local/generated files
+build/
+.vite/
+coverage/
+.env
+.env.*
+*.log
+.DS_Store
+
+# Local/generated/debug files
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+.env
+.env.*
+*.log
+
+# Chrome / browser debug profiles - DO NOT COMMIT
+chrome-talmud-debug-profile/
+chrome-verify-profile/
+
+# Local debug artifacts
+debug-*.png
+debug-*.ps1
+tatus
+bject CreationTime, LastWriteTime, Length, FullName*
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+.env
+.env.*
+*.log
+.DS_Store
+chrome-talmud-debug-profile/
+chrome-verify-profile/
+debug-*.png
+debug-*.ps1
+bject CreationTime, LastWriteTime, Length, FullName*

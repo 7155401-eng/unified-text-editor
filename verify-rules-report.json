@@ -1,0 +1,21 @@
+{
+  "pageCount": 5,
+  "issues": [
+    {
+      "page": 3,
+      "sev": "HIGH",
+      "rule": "page-overflow",
+      "detail": "2059px"
+    },
+    {
+      "page": 3,
+      "sev": "HIGH",
+      "rule": "content-past-page-bottom",
+      "detail": "26 elements"
+    }
+  ],
+  "lonelyHebrewLetters": 1,
+  "hiSev": 2,
+  "medSev": 0,
+  "lowSev": 0
+}

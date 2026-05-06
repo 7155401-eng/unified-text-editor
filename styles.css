@@ -9,9 +9,19 @@
   --btn-h: #2A3D6E;
   --ed-bg: #0D1929;
   --ed-fg: #E2E8F0;
+  --word-blue: #2B579A;
+  --word-blue-dark: #185ABD;
+  --word-line: #D6DFEC;
   --ravtext-ui-font-family: "David Libre", "Frank Ruhl Libre", "Segoe UI", sans-serif;
   --ravtext-editor-font-family: "David Libre", "Frank Ruhl Libre", serif;
   --ravtext-page-font-family: "Frank Ruhl Libre", "David Libre", serif;
+  --ravtext-page-width: 380px;
+  --ravtext-page-height: 537px;
+  --ravtext-page-pack-safety: 50px;
+  --ravtext-page-margin-top: 22px;
+  --ravtext-page-margin-right: 24px;
+  --ravtext-page-margin-bottom: 18px;
+  --ravtext-page-margin-left: 24px;
   --ravtext-editor-size: 16px;
   --ravtext-page-main-size: 12px;
   --ravtext-page-stream-size: 10px;
@@ -134,6 +144,70 @@ body.light-theme .pages-container {
 body.light-theme .ctx-menu { background: #FFFFFF; }
 body.light-theme .toast { background: #FFFFFF; color: #185ABD; border-color: #185ABD; }
 
+.demo-mode-banner {
+  position: sticky;
+  top: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  background: #7f1d1d;
+  color: #fff;
+  border-bottom: 2px solid #fca5a5;
+  font-size: 13px;
+  text-align: center;
+}
+
+.demo-reset-clock {
+  font-weight: 700;
+  color: #fde68a;
+}
+
+.ravtext-demo-print-mark {
+  display: inline !important;
+  color: #991b1b !important;
+  background: rgba(254, 226, 226, 0.92) !important;
+  border: 1px solid rgba(153, 27, 27, 0.45) !important;
+  padding: 0 0.18em !important;
+  margin: 0 0.1em !important;
+  font-weight: 700 !important;
+  white-space: normal !important;
+}
+
+.demo-block-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #111827;
+  color: #fff;
+}
+
+.demo-block-card {
+  width: min(620px, 94vw);
+  padding: 26px 30px;
+  border: 2px solid #ef4444;
+  border-radius: 8px;
+  background: #1f2937;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+
+.demo-block-card h1 {
+  margin: 0 0 12px;
+  color: #fecaca;
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.demo-block-card p {
+  margin: 0;
+  font-size: 16px;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -142,7 +216,7 @@ html, body {
   background: var(--bg);
   color: var(--txt);
   font-family: var(--ravtext-ui-font-family);
-  direction: ltr;
+  direction: rtl;
   max-width: 100vw;
   overflow-x: hidden;
 }
@@ -182,15 +256,21 @@ html, body {
 
 .main {
   display: grid;
-  grid-template-columns: minmax(440px, 1fr) minmax(0, 2fr);
-  grid-template-areas: "preview editor";
+  grid-template-columns: minmax(0, 2fr) minmax(440px, 1fr);
+  grid-template-areas: "editor preview";
   gap: 16px;
   padding: 16px 28px;
   align-items: start;
   width: 100%;
   max-width: 100vw;
-  direction: ltr;
+  direction: rtl;
 }
+/* CSS-panel mode: insert column between editor and preview */
+.main:has(#ravtext-css-inject-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1.5fr) 360px minmax(440px, 1fr);
+  grid-template-areas: "editor css-panel preview";
+}
+#ravtext-css-inject-panel { grid-area: css-panel; align-self: stretch; }
 
 .panel {
   background: var(--panel);
@@ -307,6 +387,21 @@ html, body {
 
 .pdf-tb-find {
   width: 140px;
+}
+
+.pdf-output-background-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 3px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pdf-output-background-toggle input {
+  margin: 0;
 }
 
 .pdf-body {
@@ -455,7 +550,11 @@ mark.pdf-find-hit-current {
   flex: 0 0 537px;
   background: #fff;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
-  padding: 22px 24px;
+  padding:
+    var(--ravtext-page-margin-top)
+    var(--ravtext-page-margin-right)
+    var(--ravtext-page-margin-bottom)
+    var(--ravtext-page-margin-left);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -464,7 +563,14 @@ mark.pdf-find-hit-current {
   color: #222;
 }
 
+.pages-container > .page:not(.measure-page) {
+  content-visibility: auto;
+  contain-intrinsic-size: 380px 537px;
+}
+
 .page.measure-page {
+  content-visibility: visible;
+  contain-intrinsic-size: auto;
   height: auto;
   min-height: 0;
   flex: initial;
@@ -478,6 +584,10 @@ mark.pdf-find-hit-current {
   margin-bottom: 8px;
 }
 
+.page-main:empty {
+  display: none;
+}
+
 .page-main p {
   direction: rtl;
   margin: 0 0 6px 0;
@@ -487,7 +597,35 @@ mark.pdf-find-hit-current {
   orphans: 2;
 }
 
-.page-main p:last-child {
+.page-main h1,
+.page-main h2,
+.page-main h3,
+.page-main h4,
+.page-main h5,
+.page-main h6 {
+  direction: rtl;
+  margin: 0 0 6px 0;
+  text-align: center;
+  text-align-last: center;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #111;
+}
+
+.page-main h1 { font-size: 1.45em; }
+.page-main h2 { font-size: 1.3em; }
+.page-main h3 { font-size: 1.18em; }
+.page-main h4 { font-size: 1.08em; }
+.page-main h5 { font-size: 1em; }
+.page-main h6 { font-size: 0.94em; }
+
+.page-main p:last-child,
+.page-main h1:last-child,
+.page-main h2:last-child,
+.page-main h3:last-child,
+.page-main h4:last-child,
+.page-main h5:last-child,
+.page-main h6:last-child {
   margin-bottom: 0;
 }
 
@@ -500,16 +638,21 @@ mark.pdf-find-hit-current {
   gap: 4px;
 }
 
+.page-main:empty + .page-streams {
+  margin-top: 0;
+}
+
 .mishna-wrap-page .page-streams {
   display: block;
-  overflow: hidden;
+  overflow: visible;
+  margin-top: 0;
 }
 
 .mishna-wrap-page .mishna-level {
   display: block;
   clear: both;
-  overflow: hidden;
-  margin-bottom: 4px;
+  overflow: visible;
+  margin-bottom: 0;
 }
 
 .mishna-wrap-page .mishna-level::after {
@@ -519,25 +662,352 @@ mark.pdf-find-hit-current {
 }
 
 .mishna-wrap-page .stream {
-  margin-bottom: 4px;
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  text-align: justify;
+  text-align-last: center;
+  text-justify: inter-word;
+  column-count: auto !important;
+  column-gap: normal !important;
 }
 
 .mishna-wrap-page .stream.mishna-float {
-  width: 46%;
-  margin-bottom: 4px;
+  margin-bottom: 1.4em;
 }
 
-.mishna-wrap-page .stream.mishna-float[style*="right"] {
+.mishna-wrap-page .stream.mishna-right {
   margin-left: 8px;
 }
 
-.mishna-wrap-page .stream.mishna-float[style*="left"] {
+.mishna-wrap-page .stream.mishna-left {
   margin-right: 8px;
 }
 
 .mishna-wrap-page .stream.mishna-flow {
   display: block;
   overflow: visible;
+}
+
+.mishna-wrap-page .stream-title {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.22);
+  padding-bottom: 1px;
+  margin: 0 0 2px;
+  font-size: inherit;
+  line-height: inherit;
+  column-span: none;
+  text-align: center;
+  text-align-last: center;
+  font-weight: 800;
+  white-space: normal;
+}
+
+.mishna-wrap-page .stream-title::after {
+  content: " ";
+}
+
+.mishna-wrap-page .stream .note,
+.mishna-wrap-page .stream .note-inline,
+.mishna-wrap-page .stream .note-part {
+  display: inline;
+  margin: 0;
+  break-inside: auto;
+  text-align-last: inherit;
+}
+
+/* ============================================================
+   TALMUD LAYOUT — v3-spec aligned additions
+   ============================================================ */
+
+/* GPT-2 / spec 6.2: while building, hide leftover streams to avoid
+   flicker from CSS rules that target leftovers transitioning. */
+.talmud-layout-page[data-talmud-state="building"] .page-streams > .stream {
+  visibility: hidden;
+}
+
+/* SVG opening-word stretch (bug 17/18). The <svg class="opening-word-svg">
+   sits inline with text. Do not let it inherit baseline gymnastics. */
+.opening-word-svg {
+  display: inline-block;
+  vertical-align: baseline;
+  overflow: visible;
+}
+.opening-word-svg text {
+  /* RTL anchored at end so the visual right edge aligns with the line. */
+}
+
+/* ============================================================
+   TALMUD LAYOUT — CSS patch
+   Replace the entire existing .talmud-* block in styles.css
+   with this content.
+   ============================================================ */
+
+/* Page-level flag */
+.talmud-layout-page {
+  position: relative;
+}
+.talmud-layout-page .page-streams {
+  display: block;
+  overflow: visible;
+  margin-top: 0;
+}
+
+/* Remaining (non-talmud) streams sit below, full-width.
+   v28-merge: Selector שרשרת :not — לא מפעילים בזמן בנייה (מונע race),
+   ולא חל על streams שכבר משויכים לתבנית. */
+.talmud-layout-page:not([data-talmud-state="building"]) .page-streams > .stream:not([data-talmud-role]):not(.mishna-float):not(.mishna-flow) {
+  display: block;
+  float: none !important;
+  width: auto !important;
+  clear: both;
+  margin: 4px 0 0 0;
+}
+
+/* ── The layout block ── */
+.talmud-layout {
+  display: block;
+  /* visible כדי שהמנוע ימדוד את הגובה האמיתי של התוכן. הקליפינג הויזואלי
+     נעשה ב-.page (overflow:hidden) — תוכן מעבר לקצה העמוד נחתך אוטומטית. */
+  overflow: visible;
+  clear: both;
+}
+.talmud-layout::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+
+/* ── Commentary streams (floated) ── */
+.talmud-layout .stream.talmud-commentary {
+  box-sizing: border-box;
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  text-align: justify;
+  text-align-last: center;
+  text-justify: inter-word;
+  column-count: auto !important;
+  column-gap: normal !important;
+}
+.talmud-layout .stream.talmud-right {
+  padding-left: 3px;
+  /* רווח בין הפרשן הימני לטקסט הראשי (בצד שמאל של הפרשן) */
+  margin-left: var(--talmud-side-gap, 12px) !important;
+}
+.talmud-layout .stream.talmud-left {
+  padding-right: 3px;
+  /* רווח בין הפרשן השמאלי לטקסט הראשי (בצד ימין של הפרשן) */
+  margin-right: var(--talmud-side-gap, 12px) !important;
+}
+/* בכתר אין רווח לכיוון הפנימי (אין main באמצע) — אבל לא ל-body
+   v28-merge: הגנה כפולה ב-CSS (ב-JS גם מסירים את הקלאס מ-body) */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right:not(.talmud-body-portion):not(.talmud-body-expanded) {
+  margin-left: 0 !important;
+}
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-left:not(.talmud-body-portion):not(.talmud-body-expanded) {
+  margin-right: 0 !important;
+}
+
+/* באסימטרי: רווח רק בין הזרם הקצר לכתר הארוך (זרמים נפרדים).
+   הגוף של הארוך עצמו צמוד לכתר שלו ללא רווח (הוא המשך של אותו זרם). */
+.talmud-layout.talmud-asymmetric-crown > .talmud-no-crown-side {
+  margin-top: 1em !important;
+}
+
+/* כששני הפרשנים קצרים מאוד — אין דחיפת כתר, כל ה-3 מתחילים מלמעלה */
+/* משה 2026-05-06: הוסר margin-top:0 !important — הוא דרס את --talmud-crown-offset
+   וגרם לראשי לקפוץ לאזור הכתר. הראשי חייב להתחיל מתחת לכתר. */
+.talmud-layout.talmud-no-crown .page-main.talmud-main {
+  margin-top: 0;
+}
+
+/* חלקי הכתר (ראש הפרשן — 50% רוחב במצב סימטרי, 100% במצב אסימטרי) */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion {
+  /* float ו-width מוגדרים inline ע"י JS */
+  text-align: justify !important;
+  /* כלל משה: מתיחת שורה רק לאחר הכנסת כל הטקסט שאפשר —
+     שורה אחרונה לא נמתחת בכוח (auto = רגוע).
+     שורות אמצע — נמתחות אוטומטית ע"י הדפדפן (justify רגיל). */
+  text-align-last: auto !important;
+  text-justify: inter-word !important;
+  /* רציפות חזותית: ביטול רווח תחתון כדי להידבק לגוף */
+  padding-bottom: 0 !important;
+}
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note,
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note-inline,
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion .note-part,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note-inline,
+.talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note-part {
+  text-align-last: auto !important;
+}
+
+/* כשמכבדים שבירות פסקה בכתר: ההערות בכתר חוזרות להיות בלוקים נפרדים,
+   והשורה האחרונה של פסקה אמיתית לא נדחקת למתיחה. רלוונטי רק לכתר עצמו —
+   ה-body וה-expanded מקבלים יחס שונה (ראה הערות נפרדות). */
+.talmud-layout.talmud-preserve-breaks > .stream.talmud-crown-portion .note,
+.talmud-layout.talmud-preserve-breaks > .stream.talmud-crown-portion .note-inline,
+.talmud-layout.talmud-preserve-breaks > .stream.talmud-crown-portion .note-part {
+  display: block !important;
+  text-align-last: inherit !important;
+}
+/* בכתר חצוי באמצע משפט, השורה האחרונה של ה-stream הכולל (לא של פסקה
+   בודדת) עדיין צריכה להיות מיושרת — כי החיתוך הוא לא בסוף פסקה. */
+.talmud-layout.talmud-preserve-breaks.talmud-with-crown > .stream.talmud-crown-portion {
+  text-align-last: auto !important;
+}
+/* הפרשן בכתר משמאל מסומן עם talmud-left
+   v28-merge: :not שמונע ירושת הכלל ל-body שמכיל את הקלאס בטעות */
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-right:not(.talmud-body-portion):not(.talmud-body-expanded) {
+  padding-left: 3px;
+  /* רווח מ-main מוגדר על הגוף, לא על הכתר (כי בכתר אין main בצד) */
+  margin-left: 0;
+}
+.talmud-layout.talmud-with-crown > .stream.talmud-crown-portion.talmud-left:not(.talmud-body-portion):not(.talmud-body-expanded) {
+  padding-right: 3px;
+  margin-right: 0;
+}
+
+/* גוף הפרשן (29% רוחב, מתחת לכתר, צמוד ל-main) */
+.talmud-layout.talmud-with-crown > .talmud-body-portion,
+.talmud-layout.talmud-with-crown .page-main > .talmud-body-portion {
+  /* float, width, clear מוגדרים inline ע"י JS */
+  text-align: justify;
+  text-align-last: center;
+  text-justify: inter-word;
+  /* רציפות חזותית: ביטול רווח עליון/תחתון כדי להידבק לכתר ול-expanded */
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+/* expanded צמוד לbody — בלי רווח עליון */
+.talmud-layout .talmud-body-expanded {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+.talmud-layout.talmud-with-crown > .talmud-body-portion.talmud-right {
+  padding-left: 3px;
+  margin-left: var(--talmud-side-gap, 12px);
+}
+.talmud-layout.talmud-with-crown > .talmud-body-portion.talmud-left {
+  padding-right: 3px;
+  margin-right: var(--talmud-side-gap, 12px);
+}
+
+/* סימון ויזואלי לעמוד שיש בו חריגה (טופלל ע"י overflow:hidden של .page).
+   המסגרת האדומה מאותתת לפיתוח. תיקון: התוכן נדחף עכשיו אוטומטית לעמוד
+   הבא ע"י splitPageStreamsBetweenPages + splitBodyExpandedBetweenPages
+   (passes 145-147 ב-engine_bridge.js, רץ ב-loopUntilStable של pass 153). */
+.talmud-layout-page.talmud-page-overflow {
+  outline: 2px solid #c0392b;
+  outline-offset: -2px;
+}
+.talmud-layout-page.talmud-page-overflow::after {
+  content: "↓ overflow: " attr(data-talmud-overflow-px) "px";
+  position: absolute;
+  bottom: 2px; right: 2px;
+  font-size: 10px;
+  color: #fff;
+  background: #c0392b;
+  padding: 1px 5px;
+  border-radius: 2px;
+  z-index: 999;
+  pointer-events: none;
+}
+
+/* ── Main text (pushed down by crown-offset) ── */
+.talmud-layout-page .page-main.talmud-main {
+  display: block;
+  /* Crown offset: computed by JS and stored in --talmud-crown-offset */
+  margin-top: var(--talmud-crown-offset, 0px);
+  /* משה 2026-05-06: ללא max-width — הראשי מתרחב לרוחב מלא כשהזרמים בצדדים
+     מסתיימים. הטקסט גולש סביב הfloats כל עוד הם קיימים, וכשהם מסתיימים
+     הוא ממלא את כל הרוחב הנותר. */
+  overflow: visible;
+  box-sizing: border-box;
+  text-align: justify;
+  text-align-last: center;
+  text-justify: inter-word;
+}
+.talmud-layout-page .page-main.talmud-main:empty {
+  display: none;
+}
+/* v33-revert: inline-paragraph experiment caused more breakage than fixed.
+   Reverted to default block layout. The displacement bug (text appearing
+   below floats) is now handled at the content level — continuation
+   paragraphs are skipped from opening-word treatment, which was the actual
+   visible cause of displacement. Float-wrapping is left to the browser
+   default behavior. */
+
+/* ── No main text: commentaries behave like mishna-wrap ── */
+.talmud-layout.talmud-no-main .stream.talmud-commentary-float {
+  margin-bottom: 1.4em;
+}
+.talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
+  display: block;
+  overflow: visible;
+  clear: none;
+}
+.talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
+  float: none !important;
+  width: 100% !important;
+}
+
+/* ── One commentary only (with main) ── */
+/* משה 2026-05-06: הוסר margin-top:0 — הוא דרס את crown-offset וגרם לראשי
+   לקפוץ לאזור הכתר. הראשי חייב להתחיל מתחת לכתר. */
+
+/* ── Stream titles inside talmud block ── */
+.talmud-layout .stream-title {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 2px 0;
+  padding: 0 0 1px 0;
+  column-span: none;
+  white-space: normal;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* ── Notes inline ── */
+.talmud-layout .stream .note,
+.talmud-layout .stream .note-inline,
+.talmud-layout .stream .note-part {
+  display: inline;
+  margin: 0;
+  break-inside: auto;
+  text-align-last: inherit;
+}
+
+/* ── Print overrides ── */
+@media print {
+  .talmud-layout {
+    position: relative !important;
+    overflow: visible !important;
+  }
+  .talmud-layout-page .page-main.talmud-main {
+    margin-top: var(--talmud-crown-offset, 0px) !important;
+    overflow: visible !important;
+  }
+  .talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
+    float: none !important;
+    width: 100% !important;
+  }
+  .talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
+    display: block !important;
+    float: none !important;
+    width: auto !important;
+    overflow: visible !important;
+  }
+  .talmud-layout .stream.talmud-right { padding-left: 3px !important; }
+  .talmud-layout .stream.talmud-left  { padding-right: 3px !important; }
 }
 
 .stream {
@@ -573,6 +1043,9 @@ mark.pdf-find-hit-current {
   margin: 1px 0;
   direction: rtl;
   cursor: pointer;
+  /* משה 2026-05-06: pretty = שיפור איזון שורות (פחות מילה בודדת בסוף עמודה).
+     נתמך Chrome 117+. דוחה הצידה אם הדפדפן לא תומך. */
+  text-wrap: pretty;
 }
 
 .stream .note:hover {
@@ -594,12 +1067,24 @@ mark.pdf-find-hit-current {
 .stream-color-5 { background: #fcdada; }
 .stream-color-6 { background: #fde0c2; }
 
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
 @media print {
+  html,
   body {
     background: #fff;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    overflow: visible !important;
   }
 
   .app-header,
+  .demo-mode-banner,
   .panel:not(.preview-pane),
   .pdf-toolbar,
   .pdf-sidebar,
@@ -608,27 +1093,139 @@ mark.pdf-find-hit-current {
   }
 
   .main {
-    display: block;
-    padding: 0;
+    display: block !important;
+    width: 210mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   .preview-pane {
-    border: 0;
-    padding: 0;
-    min-height: 0;
+    display: block !important;
+    width: 210mm !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .preview-pane > h2 {
+    display: none !important;
+  }
+
+  .pdf-body {
+    display: block !important;
+    width: 210mm !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
   .pages-container {
-    max-height: none;
-    overflow: visible;
-    background: #fff;
-    padding: 0;
+    display: block !important;
+    width: 210mm !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    border-radius: 0 !important;
+    gap: 0 !important;
+    align-items: stretch !important;
   }
 
   .page {
-    box-shadow: none;
-    border: 0;
+    width: 380px !important;
+    height: 537px !important;
+    flex: none !important;
+    margin: 0 !important;
+    padding:
+      var(--ravtext-page-margin-top)
+      var(--ravtext-page-margin-right)
+      var(--ravtext-page-margin-bottom)
+      var(--ravtext-page-margin-left) !important;
+    zoom: 2.088 !important;
+    transform: none !important;
+    transform-origin: top right !important;
+    content-visibility: visible !important;
+    contain-intrinsic-size: auto !important;
+    box-shadow: none !important;
+    border: 0 !important;
     page-break-after: always;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .talmud-layout {
+    position: relative !important;
+  }
+
+  .talmud-layout-page .stream.talmud-right {
+    margin-left: 0 !important;
+    padding-left: 3px !important;
+  }
+
+  .talmud-layout-page .stream.talmud-left {
+    margin-right: 0 !important;
+    padding-right: 3px !important;
+  }
+
+  .talmud-layout.talmud-no-main.talmud-one-commentary .stream.talmud-commentary {
+    float: none !important;
+    width: 100% !important;
+  }
+
+  .talmud-layout.talmud-no-main .stream.talmud-commentary-flow {
+    display: block !important;
+    float: none !important;
+    width: auto !important;
+    overflow: visible !important;
+  }
+
+  .talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-commentary {
+    width: var(--talmud-side-width) !important;
+  }
+
+  /* משה 2026-05-06 (pass 156, Codex round 9): כלל 10 — בעמוד האחרון של
+     המסמך, ה-page-streams מתרומם להיפגש עם ה-main (אין מאיפה למשוך תוכן). */
+  .pages-container > .page:not(.page-placeholder):has(+ .page-placeholder) .page-streams {
+    margin-top: -29px !important;
+  }
+
+  .talmud-layout.talmud-has-main.talmud-one-commentary .page-main.talmud-main {
+    width: calc(var(--talmud-main-width) + var(--talmud-side-width)) !important;
+  }
+
+  .talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-left + .page-main.talmud-main {
+    margin-right: 0 !important;
+    margin-left: var(--talmud-side-width) !important;
+  }
+
+  .talmud-layout.talmud-has-main.talmud-one-commentary .stream.talmud-right + .page-main.talmud-main {
+    margin-right: var(--talmud-side-width) !important;
+    margin-left: 0 !important;
+  }
+
+  .talmud-layout-page .page-main.talmud-main {
+    position: static !important;
+    width: auto !important;
+    margin: var(--talmud-crown-offset, 0px) 0 0 0 !important;
+    overflow: visible !important;
+  }
+
+  body:not(.print-with-background) .page,
+  body:not(.print-with-background) .page *:not(.ravtext-demo-print-mark) {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
   }
 }
 
@@ -636,8 +1233,8 @@ mark.pdf-find-hit-current {
   .main {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "preview"
-      "editor";
+      "editor"
+      "preview";
     padding: 12px;
   }
 
@@ -687,6 +1284,266 @@ mark.pdf-find-hit-current {
   font-size: 18px;
 }
 
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(15,23,42,0.82), rgba(2,6,23,0.94));
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay.active {
+  display: flex;
+}
+
+.modal {
+  position: relative;
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 24px 28px;
+  width: 560px;
+  max-width: 92%;
+  max-height: 80vh;
+  overflow: auto;
+  border: 2px solid var(--gold);
+  box-shadow: 0 20px 60px -10px rgba(0,0,0,0.75);
+}
+
+.modal h2 {
+  color: var(--gold);
+  margin: 0 0 12px;
+  font-size: 22px;
+}
+
+.modal-desc {
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.stream-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid transparent;
+}
+
+.stream-row label {
+  flex: 1;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.word-stream-title {
+  font-weight: 700;
+}
+
+.word-stream-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stream-row input[type="text"] {
+  width: 70px;
+  text-align: center;
+  background: var(--ed-bg);
+  color: var(--gold);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  padding: 5px;
+  font-weight: bold;
+}
+
+.modal-btns {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: center;
+}
+
+.modal-btns button {
+  background: var(--btn);
+  color: var(--txt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 18px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.modal-btns button:first-child {
+  background: var(--gold);
+  color: #000;
+}
+
+.ribbon-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0 8px;
+  background: var(--word-blue);
+  border: 1px solid var(--word-blue-dark);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  min-height: 34px;
+}
+
+.ribbon-tabs .ribbon-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 3px 3px 0 0;
+  background: transparent;
+  color: #FFFFFF;
+  padding: 8px 14px 7px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ribbon-tabs .ribbon-tab:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+.ribbon-tabs .ribbon-tab.active {
+  background: var(--panel);
+  color: var(--word-blue-dark);
+  border-color: var(--word-line);
+  position: relative;
+  font-weight: 600;
+}
+/* טאבים מותאמים — עיצוב מבדיל לגפ״ת ומשנ״ב */
+.ribbon-tabs .ribbon-tab[data-ribbon-tab="talmud"],
+.ribbon-tabs .ribbon-tab[data-ribbon-tab="mishna"] {
+  font-weight: 600;
+}
+.ribbon-tabs .ribbon-tab.active::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, var(--word-blue, #2B579A) 18%, #4a8fe0 50%, var(--word-blue, #2B579A) 82%, transparent 100%);
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 -1px 4px rgba(43, 87, 154, 0.25);
+}
+
+/* כפתור הרינדור — בסגנון כפתור תפריט וורד: לבן/שקוף עם hover עדין,
+   חוץ מבמקרה תפריט ribbon אחרון בסרגל. צבע ה-accent של וורד. */
+.btn-render-prominent {
+  appearance: none;
+  background: rgba(255,255,255,0.9);
+  color: var(--word-blue, #2B579A) !important;
+  border: 1px solid var(--word-blue, #2B579A);
+  border-radius: 3px;
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+.btn-render-prominent::before {
+  content: "↻";
+  font-size: 13px;
+  font-weight: bold;
+}
+.btn-render-prominent:hover {
+  background: var(--word-blue, #2B579A);
+  color: #fff !important;
+  border-color: var(--word-blue-dark, #185ABD);
+}
+.btn-render-prominent:active {
+  background: var(--word-blue-dark, #185ABD);
+  color: #fff !important;
+}
+.ribbon-tab-render-slot {
+  margin-inline-start: auto !important;
+  flex-shrink: 0;
+  position: sticky;
+  inset-inline-end: 0;
+  background: var(--bg, #fff);
+  padding-inline: 12px;
+  z-index: 5;
+  /* קו מפריד + fade עדין כדי שהכפתור לא ייראה דורס טאב */
+  box-shadow: -8px 0 8px -4px var(--bg, rgba(255,255,255,0.9));
+  border-inline-start: 1px solid var(--border, rgba(0,0,0,0.1));
+}
+/* אייקון "המשך תפריט" שמופיע כשיש overflow */
+.ribbon-tab-render-slot::before {
+  content: "⋯";
+  position: absolute;
+  inset-inline-end: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  padding-inline-end: 6px;
+  color: var(--word-blue, #2B579A);
+  font-weight: 700;
+  font-size: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+/* אייקון מופיע רק כשיש מה לגלול בטאבים */
+.ribbon-tabs.has-overflow .ribbon-tab-render-slot::before { opacity: 0.6; }
+.ribbon-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  max-width: 100%;
+}
+/* תפריט - אם צר מידי, האייקונים מוסתרים מאחורי גלילה אופקית */
+.ribbon-tabs::-webkit-scrollbar { height: 4px; }
+.ribbon-tabs::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 2px; }
+.ribbon-tabs .ribbon-tab { flex-shrink: 0; }
+
+.ribbon-toolbar {
+  margin-top: 0;
+  border-radius: 0 0 4px 4px;
+  border-color: var(--word-line);
+  background: var(--panel);
+  padding: 9px 8px 7px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.55);
+}
+
+.ribbon-toolbar .sep {
+  display: none;
+}
+
+.ribbon-hidden {
+  display: none !important;
+}
+
+.width-slider-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.width-slider-control input {
+  width: 92px;
+  accent-color: var(--word-blue-dark);
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -730,6 +1587,13 @@ mark.pdf-find-hit-current {
 .toolbar button.stream-btn {
   font-weight: 700;
   min-width: 30px;
+}
+
+.size-direct-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 2px;
 }
 
 .stream-label-static,
@@ -837,6 +1701,183 @@ mark.pdf-find-hit-current {
   background: var(--bg);
   color: var(--txt);
 }
+
+.stream-col-input input[type="text"] {
+  width: 84px;
+  text-align: right;
+}
+
+.page-margin-settings {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.page-margin-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.page-margin-input input {
+  width: 48px;
+  font: inherit;
+  font-size: 13px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  text-align: center;
+  background: var(--bg);
+  color: var(--txt);
+}
+
+.stream-col-select,
+.opw-control select,
+.opw-control input {
+  font: inherit;
+  font-size: 13px;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--txt);
+}
+
+.stream-col-select {
+  max-width: 90px;
+}
+
+.opening-word-toolbar {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
+.opw-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.opw-control input {
+  width: 56px;
+  text-align: center;
+}
+
+.opw-control input[type="text"] {
+  width: 96px;
+  text-align: right;
+}
+
+.opw-control select {
+  max-width: 116px;
+}
+
+.font-gallery-select {
+  min-width: 130px;
+  max-width: 220px;
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--txt);
+}
+
+.opw-segment {
+  display: inline-block;
+  direction: rtl;
+  line-height: 1;
+}
+
+.opw-host {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.opw-raised {
+  vertical-align: baseline;
+}
+
+.opw-dropped {
+  float: right;
+  margin-left: var(--opw-space-after, 0.3em);
+  margin-right: 0;
+  line-height: 0.82;
+  shape-margin: var(--opw-space-after, 0.3em);
+  break-inside: avoid;
+}
+
+.page-main .opw-dropped {
+  margin-top: 0.04em;
+}
+
+.stream .opw-dropped {
+  margin-top: 0.02em;
+}
+
+.opw-center-full {
+  text-align: center;
+  text-align-last: center;
+}
+
+.note-part {
+  display: inline;
+}
+
+.stream-balanced {
+  column-count: auto !important;
+  column-gap: normal !important;
+}
+
+.stream-balanced-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  direction: rtl;
+}
+
+.stream-balanced-col {
+  min-width: 0;
+  text-align: justify;
+}
+
+.stream-balanced-line {
+  display: block;
+  line-height: inherit;
+  min-height: 1lh;
+}
+
+.stream-balanced-justified {
+  text-align: justify;
+  text-align-last: justify;
+}
+
+.stream-balanced-natural-last {
+  text-align: center;
+  text-align-last: center;
+}
+
+.stream-balanced-natural-last-right {
+  text-align: right;
+  text-align-last: right;
+}
+
+.stream-orphan-line {
+  display: block;
+  margin: 0;
+  padding: 0;
+  line-height: inherit;
+  clear: both;
+}
 .toolbar button.s1 { background: #FEE2E2; color: #7F1D1D; }
 .toolbar button.s2 { background: #DBEAFE; color: #1E3A8A; }
 .toolbar button.s3 { background: #DCFCE7; color: #14532D; }
@@ -846,7 +1887,7 @@ mark.pdf-find-hit-current {
 .toolbar button.s7 { background: #FCE7F3; color: #831843; }
 .toolbar button.s8 { background: #E5E7EB; color: #1F2937; }
 
-/* === ×‘×•×¢×•×ª ×–×¨× â€” ×ž×¡×¤×¨ ×¨×¥ ×©×œ ×”×”×¢×¨×” ×ž×¢×œ ×›×œ ×¡×™×ž×Ÿ === */
+/* === בועות זרם — מספר רץ של ההערה מעל כל סימן === */
 .pane-body span.stream-marker,
 .editor span.stream-marker {
   position: relative;
@@ -863,7 +1904,7 @@ mark.pdf-find-hit-current {
   z-index: 10;
 }
 
-/* ×‘×•×¢×” â€” ×ž×¦×™×’×” ××ª ×”â€‘num (×ž×¡×¤×¨ ×¨×¥ ×©×œ ×”×”×¢×¨×”) ×ž×¢×œ ×”×¡×™×ž×Ÿ */
+/* בועה — מציגה את ה‑num (מספר רץ של ההערה) מעל הסימן */
 .pane-body span.stream-marker[data-num]::after,
 .editor span.stream-marker[data-num]::after {
   content: attr(data-num);
@@ -884,7 +1925,7 @@ mark.pdf-find-hit-current {
   white-space: nowrap;
 }
 
-/* === marker-bar â€” ×¡×¨×’×œ badges ×ž×ª×—×ª ×œ×›×œ header ×©×œ ×—×œ×•× ×™×ª === */
+/* === marker-bar — סרגל badges מתחת לכל header של חלונית === */
 .marker-bar {
   font-size: 12px;
   padding: 4px 12px;
@@ -951,15 +1992,15 @@ mark.pdf-find-hit-current {
 .mc-4 .badge { background: #fdcb6e; color: #000; }
 .mc-5 .badge { background: #636e72; }
 
-/* ×ž×¦×‘ ×©×•×¨×•×ª â€” \n ×¤×™×–×™ ×œ×¤× ×™ ×›×œ ×¡×™×ž×Ÿ (×ž×ª×‘×¦×¢ ×œ×•×’×™×ª; CSS ×ž×©×œ×™×) */
+/* מצב שורות — \n פיזי לפני כל סימן (מתבצע לוגית; CSS משלים) */
 .pane-body.line-mode .stream-marker {
   display: block;
   margin-top: 8px;
 }
 
-/* (×”×¡×¨× ×• ××ª ×”×‘×œ×•× ×™× ×‘×¦×“ â€” ×”×•×—×œ×¤×• ×‘×‘×•×¢×” ×¨×¥ ×ž×¢×œ ×”×¡×™×ž×Ÿ) */
+/* (הסרנו את הבלונים בצד — הוחלפו בבועה רץ מעל הסימן) */
 
-/* ×¤×¢×™×ž×” ×ž×™×™×“×™×ª ×‘×¢×ª ×–×™×”×•×™ ×˜×¨×™ */
+/* פעימה מיידית בעת זיהוי טרי */
 .pane-body span.stream-marker.fresh,
 .editor span.stream-marker.fresh {
   animation: stream-pulse 1.2s ease-out;
@@ -970,7 +2011,7 @@ mark.pdf-find-hit-current {
   100% { box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent; }
 }
 
-/* === ×ª×™×‘×ª ×”×•×“×¢×” ×‘×¤×™× ×” === */
+/* === תיבת הודעה בפינה === */
 .toast {
   position: fixed;
   bottom: 18px;
@@ -1011,6 +2052,9 @@ mark.pdf-find-hit-current {
 .toolbar button:hover { background: var(--btn-h); }
 .toolbar button.active { background: var(--gold); color: #000; border-color: var(--gold); }
 .toolbar .sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+.toolbar-attention {
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.45) inset;
+}
 
 .editor {
   background: var(--ed-bg);
@@ -1039,24 +2083,52 @@ mark.pdf-find-hit-current {
   margin-right: 8px;
 }
 
+.expanded-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.expanded-tools[hidden] {
+  display: none;
+}
+.expanded-tools button {
+  background: var(--btn);
+  color: var(--txt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.expanded-tools button:hover {
+  background: var(--btn-h);
+}
+
 .panes-container {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   gap: 0;
   flex: 1 1 auto;
   height: calc(100vh - 360px);
   min-height: 420px;
   align-items: stretch;
   min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: auto;
   padding-bottom: 8px;
   scrollbar-gutter: stable;
 }
 
 .pane {
-  flex: 0 0 360px;
-  width: 360px;
+  flex: 1 1 0;
+  width: auto;
   min-width: 280px;
   background: var(--ed-bg);
   border: 1px solid var(--border);
@@ -1066,6 +2138,63 @@ mark.pdf-find-hit-current {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.pane.main-pane {
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 100%;
+  height: 100%;
+  min-height: 220px;
+  max-height: none;
+  margin-bottom: 10px;
+}
+
+.panes-container.has-stream-panes .pane.main-pane {
+  height: var(--main-pane-share, 42%);
+}
+
+.panes-container.has-stream-panes .pane:not(.main-pane) {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 240px;
+  max-width: none;
+  height: calc(100% - var(--main-pane-share, 42%) - 18px);
+}
+
+.main-stream-resizer {
+  flex: 0 0 100%;
+  height: 8px;
+  min-height: 8px;
+  margin: 0 0 8px;
+  cursor: row-resize;
+  background: transparent;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.main-stream-resizer:hover,
+.main-stream-resizer.dragging {
+  background: var(--gold);
+}
+
+.panes-container.has-stream-panes .resizer {
+  height: calc(100% - var(--main-pane-share, 42%) - 18px);
+}
+
+.panes-container.streams-stacked {
+  align-content: flex-start;
+}
+
+.panes-container.streams-stacked .pane:not(.main-pane) {
+  flex: 0 0 100% !important;
+  width: 100% !important;
+  min-width: 100% !important;
+  height: 320px;
+}
+
+.panes-container.streams-stacked .resizer {
+  display: none;
 }
 
 .resizer {
@@ -1098,6 +2227,26 @@ mark.pdf-find-hit-current {
   background: rgba(255,255,255,0.04);
   border-bottom: 1px solid var(--border);
   font-size: 12px;
+}
+
+.pane-drag-handle {
+  cursor: grab;
+}
+
+.pane-drag-handle:active {
+  cursor: grabbing;
+}
+
+.pane.dragging-pane {
+  opacity: 0.72;
+}
+
+.pane.drag-over-before {
+  box-shadow: inset -4px 0 0 var(--gold);
+}
+
+.pane.drag-over-after {
+  box-shadow: inset 4px 0 0 var(--gold);
 }
 
 .pane-chip {
@@ -1270,27 +2419,469 @@ mark.pdf-find-hit-current {
   direction: ltr;
   text-align: left;
 }
-/* ═══════════════════════════════════════════════════
-   תבנית תלמוד — Talmud Layout
-   ═══════════════════════════════════════════════════ */
-.talmud-layout-page .page-streams { display: block; overflow: hidden; }
-.talmud-layout-page .talmud-row {
-  display: flex; flex-direction: row; gap: 6px;
-  margin-block-end: 6px; align-items: flex-start; width: 100%;
+
+/* ============================================================
+   v33: Settings pane (display, language, license, debug log)
+   ============================================================ */
+.settings-pane {
+  margin-top: 12px;
+  border-top: 2px solid var(--border, #ccc);
+  padding-top: 8px;
 }
-.talmud-layout-page .stream[data-talmud-side="right"] {
-  border-inline-end: 2px solid rgba(0,0,0,0.12); padding-inline-end: 6px;
+.settings-toggle {
+  background: transparent;
+  border: 1px solid var(--border, #ccc);
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 6px;
+  font-family: inherit;
 }
-.talmud-layout-page .stream[data-talmud-side="left"] { padding-inline-start: 6px; }
-.talmud-layout-page .talmud-col-placeholder { flex: 1; }
-.talmud-layout-page .talmud-row .stream { flex: 1; min-width: 0; float: none !important; }
-.talmud-layout-page .talmud-row .stream-title { font-size: 0.72em; opacity: 0.6; }
-.talmud-sides-control {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; color: var(--muted);
+.settings-toggle.active {
+  background: var(--accent, #2c5aa0);
+  color: #fff;
 }
-.talmud-sides-control input[type="text"] {
-  width: 150px; font: inherit; font-size: 13px; padding: 4px 7px;
-  border: 1px solid var(--border); border-radius: 3px;
-  background: var(--bg); color: var(--txt); direction: ltr; text-align: left;
+.settings-body {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--panel-bg, #f8f8f8);
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.settings-section {
+  border-bottom: 1px solid var(--border, #e0e0e0);
+  padding-bottom: 10px;
+}
+.settings-section:last-child { border-bottom: none; padding-bottom: 0; }
+.settings-h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--accent, #2c5aa0);
+  font-weight: 600;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.settings-row span { min-width: 110px; }
+.settings-license-status {
+  font-size: 12px;
+  color: var(--muted, #666);
+  font-style: italic;
+}
+.settings-log-controls {
+  display: flex;
+  gap: 6px;
+  margin: 8px 0;
+}
+.settings-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border, #ccc);
+  background: var(--btn-bg, #fff);
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
+.settings-btn:hover { background: var(--accent, #2c5aa0); color: #fff; }
+.settings-log-output {
+  width: 100%;
+  height: 200px;
+  font-family: monospace;
+  font-size: 11px;
+  direction: ltr;
+  text-align: left;
+  border: 1px solid var(--border, #ccc);
+  padding: 6px;
+  border-radius: 4px;
+  resize: vertical;
+}
+
+/* Dark theme overrides */
+body.dark-theme {
+  background: #1e1e1e;
+  color: #ddd;
+}
+body.dark-theme .settings-body { background: #2a2a2a; border-color: #555; }
+body.dark-theme .settings-h3 { color: #6cb4ff; }
+body.dark-theme .settings-btn { background: #3a3a3a; color: #ddd; border-color: #555; }
+body.dark-theme .settings-log-output { background: #1a1a1a; color: #ccc; border-color: #555; }
+body.dark-theme .panel { background: #2a2a2a; }
+body.dark-theme .toolbar { background: #333; }
+
+/* ============================================================
+   v33: Multi-theme support — dark + bright themes via :root vars
+   ============================================================ */
+:root {
+  --rt-bg: #f5f5f7;
+  --rt-bg-panel: #ffffff;
+  --rt-bg-toolbar: #ebeef2;
+  --rt-fg: #1d1d1f;
+  --rt-fg-muted: #6e6e73;
+  --rt-border: #d0d0d4;
+  --rt-accent: #2c5aa0;
+  --rt-accent-hover: #1e4078;
+  --rt-input-bg: #ffffff;
+  --rt-input-fg: #1d1d1f;
+  --rt-btn-bg: #ffffff;
+  --rt-btn-hover: #e5e7eb;
+}
+body[data-theme="dark"] {
+  --rt-bg: #1a1a1f;
+  --rt-bg-panel: #25252b;
+  --rt-bg-toolbar: #2c2c34;
+  --rt-fg: #e8e8ec;
+  --rt-fg-muted: #a8a8b0;
+  --rt-border: #3a3a44;
+  --rt-accent: #6cb4ff;
+  --rt-accent-hover: #4a9cf0;
+  --rt-input-bg: #1f1f25;
+  --rt-input-fg: #e8e8ec;
+  --rt-btn-bg: #2c2c34;
+  --rt-btn-hover: #3a3a44;
+}
+body[data-theme="warm"] {
+  --rt-bg: #fdf6e3;
+  --rt-bg-panel: #fffaf0;
+  --rt-bg-toolbar: #f5edc8;
+  --rt-fg: #5c4a2e;
+  --rt-fg-muted: #93785b;
+  --rt-border: #d8c890;
+  --rt-accent: #b58900;
+  --rt-accent-hover: #8a6800;
+  --rt-input-bg: #fffaf0;
+  --rt-input-fg: #5c4a2e;
+  --rt-btn-bg: #fffaf0;
+  --rt-btn-hover: #f5edc8;
+}
+body[data-theme="royal"] {
+  --rt-bg: #0d1b3a;
+  --rt-bg-panel: #1a2a4f;
+  --rt-bg-toolbar: #14224a;
+  --rt-fg: #f5e6c8;
+  --rt-fg-muted: #c8b07a;
+  --rt-border: #8a6512;
+  --rt-accent: #d4af37;
+  --rt-accent-hover: #b48820;
+  --rt-input-bg: #0a1530;
+  --rt-input-fg: #f5e6c8;
+  --rt-btn-bg: #2a3d6e;
+  --rt-btn-hover: #3b4f85;
+}
+body[data-theme="ocean"] {
+  --rt-bg: #eaf4f8;
+  --rt-bg-panel: #ffffff;
+  --rt-bg-toolbar: #d5e7f0;
+  --rt-fg: #0f3a4f;
+  --rt-fg-muted: #4a6c7c;
+  --rt-border: #a0c4d4;
+  --rt-accent: #1976d2;
+  --rt-accent-hover: #1259a0;
+  --rt-input-bg: #ffffff;
+  --rt-input-fg: #0f3a4f;
+  --rt-btn-bg: #ffffff;
+  --rt-btn-hover: #d5e7f0;
+}
+body[data-theme="forest"] {
+  --rt-bg: #ecf3ec;
+  --rt-bg-panel: #ffffff;
+  --rt-bg-toolbar: #d5e6d5;
+  --rt-fg: #1a3a1a;
+  --rt-fg-muted: #4a6e4a;
+  --rt-border: #a4c4a4;
+  --rt-accent: #2e7d32;
+  --rt-accent-hover: #1b5e20;
+  --rt-input-bg: #ffffff;
+  --rt-input-fg: #1a3a1a;
+  --rt-btn-bg: #ffffff;
+  --rt-btn-hover: #d5e6d5;
+}
+
+/* Apply theme vars to global UI elements */
+body[data-theme="dark"],
+body[data-theme="warm"],
+body[data-theme="ocean"],
+body[data-theme="forest"] {
+  background: var(--rt-bg) !important;
+  color: var(--rt-fg) !important;
+}
+body[data-theme] header.app-header,
+body[data-theme] .toolbar,
+body[data-theme] .ribbon-tabs,
+body[data-theme] .pdf-toolbar,
+body[data-theme] .ribbon-toolbar { background: var(--rt-bg-toolbar) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] .panel,
+body[data-theme] aside.preview-pane,
+body[data-theme] .settings-panel,
+body[data-theme] .settings-section { background: var(--rt-bg-panel) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] button:not(.btn-render-prominent),
+body[data-theme] .ribbon-tab,
+body[data-theme] .pdf-tb-btn,
+body[data-theme] .settings-btn { background: var(--rt-btn-bg) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] .btn-render-prominent {
+  background: linear-gradient(180deg, #2b7cd9 0%, #1a5fb8 100%) !important;
+  color: #fff !important;
+  border-color: #154a96 !important;
+}
+body[data-theme] .btn-render-prominent:hover { background: linear-gradient(180deg, #3389e6 0%, #1f6cc7 100%) !important; }
+body[data-theme] button:hover,
+body[data-theme] .pdf-tb-btn:hover,
+body[data-theme] .settings-btn:hover { background: var(--rt-btn-hover) !important; }
+body[data-theme] .ribbon-tab.active,
+body[data-theme] button.active { background: var(--rt-accent) !important; color: #fff !important; }
+body[data-theme] input,
+body[data-theme] select,
+body[data-theme] textarea { background: var(--rt-input-bg) !important; color: var(--rt-input-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] h1, body[data-theme] h2, body[data-theme] h3,
+body[data-theme] h4, body[data-theme] h5, body[data-theme] h6 { color: var(--rt-fg) !important; }
+body[data-theme] .settings-h3 { color: var(--rt-accent) !important; }
+body[data-theme] .settings-license-status { color: var(--rt-fg-muted) !important; }
+
+/* ============================================================
+   v33: Unified button styling — modern, consistent across all UI
+   ============================================================ */
+button:not([class*="ribbon-tab"]):not(.btn-stream):not([class*="size-direct"]):not(.opw-segment):not(.btn-render-prominent),
+.tb-group button:not(.btn-render-prominent),
+.toolbar button:not(.btn-render-prominent),
+.pdf-tb-btn,
+.settings-btn {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  border: 1px solid var(--rt-border, #d0d0d4);
+  background: var(--rt-btn-bg, linear-gradient(180deg, #ffffff 0%, #f5f5f7 100%));
+  color: var(--rt-fg, #1d1d1f);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  line-height: 1.4;
+}
+button:not([class*="ribbon-tab"]):not(.btn-stream):not(.btn-render-prominent):hover,
+.tb-group button:not(.btn-render-prominent):hover,
+.toolbar button:not(.btn-render-prominent):hover,
+.pdf-tb-btn:hover,
+.settings-btn:hover {
+  background: var(--rt-btn-hover, linear-gradient(180deg, #e7eef7 0%, #d4dde8 100%));
+  border-color: var(--rt-accent, #2c5aa0);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+button:not([class*="ribbon-tab"]):not(.btn-stream):not(.btn-render-prominent):active,
+.pdf-tb-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+button.primary,
+button[data-cmd="render-pages"],
+button[data-cmd="engine-render"] {
+  background: linear-gradient(180deg, #4a7fc0 0%, #2c5aa0 100%);
+  color: #fff;
+  border-color: #1e4078;
+}
+button.primary:hover,
+button[data-cmd="engine-render"]:hover {
+  background: linear-gradient(180deg, #5a8fd0 0%, #3c6ab0 100%);
+  border-color: #1e4078;
+}
+button.active,
+.pdf-tb-btn.active {
+  background: var(--rt-accent, #2c5aa0) !important;
+  color: #fff !important;
+  border-color: var(--rt-accent-hover, #1e4078) !important;
+}
+
+/* ============================================================
+   v33: Dark mode for text fields and editor surfaces
+   ============================================================ */
+body[data-theme="dark"] .ProseMirror,
+body[data-theme="dark"] .editor-area,
+body[data-theme="dark"] .pane,
+body[data-theme="dark"] .pane-content,
+body[data-theme="dark"] .editor,
+body[data-theme="dark"] [contenteditable] {
+  background: #1f1f25 !important;
+  color: #e8e8ec !important;
+  border-color: #3a3a44 !important;
+  caret-color: #6cb4ff;
+}
+body[data-theme="dark"] .pane-header,
+body[data-theme="dark"] .pane-title-bar,
+body[data-theme="dark"] .panes-toolbar,
+body[data-theme="dark"] .source-stream-toolbar,
+body[data-theme="dark"] .source-bottom-toolbar {
+  background: #25252b !important;
+  color: #e8e8ec !important;
+  border-color: #3a3a44 !important;
+}
+body[data-theme="dark"] .pane *::placeholder,
+body[data-theme="dark"] textarea::placeholder,
+body[data-theme="dark"] input::placeholder {
+  color: #888 !important;
+}
+body[data-theme="dark"] .stream-marker {
+  background: #2a2a30 !important;
+  color: #fff !important;
+  border-color: #555 !important;
+}
+body[data-theme="dark"] .pages-container {
+  background: #1a1a1f !important;
+}
+body[data-theme="dark"] .page {
+  /* Keep page itself white-on-page for readability of preview */
+  background: #fafafa !important;
+  color: #1a1a1a !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+body[data-theme="dark"] .pdf-thumb {
+  background: #2a2a30 !important;
+  color: #ddd !important;
+  border-color: #555 !important;
+}
+body[data-theme="dark"] .pdf-thumb-page,
+body[data-theme="dark"] .pdf-thumb-mini > .page {
+  background: #fff !important;
+  color: #000 !important;
+}
+body[data-theme="dark"] label,
+body[data-theme="dark"] .opw-control,
+body[data-theme="dark"] .mishna-levels-control,
+body[data-theme="dark"] .tb-group,
+body[data-theme="dark"] .tb-group span {
+  color: #e8e8ec !important;
+}
+body[data-theme="dark"] .pdf-tb-find {
+  background: #2a2a30 !important;
+  color: #e8e8ec !important;
+  border-color: #555 !important;
+}
+body[data-theme="dark"] hr,
+body[data-theme="dark"] .sep {
+  border-color: #3a3a44 !important;
+}
+
+/* ============================================================
+   v33: Custom theme picker UI
+   ============================================================ */
+.settings-custom-theme {
+  background: var(--rt-bg-toolbar, #f0f0f3);
+  padding: 10px;
+  border-radius: 6px;
+  margin-top: 8px;
+  border: 1px solid var(--rt-border, #ccc);
+}
+.custom-theme-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.custom-theme-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.custom-theme-row input[type="color"] {
+  width: 30px;
+  height: 26px;
+  border: 1px solid var(--rt-border, #ccc);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Custom theme variables — applied via JS to body[data-theme="custom"] */
+body[data-theme="custom"] {
+  background: var(--rt-bg) !important;
+  color: var(--rt-fg) !important;
+}
+
+/* ============================================================
+   v33: Code mode styling for TipTap editor
+   ============================================================ */
+.ProseMirror code {
+  background: var(--rt-bg-toolbar, #f4f4f7);
+  color: var(--rt-accent, #c0392b);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "Consolas", "Menlo", "Monaco", monospace;
+  font-size: 0.92em;
+  border: 1px solid var(--rt-border, #ddd);
+  direction: ltr;
+  unicode-bidi: bidi-override;
+}
+.ProseMirror pre {
+  background: #1e1e1e;
+  color: #f8f8f2;
+  border: 1px solid #3a3a44;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  font-family: "Consolas", "Menlo", "Monaco", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  direction: ltr;
+  unicode-bidi: bidi-override;
+}
+.ProseMirror pre code {
+  background: transparent;
+  color: inherit;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+}
+body[data-theme="dark"] .ProseMirror code {
+  background: #2a2a30 !important;
+  color: #ff7675 !important;
+  border-color: #3a3a44 !important;
+}
+body[data-theme="dark"] .ProseMirror pre {
+  background: #0d0d12 !important;
+  color: #f8f8f2 !important;
+  border-color: #3a3a44 !important;
+}
+
+/* General TipTap editor polish */
+.ProseMirror {
+  min-height: 100px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  outline: none;
+  font-family: var(--ravtext-editor-font-family, inherit);
+  font-size: var(--ravtext-editor-size, 16px);
+  line-height: 1.6;
+}
+.ProseMirror:focus {
+  outline: 2px solid var(--rt-accent, #2c5aa0);
+  outline-offset: -1px;
+}
+.ProseMirror p { margin: 0.4em 0; }
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3,
+.ProseMirror h4, .ProseMirror h5, .ProseMirror h6 {
+  margin: 0.6em 0 0.3em;
+  font-weight: 700;
+}
+.ProseMirror blockquote {
+  border-inline-start: 4px solid var(--rt-accent, #2c5aa0);
+  padding-inline-start: 12px;
+  margin: 8px 0;
+  color: var(--rt-fg-muted, #555);
+  font-style: italic;
+}
+.ProseMirror ul, .ProseMirror ol {
+  padding-inline-start: 24px;
+  margin: 0.4em 0;
+}
+.ProseMirror hr {
+  border: 0;
+  border-top: 2px solid var(--rt-border, #ccc);
+  margin: 12px 0;
 }

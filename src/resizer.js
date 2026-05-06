@@ -39,12 +39,51 @@ export function initResizer(resizer) {
       newNextWidth = startWidthNext + dx;
     }
 
-    const minPaneWidth = 280;
-    if (newPrevWidth >= minPaneWidth && newNextWidth >= minPaneWidth) {
-      prevPane.style.flex = `0 0 ${newPrevWidth}px`;
-      prevPane.style.width = `${newPrevWidth}px`;
-      nextPane.style.flex = `0 0 ${newNextWidth}px`;
-      nextPane.style.width = `${newNextWidth}px`;
+    const parentWidth = resizer.parentElement.clientWidth;
+    const prevPct = (newPrevWidth / parentWidth) * 100;
+    const nextPct = (newNextWidth / parentWidth) * 100;
+
+    if (prevPct > 5 && nextPct > 5) {
+      prevPane.style.flex = `0 0 ${prevPct}%`;
+      nextPane.style.flex = `0 0 ${nextPct}%`;
+      prevPane.style.width = "";
+      nextPane.style.width = "";
+    }
+  }
+
+  function stopResize() {
+    resizer.classList.remove("dragging");
+    document.body.style.cursor = "";
+    document.removeEventListener("mousemove", resize);
+    document.removeEventListener("mouseup", stopResize);
+  }
+}
+
+export function initMainStreamResizer(resizer) {
+  let startY, startHeight, containerHeight;
+
+  resizer.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const mainPane = resizer.previousElementSibling;
+    if (!mainPane || !mainPane.classList.contains("main-pane")) return;
+
+    startY = e.clientY;
+    startHeight = mainPane.getBoundingClientRect().height;
+    containerHeight = resizer.parentElement.clientHeight;
+
+    resizer.classList.add("dragging");
+    document.body.style.cursor = "row-resize";
+
+    document.addEventListener("mousemove", resize);
+    document.addEventListener("mouseup", stopResize);
+  });
+
+  function resize(e) {
+    const dy = e.clientY - startY;
+    const nextHeight = startHeight + dy;
+    const pct = (nextHeight / containerHeight) * 100;
+    if (pct > 18 && pct < 75) {
+      resizer.parentElement.style.setProperty("--main-pane-share", `${pct}%`);
     }
   }
 

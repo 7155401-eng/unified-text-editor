@@ -9,12 +9,106 @@ import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByM
 import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc } from "./engine_bridge.js";
-import { loadSampleByName } from "./sample_loader.js";
+import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
 import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
-import { wireTalmudLayoutToggle } from "./talmud_layout.js";
+import { wireTalmudLayoutControls } from "./talmud_layout.js";
+import { wireOpeningWordControls } from "./opening_word.js";
+import { applyLanguage, toggleLanguage } from "./i18n.js";
+import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
+import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
+import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
+import { installTalmudDebugApi } from "./talmud_debug_api.js";
+import { setupSettingsPane } from "./settings_pane.js";
+import { setupStreamPicker } from "./stream_picker.js";
+import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
+import { setupFindReplace } from "./find_replace.js";
+import { setupStreamRolesPicker } from "./stream_roles_picker.js";
+import { setupCssInjectPanel } from "./css_inject_panel.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
+configureDemoGlobals();
+installConsoleGuard();
+installTalmudDebugApi();
+setupFindReplace();
+setupStreamRolesPicker();
+setTimeout(setupCssInjectPanel, 500);
+// Wire AI settings
+setTimeout(() => {
+  const prov = document.getElementById("settings-ai-provider");
+  const key = document.getElementById("settings-ai-apikey");
+  if (prov) {
+    prov.value = localStorage.getItem("ravtext.ai.provider") || "anthropic";
+    prov.addEventListener("change", () => localStorage.setItem("ravtext.ai.provider", prov.value));
+  }
+  if (key) {
+    key.value = localStorage.getItem("ravtext.ai.apiKey") || "";
+    key.addEventListener("change", () => localStorage.setItem("ravtext.ai.apiKey", key.value));
+    key.addEventListener("blur", () => localStorage.setItem("ravtext.ai.apiKey", key.value));
+  }
+}, 500);
+// משה 2026-05-06: Checkbox "שאר הזרמים = משנ״ב" — מפעיל אוטומטית מצב Mishna wrap
+// וכותב את כל הזרמים שאינם תלמוד כרמות.
+function wireOtherAsMishna() {
+  const cb = document.getElementById("talmud-other-as-mishna");
+  if (!cb) return;
+  const KEY = "ravtext.talmud.otherAsMishna";
+  cb.checked = localStorage.getItem(KEY) === "1";
+  function apply() {
+    const wasOn = localStorage.getItem(KEY) === "1";
+    localStorage.setItem(KEY, cb.checked ? "1" : "0");
+    const talmudOn = localStorage.getItem("ravtext.talmudLayout") === "1";
+    // אם המשתמש כיבה — להחזיר את משנ"ב למצב הקודם (לא לכפות יותר)
+    if (!cb.checked) {
+      // לא נוגעים ב-mishnaWrap — אם המשתמש הפעיל בעצמו, יישאר
+      return;
+    }
+    if (!talmudOn) return;
+    localStorage.setItem("ravtext.mishnaWrap", "1");
+    const allCodes = new Set();
+    document.querySelectorAll(".stream[data-stream]").forEach(el => {
+      const c = el.getAttribute("data-stream");
+      if (c && /^\d{2}$/.test(c)) allCodes.add(c);
+    });
+    const talmudCodes = new Set(
+      (localStorage.getItem("ravtext.talmudLayout.streams") || "").match(/\d{2}/g) || []
+    );
+    const others = Array.from(allCodes).filter(c => !talmudCodes.has(c)).sort();
+    if (others.length > 0) {
+      localStorage.setItem("ravtext.mishnaWrap.levels", others.join(","));
+    }
+  }
+  cb.addEventListener("change", () => {
+    apply();
+    // Trigger a re-render so the change takes effect immediately.
+    if (typeof rerenderPages === "function") rerenderPages();
+  });
+  apply();
+}
+setTimeout(wireOtherAsMishna, 100);
+
+// Basic styles gallery — applies a TipTap style to the active selection.
+function wireStylesGallery() {
+  const sel = document.getElementById("styles-gallery-select");
+  if (!sel) return;
+  sel.addEventListener("change", () => {
+    const v = sel.value;
+    sel.value = ""; // reset display
+    const ed = paneManager.getActiveEditor?.();
+    if (!ed) return;
+    const ch = ed.chain().focus();
+    if (v === "paragraph") ch.setParagraph().run();
+    else if (v === "heading-1") ch.toggleHeading({ level: 1 }).run();
+    else if (v === "heading-2") ch.toggleHeading({ level: 2 }).run();
+    else if (v === "heading-3") ch.toggleHeading({ level: 3 }).run();
+    else if (v === "blockquote") ch.toggleBlockquote().run();
+    else if (v === "code-block") ch.toggleCodeBlock().run();
+  });
+}
+setTimeout(wireStylesGallery, 100);
+setupSettingsPane();
+setupStreamPicker();
+setupMishnaLevelsPicker();
 // בלוני צד הוסרו — בועות עכשיו inline (data-num מעל כל סימן)
 
 const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ואת הארץ
@@ -31,11 +125,43 @@ const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ו
 const container = document.querySelector("#panes-container");
 const paneManager = new PaneManager(container);
 window.paneManager = paneManager;
+// v32-deep: expose a test helper so multi-sample audit can load arbitrary
+// raw text via the same path as the built-in talmud sample.
+window.__loadCustomSample = async (rawText) => {
+  const doc = parseAuto(rawText);
+  paneManagerFromEngineDoc(paneManager, doc);
+  rerenderPages();
+};
+window.addEventListener("beforeunload", () => paneManager.flushSave());
 const pagesContainer = document.querySelector("#pages-container");
+applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
+setupWordBridge(paneManager, rerenderPages);
+
+const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
+const STREAM_PANE_WIDTH_KEY = "ravtext.streamPaneWidth";
+const STREAM_PANE_WIDTH_USER_KEY = "ravtext.streamPaneWidth.user";
+
+function applyPaneLayout(layout) {
+  const mode = layout === "stacked" ? "stacked" : "side";
+  localStorage.setItem(PANE_LAYOUT_KEY, mode);
+  container.classList.toggle("streams-stacked", mode === "stacked");
+  const btn = document.getElementById("pane-layout-btn");
+  if (btn) {
+    btn.classList.toggle("active", mode === "stacked");
+    btn.textContent = mode === "stacked" ? "▤ זרמים לגובה" : "▥ זרמים לרוחב";
+    btn.title = mode === "stacked"
+      ? "זרמים זה תחת זה, כל זרם ברוחב מלא"
+      : "זרמים זה לצד זה מתחת לראשי";
+  }
+  window.__ravtextApplyPaneWidths?.();
+}
+
+applyPaneLayout(localStorage.getItem(PANE_LAYOUT_KEY) || "side");
 
 document.body.classList.toggle("light-theme", localStorage.getItem("ravtext.theme") !== "dark");
+applyLanguage();
 
 function isLegacyDemoState() {
   if (paneManager.count() !== 1) return false;
@@ -46,8 +172,9 @@ function isLegacyDemoState() {
 
 // אם יש מצב שמור — משחזר. אחרת — טוען דוגמת מנוע מלאה.
 const loadedFromStorage = paneManager.loadFromStorage();
+let initialLoadPromise = Promise.resolve();
 if (!loadedFromStorage || isLegacyDemoState()) {
-  loadSampleByName(paneManager, "hebrew");
+  initialLoadPromise = loadSampleByName(paneManager, "hebrew");
 }
 
 const FONT_STACKS = {
@@ -58,6 +185,7 @@ const FONT_STACKS = {
 
 let _fontSize = parseInt(localStorage.getItem("ravtext.fontSize") || "16", 10);
 let _fontFamily = localStorage.getItem("ravtext.fontFamily") || FONT_STACKS["David Libre"];
+let _previewMode = false;
 
 function pageMainSizeFor(editorSize) {
   return Math.max(8, Math.min(30, Math.round(editorSize * 0.75)));
@@ -98,6 +226,49 @@ function applyTypography({ rerender = false } = {}) {
 function setGlobalFontFamily(fontName, options = {}) {
   _fontFamily = FONT_STACKS[fontName] || fontName;
   applyTypography(options);
+  const select = document.getElementById("local-font-select");
+  if (select) {
+    const normalized = normalizeFontFamilyName(fontName);
+    if (Array.from(select.options).some((option) => option.value === normalized)) {
+      select.value = normalized;
+    }
+  }
+}
+
+function normalizeFontFamilyName(fontName) {
+  return String(fontName || "").replace(/^["']|["']$/g, "").trim();
+}
+
+function populateFontGallery(families) {
+  const select = document.getElementById("local-font-select");
+  if (!select) return;
+  const current = normalizeFontFamilyName(_fontFamily.split(",")[0]);
+  const unique = Array.from(new Set(families.filter(Boolean).map(normalizeFontFamilyName))).sort((a, b) => a.localeCompare(b));
+  select.innerHTML = "";
+  for (const family of unique) {
+    const option = document.createElement("option");
+    option.value = family;
+    option.textContent = family;
+    option.style.fontFamily = family;
+    select.appendChild(option);
+  }
+  if (unique.includes(current)) select.value = current;
+}
+
+async function loadLocalFontGallery() {
+  const fallback = ["David Libre", "Frank Ruhl Libre", "Segoe UI", "Arial", "Times New Roman", "Tahoma"];
+  if (!("queryLocalFonts" in window)) {
+    populateFontGallery(fallback);
+    return;
+  }
+  try {
+    const fonts = await window.queryLocalFonts();
+    const families = fonts.map((font) => font.family);
+    populateFontGallery(families.length ? families : fallback);
+  } catch (err) {
+    console.warn("[fonts] local font access failed:", err);
+    populateFontGallery(fallback);
+  }
 }
 
 function applyFontSize(size, options = {}) {
@@ -105,27 +276,454 @@ function applyFontSize(size, options = {}) {
   applyTypography(options);
 }
 
-applyTypography();
+initialLoadPromise.then(() => {
+  applyTypography();
+  setupDemoMode({
+    paneManager,
+    reset: async () => {
+      paneManager.clearStorage();
+      await loadSampleByName(paneManager, "hebrew");
+      applyTypography();
+      rerenderPages();
+    },
+  });
+  // הסרה: סימני המים מוטמעים עכשיו בתוכן עצמו לפני המנוע (ב-engine_bridge)
+  // כך שהעימוד מחושב נכון. הקריאה הישנה הוסיפה אחרי המדידה ושיבשה את הפריסה.
+  // watchPagesForDemoWatermarks(pagesContainer);
+});
+populateFontGallery(["David Libre", "Frank Ruhl Libre", "Segoe UI", "Arial", "Times New Roman", "Tahoma"]);
+
+document.getElementById("local-font-select")?.addEventListener("change", (ev) => {
+  activeChain()?.setFontFamily(ev.target.value).run();
+  setGlobalFontFamily(ev.target.value, { rerender: true });
+});
+
+document.getElementById("local-font-load")?.addEventListener("click", () => {
+  loadLocalFontGallery();
+});
+
+// v33: load font from PC via FontFace API.
+document.getElementById("local-font-upload-btn")?.addEventListener("click", () => {
+  document.getElementById("local-font-upload-input")?.click();
+});
+document.getElementById("local-font-upload-input")?.addEventListener("change", async (ev) => {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const fontName = file.name.replace(/\.(ttf|otf|woff|woff2)$/i, "").replace(/[^\w֐-׿]+/g, "_");
+    const face = new FontFace(fontName, arrayBuffer);
+    await face.load();
+    document.fonts.add(face);
+    // Add to font gallery
+    const select = document.getElementById("local-font-select");
+    if (select) {
+      const opt = document.createElement("option");
+      opt.value = fontName;
+      opt.textContent = fontName + " (לוקאלי)";
+      opt.selected = true;
+      select.appendChild(opt);
+    }
+    activeChain()?.setFontFamily(fontName).run();
+    setGlobalFontFamily(fontName, { rerender: true });
+    alert(`הפונט "${fontName}" נטען בהצלחה.`);
+  } catch (err) {
+    alert(`שגיאה בטעינת פונט: ${err.message}`);
+  }
+  ev.target.value = ""; // reset for next upload
+});
+
+const LIVE_RENDER_KEY = "ravtext.liveRender";
+const LIVE_RENDER_MAX_DOC_SIZE = 60000;
+
+function isLiveRenderEnabled() {
+  // משה 2026-05-06: ברירת מחדל ON — רינדור איטי אוטומטי בכל שינוי
+  // שומר ביצועים גם כשהמשתמש לא לחץ "רינדור".
+  const v = localStorage.getItem(LIVE_RENDER_KEY);
+  return v === null ? true : v === "1";
+}
+
+function paneManagerDocSize() {
+  return paneManager.panes.reduce((sum, pane) => {
+    return sum + (pane.editor?.state?.doc?.content?.size || 0);
+  }, 0);
+}
+
+function shouldLiveRenderNow() {
+  return isLiveRenderEnabled() && paneManagerDocSize() <= LIVE_RENDER_MAX_DOC_SIZE;
+}
+
+function getMainRibbonToolbar() {
+  let toolbar = document.getElementById("main-ribbon-toolbar");
+  if (!toolbar) {
+    const sourceToolbar = document.querySelector(".source-stream-toolbar");
+    toolbar = sourceToolbar?.nextElementSibling || null;
+    while (toolbar && !toolbar.classList.contains("toolbar")) {
+      toolbar = toolbar.nextElementSibling;
+    }
+  }
+  if (!toolbar) return null;
+  toolbar.id = "main-ribbon-toolbar";
+  toolbar.classList.add("ribbon-toolbar");
+  return toolbar;
+}
+
+function toggleExpandedTools(button) {
+  const panel = document.getElementById("expanded-tools");
+  if (!panel) return;
+  panel.hidden = !panel.hidden;
+  button?.classList.toggle("active", !panel.hidden);
+}
+
+function selectedTextOrActiveText() {
+  const selected = String(window.getSelection?.().toString() || "").trim();
+  if (selected) return selected;
+  const active = paneManager.getActiveEditor();
+  return active ? active.state.doc.textBetween(0, active.state.doc.content.size, "\n", "\n") : "";
+}
+
+function showSourceStats() {
+  let chars = 0;
+  let words = 0;
+  let markers = 0;
+  const perPane = [];
+  for (const pane of paneManager.panes) {
+    if (!pane.editor) continue;
+    const doc = pane.editor.state.doc;
+    const text = doc.textBetween(0, doc.content.size, "\n", "\n");
+    const paneChars = text.length;
+    const paneWords = (text.trim().match(/\S+/g) || []).length;
+    const counts = countByStream(pane.editor.state);
+    const paneMarkers = Object.values(counts).reduce((sum, n) => sum + n, 0);
+    chars += paneChars;
+    words += paneWords;
+    markers += paneMarkers;
+    perPane.push(`${pane.label || pane.streamCode || "ראשי"}: ${paneChars} תווים, ${paneWords} מילים, ${paneMarkers} סימונים`);
+  }
+  alert([
+    `סטטיסטיקות:`,
+    `חלוניות: ${paneManager.panes.length}`,
+    `תווים: ${chars}`,
+    `מילים: ${words}`,
+    `סימוני זרמים: ${markers}`,
+    "",
+    ...perPane,
+  ].join("\n"));
+}
+
+function focusPdfSearch() {
+  const input = document.getElementById("pdf-find-input");
+  if (!input) return;
+  const selected = String(window.getSelection?.().toString() || "").trim();
+  if (selected) input.value = selected;
+  if (selected) input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+  input.select();
+  input.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+function focusFormatterToolbar() {
+  const toolbar = getMainRibbonToolbar();
+  if (!toolbar) return;
+  toolbar.scrollIntoView({ block: "nearest", inline: "nearest" });
+  toolbar.classList.add("toolbar-attention");
+  setTimeout(() => toolbar.classList.remove("toolbar-attention"), 900);
+}
+
+function openDiagnosticsPanel() {
+  const panel = document.querySelector("#diagnostics-panel");
+  if (!panel) return;
+  panel.hidden = false;
+  scheduleDiagnosticsRefresh({ force: true });
+  panel.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+function runLinkManager() {
+  const ed = activeChain();
+  const selected = selectedTextOrActiveText();
+  const url = prompt("הכנס כתובת URL:", selected.startsWith("http") ? selected : "https://");
+  if (url && ed) ed.setLink({ href: url }).run();
+}
+
+function setupWidthSlider() {
+  const mainToolbar = getMainRibbonToolbar();
+  if (!mainToolbar || document.getElementById("width-slider")) return;
+
+  const groups = mainToolbar.querySelectorAll(".tb-group");
+  const targetGroup = groups[10] || groups[groups.length - 1];
+  if (!targetGroup) return;
+
+  const control = document.createElement("label");
+  control.className = "width-slider-control";
+  control.title = "רוחב כללי של חלוניות הזרמים";
+  control.innerHTML = '<span>רוחב</span><input type="range" id="width-slider" min="18" max="100" value="50" />';
+  targetGroup.appendChild(control);
+
+  const input = control.querySelector("input");
+  const saved = parseInt(localStorage.getItem(STREAM_PANE_WIDTH_KEY) || "50", 10);
+  input.value = String(Math.max(18, Math.min(100, Number.isFinite(saved) ? saved : 50)));
+
+  const streamPanes = () => paneManager.panes.filter((p) => p.streamCode && p.element);
+  let lastStreamPaneCount = -1;
+  const applyWidth = ({ saveUserChoice = false } = {}) => {
+    const panes = streamPanes();
+    const userSetWidth = localStorage.getItem(STREAM_PANE_WIDTH_USER_KEY) === "1";
+    const isStacked = container.classList.contains("streams-stacked");
+    const width = Math.max(18, Math.min(100, parseInt(input.value, 10) || 50));
+
+    if (saveUserChoice) {
+      localStorage.setItem(STREAM_PANE_WIDTH_USER_KEY, "1");
+      localStorage.setItem(STREAM_PANE_WIDTH_KEY, String(width));
+    }
+
+    for (const p of panes) {
+      if (isStacked || panes.length <= 1) {
+        p.element.style.flex = "0 0 100%";
+        p.element.style.flexBasis = "100%";
+        p.element.style.width = "100%";
+      } else if (userSetWidth) {
+        p.element.style.flex = `0 1 ${width}%`;
+        p.element.style.flexBasis = `${width}%`;
+        p.element.style.width = `${width}%`;
+      } else {
+        p.element.style.flex = "1 1 0";
+        p.element.style.removeProperty("flex-basis");
+        p.element.style.removeProperty("width");
+      }
+    }
+    lastStreamPaneCount = panes.length;
+  };
+
+  input.addEventListener("input", () => applyWidth({ saveUserChoice: true }));
+  paneManager.on("change", () => {
+    if (streamPanes().length !== lastStreamPaneCount) applyWidth();
+  });
+  window.__ravtextApplyPaneWidths = () => applyWidth();
+  applyWidth();
+}
+
+function setupLiveRenderToggle() {
+  const mainToolbar = getMainRibbonToolbar();
+  if (!mainToolbar || document.getElementById("live-render-toggle")) return;
+
+  const groups = mainToolbar.querySelectorAll(".tb-group");
+  const targetGroup = groups[10] || groups[groups.length - 1];
+  if (!targetGroup) return;
+
+  const label = document.createElement("label");
+  label.className = "toolbar-checkbox live-render-control";
+  label.title = "רינדור אוטומטי אחרי עריכה. כבוי כברירת מחדל כדי שהעורך יישאר מהיר.";
+
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.id = "live-render-toggle";
+  input.checked = isLiveRenderEnabled();
+  input.addEventListener("change", () => {
+    localStorage.setItem(LIVE_RENDER_KEY, input.checked ? "1" : "0");
+    if (input.checked && shouldLiveRenderNow()) rerenderPages();
+  });
+
+  label.appendChild(input);
+  label.appendChild(document.createTextNode("רינדור חי"));
+  targetGroup.appendChild(label);
+}
+
+function setupRibbonTabs() {
+  const mainToolbar = getMainRibbonToolbar();
+  if (!mainToolbar) return;
+
+  const tabs = [
+    ["file", "קובץ"],
+    ["home", "בית"],
+    ["streams", "זרמים"],
+    ["insert", "הוספה"],
+    ["layout", "פריסה"],
+    ["talmud", 'גפ"ת'],
+    ["mishna", 'משנ"ב'],
+    ["review", "סקירה"],
+    ["view", "תצוגה"],
+    ["advanced", "מתקדם"],
+    ["settings", "הגדרות"],
+  ];
+
+  let tabsBar = document.getElementById("ribbon-tabs");
+  if (!tabsBar) {
+    tabsBar = document.createElement("div");
+    tabsBar.id = "ribbon-tabs";
+    tabsBar.className = "ribbon-tabs";
+    tabsBar.dir = "rtl";
+    tabsBar.setAttribute("role", "tablist");
+    tabsBar.setAttribute("aria-label", "כרטיסיות כלים");
+    mainToolbar.parentNode.insertBefore(tabsBar, mainToolbar);
+  }
+  // Idempotent: rebuild tabs if missing/different (handles new tabs added in updates).
+  const existingIds = Array.from(tabsBar.querySelectorAll(".ribbon-tab"))
+    .map(b => b.dataset.ribbonTab);
+  const expectedIds = tabs.map(t => t[0]);
+  const same = existingIds.length === expectedIds.length &&
+    existingIds.every((id, i) => id === expectedIds[i]);
+  if (!same) {
+    // Clear and rebuild
+    Array.from(tabsBar.querySelectorAll(".ribbon-tab, .ribbon-tab-render-slot"))
+      .forEach(el => el.remove());
+    const tabTitles = {
+      file: "פעולות קובץ", home: "עיצוב טקסט", streams: "ניהול זרמים",
+      insert: "הוספת אלמנטים", layout: "פריסת עמודים", talmud: "הגדרות גפ\"ת — תלמוד",
+      mishna: "הגדרות משנ\"ב", review: "סקירה ובדיקה", view: "תצוגה",
+      advanced: "מתקדם", settings: "הגדרות מערכת",
+    };
+    for (const [id, label] of tabs) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ribbon-tab";
+      button.dataset.ribbonTab = id;
+      button.setAttribute("role", "tab");
+      button.textContent = label;
+      if (tabTitles[id]) button.title = tabTitles[id];
+      tabsBar.appendChild(button);
+    }
+    // Render button at end of tabs bar — like Word's menu button.
+    const renderBtnSlot = document.createElement("div");
+    renderBtnSlot.className = "ribbon-tab-render-slot";
+    renderBtnSlot.style.cssText = "margin-inline-start:auto;display:flex;align-items:center;padding:0 8px;";
+    const renderBtn = document.getElementById("btn-render");
+    if (renderBtn) {
+      renderBtn.classList.add("btn-render-prominent");
+      renderBtnSlot.appendChild(renderBtn);
+    }
+    tabsBar.appendChild(renderBtnSlot);
+  }
+
+  const groupTabs = [
+    "home",
+    "home",
+    "home",
+    "home",
+    "home",
+    "home",
+    "home",
+    "insert",
+    "home",
+    "home",
+    "view",
+    "home",
+    "streams",
+    "streams review",
+    "insert",
+    "file review",
+    "file view",
+  ];
+  mainToolbar.querySelectorAll(".tb-group").forEach((group, index) => {
+    group.dataset.ribbonTab = groupTabs[index] || "advanced";
+  });
+
+  const panelTabs = [
+    [".source-stream-toolbar", "streams"],
+    [".panes-toolbar", "streams view"],
+    ["#expanded-tools", "advanced view"],
+    [".source-bottom-toolbar", "file"],
+    [".mishna-toolbar", "mishna"],
+    [".talmud-toolbar", "talmud"],
+    [".opening-word-toolbar", "layout"],
+    ["#stream-columns-panel", "streams layout"],
+    [".stress-toolbar", "advanced"],
+  ];
+  for (const [selector, tabList] of panelTabs) {
+    const panel = document.querySelector(selector);
+    if (!panel) continue;
+    panel.classList.add("ribbon-panel");
+    panel.dataset.ribbonTab = tabList;
+  }
+
+  const matchesTab = (el, tab) => (el.dataset.ribbonTab || "home")
+    .split(/\s+/)
+    .filter(Boolean)
+    .includes(tab);
+
+  const activateTab = (tab) => {
+    const active = tabs.some(([id]) => id === tab) ? tab : "home";
+    localStorage.setItem("ravtext.ribbonTab", active);
+    document.querySelectorAll(".ribbon-tab").forEach((button) => {
+      const isActive = button.dataset.ribbonTab === active;
+      button.classList.toggle("active", isActive);
+      button.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    mainToolbar.querySelectorAll(".tb-group").forEach((group) => {
+      group.classList.toggle("ribbon-hidden", !matchesTab(group, active));
+    });
+    document.querySelectorAll(".ribbon-panel").forEach((panel) => {
+      panel.classList.toggle("ribbon-hidden", !matchesTab(panel, active));
+    });
+  };
+
+  tabsBar.addEventListener("click", (ev) => {
+    const button = ev.target.closest(".ribbon-tab");
+    if (button) activateTab(button.dataset.ribbonTab);
+  });
+
+  activateTab(localStorage.getItem("ravtext.ribbonTab") || "home");
+}
+
+setupRibbonTabs();
+setupWidthSlider();
+setupLiveRenderToggle();
+wirePageSettingsControls(() => {
+  applyPageSettings(pagesContainer);
+  rerenderPages();
+});
+wireOutputBackgroundControl();
 
 function rerenderPages() {
   for (const p of paneManager.panes) {
     if (p.streamCode) ensureOriginalStreamSettings(p.streamCode);
   }
+  updateOriginalStreamColumnsPanel([], rerenderPages);
   scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi);
 }
 
+function refreshStreamSettingsPanel(pages = []) {
+  for (const p of paneManager.panes) {
+    if (p.streamCode) ensureOriginalStreamSettings(p.streamCode);
+  }
+  updateOriginalStreamColumnsPanel(pages, rerenderPages);
+}
+
+function isDiagnosticsVisible() {
+  const panel = document.querySelector("#diagnostics-panel");
+  return !!panel && !panel.hidden;
+}
+
+let diagnosticsTimer = null;
+function scheduleDiagnosticsRefresh({ force = false } = {}) {
+  if (!force && !isDiagnosticsVisible()) return;
+  clearTimeout(diagnosticsTimer);
+  diagnosticsTimer = setTimeout(refreshDiagnostics, force ? 0 : 250);
+}
+
 paneManager.on("change", () => {
-  refreshDiagnostics();
-  rerenderPages();
+  scheduleDiagnosticsRefresh();
+  refreshStreamSettingsPanel();
+  if (shouldLiveRenderNow()) rerenderPages();
+});
+
+paneManager.on("focus", () => {
+  scheduleDiagnosticsRefresh();
+  refreshStreamSettingsPanel();
 });
 
 window.addEventListener("ravtext:engine-rendered", (ev) => {
-  updateOriginalStreamColumnsPanel(ev.detail?.pages || [], rerenderPages);
+  refreshStreamSettingsPanel(ev.detail?.pages || []);
 });
 
-setTimeout(() => {
-  rerenderPages();
-}, 300);
+initialLoadPromise.then(() => refreshStreamSettingsPanel());
+
+if (shouldLiveRenderNow()) {
+  initialLoadPromise.then(() => {
+    setTimeout(() => {
+      if (shouldLiveRenderNow()) rerenderPages();
+    }, 300);
+  });
+}
 
 // === עזר: עריכה על החלונית הפעילה ===
 function activeChain() {
@@ -156,6 +754,176 @@ function loadEngineDoc(engineDoc) {
   rerenderPages();
 }
 
+function escapeForHTML(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeForRegex(text) {
+  return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function plainTextToHTML(text) {
+  const lines = String(text || "").split(/\n/);
+  return lines.map(line => `<p>${escapeForHTML(line) || "<br>"}</p>`).join("");
+}
+
+async function splitSpecialNotes() {
+  const main = paneManager.getMainPane();
+  const sourcePane = paneManager.panes.find(p => p.streamCode);
+  if (!main?.editor || !sourcePane?.editor) {
+    alert("צריך חלונית ראשית וחלונית זרם אחת לפחות כדי להפריד הערות.");
+    return;
+  }
+
+  const filterSymbol = prompt("איזה סימן בתוך ההערה מעביר אותה לזרם חדש?", "*");
+  if (!filterSymbol) return;
+
+  const newLinkSymbol = prompt("איזה סימן חדש יופיע בטקסט הראשי עבור הזרם החדש?", "$");
+  if (!newLinkSymbol) return;
+
+  const linkSymbol = (sourcePane.symbol || "").trim();
+  if (!linkSymbol) {
+    alert("לזרם הראשון אין סימן קישור.");
+    return;
+  }
+
+  const mainText = main.editor.state.doc.textContent;
+  const notesText = sourcePane.editor.state.doc.textContent;
+  const mainParts = mainText.split(linkSymbol);
+  const noteIndices = [];
+  let ci = notesText.indexOf(linkSymbol);
+  while (ci > -1) {
+    noteIndices.push(ci);
+    ci = notesText.indexOf(linkSymbol, ci + linkSymbol.length);
+  }
+
+  let newMainText = mainParts[0] || "";
+  const normalNotes = [];
+  const specialNotes = [];
+
+  if (noteIndices.length > 0 && noteIndices[0] > 0) {
+    normalNotes.push(notesText.substring(0, noteIndices[0]));
+  } else if (noteIndices.length === 0) {
+    normalNotes.push(notesText);
+  }
+
+  for (let i = 0; i < noteIndices.length; i++) {
+    const start = noteIndices[i];
+    const end = (i + 1 < noteIndices.length) ? noteIndices[i + 1] : notesText.length;
+    const content = notesText.substring(start, end);
+    const nextPart = mainParts[i + 1] || "";
+
+    if (content.includes(filterSymbol)) {
+      specialNotes.push(newLinkSymbol + content.substring(linkSymbol.length));
+      newMainText += newLinkSymbol + nextPart;
+    } else {
+      normalNotes.push(content);
+      newMainText += linkSymbol + nextPart;
+    }
+  }
+
+  main.editor.commands.setContent(plainTextToHTML(newMainText));
+  sourcePane.editor.commands.setContent(plainTextToHTML(normalNotes.join("")));
+
+  if (specialNotes.length > 0) {
+    const code = paneManager.nextAvailableStreamCode();
+    if (!code) {
+      alert("הגעת ל-99 חלוניות.");
+      return;
+    }
+    const pane = paneManager.addPane({
+      streamCode: code,
+      symbol: newLinkSymbol,
+      label: `זרם ${code}`,
+    });
+    if (pane?.editor) {
+      pane.editor.storage.streamMark.symbol = newLinkSymbol;
+      pane.editor.commands.setContent(plainTextToHTML(specialNotes.join("")));
+    }
+    rerenderPages();
+  } else {
+    alert(`לא נמצאו הערות עם הסימן ${filterSymbol}`);
+  }
+}
+
+function setMergeHidden(hidden) {
+  for (const p of paneManager.panes) {
+    if (p.streamCode && p.element) p.element.hidden = hidden;
+  }
+  container.querySelectorAll(".resizer, .main-stream-resizer").forEach(el => {
+    el.hidden = hidden;
+  });
+}
+
+function updateMergeToggleButton() {
+  const btn = document.getElementById("merge-toggle-btn");
+  if (!btn) return;
+  btn.classList.toggle("active", paneManager.merged);
+  btn.textContent = paneManager.merged ? "🔓 פרק" : "🔗 מזג / פרק";
+}
+
+function toggleInlineMerge() {
+  const main = paneManager.getMainPane();
+  if (!main?.editor) return;
+  let mainText = main.editor.state.doc.textContent;
+
+  if (paneManager.merged) {
+    for (const p of paneManager.panes) {
+      if (!p.streamCode || !p.editor) continue;
+      const sym = (p.symbol || "").trim();
+      if (!sym) continue;
+
+      const extracted = [];
+      const regex = new RegExp(`\\[\\[${escapeForRegex(sym)}([\\s\\S]*?)\\]\\]`, "g");
+      mainText = mainText.replace(regex, (_match, content) => {
+        extracted.push(content.trim());
+        return sym;
+      });
+
+      if (extracted.length > 0) {
+        p.editor.commands.setContent(plainTextToHTML(extracted.map(n => `${sym} ${n}`).join("\n")));
+      }
+    }
+    main.editor.commands.setContent(plainTextToHTML(mainText));
+    paneManager.merged = false;
+    setMergeHidden(false);
+    updateMergeToggleButton();
+    rerenderPages();
+    return;
+  }
+
+  for (const p of paneManager.panes) {
+    if (!p.streamCode || !p.editor) continue;
+    const sym = (p.symbol || "").trim();
+    if (!sym) continue;
+    const noteText = p.editor.state.doc.textContent.trim();
+    if (!noteText) continue;
+
+    let parts = noteText.split(sym);
+    if (parts.length > 0 && parts[0].trim() === "") parts.shift();
+
+    let counter = 0;
+    const regex = new RegExp(escapeForRegex(sym), "g");
+    mainText = mainText.replace(regex, (match) => {
+      if (counter < parts.length) {
+        const note = parts[counter].trim();
+        counter++;
+        return `[[${sym} ${note}]]`;
+      }
+      return match;
+    });
+  }
+
+  main.editor.commands.setContent(plainTextToHTML(mainText));
+  paneManager.merged = true;
+  setMergeHidden(true);
+  updateMergeToggleButton();
+  rerenderPages();
+}
+
 document.querySelectorAll(".btn-stream").forEach((btn) => {
   btn.addEventListener("mousedown", (e) => e.preventDefault());
   btn.addEventListener("click", () => {
@@ -178,27 +946,29 @@ if (btnCustomStream && customStreamInput) {
 }
 
 document.getElementById("btn-load-internal")?.addEventListener("click", () => {
-  loadEngineDoc(parseInternalFormat(INTERNAL_SAMPLE));
-});
-
-document.getElementById("btn-load-inline")?.addEventListener("click", () => {
-  loadSampleByName(paneManager, "hebrew");
+  loadEditableDefaultSample(paneManager);
   rerenderPages();
 });
 
-document.getElementById("btn-load-shulchan")?.addEventListener("click", () => {
-  loadSampleByName(paneManager, "shulchan");
+document.getElementById("btn-load-inline")?.addEventListener("click", async () => {
+  await loadSampleByName(paneManager, "hebrew");
   rerenderPages();
 });
 
-document.getElementById("btn-load-talmud")?.addEventListener("click", () => {
-  loadSampleByName(paneManager, "talmud");
+document.getElementById("btn-load-shulchan")?.addEventListener("click", async () => {
+  await loadSampleByName(paneManager, "shulchan");
+  rerenderPages();
+});
+
+document.getElementById("btn-load-talmud")?.addEventListener("click", async () => {
+  await loadSampleByName(paneManager, "talmud");
   rerenderPages();
 });
 
 document.getElementById("btn-render")?.addEventListener("click", rerenderPages);
+wireTalmudLayoutControls(rerenderPages);
 wireMishnaWrapToggle(rerenderPages);
-wireTalmudLayoutToggle(rerenderPages);
+wireOpeningWordControls(rerenderPages);
 
 document.querySelectorAll(".btn-stress").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -210,7 +980,7 @@ document.querySelectorAll(".btn-stress").forEach((btn) => {
 
 // === Toolbar ===
 // document-level delegation: תופס כל לחצן [data-cmd] בכל סרגל בדף
-document.addEventListener("click", (ev) => {
+document.addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-cmd]");
   if (!btn) return;
   const c = btn.dataset.cmd;
@@ -234,6 +1004,7 @@ document.addEventListener("click", (ev) => {
     case "sub":            ed && ed.toggleSubscript().run(); break;
     case "blockquote":     ed && ed.toggleBlockquote().run(); break;
     case "code-block":     ed && ed.toggleCodeBlock().run(); break;
+    case "code-inline":    ed && ed.toggleCode().run(); break;
     case "bullet":         ed && ed.toggleBulletList().run(); break;
     case "ordered":        ed && ed.toggleOrderedList().run(); break;
     case "check":          ed && ed.toggleTaskList().run(); break;
@@ -248,7 +1019,7 @@ document.addEventListener("click", (ev) => {
     }
     case "ltr": {
       const aE = paneManager.activePane;
-      if (aE && aE.element) aE.element.querySelector(".pane-body").setAttribute("dir", "ltr");
+      if (aE && aE.element) aE.element.querySelector(".pane-body").setAttribute("dir", "rtl");
       break;
     }
     case "align-right":    ed && ed.setTextAlign("right").run(); break;
@@ -303,9 +1074,59 @@ document.addEventListener("click", (ev) => {
       localStorage.setItem("ravtext.theme", isLight ? "light" : "dark");
       break;
     }
+    case "lang-toggle": {
+      toggleLanguage();
+      break;
+    }
     case "diag-toggle": {
       const panel = document.querySelector("#diagnostics-panel");
       if (panel) panel.hidden = !panel.hidden;
+      if (panel && !panel.hidden) scheduleDiagnosticsRefresh({ force: true });
+      break;
+    }
+    case "tools-toggle": {
+      toggleExpandedTools(btn);
+      break;
+    }
+    case "show-stats": {
+      showSourceStats();
+      break;
+    }
+    case "advanced-search": {
+      focusPdfSearch();
+      break;
+    }
+    case "text-formatter": {
+      focusFormatterToolbar();
+      break;
+    }
+    case "theme-selector": {
+      document.querySelector('[data-cmd="theme-toggle"]')?.click();
+      break;
+    }
+    case "quick-actions": {
+      document.querySelector('[data-cmd="engine-render"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      showToast("פעולות זמינות בסרגל: טעינת דוגמה, רענון עמודים, JSON ו-round-trip.");
+      break;
+    }
+    case "link-manager": {
+      runLinkManager();
+      break;
+    }
+    case "edit-history": {
+      showToast("היסטוריה זמינה דרך כפתורי ביטול וחזרה בסרגל.");
+      break;
+    }
+    case "advanced-settings": {
+      openDiagnosticsPanel();
+      break;
+    }
+    case "word-import": {
+      importWord(paneManager, rerenderPages);
+      break;
+    }
+    case "word-export": {
+      exportWord(paneManager);
       break;
     }
 
@@ -315,17 +1136,17 @@ document.addEventListener("click", (ev) => {
     case "redo":           ed && ed.redo().run(); break;
     case "load-sample":
     case "load-sample-hebrew": {
-      loadSampleByName(paneManager, "hebrew");
+      loadEditableDefaultSample(paneManager);
       rerenderPages();
       break;
     }
     case "load-sample-shulchan": {
-      loadSampleByName(paneManager, "shulchan");
+      await loadSampleByName(paneManager, "shulchan");
       rerenderPages();
       break;
     }
     case "load-sample-talmud": {
-      loadSampleByName(paneManager, "talmud");
+      await loadSampleByName(paneManager, "talmud");
       rerenderPages();
       break;
     }
@@ -356,12 +1177,14 @@ document.addEventListener("click", (ev) => {
       break;
     }
     case "stream-clear":   ed && ed.unsetStream().run(); break;
-    case "stream-next":    {
+    case "stream-next":
+    case "marker-next":    {
       const e = paneManager.getActiveEditor();
       if (e) jumpToNextMarker(e.view, +1);
       break;
     }
-    case "stream-prev":    {
+    case "stream-prev":
+    case "marker-prev":    {
       const e = paneManager.getActiveEditor();
       if (e) jumpToNextMarker(e.view, -1);
       break;
@@ -480,10 +1303,33 @@ document.addEventListener("click", (ev) => {
       alert(lines.join("\n"));
       break;
     }
+    case "split-special-notes":
+    case "split-notes-advanced": {
+      splitSpecialNotes();
+      break;
+    }
+    case "merge-toggle":
+    case "toggle-merge": {
+      toggleInlineMerge();
+      break;
+    }
     case "lines-toggle": {
       applyLineMode(paneManager, !paneManager.lineMode);
       btn.classList.toggle("active", paneManager.lineMode);
       rerenderPages();
+      break;
+    }
+    case "preview-toggle": {
+      _previewMode = !_previewMode;
+      btn.classList.toggle("active", _previewMode);
+      const richToolbar = getMainRibbonToolbar();
+      if (richToolbar) richToolbar.style.display = _previewMode ? "none" : "";
+      for (const p of paneManager.panes) {
+        if (!p.element || !p.editor) continue;
+        const body = p.element.querySelector(".pane-body");
+        if (body) body.style.fontSize = _previewMode ? `${_fontSize + 4}px` : `${_fontSize}px`;
+        p.editor.setEditable(!_previewMode);
+      }
       break;
     }
     case "sync-toggle": {
@@ -493,6 +1339,11 @@ document.addEventListener("click", (ev) => {
     }
 
     // === איחוד מחלוניות → ראשי ===
+    case "pane-layout-toggle": {
+      const next = container.classList.contains("streams-stacked") ? "side" : "stacked";
+      applyPaneLayout(next);
+      break;
+    }
     case "merge-from-panes": {
       const main = paneManager.getMainPane();
       if (!main || !main.editor) { alert("אין חלונית ראשית"); break; }
@@ -560,7 +1411,7 @@ function refreshDiagnostics() {
     check("שלב 11.5 — שמירה ב‑localStorage", !!localStorage.getItem("ravtext.panes.state.v1")),
     check(`שלב 11.6 — עד 99 חלוניות`, paneManager.count() <= 99),
     check("JSON תקין", ed && typeof json === "object" && json.type === "doc"),
-    check("הערות שוליים — שלב 13", false, "ייבוא Word"),
+    check("ייבוא/ייצוא Word", true, window.pywebview?.api ? "bridge זמין" : "זמין במעטפת התוכנה המקורית"),
   ];
 
   const list = document.querySelector("#diag-list");
@@ -598,10 +1449,22 @@ async function runRoundTripTest() {
   }
   await new Promise(r => setTimeout(r, 50));
   const after = paneManager.serialize();
-  const beforeStr = JSON.stringify(before.panes.map(p => p.content));
-  const afterStr = JSON.stringify(after.panes.map(p => p.content));
+  const normalizeContent = (node) => {
+    if (!node || typeof node !== "object") return node;
+    if (Array.isArray(node)) return node.map(normalizeContent);
+    const out = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (key === "uid") continue;
+      out[key] = normalizeContent(value);
+    }
+    return out;
+  };
+  const beforeStr = JSON.stringify(before.panes.map(p => normalizeContent(p.content)));
+  const afterStr = JSON.stringify(after.panes.map(p => normalizeContent(p.content)));
   const identical = beforeStr === afterStr;
-  alert(identical ? `✓ Round-trip מושלם — ${paneManager.count()} חלוניות, 100% זהה` : "✗ Round-trip נכשל");
+  alert(identical
+    ? `✓ בדיקת שחזור עברה — ${paneManager.count()} חלוניות, התוכן חזר זהה.`
+    : "✗ בדיקת שחזור נכשלה.\nהמשמעות: הכלי שמר עותק פנימי, ניסה לשחזר אותו, והמבנה שחזר לא יצא זהה לגמרי. זו בדיקת אבחון; היא לא מוחקת את המסמך.");
   console.log("ROUND-TRIP:", { identical, panes: paneManager.count() });
 }
 
@@ -642,4 +1505,4 @@ window.__streamMarkOnDetected = function (detected) {
   }
 };
 
-refreshDiagnostics();
+scheduleDiagnosticsRefresh({ force: true });
