@@ -803,6 +803,10 @@ function splitSingleCommentaryIntoHalves(commentary) {
 /**
  * SCENARIO B — One commentary + main text.
  * Commentary floats on the inner/right side; main fills the rest.
+ *
+ * הבהרה (משה 2026-05-06): השם "talmud-one-commentary" בקוד הזה מתאר זרם אחד
+ * שמתפצל לשני טורים מקבילים — מה שמשה מכנה "two-commentaries" במונחים שלו
+ * (דפוס וילנא הקלאסי). שם הקלאס היסטורי, אבל הלוגיקה תואמת את כלל #7 של משה.
  */
 function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
   block.classList.add("talmud-has-main", "talmud-one-commentary");
@@ -1026,6 +1030,9 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
  *   When the main ends, the taller commentary expands via CSS.
  */
 function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, commentaryB) {
+  // הבהרה (משה 2026-05-06): השם "talmud-two-commentaries" בקוד הזה מתאר 2 זרמים
+  // נפרדים זה מזה (כל אחד עם כתר חצי-עמוד משלו). זה מה שמשה מכנה "שני זרמים
+  // נפרדים" במונחיו. שם הקלאס היסטורי. הלוגיקה תואמת את תרחיש #3 של משה.
   block.classList.add("talmud-has-main", "talmud-two-commentaries");
 
   const mainWidth = getTalmudMainWidth();

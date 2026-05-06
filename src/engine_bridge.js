@@ -708,6 +708,11 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           }
         } catch (e) { console.warn("[splitter] error:", e); }
       }
+      // TODO (משה 2026-05-06, כלל #15): הלולאה אינה אמורה לחזור אחורה. כל
+      // סיבוב צריך להתחיל מהדף הראשון שיש בו שגיאה והלאה — לא לנגוע בדפים
+      // תקינים שלפניו. הקוד הנוכחי בsplitPageStreamsBetweenPages עובר על כל
+      // הדפים מ-0 והלאה. צריך לשנות את ה-splitters שיקבלו startIdx ויעברו רק
+      // ממנו והלאה. (לא תוקן בpass 153 — דורש refactor של ה-splitters.)
       function loopUntilStable() {
         let prevOverflow = measureTotalOverflow();
         let stableHits = 0;
