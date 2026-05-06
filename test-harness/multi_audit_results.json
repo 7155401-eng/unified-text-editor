@@ -44,8 +44,8 @@
   {
     "sample": "asymmetric",
     "id": "NO-LARGE-GAP",
-    "status": "FAIL",
-    "detail": "3 pages, max=277"
+    "status": "PASS",
+    "detail": "0 pages, max=0"
   },
   {
     "sample": "crown-edge",
@@ -140,8 +140,8 @@
   {
     "sample": "few-long",
     "id": "NO-LARGE-GAP",
-    "status": "FAIL",
-    "detail": "2 pages, max=277"
+    "status": "PASS",
+    "detail": "0 pages, max=0"
   },
   {
     "sample": "long-paragraph",
@@ -183,13 +183,13 @@
     "sample": "long-paragraph",
     "id": "VALIDATE-ALL",
     "status": "FAIL",
-    "detail": "{\"ok\":false,\"errors\":1,\"firstErrors\":[\"INV-11: Stream Title Not Orphan: orphans: 02\"]}"
+    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-11: Stream Title Not Orphan: orphans: 02\",\"INV-11: Stream Title Not Orphan: orphans: 02\"]}"
   },
   {
     "sample": "long-paragraph",
     "id": "NO-LARGE-GAP",
-    "status": "FAIL",
-    "detail": "3 pages, max=385"
+    "status": "PASS",
+    "detail": "0 pages, max=0"
   },
   {
     "sample": "many-short",
@@ -284,8 +284,8 @@
   {
     "sample": "mid-length",
     "id": "NO-LARGE-GAP",
-    "status": "FAIL",
-    "detail": "1 pages, max=171"
+    "status": "PASS",
+    "detail": "0 pages, max=0"
   },
   {
     "sample": "no-main",
@@ -332,8 +332,8 @@
   {
     "sample": "no-main",
     "id": "NO-LARGE-GAP",
-    "status": "FAIL",
-    "detail": "1 pages, max=283"
+    "status": "PASS",
+    "detail": "0 pages, max=0"
   },
   {
     "sample": "only-main",
@@ -428,8 +428,8 @@
   {
     "sample": "single-1",
     "id": "NO-LARGE-GAP",
-    "status": "FAIL",
-    "detail": "1 pages, max=154"
+    "status": "PASS",
+    "detail": "0 pages, max=0"
   },
   {
     "sample": "tiny",

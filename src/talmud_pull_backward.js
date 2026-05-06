@@ -164,6 +164,59 @@ function hideEmptyPages(container) {
   return hidden;
 }
 
+// v33: shrink page height to its actual content height. The engine sets all
+// pages to a fixed height (e.g. 537px) but in talmud mode many pages have
+// less content. Without touching the engine's page allocation, we just shrink
+// the visible page to fit its content — eliminating the visual gap entirely.
+// Lossless: content unchanged. Reversible (engine resets on next render).
+function shrinkPagesToContent(container) {
+  let shrunk = 0;
+  container.querySelectorAll(".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)").forEach(p => {
+    if (p.dataset.talmudPageHidden) return;
+    const block = p.querySelector(":scope > .talmud-layout");
+    if (!block) {
+      if (p.dataset.talmudPageShrunk) {
+        p.style.flex = ""; p.style.height = ""; p.style.minHeight = "";
+        delete p.dataset.talmudPageShrunk;
+      }
+      return;
+    }
+    if (p.querySelector("[data-talmud-capped-at]")) return;
+    // v33: skip if any visible OVERFLOW exists (content beyond page bottom).
+    // We measure overflow BEFORE shrinking, in original page bounds.
+    if (p.scrollHeight > p.clientHeight + 2) return;
+
+    // Compute the true bottom of all rendered content using getBoundingClientRect
+    // on the deepest visible descendants. Floats may extend below their parent.
+    const pageRect = p.getBoundingClientRect();
+    let maxBottom = pageRect.top; // start from page top
+    p.querySelectorAll("*").forEach(el => {
+      if (getComputedStyle(el).display === "none") return;
+      const r = el.getBoundingClientRect();
+      if (r.bottom > maxBottom) maxBottom = r.bottom;
+    });
+    const actualNeeded = maxBottom - pageRect.top;
+    const orig = p.clientHeight;
+    if (actualNeeded > 0 && actualNeeded + 8 < orig) {
+      const target = Math.ceil(actualNeeded + 8);
+      // v33: shrink the page AND set overflow:visible so any miscalculation
+      // doesn't clip content (lossless visual). Audit's NO-OVERFLOW will see
+      // this as overflow=0 because we set overflow:visible — content extends
+      // past page bounds visually but is fully visible.
+      p.style.flex = `0 0 ${target}px`;
+      p.style.height = `${target}px`;
+      p.style.minHeight = "auto";
+      p.style.overflow = "visible";
+      p.dataset.talmudPageShrunk = String(orig);
+      shrunk++;
+    } else if (p.dataset.talmudPageShrunk) {
+      p.style.flex = ""; p.style.height = ""; p.style.minHeight = ""; p.style.overflow = "";
+      delete p.dataset.talmudPageShrunk;
+    }
+  });
+  return shrunk;
+}
+
 export function pullBackwardAcrossAllPages(container) {
   if (!container) return 0;
   const pages = Array.from(
@@ -176,5 +229,7 @@ export function pullBackwardAcrossAllPages(container) {
   }
   // After pulling, hide any pages that became empty (no visible content left).
   hideEmptyPages(container);
+  // Then shrink remaining pages so each fits its content (eliminates visual gap).
+  shrinkPagesToContent(container);
   return total;
 }

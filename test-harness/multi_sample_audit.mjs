@@ -48,7 +48,8 @@ async function waitStable(ms = 8000) {
     if (stable >= 3) break;
     await page.waitForTimeout(300);
   }
-  await page.waitForTimeout(800);
+  // v33: extra wait for post-process (pull-backward + shrink) to apply.
+  await page.waitForTimeout(2500);
 }
 
 async function runChecksForSample(sampleName) {

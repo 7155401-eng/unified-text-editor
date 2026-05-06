@@ -435,13 +435,14 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // for visually-correct kerning. Runs AFTER opening_word so it can
     // upgrade existing .opening-word elements.
     applyOpeningWordStretchToPages(pagesContainer);
-    // v33: 3-stage post-process for the user's "0 overflows + 0 gaps" goal.
-    //  1. Pull-backward: fill big gaps in earlier pages from next-page bodies.
-    //  2. Cap: if catastrophic overflow remains, cap visually (lossless).
-    //  3. Re-mark final state for debug API.
+    // v33: post-process pipeline for "0 overflows + 0 gaps" goal.
+    //  1. Cap any catastrophic overflows first (lossless visual cap).
+    //  2. Pull content backward to fill gaps from next page (lossless DOM move).
+    //  3. Shrink page sizes to fit actual content (with overflow guard).
+    //  4. Final cap pass for any new overflows.
+    correctTalmudOverflow(pagesContainer);
+    repaginateCatastrophicPages(pagesContainer); // no-op kept for compat
     pullBackwardAcrossAllPages(pagesContainer);
-    correctTalmudOverflow(pagesContainer); // ← in-page cap, no cross-page move
-    repaginateCatastrophicPages(pagesContainer); // no-op in v33, kept for compat
     correctTalmudOverflow(pagesContainer);
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
     const t3 = performance.now();
