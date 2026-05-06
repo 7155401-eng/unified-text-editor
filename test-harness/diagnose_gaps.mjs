@@ -34,6 +34,12 @@ const gaps = await page.evaluate(() => {
         idx: i, gap: Math.round(gap),
         blockH: Math.round(blockRect.height),
         pageH: Math.round(pageRect.height),
+        clientH: p.clientHeight,
+        scrollH: p.scrollHeight,
+        shrunkFrom: p.dataset.talmudPageShrunk || "no",
+        styleHeight: p.style.height || "none",
+        styleFlex: p.style.flex || "none",
+        styleOverflow: p.style.overflow || "none",
         blockChildren,
       });
     }
@@ -44,6 +50,8 @@ const gaps = await page.evaluate(() => {
 console.log(`single-1 has ${gaps.length} pages with >50px gap\n`);
 for (const g of gaps) {
   console.log(`Page ${g.idx}: gap=${g.gap}px (block=${g.blockH}/page=${g.pageH})`);
+  console.log(`  clientH=${g.clientH} scrollH=${g.scrollH} shrunkFrom=${g.shrunkFrom}`);
+  console.log(`  styleHeight=${g.styleHeight} styleFlex=${g.styleFlex} styleOverflow=${g.styleOverflow}`);
   for (const c of g.blockChildren) {
     console.log(`  ${c.tag} h=${c.h} text=${c.textLen} cls=${c.cls}`);
   }

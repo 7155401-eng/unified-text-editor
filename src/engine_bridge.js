@@ -12,6 +12,11 @@ import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_ove
 import { repaginateCatastrophicPages } from "./talmud_repagination.js";
 import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
 
+// v33: expose helpers for diagnostic tools to call directly.
+if (typeof window !== "undefined") {
+  window.__talmudPullBackward = pullBackwardAcrossAllPages;
+}
+
 // Expose for debug + audit harness.
 if (typeof window !== "undefined") {
   window.__talmudCorrectOverflow = correctTalmudOverflow;
