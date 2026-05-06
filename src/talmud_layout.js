@@ -1530,25 +1530,34 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       });
     }
   } else {
-    // GPT 2026-05-06: יש main, אבל אם זרם צד ממשיך מתחת ל-mainBottom →
-    // לפצל אותו: חלק עליון נשאר 29% ליד main, חלק תחתון 100% מתחת ל-main.
+    // משה 2026-05-06 (GPT + Cloud-Claude): יש main, אבל אם זרם צד ממשיך
+    // מתחת ל-mainBottom → לפצל אותו. כלל הרוחב לחלק התחתון נקבע דינמית:
+    // אם שני זרמים נמשכים מתחת ל-main → כל אחד 49.5% (זה לצד זה).
+    // אם רק זרם אחד נמשך → 100% (תפיסת רוחב מלא).
+    // ההיסטוריה לא משנה — רק כמה זרמים ACTIVE כרגע.
     const mainBottomEl = mainEl ? mainEl.getBoundingClientRect() : null;
     if (mainBottomEl) {
       const blockTopY = block.getBoundingClientRect().top;
       const mainBottomY = mainBottomEl.bottom - blockTopY;
-      const sideBodies = block.querySelectorAll(
+      const sideBodies = Array.from(block.querySelectorAll(
         ":scope > .talmud-body-portion, :scope .page-main > .talmud-body-portion"
-      );
-      sideBodies.forEach(body => {
-        if (body.classList.contains("talmud-body-expanded-lower-split")) return;
+      )).filter(b => !b.classList.contains("talmud-body-expanded-lower-split"));
+      // נמצא רק את אלה שבאמת ממשיכים מתחת ל-main
+      const extending = sideBodies.filter(body => {
         const r = body.getBoundingClientRect();
-        const bBottomY = r.bottom - blockTopY;
-        if (bBottomY <= mainBottomY + 5) return; // not extending below main
+        return (r.bottom - blockTopY) > mainBottomY + 5;
+      });
+      const fullWidthCss = extending.length === 1 ? "100%" : "49.5%";
+      extending.forEach(body => {
+        const r = body.getBoundingClientRect();
         const bTopY = r.top - blockTopY;
         const targetY = mainBottomY - bTopY;
         if (targetY <= 0 || targetY >= r.height - 5) return;
         const sp = findSplitAtPixelYInElement(body, targetY);
         if (!sp) return;
+        const side = body.classList.contains("talmud-left") ? "left"
+                   : body.classList.contains("talmud-right") ? "right"
+                   : "right";
         const lower = document.createElement("div");
         lower.className = body.className.replace("talmud-body-portion", "talmud-body-expanded").trim();
         lower.classList.add("talmud-body-expanded-lower-split");
@@ -1556,9 +1565,9 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
         if (code) lower.setAttribute("data-stream", code);
         lower.dataset.talmudBodyOf = code;
         lower.dataset.talmudRole = "commentary-expanded-lower-split";
-        lower.style.float = "none";
-        lower.style.clear = "both";
-        lower.style.width = "100%";
+        lower.style.float = (extending.length >= 2) ? side : "none";
+        lower.style.clear = (extending.length >= 2) ? "none" : "both";
+        lower.style.width = fullWidthCss;
         lower.style.marginInline = "0";
         const r2 = document.createRange();
         r2.setStart(sp.node, sp.offset);
