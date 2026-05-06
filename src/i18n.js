@@ -33,9 +33,30 @@ const tr = {
     cancel: "ביטול",
     json: "JSON",
     roundTrip: "round-trip",
+    // v33: settings strings (HE)
+    settingsDisplay: "תצוגה",
+    settingsDarkMode: "מצב כהה:",
+    settingsLanguage: "שפה:",
+    settingsLicense: "רישיון משתמש",
+    settingsLicenseUnset: "לא הוטמע עדיין",
+    settingsDebug: "דיבוג",
+    settingsSaveLog: "שמור לוג רינדור מפורט:",
+    settingsLogCopy: "העתק לוג",
+    settingsLogDownload: "הורד לוג",
+    settingsLogClear: "נקה לוג",
+    // ribbon tabs (HE)
+    file: "קובץ",
+    home: "בית",
+    streams: "זרמים",
+    insert: "הוספה",
+    layout: "פריסה",
+    review: "סקירה",
+    view: "תצוגה",
+    advanced: "מתקדם",
+    settings: "הגדרות",
   },
   en: {
-    appTitle: "Integrated Editor - TipTap + Engine",
+    appTitle: "RavText to Word AI",
     status: 'Load text and click "Render pages" to see the preview.',
     markAsStream: "Mark as stream:",
     mark: "Mark",
@@ -66,8 +87,32 @@ const tr = {
     cancel: "Cancel",
     json: "JSON",
     roundTrip: "round-trip",
+    // v33: settings strings
+    settingsDisplay: "Display",
+    settingsDarkMode: "Dark mode:",
+    settingsLanguage: "Language:",
+    settingsLicense: "User License",
+    settingsLicenseUnset: "Not yet integrated",
+    settingsDebug: "Debug",
+    settingsSaveLog: "Save detailed render log:",
+    settingsLogCopy: "Copy log",
+    settingsLogDownload: "Download log",
+    settingsLogClear: "Clear log",
+    // ribbon tabs
+    file: "File",
+    home: "Home",
+    streams: "Streams",
+    insert: "Insert",
+    layout: "Layout",
+    review: "Review",
+    view: "View",
+    advanced: "Advanced",
+    settings: "Settings",
   },
+  he: undefined, // placeholder; populated below
 };
+// v33: he gets the same new settings keys
+tr.he = tr.he || {};
 
 let currentLang = localStorage.getItem(STORAGE_KEY) || "he";
 if (!tr[currentLang]) currentLang = "he";

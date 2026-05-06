@@ -23,14 +23,48 @@ export function isLogActive() {
   return localStorage.getItem(STORAGE.saveLog) === "1";
 }
 
+function liveUpdateLogTextarea() {
+  const out = document.getElementById("settings-log-output");
+  if (out && !out.hidden) {
+    out.value = formatLog();
+    out.scrollTop = out.scrollHeight;
+  }
+}
+
 export function logEvent(phase, detail = {}) {
   if (!isLogActive()) return;
   _logBuffer.push({
-    t: new Date().toISOString().slice(11, 23), // HH:MM:SS.mmm
+    t: new Date().toISOString().slice(11, 23),
     phase,
     ...detail,
   });
   if (_logBuffer.length > LOG_BUFFER_MAX) _logBuffer.shift();
+  liveUpdateLogTextarea();
+}
+
+/**
+ * v33: log a rule violation as ERROR with full diagnostic info.
+ * Used to trace why a fix didn't work — every time a rule is broken,
+ * we record what rule, what element, what was expected vs actual.
+ */
+export function logViolation(rule, opts = {}) {
+  if (!isLogActive()) return;
+  const { el, expected, actual, attemptedFix, why } = opts;
+  const elInfo = el && el.tagName ? {
+    tag: el.tagName,
+    cls: (el.className || "").slice(0, 80),
+    stream: el.getAttribute?.("data-stream") || null,
+    text: ((el.textContent || "").slice(0, 60).trim()).replace(/\s+/g, " "),
+  } : null;
+  _logBuffer.push({
+    t: new Date().toISOString().slice(11, 23),
+    phase: "ERROR",
+    rule,
+    el: elInfo,
+    expected, actual, attemptedFix, why,
+  });
+  if (_logBuffer.length > LOG_BUFFER_MAX) _logBuffer.shift();
+  liveUpdateLogTextarea();
 }
 
 /**
@@ -61,6 +95,7 @@ export function logMove(action, opts = {}) {
     textBefore, textAfter,
   });
   if (_logBuffer.length > LOG_BUFFER_MAX) _logBuffer.shift();
+  liveUpdateLogTextarea();
 }
 
 function formatLog() {
@@ -95,6 +130,12 @@ function applyDarkMode(enabled) {
 export function setupSettingsPane() {
   // v33: settings now lives as a ribbon panel — visibility is controlled
   // by the ribbon tab system. No toggle button needed.
+  // Move panel content into the wrap that's positioned where ribbon-panels go.
+  const panel = document.getElementById("settings-panel");
+  const wrap = document.getElementById("settings-panel-wrap");
+  if (panel && wrap && !wrap.contains(panel)) {
+    wrap.appendChild(panel);
+  }
 
   // Dark mode
   const darkMode = document.getElementById("settings-dark-mode");

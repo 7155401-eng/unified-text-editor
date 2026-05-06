@@ -342,8 +342,11 @@
           <button type="button" data-mul="30" class="btn-stress">×30</button>
           <button type="button" data-mul="100" class="btn-stress">×100</button>
         </div>
+        <!-- v33: settings panel — appears when "הגדרות" ribbon tab is active.
+             Placed BEFORE panes so it shows at the top of the editor area when active. -->
+        <div id="settings-panel-wrap" class="settings-panel-wrap ribbon-panel" data-ribbon-tab="settings"></div>
         <div id="panes-container" class="panes-container" dir="rtl"></div>
-        <!-- v33: settings panel — appears when "הגדרות" ribbon tab is active -->
+        <!-- v33: settings content lives in #settings-panel; moved into wrap by JS -->
         <div id="settings-panel" class="settings-panel ribbon-panel" data-ribbon-tab="settings" dir="rtl">
           <div class="settings-section">
             <h3 class="settings-h3" data-i18n="settingsDisplay">תצוגה</h3>

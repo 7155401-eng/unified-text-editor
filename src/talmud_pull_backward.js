@@ -283,10 +283,10 @@ export function pullBackwardAcrossAllPages(container) {
   // After pulling, hide any pages that became empty (no visible content left).
   hideEmptyPages(container);
   // moveOrphanStreamsToNextPage DISABLED (suspected source of word deletion).
-  // Orphan stream titles will display as-is; the engine will handle them
-  // properly on next user interaction.
   // moveOrphanStreamsToNextPage(container);
-  // Then shrink remaining pages so each fits its content (eliminates visual gap).
-  shrinkPagesToContent(container);
+  // shrinkPagesToContent DISABLED per משה: pages should be FILLED with content,
+  // not made smaller. Smaller pages instead of full pages = wrong solution.
+  // The right fix is to push more content into pages so they fill naturally.
+  // shrinkPagesToContent(container);
   return total;
 }
