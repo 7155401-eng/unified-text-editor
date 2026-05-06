@@ -1,7 +1,5 @@
-// Torah-editor toolbox — gimatria, common abbreviations, sacred names,
-// Hebrew typographic characters (gershayim/geresh/maqaf), Hebrew date,
-// verse template insertion. Each action operates on the active TipTap
-// editor's selection or cursor.
+// Torah-editor toolbox — Sefaria verse picker, gimatria, Hebrew date,
+// Hebrew typographic special characters.
 
 const GIMATRIA_VALUES = {
   "א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
@@ -10,51 +8,12 @@ const GIMATRIA_VALUES = {
   "ק": 100, "ר": 200, "ש": 300, "ת": 400,
 };
 
-const ABBREVIATIONS = [
-  ["רש\"י", "רש\"י"],
-  ["רמב\"ם", "רמב\"ם"],
-  ["רמב\"ן", "רמב\"ן"],
-  ["רמ\"א", "רמ\"א"],
-  ["ש\"ך", "ש\"ך"],
-  ["ט\"ז", "ט\"ז"],
-  ["מ\"ב", "מ\"ב"],
-  ["ב\"ח", "ב\"ח"],
-  ["רשב\"א", "רשב\"א"],
-  ["ר\"י", "ר\"י"],
-  ["ר\"ת", "ר\"ת"],
-  ["חז\"ל", "חז\"ל"],
-  ["ז\"ל", "ז\"ל"],
-  ["זצ\"ל", "זצ\"ל"],
-  ["שליט\"א", "שליט\"א"],
-  ["שו\"ע", "שו\"ע"],
-  ["או\"ח", "או\"ח"],
-  ["יו\"ד", "יו\"ד"],
-  ["אה\"ע", "אה\"ע"],
-  ["חו\"מ", "חו\"מ"],
-  ["וכו'", "וכו'"],
-  ["ודו\"ק", "ודו\"ק"],
-];
-
-const SACRED_NAMES = [
-  ["ה'", "ה'"],
-  ["השם", "השם"],
-  ["הקב\"ה", "הקב\"ה"],
-  ["ית'", "ית'"],
-  ["ב\"ה", "ב\"ה"],
-  ["בס\"ד", "בס\"ד"],
-  ["בעז\"ה", "בעז\"ה"],
-  ["אי\"ה", "אי\"ה"],
-  ["בל\"נ", "בל\"נ"],
-  ["דעת ת'", "דעת ת'"],
-];
-
 const SPECIAL_CHARS = [
   ["גרשיים ״", "״"],
   ["גרש ׳", "׳"],
   ["מקף עברי ־", "־"],
   ["סוף פסוק ׃", "׃"],
   ["פסק ׀", "׀"],
-  ["פסיק קל ‚", "‚"],
   ["מרכאות פותחות „", "„"],
   ["מרכאות סוגרות “", "“"],
   ["—", "—"],
@@ -67,9 +26,51 @@ const SPECIAL_CHARS = [
   ["✗", "✗"],
 ];
 
+const TANACH_BOOKS = [
+  "בראשית", "שמות", "ויקרא", "במדבר", "דברים",
+  "יהושע", "שופטים", "שמואל א", "שמואל ב", "מלכים א", "מלכים ב",
+  "ישעיהו", "ירמיהו", "יחזקאל",
+  "הושע", "יואל", "עמוס", "עובדיה", "יונה", "מיכה",
+  "נחום", "חבקוק", "צפניה", "חגי", "זכריה", "מלאכי",
+  "תהילים", "משלי", "איוב",
+  "שיר השירים", "רות", "איכה", "קהלת", "אסתר",
+  "דניאל", "עזרא", "נחמיה", "דברי הימים א", "דברי הימים ב",
+];
+
+const HEB_ONES = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
+const HEB_TENS = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"];
+
+function numberToHebrewLetters(n) {
+  n = Math.floor(Number(n) || 0);
+  if (n < 1) return "";
+  let result = "";
+  let rest = n;
+  while (rest >= 400) { result += "ת"; rest -= 400; }
+  if (rest >= 100) {
+    const h = Math.floor(rest / 100);
+    result += "קרש"[h - 1] || "";
+    rest = rest % 100;
+  }
+  if (rest === 15) return result + "טו";
+  if (rest === 16) return result + "טז";
+  if (rest >= 10) {
+    result += HEB_TENS[Math.floor(rest / 10)];
+    rest = rest % 10;
+  }
+  if (rest > 0) result += HEB_ONES[rest];
+  return result;
+}
+
+function stripTaamim(text) {
+  return String(text || "").replace(/[֑-ֽֿ֯׀׃׆]/g, "");
+}
+function stripAllNiqqud(text) {
+  return String(text || "").replace(/[֑-ׇ]/g, "");
+}
+
 function gimatriaValue(text) {
   let sum = 0;
-  const stripped = String(text || "").replace(/[֑-ֽֿ-ׇ]/g, "");
+  const stripped = stripAllNiqqud(text);
   for (const ch of stripped) {
     if (GIMATRIA_VALUES[ch]) sum += GIMATRIA_VALUES[ch];
   }
@@ -98,6 +99,20 @@ function todayHebrewDate() {
   }
 }
 
+async function fetchSefariaVerse(book, chap, verse) {
+  const ref = `${book} ${chap}.${verse}`;
+  const url = `https://www.sefaria.org/api/texts/${encodeURIComponent(ref)}?context=0&commentary=0&pad=0`;
+  const r = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error(`Sefaria HTTP ${r.status}`);
+  const data = await r.json();
+  let he = data.he;
+  if (Array.isArray(he)) he = he.flat(Infinity).join(" ");
+  return String(he || "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function buildSelect(id, title, items, placeholder) {
   const sel = document.createElement("select");
   sel.id = id;
@@ -107,7 +122,8 @@ function buildSelect(id, title, items, placeholder) {
   blank.value = "";
   blank.textContent = placeholder;
   sel.appendChild(blank);
-  for (const [label, value] of items) {
+  for (const item of items) {
+    const [label, value] = Array.isArray(item) ? item : [item, item];
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = label;
@@ -119,31 +135,11 @@ function buildSelect(id, title, items, placeholder) {
 export function wireTorahTools(paneManager) {
   const toolbar = document.querySelector(".torah-toolbar");
   if (!toolbar) return;
+  toolbar.replaceChildren();
 
   const getEditor = () => paneManager.getActiveEditor?.();
 
-  const abbrSelect = buildSelect(
-    "torah-abbr-select",
-    "ראשי תיבות נפוצים — בחר להוסיף בנקודת הסמן",
-    ABBREVIATIONS,
-    "ראשי תיבות…"
-  );
-  abbrSelect.addEventListener("change", () => {
-    if (abbrSelect.value) insertText(getEditor(), abbrSelect.value);
-    abbrSelect.value = "";
-  });
-
-  const sacredSelect = buildSelect(
-    "torah-sacred-select",
-    "שמות קודש וראשי תיבות מקובלים",
-    SACRED_NAMES,
-    "שמות קודש…"
-  );
-  sacredSelect.addEventListener("change", () => {
-    if (sacredSelect.value) insertText(getEditor(), sacredSelect.value);
-    sacredSelect.value = "";
-  });
-
+  // === Group: special characters ===
   const charsSelect = buildSelect(
     "torah-chars-select",
     "תווים מיוחדים — גרשיים, מקף עברי, סוף פסוק וכו'",
@@ -154,26 +150,12 @@ export function wireTorahTools(paneManager) {
     if (charsSelect.value) insertText(getEditor(), charsSelect.value);
     charsSelect.value = "";
   });
+  const groupChars = document.createElement("span");
+  groupChars.className = "tb-group";
+  groupChars.dataset.title = "תווים מיוחדים";
+  groupChars.appendChild(charsSelect);
 
-  const groupQuick = document.createElement("span");
-  groupQuick.className = "tb-group";
-  groupQuick.dataset.title = "פתיחות נפוצות";
-  for (const [label, value] of [["ב\"ה", "ב\"ה "], ["בס\"ד", "בס\"ד "], ["בעז\"ה", "בעז\"ה "], ["אי\"ה", "אי\"ה "]]) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.textContent = label;
-    btn.title = `הוסף "${label}" בנקודת הסמן`;
-    btn.addEventListener("click", () => insertText(getEditor(), value));
-    groupQuick.appendChild(btn);
-  }
-
-  const groupAbbr = document.createElement("span");
-  groupAbbr.className = "tb-group";
-  groupAbbr.dataset.title = "ראשי תיבות";
-  groupAbbr.appendChild(abbrSelect);
-  groupAbbr.appendChild(sacredSelect);
-  groupAbbr.appendChild(charsSelect);
-
+  // === Group: calculation tools ===
   const groupCalc = document.createElement("span");
   groupCalc.className = "tb-group";
   groupCalc.dataset.title = "כלי חישוב והוספה";
@@ -203,29 +185,102 @@ export function wireTorahTools(paneManager) {
   dateBtn.addEventListener("click", () => insertText(getEditor(), todayHebrewDate()));
   groupCalc.appendChild(dateBtn);
 
-  const verseBtn = document.createElement("button");
-  verseBtn.type = "button";
-  verseBtn.textContent = "📜 תבנית פסוק";
-  verseBtn.title = "הוסף תבנית מקור: (ספר פרק:פסוק)";
-  verseBtn.addEventListener("click", () => {
-    const book = prompt("שם הספר:", "בראשית");
-    if (!book) return;
-    const chap = prompt("פרק:", "א");
-    if (!chap) return;
-    const verse = prompt("פסוק:", "א");
-    if (!verse) return;
-    insertText(getEditor(), `(${book} ${chap}:${verse})`);
+  // === Group: Sefaria verse picker ===
+  const groupVerse = document.createElement("span");
+  groupVerse.className = "tb-group torah-verse-group";
+  groupVerse.dataset.title = "פסוק מהתנ\"ך — ספריא";
+
+  const labelBook = document.createElement("span");
+  labelBook.style.cssText = "font-size:12px;color:#555;";
+  labelBook.textContent = "ספר:";
+  const bookSel = buildSelect("torah-book-select", "בחר ספר מהתנ\"ך", TANACH_BOOKS, "— בחר —");
+
+  const chapInput = document.createElement("input");
+  chapInput.type = "number";
+  chapInput.min = "1";
+  chapInput.placeholder = "פרק";
+  chapInput.title = "מספר פרק";
+  chapInput.id = "torah-chap-input";
+  chapInput.style.cssText = "width:60px;font-size:12px;padding:3px 6px;";
+
+  const verseInput = document.createElement("input");
+  verseInput.type = "number";
+  verseInput.min = "1";
+  verseInput.placeholder = "פסוק";
+  verseInput.title = "מספר פסוק";
+  verseInput.id = "torah-verse-input";
+  verseInput.style.cssText = "width:60px;font-size:12px;padding:3px 6px;";
+
+  const niqqudLabel = document.createElement("label");
+  niqqudLabel.className = "toolbar-checkbox";
+  niqqudLabel.title = "כשמסומן — הפסוק נכנס מנוקד (ללא טעמי מקרא); אחרת ללא ניקוד כלל";
+  const niqqudCb = document.createElement("input");
+  niqqudCb.type = "checkbox";
+  niqqudCb.id = "torah-niqqud-toggle";
+  niqqudCb.checked = localStorage.getItem("ravtext.torah.niqqud") !== "0";
+  const niqqudText = document.createElement("span");
+  niqqudText.textContent = "נקד את הפסוק";
+  niqqudLabel.appendChild(niqqudCb);
+  niqqudLabel.appendChild(niqqudText);
+  niqqudCb.addEventListener("change", () => {
+    localStorage.setItem("ravtext.torah.niqqud", niqqudCb.checked ? "1" : "0");
   });
-  groupCalc.appendChild(verseBtn);
+
+  const fetchBtn = document.createElement("button");
+  fetchBtn.type = "button";
+  fetchBtn.id = "torah-fetch-verse";
+  fetchBtn.textContent = "📜 הכנס פסוק";
+  fetchBtn.title = "מחפש את הפסוק הנבחר בספריא ומכניס אותו עם מקור בסוף";
+
+  const status = document.createElement("span");
+  status.id = "torah-verse-status";
+  status.style.cssText = "font-size:11px;color:#888;margin-inline-start:6px;";
+
+  fetchBtn.addEventListener("click", async () => {
+    const book = bookSel.value;
+    const chap = parseInt(chapInput.value, 10);
+    const verse = parseInt(verseInput.value, 10);
+    if (!book) { alert("בחר ספר."); return; }
+    if (!Number.isFinite(chap) || chap < 1) { chapInput.focus(); return; }
+    if (!Number.isFinite(verse) || verse < 1) { verseInput.focus(); return; }
+
+    const ed = getEditor();
+    if (!ed) { alert("פתח עורך פעיל לפני הכנסת פסוק."); return; }
+
+    fetchBtn.disabled = true;
+    status.textContent = "טוען מספריא…";
+    try {
+      let text = await fetchSefariaVerse(book, chap, verse);
+      if (!text) throw new Error("הפסוק לא נמצא");
+      text = niqqudCb.checked ? stripTaamim(text) : stripAllNiqqud(text);
+      const citation = ` (${book} ${numberToHebrewLetters(chap)}, ${numberToHebrewLetters(verse)})`;
+      ed.chain().focus().insertContent(text + citation).run();
+      status.textContent = "הוכנס.";
+      setTimeout(() => { status.textContent = ""; }, 2000);
+    } catch (e) {
+      console.error("[torah] sefaria fetch:", e);
+      status.textContent = `שגיאה: ${e.message || e}`;
+    } finally {
+      fetchBtn.disabled = false;
+    }
+  });
+
+  groupVerse.appendChild(labelBook);
+  groupVerse.appendChild(bookSel);
+  groupVerse.appendChild(chapInput);
+  groupVerse.appendChild(verseInput);
+  groupVerse.appendChild(niqqudLabel);
+  groupVerse.appendChild(fetchBtn);
+  groupVerse.appendChild(status);
 
   const sep1 = document.createElement("span");
   sep1.className = "sep";
   const sep2 = document.createElement("span");
   sep2.className = "sep";
 
-  toolbar.appendChild(groupQuick);
+  toolbar.appendChild(groupChars);
   toolbar.appendChild(sep1);
-  toolbar.appendChild(groupAbbr);
-  toolbar.appendChild(sep2);
   toolbar.appendChild(groupCalc);
+  toolbar.appendChild(sep2);
+  toolbar.appendChild(groupVerse);
 }
