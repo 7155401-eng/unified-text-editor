@@ -1600,6 +1600,9 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
         r2.setStart(sp.node, sp.offset);
         r2.setEndAfter(body.lastChild);
         lower.appendChild(r2.extractContents());
+        // משה 2026-05-06: lower-split צמוד ל-body של אותו זרם ב-DOM,
+        // כדי שלא ייווצר חלל ויזואלי ביניהם. אם body בתוך mainEl, נטען
+        // אותו ל-block אחרי mainEl באותו צד.
         block.appendChild(lower);
       });
     }
@@ -1654,6 +1657,15 @@ export function applyTalmudLayoutToPage(pageEl) {
   } else {
     const byCode = new Map(allStreams.map((s) => [codeForStream(s), s]));
     talmudStreams = codes.map((c) => byCode.get(c)).filter(Boolean);
+  }
+  // משה 2026-05-06 (תיקון עמ' 1 — אין גפ"ת): אם הקודים שמוגדרים לא קיימים
+  // בעמוד הזה (למשל עמ' פתיחה ללא הערות 01/02), נשתמש בכל הזרמים שקיימים
+  // (עד 2 ראשונים) במקום לדלג על העמוד.
+  if (talmudStreams.length === 0 && allStreams.length > 0) {
+    talmudStreams = allStreams
+      .slice()
+      .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
+      .slice(0, 2);
   }
   if (talmudStreams.length === 0) return;
 
