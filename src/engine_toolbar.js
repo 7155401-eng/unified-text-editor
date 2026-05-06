@@ -92,12 +92,12 @@ export function setupPdfToolbar(pagesContainer) {
   }
 
   function renderThumb(mini, index) {
-    if (!mini || mini.dataset.thumbReady === "1") return;
+    if (!mini || mini.dataset.thumbReady === "1") return true;
     if (typeof pagesContainer.__realizePage === "function") {
       pagesContainer.__realizePage(index);
     }
     const page = getPageElement(index);
-    if (!page || page.classList.contains("page-placeholder")) return;
+    if (!page || page.classList.contains("page-placeholder")) return false;
 
     const clone = page.cloneNode(true);
     clone.classList.add("pdf-thumb-page");
@@ -124,6 +124,7 @@ export function setupPdfToolbar(pagesContainer) {
       const scale = (mini.clientWidth || 132) / 380;
       clone.style.transform = `scale(${scale})`;
     });
+    return true;
   }
 
   function rebuildSidebar() {
@@ -135,9 +136,19 @@ export function setupPdfToolbar(pagesContainer) {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
           const mini = entry.target;
-          thumbObserver.unobserve(mini);
           const idx = parseInt(mini.dataset.pageIndex || "0", 10);
-          requestAnimationFrame(() => renderThumb(mini, idx));
+          // Task #9: don't unobserve until renderThumb actually succeeded —
+          // otherwise a placeholder/realize race kills the thumb forever.
+          requestAnimationFrame(() => {
+            if (renderThumb(mini, idx)) {
+              thumbObserver.unobserve(mini);
+            } else {
+              // schedule a retry shortly; the placeholder should resolve
+              setTimeout(() => {
+                if (renderThumb(mini, idx)) thumbObserver.unobserve(mini);
+              }, 250);
+            }
+          });
         }
       }, { root: sidebar, rootMargin: "120px 0px" })
       : null;
