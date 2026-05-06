@@ -319,6 +319,32 @@ function startResetLoop(reset) {
   updateClock();
 }
 
+// v33: detect open devtools (estimate via window dimensions delta).
+// When devtools open in demo mode → instant block.
+function installConsoleGuard() {
+  const threshold = 160;
+  const check = () => {
+    if (guardSuspended > 0 || !isDemoMode()) return;
+    const widthDelta = window.outerWidth - window.innerWidth;
+    const heightDelta = window.outerHeight - window.innerHeight;
+    if (widthDelta > threshold || heightDelta > threshold) {
+      blockDemoAccess();
+    }
+  };
+  window.addEventListener("resize", check, { passive: true });
+  setInterval(check, 1500);
+  check();
+}
+
+// v33: warn before demo print/download. Returns true if user confirmed.
+export function confirmDemoPrintWarning() {
+  if (!isDemoMode()) return true;
+  return window.confirm(
+    "שים לב: בהדפסה במצב דמו יש בתוך הטקסט סימני מים שלנו שנשתלו אקראית.\n\n" +
+    "האם להמשיך?"
+  );
+}
+
 export function setupDemoMode({ paneManager, reset } = {}) {
   if (!isDemoMode()) return { active: false };
   configureDemoGlobals();
@@ -331,6 +357,7 @@ export function setupDemoMode({ paneManager, reset } = {}) {
   paneManager?.clearStorage?.();
   installDemoBanner();
   installTamperMonitor();
+  installConsoleGuard();
   startResetLoop(reset);
   return { active: true };
 }
