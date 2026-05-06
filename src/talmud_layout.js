@@ -1566,12 +1566,35 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     !n.classList?.contains("stream") &&
     /^(P|H[1-6]|DIV|BLOCKQUOTE|PRE)$/i.test(n.tagName)
   ) : [];
-  // Cloud-Claude 2026-05-06: לספור תווים, לא רק אלמנטים. main של 27/63
-  // תווים נחשב ל-"דליל" ולא חוסם הרחבה. סף = 100 תווים אמיתיים.
-  const mainTextChars = mainTextOnly.reduce(
-    (s, n) => s + ((n.textContent || "").trim().length), 0
-  );
-  const hasRealMain = mainTextChars >= 100;
+  // משה 2026-05-06: הגדרת קצר = פחות מ-4 שורות שלמות (לא תווים).
+  // מודדים שורות אמיתיות לפי getClientRects של תוכן ה-main.
+  let mainLineCount = 0;
+  if (mainEl) {
+    const seenY = new Set();
+    const range = document.createRange();
+    const walker = document.createTreeWalker(mainEl, NodeFilter.SHOW_TEXT, {
+      acceptNode: n => {
+        // לדלג על טקסט בתוך bodies/streams
+        let p = n.parentElement;
+        while (p && p !== mainEl) {
+          if (p.classList?.contains("talmud-body-portion") ||
+              p.classList?.contains("talmud-body-expanded") ||
+              p.classList?.contains("stream")) return NodeFilter.FILTER_REJECT;
+          p = p.parentElement;
+        }
+        return n.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    let tn;
+    while ((tn = walker.nextNode())) {
+      range.setStart(tn, 0); range.setEnd(tn, tn.length);
+      for (const r of range.getClientRects()) {
+        if (r.height > 0) seenY.add(Math.round(r.top));
+      }
+    }
+    mainLineCount = seenY.size;
+  }
+  const hasRealMain = mainLineCount >= 4;
   if (!hasRealMain) {
     // משה 2026-05-06: כשאין main אמיתי — שני זרמים נשארים זה-לצד-זה ב-49.5%
     // (לא 100% מוערמים, שזה אסור בתכלית). זרם יחיד = 100%.
