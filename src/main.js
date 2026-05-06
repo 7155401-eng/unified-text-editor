@@ -743,6 +743,9 @@ function setupRibbonTabs() {
 
 setupRibbonTabs();
 wireDownloadsPanel();
+if (localStorage.getItem("ravtext.lineNumbers") === "1") {
+  document.body.classList.add("show-line-numbers");
+}
 setTimeout(() => wireTorahTools(paneManager), 200);
 setTimeout(() => {
   wireWordCount(paneManager);
@@ -1265,7 +1268,41 @@ document.addEventListener("click", async (ev) => {
       break;
     }
 
-    case "indent-in": case "indent-out": break; // הזחה — בהמשך
+    case "indent-in": {
+      if (!ed) break;
+      const sunk = ed.chain().focus().sinkListItem("listItem").run()
+        || ed.chain().focus().sinkListItem("taskItem").run();
+      if (!sunk) {
+        const status = document.getElementById("status");
+        if (status) status.textContent = "הזחה זמינה כרגע רק בתוך רשימה.";
+      }
+      break;
+    }
+    case "indent-out": {
+      if (!ed) break;
+      const lifted = ed.chain().focus().liftListItem("listItem").run()
+        || ed.chain().focus().liftListItem("taskItem").run();
+      if (!lifted) {
+        const status = document.getElementById("status");
+        if (status) status.textContent = "הוצאת הזחה זמינה כרגע רק בתוך רשימה.";
+      }
+      break;
+    }
+    case "insert-details": {
+      if (!ed) break;
+      const summary = prompt("כותרת בלוק נפתח:", "לחצו לפתיחה");
+      if (summary === null) break;
+      ed.chain().focus().insertContent(
+        `<details class="ravtext-collapsible"><summary>${summary || "פתיחה"}</summary><p>תוכן…</p></details>`
+      ).run();
+      break;
+    }
+    case "toggle-line-numbers": {
+      const on = !document.body.classList.contains("show-line-numbers");
+      document.body.classList.toggle("show-line-numbers", on);
+      localStorage.setItem("ravtext.lineNumbers", on ? "1" : "0");
+      break;
+    }
 
     case "undo":           ed && ed.undo().run(); break;
     case "redo":           ed && ed.redo().run(); break;
