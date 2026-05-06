@@ -26,6 +26,7 @@ import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
 import { setupFindReplace } from "./find_replace.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
 import { setupCssInjectPanel } from "./css_inject_panel.js";
+import { wireDownloadsPanel } from "./downloads_panel.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installConsoleGuard();
@@ -534,6 +535,7 @@ function setupRibbonTabs() {
 
   const tabs = [
     ["file", "קובץ"],
+    ["downloads", "הורדות"],
     ["home", "בית"],
     ["streams", "זרמים"],
     ["insert", "הוספה"],
@@ -567,7 +569,7 @@ function setupRibbonTabs() {
     Array.from(tabsBar.querySelectorAll(".ribbon-tab, .ribbon-tab-render-slot"))
       .forEach(el => el.remove());
     const tabTitles = {
-      file: "פעולות קובץ", home: "עיצוב טקסט", streams: "ניהול זרמים",
+      file: "פעולות קובץ", downloads: "הורדה ושמירה למחשב", home: "עיצוב טקסט", streams: "ניהול זרמים",
       insert: "הוספת אלמנטים", layout: "פריסת עמודים", talmud: "הגדרות גפ\"ת — תלמוד",
       mishna: "הגדרות משנ\"ב", review: "סקירה ובדיקה", view: "תצוגה",
       advanced: "מתקדם", settings: "הגדרות מערכת",
@@ -627,6 +629,7 @@ function setupRibbonTabs() {
     [".opening-word-toolbar", "layout"],
     ["#stream-columns-panel", "streams layout"],
     [".stress-toolbar", "advanced"],
+    ["#downloads-panel", "downloads"],
   ];
   for (const [selector, tabList] of panelTabs) {
     const panel = document.querySelector(selector);
@@ -634,6 +637,17 @@ function setupRibbonTabs() {
     panel.classList.add("ribbon-panel");
     panel.dataset.ribbonTab = tabList;
   }
+
+  // Move any ribbon-panel that sits BEFORE the tabs row to AFTER the main
+  // toolbar, so when a tab activates its panel appears below the tabs (Word
+  // style), never above them.
+  const tabsRect = tabsBar.compareDocumentPosition.bind(tabsBar);
+  const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
+  document.querySelectorAll(".ribbon-panel").forEach((panel) => {
+    const pos = tabsRect(panel);
+    if (pos & FOLLOWING) return;
+    mainToolbar.after(panel);
+  });
 
   const matchesTab = (el, tab) => (el.dataset.ribbonTab || "home")
     .split(/\s+/)
@@ -656,15 +670,69 @@ function setupRibbonTabs() {
     });
   };
 
+  // Word-style ribbon collapse: double-click any tab toggles permanent collapse;
+  // single-click on a tab while collapsed temporarily peeks the panel until the
+  // user clicks anywhere outside the ribbon. A chevron button mirrors the toggle.
+  const COLLAPSE_KEY = "ravtext.ribbonCollapsed";
+  function setCollapsed(on) {
+    document.body.classList.toggle("ribbon-collapsed", !!on);
+    document.body.classList.remove("ribbon-peek");
+    localStorage.setItem(COLLAPSE_KEY, on ? "1" : "0");
+    const chev = document.getElementById("ribbon-collapse-toggle");
+    if (chev) {
+      chev.textContent = on ? "▼" : "▲";
+      chev.title = on ? "פתח את סרגל הכלים (Ctrl+F1)" : "כווץ את סרגל הכלים (Ctrl+F1)";
+    }
+  }
+  function toggleCollapsed() {
+    setCollapsed(!document.body.classList.contains("ribbon-collapsed"));
+  }
+  let chevBtn = document.getElementById("ribbon-collapse-toggle");
+  if (!chevBtn) {
+    chevBtn = document.createElement("button");
+    chevBtn.id = "ribbon-collapse-toggle";
+    chevBtn.type = "button";
+    chevBtn.className = "ribbon-collapse-toggle";
+    chevBtn.textContent = "▲";
+    chevBtn.title = "כווץ את סרגל הכלים (Ctrl+F1)";
+    chevBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      toggleCollapsed();
+    });
+    const renderSlot = tabsBar.querySelector(".ribbon-tab-render-slot");
+    if (renderSlot) tabsBar.insertBefore(chevBtn, renderSlot);
+    else tabsBar.appendChild(chevBtn);
+  }
+
   tabsBar.addEventListener("click", (ev) => {
     const button = ev.target.closest(".ribbon-tab");
-    if (button) activateTab(button.dataset.ribbonTab);
+    if (!button) return;
+    activateTab(button.dataset.ribbonTab);
+    if (document.body.classList.contains("ribbon-collapsed")) {
+      document.body.classList.add("ribbon-peek");
+    }
   });
+  tabsBar.addEventListener("dblclick", (ev) => {
+    if (ev.target.closest(".ribbon-tab")) toggleCollapsed();
+  });
+  document.addEventListener("click", (ev) => {
+    if (!document.body.classList.contains("ribbon-peek")) return;
+    if (ev.target.closest("#ribbon-tabs, .ribbon-panel, .ribbon-toolbar")) return;
+    document.body.classList.remove("ribbon-peek");
+  }, true);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.ctrlKey && ev.key === "F1") {
+      ev.preventDefault();
+      toggleCollapsed();
+    }
+  });
+  setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
 
   activateTab(localStorage.getItem("ravtext.ribbonTab") || "home");
 }
 
 setupRibbonTabs();
+wireDownloadsPanel();
 setupWidthSlider();
 setupLiveRenderToggle();
 wirePageSettingsControls(() => {
@@ -942,6 +1010,54 @@ if (btnCustomStream && customStreamInput) {
       return;
     }
     activeChain()?.toggleStream(String(n).padStart(2, "0")).run();
+  });
+}
+
+// Jump-to-stream: scrolls the rendered output to the first occurrence of the
+// chosen stream code so the user can review where it lives in the layout.
+function flashStreamElement(el) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  const prevOutline = el.style.outline;
+  const prevTransition = el.style.transition;
+  el.style.transition = "outline-color 0.6s ease";
+  el.style.outline = "3px solid #f59e0b";
+  setTimeout(() => {
+    el.style.outline = prevOutline;
+    el.style.transition = prevTransition;
+  }, 1200);
+}
+function jumpToStream(code) {
+  const padded = String(code).padStart(2, "0");
+  const target = document.querySelector(`#pages-container .stream[data-stream="${padded}"], .pages-container .stream[data-stream="${padded}"]`);
+  if (target) {
+    flashStreamElement(target);
+    return;
+  }
+  const fallback = document.querySelector(`[data-stream="${padded}"]`);
+  if (fallback) {
+    flashStreamElement(fallback);
+    return;
+  }
+  const status = document.getElementById("status");
+  if (status) status.textContent = `הזרם ${padded} לא נמצא בתצוגת העמודים. רנדר עמודים תחילה.`;
+}
+document.querySelectorAll(".btn-stream-jump").forEach((btn) => {
+  btn.addEventListener("click", () => jumpToStream(btn.dataset.stream));
+});
+const jumpStreamInput = document.getElementById("jump-stream-input");
+const btnJumpStream = document.getElementById("btn-jump-stream");
+if (btnJumpStream && jumpStreamInput) {
+  btnJumpStream.addEventListener("click", () => {
+    const n = parseInt(jumpStreamInput.value, 10);
+    if (!Number.isFinite(n) || n < 1 || n > 999) {
+      jumpStreamInput.focus();
+      return;
+    }
+    jumpToStream(n);
+  });
+  jumpStreamInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") btnJumpStream.click();
   });
 }
 
