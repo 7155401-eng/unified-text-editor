@@ -46,11 +46,49 @@ function renderPicker() {
     const row = document.createElement("div");
     row.className = "mishna-level-row";
     row.style.cssText = "display:flex;align-items:center;gap:4px;";
+    row.draggable = true;
+    row.dataset.levelIdx = String(levelIdx);
+
+    // Drag handle — small ⋮⋮ icon, subtle but visible
+    const handle = document.createElement("span");
+    handle.className = "mishna-level-drag-handle";
+    handle.textContent = "⋮⋮";
+    handle.title = "גרור להעברת הרמה למעלה/למטה";
+    handle.style.cssText = "cursor:grab;color:#bbb;font-size:14px;letter-spacing:-2px;user-select:none;padding:0 4px;";
+    handle.addEventListener("mousedown", () => { handle.style.cursor = "grabbing"; });
+    handle.addEventListener("mouseup", () => { handle.style.cursor = "grab"; });
+    row.appendChild(handle);
 
     const label = document.createElement("span");
     label.style.cssText = "font-size:11px;color:#888;min-width:48px;";
     label.textContent = `רמה ${levelIdx + 1}:`;
     row.appendChild(label);
+
+    // Drag-and-drop event handlers (HTML5 native).
+    row.addEventListener("dragstart", (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(levelIdx));
+      row.style.opacity = "0.5";
+    });
+    row.addEventListener("dragend", () => { row.style.opacity = ""; });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      row.style.borderTop = "2px solid var(--rt-accent, #2c5aa0)";
+    });
+    row.addEventListener("dragleave", () => { row.style.borderTop = ""; });
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.style.borderTop = "";
+      const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      const toIdx = levelIdx;
+      if (fromIdx === toIdx || isNaN(fromIdx)) return;
+      const newLevels = levels.slice();
+      const [moved] = newLevels.splice(fromIdx, 1);
+      newLevels.splice(toIdx, 0, moved);
+      setLevels(newLevels);
+      renderPicker();
+    });
 
     codes.forEach((code, chipIdx) => {
       const chip = document.createElement("span");

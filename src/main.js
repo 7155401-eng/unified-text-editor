@@ -886,6 +886,7 @@ document.addEventListener("click", async (ev) => {
     case "sub":            ed && ed.toggleSubscript().run(); break;
     case "blockquote":     ed && ed.toggleBlockquote().run(); break;
     case "code-block":     ed && ed.toggleCodeBlock().run(); break;
+    case "code-inline":    ed && ed.toggleCode().run(); break;
     case "bullet":         ed && ed.toggleBulletList().run(); break;
     case "ordered":        ed && ed.toggleOrderedList().run(); break;
     case "check":          ed && ed.toggleTaskList().run(); break;
