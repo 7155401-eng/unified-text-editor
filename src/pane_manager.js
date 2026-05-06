@@ -16,6 +16,7 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Youtube from "@tiptap/extension-youtube";
 import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js";
+import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
 
 const MAX_PANES = 99;
@@ -121,6 +122,9 @@ function buildEditorExtensions() {
     Image.configure({ allowBase64: true }),
     Link.configure({ openOnClick: false }),
     Youtube.configure({ controls: true, nocookie: true }),
+    TableExt,
+    TableRowExt,
+    TableCellExt,
     StreamMark,
   ];
 }
