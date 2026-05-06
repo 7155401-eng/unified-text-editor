@@ -364,8 +364,31 @@
                 <option value="warm">חם</option>
                 <option value="ocean">אוקיינוס</option>
                 <option value="forest">יער</option>
+                <option value="custom">מותאם אישית</option>
               </select>
             </label>
+            <div id="settings-custom-theme" class="settings-custom-theme" hidden>
+              <div class="custom-theme-row">
+                <label><span>רקע ראשי:</span><input type="color" id="ct-bg" value="#f5f5f7" /></label>
+                <label><span>רקע פנל:</span><input type="color" id="ct-bg-panel" value="#ffffff" /></label>
+                <label><span>רקע סרגל:</span><input type="color" id="ct-bg-toolbar" value="#ebeef2" /></label>
+              </div>
+              <div class="custom-theme-row">
+                <label><span>טקסט:</span><input type="color" id="ct-fg" value="#1d1d1f" /></label>
+                <label><span>טקסט משני:</span><input type="color" id="ct-fg-muted" value="#6e6e73" /></label>
+                <label><span>גבולות:</span><input type="color" id="ct-border" value="#d0d0d4" /></label>
+              </div>
+              <div class="custom-theme-row">
+                <label><span>צבע דגש:</span><input type="color" id="ct-accent" value="#2c5aa0" /></label>
+                <label><span>דגש hover:</span><input type="color" id="ct-accent-hover" value="#1e4078" /></label>
+                <label><span>רקע כפתור:</span><input type="color" id="ct-btn-bg" value="#ffffff" /></label>
+              </div>
+              <div class="custom-theme-row">
+                <button type="button" id="ct-reset" class="settings-btn">איפוס לברירת מחדל</button>
+                <button type="button" id="ct-preset-modern" class="settings-btn">פלטה מודרנית</button>
+                <button type="button" id="ct-preset-vintage" class="settings-btn">פלטה ויטאג'</button>
+              </div>
+            </div>
             <label class="settings-row">
               <span data-i18n="settingsDarkMode">מצב כהה (קיצור):</span>
               <input type="checkbox" id="settings-dark-mode" />

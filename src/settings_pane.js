@@ -143,6 +143,105 @@ function applyTheme(themeId) {
   // Sync dark mode checkbox with theme
   const dm = document.getElementById("settings-dark-mode");
   if (dm) dm.checked = (themeId === "dark");
+  // Show/hide custom theme picker
+  const ct = document.getElementById("settings-custom-theme");
+  if (ct) ct.hidden = (themeId !== "custom");
+  // If custom — re-apply saved colors
+  if (themeId === "custom") applyCustomThemeFromStorage();
+}
+
+const CUSTOM_KEYS = ["bg","bg-panel","bg-toolbar","fg","fg-muted","border","accent","accent-hover","btn-bg"];
+
+function applyCustomTheme(colors) {
+  for (const key of CUSTOM_KEYS) {
+    const v = colors[key];
+    if (v) document.body.style.setProperty(`--rt-${key}`, v);
+  }
+  // Derive --rt-btn-hover from accent
+  if (colors["accent"]) {
+    document.body.style.setProperty("--rt-btn-hover", colors["accent"] + "22");
+  }
+  if (colors["bg-panel"]) {
+    document.body.style.setProperty("--rt-input-bg", colors["bg-panel"]);
+  }
+  if (colors["fg"]) {
+    document.body.style.setProperty("--rt-input-fg", colors["fg"]);
+  }
+}
+
+function applyCustomThemeFromStorage() {
+  try {
+    const stored = JSON.parse(localStorage.getItem("ravtext.settings.customTheme") || "{}");
+    applyCustomTheme(stored);
+    // Sync color inputs
+    for (const key of CUSTOM_KEYS) {
+      const input = document.getElementById(`ct-${key}`);
+      if (input && stored[key]) input.value = stored[key];
+    }
+  } catch (_) {}
+}
+
+function setupCustomThemePicker() {
+  for (const key of CUSTOM_KEYS) {
+    const input = document.getElementById(`ct-${key}`);
+    if (!input) continue;
+    input.addEventListener("input", () => {
+      const stored = JSON.parse(localStorage.getItem("ravtext.settings.customTheme") || "{}");
+      stored[key] = input.value;
+      localStorage.setItem("ravtext.settings.customTheme", JSON.stringify(stored));
+      applyCustomTheme(stored);
+    });
+  }
+  document.getElementById("ct-reset")?.addEventListener("click", () => {
+    localStorage.removeItem("ravtext.settings.customTheme");
+    for (const key of CUSTOM_KEYS) {
+      document.body.style.removeProperty(`--rt-${key}`);
+    }
+    document.body.style.removeProperty("--rt-btn-hover");
+    document.body.style.removeProperty("--rt-input-bg");
+    document.body.style.removeProperty("--rt-input-fg");
+    // Sync inputs to defaults (CSS values)
+    setTimeout(() => {
+      const computed = getComputedStyle(document.body);
+      for (const key of CUSTOM_KEYS) {
+        const input = document.getElementById(`ct-${key}`);
+        const cssVal = computed.getPropertyValue(`--rt-${key}`).trim();
+        if (input && cssVal) input.value = rgbToHex(cssVal) || input.value;
+      }
+    }, 50);
+  });
+  document.getElementById("ct-preset-modern")?.addEventListener("click", () => {
+    const preset = {
+      "bg":"#0f172a","bg-panel":"#1e293b","bg-toolbar":"#334155",
+      "fg":"#f1f5f9","fg-muted":"#94a3b8","border":"#475569",
+      "accent":"#38bdf8","accent-hover":"#0ea5e9","btn-bg":"#1e293b"
+    };
+    localStorage.setItem("ravtext.settings.customTheme", JSON.stringify(preset));
+    applyCustomTheme(preset);
+    for (const key of CUSTOM_KEYS) {
+      const input = document.getElementById(`ct-${key}`);
+      if (input && preset[key]) input.value = preset[key];
+    }
+  });
+  document.getElementById("ct-preset-vintage")?.addEventListener("click", () => {
+    const preset = {
+      "bg":"#f4ecd8","bg-panel":"#fdf6e3","bg-toolbar":"#eee8d5",
+      "fg":"#586e75","fg-muted":"#93a1a1","border":"#d3cbb7",
+      "accent":"#cb4b16","accent-hover":"#a83a0e","btn-bg":"#fdf6e3"
+    };
+    localStorage.setItem("ravtext.settings.customTheme", JSON.stringify(preset));
+    applyCustomTheme(preset);
+    for (const key of CUSTOM_KEYS) {
+      const input = document.getElementById(`ct-${key}`);
+      if (input && preset[key]) input.value = preset[key];
+    }
+  });
+}
+
+function rgbToHex(rgb) {
+  const m = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+  if (!m) return rgb.startsWith("#") ? rgb : null;
+  return "#" + [1,2,3].map(i => parseInt(m[i]).toString(16).padStart(2,"0")).join("");
 }
 
 export function setupSettingsPane() {
@@ -155,7 +254,7 @@ export function setupSettingsPane() {
     wrap.appendChild(panel);
   }
 
-  // Theme select (multi-theme)
+  // Theme select (multi-theme + custom)
   const themeSelect = document.getElementById("settings-theme");
   if (themeSelect) {
     const savedTheme = localStorage.getItem("ravtext.settings.theme") || "";
@@ -166,6 +265,7 @@ export function setupSettingsPane() {
       applyTheme(themeSelect.value);
     });
   }
+  setupCustomThemePicker();
 
   // Dark mode (shortcut — also drives the theme select)
   const darkMode = document.getElementById("settings-dark-mode");

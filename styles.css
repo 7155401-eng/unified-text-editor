@@ -2628,3 +2628,40 @@ body[data-theme="dark"] hr,
 body[data-theme="dark"] .sep {
   border-color: #3a3a44 !important;
 }
+
+/* ============================================================
+   v33: Custom theme picker UI
+   ============================================================ */
+.settings-custom-theme {
+  background: var(--rt-bg-toolbar, #f0f0f3);
+  padding: 10px;
+  border-radius: 6px;
+  margin-top: 8px;
+  border: 1px solid var(--rt-border, #ccc);
+}
+.custom-theme-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.custom-theme-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.custom-theme-row input[type="color"] {
+  width: 30px;
+  height: 26px;
+  border: 1px solid var(--rt-border, #ccc);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+/* Custom theme variables — applied via JS to body[data-theme="custom"] */
+body[data-theme="custom"] {
+  background: var(--rt-bg) !important;
+  color: var(--rt-fg) !important;
+}
