@@ -1016,12 +1016,12 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
         { pageEl: pageElForLedger, sourceId: sourceIdB }
       );
     }
-    // v33-restructure REVERTED: regressed gap fixes by 7 (8→1 PASS).
-    // Need coordinated update to pull-backward + shrink + invariants
-    // queries to handle nested streams. Reverting to siblings until
-    // a complete restructure plan is validated end-to-end.
-    if (bodyA) block.insertBefore(bodyA, mainEl);
-    if (bodyB) block.insertBefore(bodyB, mainEl);
+    // v33-RESTRUCTURE: bodies INSIDE mainEl so main text wraps around them.
+    // Bodies float right/left at start of mainEl; text content flows.
+    // (Crowns stay outside mainEl as they need to span both crown columns
+    //  above mainEl with their own clear behavior.)
+    if (bodyA && mainEl) mainEl.insertBefore(bodyA, mainEl.firstChild);
+    if (bodyB && mainEl) mainEl.insertBefore(bodyB, mainEl.firstChild);
 
     // ביטחון: גובה כתר זהה לשני הפרשנים (במקרה שספירת שורות בכל זאת מחזירה הבדל קטן)
     const styleA = getComputedStyle(streamA);

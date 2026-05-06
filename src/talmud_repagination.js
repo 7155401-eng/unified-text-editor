@@ -33,8 +33,9 @@ function capOverflowingBodies(pageEl) {
   const maxBodyH = Math.floor(pageH * 0.95); // leave a thin band
 
   let didCap = false;
+  // v33-restructure: bodies may be nested inside .page-main; deep query.
   const candidates = block.querySelectorAll(
-    ":scope > .talmud-body-expanded, :scope > .talmud-body-portion"
+    ".talmud-body-expanded, .talmud-body-portion"
   );
   for (const el of candidates) {
     const h = el.getBoundingClientRect().height;

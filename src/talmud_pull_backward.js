@@ -26,9 +26,11 @@ function pageGap(pageEl) {
 function findBodyByCode(pageEl, code) {
   const block = pageEl.querySelector(":scope > .talmud-layout");
   if (!block) return null;
+  // v33-restructure: bodies may be nested inside .page-main, not just direct
+  // children of block. Use deep query.
   return block.querySelector(
-    `:scope > .talmud-body-portion[data-talmud-body-of="${code}"], ` +
-    `:scope > .talmud-body-expanded[data-talmud-body-of="${code}"]`
+    `.talmud-body-portion[data-talmud-body-of="${code}"], ` +
+    `.talmud-body-expanded[data-talmud-body-of="${code}"]`
   );
 }
 
@@ -36,8 +38,8 @@ function bodyCodes(pageEl) {
   const block = pageEl.querySelector(":scope > .talmud-layout");
   if (!block) return [];
   return Array.from(block.querySelectorAll(
-    ":scope > .talmud-body-portion[data-talmud-body-of], " +
-    ":scope > .talmud-body-expanded[data-talmud-body-of]"
+    ".talmud-body-portion[data-talmud-body-of], " +
+    ".talmud-body-expanded[data-talmud-body-of]"
   )).map(el => el.dataset.talmudBodyOf).filter(Boolean);
 }
 
