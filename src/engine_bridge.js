@@ -683,24 +683,47 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
         }
       }
       splitPageStreamsBetweenPages();
-      // pass 147: גם הרצה מאוחרת אחרי settle, כי overflow לפעמים מופיע אחרי
-      // late layout (fonts, dynamic content). 200ms טוב לרוב הדפדפנים.
-      setTimeout(() => {
+      // משה 2026-05-06 (pass 153): לולאת מתקנים רציפה — לא רק 200ms+1500ms.
+      // רץ עד שאין שינוי במצב ה-overflow ב-3 איטרציות רצופות, או עד 30
+      // איטרציות (cap בטיחותי). כל איטרציה: split + measure + repeat אם
+      // משהו השתנה.
+      function measureTotalOverflow() {
+        let sum = 0;
+        pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
+          const ov = p.scrollHeight - p.clientHeight;
+          if (ov > 1) sum += ov;
+        });
+        return sum;
+      }
+      function runFullSplitterPass() {
         try {
           splitPageStreamsBetweenPages();
           if (typeof splitBodyExpandedBetweenPages === "function") {
             splitBodyExpandedBetweenPages();
           }
-        } catch (e) { console.warn("late split error:", e); }
-      }, 200);
-      setTimeout(() => {
-        try {
-          splitPageStreamsBetweenPages();
-          if (typeof splitBodyExpandedBetweenPages === "function") {
-            splitBodyExpandedBetweenPages();
+        } catch (e) { console.warn("[splitter] error:", e); }
+      }
+      function loopUntilStable() {
+        let prevOverflow = measureTotalOverflow();
+        let stableHits = 0;
+        const MAX_ITERS = 30;
+        for (let i = 0; i < MAX_ITERS; i++) {
+          runFullSplitterPass();
+          const curOverflow = measureTotalOverflow();
+          if (curOverflow === 0) break; // ניצחון מלא
+          if (curOverflow === prevOverflow) {
+            stableHits++;
+            if (stableHits >= 3) break; // לא משתנה — עוצרים
+          } else {
+            stableHits = 0;
           }
-        } catch (e) {}
-      }, 1500);
+          prevOverflow = curOverflow;
+        }
+      }
+      // הרצה ראשונה מיד; שתי הרצות מאוחרות (200ms + 1500ms) בלולאה רציפה
+      // לכל אחת — לתפוס late-layout/font-loading.
+      setTimeout(loopUntilStable, 200);
+      setTimeout(loopUntilStable, 1500);
       // pass 146: גם body-expanded בתוך talmud-layout יכול לגלוש (P5 case).
       // אם ה-body-expanded ארוך מדי, מעבירים note-parts (spans) האחרונים לעמוד הבא.
       function splitBodyExpandedBetweenPages() {
