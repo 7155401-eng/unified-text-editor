@@ -1647,6 +1647,38 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   background: #2563eb; color: #fff; border-color: #1d4ed8;
 }
 
+/* Experimental notice for the Talmud (גפ"ת) layout — must be prominent */
+.talmud-toolbar .talmud-experimental-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+  border-inline-start: 6px solid #d97706;
+  border-radius: 6px;
+  color: #78350f;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 1px 3px rgba(217, 119, 6, 0.2);
+}
+.talmud-toolbar .talmud-experimental-badge {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 4px 10px;
+  background: #d97706;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.talmud-toolbar .talmud-experimental-text { flex: 1; }
+.talmud-toolbar .talmud-experimental-text strong { color: #92400e; }
+
 .width-slider-control {
   display: inline-flex;
   align-items: center;
