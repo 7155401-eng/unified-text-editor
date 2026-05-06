@@ -283,19 +283,44 @@ function shrinkPagesToContent(container) {
   return shrunk;
 }
 
-// v33-fix: per משה, hiding orphan titles is WRONG. Instead, when a stream's
-// title appears on a page with < 2 visible lines of content, MOVE the entire
-// stream to the next page's leftover area. The engine doesn't natively know
-// to do this; we do it post-process.
+// משה כללים 9+12: כותרת יתומה (כותרת זרם עם פחות מ-2 שורות תוכן) — להעביר
+// את כל הזרם לעמוד הבא. בעבר נוטרל בגלל חשד למחיקת מילים. הגרסה החדשה
+// כוללת set-diff של כל הטקסט בעברית לפני ואחרי, ואם משהו נעלם — rollback.
+function tokenizeHebrew(text) {
+  return (text.match(/[א-ת][א-ת֑-ֽֿ-ׇ־]*/g) || []);
+}
+
+function snapshotContainerWords(container) {
+  return tokenizeHebrew((container.textContent || ""));
+}
+
+function multisetEquals(a, b) {
+  if (a.length !== b.length) return false;
+  const counts = new Map();
+  for (const w of a) counts.set(w, (counts.get(w) || 0) + 1);
+  for (const w of b) {
+    const c = counts.get(w);
+    if (!c) return false;
+    if (c === 1) counts.delete(w);
+    else counts.set(w, c - 1);
+  }
+  return counts.size === 0;
+}
+
 function moveOrphanStreamsToNextPage(container) {
+  // משה הגנה: snapshot מלא לפני כל שינוי. אם תוכן נעלם — מחזירים מיידית.
+  const wordsBefore = snapshotContainerWords(container);
+
   let moved = 0;
   const pages = Array.from(container.querySelectorAll(
     ".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)"
   ));
+  // נקודות שחזור לכל move — נוכל להחזיר אחד-אחד בסדר הפוך אם הסט-דיף נכשל.
+  const undoStack = [];
+
   for (let i = 0; i < pages.length - 1; i++) {
     const cur = pages[i];
     const next = pages[i + 1];
-    // Find streams on `cur` whose title is orphan (title + <2 lines below).
     const streams = Array.from(cur.querySelectorAll(".talmud-layout .stream, .page-streams > .stream"));
     for (const s of streams) {
       const totalText = (s.textContent || "").trim();
@@ -309,29 +334,88 @@ function moveOrphanStreamsToNextPage(container) {
       const below = rects.filter(r => r.top > titleBottom + 2);
       const visualLines = new Set(below.map(r => Math.round(r.top))).size;
       if (visualLines >= 2) continue;
-      // Orphan — move whole stream to next page's leftover area.
+
       const nextStreams = next.querySelector(":scope > .page-streams");
       if (!nextStreams) continue;
-      // Avoid duplication: if next page already has a stream with same code at top,
-      // prepend our content to it; otherwise insert as first.
       const code = s.getAttribute("data-stream") || "";
       const existing = code ? nextStreams.querySelector(`:scope > .stream[data-stream="${code}"]`) : null;
+
+      // snapshot מקומי למקרה rollback
+      const undo = {
+        type: existing ? "merge" : "move",
+        s,
+        prevParent: s.parentNode,
+        prevSibling: s.nextSibling,
+      };
+
       if (existing) {
-        // Merge: skip our title, prepend rest of children to existing.
+        // merge: snapshot של כל ילדי s + מצב existing לפני
         const ourTitle = s.querySelector(":scope > .stream-title");
+        const ourTitleParent = ourTitle ? ourTitle.parentNode : null;
+        const ourTitleNextSibling = ourTitle ? ourTitle.nextSibling : null;
         if (ourTitle) ourTitle.remove();
         const exTitle = existing.querySelector(":scope > .stream-title");
         const insertBefore = exTitle ? exTitle.nextSibling : existing.firstChild;
-        while (s.firstChild) existing.insertBefore(s.firstChild, insertBefore);
+        const movedChildren = [];
+        while (s.firstChild) {
+          const ch = s.firstChild;
+          existing.insertBefore(ch, insertBefore);
+          movedChildren.push(ch);
+        }
         s.remove();
+        undo.movedChildren = movedChildren;
+        undo.ourTitle = ourTitle;
+        undo.ourTitleParent = ourTitleParent;
+        undo.ourTitleNextSibling = ourTitleNextSibling;
+        undo.existing = existing;
       } else {
-        // Move whole stream to top of next page.
         nextStreams.insertBefore(s, nextStreams.firstChild);
         s.dataset.talmudMovedFromPrevPage = "true";
       }
+      undoStack.push(undo);
       moved++;
     }
   }
+
+  // בדיקה: כל המילים בעברית עדיין קיימות?
+  const wordsAfter = snapshotContainerWords(container);
+  if (!multisetEquals(wordsBefore, wordsAfter)) {
+    // rollback בסדר הפוך
+    for (let i = undoStack.length - 1; i >= 0; i--) {
+      const u = undoStack[i];
+      try {
+        if (u.type === "merge") {
+          // החזר את הילדים מ-existing אל s; השחזר את s במקומו
+          for (const ch of u.movedChildren.reverse()) {
+            if (ch.parentNode === u.existing) u.existing.removeChild(ch);
+          }
+          // החזר את s
+          if (u.ourTitle && u.ourTitleParent) {
+            if (u.ourTitleNextSibling) u.ourTitleParent.insertBefore(u.ourTitle, u.ourTitleNextSibling);
+            else u.ourTitleParent.appendChild(u.ourTitle);
+          }
+          for (const ch of u.movedChildren) u.s.appendChild(ch);
+          if (u.prevSibling) u.prevParent.insertBefore(u.s, u.prevSibling);
+          else u.prevParent.appendChild(u.s);
+        } else {
+          // move: החזר את s למקומו המקורי
+          delete u.s.dataset.talmudMovedFromPrevPage;
+          if (u.prevSibling) u.prevParent.insertBefore(u.s, u.prevSibling);
+          else u.prevParent.appendChild(u.s);
+        }
+      } catch (e) {
+        console.warn("[orphan-mover] rollback step failed:", e);
+      }
+    }
+    if (typeof console !== "undefined") {
+      console.error(
+        `[orphan-mover] CONTENT LOSS detected (before=${wordsBefore.length} after=${wordsAfter.length}); ` +
+        `rolled back ${undoStack.length} moves.`
+      );
+    }
+    return 0;
+  }
+
   return moved;
 }
 
@@ -436,8 +520,10 @@ export function pullBackwardAcrossAllPages(container) {
   total += pullForwardWhenGap(container);
   // After pulling, hide any pages that became empty (no visible content left).
   hideEmptyPages(container);
-  // moveOrphanStreamsToNextPage DISABLED (suspected source of word deletion).
-  // moveOrphanStreamsToNextPage(container);
+  // משה כללים 9+12: כותרת יתומה (כותרת בלי 2 שורות תוכן) — להעביר את כל
+  // הזרם לעמוד הבא. ההגנה החדשה (set-diff מילים בעברית, rollback אוטומטי
+  // אם תוכן נעלם) מבטלת את החשש למחיקת מילים שהיה בעבר.
+  total += moveOrphanStreamsToNextPage(container);
   // shrinkPagesToContent DISABLED per משה: pages should be FILLED with content,
   // not made smaller. Smaller pages instead of full pages = wrong solution.
   // The right fix is to push more content into pages so they fill naturally.

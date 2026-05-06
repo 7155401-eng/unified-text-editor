@@ -602,6 +602,30 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
  *  כדי לקבל את גובה השורה האמיתי לגופן הנוכחי (לא קבוע hardcoded).
  *  הקבוע 17.9166 נשאר רק כ-last resort כשאי אפשר למדוד שום דבר. */
 const FALLBACK_LINE_HEIGHT_PX = 17.9166;
+
+/**
+ * משה שלב 5 (חיזוק): במקום HARD_MIN קבוע (17.9166 × crownLines), מודדים
+ * את גובה השורה האמיתי של ה-block. fallback רק אם המדידה נכשלת.
+ * מסווה פחות בעיות מדידה.
+ */
+function getDynamicHardMin(streamEl, crownLines) {
+  if (crownLines <= 0) return 0;
+  // ננסה למדוד מהזרם עצמו, מה-block, ואז מהדף
+  let lh = measureLineHeightFromAnyText(streamEl,
+    (n) => streamEl.querySelector(":scope > .stream-title")?.contains(n));
+  if (!lh || lh < 5) {
+    const block = streamEl.closest(".talmud-layout");
+    if (block) lh = measureLineHeightFromAnyText(block,
+      (n) => n.parentElement?.classList?.contains("stream-title"));
+  }
+  if (!lh || lh < 5) {
+    const page = streamEl.closest(".page");
+    if (page) lh = measureLineHeightFromAnyText(page,
+      (n) => n.parentElement?.classList?.contains("stream-title"));
+  }
+  if (!lh || lh < 5) lh = FALLBACK_LINE_HEIGHT_PX;
+  return lh * crownLines;
+}
 function measureLineHeightFromAnyText(rootEl, excludeFn) {
   if (!rootEl) return 0;
   const range = document.createRange();
@@ -799,35 +823,117 @@ function layoutNoMain(block, streamsWrap, commentaryStreams) {
 }
 
 /**
- * v28-merge: מפצל פרשן יחיד לשני חצאים — מחזיר את החצי השני כאלמנט חדש,
- * משאיר את החצי הראשון בתוך commentary המקורי.
- * הפיצול בנקודת הפסקה הקרובה ביותר לאמצע (כדי לא לחתוך באמצע פסקה).
- * משמש את ה-dispatch שמעביר פרשן יחיד+ראשי דרך layoutTwoCommentariesWithMain
- * כך שיקבל כתר אמיתי משני הצדדים.
+ * משה כלל 7 (זרם אחד מפוצל לשני טורים זורמים בקריאה רציפה).
+ *
+ * הפונקציה הזו מודדת את הזרם ברוחב 50%, סופרת שורות אמיתיות,
+ * ומחזירה אלמנט חצי-שני שיכיל בדיוק את חצי השורות (מעוגל למעלה).
+ *
+ * בניגוד לגרסה הקודמת שחתכה לפי ספירת תווים בלבד (יוצר טורים לא
+ * מאוזנים כי תווים ≠ שורות מצוירות), הגרסה הזו חותכת לפי שורה
+ * אמיתית. שני הטורים זהים בכמות שורות — בדיוק כמו דפוס וילנא.
+ *
+ * זרימת הקריאה: התוכן הראשון נשאר בטור ימין; ההמשך עובר לטור שמאל.
+ * המשתמש קורא: ראש ימין → סוף ימין → ראש שמאל → סוף שמאל.
+ *
+ * @returns {HTMLElement|null} החצי השני, או null אם אין מה לחלק
  */
 function splitSingleCommentaryIntoHalves(commentary) {
   const titleEl = commentary.querySelector(":scope > .stream-title");
   const contentChildren = Array.from(commentary.children).filter(
     (c) => !c.classList?.contains("stream-title")
   );
-  if (contentChildren.length < 2) return null; // אין מה לחלק
+  if (contentChildren.length === 0) return null;
 
   const totalLen = contentChildren.reduce(
     (sum, c) => sum + (c.textContent || "").length, 0
   );
-  if (totalLen < 40) return null; // קצר מדי
+  if (totalLen < 40) return null; // קצר מדי לפיצול
 
-  const target = totalLen / 2;
-  let cum = 0;
-  let splitIdx = contentChildren.length;
-  for (let i = 0; i < contentChildren.length; i++) {
-    cum += (contentChildren[i].textContent || "").length;
-    if (cum >= target) {
-      splitIdx = i + 1;
-      break;
+  // מודדים שורות ברוחב 50% — מציבים את הזרם זמנית בתוך probe ב-50%.
+  const block = commentary.closest(".talmud-layout") || commentary.parentElement;
+  if (!block) return null;
+  const probe = commentary.cloneNode(true);
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.float = "none";
+  probe.style.clear = "none";
+  probe.style.width = "50%";
+  probe.style.left = "-9999px";
+  probe.style.top = "0";
+  block.appendChild(probe);
+
+  // מאספים את כל ה-Y הייחודיים בתוך התוכן (לא כותרת)
+  const probeTitle = probe.querySelector(":scope > .stream-title");
+  const lineYs = [];
+  const seenY = new Set();
+  const range = document.createRange();
+  const walker = document.createTreeWalker(probe, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (probeTitle && probeTitle.contains(node)) return NodeFilter.FILTER_REJECT;
+      return node.textContent && node.textContent.length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  let tn;
+  while ((tn = walker.nextNode())) {
+    range.setStart(tn, 0);
+    range.setEnd(tn, tn.length);
+    for (const r of Array.from(range.getClientRects())) {
+      if (r.height === 0 && r.width === 0) continue;
+      const key = Math.round(r.top);
+      if (!seenY.has(key)) {
+        seenY.add(key);
+        lineYs.push(r.top);
+      }
     }
   }
-  if (splitIdx <= 0 || splitIdx >= contentChildren.length) return null;
+  block.removeChild(probe);
+
+  const totalLines = lineYs.length;
+  if (totalLines < 2) return null;
+
+  // חצי שורות (מעוגל למעלה) הולך לטור ימין, השאר לטור שמאל
+  const halfLines = Math.ceil(totalLines / 2);
+  const splitPoint = findOffsetAtLineStart(commentary, halfLines + 1);
+  if (!splitPoint) {
+    // fallback לגישה הישנה (חיתוך לפי תווים) רק אם המדידה כשלה
+    const target = totalLen / 2;
+    let cum = 0;
+    let splitIdx = contentChildren.length;
+    for (let i = 0; i < contentChildren.length; i++) {
+      cum += (contentChildren[i].textContent || "").length;
+      if (cum >= target) { splitIdx = i + 1; break; }
+    }
+    if (splitIdx <= 0 || splitIdx >= contentChildren.length) return null;
+    const secondHalfFB = document.createElement("div");
+    secondHalfFB.className = commentary.className;
+    for (const a of Array.from(commentary.attributes)) {
+      if (a.name !== "style") secondHalfFB.setAttribute(a.name, a.value);
+    }
+    if (titleEl) secondHalfFB.appendChild(titleEl.cloneNode(true));
+    for (let i = splitIdx; i < contentChildren.length; i++) {
+      secondHalfFB.appendChild(contentChildren[i]);
+    }
+    secondHalfFB.dataset.talmudSingleHalf = commentary.getAttribute("data-stream") || "";
+    secondHalfFB.dataset.talmudSplitMode = "char-fallback";
+    return secondHalfFB;
+  }
+
+  // חיתוך לפי שורות אמיתי + הגנת גבולות מילים (משה כלל 8)
+  const isBreak = (ch) => /[\s.,;:!?־׀׃׳״"'() \[\]{}\-—–]/.test(ch);
+  let safeOffset = splitPoint.offset;
+  const text = splitPoint.node.textContent || "";
+  if (safeOffset > 0 && safeOffset < text.length && !isBreak(text[safeOffset - 1])) {
+    let i = safeOffset;
+    while (i > 0 && !isBreak(text[i - 1])) i--;
+    if (i > 0) safeOffset = i;
+  }
+
+  const r2 = document.createRange();
+  r2.setStart(splitPoint.node, safeOffset);
+  r2.setEndAfter(commentary.lastChild);
+  const fragment = r2.extractContents();
 
   const secondHalf = document.createElement("div");
   secondHalf.className = commentary.className;
@@ -835,11 +941,11 @@ function splitSingleCommentaryIntoHalves(commentary) {
     if (a.name !== "style") secondHalf.setAttribute(a.name, a.value);
   }
   if (titleEl) secondHalf.appendChild(titleEl.cloneNode(true));
-  for (let i = splitIdx; i < contentChildren.length; i++) {
-    secondHalf.appendChild(contentChildren[i]);
-  }
-  // סימן שזה חצי פיצולי, כדי לטפל ב-unwrap
+  secondHalf.appendChild(fragment);
   secondHalf.dataset.talmudSingleHalf = commentary.getAttribute("data-stream") || "";
+  secondHalf.dataset.talmudSplitMode = "line-equal";
+  secondHalf.dataset.talmudSplitLines = String(halfLines);
+  secondHalf.dataset.talmudTotalLines = String(totalLines);
   return secondHalf;
 }
 
@@ -998,7 +1104,7 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
       }
       const measuredH = Math.max(0, bottom - rect.top);
       const minH = computeMinCrownHeight(commentary, crownLines);
-      const HARD_MIN = 17.9166 * crownLines;
+      const HARD_MIN = getDynamicHardMin(commentary, crownLines);
       const exactH = Math.max(measuredH, minH, HARD_MIN);
       commentary.style.height = `${exactH}px`;
       commentary.style.maxHeight = `${exactH}px`;
@@ -1061,9 +1167,8 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
         }
         const measuredH2 = Math.max(0, bottom2 - rect2.top);
         const minH2 = computeMinCrownHeight(leftCrownRest, crownLines);
-        // משה 2026-05-06 (pass 148): אכיפת מינימום קשיחה — 4 שורות × FALLBACK
-        // אפילו אם computeMinCrownHeight נכשל למדוד.
-        const HARD_MIN = 17.9166 * crownLines;
+        // משה שלב 5: HARD_MIN דינמי לפי גובה השורה הנמדד של ה-block
+        const HARD_MIN = getDynamicHardMin(leftCrownRest, crownLines);
         const exactH2 = Math.max(measuredH2, minH2, HARD_MIN);
         leftCrownRest.style.height = `${exactH2}px`;
         leftCrownRest.style.maxHeight = `${exactH2}px`;
@@ -1283,7 +1388,7 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       for (const r of rects) { if (r.bottom > bottom) bottom = r.bottom; }
       const measuredH = Math.max(0, bottom - rect.top);
       const minH = computeMinCrownHeight(longEl, crownLines);
-      const HARD_MIN = 17.9166 * crownLines;
+      const HARD_MIN = getDynamicHardMin(longEl, crownLines);
       const exactH = Math.max(measuredH, minH, HARD_MIN);
       longEl.style.height = `${exactH}px`;
       longEl.style.maxHeight = `${exactH}px`;
@@ -1480,7 +1585,7 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     const minCrownHA = computeMinCrownHeight(streamA, crownLines);
     const minCrownHB = computeMinCrownHeight(streamB, crownLines);
     const minCrownH = Math.max(minCrownHA, minCrownHB);
-    const HARD_MIN = 17.9166 * crownLines;
+    const HARD_MIN = Math.max(getDynamicHardMin(streamA, crownLines), getDynamicHardMin(streamB, crownLines));
     const exactCrownH = Math.max(heightA, heightB, minCrownH, HARD_MIN);
     streamA.style.height = `${exactCrownH}px`;
     streamA.style.maxHeight = `${exactCrownH}px`;
