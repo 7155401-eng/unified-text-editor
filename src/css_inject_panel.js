@@ -190,6 +190,54 @@ async function callAI(prompt) {
   return null;
 }
 
+// Drag-resize: handle sits on left or right edge of panel; cursor delta updates the panel's
+// grid-column width. Direction is derived from handle position relative to panel center, so
+// it works in both LTR and RTL.
+const PANEL_MIN_WIDTH = 240;
+const PANEL_MAX_WIDTH = 720;
+const PANEL_WIDTH_KEY = "ravtext.cssInject.panelWidth";
+
+function attachPanelResizer(handle, panel, mainEl) {
+  handle.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    const panelRect = panel.getBoundingClientRect();
+    const handleRect = handle.getBoundingClientRect();
+    const handleCenterX = handleRect.left + handleRect.width / 2;
+    const isRightEdge = handleCenterX > panelRect.left + panelRect.width / 2;
+    const anchorX = isRightEdge ? panelRect.left : panelRect.right;
+    handle.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    function onMove(e) {
+      const newW = isRightEdge ? (e.clientX - anchorX) : (anchorX - e.clientX);
+      if (newW >= PANEL_MIN_WIDTH && newW <= PANEL_MAX_WIDTH) {
+        mainEl.style.setProperty("--ci-panel-width", `${Math.round(newW)}px`);
+      }
+    }
+    function onUp() {
+      handle.classList.remove("dragging");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      try {
+        const cur = mainEl.style.getPropertyValue("--ci-panel-width");
+        if (cur) localStorage.setItem(PANEL_WIDTH_KEY, cur);
+      } catch (_) {}
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
+function restorePanelWidth(mainEl) {
+  try {
+    const saved = localStorage.getItem(PANEL_WIDTH_KEY);
+    if (saved) mainEl.style.setProperty("--ci-panel-width", saved);
+  } catch (_) {}
+}
+
 function buildPanel() {
   if (document.getElementById(PANEL_ID)) return;
   // Place panel as sibling BETWEEN input section and preview pane (outside preview)
@@ -204,13 +252,13 @@ function buildPanel() {
   panel.dir = "rtl";
   panel.hidden = true;
   panel.style.cssText = `
-    flex: 0 0 360px;
+    flex: 0 0 320px;
     background: var(--panel, #ffffff);
     color: var(--txt, #1d1d1f);
     border-inline-start: 1px solid var(--border, #d0d0d4);
     padding: 12px; font-family: inherit;
     display: flex; flex-direction: column; gap: 8px; overflow-y: auto;
-    align-self: stretch;
+    align-self: stretch; position: relative;
   `;
   panel.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border,#d0d0d4);padding-bottom:6px;">
@@ -292,6 +340,20 @@ function buildPanel() {
   document.head.appendChild(styleTag);
   // Insert panel BETWEEN input section and preview pane (sibling of preview)
   main.insertBefore(panel, previewPane);
+
+  // Resize handles — drag panel edge with editor (left handle) and with preview (right handle).
+  // The .main grid uses var(--ci-panel-width) for the panel column; we update it on drag.
+  const handleLeft = document.createElement("div");
+  handleLeft.className = "ci-resize-handle left";
+  handleLeft.title = "גרור לשינוי רוחב הסרגל";
+  const handleRight = document.createElement("div");
+  handleRight.className = "ci-resize-handle right";
+  handleRight.title = "גרור לשינוי רוחב הסרגל";
+  panel.appendChild(handleLeft);
+  panel.appendChild(handleRight);
+  attachPanelResizer(handleLeft, panel, main);
+  attachPanelResizer(handleRight, panel, main);
+  restorePanelWidth(main);
 
   // Toggle button — placed in pdf-toolbar
   const toolbar = document.getElementById("pdf-toolbar");

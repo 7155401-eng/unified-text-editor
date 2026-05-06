@@ -267,10 +267,20 @@ html, body {
 }
 /* CSS-panel mode: insert column between editor and preview */
 .main:has(#ravtext-css-inject-panel:not([hidden])) {
-  grid-template-columns: minmax(0, 1.5fr) 360px minmax(440px, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) var(--ci-panel-width, 320px) minmax(440px, 1fr);
   grid-template-areas: "editor css-panel preview";
 }
-#ravtext-css-inject-panel { grid-area: css-panel; align-self: stretch; }
+#ravtext-css-inject-panel { grid-area: css-panel; align-self: stretch; position: relative; }
+.ci-resize-handle {
+  position: absolute; top: 0; bottom: 0; width: 6px;
+  cursor: col-resize; background: transparent; z-index: 5;
+  transition: background 0.15s;
+}
+.ci-resize-handle:hover, .ci-resize-handle.dragging {
+  background: var(--word-blue, #2B579A); opacity: 0.35;
+}
+.ci-resize-handle.left { inset-inline-start: -3px; }
+.ci-resize-handle.right { inset-inline-end: -3px; }
 
 .panel {
   background: var(--panel);
