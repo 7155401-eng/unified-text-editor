@@ -109,10 +109,7 @@ const tr = {
     advanced: "Advanced",
     settings: "Settings",
   },
-  he: undefined, // placeholder; populated below
 };
-// v33: he gets the same new settings keys
-tr.he = tr.he || {};
 
 let currentLang = localStorage.getItem(STORAGE_KEY) || "he";
 if (!tr[currentLang]) currentLang = "he";
