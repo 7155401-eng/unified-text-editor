@@ -583,7 +583,16 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             next = document.createElement("div");
             next.className = "page talmud-layout-page";
             next.dir = "rtl";
-            next.dataset.pageIndex = String(pages.length);
+            // pass 150: למנוע duplication של pageIndex עם placeholders שיוצרו
+            // ע"י ה-engine. במקום להשתמש ב-pages.length שעלול להתנגש, מחפשים
+            // את ה-max page-index קיים בdom ומקצים +1.
+            const allWithIdx = pagesContainer.querySelectorAll("[data-page-index]");
+            let maxIdx = -1;
+            allWithIdx.forEach(p => {
+              const n = parseInt(p.dataset.pageIndex, 10);
+              if (Number.isFinite(n) && n > maxIdx) maxIdx = n;
+            });
+            next.dataset.pageIndex = String(maxIdx + 1);
             const newPS = document.createElement("div");
             newPS.className = "page-streams";
             next.appendChild(newPS);
@@ -659,6 +668,18 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             void cur.offsetHeight;
             pageOv = cur.scrollHeight - cur.clientHeight;
           }
+          // pass 150: עדכון ה-attribute אחרי הפיצול. ה-attr הישן (1049) משאיר
+          // את ה-validator (INV-8) חושב שיש failure גם אחרי שהtkov ירד. גם
+          // לסמן/להסיר את ה-class talmud-page-overflow לפי המצב הנוכחי.
+          void cur.offsetHeight;
+          const finalOv = cur.scrollHeight - cur.clientHeight;
+          if (finalOv > 1) {
+            cur.setAttribute("data-talmud-overflow-px", String(Math.round(finalOv)));
+            cur.classList.add("talmud-page-overflow");
+          } else {
+            cur.removeAttribute("data-talmud-overflow-px");
+            cur.classList.remove("talmud-page-overflow");
+          }
         }
       }
       splitPageStreamsBetweenPages();
@@ -701,7 +722,16 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             next = document.createElement("div");
             next.className = "page talmud-layout-page";
             next.dir = "rtl";
-            next.dataset.pageIndex = String(pages.length);
+            // pass 150: למנוע duplication של pageIndex עם placeholders שיוצרו
+            // ע"י ה-engine. במקום להשתמש ב-pages.length שעלול להתנגש, מחפשים
+            // את ה-max page-index קיים בdom ומקצים +1.
+            const allWithIdx = pagesContainer.querySelectorAll("[data-page-index]");
+            let maxIdx = -1;
+            allWithIdx.forEach(p => {
+              const n = parseInt(p.dataset.pageIndex, 10);
+              if (Number.isFinite(n) && n > maxIdx) maxIdx = n;
+            });
+            next.dataset.pageIndex = String(maxIdx + 1);
             const newPS = document.createElement("div");
             newPS.className = "page-streams";
             next.appendChild(newPS);
@@ -754,6 +784,16 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             else target.insertBefore(lastChild, target.firstChild);
             void cur.offsetHeight;
             pageOv = cur.scrollHeight - cur.clientHeight;
+          }
+          // pass 150: עדכון attribute + class גם כאן (סינכרון אחרי body-expanded split).
+          void cur.offsetHeight;
+          const finalOv = cur.scrollHeight - cur.clientHeight;
+          if (finalOv > 1) {
+            cur.setAttribute("data-talmud-overflow-px", String(Math.round(finalOv)));
+            cur.classList.add("talmud-page-overflow");
+          } else {
+            cur.removeAttribute("data-talmud-overflow-px");
+            cur.classList.remove("talmud-page-overflow");
           }
         }
       }
