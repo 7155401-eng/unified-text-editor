@@ -1701,15 +1701,9 @@ export function applyTalmudLayoutToPage(pageEl) {
     const byCode = new Map(allStreams.map((s) => [codeForStream(s), s]));
     talmudStreams = codes.map((c) => byCode.get(c)).filter(Boolean);
   }
-  // משה 2026-05-06 (תיקון עמ' 1 — אין גפ"ת): אם הקודים שמוגדרים לא קיימים
-  // בעמוד הזה (למשל עמ' פתיחה ללא הערות 01/02), נשתמש בכל הזרמים שקיימים
-  // (עד 2 ראשונים) במקום לדלג על העמוד.
-  if (talmudStreams.length === 0 && allStreams.length > 0) {
-    talmudStreams = allStreams
-      .slice()
-      .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
-      .slice(0, 2);
-  }
+  // משה 2026-05-06: אם המשתמש הגדיר codes ספציפיים (01,02) אבל הם לא
+  // קיימים בעמוד — אסור להציג זרמים אחרים כגפ"ת. עדיף לדלג על העמוד.
+  // (תיקון לבאג שקרה אחרי pass 136 כש-streams 03,04 הוצגו כגפ"ת.)
   if (talmudStreams.length === 0) return;
 
   pageEl.classList.add("talmud-layout-page");
