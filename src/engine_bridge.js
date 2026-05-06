@@ -756,6 +756,33 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           removeEmptyStreams();
         } catch (e) { console.warn("[splitter] error:", e); }
       }
+      // Bug 9 fix: כלל 10 — בעמוד האחרון, ה-page-streams חייב להיפגש עם
+      // ה-main בלי פער (אין מאיפה למשוך תוכן). מודדים את הפער הויזואלי
+      // האמיתי וקובעים margin-top שלילי בדיוק לגודלו (לא 29px קבוע).
+      function raiseLastPageFootnotes() {
+        const pages = Array.from(
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+        );
+        if (pages.length === 0) return;
+        const lastReal = pages[pages.length - 1];
+        const ps = lastReal.querySelector(":scope > .page-streams");
+        if (!ps) return;
+        const block = lastReal.querySelector(":scope > .talmud-layout");
+        const main = lastReal.querySelector(":scope > .page-main");
+        const above = block || main;
+        if (!above) return;
+        const aboveBottom = above.getBoundingClientRect().bottom;
+        const psTop = ps.getBoundingClientRect().top;
+        const gap = psTop - aboveBottom;
+        if (gap > 5) {
+          ps.style.marginTop = `${-gap}px`;
+        } else {
+          // אם אין פער, לוודא שלא נשאר margin שלילי משאריות.
+          if (ps.style.marginTop && ps.style.marginTop.startsWith("-")) {
+            ps.style.marginTop = "";
+          }
+        }
+      }
       function loopUntilStable() {
         let prevOverflow = measureTotalOverflow();
         let stableHits = 0;
@@ -772,6 +799,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           }
           prevOverflow = curOverflow;
         }
+        try { raiseLastPageFootnotes(); } catch (e) { console.warn("[raiseLastPage] error:", e); }
       }
       // הרצה ראשונה מיד; שתי הרצות מאוחרות (200ms + 1500ms) בלולאה רציפה
       // לכל אחת — לתפוס late-layout/font-loading.

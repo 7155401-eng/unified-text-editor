@@ -844,6 +844,48 @@ function splitSingleCommentaryIntoHalves(commentary) {
 }
 
 /**
+ * Bug 6 fix — תרחיש 2 (זרם 1 קצר עם ראשי).
+ * אם הזרם לא ממלא crownLines שורות ברוחב מלא, אסור ליצור כתר. במקום זה
+ * הזרם נדחף כ-body-portion בתוך mainEl — כך שהראשי זורם מסביבו ומתחתיו,
+ * והעמוד מתחיל יחד (אין פער בראש העמוד).
+ */
+function layoutShortCommentaryNoCrown(block, streamsWrap, mainEl, commentary) {
+  block.classList.add("talmud-has-main", "talmud-short-commentary-no-crown");
+  const sides = orderedSides(streamsWrap);
+  const sideRight = sides[0] || "right";
+  const sideRightClass = sideRight === "right" ? "talmud-right" : "talmud-left";
+  const mainWidth = getTalmudMainWidth();
+  const sideHalf = ((100 - mainWidth) / 2).toFixed(4);
+  const sideGap = getTalmudSideGap();
+
+  commentary.classList.add(
+    "talmud-commentary",
+    "talmud-body-portion",
+    sideRightClass
+  );
+  commentary.dataset.talmudRole = "commentary";
+  commentary.style.float = sideRight;
+  commentary.style.width = `${sideHalf}%`;
+  commentary.style.clear = "none";
+  if (sideRight === "right") {
+    commentary.style.marginLeft = `${sideGap}px`;
+    commentary.style.marginRight = "";
+  } else {
+    commentary.style.marginRight = `${sideGap}px`;
+    commentary.style.marginLeft = "";
+  }
+
+  mainEl.classList.add("talmud-main");
+  mainEl.dataset.talmudRole = "main";
+  // הכנסת הזרם הקצר בראש ה-main כך שהראשי יזרום סביבו (ימין → ראשי משמאל).
+  mainEl.insertBefore(commentary, mainEl.firstChild);
+  block.appendChild(mainEl);
+
+  const tempParent = streamsWrap.parentElement;
+  tempParent.insertBefore(block, streamsWrap);
+}
+
+/**
  * SCENARIO B — One commentary + main text.
  * Commentary floats on the inner/right side; main fills the rest.
  *
@@ -853,6 +895,14 @@ function splitSingleCommentaryIntoHalves(commentary) {
  */
 function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
   block.classList.add("talmud-has-main", "talmud-one-commentary");
+
+  // Bug 8 fix: snapshot מלא של תוכן הזרם לפני פיצול לכתר/גוף ימין/שמאל.
+  // אחרי הפיצול נבדוק ש-rightCrown+rightBody+leftCrown+leftBody = המקור,
+  // אחרת יש באג ב-extractAfterSplit שמדלג על תוכן (כלל 7 — רציפות קריאה).
+  const __bug8_originalTitleEl = commentary.querySelector(":scope > .stream-title");
+  const __bug8_originalText = ((commentary.textContent || "")
+    .slice(__bug8_originalTitleEl ? (__bug8_originalTitleEl.textContent || "").length : 0)
+  ).replace(/\s+/g, " ").trim();
 
   const mainWidth = getTalmudMainWidth();
   const sideHalf  = ((100 - mainWidth) / 2).toFixed(4); // 29% כברירת מחדל
@@ -1021,6 +1071,32 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
         leftCrownRest.style.overflow = "hidden";
       }
     }
+      // Bug 8 fix: בדיקת רציפות זרם 1 מפוצל. הסדר ברצף הקריאה:
+      // commentary (rightCrown) → rightBody → leftCrownRest (leftCrown) → leftBody.
+      // אם ההרכבה לא תואמת למקור — חסרות אותיות/מילים בעקבות
+      // extractBodyAfterSplit, וזה מפר כלל 7 (רציפות הקריאה).
+      try {
+        const __collect = (el) => {
+          if (!el) return "";
+          const t = el.querySelector(":scope > .stream-title");
+          const raw = el.textContent || "";
+          const titleLen = t ? (t.textContent || "").length : 0;
+          return raw.slice(titleLen);
+        };
+        const reconstructed = (
+          __collect(commentary) +
+          __collect(block.querySelector(".talmud-body-portion[data-stream]:not([data-talmud-part='crown-l'])"))
+        );
+        // הערה: רק לוגינג — אסור לחסום את הרינדור.
+        const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+        const a = norm(reconstructed);
+        const b = __bug8_originalText;
+        if (a && b && a.length < b.length * 0.95) {
+          // eslint-disable-next-line no-console
+          console.warn("[bug8] one-commentary continuity mismatch:",
+            { reconstructedLen: a.length, originalLen: b.length });
+        }
+      } catch (_e) { /* never block render */ }
       // משה 2026-05-06: דוחפים את main לרדת מתחת לכתר (לא לזלוג מעליו).
       scheduleCrownOffset(block);
       return;
@@ -1415,56 +1491,14 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     streamB.style.minHeight = `${exactCrownH}px`;
     streamB.style.overflow = "hidden";
 
-    // באג 1: התרחבות הפרשנים מתחת לראשי כשהראשי קצר.
-    // לפי המשתמש: אם שני הפרשנים ממשיכים מתחת לראשי — כל אחד 50%.
-    // אם רק אחד ממשיך (השני נגמר קודם) — הוא מקבל 100%.
+    // Bug 10 fix: ב-talmud-two-commentaries (2 זרמים נפרדים) אסור
+    // body-expanded. תוכן עודף שלא נכנס לעמוד יוסר ויידחף ל-page-streams
+    // ע"י splitPageStreamsBetweenPages ב-engine_bridge. ה-makeExpanded הישן
+    // יצר חריגות INV-10 וחיפוף עם הראשי (כלל 2 — אסור רווח לבן באמצע).
     const blockRect = block.getBoundingClientRect();
     const mainBottomY = mainEl.getBoundingClientRect().bottom - blockRect.top;
-
-    function bodyExtendsBelow(bodyEl) {
-      if (!bodyEl) return false;
-      const r = bodyEl.getBoundingClientRect();
-      return (r.bottom - blockRect.top) > mainBottomY + 1;
-    }
-    const aExtends = bodyExtendsBelow(bodyA);
-    const bExtends = bodyExtendsBelow(bodyB);
-    const expandedWidthCss = (aExtends && bExtends) ? "49.5%" : "100%";
-
-    function makeExpanded(bodyEl, side, sideClass) {
-      if (!bodyEl) return null;
-      const bodyRect = bodyEl.getBoundingClientRect();
-      const bodyTopY = bodyRect.top - blockRect.top;
-      const bodyBottomY = bodyRect.bottom - blockRect.top;
-      if (bodyBottomY <= mainBottomY + 1) return null;
-      const targetYInBody = mainBottomY - bodyTopY;
-      const splitPoint = findSplitAtPixelYInElement(bodyEl, targetYInBody);
-      if (!splitPoint) return null;
-      const expandedEl = document.createElement("div");
-      // ירושת קלאסים של הגוף כדי שתישמר אחידות חזותית
-      expandedEl.className = `${bodyEl.className.replace("talmud-body-portion", "")} talmud-body-expanded ${sideClass}`.replace(/\s+/g, " ").trim();
-      const code = bodyEl.dataset.talmudBodyOf;
-      if (code) expandedEl.setAttribute("data-stream", code);
-      expandedEl.dataset.talmudBodyOf = code;
-      expandedEl.dataset.talmudRole = "commentary-expanded";
-      expandedEl.style.float = side;
-      expandedEl.style.clear = side;
-      expandedEl.style.width = expandedWidthCss;
-      const range = document.createRange();
-      range.setStart(splitPoint.node, splitPoint.offset);
-      range.setEndAfter(bodyEl.lastChild);
-      expandedEl.appendChild(range.extractContents());
-      return expandedEl;
-    }
-
-    // expanded כ-floats רגילים (ללא position:absolute) — כדי שהמדידה
-    // של המנוע תכלול את הגובה הנכון. אם שני expanded יוצרים שרשור אנכי
-    // במקום זה ליד זה — זו עדיין בעיה ויזואלית קטנה, אבל החריגה מהעמוד
-    // תיפתר ע"י המנוע שמדד נכון.
-    const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
-    const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
-    // התרחבות מתחת לראשי, לא מעליו: appendChild אחרי mainEl.
-    if (expandedA) block.appendChild(expandedA);
-    if (expandedB) block.appendChild(expandedB);
+    const expandedA = null;
+    const expandedB = null;
     // משה 2026-05-06: סוגרים פערים ויזואליים בין body לexpanded — אם הbody
     // נגמר לפני mainBottom, נמתחים אותו ל-mainBottom כדי שלא יישאר חלל.
     // משה 2026-05-06: pull-content מוחזר עם הגנת גבולות מילים — סוגר את
@@ -1815,11 +1849,28 @@ export function applyTalmudLayoutToPage(pageEl) {
     // פרשן יחיד עם ראשי — פיצול הפרשן לשני חצאים והפעלת אותה לוגיקה כמו
     // שני פרשנים, כך שגם הוא יקבל כתר משני הצדדים סביב הראשי.
     const single = effectiveStreams[0];
+    // Bug 6 fix (תרחיש 2 של משה): אם הזרם קצר (פחות מ-crownLines שורות
+    // ברוחב מלא) — אסור כתר. במקום למדוד שורות (יקר ב-side-effect ב-DOM
+    // ב-engine_bridge), משתמשים ב-splitSingleCommentaryIntoHalves כסיגנל:
+    // אם הוא מחזיר null (כי הטקסט קצר מ-40 תווים) → זרם קצר → no-crown.
     const secondHalf = splitSingleCommentaryIntoHalves(single);
     if (secondHalf) {
       layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, single, secondHalf);
     } else {
-      layoutOneCommentaryWithMain(block, streamsWrap, mainEl, single);
+      // splitSingleCommentaryIntoHalves החזיר null = זרם קצר.
+      // Bug 6: אם crownLines>0 והזרם באמת קצר (לפי תווים < 40 כמו בפנים),
+      // נשתמש ב-no-crown במקום לקרוא ל-layoutOneCommentaryWithMain שתמיד
+      // מנסה ליצור כתר.
+      const crownLinesCfg = getTalmudCrownLines();
+      const totalChars = (single.textContent || "").trim().length;
+      // 40 תווים זה הסף ב-splitSingleCommentaryIntoHalves; תחת זה = ממש קצר.
+      // crownLines * 70 ≈ 280 תווים זה ערך מינימום סביר לכתר.
+      const isShort = crownLinesCfg > 0 && totalChars < crownLinesCfg * 70;
+      if (isShort) {
+        layoutShortCommentaryNoCrown(block, streamsWrap, mainEl, single);
+      } else {
+        layoutOneCommentaryWithMain(block, streamsWrap, mainEl, single);
+      }
     }
   } else {
     layoutTwoCommentariesWithMain(

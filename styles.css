@@ -1193,11 +1193,9 @@ mark.pdf-find-hit-current {
     width: var(--talmud-side-width) !important;
   }
 
-  /* משה 2026-05-06 (pass 156, Codex round 9): כלל 10 — בעמוד האחרון של
-     המסמך, ה-page-streams מתרומם להיפגש עם ה-main (אין מאיפה למשוך תוכן). */
-  .pages-container > .page:not(.page-placeholder):has(+ .page-placeholder) .page-streams {
-    margin-top: -29px !important;
-  }
+  /* כלל 10 (Bug 9 fix): העלאת ה-page-streams בעמוד האחרון מטופלת דינמית
+     ב-JS (raiseLastPageFootnotes ב-talmud_layout.js) — מודד את הפער האמיתי
+     ומגדיר margin-top שלילי בדיוק לגודלו, לא 29px קבוע. */
 
   .talmud-layout.talmud-has-main.talmud-one-commentary .page-main.talmud-main {
     width: calc(var(--talmud-main-width) + var(--talmud-side-width)) !important;

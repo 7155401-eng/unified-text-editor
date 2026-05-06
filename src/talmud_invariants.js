@@ -212,22 +212,32 @@ export function invExpandedNeedsMain(pageEl) {
   };
 }
 
-/** INV-10: Two expanded share roughly the same Y.
- *  v28-merge: tolerance מוחזר ל-30px (במקום 200). 200 מסתיר באג אמיתי של
- *  stacking. אם הסטייה > 30 = הbug ויזואלי שדורש תיקון, לא ריכוך. */
+/** INV-10: Every .talmud-body-expanded shares roughly the same Y as .talmud-main.
+ *  Bug 11 fix: compare each expanded vs main top (tolerance 5px), not max/min
+ *  of expandeds — single-expanded pages were silently passing. */
 export function invExpandedParallel(pageEl) {
-  const expanded = Array.from(pageEl.querySelectorAll(".talmud-body-expanded"));
-  if (expanded.length < 2) {
-    return { invariant: "INV-10", name: "Expanded Parallel", ok: true, detail: "n/a" };
+  const block = pageEl.querySelector(":scope > .talmud-layout");
+  if (!block) {
+    return { invariant: "INV-10", name: "Expanded Parallel", ok: true, detail: "n/a (no block)" };
   }
-  const tops = expanded.map(e => Math.round(e.getBoundingClientRect().top));
-  const max = Math.max(...tops);
-  const min = Math.min(...tops);
+  const expandeds = Array.from(block.querySelectorAll(".talmud-body-expanded"));
+  const main = block.querySelector(":scope > .page-main, :scope > .talmud-main");
+  if (expandeds.length === 0 || !main) {
+    return { invariant: "INV-10", name: "Expanded Parallel", ok: true, detail: "n/a (no expanded)" };
+  }
+  const mainTop = Math.round(main.getBoundingClientRect().top);
+  const failures = [];
+  for (const exp of expandeds) {
+    const expTop = Math.round(exp.getBoundingClientRect().top);
+    if (Math.abs(expTop - mainTop) > 5) {
+      failures.push(`exp top=${expTop}, main top=${mainTop}`);
+    }
+  }
   return {
     invariant: "INV-10",
     name: "Expanded Parallel",
-    ok: max - min <= 30,
-    detail: `tops=${tops.join(",")} delta=${max - min}`,
+    ok: failures.length === 0,
+    detail: failures.length === 0 ? "all parallel" : failures.join("; "),
   };
 }
 

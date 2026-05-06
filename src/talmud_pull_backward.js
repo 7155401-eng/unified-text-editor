@@ -335,6 +335,93 @@ function moveOrphanStreamsToNextPage(container) {
   return moved;
 }
 
+// Bug 4 fix: מודד את הפער הויזואלי בין תחתית talmud-layout block לראש
+// page-streams בעמוד נתון. אם הפער > 5px = יש "רווח לבן באמצע" שאסור
+// לפי כלל 2 של משה ("פגישה באמצע").
+function computeMiddleGap(pageEl) {
+  const block = pageEl.querySelector(":scope > .talmud-layout");
+  const ps = pageEl.querySelector(":scope > .page-streams");
+  if (!block || !ps) return 0;
+  // לא לטפל אם page-streams ריק (לא יוצר חזות של פער)
+  const visibleStreams = Array.from(ps.querySelectorAll(":scope > .stream"))
+    .filter(s => {
+      if (s.dataset?.talmudPulledBackwards) return false;
+      if (typeof getComputedStyle === "function" && getComputedStyle(s).display === "none") return false;
+      return (s.textContent || "").trim().length > 0;
+    });
+  if (visibleStreams.length === 0) return 0;
+  const blockBottom = block.getBoundingClientRect().bottom;
+  const psTop = ps.getBoundingClientRect().top;
+  const gap = psTop - blockBottom;
+  return gap > 0 ? gap : 0;
+}
+
+// Bug 4 fix: מעביר אלמנט אחד משטרים בעמוד הבא לתוך אותו זרם בעמוד הנוכחי.
+// בטיחות: רק אלמנטים שלמים (לא חיתוך טקסט/מילים), רק כשהזרם יעד קיים,
+// וביטול אוטומטי אם ההעברה גורמת לחריגה מגבולות העמוד.
+function moveOneStreamItemBackward(curPageEl, nextPageEl) {
+  const curPS = curPageEl.querySelector(":scope > .page-streams");
+  const nextPS = nextPageEl.querySelector(":scope > .page-streams");
+  if (!curPS || !nextPS) return false;
+  const curStreams = Array.from(curPS.querySelectorAll(":scope > .stream[data-stream]"));
+  for (const curStream of curStreams) {
+    const code = curStream.getAttribute("data-stream");
+    if (!code) continue;
+    const nextStream = nextPS.querySelector(`:scope > .stream[data-stream="${code}"]`);
+    if (!nextStream) continue;
+    // מצא את האלמנט הראשון שאינו stream-title להעברה
+    const candidates = Array.from(nextStream.children).filter(c =>
+      !c.classList?.contains("stream-title")
+    );
+    const first = candidates[0];
+    if (!first) continue;
+    // snapshot למקרה ביטול
+    const prevSibling = first.nextSibling;
+    curStream.appendChild(first);
+    void curPageEl.offsetHeight;
+    const overflow = curPageEl.scrollHeight - curPageEl.clientHeight;
+    if (overflow > 5) {
+      // ביטול: החזר למקום
+      if (prevSibling) nextStream.insertBefore(first, prevSibling);
+      else nextStream.appendChild(first);
+      return false;
+    }
+    logMove("pull-forward-middle-gap", {
+      el: first,
+      fromPage: parseInt(nextPageEl.dataset.pageIndex || "?", 10),
+      toPage: parseInt(curPageEl.dataset.pageIndex || "?", 10),
+      trigger: `middle gap > 5px on current page`,
+      reason: `closing white-space between main and page-streams (Moshe rule 2)`,
+    });
+    return true;
+  }
+  return false;
+}
+
+// Bug 4 fix: ממלא את הפער הויזואלי באמצע העמוד (בין הראשי לזרמים התחתונים)
+// ע"י משיכת תוכן מהעמוד הבא. אסור רווח לבן באמצע — כלל 2 של משה.
+export function pullForwardWhenGap(container) {
+  if (!container) return 0;
+  const pages = Array.from(
+    container.querySelectorAll(".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)")
+  );
+  if (pages.length < 2) return 0;
+  let totalMoved = 0;
+  for (let i = 0; i < pages.length - 1; i++) {
+    const cur = pages[i];
+    const next = pages[i + 1];
+    let safety = 100;
+    while (safety-- > 0) {
+      const gap = computeMiddleGap(cur);
+      if (gap < 5) break;
+      const moved = moveOneStreamItemBackward(cur, next);
+      if (!moved) break;
+      totalMoved++;
+    }
+  }
+  return totalMoved;
+}
+
 export function pullBackwardAcrossAllPages(container) {
   if (!container) return 0;
   const pages = Array.from(
@@ -345,6 +432,8 @@ export function pullBackwardAcrossAllPages(container) {
   for (let i = 0; i < pages.length - 1; i++) {
     total += pullOnePage(pages[i], pages[i + 1]);
   }
+  // Bug 4: גם פערים באמצע עמוד צריכים מילוי, לא רק bottom-gap.
+  total += pullForwardWhenGap(container);
   // After pulling, hide any pages that became empty (no visible content left).
   hideEmptyPages(container);
   // moveOrphanStreamsToNextPage DISABLED (suspected source of word deletion).
