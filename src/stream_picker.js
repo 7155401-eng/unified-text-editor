@@ -81,14 +81,35 @@ function renderPicker() {
   });
 }
 
+const TALMUD_MAX_STREAMS = 2;
+
 function addStream() {
   const selected = getCurrentSelected();
+  if (selected.length >= TALMUD_MAX_STREAMS) {
+    // Talmud (גפ"ת) is hard-capped at 2 streams.
+    return;
+  }
   const available = getAvailableStreamCodes();
   const unused = available.filter(c => !selected.includes(c));
   if (unused.length === 0) return;
   const newSel = [...selected, unused[0]];
   setSelected(newSel);
   renderPicker();
+}
+
+function updateAddButtonState() {
+  const btn = document.getElementById(ADD_BTN_ID);
+  if (!btn) return;
+  const selected = getCurrentSelected();
+  if (selected.length >= TALMUD_MAX_STREAMS) {
+    btn.disabled = true;
+    btn.style.opacity = "0.4";
+    btn.title = "גפ\"ת מוגבל ל-2 זרמים. לחץ × על אחד מהקיימים כדי להחליף.";
+  } else {
+    btn.disabled = false;
+    btn.style.opacity = "";
+    btn.title = "הוסף זרם";
+  }
 }
 
 function defaultsIfEmpty() {
@@ -107,9 +128,16 @@ export function setupStreamPicker() {
   if (!picker || !addBtn) return;
   // Initial render
   renderPicker();
+  updateAddButtonState();
   // Re-render when input changes externally
-  document.getElementById(HIDDEN_INPUT_ID)?.addEventListener("change", renderPicker);
-  addBtn.addEventListener("click", addStream);
+  document.getElementById(HIDDEN_INPUT_ID)?.addEventListener("change", () => {
+    renderPicker();
+    updateAddButtonState();
+  });
+  addBtn.addEventListener("click", () => {
+    addStream();
+    updateAddButtonState();
+  });
   // After render, fill defaults if empty
   setTimeout(defaultsIfEmpty, 1500);
   // Re-render whenever pages re-render (new stream codes available)
