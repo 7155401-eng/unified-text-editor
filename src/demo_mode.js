@@ -38,6 +38,13 @@ let monitorObserver = null;
 let guardSuspended = 0;
 let resetTimer = null;
 let countdownTimer = null;
+// משה 2026-05-06 (task #13): once demo is active, lock the flag so console
+// tricks like `window.__RAVTEXT_DEMO_MODE__ = false` or
+// `localStorage.setItem("ravtext.demoMode","0")` cannot turn it off mid-session.
+let _demoLocked = false;
+const PASTE_LIMIT_CHARS = 500;
+const PASTE_BLOCK_MS = 800;
+let _lastPasteWarnAt = 0;
 
 function safeStorageGet(key) {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -55,6 +62,7 @@ function isTruthyModeValue(value) {
 
 export function isDemoMode() {
   if (typeof window === "undefined") return false;
+  if (_demoLocked) return true;
 
   const params = new URLSearchParams(window.location.search || "");
 
@@ -452,6 +460,57 @@ export function confirmDemoPrintWarning() {
   );
 }
 
+function lockDemoFlags() {
+  if (typeof window === "undefined") return;
+  _demoLocked = true;
+  // Lock the global so console writes silently fail. Use defineProperty
+  // with writable:false; subsequent assignments throw in strict mode and
+  // are no-ops in sloppy mode (the script harness loads as module = strict).
+  try {
+    Object.defineProperty(window, "__RAVTEXT_DEMO_MODE__", {
+      value: true, writable: false, configurable: false, enumerable: true,
+    });
+  } catch (_) { /* property may already be defined; isDemoMode still returns true via _demoLocked */ }
+  try {
+    Object.defineProperty(window, "__RAVTEXT_STORAGE_DISABLED__", {
+      value: true, writable: false, configurable: false, enumerable: true,
+    });
+  } catch (_) {}
+}
+
+function installPasteGuard() {
+  // Block big pastes — common bypass: paste an entire book to render free.
+  if (typeof document === "undefined") return;
+  document.addEventListener("paste", (ev) => {
+    if (!isDemoMode() || guardSuspended > 0) return;
+    let txt = "";
+    try { txt = ev.clipboardData?.getData("text") || ""; } catch (_) { return; }
+    if (txt.length <= PASTE_LIMIT_CHARS) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const now = Date.now();
+    if (now - _lastPasteWarnAt > PASTE_BLOCK_MS) {
+      _lastPasteWarnAt = now;
+      try {
+        window.alert(`במצב דמו ניתן להדביק עד ${PASTE_LIMIT_CHARS} תווים בכל פעם. הדבקת ${txt.length} תווים נחסמה.`);
+      } catch (_) {}
+    }
+  }, true);
+}
+
+// משה 2026-05-06 (task #13): hooks window.print so that an unconfirmed
+// print in demo mode is aborted entirely rather than producing un-watermarked
+// output. confirmDemoPrintWarning is also still exported for callers that
+// trigger their own print pipelines.
+function installPrintGuard() {
+  if (typeof window === "undefined" || typeof window.print !== "function") return;
+  const origPrint = window.print.bind(window);
+  window.print = function guardedPrint(...args) {
+    if (isDemoMode() && !confirmDemoPrintWarning()) return;
+    return origPrint(...args);
+  };
+}
+
 export function setupDemoMode({ paneManager, reset } = {}) {
   if (!isDemoMode()) return { active: false };
   if (typeof window !== "undefined" && window.__RAVTEXT_DEV_BYPASS__) return { active: false };
@@ -465,6 +524,9 @@ export function setupDemoMode({ paneManager, reset } = {}) {
   paneManager?.clearStorage?.();
   installDemoBanner();
   installTamperMonitor();
+  installPasteGuard();
+  installPrintGuard();
+  lockDemoFlags();
   // installConsoleGuard now called from main.js for all modes.
   startResetLoop(reset);
   return { active: true };
