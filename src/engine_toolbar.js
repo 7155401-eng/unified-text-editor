@@ -379,8 +379,10 @@ export function setupPdfToolbar(pagesContainer) {
   });
 
   // v33: HTML download — self-contained snapshot for offline debugging.
+  // CRITICAL: do NOT call realizeAllPages — that would re-run the layout
+  // pipeline and change what we're trying to capture. Snapshot the page
+  // exactly as the user is seeing it right now.
   document.getElementById("pdf-download-html")?.addEventListener("click", () => {
-    realizeAllPages();
     try {
       downloadPagesAsHtml(pagesContainer);
     } catch (err) {
@@ -390,8 +392,8 @@ export function setupPdfToolbar(pagesContainer) {
   });
 
   // v33: JSON snapshot — every page's metrics/state for diff'ing.
+  // Same rule: NO realize. Capture as-is.
   document.getElementById("pdf-debug-snapshot")?.addEventListener("click", () => {
-    realizeAllPages();
     try {
       downloadDebugSnapshot(pagesContainer);
     } catch (err) {
@@ -401,8 +403,8 @@ export function setupPdfToolbar(pagesContainer) {
   });
 
   // v33: visual highlight — toggle colored outlines on problematic pages.
+  // Same rule: NO realize. Highlight currently rendered pages only.
   document.getElementById("pdf-debug-highlight")?.addEventListener("click", (ev) => {
-    realizeAllPages();
     try {
       toggleProblemHighlight(pagesContainer);
       ev.currentTarget.classList.toggle("active");

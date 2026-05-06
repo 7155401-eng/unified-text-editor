@@ -97,40 +97,10 @@ function pullOnePage(curPageEl, nextPageEl) {
     }
   }
 
-  // STRATEGY 3: If gap still big, look at next page's page-streams (leftover
-  // area) AND any stream that doesn't have a match on current page. Pull those
-  // entirely, appending into current page's page-streams (or talmud-layout
-  // bottom as a sibling). Used for streams (e.g. 03/04) that aren't in talmud
-  // config but still need to be visible somewhere.
-  if (gap > GAP_THRESHOLD_PX) {
-    const nextBlock = nextPageEl.querySelector(":scope > .talmud-layout");
-    const nextLeftoverWrap = nextPageEl.querySelector(":scope > .page-streams");
-    const candidates = [];
-    if (nextBlock) {
-      candidates.push(...Array.from(nextBlock.querySelectorAll(":scope > .stream[data-stream]")));
-    }
-    if (nextLeftoverWrap) {
-      candidates.push(...Array.from(nextLeftoverWrap.querySelectorAll(":scope > .stream[data-stream]")));
-    }
-    const curStreamsWrap = curPageEl.querySelector(":scope > .page-streams");
-    const curBlock = curPageEl.querySelector(":scope > .talmud-layout");
-    for (const ns of candidates) {
-      if (ns.dataset.talmudPulledBackwards) continue;
-      if (getComputedStyle(ns).display === "none") continue;
-      const h = ns.getBoundingClientRect().height;
-      if (h === 0 || h >= gap - 20) continue;
-      // Move entire stream to current page.
-      ns.dataset.talmudPulledBackwards = "true";
-      // Prefer page-streams (leftover area below talmud-layout).
-      if (curStreamsWrap) {
-        curStreamsWrap.appendChild(ns);
-      } else if (curBlock) {
-        curBlock.appendChild(ns);
-      }
-      gap = pageGap(curPageEl);
-      pulled++;
-    }
-  }
+  // STRATEGY 3 DISABLED (משה: word מהרבות deletion bug):
+  // Moving entire streams between pages risked losing content when source
+  // ledger restoration interacted oddly with cross-page merges. Until we
+  // can prove no content is lost, this strategy is OFF. Strategy 1+2 still run.
 
   return pulled;
 }
@@ -292,8 +262,10 @@ export function pullBackwardAcrossAllPages(container) {
   }
   // After pulling, hide any pages that became empty (no visible content left).
   hideEmptyPages(container);
-  // v33-fix per משה: move orphan-titled streams forward to next page (don't hide).
-  moveOrphanStreamsToNextPage(container);
+  // moveOrphanStreamsToNextPage DISABLED (suspected source of word deletion).
+  // Orphan stream titles will display as-is; the engine will handle them
+  // properly on next user interaction.
+  // moveOrphanStreamsToNextPage(container);
   // Then shrink remaining pages so each fits its content (eliminates visual gap).
   shrinkPagesToContent(container);
   return total;
