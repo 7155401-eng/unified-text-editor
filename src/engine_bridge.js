@@ -1,4 +1,59 @@
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
+import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
+
+function injectDemoWatermarksIfNeeded(content) {
+  if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
+  // Inject watermark text into mainText of REGULAR paragraphs only — never
+  // headings, never opening-word, never stream titles, never heading 1/2/...
+  // משה 2026-05-06: צפיפות גבוהה — כמה פעמים בכל עמוד.
+  // אסטרטגיה: בכל פסקה רגילה, הזרקה אחת פר ~80 מילים (לפחות אחת אם > 40 תווים).
+  const out = content.map((para) => ({
+    ...para,
+    notes: para.notes ? para.notes.map(n => ({ ...n })) : [],
+  }));
+  let phraseIdx = 0;
+  function inject(text) {
+    // דלג על טקסט קצר (פחות מ-120 תווים) כדי לא להעמיס.
+    if (!text || text.length < 120) return text;
+    const words = text.split(/(\s+)/);
+    const wordTokenCount = words.filter(w => /\S/.test(w)).length;
+    if (wordTokenCount < 30) return text;
+    // הזרקה אחת לכל ~60 מילים (פחות צפוף — לא יוצר חריגות עמוד).
+    const insertions = Math.max(1, Math.floor(wordTokenCount / 60));
+    for (let k = 0; k < insertions; k++) {
+      const phrase = DEMO_WATERMARK_POOL[phraseIdx++ % DEMO_WATERMARK_POOL.length];
+      const wm = ` ⟦${phrase}⟧ `;
+      // ודא שהמיקום הוא BETWEEN words (אינדקס זוגי+1 כי הזוגיים הם מילים).
+      // Words array: [w0, space0, w1, space1, ...]. Insert AFTER a space.
+      const minIdx = Math.min(20, Math.max(10, Math.floor(words.length / 4)));
+      let target = Math.max(minIdx, Math.floor(words.length * (k + 1) / (insertions + 1)));
+      if (target % 2 === 1) target++; // align to "after space" position
+      target = Math.min(words.length - 1, target);
+      words.splice(target, 0, wm);
+    }
+    return words.join("");
+  }
+  for (let i = 0; i < out.length; i++) {
+    const para = out[i];
+    if (!para) continue;
+    // Main text (skip headings).
+    if (para.blockType !== "heading" && !para.headingLevel) {
+      para.mainText = inject(para.mainText || "");
+    }
+    // Stream notes (every stream gets watermarks too).
+    if (para.notes && para.notes.length > 0) {
+      for (const note of para.notes) {
+        if (note && typeof note.text === "string") {
+          note.text = inject(note.text);
+        }
+      }
+    }
+  }
+  if (typeof console !== "undefined" && console.debug) {
+    console.debug("[demo-watermark] injected into source", { paraCount: out.length, totalInjections: phraseIdx });
+  }
+  return out;
+}
 import { renderPages } from "./engine/renderer.js";
 import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyTalmudLayoutToPages } from "./talmud_layout.js";
@@ -85,7 +140,8 @@ function extractMainParagraphs(mainPane, paneManager) {
   if (symbols.length === 0) {
     const paragraphs = [];
     mainPane.editor.state.doc.descendants((node) => {
-      if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return;
+      const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote'];
+      if (!allowed.includes(node.type.name)) return;
       let paragraphText = '';
       node.descendants((child) => {
         if (child.isText) paragraphText += child.text;
@@ -94,7 +150,7 @@ function extractMainParagraphs(mainPane, paneManager) {
       paragraphs.push({
         paragraphText,
         markers: [],
-        blockType: node.type.name,
+        blockType: node.type.name === "heading" ? "heading" : node.type.name,
         headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
       });
       return false;
@@ -108,7 +164,8 @@ function extractMainParagraphs(mainPane, paneManager) {
 
   const paragraphs = [];
   mainPane.editor.state.doc.descendants((node) => {
-    if (node.type.name !== 'paragraph' && node.type.name !== 'heading') return;
+    const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote'];
+    if (!allowed.includes(node.type.name)) return;
     let paragraphText = '';
     node.descendants((child) => {
       if (child.isText) paragraphText += child.text;
@@ -127,7 +184,7 @@ function extractMainParagraphs(mainPane, paneManager) {
     paragraphs.push({
       paragraphText,
       markers,
-      blockType: node.type.name,
+      blockType: node.type.name === "heading" ? "heading" : node.type.name,
       headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
     });
     return false;
@@ -411,7 +468,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
   try {
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
-    const content = paneManagerToPackerContent(paneManager);
+    let content = paneManagerToPackerContent(paneManager);
+    // v33: inject demo watermarks INTO source content BEFORE pagination —
+    // engine then measures heights including marks, so pages don't overflow.
+    content = injectDemoWatermarksIfNeeded(content);
     const t1 = performance.now();
 
     if (content.length === 0) {
@@ -447,6 +507,26 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // upgrade existing .opening-word elements.
     logEvent("opening_word_stretch", { pageCount: pagesContainer.querySelectorAll(".page").length });
     applyOpeningWordStretchToPages(pagesContainer);
+    // משה 2026-05-06: זרם בודד מתחת לתלמוד שתופס גובה גדול > 50% מהעמוד —
+    // אילוץ multi-column אוטומטי. מונע חריגה ב-page-streams עם הערה ענקית.
+    pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
+      const pageH = p.clientHeight || 537;
+      // כל זרם — בכל מקום (לא רק page-streams ישיר)
+      p.querySelectorAll(".stream[data-stream]:not([data-stream-cols])").forEach(s => {
+        // לא נוגעים בכתרי תלמוד או בbody
+        if (s.classList.contains("talmud-crown-portion") ||
+            s.classList.contains("talmud-body-portion") ||
+            s.classList.contains("talmud-body-expanded") ||
+            s.classList.contains("talmud-no-crown-side") ||
+            s.classList.contains("talmud-other-side")) return;
+        const h = s.getBoundingClientRect().height;
+        if (h > pageH * 0.5) {
+          s.style.columnCount = "2";
+          s.style.columnGap = "8px";
+          s.dataset.streamCols = "auto-2";
+        }
+      });
+    });
     // v33: post-process pipeline for "0 overflows + 0 gaps" goal.
     //  1. Cap any catastrophic overflows first (lossless visual cap).
     //  2. Pull content backward to fill gaps from next page (lossless DOM move).
@@ -464,6 +544,203 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // logEvent("repaginate_main_overflow_done");
     logEvent("overflow_cap_pass2");
     correctTalmudOverflow(pagesContainer);
+
+    // משה 2026-05-06: בדיקה איטרטיבית — מעמוד לעמוד, אם חורג — דוחפים
+    // את הילד האחרון (ראשי או הערה) לעמוד הבא, חוזרים ובודקים.
+    // מקסימום 10 איטרציות. עדיפות: דוחפים קודם הערות זרם, אח"כ ראשי.
+    // משה 2026-05-06 (חירום): מנגנון זה גורם קטסטרופה ב-talmud mode כי
+    // מזיז הערות בלי לעדכן את מבנה הכתר/body. מוגבל למקרה NON-talmud בלבד.
+    const isTalmudActive = typeof window !== "undefined" &&
+      window.localStorage?.getItem("ravtext.talmudLayout") === "1";
+    logEvent("strict_overflow_pushdown_loop_start", { talmudMode: isTalmudActive });
+    // משה 2026-05-06: 5 איטרציות, סף 5px. אנטי-פינג-פונג: זוכר אילו פסקאות
+    // הוזזו כדי שלא להזיז שוב חזרה.
+    const ITERS = isTalmudActive ? 0 : 5;
+    const PUSH_THRESHOLD_PX = 5;
+    const _movedThisRender = new WeakSet();
+
+    // Talmud-safe push-down: דוחפים הערה אחרונה של זרם NON-talmud (משנ"ב/רגיל)
+    // לעמוד הבא כשיש חריגה — לא נוגעים בכתר, body, body-expanded, main.
+    if (isTalmudActive) {
+      const TALMUD_PUSH_THRESHOLD_PX = 5;
+      // אם העמוד האחרון חורג — צור עמוד חדש בסוף לקבל את העודף
+      function ensureNextPage(allPages) {
+        const last = allPages[allPages.length - 1];
+        if (!last) return allPages;
+        const ov = last.scrollHeight - last.clientHeight;
+        if (ov <= TALMUD_PUSH_THRESHOLD_PX) return allPages;
+        const newPage = document.createElement("div");
+        newPage.className = "page talmud-layout-page";
+        newPage.dir = "rtl";
+        newPage.dataset.pageIndex = String(allPages.length);
+        newPage.dataset.realized = "1";
+        const ms = last.querySelector(":scope > .page-main");
+        const ss = last.querySelector(":scope > .page-streams");
+        if (ms) {
+          const np = document.createElement("div");
+          np.className = "page-main talmud-main";
+          newPage.appendChild(np);
+        }
+        if (ss) {
+          const np = document.createElement("div");
+          np.className = "page-streams";
+          newPage.appendChild(np);
+        }
+        last.parentNode.appendChild(newPage);
+        return Array.from(
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+        );
+      }
+      for (let it = 0; it < 8; it++) {
+        let pushed = false;
+        let allPages = Array.from(
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+        );
+        // אם העמוד האחרון חורג — הוסף עמוד חדש קודם
+        if (allPages.length > 0) {
+          const lastP = allPages[allPages.length - 1];
+          const lov = lastP.scrollHeight - lastP.clientHeight;
+          if (lov > TALMUD_PUSH_THRESHOLD_PX) {
+            allPages = ensureNextPage(allPages);
+          }
+        }
+        for (let i = 0; i < allPages.length - 1; i++) {
+          const cur = allPages[i];
+          const next = allPages[i + 1];
+          void cur.offsetHeight;
+          const ov = cur.scrollHeight - cur.clientHeight;
+          if (ov <= TALMUD_PUSH_THRESHOLD_PX) continue;
+          // רק זרמים ב-page-streams (לא בתוך talmud-layout)
+          const curStreams = Array.from(
+            cur.querySelectorAll(":scope > .page-streams > .stream[data-stream]")
+          );
+          let movedThis = false;
+          for (const s of curStreams) {
+            const lastNote = Array.from(s.children).filter(c =>
+              !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
+            ).pop();
+            if (!lastNote) continue;
+            const code = s.getAttribute("data-stream");
+            if (!code) continue;
+            let nextS = next.querySelector(
+              `:scope > .page-streams > .stream[data-stream="${code}"]`
+            );
+            if (!nextS) {
+              const nextPS = next.querySelector(":scope > .page-streams");
+              if (!nextPS) continue;
+              nextS = document.createElement("div");
+              nextS.className = s.className;
+              nextS.setAttribute("data-stream", code);
+              const oldTitle = s.querySelector(":scope > .stream-title");
+              if (oldTitle) nextS.appendChild(oldTitle.cloneNode(true));
+              nextPS.insertBefore(nextS, nextPS.firstChild);
+            }
+            const nextTitle = nextS.querySelector(":scope > .stream-title");
+            if (nextTitle) nextS.insertBefore(lastNote, nextTitle.nextSibling);
+            else nextS.insertBefore(lastNote, nextS.firstChild);
+            _movedThisRender.add(lastNote);
+            movedThis = true;
+            pushed = true;
+            break;
+          }
+          if (movedThis) break;
+          // אם לא הזזנו זרם רגיל ויש חריגה גדולה — הזז גם הערה אחרונה מ-body-expanded
+          if (!movedThis && ov > 200) {
+            const expanded = cur.querySelectorAll(".talmud-body-expanded, [data-talmud-role='commentary-expanded'], [data-talmud-role='commentary-expanded-lower']");
+            for (const exp of Array.from(expanded).reverse()) {
+              const lastNote = Array.from(exp.children).filter(c =>
+                !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
+              ).pop();
+              if (!lastNote) continue;
+              const code = exp.dataset.talmudBodyOf || "";
+              // נסה למצוא יעד תואם בעמוד הבא; אם אין, צור stream חדש ב-page-streams
+              let target = code ? next.querySelector(
+                `.talmud-body-expanded[data-talmud-body-of="${code}"], .stream[data-stream="${code}"]`
+              ) : null;
+              if (!target) {
+                const nextPS = next.querySelector(":scope > .page-streams");
+                if (!nextPS) continue;
+                target = document.createElement("div");
+                target.className = `stream stream-color-${(parseInt(code, 10) - 1) % 6 + 1}`;
+                if (code) target.setAttribute("data-stream", code);
+                const title = document.createElement("div");
+                title.className = "stream-title";
+                title.textContent = `זרם ${code}`;
+                target.appendChild(title);
+                nextPS.insertBefore(target, nextPS.firstChild);
+              }
+              const nextTitle = target.querySelector(":scope > .stream-title");
+              if (nextTitle) target.insertBefore(lastNote, nextTitle.nextSibling);
+              else target.insertBefore(lastNote, target.firstChild);
+              _movedThisRender.add(lastNote);
+              movedThis = true; pushed = true; break;
+            }
+            if (movedThis) break;
+          }
+        }
+        if (!pushed) break;
+      }
+    }
+    // (פאס 70 הוסר זמנית — גרם להרס במצב תלמוד. צריך עיצוב מחדש שלא
+    //  מפרק את מבנה הכתר/body. נבנה בנפרד כשאהיה בטוח שאי-אפשר לשבור.)
+    for (let it = 0; it < ITERS; it++) {
+      let pushedAny = false;
+      const allPages = Array.from(
+        pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+      );
+      for (let i = 0; i < allPages.length - 1; i++) {
+        const cur = allPages[i];
+        const next = allPages[i + 1];
+        void cur.offsetHeight;
+        const ov = cur.scrollHeight - cur.clientHeight;
+        if (ov <= PUSH_THRESHOLD_PX) continue;
+        // STRATEGY 1: דחוף הערה אחרונה של איזה זרם בעמוד הנוכחי לעמוד הבא
+        const curStreams = Array.from(
+          cur.querySelectorAll(".talmud-layout .stream[data-stream], .page-streams > .stream[data-stream]")
+        );
+        let pushedStream = false;
+        for (const s of curStreams) {
+          const code = s.getAttribute("data-stream");
+          if (!code) continue;
+          // מצא את הילד האחרון של הזרם (לא כותרת, לא הוזז כבר ב-render הזה)
+          const lastNote = Array.from(s.children).filter(c =>
+            !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
+          ).pop();
+          if (!lastNote) continue;
+          // מצא זרם מקביל בעמוד הבא, או צור חדש
+          let nextS = next.querySelector(
+            `.talmud-layout .stream[data-stream="${code}"], .page-streams > .stream[data-stream="${code}"]`
+          );
+          if (nextS) {
+            // הוסף את ההערה ראשונה שם (אחרי הכותרת אם קיימת)
+            const nextTitle = nextS.querySelector(":scope > .stream-title");
+            if (nextTitle) nextS.insertBefore(lastNote, nextTitle.nextSibling);
+            else nextS.insertBefore(lastNote, nextS.firstChild);
+            _movedThisRender.add(lastNote);
+            pushedStream = true;
+            pushedAny = true;
+            break;
+          }
+        }
+        if (pushedStream) continue;
+        // STRATEGY 2: דחוף ילד ראשי אחרון
+        const curMain = cur.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
+        const nextMain = next.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
+        if (!curMain || !nextMain) continue;
+        const lastMainChild = Array.from(curMain.children).filter(c =>
+          !c.classList?.contains("talmud-body-portion") &&
+          !c.classList?.contains("talmud-body-expanded") &&
+          !c.classList?.contains("stream") &&
+          /^(P|H[1-6]|DIV|BLOCKQUOTE|PRE)$/i.test(c.tagName)
+        ).pop();
+        if (!lastMainChild) continue;
+        nextMain.insertBefore(lastMainChild, nextMain.firstChild);
+        pushedAny = true;
+      }
+      if (!pushedAny) break;
+      logEvent(`strict_overflow_pushdown_iter_${it + 1}`);
+    }
+    logEvent("strict_overflow_pushdown_loop_end");
     logEvent("render_pipeline_complete", {
       durationMs: Math.round(performance.now() - t2),
       pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,

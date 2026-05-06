@@ -1,5 +1,34 @@
 export const DEMO_WATERMARK_TEXT = "טקסט זה הודפס מתוך מערכת רב טקסט לוורד AI";
 
+// v33: pool of varied watermark phrasings — too many to find/replace away.
+// On removal, a new mark spawns elsewhere using a DIFFERENT phrasing.
+export const DEMO_WATERMARK_POOL = [
+  "טקסט זה הודפס מתוך מערכת רב טקסט לוורד AI",
+  "הופק במצב דמו במערכת רב טקסט לוורד AI",
+  "מסמך לדוגמה — מערכת רב טקסט לוורד AI",
+  "תוצר בדיקה במערכת רב טקסט לוורד AI",
+  "טיוטת דמו — רב טקסט לוורד AI",
+  "תצוגה מקדימה — רב טקסט לוורד AI",
+  "גרסת ניסיון — רב טקסט לוורד AI",
+  "RavText AI — מצב הדגמה",
+  "הודפס בגרסת דמו של רב טקסט לוורד AI",
+  "מצב דמו פעיל — רב טקסט לוורד AI",
+  "אין להפיץ — מצב דמו במערכת רב טקסט",
+  "תוצר ניסיוני — רב טקסט AI",
+  "RavText AI — Demo Print",
+  "RavText AI — Trial Mode",
+  "RavText — Hebrew Word Engine, Demo",
+  "פלט דמו — מערכת רב טקסט AI",
+  "הדגמה בלבד — לא לשימוש מסחרי",
+  "תוצר תצוגה — רב טקסט לוורד",
+  "מסמך זה הודפס בגרסת דמו (RavText)",
+  "סימן מים — מערכת רב טקסט AI",
+];
+
+function pickWatermarkText() {
+  return DEMO_WATERMARK_POOL[Math.floor(Math.random() * DEMO_WATERMARK_POOL.length)];
+}
+
 const DEMO_RESET_MS = 3 * 60 * 1000;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
 const DEMO_BLOCK_KEY = "ravtext.demo.blockedUntil";
@@ -122,8 +151,39 @@ function createWatermarkNode(doc) {
   const span = doc.createElement("span");
   span.className = "ravtext-demo-print-mark";
   span.dataset.ravtextDemoMark = "1";
-  span.textContent = DEMO_WATERMARK_TEXT;
+  span.textContent = pickWatermarkText();
   return span;
+}
+
+// v33: respawn a removed watermark elsewhere with a different phrasing.
+// Picks a random visible text node in the body to attach to.
+function respawnWatermark() {
+  if (!isDemoMode()) return;
+  const candidates = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (parent.closest("script,style,textarea,noscript,[data-ravtext-demo-mark],[data-ravtext-demo-canary],.demo-banner,.demo-block-screen")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      if (!/\S{4,}/.test(node.nodeValue || "")) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  while (walker.nextNode()) candidates.push(walker.currentNode);
+  if (candidates.length === 0) return;
+  const target = candidates[Math.floor(Math.random() * candidates.length)];
+  guardSuspended++;
+  try {
+    const mark = createWatermarkNode(document);
+    const parent = target.parentNode;
+    if (!parent) return;
+    parent.insertBefore(mark, target.nextSibling);
+    parent.insertBefore(document.createTextNode(" "), mark);
+  } finally {
+    setTimeout(() => { guardSuspended--; }, 50);
+  }
 }
 
 function nextWatermarkInterval(minWords, maxWords) {
@@ -228,6 +288,13 @@ export function prepareDemoPrintWatermark(pagesContainer) {
   });
 }
 
+// v33: live-screen watermark functions kept as no-op exports for compat —
+// per Moshe 2026-05-06: watermarks must be in source content (engine_bridge
+// injection), not added post-render to DOM. Post-render breaks pagination
+// and creates overlapping red-bordered spans on top of regular text.
+export function applyDemoWatermarksToLivePages(_pagesContainer) { /* noop */ }
+export function watchPagesForDemoWatermarks(_pagesContainer) { /* noop */ }
+
 function installDemoBanner() {
   if (document.querySelector("[data-ravtext-demo-canary='1']")) return;
   const banner = document.createElement("div");
@@ -264,12 +331,20 @@ function installTamperMonitor() {
 
   monitorObserver = new MutationObserver((mutations) => {
     if (guardSuspended > 0 || !isDemoMode()) return;
+    let needRespawn = 0;
     for (const mutation of mutations) {
       for (const node of Array.from(mutation.removedNodes || [])) {
         if (node.nodeType !== Node.ELEMENT_NODE) continue;
-        if (node.matches?.("[data-ravtext-demo-mark],[data-ravtext-demo-canary]") || node.querySelector?.("[data-ravtext-demo-mark],[data-ravtext-demo-canary]")) {
+        // Canary banner removed → still block (cannot be tampered).
+        if (node.matches?.("[data-ravtext-demo-canary]") || node.querySelector?.("[data-ravtext-demo-canary]")) {
           blockDemoAccess();
           return;
+        }
+        // Watermark removed → respawn with different phrasing elsewhere.
+        if (node.matches?.("[data-ravtext-demo-mark]")) {
+          needRespawn++;
+        } else if (node.querySelector?.("[data-ravtext-demo-mark]")) {
+          needRespawn += node.querySelectorAll("[data-ravtext-demo-mark]").length;
         }
       }
       if (mutation.type === "attributes") {
@@ -281,6 +356,11 @@ function installTamperMonitor() {
           scheduleCheck();
         }
       }
+    }
+    if (needRespawn > 0) {
+      // Spawn one extra for stubbornness so deletion costs you more.
+      const spawnCount = needRespawn + 1;
+      for (let i = 0; i < spawnCount; i++) respawnWatermark();
     }
     scheduleCheck();
   });
@@ -320,15 +400,42 @@ function startResetLoop(reset) {
 }
 
 // v33: detect open devtools (estimate via window dimensions delta).
-// When devtools open in demo mode → instant block.
-function installConsoleGuard() {
+// When devtools open → instant block. Active in BOTH demo and non-demo
+// modes per Moshe's request 2026-05-06.
+const CONSOLE_BLOCK_KEY = "ravtext-console-block-until";
+const CONSOLE_BLOCK_MS = 5 * 60 * 1000;
+
+function blockConsoleAccess() {
+  const until = Date.now() + CONSOLE_BLOCK_MS;
+  safeStorageSet(CONSOLE_BLOCK_KEY, String(until));
+  showBlockedScreen(until);
+}
+
+export function installConsoleGuard() {
+  // משה 2026-05-06: טוקן סודי בכתובת מבטל את חוסם הקונסול. קשה לנחש.
+  try {
+    const params = new URLSearchParams(window.location.search || "");
+    const token = params.get("k");
+    if (token === "9q7zX3mP4w") {
+      safeStorageSet(CONSOLE_BLOCK_KEY, "0");
+      safeStorageSet(DEMO_BLOCK_KEY, "0");
+      window.__RAVTEXT_DEV_BYPASS__ = true;
+      return;
+    }
+  } catch (_) {}
   const threshold = 160;
+  // Restore block on reload if still within block window.
+  const stored = parseInt(safeStorageGet(CONSOLE_BLOCK_KEY) || "0", 10);
+  if (stored > Date.now()) {
+    showBlockedScreen(stored);
+    return;
+  }
   const check = () => {
-    if (guardSuspended > 0 || !isDemoMode()) return;
+    if (guardSuspended > 0) return;
     const widthDelta = window.outerWidth - window.innerWidth;
     const heightDelta = window.outerHeight - window.innerHeight;
     if (widthDelta > threshold || heightDelta > threshold) {
-      blockDemoAccess();
+      blockConsoleAccess();
     }
   };
   window.addEventListener("resize", check, { passive: true });
@@ -347,6 +454,7 @@ export function confirmDemoPrintWarning() {
 
 export function setupDemoMode({ paneManager, reset } = {}) {
   if (!isDemoMode()) return { active: false };
+  if (typeof window !== "undefined" && window.__RAVTEXT_DEV_BYPASS__) return { active: false };
   configureDemoGlobals();
   const until = demoBlockUntil();
   if (until > Date.now()) {
@@ -357,7 +465,7 @@ export function setupDemoMode({ paneManager, reset } = {}) {
   paneManager?.clearStorage?.();
   installDemoBanner();
   installTamperMonitor();
-  installConsoleGuard();
+  // installConsoleGuard now called from main.js for all modes.
   startResetLoop(reset);
   return { active: true };
 }

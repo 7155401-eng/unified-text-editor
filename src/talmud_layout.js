@@ -69,11 +69,12 @@ export function setTalmudMainWidth(value) {
 }
 
 export function getTalmudSideMode() {
-  const v = localStorage.getItem(SIDE_MODE_KEY) || "auto";
-  return ["auto", "right-left", "inner-outer"].includes(v) ? v : "auto";
+  // משה 2026-05-06: ברירת מחדל = inner-outer (במקום auto).
+  const v = localStorage.getItem(SIDE_MODE_KEY) || "inner-outer";
+  return ["auto", "right-left", "inner-outer"].includes(v) ? v : "inner-outer";
 }
 export function setTalmudSideMode(value) {
-  localStorage.setItem(SIDE_MODE_KEY, value || "auto");
+  localStorage.setItem(SIDE_MODE_KEY, value || "inner-outer");
 }
 
 export function getTalmudSideGap() {
@@ -90,9 +91,9 @@ export function setTalmudSideGap(value) {
 }
 
 export function isTalmudPreserveBreaks() {
-  // ברירת מחדל true (לכבד שבירות) אם לא הוגדר
+  // ברירת מחדל false — הצמדת הערות יחד (משה 2026-05-06).
   const v = localStorage.getItem(PRESERVE_BREAKS_KEY);
-  return v === null ? true : v === "1";
+  return v === null ? false : v === "1";
 }
 export function setTalmudPreserveBreaks(enabled) {
   localStorage.setItem(PRESERVE_BREAKS_KEY, enabled ? "1" : "0");
@@ -109,10 +110,27 @@ function normalizeCode(raw) {
 }
 
 function parseTalmudStreamCodes() {
-  const codes = (getTalmudStreamsText().match(/\d{1,3}/g) || [])
+  let codes = (getTalmudStreamsText().match(/\d{1,3}/g) || [])
     .map(normalizeCode)
     .filter(Boolean);
-  return Array.from(new Set(codes)).slice(0, 2); // max 2 commentaries
+  codes = Array.from(new Set(codes)).slice(0, 2);
+  // משה 2026-05-06: סדר הזרמים נקבע לפי הקצאת המשתמש (inner first, outer second).
+  if (codes.length === 2) {
+    try {
+      const roles = JSON.parse(localStorage.getItem("ravtext.talmudLayout.streamRoles") || "{}");
+      const mode = getTalmudSideMode();
+      if (mode === "inner-outer") {
+        const inner = codes.find(c => roles[c] === "inner");
+        const outer = codes.find(c => roles[c] === "outer");
+        if (inner && outer) return [inner, outer];
+      } else if (mode === "right-left") {
+        const right = codes.find(c => roles[c] === "right");
+        const left = codes.find(c => roles[c] === "left");
+        if (right && left) return [right, left];
+      }
+    } catch {}
+  }
+  return codes;
 }
 
 function codeForStream(el) {
@@ -585,13 +603,26 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
  */
 function commentaryFillsCrownPlusExtraLive(streamEl, crownLines) {
   if (crownLines <= 0) return false;
+  // משה 2026-05-06: מדידה אמיתית לפי שורות ויזואליות, לא הערכה.
+  // סופרים שורות תוכן (לא כותרת) דרך getClientRects.
   const titleEl = streamEl.querySelector(":scope > .stream-title");
-  const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
-  const styleObj = getComputedStyle(streamEl);
-  const lineH = parseFloat(styleObj.lineHeight) || (parseFloat(styleObj.fontSize) * 1.4) || 14;
-  const requiredH = titleH + (crownLines + CROWN_EXTRA_LINES) * lineH;
-  const totalH = streamEl.getBoundingClientRect().height;
-  return totalH >= requiredH;
+  let visualLines = 0;
+  const range = document.createRange();
+  const walker = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (titleEl && titleEl.contains(node)) return NodeFilter.FILTER_REJECT;
+      return node.textContent && node.textContent.length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  let tn;
+  while ((tn = walker.nextNode())) {
+    range.setStart(tn, 0);
+    range.setEnd(tn, tn.length);
+    visualLines += Array.from(range.getClientRects()).filter((r) => r.width > 0 || r.height > 0).length;
+  }
+  return visualLines >= crownLines + CROWN_EXTRA_LINES;
 }
 
 // ─────────────────────────────────────────────
@@ -608,17 +639,24 @@ function computeCrownOffset(block) {
     block.style.setProperty("--talmud-crown-offset", "0px");
     return;
   }
-  // Use the first commentary stream to measure line-height
-  const firstStream = block.querySelector(".stream.talmud-commentary");
+  // משה 2026-05-06: מדידה אמיתית של שורות מצוירות בפועל,
+  // לא הערכה לפי line-height × N.
+  // חשוב: לחפש רק כתר ישיר (לא body inside mainEl) — אחרת המידה שגויה
+  // וה-main קופץ למעלה לאזור הכתר.
+  const firstStream = block.querySelector(":scope > .stream.talmud-crown-portion") ||
+                      block.querySelector(":scope > .stream.talmud-commentary:not(.talmud-body-portion):not(.talmud-body-expanded)");
   if (!firstStream) {
     block.style.setProperty("--talmud-crown-offset", "0px");
     return;
   }
-  const style = getComputedStyle(firstStream);
-  const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.4 || 14;
-  const titleEl = firstStream.querySelector(".stream-title");
-  const titleHeight = titleEl ? titleEl.getBoundingClientRect().height : 0;
-  const offset = Math.ceil(titleHeight + crownLines * lineHeight);
+  // מודדים את הגובה הוויזואלי של תוכן הזרם (כולל כותרת) דרך range.
+  const rect = firstStream.getBoundingClientRect();
+  let bottom = rect.top;
+  const range = document.createRange();
+  range.selectNodeContents(firstStream);
+  const rects = Array.from(range.getClientRects());
+  for (const r of rects) { if (r.bottom > bottom) bottom = r.bottom; }
+  const offset = Math.ceil(Math.max(0, bottom - rect.top));
   block.style.setProperty("--talmud-crown-offset", `${offset}px`);
 }
 
@@ -656,21 +694,19 @@ function layoutNoMain(block, streamsWrap, commentaryStreams) {
     return;
   }
 
-  // Two commentaries — use applyFloatFlowLevel (same as mishna)
-  applyFloatFlowLevel({
-    container: block,
-    streams: commentaryStreams,
-    streamsWrap,
-    sideForStream: (_s, idx) => orderedSides(streamsWrap)[idx] || (idx % 2 === 0 ? "right" : "left"),
-    floatClass: "talmud-commentary-float",
-    flowClass:  "talmud-commentary-flow",
-    rightClass: "talmud-right",
-    leftClass:  "talmud-left",
-    roleDataset: "talmudRole",
-    floatRole:  "commentary-float",
-    flowRole:   "commentary-flow",
+  // משה 2026-05-06: בלי ראשי, שני זרמים תמיד 50%-50% מההתחלה.
+  block.classList.add("talmud-two-commentaries-no-main");
+  const sides = orderedSides(streamsWrap);
+  commentaryStreams.forEach((s, idx) => {
+    const side = sides[idx] || (idx % 2 === 0 ? "right" : "left");
+    const sideClass = side === "right" ? "talmud-right" : "talmud-left";
+    s.classList.add("talmud-commentary", sideClass);
+    s.dataset.talmudRole = "commentary";
+    s.style.float = side;
+    s.style.width = "50%";
+    s.style.clear = "none";
+    block.appendChild(s);
   });
-  commentaryStreams.forEach((s) => s.classList.add("talmud-commentary"));
 }
 
 /**
@@ -733,6 +769,7 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
   const [sideRight, sideLeft] = sides;
   const sideRightClass = sideRight === "right" ? "talmud-right" : "talmud-left";
   const sideLeftClass  = sideLeft  === "right" ? "talmud-right" : "talmud-left";
+  const crownLines = getTalmudCrownLines();
 
   commentary.classList.add("talmud-commentary", sideRightClass);
   commentary.dataset.talmudRole = "commentary";
@@ -750,29 +787,143 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
 
   // ספירת שורות התוכן (לא כולל כותרת) ב-29% רוחב
   const titleEl = commentary.querySelector(":scope > .stream-title");
-  let totalLines = 0;
-  const range = document.createRange();
-  const walker = document.createTreeWalker(commentary, NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) => {
-      if (titleEl && titleEl.contains(node)) return NodeFilter.FILTER_REJECT;
-      return node.textContent && node.textContent.length > 0
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT;
-    },
-  });
-  let textNode;
-  while ((textNode = walker.nextNode())) {
-    range.setStart(textNode, 0);
-    range.setEnd(textNode, textNode.length);
-    totalLines += Array.from(range.getClientRects()).filter((r) => r.width > 0 || r.height > 0).length;
+  function countContentLines(el) {
+    let n = 0;
+    const r = document.createRange();
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        if (titleEl && titleEl.contains(node)) return NodeFilter.FILTER_REJECT;
+        return node.textContent && node.textContent.length > 0
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT;
+      },
+    });
+    let tn;
+    while ((tn = w.nextNode())) {
+      r.setStart(tn, 0);
+      r.setEnd(tn, tn.length);
+      n += Array.from(r.getClientRects()).filter((rr) => rr.width > 0 || rr.height > 0).length;
+    }
+    return n;
   }
+  const totalLines = countContentLines(commentary);
 
-  // אם יש מספיק תוכן, חוצים בחצי ושמים חצי שני בצד הנגדי
+  // משה 2026-05-06: כתר מחולק לשני טורים (כמו ספרי קודש), סדר קריאה:
+  //   ימין-עליון (right crown) → ימין-תחתון (right body)
+  //   → שמאל-עליון (left crown) → שמאל-תחתון (left body).
+  // משה 2026-05-06 (שני): גם זרם בודד צריך כתר. סף נמוך יותר.
+  if (crownLines > 0 && totalLines >= crownLines + 2) {
+    block.classList.add("talmud-with-crown");
+    const halfPct = "50%";
+    const pageEl1 = block.closest(".page");
+    const sourceId1 = pageEl1 ? recordSource(pageEl1, commentary) : "";
+    // === 1) ימין-עליון: הזרם המקורי הופך לכתר ימין ב-50% ===
+    commentary.classList.add("talmud-crown-portion", sideRightClass);
+    commentary.style.float = sideRight;
+    commentary.style.width = `calc(${halfPct} - ${halfGap}px)`;
+    commentary.style.clear = "none";
+    if (sourceId1) recordPart(pageEl1, sourceId1, "crown-r", commentary);
+    const split1 = findOffsetAtLineStart(commentary, crownLines);
+    if (!split1) {
+      // נסיגה: בלי split, הסר את קלאסי הכתר וחזור להתנהגות הישנה.
+      commentary.classList.remove("talmud-crown-portion", "talmud-crown-full");
+      block.classList.remove("talmud-with-crown");
+      commentary.style.width = `calc(${sideHalf}% - ${halfGap}px)`;
+    } else {
+      // השאר אחרי כתר ימין → ימין-תחתון 29%
+    const rightBody = extractBodyAfterSplit(
+      commentary, split1, sideRightClass, sideRight, parseFloat(sideHalf),
+      { pageEl: pageEl1, sourceId: sourceId1, partRole: "single-body-r" }
+    );
+    rightBody.style.float = sideRight;
+    rightBody.style.width = `calc(${sideHalf}% - ${halfGap}px)`;
+    rightBody.style.clear = sideRight;
+    if (sideRight === "right") rightBody.style.marginLeft = `${sideGap}px`;
+    else rightBody.style.marginRight = `${sideGap}px`;
+    block.insertBefore(rightBody, mainEl);
+    // אכיפת גובה כתר ימין מדויק
+    {
+      const rect = commentary.getBoundingClientRect();
+      let bottom = rect.top;
+      const range = document.createRange();
+      range.selectNodeContents(commentary);
+      for (const r of Array.from(range.getClientRects())) {
+        if (r.bottom > bottom) bottom = r.bottom;
+      }
+      const exactH = Math.max(0, bottom - rect.top);
+      commentary.style.height = `${exactH}px`;
+      commentary.style.maxHeight = `${exactH}px`;
+      commentary.style.minHeight = `${exactH}px`;
+      commentary.style.overflow = "hidden";
+    }
+    // === 2) חיתוך ימין-תחתון בגובה main, מה שעובר → שמאל-עליון ===
+    // משה 2026-05-06: גם אם rightBody לא עובר main, לפצל באמצע כדי שיהיה
+    // leftCrown — כך שהראשי לא יתפוס את המקום של leftCrown.
+    const blockRect = block.getBoundingClientRect();
+    const mainBottomY = mainEl.getBoundingClientRect().bottom - blockRect.top;
+    const rbRect = rightBody.getBoundingClientRect();
+    const targetYInRB = mainBottomY - (rbRect.top - blockRect.top);
+    let split2 = null;
+    if (targetYInRB > 0) {
+      split2 = findSplitAtPixelYInElement(rightBody, targetYInRB);
+    }
+    if (!split2) {
+      // אם rightBody לא עבר main, נפצל באמצע גובה rightBody.
+      const rbH = rightBody.getBoundingClientRect().height;
+      if (rbH > 30) {
+        split2 = findSplitAtPixelYInElement(rightBody, rbH / 2);
+      }
+    }
+    if (split2) {
+      const leftCrownRest = extractBodyAfterSplit(
+        rightBody, split2, sideLeftClass, sideLeft, 50,
+        { pageEl: pageEl1, sourceId: sourceId1, partRole: "crown-l" }
+      );
+      leftCrownRest.classList.remove("talmud-body-portion");
+      leftCrownRest.classList.add("talmud-crown-portion", sideLeftClass);
+      leftCrownRest.style.float = sideLeft;
+      leftCrownRest.style.width = `calc(${halfPct} - ${halfGap}px)`;
+      leftCrownRest.style.clear = "none";
+      block.insertBefore(leftCrownRest, mainEl);
+      // === 3) חיתוך כתר שמאל ב-crownLines, השאר → שמאל-תחתון ===
+      const split3 = findOffsetAtLineStart(leftCrownRest, crownLines);
+      if (split3) {
+        const leftBody = extractBodyAfterSplit(
+          leftCrownRest, split3, sideLeftClass, sideLeft, parseFloat(sideHalf),
+          { pageEl: pageEl1, sourceId: sourceId1, partRole: "single-body-l" }
+        );
+        leftBody.style.float = sideLeft;
+        leftBody.style.width = `calc(${sideHalf}% - ${halfGap}px)`;
+        leftBody.style.clear = sideLeft;
+        if (sideLeft === "right") leftBody.style.marginLeft = `${sideGap}px`;
+        else leftBody.style.marginRight = `${sideGap}px`;
+        block.insertBefore(leftBody, mainEl);
+        // אכיפת גובה כתר שמאל מדויק
+        const rect2 = leftCrownRest.getBoundingClientRect();
+        let bottom2 = rect2.top;
+        const range2 = document.createRange();
+        range2.selectNodeContents(leftCrownRest);
+        for (const r of Array.from(range2.getClientRects())) {
+          if (r.bottom > bottom2) bottom2 = r.bottom;
+        }
+        const exactH2 = Math.max(0, bottom2 - rect2.top);
+        leftCrownRest.style.height = `${exactH2}px`;
+        leftCrownRest.style.maxHeight = `${exactH2}px`;
+        leftCrownRest.style.minHeight = `${exactH2}px`;
+        leftCrownRest.style.overflow = "hidden";
+      }
+    }
+      // משה 2026-05-06: דוחפים את main לרדת מתחת לכתר (לא לזלוג מעליו).
+      scheduleCrownOffset(block);
+      return;
+    } // end else (split1 found)
+  } // end "if (crownLines > 0 && totalLines >= ...)"
+
+  // אם אין מספיק תוכן לכתר + חצאים, חוזרים להתנהגות הישנה: שני חצאים בלבד
   if (totalLines >= 2) {
     const midLines = Math.ceil(totalLines / 2);
     const splitPoint = findCrownSplitByLineCount(commentary, midLines);
     if (splitPoint) {
-      // Ledger: single-commentary virtual halves share one source.
       const pageElSC = block.closest(".page");
       const sourceIdSC = pageElSC ? recordSource(pageElSC, commentary) : "";
       if (sourceIdSC) recordPart(pageElSC, sourceIdSC, "single-half-1", commentary);
@@ -786,7 +937,6 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
       otherHalf.style.float = sideLeft;
       otherHalf.style.width = `calc(${sideHalf}% - ${halfGap}px)`;
       otherHalf.style.clear = "none";
-      // לפני mainEl כדי שהוא ייתחיל מאותה Y כמו commentary, לא אחרי main בלוק
       block.insertBefore(otherHalf, mainEl);
     }
   }
@@ -842,13 +992,15 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   streamB.classList.add("talmud-commentary", sideBClass);
   streamB.dataset.talmudRole = "commentary-b";
 
-  // שלב 1: מציבים את הזרמים והבלוק זמנית בעץ ה-DOM ב-50% רוחב פחות חצי הפער,
-  // כדי שיישאר פער ויזואלי בין שני הכתרים.
-  const halfGap = sideGap / 2;
+  // משה 2026-05-06: כתרים נוגעים כמעט (פער 1px בלבד למבדל ויזואלי).
+  // לפני זה — היה פער של חצי-sideGap, מה שגרם למילים מהראשי לחדור באמצע.
+  const halfGap = 0;
   streamA.style.float = sideA;
-  streamA.style.width = `calc(50% - ${halfGap}px)`;
+  streamA.style.width = "calc(50% - 1px)";
+  streamA.style.boxSizing = "border-box";
   streamB.style.float = sideB;
-  streamB.style.width = `calc(50% - ${halfGap}px)`;
+  streamB.style.width = "calc(50% - 1px)";
+  streamB.style.boxSizing = "border-box";
 
   block.appendChild(streamA);
   block.appendChild(streamB);
@@ -923,6 +1075,22 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       block.insertBefore(longBody, mainEl);
     }
 
+    // כלל משה: כתר 100% חייב גם הוא להיות בדיוק crownLines שורות.
+    // מדידה אמיתית של range עד סוף הטקסט שנשאר בכתר (לא הערכה).
+    {
+      const rect = longEl.getBoundingClientRect();
+      let bottom = rect.top;
+      const range = document.createRange();
+      range.selectNodeContents(longEl);
+      const rects = Array.from(range.getClientRects());
+      for (const r of rects) { if (r.bottom > bottom) bottom = r.bottom; }
+      const exactH = Math.max(0, bottom - rect.top);
+      longEl.style.height = `${exactH}px`;
+      longEl.style.maxHeight = `${exactH}px`;
+      longEl.style.minHeight = `${exactH}px`;
+      longEl.style.overflow = "hidden";
+    }
+
     // הקצר: clear לצידו כדי להיות מתחת לכתר ה-100% של הארוך
     shortEl.classList.add("talmud-no-crown-side");
     shortEl.style.float = shortSide;
@@ -974,14 +1142,51 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       ex.appendChild(r2.extractContents());
       return ex;
     }
+    // התרחבות מתחת לראשי, לא מעליו: appendChild אחרי mainEl.
+    let exL_asym = null, exS_asym = null;
     if (longExt) {
-      const exL = makeAsymExp(longBody, longSide, longSideClass);
-      if (exL) block.insertBefore(exL, mainEl);
+      exL_asym = makeAsymExp(longBody, longSide, longSideClass);
+      if (exL_asym) block.appendChild(exL_asym);
     }
     if (shortExt) {
-      const exS = makeAsymExp(shortEl, shortSide, shortSide === "right" ? "talmud-right" : "talmud-left");
-      if (exS) block.insertBefore(exS, mainEl);
+      exS_asym = makeAsymExp(shortEl, shortSide, shortSide === "right" ? "talmud-right" : "talmud-left");
+      if (exS_asym) block.appendChild(exS_asym);
     }
+    // משה 2026-05-06: גם באסימטרי — סוגרים פערים בין body לexpanded,
+    // עם הגנה על גבולות מילים (לא מפצלים באמצע מילה).
+    function pullFromExpAsym(bodyEl, expEl) {
+      if (!bodyEl || !expEl) return;
+      let safety = 50;
+      while (safety-- > 0) {
+        void block.offsetHeight;
+        const bRect = bodyEl.getBoundingClientRect();
+        const blockR = block.getBoundingClientRect();
+        const bBottom = bRect.bottom - blockR.top;
+        const gap = mainBottomYAsym - bBottom;
+        if (gap < 6) break;
+        let first = expEl.firstChild;
+        if (!first) break;
+        const isBreak = (ch) => /[\s.,;:!?״׳׃׀־"' ‎‏\(\)\[\]{}-]/.test(ch);
+        const bodyLast = (bodyEl.textContent || "").slice(-1);
+        if (first.nodeType === Node.TEXT_NODE) {
+          const t = first.textContent || "";
+          if (t.length > 0 && bodyLast && !isBreak(bodyLast) && !isBreak(t[0])) {
+            const idx = [...t].findIndex((c, i) => i > 0 && isBreak(c));
+            if (idx > 0) {
+              const frontPart = t.slice(0, idx + 1);
+              first.textContent = t.slice(idx + 1);
+              bodyEl.appendChild(document.createTextNode(frontPart));
+              continue;
+            }
+          }
+        }
+        bodyEl.appendChild(first);
+      }
+    }
+    if (exL_asym && longBody) pullFromExpAsym(longBody, exL_asym);
+    if (exS_asym && shortEl) pullFromExpAsym(shortEl, exS_asym);
+    if (exL_asym && !exL_asym.textContent.trim()) exL_asym.remove();
+    if (exS_asym && !exS_asym.textContent.trim()) exS_asym.remove();
   } else {
     // יש כתר — מחלקים כל פרשן בנקודה המדויקת של שורה N+1
     block.classList.add("talmud-with-crown");
@@ -1023,16 +1228,61 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     if (bodyA && mainEl) mainEl.insertBefore(bodyA, mainEl.firstChild);
     if (bodyB && mainEl) mainEl.insertBefore(bodyB, mainEl.firstChild);
 
-    // ביטחון: גובה כתר זהה לשני הפרשנים (במקרה שספירת שורות בכל זאת מחזירה הבדל קטן)
-    const styleA = getComputedStyle(streamA);
-    const styleB = getComputedStyle(streamB);
-    const lineHA = parseFloat(styleA.lineHeight) || (parseFloat(styleA.fontSize) * 1.4) || 14;
-    const lineHB = parseFloat(styleB.lineHeight) || (parseFloat(styleB.fontSize) * 1.4) || 14;
-    const titleAH = (streamA.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
-    const titleBH = (streamB.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
-    const minCrownH = Math.max(titleAH + crownLines * lineHA, titleBH + crownLines * lineHB);
-    streamA.style.minHeight = `${minCrownH}px`;
-    streamB.style.minHeight = `${minCrownH}px`;
+    // כלל משה: גובה כתר חייב להיות בדיוק crownLines שורות. לא יותר.
+    // מדידה אמיתית: סורקים את כל ה-rects של תוכן הכתר, אוספים Y ייחודיים,
+    // וחותכים בדיוק בסוף השורה ה-N (תחתית). זה תקף גם בpreserve-breaks
+    // שבו יש margins בין הערות בלוק.
+    function measureFirstNLinesHeight(streamEl, n) {
+      const rect = streamEl.getBoundingClientRect();
+      const titleEl = streamEl.querySelector(":scope > .stream-title");
+      const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
+      // אוספים את כל ה-rects של תוכן (לא כותרת) לפי Y ייחודי.
+      const lineRects = [];
+      const seenY = new Set();
+      const range = document.createRange();
+      const walker = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
+        acceptNode: (node) => {
+          if (titleEl && titleEl.contains(node)) return NodeFilter.FILTER_REJECT;
+          return node.textContent && node.textContent.length > 0
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        },
+      });
+      let tn;
+      while ((tn = walker.nextNode())) {
+        range.setStart(tn, 0);
+        range.setEnd(tn, tn.length);
+        for (const r of Array.from(range.getClientRects())) {
+          if (r.height === 0 && r.width === 0) continue;
+          const key = Math.round(r.top);
+          if (!seenY.has(key)) {
+            seenY.add(key);
+            lineRects.push(r);
+          }
+        }
+      }
+      lineRects.sort((a, b) => a.top - b.top);
+      if (lineRects.length === 0) return titleH;
+      if (lineRects.length <= n) {
+        // יש פחות שורות מ-N — מחזירים את כל הגובה של התוכן + כותרת
+        const lastBottom = lineRects[lineRects.length - 1].bottom;
+        return Math.max(0, lastBottom - rect.top);
+      }
+      // יש יותר מ-N שורות: חותכים בסוף שורה N (אינדקס n-1)
+      const nthBottom = lineRects[n - 1].bottom;
+      return Math.max(0, nthBottom - rect.top);
+    }
+    const heightA = measureFirstNLinesHeight(streamA, crownLines);
+    const heightB = measureFirstNLinesHeight(streamB, crownLines);
+    const exactCrownH = Math.max(heightA, heightB);
+    streamA.style.height = `${exactCrownH}px`;
+    streamA.style.maxHeight = `${exactCrownH}px`;
+    streamA.style.minHeight = `${exactCrownH}px`;
+    streamA.style.overflow = "hidden";
+    streamB.style.height = `${exactCrownH}px`;
+    streamB.style.maxHeight = `${exactCrownH}px`;
+    streamB.style.minHeight = `${exactCrownH}px`;
+    streamB.style.overflow = "hidden";
 
     // באג 1: התרחבות הפרשנים מתחת לראשי כשהראשי קצר.
     // לפי המשתמש: אם שני הפרשנים ממשיכים מתחת לראשי — כל אחד 50%.
@@ -1081,8 +1331,107 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     // תיפתר ע"י המנוע שמדד נכון.
     const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
     const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
-    if (expandedA) block.insertBefore(expandedA, mainEl);
-    if (expandedB) block.insertBefore(expandedB, mainEl);
+    // התרחבות מתחת לראשי, לא מעליו: appendChild אחרי mainEl.
+    if (expandedA) block.appendChild(expandedA);
+    if (expandedB) block.appendChild(expandedB);
+    // משה 2026-05-06: סוגרים פערים ויזואליים בין body לexpanded — אם הbody
+    // נגמר לפני mainBottom, נמתחים אותו ל-mainBottom כדי שלא יישאר חלל.
+    // משה 2026-05-06: pull-content מוחזר עם הגנת גבולות מילים — סוגר את
+    // הפער בין body לexpanded (הברך). אל יפצל מילה באמצע.
+    function pullFromExpandedToFillBody(bodyEl, expandedEl) {
+      if (!bodyEl || !expandedEl) return;
+      let safety = 100;
+      while (safety-- > 0) {
+        void block.offsetHeight;
+        const bRect = bodyEl.getBoundingClientRect();
+        const blockRect3 = block.getBoundingClientRect();
+        const bBottom = bRect.bottom - blockRect3.top;
+        const gap = mainBottomY - bBottom;
+        if (gap < 2) break;
+        // מציאת node ראשון שאינו text-fragment חלקי באמצע מילה
+        let first = expandedEl.firstChild;
+        if (!first) break;
+        // אם זה טקסט שמתחיל באמצע מילה (האות הראשונה אינה רווח/פיסוק
+        // והאות האחרונה של ה-body אינה רווח/פיסוק) — לא להעביר חלקי.
+        const isBreak = (ch) => /[\s.,;:!?״׳׃׀־"' ‎‏\(\)\[\]{}-]/.test(ch);
+        const bodyLast = (bodyEl.textContent || "").slice(-1);
+        if (first.nodeType === Node.TEXT_NODE) {
+          const t = first.textContent || "";
+          // רק אם body לא ריק AND האות האחרונה לא-רווח AND האות הראשונה של
+          // first לא-רווח — זה אותה מילה. במקרה כזה נמצא רווח קרוב.
+          if (t.length > 0 && bodyLast.length > 0 && !isBreak(bodyLast) && !isBreak(t[0])) {
+            const idx = [...t].findIndex((c, i) => i > 0 && isBreak(c));
+            if (idx > 0) {
+              // העבר רק את החלק עד הרווח (כולל הרווח) ל-body, השאר נשאר ב-first
+              const frontPart = t.slice(0, idx + 1);
+              const backPart = t.slice(idx + 1);
+              first.textContent = backPart;
+              bodyEl.appendChild(document.createTextNode(frontPart));
+              continue;
+            }
+            // אם אין רווח בכלל ב-first, מעבירים אותו במלואו (סוף-עולם, אין מה לעשות)
+          }
+        }
+        bodyEl.appendChild(first);
+      }
+    }
+    if (expandedA && bodyA) pullFromExpandedToFillBody(bodyA, expandedA);
+    if (expandedB && bodyB) pullFromExpandedToFillBody(bodyB, expandedB);
+    if (expandedA && !expandedA.textContent.trim()) expandedA.remove();
+    if (expandedB && !expandedB.textContent.trim()) expandedB.remove();
+    // משה 2026-05-06: אחרי שהקצר מסתיים, הארוך ממשיך ברוחב 100%.
+    if (expandedA && expandedB) {
+      void block.offsetHeight;
+      const aRect = expandedA.getBoundingClientRect();
+      const bRect = expandedB.getBoundingClientRect();
+      const blockRect4 = block.getBoundingClientRect();
+      const aHeight = aRect.height;
+      const bHeight = bRect.height;
+      const longer = aHeight > bHeight + 20 ? expandedA : (bHeight > aHeight + 20 ? expandedB : null);
+      if (longer) {
+        const shorter = longer === expandedA ? expandedB : expandedA;
+        const shorterBottomY = shorter.getBoundingClientRect().bottom - blockRect4.top;
+        const longerTopY = longer.getBoundingClientRect().top - blockRect4.top;
+        const targetYInLonger = shorterBottomY - longerTopY;
+        // משה 2026-05-06: גבולות מרוככים — מאפשר התרחבות שנייה גם
+        // במקרים שהיו מסומנים כ-skipForBalance/skipForShortShorter.
+        const pageEl = block.closest(".page");
+        const pageBottomY = pageEl ? (pageEl.getBoundingClientRect().bottom - blockRect4.top) : Infinity;
+        const longerBottomY = longer.getBoundingClientRect().bottom - blockRect4.top;
+        const wouldOverflow = longerBottomY > pageBottomY - 10;
+        if (targetYInLonger > 0 && !wouldOverflow) {
+          const sp = findSplitAtPixelYInElement(longer, targetYInLonger);
+          if (sp) {
+            const longerSide = longer === expandedA ? sideA : sideB;
+            const longerSideClass = longer === expandedA ? sideAClass : sideBClass;
+            const lowerEl = document.createElement("div");
+            lowerEl.className = `${longer.className} ${longerSideClass}`.replace(/\s+/g, " ").trim();
+            const code = longer.dataset.talmudBodyOf;
+            if (code) lowerEl.setAttribute("data-stream", code);
+            lowerEl.dataset.talmudBodyOf = code;
+            lowerEl.dataset.talmudRole = "commentary-expanded-lower";
+            lowerEl.style.float = longerSide;
+            lowerEl.style.clear = "both";
+            lowerEl.style.width = "100%";
+            // שמור snapshot של תוכן ה-longer לפני העברה — לתיקון אם יחרוג
+            const longerSnapshot = Array.from(longer.childNodes);
+            const insertPoint = longer.firstChild ? longer.lastChild.nextSibling : null;
+            const r = document.createRange();
+            r.setStart(sp.node, sp.offset);
+            r.setEndAfter(longer.lastChild);
+            lowerEl.appendChild(r.extractContents());
+            block.appendChild(lowerEl);
+            // בדיקה אחרי יצירה: אם הדף חורג, מבטלים ומחזירים תוכן.
+            void block.offsetHeight;
+            if (pageEl && (pageEl.scrollHeight - pageEl.clientHeight > 5)) {
+              // החזר תוכן מ-lowerEl ל-longer
+              while (lowerEl.firstChild) longer.appendChild(lowerEl.firstChild);
+              lowerEl.remove();
+            }
+          }
+        }
+      }
+    }
 
     // Bug 15 / INV-10: ensure two expanded blocks sit side-by-side, not
     // stacked vertically. Pure float doesn't always achieve this when one
@@ -1120,8 +1469,12 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
 
     mainEl.classList.add("talmud-main");
     mainEl.dataset.talmudRole = "main";
-    block.appendChild(mainEl); // moves to end (dom move)
+    // לא מזיזים יותר את mainEl לסוף — זה היה דוחף את ה-expanded לפני main
+    // ויוצר מצב שההתרחבות מופיעה מעל הראשי במקום מתחתיו.
   }
+
+  // משה 2026-05-06: כל הענפים — main ירד מתחת לכתר (margin-top via CSS var).
+  scheduleCrownOffset(block);
 
   // קלאסים מידע (לטיפול עתידי בהתרחבות צד כשהראשי קצר)
   const lenA = streamTextLength(streamA);
@@ -1133,6 +1486,75 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
 
   // ביטול מתיחה לשורות אחרונות קצרות (כדי לא ליצור חללים מלאכותיים)
   block.querySelectorAll(":scope > .talmud-crown-portion").forEach(adjustCrownLastLineJustify);
+
+  // משה 2026-05-06 (GPT analysis): בכל עמוד, מודדים בכל גובה אם מרכז+
+  // צד-ימין+צד-שמאל קיימים. אם נשאר רק זרם אחד או רק main — להרחיב לרוחב מלא.
+  // 1) אם main ריק (או מכיל רק streams בתוכו) ויש רק זרם צדדי אחד → להרחיב.
+  void block.offsetHeight;
+  const mainTextOnly = mainEl ? Array.from(mainEl.childNodes).filter(n =>
+    n.nodeType === Node.ELEMENT_NODE &&
+    !n.classList?.contains("talmud-body-portion") &&
+    !n.classList?.contains("talmud-body-expanded") &&
+    !n.classList?.contains("stream") &&
+    /^(P|H[1-6]|DIV|BLOCKQUOTE|PRE)$/i.test(n.tagName)
+  ) : [];
+  // Cloud-Claude 2026-05-06: לספור תווים, לא רק אלמנטים. main של 27/63
+  // תווים נחשב ל-"דליל" ולא חוסם הרחבה. סף = 100 תווים אמיתיים.
+  const mainTextChars = mainTextOnly.reduce(
+    (s, n) => s + ((n.textContent || "").trim().length), 0
+  );
+  const hasRealMain = mainTextChars >= 100;
+  if (!hasRealMain) {
+    // GPT 2026-05-06: אין טקסט מרכזי אמיתי — כל גוף/הרחבה הופך ל-100% רוחב.
+    // Cloud-Claude 2026-05-06: גם להוסיף class .talmud-body-expanded כדי
+    // ש-engine_bridge יוכל לדחוף הערה אחרונה אם יש overflow גדול.
+    const allBodies = block.querySelectorAll(".talmud-body-portion, .talmud-body-expanded");
+    allBodies.forEach(b => {
+      b.style.width = "100%";
+      b.style.float = "none";
+      b.style.clear = "both";
+      b.style.marginInline = "0";
+      b.classList.add("talmud-body-expanded", "talmud-body-expanded-fullwidth");
+    });
+  } else {
+    // GPT 2026-05-06: יש main, אבל אם זרם צד ממשיך מתחת ל-mainBottom →
+    // לפצל אותו: חלק עליון נשאר 29% ליד main, חלק תחתון 100% מתחת ל-main.
+    const mainBottomEl = mainEl ? mainEl.getBoundingClientRect() : null;
+    if (mainBottomEl) {
+      const blockTopY = block.getBoundingClientRect().top;
+      const mainBottomY = mainBottomEl.bottom - blockTopY;
+      const sideBodies = block.querySelectorAll(
+        ":scope > .talmud-body-portion, :scope .page-main > .talmud-body-portion"
+      );
+      sideBodies.forEach(body => {
+        if (body.classList.contains("talmud-body-expanded-lower-split")) return;
+        const r = body.getBoundingClientRect();
+        const bBottomY = r.bottom - blockTopY;
+        if (bBottomY <= mainBottomY + 5) return; // not extending below main
+        const bTopY = r.top - blockTopY;
+        const targetY = mainBottomY - bTopY;
+        if (targetY <= 0 || targetY >= r.height - 5) return;
+        const sp = findSplitAtPixelYInElement(body, targetY);
+        if (!sp) return;
+        const lower = document.createElement("div");
+        lower.className = body.className.replace("talmud-body-portion", "talmud-body-expanded").trim();
+        lower.classList.add("talmud-body-expanded-lower-split");
+        const code = body.dataset.talmudBodyOf || body.getAttribute("data-stream") || "";
+        if (code) lower.setAttribute("data-stream", code);
+        lower.dataset.talmudBodyOf = code;
+        lower.dataset.talmudRole = "commentary-expanded-lower-split";
+        lower.style.float = "none";
+        lower.style.clear = "both";
+        lower.style.width = "100%";
+        lower.style.marginInline = "0";
+        const r2 = document.createRange();
+        r2.setStart(sp.node, sp.offset);
+        r2.setEndAfter(body.lastChild);
+        lower.appendChild(r2.extractContents());
+        block.appendChild(lower);
+      });
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -1195,24 +1617,27 @@ export function applyTalmudLayoutToPage(pageEl) {
   const block = document.createElement("div");
   block.className = "talmud-layout";
 
+  // משה 2026-05-06: זרם ריק (אין תוכן לעמוד הזה) — לא להעמיד אותו ב-29%
+  // ריק על הדף; להתייחס כאילו לא קיים כדי שהזרם המלא ימלא את המקום.
+  const nonEmptyStreams = talmudStreams.filter(s => (s.textContent || "").trim().length > 0);
+  const effectiveStreams = nonEmptyStreams.length > 0 ? nonEmptyStreams : talmudStreams;
+
   if (!hasMain) {
-    layoutNoMain(block, streamsWrap, talmudStreams);
-  } else if (talmudStreams.length === 1) {
-    // v28-merge: פרשן יחיד עם ראשי — פיצול הפרשן לשני חצאים והפעלת אותה
-    // לוגיקה כמו שני פרשנים. כך גם הוא יקבל כתר אמיתי משני הצדדים סביב
-    // הראשי, לפי בקשת משה: "פרשן יחיד מתפצל שווה בשווה משני הצדדים".
-    const single = talmudStreams[0];
+    layoutNoMain(block, streamsWrap, effectiveStreams);
+  } else if (effectiveStreams.length === 1) {
+    // פרשן יחיד עם ראשי — פיצול הפרשן לשני חצאים והפעלת אותה לוגיקה כמו
+    // שני פרשנים, כך שגם הוא יקבל כתר משני הצדדים סביב הראשי.
+    const single = effectiveStreams[0];
     const secondHalf = splitSingleCommentaryIntoHalves(single);
     if (secondHalf) {
       layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, single, secondHalf);
     } else {
-      // אין מספיק תוכן לחצי — fallback למקרה הישן (בצד אחד בלבד)
       layoutOneCommentaryWithMain(block, streamsWrap, mainEl, single);
     }
   } else {
     layoutTwoCommentariesWithMain(
       block, streamsWrap, mainEl,
-      talmudStreams[0], talmudStreams[1]
+      effectiveStreams[0], effectiveStreams[1]
     );
   }
 

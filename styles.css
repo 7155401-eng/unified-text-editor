@@ -17,7 +17,7 @@
   --ravtext-page-font-family: "Frank Ruhl Libre", "David Libre", serif;
   --ravtext-page-width: 380px;
   --ravtext-page-height: 537px;
-  --ravtext-page-pack-safety: 6px;
+  --ravtext-page-pack-safety: 50px;
   --ravtext-page-margin-top: 22px;
   --ravtext-page-margin-right: 24px;
   --ravtext-page-margin-bottom: 18px;
@@ -265,6 +265,12 @@ html, body {
   max-width: 100vw;
   direction: rtl;
 }
+/* CSS-panel mode: insert column between editor and preview */
+.main:has(#ravtext-css-inject-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1.5fr) 360px minmax(440px, 1fr);
+  grid-template-areas: "editor css-panel preview";
+}
+#ravtext-css-inject-panel { grid-area: css-panel; align-self: stretch; }
 
 .panel {
   background: var(--panel);
@@ -763,6 +769,8 @@ mark.pdf-find-hit-current {
 /* ── The layout block ── */
 .talmud-layout {
   display: block;
+  /* visible כדי שהמנוע ימדוד את הגובה האמיתי של התוכן. הקליפינג הויזואלי
+     נעשה ב-.page (overflow:hidden) — תוכן מעבר לקצה העמוד נחתך אוטומטית. */
   overflow: visible;
   clear: both;
 }
@@ -810,13 +818,10 @@ mark.pdf-find-hit-current {
 }
 
 /* כששני הפרשנים קצרים מאוד — אין דחיפת כתר, כל ה-3 מתחילים מלמעלה */
+/* משה 2026-05-06: הוסר margin-top:0 !important — הוא דרס את --talmud-crown-offset
+   וגרם לראשי לקפוץ לאזור הכתר. הראשי חייב להתחיל מתחת לכתר. */
 .talmud-layout.talmud-no-crown .page-main.talmud-main {
-  margin-top: 0 !important;
-}
-
-/* כשיש כתר — הראשי לא צריך margin-top, הוא נדחף טבעית ע"י ה-crown floats */
-.talmud-layout.talmud-with-crown .page-main.talmud-main {
-  margin-top: 0 !important;
+  margin-top: 0;
 }
 
 /* חלקי הכתר (ראש הפרשן — 50% רוחב במצב סימטרי, 100% במצב אסימטרי) */
@@ -824,9 +829,10 @@ mark.pdf-find-hit-current {
 .talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion {
   /* float ו-width מוגדרים inline ע"י JS */
   text-align: justify !important;
-  /* יישור מלא גם בשורה האחרונה — כי החיתוך הוא באמצע משפט,
-     ובלי זה השורה האחרונה תהיה לא מיושרת לשני הצדדים. */
-  text-align-last: justify !important;
+  /* כלל משה: מתיחת שורה רק לאחר הכנסת כל הטקסט שאפשר —
+     שורה אחרונה לא נמתחת בכוח (auto = רגוע).
+     שורות אמצע — נמתחות אוטומטית ע"י הדפדפן (justify רגיל). */
+  text-align-last: auto !important;
   text-justify: inter-word !important;
   /* רציפות חזותית: ביטול רווח תחתון כדי להידבק לגוף */
   padding-bottom: 0 !important;
@@ -837,7 +843,7 @@ mark.pdf-find-hit-current {
 .talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note,
 .talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note-inline,
 .talmud-layout.talmud-asymmetric-crown > .stream.talmud-crown-portion .note-part {
-  text-align-last: justify !important;
+  text-align-last: auto !important;
 }
 
 /* כשמכבדים שבירות פסקה בכתר: ההערות בכתר חוזרות להיות בלוקים נפרדים,
@@ -852,7 +858,7 @@ mark.pdf-find-hit-current {
 /* בכתר חצוי באמצע משפט, השורה האחרונה של ה-stream הכולל (לא של פסקה
    בודדת) עדיין צריכה להיות מיושרת — כי החיתוך הוא לא בסוף פסקה. */
 .talmud-layout.talmud-preserve-breaks.talmud-with-crown > .stream.talmud-crown-portion {
-  text-align-last: justify !important;
+  text-align-last: auto !important;
 }
 /* הפרשן בכתר משמאל מסומן עם talmud-left
    v28-merge: :not שמונע ירושת הכלל ל-body שמכיל את הקלאס בטעות */
@@ -867,13 +873,21 @@ mark.pdf-find-hit-current {
 }
 
 /* גוף הפרשן (29% רוחב, מתחת לכתר, צמוד ל-main) */
-.talmud-layout.talmud-with-crown > .talmud-body-portion {
+.talmud-layout.talmud-with-crown > .talmud-body-portion,
+.talmud-layout.talmud-with-crown .page-main > .talmud-body-portion {
   /* float, width, clear מוגדרים inline ע"י JS */
   text-align: justify;
   text-align-last: center;
   text-justify: inter-word;
-  /* רציפות חזותית: ביטול רווח עליון כדי להידבק לכתר */
+  /* רציפות חזותית: ביטול רווח עליון/תחתון כדי להידבק לכתר ול-expanded */
   padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+/* expanded צמוד לbody — בלי רווח עליון */
+.talmud-layout .talmud-body-expanded {
+  padding-top: 0 !important;
+  margin-top: 0 !important;
 }
 .talmud-layout.talmud-with-crown > .talmud-body-portion.talmud-right {
   padding-left: 3px;
@@ -908,8 +922,9 @@ mark.pdf-find-hit-current {
   display: block;
   /* Crown offset: computed by JS and stored in --talmud-crown-offset */
   margin-top: var(--talmud-crown-offset, 0px);
-  /* overflow:visible כדי שהטקסט המרכזי יגלוש סביב ה-floats של הפרשנים
-     מעליו ומתחתיו, ולא ייווצר מצב של 3 עמודות נפרדות. */
+  /* משה 2026-05-06: ללא max-width — הראשי מתרחב לרוחב מלא כשהזרמים בצדדים
+     מסתיימים. הטקסט גולש סביב הfloats כל עוד הם קיימים, וכשהם מסתיימים
+     הוא ממלא את כל הרוחב הנותר. */
   overflow: visible;
   box-sizing: border-box;
   text-align: justify;
@@ -941,10 +956,8 @@ mark.pdf-find-hit-current {
 }
 
 /* ── One commentary only (with main) ── */
-.talmud-layout.talmud-has-main.talmud-one-commentary .page-main.talmud-main {
-  /* main fills the rest of the width naturally around the float */
-  margin-top: 0;
-}
+/* משה 2026-05-06: הוסר margin-top:0 — הוא דרס את crown-offset וגרם לראשי
+   לקפוץ לאזור הכתר. הראשי חייב להתחיל מתחת לכתר. */
 
 /* ── Stream titles inside talmud block ── */
 .talmud-layout .stream-title {
@@ -1028,6 +1041,9 @@ mark.pdf-find-hit-current {
   margin: 1px 0;
   direction: rtl;
   cursor: pointer;
+  /* משה 2026-05-06: pretty = שיפור איזון שורות (פחות מילה בודדת בסוף עמודה).
+     נתמך Chrome 117+. דוחה הצידה אם הדפדפן לא תומך. */
+  text-wrap: pretty;
 }
 
 .stream .note:hover {
@@ -1394,7 +1410,100 @@ mark.pdf-find-hit-current {
   background: var(--panel);
   color: var(--word-blue-dark);
   border-color: var(--word-line);
+  position: relative;
+  font-weight: 600;
 }
+/* טאבים מותאמים — עיצוב מבדיל לגפ״ת ומשנ״ב */
+.ribbon-tabs .ribbon-tab[data-ribbon-tab="talmud"],
+.ribbon-tabs .ribbon-tab[data-ribbon-tab="mishna"] {
+  font-weight: 600;
+}
+.ribbon-tabs .ribbon-tab.active::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -1px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, var(--word-blue, #2B579A) 18%, #4a8fe0 50%, var(--word-blue, #2B579A) 82%, transparent 100%);
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 -1px 4px rgba(43, 87, 154, 0.25);
+}
+
+/* כפתור הרינדור — בסגנון כפתור תפריט וורד: לבן/שקוף עם hover עדין,
+   חוץ מבמקרה תפריט ribbon אחרון בסרגל. צבע ה-accent של וורד. */
+.btn-render-prominent {
+  appearance: none;
+  background: rgba(255,255,255,0.9);
+  color: var(--word-blue, #2B579A) !important;
+  border: 1px solid var(--word-blue, #2B579A);
+  border-radius: 3px;
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+.btn-render-prominent::before {
+  content: "↻";
+  font-size: 13px;
+  font-weight: bold;
+}
+.btn-render-prominent:hover {
+  background: var(--word-blue, #2B579A);
+  color: #fff !important;
+  border-color: var(--word-blue-dark, #185ABD);
+}
+.btn-render-prominent:active {
+  background: var(--word-blue-dark, #185ABD);
+  color: #fff !important;
+}
+.ribbon-tab-render-slot {
+  margin-inline-start: auto !important;
+  flex-shrink: 0;
+  position: sticky;
+  inset-inline-end: 0;
+  background: var(--bg, #fff);
+  padding-inline: 12px;
+  z-index: 5;
+  /* קו מפריד + fade עדין כדי שהכפתור לא ייראה דורס טאב */
+  box-shadow: -8px 0 8px -4px var(--bg, rgba(255,255,255,0.9));
+  border-inline-start: 1px solid var(--border, rgba(0,0,0,0.1));
+}
+/* אייקון "המשך תפריט" שמופיע כשיש overflow */
+.ribbon-tab-render-slot::before {
+  content: "⋯";
+  position: absolute;
+  inset-inline-end: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  padding-inline-end: 6px;
+  color: var(--word-blue, #2B579A);
+  font-weight: 700;
+  font-size: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+/* אייקון מופיע רק כשיש מה לגלול בטאבים */
+.ribbon-tabs.has-overflow .ribbon-tab-render-slot::before { opacity: 0.6; }
+.ribbon-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  max-width: 100%;
+}
+/* תפריט - אם צר מידי, האייקונים מוסתרים מאחורי גלילה אופקית */
+.ribbon-tabs::-webkit-scrollbar { height: 4px; }
+.ribbon-tabs::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 2px; }
+.ribbon-tabs .ribbon-tab { flex-shrink: 0; }
 
 .ribbon-toolbar {
   margin-top: 0;
@@ -2443,6 +2552,20 @@ body[data-theme="warm"] {
   --rt-btn-bg: #fffaf0;
   --rt-btn-hover: #f5edc8;
 }
+body[data-theme="royal"] {
+  --rt-bg: #0d1b3a;
+  --rt-bg-panel: #1a2a4f;
+  --rt-bg-toolbar: #14224a;
+  --rt-fg: #f5e6c8;
+  --rt-fg-muted: #c8b07a;
+  --rt-border: #8a6512;
+  --rt-accent: #d4af37;
+  --rt-accent-hover: #b48820;
+  --rt-input-bg: #0a1530;
+  --rt-input-fg: #f5e6c8;
+  --rt-btn-bg: #2a3d6e;
+  --rt-btn-hover: #3b4f85;
+}
 body[data-theme="ocean"] {
   --rt-bg: #eaf4f8;
   --rt-bg-panel: #ffffff;
@@ -2489,10 +2612,16 @@ body[data-theme] .panel,
 body[data-theme] aside.preview-pane,
 body[data-theme] .settings-panel,
 body[data-theme] .settings-section { background: var(--rt-bg-panel) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
-body[data-theme] button,
+body[data-theme] button:not(.btn-render-prominent),
 body[data-theme] .ribbon-tab,
 body[data-theme] .pdf-tb-btn,
 body[data-theme] .settings-btn { background: var(--rt-btn-bg) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] .btn-render-prominent {
+  background: linear-gradient(180deg, #2b7cd9 0%, #1a5fb8 100%) !important;
+  color: #fff !important;
+  border-color: #154a96 !important;
+}
+body[data-theme] .btn-render-prominent:hover { background: linear-gradient(180deg, #3389e6 0%, #1f6cc7 100%) !important; }
 body[data-theme] button:hover,
 body[data-theme] .pdf-tb-btn:hover,
 body[data-theme] .settings-btn:hover { background: var(--rt-btn-hover) !important; }
@@ -2509,9 +2638,9 @@ body[data-theme] .settings-license-status { color: var(--rt-fg-muted) !important
 /* ============================================================
    v33: Unified button styling — modern, consistent across all UI
    ============================================================ */
-button:not([class*="ribbon-tab"]):not(.btn-stream):not([class*="size-direct"]):not(.opw-segment),
-.tb-group button,
-.toolbar button,
+button:not([class*="ribbon-tab"]):not(.btn-stream):not([class*="size-direct"]):not(.opw-segment):not(.btn-render-prominent),
+.tb-group button:not(.btn-render-prominent),
+.toolbar button:not(.btn-render-prominent),
 .pdf-tb-btn,
 .settings-btn {
   font-family: inherit;
@@ -2526,9 +2655,9 @@ button:not([class*="ribbon-tab"]):not(.btn-stream):not([class*="size-direct"]):n
   box-shadow: 0 1px 2px rgba(0,0,0,0.04);
   line-height: 1.4;
 }
-button:not([class*="ribbon-tab"]):not(.btn-stream):hover,
-.tb-group button:hover,
-.toolbar button:hover,
+button:not([class*="ribbon-tab"]):not(.btn-stream):not(.btn-render-prominent):hover,
+.tb-group button:not(.btn-render-prominent):hover,
+.toolbar button:not(.btn-render-prominent):hover,
 .pdf-tb-btn:hover,
 .settings-btn:hover {
   background: var(--rt-btn-hover, linear-gradient(180deg, #e7eef7 0%, #d4dde8 100%));
@@ -2536,7 +2665,7 @@ button:not([class*="ribbon-tab"]):not(.btn-stream):hover,
   transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0,0,0,0.08);
 }
-button:not([class*="ribbon-tab"]):not(.btn-stream):active,
+button:not([class*="ribbon-tab"]):not(.btn-stream):not(.btn-render-prominent):active,
 .pdf-tb-btn:active {
   transform: translateY(0);
   box-shadow: 0 1px 2px rgba(0,0,0,0.06);

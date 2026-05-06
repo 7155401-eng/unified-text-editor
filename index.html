@@ -106,6 +106,18 @@
             <button data-cmd="formula" title="נוסחה">∑</button>
           </span>
           <span class="sep"></span>
+          <span class="tb-group" data-title="סגנונות">
+            <select id="styles-gallery-select" title="סגנון לטקסט נבחר" style="min-width:120px;font-size:12px;padding:3px 6px;">
+              <option value="">סגנון…</option>
+              <option value="paragraph">רגיל</option>
+              <option value="heading-1">כותרת 1</option>
+              <option value="heading-2">כותרת 2</option>
+              <option value="heading-3">כותרת 3</option>
+              <option value="blockquote">ציטוט</option>
+              <option value="code-block">בלוק קוד</option>
+            </select>
+          </span>
+          <span class="sep"></span>
           <span class="tb-group" data-title="גופן">
             <button data-cmd="font-david">David</button>
             <button data-cmd="font-frank">Frank</button>
@@ -212,7 +224,9 @@
           <button type="button" id="btn-load-inline" data-i18n="loadInline">טען טקסט inline</button>
           <button type="button" id="btn-load-shulchan" data-i18n="loadShulchan">טען שו״ע</button>
           <button type="button" id="btn-load-talmud" data-i18n="loadTalmud">טען גמרא</button>
-          <button type="button" id="btn-render" data-i18n="renderPages">רנדר עמודים</button>
+          <button type="button" id="btn-render" data-i18n="renderPages">רנדר</button>
+        </div>
+        <div class="toolbar mishna-toolbar" dir="rtl">
           <label class="toolbar-checkbox">
             <input type="checkbox" id="mishna-wrap-toggle" />
             <span data-i18n="mishnaWrap">משנה ברורה: גלישה</span>
@@ -229,9 +243,15 @@
             <span id="mishna-levels-picker" class="mishna-levels-picker"></span>
             <button type="button" id="mishna-add-level-btn" class="stream-picker-add">+ רמה</button>
           </label>
+        </div>
+        <div class="toolbar talmud-toolbar" dir="rtl">
           <label class="toolbar-checkbox">
             <input type="checkbox" id="talmud-layout-toggle" />
             <span>גפ"ת: צורת הדף</span>
+          </label>
+          <label class="toolbar-checkbox" title="כשמופעל גפ״ת — שאר הזרמים יקבלו אוטומטית מצב משנה ברורה במקום מצב זרם רגיל">
+            <input type="checkbox" id="talmud-other-as-mishna" />
+            <span>שאר הזרמים = משנ״ב</span>
           </label>
           <label class="mishna-levels-control">
             <span>זרמי גפ"ת:</span>
@@ -254,19 +274,21 @@
             <input type="number" id="talmud-main-width-input" min="20" max="80" value="42" />
           </label>
           <label class="opw-control">
-            <span>צדדים:</span>
+            <span>סדר צדדים:</span>
             <select id="talmud-side-mode-select">
-              <option value="auto">אוטו</option>
-              <option value="right-left">ימין/שמאל</option>
               <option value="inner-outer">פנימי/חיצוני</option>
+              <option value="right-left">ימין/שמאל</option>
+              <option value="auto">אוטו</option>
             </select>
           </label>
+          <span id="talmud-stream-roles-picker" class="stream-roles-picker"
+                style="display:inline-flex;gap:8px;align-items:center;font-size:12px;color:#555;"></span>
           <label class="opw-control">
             <span>רווח צדדי (px):</span>
             <input type="number" id="talmud-side-gap-input" min="0" max="60" value="12" title="רווח בין הזרם המרכזי לפרשנים שבצדדים" />
           </label>
           <label class="toolbar-checkbox" title="כשמסומן: שבירות פסקה בכתר נשמרות (פסקה אמיתית לא נמתחת בכוח). לא רלוונטי לשאר התבנית.">
-            <input type="checkbox" id="talmud-preserve-breaks" checked />
+            <input type="checkbox" id="talmud-preserve-breaks" />
             <span>שמור שבירות פסקה בכתר</span>
           </label>
         </div>
@@ -368,6 +390,7 @@
                 <option value="warm">חם</option>
                 <option value="ocean">אוקיינוס</option>
                 <option value="forest">יער</option>
+                <option value="royal">מלכותי</option>
                 <option value="custom">מותאם אישית</option>
               </select>
             </label>
@@ -408,6 +431,25 @@
           <div class="settings-section">
             <h3 class="settings-h3" data-i18n="settingsLicense">רישיון משתמש</h3>
             <div class="settings-license-status" id="settings-license-status" data-i18n="settingsLicenseUnset">לא הוטמע עדיין</div>
+          </div>
+          <div class="settings-section">
+            <h3 class="settings-h3">AI ועיצוב</h3>
+            <label class="settings-row">
+              <span>ספק AI:</span>
+              <select id="settings-ai-provider">
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT-4)</option>
+                <option value="google">Google (Gemini)</option>
+                <option value="mistral">Mistral</option>
+                <option value="groq">Groq</option>
+                <option value="deepseek">DeepSeek</option>
+              </select>
+            </label>
+            <label class="settings-row">
+              <span>מפתח API:</span>
+              <input type="password" id="settings-ai-apikey" placeholder="sk-ant-..." style="flex:1;" />
+            </label>
+            <div style="font-size:11px;color:#888;">המפתח נשמר רק אצלך בדפדפן (localStorage)</div>
           </div>
           <div class="settings-section">
             <h3 class="settings-h3" data-i18n="settingsDebug">דיבוג</h3>
