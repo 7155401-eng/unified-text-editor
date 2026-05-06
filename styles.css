@@ -1528,6 +1528,47 @@ mark.pdf-find-hit-current {
   display: none !important;
 }
 
+/* Word-style ribbon collapse — hides ribbon panels and the inline tool groups
+   inside the main toolbar, keeping only the tabs row visible. */
+body.ribbon-collapsed .ribbon-panel,
+body.ribbon-collapsed #main-ribbon-toolbar .tb-group,
+body.ribbon-collapsed #main-ribbon-toolbar .sep {
+  display: none !important;
+}
+/* Peek mode: while collapsed, clicking a tab temporarily restores its content
+   until the user clicks elsewhere. */
+body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden),
+body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .tb-group:not(.ribbon-hidden),
+body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep {
+  display: revert !important;
+}
+body.ribbon-collapsed.ribbon-peek .ribbon-panel.ribbon-hidden,
+body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .tb-group.ribbon-hidden {
+  display: none !important;
+}
+body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar,
+body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
+  position: relative;
+  z-index: 50;
+  background: var(--bg, #fff);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.ribbon-collapse-toggle {
+  margin-inline-start: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  color: var(--muted, #555);
+  border-radius: 3px;
+}
+.ribbon-collapse-toggle:hover {
+  background: rgba(0,0,0,0.06);
+  border-color: rgba(0,0,0,0.1);
+}
+
 .width-slider-control {
   display: inline-flex;
   align-items: center;
