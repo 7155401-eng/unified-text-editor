@@ -650,9 +650,10 @@ function computeMinCrownHeight(streamEl, crownLines) {
 function commentaryFillsCrownPlusExtraLive(streamEl, crownLines) {
   if (crownLines <= 0) return false;
   // משה 2026-05-06: מדידה אמיתית לפי שורות ויזואליות, לא הערכה.
-  // סופרים שורות תוכן (לא כותרת) דרך getClientRects.
+  // תיקון 2026-05-06: dedupe לפי Y — אחרת שורה אחת עם 5 spans נספרת כ-5
+  // שורות. הבאג הזה גרם לשימוש שגוי של הסף וזיהוי "ארוך" לזרמים שבפועל קצרים.
   const titleEl = streamEl.querySelector(":scope > .stream-title");
-  let visualLines = 0;
+  const seenY = new Set();
   const range = document.createRange();
   const walker = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
@@ -666,9 +667,11 @@ function commentaryFillsCrownPlusExtraLive(streamEl, crownLines) {
   while ((tn = walker.nextNode())) {
     range.setStart(tn, 0);
     range.setEnd(tn, tn.length);
-    visualLines += Array.from(range.getClientRects()).filter((r) => r.width > 0 || r.height > 0).length;
+    for (const r of range.getClientRects()) {
+      if (r.height > 0) seenY.add(Math.round(r.top));
+    }
   }
-  return visualLines >= crownLines + CROWN_EXTRA_LINES;
+  return seenY.size >= crownLines + CROWN_EXTRA_LINES;
 }
 
 // ─────────────────────────────────────────────
@@ -1088,6 +1091,12 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   const doCrown    = aFitsCrown && bFitsCrown && crownLines > 0;
   const oneLongOneShort = crownLines > 0 && (aFitsCrown !== bFitsCrown);
 
+  // TODO (משה כלל #5 + #6 תרחיש 4): oneLongOneShort נכנס לכאן רק אם
+  // אחד הזרמים ארוך לפי 50% רוחב. אבל לפי משה, כתר ברוחב מלא דורש
+  // שהארוך יהיה ארוך מספיק לארבע שורות **ברוחב מלא**, לא רק ב-50%.
+  // אם הוא לא — שני הזרמים נחשבים קצרים → צריך לעבור לתרחיש 5 (אין כתר).
+  // הקוד הנוכחי אינו עושה את הבדיקה הזו ועלול ליצור כתר ב-100% עם פחות
+  // מ-4 שורות מלאות (סותר כלל #11).
   if (!doCrown && !oneLongOneShort) {
     // אין כתר בכלל — מחזירים לרוחב 29% וכל ה-3 מתחילים יחד מלמעלה
     block.classList.add("talmud-no-crown");

@@ -899,7 +899,9 @@ mark.pdf-find-hit-current {
 }
 
 /* סימון ויזואלי לעמוד שיש בו חריגה (טופלל ע"י overflow:hidden של .page).
-   המסגרת האדומה מאותתת לפיתוח. בעתיד התוכן יידחף אוטומטית לעמוד הבא. */
+   המסגרת האדומה מאותתת לפיתוח. תיקון: התוכן נדחף עכשיו אוטומטית לעמוד
+   הבא ע"י splitPageStreamsBetweenPages + splitBodyExpandedBetweenPages
+   (passes 145-147 ב-engine_bridge.js, רץ ב-loopUntilStable של pass 153). */
 .talmud-layout-page.talmud-page-overflow {
   outline: 2px solid #c0392b;
   outline-offset: -2px;
