@@ -457,11 +457,11 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     repaginateCatastrophicPages(pagesContainer); // no-op kept for compat
     logEvent("pull_backward_+_shrink_+_move_orphans");
     pullBackwardAcrossAllPages(pagesContainer);
-    // v33-NEW: move overflowing main text to next page (lossless,
-    // word-level). The right approach for talmud-page displacement bug.
-    logEvent("repaginate_main_overflow_start");
-    repaginateMainOverflow(pagesContainer);
-    logEvent("repaginate_main_overflow_done");
+    // v33: repaginateMainOverflow disabled — caused regression in NO-LARGE-GAP.
+    // Need more careful integration before re-enabling.
+    // logEvent("repaginate_main_overflow_start");
+    // repaginateMainOverflow(pagesContainer);
+    // logEvent("repaginate_main_overflow_done");
     logEvent("overflow_cap_pass2");
     correctTalmudOverflow(pagesContainer);
     logEvent("render_pipeline_complete", {
