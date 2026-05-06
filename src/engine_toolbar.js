@@ -4,6 +4,7 @@
 import { downloadPagesAsPdf } from "./pdf_export.js";
 import { ensureDemoAccess, prepareDemoPrintWatermark } from "./demo_mode.js";
 import { isOutputBackgroundEnabled } from "./page_settings.js";
+import { downloadPagesAsHtml, downloadDebugSnapshot, toggleProblemHighlight } from "./debug_export.js";
 
 export function setupPdfToolbar(pagesContainer) {
   const toolbar = {
@@ -374,6 +375,40 @@ export function setupPdfToolbar(pagesContainer) {
     } finally {
       btn.disabled = false;
       btn.textContent = originalText;
+    }
+  });
+
+  // v33: HTML download — self-contained snapshot for offline debugging.
+  document.getElementById("pdf-download-html")?.addEventListener("click", () => {
+    realizeAllPages();
+    try {
+      downloadPagesAsHtml(pagesContainer);
+    } catch (err) {
+      console.error("HTML export failed:", err);
+      alert(`שגיאת הורדת HTML: ${err.message}`);
+    }
+  });
+
+  // v33: JSON snapshot — every page's metrics/state for diff'ing.
+  document.getElementById("pdf-debug-snapshot")?.addEventListener("click", () => {
+    realizeAllPages();
+    try {
+      downloadDebugSnapshot(pagesContainer);
+    } catch (err) {
+      console.error("Snapshot failed:", err);
+      alert(`שגיאת צילום מצב: ${err.message}`);
+    }
+  });
+
+  // v33: visual highlight — toggle colored outlines on problematic pages.
+  document.getElementById("pdf-debug-highlight")?.addEventListener("click", (ev) => {
+    realizeAllPages();
+    try {
+      toggleProblemHighlight(pagesContainer);
+      ev.currentTarget.classList.toggle("active");
+    } catch (err) {
+      console.error("Highlight failed:", err);
+      alert(`שגיאת הדגשה: ${err.message}`);
     }
   });
 
