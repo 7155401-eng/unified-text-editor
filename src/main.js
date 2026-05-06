@@ -28,6 +28,8 @@ import { setupStreamRolesPicker } from "./stream_roles_picker.js";
 import { setupCssInjectPanel } from "./css_inject_panel.js";
 import { wireDownloadsPanel } from "./downloads_panel.js";
 import { wireCustomStyles } from "./custom_styles.js";
+import { wireTorahTools } from "./torah_tools.js";
+import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installConsoleGuard();
@@ -544,6 +546,7 @@ function setupRibbonTabs() {
     ["layout", "פריסה"],
     ["talmud", 'גפ"ת'],
     ["mishna", 'משנ"ב'],
+    ["torah", "תורני"],
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
@@ -573,7 +576,8 @@ function setupRibbonTabs() {
     const tabTitles = {
       file: "פעולות קובץ", downloads: "הורדה ושמירה למחשב", home: "עיצוב טקסט", streams: "ניהול זרמים",
       insert: "הוספת אלמנטים", layout: "פריסת עמודים", talmud: "הגדרות גפ\"ת — תלמוד",
-      mishna: "הגדרות משנ\"ב", review: "סקירה ובדיקה", view: "תצוגה",
+      mishna: "הגדרות משנ\"ב", torah: "כלים תורניים — גימטריה, ראשי תיבות, גרשיים, תאריך עברי",
+      review: "סקירה ובדיקה", view: "תצוגה",
       advanced: "מתקדם", settings: "הגדרות מערכת",
     };
     for (const [id, label] of tabs) {
@@ -632,6 +636,10 @@ function setupRibbonTabs() {
     ["#stream-columns-panel", "streams layout"],
     [".stress-toolbar", "advanced"],
     ["#downloads-panel", "downloads"],
+    [".torah-toolbar", "torah"],
+    [".insert-toolbar", "insert"],
+    [".review-toolbar", "review"],
+    [".view-toolbar", "view"],
   ];
   for (const [selector, tabList] of panelTabs) {
     const panel = document.querySelector(selector);
@@ -735,6 +743,15 @@ function setupRibbonTabs() {
 
 setupRibbonTabs();
 wireDownloadsPanel();
+setTimeout(() => wireTorahTools(paneManager), 200);
+setTimeout(() => {
+  wireWordCount(paneManager);
+  wireFullscreen();
+  wireZoom();
+  wireFormattingMarks();
+  wireSpellcheck(paneManager);
+  wireQuickInsertActions(paneManager);
+}, 250);
 setupWidthSlider();
 setupLiveRenderToggle();
 wirePageSettingsControls(() => {
