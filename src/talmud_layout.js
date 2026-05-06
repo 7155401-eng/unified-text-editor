@@ -1016,23 +1016,12 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
         { pageEl: pageElForLedger, sourceId: sourceIdB }
       );
     }
-    // v33-RESTRUCTURE: streams must be INSIDE mainEl so the main text
-    // wraps around them as floats. A block element AFTER floats cannot
-    // wrap them — only text content of the SAME block context wraps.
-    // Source order inside mainEl (top→bottom in visual flow):
-    //   crown-right, crown-left, body-right, body-left, [text content], expanded
-    // Insert all 4 floats at the FRONT of mainEl, in correct source order.
-    // We insert in reverse order so the last insertBefore-firstChild puts
-    // them in the desired sequence.
-    if (mainEl && bodyB) mainEl.insertBefore(bodyB, mainEl.firstChild);
-    if (mainEl && bodyA) mainEl.insertBefore(bodyA, mainEl.firstChild);
-    if (mainEl && streamB && streamB.parentNode !== mainEl) {
-      mainEl.insertBefore(streamB, mainEl.firstChild);
-    }
-    if (mainEl && streamA && streamA.parentNode !== mainEl) {
-      mainEl.insertBefore(streamA, mainEl.firstChild);
-    }
-    // Now mainEl: streamA, streamB, bodyA, bodyB, ...text content
+    // v33-restructure REVERTED: regressed gap fixes by 7 (8→1 PASS).
+    // Need coordinated update to pull-backward + shrink + invariants
+    // queries to handle nested streams. Reverting to siblings until
+    // a complete restructure plan is validated end-to-end.
+    if (bodyA) block.insertBefore(bodyA, mainEl);
+    if (bodyB) block.insertBefore(bodyB, mainEl);
 
     // ביטחון: גובה כתר זהה לשני הפרשנים (במקרה שספירת שורות בכל זאת מחזירה הבדל קטן)
     const styleA = getComputedStyle(streamA);
@@ -1092,11 +1081,8 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     // תיפתר ע"י המנוע שמדד נכון.
     const expandedA = aExtends ? makeExpanded(bodyA, sideA, sideAClass) : null;
     const expandedB = bExtends ? makeExpanded(bodyB, sideB, sideBClass) : null;
-    // v33-RESTRUCTURE: expanded goes at END of mainEl (after text content).
-    if (mainEl) {
-      if (expandedA) mainEl.appendChild(expandedA);
-      if (expandedB) mainEl.appendChild(expandedB);
-    }
+    if (expandedA) block.insertBefore(expandedA, mainEl);
+    if (expandedB) block.insertBefore(expandedB, mainEl);
 
     // Bug 15 / INV-10: ensure two expanded blocks sit side-by-side, not
     // stacked vertically. Pure float doesn't always achieve this when one
