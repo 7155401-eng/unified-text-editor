@@ -1569,6 +1569,84 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   border-color: rgba(0,0,0,0.1);
 }
 
+/* Custom styles dialog — opened from "+ הוסף סגנון משלך" in the styles gallery */
+.custom-style-dialog { display: none; position: fixed; inset: 0; z-index: 9999; }
+.custom-style-dialog.open { display: block; }
+.custom-style-dialog .csd-backdrop {
+  position: absolute; inset: 0; background: rgba(0,0,0,0.45);
+}
+.custom-style-dialog .csd-window {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(560px, 92vw); max-height: 88vh;
+  background: var(--bg, #fff); color: var(--fg, #111);
+  border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+  display: flex; flex-direction: column;
+}
+.custom-style-dialog .csd-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+.custom-style-dialog .csd-title { font-weight: 600; font-size: 15px; }
+.custom-style-dialog .csd-close {
+  background: transparent; border: none; cursor: pointer; font-size: 16px; padding: 4px 8px;
+}
+.custom-style-dialog .csd-body {
+  padding: 12px 14px; overflow-y: auto; flex: 1;
+}
+.custom-style-dialog .csd-row {
+  display: flex; align-items: center; gap: 8px; margin: 6px 0;
+}
+.custom-style-dialog .csd-row > span:first-child {
+  min-width: 130px; font-size: 13px; color: var(--muted, #555);
+}
+.custom-style-dialog .csd-row input[type="text"],
+.custom-style-dialog .csd-row input[type="number"],
+.custom-style-dialog .csd-row select {
+  flex: 1; padding: 4px 6px; font-size: 13px; min-width: 0;
+}
+.custom-style-dialog .csd-row input[type="color"] {
+  width: 40px; height: 28px; padding: 0; border: 1px solid rgba(0,0,0,0.2);
+}
+.custom-style-dialog .csd-toggle {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 13px;
+  margin-inline-end: 8px;
+}
+.custom-style-dialog .csd-clear {
+  font-size: 11px; padding: 2px 6px; background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.1); border-radius: 3px; cursor: pointer;
+}
+.custom-style-dialog .csd-saved-list {
+  margin-top: 16px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 10px;
+}
+.custom-style-dialog .csd-saved-list h4 { margin: 0 0 6px; font-size: 13px; }
+.custom-style-dialog .csd-saved-list ul {
+  list-style: none; padding: 0; margin: 0; max-height: 140px; overflow-y: auto;
+}
+.custom-style-dialog .csd-saved-list li {
+  display: flex; align-items: center; gap: 6px; padding: 4px 0;
+  border-bottom: 1px dashed rgba(0,0,0,0.08);
+}
+.custom-style-dialog .csd-saved-list .csd-name-preview {
+  flex: 1; font-size: 13px;
+}
+.custom-style-dialog .csd-saved-list button {
+  font-size: 11px; padding: 2px 8px; cursor: pointer;
+}
+.custom-style-dialog .csd-empty {
+  font-size: 12px; color: var(--muted, #888); padding: 4px 0;
+}
+.custom-style-dialog .csd-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 14px; border-top: 1px solid rgba(0,0,0,0.1);
+}
+.custom-style-dialog .csd-footer button {
+  padding: 6px 14px; font-size: 13px; cursor: pointer;
+  border: 1px solid rgba(0,0,0,0.2); background: rgba(0,0,0,0.04); border-radius: 4px;
+}
+.custom-style-dialog .csd-footer button.primary {
+  background: #2563eb; color: #fff; border-color: #1d4ed8;
+}
+
 .width-slider-control {
   display: inline-flex;
   align-items: center;

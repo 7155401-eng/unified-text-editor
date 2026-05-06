@@ -27,6 +27,7 @@ import { setupFindReplace } from "./find_replace.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
 import { setupCssInjectPanel } from "./css_inject_panel.js";
 import { wireDownloadsPanel } from "./downloads_panel.js";
+import { wireCustomStyles } from "./custom_styles.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installConsoleGuard();
@@ -107,6 +108,7 @@ function wireStylesGallery() {
   });
 }
 setTimeout(wireStylesGallery, 100);
+setTimeout(() => wireCustomStyles(paneManager), 150);
 setupSettingsPane();
 setupStreamPicker();
 setupMishnaLevelsPicker();
