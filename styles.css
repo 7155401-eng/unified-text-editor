@@ -2559,3 +2559,72 @@ button.active,
   color: #fff !important;
   border-color: var(--rt-accent-hover, #1e4078) !important;
 }
+
+/* ============================================================
+   v33: Dark mode for text fields and editor surfaces
+   ============================================================ */
+body[data-theme="dark"] .ProseMirror,
+body[data-theme="dark"] .editor-area,
+body[data-theme="dark"] .pane,
+body[data-theme="dark"] .pane-content,
+body[data-theme="dark"] .editor,
+body[data-theme="dark"] [contenteditable] {
+  background: #1f1f25 !important;
+  color: #e8e8ec !important;
+  border-color: #3a3a44 !important;
+  caret-color: #6cb4ff;
+}
+body[data-theme="dark"] .pane-header,
+body[data-theme="dark"] .pane-title-bar,
+body[data-theme="dark"] .panes-toolbar,
+body[data-theme="dark"] .source-stream-toolbar,
+body[data-theme="dark"] .source-bottom-toolbar {
+  background: #25252b !important;
+  color: #e8e8ec !important;
+  border-color: #3a3a44 !important;
+}
+body[data-theme="dark"] .pane *::placeholder,
+body[data-theme="dark"] textarea::placeholder,
+body[data-theme="dark"] input::placeholder {
+  color: #888 !important;
+}
+body[data-theme="dark"] .stream-marker {
+  background: #2a2a30 !important;
+  color: #fff !important;
+  border-color: #555 !important;
+}
+body[data-theme="dark"] .pages-container {
+  background: #1a1a1f !important;
+}
+body[data-theme="dark"] .page {
+  /* Keep page itself white-on-page for readability of preview */
+  background: #fafafa !important;
+  color: #1a1a1a !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+body[data-theme="dark"] .pdf-thumb {
+  background: #2a2a30 !important;
+  color: #ddd !important;
+  border-color: #555 !important;
+}
+body[data-theme="dark"] .pdf-thumb-page,
+body[data-theme="dark"] .pdf-thumb-mini > .page {
+  background: #fff !important;
+  color: #000 !important;
+}
+body[data-theme="dark"] label,
+body[data-theme="dark"] .opw-control,
+body[data-theme="dark"] .mishna-levels-control,
+body[data-theme="dark"] .tb-group,
+body[data-theme="dark"] .tb-group span {
+  color: #e8e8ec !important;
+}
+body[data-theme="dark"] .pdf-tb-find {
+  background: #2a2a30 !important;
+  color: #e8e8ec !important;
+  border-color: #555 !important;
+}
+body[data-theme="dark"] hr,
+body[data-theme="dark"] .sep {
+  border-color: #3a3a44 !important;
+}

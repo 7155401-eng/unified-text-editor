@@ -118,7 +118,15 @@ let currentLang = localStorage.getItem(STORAGE_KEY) || "he";
 if (!tr[currentLang]) currentLang = "he";
 
 export function applyLanguage(forceLang) {
-  if (forceLang && tr[forceLang]) currentLang = forceLang;
+  // v33: accept either explicit lang or fall back to localStorage / current.
+  if (forceLang && tr[forceLang]) {
+    currentLang = forceLang;
+    localStorage.setItem(STORAGE_KEY, currentLang);
+  } else {
+    // Re-read from storage in case it changed externally (e.g. via settings).
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && tr[stored]) currentLang = stored;
+  }
   document.documentElement.lang = currentLang;
   // v33: switch direction with language. Hebrew is RTL, English is LTR.
   document.documentElement.dir = currentLang === "he" ? "rtl" : "ltr";
