@@ -1018,8 +1018,11 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
         { pageEl: pageElForLedger, sourceId: sourceIdB }
       );
     }
-    // קריטי: body חייב להיות בסדר ה-DOM *לפני* mainEl, כדי שיופיע בצמוד לשולי
-    // ה-crown ולא אחרי הסיום של main. מעבירים גם את main לסוף.
+    // v33-restructure-pending: Claude analysis recommends moving streams
+    // INSIDE mainEl for proper float-wrap. NOT applied yet — would require
+    // matching changes in unwrap, source ledger, and all stream queries.
+    // Keeping siblings structure for now; the displacement is mitigated
+    // by the overflow-repagination + opening-word continuation skip.
     if (bodyA) block.insertBefore(bodyA, mainEl);
     if (bodyB) block.insertBefore(bodyB, mainEl);
 
