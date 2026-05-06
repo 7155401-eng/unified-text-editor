@@ -46,14 +46,21 @@ const tr = {
     settingsLogClear: "נקה לוג",
     // ribbon tabs (HE)
     file: "קובץ",
+    downloads: "הורדות",
     home: "בית",
     streams: "זרמים",
     insert: "הוספה",
     layout: "פריסה",
+    talmud: 'גפ"ת',
+    mishna: 'משנ"ב',
+    torah: "תורני",
     review: "סקירה",
     view: "תצוגה",
     advanced: "מתקדם",
     settings: "הגדרות",
+    // demo banner
+    demoTitle: "מצב משתמש ניסיוני",
+    demoBody: "השינויים אינם נשמרים. הדמו מתאפס כל דקה, וכל יצוא או הדפסה מסומן.",
   },
   en: {
     appTitle: "RavText to Word AI",
@@ -100,14 +107,21 @@ const tr = {
     settingsLogClear: "Clear log",
     // ribbon tabs
     file: "File",
+    downloads: "Downloads",
     home: "Home",
     streams: "Streams",
     insert: "Insert",
     layout: "Layout",
+    talmud: "Talmud",
+    mishna: "Mishna B.",
+    torah: "Torah",
     review: "Review",
     view: "View",
     advanced: "Advanced",
     settings: "Settings",
+    // demo banner
+    demoTitle: "Trial Mode",
+    demoBody: "Changes are not saved. The demo resets every minute and every export or print is watermarked.",
   },
 };
 

@@ -439,6 +439,11 @@
             <button type="button" data-cmd="auto-number-clauses" title="ממספר את הפסקאות באותיות עבריות (א. ב. ג.)">🔢 מספור סעיפים</button>
           </span>
           <span class="sep"></span>
+          <span class="tb-group" data-title="הערות ותוכן">
+            <button type="button" data-cmd="insert-footnote" title="הוסף הערת שוליים ממוספרת — מספר עליון בנקודת הסמן + טקסט בסוף המסמך">⁽¹⁾ הערת שוליים</button>
+            <button type="button" data-cmd="insert-toc" title="צור תוכן עניינים מכל הכותרות (H1/H2/H3) במסמך">📑 תוכן עניינים</button>
+          </span>
+          <span class="sep"></span>
           <span class="tb-group" data-title="טבלאות">
             <button type="button" data-cmd="insert-table" title="הכנס טבלה חדשה — שורות x עמודות (לדוגמה 3x4)">▦ הכנס טבלה</button>
             <button type="button" data-cmd="table-add-row-after" title="הוסף שורה אחרי השורה הנוכחית">+ שורה ↓</button>
@@ -460,6 +465,39 @@
               <input type="checkbox" id="spellcheck-toggle" />
               <span>בדיקת איות בעורך</span>
             </label>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="מעקב שינויים">
+            <label class="toolbar-checkbox" title="מסמן את המצב הנוכחי כתמונת מצב; לחיצה על 'הצג שינויים' תבליט את הפסקאות ששונו">
+              <input type="checkbox" id="track-changes-toggle" />
+              <span>הפעל מעקב</span>
+            </label>
+            <button type="button" id="track-changes-show" title="הצג את ההבדלים מתמונת המצב — פסקאות חדשות בירוק, שונו בצהוב">⚖ הצג שינויים</button>
+          </span>
+        </div>
+        <div class="toolbar layout-extra-toolbar ribbon-panel" data-ribbon-tab="layout" dir="rtl">
+          <span class="tb-group" data-title="כותרת עליונה ותחתונה">
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;">
+              <span>כותרת עליונה:</span>
+              <input type="text" id="doc-header-input" style="width:160px;font-size:12px;padding:3px 6px;" placeholder="כותרת עליונה לכל עמוד" />
+            </label>
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;">
+              <span>תחתונה:</span>
+              <input type="text" id="doc-footer-input" style="width:160px;font-size:12px;padding:3px 6px;" placeholder="כותרת תחתונה לכל עמוד" />
+            </label>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="מספור עמודים">
+            <label class="toolbar-checkbox">
+              <input type="checkbox" id="doc-page-numbers-toggle" />
+              <span>הצג מספור עמודים (אותיות עבריות)</span>
+            </label>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="סימן מים">
+            <input type="text" id="doc-watermark-input" style="width:140px;font-size:12px;padding:3px 6px;" placeholder='לדוגמה: "טיוטה"' />
+            <span style="font-size:11px;color:#666;">שקיפות:</span>
+            <input type="range" id="doc-watermark-opacity" min="0.05" max="0.5" step="0.01" value="0.12" style="width:80px;" />
           </span>
         </div>
         <div class="toolbar view-toolbar ribbon-panel" data-ribbon-tab="view" dir="rtl">

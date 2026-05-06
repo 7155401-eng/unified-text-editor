@@ -1772,6 +1772,126 @@ details.ravtext-collapsible[open] {
   user-select: none;
 }
 
+/* === Page-level features (overlays added per .page after each render) === */
+.page { position: relative; }
+.ravtext-page-number-overlay {
+  position: absolute;
+  bottom: 6mm;
+  inset-inline-start: 50%;
+  transform: translateX(50%);
+  font-size: 12px;
+  color: #555;
+  z-index: 5;
+  background: rgba(255,255,255,0.85);
+  padding: 1px 8px;
+  border-radius: 3px;
+  user-select: none;
+}
+.ravtext-page-header {
+  position: absolute;
+  top: 4mm;
+  inset-inline-start: 50%;
+  transform: translateX(50%);
+  font-size: 11px;
+  color: #475569;
+  z-index: 5;
+  background: rgba(255,255,255,0.85);
+  padding: 1px 8px;
+  border-bottom: 1px dashed #cbd5e1;
+  user-select: none;
+}
+.ravtext-page-footer {
+  position: absolute;
+  bottom: 4mm;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  text-align: center;
+  font-size: 11px;
+  color: #475569;
+  z-index: 5;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 2px;
+  user-select: none;
+}
+.ravtext-watermark {
+  position: absolute;
+  top: 50%;
+  inset-inline-start: 50%;
+  transform: translate(50%, -50%) rotate(-30deg);
+  font-size: 80px;
+  font-weight: 800;
+  color: #94a3b8;
+  pointer-events: none;
+  z-index: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* === Footnotes === */
+.ProseMirror sup.ravtext-fn-ref,
+sup.ravtext-fn-ref {
+  color: #1d4ed8;
+  cursor: help;
+  font-weight: 600;
+  padding: 0 2px;
+}
+.ProseMirror ol.ravtext-footnotes,
+ol.ravtext-footnotes {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid #94a3b8;
+  font-size: 0.85em;
+  list-style: decimal;
+  padding-inline-start: 1.5em;
+}
+.ProseMirror ol.ravtext-footnotes li,
+ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
+
+/* === TOC === */
+.ProseMirror .ravtext-toc,
+.ravtext-toc {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 12px 18px;
+  margin: 16px 0;
+  background: #f8fafc;
+}
+.ProseMirror .ravtext-toc h2,
+.ravtext-toc h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #1e3a8a;
+}
+.ProseMirror .ravtext-toc ul,
+.ravtext-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.ProseMirror .ravtext-toc li,
+.ravtext-toc li { margin: 3px 0; font-size: 13px; }
+.ProseMirror .ravtext-toc a,
+.ravtext-toc a { color: #2563eb; text-decoration: none; }
+.ProseMirror .ravtext-toc a:hover,
+.ravtext-toc a:hover { text-decoration: underline; }
+
+/* === Track changes diff highlights === */
+.ravtext-diff-added {
+  background: rgba(34, 197, 94, 0.15);
+  border-inline-start: 3px solid #16a34a;
+  padding-inline-start: 6px;
+}
+.ravtext-diff-changed {
+  background: rgba(234, 179, 8, 0.15);
+  border-inline-start: 3px solid #ca8a04;
+  padding-inline-start: 6px;
+}
+.ravtext-diff-removed {
+  background: rgba(239, 68, 68, 0.15);
+  text-decoration: line-through;
+  color: #991b1b;
+}
+
 /* Tables — basic Word-like styling */
 .ProseMirror table.ravtext-table,
 .ravtext-table {
@@ -2751,35 +2871,72 @@ details.ravtext-collapsible[open] {
   background: var(--accent, #2c5aa0);
   color: #fff;
 }
+/* === Modern settings panel — card-based, generous spacing === */
 .settings-body {
-  margin-top: 10px;
-  padding: 12px;
-  background: var(--panel-bg, #f8f8f8);
-  border: 1px solid var(--border, #ccc);
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
+  margin-top: 14px;
+  padding: 18px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 14px;
 }
 .settings-section {
-  border-bottom: 1px solid var(--border, #e0e0e0);
-  padding-bottom: 10px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
-.settings-section:last-child { border-bottom: none; padding-bottom: 0; }
+.settings-section:hover {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+.settings-section:last-child { border-bottom: 1px solid #e5e7eb; padding-bottom: 16px; }
 .settings-h3 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
-  color: var(--accent, #2c5aa0);
-  font-weight: 600;
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  color: #1e3a8a;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e0e7ff;
 }
 .settings-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 0;
+  gap: 12px;
+  padding: 8px 0;
   font-size: 13px;
+  border-bottom: 1px dashed #f1f5f9;
 }
-.settings-row span { min-width: 110px; }
+.settings-row:last-child { border-bottom: none; }
+.settings-row span { min-width: 130px; color: #475569; font-weight: 500; }
+.settings-row input[type="text"],
+.settings-row input[type="password"],
+.settings-row input[type="number"],
+.settings-row select {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.settings-row input:focus,
+.settings-row select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.settings-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
 .settings-license-status {
   font-size: 12px;
   color: var(--muted, #666);

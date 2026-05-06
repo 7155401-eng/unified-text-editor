@@ -32,6 +32,8 @@ import { wireTorahTools } from "./torah_tools.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
+import { wireDocumentFeatures } from "./document_features.js";
+import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installConsoleGuard();
@@ -642,6 +644,7 @@ function setupRibbonTabs() {
     [".insert-toolbar", "insert"],
     [".review-toolbar", "review"],
     [".view-toolbar", "view"],
+    [".layout-extra-toolbar", "layout"],
   ];
   for (const [selector, tabList] of panelTabs) {
     const panel = document.querySelector(selector);
@@ -750,6 +753,10 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
 }
 setTimeout(() => wireTorahTools(paneManager), 200);
 setTimeout(() => wireWordLikeTools(paneManager), 250);
+setTimeout(() => {
+  wireDocumentFeatures();
+  wireTrackChanges(paneManager);
+}, 300);
 setTimeout(() => {
   wireWordCount(paneManager);
   wireFullscreen();
@@ -1319,6 +1326,8 @@ document.addEventListener("click", async (ev) => {
     case "table-add-col-before": { addColumnBefore(paneManager.getActiveEditor?.()); break; }
     case "table-del-col": { deleteColumn(paneManager.getActiveEditor?.()); break; }
     case "table-del": { deleteTable(paneManager.getActiveEditor?.()); break; }
+    case "insert-footnote": { insertFootnote(paneManager); break; }
+    case "insert-toc": { insertTOC(paneManager); break; }
 
     case "undo":           ed && ed.undo().run(); break;
     case "redo":           ed && ed.redo().run(); break;
