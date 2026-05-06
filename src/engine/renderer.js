@@ -24,14 +24,10 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
 
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[streamCode]) || {};
   const userCols = settings.cols || 1;
-  const minLines = typeof settings.minLinesForCols === "number" ? settings.minLinesForCols : 3;
   const notesArr = (streamData && streamData.notes) || [];
-  let estLines = 1;
-  for (const tup of notesArr) {
-    const text = tup[1] || "";
-    estLines += Math.max(1, Math.ceil(text.length / 52));
-  }
-  const cols = estLines >= minLines ? userCols : 1;
+  // משה 2026-05-06: בחירת עמודות לפי הגדרת המשתמש בלבד, ללא הערכת שורות
+  // לפי תווים (החישוב של 52 תווים/שורה לא תאם את המציאות).
+  const cols = userCols;
   if (cols > 1) {
     wrap.style.columnCount = cols;
     wrap.style.columnGap = "8px";

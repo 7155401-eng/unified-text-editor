@@ -164,20 +164,41 @@ function renderPicker() {
     });
     row.appendChild(addStreamBtn);
 
-    // Remove whole level (only if more than 1 level exists)
-    if (levels.length > 1) {
-      const removeLevelBtn = document.createElement("button");
-      removeLevelBtn.type = "button";
-      removeLevelBtn.className = "stream-picker-add";
-      removeLevelBtn.textContent = "− רמה";
-      removeLevelBtn.style.cssText = "margin-inline-start:4px;font-size:11px;padding:2px 6px;color:#a33;";
-      removeLevelBtn.addEventListener("click", () => {
+    // Styled × to delete the whole level. Always visible; disabled when
+    // it would leave 0 levels (must keep at least 1).
+    const removeLevelX = document.createElement("button");
+    removeLevelX.type = "button";
+    removeLevelX.className = "mishna-level-remove-x";
+    removeLevelX.textContent = "×";
+    removeLevelX.title = "מחק רמה";
+    const isLast = levels.length <= 1;
+    removeLevelX.style.cssText =
+      "margin-inline-start:6px;width:22px;height:22px;border-radius:50%;" +
+      "border:1px solid " + (isLast ? "#ddd" : "#d99") + ";" +
+      "background:" + (isLast ? "#f8f8f8" : "#fff5f5") + ";" +
+      "color:" + (isLast ? "#bbb" : "#a33") + ";" +
+      "font-size:14px;font-weight:bold;line-height:1;padding:0;" +
+      "cursor:" + (isLast ? "not-allowed" : "pointer") + ";" +
+      "display:inline-flex;align-items:center;justify-content:center;" +
+      "transition:background 0.15s, transform 0.1s;";
+    if (!isLast) {
+      removeLevelX.addEventListener("mouseenter", () => {
+        removeLevelX.style.background = "#ffe5e5";
+        removeLevelX.style.transform = "scale(1.1)";
+      });
+      removeLevelX.addEventListener("mouseleave", () => {
+        removeLevelX.style.background = "#fff5f5";
+        removeLevelX.style.transform = "scale(1)";
+      });
+      removeLevelX.addEventListener("click", () => {
         const newLevels = levels.filter((_, i) => i !== levelIdx);
         setLevels(newLevels);
         renderPicker();
       });
-      row.appendChild(removeLevelBtn);
+    } else {
+      removeLevelX.disabled = true;
     }
+    row.appendChild(removeLevelX);
 
     picker.appendChild(row);
   });

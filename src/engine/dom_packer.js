@@ -30,7 +30,7 @@ const MIN_FORWARD_LAST_LINE_FILL = 0.72;
 const MIN_NOTE_SPLIT_LINE_FILL = 0.72;
 const MAX_SPLIT_REFINE_STEPS = 32;
 const MAX_NOTE_SPLIT_REFINE_STEPS = 14;
-const MISHNA_WRAP_HEIGHT_SAFETY = 10;
+const MISHNA_WRAP_HEIGHT_SAFETY = 30;
 // במצב תלמוד, התבנית מוסיפה משוקלל גובה לכתר ומבנה (שורות עליונות 50%
 // במקום 29%, רווחים נוספים, body+expanded וכד'). מורידים מ-maxPageHeight
 // כדי שהמנוע יזרוק פחות תוכן לעמוד הזה ויעבור פחות חריגות בפועל.
@@ -41,7 +41,9 @@ const MISHNA_WRAP_HEIGHT_SAFETY = 10;
 // v33-engine: increased to 60 to leave room for opening-word + crown
 // adjustments that measureHeight may underestimate. Net effect: less
 // overflow, slightly more pages — but content always fits.
-const TALMUD_LAYOUT_HEIGHT_SAFETY = 60;
+// משה 2026-05-06: סף ביטחון מאוזן — לא נמוך מדי (חריגות) ולא גבוה מדי (רווחים).
+// 160 = פשרה. push-down מטפל בחריגות שנותרו.
+const TALMUD_LAYOUT_HEIGHT_SAFETY = 160;
 const MAIN_LINE_PROBE_EXTRA_CHARS = 260;
 const LINE_RECT_TOLERANCE = 2;
 
@@ -78,9 +80,13 @@ function blockMetaFor(idx) {
 
 function mainBlockTagFor(idx) {
   const meta = blockMetaFor(idx);
-  if (meta.blockType !== "heading") return "p";
-  const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
-  return `h${level}`;
+  if (meta.blockType === "heading") {
+    const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
+    return `h${level}`;
+  }
+  if (meta.blockType === "codeBlock") return "pre";
+  if (meta.blockType === "blockquote") return "blockquote";
+  return "p";
 }
 
 function streamTitleForCode(code) {
@@ -160,19 +166,8 @@ function makeMeasureKey(mainSegments, streams) {
   return `${parts}:${textLen}:${hash.toString(36)}`;
 }
 
-// Estimate how many rendered lines a list of notes would occupy in a single
-// column. Used to decide whether multi-column should kick in for this page.
-// Approximation only: assumes ~52 Hebrew chars fit per line at the current
-// stream width, plus 1 line for the title.
-function estimateStreamLines(notes, charsPerLine = 52) {
-  let lines = 1; // stream title
-  for (const tup of notes || []) {
-    const text = tup[1] || "";
-    const noteLines = Math.max(1, Math.ceil(text.length / charsPerLine));
-    lines += noteLines;
-  }
-  return lines;
-}
+// (estimateStreamLines הוסר 2026-05-06 — חישוב לפי תווים לא תאם את המציאות.
+//  הבחירה של עמודות נעשית כעת לפי הגדרת המשתמש בלבד.)
 
 function buildMeasurePage(mainSegments, streams) {
   const page = document.createElement("div");
@@ -212,9 +207,10 @@ function buildMeasurePage(mainSegments, streams) {
 
       const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
       const userCols = settings.cols || 1;
-      const minLines = typeof settings.minLinesForCols === "number" ? settings.minLinesForCols : 3;
-      const estLines = estimateStreamLines(streams[code]);
-      const cols = estLines >= minLines ? userCols : 1;
+      // משה 2026-05-06: לא להשתמש בהערכת שורות — לבחור עמודות לפי רצון
+      // המשתמש בלבד; אם מסתבר שהזרם קצר מדי, ה-CSS כבר מטפל בכך באלגנטיות.
+      // (estimateStreamLines הוסר כי החישוב לפי תווים לא תאם את המציאות.)
+      const cols = userCols;
       if (cols > 1) {
         s.style.columnCount = cols;
         s.style.columnGap = "8px";
@@ -1246,7 +1242,10 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
   _pageMeasureCache = new WeakMap();
   _measureStats = { hits: 0, misses: 0, pageHits: 0 };
   _activeContentMeta = (content || []).map((item) => ({
-    blockType: item?.blockType === "heading" ? "heading" : "paragraph",
+    blockType: item?.blockType === "heading" ? "heading"
+             : item?.blockType === "codeBlock" ? "codeBlock"
+             : item?.blockType === "blockquote" ? "blockquote"
+             : "paragraph",
     headingLevel: item?.blockType === "heading" ? Math.max(1, Math.min(6, parseInt(item.headingLevel || 1, 10))) : null,
   }));
   if (typeof window !== "undefined") window.__MAIN_BLOCK_META__ = _activeContentMeta;

@@ -1277,7 +1277,13 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     }
     const heightA = measureFirstNLinesHeight(streamA, crownLines);
     const heightB = measureFirstNLinesHeight(streamB, crownLines);
-    const exactCrownH = Math.max(heightA, heightB);
+    // Cloud-Claude 2026-05-06: כתר חייב להיות בגובה קבוע של crownLines שורות
+    // גם כשהזרמים קצרים יותר. אחרת: P3 קיבל 54px, P7 קיבל 42px (אסימטרי).
+    // מחשבים גובה line בסיסי על-ידי מדידת שורה אחת בזרם הארוך, ואז ×crownLines.
+    const longerStream = heightA > heightB ? streamA : streamB;
+    const oneLineH = measureFirstNLinesHeight(longerStream, 1);
+    const minCrownH = oneLineH > 0 ? oneLineH * crownLines : 0;
+    const exactCrownH = Math.max(heightA, heightB, minCrownH);
     streamA.style.height = `${exactCrownH}px`;
     streamA.style.maxHeight = `${exactCrownH}px`;
     streamA.style.minHeight = `${exactCrownH}px`;

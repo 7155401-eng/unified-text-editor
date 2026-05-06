@@ -591,7 +591,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
       }
-      for (let it = 0; it < 8; it++) {
+      for (let it = 0; it < 20; it++) {
         let pushed = false;
         let allPages = Array.from(
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
@@ -659,7 +659,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           }
           if (movedThis) break;
           // אם לא הזזנו זרם רגיל ויש חריגה גדולה — הזז גם הערה אחרונה מ-body-expanded
-          if (!movedThis && ov > 200) {
+          if (!movedThis && ov > 50) {
             const expanded = cur.querySelectorAll(".talmud-body-expanded, [data-talmud-role='commentary-expanded'], [data-talmud-role='commentary-expanded-lower']");
             for (const exp of Array.from(expanded).reverse()) {
               // Cloud-Claude 2026-05-06: לרדת ב-DIV/note wrappers בודדים עד

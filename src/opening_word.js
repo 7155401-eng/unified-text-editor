@@ -479,7 +479,7 @@ function setWrappedText(el, parts, settings, options = {}) {
   const len = plainLength(fullText);
   if (options.skipOrphan && isOrphanText(fullText)) return false;
 
-  const shortFallback = settings.skipHeadings && len < settings.headingMin;
+  const shortFallback = (settings.skipHeadings && len < settings.headingMin) || options._forceRaised;
   const effectivePosition = settings.position === "dropped" && !shortFallback ? "dropped" : "raised";
 
   el.textContent = "";
@@ -513,11 +513,13 @@ function applyToTextElement(el, settings, options = {}) {
     skipLeadingControls: !!options.skipLeadingControls,
   });
   if (!parts) return false;
-  if (
+  // משה 2026-05-06: גם אם הסיומת קצרה מדי לחלון מדויק, להשאיר מילת פתיח
+  // (במצב raised — בלי float-window). לא לבטל לגמרי.
+  const tooShortSuffix =
     plainLength(parts.suffix) < MIN_OPENING_SUFFIX_CHARS ||
-    plainWordCount(parts.suffix) < MIN_OPENING_SUFFIX_WORDS
-  ) {
-    return false;
+    plainWordCount(parts.suffix) < MIN_OPENING_SUFFIX_WORDS;
+  if (tooShortSuffix) {
+    options = { ...options, _forceRaised: true };
   }
   parts.prefix = displayPrefix + parts.prefix;
   return setWrappedText(el, parts, settings, options);

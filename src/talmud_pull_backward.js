@@ -18,9 +18,19 @@ const GAP_THRESHOLD_PX = 100;
 const CHUNK_LIMIT      = 50; // safety: max chunks pulled per call
 
 function pageGap(pageEl) {
+  // משה 2026-05-06: גם כשאין talmud-layout block (זרמים שלא 01/02), נמדוד
+  // את הרווח התחתון לפי האלמנט הנמוך ביותר בעמוד.
   const block = pageEl.querySelector(":scope > .talmud-layout");
-  if (!block) return 0;
-  return pageEl.getBoundingClientRect().bottom - block.getBoundingClientRect().bottom;
+  if (block) {
+    return pageEl.getBoundingClientRect().bottom - block.getBoundingClientRect().bottom;
+  }
+  // fallback: מצא את התחתון של page-streams או page-main
+  const streams = pageEl.querySelector(":scope > .page-streams");
+  const main = pageEl.querySelector(":scope > .page-main");
+  let bottom = pageEl.getBoundingClientRect().top;
+  if (streams) bottom = Math.max(bottom, streams.getBoundingClientRect().bottom);
+  if (main) bottom = Math.max(bottom, main.getBoundingClientRect().bottom);
+  return Math.max(0, pageEl.getBoundingClientRect().bottom - bottom);
 }
 
 function findBodyByCode(pageEl, code) {
@@ -43,11 +53,64 @@ function bodyCodes(pageEl) {
   )).map(el => el.dataset.talmudBodyOf).filter(Boolean);
 }
 
+// משה 2026-05-06: עדיפות 1 = אסור רווחים. עדיפות 2 = הצמדת הערות לראשי.
+// כלל: הערות אסור שיופיעו לפני הראשי שלהן, אבל ראשי יכול להופיע לפני
+// הערותיו (ההערות עוברות לעמוד הבא). לכן כשיש רווח: קודם מנסים למשוך
+// טקסט ראשי מהעמוד הבא — גם אם הערותיו נשארות שם.
+function pullMainParagraph(curPageEl, nextPageEl) {
+  const curMain = curPageEl.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
+  const nextMain = nextPageEl.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
+  if (!curMain || !nextMain) return false;
+  // קח את הפסקה/כותרת הראשונה של ראשי הבא ולא של גוף.
+  const candidates = Array.from(nextMain.children).filter(c =>
+    !c.classList?.contains("talmud-body-portion") &&
+    !c.classList?.contains("talmud-body-expanded") &&
+    !c.classList?.contains("stream") &&
+    /^(P|H[1-6]|DIV|BLOCKQUOTE|PRE)$/i.test(c.tagName)
+  );
+  const first = candidates[0];
+  if (!first) return false;
+  const childH = first.getBoundingClientRect().height;
+  const gap = pageGap(curPageEl);
+  // אם הפסקה גדולה מהרווח, לא מעבירים — כדי לא לחרוג.
+  if (childH >= gap - 10) return false;
+  const fromIdx = parseInt(curPageEl.dataset.pageIndex || "?", 10);
+  const toIdx = parseInt(nextPageEl.dataset.pageIndex || "?", 10);
+  logMove("pull-main-forward", {
+    el: first,
+    fromPage: toIdx, toPage: fromIdx,
+    trigger: `gap > ${GAP_THRESHOLD_PX}px on current page`,
+    reason: `priority 1 = no gaps; main paragraph fits (${Math.round(childH)}px in ${Math.round(gap)}px gap)`,
+  });
+  // הזכרון של מיקום מקורי לחזרה אם התעלפה חריגה
+  const prevSibling = first.nextSibling;
+  curMain.appendChild(first);
+  // בדיקת חריגה: אם אחרי ההעברה הדף חורג, מבטלים.
+  void curPageEl.offsetHeight;
+  const overflow = curPageEl.scrollHeight - curPageEl.clientHeight;
+  if (overflow > 5) {
+    // החזר את הפסקה למקומה
+    if (prevSibling) nextMain.insertBefore(first, prevSibling);
+    else nextMain.appendChild(first);
+    return false;
+  }
+  return true;
+}
+
 function pullOnePage(curPageEl, nextPageEl) {
   let gap = pageGap(curPageEl);
   if (gap <= GAP_THRESHOLD_PX) return 0;
 
   let pulled = 0;
+
+  // STRATEGY 0 (highest priority per משה 2026-05-06): pull MAIN TEXT first.
+  // Notes can be left on next page; main can lead its notes by a page.
+  for (let safety = 0; safety < CHUNK_LIMIT && gap > GAP_THRESHOLD_PX; safety++) {
+    const moved = pullMainParagraph(curPageEl, nextPageEl);
+    if (!moved) break;
+    pulled++;
+    gap = pageGap(curPageEl);
+  }
 
   // STRATEGY 1: Pull content from matching-code bodies (the typical case).
   const codes = bodyCodes(curPageEl);

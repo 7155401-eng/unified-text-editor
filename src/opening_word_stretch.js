@@ -32,7 +32,12 @@ function buildStretchedSvg(word, naturalWidth, targetWidth, refEl) {
   const cappedWidth = Math.min(targetWidth, naturalWidth * STRETCH_CAP);
   const cs = getComputedStyle(refEl);
   const fontSize = parseFloat(cs.fontSize) || 16;
-  const heightPx = Math.max(fontSize * 1.3, fontSize + 4);
+  // משה 2026-05-06: גובה SVG לפי מדידה אמיתית של הטקסט המקורי, לא לפי הערכת
+  // fontSize × 1.3. המדידה דרך getBoundingClientRect של refEl.
+  const refRect = refEl.getBoundingClientRect();
+  const heightPx = (refRect && refRect.height > 0)
+    ? refRect.height
+    : Math.max(fontSize * 1.3, fontSize + 4);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("width", String(cappedWidth));

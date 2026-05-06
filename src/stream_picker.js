@@ -7,6 +7,7 @@ import { findAllStreamMarks } from "./stream_mark.js";
 const HIDDEN_INPUT_ID = "talmud-streams-input";
 const PICKER_ID = "talmud-stream-picker";
 const ADD_BTN_ID = "talmud-add-stream-btn";
+const TALMUD_MAX_STREAMS = 2;
 
 function getAvailableStreamCodes() {
   // Try to find streams in the editor or rendered output.
@@ -29,7 +30,9 @@ function getCurrentSelected() {
 function setSelected(codes) {
   const input = document.getElementById(HIDDEN_INPUT_ID);
   if (!input) return;
-  input.value = codes.join(",");
+  // Hard cap at TALMUD_MAX_STREAMS (2). Any extras are truncated.
+  const capped = codes.slice(0, TALMUD_MAX_STREAMS);
+  input.value = capped.join(",");
   // Trigger change event so existing listeners pick up.
   input.dispatchEvent(new Event("change", { bubbles: true }));
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -80,8 +83,6 @@ function renderPicker() {
     picker.appendChild(chip);
   });
 }
-
-const TALMUD_MAX_STREAMS = 2;
 
 function addStream() {
   const selected = getCurrentSelected();

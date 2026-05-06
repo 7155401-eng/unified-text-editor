@@ -17,15 +17,95 @@ import { wireTalmudLayoutControls } from "./talmud_layout.js";
 import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
-import { configureDemoGlobals, setupDemoMode } from "./demo_mode.js";
+import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
 import { setupStreamPicker } from "./stream_picker.js";
 import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
+import { setupFindReplace } from "./find_replace.js";
+import { setupStreamRolesPicker } from "./stream_roles_picker.js";
+import { setupCssInjectPanel } from "./css_inject_panel.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
+installConsoleGuard();
 installTalmudDebugApi();
+setupFindReplace();
+setupStreamRolesPicker();
+setTimeout(setupCssInjectPanel, 500);
+// Wire AI settings
+setTimeout(() => {
+  const prov = document.getElementById("settings-ai-provider");
+  const key = document.getElementById("settings-ai-apikey");
+  if (prov) {
+    prov.value = localStorage.getItem("ravtext.ai.provider") || "anthropic";
+    prov.addEventListener("change", () => localStorage.setItem("ravtext.ai.provider", prov.value));
+  }
+  if (key) {
+    key.value = localStorage.getItem("ravtext.ai.apiKey") || "";
+    key.addEventListener("change", () => localStorage.setItem("ravtext.ai.apiKey", key.value));
+    key.addEventListener("blur", () => localStorage.setItem("ravtext.ai.apiKey", key.value));
+  }
+}, 500);
+// משה 2026-05-06: Checkbox "שאר הזרמים = משנ״ב" — מפעיל אוטומטית מצב Mishna wrap
+// וכותב את כל הזרמים שאינם תלמוד כרמות.
+function wireOtherAsMishna() {
+  const cb = document.getElementById("talmud-other-as-mishna");
+  if (!cb) return;
+  const KEY = "ravtext.talmud.otherAsMishna";
+  cb.checked = localStorage.getItem(KEY) === "1";
+  function apply() {
+    const wasOn = localStorage.getItem(KEY) === "1";
+    localStorage.setItem(KEY, cb.checked ? "1" : "0");
+    const talmudOn = localStorage.getItem("ravtext.talmudLayout") === "1";
+    // אם המשתמש כיבה — להחזיר את משנ"ב למצב הקודם (לא לכפות יותר)
+    if (!cb.checked) {
+      // לא נוגעים ב-mishnaWrap — אם המשתמש הפעיל בעצמו, יישאר
+      return;
+    }
+    if (!talmudOn) return;
+    localStorage.setItem("ravtext.mishnaWrap", "1");
+    const allCodes = new Set();
+    document.querySelectorAll(".stream[data-stream]").forEach(el => {
+      const c = el.getAttribute("data-stream");
+      if (c && /^\d{2}$/.test(c)) allCodes.add(c);
+    });
+    const talmudCodes = new Set(
+      (localStorage.getItem("ravtext.talmudLayout.streams") || "").match(/\d{2}/g) || []
+    );
+    const others = Array.from(allCodes).filter(c => !talmudCodes.has(c)).sort();
+    if (others.length > 0) {
+      localStorage.setItem("ravtext.mishnaWrap.levels", others.join(","));
+    }
+  }
+  cb.addEventListener("change", () => {
+    apply();
+    // Trigger a re-render so the change takes effect immediately.
+    if (typeof rerenderPages === "function") rerenderPages();
+  });
+  apply();
+}
+setTimeout(wireOtherAsMishna, 100);
+
+// Basic styles gallery — applies a TipTap style to the active selection.
+function wireStylesGallery() {
+  const sel = document.getElementById("styles-gallery-select");
+  if (!sel) return;
+  sel.addEventListener("change", () => {
+    const v = sel.value;
+    sel.value = ""; // reset display
+    const ed = paneManager.getActiveEditor?.();
+    if (!ed) return;
+    const ch = ed.chain().focus();
+    if (v === "paragraph") ch.setParagraph().run();
+    else if (v === "heading-1") ch.toggleHeading({ level: 1 }).run();
+    else if (v === "heading-2") ch.toggleHeading({ level: 2 }).run();
+    else if (v === "heading-3") ch.toggleHeading({ level: 3 }).run();
+    else if (v === "blockquote") ch.toggleBlockquote().run();
+    else if (v === "code-block") ch.toggleCodeBlock().run();
+  });
+}
+setTimeout(wireStylesGallery, 100);
 setupSettingsPane();
 setupStreamPicker();
 setupMishnaLevelsPicker();
@@ -207,6 +287,9 @@ initialLoadPromise.then(() => {
       rerenderPages();
     },
   });
+  // הסרה: סימני המים מוטמעים עכשיו בתוכן עצמו לפני המנוע (ב-engine_bridge)
+  // כך שהעימוד מחושב נכון. הקריאה הישנה הוסיפה אחרי המדידה ושיבשה את הפריסה.
+  // watchPagesForDemoWatermarks(pagesContainer);
 });
 populateFontGallery(["David Libre", "Frank Ruhl Libre", "Segoe UI", "Arial", "Times New Roman", "Tahoma"]);
 
@@ -254,7 +337,10 @@ const LIVE_RENDER_KEY = "ravtext.liveRender";
 const LIVE_RENDER_MAX_DOC_SIZE = 60000;
 
 function isLiveRenderEnabled() {
-  return localStorage.getItem(LIVE_RENDER_KEY) === "1";
+  // משה 2026-05-06: ברירת מחדל ON — רינדור איטי אוטומטי בכל שינוי
+  // שומר ביצועים גם כשהמשתמש לא לחץ "רינדור".
+  const v = localStorage.getItem(LIVE_RENDER_KEY);
+  return v === null ? true : v === "1";
 }
 
 function paneManagerDocSize() {
@@ -452,6 +538,8 @@ function setupRibbonTabs() {
     ["streams", "זרמים"],
     ["insert", "הוספה"],
     ["layout", "פריסה"],
+    ["talmud", 'גפ"ת'],
+    ["mishna", 'משנ"ב'],
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
@@ -466,6 +554,24 @@ function setupRibbonTabs() {
     tabsBar.dir = "rtl";
     tabsBar.setAttribute("role", "tablist");
     tabsBar.setAttribute("aria-label", "כרטיסיות כלים");
+    mainToolbar.parentNode.insertBefore(tabsBar, mainToolbar);
+  }
+  // Idempotent: rebuild tabs if missing/different (handles new tabs added in updates).
+  const existingIds = Array.from(tabsBar.querySelectorAll(".ribbon-tab"))
+    .map(b => b.dataset.ribbonTab);
+  const expectedIds = tabs.map(t => t[0]);
+  const same = existingIds.length === expectedIds.length &&
+    existingIds.every((id, i) => id === expectedIds[i]);
+  if (!same) {
+    // Clear and rebuild
+    Array.from(tabsBar.querySelectorAll(".ribbon-tab, .ribbon-tab-render-slot"))
+      .forEach(el => el.remove());
+    const tabTitles = {
+      file: "פעולות קובץ", home: "עיצוב טקסט", streams: "ניהול זרמים",
+      insert: "הוספת אלמנטים", layout: "פריסת עמודים", talmud: "הגדרות גפ\"ת — תלמוד",
+      mishna: "הגדרות משנ\"ב", review: "סקירה ובדיקה", view: "תצוגה",
+      advanced: "מתקדם", settings: "הגדרות מערכת",
+    };
     for (const [id, label] of tabs) {
       const button = document.createElement("button");
       button.type = "button";
@@ -473,9 +579,19 @@ function setupRibbonTabs() {
       button.dataset.ribbonTab = id;
       button.setAttribute("role", "tab");
       button.textContent = label;
+      if (tabTitles[id]) button.title = tabTitles[id];
       tabsBar.appendChild(button);
     }
-    mainToolbar.parentNode.insertBefore(tabsBar, mainToolbar);
+    // Render button at end of tabs bar — like Word's menu button.
+    const renderBtnSlot = document.createElement("div");
+    renderBtnSlot.className = "ribbon-tab-render-slot";
+    renderBtnSlot.style.cssText = "margin-inline-start:auto;display:flex;align-items:center;padding:0 8px;";
+    const renderBtn = document.getElementById("btn-render");
+    if (renderBtn) {
+      renderBtn.classList.add("btn-render-prominent");
+      renderBtnSlot.appendChild(renderBtn);
+    }
+    tabsBar.appendChild(renderBtnSlot);
   }
 
   const groupTabs = [
@@ -505,7 +621,9 @@ function setupRibbonTabs() {
     [".source-stream-toolbar", "streams"],
     [".panes-toolbar", "streams view"],
     ["#expanded-tools", "advanced view"],
-    [".source-bottom-toolbar", "file layout"],
+    [".source-bottom-toolbar", "file"],
+    [".mishna-toolbar", "mishna"],
+    [".talmud-toolbar", "talmud"],
     [".opening-word-toolbar", "layout"],
     ["#stream-columns-panel", "streams layout"],
     [".stress-toolbar", "advanced"],
