@@ -495,7 +495,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
     logEvent("talmud_layout");
-    applyTalmudLayoutToPages(pagesContainer);
+    if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
+      const v2 = await import("./talmud_engine_v2.js");
+      v2.applyTalmudLayoutToPagesV2(pagesContainer);
+    } else {
+      applyTalmudLayoutToPages(pagesContainer);
+    }
     logEvent("mishna_wrap");
     applyMishnaWrapToPages(pagesContainer);
     logEvent("balanced_columns");
