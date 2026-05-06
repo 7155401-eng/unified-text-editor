@@ -183,7 +183,7 @@
     "sample": "long-paragraph",
     "id": "VALIDATE-ALL",
     "status": "FAIL",
-    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-11: Stream Title Not Orphan: orphans: 02\",\"INV-11: Stream Title Not Orphan: orphans: 02\"]}"
+    "detail": "{\"ok\":false,\"errors\":1,\"firstErrors\":[\"INV-11: Stream Title Not Orphan: orphans: 02\"]}"
   },
   {
     "sample": "long-paragraph",
@@ -200,14 +200,14 @@
   {
     "sample": "many-short",
     "id": "CROWN-4",
-    "status": "FAIL",
-    "detail": "[{\"ds\":\"01\",\"lines\":6},{\"ds\":\"02\",\"lines\":6},{\"ds\":\"01\",\"lines\":6}]"
+    "status": "PASS",
+    "detail": "[{\"ds\":\"01\",\"lines\":5},{\"ds\":\"02\",\"lines\":5},{\"ds\":\"01\",\"lines\":5}]"
   },
   {
     "sample": "many-short",
     "id": "NO-OVERFLOW",
-    "status": "FAIL",
-    "detail": "2 pages, max=12"
+    "status": "PASS",
+    "detail": "0 pages, max=0"
   },
   {
     "sample": "many-short",
@@ -224,14 +224,14 @@
   {
     "sample": "many-short",
     "id": "NO-MID-WORD",
-    "status": "FAIL",
-    "detail": "[\"01\",\"02\",\"01\"]"
+    "status": "PASS",
+    "detail": "[]"
   },
   {
     "sample": "many-short",
     "id": "VALIDATE-ALL",
-    "status": "FAIL",
-    "detail": "{\"ok\":false,\"errors\":6,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-8: No Overflow: overflow=12px\",\"INV-4: Crown Lines: crowns=6,6 target=4\"]}"
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
   },
   {
     "sample": "many-short",
@@ -429,7 +429,7 @@
     "sample": "single-1",
     "id": "NO-LARGE-GAP",
     "status": "FAIL",
-    "detail": "2 pages, max=469"
+    "detail": "1 pages, max=154"
   },
   {
     "sample": "tiny",
@@ -542,8 +542,8 @@
   {
     "sample": "wide-balanced",
     "id": "NO-OVERFLOW",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "1 pages, max=33"
   },
   {
     "sample": "wide-balanced",
@@ -567,12 +567,12 @@
     "sample": "wide-balanced",
     "id": "VALIDATE-ALL",
     "status": "FAIL",
-    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-11: Stream Title Not Orphan: orphans: 04\"]}"
+    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-8: No Overflow: overflow=33px\"]}"
   },
   {
     "sample": "wide-balanced",
     "id": "NO-LARGE-GAP",
     "status": "FAIL",
-    "detail": "2 pages, max=483"
+    "detail": "1 pages, max=182"
   }
 ]

@@ -352,6 +352,10 @@ function findOffsetAtLineStart(streamEl, targetLineCount) {
   const range = document.createRange();
   let linesSeen = 0;
   let prevY = -Infinity;
+  // v33: track previous safe whitespace position (across nodes) to fall back to
+  // if the line-start happens inside a long unbroken word.
+  let lastSafeNode = null;
+  let lastSafeOffset = 0;
 
   const walker = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) => {
@@ -362,10 +366,19 @@ function findOffsetAtLineStart(streamEl, targetLineCount) {
     },
   });
 
+  // v33: comprehensive Hebrew/general whitespace + punctuation breakers.
+  const isBreak = (ch) => /[\s.,;:!?״׳׃׀־"' ‎‏\(\)\[\]{}-]/.test(ch);
+
   let textNode;
   while ((textNode = walker.nextNode())) {
     const len = textNode.length;
+    const text = textNode.textContent;
     for (let i = 0; i < len; i++) {
+      // Track most recent safe break globally.
+      if (i > 0 && isBreak(text[i - 1])) {
+        lastSafeNode = textNode;
+        lastSafeOffset = i;
+      }
       range.setStart(textNode, i);
       range.setEnd(textNode, i + 1);
       const rect = range.getBoundingClientRect();
@@ -374,11 +387,16 @@ function findOffsetAtLineStart(streamEl, targetLineCount) {
         linesSeen++;
         prevY = rect.top;
         if (linesSeen === targetLineCount + 1) {
-          // האות הראשונה של השורה השלישית מעל היעד — חיתוך כאן (אחורה לרווח)
-          const text = textNode.textContent;
+          // First glyph of the over-target line — walk back to safe break.
           let adjusted = i;
-          while (adjusted > 0 && text[adjusted - 1] !== " " && text[adjusted - 1] !== " ") adjusted--;
-          if (adjusted === 0) adjusted = i;
+          while (adjusted > 0 && !isBreak(text[adjusted - 1])) adjusted--;
+          // If we walked all the way back without finding a break, that means
+          // the line starts mid-long-word. Use the last safe break we recorded
+          // (which may be in an earlier node) instead of breaking the word.
+          if (adjusted === 0 && lastSafeNode && lastSafeNode !== textNode) {
+            return { node: lastSafeNode, offset: lastSafeOffset };
+          }
+          if (adjusted === 0) adjusted = i; // fallback
           return { node: textNode, offset: adjusted };
         }
       }
@@ -485,9 +503,14 @@ export function findSplitAtPixelYInElement(streamEl, targetYInElement) {
       }
     }
     if (splitOffset > 0) {
+      // v33: comprehensive break-character set
+      const isBreak = (ch) => /[\s.,;:!?״׳׃׀־"' ‎‏\(\)\[\]{}-]/.test(ch);
       const text = textNode.textContent;
       let adjusted = splitOffset;
-      while (adjusted > 0 && text[adjusted - 1] !== " " && text[adjusted - 1] !== " ") adjusted--;
+      while (adjusted > 0 && !isBreak(text[adjusted - 1])) adjusted--;
+      // v33: if walked all the way back inside textNode without finding break,
+      // there's a long word — bail and let caller handle (return original offset
+      // only if we're at a node boundary which is itself a break).
       if (adjusted === 0) adjusted = splitOffset;
       return { node: textNode, offset: adjusted };
     }

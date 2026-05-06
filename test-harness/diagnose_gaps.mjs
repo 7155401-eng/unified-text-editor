@@ -2,7 +2,7 @@
 import { chromium } from "playwright-chromium";
 import fs from "node:fs";
 
-const URL = "http://127.0.0.1:5192/unified-text-editor/";
+const URL = "http://127.0.0.1:5193/unified-text-editor/";
 const browser = await chromium.launch({ headless: true });
 const ctx = await browser.newContext({ viewport: { width: 1700, height: 1400 } });
 const page = await ctx.newPage();
@@ -12,7 +12,7 @@ await page.evaluate(() => {
   localStorage.setItem("ravtext.talmudLayout", "1");
 });
 
-const text = fs.readFileSync("samples/auto/single-1.txt", "utf-8");
+const text = fs.readFileSync(process.argv[2] || "samples/auto/wide-balanced.txt", "utf-8");
 await page.evaluate(async (t) => await window.__loadCustomSample(t), text);
 await page.waitForTimeout(5000);
 

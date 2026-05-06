@@ -10,6 +10,7 @@ import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
 import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
 import { repaginateCatastrophicPages } from "./talmud_repagination.js";
+import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
 
 // Expose for debug + audit harness.
 if (typeof window !== "undefined") {
@@ -434,15 +435,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // for visually-correct kerning. Runs AFTER opening_word so it can
     // upgrade existing .opening-word elements.
     applyOpeningWordStretchToPages(pagesContainer);
-    // v30-sync: ה-overflow corrector שינה התנהגות לסימון בלבד, וה-overflow check
-    // מתבצע כעת סינכרונית בתוך applyTalmudLayoutToPage. הקריאה כאן נשארת
-    // כסריקה סופית סינכרונית — בלי RAF, כדי שהמנוע יראה תוצאה אמיתית.
-    correctTalmudOverflow(pagesContainer);
-    // v31-solver: rep-aginate pages with catastrophic overflow (>2× page-height)
-    // by moving tail content to the next page's stream queue and re-laying out.
-    // Lossless — no DOM removed, only moved. Runs synchronously each render.
-    repaginateCatastrophicPages(pagesContainer);
-    // After repagination, re-run final overflow check.
+    // v33: 3-stage post-process for the user's "0 overflows + 0 gaps" goal.
+    //  1. Pull-backward: fill big gaps in earlier pages from next-page bodies.
+    //  2. Cap: if catastrophic overflow remains, cap visually (lossless).
+    //  3. Re-mark final state for debug API.
+    pullBackwardAcrossAllPages(pagesContainer);
+    correctTalmudOverflow(pagesContainer); // ← in-page cap, no cross-page move
+    repaginateCatastrophicPages(pagesContainer); // no-op in v33, kept for compat
     correctTalmudOverflow(pagesContainer);
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
     const t3 = performance.now();
