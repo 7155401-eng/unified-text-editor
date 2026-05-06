@@ -880,7 +880,8 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
       }
       const measuredH = Math.max(0, bottom - rect.top);
       const minH = computeMinCrownHeight(commentary, crownLines);
-      const exactH = Math.max(measuredH, minH);
+      const HARD_MIN = 17.9166 * crownLines;
+      const exactH = Math.max(measuredH, minH, HARD_MIN);
       commentary.style.height = `${exactH}px`;
       commentary.style.maxHeight = `${exactH}px`;
       commentary.style.minHeight = `${exactH}px`;
@@ -942,7 +943,10 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
         }
         const measuredH2 = Math.max(0, bottom2 - rect2.top);
         const minH2 = computeMinCrownHeight(leftCrownRest, crownLines);
-        const exactH2 = Math.max(measuredH2, minH2);
+        // משה 2026-05-06 (pass 148): אכיפת מינימום קשיחה — 4 שורות × FALLBACK
+        // אפילו אם computeMinCrownHeight נכשל למדוד.
+        const HARD_MIN = 17.9166 * crownLines;
+        const exactH2 = Math.max(measuredH2, minH2, HARD_MIN);
         leftCrownRest.style.height = `${exactH2}px`;
         leftCrownRest.style.maxHeight = `${exactH2}px`;
         leftCrownRest.style.minHeight = `${exactH2}px`;
@@ -1122,7 +1126,8 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       for (const r of rects) { if (r.bottom > bottom) bottom = r.bottom; }
       const measuredH = Math.max(0, bottom - rect.top);
       const minH = computeMinCrownHeight(longEl, crownLines);
-      const exactH = Math.max(measuredH, minH);
+      const HARD_MIN = 17.9166 * crownLines;
+      const exactH = Math.max(measuredH, minH, HARD_MIN);
       longEl.style.height = `${exactH}px`;
       longEl.style.maxHeight = `${exactH}px`;
       longEl.style.minHeight = `${exactH}px`;
@@ -1318,7 +1323,8 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     const minCrownHA = computeMinCrownHeight(streamA, crownLines);
     const minCrownHB = computeMinCrownHeight(streamB, crownLines);
     const minCrownH = Math.max(minCrownHA, minCrownHB);
-    const exactCrownH = Math.max(heightA, heightB, minCrownH);
+    const HARD_MIN = 17.9166 * crownLines;
+    const exactCrownH = Math.max(heightA, heightB, minCrownH, HARD_MIN);
     streamA.style.height = `${exactCrownH}px`;
     streamA.style.maxHeight = `${exactCrownH}px`;
     streamA.style.minHeight = `${exactCrownH}px`;
