@@ -243,9 +243,10 @@ export function invStreamTitleNotOrphan(pageEl) {
   }
   const fails = [];
   for (const s of streams) {
-    // v33: skip streams hidden by orphan-protection or pulled-backward.
-    if (s.dataset.talmudOrphanHidden) continue;
+    // v33: skip streams pulled-backward or moved between pages.
+    // (We no longer HIDE orphan titles — instead we move whole streams.)
     if (s.dataset.talmudPulledBackwards) continue;
+    if (s.dataset.talmudMovedFromPrevPage) continue;
     if (typeof getComputedStyle !== "undefined" &&
         getComputedStyle(s).display === "none") continue;
     const title = s.querySelector(":scope > .stream-title");

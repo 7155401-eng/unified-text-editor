@@ -136,16 +136,27 @@ function pullOnePage(curPageEl, nextPageEl) {
 }
 
 // Determines if a page is now visually empty (after pull-backward emptied it).
+// v33-fix per משה: also count main text and page-streams content. We must
+// NEVER hide a page that still has visible text of any kind.
 function isPageEffectivelyEmpty(pageEl) {
-  const block = pageEl.querySelector(":scope > .talmud-layout");
-  if (!block) return false;
-  // Visible text on the page (excluding hidden pulled-backward streams).
   let visibleText = "";
-  block.querySelectorAll(":scope > *").forEach(el => {
-    if (el.dataset.talmudPulledBackwards) return;
-    if (getComputedStyle(el).display === "none") return;
-    visibleText += (el.textContent || "");
+  // Walk all direct + nested elements, skip those marked as pulled-backwards
+  // or display:none. Count every visible text node.
+  const walker = document.createTreeWalker(pageEl, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (el) => {
+      if (el.dataset && el.dataset.talmudPulledBackwards) return NodeFilter.FILTER_REJECT;
+      if (typeof getComputedStyle === "function" && getComputedStyle(el).display === "none") return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
   });
+  let n;
+  while ((n = walker.nextNode())) {
+    // Only count direct text from this element to avoid double counting.
+    for (const child of n.childNodes) {
+      if (child.nodeType === 3 /* TEXT_NODE */) visibleText += child.textContent;
+    }
+    if (visibleText.trim().length > 5) return false; // early exit
+  }
   return visibleText.trim().length === 0;
 }
 
@@ -217,13 +228,20 @@ function shrinkPagesToContent(container) {
   return shrunk;
 }
 
-// v33: hide orphan stream titles (title with < 2 visible lines after).
-// The content for that stream lives on a different page; the bare title
-// here is just visual noise. Hide it to satisfy INV-11 without losing data.
-function hideOrphanTitles(container) {
-  let hidden = 0;
-  container.querySelectorAll(".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)").forEach(p => {
-    const streams = p.querySelectorAll(".talmud-layout .stream");
+// v33-fix: per משה, hiding orphan titles is WRONG. Instead, when a stream's
+// title appears on a page with < 2 visible lines of content, MOVE the entire
+// stream to the next page's leftover area. The engine doesn't natively know
+// to do this; we do it post-process.
+function moveOrphanStreamsToNextPage(container) {
+  let moved = 0;
+  const pages = Array.from(container.querySelectorAll(
+    ".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)"
+  ));
+  for (let i = 0; i < pages.length - 1; i++) {
+    const cur = pages[i];
+    const next = pages[i + 1];
+    // Find streams on `cur` whose title is orphan (title + <2 lines below).
+    const streams = Array.from(cur.querySelectorAll(".talmud-layout .stream, .page-streams > .stream"));
     for (const s of streams) {
       const totalText = (s.textContent || "").trim();
       if (totalText.length < 30) continue;
@@ -235,23 +253,31 @@ function hideOrphanTitles(container) {
       const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 || r.height > 0);
       const below = rects.filter(r => r.top > titleBottom + 2);
       const visualLines = new Set(below.map(r => Math.round(r.top))).size;
-      // v33-deletion-fix: do NOT hide the entire stream — that DELETES content
-      // visually. Only hide the bare title if there's truly < 30 chars of text
-      // beyond the title itself (title-only orphan).
-      const titleText = (title.textContent || "").trim();
-      const contentText = totalText.slice(titleText.length).trim();
-      if (visualLines < 2 && contentText.length < 5) {
-        // True bare-title orphan — hide just the title, keep content visible.
-        title.style.display = "none";
-        title.dataset.talmudOrphanHidden = "true";
-        hidden++;
-      } else if (title.dataset.talmudOrphanHidden) {
-        title.style.display = "";
-        delete title.dataset.talmudOrphanHidden;
+      if (visualLines >= 2) continue;
+      // Orphan — move whole stream to next page's leftover area.
+      const nextStreams = next.querySelector(":scope > .page-streams");
+      if (!nextStreams) continue;
+      // Avoid duplication: if next page already has a stream with same code at top,
+      // prepend our content to it; otherwise insert as first.
+      const code = s.getAttribute("data-stream") || "";
+      const existing = code ? nextStreams.querySelector(`:scope > .stream[data-stream="${code}"]`) : null;
+      if (existing) {
+        // Merge: skip our title, prepend rest of children to existing.
+        const ourTitle = s.querySelector(":scope > .stream-title");
+        if (ourTitle) ourTitle.remove();
+        const exTitle = existing.querySelector(":scope > .stream-title");
+        const insertBefore = exTitle ? exTitle.nextSibling : existing.firstChild;
+        while (s.firstChild) existing.insertBefore(s.firstChild, insertBefore);
+        s.remove();
+      } else {
+        // Move whole stream to top of next page.
+        nextStreams.insertBefore(s, nextStreams.firstChild);
+        s.dataset.talmudMovedFromPrevPage = "true";
       }
+      moved++;
     }
-  });
-  return hidden;
+  }
+  return moved;
 }
 
 export function pullBackwardAcrossAllPages(container) {
@@ -266,8 +292,8 @@ export function pullBackwardAcrossAllPages(container) {
   }
   // After pulling, hide any pages that became empty (no visible content left).
   hideEmptyPages(container);
-  // Hide orphan stream titles (title with < 2 visual lines of content).
-  hideOrphanTitles(container);
+  // v33-fix per משה: move orphan-titled streams forward to next page (don't hide).
+  moveOrphanStreamsToNextPage(container);
   // Then shrink remaining pages so each fits its content (eliminates visual gap).
   shrinkPagesToContent(container);
   return total;
