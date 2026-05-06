@@ -240,6 +240,18 @@ function buildPanel() {
       <button id="ci-clear" class="ci-btn">נקה</button>
     </div>
     <div style="border-top:1px solid var(--border,#d0d0d4);padding-top:6px;">
+      <strong style="color:var(--word-blue,#2B579A);font-size:12px;">JS מותאם (לתיקוני engine)</strong>
+      <textarea id="ci-js" rows="5" placeholder="// קוד JS — ירוץ פעם אחת על pages-container.&#10;// דוגמה: document.querySelectorAll('.talmud-crown-portion').forEach(c => c.style.height = '72px')" spellcheck="false" style="
+        margin-top:4px;background:#fafafa;color:#1d1d1f;border:1px solid var(--border,#d0d0d4);border-radius:4px;
+        padding:6px;font-family:'Consolas','Monaco',monospace;font-size:11px;direction:ltr;text-align:left;
+        resize:vertical;min-height:80px;width:100%;"></textarea>
+      <div style="display:flex;gap:4px;margin-top:4px;">
+        <button id="ci-js-run" class="ci-btn ci-btn-primary">הרץ JS</button>
+        <button id="ci-js-clear" class="ci-btn">נקה</button>
+      </div>
+      <div id="ci-js-result" style="font-size:11px;color:#444;margin-top:4px;display:none;background:#fafafa;padding:4px;border-radius:3px;border:1px solid var(--border,#d0d0d4);direction:ltr;text-align:left;"></div>
+    </div>
+    <div style="border-top:1px solid var(--border,#d0d0d4);padding-top:6px;">
       <strong style="color:var(--word-blue,#2B579A);font-size:12px;">היסטוריה</strong>
       <div id="ci-history" style="max-height:130px;overflow-y:auto;font-size:11px;margin-top:4px;"></div>
     </div>
@@ -412,6 +424,28 @@ function buildPanel() {
   });
   panel.querySelector("#ci-clear").addEventListener("click", () => {
     cssTa.value = ""; setCss(""); applyCssToDoc();
+  });
+  // משה 2026-05-06: JS injection — להריץ קוד JS מותאם על pages-container.
+  // CSS לבד לא מספיק לתיקוני engine; JS מאפשר לשנות style.height inline ולתקן
+  // באגים ברמת אלמנט (כמו crown 54px) שה-CSS לא יכול לכפות.
+  const jsTa = panel.querySelector("#ci-js");
+  const jsResult = panel.querySelector("#ci-js-result");
+  panel.querySelector("#ci-js-run").addEventListener("click", () => {
+    const code = jsTa.value.trim();
+    if (!code) { jsResult.style.display = "block"; jsResult.textContent = "אין קוד"; return; }
+    jsResult.style.display = "block";
+    try {
+      const fn = new Function("pagesContainer", "doc", code);
+      const ret = fn(document.querySelector(".pages-container"), document);
+      jsResult.style.color = "#0a8a0a";
+      jsResult.textContent = "✓ הורץ בהצלחה" + (ret !== undefined ? " | תוצאה: " + String(ret).slice(0, 200) : "");
+    } catch (err) {
+      jsResult.style.color = "#c62828";
+      jsResult.textContent = "✗ שגיאה: " + err.message;
+    }
+  });
+  panel.querySelector("#ci-js-clear").addEventListener("click", () => {
+    jsTa.value = ""; jsResult.style.display = "none";
   });
   panel.querySelector("#ci-ask-ai").addEventListener("click", async () => {
     const userPrompt = panel.querySelector("#ci-prompt").value.trim();

@@ -1312,26 +1312,12 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     }
     const heightA = measureFirstNLinesHeight(streamA, crownLines);
     const heightB = measureFirstNLinesHeight(streamB, crownLines);
-    // Cloud-Claude 2026-05-06: כתר חייב להיות בגובה קבוע של crownLines שורות
-    // גם כשהזרמים קצרים יותר. גובה בסיסי = גובה כותרת + שורה×crownLines.
-    function pureLineHeight(streamEl) {
-      const range = document.createRange();
-      const titleEl = streamEl.querySelector(":scope > .stream-title");
-      const w = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
-        acceptNode: n => titleEl && titleEl.contains(n)
-          ? NodeFilter.FILTER_REJECT
-          : (n.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
-      });
-      const tn = w.nextNode();
-      if (!tn) return 0;
-      range.setStart(tn, 0); range.setEnd(tn, tn.length);
-      const rcts = Array.from(range.getClientRects()).filter(r => r.height > 0);
-      return rcts.length ? rcts[0].height : 0;
-    }
-    const longerStream = heightA > heightB ? streamA : streamB;
-    const titleH = (longerStream.querySelector(":scope > .stream-title")?.getBoundingClientRect().height) || 0;
-    const oneLineH = pureLineHeight(longerStream);
-    const minCrownH = oneLineH > 0 ? (titleH + oneLineH * crownLines) : 0;
+    // Cloud-Claude 2026-05-06 + pass 143: שימוש בפונקציה האחידה
+    // computeMinCrownHeight (כוללת FALLBACK_LINE_HEIGHT_PX). מבטל ה-pureLineHeight
+    // המקומי שלא היה בו fallback קבוע, מה שהשאיר crowns ב-54/42px במקרי קצה.
+    const minCrownHA = computeMinCrownHeight(streamA, crownLines);
+    const minCrownHB = computeMinCrownHeight(streamB, crownLines);
+    const minCrownH = Math.max(minCrownHA, minCrownHB);
     const exactCrownH = Math.max(heightA, heightB, minCrownH);
     streamA.style.height = `${exactCrownH}px`;
     streamA.style.maxHeight = `${exactCrownH}px`;
