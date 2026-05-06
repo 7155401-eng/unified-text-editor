@@ -67,6 +67,7 @@ import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_ove
 import { repaginateCatastrophicPages } from "./talmud_repagination.js";
 import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
 import { repaginateMainOverflow } from "./talmud_overflow_repagination.js";
+import { applyYSegmentsToAllPages } from "./talmud_y_segments.js";
 import { logEvent, logMove } from "./settings_pane.js";
 
 // v33: expose helpers for diagnostic tools to call directly.
@@ -748,12 +749,21 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
       function runFullSplitterPass() {
         try {
           const startIdx = findFirstOverflowIdx();
-          if (startIdx < 0) { removeEmptyStreams(); return; }
+          if (startIdx < 0) {
+            removeEmptyStreams();
+            // משה כלל 3: גם כשאין חריגה, להחיל Y-segments כדי לסגור פערים אופקיים
+            try { applyYSegmentsToAllPages(pagesContainer); } catch (e) { console.warn("[y-seg] error:", e); }
+            // משה כלל 2 + שלב 5: למלא פערי-אמצע בכל סבב, לא רק בסוף
+            try { pullBackwardAcrossAllPages(pagesContainer); } catch (e) { console.warn("[pull-back] error:", e); }
+            return;
+          }
           splitPageStreamsBetweenPages(startIdx);
           if (typeof splitBodyExpandedBetweenPages === "function") {
             splitBodyExpandedBetweenPages(startIdx);
           }
           removeEmptyStreams();
+          try { applyYSegmentsToAllPages(pagesContainer); } catch (e) { console.warn("[y-seg] error:", e); }
+          try { pullBackwardAcrossAllPages(pagesContainer); } catch (e) { console.warn("[pull-back] error:", e); }
         } catch (e) { console.warn("[splitter] error:", e); }
       }
       // Bug 9 fix: כלל 10 — בעמוד האחרון, ה-page-streams חייב להיפגש עם
@@ -800,11 +810,79 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           prevOverflow = curOverflow;
         }
         try { raiseLastPageFootnotes(); } catch (e) { console.warn("[raiseLastPage] error:", e); }
+        // משה שלב 5: hard-gate לדיווח על חריגות שנותרו (לא חוסם render).
+        try {
+          const remaining = [];
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach((p, i) => {
+            const ov = p.scrollHeight - p.clientHeight;
+            if (ov > 5) remaining.push(`p${i + 1}=+${Math.round(ov)}px`);
+          });
+          if (remaining.length > 0) {
+            console.error(`[talmud] OVERFLOW REMAINING after loop: ${remaining.join(", ")}`);
+          }
+        } catch (e) { /* ignore gate errors */ }
       }
-      // הרצה ראשונה מיד; שתי הרצות מאוחרות (200ms + 1500ms) בלולאה רציפה
-      // לכל אחת — לתפוס late-layout/font-loading.
+      // הרצה ראשונה מיד; שתי הרצות מאוחרות (200ms + 1500ms) לתפוס
+      // late-layout/font-loading מיידית, ובנוסף Mutation/Resize observers
+      // עם debounce של 50ms כדי לתפוס גם שינויים מאוחרים יותר (משה כלל 15).
       setTimeout(loopUntilStable, 200);
       setTimeout(loopUntilStable, 1500);
+      // משה כלל 15: לולאה אינה חוזרת אחורה אבל כן עוקבת אחרי שינויים.
+      // observer מצמיד את עצמו פעם אחת לכל pagesContainer.
+      if (!pagesContainer.__talmudObserverInstalled) {
+        pagesContainer.__talmudObserverInstalled = true;
+        let debounceTimer = null;
+        let suppressUntil = 0;
+        const debouncedLoop = () => {
+          if (Date.now() < suppressUntil) return;
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            // suppress observer during loop's own DOM mutations
+            suppressUntil = Date.now() + 200;
+            try { loopUntilStable(); } catch (e) {
+              console.warn("[talmud-observer] loop error:", e);
+            }
+            suppressUntil = Date.now() + 200;
+          }, 50);
+        };
+        try {
+          const mo = new MutationObserver((mutations) => {
+            // ignore mutations caused by our own loop (size attr changes)
+            const meaningful = mutations.some(m =>
+              m.type === "childList" ||
+              (m.type === "attributes" && m.attributeName !== "data-talmud-overflow-px"
+                && m.attributeName !== "class")
+            );
+            if (meaningful) debouncedLoop();
+          });
+          mo.observe(pagesContainer, {
+            childList: true, subtree: true, attributes: true,
+            attributeFilter: ["data-page-index", "style"]
+          });
+          pagesContainer.__talmudMutationObserver = mo;
+          // Resize observer for late font-load that changes line heights
+          if (typeof ResizeObserver !== "undefined") {
+            const ro = new ResizeObserver(() => debouncedLoop());
+            pagesContainer.querySelectorAll(".page").forEach(p => ro.observe(p));
+            pagesContainer.__talmudResizeObserver = ro;
+            // also watch new pages added later
+            const pageAddObserver = new MutationObserver(() => {
+              pagesContainer.querySelectorAll(".page:not([data-talmud-ro-attached])").forEach(p => {
+                ro.observe(p);
+                p.dataset.talmudRoAttached = "1";
+              });
+            });
+            pageAddObserver.observe(pagesContainer, { childList: true });
+            pagesContainer.__talmudPageAddObserver = pageAddObserver;
+          }
+          // Document fonts ready: trigger one final loop
+          if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => debouncedLoop()).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("[talmud-observer] install failed:", e);
+        }
+      }
       // pass 146: גם body-expanded בתוך talmud-layout יכול לגלוש (P5 case).
       // אם ה-body-expanded ארוך מדי, מעבירים note-parts (spans) האחרונים לעמוד הבא.
       function splitBodyExpandedBetweenPages(startIdx = 0) {
