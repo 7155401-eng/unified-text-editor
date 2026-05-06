@@ -67,7 +67,7 @@ import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_ove
 import { repaginateCatastrophicPages } from "./talmud_repagination.js";
 import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
 import { repaginateMainOverflow } from "./talmud_overflow_repagination.js";
-import { logEvent } from "./settings_pane.js";
+import { logEvent, logMove } from "./settings_pane.js";
 
 // v33: expose helpers for diagnostic tools to call directly.
 if (typeof window !== "undefined") {
@@ -571,11 +571,11 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
       // Cloud-Chrome 2026-05-06: page-streams pagination אמיתית.
       // לעבור על כל עמוד; אם page-streams גולש מעבר לדף, להעביר ילדי-זרם
       // האחרונים לעמוד הבא עד שהמכל מתאים. עובד כפעולה ראשונה לפני loops אחרים.
-      function splitPageStreamsBetweenPages() {
+      function splitPageStreamsBetweenPages(startIdx = 0) {
         const pages = Array.from(
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
-        for (let i = 0; i < pages.length; i++) {
+        for (let i = startIdx; i < pages.length; i++) {
           const cur = pages[i];
           const ps = cur.querySelector(":scope > .page-streams");
           if (!ps) continue;
@@ -670,6 +670,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             const nextTitle = dest.querySelector(":scope > .stream-title");
             if (nextTitle) dest.insertBefore(lastChild, nextTitle.nextSibling);
             else dest.insertBefore(lastChild, dest.firstChild);
+            logMove("split_page_streams", {
+              el: lastChild,
+              fromPage: i, toPage: i + 1,
+              trigger: "page-streams-overflow",
+              reason: `pageOv=${Math.round(pageOv)}px stream=${code || "?"}`,
+            });
             void cur.offsetHeight;
             pageOv = cur.scrollHeight - cur.clientHeight;
           }
@@ -700,19 +706,56 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
         });
         return sum;
       }
+      function findFirstOverflowIdx() {
+        const pages = Array.from(
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+        );
+        for (let i = 0; i < pages.length; i++) {
+          const ov = pages[i].scrollHeight - pages[i].clientHeight;
+          if (ov > 1) return i;
+        }
+        return -1;
+      }
+      // Cloud-Chrome כללים #9/#12: זרם שיש לו רק כותרת בלי תוכן (יכול להיווצר
+      // כשה-splitter יוצר container ביעד ואז התוכן מוחזר חזרה, או כשהמשתמש
+      // הגדיר זרם ב-localStorage שאין לו הערות בעמוד הזה). ניקוי בסוף כל
+      // pass מסיר אותם כדי שלא ייראו כותרות יתומות.
+      function streamHasRealContent(streamEl) {
+        const children = streamEl.children;
+        for (let i = 0; i < children.length; i++) {
+          const c = children[i];
+          if (c.classList && c.classList.contains("stream-title")) continue;
+          const t = (c.textContent || "").trim();
+          if (t.length > 0) return true;
+        }
+        return false;
+      }
+      function removeEmptyStreams() {
+        const streams = pagesContainer.querySelectorAll(".stream[data-stream]");
+        streams.forEach((s) => {
+          if (!streamHasRealContent(s)) s.remove();
+        });
+        // מכלי page-streams שנשארו ריקים אחרי הניקוי — להסיר גם אותם
+        const wraps = pagesContainer.querySelectorAll(".page-streams");
+        wraps.forEach((w) => {
+          if (w.querySelector(":scope > .stream[data-stream]") === null) {
+            w.remove();
+          }
+        });
+      }
+      // משה כלל #15: סיבובי תיקון לא חוזרים אחורה. כל pass מתחיל מהדף
+      // הראשון שיש בו חריגה. דפים תקינים שלפניו לא נוגעים בהם.
       function runFullSplitterPass() {
         try {
-          splitPageStreamsBetweenPages();
+          const startIdx = findFirstOverflowIdx();
+          if (startIdx < 0) { removeEmptyStreams(); return; }
+          splitPageStreamsBetweenPages(startIdx);
           if (typeof splitBodyExpandedBetweenPages === "function") {
-            splitBodyExpandedBetweenPages();
+            splitBodyExpandedBetweenPages(startIdx);
           }
+          removeEmptyStreams();
         } catch (e) { console.warn("[splitter] error:", e); }
       }
-      // TODO (משה 2026-05-06, כלל #15): הלולאה אינה אמורה לחזור אחורה. כל
-      // סיבוב צריך להתחיל מהדף הראשון שיש בו שגיאה והלאה — לא לנגוע בדפים
-      // תקינים שלפניו. הקוד הנוכחי בsplitPageStreamsBetweenPages עובר על כל
-      // הדפים מ-0 והלאה. צריך לשנות את ה-splitters שיקבלו startIdx ויעברו רק
-      // ממנו והלאה. (לא תוקן בpass 153 — דורש refactor של ה-splitters.)
       function loopUntilStable() {
         let prevOverflow = measureTotalOverflow();
         let stableHits = 0;
@@ -736,12 +779,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
       setTimeout(loopUntilStable, 1500);
       // pass 146: גם body-expanded בתוך talmud-layout יכול לגלוש (P5 case).
       // אם ה-body-expanded ארוך מדי, מעבירים note-parts (spans) האחרונים לעמוד הבא.
-      function splitBodyExpandedBetweenPages() {
+      function splitBodyExpandedBetweenPages(startIdx = 0) {
         const pages = Array.from(
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
         window.__SPLIT_BE_DEBUG__ = window.__SPLIT_BE_DEBUG__ || [];
-        for (let i = 0; i < pages.length; i++) {
+        for (let i = startIdx; i < pages.length; i++) {
           const cur = pages[i];
           void cur.offsetHeight;
           let pageOv = cur.scrollHeight - cur.clientHeight;
@@ -815,6 +858,12 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
             const nextTitle = target.querySelector(":scope > .stream-title");
             if (nextTitle) target.insertBefore(lastChild, nextTitle.nextSibling);
             else target.insertBefore(lastChild, target.firstChild);
+            logMove("split_body_expanded", {
+              el: lastChild,
+              fromPage: i, toPage: i + 1,
+              trigger: "body-expanded-overflow",
+              reason: `pageOv=${Math.round(pageOv)}px`,
+            });
             void cur.offsetHeight;
             pageOv = cur.scrollHeight - cur.clientHeight;
           }

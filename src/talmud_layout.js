@@ -674,6 +674,46 @@ function commentaryFillsCrownPlusExtraLive(streamEl, crownLines) {
   return seenY.size >= crownLines + CROWN_EXTRA_LINES;
 }
 
+/**
+ * משה כלל #5 + #6 תרחיש 4: בודק האם פרשן ארוך מספיק לכתר ברוחב מלא של
+ * הדף. נבדק על-ידי clone זמני שמוסר מ-DOM הזרימה (position:absolute,
+ * left:-9999px) וקבוע ל-width:100% — שלא כמו commentaryFillsCrownPlusExtraLive
+ * שמודד ב-50% הקיים. ה-clone מוחזר מיד מאחורי הקלעים — ללא flicker.
+ */
+function commentaryFillsCrownAtFullWidth(streamEl, crownLines, block) {
+  if (crownLines <= 0) return false;
+  const probe = streamEl.cloneNode(true);
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.float = "none";
+  probe.style.clear = "none";
+  probe.style.width = "100%";
+  probe.style.left = "-9999px";
+  probe.style.top = "0";
+  block.appendChild(probe);
+  const titleEl = probe.querySelector(":scope > .stream-title");
+  const seenY = new Set();
+  const range = document.createRange();
+  const walker = document.createTreeWalker(probe, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      if (titleEl && titleEl.contains(node)) return NodeFilter.FILTER_REJECT;
+      return node.textContent && node.textContent.length > 0
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  let tn;
+  while ((tn = walker.nextNode())) {
+    range.setStart(tn, 0);
+    range.setEnd(tn, tn.length);
+    for (const r of range.getClientRects()) {
+      if (r.height > 0) seenY.add(Math.round(r.top));
+    }
+  }
+  block.removeChild(probe);
+  return seenY.size >= crownLines + CROWN_EXTRA_LINES;
+}
+
 // ─────────────────────────────────────────────
 //  Crown offset: pure CSS var, measured lazily
 // ─────────────────────────────────────────────
@@ -1089,14 +1129,18 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
   const aFitsCrown = commentaryFillsCrownPlusExtraLive(streamA, crownLines);
   const bFitsCrown = commentaryFillsCrownPlusExtraLive(streamB, crownLines);
   const doCrown    = aFitsCrown && bFitsCrown && crownLines > 0;
-  const oneLongOneShort = crownLines > 0 && (aFitsCrown !== bFitsCrown);
 
-  // TODO (משה כלל #5 + #6 תרחיש 4): oneLongOneShort נכנס לכאן רק אם
-  // אחד הזרמים ארוך לפי 50% רוחב. אבל לפי משה, כתר ברוחב מלא דורש
-  // שהארוך יהיה ארוך מספיק לארבע שורות **ברוחב מלא**, לא רק ב-50%.
-  // אם הוא לא — שני הזרמים נחשבים קצרים → צריך לעבור לתרחיש 5 (אין כתר).
-  // הקוד הנוכחי אינו עושה את הבדיקה הזו ועלול ליצור כתר ב-100% עם פחות
-  // מ-4 שורות מלאות (סותר כלל #11).
+  // משה כלל #5 + #6 תרחיש 4: כשרק זרם אחד ארוך לפי 50%, חייב לבדוק שהוא
+  // ארוך מספיק גם ברוחב 100% לפני שיוצרים כתר אסימטרי. אחרת ייווצר כתר
+  // ב-100% עם פחות מ-crownLines שורות — סותר כלל #11.
+  let oneLongOneShort = crownLines > 0 && (aFitsCrown !== bFitsCrown);
+  if (oneLongOneShort) {
+    const longCandidate = aFitsCrown ? streamA : streamB;
+    if (!commentaryFillsCrownAtFullWidth(longCandidate, crownLines, block)) {
+      oneLongOneShort = false;
+    }
+  }
+
   if (!doCrown && !oneLongOneShort) {
     // אין כתר בכלל — מחזירים לרוחב 29% וכל ה-3 מתחילים יחד מלמעלה
     block.classList.add("talmud-no-crown");
