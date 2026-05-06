@@ -60,14 +60,20 @@ const report = await page.evaluate((expectedHeight) => {
     const overflowing = scrollH > renderedH + 1;
 
     let gap = 0;
-    if (main && streams) {
+    const mainVisible = main && getComputedStyle(main).display !== "none" && main.offsetHeight > 0;
+    if (mainVisible && streams) {
       const mainRect = main.getBoundingClientRect();
       const streamsRect = streams.getBoundingClientRect();
       gap = Math.round(streamsRect.top - mainRect.bottom);
-    } else if (main && !streams) {
+    } else if (mainVisible && !streams) {
       const mainRect = main.getBoundingClientRect();
       const pageRect = p.getBoundingClientRect();
       gap = Math.round(pageRect.bottom - mainRect.bottom - 22);
+    } else if (!mainVisible && streams) {
+      // main hidden — measure streams bottom to page bottom
+      const streamsRect = streams.getBoundingClientRect();
+      const pageRect = p.getBoundingClientRect();
+      gap = Math.round(pageRect.bottom - streamsRect.bottom - 22);
     }
 
     return {

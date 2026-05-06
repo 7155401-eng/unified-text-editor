@@ -44,8 +44,8 @@
   {
     "sample": "asymmetric",
     "id": "NO-LARGE-GAP",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "3 pages, max=277"
   },
   {
     "sample": "crown-edge",
@@ -140,8 +140,8 @@
   {
     "sample": "few-long",
     "id": "NO-LARGE-GAP",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "2 pages, max=277"
   },
   {
     "sample": "long-paragraph",
@@ -188,8 +188,8 @@
   {
     "sample": "long-paragraph",
     "id": "NO-LARGE-GAP",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "6 pages, max=277"
   },
   {
     "sample": "many-short",
@@ -200,14 +200,14 @@
   {
     "sample": "many-short",
     "id": "CROWN-4",
-    "status": "PASS",
-    "detail": "[{\"ds\":\"01\",\"lines\":5},{\"ds\":\"02\",\"lines\":5},{\"ds\":\"01\",\"lines\":5}]"
+    "status": "FAIL",
+    "detail": "[{\"ds\":\"01\",\"lines\":6},{\"ds\":\"02\",\"lines\":6},{\"ds\":\"01\",\"lines\":6}]"
   },
   {
     "sample": "many-short",
     "id": "NO-OVERFLOW",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "3 pages, max=12"
   },
   {
     "sample": "many-short",
@@ -224,14 +224,14 @@
   {
     "sample": "many-short",
     "id": "NO-MID-WORD",
-    "status": "PASS",
-    "detail": "[]"
+    "status": "FAIL",
+    "detail": "[\"01\",\"01\",\"01\"]"
   },
   {
     "sample": "many-short",
     "id": "VALIDATE-ALL",
-    "status": "PASS",
-    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+    "status": "FAIL",
+    "detail": "{\"ok\":false,\"errors\":6,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-8: No Overflow: overflow=12px\",\"INV-4: Crown Lines: crowns=6,6 target=4\"]}"
   },
   {
     "sample": "many-short",
@@ -284,8 +284,8 @@
   {
     "sample": "mid-length",
     "id": "NO-LARGE-GAP",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "1 pages, max=171"
   },
   {
     "sample": "no-main",
@@ -332,8 +332,8 @@
   {
     "sample": "no-main",
     "id": "NO-LARGE-GAP",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "2 pages, max=255"
   },
   {
     "sample": "only-main",
@@ -428,8 +428,8 @@
   {
     "sample": "single-1",
     "id": "NO-LARGE-GAP",
-    "status": "PASS",
-    "detail": "0 pages, max=0"
+    "status": "FAIL",
+    "detail": "1 pages, max=154"
   },
   {
     "sample": "tiny",
@@ -531,7 +531,7 @@
     "sample": "wide-balanced",
     "id": "ON-EXISTS",
     "status": "PASS",
-    "detail": "count=3"
+    "detail": "count=2"
   },
   {
     "sample": "wide-balanced",
@@ -543,7 +543,7 @@
     "sample": "wide-balanced",
     "id": "NO-OVERFLOW",
     "status": "FAIL",
-    "detail": "1 pages, max=33"
+    "detail": "1 pages, max=10"
   },
   {
     "sample": "wide-balanced",
@@ -561,13 +561,13 @@
     "sample": "wide-balanced",
     "id": "NO-MID-WORD",
     "status": "FAIL",
-    "detail": "[\"01\",\"02\"]"
+    "detail": "[\"01\"]"
   },
   {
     "sample": "wide-balanced",
     "id": "VALIDATE-ALL",
     "status": "FAIL",
-    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-8: No Overflow: overflow=33px\"]}"
+    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-8: No Overflow: overflow=10px\"]}"
   },
   {
     "sample": "wide-balanced",
