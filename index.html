@@ -409,6 +409,42 @@
           <button type="button" data-mul="30" class="btn-stress">×30</button>
           <button type="button" data-mul="100" class="btn-stress">×100</button>
         </div>
+        <div class="toolbar torah-toolbar ribbon-panel" data-ribbon-tab="torah" dir="rtl"></div>
+        <div class="toolbar insert-toolbar ribbon-panel" data-ribbon-tab="insert" dir="rtl">
+          <span class="tb-group" data-title="אלמנטים">
+            <button type="button" id="btn-insert-hr" title="הוסף קו אופקי מפריד">― קו אופקי</button>
+            <button type="button" id="btn-insert-page-break" title="הוסף שבירת עמוד ידנית">⤓ שבירת עמוד</button>
+            <button type="button" id="btn-insert-hardbreak" title="הוסף שבירת שורה (ללא פסקה חדשה)">↵ שבירת שורה</button>
+          </span>
+        </div>
+        <div class="toolbar review-toolbar ribbon-panel" data-ribbon-tab="review" dir="rtl">
+          <span class="tb-group" data-title="ספירה">
+            <span id="editor-stats-display" style="font-size:13px;color:#444;padding:4px 10px;background:rgba(0,0,0,0.04);border-radius:4px;">מילים: 0 • תווים: 0 • פסקאות: 0</span>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="איות">
+            <label class="toolbar-checkbox">
+              <input type="checkbox" id="spellcheck-toggle" />
+              <span>בדיקת איות בעורך</span>
+            </label>
+          </span>
+        </div>
+        <div class="toolbar view-toolbar ribbon-panel" data-ribbon-tab="view" dir="rtl">
+          <span class="tb-group" data-title="זום על תצוגת העמודים">
+            <span style="font-size:12px;color:#555;">זום:</span>
+            <input type="range" id="zoom-slider" min="50" max="200" step="5" value="100" style="width:140px;" />
+            <span id="zoom-label" style="font-size:12px;min-width:36px;text-align:center;">100%</span>
+            <button type="button" id="zoom-reset" title="איפוס לזום 100%">100%</button>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="תצוגה">
+            <button type="button" id="btn-fullscreen" title="עבור למסך מלא (F11)">⛶ מסך מלא</button>
+            <label class="toolbar-checkbox">
+              <input type="checkbox" id="formatting-marks-toggle" />
+              <span>הצג סימני עיצוב</span>
+            </label>
+          </span>
+        </div>
         <div id="downloads-panel" class="toolbar downloads-toolbar ribbon-panel" data-ribbon-tab="downloads" dir="rtl">
           <span class="tb-group" data-title="הורדה ישירה">
             <button type="button" id="dl-download-doc" title="הורד את העמודים המרונדרים כקובץ HTML עצמאי שמשקף את התצוגה האונליין">💾 הורד עמודים (HTML)</button>

@@ -29,7 +29,7 @@ function pickWatermarkText() {
   return DEMO_WATERMARK_POOL[Math.floor(Math.random() * DEMO_WATERMARK_POOL.length)];
 }
 
-const DEMO_RESET_MS = 3 * 60 * 1000;
+const DEMO_RESET_MS = 1 * 60 * 1000;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
 const DEMO_BLOCK_KEY = "ravtext.demo.blockedUntil";
 const DEMO_MODE_KEY = "ravtext.demoMode";

@@ -1679,6 +1679,45 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 .talmud-toolbar .talmud-experimental-text { flex: 1; }
 .talmud-toolbar .talmud-experimental-text strong { color: #92400e; }
 
+/* Torah / new-tab dropdowns */
+.torah-tool-select {
+  font-size: 12px;
+  padding: 3px 6px;
+  margin: 0 4px;
+  min-width: 110px;
+}
+.torah-toolbar button { font-size: 12px; padding: 4px 8px; }
+.torah-toolbar .tb-group { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Show formatting marks (paragraph/line-break indicators) */
+body.show-formatting-marks .ProseMirror p::after {
+  content: "¶";
+  color: rgba(37, 99, 235, 0.4);
+  margin-inline-start: 4px;
+  font-weight: normal;
+  user-select: none;
+}
+
+/* Manual page break — visual indicator in editor + actual break in print/render */
+.ravtext-page-break {
+  page-break-before: always;
+  break-before: page;
+  border-top: 2px dashed rgba(37, 99, 235, 0.4);
+  position: relative;
+  min-height: 1em;
+}
+.ravtext-page-break::before {
+  content: "— שבירת עמוד —";
+  position: absolute;
+  top: -10px;
+  inset-inline-start: 50%;
+  font-size: 11px;
+  color: rgba(37, 99, 235, 0.7);
+  background: var(--bg, #fff);
+  padding: 0 6px;
+  user-select: none;
+}
+
 .width-slider-control {
   display: inline-flex;
   align-items: center;
