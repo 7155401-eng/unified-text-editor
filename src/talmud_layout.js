@@ -598,7 +598,9 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
 }
 
 /** Cloud-Claude 2026-05-06: גובה תקני של כתר = title + crownLines × line.
- *  משמש לכל המקומות שמחשבים crown height (single, two-stream, asym). */
+ *  משמש לכל המקומות שמחשבים crown height (single, two-stream, asym).
+ *  fallback של ~17.9px לשורה כשהזרם ריק ולא ניתן למדוד. */
+const FALLBACK_LINE_HEIGHT_PX = 17.9166;
 function computeMinCrownHeight(streamEl, crownLines) {
   const titleEl = streamEl.querySelector(":scope > .stream-title");
   const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
@@ -609,11 +611,15 @@ function computeMinCrownHeight(streamEl, crownLines) {
       : (n.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
   });
   const tn = w.nextNode();
-  if (!tn) return 0;
-  range.setStart(tn, 0); range.setEnd(tn, tn.length);
-  const rcts = Array.from(range.getClientRects()).filter(r => r.height > 0);
-  const oneLineH = rcts.length ? rcts[0].height : 0;
-  return oneLineH > 0 ? (titleH + oneLineH * crownLines) : 0;
+  let oneLineH = 0;
+  if (tn) {
+    range.setStart(tn, 0); range.setEnd(tn, tn.length);
+    const rcts = Array.from(range.getClientRects()).filter(r => r.height > 0);
+    oneLineH = rcts.length ? rcts[0].height : 0;
+  }
+  // Cloud-Claude 2026-05-06: fallback קבוע — אחרת outlier 54/55.6 שעדיין שורד
+  if (oneLineH <= 0) oneLineH = FALLBACK_LINE_HEIGHT_PX;
+  return titleH + oneLineH * crownLines;
 }
 
 /**
