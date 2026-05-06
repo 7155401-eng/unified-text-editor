@@ -919,19 +919,25 @@ mark.pdf-find-hit-current {
 .talmud-layout-page .page-main.talmud-main:empty {
   display: none;
 }
-/* v33: paragraphs inside main are by default block-level (each <p> is a block).
-   Block elements that come AFTER a float drop below the float instead of
-   wrapping next to it. To make multi-paragraph main wrap continuously around
-   floats, we change inner <p>/<div> children to be inline-flow with explicit
-   line breaks before each one (handled by ::before content). */
-.talmud-layout-page .page-main.talmud-main > p,
-.talmud-layout-page .page-main.talmud-main > div:not(.talmud-continuation-marker) {
+/* v33: paragraphs inside main are by default block-level. Block elements
+   that come AFTER a float drop below the float instead of wrapping. To
+   make multi-paragraph main wrap continuously, change <p>/<div> to inline.
+   EXCEPT: paragraphs with .opw-host (real opening word) — they keep block
+   layout because opw-dropped floats inside them need block context. */
+.talmud-layout-page .page-main.talmud-main > p:not(.opw-host),
+.talmud-layout-page .page-main.talmud-main > div:not(.talmud-continuation-marker):not(.opw-host) {
   display: inline;
 }
-.talmud-layout-page .page-main.talmud-main > p + p::before,
-.talmud-layout-page .page-main.talmud-main > div + div::before {
+.talmud-layout-page .page-main.talmud-main > p:not(.opw-host) + p:not(.opw-host)::before,
+.talmud-layout-page .page-main.talmud-main > div:not(.opw-host) + div:not(.opw-host)::before {
   content: "\A";
   white-space: pre;
+}
+/* v33: when an opw-host (real opening word paragraph) follows other inline
+   paragraphs, ensure it doesn't break the inline flow visually. */
+.talmud-layout-page .page-main.talmud-main > .opw-host {
+  display: block;
+  clear: none;
 }
 
 /* ── No main text: commentaries behave like mishna-wrap ── */
@@ -2405,3 +2411,111 @@ body.dark-theme .settings-btn { background: #3a3a3a; color: #ddd; border-color: 
 body.dark-theme .settings-log-output { background: #1a1a1a; color: #ccc; border-color: #555; }
 body.dark-theme .panel { background: #2a2a2a; }
 body.dark-theme .toolbar { background: #333; }
+
+/* ============================================================
+   v33: Multi-theme support — dark + bright themes via :root vars
+   ============================================================ */
+:root {
+  --rt-bg: #f5f5f7;
+  --rt-bg-panel: #ffffff;
+  --rt-bg-toolbar: #ebeef2;
+  --rt-fg: #1d1d1f;
+  --rt-fg-muted: #6e6e73;
+  --rt-border: #d0d0d4;
+  --rt-accent: #2c5aa0;
+  --rt-accent-hover: #1e4078;
+  --rt-input-bg: #ffffff;
+  --rt-input-fg: #1d1d1f;
+  --rt-btn-bg: #ffffff;
+  --rt-btn-hover: #e5e7eb;
+}
+body[data-theme="dark"] {
+  --rt-bg: #1a1a1f;
+  --rt-bg-panel: #25252b;
+  --rt-bg-toolbar: #2c2c34;
+  --rt-fg: #e8e8ec;
+  --rt-fg-muted: #a8a8b0;
+  --rt-border: #3a3a44;
+  --rt-accent: #6cb4ff;
+  --rt-accent-hover: #4a9cf0;
+  --rt-input-bg: #1f1f25;
+  --rt-input-fg: #e8e8ec;
+  --rt-btn-bg: #2c2c34;
+  --rt-btn-hover: #3a3a44;
+}
+body[data-theme="warm"] {
+  --rt-bg: #fdf6e3;
+  --rt-bg-panel: #fffaf0;
+  --rt-bg-toolbar: #f5edc8;
+  --rt-fg: #5c4a2e;
+  --rt-fg-muted: #93785b;
+  --rt-border: #d8c890;
+  --rt-accent: #b58900;
+  --rt-accent-hover: #8a6800;
+  --rt-input-bg: #fffaf0;
+  --rt-input-fg: #5c4a2e;
+  --rt-btn-bg: #fffaf0;
+  --rt-btn-hover: #f5edc8;
+}
+body[data-theme="ocean"] {
+  --rt-bg: #eaf4f8;
+  --rt-bg-panel: #ffffff;
+  --rt-bg-toolbar: #d5e7f0;
+  --rt-fg: #0f3a4f;
+  --rt-fg-muted: #4a6c7c;
+  --rt-border: #a0c4d4;
+  --rt-accent: #1976d2;
+  --rt-accent-hover: #1259a0;
+  --rt-input-bg: #ffffff;
+  --rt-input-fg: #0f3a4f;
+  --rt-btn-bg: #ffffff;
+  --rt-btn-hover: #d5e7f0;
+}
+body[data-theme="forest"] {
+  --rt-bg: #ecf3ec;
+  --rt-bg-panel: #ffffff;
+  --rt-bg-toolbar: #d5e6d5;
+  --rt-fg: #1a3a1a;
+  --rt-fg-muted: #4a6e4a;
+  --rt-border: #a4c4a4;
+  --rt-accent: #2e7d32;
+  --rt-accent-hover: #1b5e20;
+  --rt-input-bg: #ffffff;
+  --rt-input-fg: #1a3a1a;
+  --rt-btn-bg: #ffffff;
+  --rt-btn-hover: #d5e6d5;
+}
+
+/* Apply theme vars to global UI elements */
+body[data-theme="dark"],
+body[data-theme="warm"],
+body[data-theme="ocean"],
+body[data-theme="forest"] {
+  background: var(--rt-bg) !important;
+  color: var(--rt-fg) !important;
+}
+body[data-theme] header.app-header,
+body[data-theme] .toolbar,
+body[data-theme] .ribbon-tabs,
+body[data-theme] .pdf-toolbar,
+body[data-theme] .ribbon-toolbar { background: var(--rt-bg-toolbar) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] .panel,
+body[data-theme] aside.preview-pane,
+body[data-theme] .settings-panel,
+body[data-theme] .settings-section { background: var(--rt-bg-panel) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] button,
+body[data-theme] .ribbon-tab,
+body[data-theme] .pdf-tb-btn,
+body[data-theme] .settings-btn { background: var(--rt-btn-bg) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] button:hover,
+body[data-theme] .pdf-tb-btn:hover,
+body[data-theme] .settings-btn:hover { background: var(--rt-btn-hover) !important; }
+body[data-theme] .ribbon-tab.active,
+body[data-theme] button.active { background: var(--rt-accent) !important; color: #fff !important; }
+body[data-theme] input,
+body[data-theme] select,
+body[data-theme] textarea { background: var(--rt-input-bg) !important; color: var(--rt-input-fg) !important; border-color: var(--rt-border) !important; }
+body[data-theme] h1, body[data-theme] h2, body[data-theme] h3,
+body[data-theme] h4, body[data-theme] h5, body[data-theme] h6 { color: var(--rt-fg) !important; }
+body[data-theme] .settings-h3 { color: var(--rt-accent) !important; }
+body[data-theme] .settings-license-status { color: var(--rt-fg-muted) !important; }

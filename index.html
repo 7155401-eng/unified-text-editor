@@ -351,7 +351,17 @@
           <div class="settings-section">
             <h3 class="settings-h3" data-i18n="settingsDisplay">תצוגה</h3>
             <label class="settings-row">
-              <span data-i18n="settingsDarkMode">מצב כהה:</span>
+              <span>ערכת נושא:</span>
+              <select id="settings-theme">
+                <option value="">ברירת מחדל (בהיר)</option>
+                <option value="dark">כהה</option>
+                <option value="warm">חם</option>
+                <option value="ocean">אוקיינוס</option>
+                <option value="forest">יער</option>
+              </select>
+            </label>
+            <label class="settings-row">
+              <span data-i18n="settingsDarkMode">מצב כהה (קיצור):</span>
               <input type="checkbox" id="settings-dark-mode" />
             </label>
             <label class="settings-row">

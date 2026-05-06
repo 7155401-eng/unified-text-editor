@@ -122,9 +122,27 @@ function formatLog() {
 }
 
 function applyDarkMode(enabled) {
+  // legacy class for older selectors
   document.body.classList.toggle("dark-theme", enabled);
   document.body.classList.toggle("light-theme", !enabled);
   document.documentElement.dataset.theme = enabled ? "dark" : "light";
+  // v33: also set data-theme on body for the new var-based theming.
+  if (enabled) {
+    document.body.dataset.theme = "dark";
+  } else if (document.body.dataset.theme === "dark") {
+    delete document.body.dataset.theme;
+  }
+}
+
+function applyTheme(themeId) {
+  if (!themeId) {
+    delete document.body.dataset.theme;
+  } else {
+    document.body.dataset.theme = themeId;
+  }
+  // Sync dark mode checkbox with theme
+  const dm = document.getElementById("settings-dark-mode");
+  if (dm) dm.checked = (themeId === "dark");
 }
 
 export function setupSettingsPane() {
@@ -137,15 +155,35 @@ export function setupSettingsPane() {
     wrap.appendChild(panel);
   }
 
-  // Dark mode
+  // Theme select (multi-theme)
+  const themeSelect = document.getElementById("settings-theme");
+  if (themeSelect) {
+    const savedTheme = localStorage.getItem("ravtext.settings.theme") || "";
+    themeSelect.value = savedTheme;
+    applyTheme(savedTheme);
+    themeSelect.addEventListener("change", () => {
+      localStorage.setItem("ravtext.settings.theme", themeSelect.value);
+      applyTheme(themeSelect.value);
+    });
+  }
+
+  // Dark mode (shortcut — also drives the theme select)
   const darkMode = document.getElementById("settings-dark-mode");
   if (darkMode) {
     const saved = localStorage.getItem(STORAGE.darkMode) === "1";
     darkMode.checked = saved;
-    applyDarkMode(saved);
+    if (saved) applyTheme("dark");
     darkMode.addEventListener("change", () => {
       localStorage.setItem(STORAGE.darkMode, darkMode.checked ? "1" : "0");
-      applyDarkMode(darkMode.checked);
+      if (darkMode.checked) {
+        applyTheme("dark");
+        if (themeSelect) themeSelect.value = "dark";
+        localStorage.setItem("ravtext.settings.theme", "dark");
+      } else {
+        applyTheme("");
+        if (themeSelect) themeSelect.value = "";
+        localStorage.setItem("ravtext.settings.theme", "");
+      }
     });
   }
 
