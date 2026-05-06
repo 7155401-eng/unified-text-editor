@@ -30,6 +30,7 @@ import { wireDownloadsPanel } from "./downloads_panel.js";
 import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
+import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installConsoleGuard();
@@ -747,6 +748,7 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
 setTimeout(() => wireTorahTools(paneManager), 200);
+setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireWordCount(paneManager);
   wireFullscreen();
@@ -1303,6 +1305,11 @@ document.addEventListener("click", async (ev) => {
       localStorage.setItem("ravtext.lineNumbers", on ? "1" : "0");
       break;
     }
+    case "insert-math": { await insertMath(paneManager); break; }
+    case "insert-mermaid": { await insertMermaid(paneManager); break; }
+    case "insert-comment": { insertComment(paneManager); break; }
+    case "auto-number-clauses": { autoNumberClauses(paneManager); break; }
+    case "insert-chapter-heading": { insertChapterHeading(paneManager); break; }
 
     case "undo":           ed && ed.undo().run(); break;
     case "redo":           ed && ed.redo().run(); break;

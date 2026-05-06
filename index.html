@@ -88,6 +88,12 @@
             <button data-cmd="bg-clear" title="ניקוי רקע">●×</button>
           </span>
           <span class="sep"></span>
+          <span class="tb-group" data-title="הדגשה ומברשת עיצוב">
+            <button type="button" id="btn-highlight" title="הדגש את הטקסט הנבחר ברקע צהוב — קיצור מהיר" style="background:#fef08a;color:#000;font-weight:bold">🖍 הדגש</button>
+            <button type="button" id="btn-highlight-clear" title="הסר הדגשה">×</button>
+            <button type="button" id="btn-format-painter" title="העתק את העיצוב מהבחירה הנוכחית. לאחר מכן בחר טקסט יעד והעיצוב יוחל אליו">🎨 מברשת</button>
+          </span>
+          <span class="sep"></span>
           <span class="tb-group" data-title="כותרות">
             <button data-cmd="h1">H1</button>
             <button data-cmd="h2">H2</button>
@@ -420,6 +426,17 @@
           <span class="tb-group" data-title="קוד ומסמכי תיעוד">
             <button type="button" data-cmd="toggle-line-numbers" title="הצג/הסתר מספור שורות בבלוקי קוד">№ מספור שורות</button>
             <button type="button" data-cmd="insert-details" title="הוסף בלוק שניתן לפתוח/לסגור עם כותרת — לכיסוי לוגים ארוכים, קטעי קוד, הערות מורחבות">▾ בלוק נפתח</button>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="נוסחאות ותרשימים">
+            <button type="button" data-cmd="insert-math" title="הכנס נוסחה מתמטית בפורמט LaTeX (KaTeX)">∑ נוסחה</button>
+            <button type="button" data-cmd="insert-mermaid" title="הכנס תרשים זרימה / רצף / UML מקוד טקסטואלי (Mermaid)">📈 תרשים</button>
+            <button type="button" data-cmd="insert-comment" title="הכנס הערת שוליים על טקסט נבחר">💬 הערה</button>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="עריכה תורנית">
+            <button type="button" data-cmd="insert-chapter-heading" title="הכנס כותרת סימן/פרק עם מספר וכותרת">📖 סימן/פרק</button>
+            <button type="button" data-cmd="auto-number-clauses" title="ממספר את הפסקאות באותיות עבריות (א. ב. ג.)">🔢 מספור סעיפים</button>
           </span>
         </div>
         <div class="toolbar review-toolbar ribbon-panel" data-ribbon-tab="review" dir="rtl">
