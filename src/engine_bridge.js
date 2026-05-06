@@ -616,7 +616,21 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
           );
           let movedThis = false;
           for (const s of curStreams) {
-            const lastNote = Array.from(s.children).filter(c =>
+            // Cloud-Claude 2026-05-06: ירידה בעוטפים גם לזרמים רגילים בpage-streams.
+            // הערה ארוכה אחת מפוצלת ל-spans של data-cont — צריך לדחוף span בודד.
+            let pushSrc = s;
+            for (let depth = 0; depth < 4; depth++) {
+              const realChildren = Array.from(pushSrc.children).filter(c =>
+                !c.classList?.contains("stream-title")
+              );
+              if (realChildren.length === 1 && /^(DIV|SPAN)$/i.test(realChildren[0].tagName) &&
+                  realChildren[0].children.length > 1) {
+                pushSrc = realChildren[0];
+              } else {
+                break;
+              }
+            }
+            const lastNote = Array.from(pushSrc.children).filter(c =>
               !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
             ).pop();
             if (!lastNote) continue;
