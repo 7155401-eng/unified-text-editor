@@ -1450,24 +1450,11 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
     if (expandedB && bodyB) pullFromExpandedToFillBody(bodyB, expandedB);
     if (expandedA && !expandedA.textContent.trim()) expandedA.remove();
     if (expandedB && !expandedB.textContent.trim()) expandedB.remove();
-    // משה 2026-05-06: למנוע מ-main לקפוץ ל-100% כשbody צד נגמר באמצע main —
-    // body שלא הגיע ל-mainBottom מקבל min-height עד הגעה ל-mainBottom, כדי
-    // שתישמר עמודת רוחב קבועה. הכלל: זרם תופס 100% רק כשאין זרם אחר באותה שורה.
-    void block.offsetHeight;
-    const blockRect5 = block.getBoundingClientRect();
-    const mainBottomY2 = mainEl.getBoundingClientRect().bottom - blockRect5.top;
-    [bodyA, bodyB].forEach(b => {
-      if (!b) return;
-      const r = b.getBoundingClientRect();
-      const bBottomY = r.bottom - blockRect5.top;
-      const bTopY = r.top - blockRect5.top;
-      const remaining = mainBottomY2 - bBottomY;
-      if (remaining > 5 && bTopY < mainBottomY2) {
-        // body נגמר לפני main — להאריך אותו עם min-height כדי לא לפנות מקום ל-main
-        const targetH = mainBottomY2 - bTopY;
-        b.style.minHeight = `${targetH}px`;
-      }
-    });
+    // משה 2026-05-06 (pass 154 — REVERT pass 134): הסרת ה-min-height שהפכה
+    // body צד לעמודה ריקה עד תחתית main. זה יצר רווח לבן — אסור!
+    // הכלל הנכון: כשbody נגמר, הראשי מתרחב לתוך המקום שהתפנה (פגישה באמצע).
+    // אם בכל זאת נשאר זרם אחר בצד השני, הראשי לוקח רק את המקום שהתפנה,
+    // לא 100%. זה float natural behavior. אסור לאלץ עמודה ריקה.
     // משה 2026-05-06: אחרי שהקצר מסתיים, הארוך ממשיך ברוחב 100%.
     if (expandedA && expandedB) {
       void block.offsetHeight;
