@@ -597,6 +597,25 @@ function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidt
   return bodyEl;
 }
 
+/** Cloud-Claude 2026-05-06: גובה תקני של כתר = title + crownLines × line.
+ *  משמש לכל המקומות שמחשבים crown height (single, two-stream, asym). */
+function computeMinCrownHeight(streamEl, crownLines) {
+  const titleEl = streamEl.querySelector(":scope > .stream-title");
+  const titleH = titleEl ? titleEl.getBoundingClientRect().height : 0;
+  const range = document.createRange();
+  const w = document.createTreeWalker(streamEl, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => titleEl && titleEl.contains(n)
+      ? NodeFilter.FILTER_REJECT
+      : (n.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+  });
+  const tn = w.nextNode();
+  if (!tn) return 0;
+  range.setStart(tn, 0); range.setEnd(tn, tn.length);
+  const rcts = Array.from(range.getClientRects()).filter(r => r.height > 0);
+  const oneLineH = rcts.length ? rcts[0].height : 0;
+  return oneLineH > 0 ? (titleH + oneLineH * crownLines) : 0;
+}
+
 /**
  * בודק האם הפרשן (כשמוצג ב-50% רוחב) ארוך מספיק לכתר אמיתי.
  * הפרשן חייב להיות כבר במסמך עם הרוחב הנכון.
@@ -853,7 +872,9 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
       for (const r of Array.from(range.getClientRects())) {
         if (r.bottom > bottom) bottom = r.bottom;
       }
-      const exactH = Math.max(0, bottom - rect.top);
+      const measuredH = Math.max(0, bottom - rect.top);
+      const minH = computeMinCrownHeight(commentary, crownLines);
+      const exactH = Math.max(measuredH, minH);
       commentary.style.height = `${exactH}px`;
       commentary.style.maxHeight = `${exactH}px`;
       commentary.style.minHeight = `${exactH}px`;
@@ -909,7 +930,9 @@ function layoutOneCommentaryWithMain(block, streamsWrap, mainEl, commentary) {
         for (const r of Array.from(range2.getClientRects())) {
           if (r.bottom > bottom2) bottom2 = r.bottom;
         }
-        const exactH2 = Math.max(0, bottom2 - rect2.top);
+        const measuredH2 = Math.max(0, bottom2 - rect2.top);
+        const minH2 = computeMinCrownHeight(leftCrownRest, crownLines);
+        const exactH2 = Math.max(measuredH2, minH2);
         leftCrownRest.style.height = `${exactH2}px`;
         leftCrownRest.style.maxHeight = `${exactH2}px`;
         leftCrownRest.style.minHeight = `${exactH2}px`;
@@ -1087,7 +1110,9 @@ function layoutTwoCommentariesWithMain(block, streamsWrap, mainEl, commentaryA, 
       range.selectNodeContents(longEl);
       const rects = Array.from(range.getClientRects());
       for (const r of rects) { if (r.bottom > bottom) bottom = r.bottom; }
-      const exactH = Math.max(0, bottom - rect.top);
+      const measuredH = Math.max(0, bottom - rect.top);
+      const minH = computeMinCrownHeight(longEl, crownLines);
+      const exactH = Math.max(measuredH, minH);
       longEl.style.height = `${exactH}px`;
       longEl.style.maxHeight = `${exactH}px`;
       longEl.style.minHeight = `${exactH}px`;
