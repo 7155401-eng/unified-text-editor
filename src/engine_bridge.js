@@ -11,6 +11,7 @@ import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
 import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
 import { repaginateCatastrophicPages } from "./talmud_repagination.js";
 import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
+import { repaginateMainOverflow } from "./talmud_overflow_repagination.js";
 import { logEvent } from "./settings_pane.js";
 
 // v33: expose helpers for diagnostic tools to call directly.
@@ -456,6 +457,11 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     repaginateCatastrophicPages(pagesContainer); // no-op kept for compat
     logEvent("pull_backward_+_shrink_+_move_orphans");
     pullBackwardAcrossAllPages(pagesContainer);
+    // v33-NEW: move overflowing main text to next page (lossless,
+    // word-level). The right approach for talmud-page displacement bug.
+    logEvent("repaginate_main_overflow_start");
+    repaginateMainOverflow(pagesContainer);
+    logEvent("repaginate_main_overflow_done");
     logEvent("overflow_cap_pass2");
     correctTalmudOverflow(pagesContainer);
     logEvent("render_pipeline_complete", {

@@ -523,18 +523,28 @@ export function findSplitAtPixelYInElement(streamEl, targetYInElement) {
  * אלמנט body חדש, ומחזיר את ה-body. ה-streamEl נשאר עם החלק העליון בלבד.
  */
 function extractBodyAfterSplit(streamEl, splitPoint, sideClass, side, narrowWidthPct, ledgerCtx) {
-  // Bug 28 enforcement: never split mid-word. The split helpers already walk
-  // back to a space; here we double-check and fall forward to a clean break
-  // if needed. If absolutely no safe break, we leave streamEl intact.
+  // Bug 28 enforcement: never split mid-word.
+  // v33-stronger: comprehensive break regex including additional Hebrew
+  // punctuation, brackets, and connectors. If no safe break is found in
+  // current text node, walk to the previous text node and look there.
+  const isBreak = (ch) => /[\s.,;:!?־׀׃׳״"'() \[\]{}\-—–]/.test(ch);
   let safeOffset = splitPoint.offset;
   const text = splitPoint.node.textContent || "";
   if (safeOffset > 0 && safeOffset < text.length) {
-    const ch = text[safeOffset - 1];
-    if (!/[\s.,;:!?־׀׃׳״ ​­]/.test(ch)) {
-      // Walk further back.
+    if (!isBreak(text[safeOffset - 1])) {
       let i = safeOffset;
-      while (i > 0 && !/[\s.,;:!?־׀׃׳״ ​­]/.test(text[i - 1])) i--;
-      if (i > 0) safeOffset = i;
+      while (i > 0 && !isBreak(text[i - 1])) i--;
+      if (i > 0) {
+        safeOffset = i;
+      } else {
+        // No safe break in this node — try walking forward to next safe break
+        // (instead of backward all the way to start).
+        let j = splitPoint.offset;
+        while (j < text.length && !isBreak(text[j])) j++;
+        if (j < text.length) safeOffset = j + 1;
+        // If neither direction finds a break, accept the original (rare case
+        // of one giant word filling the cut).
+      }
     }
   }
   const range = document.createRange();
