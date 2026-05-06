@@ -919,6 +919,20 @@ mark.pdf-find-hit-current {
 .talmud-layout-page .page-main.talmud-main:empty {
   display: none;
 }
+/* v33: paragraphs inside main are by default block-level (each <p> is a block).
+   Block elements that come AFTER a float drop below the float instead of
+   wrapping next to it. To make multi-paragraph main wrap continuously around
+   floats, we change inner <p>/<div> children to be inline-flow with explicit
+   line breaks before each one (handled by ::before content). */
+.talmud-layout-page .page-main.talmud-main > p,
+.talmud-layout-page .page-main.talmud-main > div:not(.talmud-continuation-marker) {
+  display: inline;
+}
+.talmud-layout-page .page-main.talmud-main > p + p::before,
+.talmud-layout-page .page-main.talmud-main > div + div::before {
+  content: "\A";
+  white-space: pre;
+}
 
 /* ── No main text: commentaries behave like mishna-wrap ── */
 .talmud-layout.talmud-no-main .stream.talmud-commentary-float {
