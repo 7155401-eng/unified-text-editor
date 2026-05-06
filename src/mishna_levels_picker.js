@@ -65,25 +65,38 @@ function renderPicker() {
     row.appendChild(label);
 
     // Drag-and-drop event handlers (HTML5 native).
+    // v33: also use a window-level state for reliability — dataTransfer can
+    // be flaky across browsers/elements, so we keep the from-index in a
+    // local variable as backup.
     row.addEventListener("dragstart", (e) => {
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", String(levelIdx));
+      window.__mishnaLevelsDragFromIdx = levelIdx;
       row.style.opacity = "0.5";
     });
-    row.addEventListener("dragend", () => { row.style.opacity = ""; });
+    row.addEventListener("dragend", () => {
+      row.style.opacity = "";
+      window.__mishnaLevelsDragFromIdx = null;
+    });
     row.addEventListener("dragover", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       e.dataTransfer.dropEffect = "move";
       row.style.borderTop = "2px solid var(--rt-accent, #2c5aa0)";
     });
     row.addEventListener("dragleave", () => { row.style.borderTop = ""; });
     row.addEventListener("drop", (e) => {
       e.preventDefault();
+      e.stopPropagation();
       row.style.borderTop = "";
-      const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      // Read from dataTransfer first, fallback to window var.
+      let fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      if (isNaN(fromIdx)) fromIdx = window.__mishnaLevelsDragFromIdx;
       const toIdx = levelIdx;
-      if (fromIdx === toIdx || isNaN(fromIdx)) return;
-      const newLevels = levels.slice();
+      if (typeof fromIdx !== "number" || isNaN(fromIdx) || fromIdx === toIdx) return;
+      // Read CURRENT levels from input (not stale closure).
+      const cur = getCurrentLevels();
+      const newLevels = cur.slice();
       const [moved] = newLevels.splice(fromIdx, 1);
       newLevels.splice(toIdx, 0, moved);
       setLevels(newLevels);

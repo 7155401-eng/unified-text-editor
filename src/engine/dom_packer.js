@@ -38,7 +38,10 @@ const MISHNA_WRAP_HEIGHT_SAFETY = 10;
 // v28-merge: 150 → 30. measureHeight כבר מריץ applyTalmudLayoutToPage על
 // page זמני ומחזיר גובה אמיתי. הערך כאן הוא buffer קטן עבור הבדלי דיוק
 // במדידה. ערך גבוה גרם לרווחים מיותרים בתחתית עמודים.
-const TALMUD_LAYOUT_HEIGHT_SAFETY = 30;
+// v33-engine: increased to 60 to leave room for opening-word + crown
+// adjustments that measureHeight may underestimate. Net effect: less
+// overflow, slightly more pages — but content always fits.
+const TALMUD_LAYOUT_HEIGHT_SAFETY = 60;
 const MAIN_LINE_PROBE_EXTRA_CHARS = 260;
 const LINE_RECT_TOLERANCE = 2;
 

@@ -524,7 +524,28 @@ function applyToTextElement(el, settings, options = {}) {
 }
 
 function applyMainOpeningWords(pageEl, settings) {
-  const paragraphs = Array.from(pageEl.querySelectorAll(".page-main p, .page-main h1, .page-main h2, .page-main h3, .page-main h4, .page-main h5, .page-main h6"));
+  // v33-engine fix: only consider DIRECT paragraphs of .page-main, not
+  // nested ones (e.g. inside body-portion that we moved INTO mainEl).
+  // Without this filter, opening-word lands on a body's first note instead
+  // of the actual main paragraph (talmud mode opening-word bug).
+  const allParas = Array.from(pageEl.querySelectorAll(".page-main p, .page-main h1, .page-main h2, .page-main h3, .page-main h4, .page-main h5, .page-main h6"));
+  const paragraphs = allParas.filter(p => {
+    // Exclude paragraphs nested inside a stream/body container.
+    return !p.closest(".stream, .talmud-body-portion, .talmud-body-expanded, .talmud-crown-portion") ||
+           p.closest(".page-main") === p.parentElement?.closest(".page-main");
+  }).filter(p => {
+    // Final stricter check: parent must be the .page-main itself, not a nested float.
+    let cur = p.parentElement;
+    while (cur && cur !== pageEl) {
+      if (cur.classList?.contains("page-main")) return true;
+      if (cur.classList?.contains("stream") ||
+          cur.classList?.contains("talmud-body-portion") ||
+          cur.classList?.contains("talmud-body-expanded") ||
+          cur.classList?.contains("talmud-crown-portion")) return false;
+      cur = cur.parentElement;
+    }
+    return true;
+  });
   // v33: skip paragraphs that are continuations from a previous page
   // (renderer marks these with data-continued-from-prev="1"). Applying
   // opening-word to them causes visual displacement.
