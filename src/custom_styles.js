@@ -92,7 +92,7 @@ function buildDialog() {
     <div class="csd-backdrop"></div>
     <div class="csd-window" role="dialog" aria-modal="true" aria-label="הגדרות סגנון משלך">
       <header class="csd-header">
-        <span class="csd-title">סגנון משלך — הגדרות TipTap</span>
+        <span class="csd-title">סגנון משלך — הגדרות סגנון</span>
         <button type="button" class="csd-close" title="סגור">✕</button>
       </header>
       <div class="csd-body">

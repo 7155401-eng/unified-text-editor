@@ -173,11 +173,11 @@ function isLegacyDemoState() {
   return text.includes("@01") && text.includes("@02") && text.includes("@03") && text.includes("פצל");
 }
 
-// אם יש מצב שמור — משחזר. אחרת — טוען דוגמת מנוע מלאה.
+// אם יש מצב שמור — משחזר. אחרת — טוען שו"ע כברירת מחדל בכל נקודת התחלה.
 const loadedFromStorage = paneManager.loadFromStorage();
 let initialLoadPromise = Promise.resolve();
 if (!loadedFromStorage || isLegacyDemoState()) {
-  initialLoadPromise = loadSampleByName(paneManager, "hebrew");
+  initialLoadPromise = loadSampleByName(paneManager, "shulchan");
 }
 
 const FONT_STACKS = {
@@ -285,7 +285,7 @@ initialLoadPromise.then(() => {
     paneManager,
     reset: async () => {
       paneManager.clearStorage();
-      await loadSampleByName(paneManager, "hebrew");
+      await loadSampleByName(paneManager, "shulchan");
       applyTypography();
       rerenderPages();
     },
