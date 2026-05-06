@@ -39,6 +39,13 @@ const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ו
 const container = document.querySelector("#panes-container");
 const paneManager = new PaneManager(container);
 window.paneManager = paneManager;
+// v32-deep: expose a test helper so multi-sample audit can load arbitrary
+// raw text via the same path as the built-in talmud sample.
+window.__loadCustomSample = async (rawText) => {
+  const doc = parseAuto(rawText);
+  paneManagerFromEngineDoc(paneManager, doc);
+  rerenderPages();
+};
 window.addEventListener("beforeunload", () => paneManager.flushSave());
 const pagesContainer = document.querySelector("#pages-container");
 applyPageSettings(pagesContainer);

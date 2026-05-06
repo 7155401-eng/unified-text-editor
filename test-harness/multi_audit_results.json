@@ -1,0 +1,578 @@
+[
+  {
+    "sample": "asymmetric",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=6"
+  },
+  {
+    "sample": "asymmetric",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "asymmetric",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "asymmetric",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "asymmetric",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "asymmetric",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "asymmetric",
+    "id": "VALIDATE-ALL",
+    "status": "FAIL",
+    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-11: Stream Title Not Orphan: orphans: 02\",\"INV-11: Stream Title Not Orphan: orphans: 02\"]}"
+  },
+  {
+    "sample": "asymmetric",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "3 pages, max=277"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=2"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "VALIDATE-ALL",
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+  },
+  {
+    "sample": "crown-edge",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "1 pages, max=358"
+  },
+  {
+    "sample": "few-long",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=4"
+  },
+  {
+    "sample": "few-long",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "few-long",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "few-long",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "few-long",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "few-long",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "few-long",
+    "id": "VALIDATE-ALL",
+    "status": "FAIL",
+    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-11: Stream Title Not Orphan: orphans: 02\",\"INV-11: Stream Title Not Orphan: orphans: 02\"]}"
+  },
+  {
+    "sample": "few-long",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "2 pages, max=277"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=9"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "VALIDATE-ALL",
+    "status": "FAIL",
+    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-11: Stream Title Not Orphan: orphans: 02\",\"INV-11: Stream Title Not Orphan: orphans: 02\"]}"
+  },
+  {
+    "sample": "long-paragraph",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "3 pages, max=385"
+  },
+  {
+    "sample": "many-short",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=4"
+  },
+  {
+    "sample": "many-short",
+    "id": "CROWN-4",
+    "status": "FAIL",
+    "detail": "[{\"ds\":\"01\",\"lines\":6},{\"ds\":\"02\",\"lines\":6},{\"ds\":\"01\",\"lines\":6}]"
+  },
+  {
+    "sample": "many-short",
+    "id": "NO-OVERFLOW",
+    "status": "FAIL",
+    "detail": "2 pages, max=12"
+  },
+  {
+    "sample": "many-short",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "many-short",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "many-short",
+    "id": "NO-MID-WORD",
+    "status": "FAIL",
+    "detail": "[\"01\",\"02\",\"01\"]"
+  },
+  {
+    "sample": "many-short",
+    "id": "VALIDATE-ALL",
+    "status": "FAIL",
+    "detail": "{\"ok\":false,\"errors\":6,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-8: No Overflow: overflow=12px\",\"INV-4: Crown Lines: crowns=6,6 target=4\"]}"
+  },
+  {
+    "sample": "many-short",
+    "id": "NO-LARGE-GAP",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "mid-length",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=3"
+  },
+  {
+    "sample": "mid-length",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "mid-length",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "mid-length",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "mid-length",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "mid-length",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "mid-length",
+    "id": "VALIDATE-ALL",
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+  },
+  {
+    "sample": "mid-length",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "1 pages, max=171"
+  },
+  {
+    "sample": "no-main",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=3"
+  },
+  {
+    "sample": "no-main",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "no-main",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "no-main",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "no-main",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "no-main",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "no-main",
+    "id": "VALIDATE-ALL",
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+  },
+  {
+    "sample": "no-main",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "1 pages, max=283"
+  },
+  {
+    "sample": "only-main",
+    "id": "ON-EXISTS",
+    "status": "INFO",
+    "detail": "count=0"
+  },
+  {
+    "sample": "only-main",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "only-main",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "only-main",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "only-main",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "only-main",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "only-main",
+    "id": "VALIDATE-ALL",
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+  },
+  {
+    "sample": "only-main",
+    "id": "NO-LARGE-GAP",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "single-1",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=3"
+  },
+  {
+    "sample": "single-1",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "single-1",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "single-1",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "single-1",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "single-1",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "single-1",
+    "id": "VALIDATE-ALL",
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+  },
+  {
+    "sample": "single-1",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "2 pages, max=469"
+  },
+  {
+    "sample": "tiny",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=2"
+  },
+  {
+    "sample": "tiny",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "tiny",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "tiny",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "tiny",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "tiny",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "tiny",
+    "id": "VALIDATE-ALL",
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+  },
+  {
+    "sample": "tiny",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "1 pages, max=377"
+  },
+  {
+    "sample": "triple",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=2"
+  },
+  {
+    "sample": "triple",
+    "id": "CROWN-4",
+    "status": "INFO",
+    "detail": "no crowns"
+  },
+  {
+    "sample": "triple",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "triple",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "triple",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "triple",
+    "id": "NO-MID-WORD",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "triple",
+    "id": "VALIDATE-ALL",
+    "status": "PASS",
+    "detail": "{\"ok\":true,\"errors\":0,\"firstErrors\":[]}"
+  },
+  {
+    "sample": "triple",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "1 pages, max=340"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "ON-EXISTS",
+    "status": "PASS",
+    "detail": "count=3"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "CROWN-4",
+    "status": "FAIL",
+    "detail": "[{\"ds\":\"01\",\"lines\":6},{\"ds\":\"02\",\"lines\":6}]"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "NO-OVERFLOW",
+    "status": "PASS",
+    "detail": "0 pages, max=0"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "BODY-INHERITS",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "BODY-GAP",
+    "status": "PASS",
+    "detail": "[]"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "NO-MID-WORD",
+    "status": "FAIL",
+    "detail": "[\"01\",\"02\"]"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "VALIDATE-ALL",
+    "status": "FAIL",
+    "detail": "{\"ok\":false,\"errors\":2,\"firstErrors\":[\"INV-4: Crown Lines: crowns=6,6 target=4\",\"INV-11: Stream Title Not Orphan: orphans: 04\"]}"
+  },
+  {
+    "sample": "wide-balanced",
+    "id": "NO-LARGE-GAP",
+    "status": "FAIL",
+    "detail": "2 pages, max=483"
+  }
+]
