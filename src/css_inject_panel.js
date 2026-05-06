@@ -415,12 +415,21 @@ function buildPanel() {
   }
   renderHistory();
   panel.querySelector("#ci-apply").addEventListener("click", () => {
-    const v = cssTa.value;
+    // Cloud-Chrome 2026-05-06 fix: לפעמים cssTa.value אינו עדכני בעת click
+    // (React/programmatic set without event). מאלצים read מ-DOM נטו.
+    const liveTa = document.getElementById("ci-css") || cssTa;
+    const v = liveTa.value;
     setCss(v);
     setScope(scopeSel.value);
     saveHistoryEntry(v, scopeSel.value);
     applyCssToDoc();
     renderHistory();
+    // sanity: גם אם המאזין לא רץ, לכפות עדכון של style tag ישיר
+    const tag = document.getElementById(STYLE_TAG_ID);
+    if (tag && tag.textContent !== "" && !tag.textContent.includes(v.slice(0, 30))) {
+      console.warn("[CSS panel] style tag mismatch — forcing direct update");
+      applyCssToDoc();
+    }
   });
   panel.querySelector("#ci-clear").addEventListener("click", () => {
     cssTa.value = ""; setCss(""); applyCssToDoc();

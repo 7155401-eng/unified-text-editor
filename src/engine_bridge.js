@@ -563,6 +563,102 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
     // לעמוד הבא כשיש חריגה — לא נוגעים בכתר, body, body-expanded, main.
     if (isTalmudActive) {
       const TALMUD_PUSH_THRESHOLD_PX = 5;
+      // Cloud-Chrome 2026-05-06: page-streams pagination אמיתית.
+      // לעבור על כל עמוד; אם page-streams גולש מעבר לדף, להעביר ילדי-זרם
+      // האחרונים לעמוד הבא עד שהמכל מתאים. עובד כפעולה ראשונה לפני loops אחרים.
+      function splitPageStreamsBetweenPages() {
+        const pages = Array.from(
+          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
+        );
+        for (let i = 0; i < pages.length; i++) {
+          const cur = pages[i];
+          const ps = cur.querySelector(":scope > .page-streams");
+          if (!ps) continue;
+          void cur.offsetHeight;
+          let pageOv = cur.scrollHeight - cur.clientHeight;
+          if (pageOv <= TALMUD_PUSH_THRESHOLD_PX) continue;
+          // מצא או צור עמוד הבא
+          let next = pages[i + 1];
+          if (!next) {
+            next = document.createElement("div");
+            next.className = "page talmud-layout-page";
+            next.dir = "rtl";
+            next.dataset.pageIndex = String(pages.length);
+            const newPS = document.createElement("div");
+            newPS.className = "page-streams";
+            next.appendChild(newPS);
+            cur.parentNode.appendChild(next);
+            pages.push(next);
+          }
+          let nextPS = next.querySelector(":scope > .page-streams");
+          if (!nextPS) {
+            nextPS = document.createElement("div");
+            nextPS.className = "page-streams";
+            next.appendChild(nextPS);
+          }
+          // לולאה: בכל איטרציה, מוצאים את הזרם הכי-נמוך-Y בpage-streams,
+          // ומעבירים את הילד האחרון שלו (או ילד-בודד עם spans פנימיים) לnext.
+          let safety = 50;
+          while (pageOv > TALMUD_PUSH_THRESHOLD_PX && safety-- > 0) {
+            const streams = Array.from(ps.querySelectorAll(":scope > .stream[data-stream]"));
+            if (streams.length === 0) break;
+            // לוקחים את הזרם האחרון (גיאוגרפית/DOM)
+            const lastStream = streams[streams.length - 1];
+            const code = lastStream.getAttribute("data-stream");
+            // ירידה בעוטפים בודדים
+            let pushSrc = lastStream;
+            for (let depth = 0; depth < 4; depth++) {
+              const realCh = Array.from(pushSrc.children).filter(
+                c => !c.classList?.contains("stream-title")
+              );
+              if (realCh.length === 1 && /^(DIV|SPAN)$/i.test(realCh[0].tagName) &&
+                  realCh[0].children.length > 1) {
+                pushSrc = realCh[0];
+              } else break;
+            }
+            const childrenLeft = Array.from(pushSrc.children).filter(
+              c => !c.classList?.contains("stream-title")
+            );
+            if (childrenLeft.length === 0) break; // נשארה רק כותרת — אי אפשר להוריד עוד
+            const lastChild = childrenLeft[childrenLeft.length - 1];
+            // יעד ב-next: חיפוש או יצירה
+            let target = code
+              ? nextPS.querySelector(`:scope > .stream[data-stream="${code}"]`)
+              : null;
+            if (!target) {
+              target = document.createElement("div");
+              target.className = lastStream.className;
+              if (code) target.setAttribute("data-stream", code);
+              const oldTitle = lastStream.querySelector(":scope > .stream-title");
+              if (oldTitle) {
+                const t = oldTitle.cloneNode(true);
+                target.appendChild(t);
+              }
+              nextPS.insertBefore(target, nextPS.firstChild);
+            }
+            // יעד פנימי (אם יש wrapper)
+            let dest = target;
+            if (pushSrc !== lastStream) {
+              // נניח לפשטות: dest = target (ה-wrappers ייווצרו אם צריך)
+              const wrapClass = pushSrc.className;
+              const sel = `:scope > ${pushSrc.tagName.toLowerCase()}` +
+                (wrapClass ? "." + wrapClass.trim().split(/\s+/).join(".") : "");
+              let existing = target.querySelector(sel);
+              if (!existing) {
+                existing = pushSrc.cloneNode(false);
+                target.appendChild(existing);
+              }
+              dest = existing;
+            }
+            const nextTitle = dest.querySelector(":scope > .stream-title");
+            if (nextTitle) dest.insertBefore(lastChild, nextTitle.nextSibling);
+            else dest.insertBefore(lastChild, dest.firstChild);
+            void cur.offsetHeight;
+            pageOv = cur.scrollHeight - cur.clientHeight;
+          }
+        }
+      }
+      splitPageStreamsBetweenPages();
       // אם העמוד האחרון חורג — צור עמוד חדש בסוף לקבל את העודף
       function ensureNextPage(allPages) {
         const last = allPages[allPages.length - 1];
