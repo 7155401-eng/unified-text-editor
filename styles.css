@@ -3420,6 +3420,83 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   100% { box-shadow: 0 0 0 0 transparent, 0 0 0 0 transparent; }
 }
 
+/* === חיפוש והחלפה — פאנל === */
+.find-replace-panel {
+  position: fixed;
+  z-index: 1500;
+  /* horizontal centering relative to viewport (works in RTL and LTR) */
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel, #fff);
+  border: 1px solid var(--border, #ccc);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 90px);
+  overflow: auto;
+  font-size: 13px;
+}
+.find-replace-panel .fr-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: space-between;
+}
+.find-replace-panel .fr-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.find-replace-panel .fr-row > span:first-child {
+  min-width: 54px;
+}
+.find-replace-panel .fr-row input[type="text"] {
+  flex: 1;
+  padding: 4px 6px;
+}
+.find-replace-panel .fr-close-btn {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.find-replace-panel .fr-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: #555;
+  border-top: 1px solid #eee;
+  padding-top: 6px;
+}
+.find-replace-panel .fr-scope-hint {
+  color: #888;
+}
+.find-replace-panel .fr-scope-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+}
+.find-replace-panel .fr-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.find-replace-panel .fr-status {
+  font-size: 11px;
+  color: #888;
+  min-height: 16px;
+}
+
 /* === תיבת הודעה בפינה === */
 .toast {
   position: fixed;
