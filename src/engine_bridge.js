@@ -798,6 +798,15 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
         }
       }
       function loopUntilStable() {
+        // משה 2026-05-07: התיקון לדליפת מצב-גמרא.
+        // ה-MutationObserver וה-setTimeouts מתוזמנים בעת רינדור-גפ"ת ושומרים
+        // הפניה לפונקציה הזו. אם המשתמש מכבה את הגפ"ת בלי לרענן את העמוד,
+        // ההפניות עדיין חיות ויורות מאוחר יותר (או כל עוד הצופה מותקן).
+        // הן מבצעות פעולות גפ"ת על דפים שכבר *לא* גפ"ת, וגורמות ל"באגים
+        // קשים ומרים" עליהם דיווח המשתמש. הגנה: בדיקת מצב חיה בכל קריאה.
+        const talmudActiveNow = (typeof window !== "undefined") &&
+          window.localStorage?.getItem("ravtext.talmudLayout") === "1";
+        if (!talmudActiveNow) return;
         let prevOverflow = measureTotalOverflow();
         let stableHits = 0;
         const MAX_ITERS = 30;
