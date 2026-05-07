@@ -651,51 +651,105 @@
         <div class="main-resize-handle" id="main-resize-handle" title="גרור כדי לשנות רוחב חלון התצוגה" aria-label="שנה רוחב תצוגה"></div>
         <h2 data-i18n="preview">תצוגה<button type="button" id="preview-minimize-toggle" class="preview-minimize-btn" title="מזער את חלון התצוגה כך שהעורך יקבל את כל הרוחב" aria-label="מזער/הרחב חלון תצוגה">⤧</button></h2>
         <div id="pdf-toolbar" class="pdf-toolbar" dir="rtl">
-          <button type="button" id="pdf-sidebar-toggle" title="לוח צד" class="pdf-tb-btn">☰</button>
-          <span class="pdf-tb-sep"></span>
-          <button type="button" id="pdf-first" title="עמוד ראשון" class="pdf-tb-btn">⟪</button>
-          <button type="button" id="pdf-prev" title="עמוד קודם" class="pdf-tb-btn">‹</button>
-          <span class="pdf-tb-page">
-            <input type="number" id="pdf-page-input" min="1" value="1" class="pdf-tb-page-input" />
-            <span id="pdf-page-total" class="pdf-tb-page-total">/ 0</span>
-          </span>
-          <button type="button" id="pdf-next" title="עמוד הבא" class="pdf-tb-btn">›</button>
-          <button type="button" id="pdf-last" title="עמוד אחרון" class="pdf-tb-btn">⟫</button>
-          <span class="pdf-tb-sep"></span>
-          <span class="pdf-tb-scroll-group" role="group" aria-label="גלילה במציג">
-            <button type="button" id="pdf-scroll-up" title="גלול למעלה" aria-label="גלול למעלה" class="pdf-tb-btn pdf-tb-scroll-btn">
-              <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <!-- קבוצה: Sidebar toggle (תפריט עמודים) -->
+          <button type="button" id="pdf-sidebar-toggle" title="לוח עמודים" aria-label="לוח עמודים" class="pdf-tb-btn pdf-tb-icon">
+            <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M2.5 4.5h13M2.5 9h13M2.5 13.5h13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+
+          <!-- קבוצה: ניווט עמודים -->
+          <span class="pdf-tb-group" role="group" aria-label="ניווט עמודים">
+            <button type="button" id="pdf-first" title="עמוד ראשון" aria-label="עמוד ראשון" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M5 4 L10 9 L5 14 M11 4 L16 9 L11 14 M3 4 v10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-            <button type="button" id="pdf-scroll-down" title="גלול למטה" aria-label="גלול למטה" class="pdf-tb-btn pdf-tb-scroll-btn">
-              <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button type="button" id="pdf-prev" title="עמוד קודם" aria-label="עמוד קודם" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M7 4 L12 9 L7 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <span class="pdf-tb-page">
+              <input type="number" id="pdf-page-input" min="1" value="1" class="pdf-tb-page-input" aria-label="מספר עמוד" />
+              <span id="pdf-page-total" class="pdf-tb-page-total">/ 0</span>
+            </span>
+            <button type="button" id="pdf-next" title="עמוד הבא" aria-label="עמוד הבא" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M11 4 L6 9 L11 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button type="button" id="pdf-last" title="עמוד אחרון" aria-label="עמוד אחרון" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M13 4 L8 9 L13 14 M7 4 L2 9 L7 14 M15 4 v10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
           </span>
-          <span class="pdf-tb-sep"></span>
-          <button type="button" id="pdf-zoom-out" title="הקטן" class="pdf-tb-btn">−</button>
-          <select id="pdf-zoom-select" class="pdf-tb-zoom-select" title="זום">
-            <option value="auto" selected>אוטומטי</option>
-            <option value="fit">התאם רוחב</option>
-            <option value="actual">גודל מקורי</option>
-            <option value="0.5">50%</option>
-            <option value="0.75">75%</option>
-            <option value="1">100%</option>
-            <option value="1.25">125%</option>
-            <option value="1.5">150%</option>
-            <option value="2">200%</option>
-            <option value="3">300%</option>
-          </select>
-          <button type="button" id="pdf-zoom-in" title="הגדל" class="pdf-tb-btn">+</button>
-          <span class="pdf-tb-sep"></span>
-          <input type="search" id="pdf-find-input" placeholder="חיפוש בטקסט..." class="pdf-tb-find" />
-          <button type="button" id="pdf-find-prev" title="התאמה קודמת" class="pdf-tb-btn">↑</button>
-          <button type="button" id="pdf-find-next" title="התאמה הבאה" class="pdf-tb-btn">↓</button>
-          <span id="pdf-find-status" class="pdf-tb-find-status"></span>
-          <span class="pdf-tb-sep"></span>
-          <button type="button" id="pdf-print" title="הדפס" class="pdf-tb-btn">⎙</button>
-          <button type="button" id="pdf-download" title="הורד PDF" class="pdf-tb-btn">⬇ PDF</button>
-          <button type="button" id="pdf-download-html" title="הורד HTML לדיבוג" class="pdf-tb-btn">⬇ HTML</button>
-          <button type="button" id="pdf-debug-snapshot" title="צילום מצב דיבוג" class="pdf-tb-btn">📸 דיבוג</button>
-          <button type="button" id="pdf-debug-highlight" title="הדגש בעיות" class="pdf-tb-btn">🔍 הדגש</button>
+
+          <!-- קבוצה: גלילה במציג -->
+          <span class="pdf-tb-group pdf-tb-scroll-group" role="group" aria-label="גלילה במציג">
+            <button type="button" id="pdf-scroll-up" title="גלול למעלה" aria-label="גלול למעלה" class="pdf-tb-btn pdf-tb-icon pdf-tb-scroll-btn">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button type="button" id="pdf-scroll-down" title="גלול למטה" aria-label="גלול למטה" class="pdf-tb-btn pdf-tb-icon pdf-tb-scroll-btn">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </span>
+
+          <!-- קבוצה: זום -->
+          <span class="pdf-tb-group" role="group" aria-label="זום">
+            <button type="button" id="pdf-zoom-out" title="הקטן" aria-label="הקטן" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M4 9 h10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+            <select id="pdf-zoom-select" class="pdf-tb-zoom-select" title="זום" aria-label="רמת זום">
+              <option value="auto" selected>אוטומטי</option>
+              <option value="fit">התאם רוחב</option>
+              <option value="actual">גודל מקורי</option>
+              <option value="0.5">50%</option>
+              <option value="0.75">75%</option>
+              <option value="1">100%</option>
+              <option value="1.25">125%</option>
+              <option value="1.5">150%</option>
+              <option value="2">200%</option>
+              <option value="3">300%</option>
+            </select>
+            <button type="button" id="pdf-zoom-in" title="הגדל" aria-label="הגדל" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M4 9 h10 M9 4 v10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </span>
+
+          <!-- קבוצה: חיפוש -->
+          <span class="pdf-tb-group pdf-tb-find-group" role="group" aria-label="חיפוש בטקסט">
+            <span class="pdf-tb-find-icon" aria-hidden="true">
+              <svg viewBox="0 0 18 18" focusable="false"><circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11.4 11.4 L15 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            </span>
+            <input type="search" id="pdf-find-input" placeholder="חיפוש בטקסט..." class="pdf-tb-find" aria-label="חיפוש בטקסט" />
+            <button type="button" id="pdf-find-prev" title="התאמה קודמת" aria-label="התאמה קודמת" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button type="button" id="pdf-find-next" title="התאמה הבאה" aria-label="התאמה הבאה" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <span id="pdf-find-status" class="pdf-tb-find-status"></span>
+          </span>
+
+          <!-- מפריד גמיש: דוחף את קבוצות הפעולות לקצה -->
+          <span class="pdf-tb-spacer"></span>
+
+          <!-- קבוצה: פעולות פלט (הדפסה / הורדה) -->
+          <span class="pdf-tb-group pdf-tb-action-group" role="group" aria-label="פעולות פלט">
+            <button type="button" id="pdf-print" title="הדפס" aria-label="הדפס" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M5 4 v3 M13 4 v3 M5 4 h8 M3 7 h12 v5 h-2 v3 h-8 v-3 h-2 z M7 11 h4 M7 13 h4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button type="button" id="pdf-download" title="הורד PDF" class="pdf-tb-btn pdf-tb-action-btn">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false" class="pdf-tb-action-icon"><path d="M9 3 v8 M5.5 8 L9 11.5 L12.5 8 M3.5 14 h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>PDF</span>
+            </button>
+            <button type="button" id="pdf-download-html" title="הורד HTML לדיבוג" class="pdf-tb-btn pdf-tb-action-btn pdf-tb-action-secondary">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false" class="pdf-tb-action-icon"><path d="M9 3 v8 M5.5 8 L9 11.5 L12.5 8 M3.5 14 h11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>HTML</span>
+            </button>
+          </span>
+
+          <!-- קבוצה: כלי דיבוג (יוקטנו ל-icons בלבד) -->
+          <span class="pdf-tb-group pdf-tb-debug-group" role="group" aria-label="כלי דיבוג">
+            <button type="button" id="pdf-debug-snapshot" title="צילום מצב דיבוג" aria-label="צילום מצב דיבוג" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><rect x="2.5" y="5.5" width="13" height="9" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6.8 5.5 l.8 -1.5 h2.8 l.8 1.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="9" cy="10" r="2.4" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+            </button>
+            <button type="button" id="pdf-debug-highlight" title="הדגש בעיות" aria-label="הדגש בעיות" class="pdf-tb-btn pdf-tb-icon">
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11.4 11.4 L15 15 M8 6 v3 M8 10.2 v.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </button>
+          </span>
         </div>
         <div id="pdf-scroll-progress" class="pdf-scroll-progress" aria-hidden="true">
           <div class="pdf-scroll-progress-fill"></div>
