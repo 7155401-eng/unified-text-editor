@@ -120,6 +120,30 @@ export function setTalmudHeightSafety(value) {
   localStorage.setItem(HEIGHT_SAFETY_KEY, String(n));
 }
 
+// משה 2026-05-07: ערכי כרית פר-עמוד (override). פורמט: "1:120, 3:80".
+// העמודים נספרים מ-1 לתצוגה למשתמש (מומר ל-0-based בקוד הפנימי).
+const HEIGHT_SAFETY_PER_PAGE_KEY = "ravtext.talmudLayout.heightSafetyPerPage";
+export function getTalmudHeightSafetyPerPage() {
+  return (localStorage.getItem(HEIGHT_SAFETY_PER_PAGE_KEY) || "").trim();
+}
+export function setTalmudHeightSafetyPerPage(value) {
+  const v = (value || "").trim();
+  if (!v) {
+    localStorage.removeItem(HEIGHT_SAFETY_PER_PAGE_KEY);
+    return;
+  }
+  // נרמל: שמור רק חלקים בפורמט תקין "N:M".
+  const parts = v.split(/[,;\n]/)
+    .map(s => s.trim())
+    .filter(s => /^\d+\s*[:=]\s*\d+$/.test(s))
+    .map(s => s.replace(/\s*=\s*/, ":").replace(/\s+/g, ""));
+  if (parts.length === 0) {
+    localStorage.removeItem(HEIGHT_SAFETY_PER_PAGE_KEY);
+    return;
+  }
+  localStorage.setItem(HEIGHT_SAFETY_PER_PAGE_KEY, parts.join(", "));
+}
+
 // ─────────────────────────────────────────────
 //  Internal helpers
 // ─────────────────────────────────────────────
@@ -2093,6 +2117,7 @@ export function wireTalmudLayoutControls(onChange) {
   const breaksToggle = document.getElementById("talmud-preserve-breaks");
   const safetyInput  = document.getElementById("talmud-height-safety-input");
   const smartToggle  = document.getElementById("talmud-smart-engine-toggle");
+  const perPageInput = document.getElementById("talmud-height-safety-per-page-input");
 
   if (!toggle) return;
 
@@ -2106,6 +2131,7 @@ export function wireTalmudLayoutControls(onChange) {
   if (breaksToggle) breaksToggle.checked = isTalmudPreserveBreaks();
   if (safetyInput)  safetyInput.value  = getTalmudHeightSafety();
   if (smartToggle)  smartToggle.checked = localStorage.getItem("ravtext.talmudLayout.smartEngine") === "1";
+  if (perPageInput) perPageInput.value = getTalmudHeightSafetyPerPage();
 
   const commit = () => onChange?.();
 
@@ -2150,6 +2176,11 @@ export function wireTalmudLayoutControls(onChange) {
   });
   smartToggle?.addEventListener("change", () => {
     localStorage.setItem("ravtext.talmudLayout.smartEngine", smartToggle.checked ? "1" : "0");
+    commit();
+  });
+  perPageInput?.addEventListener("change", () => {
+    setTalmudHeightSafetyPerPage(perPageInput.value);
+    perPageInput.value = getTalmudHeightSafetyPerPage();
     commit();
   });
 }
