@@ -1,5 +1,5 @@
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
-import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
+import { isSmartEngineEnabled, runSmartTune, hashContent, rebalanceAwkwardSplits } from "./engine/smart_packer.js";
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 import { runPreflight } from "./render_preflight.js";
 
@@ -1303,6 +1303,17 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
             // Wait for late post-process to settle before measuring again.
             await new Promise(r => setTimeout(r, 1700));
           });
+          // משה 2026-05-07: אחרי שהשוליים התייצבו, מטפלים בפיצולים מכוערים
+          // ברמת השורה — דחיפת מילה אחרונה לאחור או מתיחת השורה האחרונה.
+          // רץ רק כשמנוע חכם דולק (אנחנו בתוך ה-if הזה).
+          try {
+            const result = rebalanceAwkwardSplits(pagesContainer);
+            if (result.pushed || result.stretched) {
+              console.debug(`[smart-engine] rebalance: pushed=${result.pushed} stretched=${result.stretched}`);
+            }
+          } catch (rebalanceErr) {
+            console.warn("[smart-engine] rebalance failed:", rebalanceErr);
+          }
         } catch (e) {
           console.warn("[smart-engine] tune failed:", e);
         } finally {
