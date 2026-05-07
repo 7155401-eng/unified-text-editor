@@ -748,6 +748,23 @@ function setupRibbonTabs() {
 
 setupRibbonTabs();
 wireDownloadsPanel();
+(function wirePreviewMinimize() {
+  const btn = document.getElementById("preview-minimize-toggle");
+  if (!btn) return;
+  const KEY = "ravtext.previewMinimized";
+  function apply(on) {
+    document.body.classList.toggle("preview-minimized", !!on);
+    btn.title = on
+      ? "הרחב חזרה את חלון התצוגה"
+      : "מזער את חלון התצוגה כך שהעורך יקבל את כל הרוחב";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    localStorage.setItem(KEY, on ? "1" : "0");
+  }
+  apply(localStorage.getItem(KEY) === "1");
+  btn.addEventListener("click", () => {
+    apply(!document.body.classList.contains("preview-minimized"));
+  });
+})();
 if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }

@@ -324,7 +324,48 @@ html, body {
   margin: 0 0 10px;
   color: var(--gold);
   font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
+
+.preview-minimize-btn {
+  background: transparent;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+}
+.preview-minimize-btn:hover { background: rgba(0,0,0,0.05); }
+
+/* Minimized state: editor takes full width, preview becomes a narrow strip */
+body.preview-minimized .main {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+body.preview-minimized .main:has(#ravtext-css-inject-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) var(--ci-panel-width, 320px) 32px;
+}
+body.preview-minimized .preview-pane {
+  padding: 6px 4px;
+  min-height: auto;
+  align-self: stretch;
+  overflow: hidden;
+}
+body.preview-minimized .preview-pane > *:not(h2) { display: none; }
+body.preview-minimized .preview-pane h2 {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  margin: 0;
+  font-size: 13px;
+  height: 100%;
+  justify-content: flex-start;
+}
+body.preview-minimized .preview-minimize-btn::before { content: ""; }
+body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
 
 .pdf-toolbar {
   display: flex;
