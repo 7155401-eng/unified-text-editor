@@ -5,6 +5,8 @@
 // Buttons: Find Next · Replace · Replace All. Also supports search-only
 // usage when replace field is empty.
 
+import { defaultLabelForCode } from "./engine_bridge.js";
+
 function getPaneManager() {
   return (typeof window !== "undefined") ? window.paneManager : null;
 }
@@ -61,7 +63,7 @@ function getPanesForScope() {
     const editor = p.editor;
     if (!editor) continue;
     const code = p.streamCode || p.id || "main";
-    const label = p.title || (code === "main" ? "ראשי" : `זרם ${code}`);
+    const label = p.title || (code === "main" ? "ראשי" : defaultLabelForCode(code));
     list.push({ id: code, label, editor, paneEl: p.element });
   }
   return list;

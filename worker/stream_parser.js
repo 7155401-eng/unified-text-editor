@@ -13,6 +13,20 @@ const PALETTE = [
   { bg: '#E5E7EB', fg: '#1F2937' },
 ];
 
+// משה 2026-05-07: מיירור של DEFAULT_STREAM_LABELS מ-engine_bridge.js
+// (commit 67545d9 — שמות פרשנים במקום "זרם XX").
+const DEFAULT_STREAM_LABELS = {
+  '01': 'מגן אברהם',
+  '02': 'משנה ברורה',
+  '03': 'ביאור הלכה',
+  '04': 'טורי זהב',
+  '05': 'כף החיים',
+};
+
+function defaultLabelForCode(code) {
+  return DEFAULT_STREAM_LABELS[code] || `זרם ${code}`;
+}
+
 function colorFor(streamCode) {
   const n = parseInt(streamCode, 10);
   if (Number.isFinite(n) && n >= 1) {
@@ -46,7 +60,7 @@ function wrapMark(streamCode, symbol, body) {
     `data-uid="${u}" ` +
     `data-symbol="${escapeHtml(symbol)}" ` +
     `style="background-color:${c.bg};color:${c.fg};border-radius:3px;padding:0 3px;font-weight:600;" ` +
-    `title="זרם ${escapeHtml(streamCode)}">` +
+    `title="${escapeHtml(defaultLabelForCode(streamCode))}">` +
     body +
     '</span>'
   );

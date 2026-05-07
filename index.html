@@ -29,12 +29,12 @@
         <div class="toolbar source-stream-toolbar" dir="rtl">
           <span class="tb-group" data-title="סמן בחירה כזרם">
             <span class="stream-label-static" title="בחר טקסט בעורך הראשי, ולחץ על מספר זרם כדי לסמן את הבחירה ולהעבירה לזרם הזה" data-i18n="markAsStream">📌 סמן בחירה כזרם:</span>
-            <button type="button" data-stream="01" class="btn-stream stream-color-1" title="סמן טקסט נבחר כזרם 01">01</button>
-            <button type="button" data-stream="02" class="btn-stream stream-color-2" title="סמן טקסט נבחר כזרם 02">02</button>
-            <button type="button" data-stream="03" class="btn-stream stream-color-3" title="סמן טקסט נבחר כזרם 03">03</button>
-            <button type="button" data-stream="04" class="btn-stream stream-color-4" title="סמן טקסט נבחר כזרם 04">04</button>
-            <button type="button" data-stream="05" class="btn-stream stream-color-5" title="סמן טקסט נבחר כזרם 05">05</button>
-            <button type="button" data-stream="06" class="btn-stream stream-color-6" title="סמן טקסט נבחר כזרם 06">06</button>
+            <button type="button" data-stream="01" class="btn-stream stream-color-1" title="סמן טקסט נבחר כמגן אברהם">מגן אברהם</button>
+            <button type="button" data-stream="02" class="btn-stream stream-color-2" title="סמן טקסט נבחר כמשנה ברורה">משנה ברורה</button>
+            <button type="button" data-stream="03" class="btn-stream stream-color-3" title="סמן טקסט נבחר כביאור הלכה">ביאור הלכה</button>
+            <button type="button" data-stream="04" class="btn-stream stream-color-4" title="סמן טקסט נבחר כטורי זהב">טורי זהב</button>
+            <button type="button" data-stream="05" class="btn-stream stream-color-5" title="סמן טקסט נבחר ככף החיים">כף החיים</button>
+            <button type="button" data-stream="06" class="btn-stream stream-color-6" title="סמן טקסט נבחר כזרם 06">זרם 06</button>
             <input
               type="number"
               id="custom-stream-input"
@@ -48,12 +48,12 @@
           <span class="sep"></span>
           <span class="tb-group" data-title="קפוץ לזרם בתצוגת העמודים">
             <span class="stream-label-static" title="לחץ על מספר זרם כדי לגלול את התצוגה אל הזרם הזה בעמודים המרונדרים">🔍 קפוץ לזרם:</span>
-            <button type="button" data-stream="01" class="btn-stream-jump stream-color-1" title="גלול לזרם 01 בתצוגת העמודים">01</button>
-            <button type="button" data-stream="02" class="btn-stream-jump stream-color-2" title="גלול לזרם 02 בתצוגת העמודים">02</button>
-            <button type="button" data-stream="03" class="btn-stream-jump stream-color-3" title="גלול לזרם 03 בתצוגת העמודים">03</button>
-            <button type="button" data-stream="04" class="btn-stream-jump stream-color-4" title="גלול לזרם 04 בתצוגת העמודים">04</button>
-            <button type="button" data-stream="05" class="btn-stream-jump stream-color-5" title="גלול לזרם 05 בתצוגת העמודים">05</button>
-            <button type="button" data-stream="06" class="btn-stream-jump stream-color-6" title="גלול לזרם 06 בתצוגת העמודים">06</button>
+            <button type="button" data-stream="01" class="btn-stream-jump stream-color-1" title="גלול למגן אברהם בתצוגת העמודים">מגן אברהם</button>
+            <button type="button" data-stream="02" class="btn-stream-jump stream-color-2" title="גלול למשנה ברורה בתצוגת העמודים">משנה ברורה</button>
+            <button type="button" data-stream="03" class="btn-stream-jump stream-color-3" title="גלול לביאור הלכה בתצוגת העמודים">ביאור הלכה</button>
+            <button type="button" data-stream="04" class="btn-stream-jump stream-color-4" title="גלול לטורי זהב בתצוגת העמודים">טורי זהב</button>
+            <button type="button" data-stream="05" class="btn-stream-jump stream-color-5" title="גלול לכף החיים בתצוגת העמודים">כף החיים</button>
+            <button type="button" data-stream="06" class="btn-stream-jump stream-color-6" title="גלול לזרם 06 בתצוגת העמודים">זרם 06</button>
             <input
               type="number"
               id="jump-stream-input"
@@ -121,15 +121,26 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כיוון">
-            <button data-cmd="rtl">RTL</button>
+            <button data-cmd="rtl" title="כיוון מימין לשמאל" aria-label="כיוון מימין לשמאל">
+              <svg viewBox="0 0 20 14" width="18" height="14" aria-hidden="true" focusable="false"><path d="M16 7 H4 M8 3 L4 7 L8 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button data-cmd="ltr" title="כיוון משמאל לימין" aria-label="כיוון משמאל לימין">
+              <svg viewBox="0 0 20 14" width="18" height="14" aria-hidden="true" focusable="false"><path d="M4 7 H16 M12 3 L16 7 L12 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-title="בלוקים">
+          <span class="tb-group" data-title="ציטוט/קוד" data-ribbon-tab="home">
             <button data-cmd="blockquote" title="ציטוט">❝</button>
             <button data-cmd="code-block" title="בלוק קוד">⟨/⟩</button>
             <button data-cmd="code-inline" title="קוד בשורה">{ }</button>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="קישור" data-ribbon-tab="home">
             <button data-cmd="link" title="קישור">🔗</button>
             <button data-cmd="unlink" title="הסר קישור">⛓⃠</button>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="מדיה" data-ribbon-tab="home">
             <button data-cmd="image" title="תמונה">🖼</button>
             <button data-cmd="video" title="וידאו">▶</button>
             <button data-cmd="formula" title="נוסחה">∑</button>
@@ -147,10 +158,13 @@
             </select>
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-title="גופן">
+          <span class="tb-group" data-title="גופן" data-ribbon-tab="home">
             <button data-cmd="font-david">David</button>
             <button data-cmd="font-frank">Frank</button>
             <button data-cmd="font-segoe">Segoe</button>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="גופן מותאם" data-ribbon-tab="home">
             <select id="local-font-select" class="font-gallery-select" title="גופנים במחשב"></select>
             <button type="button" id="local-font-load" title="רענן גופנים">↻</button>
             <button type="button" id="local-font-upload-btn" title="טען פונט מהמחשב">📁 טען</button>
@@ -158,17 +172,19 @@
                    style="display:none" />
           </span>
           <span class="sep"></span>
-          <span class="tb-group" data-title="גודל">
-            <button data-cmd="size-down-double" title="−2">−−</button>
-            <button data-cmd="size-down" title="−1">−</button>
-            <span id="fs-label" style="margin:0 6px;font-weight:bold">16</span>
-            <button data-cmd="size-up" title="+1">+</button>
-            <button data-cmd="size-up-double" title="+2">++</button>
-            <span class="size-direct-sep"></span>
-            <button data-cmd="size-12">12</button>
-            <button data-cmd="size-15">15</button>
-            <button data-cmd="size-18">18</button>
-            <button data-cmd="size-24">24</button>
+          <span class="tb-group" data-title="גודל גלובלי (כל המסמך)">
+            <button data-cmd="size-down-double" title="הקטן את גודל הטקסט הגלובלי ב-2 (משפיע על כל המסמך + העמודים)">−2</button>
+            <button data-cmd="size-down" title="הקטן את גודל הטקסט הגלובלי ב-1 (משפיע על כל המסמך + העמודים)">−1</button>
+            <span id="fs-label" style="margin:0 6px;font-weight:bold" title="הגודל הגלובלי הנוכחי">16</span>
+            <button data-cmd="size-up" title="הגדל את גודל הטקסט הגלובלי ב-1 (משפיע על כל המסמך + העמודים)">+1</button>
+            <button data-cmd="size-up-double" title="הגדל את גודל הטקסט הגלובלי ב-2 (משפיע על כל המסמך + העמודים)">+2</button>
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="גודל טקסט נבחר">
+            <button data-cmd="size-12" title="הגדר את הטקסט הנבחר ל-12px">12</button>
+            <button data-cmd="size-15" title="הגדר את הטקסט הנבחר ל-15px">15</button>
+            <button data-cmd="size-18" title="הגדר את הטקסט הנבחר ל-18px">18</button>
+            <button data-cmd="size-24" title="הגדר את הטקסט הנבחר ל-24px">24</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כללי">
@@ -178,17 +194,18 @@
           <span class="sep"></span>
           <span class="tb-group" data-title="ניהול">
             <button data-cmd="clear" title="ניקוי עיצוב">⌫</button>
+            <button data-cmd="clear-all" title="נקה את כל השדות — מוחק את הטקסט מכל החלוניות" class="btn-clear-all">🗑️</button>
             <button data-cmd="undo" title="ביטול">↶</button>
             <button data-cmd="redo" title="חזרה">↷</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="זרמים">
-            <button data-cmd="stream-01" class="stream-btn s1" title="זרם 01">01</button>
-            <button data-cmd="stream-02" class="stream-btn s2" title="זרם 02">02</button>
-            <button data-cmd="stream-03" class="stream-btn s3" title="זרם 03">03</button>
-            <button data-cmd="stream-04" class="stream-btn s4" title="זרם 04">04</button>
-            <button data-cmd="stream-05" class="stream-btn s5" title="זרם 05">05</button>
-            <button data-cmd="stream-06" class="stream-btn s6" title="זרם 06">06</button>
+            <button data-cmd="stream-01" class="stream-btn s1" title="מגן אברהם">מגן אברהם</button>
+            <button data-cmd="stream-02" class="stream-btn s2" title="משנה ברורה">משנה ברורה</button>
+            <button data-cmd="stream-03" class="stream-btn s3" title="ביאור הלכה">ביאור הלכה</button>
+            <button data-cmd="stream-04" class="stream-btn s4" title="טורי זהב">טורי זהב</button>
+            <button data-cmd="stream-05" class="stream-btn s5" title="כף החיים">כף החיים</button>
+            <button data-cmd="stream-06" class="stream-btn s6" title="זרם 06">זרם 06</button>
             <button data-cmd="stream-07" class="stream-btn s7" title="זרם 07">07</button>
             <button data-cmd="stream-08" class="stream-btn s8" title="זרם 08">08</button>
             <button data-cmd="stream-custom" title="זרם מותאם">…</button>
@@ -319,21 +336,9 @@
             <span>רווח צדדי (px):</span>
             <input type="number" id="talmud-side-gap-input" min="0" max="60" value="12" title="רווח בין הזרם המרכזי לפרשנים שבצדדים" />
           </label>
-          <label class="opw-control" title="כמה פיקסלים להשאיר פנויים בכל דף עבור הכתר/רווחים. ערך גבוה = פחות חריגות, יותר רווחים. ערך נמוך = פחות רווחים, סיכון לחריגה. ברירת מחדל מותאמת: 160.">
-            <span>כרית גובה (px):</span>
-            <input type="number" id="talmud-height-safety-input" min="0" max="400" value="160" />
-          </label>
-          <label class="opw-control" title="ערכי כרית נפרדים לעמודים מסוימים. פורמט: 1:120, 3:80, 7:200 (מספר העמוד:כרית). עמוד שלא מוזכר משתמש בערך הכללי. השאר ריק לביטול.">
-            <span>כרית פר-עמוד:</span>
-            <input type="text" id="talmud-height-safety-per-page-input" placeholder="1:120, 3:80" style="width:140px" />
-          </label>
           <label class="toolbar-checkbox" title="כשמסומן: שבירות פסקה בכתר נשמרות (פסקה אמיתית לא נמתחת בכוח). לא רלוונטי לשאר התבנית.">
             <input type="checkbox" id="talmud-preserve-breaks" />
             <span>שמור שבירות פסקה בכתר</span>
-          </label>
-          <label class="toolbar-checkbox" title="מודד את הדף אחרי הרינדור ומכוון את הכרית בעצמו עד שמוצא ערך אופטימלי לכל מסמך. הערך המכוון נשמר במטמון.">
-            <input type="checkbox" id="talmud-smart-engine-toggle" />
-            <span>מנוע חכם (אוטומטי)</span>
           </label>
         </div>
         <div id="opening-word-controls" class="toolbar opening-word-toolbar" dir="rtl">
@@ -514,6 +519,21 @@
             <input type="text" id="doc-watermark-input" style="width:140px;font-size:12px;padding:3px 6px;" placeholder='לדוגמה: "טיוטה"' />
             <span style="font-size:11px;color:#666;">שקיפות:</span>
             <input type="range" id="doc-watermark-opacity" min="0.05" max="0.5" step="0.01" value="0.12" style="width:80px;" />
+          </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="מנוע אריזת עמוד">
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="כמה פיקסלים להשאיר פנויים בכל דף. ערך גבוה = פחות חריגות, יותר רווחים. ברירת מחדל מותאמת: 160 בפריסת תלמוד, 6 בפריסה רגילה.">
+              <span>כרית גובה (px):</span>
+              <input type="number" id="layout-height-safety-input" min="0" max="400" style="width:60px;font-size:12px;padding:3px 6px;" />
+            </label>
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="ערכי כרית נפרדים לעמודים מסוימים. פורמט: 1:120, 3:80 (מספר העמוד:כרית). עמוד שלא מוזכר משתמש בערך הכללי. השאר ריק לביטול.">
+              <span>פר-עמוד:</span>
+              <input type="text" id="layout-height-safety-per-page-input" placeholder="1:120, 3:80" style="width:120px;font-size:12px;padding:3px 6px;" />
+            </label>
+            <label class="toolbar-checkbox" title="מודד את הדף אחרי הרינדור ומכוון את הכרית בעצמו עד שמוצא ערך אופטימלי לכל מסמך. הערך המכוון נשמר במטמון.">
+              <input type="checkbox" id="layout-smart-engine-toggle" />
+              <span>מנוע חכם (אוטו)</span>
+            </label>
           </span>
         </div>
         <div class="toolbar view-toolbar ribbon-panel" data-ribbon-tab="view" dir="rtl">

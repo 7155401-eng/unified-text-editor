@@ -19,8 +19,24 @@
 // בכל פתיחת מסמך זהה.
 
 const SMART_KEY = "ravtext.talmudLayout.smartEngine";
-const SAFETY_KEY = "ravtext.talmudLayout.heightSafety";
+const SAFETY_KEY_TALMUD = "ravtext.talmudLayout.heightSafety";
+const SAFETY_KEY_REGULAR = "ravtext.layout.heightSafetyRegular";
+const TALMUD_TOGGLE_KEY = "ravtext.talmudLayout";
 const CACHE_PREFIX = "ravtext.talmudLayout.smartCache.";
+
+// משה 2026-05-07: המנוע החכם פעיל גם במצב רגיל (לא רק תלמודי). מזהה את המצב
+// ומכוון את המפתח המתאים: heightSafety לתלמוד (ברירת מחדל 160) או
+// heightSafetyRegular לרגיל (ברירת מחדל 6).
+function isTalmudActive() {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(TALMUD_TOGGLE_KEY) === "1";
+}
+function activeSafetyKey() {
+  return isTalmudActive() ? SAFETY_KEY_TALMUD : SAFETY_KEY_REGULAR;
+}
+function defaultSafetyForMode() {
+  return isTalmudActive() ? 160 : 6;
+}
 const MAX_ITERATIONS = 6;
 const ANTI_OSCILLATION_STEP = 20;
 const SAFETY_MIN = 0;
@@ -41,16 +57,17 @@ function clamp(n, lo, hi) {
 }
 
 function readSafety() {
-  if (typeof localStorage === "undefined") return 160;
-  const raw = localStorage.getItem(SAFETY_KEY);
-  if (raw === null) return 160;
+  const def = defaultSafetyForMode();
+  if (typeof localStorage === "undefined") return def;
+  const raw = localStorage.getItem(activeSafetyKey());
+  if (raw === null) return def;
   const n = parseInt(raw, 10);
-  return Number.isFinite(n) ? clamp(n, SAFETY_MIN, SAFETY_MAX) : 160;
+  return Number.isFinite(n) ? clamp(n, SAFETY_MIN, SAFETY_MAX) : def;
 }
 
 function writeSafety(value) {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(SAFETY_KEY, String(clamp(value, SAFETY_MIN, SAFETY_MAX)));
+  localStorage.setItem(activeSafetyKey(), String(clamp(value, SAFETY_MIN, SAFETY_MAX)));
 }
 
 // Hash content (paragraphs + notes) to identify identical documents.

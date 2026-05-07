@@ -1,5 +1,6 @@
 // משה 2026-05-07: thin client only — האלגוריתם הועבר לשרת (worker/stream_parser.js).
 // בלי השרת אי אפשר לזהות זרמים. זאת הגנה מפני העתקת הקוד.
+// תוויות (titles) נקבעות בשרת לפי הקוד; אין צורך ב-defaultLabelForCode כאן.
 
 const ENDPOINT = '/api/streams/parse';
 

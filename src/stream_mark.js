@@ -3,6 +3,7 @@
 
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "prosemirror-state";
+import { defaultLabelForCode } from "./engine_bridge.js";
 
 const AUTO_MARK_FULL_SCAN_LIMIT = 20000;
 
@@ -137,7 +138,7 @@ export const StreamMark = Mark.create({
       mergeAttributes(HTMLAttributes, {
         class: `stream-marker stream-${code}`,
         style: `background-color:${palette.bg};color:${palette.fg};border-radius:3px;padding:0 3px;font-weight:600;`,
-        title: `זרם ${code} (${palette.name})`,
+        title: `${defaultLabelForCode(code)} (${palette.name})`,
       }),
       0,
     ];
