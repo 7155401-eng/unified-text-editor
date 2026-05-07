@@ -31,19 +31,19 @@ const MIN_NOTE_SPLIT_LINE_FILL = 0.72;
 const MAX_SPLIT_REFINE_STEPS = 32;
 const MAX_NOTE_SPLIT_REFINE_STEPS = 14;
 const MISHNA_WRAP_HEIGHT_SAFETY = 30;
-// במצב תלמוד, התבנית מוסיפה משוקלל גובה לכתר ומבנה (שורות עליונות 50%
-// במקום 29%, רווחים נוספים, body+expanded וכד'). מורידים מ-maxPageHeight
-// כדי שהמנוע יזרוק פחות תוכן לעמוד הזה ויעבור פחות חריגות בפועל.
-// ערך גבוה = יותר עמודים, פחות חריגות, אבל גם יותר רווחים מיותרים.
-// v28-merge: 150 → 30. measureHeight כבר מריץ applyTalmudLayoutToPage על
-// page זמני ומחזיר גובה אמיתי. הערך כאן הוא buffer קטן עבור הבדלי דיוק
-// במדידה. ערך גבוה גרם לרווחים מיותרים בתחתית עמודים.
-// v33-engine: increased to 60 to leave room for opening-word + crown
-// adjustments that measureHeight may underestimate. Net effect: less
-// overflow, slightly more pages — but content always fits.
-// משה 2026-05-06: סף ביטחון מאוזן — לא נמוך מדי (חריגות) ולא גבוה מדי (רווחים).
-// 160 = פשרה. push-down מטפל בחריגות שנותרו.
-const TALMUD_LAYOUT_HEIGHT_SAFETY = 160;
+// משה 2026-05-07: כרית הביטחון לגובה הפכה להגדרה למשתמש (קלט "כרית גובה")
+// ולא קבועה בקוד. ערך קבוע גורם לבעיות במסמכים שונים: 160 פותר את גפ"ת
+// אך פוגע בפריסת משנה ברורה, או להפך. ברירת מחדל 160 (תואם להתנהגות קודמת),
+// והמשתמש יכול לשנות לכל ערך 0-400 דרך הגדרות הפריסה.
+const TALMUD_LAYOUT_HEIGHT_SAFETY_DEFAULT = 160;
+function getTalmudHeightSafety() {
+  if (typeof localStorage === "undefined") return TALMUD_LAYOUT_HEIGHT_SAFETY_DEFAULT;
+  const raw = localStorage.getItem("ravtext.talmudLayout.heightSafety");
+  if (raw === null) return TALMUD_LAYOUT_HEIGHT_SAFETY_DEFAULT;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return TALMUD_LAYOUT_HEIGHT_SAFETY_DEFAULT;
+  return Math.max(0, Math.min(400, n));
+}
 const MAIN_LINE_PROBE_EXTRA_CHARS = 260;
 const LINE_RECT_TOLERANCE = 2;
 
@@ -663,7 +663,7 @@ function buildPageObject(mainSegments, streamsMap, totalH) {
  */
 function forwardPack(content, geom = DOM_PAGE_GEOM) {
   const packGeom = shouldMeasureTalmudLayout()
-    ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - TALMUD_LAYOUT_HEIGHT_SAFETY) }
+    ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - getTalmudHeightSafety()) }
     : geom;
   geom = packGeom;
   const pages = [];
