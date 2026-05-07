@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>וילנא — בטה (מנהלים בלבד)</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, 'Times New Roman', serif;
+    background: #d8d2c0;
+    padding: 16px;
+    direction: rtl;
+  }
+  .topbar {
+    background: linear-gradient(135deg, #1e3a8a, #0e7490);
+    color: white;
+    padding: 12px 20px;
+    margin: -16px -16px 16px -16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 600; }
+  .topbar .badge {
+    background: #f59e0b;
+    color: #1f2937;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .topbar a {
+    color: white;
+    text-decoration: none;
+    background: rgba(255,255,255,0.15);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .controls {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 0 auto 16px auto;
+    max-width: 800px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+  .controls label { font-size: 13px; color: #334155; }
+  .controls input[type=number] {
+    width: 70px;
+    padding: 4px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font: inherit;
+  }
+  .controls button {
+    padding: 6px 14px;
+    background: #1e3a8a;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font: inherit;
+    cursor: pointer;
+  }
+  .controls button:hover { background: #1e40af; }
+  #container { display: flex; flex-direction: column; align-items: center; }
+  pre.debug {
+    background: #fff;
+    padding: 10px 14px;
+    font-size: 11px;
+    max-width: 800px;
+    margin: 12px auto;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    direction: ltr;
+    text-align: left;
+    white-space: pre-wrap;
+  }
+  .deny {
+    max-width: 480px;
+    margin: 80px auto;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    padding: 32px;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  }
+  .deny h2 { color: #b91c1c; margin-bottom: 12px; }
+  .deny p { color: #475569; margin-bottom: 16px; line-height: 1.6; }
+  .deny a {
+    display: inline-block;
+    background: #1e3a8a;
+    color: white;
+    padding: 8px 18px;
+    border-radius: 6px;
+    text-decoration: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script src="/vilna_v8.js"></script>
+<script>
+(async function () {
+  const auth = window.__RAVTEXT_AUTH__ || {};
+  const root = document.getElementById('root');
+
+  if (!auth.admin) {
+    root.innerHTML = `
+      <div class="deny">
+        <h2>הגישה חסומה</h2>
+        <p>הדף הזה הוא בטה לבדיקה פנימית. הגישה פתוחה רק למנהלי המערכת.</p>
+        <a href="/">חזרה לעורך</a>
+      </div>`;
+    return;
+  }
+
+  root.innerHTML = `
+    <div class="topbar">
+      <h1>וילנא V8 <span class="badge">בטה — מנהלים בלבד</span></h1>
+      <a href="/">חזרה לעורך</a>
+    </div>
+    <div class="controls">
+      <label>רוחב דף: <input type="number" id="cfg-pw" value="559" min="200" max="1200"></label>
+      <label>גובה דף: <input type="number" id="cfg-ph" value="794" min="300" max="2000"></label>
+      <label>גופן ראשי: <input type="number" id="cfg-mfs" value="13" min="8" max="40"></label>
+      <label>גופן צד: <input type="number" id="cfg-sfs" value="11" min="6" max="30"></label>
+      <label>פסקאות ראשי: <input type="number" id="cfg-mp" value="4" min="1" max="50"></label>
+      <button id="btn-build">בנה דף</button>
+    </div>
+    <div id="container"></div>
+    <pre class="debug" id="debug"></pre>
+  `;
+
+  const titles = {
+    '01': 'מגן אברהם',
+    '02': 'משנה ברורה',
+    '03': 'ביאור הלכה',
+    '04': 'טורי זהב',
+    '05': 'כף החיים',
+  };
+
+  let rawText = '';
+  try {
+    const r = await fetch('/vilna-beta-sample.txt');
+    rawText = await r.text();
+  } catch (e) {
+    document.getElementById('debug').textContent = 'sample fetch failed: ' + e.message;
+    return;
+  }
+
+  function getCfg() {
+    return {
+      pageWidth: Number(document.getElementById('cfg-pw').value) || 559,
+      pageHeight: Number(document.getElementById('cfg-ph').value) || 794,
+      mainFontSize: Number(document.getElementById('cfg-mfs').value) || 13,
+      sideFontSize: Number(document.getElementById('cfg-sfs').value) || 11,
+      lineHeightRatio: 1.55,
+      padding: 12,
+      mainWidthRatio: 0.33,
+      crownLines: 4,
+    };
+  }
+
+  async function build() {
+    const container = document.getElementById('container');
+    const debug = document.getElementById('debug');
+    container.innerHTML = '';
+    debug.textContent = 'building...';
+
+    try {
+      const parsed = VilnaV8.parseRawText(rawText);
+      const mainParaCount = Math.max(1, Number(document.getElementById('cfg-mp').value) || 4);
+      const mainText = parsed.main.slice(0, mainParaCount).join('  ');
+      const cfg = getCfg();
+
+      const result = await VilnaV8.buildPage(container, {
+        mainText,
+        rightStream: parsed.streams['02'] ? { id: '02', items: parsed.streams['02'] } : null,
+        leftStream:  parsed.streams['05'] ? { id: '05', items: parsed.streams['05'] } : null,
+        footerStreams: ['01', '03', '04']
+          .filter(id => parsed.streams[id])
+          .map(id => ({ id, items: parsed.streams[id] })),
+        titles,
+      }, cfg);
+
+      const lines = [
+        'host: ' + (result.hostId || '-'),
+        'guest: ' + (result.guestId || '-'),
+        'main top: ' + (result.mainBox?.top ?? '-'),
+        'main bottom: ' + (result.mainBox?.bottom ?? '-'),
+        'main height: ' + (result.mainBox?.height ?? '-'),
+        'streams parsed: ' + Object.keys(parsed.streams).join(', '),
+        'main paragraphs total: ' + parsed.main.length + ' (rendering ' + mainParaCount + ')',
+      ];
+      debug.textContent = lines.join('\n');
+    } catch (e) {
+      debug.textContent = 'ERROR: ' + e.message + '\n' + e.stack;
+    }
+  }
+
+  document.getElementById('btn-build').addEventListener('click', build);
+  await build();
+})();
+</script>
+</body>
+</html>
