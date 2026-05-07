@@ -107,17 +107,45 @@ function writeCachedSafety(contentHash, value) {
   localStorage.setItem(CACHE_PREFIX + contentHash, String(value));
 }
 
-// Measure all rendered pages: per-page overflow + bottom-gap.
+// משה 2026-05-07: בדיקת איכות פיצולי שורה. ל-paragraph שמתפצל בין עמוד N
+// ל-N+1, השורה האחרונה בעמוד N צריכה להיות מלאה (~72%+ מרוחב הטקסט) ולא
+// להיגמר באמצע מילה. אם המנוע פיצל פסקה כך שהשורה האחרונה כמעט ריקה או
+// נחתכה באמצע מילה — זה "פיצול אמצע שורה" ויש להעלות את הכרית כדי לדחוף
+// יותר טקסט לעמוד הבא ולקבל סיום שורה נכון.
+const AWKWARD_LAST_LINE_FILL = 0.55;
+
+function lastTextLineInfo(pageMain) {
+  if (!pageMain) return null;
+  const ps = pageMain.querySelectorAll(":scope p, :scope > p");
+  if (!ps.length) return null;
+  const lastP = ps[ps.length - 1];
+  const rects = lastP.getClientRects();
+  if (rects.length === 0) return null;
+  let maxWidth = 0;
+  for (const r of rects) if (r.width > maxWidth) maxWidth = r.width;
+  if (maxWidth <= 0) return null;
+  const last = rects[rects.length - 1];
+  const fill = last.width / maxWidth;
+  const text = (lastP.textContent || "").trimEnd();
+  const lastChar = text.charAt(text.length - 1);
+  // אות עברית/לטינית בסוף = יכול להיות אמצע מילה. סימני פיסוק = סוף נורמלי.
+  const endsAtPunctuation = /[.,;:!?״"׳'\)\]}־׃׳״]\s*$/.test(text);
+  const endsAtLetter = /[֐-׿A-Za-z]$/.test(text);
+  return { fill, lastChar, endsAtPunctuation, endsAtLetter, hasMultipleLines: rects.length > 1 };
+}
+
+// Measure all rendered pages: per-page overflow + bottom-gap + line-quality.
 // Skips pages marked hidden or placeholder.
 export function measurePagesState(container) {
-  if (!container) return { pages: [], maxOverflow: 0, avgGap: 0, totalGap: 0 };
+  if (!container) return { pages: [], maxOverflow: 0, avgGap: 0, totalGap: 0, awkwardSplits: 0 };
   const pages = Array.from(
     container.querySelectorAll(".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)")
   ).filter(p => p.style.display !== "none");
-  if (pages.length === 0) return { pages: [], maxOverflow: 0, avgGap: 0, totalGap: 0 };
+  if (pages.length === 0) return { pages: [], maxOverflow: 0, avgGap: 0, totalGap: 0, awkwardSplits: 0 };
   let maxOverflow = 0;
   let totalGap = 0;
   let countableGaps = 0;
+  let awkwardSplits = 0;
   const perPage = [];
   for (let i = 0; i < pages.length; i++) {
     const p = pages[i];
@@ -133,16 +161,24 @@ export function measurePagesState(container) {
     const lowest = cands.length ? Math.max(...cands) : r.top;
     const gap = Math.max(0, r.bottom - lowest);
     const overflow = Math.max(0, p.scrollHeight - p.clientHeight);
-    perPage.push({ idx: i + 1, gap: Math.round(gap), overflow: Math.round(overflow) });
+
+    let awkward = false;
+    if (i < pages.length - 1) {
+      const info = lastTextLineInfo(main);
+      if (info && info.hasMultipleLines && info.fill < AWKWARD_LAST_LINE_FILL && info.endsAtLetter && !info.endsAtPunctuation) {
+        awkward = true;
+        awkwardSplits++;
+      }
+    }
+    perPage.push({ idx: i + 1, gap: Math.round(gap), overflow: Math.round(overflow), awkward });
     if (overflow > maxOverflow) maxOverflow = overflow;
-    // Last page is allowed to have gap (no source to pull from). Skip in avg.
     if (i < pages.length - 1) {
       totalGap += gap;
       countableGaps++;
     }
   }
   const avgGap = countableGaps > 0 ? totalGap / countableGaps : 0;
-  return { pages: perPage, maxOverflow: Math.round(maxOverflow), avgGap: Math.round(avgGap), totalGap: Math.round(totalGap) };
+  return { pages: perPage, maxOverflow: Math.round(maxOverflow), avgGap: Math.round(avgGap), totalGap: Math.round(totalGap), awkwardSplits };
 }
 
 // משה 2026-05-07: ההחלטה הזו עברה לשרת (worker/render_planner.js).
@@ -159,6 +195,9 @@ export async function decideAdjustment(currentSafety, state) {
   if (!res.ok) {
     throw new Error(`smart adjustment failed: HTTP ${res.status}`);
   }
+  // משה 2026-05-07: ההחלטה היא בשרת (worker/render_planner.js). state כולל
+  // עכשיו גם awkwardSplits — השרת יוכל להוסיף לוגיקה שעולה את הכרית
+  // כשמזוהה פיצול אמצע-שורה. עד אז: קבל את ההחלטה מהשרת כפי שהיא.
   const plan = await res.json();
   return plan.decisions?.safety || { newSafety: currentSafety, action: 'stable', reason: 'no-server-decision' };
 }
