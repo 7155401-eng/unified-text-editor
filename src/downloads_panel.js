@@ -2,6 +2,15 @@
 // Uses File System Access API for direct folder writes (with persistent
 // permission stored in IndexedDB), falls back to <a download> blob downloads.
 
+import {
+  isStandalone,
+  isInstallable,
+  isInstalled,
+  onChange as onPwaChange,
+  registerServiceWorker,
+} from "./pwa_install_controller.js";
+import { showInstallDialogManually } from "./pwa_install_prompt.js";
+
 const HANDLE_DB = "ravtext-downloads";
 const HANDLE_STORE = "handles";
 const HANDLE_KEY = "syncFolder";
@@ -192,66 +201,39 @@ function downloadDocumentJSON() {
 
 // ─── PWA install (כרום עצמאי, נעול לאתר) ────────────────────────────────────
 //
-// יעד: כפתור "📲 התקן כאפליקציה" שמתקין את האתר כ-PWA. אחרי התקנה
-// האפליקציה נפתחת בחלון משלה (display=standalone במניפסט) רק על
-// הסקופ של רב טקסט (scope=/), כך שלא ניתן לגלוש לאתרים אחרים מתוך
-// החלון הזה — ניווט מחוץ לסקופ נפתח אוטומטית בדפדפן רגיל.
-//
-// Chrome/Edge יורים beforeinstallprompt רק אם:
-//   1. יש manifest תקין עם scope/start_url/display/icons
-//   2. רשום service worker פעיל
-//   3. האתר מוגש על https
-// אנחנו לוכדים את האירוע ושומרים אותו כדי להפעיל אותו דרך הכפתור.
-
-let _installPrompt = null;
-
-function isStandalone() {
-  return window.matchMedia?.("(display-mode: standalone)").matches
-    || window.navigator.standalone === true;
-}
+// הכפתור "📲 התקן כאפליקציה" פותח דיאלוג התקנה אלגנטי משותף עם
+// המודל שעולה אוטומטית בביקור השלישי. הזרימה ב-pwa_install_prompt.js;
+// כאן אנחנו רק מחברים את הכפתור ומציגים סטטוס/כיתוב מותאם למצב.
 
 function setInstallStatus(text) {
   const el = document.getElementById("dl-install-status");
   if (el) el.textContent = text;
 }
 
-function setInstallButtonEnabled(enabled) {
+function refreshInstallButtonUI() {
   const btn = document.getElementById("dl-install-app");
-  if (btn) btn.disabled = !enabled;
-}
+  if (!btn) return;
 
-async function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) return;
-  try {
-    await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  } catch (err) {
-    console.warn("[pwa] sw register failed:", err);
-  }
-}
-
-async function triggerInstall() {
-  if (isStandalone()) {
+  if (isInstalled() || isStandalone()) {
+    btn.disabled = true;
+    btn.textContent = "✓ מותקן";
     setInstallStatus("האפליקציה כבר מותקנת ופועלת בחלון עצמאי.");
     return;
   }
-  if (!_installPrompt) {
-    setInstallStatus("ההתקנה לא זמינה כעת. פתח את האתר בכרום/אדג' על המחשב, ואם הכפתור עדיין לא פעיל — חכה כמה שניות לאחר טעינה.");
+
+  if (!("serviceWorker" in navigator)) {
+    btn.disabled = true;
+    setInstallStatus("הדפדפן שלך לא תומך בהתקנת אפליקציה. נסה בכרום או באדג' עדכניים.");
     return;
   }
-  try {
-    _installPrompt.prompt();
-    const { outcome } = await _installPrompt.userChoice;
-    if (outcome === "accepted") {
-      setInstallStatus("ההתקנה הושלמה — האפליקציה תפתח בחלון משלה.");
-    } else {
-      setInstallStatus("ההתקנה בוטלה. אפשר לנסות שוב בכל עת.");
-    }
-  } catch (err) {
-    console.warn("[pwa] install prompt failed:", err);
-    setInstallStatus("שגיאה בהפעלת ההתקנה. נסה שוב מהדפדפן או דרך תפריט הדפדפן.");
-  } finally {
-    _installPrompt = null;
-    setInstallButtonEnabled(false);
+
+  // Always allow the button to open the elegant dialog — it shows
+  // either the install flow or a fallback explanation.
+  btn.disabled = false;
+  if (isInstallable()) {
+    setInstallStatus("ההתקנה זמינה — לחץ לפתיחת אשף ההתקנה.");
+  } else {
+    setInstallStatus("לחץ לקבלת הוראות ההתקנה. ההתקנה הישירה נדלקת אוטומטית בכרום/אדג'.");
   }
 }
 
@@ -259,45 +241,16 @@ function wirePwaInstall() {
   const btn = document.getElementById("dl-install-app");
   if (!btn) return;
 
-  // מצב התחלתי — הכפתור כבוי עד שיגיע beforeinstallprompt או שנזהה Standalone.
-  setInstallButtonEnabled(false);
+  refreshInstallButtonUI();
+  onPwaChange(refreshInstallButtonUI);
 
-  if (isStandalone()) {
-    setInstallStatus("✓ האפליקציה כבר מותקנת ורצה בחלון עצמאי.");
-    btn.textContent = "✓ מותקן";
-    return;
-  }
-
-  if (!("serviceWorker" in navigator)) {
-    setInstallStatus("הדפדפן שלך לא תומך בהתקנת אפליקציה. נסה בכרום או באדג' עדכניים.");
-    return;
-  }
-
-  setInstallStatus("מאתר זמינות התקנה…");
-
-  window.addEventListener("beforeinstallprompt", (e) => {
-    e.preventDefault();
-    _installPrompt = e;
-    setInstallButtonEnabled(true);
-    setInstallStatus("ההתקנה זמינה — לחץ כדי להתקין.");
-  });
-
-  window.addEventListener("appinstalled", () => {
-    _installPrompt = null;
-    setInstallButtonEnabled(false);
-    setInstallStatus("✓ ההתקנה הושלמה.");
-    btn.textContent = "✓ מותקן";
-  });
-
-  btn.addEventListener("click", triggerInstall);
-
-  // אם אחרי 6 שניות עדיין אין אירוע התקנה — סמן הוראות ידניות.
-  // (קורה בדפדפנים שלא תומכים, או באתר שכבר נוסף בעבר ל-Browser PWA list.)
-  setTimeout(() => {
-    if (!_installPrompt && !isStandalone()) {
-      setInstallStatus("אם הכפתור לא נדלק: בכרום/אדג' לחץ על אייקון ההתקנה בשורת הכתובת, או בתפריט „...” → „התקן את האפליקציה”.");
+  btn.addEventListener("click", () => {
+    if (isInstalled() || isStandalone()) {
+      setInstallStatus("האפליקציה כבר מותקנת — פתח אותה דרך שולחן העבודה או תפריט התחל.");
+      return;
     }
-  }, 6000);
+    showInstallDialogManually();
+  });
 
   registerServiceWorker();
 }

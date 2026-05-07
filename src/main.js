@@ -29,6 +29,7 @@ import { setupFindReplace } from "./find_replace.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
 import { setupCssInjectPanel } from "./css_inject_panel.js";
 import { wireDownloadsPanel } from "./downloads_panel.js";
+import { initPwaInstallPrompt } from "./pwa_install_prompt.js";
 import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
@@ -803,6 +804,7 @@ function setupRibbonTabs() {
 
 setupRibbonTabs();
 wireDownloadsPanel();
+initPwaInstallPrompt();
 (function wirePreviewMinimize() {
   const btn = document.getElementById("preview-minimize-toggle");
   if (!btn) return;
