@@ -60,6 +60,43 @@ export default {
       const adminReq = new Request(adminUrl.toString(), request);
       response = await env.ASSETS.fetch(adminReq);
       isHtml = true;
+    } else if (url.pathname === '/vilna-beta' || url.pathname === '/vilna-beta/') {
+      // צוות האתר 2026-05-08: דף בטה למנוע V8 — חסום אמיתית למי שלא מנהל.
+      const user = await getUserFromRequest(request, env);
+      if (!user || !user.is_admin) {
+        response = new Response(
+          '<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="utf-8">' +
+          '<title>גישה חסומה</title></head><body style="font-family:sans-serif;' +
+          'text-align:center;padding:80px 20px;color:#475569;">' +
+          '<h1 style="color:#b91c1c;">403 — גישה חסומה</h1>' +
+          '<p>הדף הזה הוא בטה לבדיקה פנימית. הגישה פתוחה רק למנהלי המערכת.</p>' +
+          '<p><a href="/" style="color:#1e3a8a;">חזרה לעורך</a></p>' +
+          '</body></html>',
+          { status: 403, headers: { 'content-type': 'text/html; charset=utf-8' } }
+        );
+        isHtml = true;
+      } else {
+        const betaUrl = new URL(request.url);
+        betaUrl.pathname = '/vilna-beta.html';
+        const betaReq = new Request(betaUrl.toString(), request);
+        const betaResponse = await env.ASSETS.fetch(betaReq);
+        const html = await betaResponse.text();
+        const authState = {
+          loggedIn: true,
+          paid: !!user.paid,
+          email: user.email || null,
+          admin: true,
+          status: user.status || null,
+        };
+        const injection = `<script>window.__RAVTEXT_AUTH__ = ${JSON.stringify(authState)};</script>`;
+        const injected = html.includes('</head>')
+          ? html.replace('</head>', `${injection}</head>`)
+          : injection + html;
+        const newHeaders = new Headers(betaResponse.headers);
+        newHeaders.delete('content-length');
+        response = new Response(injected, { status: betaResponse.status, headers: newHeaders });
+        isHtml = true;
+      }
     } else if (url.pathname === '/api/render/preflight' && request.method === 'POST') {
       response = await handlePreflight(request, env);
     } else if (url.pathname === '/api/talmud/decide' && request.method === 'POST') {
