@@ -76,28 +76,34 @@ async function handleCallback(request, env, url) {
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const row = await env.DB.prepare(
+  let row = await env.DB.prepare(
     'SELECT id, email, status, expires_at FROM users WHERE email = ?'
   ).bind(email).first();
 
+  // משה 2026-05-07: דרישה — כל משתמש גוגל מאומת מתחבר. רק הסטטוס ב-DB
+  // קובע אם הוא משלם (active) או דמו (unauthorized). משה רואה את המייל ב-DB,
+  // יכול לשדרג סטטוס, ובכניסה הבאה המשתמש מקבל פרמיום אוטומטית.
+  // הטקסטים וההגדרות שלו (טבלאות נפרדות בעתיד) קשורים למייל ולכן נשמרים בין כניסות.
   if (!row) {
-    return Response.redirect(`${url.origin}/?login=denied`, 302);
-  }
-  if (row.status !== 'active') {
-    return Response.redirect(`${url.origin}/?login=disabled`, 302);
-  }
-  if (row.expires_at && row.expires_at < nowSec) {
-    return Response.redirect(`${url.origin}/?login=expired`, 302);
+    await env.DB.prepare(
+      'INSERT INTO users (email, status, expires_at, is_admin) VALUES (?, ?, 0, 0)'
+    ).bind(email, 'unauthorized').run();
+    row = await env.DB.prepare(
+      'SELECT id, email, status, expires_at FROM users WHERE email = ?'
+    ).bind(email).first();
   }
 
   await env.DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(nowSec, row.id).run();
 
+  // עוגייה ניתנת תמיד. paid/demo נקבע בכל בקשה לפי status ב-DB.
   const cookie = await buildSessionCookie(email, env);
+  const isPaid = row.status === 'active' && (!row.expires_at || row.expires_at >= nowSec);
+  const dest = isPaid ? '/' : '/?login=demo';
   return new Response(null, {
     status: 302,
     headers: {
       'set-cookie': cookie,
-      location: `${url.origin}/`,
+      location: `${url.origin}${dest}`,
     },
   });
 }

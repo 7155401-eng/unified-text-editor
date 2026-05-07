@@ -31,9 +31,11 @@ export default {
       const user = await getUserFromRequest(request, env);
       response = Response.json(
         {
-          paid: !!user,
+          loggedIn: !!user,
+          paid: !!user?.paid,
           email: user?.email || null,
-          admin: user?.is_admin === 1,
+          admin: !!user?.is_admin,
+          status: user?.status || null,
         },
         { headers: { 'cache-control': 'no-store' } }
       );
@@ -73,13 +75,19 @@ export default {
         const html = await assetResponse.text();
 
         const authState = {
-          paid: !!user,
+          loggedIn: !!user,
+          paid: !!user?.paid,
           email: user?.email || null,
-          admin: user?.is_admin === 1,
+          admin: !!user?.is_admin,
+          status: user?.status || null,
         };
-        const flagLines = user
-          ? 'window.__RAVTEXT_DEMO_MODE__ = false; localStorage.setItem("ravtext.demoMode","0");'
-          : '';
+        // משה 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
+        // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י משה ב-DB).
+        // localStorage('ravtext.demoMode') חייב להתאפס בכל מצב לא־משלם, אחרת
+        // ערך "0" שנשאר מהתחברות paid קודמת ידרוס את ברירת המחדל וייצור תצוגה מלאה זדונית.
+        const flagLines = (user && user.paid)
+          ? 'window.__RAVTEXT_DEMO_MODE__ = false; try{localStorage.setItem("ravtext.demoMode","0");}catch(e){}'
+          : 'try{localStorage.removeItem("ravtext.demoMode");}catch(e){}delete window.__RAVTEXT_DEMO_MODE__;';
         const injection = `<script>window.__RAVTEXT_AUTH__ = ${JSON.stringify(authState)};${flagLines}</script>`;
 
         const injected = html.includes('</head>')

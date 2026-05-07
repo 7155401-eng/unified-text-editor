@@ -74,9 +74,19 @@ export async function getUserFromRequest(request, env) {
     'SELECT id, email, status, expires_at, is_admin FROM users WHERE email = ?'
   ).bind(payload.email).first();
   if (!row) return null;
-  if (row.status !== 'active') return null;
-  if (row.expires_at && row.expires_at < nowSec) return null;
-  return row;
+
+  // משה 2026-05-07: כל משתמש עם עוגייה תקפה ושיש לו רשומה ב-DB נחשב "מחובר".
+  // paid נקבע לפי הסטטוס: active + לא פג תוקף.
+  const notExpired = !row.expires_at || row.expires_at >= nowSec;
+  const isPaid = row.status === 'active' && notExpired;
+  return {
+    id: row.id,
+    email: row.email,
+    status: row.status,
+    expires_at: row.expires_at,
+    is_admin: row.is_admin === 1,
+    paid: isPaid,
+  };
 }
 
 export async function buildSessionCookie(email, env) {
