@@ -206,6 +206,18 @@ function extractStreamNotes(streamPane) {
   return parts.map(stripDisplayNum).filter(Boolean);
 }
 
+const DEFAULT_STREAM_LABELS = {
+  "01": "מגן אברהם",
+  "02": "משנה ברורה",
+  "03": "ביאור הלכה",
+  "04": "טורי זהב",
+  "05": "כף החיים",
+};
+
+function defaultLabelForCode(code) {
+  return DEFAULT_STREAM_LABELS[code] || `זרם ${code}`;
+}
+
 function applyFirstNoteAsTitle(code, notes) {
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};

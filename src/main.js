@@ -179,6 +179,17 @@ function isLegacyDemoState() {
   return text.includes("@01") && text.includes("@02") && text.includes("@03") && text.includes("פצל");
 }
 
+(function applyDefaultMishnaSetup() {
+  try {
+    if (localStorage.getItem("ravtext.mishnaWrap") === null) {
+      localStorage.setItem("ravtext.mishnaWrap", "1");
+    }
+    if (localStorage.getItem("ravtext.mishnaWrap.levels") === null) {
+      localStorage.setItem("ravtext.mishnaWrap.levels", "01,04|02,03");
+    }
+  } catch (_) { /* localStorage חסום — דילוג */ }
+})();
+
 // אם יש מצב שמור — משחזר. אחרת — טוען שו"ע כברירת מחדל בכל נקודת התחלה.
 const loadedFromStorage = paneManager.loadFromStorage();
 let initialLoadPromise = Promise.resolve();
