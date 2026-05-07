@@ -22,7 +22,9 @@ const MAIN_WIDTH_KEY    = "ravtext.talmudLayout.mainWidth";
 const SIDE_MODE_KEY     = "ravtext.talmudLayout.sideMode";
 const SIDE_GAP_KEY      = "ravtext.talmudLayout.sideGap";
 const PRESERVE_BREAKS_KEY = "ravtext.talmudLayout.preserveBreaks";
+const HEIGHT_SAFETY_KEY = "ravtext.talmudLayout.heightSafety";
 const DEFAULT_SIDE_GAP  = 12; // px — רווח בין ראשי לפרשנים שבצדדים (ברירת מחדל מקובלת לתלמוד)
+const DEFAULT_HEIGHT_SAFETY = 160; // px — ברירת מחדל מותאמת לפריסה תלמודית כללית (גפ"ת ומשנה ברורה)
 // סף לקיום כתר: כל פרשן צריך להכיל לפחות (crownLines + EXTRA) שורות תוכן
 // ב-50% רוחב. ערך 0 משמעו: מספיק לכסות את הכתר עצמו.
 const CROWN_EXTRA_LINES = 0;
@@ -97,6 +99,25 @@ export function isTalmudPreserveBreaks() {
 }
 export function setTalmudPreserveBreaks(enabled) {
   localStorage.setItem(PRESERVE_BREAKS_KEY, enabled ? "1" : "0");
+}
+
+// משה 2026-05-07: כרית הביטחון לגובה — הוצאה מהקוד להגדרה למשתמש.
+// אסור לקבוע מספר אחיד בקוד שיתנקם בנו במסמכים אחרים. ברירת מחדל 160
+// (תואם להתנהגות לפני השינוי), אבל המשתמש יכול לשנות פר-מסמך.
+export function getTalmudHeightSafety() {
+  const raw = localStorage.getItem(HEIGHT_SAFETY_KEY);
+  if (raw === null) return DEFAULT_HEIGHT_SAFETY;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return DEFAULT_HEIGHT_SAFETY;
+  return Math.max(0, Math.min(400, n));
+}
+export function setTalmudHeightSafety(value) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 400) {
+    localStorage.removeItem(HEIGHT_SAFETY_KEY);
+    return;
+  }
+  localStorage.setItem(HEIGHT_SAFETY_KEY, String(n));
 }
 
 // ─────────────────────────────────────────────
@@ -2070,6 +2091,7 @@ export function wireTalmudLayoutControls(onChange) {
   const sideSelect   = document.getElementById("talmud-side-mode-select");
   const gapInput     = document.getElementById("talmud-side-gap-input");
   const breaksToggle = document.getElementById("talmud-preserve-breaks");
+  const safetyInput  = document.getElementById("talmud-height-safety-input");
 
   if (!toggle) return;
 
@@ -2081,6 +2103,7 @@ export function wireTalmudLayoutControls(onChange) {
   if (sideSelect)   sideSelect.value   = getTalmudSideMode();
   if (gapInput)     gapInput.value     = getTalmudSideGap();
   if (breaksToggle) breaksToggle.checked = isTalmudPreserveBreaks();
+  if (safetyInput)  safetyInput.value  = getTalmudHeightSafety();
 
   const commit = () => onChange?.();
 
@@ -2116,6 +2139,11 @@ export function wireTalmudLayoutControls(onChange) {
   });
   breaksToggle?.addEventListener("change", () => {
     setTalmudPreserveBreaks(breaksToggle.checked);
+    commit();
+  });
+  safetyInput?.addEventListener("change", () => {
+    setTalmudHeightSafety(safetyInput.value);
+    safetyInput.value = getTalmudHeightSafety();
     commit();
   });
 }
