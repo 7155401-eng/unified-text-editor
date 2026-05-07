@@ -24,9 +24,18 @@ function normalizeCode(raw) {
   return String(n).padStart(2, "0");
 }
 
-// צוות האתר 2026-05-07: parsing+default-level decisions moved to server.
-// Local stub returns null; the real values come from /api/mishna/decide via
-// _mishnaPlanCache below.
+function parseMishnaLevels() {
+  return getMishnaLevelsText()
+    .split(/[|\n;]+/)
+    .map((level) => (level.match(/\d{1,3}/g) || []).map(normalizeCode).filter(Boolean))
+    .map((level) => Array.from(new Set(level)))
+    .filter((level) => level.length >= 2);
+}
+
+function defaultMishnaLevels(streams) {
+  const codes = streams.map(codeForStream).filter(Boolean);
+  return codes.length >= 2 ? [Array.from(new Set(codes))] : [];
+}
 
 function resetStream(streamEl) {
   streamEl.classList.remove("mishna-float", "mishna-flow", "mishna-right", "mishna-left");
@@ -61,40 +70,19 @@ function pageNumberFor(streamsWrap) {
   return Number.isFinite(idx) ? idx + 1 : 1;
 }
 
-// צוות האתר 2026-05-07: עברו לשרת. הקריאות הסינכרוניות קוראות מתוך הקאש
-// שאומלא ע"י preflightMishnaPlan לפני התחלת הפריסה.
-let _mishnaPlanCache = null;
-
-async function preflightMishnaPlan(streams, pageNumber) {
-  const streamData = streams.map((s) => ({
-    code: codeForStream(s),
-    sidePreference: settingsForStream(s).mishnaSide || "auto",
-    explicitWidth: settingsForStream(s).mishnaWidth || 0,
-  }));
-  const { getNonceHeader } = await import("./render_preflight.js");
-  const res = await fetch("/api/mishna/decide", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...getNonceHeader() },
-    body: JSON.stringify({
-      pageNumber,
-      streams: streamData,
-      rawLevelsText: getMishnaLevelsText(),
-    }),
-  });
-  if (!res.ok) throw new Error(`mishna decide failed: HTTP ${res.status}`);
-  _mishnaPlanCache = await res.json();
+function sideForStream(streamEl, idx, streamsWrap) {
+  const side = settingsForStream(streamEl).mishnaSide || "auto";
+  if (side === "right" || side === "left") return side;
+  const pageNo = pageNumberFor(streamsWrap);
+  if (side === "outer") return pageNo % 2 === 1 ? "left" : "right";
+  if (side === "inner") return pageNo % 2 === 1 ? "right" : "left";
+  return idx % 2 === 0 ? "right" : "left";
 }
 
-function sideForStream(streamEl, idx) {
-  const code = codeForStream(streamEl);
-  const a = _mishnaPlanCache?.assignments?.find((x) => x.code === code);
-  return a?.side || (idx % 2 === 0 ? "right" : "left");
-}
-
-function widthForStream(streamEl) {
-  const code = codeForStream(streamEl);
-  const a = _mishnaPlanCache?.assignments?.find((x) => x.code === code);
-  return a?.width || "50%";
+function widthForStream(streamEl, levelCount) {
+  const width = Number(settingsForStream(streamEl).mishnaWidth || 0);
+  if (Number.isFinite(width) && width > 0) return `${Math.max(10, Math.min(95, width))}%`;
+  return widthForFlowFloat(levelCount);
 }
 
 function layoutLevel(streamsWrap, levelStreams, levelIndex) {
@@ -119,7 +107,7 @@ function layoutLevel(streamsWrap, levelStreams, levelIndex) {
   streamsWrap.appendChild(levelEl);
 }
 
-export async function applyMishnaWrapToPage(pageEl) {
+export function applyMishnaWrapToPage(pageEl) {
   const streamsWrap = pageEl && pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
 
@@ -147,15 +135,8 @@ export async function applyMishnaWrapToPage(pageEl) {
     return;
   }
 
-  // צוות האתר 2026-05-07: pre-fetch all mishna decisions for this page (one round-trip).
-  try {
-    await preflightMishnaPlan(streams, pageNumberFor(streamsWrap));
-  } catch (e) {
-    console.warn("[mishna-wrap] preflight failed:", e);
-    return;
-  }
-
-  const effectiveLevels = _mishnaPlanCache?.levels || [];
+  const levels = parseMishnaLevels();
+  const effectiveLevels = levels.length ? levels : defaultMishnaLevels(streams);
   if (effectiveLevels.length === 0) {
     streams
       .sort((a, b) => originalOrder(a, 0) - originalOrder(b, 0))
@@ -177,25 +158,20 @@ export async function applyMishnaWrapToPage(pageEl) {
     .forEach((stream) => streamsWrap.appendChild(stream));
 }
 
-export async function applyMishnaWrapToPages(container) {
+export function applyMishnaWrapToPages(container) {
   // Defensive cleanup (משה 2026-05-07): כשהמשתמש מכבה משנ"ב או גפ"ת
   // (שאוטו-מפעיל משנ"ב), עמודים שכבר רנדרו עם משנ"ב יכולים להישאר
   // עם המבנה — קלאס .mishna-wrap-page, .mishna-level wrappers וכו'.
   // הקריאה לפר-עמוד מנקה את זה (unwrapLevels + resetStream + סדר טבעי)
   // גם כשהמצב כבוי. אז אנחנו מריצים אותה במקרה כבוי כדי לוודא ניקוי.
   if (!isMishnaWrapEnabled()) {
-    const dirtyPages = Array.from(
-      container.querySelectorAll(".page.mishna-wrap-page, .page:has(.mishna-level)")
+    const dirtyPages = container.querySelectorAll(
+      ".page.mishna-wrap-page, .page:has(.mishna-level)"
     );
-    for (const page of dirtyPages) {
-      await applyMishnaWrapToPage(page);
-    }
+    dirtyPages.forEach((page) => applyMishnaWrapToPage(page));
     return;
   }
-  const pages = Array.from(container.querySelectorAll(".page:not(.page-placeholder)"));
-  for (const page of pages) {
-    await applyMishnaWrapToPage(page);
-  }
+  container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => applyMishnaWrapToPage(page));
 
   const prevProcessor = container.__processRealizedPage;
   if (!prevProcessor || !prevProcessor.__mishnaWrapped) {
