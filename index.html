@@ -662,6 +662,15 @@
           <button type="button" id="pdf-next" title="עמוד הבא" class="pdf-tb-btn">›</button>
           <button type="button" id="pdf-last" title="עמוד אחרון" class="pdf-tb-btn">⟫</button>
           <span class="pdf-tb-sep"></span>
+          <span class="pdf-tb-scroll-group" role="group" aria-label="גלילה במציג">
+            <button type="button" id="pdf-scroll-up" title="גלול למעלה" aria-label="גלול למעלה" class="pdf-tb-btn pdf-tb-scroll-btn">
+              <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button type="button" id="pdf-scroll-down" title="גלול למטה" aria-label="גלול למטה" class="pdf-tb-btn pdf-tb-scroll-btn">
+              <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </span>
+          <span class="pdf-tb-sep"></span>
           <button type="button" id="pdf-zoom-out" title="הקטן" class="pdf-tb-btn">−</button>
           <select id="pdf-zoom-select" class="pdf-tb-zoom-select" title="זום">
             <option value="auto">אוטומטי</option>
@@ -687,6 +696,9 @@
           <button type="button" id="pdf-download-html" title="הורד HTML לדיבוג" class="pdf-tb-btn">⬇ HTML</button>
           <button type="button" id="pdf-debug-snapshot" title="צילום מצב דיבוג" class="pdf-tb-btn">📸 דיבוג</button>
           <button type="button" id="pdf-debug-highlight" title="הדגש בעיות" class="pdf-tb-btn">🔍 הדגש</button>
+        </div>
+        <div id="pdf-scroll-progress" class="pdf-scroll-progress" aria-hidden="true">
+          <div class="pdf-scroll-progress-fill"></div>
         </div>
         <div class="pdf-body">
           <div id="pdf-sidebar" class="pdf-sidebar" hidden></div>

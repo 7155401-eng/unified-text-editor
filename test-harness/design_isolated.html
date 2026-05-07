@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Design Preview</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  body { margin: 0; padding: 0; }
+  .demo-frame { display: flex; flex-direction: column; gap: 32px; padding: 32px; }
+  .demo-frame > section { padding: 16px; border-radius: 6px; }
+  .dark-section { background: #0F172A; }
+  .light-section { background: #EEF2F8; }
+  h2 { color: #c9a14a; margin: 0 0 12px; font-family: Arial, sans-serif; }
+  .light-section h2 { color: #185ABD; }
+  .pdf-body { height: 400px; border: 1px solid #555; }
+</style>
+</head>
+<body class="lang-he">
+
+<div class="demo-frame">
+
+<section class="dark-section">
+  <h2>Dark theme</h2>
+  <div id="pdf-toolbar" class="pdf-toolbar" dir="rtl">
+    <button type="button" class="pdf-tb-btn">⟪</button>
+    <button type="button" class="pdf-tb-btn">‹</button>
+    <span class="pdf-tb-page">
+      <input type="number" class="pdf-tb-page-input" value="3" min="1">
+      <span class="pdf-tb-page-total">/ 12</span>
+    </span>
+    <button type="button" class="pdf-tb-btn">›</button>
+    <button type="button" class="pdf-tb-btn">⟫</button>
+    <span class="pdf-tb-sep"></span>
+    <span class="pdf-tb-scroll-group" role="group" aria-label="גלילה במציג">
+      <button type="button" id="pdf-scroll-up" title="גלול למעלה" class="pdf-tb-btn pdf-tb-scroll-btn">
+        <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button type="button" id="pdf-scroll-down" title="גלול למטה" class="pdf-tb-btn pdf-tb-scroll-btn">
+        <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </span>
+    <span class="pdf-tb-sep"></span>
+    <button type="button" class="pdf-tb-btn">−</button>
+    <button type="button" class="pdf-tb-btn">+</button>
+  </div>
+  <div id="pdf-scroll-progress" class="pdf-scroll-progress">
+    <div class="pdf-scroll-progress-fill" style="width:38%"></div>
+  </div>
+  <div class="pdf-body">
+    <div id="pages-container" class="pages-container" dir="rtl"></div>
+  </div>
+</section>
+
+<section class="light-section">
+  <h2>Light theme</h2>
+  <div class="light-theme-wrap">
+    <div id="pdf-toolbar2" class="pdf-toolbar" dir="rtl">
+      <button type="button" class="pdf-tb-btn">⟪</button>
+      <button type="button" class="pdf-tb-btn">‹</button>
+      <span class="pdf-tb-page">
+        <input type="number" class="pdf-tb-page-input" value="3" min="1">
+        <span class="pdf-tb-page-total">/ 12</span>
+      </span>
+      <button type="button" class="pdf-tb-btn">›</button>
+      <button type="button" class="pdf-tb-btn">⟫</button>
+      <span class="pdf-tb-sep"></span>
+      <span class="pdf-tb-scroll-group" role="group" aria-label="גלילה במציג">
+        <button type="button" class="pdf-tb-btn pdf-tb-scroll-btn">
+          <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button type="button" class="pdf-tb-btn pdf-tb-scroll-btn">
+          <svg viewBox="0 0 18 18" width="16" height="16" aria-hidden="true"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </span>
+      <span class="pdf-tb-sep"></span>
+      <button type="button" class="pdf-tb-btn">−</button>
+      <button type="button" class="pdf-tb-btn">+</button>
+    </div>
+    <div id="pdf-scroll-progress2" class="pdf-scroll-progress">
+      <div class="pdf-scroll-progress-fill" style="width:38%"></div>
+    </div>
+    <div class="pdf-body">
+      <div id="pages-container2" class="pages-container" dir="rtl"></div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+  // Populate fake pages so the scrollbar is visible
+  function fillPages(host) {
+    host.innerHTML = "";
+    for (let i = 0; i < 8; i++) {
+      const p = document.createElement("div");
+      p.className = "page";
+      p.style.width = "380px";
+      p.style.height = "537px";
+      p.style.flex = "0 0 537px";
+      p.style.background = "#fff";
+      p.style.padding = "20px";
+      p.style.boxShadow = "0 2px 6px rgba(0,0,0,.18)";
+      p.innerHTML = '<div style="font-family:serif;color:#222;line-height:1.6;direction:rtl;font-size:14px"><h3>עמוד ' + (i+1) + '</h3><p>טקסט לדוגמה בעברית. מרגיש בחיים. חיוך וברכה.</p><p>שורה. שורה. שורה. שורה.</p></div>';
+      host.appendChild(p);
+    }
+  }
+  fillPages(document.getElementById("pages-container"));
+  fillPages(document.getElementById("pages-container2"));
+
+  // Apply light-theme to the second section.
+  // We can't put `body.light-theme` on body for both, so let's clone the rule
+  // as a child class. Simpler: set body class and use only one frame.
+  // Easier: add a containing class .light-theme-wrap in CSS by re-routing.
+  // For preview only — toggle each frame individually:
+  document.body.classList.add("light-theme"); // will style BOTH same; we'll capture each separately.
+</script>
+
+</body>
+</html>
