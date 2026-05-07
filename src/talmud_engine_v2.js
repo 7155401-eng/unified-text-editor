@@ -466,10 +466,21 @@ const _building = new WeakSet();
 /** Apply V2 layout to a single page element. */
 export function applyTalmudLayoutToPageV2(pageEl) {
   if (!pageEl || _building.has(pageEl)) return;
-  if (localStorage.getItem(STORAGE_KEY) !== "1") return;
 
   const streamsWrap = pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
+
+  // Defensive cleanup (משה 2026-05-07): גם כשהמצב כבוי, אם יש שאריות
+  // מרינדור גפ"ת קודם — לנקות אותן לפני יציאה.
+  const enabled = localStorage.getItem(STORAGE_KEY) === "1";
+  if (!enabled) {
+    const existingBlock = pageEl.querySelector(":scope > .talmud-layout");
+    if (existingBlock) existingBlock.remove();
+    pageEl.classList.remove("talmud-layout-page");
+    delete pageEl.dataset.talmudV2State;
+    delete pageEl.dataset.talmudV2Mode;
+    return;
+  }
 
   _building.add(pageEl);
   pageEl.dataset.talmudV2State = "building";
