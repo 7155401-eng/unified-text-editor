@@ -1,4 +1,4 @@
-// משה 2026-05-07: Universal render preflight + planner.
+// צוות האתר 2026-05-07: Universal render preflight + planner.
 // כל רינדור (תלמוד, שני טורים, טקסט רגיל, או כל פריסה אחרת) מחויב לעבור דרך
 // /api/render/preflight לפני שהדפדפן מתחיל לפרק לעמודים. בלי תשובת השרת —
 // הרינדור נעצר.

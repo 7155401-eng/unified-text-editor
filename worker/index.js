@@ -1,4 +1,4 @@
-// משה 2026-05-07: כניסה יחידה ל-Worker. שלוש משימות:
+// צוות האתר 2026-05-07: כניסה יחידה ל-Worker. שלוש משימות:
 // 1. /api/auth/* — מטופל ע"י auth.js (התחברות גוגל)
 // 2. /api/me — מחזיר מצב משתמש לפרונט (paid/demo + email)
 // 3. כל בקשה אחרת ל-HTML — מחדיר לתוך index.html שני משתני חלון לפני שה-JS עולה,
@@ -10,6 +10,7 @@ import { getUserFromRequest } from './session.js';
 import { applySecurityHeaders, checkRateLimit, isBadBot } from './security.js';
 import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide } from './render_planner.js';
+import { handleAdmin } from './admin.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -39,6 +40,14 @@ export default {
         },
         { headers: { 'cache-control': 'no-store' } }
       );
+    } else if (url.pathname.startsWith('/api/admin/')) {
+      response = await handleAdmin(request, env, url);
+    } else if (url.pathname === '/admin' || url.pathname === '/admin/') {
+      const adminUrl = new URL(request.url);
+      adminUrl.pathname = '/admin.html';
+      const adminReq = new Request(adminUrl.toString(), request);
+      response = await env.ASSETS.fetch(adminReq);
+      isHtml = true;
     } else if (url.pathname === '/api/render/preflight' && request.method === 'POST') {
       response = await handlePreflight(request, env);
     } else if (url.pathname === '/api/talmud/decide' && request.method === 'POST') {
@@ -81,8 +90,8 @@ export default {
           admin: !!user?.is_admin,
           status: user?.status || null,
         };
-        // משה 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
-        // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י משה ב-DB).
+        // צוות האתר 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
+        // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י צוות האתר ב-DB).
         // localStorage('ravtext.demoMode') חייב להתאפס בכל מצב לא־משלם, אחרת
         // ערך "0" שנשאר מהתחברות paid קודמת ידרוס את ברירת המחדל וייצור תצוגה מלאה זדונית.
         const flagLines = (user && user.paid)

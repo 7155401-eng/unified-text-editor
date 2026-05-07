@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מנהל מערכת — רב טקסט לוורד AI</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      margin: 0;
+      background: #f1f5f9;
+      color: #0f172a;
+      min-height: 100vh;
+    }
+    .topbar {
+      background: linear-gradient(135deg, #1e3a8a, #0e7490);
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .topbar a {
+      color: white;
+      text-decoration: none;
+      padding: 6px 14px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .topbar a:hover { background: rgba(255,255,255,0.25); }
+    .container { padding: 24px; max-width: 1400px; margin: 0 auto; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .stat-card .label { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; color: #1e3a8a; }
+    .stat-card.warn .value { color: #d97706; }
+    .stat-card.bad .value { color: #b91c1c; }
+    .stat-card.good .value { color: #047857; }
+    .panel {
+      background: white;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      overflow: hidden;
+    }
+    .toolbar {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+      background: #f8fafc;
+    }
+    .toolbar input, .toolbar select, .toolbar button {
+      padding: 8px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+      background: white;
+    }
+    .toolbar input { min-width: 240px; }
+    .toolbar button {
+      background: #1e3a8a;
+      color: white;
+      border-color: #1e3a8a;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    .toolbar button:hover { background: #1e40af; }
+    .toolbar button.secondary {
+      background: white;
+      color: #1e3a8a;
+    }
+    .toolbar button.danger { background: #b91c1c; border-color: #b91c1c; }
+    .toolbar .right { margin-right: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td {
+      padding: 12px 14px;
+      text-align: right;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #475569;
+      letter-spacing: 0.5px;
+    }
+    tr:hover { background: #f8fafc; }
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-active { background: #d1fae5; color: #065f46; }
+    .badge-unauthorized { background: #fef3c7; color: #92400e; }
+    .badge-disabled { background: #fee2e2; color: #991b1b; }
+    .badge-admin { background: #dbeafe; color: #1e3a8a; margin-right: 4px; }
+    .row-actions { display: flex; gap: 6px; }
+    .btn-small {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: #f1f5f9;
+      color: #1e3a8a;
+    }
+    .btn-small:hover { background: #e2e8f0; }
+    .btn-small.activate { background: #d1fae5; color: #065f46; }
+    .btn-small.disable { background: #fef3c7; color: #92400e; }
+    .btn-small.delete { background: #fee2e2; color: #991b1b; }
+    .pagination {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 14px 16px;
+      border-top: 1px solid #e2e8f0;
+      background: #f8fafc;
+      font-size: 13px;
+    }
+    .pagination button { padding: 6px 12px; }
+    .pagination .info { color: #64748b; margin-right: auto; }
+    .empty {
+      padding: 60px 20px;
+      text-align: center;
+      color: #64748b;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: white;
+      padding: 24px;
+      border-radius: 10px;
+      width: 480px;
+      max-width: 90vw;
+      max-height: 90vh;
+      overflow: auto;
+    }
+    .modal h2 { margin-top: 0; }
+    .modal label { display: block; margin-bottom: 14px; }
+    .modal label > span { display: block; margin-bottom: 4px; font-size: 13px; color: #475569; }
+    .modal input, .modal select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      padding: 12px 20px;
+      background: #047857;
+      color: white;
+      border-radius: 8px;
+      z-index: 200;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-size: 14px;
+      transform: translateY(20px);
+      opacity: 0;
+      transition: transform 0.2s, opacity 0.2s;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.error { background: #b91c1c; }
+    .blocked {
+      max-width: 480px;
+      margin: 100px auto;
+      padding: 40px;
+      background: white;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+    .blocked h1 { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <div id="root">טוען...</div>
+
+  <div class="modal-backdrop" id="modal">
+    <div class="modal">
+      <h2 id="modal-title">עריכת משתמש</h2>
+      <form id="modal-form">
+        <input type="hidden" id="f-id" />
+        <label><span>מייל</span><input type="email" id="f-email" disabled /></label>
+        <label><span>סטטוס</span>
+          <select id="f-status">
+            <option value="active">פעיל (מנוי משלם)</option>
+            <option value="unauthorized">לא מאושר (דמו)</option>
+            <option value="disabled">חסום</option>
+          </select>
+        </label>
+        <label><span>תאריך תפוגה (השאר ריק לאין הגבלה)</span><input type="date" id="f-expires" /></label>
+        <label><span>הרשאות</span>
+          <select id="f-admin">
+            <option value="0">משתמש רגיל</option>
+            <option value="1">מנהל מערכת</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn-small" onclick="closeModal()">ביטול</button>
+          <button type="submit" class="btn-small activate">שמור</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = {
+      me: null,
+      users: [],
+      stats: null,
+      filter: { search: '', status: '', sort: 'created_desc' },
+      page: { limit: 50, offset: 0, total: 0 },
+    };
+
+    async function api(path, opts = {}) {
+      const res = await fetch(path, {
+        headers: { 'content-type': 'application/json' },
+        ...opts,
+      });
+      if (res.status === 401 || res.status === 403) {
+        renderBlocked(res.status);
+        throw new Error('Auth failed');
+      }
+      if (!res.ok) {
+        const text = await res.text();
+        toast(`שגיאה: ${text}`, true);
+        throw new Error(text);
+      }
+      return res.json();
+    }
+
+    function toast(msg, isError = false) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.toggle('error', !!isError);
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2500);
+    }
+
+    function fmtDate(unixSec) {
+      if (!unixSec) return '—';
+      const d = new Date(unixSec * 1000);
+      return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    function fmtDateTime(unixSec) {
+      if (!unixSec) return 'לא התחבר';
+      const d = new Date(unixSec * 1000);
+      return d.toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderBlocked(code) {
+      document.getElementById('root').innerHTML = `
+        <div class="blocked">
+          <h1>${code === 401 ? 'נדרשת התחברות' : 'אין הרשאת מנהל'}</h1>
+          <p>${code === 401 ? 'התחבר כדי להמשיך.' : 'רק משתמשים מסומנים כ-admin רואים את הדף הזה.'}</p>
+          <p><a href="/api/auth/login">התחבר עם גוגל</a> · <a href="/">חזרה לאתר</a></p>
+        </div>`;
+    }
+
+    async function load() {
+      const me = await fetch('/api/me').then(r => r.json());
+      state.me = me;
+      if (!me.loggedIn) return renderBlocked(401);
+      if (!me.admin) return renderBlocked(403);
+      await Promise.all([loadStats(), loadUsers()]);
+      render();
+    }
+
+    async function loadStats() {
+      state.stats = await api('/api/admin/stats');
+    }
+
+    async function loadUsers() {
+      const params = new URLSearchParams();
+      if (state.filter.search) params.set('search', state.filter.search);
+      if (state.filter.status) params.set('status', state.filter.status);
+      params.set('sort', state.filter.sort);
+      params.set('limit', state.page.limit);
+      params.set('offset', state.page.offset);
+      const data = await api(`/api/admin/users?${params}`);
+      state.users = data.users;
+      state.page.total = data.totalCount;
+    }
+
+    function render() {
+      const { stats, users, filter, page } = state;
+      const root = document.getElementById('root');
+      root.innerHTML = `
+        <div class="topbar">
+          <h1>מנהל מערכת — רב טקסט</h1>
+          <div>
+            <a href="/">חזרה לעורך</a>
+            &nbsp;
+            <a href="/api/auth/logout">יציאה (${state.me.email})</a>
+          </div>
+        </div>
+        <div class="container">
+          <div class="stats">
+            <div class="stat-card"><div class="label">סך משתמשים</div><div class="value">${stats.total}</div></div>
+            <div class="stat-card good"><div class="label">מנויים פעילים</div><div class="value">${stats.active}</div></div>
+            <div class="stat-card warn"><div class="label">לא מאושרים</div><div class="value">${stats.unauthorized}</div></div>
+            <div class="stat-card bad"><div class="label">חסומים</div><div class="value">${stats.disabled}</div></div>
+            <div class="stat-card"><div class="label">מנהלים</div><div class="value">${stats.admins}</div></div>
+            <div class="stat-card good"><div class="label">חדשים היום</div><div class="value">${stats.newToday}</div></div>
+            <div class="stat-card good"><div class="label">חדשים השבוע</div><div class="value">${stats.newThisWeek}</div></div>
+            <div class="stat-card"><div class="label">פעילים השבוע</div><div class="value">${stats.activeThisWeek}</div></div>
+            <div class="stat-card warn"><div class="label">תוקף מסתיים בקרוב</div><div class="value">${stats.expiringSoon}</div></div>
+          </div>
+          <div class="panel">
+            <div class="toolbar">
+              <input type="search" id="search" placeholder="חיפוש לפי מייל..." value="${filter.search}" />
+              <select id="status">
+                <option value="">כל הסטטוסים</option>
+                <option value="active" ${filter.status === 'active' ? 'selected' : ''}>פעיל</option>
+                <option value="unauthorized" ${filter.status === 'unauthorized' ? 'selected' : ''}>לא מאושר</option>
+                <option value="disabled" ${filter.status === 'disabled' ? 'selected' : ''}>חסום</option>
+              </select>
+              <select id="sort">
+                <option value="created_desc" ${filter.sort === 'created_desc' ? 'selected' : ''}>חדש→ישן</option>
+                <option value="created_asc" ${filter.sort === 'created_asc' ? 'selected' : ''}>ישן→חדש</option>
+                <option value="email_asc" ${filter.sort === 'email_asc' ? 'selected' : ''}>מייל א→ת</option>
+                <option value="last_login_desc" ${filter.sort === 'last_login_desc' ? 'selected' : ''}>חיבור אחרון</option>
+                <option value="expires_asc" ${filter.sort === 'expires_asc' ? 'selected' : ''}>פג קודם</option>
+              </select>
+              <button id="add-btn">+ הוסף משתמש</button>
+              <span class="right info">סך הכל: <strong>${page.total}</strong></span>
+            </div>
+            ${users.length === 0 ? '<div class="empty">לא נמצאו משתמשים.</div>' : `
+              <table>
+                <thead>
+                  <tr>
+                    <th>מייל</th>
+                    <th>סטטוס</th>
+                    <th>תוקף</th>
+                    <th>נרשם</th>
+                    <th>חיבור אחרון</th>
+                    <th>פעולות</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${users.map(u => `
+                    <tr>
+                      <td><strong>${u.email}</strong>${u.is_admin ? '<span class="badge badge-admin">מנהל</span>' : ''}</td>
+                      <td><span class="badge badge-${u.status}">${statusLabel(u.status)}</span></td>
+                      <td>${u.expires_at ? fmtDate(u.expires_at) : '—'}</td>
+                      <td>${fmtDate(u.created_at)}</td>
+                      <td>${fmtDateTime(u.last_login_at)}</td>
+                      <td class="row-actions">
+                        ${u.status !== 'active' ? `<button class="btn-small activate" data-action="activate" data-id="${u.id}">אשר</button>` : ''}
+                        ${u.status === 'active' ? `<button class="btn-small disable" data-action="disable" data-id="${u.id}">חסום</button>` : ''}
+                        <button class="btn-small" data-action="edit" data-id="${u.id}">עריכה</button>
+                        <button class="btn-small delete" data-action="delete" data-id="${u.id}">מחק</button>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              <div class="pagination">
+                <span class="info">מציג ${page.offset + 1}–${Math.min(page.offset + users.length, page.total)} מתוך ${page.total}</span>
+                <button class="btn-small" id="prev" ${page.offset === 0 ? 'disabled' : ''}>הקודם</button>
+                <button class="btn-small" id="next" ${page.offset + users.length >= page.total ? 'disabled' : ''}>הבא</button>
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+
+      bindEvents();
+    }
+
+    function statusLabel(s) {
+      return { active: 'פעיל', unauthorized: 'לא מאושר', disabled: 'חסום' }[s] || s;
+    }
+
+    function bindEvents() {
+      let searchTimer;
+      document.getElementById('search').addEventListener('input', (e) => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(async () => {
+          state.filter.search = e.target.value;
+          state.page.offset = 0;
+          await loadUsers();
+          render();
+          document.getElementById('search').focus();
+        }, 250);
+      });
+      document.getElementById('status').addEventListener('change', async (e) => {
+        state.filter.status = e.target.value;
+        state.page.offset = 0;
+        await loadUsers();
+        render();
+      });
+      document.getElementById('sort').addEventListener('change', async (e) => {
+        state.filter.sort = e.target.value;
+        await loadUsers();
+        render();
+      });
+      const prev = document.getElementById('prev');
+      if (prev) prev.addEventListener('click', async () => {
+        state.page.offset = Math.max(0, state.page.offset - state.page.limit);
+        await loadUsers();
+        render();
+      });
+      const next = document.getElementById('next');
+      if (next) next.addEventListener('click', async () => {
+        state.page.offset = state.page.offset + state.page.limit;
+        await loadUsers();
+        render();
+      });
+      document.getElementById('add-btn').addEventListener('click', openAddModal);
+      document.querySelectorAll('[data-action]').forEach(btn => {
+        btn.addEventListener('click', () => handleRowAction(btn.dataset.action, Number(btn.dataset.id)));
+      });
+    }
+
+    async function handleRowAction(action, id) {
+      const user = state.users.find(u => u.id === id);
+      if (!user) return;
+      if (action === 'activate') {
+        await api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) });
+        toast(`${user.email} אושר`);
+      } else if (action === 'disable') {
+        await api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'disabled' }) });
+        toast(`${user.email} נחסם`);
+      } else if (action === 'edit') {
+        openEditModal(user);
+        return;
+      } else if (action === 'delete') {
+        if (!confirm(`למחוק את ${user.email} לחלוטין? הפעולה לא הפיכה.`)) return;
+        await api(`/api/admin/users/${id}`, { method: 'DELETE' });
+        toast(`${user.email} נמחק`);
+      }
+      await Promise.all([loadStats(), loadUsers()]);
+      render();
+    }
+
+    function openAddModal() {
+      document.getElementById('modal-title').textContent = 'הוסף משתמש';
+      document.getElementById('f-id').value = '';
+      const e = document.getElementById('f-email');
+      e.value = '';
+      e.disabled = false;
+      document.getElementById('f-status').value = 'active';
+      document.getElementById('f-expires').value = '';
+      document.getElementById('f-admin').value = '0';
+      document.getElementById('modal').classList.add('show');
+    }
+
+    function openEditModal(user) {
+      document.getElementById('modal-title').textContent = `עריכת ${user.email}`;
+      document.getElementById('f-id').value = user.id;
+      const e = document.getElementById('f-email');
+      e.value = user.email;
+      e.disabled = true;
+      document.getElementById('f-status').value = user.status;
+      const exp = user.expires_at ? new Date(user.expires_at * 1000).toISOString().split('T')[0] : '';
+      document.getElementById('f-expires').value = exp;
+      document.getElementById('f-admin').value = user.is_admin ? '1' : '0';
+      document.getElementById('modal').classList.add('show');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('show');
+    }
+
+    document.getElementById('modal-form').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const id = document.getElementById('f-id').value;
+      const email = document.getElementById('f-email').value.trim();
+      const status = document.getElementById('f-status').value;
+      const expDate = document.getElementById('f-expires').value;
+      const expires_at = expDate ? Math.floor(new Date(expDate).getTime() / 1000) : 0;
+      const is_admin = document.getElementById('f-admin').value === '1';
+
+      if (id) {
+        await api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ status, expires_at, is_admin }) });
+        toast(`${email} עודכן`);
+      } else {
+        await api('/api/admin/users', { method: 'POST', body: JSON.stringify({ email, status, expires_at, is_admin }) });
+        toast(`${email} נוסף`);
+      }
+      closeModal();
+      await Promise.all([loadStats(), loadUsers()]);
+      render();
+    });
+
+    window.closeModal = closeModal;
+    document.getElementById('modal').addEventListener('click', (e) => {
+      if (e.target.id === 'modal') closeModal();
+    });
+
+    load().catch(err => console.error(err));
+  </script>
+</body>
+</html>

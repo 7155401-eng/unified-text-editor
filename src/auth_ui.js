@@ -1,4 +1,4 @@
-// משה 2026-05-07: 3 מצבי תצוגה בכותרת.
+// צוות האתר 2026-05-07: 3 מצבי תצוגה בכותרת.
 // 1. לא־מחובר: כפתור "התחבר עם גוגל"
 // 2. מחובר אך לא מאושר (status='unauthorized' / expired): מציג מייל + תווית "מצב דמו" + יציאה
 // 3. מחובר ומשלם (paid=true): מציג מייל + תווית "מנוי פעיל" + יציאה
@@ -44,7 +44,16 @@ export function installAuthUi() {
     out.href = "/api/auth/logout";
     out.style.cssText = "color:#b91c1c;text-decoration:none;padding:4px 8px;";
 
-    wrap.append(label, tag, out);
+    const children = [label, tag];
+    if (auth.admin) {
+      const adminLink = document.createElement("a");
+      adminLink.textContent = "ניהול";
+      adminLink.href = "/admin";
+      adminLink.style.cssText = "color:#1e3a8a;text-decoration:none;padding:4px 10px;background:#dbeafe;border-radius:4px;font-weight:600;";
+      children.push(adminLink);
+    }
+    children.push(out);
+    wrap.append(...children);
   } else {
     const btn = document.createElement("a");
     btn.textContent = "התחבר עם גוגל";
@@ -79,7 +88,7 @@ export function installAuthUi() {
       isInfo ? "border-bottom:1px solid #fde68a" : "border-bottom:1px solid #fecaca",
     ].join(";");
     const messages = {
-      demo: "התחברת! החשבון שלך עדיין לא מאושר כמנוי, אז העורך במצב דמו עם סימני מים. הקבצים וההגדרות שלך נשמרים — ברגע שמשה יאשר, התצוגה המלאה תופיע אוטומטית.",
+      demo: "התחברת! לקבלת מנוי גישה צור קשר עם צוות האתר במייל או בטלפון. בינתיים העורך במצב דמו עם סימני מים. הקבצים וההגדרות שלך נשמרים — ברגע שיופעל המנוי, התצוגה המלאה תופיע אוטומטית.",
       expired: "המנוי פג. ההתחברות נשמרה כדמו עד לחידוש.",
       cancelled: "ההתחברות בוטלה.",
       token_error: "תקלה זמנית בהתחברות לגוגל. נסה שוב.",

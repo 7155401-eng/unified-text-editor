@@ -1,4 +1,4 @@
-// משה 2026-05-07: HMAC-signed session cookie. payload = base64(JSON), signature = base64(HMAC-SHA256).
+// צוות האתר 2026-05-07: HMAC-signed session cookie. payload = base64(JSON), signature = base64(HMAC-SHA256).
 // בלי תלות ב-DB לקריאת זהות (מהיר). DB נבדק שוב לוודא שהמנוי עדיין פעיל.
 
 const COOKIE_NAME = 'ravtext_session';
@@ -75,7 +75,7 @@ export async function getUserFromRequest(request, env) {
   ).bind(payload.email).first();
   if (!row) return null;
 
-  // משה 2026-05-07: כל משתמש עם עוגייה תקפה ושיש לו רשומה ב-DB נחשב "מחובר".
+  // צוות האתר 2026-05-07: כל משתמש עם עוגייה תקפה ושיש לו רשומה ב-DB נחשב "מחובר".
   // paid נקבע לפי הסטטוס: active + לא פג תוקף.
   const notExpired = !row.expires_at || row.expires_at >= nowSec;
   const isPaid = row.status === 'active' && notExpired;

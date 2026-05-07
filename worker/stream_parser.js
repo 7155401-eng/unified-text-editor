@@ -1,4 +1,4 @@
-// משה 2026-05-07: stream parser — אלגוריתם זיהוי דפוסי זרם.
+// צוות האתר 2026-05-07: stream parser — אלגוריתם זיהוי דפוסי זרם.
 // הועבר מ-src/stream_parser.js (היה בדפדפן, נחשף לכל גנב).
 // כעת רץ רק כאן בשרת. הדפדפן קורא דרך /api/streams/parse.
 
@@ -13,7 +13,7 @@ const PALETTE = [
   { bg: '#E5E7EB', fg: '#1F2937' },
 ];
 
-// משה 2026-05-07: מיירור של DEFAULT_STREAM_LABELS מ-engine_bridge.js
+// צוות האתר 2026-05-07: מיירור של DEFAULT_STREAM_LABELS מ-engine_bridge.js
 // (commit 67545d9 — שמות פרשנים במקום "זרם XX").
 const DEFAULT_STREAM_LABELS = {
   '01': 'מגן אברהם',

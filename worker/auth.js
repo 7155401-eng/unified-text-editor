@@ -1,4 +1,4 @@
-// משה 2026-05-07: Google OAuth flow. /api/auth/login → גוגל → /api/auth/callback → עוגייה + redirect הביתה.
+// צוות האתר 2026-05-07: Google OAuth flow. /api/auth/login → גוגל → /api/auth/callback → עוגייה + redirect הביתה.
 // משתמש שאימייל שלו לא רשום ב-DB → redirect ל-/?login=denied (האתר נשאר במצב דמו).
 
 import { buildSessionCookie, buildClearCookie } from './session.js';
@@ -80,8 +80,8 @@ async function handleCallback(request, env, url) {
     'SELECT id, email, status, expires_at FROM users WHERE email = ?'
   ).bind(email).first();
 
-  // משה 2026-05-07: דרישה — כל משתמש גוגל מאומת מתחבר. רק הסטטוס ב-DB
-  // קובע אם הוא משלם (active) או דמו (unauthorized). משה רואה את המייל ב-DB,
+  // צוות האתר 2026-05-07: דרישה — כל משתמש גוגל מאומת מתחבר. רק הסטטוס ב-DB
+  // קובע אם הוא משלם (active) או דמו (unauthorized). צוות האתר רואה את המייל ב-DB,
   // יכול לשדרג סטטוס, ובכניסה הבאה המשתמש מקבל פרמיום אוטומטית.
   // הטקסטים וההגדרות שלו (טבלאות נפרדות בעתיד) קשורים למייל ולכן נשמרים בין כניסות.
   if (!row) {

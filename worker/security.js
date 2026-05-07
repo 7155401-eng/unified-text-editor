@@ -1,4 +1,4 @@
-// משה 2026-05-07: שכבת אבטחה ברמת ה-Worker.
+// צוות האתר 2026-05-07: שכבת אבטחה ברמת ה-Worker.
 // 1. כותרות הגנה על כל תגובה (CSP, HSTS, X-Frame-Options וכו')
 // 2. הגבלת קצב לנתיבי /api על בסיס IP (מונע ניסיונות לימוד אלגוריתם)
 // 3. חסימת User-Agent של בוטים נפוצים
@@ -69,7 +69,7 @@ export function isBadBot(request) {
   return false;
 }
 
-// משה 2026-05-07: rate limit פשוט מבוסס on Cloudflare cache (KV אין בטוקן הזה).
+// צוות האתר 2026-05-07: rate limit פשוט מבוסס on Cloudflare cache (KV אין בטוקן הזה).
 // כל IP מקבל חלון של 60 שניות; חציית הסף מוחזרת 429.
 // הספירה נשמרת באמצעות בקשת fetch לקאש פנימי — מספיק לעצירת brute force; לא מוחלט.
 const RATE_LIMITS = {
@@ -80,6 +80,7 @@ const RATE_LIMITS = {
   '/api/render/preflight': { window: 60, max: 600 },
   '/api/talmud/decide': { window: 60, max: 600 },
   '/api/balance/decide': { window: 60, max: 600 },
+  '/api/admin': { window: 60, max: 300 },
 };
 
 export async function checkRateLimit(request, url) {

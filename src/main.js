@@ -19,7 +19,6 @@ import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
 import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
 import { installAuthUi } from "./auth_ui.js";
-import { installPaidWatermark } from "./paid_watermark.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
@@ -39,7 +38,6 @@ import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_tra
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
-installPaidWatermark();
 installConsoleGuard();
 installTalmudDebugApi();
 setupFindReplace();
