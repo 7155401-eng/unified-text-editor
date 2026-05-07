@@ -329,10 +329,18 @@ html, body {
 
 .preview-pane {
   grid-area: preview;
-  min-height: calc(100vh - 128px);
+  /* משה 2026-05-07: גובה מוחלט (לא רק min) כדי שכלל ה-flex-chain בתוך
+     התצוגה — pdf-body → pages-container — יקבל גובה מוגדר. בלי זה,
+     pages-container "גדל" לגובה כל העמודים גם כשיש overflow-y:auto,
+     ולעולם אין מה לגלול בתוכו (כי הוא עצמו בגובה התוכן). תוצאה: פס
+     גלילה לא הופיע, והרקע הצבעוני של pages-container "פלש" החוצה כי
+     הוא גלש מעבר לגבול ההורה. */
+  height: calc(100vh - 128px);
+  max-height: calc(100vh - 128px);
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   position: relative;
 }
 
@@ -597,12 +605,12 @@ mark.pdf-find-hit-current {
 .pages-container {
   flex: 1 1 0;
   min-height: 0;
-  /* משה 2026-05-07: max-height הקבוע (100vh-230px) חתך את התצוגה ב-30px+
-     מתחת לחישוב flex האמיתי, וגם מנע מ-overflow-y:auto לפעול כצפוי כי הגובה
-     שלא היה מספיק לגלילה נחתך מראש. flex:1 בתוך .pdf-body שכבר עושה
-     min-height:0 + overflow:hidden מספיק להגביל את הגובה לחלל הזמין. */
-  overflow-y: auto;
+  /* משה 2026-05-07: overflow-y:scroll (לא auto) + scrollbar-gutter:stable
+     מבטיחים שה-track של פס הגלילה תמיד תופס מקום, גם כש-OS משתמש ב-overlay
+     scrollbar (ברירת מחדל ב-Win11). אחרת המשתמש לא רואה את הפס בכלל. */
+  overflow-y: scroll;
   overflow-x: hidden;
+  scrollbar-gutter: stable;
   padding: 8px;
   background:
     radial-gradient(ellipse at top, rgba(0,0,0,0.04) 0%, transparent 60%),
