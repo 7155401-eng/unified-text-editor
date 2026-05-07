@@ -71,9 +71,10 @@ async function preflightMishnaPlan(streams, pageNumber) {
     sidePreference: settingsForStream(s).mishnaSide || "auto",
     explicitWidth: settingsForStream(s).mishnaWidth || 0,
   }));
+  const { getNonceHeader } = await import("./render_preflight.js");
   const res = await fetch("/api/mishna/decide", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...getNonceHeader() },
     body: JSON.stringify({
       pageNumber,
       streams: streamData,

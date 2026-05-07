@@ -19,6 +19,13 @@ export function getLastPlan() {
   return _lastPlan;
 }
 
+// צוות האתר 2026-05-07: בכל קריאה לנתיב מנוע אחר (talmud/balance/mishna),
+// יש לכלול את הטוקן בכותרת x-ravtext-nonce. הטוקן תקף 120 שניות; preflight חדש מנפיק חדש.
+export function getNonceHeader() {
+  if (_lastPlan?.token) return { 'x-ravtext-nonce': _lastPlan.token };
+  return {};
+}
+
 export async function runPreflight({ contentSignature, smart, talmud } = {}) {
   const body = {
     layoutType: detectLayoutType(),

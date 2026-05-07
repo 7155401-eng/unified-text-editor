@@ -11,6 +11,59 @@
 
 import { getUserFromRequest } from './session.js';
 
+// צוות האתר 2026-05-07: nonce חתום HMAC. preflight מנפיק; מנועים בודקים.
+const NONCE_TTL_SEC = 120;
+
+function b64url(bytes) {
+  const bin = String.fromCharCode(...new Uint8Array(bytes));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlDec(str) {
+  const padded = str.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (str.length % 4)) % 4);
+  const bin = atob(padded);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function signNonce(payload, secret) {
+  const data = new TextEncoder().encode(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, data);
+  return `${b64url(data)}.${b64url(sig)}`;
+}
+async function verifyNonce(token, secret) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const data = b64urlDec(parts[0]);
+  const sig = b64urlDec(parts[1]);
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
+  );
+  const ok = await crypto.subtle.verify('HMAC', key, sig, data);
+  if (!ok) return null;
+  try { return JSON.parse(new TextDecoder().decode(data)); } catch { return null; }
+}
+
+async function issueNonce(env) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  return await signNonce({ iat: nowSec, exp: nowSec + NONCE_TTL_SEC, jti: crypto.randomUUID() }, env.SESSION_SECRET);
+}
+
+export async function checkNonce(request, env) {
+  const token = request.headers.get('x-ravtext-nonce') || '';
+  if (!token) return new Response('Missing nonce', { status: 403 });
+  const payload = await verifyNonce(token, env.SESSION_SECRET);
+  if (!payload) return new Response('Bad nonce', { status: 403 });
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (payload.exp && payload.exp < nowSec) return new Response('Expired nonce', { status: 403 });
+  return null;
+}
+
 const SAFETY_MIN = 0;
 const SAFETY_MAX = 400;
 const SAFETY_DEFAULT = 160;
@@ -90,8 +143,9 @@ export async function handlePreflight(request, env) {
   const user = await getUserFromRequest(request, env);
   const layoutType = String(body?.layoutType || 'regular');
 
+  const nonce = await issueNonce(env);
   const plan = {
-    token: crypto.randomUUID(),
+    token: nonce,
     issuedAt: Date.now(),
     auth: {
       paid: !!user,

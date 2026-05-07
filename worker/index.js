@@ -9,7 +9,7 @@ import { handleAuth } from './auth.js';
 import { getUserFromRequest } from './session.js';
 import { applySecurityHeaders, checkRateLimit, isBadBot, isEngineApi, checkOrigin } from './security.js';
 import { parseStreamsToHtml } from './stream_parser.js';
-import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide } from './render_planner.js';
+import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide, checkNonce } from './render_planner.js';
 import { handleAdmin } from './admin.js';
 import { handleStorage } from './storage.js';
 
@@ -63,11 +63,14 @@ export default {
     } else if (url.pathname === '/api/render/preflight' && request.method === 'POST') {
       response = await handlePreflight(request, env);
     } else if (url.pathname === '/api/talmud/decide' && request.method === 'POST') {
-      response = await handleTalmudDecide(request, env);
+      const nonceFail = await checkNonce(request, env);
+      response = nonceFail || await handleTalmudDecide(request, env);
     } else if (url.pathname === '/api/balance/decide' && request.method === 'POST') {
-      response = await handleBalanceDecide(request, env);
+      const nonceFail = await checkNonce(request, env);
+      response = nonceFail || await handleBalanceDecide(request, env);
     } else if (url.pathname === '/api/mishna/decide' && request.method === 'POST') {
-      response = await handleMishnaDecide(request, env);
+      const nonceFail = await checkNonce(request, env);
+      response = nonceFail || await handleMishnaDecide(request, env);
     } else if (url.pathname === '/api/streams/parse' && request.method === 'POST') {
       let body;
       try {
