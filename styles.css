@@ -299,19 +299,20 @@ body > main.main {
 .app-header-row > h1 { margin-bottom: 0; flex-shrink: 0; }
 .app-header-actions {
   display: inline-flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
 }
 .header-action-btn {
   font-family: inherit;
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 7px 12px;
   background: transparent;
   border: 1px solid var(--border, #d4dce8);
-  border-radius: 16px;
+  border-radius: 18px;
   color: var(--muted, #5e6a7d);
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
+  line-height: 1.2;
 }
 .header-action-btn:hover {
   background: rgba(43, 87, 154, 0.08);
@@ -550,6 +551,45 @@ a.header-action-btn:visited {
 body[data-theme="dark"] .profile-avatar,
 body.dark-theme .profile-avatar {
   border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* באנר התחברות (?login=demo|expired|cancelled|...) — מחליף inline cssText
+   הישן ב-auth_ui.js. שתי וריאנטים: info (צהבהב) ו-error (אדמדם), כל אחת עם
+   התאמת מצב כהה אוטומטית. */
+.login-banner {
+  padding: 9px 16px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  border-bottom: 1px solid transparent;
+  font-family: inherit;
+  animation: login-banner-slide 0.18s ease-out;
+}
+@keyframes login-banner-slide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.login-banner-info {
+  background: #fef3c7;
+  color: #92400e;
+  border-bottom-color: #fde68a;
+}
+.login-banner-error {
+  background: #fee2e2;
+  color: #991b1b;
+  border-bottom-color: #fecaca;
+}
+body[data-theme="dark"] .login-banner-info,
+body.dark-theme .login-banner-info {
+  background: #422c0a;
+  color: #fde68a;
+  border-bottom-color: #654216;
+}
+body[data-theme="dark"] .login-banner-error,
+body.dark-theme .login-banner-error {
+  background: #3f1212;
+  color: #fecaca;
+  border-bottom-color: #6a1d1d;
 }
 
 /* Section titles inside ribbon panels — distinguish multiple zones in one tab */
