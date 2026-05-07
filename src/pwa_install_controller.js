@@ -32,7 +32,13 @@ window.addEventListener("appinstalled", () => {
 });
 
 export function isStandalone() {
-  return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+  // המניפסט מצהיר display_override: ["standalone", "minimal-ui"], אז Chrome
+  // עלול לפתוח את האפליקציה ב-minimal-ui (למשל ב-launch מ-`--app=URL`, או
+  // כשמסך הפעלה לא תומך ב-standalone). שני המצבים = "אפליקציה מותקנת שלא
+  // רצה כטאב רגיל", שניהם צריכים לקבל את ה-fetch tagger.
+  if (!window.matchMedia) return window.navigator.standalone === true;
+  return window.matchMedia("(display-mode: standalone)").matches
+    || window.matchMedia("(display-mode: minimal-ui)").matches
     || window.navigator.standalone === true;
 }
 
