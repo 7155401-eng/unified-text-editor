@@ -1302,6 +1302,18 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "clear":          ed && ed.clearNodes().unsetAllMarks().run(); break;
+    case "clear-all": {
+      const paneCount = paneManager.panes.length;
+      const msg = paneCount > 1
+        ? `למחוק את כל הטקסט מכל ${paneCount} החלוניות? פעולה זו אינה הפיכה.`
+        : "למחוק את כל הטקסט מהעורך? פעולה זו אינה הפיכה.";
+      if (!confirm(msg)) break;
+      for (const pane of paneManager.panes) {
+        if (pane.editor) pane.editor.commands.clearContent(true);
+      }
+      if (typeof rerenderPages === "function") rerenderPages();
+      break;
+    }
     case "font-david":
       ed && ed.setFontFamily("David Libre").run();
       setGlobalFontFamily("David Libre", { rerender: true });
