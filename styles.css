@@ -239,6 +239,19 @@ html, body {
   margin: 0 0 6px;
   color: var(--gold);
   font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.app-header h1 .app-logo {
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 6px;
 }
 
 .status {
@@ -311,7 +324,48 @@ html, body {
   margin: 0 0 10px;
   color: var(--gold);
   font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
+
+.preview-minimize-btn {
+  background: transparent;
+  border: 1px solid var(--border, #ccc);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: inherit;
+}
+.preview-minimize-btn:hover { background: rgba(0,0,0,0.05); }
+
+/* Minimized state: editor takes full width, preview becomes a narrow strip */
+body.preview-minimized .main {
+  grid-template-columns: minmax(0, 1fr) 32px;
+}
+body.preview-minimized .main:has(#ravtext-css-inject-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) var(--ci-panel-width, 320px) 32px;
+}
+body.preview-minimized .preview-pane {
+  padding: 6px 4px;
+  min-height: auto;
+  align-self: stretch;
+  overflow: hidden;
+}
+body.preview-minimized .preview-pane > *:not(h2) { display: none; }
+body.preview-minimized .preview-pane h2 {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  margin: 0;
+  font-size: 13px;
+  height: 100%;
+  justify-content: flex-start;
+}
+body.preview-minimized .preview-minimize-btn::before { content: ""; }
+body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
 
 .pdf-toolbar {
   display: flex;
@@ -1377,19 +1431,32 @@ mark.pdf-find-hit-current {
   justify-content: center;
 }
 
+/* v34: modal buttons unified — match the v33 button styling */
 .modal-btns button {
-  background: var(--btn);
-  color: var(--txt);
-  border: 1px solid var(--border);
+  background: var(--rt-btn-bg, linear-gradient(180deg, #ffffff 0%, #f5f5f7 100%));
+  color: var(--rt-fg, #1d1d1f);
+  border: 1px solid var(--rt-border, #d0d0d4);
   border-radius: 6px;
   padding: 8px 18px;
   font: inherit;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  transition: all 0.15s ease;
+}
+.modal-btns button:hover {
+  background: var(--rt-btn-hover, linear-gradient(180deg, #e7eef7 0%, #d4dde8 100%));
+  border-color: var(--rt-accent, #2c5aa0);
 }
 
+/* Primary modal button (first) — same blue as unified primary */
 .modal-btns button:first-child {
-  background: var(--gold);
-  color: #000;
+  background: linear-gradient(180deg, #4a7fc0 0%, #2c5aa0 100%);
+  color: #fff;
+  border-color: #1e4078;
+}
+.modal-btns button:first-child:hover {
+  background: linear-gradient(180deg, #5a8fd0 0%, #3c6ab0 100%);
+  border-color: #1e4078;
 }
 
 .ribbon-tabs {
@@ -2018,11 +2085,17 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   letter-spacing: 0.5px;
 }
 
+/* v34: primary toolbar buttons follow unified blue (matches button.primary at line 3212).
+   The gold accent is reserved for the prominent Render Pages button (btn-render-prominent). */
 .toolbar button.primary {
-  background: var(--gold);
-  color: #000;
+  background: linear-gradient(180deg, #4a7fc0 0%, #2c5aa0 100%);
+  color: #fff;
+  border-color: #1e4078;
 }
-.toolbar button.primary:hover { background: #C5A028; }
+.toolbar button.primary:hover {
+  background: linear-gradient(180deg, #5a8fd0 0%, #3c6ab0 100%);
+  border-color: #1e4078;
+}
 
 .toolbar button.stream-btn {
   font-weight: 700;

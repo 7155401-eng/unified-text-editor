@@ -4,6 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>רב טקסט לוורד AI</title>
+    <link rel="icon" type="image/svg+xml" href="/public/favicon.svg" />
+    <link rel="alternate icon" type="image/svg+xml" href="public/favicon.svg" />
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script src="/bridge_shim.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -16,7 +18,7 @@
   </head>
   <body class="light-theme">
     <header class="app-header">
-      <h1 data-i18n="appTitle" dir="rtl">רב טקסט לוורד AI</h1>
+      <h1 data-i18n="appTitle" dir="rtl"><img src="/public/favicon.svg" alt="" class="app-logo" />רב טקסט לוורד AI</h1>
       <div id="status" class="status status-row" dir="rtl" data-i18n="status">
         טען טקסט ולחץ "רנדר עמודים" כדי לראות את התצוגה.
       </div>
@@ -636,7 +638,7 @@
       </section>
 
       <aside class="panel preview-pane">
-        <h2 data-i18n="preview">תצוגה</h2>
+        <h2 data-i18n="preview">תצוגה<button type="button" id="preview-minimize-toggle" class="preview-minimize-btn" title="מזער את חלון התצוגה כך שהעורך יקבל את כל הרוחב" aria-label="מזער/הרחב חלון תצוגה">⤧</button></h2>
         <div id="pdf-toolbar" class="pdf-toolbar" dir="rtl">
           <button type="button" id="pdf-sidebar-toggle" title="לוח צד" class="pdf-tb-btn">☰</button>
           <span class="pdf-tb-sep"></span>
