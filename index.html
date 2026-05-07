@@ -497,6 +497,21 @@
           </span>
         </div>
         <div class="toolbar layout-extra-toolbar ribbon-panel" data-ribbon-tab="layout" dir="rtl">
+          <span class="tb-group" data-title="מנוע אריזת עמוד">
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="כמה פיקסלים להשאיר פנויים בכל דף. ערך גבוה = פחות חריגות, יותר רווחים. ברירת מחדל מותאמת: 160 בפריסת תלמוד, 6 בפריסה רגילה.">
+              <span>כרית גובה (px):</span>
+              <input type="number" id="layout-height-safety-input" min="0" max="400" style="width:60px;font-size:12px;padding:3px 6px;" />
+            </label>
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="ערכי כרית נפרדים לעמודים מסוימים. פורמט: 1:120, 3:80 (מספר העמוד:כרית). עמוד שלא מוזכר משתמש בערך הכללי. השאר ריק לביטול.">
+              <span>פר-עמוד:</span>
+              <input type="text" id="layout-height-safety-per-page-input" placeholder="1:120, 3:80" style="width:120px;font-size:12px;padding:3px 6px;" />
+            </label>
+            <label class="toolbar-checkbox" title="מודד את הדף אחרי הרינדור ומכוון את הכרית בעצמו עד שמוצא ערך אופטימלי לכל מסמך. הערך המכוון נשמר במטמון.">
+              <input type="checkbox" id="layout-smart-engine-toggle" />
+              <span>מנוע חכם (אוטו)</span>
+            </label>
+          </span>
+          <span class="sep"></span>
           <span class="tb-group" data-title="כותרת עליונה ותחתונה">
             <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;">
               <span>כותרת עליונה:</span>
@@ -519,21 +534,6 @@
             <input type="text" id="doc-watermark-input" style="width:140px;font-size:12px;padding:3px 6px;" placeholder='לדוגמה: "טיוטה"' />
             <span style="font-size:11px;color:#666;">שקיפות:</span>
             <input type="range" id="doc-watermark-opacity" min="0.05" max="0.5" step="0.01" value="0.12" style="width:80px;" />
-          </span>
-          <span class="sep"></span>
-          <span class="tb-group" data-title="מנוע אריזת עמוד">
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="כמה פיקסלים להשאיר פנויים בכל דף. ערך גבוה = פחות חריגות, יותר רווחים. ברירת מחדל מותאמת: 160 בפריסת תלמוד, 6 בפריסה רגילה.">
-              <span>כרית גובה (px):</span>
-              <input type="number" id="layout-height-safety-input" min="0" max="400" style="width:60px;font-size:12px;padding:3px 6px;" />
-            </label>
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="ערכי כרית נפרדים לעמודים מסוימים. פורמט: 1:120, 3:80 (מספר העמוד:כרית). עמוד שלא מוזכר משתמש בערך הכללי. השאר ריק לביטול.">
-              <span>פר-עמוד:</span>
-              <input type="text" id="layout-height-safety-per-page-input" placeholder="1:120, 3:80" style="width:120px;font-size:12px;padding:3px 6px;" />
-            </label>
-            <label class="toolbar-checkbox" title="מודד את הדף אחרי הרינדור ומכוון את הכרית בעצמו עד שמוצא ערך אופטימלי לכל מסמך. הערך המכוון נשמר במטמון.">
-              <input type="checkbox" id="layout-smart-engine-toggle" />
-              <span>מנוע חכם (אוטו)</span>
-            </label>
           </span>
         </div>
         <div class="toolbar view-toolbar ribbon-panel" data-ribbon-tab="view" dir="rtl">

@@ -18,6 +18,8 @@ import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
 import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
+import { installAuthUi } from "./auth_ui.js";
+import { loadInitialState, attachAutoSync } from "./server_persistence.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
@@ -36,6 +38,7 @@ import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
+installAuthUi();
 installConsoleGuard();
 installTalmudDebugApi();
 setupFindReplace();
@@ -142,6 +145,16 @@ window.__loadCustomSample = async (rawText) => {
   rerenderPages();
 };
 window.addEventListener("beforeunload", () => paneManager.flushSave());
+
+// צוות האתר 2026-05-07: סנכרון תכולה והגדרות לשרת למשתמשים מחוברים.
+// loadInitialState עוצר אם המשתמש אנונימי. אם יש תכולה שמורה — היא מחליפה את הברירת־מחדל.
+loadInitialState(paneManager).then((res) => {
+  if (res?.loaded) console.debug("[persistence] loaded document from server");
+  attachAutoSync(paneManager);
+}).catch((e) => {
+  console.warn("[persistence] init failed:", e);
+  attachAutoSync(paneManager);
+});
 const pagesContainer = document.querySelector("#pages-container");
 applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
@@ -1528,14 +1541,17 @@ document.addEventListener("click", async (ev) => {
         "פתיחה @01 הערה ראשונה. ועוד @02 הערה שנייה.\n[1] עם הערה ושוב {הערה מסולסלת} בתוך טקסט.\nכוכבית * ופגיון †."
       );
       if (!raw) break;
-      const { html, stats } = parseRawTextToHTML(raw);
-      const e = paneManager.getActiveEditor();
-      if (e) e.commands.setContent(html);
-      const lines = ["נתחתי:"];
-      lines.push(`סך סימנים: ${stats.total}`);
-      lines.push("\nלפי זרם:");
-      for (const k of Object.keys(stats.byStream).sort()) lines.push(`  ${k}: ${stats.byStream[k]}`);
-      alert(lines.join("\n"));
+      parseRawTextToHTML(raw).then(({ html, stats }) => {
+        const e = paneManager.getActiveEditor();
+        if (e) e.commands.setContent(html);
+        const lines = ["נתחתי:"];
+        lines.push(`סך סימנים: ${stats.total}`);
+        lines.push("\nלפי זרם:");
+        for (const k of Object.keys(stats.byStream).sort()) lines.push(`  ${k}: ${stats.byStream[k]}`);
+        alert(lines.join("\n"));
+      }).catch((err) => {
+        alert(`שגיאת ניתוח: ${err.message}`);
+      });
       break;
     }
     case "auto-parse-paste": {
@@ -1543,9 +1559,12 @@ document.addEventListener("click", async (ev) => {
       if (!e) break;
       const raw = e.state.doc.textContent;
       if (!raw.trim()) { alert("חלונית ריקה"); break; }
-      const { html, stats } = parseRawTextToHTML(raw);
-      e.commands.setContent(html);
-      alert(`זוהו ${stats.total} סימנים בחלונית הפעילה.`);
+      parseRawTextToHTML(raw).then(({ html, stats }) => {
+        e.commands.setContent(html);
+        alert(`זוהו ${stats.total} סימנים בחלונית הפעילה.`);
+      }).catch((err) => {
+        alert(`שגיאת ניתוח: ${err.message}`);
+      });
       break;
     }
 
