@@ -629,20 +629,27 @@ function setupRibbonTabs() {
     "home",   //  5 רשימות
     "home",   //  6 יישור
     "home",   //  7 כיוון (RTL/LTR)
-    "home",   //  8 בלוקים
-    "home",   //  9 סגנונות
-    "home",   // 10 גופן
-    "home",   // 11 גודל גלובלי
-    "home",   // 12 גודל טקסט נבחר
-    "home",   // 13 כללי (theme + lang)
-    "home",   // 14 ניהול (undo/redo/clear)
-    "streams", // 15 זרמים
-    "streams", // 16 ניווט סימנים
-    "advanced", // 17 זיהוי אוטומטי
-    "advanced", // 18 Word
-    "file",    // 19 פעולות
+    "home",   //  8 ציטוט/קוד (פוצל מ"בלוקים")
+    "home",   //  9 קישור (פוצל מ"בלוקים")
+    "home",   // 10 מדיה (פוצל מ"בלוקים")
+    "home",   // 11 סגנונות
+    "home",   // 12 גופן (3 גופנים בסיסיים)
+    "home",   // 13 גופן מותאם (פוצל מ"גופן")
+    "home",   // 14 גודל גלובלי
+    "home",   // 15 גודל טקסט נבחר
+    "home",   // 16 כללי (theme + lang)
+    "home",   // 17 ניהול (clear/undo/redo)
+    "streams", // 18 זרמים
+    "streams", // 19 ניווט סימנים
+    "advanced", // 20 זיהוי אוטומטי
+    "advanced", // 21 Word
+    "file",    // 22 פעולות
   ];
+  // משה 2026-05-07: כיבוד ribbon-tab שנקבע ידנית ב-HTML כעוקף עליון. כך
+  // קבוצות חדשות שמתפצלות בעתיד יכולות להגדיר את עצמן ב-HTML ולא להישבר
+  // ע"י drift באינדקסים של המערך לעיל.
   mainToolbar.querySelectorAll(".tb-group").forEach((group, index) => {
+    if (group.dataset.ribbonTab) return;
     group.dataset.ribbonTab = groupTabs[index] || "advanced";
   });
 
