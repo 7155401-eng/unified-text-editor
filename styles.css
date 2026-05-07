@@ -3424,7 +3424,8 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 .toast {
   position: fixed;
   bottom: 18px;
-  left: 18px;
+  inset-inline-start: 18px;
+  inset-inline-end: auto;
   background: #15203A;
   color: #D4AF37;
   border: 2px solid #D4AF37;
