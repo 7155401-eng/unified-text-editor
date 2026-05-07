@@ -615,24 +615,32 @@ function setupRibbonTabs() {
     tabsBar.appendChild(renderBtnSlot);
   }
 
+  // משה 2026-05-07: מערך זה ממפה כל .tb-group בסרגל הראשי ללשונית.
+  // לאחר שהוספתי ב-PR #42 קבוצה חדשה (גודל טקסט נבחר) האינדקסים זזו ב-1
+  // וקבוצות קריטיות נעלמו מ"בית". כל הקבוצות שצריכות להיות זמינות בלשונית
+  // הראשית — כיוון, גופן, גודל-גלובלי, גודל-טקסט-נבחר, כללי, ניהול —
+  // ממופות עכשיו ל-"home" כדי שיופיעו בלשונית "בית" כברירת מחדל.
   const groupTabs = [
-    "home",
-    "home",
-    "home",
-    "home",
-    "home",
-    "home",
-    "home",
-    "insert",
-    "home",
-    "home",
-    "view",
-    "home",
-    "streams",
-    "streams review",
-    "insert",
-    "file review",
-    "file view",
+    "home",   //  0 טקסט
+    "home",   //  1 צבע
+    "home",   //  2 רקע
+    "home",   //  3 הדגשה ומברשת עיצוב
+    "home",   //  4 כותרות
+    "home",   //  5 רשימות
+    "home",   //  6 יישור
+    "home",   //  7 כיוון (RTL/LTR)
+    "home",   //  8 בלוקים
+    "home",   //  9 סגנונות
+    "home",   // 10 גופן
+    "home",   // 11 גודל גלובלי
+    "home",   // 12 גודל טקסט נבחר
+    "home",   // 13 כללי (theme + lang)
+    "home",   // 14 ניהול (undo/redo/clear)
+    "streams", // 15 זרמים
+    "streams", // 16 ניווט סימנים
+    "advanced", // 17 זיהוי אוטומטי
+    "advanced", // 18 Word
+    "file",    // 19 פעולות
   ];
   mainToolbar.querySelectorAll(".tb-group").forEach((group, index) => {
     group.dataset.ribbonTab = groupTabs[index] || "advanced";
