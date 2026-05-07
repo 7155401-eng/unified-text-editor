@@ -179,6 +179,21 @@ function isLegacyDemoState() {
   return text.includes("@01") && text.includes("@02") && text.includes("@03") && text.includes("פצל");
 }
 
+// משה 2026-05-07: ברירת-מחדל לעימוד שו"ע — מצב משנה ברורה דו-רמתי:
+// רמה 1 = מגן אברהם (01) + טורי זהב (04). רמה 2 = משנה ברורה (02) + ביאור הלכה (03).
+// רעק"א (05) זורם רגיל. ההגדרות נכתבות רק אם המשתמש מעולם לא קבע אחרת —
+// כל קביעה ידנית של המשתמש נשמרת.
+(function applyDefaultMishnaSetup() {
+  try {
+    if (localStorage.getItem("ravtext.mishnaWrap") === null) {
+      localStorage.setItem("ravtext.mishnaWrap", "1");
+    }
+    if (localStorage.getItem("ravtext.mishnaWrap.levels") === null) {
+      localStorage.setItem("ravtext.mishnaWrap.levels", "01,04|02,03");
+    }
+  } catch (_) { /* localStorage חסום — דילוג */ }
+})();
+
 // אם יש מצב שמור — משחזר. אחרת — טוען שו"ע כברירת מחדל בכל נקודת התחלה.
 const loadedFromStorage = paneManager.loadFromStorage();
 let initialLoadPromise = Promise.resolve();

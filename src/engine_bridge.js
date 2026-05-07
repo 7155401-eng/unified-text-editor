@@ -206,6 +206,21 @@ function extractStreamNotes(streamPane) {
   return parts.map(stripDisplayNum).filter(Boolean);
 }
 
+// משה 2026-05-07: שמות ברירת-מחדל לזרמים בעימוד שו"ע מ"ב — מופיעים כשם
+// הזרם בכותרות, ב-paneList, ובכל מקום שה-label של הזרם מוצג. אם המשתמש
+// קבע ידנית שם אחר (דרך STREAM_SETTINGS.title) זה גובר.
+const DEFAULT_STREAM_LABELS = {
+  "01": "מגן אברהם",
+  "02": "משנה ברורה",
+  "03": "ביאור הלכה",
+  "04": "טורי זהב",
+  "05": "רבי עקיבא איגר",
+};
+
+function defaultLabelForCode(code) {
+  return DEFAULT_STREAM_LABELS[code] || `זרם ${code}`;
+}
+
 function applyFirstNoteAsTitle(code, notes) {
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
@@ -236,7 +251,7 @@ function ensureEngineStreamSettings(paneManager) {
       ...(window.__STREAM_SETTINGS__[p.streamCode] || {}),
     };
     const manualTitle = String(window.__STREAM_SETTINGS__[p.streamCode].title || "").trim();
-    window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || `זרם ${p.streamCode}`;
+    window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || defaultLabelForCode(p.streamCode);
   }
 }
 
@@ -431,7 +446,7 @@ export function paneManagerFromEngineDoc(paneManager, engineDoc) {
         streamCode: code,
         symbol: sym,
         content: noteDoc,
-        label: `זרם ${code}`,
+        label: defaultLabelForCode(code),
       });
     }
     else if (pane) {
