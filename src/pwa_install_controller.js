@@ -72,12 +72,17 @@ export function onChange(cb) {
 }
 
 export async function registerServiceWorker() {
+  // משה 2026-05-08 חשוד 3 בבדיקה: התוכנה הברקעית של ההתקנה כאפליקציה.
+  // מבוטלת כדי לבדוק אם היא הגורם לעמוד הריק במצב רגיל. אם זו הבעיה —
+  // אחזיר אותה עם תיקון. גם מבטלים רישום קודם אם יש (יכול להישאר ב-cache
+  // של הדפדפן מהתקנה ישנה).
   if (!("serviceWorker" in navigator)) return;
   try {
-    await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-  } catch (err) {
-    console.warn("[pwa] sw register failed:", err);
-  }
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) {
+      try { await r.unregister(); } catch (_e) { /* ignore */ }
+    }
+  } catch (_e) { /* ignore */ }
 }
 
 // fetch wrapper — בכל בקשה ב-PWA standalone נצרף כותרת
