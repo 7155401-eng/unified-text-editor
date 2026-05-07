@@ -85,8 +85,13 @@ export function isDemoMode() {
   }
 
   if (safeStorageGet(DEMO_MODE_KEY) === "0") return false;
+  if (safeStorageGet(DEMO_MODE_KEY) === "1") return true;
 
-  return true;
+  // משה 2026-05-07: ברירת המחדל היא false — בלי סימני מים ובלי הגבלות דמו
+  // למי שלא ביקש במפורש. הענף של app.ravtext.com מדליק את הדמו ע"י
+  // window.__RAVTEXT_DEMO_MODE__=true עבור משתמשים לא-משלמים, אז אין שום
+  // שינוי שם. ב-Vercel preview אין יותר סימני מים צבעוניים על הטקסט.
+  return false;
 }
 
 export function configureDemoGlobals() {

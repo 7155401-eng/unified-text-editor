@@ -1698,6 +1698,18 @@ body.light-theme .pdf-scroll-progress-fill {
     width: 210mm !important;
     min-height: 297mm !important;
     overflow: visible !important;
+    /* משה 2026-05-07: ביטול flex-column של body במסך — בהדפסה נדרש block flow
+       רגיל כדי שעמודים מרובים יזרמו אחד אחרי השני בלי הגבלת גובה של flex. */
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  body > main.main {
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   .app-header,
@@ -1714,17 +1726,26 @@ body.light-theme .pdf-scroll-progress-fill {
     width: 210mm !important;
     margin: 0 !important;
     padding: 0 !important;
+    /* משה 2026-05-07: overflow:hidden במסך תוקע את העמודים מעבר לראשון
+       בהדפסה (חותך אותם). overflow:visible מאפשר לכל העמודים לעבור
+       למדפסת. הכלל היחיד שמתקן את "מדפיס רק עמוד ראשון". */
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
   }
 
   .preview-pane {
     display: block !important;
     width: 210mm !important;
     min-height: 0 !important;
+    max-height: none !important;
+    height: auto !important;
     margin: 0 !important;
     border: 0 !important;
     padding: 0 !important;
     background: #fff !important;
     box-shadow: none !important;
+    overflow: visible !important;
   }
 
   .preview-pane > h2 {
