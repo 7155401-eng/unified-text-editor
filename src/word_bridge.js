@@ -1,4 +1,5 @@
 import { applyDemoWatermarkToHtml, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
+import { defaultLabelForCode } from "./engine_bridge.js";
 
 const DEFAULT_MARKERS = Array.from({ length: 99 }, (_, i) => `@${String(i + 1).padStart(2, "0")}`);
 
@@ -300,7 +301,7 @@ export async function confirmWordImport() {
       pane = paneManagerRef.addPane({
         streamCode: code,
         symbol,
-        label: `זרם ${code}`,
+        label: defaultLabelForCode(code),
       });
     }
     if (pane?.editor) {

@@ -1,5 +1,7 @@
 // stream_parser.js
 // מזהה דפוסי סימון בטקסט גולמי וממיר אותם לסימני זרם.
+
+import { defaultLabelForCode } from "./engine_bridge.js";
 //
 // כללי זיהוי (לפי הוראת משה):
 //   • @NN  — כל מספר זרם בנפרד ("01", "02", ... "99")
@@ -59,7 +61,7 @@ function wrapMark(streamCode, symbol, body) {
     `data-uid="${u}" ` +
     `data-symbol="${escapeHtml(symbol)}" ` +
     `style="background-color:${c.bg};color:${c.fg};border-radius:3px;padding:0 3px;font-weight:600;" ` +
-    `title="זרם ${escapeHtml(streamCode)}">` +
+    `title="${escapeHtml(defaultLabelForCode(streamCode))}">` +
     body +
     "</span>"
   );

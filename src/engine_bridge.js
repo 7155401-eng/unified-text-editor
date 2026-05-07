@@ -214,7 +214,7 @@ const DEFAULT_STREAM_LABELS = {
   "05": "כף החיים",
 };
 
-function defaultLabelForCode(code) {
+export function defaultLabelForCode(code) {
   return DEFAULT_STREAM_LABELS[code] || `זרם ${code}`;
 }
 
@@ -248,7 +248,7 @@ function ensureEngineStreamSettings(paneManager) {
       ...(window.__STREAM_SETTINGS__[p.streamCode] || {}),
     };
     const manualTitle = String(window.__STREAM_SETTINGS__[p.streamCode].title || "").trim();
-    window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || `זרם ${p.streamCode}`;
+    window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || defaultLabelForCode(p.streamCode);
   }
 }
 
@@ -443,7 +443,7 @@ export function paneManagerFromEngineDoc(paneManager, engineDoc) {
         streamCode: code,
         symbol: sym,
         content: noteDoc,
-        label: `זרם ${code}`,
+        label: defaultLabelForCode(code),
       });
     }
     else if (pane) {
@@ -982,7 +982,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
               if (code) target.setAttribute("data-stream", code);
               const title = document.createElement("div");
               title.className = "stream-title";
-              title.textContent = `זרם ${code} (המשך)`;
+              title.textContent = `${defaultLabelForCode(code)} (המשך)`;
               target.appendChild(title);
               nextPS.insertBefore(target, nextPS.firstChild);
             }
@@ -1145,7 +1145,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
                 if (code) target.setAttribute("data-stream", code);
                 const title = document.createElement("div");
                 title.className = "stream-title";
-                title.textContent = `זרם ${code}`;
+                title.textContent = defaultLabelForCode(code);
                 target.appendChild(title);
                 nextPS.insertBefore(target, nextPS.firstChild);
               }

@@ -8,7 +8,7 @@ import { parseRawTextToHTML } from "./stream_parser.js";
 import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByMarkers, mergeBackToText } from "./stream_split.js";
 import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
-import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc } from "./engine_bridge.js";
+import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
@@ -1032,7 +1032,7 @@ async function splitSpecialNotes() {
     const pane = paneManager.addPane({
       streamCode: code,
       symbol: newLinkSymbol,
-      label: `זרם ${code}`,
+      label: defaultLabelForCode(code),
     });
     if (pane?.editor) {
       pane.editor.storage.streamMark.symbol = newLinkSymbol;
@@ -1178,7 +1178,7 @@ function jumpToStream(code) {
     return;
   }
   const status = document.getElementById("status");
-  if (status) status.textContent = `הזרם ${padded} לא נמצא בתצוגת העמודים. רנדר עמודים תחילה.`;
+  if (status) status.textContent = `${defaultLabelForCode(padded)} לא נמצא בתצוגת העמודים. רנדר עמודים תחילה.`;
 }
 document.querySelectorAll(".btn-stream-jump").forEach((btn) => {
   btn.addEventListener("click", () => jumpToStream(btn.dataset.stream));
@@ -1540,10 +1540,10 @@ document.addEventListener("click", async (ev) => {
       const pane = paneManager.addPane({
         streamCode: padded,
         symbol: `@${padded}`,
-        label: `זרם ${padded}`,
+        label: defaultLabelForCode(padded),
       });
       if (pane) {
-        pane.editor.commands.setContent(`<p>תוכן זרם ${padded}…</p>`);
+        pane.editor.commands.setContent(`<p>תוכן ${defaultLabelForCode(padded)}…</p>`);
         ensureOriginalStreamSettings(padded);
       }
       break;
@@ -1586,7 +1586,7 @@ document.addEventListener("click", async (ev) => {
           pane = paneManager.addPane({
             streamCode: code,
             symbol: `@${code}`,
-            label: `זרם ${code}`,
+            label: defaultLabelForCode(code),
           });
           created++;
         } else {
@@ -1599,7 +1599,7 @@ document.addEventListener("click", async (ev) => {
       const lines = [`פיצול הושלם:`];
       lines.push(`  ראשי: סימני זרם בלבד`);
       for (const code of codes) {
-        lines.push(`  זרם ${code}: ${streams[code].length} הערות`);
+        lines.push(`  ${defaultLabelForCode(code)}: ${streams[code].length} הערות`);
       }
       lines.push(``);
       lines.push(`חלוניות חדשות: ${created}, מעודכנות: ${updated}`);
@@ -1801,7 +1801,7 @@ window.__streamMarkOnDetected = function (detected) {
   }
   // תיבת הודעה
   if (detected.length === 1) {
-    showToast(`✓ זוהה זרם ${detected[0].code} (${detected[0].symbol})`);
+    showToast(`✓ זוהה ${defaultLabelForCode(detected[0].code)} (${detected[0].symbol})`);
   } else {
     const codes = [...new Set(detected.map(d => d.code))].sort().join(", ");
     showToast(`✓ זוהו ${detected.length} סימנים בזרמים: ${codes}`);
