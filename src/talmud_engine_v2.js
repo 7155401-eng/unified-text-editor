@@ -162,10 +162,10 @@ async function decideCrownMode(streams, hasMain, crownLines, halfWidthCss, fullW
     linesAtHalf: measureLinesAtWidth(s, halfWidthCss),
   }));
 
-  const { fetchEngineApi } = await import('./render_preflight.js');
-  const res = await fetchEngineApi('/api/talmud/decide', {
+  const { getNonceHeader } = await import('./render_preflight.js');
+  const res = await fetch('/api/talmud/decide', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...getNonceHeader() },
     body: JSON.stringify({
       crownLines,
       hasMain: !!hasMain,

@@ -76,15 +76,15 @@ let _serverSideCache = null;
 
 async function preflightMishnaSides(streams, streamsWrap) {
   try {
-    const { fetchEngineApi } = await import("./render_preflight.js");
+    const { getNonceHeader } = await import("./render_preflight.js");
     const pageNumber = pageNumberFor(streamsWrap);
     const streamData = streams.map((s) => ({
       code: codeForStream(s),
       sidePreference: settingsForStream(s).mishnaSide || "auto",
     }));
-    const res = await fetchEngineApi("/api/mishna/decide", {
+    const res = await fetch("/api/mishna/decide", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...getNonceHeader() },
       body: JSON.stringify({
         pageNumber,
         streams: streamData,
