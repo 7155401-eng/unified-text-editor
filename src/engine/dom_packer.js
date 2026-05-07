@@ -88,10 +88,22 @@ function cssPxVar(name, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// משה 2026-05-07: כרית הביטחון לפריסה רגילה (לא תלמודית) ניתנת לשליטה
+// מקומית כדי שהמנוע החכם יוכל לכוון אותה גם במצב רגיל.
+function getRegularHeightSafety() {
+  const cssDefault = cssPxVar("--ravtext-page-pack-safety", 6);
+  if (typeof localStorage === "undefined") return cssDefault;
+  const raw = localStorage.getItem("ravtext.layout.heightSafetyRegular");
+  if (raw === null) return cssDefault;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return cssDefault;
+  return Math.max(0, Math.min(400, n));
+}
+
 export function getDomPageGeom() {
   const pageWidth = cssPxVar("--ravtext-page-width", DOM_PAGE_GEOM.pageWidth);
   const pageHeight = cssPxVar("--ravtext-page-height", DOM_PAGE_GEOM.pageHeight);
-  const safety = cssPxVar("--ravtext-page-pack-safety", 6);
+  const safety = getRegularHeightSafety();
   return {
     pageWidth,
     pageHeight,
