@@ -318,6 +318,17 @@ body > main.main {
   border-color: var(--word-blue, #2B579A);
   color: var(--word-blue, #2B579A);
 }
+/* משה 2026-05-07: כפתור הטלפון הוא <a href="tel:..."> — לא לאבד עיצוב כפתור. */
+a.header-action-btn,
+a.header-action-btn:visited {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.header-action-btn-phone {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
 
 /* Section titles inside ribbon panels — distinguish multiple zones in one tab */
 .ribbon-section-title {

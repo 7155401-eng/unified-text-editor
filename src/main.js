@@ -1256,7 +1256,9 @@ function buildSupportMailto({ kind }) {
         "כתוב את פנייתך כאן:",
         "",
       ].join("\n");
-  const mailto = `mailto:7155401@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // משה 2026-05-07: כתובת המייל זהה לזו שבתוכנה הקודמת (work-files/app_ui.py)
+  // — yiddishebilder@gmail.com. שומר על זרימת תמיכה אחידה ללקוחות הקיימים.
+  const mailto = `mailto:yiddishebilder@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   return mailto;
 }
 document.getElementById("btn-report-bug")?.addEventListener("click", () => {
