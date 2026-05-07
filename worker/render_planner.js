@@ -84,6 +84,21 @@ function decideAdjustment(currentSafety, state) {
       reason: `overflow ${state.maxOverflow}px > ${OVERFLOW_THRESHOLD}px`,
     };
   }
+  // משה 2026-05-07: הוספה כירורגית — הדפדפן שולח state.awkwardSplits (מספר
+  // פיצולי פסקה ששורתם האחרונה קצרה ונחתכה באמצע מילה). אם זוהו, נעלה את
+  // הכרית כדי לדחוף יותר טקסט קדימה ולקבל סיום שורה נכון. ההיגיון הקיים
+  // (overflow/gap) לא משתנה — רק הוסף ענף חדש בין overflow ל-gap.
+  if (
+    Number.isFinite(state.awkwardSplits) &&
+    state.awkwardSplits > 0 &&
+    currentSafety < SAFETY_MAX
+  ) {
+    return {
+      newSafety: clamp(currentSafety + SAFETY_STEP_UP, SAFETY_MIN, SAFETY_MAX),
+      action: 'up',
+      reason: `${state.awkwardSplits} awkward mid-line split(s)`,
+    };
+  }
   if (state.maxOverflow === 0 && state.avgGap > GAP_TOO_BIG && currentSafety > SAFETY_MIN) {
     return {
       newSafety: clamp(currentSafety - SAFETY_STEP_DOWN, SAFETY_MIN, SAFETY_MAX),
@@ -97,7 +112,9 @@ function decideAdjustment(currentSafety, state) {
     reason:
       state.maxOverflow > 0
         ? `overflow ${state.maxOverflow}px (within tolerance)`
-        : `gap ${state.avgGap}px (acceptable)`,
+        : state.awkwardSplits > 0
+          ? `${state.awkwardSplits} awkward split(s) but cap reached`
+          : `gap ${state.avgGap}px (acceptable)`,
   };
 }
 
