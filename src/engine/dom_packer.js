@@ -44,6 +44,40 @@ function getTalmudHeightSafety() {
   if (!Number.isFinite(n)) return TALMUD_LAYOUT_HEIGHT_SAFETY_DEFAULT;
   return Math.max(0, Math.min(400, n));
 }
+
+// משה 2026-05-07: ערכי כרית פר-עמוד. המשתמש יכול לקבוע ערך נפרד לכל
+// אינדקס דף בפורמט "1:120, 3:80, 7:200" (אינדקסים מ-1, אבל בקוד 0-based).
+// עמוד שלא מוזכר ברשימה משתמש בכרית הגלובלית.
+let _perPageOverridesCache = null;
+let _perPageOverridesCacheKey = "";
+function parsePerPageOverrides(raw) {
+  const out = new Map();
+  if (!raw || typeof raw !== "string") return out;
+  for (const part of raw.split(/[,;\n]/)) {
+    const m = part.trim().match(/^(\d+)\s*[:=]\s*(\d+)$/);
+    if (!m) continue;
+    const idx = parseInt(m[1], 10) - 1; // user-facing 1-based → 0-based
+    const val = parseInt(m[2], 10);
+    if (idx >= 0 && Number.isFinite(val)) {
+      out.set(idx, Math.max(0, Math.min(400, val)));
+    }
+  }
+  return out;
+}
+function getPerPageOverrides() {
+  if (typeof localStorage === "undefined") return new Map();
+  const raw = localStorage.getItem("ravtext.talmudLayout.heightSafetyPerPage") || "";
+  if (raw !== _perPageOverridesCacheKey || !_perPageOverridesCache) {
+    _perPageOverridesCacheKey = raw;
+    _perPageOverridesCache = parsePerPageOverrides(raw);
+  }
+  return _perPageOverridesCache;
+}
+function getTalmudHeightSafetyForPage(pageIdx) {
+  const overrides = getPerPageOverrides();
+  if (overrides.has(pageIdx)) return overrides.get(pageIdx);
+  return getTalmudHeightSafety();
+}
 const MAIN_LINE_PROBE_EXTRA_CHARS = 260;
 const LINE_RECT_TOLERANCE = 2;
 
@@ -662,8 +696,9 @@ function buildPageObject(mainSegments, streamsMap, totalH) {
  * @returns {Array<Object>} pages
  */
 function forwardPack(content, geom = DOM_PAGE_GEOM) {
-  const packGeom = shouldMeasureTalmudLayout()
-    ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - getTalmudHeightSafety()) }
+  const isTalmud = shouldMeasureTalmudLayout();
+  const packGeom = isTalmud
+    ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - getTalmudHeightSafetyForPage(0)) }
     : geom;
   geom = packGeom;
   const pages = [];
@@ -673,6 +708,15 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   const LONG_NOTE_CHUNK_CHARS = 900;
   const longNoteSplitCache = new Map();
 
+  // משה 2026-05-07: לפני התחלת אריזת עמוד חדש, מעדכן את הכרית לפי
+  // האינדקס של העמוד הבא (אם המשתמש קבע ערך נפרד פר עמוד).
+  function refreshSafetyForCurrentPage() {
+    if (!isTalmud) return;
+    const original = DOM_PAGE_GEOM.pageHeight;
+    const overrideSafety = getTalmudHeightSafetyForPage(pages.length);
+    packGeom.maxPageHeight = Math.max(360, (geom.pageHeight || original) - overrideSafety);
+  }
+
   function finalizePage() {
     const hasMain = pageMain.length > 0;
     const hasStreams = Object.values(pageStreams).some((arr) => arr.length > 0);
@@ -681,6 +725,8 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     pageMain = [];
     pageStreams = {};
     pageHeight = 0;
+    // עדכון לעמוד הבא לפני שמתחילים למלא אותו.
+    refreshSafetyForCurrentPage();
   }
 
   // Find max number of CHARS of a single note's text that fit on a fresh page.
