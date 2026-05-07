@@ -82,10 +82,10 @@ function appendLines(parent, lines, { naturalLast = false, centerLast = true } =
 }
 
 async function fetchBalanceDecision(lineCount, settings) {
-  const { getNonceHeader } = await import('./render_preflight.js');
-  const res = await fetch('/api/balance/decide', {
+  const { fetchEngineApi } = await import('./render_preflight.js');
+  const res = await fetchEngineApi('/api/balance/decide', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...getNonceHeader() },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ lineCount, settings }),
   });
   if (!res.ok) throw new Error(`balance decide failed: HTTP ${res.status}`);
