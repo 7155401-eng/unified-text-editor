@@ -8,7 +8,7 @@ import { parseRawTextToHTML } from "./stream_parser.js";
 import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByMarkers, mergeBackToText } from "./stream_split.js";
 import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
-import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc } from "./engine_bridge.js";
+import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
@@ -182,6 +182,17 @@ function isLegacyDemoState() {
   const text = main && main.editor ? main.editor.state.doc.textContent : "";
   return text.includes("@01") && text.includes("@02") && text.includes("@03") && text.includes("פצל");
 }
+
+(function applyDefaultMishnaSetup() {
+  try {
+    if (localStorage.getItem("ravtext.mishnaWrap") === null) {
+      localStorage.setItem("ravtext.mishnaWrap", "1");
+    }
+    if (localStorage.getItem("ravtext.mishnaWrap.levels") === null) {
+      localStorage.setItem("ravtext.mishnaWrap.levels", "01,04|02,03");
+    }
+  } catch (_) { /* localStorage חסום — דילוג */ }
+})();
 
 // אם יש מצב שמור — משחזר. אחרת — טוען שו"ע כברירת מחדל בכל נקודת התחלה.
 const loadedFromStorage = paneManager.loadFromStorage();
@@ -608,24 +619,32 @@ function setupRibbonTabs() {
     tabsBar.appendChild(renderBtnSlot);
   }
 
+  // משה 2026-05-07: מערך זה ממפה כל .tb-group בסרגל הראשי ללשונית.
+  // לאחר שהוספתי ב-PR #42 קבוצה חדשה (גודל טקסט נבחר) האינדקסים זזו ב-1
+  // וקבוצות קריטיות נעלמו מ"בית". כל הקבוצות שצריכות להיות זמינות בלשונית
+  // הראשית — כיוון, גופן, גודל-גלובלי, גודל-טקסט-נבחר, כללי, ניהול —
+  // ממופות עכשיו ל-"home" כדי שיופיעו בלשונית "בית" כברירת מחדל.
   const groupTabs = [
-    "home",
-    "home",
-    "home",
-    "home",
-    "home",
-    "home",
-    "home",
-    "insert",
-    "home",
-    "home",
-    "view",
-    "home",
-    "streams",
-    "streams review",
-    "insert",
-    "file review",
-    "file view",
+    "home",   //  0 טקסט
+    "home",   //  1 צבע
+    "home",   //  2 רקע
+    "home",   //  3 הדגשה ומברשת עיצוב
+    "home",   //  4 כותרות
+    "home",   //  5 רשימות
+    "home",   //  6 יישור
+    "home",   //  7 כיוון (RTL/LTR)
+    "home",   //  8 בלוקים
+    "home",   //  9 סגנונות
+    "home",   // 10 גופן
+    "home",   // 11 גודל גלובלי
+    "home",   // 12 גודל טקסט נבחר
+    "home",   // 13 כללי (theme + lang)
+    "home",   // 14 ניהול (undo/redo/clear)
+    "streams", // 15 זרמים
+    "streams", // 16 ניווט סימנים
+    "advanced", // 17 זיהוי אוטומטי
+    "advanced", // 18 Word
+    "file",    // 19 פעולות
   ];
   mainToolbar.querySelectorAll(".tb-group").forEach((group, index) => {
     group.dataset.ribbonTab = groupTabs[index] || "advanced";
@@ -1017,7 +1036,7 @@ async function splitSpecialNotes() {
     const pane = paneManager.addPane({
       streamCode: code,
       symbol: newLinkSymbol,
-      label: `זרם ${code}`,
+      label: defaultLabelForCode(code),
     });
     if (pane?.editor) {
       pane.editor.storage.streamMark.symbol = newLinkSymbol;
@@ -1129,7 +1148,18 @@ if (btnCustomStream && customStreamInput) {
 // chosen stream code so the user can review where it lives in the layout.
 function flashStreamElement(el) {
   if (!el) return;
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  // משה 2026-05-07: scrollIntoView לא תמיד גולל את ה-pages-container עצמו —
+  // הוא בוחר את ה-scroll container הקרוב ולפעמים זו תיבה לא נכונה. גלילה
+  // מפורשת על pages-container מבטיחה שהיעד באמת נראה במציג.
+  const container = document.getElementById("pages-container");
+  if (container && container.contains(el)) {
+    const cRect = container.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const offset = eRect.top - cRect.top + container.scrollTop - (cRect.height / 2 - eRect.height / 2);
+    container.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
+  } else {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
   const prevOutline = el.style.outline;
   const prevTransition = el.style.transition;
   el.style.transition = "outline-color 0.6s ease";
@@ -1152,7 +1182,7 @@ function jumpToStream(code) {
     return;
   }
   const status = document.getElementById("status");
-  if (status) status.textContent = `הזרם ${padded} לא נמצא בתצוגת העמודים. רנדר עמודים תחילה.`;
+  if (status) status.textContent = `${defaultLabelForCode(padded)} לא נמצא בתצוגת העמודים. רנדר עמודים תחילה.`;
 }
 document.querySelectorAll(".btn-stream-jump").forEach((btn) => {
   btn.addEventListener("click", () => jumpToStream(btn.dataset.stream));
@@ -1247,7 +1277,7 @@ document.addEventListener("click", async (ev) => {
     }
     case "ltr": {
       const aE = paneManager.activePane;
-      if (aE && aE.element) aE.element.querySelector(".pane-body").setAttribute("dir", "rtl");
+      if (aE && aE.element) aE.element.querySelector(".pane-body").setAttribute("dir", "ltr");
       break;
     }
     case "align-right":    ed && ed.setTextAlign("right").run(); break;
@@ -1514,10 +1544,10 @@ document.addEventListener("click", async (ev) => {
       const pane = paneManager.addPane({
         streamCode: padded,
         symbol: `@${padded}`,
-        label: `זרם ${padded}`,
+        label: defaultLabelForCode(padded),
       });
       if (pane) {
-        pane.editor.commands.setContent(`<p>תוכן זרם ${padded}…</p>`);
+        pane.editor.commands.setContent(`<p>תוכן ${defaultLabelForCode(padded)}…</p>`);
         ensureOriginalStreamSettings(padded);
       }
       break;
@@ -1560,7 +1590,7 @@ document.addEventListener("click", async (ev) => {
           pane = paneManager.addPane({
             streamCode: code,
             symbol: `@${code}`,
-            label: `זרם ${code}`,
+            label: defaultLabelForCode(code),
           });
           created++;
         } else {
@@ -1573,7 +1603,7 @@ document.addEventListener("click", async (ev) => {
       const lines = [`פיצול הושלם:`];
       lines.push(`  ראשי: סימני זרם בלבד`);
       for (const code of codes) {
-        lines.push(`  זרם ${code}: ${streams[code].length} הערות`);
+        lines.push(`  ${defaultLabelForCode(code)}: ${streams[code].length} הערות`);
       }
       lines.push(``);
       lines.push(`חלוניות חדשות: ${created}, מעודכנות: ${updated}`);
@@ -1775,7 +1805,7 @@ window.__streamMarkOnDetected = function (detected) {
   }
   // תיבת הודעה
   if (detected.length === 1) {
-    showToast(`✓ זוהה זרם ${detected[0].code} (${detected[0].symbol})`);
+    showToast(`✓ זוהה ${defaultLabelForCode(detected[0].code)} (${detected[0].symbol})`);
   } else {
     const codes = [...new Set(detected.map(d => d.code))].sort().join(", ");
     showToast(`✓ זוהו ${detected.length} סימנים בזרמים: ${codes}`);
