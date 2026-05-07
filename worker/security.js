@@ -81,6 +81,8 @@ const RATE_LIMITS = {
   '/api/talmud/decide': { window: 60, max: 600 },
   '/api/balance/decide': { window: 60, max: 600 },
   '/api/admin': { window: 60, max: 300 },
+  '/api/documents': { window: 60, max: 120 },
+  '/api/settings': { window: 60, max: 120 },
 };
 
 export async function checkRateLimit(request, url) {

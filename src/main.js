@@ -19,6 +19,7 @@ import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
 import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
 import { installAuthUi } from "./auth_ui.js";
+import { loadInitialState, attachAutoSync } from "./server_persistence.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
@@ -144,6 +145,16 @@ window.__loadCustomSample = async (rawText) => {
   rerenderPages();
 };
 window.addEventListener("beforeunload", () => paneManager.flushSave());
+
+// צוות האתר 2026-05-07: סנכרון תכולה והגדרות לשרת למשתמשים מחוברים.
+// loadInitialState עוצר אם המשתמש אנונימי. אם יש תכולה שמורה — היא מחליפה את הברירת־מחדל.
+loadInitialState(paneManager).then((res) => {
+  if (res?.loaded) console.debug("[persistence] loaded document from server");
+  attachAutoSync(paneManager);
+}).catch((e) => {
+  console.warn("[persistence] init failed:", e);
+  attachAutoSync(paneManager);
+});
 const pagesContainer = document.querySelector("#pages-container");
 applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
