@@ -548,8 +548,6 @@ function setupRibbonTabs() {
     ["streams", "זרמים"],
     ["insert", "הוספה"],
     ["layout", "פריסה"],
-    ["talmud", 'גפ"ת'],
-    ["mishna", 'משנ"ב'],
     ["torah", "תורני"],
     ["review", "סקירה"],
     ["view", "תצוגה"],
@@ -579,8 +577,8 @@ function setupRibbonTabs() {
       .forEach(el => el.remove());
     const tabTitles = {
       file: "פעולות קובץ", downloads: "הורדה ושמירה למחשב", home: "עיצוב טקסט", streams: "ניהול זרמים",
-      insert: "הוספת אלמנטים", layout: "פריסת עמודים", talmud: "הגדרות גפ\"ת — תלמוד",
-      mishna: "הגדרות משנ\"ב", torah: "כלים תורניים — גימטריה, ראשי תיבות, גרשיים, תאריך עברי",
+      insert: "הוספת אלמנטים", layout: "פריסת עמודים — כולל משנ\"ב וגפ\"ת",
+      torah: "כלים תורניים — גימטריה, ראשי תיבות, גרשיים, תאריך עברי",
       review: "סקירה ובדיקה", view: "תצוגה",
       advanced: "מתקדם", settings: "הגדרות מערכת",
     };
@@ -634,8 +632,8 @@ function setupRibbonTabs() {
     [".panes-toolbar", "streams view"],
     ["#expanded-tools", "advanced view"],
     [".source-bottom-toolbar", "file"],
-    [".mishna-toolbar", "mishna layout"],
-    [".talmud-toolbar", "talmud layout"],
+    [".mishna-toolbar", "layout"],
+    [".talmud-toolbar", "layout"],
     [".opening-word-toolbar", "layout"],
     ["#stream-columns-panel", "streams layout"],
     [".stress-toolbar", "advanced"],
@@ -763,6 +761,60 @@ wireDownloadsPanel();
   apply(localStorage.getItem(KEY) === "1");
   btn.addEventListener("click", () => {
     apply(!document.body.classList.contains("preview-minimized"));
+  });
+})();
+
+(function wireMainEditorPreviewResizer() {
+  const handle = document.getElementById("main-resize-handle");
+  const previewPane = document.querySelector(".preview-pane");
+  const main = document.querySelector("main.main");
+  if (!handle || !previewPane || !main) return;
+  const MIN = 320, MAX = 1400;
+  const KEY = "ravtext.main.previewWidth";
+
+  // Restore saved width
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved) {
+      main.style.setProperty("--main-preview-width", saved);
+      document.body.classList.add("has-preview-width-override");
+    }
+  } catch (_) {}
+
+  handle.addEventListener("mousedown", (ev) => {
+    ev.preventDefault();
+    const startRect = previewPane.getBoundingClientRect();
+    handle.classList.add("dragging");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    function onMove(e) {
+      // Handle is on the right edge of preview-pane (RTL editor side).
+      // newW = startRect.right - e.clientX
+      const newW = startRect.right - e.clientX;
+      if (newW >= MIN && newW <= MAX) {
+        main.style.setProperty("--main-preview-width", `${Math.round(newW)}px`);
+        document.body.classList.add("has-preview-width-override");
+      }
+    }
+    function onUp() {
+      handle.classList.remove("dragging");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      try {
+        const cur = main.style.getPropertyValue("--main-preview-width");
+        if (cur) localStorage.setItem(KEY, cur);
+      } catch (_) {}
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+  // Double-click resets to default
+  handle.addEventListener("dblclick", () => {
+    main.style.removeProperty("--main-preview-width");
+    document.body.classList.remove("has-preview-width-override");
+    try { localStorage.removeItem(KEY); } catch (_) {}
   });
 })();
 if (localStorage.getItem("ravtext.lineNumbers") === "1") {
