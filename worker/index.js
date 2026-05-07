@@ -9,6 +9,7 @@ import { handleAuth } from './auth.js';
 import { getUserFromRequest } from './session.js';
 import { applySecurityHeaders, checkRateLimit, isBadBot } from './security.js';
 import { parseStreamsToHtml } from './stream_parser.js';
+import { handlePreflight, handleTalmudDecide } from './render_planner.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -36,6 +37,10 @@ export default {
         },
         { headers: { 'cache-control': 'no-store' } }
       );
+    } else if (url.pathname === '/api/render/preflight' && request.method === 'POST') {
+      response = await handlePreflight(request, env);
+    } else if (url.pathname === '/api/talmud/decide' && request.method === 'POST') {
+      response = await handleTalmudDecide(request, env);
     } else if (url.pathname === '/api/streams/parse' && request.method === 'POST') {
       let body;
       try {

@@ -1,6 +1,7 @@
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
+import { runPreflight } from "./render_preflight.js";
 
 function injectDemoWatermarksIfNeeded(content) {
   if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
@@ -474,6 +475,21 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
     let content = paneManagerToPackerContent(paneManager);
+
+    // משה 2026-05-07: every render must pass through the server before pagination.
+    // Without a successful preflight, the render is aborted. Universal — applies
+    // to all layouts (talmud / mishna-wrap / balanced / regular).
+    try {
+      await runPreflight({
+        contentSignature: hashContent(content),
+      });
+    } catch (e) {
+      console.warn("[engine_bridge] preflight failed, aborting render:", e);
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.textContent = "תקלה זמנית בחיבור לשרת — נסה שוב בעוד רגע.";
+      return;
+    }
+
     // v33: inject demo watermarks INTO source content BEFORE pagination —
     // engine then measures heights including marks, so pages don't overflow.
     content = injectDemoWatermarksIfNeeded(content);
