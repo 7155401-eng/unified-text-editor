@@ -132,6 +132,28 @@ export function setTalmudHeightSafety(value) {
   localStorage.setItem(HEIGHT_SAFETY_KEY, String(n));
 }
 
+// משה 2026-05-07: ה-UI של כרית-גובה הוצא לסרגל פריסה כללי (לא רק תלמודי).
+// ה-getter בוחר את המפתח הנכון לפי המצב, וערך ברירת מחדל מתאים.
+const HEIGHT_SAFETY_REGULAR_KEY = "ravtext.layout.heightSafetyRegular";
+const DEFAULT_HEIGHT_SAFETY_REGULAR = 6;
+export function getEffectiveHeightSafety() {
+  if (isTalmudLayoutEnabled()) return getTalmudHeightSafety();
+  const raw = localStorage.getItem(HEIGHT_SAFETY_REGULAR_KEY);
+  if (raw === null) return DEFAULT_HEIGHT_SAFETY_REGULAR;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return DEFAULT_HEIGHT_SAFETY_REGULAR;
+  return Math.max(0, Math.min(400, n));
+}
+export function setEffectiveHeightSafety(value) {
+  if (isTalmudLayoutEnabled()) return setTalmudHeightSafety(value);
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 400) {
+    localStorage.removeItem(HEIGHT_SAFETY_REGULAR_KEY);
+    return;
+  }
+  localStorage.setItem(HEIGHT_SAFETY_REGULAR_KEY, String(n));
+}
+
 // משה 2026-05-07: ערכי כרית פר-עמוד (override). פורמט: "1:120, 3:80".
 // העמודים נספרים מ-1 לתצוגה למשתמש (מומר ל-0-based בקוד הפנימי).
 const HEIGHT_SAFETY_PER_PAGE_KEY = "ravtext.talmudLayout.heightSafetyPerPage";
@@ -2139,9 +2161,14 @@ export function wireTalmudLayoutControls(onChange) {
   const sideSelect   = document.getElementById("talmud-side-mode-select");
   const gapInput     = document.getElementById("talmud-side-gap-input");
   const breaksToggle = document.getElementById("talmud-preserve-breaks");
-  const safetyInput  = document.getElementById("talmud-height-safety-input");
-  const smartToggle  = document.getElementById("talmud-smart-engine-toggle");
-  const perPageInput = document.getElementById("talmud-height-safety-per-page-input");
+  // משה 2026-05-07: השדות הוזזו לסרגל "פריסה" (layout-extra-toolbar).
+  // שמות talmud-* נשמרים לתאימות אחורה אם הם עדיין קיימים בעותק ישן.
+  const safetyInput  = document.getElementById("layout-height-safety-input")
+                    || document.getElementById("talmud-height-safety-input");
+  const smartToggle  = document.getElementById("layout-smart-engine-toggle")
+                    || document.getElementById("talmud-smart-engine-toggle");
+  const perPageInput = document.getElementById("layout-height-safety-per-page-input")
+                    || document.getElementById("talmud-height-safety-per-page-input");
 
   if (!toggle) return;
 
@@ -2174,7 +2201,7 @@ export function wireTalmudLayoutControls(onChange) {
   if (sideSelect)   sideSelect.value   = getTalmudSideMode();
   if (gapInput)     gapInput.value     = getTalmudSideGap();
   if (breaksToggle) breaksToggle.checked = isTalmudPreserveBreaks();
-  if (safetyInput)  safetyInput.value  = getTalmudHeightSafety();
+  if (safetyInput)  safetyInput.value  = getEffectiveHeightSafety();
   if (smartToggle)  smartToggle.checked = localStorage.getItem("ravtext.talmudLayout.smartEngine") === "1";
   if (perPageInput) perPageInput.value = getTalmudHeightSafetyPerPage();
 
@@ -2240,9 +2267,13 @@ export function wireTalmudLayoutControls(onChange) {
     commit();
   });
   safetyInput?.addEventListener("change", () => {
-    setTalmudHeightSafety(safetyInput.value);
-    safetyInput.value = getTalmudHeightSafety();
+    setEffectiveHeightSafety(safetyInput.value);
+    safetyInput.value = getEffectiveHeightSafety();
     commit();
+  });
+  // משה: כשמשתנה מצב תלמוד, להתאים את ה-input לערך המצב החדש.
+  toggle.addEventListener("change", () => {
+    if (safetyInput) safetyInput.value = getEffectiveHeightSafety();
   });
   smartToggle?.addEventListener("change", () => {
     localStorage.setItem("ravtext.talmudLayout.smartEngine", smartToggle.checked ? "1" : "0");
