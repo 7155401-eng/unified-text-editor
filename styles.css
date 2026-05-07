@@ -442,28 +442,32 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   --tb-action-grad-to: #185ABD;
   --tb-action-grad-from-h: #3389e6;
   --tb-action-grad-to-h: #1f6cc7;
+  --tb-row-h: 32px; /* גובה אחיד לכל רכיב — מבטיח יישור-אמצע מושלם */
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 5px;
+  row-gap: 6px;
+  padding: 6px 8px;
   background: linear-gradient(180deg, var(--tb-bg-2) 0%, var(--tb-bg-1) 100%);
   color: var(--tb-fg);
   border-radius: 3px 3px 0 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.45);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
   font-size: 13px;
+  line-height: 1;
   flex-wrap: wrap;
 }
 
-/* קבוצות-pill: רוב הכפתורים יושבים בתוך מעטפת מאוחדת */
+/* קבוצות-pill: כל הילדים על אותו קו אנכי, ללא רווחים מיותרים */
 .pdf-tb-group {
   display: inline-flex;
-  align-items: center;
-  gap: 1px;
+  align-items: stretch;
+  gap: 0;
+  height: var(--tb-row-h);
   background: var(--tb-pill-bg);
   border: 1px solid var(--tb-pill-border);
-  border-radius: 18px;
-  padding: 2px;
+  border-radius: calc(var(--tb-row-h) / 2);
+  padding: 1px;
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.22);
   transition:
     border-color 220ms cubic-bezier(.4, 0, .2, 1),
@@ -483,23 +487,26 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
 /* spacer גמיש דוחף את קבוצות הפעולות לקצה (LTR/RTL aware) */
 .pdf-tb-spacer { flex: 1 1 auto; min-width: 8px; }
 
-/* כפתור-בסיס */
+/* כפתור-בסיס: גובה זהה לקבוצה כדי שיתמלא בלי שוליים אנכיים */
 .pdf-tb-btn {
   background: transparent;
   color: var(--tb-fg);
   border: 1px solid transparent;
-  border-radius: 14px;
-  padding: 4px 10px;
+  border-radius: calc(var(--tb-row-h) / 2);
+  padding: 0 8px;
+  margin: 0;
   font: inherit;
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  min-width: 30px;
-  height: 28px;
+  height: calc(var(--tb-row-h) - 2px);
+  min-width: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
+  vertical-align: middle;
+  box-sizing: border-box;
   transition:
     background 180ms cubic-bezier(.4, 0, .2, 1),
     color 180ms cubic-bezier(.4, 0, .2, 1),
@@ -507,8 +514,8 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
     box-shadow 180ms cubic-bezier(.4, 0, .2, 1);
 }
 
-/* כפתור-אייקון: רק SVG, ללא טקסט */
-.pdf-tb-icon { padding: 0 8px; min-width: 32px; }
+/* כפתור-אייקון בודד (רק SVG): ריבועי-מרובע, ממורכז */
+.pdf-tb-icon { padding: 0 6px; min-width: 30px; }
 .pdf-tb-icon svg {
   display: block;
   width: 16px;
@@ -565,26 +572,31 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   margin: 0 4px;
 }
 
-/* קבוצת ניווט: הקלט של מספר העמוד */
+/* קבוצת ניווט: הקלט של מספר העמוד — גובה זהה לכפתורים */
 .pdf-tb-page {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0 6px;
-  height: 28px;
+  padding: 0 4px;
+  height: calc(var(--tb-row-h) - 2px);
+  line-height: 1;
 }
 
 .pdf-tb-page-input {
-  width: 44px;
-  height: 28px;
+  width: 40px;
+  height: calc(var(--tb-row-h) - 2px);
   padding: 0 4px;
+  margin: 0;
   border: 1px solid var(--tb-input-border);
   border-radius: 6px;
   background: var(--tb-input-bg);
   color: var(--tb-fg);
   font: inherit;
   font-size: 13px;
+  line-height: 1;
   text-align: center;
+  vertical-align: middle;
+  box-sizing: border-box;
   transition: border-color 180ms, box-shadow 180ms, background 180ms;
 }
 .pdf-tb-page-input:focus {
@@ -630,11 +642,14 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   color: var(--tb-fg);
   border: 1px solid var(--tb-input-border);
   border-radius: 6px;
-  padding: 0 8px;
+  padding: 0 6px;
+  margin: 0;
   font: inherit;
   font-size: 13px;
-  height: 28px;
+  height: calc(var(--tb-row-h) - 2px);
   line-height: 1;
+  vertical-align: middle;
+  box-sizing: border-box;
   cursor: pointer;
   text-decoration: none;
   transition: border-color 180ms, box-shadow 180ms;
@@ -672,11 +687,14 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   border: none;
   outline: none;
   padding: 0 6px;
+  margin: 0;
   font: inherit;
   font-size: 13px;
   width: 160px;
-  height: 28px;
+  height: calc(var(--tb-row-h) - 2px);
   line-height: 1;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 .pdf-tb-find::placeholder { color: var(--tb-fg-muted); }
 /* ב-input type=search — להסיר את ה-X של הדפדפן (יש לנו עיצוב אחר) */
@@ -702,9 +720,9 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   color: #ffffff;
   font-weight: 600;
   letter-spacing: 0.02em;
-  padding: 0 12px;
-  height: 28px;
-  border-radius: 14px;
+  padding: 0 10px;
+  height: calc(var(--tb-row-h) - 2px);
+  border-radius: calc(var(--tb-row-h) / 2);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.18) inset,
     0 1px 3px rgba(0, 0, 0, 0.35);
@@ -745,15 +763,18 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  height: 28px;
+  padding: 0 10px;
+  height: var(--tb-row-h);
   border: 1px solid var(--tb-pill-border);
   background: var(--tb-pill-bg);
-  border-radius: 14px;
+  border-radius: calc(var(--tb-row-h) / 2);
   font-size: 12px;
+  line-height: 1;
+  vertical-align: middle;
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  box-sizing: border-box;
   transition: background 180ms, border-color 180ms;
 }
 .pdf-output-background-toggle:hover {
