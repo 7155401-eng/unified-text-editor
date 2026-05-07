@@ -84,21 +84,11 @@ function decideAdjustment(currentSafety, state) {
       reason: `overflow ${state.maxOverflow}px > ${OVERFLOW_THRESHOLD}px`,
     };
   }
-  // משה 2026-05-07: הוספה כירורגית — הדפדפן שולח state.awkwardSplits (מספר
-  // פיצולי פסקה ששורתם האחרונה קצרה ונחתכה באמצע מילה). אם זוהו, נעלה את
-  // הכרית כדי לדחוף יותר טקסט קדימה ולקבל סיום שורה נכון. ההיגיון הקיים
-  // (overflow/gap) לא משתנה — רק הוסף ענף חדש בין overflow ל-gap.
-  if (
-    Number.isFinite(state.awkwardSplits) &&
-    state.awkwardSplits > 0 &&
-    currentSafety < SAFETY_MAX
-  ) {
-    return {
-      newSafety: clamp(currentSafety + SAFETY_STEP_UP, SAFETY_MIN, SAFETY_MAX),
-      action: 'up',
-      reason: `${state.awkwardSplits} awkward mid-line split(s)`,
-    };
-  }
+  // משה 2026-05-07 URGENT REVERT: הענף שהוספתי ב-PR #63 ל-awkwardSplits גרם
+  // למנוע החכם להעלות את הכרית גם כשלא צריך — תוצאה: יותר חריגות ויותר רווחים.
+  // הוסר. הדפדפן עדיין שולח את state.awkwardSplits (לעתיד), אבל השרת מחליט
+  // רק לפי overflow + gap כמו בגרסה המקורית של ההעברה. אפשר להחזיר אם
+  // ייבנה היגיון עדין יותר.
   if (state.maxOverflow === 0 && state.avgGap > GAP_TOO_BIG && currentSafety > SAFETY_MIN) {
     return {
       newSafety: clamp(currentSafety - SAFETY_STEP_DOWN, SAFETY_MIN, SAFETY_MAX),
@@ -112,9 +102,7 @@ function decideAdjustment(currentSafety, state) {
     reason:
       state.maxOverflow > 0
         ? `overflow ${state.maxOverflow}px (within tolerance)`
-        : state.awkwardSplits > 0
-          ? `${state.awkwardSplits} awkward split(s) but cap reached`
-          : `gap ${state.avgGap}px (acceptable)`,
+        : `gap ${state.avgGap}px (acceptable)`,
   };
 }
 
