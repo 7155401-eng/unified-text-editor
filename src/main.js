@@ -117,6 +117,24 @@ function wireStylesGallery() {
   });
 }
 setTimeout(wireStylesGallery, 100);
+
+// משה 2026-05-07: dropdown לבחירת גודל לטקסט הנבחר. נמצא בקבוצה "גודל
+// טקסט נבחר" יחד עם +/- כפתורים. הערך מתאפס אחרי הבחירה כדי לאפשר בחירה
+// חוזרת של אותו גודל.
+function wireSelectedSizeSelect() {
+  const sel = document.getElementById("size-selected-select");
+  if (!sel) return;
+  sel.addEventListener("change", () => {
+    const v = sel.value;
+    sel.value = "";
+    if (!v) return;
+    const ed = paneManager.getActiveEditor?.();
+    if (!ed) return;
+    ed.chain().focus().setFontSize(v + "px").run();
+  });
+}
+setTimeout(wireSelectedSizeSelect, 100);
+
 setTimeout(() => wireCustomStyles(paneManager), 150);
 setupSettingsPane();
 setupStreamPicker();
@@ -1350,6 +1368,17 @@ document.addEventListener("click", async (ev) => {
     case "size-15":        ed && ed.setFontSize("15px").run(); break;
     case "size-18":        ed && ed.setFontSize("18px").run(); break;
     case "size-24":        ed && ed.setFontSize("24px").run(); break;
+    case "size-selected-up":
+    case "size-selected-down": {
+      if (!ed) break;
+      const delta = c === "size-selected-up" ? 1 : -1;
+      const attrs = ed.getAttributes("textStyle") || {};
+      const current = parseInt(String(attrs.fontSize || "").replace(/px$/, ""), 10);
+      const base = Number.isFinite(current) && current > 0 ? current : _fontSize;
+      const next = Math.max(6, Math.min(96, base + delta));
+      ed.setFontSize(next + "px").run();
+      break;
+    }
     case "size-down-double": applyFontSize(_fontSize - 2, { rerender: true }); break;
     case "size-down":        applyFontSize(_fontSize - 1, { rerender: true }); break;
     case "size-up":          applyFontSize(_fontSize + 1, { rerender: true }); break;
