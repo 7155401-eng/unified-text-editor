@@ -601,16 +601,18 @@ mark.pdf-find-hit-current {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px;
-  background: #e8e8e8;
+  background:
+    radial-gradient(ellipse at top, rgba(0,0,0,0.04) 0%, transparent 60%),
+    linear-gradient(180deg, #ececec 0%, #e2e2e2 100%);
   border-radius: 0 0 3px 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 16px;
   direction: rtl;
-  /* משה 2026-05-07: פס גלילה גלוי וקבוע במציג + גלילה חלקה במגע. */
+  /* משה 2026-05-07: עיצוב פס-גלילה וגלילה חלקה במגע/עכבר/כפתורים. */
   scrollbar-width: auto;
-  scrollbar-color: #888 #d8d8d8;
+  scrollbar-color: rgba(70, 70, 70, 0.55) rgba(0, 0, 0, 0.06);
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   touch-action: pan-y;
@@ -619,22 +621,182 @@ mark.pdf-find-hit-current {
 
 .pages-container::-webkit-scrollbar {
   width: 14px;
-  background: #d8d8d8;
+  background: transparent;
 }
 
 .pages-container::-webkit-scrollbar-track {
-  background: #d8d8d8;
-  border-left: 1px solid #c0c0c0;
+  background: rgba(0, 0, 0, 0.06);
+  box-shadow: inset 1px 0 2px rgba(0, 0, 0, 0.08);
+  border-radius: 0;
 }
 
 .pages-container::-webkit-scrollbar-thumb {
-  background: #888;
+  background: linear-gradient(180deg, #9a9a9a 0%, #6e6e6e 100%);
   border-radius: 7px;
-  border: 2px solid #d8d8d8;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.18);
+  transition: background 220ms cubic-bezier(.4, 0, .2, 1);
+  min-height: 48px;
 }
 
 .pages-container::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
+  background: linear-gradient(180deg, #6a6a6a 0%, #3a3a3a 100%);
+  background-clip: padding-box;
+}
+
+.pages-container::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, var(--gold, #c9a14a) 0%, #8a6a1f 100%);
+  background-clip: padding-box;
+}
+
+body.light-theme .pages-container {
+  background:
+    radial-gradient(ellipse at top, rgba(43, 87, 154, 0.05) 0%, transparent 60%),
+    linear-gradient(180deg, #f3f6fb 0%, #e6ecf5 100%);
+  scrollbar-color: rgba(43, 87, 154, 0.55) rgba(43, 87, 154, 0.08);
+}
+
+body.light-theme .pages-container::-webkit-scrollbar-track {
+  background: rgba(43, 87, 154, 0.08);
+}
+
+body.light-theme .pages-container::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #6a8fc6 0%, #2B579A 100%);
+  background-clip: padding-box;
+}
+
+body.light-theme .pages-container::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #2B579A 0%, #1c3e72 100%);
+  background-clip: padding-box;
+}
+
+/* ───────── אינדיקטור-גלילה דק בראש המציג ───────── */
+.pdf-scroll-progress {
+  position: relative;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  flex: 0 0 auto;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08) inset;
+}
+
+.pdf-scroll-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: linear-gradient(90deg, var(--gold, #c9a14a) 0%, #f0d27a 50%, var(--gold, #c9a14a) 100%);
+  background-size: 200% 100%;
+  box-shadow: 0 0 6px rgba(201, 161, 74, 0.6);
+  transition: width 80ms linear;
+  animation: pdfScrollShimmer 3s linear infinite;
+}
+
+@keyframes pdfScrollShimmer {
+  0%   { background-position: 0% 0; }
+  100% { background-position: 200% 0; }
+}
+
+body.light-theme .pdf-scroll-progress {
+  background: rgba(43, 87, 154, 0.1);
+}
+
+body.light-theme .pdf-scroll-progress-fill {
+  background: linear-gradient(90deg, #2B579A 0%, #5b8bc9 50%, #2B579A 100%);
+  background-size: 200% 100%;
+  box-shadow: 0 0 6px rgba(43, 87, 154, 0.5);
+}
+
+/* ───────── קבוצת כפתורי גלילה — pill מעוגל עם נוכחות ───────── */
+.pdf-tb-scroll-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 2px;
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.25),
+    0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: box-shadow 220ms cubic-bezier(.4, 0, .2, 1), border-color 220ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.pdf-tb-scroll-group:hover {
+  border-color: rgba(201, 161, 74, 0.45);
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(201, 161, 74, 0.2),
+    0 2px 8px rgba(201, 161, 74, 0.18);
+}
+
+.pdf-tb-scroll-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #d8d8d8;
+  cursor: pointer;
+  transition:
+    background 180ms cubic-bezier(.4, 0, .2, 1),
+    color 180ms cubic-bezier(.4, 0, .2, 1),
+    transform 120ms cubic-bezier(.4, 0, .2, 1),
+    box-shadow 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.pdf-tb-scroll-btn svg {
+  display: block;
+  transition: transform 180ms cubic-bezier(.4, 0, .2, 1);
+}
+
+.pdf-tb-scroll-btn:hover {
+  background: linear-gradient(180deg, rgba(201, 161, 74, 0.22) 0%, rgba(201, 161, 74, 0.08) 100%);
+  color: var(--gold, #c9a14a);
+  box-shadow: 0 0 0 1px rgba(201, 161, 74, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.pdf-tb-scroll-btn:hover svg { transform: scale(1.1); }
+#pdf-scroll-up.pdf-tb-scroll-btn:hover svg  { transform: scale(1.1) translateY(-1px); }
+#pdf-scroll-down.pdf-tb-scroll-btn:hover svg { transform: scale(1.1) translateY(1px);  }
+
+.pdf-tb-scroll-btn:active {
+  transform: scale(0.94);
+  background: linear-gradient(180deg, rgba(201, 161, 74, 0.4) 0%, rgba(201, 161, 74, 0.18) 100%);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.pdf-tb-scroll-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--gold, #c9a14a), 0 0 0 4px rgba(201, 161, 74, 0.25);
+}
+
+body.light-theme .pdf-tb-scroll-group {
+  background: rgba(43, 87, 154, 0.06);
+  border-color: rgba(43, 87, 154, 0.18);
+  box-shadow: inset 0 1px 1px rgba(43, 87, 154, 0.08);
+}
+
+body.light-theme .pdf-tb-scroll-btn {
+  color: #FFFFFF;
+}
+
+body.light-theme .pdf-tb-scroll-btn:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(231, 240, 255, 0.95) 100%);
+  color: #2B579A;
+  box-shadow: 0 0 0 1px rgba(43, 87, 154, 0.35), 0 2px 6px rgba(43, 87, 154, 0.2);
+}
+
+body.light-theme .pdf-tb-scroll-btn:active {
+  background: linear-gradient(180deg, #C8D4E3 0%, #B0C4DE 100%);
+  color: #1F2937;
+  box-shadow: inset 0 1px 3px rgba(43, 87, 154, 0.3);
 }
 
 .empty-hint {

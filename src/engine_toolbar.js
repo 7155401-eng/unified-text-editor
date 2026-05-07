@@ -327,6 +327,27 @@ export function setupPdfToolbar(pagesContainer) {
     scrollViewerBy(step);
   });
 
+  // אינדיקטור-גלילה דק בראש המציג — נמלא לפי מיקום הגלילה.
+  const progressFill = document.querySelector("#pdf-scroll-progress .pdf-scroll-progress-fill");
+  if (progressFill && pagesContainer) {
+    let progressRaf = 0;
+    const updateProgress = () => {
+      progressRaf = 0;
+      const h = pagesContainer.scrollHeight - pagesContainer.clientHeight;
+      const pct = h > 0 ? Math.min(100, Math.max(0, (pagesContainer.scrollTop / h) * 100)) : 0;
+      progressFill.style.width = pct + "%";
+    };
+    pagesContainer.addEventListener("scroll", () => {
+      if (progressRaf) return;
+      progressRaf = requestAnimationFrame(updateProgress);
+    }, { passive: true });
+    // עדכון ראשוני + אחרי שינוי-תוכן (renderer אירוע).
+    updateProgress();
+    window.addEventListener("ravtext:engine-rendered", () => {
+      requestAnimationFrame(updateProgress);
+    });
+  }
+
   const zoomSelect = document.getElementById("pdf-zoom-select");
   document.getElementById("pdf-zoom-in")?.addEventListener("click", () => {
     toolbar.zoom = Math.min(3, toolbar.zoom + 0.1);
