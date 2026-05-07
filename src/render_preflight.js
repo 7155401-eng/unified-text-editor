@@ -48,39 +48,3 @@ export async function runPreflight({ contentSignature, smart, talmud } = {}) {
   _lastPlanAt = Date.now();
   return plan;
 }
-
-// משה 2026-05-07: helper לרענון הטוקן באמצע רינדור. כשקריאה למנוע
-// מקבלת 403 ובגוף "Expired nonce" / "Bad nonce" / "Missing nonce",
-// הקליינט קורא לזה כדי לקבל טוקן חדש בלי לאתחל את כל הרינדור.
-//
-// אבטחה: השרת מבצע checkOrigin (Origin/Referer/Sec-Fetch-Site) על
-// כל בקשת preflight בדיוק כמו על כל קריאת מנוע. הנפקת טוקן חדש לא
-// מקלה על תוקף — הוא חוסם את אותה checkOrigin שהוא מנסה לעקוף.
-let _refreshing = null;
-export async function refreshNonce() {
-  if (_refreshing) return _refreshing;
-  _refreshing = (async () => {
-    try {
-      await runPreflight({});
-    } finally {
-      _refreshing = null;
-    }
-  })();
-  return _refreshing;
-}
-
-// fetchEngineApi — wrapper שמחיל את הטוקן, ואם השרת מחזיר 403
-// בגלל טוקן פג, מבקש טוקן חדש ומנסה פעם אחת נוספת. נכשל רק אם
-// גם הניסיון השני נכשל (= הטוקן בעצמו לא הבעיה).
-export async function fetchEngineApi(url, init = {}) {
-  const headers = { ...(init.headers || {}), ...getNonceHeader() };
-  let res = await fetch(url, { ...init, headers });
-  if (res.status !== 403) return res;
-  // קוראים את הגוף לזיהוי "Expired nonce" / "Bad nonce" / "Missing nonce".
-  // אם הגוף אחר ("Forbidden: bad origin") — לא מנסים שוב, זה לא יעזור.
-  const body = await res.clone().text().catch(() => '');
-  if (!/expired nonce|bad nonce|missing nonce/i.test(body)) return res;
-  await refreshNonce();
-  const headers2 = { ...(init.headers || {}), ...getNonceHeader() };
-  return fetch(url, { ...init, headers: headers2 });
-}
