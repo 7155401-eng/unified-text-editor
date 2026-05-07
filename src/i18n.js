@@ -61,6 +61,10 @@ const tr = {
     // demo banner
     demoTitle: "מצב משתמש ניסיוני",
     demoBody: "השינויים אינם נשמרים. הדמו מתאפס כל דקה, וכל יצוא או הדפסה מסומן.",
+    // font names (display only — internal font identifiers stay in data-cmd)
+    "font-david": "דוד",
+    "font-frank": "פרנק",
+    "font-segoe": "סגו",
   },
   en: {
     appTitle: "RavText to Word AI",
@@ -122,6 +126,10 @@ const tr = {
     // demo banner
     demoTitle: "Trial Mode",
     demoBody: "Changes are not saved. The demo resets every minute and every export or print is watermarked.",
+    // font names (display only — internal font identifiers stay in data-cmd)
+    "font-david": "David",
+    "font-frank": "Frank",
+    "font-segoe": "Segoe",
   },
 };
 
