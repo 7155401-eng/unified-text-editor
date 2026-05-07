@@ -1,4 +1,5 @@
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
+import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 
 function injectDemoWatermarksIfNeeded(content) {
@@ -461,11 +462,14 @@ export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi 
   _debounceTimer = setTimeout(() => {
     _renderToken++;
     const myToken = _renderToken;
-    _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken);
+    _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, /*skipSmartTune*/false);
   }, LIVE_RENDER_DELAY_MS);
 }
 
-async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
+// Smart-tune state: prevent re-entry while a tune cycle is active.
+let _smartTuneActive = false;
+
+async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, skipSmartTune = false) {
   try {
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
@@ -1241,6 +1245,33 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken) {
         pdfToolbarApi.rememberBaseSize();
         pdfToolbarApi.applyZoom();
       });
+    }
+
+    // משה 2026-05-07: מנוע חכם — אחרי שהדף התייצב (post-process loops סיימו),
+    // מודדים את המצב ומחליטים אם הכרית הנוכחית אופטימלית. אם לא — מעדכנים
+    // את הכרית ומריצים שוב. עוצר אחרי MAX_ITERATIONS או כשמגיעים ליציבות.
+    // ה-flag _smartTuneActive מונע re-entry בעת re-render.
+    if (!skipSmartTune && isSmartEngineEnabled() && !_smartTuneActive) {
+      _smartTuneActive = true;
+      // המתן ל-loopUntilStable (1500ms) + מרווח קטן לוודא יציבות.
+      setTimeout(async () => {
+        try {
+          const contentHash = hashContent(content);
+          await runSmartTune(contentHash, pagesContainer, async (newSafety) => {
+            // rerender callback — re-runs the full render with the new safety.
+            // Skips smart tune internally to avoid re-entry.
+            _renderToken++;
+            const innerToken = _renderToken;
+            await _runRender(paneManager, pagesContainer, pdfToolbarApi, innerToken, /*skipSmartTune*/true);
+            // Wait for late post-process to settle before measuring again.
+            await new Promise(r => setTimeout(r, 1700));
+          });
+        } catch (e) {
+          console.warn("[smart-engine] tune failed:", e);
+        } finally {
+          _smartTuneActive = false;
+        }
+      }, 1700);
     }
 
     console.log(`[engine] ${pages.length} pages | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);

@@ -2092,6 +2092,7 @@ export function wireTalmudLayoutControls(onChange) {
   const gapInput     = document.getElementById("talmud-side-gap-input");
   const breaksToggle = document.getElementById("talmud-preserve-breaks");
   const safetyInput  = document.getElementById("talmud-height-safety-input");
+  const smartToggle  = document.getElementById("talmud-smart-engine-toggle");
 
   if (!toggle) return;
 
@@ -2104,6 +2105,7 @@ export function wireTalmudLayoutControls(onChange) {
   if (gapInput)     gapInput.value     = getTalmudSideGap();
   if (breaksToggle) breaksToggle.checked = isTalmudPreserveBreaks();
   if (safetyInput)  safetyInput.value  = getTalmudHeightSafety();
+  if (smartToggle)  smartToggle.checked = localStorage.getItem("ravtext.talmudLayout.smartEngine") === "1";
 
   const commit = () => onChange?.();
 
@@ -2144,6 +2146,10 @@ export function wireTalmudLayoutControls(onChange) {
   safetyInput?.addEventListener("change", () => {
     setTalmudHeightSafety(safetyInput.value);
     safetyInput.value = getTalmudHeightSafety();
+    commit();
+  });
+  smartToggle?.addEventListener("change", () => {
+    localStorage.setItem("ravtext.talmudLayout.smartEngine", smartToggle.checked ? "1" : "0");
     commit();
   });
 }
