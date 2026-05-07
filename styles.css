@@ -576,7 +576,7 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
 
 .pdf-tb-page-input {
   width: 44px;
-  height: 24px;
+  height: 28px;
   padding: 0 4px;
   border: 1px solid var(--tb-input-border);
   border-radius: 6px;
@@ -621,29 +621,34 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   color: var(--tb-fg-muted);
 }
 
-/* select של זום — עיצוב מותאם */
+/* select של זום — רינדור נטיב נקי, ללא קישוטי-רקע מיותרים.
+   משה 2026-05-07: הניסיון לצייר חץ מותאם דרך background-image יצר
+   "גלים" על הטקסט במצבים מסוימים. חזרנו ל-native dropdown של הדפדפן —
+   נקי, צפוי, ולא חוסם את הכיתוב. */
 .pdf-tb-zoom-select {
   background: var(--tb-input-bg);
   color: var(--tb-fg);
   border: 1px solid var(--tb-input-border);
   border-radius: 6px;
-  padding: 3px 22px 3px 8px;
+  padding: 0 8px;
   font: inherit;
   font-size: 13px;
-  height: 24px;
+  height: 28px;
+  line-height: 1;
   cursor: pointer;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1 L5 5 L9 1' fill='none' stroke='%23aaaab2' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-repeat: no-repeat;
-  background-position: 6px center;
+  text-decoration: none;
   transition: border-color 180ms, box-shadow 180ms;
 }
 .pdf-tb-zoom-select:focus {
   outline: none;
   border-color: rgba(201, 161, 74, 0.55);
   box-shadow: 0 0 0 2px rgba(201, 161, 74, 0.18);
+}
+/* האפשרויות בתוך הרשימה הנפתחת — מסיר ספאם של underline במצבי focus/hover */
+.pdf-tb-zoom-select option {
+  text-decoration: none;
+  background: var(--tb-bg-2);
+  color: var(--tb-fg);
 }
 
 /* קבוצת חיפוש */
@@ -670,7 +675,8 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   font: inherit;
   font-size: 13px;
   width: 160px;
-  height: 24px;
+  height: 28px;
+  line-height: 1;
 }
 .pdf-tb-find::placeholder { color: var(--tb-fg-muted); }
 /* ב-input type=search — להסיר את ה-X של הדפדפן (יש לנו עיצוב אחר) */
@@ -800,8 +806,7 @@ body.light-theme .pdf-tb-page-input:focus {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
 }
 body.light-theme .pdf-tb-zoom-select {
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1 L5 5 L9 1' fill='none' stroke='%232B579A' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-  background-color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.95);
   color: #1F2937;
   border-color: rgba(255, 255, 255, 0.4);
 }
