@@ -1136,7 +1136,18 @@ if (btnCustomStream && customStreamInput) {
 // chosen stream code so the user can review where it lives in the layout.
 function flashStreamElement(el) {
   if (!el) return;
-  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  // משה 2026-05-07: scrollIntoView לא תמיד גולל את ה-pages-container עצמו —
+  // הוא בוחר את ה-scroll container הקרוב ולפעמים זו תיבה לא נכונה. גלילה
+  // מפורשת על pages-container מבטיחה שהיעד באמת נראה במציג.
+  const container = document.getElementById("pages-container");
+  if (container && container.contains(el)) {
+    const cRect = container.getBoundingClientRect();
+    const eRect = el.getBoundingClientRect();
+    const offset = eRect.top - cRect.top + container.scrollTop - (cRect.height / 2 - eRect.height / 2);
+    container.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
+  } else {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
   const prevOutline = el.style.outline;
   const prevTransition = el.style.transition;
   el.style.transition = "outline-color 0.6s ease";
@@ -1254,7 +1265,7 @@ document.addEventListener("click", async (ev) => {
     }
     case "ltr": {
       const aE = paneManager.activePane;
-      if (aE && aE.element) aE.element.querySelector(".pane-body").setAttribute("dir", "rtl");
+      if (aE && aE.element) aE.element.querySelector(".pane-body").setAttribute("dir", "ltr");
       break;
     }
     case "align-right":    ed && ed.setTextAlign("right").run(); break;
