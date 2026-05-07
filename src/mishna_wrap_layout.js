@@ -159,7 +159,18 @@ export function applyMishnaWrapToPage(pageEl) {
 }
 
 export function applyMishnaWrapToPages(container) {
-  if (!isMishnaWrapEnabled()) return;
+  // Defensive cleanup (משה 2026-05-07): כשהמשתמש מכבה משנ"ב או גפ"ת
+  // (שאוטו-מפעיל משנ"ב), עמודים שכבר רנדרו עם משנ"ב יכולים להישאר
+  // עם המבנה — קלאס .mishna-wrap-page, .mishna-level wrappers וכו'.
+  // הקריאה לפר-עמוד מנקה את זה (unwrapLevels + resetStream + סדר טבעי)
+  // גם כשהמצב כבוי. אז אנחנו מריצים אותה במקרה כבוי כדי לוודא ניקוי.
+  if (!isMishnaWrapEnabled()) {
+    const dirtyPages = container.querySelectorAll(
+      ".page.mishna-wrap-page, .page:has(.mishna-level)"
+    );
+    dirtyPages.forEach((page) => applyMishnaWrapToPage(page));
+    return;
+  }
   container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => applyMishnaWrapToPage(page));
 
   const prevProcessor = container.__processRealizedPage;

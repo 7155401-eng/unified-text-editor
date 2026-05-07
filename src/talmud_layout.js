@@ -2149,6 +2149,24 @@ export function wireTalmudLayoutControls(onChange) {
 
   toggle.addEventListener("change", () => {
     setTalmudLayoutEnabled(toggle.checked);
+    // משה 2026-05-07: כשהמשתמש מכבה גפ"ת, אם "שאר הזרמים = משנ"ב" היה דלוק
+    // והאוטומציה הפעילה משנ"ב — לכבות גם את משנ"ב ולנקות את ה-checkbox.
+    // אחרת המשתמש מקבל פלט עם משנ"ב גם בלי גפ"ת והוא לא הבין למה.
+    if (!toggle.checked) {
+      const otherAsMishna = document.getElementById("talmud-other-as-mishna");
+      if (otherAsMishna && otherAsMishna.checked) {
+        otherAsMishna.checked = false;
+        try { localStorage.setItem("ravtext.talmud.otherAsMishna", "0"); } catch (_) {}
+        // אם משנ"ב היה אוטו-מופעל ע"י הפיצ'ר הזה — מכבים אותו
+        try {
+          if (localStorage.getItem("ravtext.mishnaWrap") === "1") {
+            localStorage.setItem("ravtext.mishnaWrap", "0");
+            const mwToggle = document.getElementById("mishna-wrap-toggle");
+            if (mwToggle) mwToggle.checked = false;
+          }
+        } catch (_) {}
+      }
+    }
     commit();
   });
   streamsInput?.addEventListener("change", () => {
