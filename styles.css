@@ -236,8 +236,12 @@ html, body {
 body {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
   height: 100dvh;
+  /* משה 2026-05-07: overflow:hidden על ה-body מבטיח שלעולם לא יופיע פס
+     גלילה בעמוד עצמו. אם ילד פנימי חורג מהמסגרת שהוקצתה לו, התקלה בו
+     ולא תזלוג מהדף. הוסר min-height: 100vh — היה כפילות עם height
+     ועלול להיות גדול מ-100dvh על מובייל (כשבר-הכתובת מופיע/נעלם). */
+  overflow: hidden;
 }
 body > .app-header,
 body > .demo-mode-banner {
@@ -246,6 +250,10 @@ body > .demo-mode-banner {
 body > main.main {
   flex: 1 1 0;
   min-height: 0;
+  /* box-sizing: border-box — ה-padding (16px 28px ב-`.main`) ייכלל בגובה
+     שה-flex מקצה ל-main, ולא יתווסף מעליו ויחרוג מ-body. בלי זה, padding
+     גרם לפס גלילה קטן "שלפעמים נטען". */
+  box-sizing: border-box;
   overflow: hidden;
 }
 
