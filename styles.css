@@ -3448,6 +3448,11 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   to { transform: translateY(30px); opacity: 0; }
 }
 
+/* In English mode the body keeps direction:rtl from the global stylesheet,
+   so inset-inline-start would still resolve to the right edge. Flip the
+   toast's own direction to ltr so it docks to the left under EN UI. */
+body.lang-en .toast { direction: ltr; }
+
 .toolbar button {
   background: var(--btn);
   color: var(--txt);
