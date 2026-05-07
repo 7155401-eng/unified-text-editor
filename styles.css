@@ -2626,7 +2626,10 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 
 .tb-group {
   display: inline-flex;
-  flex-wrap: wrap;
+  /* משה 2026-05-07: nowrap בתוך כל קבוצה — הכפתורים נשארים זה לצד זה במקום
+     להיערם זה על זה כשהפס צר. רק הקבוצות עצמן מותרות לעבור לשורה חדשה
+     (.toolbar שמסביב נשאר flex-wrap:wrap). */
+  flex-wrap: nowrap;
   gap: 3px;
   padding: 4px 8px 4px;
   border: 1px solid var(--border);
