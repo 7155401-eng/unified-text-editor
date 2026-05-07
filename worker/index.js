@@ -7,7 +7,7 @@
 
 import { handleAuth } from './auth.js';
 import { getUserFromRequest } from './session.js';
-import { applySecurityHeaders, checkRateLimit, isBadBot } from './security.js';
+import { applySecurityHeaders, checkRateLimit, isBadBot, isEngineApi, checkOrigin } from './security.js';
 import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide } from './render_planner.js';
 import { handleAdmin } from './admin.js';
@@ -19,6 +19,12 @@ export default {
 
     if (isBadBot(request) && url.pathname !== '/robots.txt') {
       return new Response('Forbidden', { status: 403 });
+    }
+
+    // צוות האתר 2026-05-07: נתיבי מנוע — רק מ-Origin/Referer מורשה.
+    if (isEngineApi(url.pathname)) {
+      const blocked = checkOrigin(request, url);
+      if (blocked) return blocked;
     }
 
     const limited = await checkRateLimit(request, url);
