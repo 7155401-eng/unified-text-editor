@@ -152,37 +152,38 @@ const MODE_DOUBLE_INLINE   = "double-inline";   // 2 streams both short → no c
  * @param {string} fullWidthCss - CSS width string for full-page placement
  * @returns {string} one of MODE_* constants
  */
-function decideCrownMode(streams, hasMain, crownLines, halfWidthCss, fullWidthCss) {
+// משה 2026-05-07: ההכרעה הזו עברה לשרת (worker/render_planner.js → /api/talmud/decide).
+// הדפדפן רק מודד; הכלל בעצמו (5 התרחישים) רץ בשרת.
+async function decideCrownMode(streams, hasMain, crownLines, halfWidthCss, fullWidthCss) {
   if (streams.length === 0) return MODE_NO_TALMUD;
 
-  if (streams.length === 1) {
-    // משה כלל #6 תרחיש 1: זרם אחד מתפצל ל-2 טורים אם יש לו ≥4 שורות
-    // ברוחב מלא של כל הדף (לא חצי × 2 שזה הערכה).
-    // תיקון 2026-05-06: מודדים ברוחב מלא כפי שהכלל דורש; וגם ברוחב חצי
-    // לוודא שיש לפחות crownLines×2 שורות (כי הטקסט יזרום בשני טורים).
-    const linesAtFull = measureLinesAtWidth(streams[0], fullWidthCss);
-    const linesAtHalf = measureLinesAtWidth(streams[0], halfWidthCss);
-    if (linesAtFull >= crownLines && linesAtHalf >= crownLines * 2) return MODE_SINGLE_SPLIT;
-    return MODE_SINGLE_INLINE;
+  const measured = streams.map((s) => ({
+    linesAtFull: measureLinesAtWidth(s, fullWidthCss),
+    linesAtHalf: measureLinesAtWidth(s, halfWidthCss),
+  }));
+
+  const res = await fetch('/api/talmud/decide', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      crownLines,
+      hasMain: !!hasMain,
+      streams: measured,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`talmud decide failed: HTTP ${res.status}`);
   }
-
-  // streams.length === 2
-  const linesA_half = measureLinesAtWidth(streams[0], halfWidthCss);
-  const linesB_half = measureLinesAtWidth(streams[1], halfWidthCss);
-
-  // Both long enough at half-width → standard 2-half-crowns mode
-  if (linesA_half >= crownLines && linesB_half >= crownLines) return MODE_DOUBLE_HALF;
-
-  // Both short at half-width → no crown
-  if (linesA_half < crownLines && linesB_half < crownLines) return MODE_DOUBLE_INLINE;
-
-  // One long, one short. Check if the long one fits 4 lines at FULL page width.
-  const longStream  = linesA_half >= crownLines ? streams[0] : streams[1];
-  const linesLong_full = measureLinesAtWidth(longStream, fullWidthCss);
-  if (linesLong_full >= crownLines) return MODE_DOUBLE_FULL;
-
-  // Long stream not long enough at full width → both effectively short
-  return MODE_DOUBLE_INLINE;
+  const decision = await res.json();
+  switch (decision.mode) {
+    case 'no-talmud': return MODE_NO_TALMUD;
+    case 'single-split': return MODE_SINGLE_SPLIT;
+    case 'single-inline': return MODE_SINGLE_INLINE;
+    case 'double-half': return MODE_DOUBLE_HALF;
+    case 'double-full': return MODE_DOUBLE_FULL;
+    case 'double-inline': return MODE_DOUBLE_INLINE;
+    default: return MODE_NO_TALMUD;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -464,7 +465,7 @@ function buildDoubleInline(block, mainEl, streamA, streamB) {
 const _building = new WeakSet();
 
 /** Apply V2 layout to a single page element. */
-export function applyTalmudLayoutToPageV2(pageEl) {
+export async function applyTalmudLayoutToPageV2(pageEl) {
   if (!pageEl || _building.has(pageEl)) return;
 
   const streamsWrap = pageEl.querySelector(".page-streams");
@@ -515,8 +516,8 @@ export function applyTalmudLayoutToPageV2(pageEl) {
     const halfWidthCss = "calc(50% - 0px)";
     const fullWidthCss = "100%";
 
-    // RULE 6: decide crown mode
-    const mode = decideCrownMode(talmudStreams, hasMain, crownLines, halfWidthCss, fullWidthCss);
+    // RULE 6: decide crown mode (server-side decision)
+    const mode = await decideCrownMode(talmudStreams, hasMain, crownLines, halfWidthCss, fullWidthCss);
     pageEl.dataset.talmudV2Mode = mode;
 
     switch (mode) {
@@ -557,9 +558,12 @@ export function applyTalmudLayoutToPageV2(pageEl) {
 }
 
 /** Apply V2 to all pages in container. */
-export function applyTalmudLayoutToPagesV2(container) {
+export async function applyTalmudLayoutToPagesV2(container) {
   if (!container) return;
-  container.querySelectorAll(".page:not(.page-placeholder)").forEach(applyTalmudLayoutToPageV2);
+  const pages = Array.from(container.querySelectorAll(".page:not(.page-placeholder)"));
+  for (const pageEl of pages) {
+    await applyTalmudLayoutToPageV2(pageEl);
+  }
 }
 
 /** Feature flag — read from localStorage to enable V2. */

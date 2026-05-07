@@ -109,8 +109,9 @@ export async function handlePreflight(request, env) {
   }
 
   if (body?.smart?.currentSafety != null && body?.smart?.state) {
+    const cs = Number(body.smart.currentSafety);
     plan.decisions.safety = decideAdjustment(
-      Number(body.smart.currentSafety) || SAFETY_DEFAULT,
+      Number.isFinite(cs) ? cs : SAFETY_DEFAULT,
       body.smart.state
     );
   } else {

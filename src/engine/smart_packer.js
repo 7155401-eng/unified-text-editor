@@ -22,10 +22,7 @@ const SMART_KEY = "ravtext.talmudLayout.smartEngine";
 const SAFETY_KEY = "ravtext.talmudLayout.heightSafety";
 const CACHE_PREFIX = "ravtext.talmudLayout.smartCache.";
 const MAX_ITERATIONS = 6;
-const SAFETY_STEP_UP = 20;
-const SAFETY_STEP_DOWN = 20;
-const OVERFLOW_THRESHOLD = 5;
-const GAP_TOO_BIG = 60;
+const ANTI_OSCILLATION_STEP = 20;
 const SAFETY_MIN = 0;
 const SAFETY_MAX = 400;
 
@@ -131,28 +128,22 @@ export function measurePagesState(container) {
   return { pages: perPage, maxOverflow: Math.round(maxOverflow), avgGap: Math.round(avgGap), totalGap: Math.round(totalGap) };
 }
 
-// Decide what the safety SHOULD be for the next render based on the
-// observed state. Returns { newSafety, action: "up"|"down"|"stable" }.
-export function decideAdjustment(currentSafety, state) {
-  if (state.maxOverflow > OVERFLOW_THRESHOLD) {
-    return {
-      newSafety: clamp(currentSafety + SAFETY_STEP_UP, SAFETY_MIN, SAFETY_MAX),
-      action: "up",
-      reason: `overflow ${state.maxOverflow}px > ${OVERFLOW_THRESHOLD}px`,
-    };
+// משה 2026-05-07: ההחלטה הזו עברה לשרת (worker/render_planner.js).
+// הדפדפן רק מודד; הנוסחה (ספי overflow/gap, ערכי step) רצה בשרת בלבד.
+export async function decideAdjustment(currentSafety, state) {
+  const res = await fetch('/api/render/preflight', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      layoutType: 'any',
+      smart: { currentSafety, state },
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`smart adjustment failed: HTTP ${res.status}`);
   }
-  if (state.maxOverflow === 0 && state.avgGap > GAP_TOO_BIG && currentSafety > SAFETY_MIN) {
-    return {
-      newSafety: clamp(currentSafety - SAFETY_STEP_DOWN, SAFETY_MIN, SAFETY_MAX),
-      action: "down",
-      reason: `avg gap ${state.avgGap}px > ${GAP_TOO_BIG}px, no overflow`,
-    };
-  }
-  return {
-    newSafety: currentSafety,
-    action: "stable",
-    reason: state.maxOverflow > 0 ? `overflow ${state.maxOverflow}px (within tolerance)` : `gap ${state.avgGap}px (acceptable)`,
-  };
+  const plan = await res.json();
+  return plan.decisions?.safety || { newSafety: currentSafety, action: 'stable', reason: 'no-server-decision' };
 }
 
 // Public entry point: orchestrate the smart-tune cycle. Caller provides
@@ -184,7 +175,7 @@ export async function runSmartTune(contentHash, container, rerender) {
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     const state = measurePagesState(container);
-    const decision = decideAdjustment(currentSafety, state);
+    const decision = await decideAdjustment(currentSafety, state);
     console.debug(`[smart-engine] iter ${iter} safety=${currentSafety} → ${decision.action} (${decision.reason})`);
     if (decision.action === "stable") {
       writeCachedSafety(contentHash, currentSafety);
@@ -193,7 +184,7 @@ export async function runSmartTune(contentHash, container, rerender) {
     // Anti-oscillation: if we'd reverse direction immediately, stop.
     if (lastAction && lastAction !== decision.action) {
       // We just bounced — prefer the higher (safer) of the two.
-      const safer = lastAction === "down" ? currentSafety + SAFETY_STEP_UP : decision.newSafety;
+      const safer = lastAction === "down" ? currentSafety + ANTI_OSCILLATION_STEP : decision.newSafety;
       writeCachedSafety(contentHash, safer);
       writeSafety(safer);
       if (safer !== currentSafety) await rerender(safer);

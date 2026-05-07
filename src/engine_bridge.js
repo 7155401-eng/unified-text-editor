@@ -518,7 +518,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     logEvent("talmud_layout");
     if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
       const v2 = await import("./talmud_engine_v2.js");
-      v2.applyTalmudLayoutToPagesV2(pagesContainer);
+      await v2.applyTalmudLayoutToPagesV2(pagesContainer);
     } else {
       applyTalmudLayoutToPages(pagesContainer);
     }
