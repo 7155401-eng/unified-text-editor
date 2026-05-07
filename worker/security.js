@@ -108,6 +108,25 @@ export function checkOrigin(request, url) {
     } catch {}
   }
 
+  // PWA standalone — בקשות מ-Chrome/Edge PWA שהותקן יכולות להגיע
+  // ללא Origin/Referer ב-CORS-strict mode. אנחנו מאשרים אותן רק
+  // כשמתקיימים בו-זמנית שני תנאים שלא ניתנים לזיוף מ-JS:
+  //
+  //   1. Sec-Fetch-Site: same-origin — נשלח אוטומטית ע"י הדפדפן
+  //      (Chrome 76+, Firefox 90+) ולא ניתן לדריסה מקוד JS.
+  //      תוקף בדומיין אחר יקבל "cross-site" ולא יוכל לעקוף.
+  //
+  //   2. X-Ravtext-Display: standalone — מוצמד ע"י ה-fetch wrapper
+  //      שלנו (src/pwa_install_controller.js) רק במצב display-mode:
+  //      standalone. זה רמז כוונה, לא הוכחה — האכיפה האמיתית היא
+  //      Sec-Fetch-Site.
+  //
+  // הצירוף של השניים מקיים same-origin מקוד שלנו, ב-PWA או בטאב
+  // רגיל. תוקף לא יכול ליצור Sec-Fetch-Site=same-origin מדומיינו.
+  const secSite = request.headers.get('sec-fetch-site');
+  const display = request.headers.get('x-ravtext-display');
+  if (secSite === 'same-origin' && display === 'standalone') return null;
+
   return new Response('Forbidden: bad origin', { status: 403 });
 }
 

@@ -209,6 +209,71 @@ function injectStyles() {
 }
 .rt-pwa-toast .close:hover { color: #fff; }
 
+/* Post-install help dialog (3-step taskbar pinning) */
+.rt-pwa-help-card { width: min(540px, calc(100vw - 32px)); }
+.rt-pwa-steps {
+  list-style: none; padding: 0; margin: 0 0 18px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.rt-pwa-steps li {
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.rt-pwa-step-num {
+  flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
+  background: linear-gradient(135deg, #2c5aa0 0%, #1e4078 100%);
+  color: #fff; font-weight: 700; font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 10px rgba(44, 90, 160, 0.35);
+}
+.rt-pwa-step-title {
+  font-weight: 600; color: #0f172a; font-size: 14.5px; margin-bottom: 4px;
+}
+.rt-pwa-step-text {
+  font-size: 13px; color: #475569; line-height: 1.5;
+}
+.rt-pwa-mockup {
+  margin-top: 8px; padding: 8px;
+  background: #f1f5f9; border-radius: 8px;
+  display: flex; justify-content: center;
+}
+.rt-pwa-mockup-menu {
+  background: #fff; border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18),
+              0 0 0 1px rgba(0, 0, 0, 0.08);
+  min-width: 220px; overflow: hidden;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.rt-pwa-mockup-row {
+  padding: 8px 14px; font-size: 13px; color: #1e293b;
+  border-bottom: 1px solid #f1f5f9;
+}
+.rt-pwa-mockup-row:last-child { border-bottom: 0; }
+.rt-pwa-mockup-highlight {
+  background: linear-gradient(90deg, #dbeafe, #eff6ff);
+  color: #1e40af; font-weight: 600;
+  position: relative;
+}
+.rt-pwa-mockup-highlight::after {
+  content: "←";
+  position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+  color: #2c5aa0; font-weight: 700;
+}
+
+body[data-theme="dark"] .rt-pwa-step-title,
+body.dark-theme .rt-pwa-step-title { color: #f8fafc; }
+body[data-theme="dark"] .rt-pwa-step-text,
+body.dark-theme .rt-pwa-step-text { color: #cbd5e1; }
+body[data-theme="dark"] .rt-pwa-mockup,
+body.dark-theme .rt-pwa-mockup { background: #0f172a; }
+body[data-theme="dark"] .rt-pwa-mockup-menu,
+body.dark-theme .rt-pwa-mockup-menu { background: #1e293b; box-shadow: 0 6px 18px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.08); }
+body[data-theme="dark"] .rt-pwa-mockup-row,
+body.dark-theme .rt-pwa-mockup-row { color: #e2e8f0; border-color: #0f172a; }
+body[data-theme="dark"] .rt-pwa-mockup-highlight,
+body.dark-theme .rt-pwa-mockup-highlight {
+  background: linear-gradient(90deg, #1e3a8a, #1e40af); color: #fff;
+}
+
 /* Dark theme support */
 body[data-theme="dark"] .rt-pwa-card,
 body.dark-theme .rt-pwa-card {
@@ -359,23 +424,71 @@ function showPostInstallTaskbarHelp() {
   if (wantHelp !== "1") return;
 
   injectStyles();
-  const toast = document.createElement("div");
-  toast.className = "rt-pwa-toast";
-  toast.dir = "rtl";
-  toast.innerHTML = `
-    <span>✓ הותקן! לקיבוע בשורת המשימות: לחץ ימני על אייקון "רב טקסט" בשורת המשימות → "קבע לשורת המשימות".</span>
-    <button type="button" class="close" aria-label="סגור">×</button>
+
+  // קלף הוראות מובנה — שלושה צעדים עם דמיית-תפריט ויזואלית של
+  // קליק ימני, במקום toast חד-משפטי.
+  const overlay = document.createElement("div");
+  overlay.className = "rt-pwa-overlay rt-pwa-help-overlay";
+  overlay.innerHTML = `
+    <div class="rt-pwa-card rt-pwa-help-card" dir="rtl" role="dialog" aria-modal="true">
+      <button type="button" class="rt-pwa-close" aria-label="סגור">×</button>
+      <div class="rt-pwa-icon"><img src="/favicon.svg" alt="" /></div>
+      <h2 class="rt-pwa-title">✓ <span class="accent">רב טקסט</span> הותקן!</h2>
+      <p class="rt-pwa-subtitle">כדי שיהיה לך אייקון קבוע בשורת המשימות (התחתונה במסך), בצע את 3 הצעדים:</p>
+
+      <ol class="rt-pwa-steps">
+        <li>
+          <span class="rt-pwa-step-num">1</span>
+          <div>
+            <div class="rt-pwa-step-title">חפש את האייקון של "רב טקסט"</div>
+            <div class="rt-pwa-step-text">הוא יופיע בשורת המשימות התחתונה. אם הוא לא שם — פתח את האפליקציה (מ"התחל" או משולחן עבודה) והוא יקפוץ.</div>
+          </div>
+        </li>
+        <li>
+          <span class="rt-pwa-step-num">2</span>
+          <div>
+            <div class="rt-pwa-step-title">לחץ עליו <strong>בלחצן הימני</strong> של העכבר</div>
+            <div class="rt-pwa-step-text">ייפתח תפריט מעל האייקון.</div>
+            <div class="rt-pwa-mockup">
+              <div class="rt-pwa-mockup-menu">
+                <div class="rt-pwa-mockup-row">פתח חלון חדש</div>
+                <div class="rt-pwa-mockup-row rt-pwa-mockup-highlight">📌 קבע לשורת המשימות</div>
+                <div class="rt-pwa-mockup-row">סגור חלון</div>
+              </div>
+            </div>
+          </div>
+        </li>
+        <li>
+          <span class="rt-pwa-step-num">3</span>
+          <div>
+            <div class="rt-pwa-step-title">בחר "קבע לשורת המשימות"</div>
+            <div class="rt-pwa-step-text">מעכשיו האייקון יישאר תמיד בשורת המשימות, גם כשהאפליקציה סגורה. לחיצה אחת תפתח אותה.</div>
+          </div>
+        </li>
+      </ol>
+
+      <div class="rt-pwa-actions">
+        <button type="button" class="rt-pwa-primary rt-pwa-help-done">סבבה, הבנתי</button>
+      </div>
+    </div>
   `;
-  document.body.appendChild(toast);
-  toast.querySelector(".close").addEventListener("click", () => toast.remove());
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.style.transition = "opacity 0.4s, transform 0.4s";
-      toast.style.opacity = "0";
-      toast.style.transform = "translate(-50%, 20px)";
-      setTimeout(() => toast.remove(), 400);
+  document.body.appendChild(overlay);
+
+  const close = () => {
+    overlay.classList.add("closing");
+    setTimeout(() => overlay.remove(), 220);
+  };
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector(".rt-pwa-close").addEventListener("click", close);
+  overlay.querySelector(".rt-pwa-help-done").addEventListener("click", close);
+
+  function onEsc(e) {
+    if (e.key === "Escape") {
+      close();
+      window.removeEventListener("keydown", onEsc);
     }
-  }, 18000);
+  }
+  window.addEventListener("keydown", onEsc);
 }
 
 export function initPwaInstallPrompt() {
