@@ -79,6 +79,7 @@ const RATE_LIMITS = {
   '/api/streams/parse': { window: 60, max: 30 },
   '/api/render/preflight': { window: 60, max: 600 },
   '/api/talmud/decide': { window: 60, max: 600 },
+  '/api/balance/decide': { window: 60, max: 600 },
 };
 
 export async function checkRateLimit(request, url) {

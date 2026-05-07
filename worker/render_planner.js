@@ -123,6 +123,45 @@ export async function handlePreflight(request, env) {
   });
 }
 
+function decideBalanceLayout(lineCount, settings) {
+  const minLines = Number.isFinite(Number(settings?.minLinesForCols))
+    ? Number(settings.minLinesForCols)
+    : 3;
+  if (lineCount < minLines * 2) {
+    return { balance: false, reason: `lines ${lineCount} < ${minLines * 2}` };
+  }
+  const lastCenter = settings?.lastLineCenter !== false;
+  const hasOrphan = lineCount % 2 === 1 && lastCenter;
+  const balancedCount = hasOrphan ? lineCount - 1 : lineCount;
+  const half = Math.ceil(balancedCount / 2);
+  return {
+    balance: true,
+    rightStart: 0,
+    rightEnd: half,
+    leftStart: half,
+    leftEnd: balancedCount,
+    hasOrphan,
+    centerLast: lastCenter,
+  };
+}
+
+export async function handleBalanceDecide(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response('Invalid JSON', { status: 400 });
+  }
+  const lineCount = Number(body?.lineCount);
+  if (!Number.isFinite(lineCount) || lineCount < 0) {
+    return new Response('Bad lineCount', { status: 400 });
+  }
+  const decision = decideBalanceLayout(lineCount, body?.settings || {});
+  return Response.json(decision, {
+    headers: { 'cache-control': 'no-store' },
+  });
+}
+
 export async function handleTalmudDecide(request, env) {
   let body;
   try {

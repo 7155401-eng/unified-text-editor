@@ -81,7 +81,17 @@ function appendLines(parent, lines, { naturalLast = false, centerLast = true } =
   });
 }
 
-function applyTwoColumnBalance(streamEl, settings) {
+async function fetchBalanceDecision(lineCount, settings) {
+  const res = await fetch('/api/balance/decide', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ lineCount, settings }),
+  });
+  if (!res.ok) throw new Error(`balance decide failed: HTTP ${res.status}`);
+  return res.json();
+}
+
+async function applyTwoColumnBalance(streamEl, settings) {
   if (!streamEl || streamEl.dataset.balancedColumns === "1") return;
   if (streamEl.closest(".mishna-wrap-page")) return;
 
@@ -99,18 +109,13 @@ function applyTwoColumnBalance(streamEl, settings) {
 
   try {
     const lines = splitTextIntoLines(text, measure, lineHeight);
-    const minLines = typeof settings.minLinesForCols === "number" ? settings.minLinesForCols : 3;
-    if (lines.length < minLines * 2) return;
+    // משה 2026-05-07: ההחלטה (האם לאזן, איפה לחתוך, איך לטפל ביתום) רצה בשרת.
+    const decision = await fetchBalanceDecision(lines.length, settings);
+    if (!decision.balance) return;
 
-    let orphan = "";
-    const balancedLines = lines.slice();
-    if (balancedLines.length % 2 === 1 && settings.lastLineCenter !== false) {
-      orphan = balancedLines.pop() || "";
-    }
-
-    const half = Math.ceil(balancedLines.length / 2);
-    const rightLines = balancedLines.slice(0, half);
-    const leftLines = balancedLines.slice(half);
+    const rightLines = lines.slice(decision.rightStart, decision.rightEnd);
+    const leftLines = lines.slice(decision.leftStart, decision.leftEnd);
+    const orphan = decision.hasOrphan ? lines[lines.length - 1] || "" : "";
     const title = streamEl.querySelector(".stream-title")?.cloneNode(true);
 
     streamEl.textContent = "";
@@ -130,7 +135,7 @@ function applyTwoColumnBalance(streamEl, settings) {
 
     const left = document.createElement("div");
     left.className = "stream-balanced-col stream-balanced-left";
-    appendLines(left, leftLines, { naturalLast: !orphan, centerLast: settings.lastLineCenter !== false });
+    appendLines(left, leftLines, { naturalLast: !orphan, centerLast: decision.centerLast });
 
     cols.appendChild(right);
     cols.appendChild(left);
@@ -138,7 +143,7 @@ function applyTwoColumnBalance(streamEl, settings) {
 
     if (orphan) {
       const orphanEl = document.createElement("div");
-      orphanEl.className = `stream-orphan-line ${settings.lastLineCenter !== false ? "stream-balanced-natural-last" : "stream-balanced-natural-last-right"}`;
+      orphanEl.className = `stream-orphan-line ${decision.centerLast ? "stream-balanced-natural-last" : "stream-balanced-natural-last-right"}`;
       orphanEl.textContent = orphan;
       streamEl.appendChild(orphanEl);
     }
@@ -147,20 +152,24 @@ function applyTwoColumnBalance(streamEl, settings) {
   }
 }
 
-export function applyBalancedColumnsToPage(pageEl) {
+export async function applyBalancedColumnsToPage(pageEl) {
   if (!pageEl || pageEl.classList.contains("page-placeholder")) return;
-  pageEl.querySelectorAll(".stream[data-stream]").forEach((streamEl) => {
-    if (streamEl.closest(".talmud-layout")) return;
+  const streams = Array.from(pageEl.querySelectorAll(".stream[data-stream]"));
+  for (const streamEl of streams) {
+    if (streamEl.closest(".talmud-layout")) continue;
     const code = streamEl.getAttribute("data-stream");
     const settings = getStreamSettings(code);
-    if ((settings.cols || 1) !== 2) return;
-    applyTwoColumnBalance(streamEl, settings);
-  });
+    if ((settings.cols || 1) !== 2) continue;
+    await applyTwoColumnBalance(streamEl, settings);
+  }
 }
 
-export function applyBalancedColumnsToPages(container) {
+export async function applyBalancedColumnsToPages(container) {
   if (!hasTwoColumnStreams()) return;
-  container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => applyBalancedColumnsToPage(page));
+  const pages = Array.from(container.querySelectorAll(".page:not(.page-placeholder)"));
+  for (const page of pages) {
+    await applyBalancedColumnsToPage(page);
+  }
 
   const prevProcessor = container.__processRealizedPage;
   if (!prevProcessor || !prevProcessor.__balancedColumnsWrapped) {

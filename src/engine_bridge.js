@@ -525,7 +525,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     logEvent("mishna_wrap");
     applyMishnaWrapToPages(pagesContainer);
     logEvent("balanced_columns");
-    applyBalancedColumnsToPages(pagesContainer);
+    await applyBalancedColumnsToPages(pagesContainer);
     logEvent("opening_word");
     applyOpeningWordsToPages(pagesContainer);
     // Bug 17 + 18: cap stretch at 250% and switch to SVG textLength
