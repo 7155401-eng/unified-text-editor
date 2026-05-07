@@ -16,37 +16,6 @@ import { logMove, logEvent } from "./settings_pane.js";
 
 const GAP_THRESHOLD_PX = 100;
 const CHUNK_LIMIT      = 50; // safety: max chunks pulled per call
-// משה 2026-05-08: שמירה אגרסיבית על "אסור עמודים ריקים באמצע". כל הזזה
-// שתשאיר את העמוד-המקור עם פחות מ-30% מגובה העמוד = מסרבת. הסף נבחר אחרי
-// שצפינו במקרה (debug 20260508_000417) שעמ' 2 התרוקן ל-~10% (1 שורת ראשי
-// + 2 כותרות זרם בלי הערות) בעקבות שרשרת pull/push לא מתואמת.
-const MIN_REMAINING_FILL_FRACTION = 0.30;
-
-function pageContentHeight(pageEl) {
-  if (!pageEl) return 0;
-  const rect = pageEl.getBoundingClientRect();
-  let bottom = rect.top;
-  // נסרוק את הצאצאים, מתעלמים מ-display:none
-  const all = pageEl.querySelectorAll("*");
-  for (const el of all) {
-    try {
-      if (typeof getComputedStyle === "function" && getComputedStyle(el).display === "none") continue;
-    } catch (_e) { /* ignore */ }
-    const r = el.getBoundingClientRect();
-    if (r.bottom > bottom) bottom = r.bottom;
-  }
-  return Math.max(0, bottom - rect.top);
-}
-
-function wouldUnderfillSourcePage(sourcePageEl, elementToRemove) {
-  if (!sourcePageEl || !elementToRemove) return false;
-  const pageH = sourcePageEl.clientHeight || 537;
-  if (pageH <= 0) return false;
-  const curContentH = pageContentHeight(sourcePageEl);
-  const removedH = elementToRemove.getBoundingClientRect().height || 0;
-  const remainingH = Math.max(0, curContentH - removedH);
-  return (remainingH / pageH) < MIN_REMAINING_FILL_FRACTION;
-}
 
 function pageGap(pageEl) {
   // משה 2026-05-06: גם כשאין talmud-layout block (זרמים שלא 01/02), נמדוד
@@ -105,9 +74,6 @@ function pullMainParagraph(curPageEl, nextPageEl) {
   const gap = pageGap(curPageEl);
   // אם הפסקה גדולה מהרווח, לא מעבירים — כדי לא לחרוג.
   if (childH >= gap - 10) return false;
-  // משה 2026-05-08: אם ההזזה תרוקן את העמוד הבא — לא מעבירים. עדיף פער
-  // קטן בעמוד הנוכחי מאשר עמוד ריק אחריו.
-  if (wouldUnderfillSourcePage(nextPageEl, first)) return false;
   const fromIdx = parseInt(curPageEl.dataset.pageIndex || "?", 10);
   const toIdx = parseInt(nextPageEl.dataset.pageIndex || "?", 10);
   logMove("pull-main-forward", {
@@ -160,8 +126,6 @@ function pullOnePage(curPageEl, nextPageEl) {
         if (first.classList?.contains("stream-title")) continue;
         const childH = first.getBoundingClientRect().height;
         if (childH >= gap - 20) continue;
-        // משה 2026-05-08: לא לרוקן את העמוד הבא
-        if (wouldUnderfillSourcePage(nextPageEl, first)) continue;
         const fromIdx = parseInt(curPageEl.dataset.pageIndex || "?", 10);
         const toIdx = parseInt(nextPageEl.dataset.pageIndex || "?", 10);
         logMove("pull-backward-chunk", {
