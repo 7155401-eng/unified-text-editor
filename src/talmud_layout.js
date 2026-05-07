@@ -14,6 +14,10 @@ import {
   PACKER_API_VERSION,
 } from "./engine/packer_hooks.js";
 import { correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
+import { isDemoMode } from "./demo_mode.js";
+
+// משה 2026-05-07: הודעת חסימה למשתמשי דמו.
+const TALMUD_DEMO_BLOCKED_MSG = "מצב גמרא חסום למשתמשי ניסיון";
 
 const STORAGE_KEY       = "ravtext.talmudLayout";
 const STREAMS_KEY       = "ravtext.talmudLayout.streams";
@@ -41,9 +45,17 @@ import {
 // ─────────────────────────────────────────────
 
 export function isTalmudLayoutEnabled() {
+  // משה 2026-05-07: בדמו חוסמים את גפ"ת לחלוטין, גם אם localStorage נושא
+  // ערך "1" שהשתמר מסשן קודם או מניסיון פריצה.
+  if (isDemoMode()) return false;
   return localStorage.getItem(STORAGE_KEY) === "1";
 }
 export function setTalmudLayoutEnabled(enabled) {
+  // הגנה במקור: בדמו אוכפים "0" — שום מסלול לא יוכל להפעיל גפ"ת.
+  if (isDemoMode()) {
+    localStorage.setItem(STORAGE_KEY, "0");
+    return;
+  }
   localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
 }
 
@@ -2133,6 +2145,27 @@ export function wireTalmudLayoutControls(onChange) {
 
   if (!toggle) return;
 
+  // משה 2026-05-07: בדמו, גפ"ת חסום לחלוטין. כיבוי ויזואלי + תוקן ל-storage.
+  const _demoActive = isDemoMode();
+  if (_demoActive) {
+    try { localStorage.setItem(STORAGE_KEY, "0"); } catch (_) {}
+    toggle.checked = false;
+    toggle.disabled = true;
+    toggle.title = TALMUD_DEMO_BLOCKED_MSG;
+    const lbl = toggle.closest("label");
+    if (lbl) {
+      lbl.style.opacity = "0.5";
+      lbl.style.cursor = "not-allowed";
+      lbl.title = TALMUD_DEMO_BLOCKED_MSG;
+      // לחיצה על ה-label תיירט את הניסיון ותציג הודעה.
+      lbl.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        try { window.alert(TALMUD_DEMO_BLOCKED_MSG); } catch (_) {}
+      });
+    }
+  }
+
   // Restore saved values into controls
   toggle.checked = isTalmudLayoutEnabled();
   if (streamsInput) streamsInput.value = getTalmudStreamsText();
@@ -2148,6 +2181,13 @@ export function wireTalmudLayoutControls(onChange) {
   const commit = () => onChange?.();
 
   toggle.addEventListener("change", () => {
+    // משה 2026-05-07: גם אם ה-toggle מצליח להגיע לכאן בדמו (script/console),
+    // מסרבים להפעיל ומחזירים לאחור.
+    if (isDemoMode() && toggle.checked) {
+      toggle.checked = false;
+      try { window.alert(TALMUD_DEMO_BLOCKED_MSG); } catch (_) {}
+      return;
+    }
     setTalmudLayoutEnabled(toggle.checked);
     // משה 2026-05-07: כשהמשתמש מכבה גפ"ת, אם "שאר הזרמים = משנ"ב" היה דלוק
     // והאוטומציה הפעילה משנ"ב — לכבות גם את משנ"ב ולנקות את ה-checkbox.
