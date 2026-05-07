@@ -145,6 +145,71 @@ function decideBalanceLayout(lineCount, settings) {
   };
 }
 
+// צוות האתר 2026-05-07: פריסת משנה־wrap. מקבל pageNumber + רשימת סטרימים עם
+// העדפת צד ורוחב שלהם, מחזיר את הצד הסופי (right/left) שכל סטרים יקבל בעמוד.
+function decideMishnaSide(preference, pageNumber, idx) {
+  if (preference === 'right' || preference === 'left') return preference;
+  if (preference === 'outer') return pageNumber % 2 === 1 ? 'left' : 'right';
+  if (preference === 'inner') return pageNumber % 2 === 1 ? 'right' : 'left';
+  return idx % 2 === 0 ? 'right' : 'left';
+}
+
+function decideMishnaWidth(explicitWidth, levelCount) {
+  const w = Number(explicitWidth);
+  if (Number.isFinite(w) && w > 0) {
+    return `${Math.max(10, Math.min(95, w))}%`;
+  }
+  // Default: split evenly across streams, with floor at 30% (matches widthForFlowFloat)
+  if (levelCount <= 1) return '100%';
+  if (levelCount === 2) return '50%';
+  return `${Math.max(30, Math.floor(100 / levelCount))}%`;
+}
+
+function decideMishnaLevels(rawLevelsText, streamCodes) {
+  const parsed = String(rawLevelsText || '')
+    .split(/[|\n;]+/)
+    .map((level) =>
+      (level.match(/\d{1,3}/g) || [])
+        .map((n) => {
+          const v = parseInt(n, 10);
+          return Number.isFinite(v) && v >= 1 ? String(v).padStart(2, '0') : null;
+        })
+        .filter(Boolean)
+    )
+    .map((level) => Array.from(new Set(level)))
+    .filter((level) => level.length >= 2);
+
+  if (parsed.length > 0) return parsed;
+  // Default: all streams in one level
+  const codes = (streamCodes || []).filter(Boolean);
+  return codes.length >= 2 ? [Array.from(new Set(codes))] : [];
+}
+
+export async function handleMishnaDecide(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response('Invalid JSON', { status: 400 });
+  }
+  const pageNumber = Number(body?.pageNumber) || 1;
+  const streams = Array.isArray(body?.streams) ? body.streams : [];
+  const rawLevels = body?.rawLevelsText || '';
+  const codes = streams.map((s) => s?.code).filter(Boolean);
+
+  const levels = decideMishnaLevels(rawLevels, codes);
+
+  const assignments = streams.map((s, idx) => ({
+    code: s?.code || null,
+    side: decideMishnaSide(s?.sidePreference || 'auto', pageNumber, idx),
+    width: decideMishnaWidth(s?.explicitWidth, streams.length),
+  }));
+
+  return Response.json({ assignments, levels }, {
+    headers: { 'cache-control': 'no-store' },
+  });
+}
+
 export async function handleBalanceDecide(request, env) {
   let body;
   try {
