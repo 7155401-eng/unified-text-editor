@@ -172,6 +172,22 @@ async function decideCrownMode(streams, hasMain, crownLines, halfWidthCss, fullW
       streams: measured,
     }),
   });
+  // 402 = paid-only feature; משתמש לא משלם → לא מחילים פריסת תלמוד.
+  if (res.status === 402) {
+    if (!window.__RAVTEXT_TALMUD_PAID_NOTICE_SHOWN__) {
+      window.__RAVTEXT_TALMUD_PAID_NOTICE_SHOWN__ = true;
+      try {
+        const data = await res.json();
+        const msg = data?.message || 'גפ"ת זמין למנויים פעילים בלבד. לקבלת מנוי פנה לצוות האתר.';
+        const banner = document.createElement('div');
+        banner.dir = 'rtl';
+        banner.style.cssText = 'background:#fef3c7;color:#92400e;padding:10px 14px;text-align:center;font-size:13px;border-bottom:1px solid #fde68a;position:sticky;top:0;z-index:100;';
+        banner.textContent = msg;
+        document.body.insertBefore(banner, document.body.firstChild);
+      } catch {}
+    }
+    return MODE_NO_TALMUD;
+  }
   if (!res.ok) {
     throw new Error(`talmud decide failed: HTTP ${res.status}`);
   }

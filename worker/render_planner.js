@@ -282,6 +282,15 @@ export async function handleBalanceDecide(request, env) {
 }
 
 export async function handleTalmudDecide(request, env) {
+  // צוות האתר 2026-05-07: גפ"ת = פיצ'ר פרמיום. רק משלמים מקבלים את ההחלטות.
+  const user = await getUserFromRequest(request, env);
+  if (!user || !user.paid) {
+    return Response.json(
+      { mode: 'denied', reason: 'paid_only', message: 'גפ"ת זמין למנויים פעילים בלבד.' },
+      { status: 402, headers: { 'cache-control': 'no-store' } }
+    );
+  }
+
   let body;
   try {
     body = await request.json();
