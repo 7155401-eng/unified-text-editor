@@ -6,6 +6,12 @@
     <title>רב טקסט לוורד AI</title>
     <link rel="icon" type="image/svg+xml" href="/public/favicon.svg" />
     <link rel="alternate icon" type="image/svg+xml" href="public/favicon.svg" />
+    <!-- PWA: התקנה ככרום עצמאי, נעול לדומיין רב טקסט -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#2c5aa0" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="רב טקסט" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script src="/bridge_shim.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -599,6 +605,12 @@
             </label>
             <span id="dl-last-save" style="font-size:12px;color:#555;margin-inline-start:12px;">לא נשמר עדיין</span>
           </span>
+          <span class="sep"></span>
+          <span class="tb-group" data-title="התקנת האתר כאפליקציה">
+            <button type="button" id="dl-install-app" title="התקן את האתר כאפליקציה עצמאית — תיפתח בחלון נפרד כמו תוכנה רגילה, פעילה רק על רב טקסט בלי אפשרות לגלוש לאתרים אחרים">📲 התקן כאפליקציה</button>
+            <span id="dl-install-status" style="font-size:12px;color:#555;">טוען זמינות התקנה…</span>
+            <span style="font-size:11px;color:#888;margin-inline-start:8px;">פתיחה בחלון משלה, נעול לאתר רב טקסט</span>
+          </span>
         </div>
         <!-- v33: settings panel — appears when "הגדרות" ribbon tab is active.
              Placed BEFORE panes so it shows at the top of the editor area when active. -->
@@ -690,6 +702,21 @@
             </div>
             <textarea id="settings-log-output" class="settings-log-output" readonly hidden
               placeholder="הלוג של פעולות הרינדור יופיע כאן…"></textarea>
+          </div>
+          <div class="settings-section">
+            <h3 class="settings-h3">אודות</h3>
+            <div class="settings-row">
+              <span>צור קשר במייל:</span>
+              <a id="settings-about-email" href="mailto:yiddishebilder@gmail.com" dir="ltr" style="font-weight:600;">yiddishebilder@gmail.com</a>
+            </div>
+            <div class="settings-row">
+              <span>טלפון:</span>
+              <a href="tel:+972527155401" dir="ltr">052-7155401</a>
+            </div>
+            <div class="settings-row">
+              <span>אתר:</span>
+              <a href="https://ravtext.com" target="_blank" rel="noopener" dir="ltr">ravtext.com</a>
+            </div>
           </div>
         </div>
       </section>

@@ -2,6 +2,15 @@
 // Uses File System Access API for direct folder writes (with persistent
 // permission stored in IndexedDB), falls back to <a download> blob downloads.
 
+import {
+  isStandalone,
+  isInstallable,
+  isInstalled,
+  onChange as onPwaChange,
+  registerServiceWorker,
+} from "./pwa_install_controller.js";
+import { showInstallDialogManually } from "./pwa_install_prompt.js";
+
 const HANDLE_DB = "ravtext-downloads";
 const HANDLE_STORE = "handles";
 const HANDLE_KEY = "syncFolder";
@@ -190,6 +199,62 @@ function downloadDocumentJSON() {
   setLastSave(`הורד: ${new Date().toLocaleTimeString("he-IL")}`);
 }
 
+// ─── PWA install (כרום עצמאי, נעול לאתר) ────────────────────────────────────
+//
+// הכפתור "📲 התקן כאפליקציה" פותח דיאלוג התקנה אלגנטי משותף עם
+// המודל שעולה אוטומטית בביקור השלישי. הזרימה ב-pwa_install_prompt.js;
+// כאן אנחנו רק מחברים את הכפתור ומציגים סטטוס/כיתוב מותאם למצב.
+
+function setInstallStatus(text) {
+  const el = document.getElementById("dl-install-status");
+  if (el) el.textContent = text;
+}
+
+function refreshInstallButtonUI() {
+  const btn = document.getElementById("dl-install-app");
+  if (!btn) return;
+
+  if (isInstalled() || isStandalone()) {
+    btn.disabled = true;
+    btn.textContent = "✓ מותקן";
+    setInstallStatus("האפליקציה כבר מותקנת ופועלת בחלון עצמאי.");
+    return;
+  }
+
+  if (!("serviceWorker" in navigator)) {
+    btn.disabled = true;
+    setInstallStatus("הדפדפן שלך לא תומך בהתקנת אפליקציה. נסה בכרום או באדג' עדכניים.");
+    return;
+  }
+
+  // Always allow the button to open the elegant dialog — it shows
+  // either the install flow or a fallback explanation.
+  btn.disabled = false;
+  if (isInstallable()) {
+    setInstallStatus("ההתקנה זמינה — לחץ לפתיחת אשף ההתקנה.");
+  } else {
+    setInstallStatus("לחץ לקבלת הוראות ההתקנה. ההתקנה הישירה נדלקת אוטומטית בכרום/אדג'.");
+  }
+}
+
+function wirePwaInstall() {
+  const btn = document.getElementById("dl-install-app");
+  if (!btn) return;
+
+  refreshInstallButtonUI();
+  onPwaChange(refreshInstallButtonUI);
+
+  btn.addEventListener("click", () => {
+    if (isInstalled() || isStandalone()) {
+      setInstallStatus("האפליקציה כבר מותקנת — פתח אותה דרך שולחן העבודה או תפריט התחל.");
+      return;
+    }
+    showInstallDialogManually();
+  });
+
+  registerServiceWorker();
+}
+
 export function wireDownloadsPanel() {
   const panel = document.getElementById("downloads-panel");
   if (!panel) return;
@@ -214,5 +279,6 @@ export function wireDownloadsPanel() {
     }
   });
 
+  wirePwaInstall();
   refreshFolderStatus();
 }
