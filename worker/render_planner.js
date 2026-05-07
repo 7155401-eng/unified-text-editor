@@ -208,15 +208,21 @@ function decideMishnaSide(preference, pageNumber, idx) {
   return idx % 2 === 0 ? 'right' : 'left';
 }
 
+// צוות האתר 2026-05-07: מועתק שורה־שורה מ-flow_layout.js → widthForFlowFloat.
+// הפורמט המדויק קריטי: calc(N.NNNN% - 8px). חיסור 8 פיקסלים = הרווח בין זרמים.
+function widthForFlowFloat(levelCount) {
+  const count = Math.max(1, Number(levelCount) || 1);
+  const percent = 100 / count;
+  return `calc(${percent.toFixed(4)}% - 8px)`;
+}
+
+// מועתק שורה־שורה מ-mishna_wrap_layout.js → widthForStream.
 function decideMishnaWidth(explicitWidth, levelCount) {
   const w = Number(explicitWidth);
   if (Number.isFinite(w) && w > 0) {
     return `${Math.max(10, Math.min(95, w))}%`;
   }
-  // Default: split evenly across streams, with floor at 30% (matches widthForFlowFloat)
-  if (levelCount <= 1) return '100%';
-  if (levelCount === 2) return '50%';
-  return `${Math.max(30, Math.floor(100 / levelCount))}%`;
+  return widthForFlowFloat(levelCount);
 }
 
 function decideMishnaLevels(rawLevelsText, streamCodes) {

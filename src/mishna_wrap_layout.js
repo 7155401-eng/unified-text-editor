@@ -70,7 +70,49 @@ function pageNumberFor(streamsWrap) {
   return Number.isFinite(idx) ? idx + 1 : 1;
 }
 
+// צוות האתר 2026-05-07: cache של החלטות צד מהשרת. אם הוא ריק או חסר ערך
+// לזרם מסוים, fallback לחישוב המקומי המקורי — לא שובר שום דבר.
+let _serverSideCache = null;
+
+async function preflightMishnaSides(streams, streamsWrap) {
+  try {
+    const { getNonceHeader } = await import("./render_preflight.js");
+    const pageNumber = pageNumberFor(streamsWrap);
+    const streamData = streams.map((s) => ({
+      code: codeForStream(s),
+      sidePreference: settingsForStream(s).mishnaSide || "auto",
+    }));
+    const res = await fetch("/api/mishna/decide", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...getNonceHeader() },
+      body: JSON.stringify({
+        pageNumber,
+        streams: streamData,
+        rawLevelsText: getMishnaLevelsText(),
+      }),
+    });
+    if (!res.ok) { _serverSideCache = null; return; }
+    const data = await res.json();
+    if (!Array.isArray(data?.assignments)) { _serverSideCache = null; return; }
+    _serverSideCache = new Map();
+    for (const a of data.assignments) {
+      if (a?.code && (a.side === "right" || a.side === "left")) {
+        _serverSideCache.set(a.code, a.side);
+      }
+    }
+  } catch {
+    _serverSideCache = null;
+  }
+}
+
 function sideForStream(streamEl, idx, streamsWrap) {
+  // נסה ראשית את הקאש מהשרת
+  if (_serverSideCache) {
+    const code = codeForStream(streamEl);
+    const fromServer = _serverSideCache.get(code);
+    if (fromServer === "right" || fromServer === "left") return fromServer;
+  }
+  // Fallback: לוגיקה מקומית מקורית (זהה לחלוטין למה שהיה לפני המיגרציה)
   const side = settingsForStream(streamEl).mishnaSide || "auto";
   if (side === "right" || side === "left") return side;
   const pageNo = pageNumberFor(streamsWrap);
@@ -107,7 +149,7 @@ function layoutLevel(streamsWrap, levelStreams, levelIndex) {
   streamsWrap.appendChild(levelEl);
 }
 
-export function applyMishnaWrapToPage(pageEl) {
+export async function applyMishnaWrapToPage(pageEl) {
   const streamsWrap = pageEl && pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
 
@@ -144,6 +186,10 @@ export function applyMishnaWrapToPage(pageEl) {
     return;
   }
 
+  // צוות האתר 2026-05-07: pre-fetch להחלטות צד. אם השרת זמין → cache ימולא.
+  // אם לא — fallback לחישוב המקומי המקורי. הרוחב נשאר מקומי בכל מקרה.
+  await preflightMishnaSides(streams, streamsWrap);
+
   const byCode = new Map(streams.map((stream) => [codeForStream(stream), stream]));
   const used = new Set();
   effectiveLevels.forEach((codes, levelIndex) => {
@@ -158,20 +204,25 @@ export function applyMishnaWrapToPage(pageEl) {
     .forEach((stream) => streamsWrap.appendChild(stream));
 }
 
-export function applyMishnaWrapToPages(container) {
+export async function applyMishnaWrapToPages(container) {
   // Defensive cleanup (משה 2026-05-07): כשהמשתמש מכבה משנ"ב או גפ"ת
   // (שאוטו-מפעיל משנ"ב), עמודים שכבר רנדרו עם משנ"ב יכולים להישאר
   // עם המבנה — קלאס .mishna-wrap-page, .mishna-level wrappers וכו'.
   // הקריאה לפר-עמוד מנקה את זה (unwrapLevels + resetStream + סדר טבעי)
   // גם כשהמצב כבוי. אז אנחנו מריצים אותה במקרה כבוי כדי לוודא ניקוי.
   if (!isMishnaWrapEnabled()) {
-    const dirtyPages = container.querySelectorAll(
-      ".page.mishna-wrap-page, .page:has(.mishna-level)"
+    const dirtyPages = Array.from(
+      container.querySelectorAll(".page.mishna-wrap-page, .page:has(.mishna-level)")
     );
-    dirtyPages.forEach((page) => applyMishnaWrapToPage(page));
+    for (const page of dirtyPages) {
+      await applyMishnaWrapToPage(page);
+    }
     return;
   }
-  container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => applyMishnaWrapToPage(page));
+  const pages = Array.from(container.querySelectorAll(".page:not(.page-placeholder)"));
+  for (const page of pages) {
+    await applyMishnaWrapToPage(page);
+  }
 
   const prevProcessor = container.__processRealizedPage;
   if (!prevProcessor || !prevProcessor.__mishnaWrapped) {

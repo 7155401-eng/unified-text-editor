@@ -535,7 +535,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       applyTalmudLayoutToPages(pagesContainer);
     }
     logEvent("mishna_wrap");
-    applyMishnaWrapToPages(pagesContainer);
+    await applyMishnaWrapToPages(pagesContainer);
     logEvent("balanced_columns");
     await applyBalancedColumnsToPages(pagesContainer);
     logEvent("opening_word");
