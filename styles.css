@@ -254,6 +254,21 @@ html, body {
   border-radius: 6px;
 }
 
+/* Section titles inside ribbon panels — distinguish multiple zones in one tab */
+.ribbon-section-title {
+  flex-basis: 100%;
+  margin: 0 0 6px 0;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(180deg, #4a7fc0 0%, #2c5aa0 100%);
+  border-radius: 4px;
+  border: 1px solid #1e4078;
+  text-align: right;
+  letter-spacing: 0.3px;
+}
+
 .status {
   color: var(--muted);
   font-size: 13px;
@@ -318,6 +333,34 @@ html, body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  position: relative;
+}
+
+/* Permanent drag handle on the editor-facing edge of the preview pane.
+   In RTL, editor is on the right and preview on the left, so the handle
+   sits on the inline-START side of the preview pane (= its right edge). */
+.main-resize-handle {
+  position: absolute;
+  top: 0; bottom: 0;
+  inset-inline-start: -3px;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 6;
+  transition: background 0.15s;
+}
+.main-resize-handle:hover,
+.main-resize-handle.dragging {
+  background: var(--word-blue, #2B579A);
+  opacity: 0.4;
+}
+
+/* When the user has dragged the editor↔preview boundary, override grid columns */
+body.has-preview-width-override .main {
+  grid-template-columns: minmax(0, 1fr) var(--main-preview-width);
+}
+body.has-preview-width-override .main:has(#ravtext-css-inject-panel:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) var(--ci-panel-width, 320px) var(--main-preview-width);
 }
 
 .preview-pane h2 {
