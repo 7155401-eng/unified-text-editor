@@ -18,35 +18,31 @@ function ensurePanel() {
   if (panel) return panel;
   panel = document.createElement("div");
   panel.id = PANEL_ID;
+  panel.className = "find-replace-panel";
   panel.dir = "rtl";
   panel.hidden = true;
-  panel.style.cssText =
-    "position:fixed;top:auto;bottom:auto;right:50%;transform:translateX(50%);" +
-    "z-index:1500;background:var(--panel,#fff);border:1px solid var(--border,#ccc);" +
-    "border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);padding:10px 14px;" +
-    "display:flex;flex-direction:column;gap:8px;min-width:320px;font-size:13px;";
   panel.innerHTML = `
-    <div style="display:flex;align-items:center;gap:6px;justify-content:space-between;">
+    <div class="fr-header">
       <strong>חיפוש והחלפה</strong>
-      <button type="button" id="fr-close" title="סגור" style="border:none;background:transparent;font-size:18px;cursor:pointer;line-height:1;padding:2px 6px;">×</button>
+      <button type="button" id="fr-close" class="fr-close-btn" title="סגור">×</button>
     </div>
-    <label style="display:flex;align-items:center;gap:6px;">
-      <span style="min-width:54px;">חיפוש:</span>
-      <input type="text" id="fr-find" style="flex:1;padding:4px 6px;" />
+    <label class="fr-row">
+      <span>חיפוש:</span>
+      <input type="text" id="fr-find" />
     </label>
-    <label style="display:flex;align-items:center;gap:6px;">
-      <span style="min-width:54px;">החלפה:</span>
-      <input type="text" id="fr-replace" placeholder="(ריק = רק חיפוש)" style="flex:1;padding:4px 6px;" />
+    <label class="fr-row">
+      <span>החלפה:</span>
+      <input type="text" id="fr-replace" placeholder="(ריק = רק חיפוש)" />
     </label>
-    <div id="fr-scope" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;color:#555;border-top:1px solid #eee;padding-top:6px;">
-      <span style="color:#888;">חפש בזרמים:</span>
+    <div id="fr-scope" class="fr-scope">
+      <span class="fr-scope-hint">חפש בזרמים:</span>
     </div>
-    <div style="display:flex;gap:6px;justify-content:flex-end;">
+    <div class="fr-buttons">
       <button type="button" id="fr-find-next" class="ribbon-btn">חיפוש הבא</button>
       <button type="button" id="fr-replace-one" class="ribbon-btn">החלף</button>
       <button type="button" id="fr-replace-all" class="ribbon-btn">החלף הכל</button>
     </div>
-    <div id="fr-status" style="font-size:11px;color:#888;min-height:16px;"></div>
+    <div id="fr-status" class="fr-status"></div>
   `;
   // Anchor below toolbar bar — read its bottom dynamically.
   panel.style.top = (document.querySelector(".main-ribbon-toolbar")?.getBoundingClientRect().bottom || 60) + 6 + "px";
@@ -72,11 +68,11 @@ function getPanesForScope() {
 function rebuildScope(panel) {
   const scope = panel.querySelector("#fr-scope");
   if (!scope) return;
-  scope.innerHTML = "<span style='color:#888;'>חפש בזרמים:</span>";
+  scope.innerHTML = "<span class='fr-scope-hint'>חפש בזרמים:</span>";
   const panes = getPanesForScope();
   // "All" toggle
   const allLbl = document.createElement("label");
-  allLbl.style.cssText = "display:inline-flex;align-items:center;gap:3px;cursor:pointer;";
+  allLbl.className = "fr-scope-toggle";
   const allCb = document.createElement("input");
   allCb.type = "checkbox";
   allCb.id = "fr-scope-all";
@@ -87,7 +83,7 @@ function rebuildScope(panel) {
   // Per-pane checkboxes
   for (const p of panes) {
     const lbl = document.createElement("label");
-    lbl.style.cssText = "display:inline-flex;align-items:center;gap:3px;cursor:pointer;";
+    lbl.className = "fr-scope-toggle";
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.dataset.frPaneId = p.id;
