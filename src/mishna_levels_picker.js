@@ -49,15 +49,57 @@ function renderPicker() {
     row.draggable = true;
     row.dataset.levelIdx = String(levelIdx);
 
-    // Drag handle — small ⋮⋮ icon, subtle but visible
+    // משה 2026-05-07: ידית-גרירה ברורה יותר + כפתורי ↑/↓ מפורשים. הדרישה
+    // היתה "אין אפשרות לגרור רמות משנב לשנות את הסדר שלהם" — הגרירה היתה
+    // קיימת אבל הידית הקטנה (⋮⋮) לא היתה מספיק ברורה. עכשיו: ידית גדולה
+    // יותר עם רקע, וגם ↑/↓ ככפתורים מפורשים שעובדים בלי גרירה.
     const handle = document.createElement("span");
     handle.className = "mishna-level-drag-handle";
     handle.textContent = "⋮⋮";
     handle.title = "גרור להעברת הרמה למעלה/למטה";
-    handle.style.cssText = "cursor:grab;color:#bbb;font-size:14px;letter-spacing:-2px;user-select:none;padding:0 4px;";
+    handle.style.cssText = "cursor:grab;color:#5e6a7d;font-size:16px;letter-spacing:-3px;user-select:none;padding:2px 6px;background:#f3f6fb;border:1px solid #d4dce8;border-radius:4px;font-weight:bold;";
     handle.addEventListener("mousedown", () => { handle.style.cursor = "grabbing"; });
     handle.addEventListener("mouseup", () => { handle.style.cursor = "grab"; });
     row.appendChild(handle);
+
+    // ↑ / ↓ explicit reorder buttons — work without HTML5 drag-and-drop
+    // for users on touchscreens or those who didn't notice the drag handle.
+    const moveLevel = (delta) => {
+      const target = levelIdx + delta;
+      const cur = getCurrentLevels();
+      if (target < 0 || target >= cur.length) return;
+      const newLevels = cur.slice();
+      [newLevels[levelIdx], newLevels[target]] = [newLevels[target], newLevels[levelIdx]];
+      setLevels(newLevels);
+      renderPicker();
+    };
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "mishna-level-move-up";
+    upBtn.textContent = "↑";
+    upBtn.title = "העבר רמה למעלה";
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "mishna-level-move-down";
+    downBtn.textContent = "↓";
+    downBtn.title = "העבר רמה למטה";
+    const arrowStyle = "padding:2px 8px;font-size:12px;font-weight:bold;cursor:pointer;border:1px solid #d4dce8;background:#fff;border-radius:3px;line-height:1;color:#185abd;";
+    upBtn.style.cssText = arrowStyle;
+    downBtn.style.cssText = arrowStyle;
+    if (levelIdx === 0) {
+      upBtn.disabled = true;
+      upBtn.style.opacity = "0.3";
+      upBtn.style.cursor = "not-allowed";
+    }
+    if (levelIdx === levels.length - 1) {
+      downBtn.disabled = true;
+      downBtn.style.opacity = "0.3";
+      downBtn.style.cursor = "not-allowed";
+    }
+    upBtn.addEventListener("click", (e) => { e.stopPropagation(); moveLevel(-1); });
+    downBtn.addEventListener("click", (e) => { e.stopPropagation(); moveLevel(1); });
+    row.appendChild(upBtn);
+    row.appendChild(downBtn);
 
     const label = document.createElement("span");
     label.style.cssText = "font-size:11px;color:#888;min-width:48px;";
