@@ -239,6 +239,19 @@ html, body {
   margin: 0 0 6px;
   color: var(--gold);
   font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.app-header h1 .app-logo {
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 6px;
 }
 
 .status {
