@@ -437,6 +437,7 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   --tb-row-h: 32px; /* גובה אחיד לכל רכיב — מבטיח יישור-אמצע מושלם */
   display: flex;
   align-items: center;
+  justify-content: center; /* משה 2026-05-07: כל הכפתורים ממורכזים אופקית */
   gap: 5px;
   row-gap: 6px;
   padding: 6px 8px;
@@ -476,8 +477,9 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
     0 2px 10px rgba(201, 161, 74, 0.1);
 }
 
-/* spacer גמיש דוחף את קבוצות הפעולות לקצה (LTR/RTL aware) */
-.pdf-tb-spacer { flex: 1 1 auto; min-width: 8px; }
+/* spacer בטל — בעבר דחף קבוצות לקצוות, עכשיו שכל הקבוצות ממורכזות
+   הוא רק תופס מקום קטן (מפריד ויזואלי) במקום למתוח את הרצף. */
+.pdf-tb-spacer { width: 0; }
 
 /* כפתור-בסיס: גובה זהה לקבוצה כדי שיתמלא בלי שוליים אנכיים */
 .pdf-tb-btn {
