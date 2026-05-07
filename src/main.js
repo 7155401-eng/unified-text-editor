@@ -784,13 +784,20 @@ wireDownloadsPanel();
   handle.addEventListener("mousedown", (ev) => {
     ev.preventDefault();
     const startRect = previewPane.getBoundingClientRect();
+    // משה 2026-05-07: זיהוי קצה הידית באופן דינמי כמו ב-css_inject_panel.
+    // הנוסחה הקודמת `startRect.right - e.clientX` נתנה שינוי בכיוון לא-נכון
+    // ב-RTL כשהידית היא ב-inline-start (= קצה ימני בעברית) — גרירה ימינה
+    // נתנה ערכים שליליים, נחסמה ע"י MIN, ולא קרה כלום. גרירה שמאלה הצליחה
+    // רק לכווץ. עכשיו: anchor = הקצה הקבוע מנגד; newW נמדד ביחס אליו.
+    const handleRect = handle.getBoundingClientRect();
+    const handleCenterX = handleRect.left + handleRect.width / 2;
+    const isRightEdge = handleCenterX > startRect.left + startRect.width / 2;
+    const anchorX = isRightEdge ? startRect.left : startRect.right;
     handle.classList.add("dragging");
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     function onMove(e) {
-      // Handle is on the right edge of preview-pane (RTL editor side).
-      // newW = startRect.right - e.clientX
-      const newW = startRect.right - e.clientX;
+      const newW = isRightEdge ? (e.clientX - anchorX) : (anchorX - e.clientX);
       if (newW >= MIN && newW <= MAX) {
         main.style.setProperty("--main-preview-width", `${Math.round(newW)}px`);
         document.body.classList.add("has-preview-width-override");

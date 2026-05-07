@@ -596,8 +596,11 @@ mark.pdf-find-hit-current {
 
 .pages-container {
   flex: 1 1 0;
-  min-height: 520px;
-  max-height: calc(100vh - 230px);
+  min-height: 0;
+  /* משה 2026-05-07: max-height הקבוע (100vh-230px) חתך את התצוגה ב-30px+
+     מתחת לחישוב flex האמיתי, וגם מנע מ-overflow-y:auto לפעול כצפוי כי הגובה
+     שלא היה מספיק לגלילה נחתך מראש. flex:1 בתוך .pdf-body שכבר עושה
+     min-height:0 + overflow:hidden מספיק להגביל את הגובה לחלל הזמין. */
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px;
