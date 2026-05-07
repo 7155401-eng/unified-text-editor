@@ -1227,6 +1227,45 @@ document.getElementById("btn-load-talmud")?.addEventListener("click", async () =
 });
 
 document.getElementById("btn-render")?.addEventListener("click", rerenderPages);
+
+// משה 2026-05-07: כפתורי דיווח באג / צור קשר בכותרת. פותחים אימייל מוכן
+// עם נושא+גוף שמכילים מידע סביבת הרצה (גרסה, דפדפן, גודל מסך) שיעזור לאבחון.
+function buildSupportMailto({ kind }) {
+  const subjectMap = {
+    bug: "דיווח באג — רב טקסט לוורד AI",
+    contact: "פנייה — רב טקסט לוורד AI",
+  };
+  const subject = subjectMap[kind] || subjectMap.contact;
+  const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
+  const lang = (typeof navigator !== "undefined" && navigator.language) || "";
+  const screen = (typeof window !== "undefined" && window.innerWidth)
+    ? `${window.innerWidth}×${window.innerHeight}` : "";
+  const url = (typeof location !== "undefined" && location.href) || "";
+  const body = kind === "bug"
+    ? [
+        "תאר את הבאג כאן:",
+        "",
+        "",
+        "----- מידע סביבה (אל תמחוק, עוזר לאבחון) -----",
+        `URL: ${url}`,
+        `דפדפן: ${ua}`,
+        `שפה: ${lang}`,
+        `מסך: ${screen}`,
+      ].join("\n")
+    : [
+        "כתוב את פנייתך כאן:",
+        "",
+      ].join("\n");
+  const mailto = `mailto:7155401@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return mailto;
+}
+document.getElementById("btn-report-bug")?.addEventListener("click", () => {
+  window.location.href = buildSupportMailto({ kind: "bug" });
+});
+document.getElementById("btn-contact")?.addEventListener("click", () => {
+  window.location.href = buildSupportMailto({ kind: "contact" });
+});
+
 wireTalmudLayoutControls(rerenderPages);
 wireMishnaWrapToggle(rerenderPages);
 wireOpeningWordControls(rerenderPages);

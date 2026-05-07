@@ -18,7 +18,13 @@
   </head>
   <body class="light-theme">
     <header class="app-header">
-      <h1 data-i18n="appTitle" dir="rtl"><img src="/public/favicon.svg" alt="" class="app-logo" />רב טקסט לוורד AI</h1>
+      <div class="app-header-row">
+        <h1 data-i18n="appTitle" dir="rtl"><img src="/public/favicon.svg" alt="" class="app-logo" />רב טקסט לוורד AI</h1>
+        <div class="app-header-actions" dir="rtl">
+          <button type="button" id="btn-report-bug" class="header-action-btn" title="דווח על באג שמצאת">🐞 דיווח באג</button>
+          <button type="button" id="btn-contact" class="header-action-btn" title="צור קשר עם הצוות">✉️ צור קשר</button>
+        </div>
+      </div>
       <div id="status" class="status status-row" dir="rtl" data-i18n="status">
         טען טקסט ולחץ "רנדר עמודים" כדי לראות את התצוגה.
       </div>

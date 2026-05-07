@@ -288,6 +288,37 @@ body > main.main {
   border-radius: 6px;
 }
 
+/* משה 2026-05-07: שורת כותרת + פעולות בקצה (דיווח באג / צור קשר). */
+.app-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.app-header-row > h1 { margin-bottom: 0; flex-shrink: 0; }
+.app-header-actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.header-action-btn {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border, #d4dce8);
+  border-radius: 16px;
+  color: var(--muted, #5e6a7d);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.header-action-btn:hover {
+  background: rgba(43, 87, 154, 0.08);
+  border-color: var(--word-blue, #2B579A);
+  color: var(--word-blue, #2B579A);
+}
+
 /* Section titles inside ribbon panels — distinguish multiple zones in one tab */
 .ribbon-section-title {
   flex-basis: 100%;
