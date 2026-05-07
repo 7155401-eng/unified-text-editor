@@ -1242,24 +1242,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
         const curMain = cur.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
         const nextMain = next.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
         if (!curMain || !nextMain) continue;
-        const mainChildren = Array.from(curMain.children).filter(c =>
+        const lastMainChild = Array.from(curMain.children).filter(c =>
           !c.classList?.contains("talmud-body-portion") &&
           !c.classList?.contains("talmud-body-expanded") &&
           !c.classList?.contains("stream") &&
           /^(P|H[1-6]|DIV|BLOCKQUOTE|PRE)$/i.test(c.tagName)
-        );
-        const lastMainChild = mainChildren[mainChildren.length - 1];
+        ).pop();
         if (!lastMainChild) continue;
-        // משה 2026-05-08: אסור לרוקן את העמוד הנוכחי. אם הילד שאני דוחף הוא
-        // היחיד שנשאר — מעדיף להשאיר חריגה קטנה בעמוד הנוכחי על פני להפוך
-        // אותו לעמוד ריק. כלל הזהב: עמוד ריק באמצע גרוע יותר מחריגה.
-        if (mainChildren.length <= 1) {
-          const visibleStreams = Array.from(cur.querySelectorAll(".page-streams > .stream, .talmud-layout .stream")).filter(s =>
-            getComputedStyle(s).display !== "none" &&
-            Array.from(s.children).some(c => !c.classList?.contains("stream-title"))
-          );
-          if (visibleStreams.length === 0) continue; // לא דוחפים — עמוד יישאר ריק
-        }
         nextMain.insertBefore(lastMainChild, nextMain.firstChild);
         pushedAny = true;
       }
