@@ -88,7 +88,7 @@ export function wireFormatPainter(paneManager) {
     _formatPainterArmed = true;
     btn.classList.add("active");
     const status = document.getElementById("status");
-    if (status) status.textContent = "מברשת מזוינת — בחר טקסט יעד והמברשת תיישם את העיצוב.";
+    if (status) status.textContent = "מברשת טעונה — בחר טקסט יעד והמברשת תיישם את העיצוב.";
   });
   document.addEventListener("mouseup", () => {
     if (!_formatPainterArmed || !_formatPainterMarks) return;
