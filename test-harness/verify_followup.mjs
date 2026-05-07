@@ -22,6 +22,22 @@ const maxH = await page.evaluate(() => {
 });
 console.log("max-height of pages-container:", maxH, "(expected: none)");
 
+// Preview pane should be bounded to viewport height.
+const previewMetrics = await page.evaluate(() => {
+  const p = document.querySelector(".preview-pane");
+  if (!p) return null;
+  const cs = getComputedStyle(p);
+  const r = p.getBoundingClientRect();
+  return {
+    cssHeight: cs.height,
+    cssMaxHeight: cs.maxHeight,
+    actualH: Math.round(r.height),
+    overflow: cs.overflow,
+    vh: window.innerHeight,
+  };
+});
+console.log("preview-pane:", JSON.stringify(previewMetrics), "(actualH should be ≈ vh-128)");
+
 // FIX 2: inject many pages → scrollbar should appear.
 await page.evaluate(() => {
   const c = document.getElementById("pages-container");
@@ -36,15 +52,25 @@ await page.evaluate(() => {
   }
 });
 await page.waitForTimeout(400);
-const scrollState = await page.evaluate(() => {
+const scrollState = await page.evaluate(async () => {
   const c = document.getElementById("pages-container");
+  // Use instant scroll-to to avoid the smooth-scroll animation delay.
+  c.scrollTo({ top: 200, behavior: "instant" });
+  // Read after a microtask + frame.
+  await new Promise(r => requestAnimationFrame(r));
+  const movedTop = c.scrollTop;
+  c.scrollTo({ top: 0, behavior: "instant" });
+  // Look for actual scrollbar pseudo-element styling applied (computed track width).
   return {
     scrollH: c.scrollHeight,
     clientH: c.clientHeight,
     canScroll: c.scrollHeight > c.clientHeight,
+    scrollTopMoved: movedTop > 0,
+    overflowY: getComputedStyle(c).overflowY,
   };
 });
-console.log("scroll state:", JSON.stringify(scrollState), "(canScroll expected true)");
+console.log("scroll state:", JSON.stringify(scrollState),
+  "(canScroll AND scrollTopMoved both expected true)");
 
 // FIX 3: simulate dragging the resize handle right → preview-pane width should grow.
 const before = await page.evaluate(() => {
@@ -72,6 +98,15 @@ if (!handleBox) {
   const overrideClass = await page.evaluate(() => document.body.classList.contains("has-preview-width-override"));
   console.log(`DRAG: preview width ${before}px → ${after}px; has-override class=${overrideClass} (expected width to change)`);
 }
+
+// Check scrollbar pseudo-element styling is applied (Chromium-only test).
+const sbWidth = await page.evaluate(() => {
+  const c = document.getElementById("pages-container");
+  if (!c) return null;
+  // clientWidth excludes scrollbar; offsetWidth includes it. Diff = scrollbar.
+  return { clientW: c.clientWidth, offsetW: c.offsetWidth, scrollbarPx: c.offsetWidth - c.clientWidth };
+});
+console.log("scrollbar metrics:", JSON.stringify(sbWidth), "(scrollbarPx should be ~14)");
 
 await page.screenshot({ path: "verify_followup.png", fullPage: false });
 console.log("captured verify_followup.png");
