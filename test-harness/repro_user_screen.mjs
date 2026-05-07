@@ -35,6 +35,13 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(400);
 
+// Apply dark theme (the user's actual state per their screenshot).
+await page.evaluate(() => {
+  document.body.dataset.theme = "dark";
+  document.documentElement.dataset.theme = "dark";
+});
+await page.waitForTimeout(150);
+
 // Open the sidebar like the user did.
 const sidebarBtn = await page.$("#pdf-sidebar-toggle");
 if (sidebarBtn) {
@@ -79,6 +86,15 @@ const m = await page.evaluate(() => {
   };
 });
 console.log(JSON.stringify(m, null, 2));
+
+// Check the actual bg color of pages-container in dark theme.
+const bgInfo = await page.evaluate(() => {
+  const c = document.getElementById("pages-container");
+  if (!c) return null;
+  const cs = getComputedStyle(c);
+  return { bg: cs.backgroundColor, bgImg: cs.backgroundImage.slice(0, 80) };
+});
+console.log("dark-theme pages-container bg:", JSON.stringify(bgInfo));
 
 // Check that the page actually fits inside the container.
 const fitCheck = await page.evaluate(() => {
