@@ -145,14 +145,7 @@ function showLoginBanner(loginParam) {
   const banner = document.createElement("div");
   banner.dir = "rtl";
   const isInfo = loginParam === "demo";
-  banner.style.cssText = [
-    isInfo ? "background:#fef3c7" : "background:#fee2e2",
-    isInfo ? "color:#92400e" : "color:#991b1b",
-    "padding:8px 14px",
-    "text-align:center",
-    "font-size:13px",
-    isInfo ? "border-bottom:1px solid #fde68a" : "border-bottom:1px solid #fecaca",
-  ].join(";");
+  banner.className = `login-banner login-banner-${isInfo ? "info" : "error"}`;
   const messages = {
     demo: "התחברת! לקבלת מנוי גישה צור קשר עם צוות האתר במייל או בטלפון. בינתיים העורך במצב דמו עם סימני מים. הקבצים וההגדרות שלך נשמרים — ברגע שיופעל המנוי, התצוגה המלאה תופיע אוטומטית.",
     expired: "המנוי פג. ההתחברות נשמרה כדמו עד לחידוש.",
