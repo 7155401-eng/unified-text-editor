@@ -414,30 +414,36 @@ const CONSOLE_BLOCK_KEY = "ravtext-console-block-until";
 const CONSOLE_BLOCK_MS = 5 * 60 * 1000;
 
 function blockConsoleAccess() {
+  // משה 2026-05-07: לא שומרים את החסימה ב-localStorage. אם הזיהוי טעה
+  // (false-positive — סרגל סימניות, DPI גבוה), reload פותר את הבעיה במקום
+  // להשאיר את המשתמש חסום לחמש דקות. החסימה ה"מתמידה" גרמה לכך שכל reload
+  // הציג שוב את מסך החסימה, מה שיצר רושם של חסימה אינסופית בכל טעינת דף.
   const until = Date.now() + CONSOLE_BLOCK_MS;
-  safeStorageSet(CONSOLE_BLOCK_KEY, String(until));
   showBlockedScreen(until);
 }
 
 export function installConsoleGuard() {
+  // משה 2026-05-07: ניקוי בלוק ישן שנשאר תקוע ב-localStorage מהגרסה הקודמת
+  // שכן שמרה את החסימה. לאחר ה-revert למצב in-session-only, אנו מנקים גם
+  // את הערך הישן בכל טעינה כדי לא לחסום משתמשים שנפגעו בעבר.
+  try { safeStorageSet(CONSOLE_BLOCK_KEY, "0"); } catch (_) {}
+
   // משה 2026-05-06: טוקן סודי בכתובת מבטל את חוסם הקונסול. קשה לנחש.
   try {
     const params = new URLSearchParams(window.location.search || "");
     const token = params.get("k");
     if (token === "9q7zX3mP4w") {
-      safeStorageSet(CONSOLE_BLOCK_KEY, "0");
       safeStorageSet(DEMO_BLOCK_KEY, "0");
       window.__RAVTEXT_DEV_BYPASS__ = true;
       return;
     }
   } catch (_) {}
-  const threshold = 160;
-  // Restore block on reload if still within block window.
-  const stored = parseInt(safeStorageGet(CONSOLE_BLOCK_KEY) || "0", 10);
-  if (stored > Date.now()) {
-    showBlockedScreen(stored);
-    return;
-  }
+
+  // משה 2026-05-07: ה-threshold הקודם (160px) היה אגרסיבי מדי. דפדפנים
+  // מודרניים על Windows עם בר-סימניות + DPI 125% מגיעים בקלות ל-160-180px
+  // הפרש בין outerHeight ל-innerHeight, גם בלי devtools. הוגדל ל-250px
+  // — מספיק לזהות panel devtools פתוח אבל סובל chrome רגיל של דפדפן.
+  const threshold = 250;
   const check = () => {
     if (guardSuspended > 0) return;
     const widthDelta = window.outerWidth - window.innerWidth;
@@ -448,7 +454,10 @@ export function installConsoleGuard() {
   };
   window.addEventListener("resize", check, { passive: true });
   setInterval(check, 1500);
-  check();
+  // משה 2026-05-07: דחיית הבדיקה הראשונית ב-2 שניות — בזמן load הדפדפן
+  // עוד מתייצב (toolbars מופיעים/נעלמים, sidebars מתאתחלים), ובדיקה מיידית
+  // עלולה להראות הפרשי ממדים זמניים. אחרי ההתייצבות הבדיקה אמינה.
+  setTimeout(check, 2000);
 }
 
 // v33: warn before demo print/download. Returns true if user confirmed.
