@@ -84,11 +84,20 @@ function decideAdjustment(currentSafety, state) {
       reason: `overflow ${state.maxOverflow}px > ${OVERFLOW_THRESHOLD}px`,
     };
   }
-  // משה 2026-05-07 URGENT REVERT: הענף שהוספתי ב-PR #63 ל-awkwardSplits גרם
-  // למנוע החכם להעלות את הכרית גם כשלא צריך — תוצאה: יותר חריגות ויותר רווחים.
-  // הוסר. הדפדפן עדיין שולח את state.awkwardSplits (לעתיד), אבל השרת מחליט
-  // רק לפי overflow + gap כמו בגרסה המקורית של ההעברה. אפשר להחזיר אם
-  // ייבנה היגיון עדין יותר.
+  // משה 2026-05-07: שיחזור הענף של awkwardSplits — אחרי שזוהה ש-PR #71 היה
+  // הגורם האמיתי למשבר משנ"ב, הוסר. הענף הזה (PR #63) חוזר. אם השרת
+  // רואה פיצולי אמצע-שורה — מעלה את הכרית לדחוף יותר טקסט קדימה.
+  if (
+    Number.isFinite(state.awkwardSplits) &&
+    state.awkwardSplits > 0 &&
+    currentSafety < SAFETY_MAX
+  ) {
+    return {
+      newSafety: clamp(currentSafety + SAFETY_STEP_UP, SAFETY_MIN, SAFETY_MAX),
+      action: 'up',
+      reason: `${state.awkwardSplits} awkward mid-line split(s)`,
+    };
+  }
   if (state.maxOverflow === 0 && state.avgGap > GAP_TOO_BIG && currentSafety > SAFETY_MIN) {
     return {
       newSafety: clamp(currentSafety - SAFETY_STEP_DOWN, SAFETY_MIN, SAFETY_MAX),
@@ -102,7 +111,9 @@ function decideAdjustment(currentSafety, state) {
     reason:
       state.maxOverflow > 0
         ? `overflow ${state.maxOverflow}px (within tolerance)`
-        : `gap ${state.avgGap}px (acceptable)`,
+        : state.awkwardSplits > 0
+          ? `${state.awkwardSplits} awkward split(s) but cap reached`
+          : `gap ${state.avgGap}px (acceptable)`,
   };
 }
 
