@@ -124,20 +124,12 @@ body.light-theme .pane-marker-toggle {
   color: #455468;
   border-color: #C8D4E3;
 }
-body.light-theme .pdf-toolbar {
-  background: #2B579A;
-  color: #FFFFFF;
-}
-body.light-theme .pdf-tb-btn,
-body.light-theme .pdf-tb-zoom-select,
-body.light-theme .pdf-tb-find {
-  background: #FFFFFF;
-  color: #1F2937;
-  border-color: #C8D4E3;
-}
-body.light-theme .pdf-tb-btn:hover {
-  background: #E7F0FF;
-}
+/* משה 2026-05-07: הכלל הישן `body.light-theme .pdf-toolbar { background: #2B579A }`
+   ו-`body.light-theme .pdf-tb-btn { background:#FFFFFF; border-color:#C8D4E3 }`
+   הוסרו — הם דרסו את העיצוב החדש (קבוצות-pill + כפתורים שקופים) וגרמו לכל
+   כפתור להיראות כ"בועה לבנה" בתוך הקבוצה. ה-toolbar וה-buttons מקבלים את
+   ה-styling הסופי שלהם בקובץ הזה למטה (תחת `.pdf-toolbar` ו-`body.light-theme`
+   overrides ייעודיים). */
 body.light-theme .pages-container {
   background: #E7ECF4;
 }
