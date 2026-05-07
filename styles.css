@@ -151,6 +151,24 @@ body.light-theme .toast { background: #FFFFFF; color: #185ABD; border-color: #18
   border-bottom: 2px solid #fca5a5;
   font-size: 13px;
   text-align: center;
+  /* משה 2026-05-07: גובה קבוע לבאנר הדמו כדי שניתן יהיה לקזז אותו
+     מה-`.preview-pane` (`height: calc(100vh - 128px - var(--demo-banner-h))`).
+     בלי זה הבאנר דחק את גוף ההגדרות מתחת לסף המסך. */
+  --demo-banner-h: 50px;
+  height: var(--demo-banner-h);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* כשמופעל מצב דמו, מקטינים את גובה ה-preview-pane בגובה הבאנר כך
+   שהתצוגה תמשיך לשבת בתוך גבולות החלון. */
+body.demo-mode .preview-pane {
+  --demo-banner-h: 50px;
+  height: calc(100vh - 128px - var(--demo-banner-h));
+  max-height: calc(100vh - 128px - var(--demo-banner-h));
+}
+body.demo-mode .main > .panel:not(.preview-pane) {
+  min-height: calc(100vh - 128px - 50px);
 }
 
 .demo-reset-clock {
