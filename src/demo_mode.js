@@ -414,50 +414,97 @@ const CONSOLE_BLOCK_KEY = "ravtext-console-block-until";
 const CONSOLE_BLOCK_MS = 5 * 60 * 1000;
 
 function blockConsoleAccess() {
-  // משה 2026-05-07: לא שומרים את החסימה ב-localStorage. אם הזיהוי טעה
-  // (false-positive — סרגל סימניות, DPI גבוה), reload פותר את הבעיה במקום
-  // להשאיר את המשתמש חסום לחמש דקות. החסימה ה"מתמידה" גרמה לכך שכל reload
-  // הציג שוב את מסך החסימה, מה שיצר רושם של חסימה אינסופית בכל טעינת דף.
   const until = Date.now() + CONSOLE_BLOCK_MS;
+  // משה 2026-05-07: שומרים את החסימה ב-localStorage כדי שrefresh לא יבריח
+  // את החסימה. (התיקון הקודם הסיר את ההתמדה — אבל זה איפשר לעקוף ע"י reload.)
+  // בעיית false-positive נפתרת עכשיו ע"י זיהוי baseline-delta, לא ע"י הקלה.
+  safeStorageSet(CONSOLE_BLOCK_KEY, String(until));
   showBlockedScreen(until);
 }
 
 export function installConsoleGuard() {
-  // משה 2026-05-07: ניקוי בלוק ישן שנשאר תקוע ב-localStorage מהגרסה הקודמת
-  // שכן שמרה את החסימה. לאחר ה-revert למצב in-session-only, אנו מנקים גם
-  // את הערך הישן בכל טעינה כדי לא לחסום משתמשים שנפגעו בעבר.
-  try { safeStorageSet(CONSOLE_BLOCK_KEY, "0"); } catch (_) {}
-
   // משה 2026-05-06: טוקן סודי בכתובת מבטל את חוסם הקונסול. קשה לנחש.
   try {
     const params = new URLSearchParams(window.location.search || "");
     const token = params.get("k");
     if (token === "9q7zX3mP4w") {
+      safeStorageSet(CONSOLE_BLOCK_KEY, "0");
       safeStorageSet(DEMO_BLOCK_KEY, "0");
       window.__RAVTEXT_DEV_BYPASS__ = true;
       return;
     }
   } catch (_) {}
 
-  // משה 2026-05-07: ה-threshold הקודם (160px) היה אגרסיבי מדי. דפדפנים
-  // מודרניים על Windows עם בר-סימניות + DPI 125% מגיעים בקלות ל-160-180px
-  // הפרש בין outerHeight ל-innerHeight, גם בלי devtools. הוגדל ל-250px
-  // — מספיק לזהות panel devtools פתוח אבל סובל chrome רגיל של דפדפן.
-  const threshold = 250;
+  // אם נחסם בסשן קודם — להציג את מסך החסימה עד שיפוג זמן החסימה.
+  const stored = parseInt(safeStorageGet(CONSOLE_BLOCK_KEY) || "0", 10);
+  if (stored > Date.now()) {
+    showBlockedScreen(stored);
+    return;
+  }
+
+  // משה 2026-05-07: זיהוי devtools חכם — לא ע"י סף קבוע (שגרם ל-false-positives
+  // עם בר-סימניות / DPI גבוה / ולעקיפה כשהסף הוגדל יותר מדי), אלא ע"י השוואה
+  // ל-baseline שנמדד בטעינה.
+  // מהלך:
+  //   1. אחרי 1.5 שניות — מודדים את ה-delta הנוכחי (outer-inner) כ-baseline.
+  //      זה תופס את ה-chrome הרגיל של הדפדפן (URL bar, tabs, bookmarks).
+  //   2. בכל בדיקה — אם ה-delta הנוכחי גדול מ-baseline + 100 → devtools נפתחו.
+  //   3. הסף 100 הוא יותר מאיפיון של resize רגיל אבל פחות מ-devtools panel.
+  //
+  // מקרי קצה:
+  //   - משתמש שטוען עם devtools כבר פתוחים → baseline כולל את ה-devtools,
+  //     לא יחסם. זה לא אידיאלי אבל זה התסריט פחות סביר (רוב פתיחות
+  //     ה-devtools קורות אחרי הטעינה).
+  //   - שינוי גודל חלון בכוונה → גורם לעדכון baseline (ראה onResize).
+  let baselineDelta = 0;
+  let baselineSet = false;
+  const ABOVE_BASELINE = 100;
+
+  const measureDelta = () => Math.max(
+    window.outerWidth - window.innerWidth,
+    window.outerHeight - window.innerHeight
+  );
+
+  const setBaseline = () => {
+    baselineDelta = measureDelta();
+    baselineSet = true;
+  };
+
   const check = () => {
-    if (guardSuspended > 0) return;
-    const widthDelta = window.outerWidth - window.innerWidth;
-    const heightDelta = window.outerHeight - window.innerHeight;
-    if (widthDelta > threshold || heightDelta > threshold) {
+    if (guardSuspended > 0 || !baselineSet) return;
+    const current = measureDelta();
+    if (current > baselineDelta + ABOVE_BASELINE) {
       blockConsoleAccess();
     }
   };
-  window.addEventListener("resize", check, { passive: true });
+
+  // עדכון baseline על שינוי-גודל אמיתי של חלון (debounced) — מבדילים בין
+  // resize של המשתמש (שמותר) לפתיחת devtools (שאסור): resize משנה גם את
+  // outerWidth/Height, devtools משנה רק את inner.
+  let lastOuter = { w: window.outerWidth, h: window.outerHeight };
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const ow = window.outerWidth;
+      const oh = window.outerHeight;
+      if (Math.abs(ow - lastOuter.w) > 20 || Math.abs(oh - lastOuter.h) > 20) {
+        // outer השתנה ממשית → resize אמיתי של חלון → לקבוע baseline חדש
+        lastOuter = { w: ow, h: oh };
+        setBaseline();
+      } else {
+        // outer לא השתנה משמעותית, רק inner → devtools פתחו/נסגרו
+        check();
+      }
+    }, 200);
+  }, { passive: true });
+
+  // baseline נמדד אחרי 1.5 שניות — לאפשר ל-chrome של הדפדפן להתייצב
+  setTimeout(setBaseline, 1500);
+  // בדיקה ראשונה אחרי שנקבע baseline + עוד שנייה
+  setTimeout(check, 2500);
+  // בדיקה תקופתית לתפוס פתיחת devtools בלי resize event
   setInterval(check, 1500);
-  // משה 2026-05-07: דחיית הבדיקה הראשונית ב-2 שניות — בזמן load הדפדפן
-  // עוד מתייצב (toolbars מופיעים/נעלמים, sidebars מתאתחלים), ובדיקה מיידית
-  // עלולה להראות הפרשי ממדים זמניים. אחרי ההתייצבות הבדיקה אמינה.
-  setTimeout(check, 2000);
 }
 
 // v33: warn before demo print/download. Returns true if user confirmed.
