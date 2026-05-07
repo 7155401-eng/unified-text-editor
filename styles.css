@@ -1710,21 +1710,29 @@ body.light-theme .pdf-scroll-progress-fill {
     overflow: visible !important;
   }
 
+  /* משה 2026-05-07: ה-container בתצוגה הוא RTL — אבל נייר הדפסה הוא LTR
+     מבחינת המקור (פינה שמאלית-עליונה). בלי ההפיכה הזו ה-page צף ימינה ב-A4
+     ויוצר אופסט שדוחף תוכן מחוץ לעמוד. תוכן הדף עצמו נשאר RTL. */
   .pages-container {
     display: block !important;
+    direction: ltr !important;
     width: 210mm !important;
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
+    overflow-y: visible !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
     border-radius: 0 !important;
     gap: 0 !important;
-    align-items: stretch !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    scrollbar-gutter: auto !important;
   }
 
   .page {
+    direction: rtl !important;
     width: 380px !important;
     height: 537px !important;
     flex: none !important;
@@ -1734,9 +1742,11 @@ body.light-theme .pdf-scroll-progress-fill {
       var(--ravtext-page-margin-right)
       var(--ravtext-page-margin-bottom)
       var(--ravtext-page-margin-left) !important;
-    zoom: 2.088 !important;
+    /* גורם ההגדלה המדויק ל-A4 portrait: 210mm = 793.7px ב-96dpi.
+       380px × 2.0887 ≈ 793.7px. הערך הקודם (2.088) היה קטן ב-0.25px. */
+    zoom: 2.0887 !important;
     transform: none !important;
-    transform-origin: top right !important;
+    transform-origin: top left !important;
     content-visibility: visible !important;
     contain-intrinsic-size: auto !important;
     box-shadow: none !important;
