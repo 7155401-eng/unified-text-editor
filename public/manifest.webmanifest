@@ -1,0 +1,23 @@
+{
+  "name": "רב טקסט לוורד AI",
+  "short_name": "רב טקסט",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#2c5aa0",
+  "description": "עורך רב טקסט לוורד AI — תצוגת ספר עברית עם מנוע פגינציה, מקבילות, מקורות, רישומים ועיצוב.",
+  "categories": ["productivity", "books", "education"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
