@@ -214,7 +214,11 @@ html, body {
   font-family: var(--ravtext-ui-font-family);
   direction: rtl;
   max-width: 100vw;
-  overflow-x: hidden;
+  /* משה 2026-05-07: overflow:hidden גם על <html> (לא רק על <body>). אחרת,
+     כשפס הגלילה הפנימי של pages-container נטען (Win11 עם classic scrollbar),
+     הזזה זעירה של פיקסל-שניים בגובה המסך גורמת ל-<html> להציג פס גלילה כללי
+     מעצבן. body כבר היה hidden — עכשיו גם html, וההגנה מלאה. */
+  overflow: hidden;
 }
 
 .editor, .editor .ProseMirror {
