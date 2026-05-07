@@ -2072,7 +2072,19 @@ export function applyTalmudLayoutToPage(pageEl) {
 // ─────────────────────────────────────────────
 
 export function applyTalmudLayoutToPages(container) {
-  if (!isTalmudLayoutEnabled()) return;
+  // Defensive cleanup (משה 2026-05-07): כשהמשתמש מכבה את מצב גפ"ת אחרי
+  // שכבר רנדר עם גפ"ת, יכול להישאר DOM של תלמוד (.talmud-layout-page,
+  // .talmud-layout block, סגנונות inline על streams) שגורם להפלט להיראות
+  // עם באגים גם בלי גפ"ת. הקריאה לפר-עמוד עושה unwrapTalmudLayout +
+  // resetStream גם כשהמצב כבוי, ואז יוצאת. אז אנחנו מריצים אותה גם במצב
+  // כבוי כדי לוודא ניקוי מלא של עמודים מלוכלכים.
+  if (!isTalmudLayoutEnabled()) {
+    const dirtyPages = container.querySelectorAll(
+      ".page.talmud-layout-page, .page:has(.talmud-layout)"
+    );
+    dirtyPages.forEach((page) => applyTalmudLayoutToPage(page));
+    return;
+  }
   container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) =>
     applyTalmudLayoutToPage(page)
   );
