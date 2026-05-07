@@ -3525,7 +3525,12 @@ body[data-theme="dark"] .stream-marker {
   border-color: #555 !important;
 }
 body[data-theme="dark"] .pages-container {
-  background: #1a1a1f !important;
+  /* משה 2026-05-07: הצבע #1a1a1f הקודם היה כהה מדי וגרם לתחושה שהרקע
+     "מציף" את הדפים. גרדיאנט עדין שומר על אופי "שולחן עבודה" אבל עם
+     קונטרסט מתון יותר. */
+  background:
+    radial-gradient(ellipse at top, rgba(255, 255, 255, 0.04) 0%, transparent 60%),
+    linear-gradient(180deg, #2c2c34 0%, #232328 100%) !important;
 }
 body[data-theme="dark"] .page {
   /* Keep page itself white-on-page for readability of preview */
