@@ -151,24 +151,10 @@ body.light-theme .toast { background: #FFFFFF; color: #185ABD; border-color: #18
   border-bottom: 2px solid #fca5a5;
   font-size: 13px;
   text-align: center;
-  /* משה 2026-05-07: גובה קבוע לבאנר הדמו כדי שניתן יהיה לקזז אותו
-     מה-`.preview-pane` (`height: calc(100vh - 128px - var(--demo-banner-h))`).
-     בלי זה הבאנר דחק את גוף ההגדרות מתחת לסף המסך. */
-  --demo-banner-h: 50px;
-  height: var(--demo-banner-h);
+  /* משה 2026-05-07: עברנו ל-body flex layout — הבאנר תופס את הגובה הטבעי
+     שלו ו-main ממלא את מה שנשאר. אין צורך יותר ב-`--demo-banner-h` ובחישובי
+     calc על preview-pane. הכללים הספציפיים-לדמו הוסרו כי לא נדרשים. */
   box-sizing: border-box;
-  overflow: hidden;
-}
-
-/* כשמופעל מצב דמו, מקטינים את גובה ה-preview-pane בגובה הבאנר כך
-   שהתצוגה תמשיך לשבת בתוך גבולות החלון. */
-body.demo-mode .preview-pane {
-  --demo-banner-h: 50px;
-  height: calc(100vh - 128px - var(--demo-banner-h));
-  max-height: calc(100vh - 128px - var(--demo-banner-h));
-}
-body.demo-mode .main > .panel:not(.preview-pane) {
-  min-height: calc(100vh - 128px - 50px);
 }
 
 .demo-reset-clock {
@@ -235,6 +221,32 @@ html, body {
   font-family: var(--ravtext-editor-font-family);
   font-feature-settings: "kern" 1, "liga" 1;
   unicode-bidi: plaintext;
+}
+
+/* משה 2026-05-07: layout התאמה-עצמית לגובה החלון. במקום `calc(100vh - 128px)`
+   קסם-מספר ב-`.preview-pane` (שגדל-קטן בעקבות שינוי בגובה הטולבר/באנר ולא
+   תאם תמיד את המציאות), אנו עוברים ל-flex column על ה-body. הילדים החיוניים
+   (header, banner, main) חולקים את 100vh: header ובאנר תופסים את הגובה הטבעי
+   שלהם, ה-main לוקח את שאר המקום. תוצאה: התצוגה תמיד נכנסת בחלון, גם במצב
+   דמו, גם עם טולבר רחב, גם בכל DPI/zoom. */
+html, body {
+  height: 100%;
+  margin: 0;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  height: 100dvh;
+}
+body > .app-header,
+body > .demo-mode-banner {
+  flex-shrink: 0;
+}
+body > main.main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .app-header {
@@ -332,21 +344,25 @@ html, body {
 
 .main > .panel:not(.preview-pane) {
   grid-area: editor;
-  min-height: calc(100vh - 128px);
+  /* משה 2026-05-07: עברנו לחישוב מבוסס-100% בתוך main שמוגדר flex:1 על body.
+     אין יותר 128px קסם — הגובה מתאים אוטומטית למה שזמין בחלון אחרי header
+     ובאנר דמו (אם קיים). overflow-y:auto מאפשר גלילה פנימית בעורך. */
+  height: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .preview-pane {
   grid-area: preview;
-  /* משה 2026-05-07: גובה מוחלט (לא רק min) כדי שכלל ה-flex-chain בתוך
-     התצוגה — pdf-body → pages-container — יקבל גובה מוגדר. בלי זה,
-     pages-container "גדל" לגובה כל העמודים גם כשיש overflow-y:auto,
-     ולעולם אין מה לגלול בתוכו (כי הוא עצמו בגובה התוכן). תוצאה: פס
-     גלילה לא הופיע, והרקע הצבעוני של pages-container "פלש" החוצה כי
-     הוא גלש מעבר לגבול ההורה. */
-  height: calc(100vh - 128px);
-  max-height: calc(100vh - 128px);
+  /* משה 2026-05-07: גובה 100% מתוך main (שמשתייך ל-flex של body) — מבטיח
+     שהתצוגה תמיד יושבת בתוך גבולות החלון, בלי תלות בגובה הטולבר/באנר/header.
+     ה-flex-chain פנימה (h2 → toolbar → progress → pdf-body → pages-container)
+     מקבל גובה מוגדר ו-pages-container עם overflow-y:scroll גולל כצפוי. */
+  height: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   min-width: 0;
