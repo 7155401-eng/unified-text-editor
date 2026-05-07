@@ -8,6 +8,7 @@
 import { handleAuth } from './auth.js';
 import { getUserFromRequest } from './session.js';
 import { applySecurityHeaders, checkRateLimit, isBadBot } from './security.js';
+import { parseStreamsToHtml } from './stream_parser.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -35,6 +36,24 @@ export default {
         },
         { headers: { 'cache-control': 'no-store' } }
       );
+    } else if (url.pathname === '/api/streams/parse' && request.method === 'POST') {
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        response = new Response('Invalid JSON', { status: 400 });
+      }
+      if (!response) {
+        const text = String(body?.text || '');
+        if (text.length > 200000) {
+          response = new Response('Text too large (max 200000 chars)', { status: 413 });
+        } else {
+          const result = parseStreamsToHtml(text);
+          response = Response.json(result, {
+            headers: { 'cache-control': 'no-store' },
+          });
+        }
+      }
     } else {
       const assetResponse = await env.ASSETS.fetch(request);
       const contentType = assetResponse.headers.get('content-type') || '';

@@ -76,6 +76,7 @@ const RATE_LIMITS = {
   '/api/me': { window: 60, max: 60 },
   '/api/auth/login': { window: 300, max: 10 },
   '/api/auth/callback': { window: 300, max: 20 },
+  '/api/streams/parse': { window: 60, max: 30 },
 };
 
 export async function checkRateLimit(request, url) {
