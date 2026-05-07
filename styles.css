@@ -330,6 +330,228 @@ a.header-action-btn:visited {
   letter-spacing: 0.2px;
 }
 
+/* משה 2026-05-07: אייקון פרופיל עגול בכותרת + תפריט נשלף.
+   יושב בתוך .app-header-actions עם הכפתורים הרגילים — בלי position:absolute,
+   כדי שלא תיווצר חפיפה (כפי שהיה ב-auth_ui הישן). */
+.profile-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 4px;
+}
+.profile-avatar {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  box-shadow: 0 2px 6px rgba(31, 41, 55, 0.18), 0 0 0 1px rgba(31, 41, 55, 0.06);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  font-family: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  padding: 0;
+  outline: none;
+}
+.profile-avatar:hover {
+  transform: scale(1.06);
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.22), 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+.profile-avatar:focus-visible,
+.profile-avatar-wrap.open .profile-avatar {
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.24), 0 0 0 3px rgba(99, 102, 241, 0.32);
+}
+.profile-avatar-guest {
+  background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+}
+.profile-avatar-initial {
+  display: inline-block;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.profile-avatar-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+.profile-avatar-dot {
+  position: absolute;
+  bottom: -1px;
+  inset-inline-end: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #94a3b8;
+  border: 2px solid var(--panel, #fff);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+}
+.profile-avatar[data-status="paid"] .profile-avatar-dot { background: #22c55e; }
+.profile-avatar[data-status="demo"] .profile-avatar-dot { background: #f59e0b; }
+.profile-avatar[data-status="guest"] .profile-avatar-dot { background: #94a3b8; }
+
+.profile-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  inset-inline-start: 0;
+  min-width: 240px;
+  background: #fff;
+  color: #1f2937;
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  padding: 14px;
+  z-index: 1000;
+  font-family: inherit;
+  font-size: 13px;
+  animation: profile-menu-pop 0.12s ease-out;
+}
+.profile-menu[hidden] { display: none; }
+.profile-menu::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  inset-inline-start: 14px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  transform: rotate(45deg);
+  box-shadow: -1px -1px 0 rgba(15, 23, 42, 0.06);
+  border-radius: 2px;
+}
+@keyframes profile-menu-pop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.profile-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 4px 10px;
+}
+.profile-menu-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+.profile-menu-id {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.profile-menu-email {
+  font-weight: 600;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  font-size: 13px;
+}
+.profile-menu-status {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.profile-menu-status.status-paid {
+  background: #d1fae5;
+  color: #065f46;
+}
+.profile-menu-status.status-demo {
+  background: #fef3c7;
+  color: #92400e;
+}
+.profile-menu-status.status-guest {
+  background: #e2e8f0;
+  color: #475569;
+}
+.profile-menu-sep {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 6px -4px;
+}
+.profile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 8px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #374151;
+  font-weight: 500;
+  transition: background 0.1s ease;
+}
+.profile-menu-item:hover { background: #f3f4f6; }
+.profile-menu-item-icon {
+  width: 22px;
+  text-align: center;
+  font-size: 15px;
+}
+.profile-menu-item-admin { color: #1e3a8a; }
+.profile-menu-item-admin:hover { background: #dbeafe; }
+.profile-menu-item-logout { color: #b91c1c; }
+.profile-menu-item-logout:hover { background: #fee2e2; }
+
+.profile-menu-guest {
+  padding: 4px 4px 10px;
+  text-align: center;
+}
+.profile-menu-guest-title {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.profile-menu-guest-sub {
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.profile-menu-login-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background: #1e3a8a;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+.profile-menu-login-btn:hover {
+  background: #1e40af;
+  transform: translateY(-1px);
+}
+
+/* בכותרת כהה: גבול לבן של האווטאר עם שקיפות נמוכה יותר כדי להישאר קונטרסטי. */
+body[data-theme="dark"] .profile-avatar,
+body.dark-theme .profile-avatar {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 /* Section titles inside ribbon panels — distinguish multiple zones in one tab */
 .ribbon-section-title {
   flex-basis: 100%;
