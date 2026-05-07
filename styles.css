@@ -599,6 +599,7 @@ mark.pdf-find-hit-current {
   min-height: 520px;
   max-height: calc(100vh - 230px);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
   background: #e8e8e8;
   border-radius: 0 0 3px 3px;
@@ -607,6 +608,33 @@ mark.pdf-find-hit-current {
   align-items: center;
   gap: 16px;
   direction: rtl;
+  /* משה 2026-05-07: פס גלילה גלוי וקבוע במציג + גלילה חלקה במגע. */
+  scrollbar-width: auto;
+  scrollbar-color: #888 #d8d8d8;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+.pages-container::-webkit-scrollbar {
+  width: 14px;
+  background: #d8d8d8;
+}
+
+.pages-container::-webkit-scrollbar-track {
+  background: #d8d8d8;
+  border-left: 1px solid #c0c0c0;
+}
+
+.pages-container::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 7px;
+  border: 2px solid #d8d8d8;
+}
+
+.pages-container::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
 }
 
 .empty-hint {

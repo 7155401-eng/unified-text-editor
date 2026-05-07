@@ -310,6 +310,23 @@ export function setupPdfToolbar(pagesContainer) {
     if (Number.isFinite(n)) goToPage(n);
   });
 
+  // משה 2026-05-07: כפתורי גלילה במציג. כל לחיצה גוללת ~80% מגובה החלון
+  // הנראה — מספיק לחפיפה קלה כדי שהמשתמש יוכל לעקוב אחרי הטקסט. גלילה
+  // חלקה מובטחת ע"י scroll-behavior:smooth ב-CSS. גלילת מסך מגע ומגלגל
+  // עכבר ממשיכה לעבוד דרך overflow:auto הטבעי של המכל.
+  function scrollViewerBy(deltaPx) {
+    if (!pagesContainer) return;
+    pagesContainer.scrollBy({ top: deltaPx, left: 0, behavior: "smooth" });
+  }
+  document.getElementById("pdf-scroll-up")?.addEventListener("click", () => {
+    const step = Math.max(120, Math.round((pagesContainer?.clientHeight || 600) * 0.8));
+    scrollViewerBy(-step);
+  });
+  document.getElementById("pdf-scroll-down")?.addEventListener("click", () => {
+    const step = Math.max(120, Math.round((pagesContainer?.clientHeight || 600) * 0.8));
+    scrollViewerBy(step);
+  });
+
   const zoomSelect = document.getElementById("pdf-zoom-select");
   document.getElementById("pdf-zoom-in")?.addEventListener("click", () => {
     toolbar.zoom = Math.min(3, toolbar.zoom + 0.1);
