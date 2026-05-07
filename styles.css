@@ -2097,37 +2097,42 @@ body.light-theme .pdf-scroll-progress-fill {
   box-shadow: 0 -1px 4px rgba(43, 87, 154, 0.25);
 }
 
-/* כפתור הרינדור — בסגנון כפתור תפריט וורד: לבן/שקוף עם hover עדין,
-   חוץ מבמקרה תפריט ribbon אחרון בסרגל. צבע ה-accent של וורד. */
+/* משה 2026-05-07: כפתור הרינדור — מאוחד, סגנון יחיד, ללא תלות בנושא בהיר/כהה.
+   השכבות הקודמות (לבן+מסגרת בבהיר, גרדיאנט בכהה, התנגשות עם 'unified buttons')
+   יצרו את ה-"שכבות נסיונות עיצוב" שמשה ראה. עכשיו: גרדיאנט כחול, טקסט לבן,
+   צל עדין — בכל הנושאים, בלי !important מתחרים. */
 .btn-render-prominent {
   appearance: none;
-  background: rgba(255,255,255,0.9);
-  color: var(--word-blue, #2B579A) !important;
-  border: 1px solid var(--word-blue, #2B579A);
-  border-radius: 3px;
-  padding: 5px 16px;
+  background: linear-gradient(180deg, #2b7cd9 0%, #185ABD 100%);
+  color: #ffffff;
+  border: 1px solid #154a96;
+  border-radius: 4px;
+  padding: 6px 18px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  gap: 6px;
+  transition: background 0.12s ease, transform 0.06s ease, box-shadow 0.12s ease;
   font-family: inherit;
+  box-shadow: 0 1px 2px rgba(31,41,55,0.12);
+  text-shadow: 0 1px 0 rgba(0,0,0,0.18);
 }
 .btn-render-prominent::before {
   content: "↻";
-  font-size: 13px;
-  font-weight: bold;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
 }
 .btn-render-prominent:hover {
-  background: var(--word-blue, #2B579A);
-  color: #fff !important;
-  border-color: var(--word-blue-dark, #185ABD);
+  background: linear-gradient(180deg, #3389e6 0%, #1f6cc7 100%);
+  box-shadow: 0 2px 6px rgba(24,90,189,0.32);
 }
 .btn-render-prominent:active {
-  background: var(--word-blue-dark, #185ABD);
-  color: #fff !important;
+  background: #154a96;
+  transform: translateY(1px);
+  box-shadow: 0 1px 1px rgba(31,41,55,0.18) inset;
 }
 .ribbon-tab-render-slot {
   margin-inline-start: auto !important;
@@ -3760,12 +3765,9 @@ body[data-theme] .settings-section { background: var(--rt-bg-panel) !important; 
 body[data-theme] button:not(.btn-render-prominent):not(.pdf-tb-btn),
 body[data-theme] .ribbon-tab,
 body[data-theme] .settings-btn { background: var(--rt-btn-bg) !important; color: var(--rt-fg) !important; border-color: var(--rt-border) !important; }
-body[data-theme] .btn-render-prominent {
-  background: linear-gradient(180deg, #2b7cd9 0%, #1a5fb8 100%) !important;
-  color: #fff !important;
-  border-color: #154a96 !important;
-}
-body[data-theme] .btn-render-prominent:hover { background: linear-gradient(180deg, #3389e6 0%, #1f6cc7 100%) !important; }
+/* משה 2026-05-07: כפתור הרינדור משתמש בסגנון יחיד ללא תלות ב-data-theme.
+   העקיפה הקודמת כאן יצרה התנגשות עם הכלל הראשי. נשמרה רק התאמת מסגרת
+   קלה לקנבס כהה — הצבעים הראשיים מוגדרים ב-.btn-render-prominent למעלה. */
 body[data-theme] button:not(.pdf-tb-btn):hover,
 body[data-theme] .settings-btn:hover { background: var(--rt-btn-hover) !important; }
 body[data-theme] .ribbon-tab.active,
