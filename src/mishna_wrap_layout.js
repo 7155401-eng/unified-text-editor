@@ -186,9 +186,12 @@ export async function applyMishnaWrapToPage(pageEl) {
     return;
   }
 
-  // צוות האתר 2026-05-07: pre-fetch להחלטות צד. אם השרת זמין → cache ימולא.
-  // אם לא — fallback לחישוב המקומי המקורי. הרוחב נשאר מקומי בכל מקרה.
-  await preflightMishnaSides(streams, streamsWrap);
+  // משה 2026-05-07 URGENT: ה-await על preflight חסם את עמודים 2+ כשה-fetch
+  // הצליח חלקית/הוזמן באיחור — הסטיילינג של משנה ברורה הופיע רק בעמוד הראשון.
+  // עכשיו: מריצים את preflight ב-fire-and-forget (לעדכון cache לעמוד הבא),
+  // אבל הפריסה משתמשת בלוגיקה המקומית כברירת מחדל (זהה למקור הפרי-מיגרציה).
+  // אם cache כבר מולא מקריאה קודמת — הוא עדיין משמש כהעדפה.
+  preflightMishnaSides(streams, streamsWrap).catch(() => {});
 
   const byCode = new Map(streams.map((stream) => [codeForStream(stream), stream]));
   const used = new Set();
