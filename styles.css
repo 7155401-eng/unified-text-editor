@@ -1518,11 +1518,6 @@ body.light-theme .pdf-scroll-progress-fill {
   orphans: 2;
 }
 
-/* משה 2026-05-07: שורה אחרונה קצרה בפסקת המשך — מנוע חכם מסמן עם הקלאס
-   הזה (smart_packer:rebalanceAwkwardSplits) רק אחרי שניסה לדחוף מילה אחורה
-   ולא הצליח. text-align-last:justify מותח את השורה האחרונה למלוא הרוחב. */
-.page-main p.awkward-stretch { text-align-last: justify; }
-
 .page-main h1,
 .page-main h2,
 .page-main h3,
