@@ -87,11 +87,13 @@ export function isDemoMode() {
   if (safeStorageGet(DEMO_MODE_KEY) === "0") return false;
   if (safeStorageGet(DEMO_MODE_KEY) === "1") return true;
 
-  // משה 2026-05-07: ברירת המחדל היא false — בלי סימני מים ובלי הגבלות דמו
-  // למי שלא ביקש במפורש. הענף של app.ravtext.com מדליק את הדמו ע"י
-  // window.__RAVTEXT_DEMO_MODE__=true עבור משתמשים לא-משלמים, אז אין שום
-  // שינוי שם. ב-Vercel preview אין יותר סימני מים צבעוניים על הטקסט.
-  return false;
+  // משה 2026-05-08: ברירת המחדל = דמו דלוק (סימני מים) לכולם, *חוץ* ממנויים
+  // משלמים. אם השרת הזריק window.__RAVTEXT_AUTH__ עם paid=true — ביטול דמו.
+  // משתמש לא-מחובר או מחובר-לא-משלם → דמו עם סימני מים. (משה: "רק
+  // למשתמשים בתשלום לבטל סימן מים".)
+  const auth = window.__RAVTEXT_AUTH__;
+  if (auth && auth.paid === true) return false;
+  return true;
 }
 
 export function configureDemoGlobals() {
