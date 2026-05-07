@@ -477,9 +477,34 @@ export function setupPdfToolbar(pagesContainer) {
     if (!sidebar) return;
     sidebar.hidden = !sidebar.hidden;
     if (!sidebar.hidden) rebuildSidebar();
+    // משה 2026-05-07: שינוי מצב ה-sidebar משנה את הרוחב הזמין לעמודים.
+    // נריץ מחדש את חישוב ה-zoom האוטומטי מיד.
+    requestAnimationFrame(reapplyAutoZoom);
   });
 
   pagesContainer.addEventListener("scroll", scheduleScrollUpdate, { passive: true });
+
+  // משה 2026-05-07: zoom אוטומטי שמתחשב ברוחב המכל בפועל.
+  // מצב התחלתי: "אוטומטי" — העמוד תמיד מוצג במלואו ללא חיתוך, גם כש-
+  // sidebar פתוח, גם כשהמשתמש גורר את ה-resize-handle, גם בצפייה במסך צר.
+  // אם המשתמש בוחר ערך מספרי (50%/100%/...) — מכבדים את בחירתו.
+  function reapplyAutoZoom() {
+    if (!zoomSelect) return;
+    const v = zoomSelect.value;
+    if (v === "auto" || v === "fit") setZoomFromSelect(v);
+  }
+  // הפעלה ראשונה — אחרי שמסגרת ה-DOM יציבה.
+  requestAnimationFrame(() => requestAnimationFrame(reapplyAutoZoom));
+  // עדכון בכל שינוי גודל של pagesContainer (פתיחת sidebar, גרירת
+  // resize-handle, שינוי גודל חלון).
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => reapplyAutoZoom());
+    ro.observe(pagesContainer);
+  }
+  // עדכון אחרי כל רינדור של המנוע — במקרה שהיה רינדור מאסיבי שגרר עמודים חדשים.
+  window.addEventListener("ravtext:engine-rendered", () => {
+    requestAnimationFrame(reapplyAutoZoom);
+  });
 
   return {
     setTotal(total) {
