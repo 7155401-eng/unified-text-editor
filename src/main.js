@@ -901,13 +901,27 @@ installFetchTagger();
 if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
+import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
+revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
-setTimeout(() => wireTextComparePro(paneManager), 220);
-setTimeout(() => wireTorahTranscription(paneManager), 222);
-setTimeout(() => wireTorahNikud(paneManager), 224);
-setTimeout(() => wireNikudMergerButton(paneManager), 226);
-setTimeout(() => wireComparatorButton(paneManager), 220);
-setTimeout(() => wireSefariaTools(paneManager), 220);
+if (isToolPreviewAllowed("text-compare-pro")) {
+  setTimeout(() => wireTextComparePro(paneManager), 220);
+}
+if (isToolPreviewAllowed("torah-transcription")) {
+  setTimeout(() => wireTorahTranscription(paneManager), 222);
+}
+if (isToolPreviewAllowed("torah-nikud")) {
+  setTimeout(() => wireTorahNikud(paneManager), 224);
+}
+if (isToolPreviewAllowed("nikud-merger")) {
+  setTimeout(() => wireNikudMergerButton(paneManager), 226);
+}
+if (isToolPreviewAllowed("comparator-tool")) {
+  setTimeout(() => wireComparatorButton(paneManager), 228);
+}
+if (isToolPreviewAllowed("sefaria-full")) {
+  setTimeout(() => wireSefariaTools(paneManager), 230);
+}
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
