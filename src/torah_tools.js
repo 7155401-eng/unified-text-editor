@@ -283,4 +283,47 @@ export function wireTorahTools(paneManager) {
   toolbar.appendChild(groupCalc);
   toolbar.appendChild(sep2);
   toolbar.appendChild(groupVerse);
+
+  // === Group: AI caricature bot ===
+  const sep3 = document.createElement("span");
+  sep3.className = "sep";
+  toolbar.appendChild(sep3);
+  const groupAi = document.createElement("span");
+  groupAi.className = "tb-group";
+  groupAi.dataset.title = "איור AI";
+  const aiBtn = document.createElement("button");
+  aiBtn.type = "button";
+  aiBtn.id = "caricature-launch-btn";
+  aiBtn.textContent = "🎭 צור איור AI";
+  aiBtn.title = "פותח את בוט הקריקטורות החרדיות — תיאור הסצנה הופך לתמונה דרך Gemini Imagen";
+  aiBtn.addEventListener("click", async () => {
+    try {
+      const ed = getEditor();
+      const initialScene = selectedText(ed);
+      const mod = await import("./haredi_caricature/haredi_caricature.js");
+      mod.openCaricatureBot({
+        licensed: false,
+        initialScene,
+        onInsertImage: ({ dataUrl, alt }) => {
+          try {
+            const editor = getEditor();
+            if (!editor) return;
+            if (editor.chain && editor.chain().focus) {
+              editor.chain().focus()
+                .insertContent(`<img src="${dataUrl}" alt="${(alt || "")
+                  .replace(/"/g, "&quot;")}" style="max-width:100%;height:auto;" />`)
+                .run();
+            }
+          } catch (e) {
+            console.error("[caricature] insert image:", e);
+          }
+        },
+      });
+    } catch (e) {
+      console.error("[caricature] launch:", e);
+      alert("לא הצלחתי לפתוח את בוט הקריקטורות:\n" + (e && e.message ? e.message : e));
+    }
+  });
+  groupAi.appendChild(aiBtn);
+  toolbar.appendChild(groupAi);
 }
