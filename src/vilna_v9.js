@@ -885,37 +885,94 @@ export async function buildPages(container, paragraphs, config) {
   // לתחילת הזרם בעמוד הבא (לפני ההערות מהפסקאות החדשות).
   let carryOver = {};
 
-  while ((cursor < paragraphs.length || hasCarryOver(carryOver)) && pageIdx < cfg.maxPages) {
-    let bestN = 0;
-    const maxN = paragraphs.length - cursor;
+  // משה 2026-05-08: pendingParagraph = החצי השני של פסקה שפוצלה בעמוד הקודם.
+  // כשמפצלים פסקה, החצי הראשון (עם הערות) הולך לעמוד הנוכחי, והחצי השני
+  // (טקסט בלבד, ללא הערות — הן כבר ניתנו) נשמר ל-pendingParagraph לעמוד הבא.
+  let pendingParagraph = null;
 
-    // משה 2026-05-08: היברידי — תמיד פסקה לפחות אם נשארה. carry-over משלים
-    // את שאר העמוד. עודף נדחף לעמוד הבא. כך אין עמודי "ניקוז" בלבד —
-    // כל עמוד יש לו פסקה ראשי + סיידים + footer מאוזן עם ה-carry-over.
+  while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
+    // אורך הזמינות הכולל = pendingParagraph (אם קיים) + פסקאות שלא נצרכו
+    const totalAvail = (pendingParagraph ? 1 : 0) + (paragraphs.length - cursor);
+
+    // getSlice(n) = n פסקאות מהראש של רשימת הזמינות (pending קודם, אחר כך paragraphs[cursor..])
+    const getSlice = (n) => {
+      const out = [];
+      let need = n;
+      if (pendingParagraph && need > 0) { out.push(pendingParagraph); need--; }
+      if (need > 0) out.push(...paragraphs.slice(cursor, cursor + need));
+      return out;
+    };
 
     const trialAtN = (n) => {
-      const slice = paragraphs.slice(cursor, cursor + n);
+      const slice = getSlice(n);
       const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
       return buildPagePlan(aggContent, cfg);
     };
 
-    // קביעת bestN: לפחות 1 אם יש פסקאות, אחרת 0 (רק carry-over).
-    if (cursor >= paragraphs.length) {
-      bestN = 0;
+    // משה 2026-05-08: drain-first — כשיש carry-over שנכנס לבד, מעדיפים אותו
+    // (כדי שההערות יישארו צמודות לפסקת המקור). אם אין carry-over או שהוא חורג,
+    // מתחילים מ-1 פסקה. זה כמו המנוע הרגיל שמעדיף לא ליצור עמודי ניקוז סתם.
+    let bestN = 0;
+    if (hasCarryOver(carryOver)) {
+      const tp0 = trialAtN(0);
+      if (tp0.overflow.exceedsPage) {
+        bestN = totalAvail > 0 ? 1 : 0;
+      } else {
+        bestN = 0;
+      }
     } else {
-      bestN = 1;
-      // ננסה להוסיף פסקאות נוספות, אבל רק אם הן נכנסות בלי שום חריגה.
-      let n = 2;
-      while (n <= 50 && n <= maxN) {
-        const tp = trialAtN(n);
-        if (tp.overflow.exceedsPage) break;
-        bestN = n;
-        n++;
+      bestN = totalAvail > 0 ? 1 : 0;
+    }
+
+    // הרחבה חמדנית — מוסיפים פסקאות נוספות עד החריגה הראשונה.
+    let n = bestN + 1;
+    while (n <= 50 && n <= totalAvail) {
+      const tp = trialAtN(n);
+      if (tp.overflow.exceedsPage) break;
+      bestN = n;
+      n++;
+    }
+
+    // משה 2026-05-08: ★ פיצול פסקה ראשי — אם bestN=0 (עמוד drain) אבל יש פסקה
+    // זמינה, ננסה לקחת prefix של הפסקה הבאה כדי שהעמוד לא יהיה ריק מראשי.
+    // המנוע הרגיל (forwardPack) עושה את זה דרך findMaxFittingPrefix; כאן אנחנו
+    // עושים בינארי על mainText בלבד (הערות בכל מקרה זורמות דרך carry-over).
+    let splitInfo = null;
+    if (bestN === 0 && totalAvail > 0) {
+      const target = pendingParagraph || paragraphs[cursor];
+      const fullText = (target?.mainText || '').trim();
+      const MIN_SPLIT = 30;
+      if (fullText.length >= MIN_SPLIT) {
+        // בינארי: מצא max prefixLen ש-prefix נכנס יחד עם carry-over
+        let lo = 0, hi = fullText.length;
+        const tryPrefix = (len) => {
+          const half = { ...target, mainText: fullText.substring(0, len), notes: target.notes || [] };
+          const agg = aggregateForV9([half], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+          return buildPagePlan(agg, cfg);
+        };
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi + 1) / 2);
+          if (mid >= fullText.length) { hi = fullText.length - 1; break; }
+          const tp = tryPrefix(mid);
+          if (tp.overflow.exceedsPage) hi = mid - 1;
+          else lo = mid;
+        }
+        if (lo >= MIN_SPLIT) {
+          // התאמה לגבול מילה
+          let wordEnd = lo;
+          while (wordEnd > MIN_SPLIT && !/\s/.test(fullText[wordEnd])) wordEnd--;
+          if (wordEnd >= MIN_SPLIT && wordEnd < fullText.length) {
+            const firstHalf = { ...target, mainText: fullText.substring(0, wordEnd).trimEnd(), notes: target.notes || [] };
+            const secondHalf = { ...target, mainText: fullText.substring(wordEnd).trimStart(), notes: [] };
+            splitInfo = { firstHalf, secondHalf };
+            bestN = 1;
+          }
+        }
       }
     }
 
     // רינדור סופי לעמוד
-    const finalSlice = paragraphs.slice(cursor, cursor + bestN);
+    const finalSlice = splitInfo ? [splitInfo.firstHalf] : getSlice(bestN);
     const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
 
     const pageEl = document.createElement('div');
@@ -936,19 +993,37 @@ export async function buildPages(container, paragraphs, config) {
       }
     }
 
-    // משה 2026-05-08: הגנה מלולאה אינסופית — אם cursor לא התקדם וגם
-    // carry-over זהה (לא שונה אורך), נכפה התקדמות של פסקה אחת לפחות.
-    if (bestN === 0 && cursor < paragraphs.length) {
+    // התקדמות מצב: pendingParagraph + cursor מתעדכנים לפי הצריכה
+    const hadPending = !!pendingParagraph;
+    if (splitInfo) {
+      // צרכנו חצי ראשון של הפסקה הבאה הזמינה — החצי השני נשמר
+      if (hadPending) {
+        // הפיצול היה על ה-pendingParagraph עצמו — מחליפים אותו
+        pendingParagraph = splitInfo.secondHalf;
+      } else {
+        // הפיצול היה על paragraphs[cursor] — מקדמים cursor ושומרים שאריות
+        cursor += 1;
+        pendingParagraph = splitInfo.secondHalf;
+      }
+    } else {
+      // צריכה רגילה: bestN פסקאות מרשימת הזמינות
+      let consumed = bestN;
+      if (hadPending && consumed > 0) {
+        pendingParagraph = null;
+        consumed -= 1;
+      }
+      cursor += consumed;
+    }
+
+    // משה 2026-05-08: הגנה מלולאה אינסופית — אם לא הייתה צריכה (bestN=0, אין split)
+    // וגם carry-over לא קטן, נכפה קידום של פסקה כדי לא להיתקע.
+    if (bestN === 0 && !splitInfo && !hadPending && cursor < paragraphs.length) {
       const prevSize = totalCarrySize(carryOver);
       const newSize = totalCarrySize(nextCarry);
-      if (newSize >= prevSize) {
-        // לא היה progress. נדרש לקדם פסקה.
-        cursor += 1;
-      }
+      if (newSize >= prevSize) cursor += 1;
     }
     carryOver = nextCarry;
 
-    cursor += bestN;
     pageIdx++;
   }
 
