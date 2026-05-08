@@ -912,7 +912,7 @@ export async function buildPages(container, paragraphs, config) {
 
     // רינדור סופי לעמוד
     const finalSlice = paragraphs.slice(cursor, cursor + bestN);
-    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels);
+    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams);
 
     const pageEl = document.createElement('div');
     pageEl.className = 'page v9-page';
