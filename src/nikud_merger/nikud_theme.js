@@ -97,11 +97,18 @@ export function applyHebrewFont() {
 // v11.63 — initial mode follows the global RavText theme preference.
 // ═══════════════════════════════════════════════════════════════════════════
 function readGlobalThemePref() {
+  // משה 2026-05-08: עוקב אחר ערכת הנושא של האתר.
+  // קודם DOM (body.light-theme) — מקור האמת בזמן ריצה.
+  // fallback ל-localStorage. ברירת המחדל בעורך הראשי = light, אז גם כאן.
   try {
+    if (typeof document !== "undefined" && document.body) {
+      if (document.body.classList.contains("light-theme")) return "light";
+      if (document.body.classList.contains("dark-theme")) return "dark";
+    }
     const v = (localStorage.getItem("ravtext.theme") || "").trim().toLowerCase();
-    return v === "light" ? "light" : "dark";
+    return v === "dark" ? "dark" : "light";
   } catch (_) {
-    return "dark";
+    return "light";
   }
 }
 

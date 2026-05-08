@@ -803,3 +803,187 @@
 /* small helpers */
 .nikud-merger .row-flex { display: flex; gap: 6px; }
 .nikud-merger .row-flex.row-rtl { flex-direction: row-reverse; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * משה 2026-05-08: סינכרון עם ערכת הנושא של האתר.
+ * הצבעים פייתון/QSS-מקוריים נדרסים ע"י משתני CSS גלובליים של רב טקסט
+ * (--bg, --panel, --border, --gold, --txt, --muted, --btn, --btn-h),
+ * שמתחלפים אוטומטית כשמשתנה body.light-theme.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.nikud-merger,
+.nikud-merger.theme-dark,
+.nikud-merger.theme-light {
+  background-color: var(--panel);
+  color: var(--txt);
+  font-family: var(--ravtext-ui-font-family);
+  border: 1px solid var(--border);
+}
+
+.nikud-merger.theme-dark .label,
+.nikud-merger.theme-light .label {
+  background-color: transparent;
+  color: var(--txt);
+}
+.nikud-merger.theme-dark .label-title,
+.nikud-merger.theme-light .label-title {
+  color: var(--gold);
+}
+.nikud-merger.theme-dark .label-section,
+.nikud-merger.theme-light .label-section {
+  color: var(--gold);
+}
+.nikud-merger.theme-dark .label-muted,
+.nikud-merger.theme-light .label-muted {
+  color: var(--muted);
+}
+
+.nikud-merger.theme-dark button,
+.nikud-merger.theme-light button {
+  background: var(--btn);
+  color: var(--txt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 10pt;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: var(--ravtext-ui-font-family);
+}
+.nikud-merger.theme-dark button:hover,
+.nikud-merger.theme-light button:hover {
+  background: var(--btn-h);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.nikud-merger.theme-dark button:active,
+.nikud-merger.theme-light button:active {
+  background: var(--gold);
+  color: var(--panel);
+}
+.nikud-merger.theme-dark button[disabled],
+.nikud-merger.theme-light button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.nikud-merger.theme-dark button.checked,
+.nikud-merger.theme-light button.checked {
+  background: var(--gold);
+  color: var(--panel);
+  border: 2px solid var(--gold);
+}
+
+/* accent buttons → all map to site's accent color (--gold) */
+.nikud-merger.theme-dark button[data-accent="gold"],
+.nikud-merger.theme-light button[data-accent="gold"],
+.nikud-merger.theme-dark button[data-accent="blue"],
+.nikud-merger.theme-light button[data-accent="blue"],
+.nikud-merger.theme-dark button[data-accent="green"],
+.nikud-merger.theme-light button[data-accent="green"],
+.nikud-merger.theme-dark button[data-accent="purple"],
+.nikud-merger.theme-light button[data-accent="purple"],
+.nikud-merger.theme-dark button[data-accent="cyan"],
+.nikud-merger.theme-light button[data-accent="cyan"] {
+  background: var(--gold);
+  color: var(--panel);
+  border: 1px solid var(--gold);
+}
+.nikud-merger.theme-dark button[data-accent="gold"]:hover,
+.nikud-merger.theme-light button[data-accent="gold"]:hover,
+.nikud-merger.theme-dark button[data-accent="blue"]:hover,
+.nikud-merger.theme-light button[data-accent="blue"]:hover,
+.nikud-merger.theme-dark button[data-accent="green"]:hover,
+.nikud-merger.theme-light button[data-accent="green"]:hover,
+.nikud-merger.theme-dark button[data-accent="purple"]:hover,
+.nikud-merger.theme-light button[data-accent="purple"]:hover,
+.nikud-merger.theme-dark button[data-accent="cyan"]:hover,
+.nikud-merger.theme-light button[data-accent="cyan"]:hover {
+  filter: brightness(1.1);
+}
+.nikud-merger.theme-dark button[data-accent="red"],
+.nikud-merger.theme-light button[data-accent="red"] {
+  background: #DC2626;
+  color: #FFFFFF;
+  border: 1px solid #B91C1C;
+}
+
+/* inputs / textareas / selects */
+.nikud-merger.theme-dark input,
+.nikud-merger.theme-light input,
+.nikud-merger.theme-dark textarea,
+.nikud-merger.theme-light textarea,
+.nikud-merger.theme-dark select,
+.nikud-merger.theme-light select,
+.nikud-merger.theme-dark .editable-area,
+.nikud-merger.theme-light .editable-area {
+  background: var(--bg);
+  color: var(--txt);
+  border: 1px solid var(--border);
+  font-family: var(--ravtext-editor-font-family);
+}
+.nikud-merger.theme-dark input:focus,
+.nikud-merger.theme-light input:focus,
+.nikud-merger.theme-dark textarea:focus,
+.nikud-merger.theme-light textarea:focus,
+.nikud-merger.theme-dark .editable-area:focus,
+.nikud-merger.theme-light .editable-area:focus {
+  border-color: var(--gold);
+  outline: none;
+}
+
+/* group / panel / card backgrounds */
+.nikud-merger.theme-dark .panel,
+.nikud-merger.theme-light .panel,
+.nikud-merger.theme-dark .card,
+.nikud-merger.theme-light .card,
+.nikud-merger.theme-dark .group,
+.nikud-merger.theme-light .group,
+.nikud-merger.theme-dark .filter-panel,
+.nikud-merger.theme-light .filter-panel,
+.nikud-merger.theme-dark .merger-tab,
+.nikud-merger.theme-light .merger-tab,
+.nikud-merger.theme-dark .toolbar,
+.nikud-merger.theme-light .toolbar,
+.nikud-merger.theme-dark .scroll-area,
+.nikud-merger.theme-light .scroll-area,
+.nikud-merger.theme-dark .title-frame,
+.nikud-merger.theme-light .title-frame {
+  background-color: var(--bg);
+  border-color: var(--border);
+  color: var(--txt);
+}
+
+/* diff highlights — keep semantic colors but tone for theme */
+.nikud-merger .diff-add { color: #22c55e; }
+.nikud-merger .diff-del { color: #ef4444; }
+.nikud-merger .diff-change { color: var(--gold); }
+
+/* close button */
+.nikud-merger.theme-dark .close-modal-btn,
+.nikud-merger.theme-light .close-modal-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.nikud-merger.theme-dark .close-modal-btn:hover,
+.nikud-merger.theme-light .close-modal-btn:hover {
+  background: #DC2626;
+  color: #FFFFFF;
+  border-color: #DC2626;
+}
+
+/* spacer */
+.nikud-merger .spacer { flex: 1; }
+
+/* קונטקסט-מנו — context menu (added by audit subagent) — sync with theme */
+.nikud-merger .context-menu,
+.nikud-context-menu {
+  background: var(--panel);
+  color: var(--txt);
+  border: 1px solid var(--border);
+}
+.nikud-merger .context-menu .menu-item:hover,
+.nikud-context-menu .menu-item:hover {
+  background: var(--btn-h);
+  color: var(--gold);
+}

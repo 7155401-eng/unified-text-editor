@@ -635,14 +635,17 @@ export class MainView {
     return i18n.isRtl() ? "מצב כהה" : "Dark Mode";
   }
   _themeBtnStyle() {
-    if (theme.currentMode() === "dark") {
-      return `background:${theme.GOLD_PRIMARY};color:#000000;border:2px solid ${theme.GOLD_BRIGHT};border-radius:7px;padding:4px 12px;font-weight:bold;`;
-    }
-    return `background:#2A4DA0;color:#FFFFFF;border:2px solid #1A3470;border-radius:7px;padding:4px 12px;font-weight:bold;`;
+    // משה 2026-05-08: כפתור החלפת מצב משתמש בצבעי האתר (var(--gold) וכו').
+    return `background:var(--gold);color:var(--panel);border:2px solid var(--gold);border-radius:7px;padding:4px 12px;font-weight:bold;`;
   }
   _toggleTheme() {
+    // משה 2026-05-08: מעבר ערכת נושא בכלי = מעבר ערכת נושא של האתר כולו.
+    // כך הכלי תמיד מסונכרן עם האתר, וכל שינוי כאן או באתר חל בכל מקום.
     const newMode = theme.currentMode() === "dark" ? "light" : "dark";
     theme.setMode(newMode);
+    if (typeof document !== "undefined" && document.body) {
+      document.body.classList.toggle("light-theme", newMode === "light");
+    }
     this.root.classList.toggle("theme-dark", newMode === "dark");
     this.root.classList.toggle("theme-light", newMode === "light");
     this.themeBtn.textContent = this._themeBtnText();
@@ -650,15 +653,12 @@ export class MainView {
     this._applyThemeInline();
   }
   _applyThemeInline() {
-    const p = theme.palette();
-    this.toolbar.style.background = p.bg_deepest;
-    this.titleFrame.style.background = p.bg_deepest;
-    this.titleLbl.style.color = p.title;
+    // משה 2026-05-08: inline styles הוסרו — מסתמכים על משתני CSS של האתר
+    // (--bg, --panel, --gold וכו') שמתחלפים אוטומטית עם body.light-theme.
+    // אם בעתיד נצטרך התאמה מקומית, עדיף לעשותה ב-CSS עם class, לא inline.
     this.titleLbl.style.fontSize = "22pt";
     this.titleLbl.style.fontWeight = "bold";
-    this.subtitleLbl.style.color = p.subtitle;
     this.subtitleLbl.style.fontSize = "10pt";
-    this.projectLabel.style.color = p.text_secondary;
   }
 
   // ── language ──
