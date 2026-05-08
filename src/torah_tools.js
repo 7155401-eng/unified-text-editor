@@ -1,5 +1,11 @@
 // Torah-editor toolbox — Sefaria verse picker, gimatria, Hebrew date,
 // Hebrew typographic special characters.
+//
+// As of Phase 2 (2026-05-08): all Sefaria text reads come from the local mirror
+// (src/sefaria_local.js → public/data/sefaria/*.json), never from sefaria.org.
+// This eliminates CSP issues, the 500-on-Hebrew-refs bug, and offline failures.
+
+import { getVerseText as _getVerseTextFromMirror } from "./sefaria_local.js";
 
 const GIMATRIA_VALUES = {
   "א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
@@ -121,17 +127,8 @@ function todayHebrewDate() {
 async function fetchSefariaVerse(book, chap, verse) {
   const engBook = SEFARIA_REF[book];
   if (!engBook) throw new Error(`ספר לא נתמך: ${book}`);
-  const ref = `${engBook} ${chap}.${verse}`;
-  const url = `https://www.sefaria.org/api/texts/${encodeURIComponent(ref)}?context=0&commentary=0&pad=0`;
-  const r = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!r.ok) throw new Error(`Sefaria HTTP ${r.status}`);
-  const data = await r.json();
-  let he = data.he;
-  if (Array.isArray(he)) he = he.flat(Infinity).join(" ");
-  return String(he || "")
-    .replace(/<[^>]+>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Mirror text already has HTML stripped, niqqud + taamim preserved, whitespace normalized.
+  return _getVerseTextFromMirror(engBook, chap, verse, { corpus: "tanakh" });
 }
 
 function escapeHtml(s) {
