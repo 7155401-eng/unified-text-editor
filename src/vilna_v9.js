@@ -909,70 +909,77 @@ export async function buildPages(container, paragraphs, config) {
       return buildPagePlan(aggContent, cfg);
     };
 
-    // משה 2026-05-08: drain-first — כשיש carry-over שנכנס לבד, מעדיפים אותו
-    // (כדי שההערות יישארו צמודות לפסקת המקור). אם אין carry-over או שהוא חורג,
-    // מתחילים מ-1 פסקה. זה כמו המנוע הרגיל שמעדיף לא ליצור עמודי ניקוז סתם.
-    let bestN = 0;
-    if (hasCarryOver(carryOver)) {
-      const tp0 = trialAtN(0);
-      if (tp0.overflow.exceedsPage) {
-        bestN = totalAvail > 0 ? 1 : 0;
-      } else {
-        bestN = 0;
-      }
-    } else {
-      bestN = totalAvail > 0 ? 1 : 0;
-    }
+    // משה 2026-05-08: "fits clean" = העמוד לא חורג ויזואלית וגם אף הערה לא נחתכה.
+    // אם הערות נחתכות אבל העמוד לא חורג ויזואלית — זה גורם ל-carry-over של
+    // הערות לעמוד הבא בלי הפסקה שלהן (חוסר קישור הערות-ראשי). אז נדחה.
+    const fitsClean = (tp) => {
+      if (!tp || !tp.overflow) return false;
+      if (tp.overflow.exceedsPage) return false;
+      const ovs = tp.overflow.streams || {};
+      for (const k in ovs) if (ovs[k]) return false;
+      return true;
+    };
 
-    // הרחבה חמדנית — מוסיפים פסקאות נוספות עד החריגה הראשונה.
-    let n = bestN + 1;
-    while (n <= 50 && n <= totalAvail) {
+    // 1. מצא bestN_clean = מקסימום פסקאות שנכנסות נקי (כולל כל ההערות שלהן)
+    let bestN_clean = 0;
+    for (let n = 1; n <= 50 && n <= totalAvail; n++) {
       const tp = trialAtN(n);
-      if (tp.overflow.exceedsPage) break;
-      bestN = n;
-      n++;
+      if (!fitsClean(tp)) break;
+      bestN_clean = n;
     }
 
-    // משה 2026-05-08: ★ פיצול פסקה ראשי — אם bestN=0 (עמוד drain) אבל יש פסקה
-    // זמינה, ננסה לקחת prefix של הפסקה הבאה כדי שהעמוד לא יהיה ריק מראשי.
-    // המנוע הרגיל (forwardPack) עושה את זה דרך findMaxFittingPrefix; כאן אנחנו
-    // עושים בינארי על mainText בלבד (הערות בכל מקרה זורמות דרך carry-over).
+    // 2. אם נשארו פסקאות שלא נכנסו נקי — ננסה לקחת prefix של הבאה.
+    // זה משאיר את ההערות של אותה פסקה איתה (לא בעמוד הבא בלי פסקה).
     let splitInfo = null;
-    if (bestN === 0 && totalAvail > 0) {
-      const target = pendingParagraph || paragraphs[cursor];
+    if (bestN_clean < totalAvail) {
+      const sliceIdx = bestN_clean;
+      const fromArrayOffset = pendingParagraph ? sliceIdx - 1 : sliceIdx;
+      const target = (pendingParagraph && sliceIdx === 0)
+        ? pendingParagraph
+        : paragraphs[cursor + fromArrayOffset];
       const fullText = (target?.mainText || '').trim();
       const MIN_SPLIT = 30;
       if (fullText.length >= MIN_SPLIT) {
-        // בינארי: מצא max prefixLen ש-prefix נכנס יחד עם carry-over
-        let lo = 0, hi = fullText.length;
+        const baseSlice = getSlice(bestN_clean);
         const tryPrefix = (len) => {
           const half = { ...target, mainText: fullText.substring(0, len), notes: target.notes || [] };
-          const agg = aggregateForV9([half], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
-          return buildPagePlan(agg, cfg);
+          const slice = [...baseSlice, half];
+          return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
         };
+        let lo = 0, hi = fullText.length;
         while (lo < hi) {
           const mid = Math.ceil((lo + hi + 1) / 2);
           if (mid >= fullText.length) { hi = fullText.length - 1; break; }
-          const tp = tryPrefix(mid);
-          if (tp.overflow.exceedsPage) hi = mid - 1;
-          else lo = mid;
+          if (fitsClean(tryPrefix(mid))) lo = mid;
+          else hi = mid - 1;
         }
         if (lo >= MIN_SPLIT) {
-          // התאמה לגבול מילה
           let wordEnd = lo;
           while (wordEnd > MIN_SPLIT && !/\s/.test(fullText[wordEnd])) wordEnd--;
           if (wordEnd >= MIN_SPLIT && wordEnd < fullText.length) {
             const firstHalf = { ...target, mainText: fullText.substring(0, wordEnd).trimEnd(), notes: target.notes || [] };
             const secondHalf = { ...target, mainText: fullText.substring(wordEnd).trimStart(), notes: [] };
-            splitInfo = { firstHalf, secondHalf };
-            bestN = 1;
+            splitInfo = { firstHalf, secondHalf, sliceIdx };
           }
         }
       }
     }
 
+    // 3. קביעת bestN סופי
+    let bestN;
+    if (splitInfo) {
+      bestN = bestN_clean + 1;
+    } else if (bestN_clean > 0) {
+      bestN = bestN_clean;
+    } else {
+      // אין clean fit ואין split אפשרי — force-take 1 (פסקה+הערות גדולות מעמוד)
+      bestN = totalAvail > 0 ? 1 : 0;
+    }
+
     // רינדור סופי לעמוד
-    const finalSlice = splitInfo ? [splitInfo.firstHalf] : getSlice(bestN);
+    const finalSlice = splitInfo
+      ? [...getSlice(bestN_clean), splitInfo.firstHalf]
+      : getSlice(bestN);
     const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
 
     const pageEl = document.createElement('div');
@@ -996,14 +1003,20 @@ export async function buildPages(container, paragraphs, config) {
     // התקדמות מצב: pendingParagraph + cursor מתעדכנים לפי הצריכה
     const hadPending = !!pendingParagraph;
     if (splitInfo) {
-      // צרכנו חצי ראשון של הפסקה הבאה הזמינה — החצי השני נשמר
-      if (hadPending) {
-        // הפיצול היה על ה-pendingParagraph עצמו — מחליפים אותו
+      // sliceIdx = איפה הפיצול במערך הזמינות. צרכנו slice[0..sliceIdx-1] במלואם
+      // וגם את slice[sliceIdx] חצי ראשון. החצי השני יוצא ל-pendingParagraph.
+      const sliceIdx = splitInfo.sliceIdx;
+      if (hadPending && sliceIdx === 0) {
+        // הפיצול על pending עצמו — pending מתחלף, cursor לא זז
         pendingParagraph = splitInfo.secondHalf;
+      } else if (hadPending) {
+        // pending נצרך במלואו (slice[0]) + sliceIdx-1 פסקאות מהמערך + 1 פסקה מפוצלת
+        pendingParagraph = splitInfo.secondHalf;
+        cursor += sliceIdx;
       } else {
-        // הפיצול היה על paragraphs[cursor] — מקדמים cursor ושומרים שאריות
-        cursor += 1;
+        // אין pending — sliceIdx פסקאות מהמערך נצרכו במלואן + 1 מפוצלת
         pendingParagraph = splitInfo.secondHalf;
+        cursor += sliceIdx + 1;
       }
     } else {
       // צריכה רגילה: bestN פסקאות מרשימת הזמינות
