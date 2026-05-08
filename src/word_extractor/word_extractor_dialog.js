@@ -671,12 +671,26 @@ function cleanRawLatexRun(raw) {
   // 1. שומרים סימני פסקה
   s = s.replace(/\\par\b\s*/g, SENTINEL_PAR);
   s = s.replace(/\\newline\{\}/g, SENTINEL_PAR);
-  // 2. מסירים פקודות עם optional bracket: \nolinebreak[3], \footnote*[1]
-  s = s.replace(/\\[a-zA-Z]+\*?\s*(?:\[[^\]]*\])?/g, "");
+  // 2a. מסירים את ה-par_cmd השלם של _mk_fn (סדרה ידועה של פקודות עיצוב)
+  s = s.replace(
+    /\\parfillskip=0pt plus 1fil\\relax\\lastlinefit=0\\relax\\unskip\\null\\par\\setbox0=\\lastbox\\setbox1=\\hbox\{\\unhbox0\}\\noindent\\hbox to\\hsize\{\\hfil\\box1\\hfil\}\\par/g,
+    SENTINEL_PAR
+  );
+  // 2b. מסירים פקודות עם optional bracket: \nolinebreak[3], \footnote*[1]
+  //     גם \name<digits>: \box1, \setbox0, \unhbox0 וכו'
+  s = s.replace(/\\[a-zA-Z]+[0-9]*\*?\s*(?:\[[^\]]*\])?/g, "");
   // 3. מסירים פקודות עם תו לא-אות: \, \. \; \: \! \" וכו'
   s = s.replace(/\\[^a-zA-Z\s]/g, "");
-  // 4. מסירים סוגריים מסולסלות LaTeX (התוכן נשאר)
+  // 4. שאריות arguments של LaTeX שלא הוזרקו עם command:
+  //    "=0pt plus 1fil", "=0", "0=", "1=", " to0", " to1"
+  s = s.replace(/=\s*\d+\s*pt(?:\s+plus\s+\d+(?:\.\d+)?\s*fil)?/g, "");
+  s = s.replace(/=\s*\d+/g, "");
+  s = s.replace(/\b\d+\s*=/g, "");
+  s = s.replace(/\bto\b\s*\d*/g, "");
+  // 5. מסירים סוגריים מסולסלות LaTeX (התוכן נשאר)
   s = s.replace(/[{}]/g, "");
+  // 6. מצמצמים רווחים מרובים שהיווצרו
+  s = s.replace(/\s{2,}/g, " ");
   return s;
 }
 
