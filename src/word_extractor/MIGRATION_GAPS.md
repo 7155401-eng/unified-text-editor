@@ -122,17 +122,20 @@
 - [x] קריאה מלאה של `word_extractor.py` (1411 שורות)
 - [x] קריאה מלאה של `word_bridge.js` (458 שורות)
 - [x] רשימת gap מלאה (50+ פריטים)
-- [ ] מימוש כל הפונקציות ב-engine.js
-- [ ] CharToken/RichText/rich_sub
-- [ ] _extract_rich + _extract_rich_with_html
-- [ ] read_footnotes / read_endnotes / read_comments
-- [ ] find_all_note_sources
-- [ ] extract_and_process כולל _proc_ref + _proc_inline
-- [ ] count_notes_per_stream
-- [ ] _extract_opening_segment + _mk_fn + _mk_sidenote
-- [ ] HTML run translation
-- [ ] dialog.js (preview + mapping confirmation)
-- [ ] streams.js (A/B/C/D mapping)
-- [ ] i18n.js (כל המחרוזות)
-- [ ] CSS (RTL)
-- [ ] חיווט במשהי main.js כפעולה נוספת
+- [x] מימוש כל הפונקציות ב-engine.js
+- [x] CharToken/RichText/rich_sub
+- [x] _extract_rich + _extract_rich_with_html
+- [x] read_footnotes / read_endnotes / read_comments
+- [x] find_all_note_sources
+- [x] extract_and_process כולל _proc_ref + _proc_inline
+- [x] count_notes_per_stream
+- [x] _extract_opening_segment + _mk_fn + _mk_sidenote
+- [x] HTML run translation
+- [x] dialog.js (preview + mapping confirmation)
+- [x] streams.js (A/B/C/D mapping)
+- [x] i18n.js (כל המחרוזות)
+- [x] CSS (RTL)
+- [x] חיווט ב-main.js כפעולה נוספת
+- [x] smoke_test.mjs — 44 בדיקות יחידה (כולן עברו)
+- [x] vite build עובר ללא שגיאות
+- [x] JSZip dependency הוסף ל-package.json

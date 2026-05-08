@@ -174,16 +174,16 @@ function getAttrW(el, name) {
 }
 
 function* iterAll(el) {
-  // tolerant מקבל element או array
+  // pre-order traversal — שווה ערך ל-element.iter() ב-Python.
+  // משתמש ב-stack כדי לשמור סדר preorder יציב.
   if (!el) return;
-  yield el;
   const stack = [el];
   while (stack.length) {
     const cur = stack.pop();
+    yield cur;
     const children = cur.children || [];
-    // יש לרוץ קדימה כדי לשמר סדר preorder כמו ב-Python's element.iter()
+    // push reverse — pop will yield in document order
     for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
-    for (const ch of children) yield ch;
   }
 }
 
