@@ -46,6 +46,7 @@ import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import { setupTransferSettings, showTransferSettings } from "./transfer_settings.js";
 import { showWowAlert, closeWowAlert } from "./wow_alert.js";
+import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -904,6 +905,7 @@ setTimeout(() => wireTextComparePro(paneManager), 220);
 setTimeout(() => wireTorahTranscription(paneManager), 222);
 setTimeout(() => wireTorahNikud(paneManager), 224);
 setTimeout(() => wireNikudMergerButton(paneManager), 226);
+setTimeout(() => wireComparatorButton(paneManager), 220);
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
