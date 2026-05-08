@@ -39,6 +39,7 @@
 })();
 
 import { PaneManager } from "./pane_manager.js";
+import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { findAllStreamMarks, countByStream, jumpToNextMarker, colorForStream } from "./stream_mark.js";
 import { parseRawTextToHTML } from "./stream_parser.js";
 import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByMarkers, mergeBackToText } from "./stream_split.js";
@@ -70,6 +71,7 @@ import { lockScopeWhileStandalone } from "./pwa_scope_lock.js";
 import { installFetchTagger } from "./pwa_install_controller.js";
 import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
+import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
@@ -926,7 +928,11 @@ installFetchTagger();
 if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
+revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
+if (isToolPreviewAllowed("text-compare-pro")) {
+  setTimeout(() => wireTextComparePro(paneManager), 220);
+}
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
