@@ -368,8 +368,21 @@ a.header-action-btn:visited {
 .profile-avatar-wrap.open .profile-avatar {
   box-shadow: 0 4px 12px rgba(31, 41, 55, 0.24), 0 0 0 3px rgba(99, 102, 241, 0.32);
 }
+/* משה 2026-05-08: אורח = רקע לבן עם לוגו G רשמי, גבול עדין כחול-אפרפר.
+   קודם היה גרדיאנט אפור-עכור שגרם לאווטאר להיראות "מטושטש" ולא קליק־אבל. */
 .profile-avatar-guest {
-  background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+  background: #ffffff;
+  border-color: #c8d4e3;
+  box-shadow: 0 2px 6px rgba(31, 41, 55, 0.18), 0 0 0 1px rgba(31, 41, 55, 0.08);
+}
+.profile-avatar-guest:hover {
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.22), 0 0 0 3px rgba(66, 133, 244, 0.28);
+  border-color: #4285F4;
+}
+.profile-avatar-guest:focus-visible,
+.profile-avatar-wrap.open .profile-avatar.profile-avatar-guest {
+  box-shadow: 0 4px 12px rgba(31, 41, 55, 0.24), 0 0 0 3px rgba(66, 133, 244, 0.4);
+  border-color: #4285F4;
 }
 .profile-avatar-initial {
   display: inline-block;
@@ -400,7 +413,11 @@ a.header-action-btn:visited {
 .profile-menu {
   position: absolute;
   top: calc(100% + 10px);
-  inset-inline-start: 0;
+  /* משה 2026-05-08: עיגון לקצה הפנימי של ה-wrap. ב-RTL האווטאר יושב בקצה
+     השמאלי של הכותרת — קודם השתמשנו ב-inset-inline-start (=right ב-RTL)
+     מה שגרם לתפריט להיגלוש שמאלה אל מחוץ לדף. inset-inline-end (=left ב-RTL)
+     מצמיד לקצה השמאלי של האווטאר ופותח ימינה לתוך הדף. */
+  inset-inline-end: 0;
   min-width: 240px;
   background: #fff;
   color: #1f2937;
@@ -417,7 +434,9 @@ a.header-action-btn:visited {
   content: "";
   position: absolute;
   top: -7px;
-  inset-inline-start: 14px;
+  /* משה 2026-05-08: החץ מצביע למעלה אל האווטאר. אחרי שינוי העיגון
+     ל-inset-inline-end, האווטאר נמצא בצד ה-end של התפריט. */
+  inset-inline-end: 14px;
   width: 14px;
   height: 14px;
   background: #fff;
@@ -526,25 +545,37 @@ a.header-action-btn:visited {
   font-size: 12px;
   line-height: 1.4;
 }
+/* משה 2026-05-08: כפתור Google על פי ה-branding הרשמי — רקע לבן, מסגרת
+   אפרפרה, טקסט כהה, לוגו G מלא צבעים. בולט יותר מהווריאנט הכחול הקודם
+   ומזוהה מיידית כ-Sign in with Google. */
 .profile-menu-login-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 10px 14px;
+  padding: 11px 14px;
   margin-top: 8px;
   border-radius: 8px;
-  background: #1e3a8a;
-  color: #fff;
+  background: #ffffff;
+  color: #1f1f1f;
   text-decoration: none;
   font-weight: 600;
-  font-size: 13px;
-  transition: background 0.12s ease, transform 0.12s ease;
+  font-size: 14px;
+  border: 1px solid #dadce0;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.08);
+  transition: background 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
 }
 .profile-menu-login-btn:hover {
-  background: #1e40af;
+  background: #f8fafe;
+  border-color: #4285F4;
+  box-shadow: 0 2px 6px rgba(66, 133, 244, 0.18);
   transform: translateY(-1px);
+}
+.profile-menu-login-btn:focus-visible {
+  outline: none;
+  border-color: #4285F4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.28);
 }
 
 /* בכותרת כהה: גבול לבן של האווטאר עם שקיפות נמוכה יותר כדי להישאר קונטרסטי. */
