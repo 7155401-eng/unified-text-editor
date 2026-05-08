@@ -111,7 +111,7 @@ function ensureBar() {
     "border-radius:6px",
     "font-weight:600",
     "cursor:pointer",
-    "display:flex",
+    "display:none",
     "align-items:center",
     "gap:8px",
     "font-size:13px",
@@ -151,10 +151,12 @@ function ensureDialog() {
 function renderBar(issues) {
   const bar = ensureBar();
   if (!issues.length) {
+    bar.style.display = "none";
     bar.hidden = true;
     bar.textContent = "";
     return;
   }
+  bar.style.display = "flex";
   bar.hidden = false;
   const summary = issues.length === 1
     ? describeIssue(issues[0])
