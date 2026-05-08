@@ -898,7 +898,7 @@ export async function buildPages(container, paragraphs, config) {
     let n = minN;
     while (n <= 50 && cursor + n <= paragraphs.length) {
       const slice = paragraphs.slice(cursor, cursor + n);
-      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels);
+      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams);
 
       const trialPlan = buildPagePlan(aggContent, cfg);
       if (trialPlan.overflow.exceedsPage) {
@@ -944,7 +944,7 @@ function stripStreamMarkers(text) {
 }
 
 // אוסף פסקאות לתוכן עמוד יחיד (בדומה ל-V8)
-function aggregateForV9(paragraphs, titles, streamSettings, levels) {
+function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStreams) {
   const mainText = stripStreamMarkers(
     paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('  ')
   );
@@ -961,8 +961,31 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels) {
 
   const allStreams = Array.from(streamMap.entries()).map(([id, items]) => ({ id, items }));
 
-  // משה 2026-05-08: כיבוד בחירת המשתמש — זרמים שב-levels = side, אחרים = footer.
-  // מיועד למקרה שהמשתמש בחר במפורש איזה זרמים יהיו "סופיים" (footers).
+  let rightStream = null;
+  let leftStream = null;
+  const footerStreams = [];
+
+  // משה 2026-05-08: עדיפות גבוהה — talmudStreams מהקלט "talmud-streams-input"
+  // (קוד הזרמים שהמשתמש בחר לעימוד גפ"ת). הראשון = ימני, השני = שמאלי.
+  // אם הוגדרו → אלה הצדדים. כל זרם אחר → footer.
+  if (Array.isArray(talmudStreams) && talmudStreams.length > 0) {
+    const wantRightId = talmudStreams[0];
+    const wantLeftId  = talmudStreams.length >= 2 ? talmudStreams[1] : null;
+    const wantedSet = new Set(talmudStreams.slice(0, 2));
+    for (const s of allStreams) {
+      if (s.id === wantRightId && !rightStream) {
+        rightStream = s;
+      } else if (s.id === wantLeftId && !leftStream) {
+        leftStream = s;
+      } else if (!wantedSet.has(s.id)) {
+        footerStreams.push(s);
+      }
+    }
+    return { mainText, rightStream, leftStream, footerStreams, titles };
+  }
+
+  // Fallback ישן: levels של משנ"ב + mishnaSide. נשאר לתאימות עם מצבי
+  // הקודם ואם talmudStreams לא הוגדר.
   const sideCodes = new Set();
   if (Array.isArray(levels)) {
     for (const level of levels) {
@@ -970,14 +993,11 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels) {
     }
   }
 
-  let rightStream = null;
-  let leftStream = null;
-  const footerStreams = [];
   const sideCandidates = [];
 
   for (const s of allStreams) {
     const setting = streamSettings[s.id] || {};
-    const explicitSide = setting.mishnaSide; // right/left/auto/outer/inner
+    const explicitSide = setting.mishnaSide;
     const isInLevel = sideCodes.has(s.id);
 
     if (!isInLevel && !explicitSide) {
@@ -987,12 +1007,10 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels) {
     }
   }
 
-  // צד מפורש קודם
   for (const c of sideCandidates) {
     if (c.side === 'right' && !rightStream) rightStream = c.s;
     else if (c.side === 'left' && !leftStream) leftStream = c.s;
   }
-  // אז auto/outer/inner למלא מה שנשאר
   for (const c of sideCandidates) {
     if (c.s === rightStream || c.s === leftStream) continue;
     if (!rightStream) rightStream = c.s;
@@ -1000,7 +1018,6 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels) {
     else footerStreams.push(c.s);
   }
 
-  // Fallback אחרון: אם אין levels, אין settings, ויש רק footers — נמלא
   if (!rightStream && !leftStream && sideCandidates.length === 0 && footerStreams.length >= 1) {
     rightStream = footerStreams.shift();
     if (footerStreams.length >= 1) leftStream = footerStreams.shift();

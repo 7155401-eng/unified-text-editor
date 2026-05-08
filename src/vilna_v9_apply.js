@@ -14,6 +14,22 @@
 // אין float, אין shape-outside.
 
 import { buildPages } from "./vilna_v9.js";
+import { getTalmudStreamsText } from "./talmud_controls.js";
+
+// משה 2026-05-08: קריאת קודי הזרמים שהוגדרו לגפ"ת ע"י המשתמש.
+// פורמט: "01,02" → ["01","02"]. אלה הזרמים שיהיו בצדדים בעימוד גפ"ת.
+function readTalmudStreamCodes() {
+  try {
+    const raw = getTalmudStreamsText() || "";
+    return raw
+      .split(/[,\s|;\n]+/)
+      .map(s => s.trim())
+      .filter(s => /^\d{1,3}$/.test(s))
+      .map(s => String(parseInt(s, 10)).padStart(2, "0"));
+  } catch {
+    return [];
+  }
+}
 
 const STORAGE_KEY = "ravtext.vilnaV9Beta";
 
@@ -87,6 +103,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
 
   const streamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
   const levels = readLevelsFromLocalStorage();
+  const talmudStreams = readTalmudStreamCodes();
 
   await buildPages(container, paragraphs, {
     pageWidth: geom.pageWidth,
@@ -102,5 +119,6 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     titles,
     streamSettings,
     levels,
+    talmudStreams,
   });
 }
