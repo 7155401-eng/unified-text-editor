@@ -36,6 +36,24 @@ export function setVilnaV9Enabled(enabled) {
   localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
 }
 
+// משה 2026-05-08: קריאת LEVELS מ-localStorage (אותו פורמט כמו ב-mishna_wrap_layout).
+// "01,02|02,03" → [["01","02"], ["02","03"]]. זרמים שב-levels הם side; אחרים = footer.
+function readLevelsFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem("ravtext.mishnaWrap.levels") || "";
+    if (!raw) return [];
+    return raw
+      .split(/[|\n;]+/)
+      .map(level => (level.match(/\d{1,3}/g) || [])
+        .map(n => String(parseInt(n, 10)).padStart(2, "0"))
+        .filter(Boolean))
+      .map(level => Array.from(new Set(level)))
+      .filter(level => level.length >= 1);
+  } catch {
+    return [];
+  }
+}
+
 function readPageGeomFromContainer(container) {
   const cs = (typeof window !== "undefined" && window.getComputedStyle)
     ? window.getComputedStyle(container)
@@ -68,6 +86,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   const titles = Object.assign({}, DEFAULT_TITLES, labels);
 
   const streamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+  const levels = readLevelsFromLocalStorage();
 
   await buildPages(container, paragraphs, {
     pageWidth: geom.pageWidth,
@@ -82,5 +101,6 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     crownLines: 4,
     titles,
     streamSettings,
+    levels,
   });
 }
