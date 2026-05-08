@@ -1381,6 +1381,120 @@ document.querySelectorAll(".btn-stress").forEach((btn) => {
 });
 
 // === Toolbar ===
+function openResetSystemStateDialog() {
+  const existing = document.getElementById("reset-system-state-dialog");
+  if (existing) { try { existing.remove(); } catch (_) {} }
+  const dlg = document.createElement("dialog");
+  dlg.id = "reset-system-state-dialog";
+  dlg.setAttribute("dir", "rtl");
+  dlg.style.cssText = "max-width:520px;padding:20px;border:1px solid #ccc;border-radius:8px;font-family:inherit;";
+  dlg.innerHTML = `
+    <form method="dialog" id="reset-system-state-form">
+      <h3 style="margin:0 0 8px 0;">אפס מצב מערכת</h3>
+      <p style="margin:0 0 12px 0;color:#555;font-size:14px;">בחר מה לאפס. המסמך הפתוח לא יישמר אוטומטית — שמור ל-Word לפני שתמשיך.</p>
+      <label style="display:block;margin:8px 0;"><input type="checkbox" name="rs_account" checked> חשבון (יציאה ועוגיות)</label>
+      <label style="display:block;margin:8px 0;"><input type="checkbox" name="rs_texts" checked> טקסטים שמורים בדפדפן</label>
+      <label style="display:block;margin:8px 0;"><input type="checkbox" name="rs_settings" checked> הגדרות מקומיות</label>
+      <label style="display:block;margin:8px 0;"><input type="checkbox" name="rs_cache" checked> מטמון אתר</label>
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" id="reset-system-state-cancel">ביטול</button>
+        <button type="submit" id="reset-system-state-ok" class="primary">אפס</button>
+      </div>
+    </form>
+  `;
+  document.body.appendChild(dlg);
+  const form = dlg.querySelector("#reset-system-state-form");
+  dlg.querySelector("#reset-system-state-cancel").addEventListener("click", () => {
+    try { dlg.close(); } catch (_) {}
+    try { dlg.remove(); } catch (_) {}
+  });
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(form);
+    const opts = {
+      account: fd.get("rs_account") === "on",
+      texts: fd.get("rs_texts") === "on",
+      settings: fd.get("rs_settings") === "on",
+      cache: fd.get("rs_cache") === "on",
+    };
+    if (!opts.account && !opts.texts && !opts.settings && !opts.cache) {
+      try { dlg.close(); } catch (_) {}
+      try { dlg.remove(); } catch (_) {}
+      return;
+    }
+    try { dlg.close(); } catch (_) {}
+    try { dlg.remove(); } catch (_) {}
+    runResetSystemState(opts);
+  });
+  if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+}
+
+async function runResetSystemState(opts) {
+  try {
+    if (opts.texts) {
+      try { paneManager.clearStorage(); } catch (_) {}
+      try {
+        if (indexedDB && indexedDB.databases) {
+          const dbs = await indexedDB.databases();
+          await Promise.all((dbs || []).map((db) => new Promise((res) => {
+            if (!db || !db.name) { res(); return; }
+            const req = indexedDB.deleteDatabase(db.name);
+            req.onsuccess = req.onerror = req.onblocked = () => res();
+          })));
+        }
+      } catch (_) {}
+    }
+    if (opts.settings) {
+      try { localStorage.clear(); } catch (_) {}
+      try { sessionStorage.clear(); } catch (_) {}
+    }
+    if (opts.account) {
+      try {
+        const cookies = document.cookie ? document.cookie.split(";") : [];
+        const host = location.hostname;
+        const hostParts = host.split(".");
+        const domains = new Set([host, "." + host]);
+        for (let i = 1; i < hostParts.length; i++) {
+          const d = hostParts.slice(i).join(".");
+          if (d) { domains.add(d); domains.add("." + d); }
+        }
+        const paths = ["/", location.pathname];
+        for (const raw of cookies) {
+          const eq = raw.indexOf("=");
+          const name = (eq > -1 ? raw.slice(0, eq) : raw).trim();
+          if (!name) continue;
+          for (const p of paths) {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${p}`;
+            for (const d of domains) {
+              document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${p}; domain=${d}`;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    if (opts.cache) {
+      try {
+        if (window.caches && caches.keys) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+      } catch (_) {}
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+      } catch (_) {}
+    }
+  } finally {
+    if (opts.account) {
+      window.location.replace("/api/auth/logout");
+    } else {
+      window.location.reload();
+    }
+  }
+}
+
 // document-level delegation: תופס כל לחצן [data-cmd] בכל סרגל בדף
 document.addEventListener("click", async (ev) => {
   const btn = ev.target.closest("button[data-cmd]");
@@ -1643,65 +1757,7 @@ document.addEventListener("click", async (ev) => {
     case "round-trip":     runRoundTripTest(); break;
 
     case "reset-system-state": {
-      const ok = confirm(
-        "אפס את כל מצב המערכת?\n\n" +
-        "פעולה זו תנקה את כל ההגדרות, המטמון, העוגיות, והקבצים השמורים בדפדפן, ותוציא אותך מהחשבון.\n\n" +
-        "המסמך הפתוח עכשיו לא יישמר אוטומטית. שמור ל-Word לפני שתמשיך אם יש לך תוכן חשוב."
-      );
-      if (!ok) break;
-      (async () => {
-        try {
-          try { paneManager.clearStorage(); } catch (e) { /* תמשיך גם אם נכשל */ }
-          try { localStorage.clear(); } catch (e) {}
-          try { sessionStorage.clear(); } catch (e) {}
-          try {
-            const cookies = document.cookie ? document.cookie.split(";") : [];
-            const host = location.hostname;
-            const hostParts = host.split(".");
-            const domains = new Set([host, "." + host]);
-            for (let i = 1; i < hostParts.length; i++) {
-              const d = hostParts.slice(i).join(".");
-              if (d) { domains.add(d); domains.add("." + d); }
-            }
-            const paths = ["/", location.pathname];
-            for (const raw of cookies) {
-              const eq = raw.indexOf("=");
-              const name = (eq > -1 ? raw.slice(0, eq) : raw).trim();
-              if (!name) continue;
-              for (const p of paths) {
-                document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${p}`;
-                for (const d of domains) {
-                  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${p}; domain=${d}`;
-                }
-              }
-            }
-          } catch (e) {}
-          try {
-            if (window.caches && caches.keys) {
-              const keys = await caches.keys();
-              await Promise.all(keys.map((k) => caches.delete(k)));
-            }
-          } catch (e) {}
-          try {
-            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
-              const regs = await navigator.serviceWorker.getRegistrations();
-              await Promise.all(regs.map((r) => r.unregister()));
-            }
-          } catch (e) {}
-          try {
-            if (indexedDB && indexedDB.databases) {
-              const dbs = await indexedDB.databases();
-              await Promise.all((dbs || []).map((db) => new Promise((res) => {
-                if (!db || !db.name) { res(); return; }
-                const req = indexedDB.deleteDatabase(db.name);
-                req.onsuccess = req.onerror = req.onblocked = () => res();
-              })));
-            }
-          } catch (e) {}
-        } finally {
-          window.location.replace("/api/auth/logout");
-        }
-      })();
+      openResetSystemStateDialog();
       break;
     }
 
