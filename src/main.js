@@ -956,36 +956,49 @@ paneManager.on("focus", () => {
   refreshStreamSettingsPanel();
 });
 
-// Beginner hint for nested footnotes — shown the first time a user has 2+
-// stream panes, hidden on click of the × button (preference stored locally).
-// Also gated by the nested-notes feature flag (URL `?nested=1` or
-// localStorage); never shown when the feature is off.
-const NESTED_HINT_DISMISSED_KEY = "ravtext.nestedNotesHint.dismissed";
+// Nested-notes feature toggle — single checkbox row above the panes container.
+// Sync state ↔ localStorage flag (which the gate also reads). On the first
+// time the user turns it ON, show the explanation dialog so they understand
+// the linear-ordering semantics. Hovering @XX markers anywhere in any pane
+// shows a content-preview bubble (wired in nested_notes_bubble.js).
+const NESTED_DIALOG_SEEN_KEY = "ravtext.nestedNotesHint.dismissed";
+function syncNestedNotesToggle() {
+  const cb = document.getElementById("nested-notes-toggle");
+  if (!cb) return;
+  cb.checked = isNestedNotesGateOn();
+}
 function updateNestedNotesHint() {
-  const el = document.getElementById("nested-notes-hint");
-  if (!el) return;
-  if (!isNestedNotesGateOn()) {
-    el.hidden = true;
-    return;
-  }
-  if (localStorage.getItem(NESTED_HINT_DISMISSED_KEY) === "1") {
-    el.hidden = true;
-    return;
-  }
-  const streamPanes = paneManager.panes.filter((p) => p.streamCode);
-  el.hidden = streamPanes.length < 2;
+  syncNestedNotesToggle();
 }
 {
-  const dismissBtn = document.getElementById("nested-notes-hint-dismiss");
-  if (dismissBtn) {
-    dismissBtn.addEventListener("click", () => {
-      try { localStorage.setItem(NESTED_HINT_DISMISSED_KEY, "1"); } catch (_) {}
-      const el = document.getElementById("nested-notes-hint");
-      if (el) el.hidden = true;
+  const cb = document.getElementById("nested-notes-toggle");
+  const dlg = document.getElementById("nested-notes-explain-dialog");
+  if (cb) {
+    cb.checked = isNestedNotesGateOn();
+    cb.addEventListener("change", () => {
+      try {
+        if (cb.checked) {
+          localStorage.setItem("ravtext.nestedNotes", "1");
+          // First-time check: show the explanation dialog.
+          if (localStorage.getItem(NESTED_DIALOG_SEEN_KEY) !== "1" && dlg && typeof dlg.showModal === "function") {
+            dlg.showModal();
+            localStorage.setItem(NESTED_DIALOG_SEEN_KEY, "1");
+          }
+        } else {
+          localStorage.removeItem("ravtext.nestedNotes");
+        }
+      } catch (_) {}
+      // Drop the gate cache so the next isNestedNotesEnabled() call re-reads.
+      import("./nested_notes_gate.js").then((m) => m._resetNestedNotesGateCache?.());
+      // Trigger a re-render so the change takes effect immediately.
+      if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
     });
   }
-  updateNestedNotesHint();
 }
+// Wire the marker hover bubble (works for any @XX marker in any pane).
+import("./nested_notes_bubble.js").then((m) => {
+  if (typeof m.installNestedNotesBubble === "function") m.installNestedNotesBubble(paneManager);
+}).catch((_) => {});
 
 window.addEventListener("ravtext:engine-rendered", (ev) => {
   refreshStreamSettingsPanel(ev.detail?.pages || []);

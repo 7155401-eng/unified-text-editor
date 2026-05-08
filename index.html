@@ -615,17 +615,34 @@
         <!-- v33: settings panel — appears when "הגדרות" ribbon tab is active.
              Placed BEFORE panes so it shows at the top of the editor area when active. -->
         <div id="settings-panel-wrap" class="settings-panel-wrap ribbon-panel" data-ribbon-tab="settings"></div>
-        <!-- Nested-notes hint — shown when 2+ stream panes exist so beginners
-             discover the "הערה על הערה" syntax. Dismissible; preference saved. -->
-        <div id="nested-notes-hint" class="nested-notes-hint" dir="rtl" hidden>
-          <span class="nnh-icon">💡</span>
-          <span class="nnh-text">
-            רוצה שהערה תכיל הערה משלה? הקלד <code>@02</code> בתוך טקסט הערה של זרם 01,
-            וכתוב את תוכן ההערה הפנימית בחלונית של זרם 02. ההערה הפנימית תופיע בתוך
-            הערה החיצונית, מובלטת בנטוי וקטנה יותר.
-          </span>
-          <button type="button" id="nested-notes-hint-dismiss" class="nnh-dismiss" title="הבנתי, לא להציג שוב">×</button>
+        <!-- Nested-notes feature toggle — single row above the panes container.
+             Default unchecked; on first check, an explanation dialog appears.
+             URL `?nested=1` pre-checks. -->
+        <div id="nested-notes-row" class="nested-notes-row" dir="rtl">
+          <label class="nested-notes-toggle">
+            <input type="checkbox" id="nested-notes-toggle" />
+            <span>תמיכה בהערות להערות</span>
+          </label>
+          <span class="nested-notes-help" title="הקלד @02 בתוך טקסט הערה של זרם 01 ובחלונית 02 כתוב את תוכן ההערה הפנימית. ההערה הפנימית תופיע בתוך החיצונית.">?</span>
         </div>
+        <!-- Explanation dialog shown the first time the toggle is checked. -->
+        <dialog id="nested-notes-explain-dialog" class="nested-notes-dialog">
+          <h3>תמיכה בהערות להערות</h3>
+          <p>
+            במקרה שיש הפניות לזרם ספציפי מכמה זרמים, תמיד הקישורים יופנו
+            בסדר לוגי — כל הערה נחשבת כעומדת בתוך הזרם הראשי, במקום שאליו
+            היא מקושרת.
+          </p>
+          <p class="nnd-example">
+            <strong>דוגמה:</strong> אם בגוף יש <code>@02</code> ובתוך הערת
+            <code>@01</code> הראשונה יש <code>@02</code> נוסף — הסדר נקבע
+            לפי המיקום במסמך: ההפניה הראשונה שתיקרא תקבל את ההערה הראשונה
+            של זרם 02, השנייה את השנייה, וכן הלאה.
+          </p>
+          <form method="dialog">
+            <button type="submit" class="primary">הבנתי</button>
+          </form>
+        </dialog>
         <div id="panes-container" class="panes-container" dir="rtl"></div>
         <!-- v33: settings content lives in #settings-panel; moved into wrap by JS -->
         <div id="settings-panel" class="settings-panel ribbon-panel" data-ribbon-tab="settings" dir="rtl">
