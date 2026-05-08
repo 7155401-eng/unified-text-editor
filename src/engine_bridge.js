@@ -516,6 +516,29 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
+    // משה 2026-05-08: V9 (בטה למנהלים) — מנוע אנליטי. כל מילה במיקום
+    // x,y ידוע. מחליף את כל הצינור: domPack + renderPages + talmud_layout
+    // + mishna_wrap + שאר הפאסים. מקדים את V8 כי הוא הגישה החדשה יותר.
+    const v9Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
+    const v9Enabled = v9Auth.admin && localStorage.getItem("ravtext.vilnaV9Beta") === "1";
+    if (v9Enabled) {
+      logEvent("vilna_v9_pipeline_start");
+      const v9 = await import("./vilna_v9_apply.js");
+      await v9.applyVilnaV9FromPaneManager(content, pagesContainer);
+      if (myToken !== _renderToken) return;
+      if (pdfToolbarApi) {
+        const pageCount = pagesContainer.querySelectorAll(".page").length;
+        pdfToolbarApi.setTotal(pageCount);
+      }
+      logEvent("vilna_v9_pipeline_done", {
+        pageCount: pagesContainer.querySelectorAll(".page").length,
+      });
+      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
+        detail: { pages: [], content, v9: true },
+      }));
+      return;
+    }
+
     const pageGeom = getDomPageGeom();
     const pages = await domPack(content, pageGeom, {
       isCurrent: () => myToken === _renderToken,

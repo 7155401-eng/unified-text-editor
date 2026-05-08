@@ -300,20 +300,27 @@ export function setupSettingsPane() {
     });
   }
 
-  // צוות האתר 2026-05-08: V8 hybrid beta — נראה רק למנהלים.
+  // צוות האתר 2026-05-08: V8/V9 beta — נראה רק למנהלים.
   const adminBetaSection = document.getElementById("settings-section-admin-beta");
   const v8Toggle = document.getElementById("settings-vilna-v8-beta");
+  const v9Toggle = document.getElementById("settings-vilna-v9-beta");
   const auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
-  if (adminBetaSection && v8Toggle && auth.admin) {
+  if (adminBetaSection && auth.admin) {
     adminBetaSection.hidden = false;
-    const saved = localStorage.getItem("ravtext.vilnaV8Beta") === "1";
-    v8Toggle.checked = saved;
-    v8Toggle.addEventListener("change", () => {
-      localStorage.setItem("ravtext.vilnaV8Beta", v8Toggle.checked ? "1" : "0");
-      if (typeof window.__ravtextRerender === "function") {
-        window.__ravtextRerender();
-      }
-    });
+    if (v8Toggle) {
+      v8Toggle.checked = localStorage.getItem("ravtext.vilnaV8Beta") === "1";
+      v8Toggle.addEventListener("change", () => {
+        localStorage.setItem("ravtext.vilnaV8Beta", v8Toggle.checked ? "1" : "0");
+        if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
+      });
+    }
+    if (v9Toggle) {
+      v9Toggle.checked = localStorage.getItem("ravtext.vilnaV9Beta") === "1";
+      v9Toggle.addEventListener("change", () => {
+        localStorage.setItem("ravtext.vilnaV9Beta", v9Toggle.checked ? "1" : "0");
+        if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
+      });
+    }
   }
 
   // Save log toggle
