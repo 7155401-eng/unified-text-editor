@@ -59,7 +59,8 @@ function injectDemoWatermarksIfNeeded(content) {
 }
 import { renderPages } from "./engine/renderer.js";
 import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
-import { applyTalmudLayoutToPages } from "./talmud_layout.js";
+// משה 2026-05-08: V1 (talmud_layout.js) ו-V2 (talmud_engine_v2.js) ו-V8
+// (vilna_v8.js) הוסרו. V9 הוא המנוע היחיד למצב גפ"ת.
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
@@ -351,118 +352,159 @@ export function paneManagerToPackerContent(paneManager) {
     paneSymToCode[sym] = p.streamCode;
   }
 
-  const result = [];
-  const noteCounters = {};
-
-  // Pass 1 — walk all main-body markers in document order. Each one
-  // consumes the next available note from its stream's pane pool. Nested
-  // expansion does NOT consume here — that's Pass 2.
-  for (const para of mainParagraphs) {
-    const { paragraphText, markers, blockType, headingLevel } = para;
+  // === Phase A — for each paragraph, walk main-body markers and record
+  // each as a "consumer" of its stream's pane pool. We don't pull pane
+  // content yet; that happens after we also know the nested consumers. ===
+  const paragraphsInfo = []; // { paraIdx, mainTextNet, mainConsumers[], blockType, headingLevel }
+  for (let pi = 0; pi < mainParagraphs.length; pi++) {
+    const para = mainParagraphs[pi];
     let mainTextNet = "";
-    const notes = [];
     let prevEnd = 0;
-    for (const marker of markers) {
-      mainTextNet += paragraphText.substring(prevEnd, marker.atInPara);
+    const mainConsumers = [];
+    for (const marker of para.markers) {
+      mainTextNet += para.paragraphText.substring(prevEnd, marker.atInPara);
       const anchor = mainTextNet.length;
-      const code = marker.code;
-      const idx = noteCounters[code] || 0;
-      const noteText = streamNotes[code] && streamNotes[code][idx];
-      if (noteText !== undefined) {
-        noteCounters[code] = idx + 1;
-        notes.push({ stream: code, text: noteText, anchor });
-      } else {
-        mainTextNet += marker.sym;
-      }
+      mainConsumers.push({ stream: marker.code, anchor, sym: marker.sym });
       prevEnd = marker.atInPara + marker.sym.length;
     }
-    mainTextNet += paragraphText.substring(prevEnd);
+    mainTextNet += para.paragraphText.substring(prevEnd);
     mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
-    if (mainTextNet || notes.length) {
-      result.push({
-        mainText: mainTextNet,
-        notes,
-        blockType: blockType === "heading" ? "heading" : "paragraph",
-        headingLevel: blockType === "heading" ? Math.max(1, Math.min(6, headingLevel || 1)) : null,
-      });
+    paragraphsInfo.push({
+      paraIdx: pi,
+      mainTextNet,
+      mainConsumers,
+      blockType: para.blockType,
+      headingLevel: para.headingLevel,
+    });
+  }
+
+  // === Phase B — gather per-stream consumer lists. Each main-body marker is
+  // a primary consumer (priority 0). Nested @YY found inside a primary
+  // consumer's pane note is a secondary consumer of stream Y at the
+  // PARENT's main-body anchor (priority 1) — per Moshe's spec:
+  //   "הערה הבאה של זרם 02 תקושר לטקסט הראשי היכן שההערה הנוכחית בזרם 01
+  //    מקושרת" — the next stream-Y note from the pane is anchored at the
+  // outer's position, with secondary priority after any direct main-body
+  // ref at the same anchor.
+  // Pane consumption assigns pane[0], pane[1], ... in sorted (paraIdx,
+  // anchor, priority) order across all consumers of that stream. ===
+  const consumersByStream = {};
+  for (const info of paragraphsInfo) {
+    for (const c of info.mainConsumers) {
+      if (!consumersByStream[c.stream]) consumersByStream[c.stream] = [];
+      consumersByStream[c.stream].push({ paraIdx: info.paraIdx, anchor: c.anchor, priority: 0 });
     }
   }
-
-  // Assign per-stream display numbers in document order.
-  const displayCounters = {};
-  for (const para of result) {
-    numberNotesTree(para.notes, displayCounters);
+  // Sort once before nested expansion so each main consumer's pane index
+  // for the OUTER lookup matches document order.
+  for (const code of Object.keys(consumersByStream)) {
+    consumersByStream[code].sort((a, b) =>
+      (a.paraIdx - b.paraIdx) || (a.anchor - b.anchor) || (a.priority - b.priority)
+    );
   }
 
-  // Pass 2 — when the nested-notes feature is on, scan each note's text
-  // for embedded `@XX` markers and resolve them to a CROSS-REFERENCE: the
-  // next note in stream X whose anchor is AFTER the parent's anchor in
-  // document order. Per Moshe's spec:
-  //   "להערה בזרם 2 הכי קרובה למסמך אחרי הקישור של הערה 1 זרם 1"
-  // Stream 2's apparatus is NOT consumed by these references — it stays
-  // entirely driven by main-body @02 markers. The nested marker becomes a
-  // pointer that the renderer/bubble can use to surface the linked note.
-  //
-  // The cross-stream `@XX` marker is also STRIPPED from the displayed
-  // note text once a target is found, matching the main-body convention
-  // where references-to-footnotes don't appear in the rendered output.
-  // (Self-stream markers and unmatched markers are kept literal — same
-  // as main body when its stream's pool is exhausted.)
   if (isNestedNotesEnabled() && paneSymbols.length > 0) {
-    // Flat ordered list of every note across all paragraphs (already in
-    // document order because we built result paragraph-by-paragraph).
-    const flat = [];
-    for (let i = 0; i < result.length; i++) {
-      for (const note of result[i].notes) {
-        flat.push({ note, paraIdx: i });
-      }
-    }
     const symsSorted = [...paneSymbols].sort((a, b) => b.length - a.length);
     const findRe = new RegExp(`(${symsSorted.map(escapeRegex).join('|')})`, 'g');
-    for (let i = 0; i < flat.length; i++) {
-      const { note: ref } = flat[i];
-      findRe.lastIndex = 0;
-      let m;
-      let searchAfter = i;
-      let stripped = "";
-      let prevEnd = 0;
-      let didStrip = false;
-      while ((m = findRe.exec(ref.text)) !== null) {
-        const code = paneSymToCode[m[0]];
-        // Always copy the gap before this marker.
-        stripped += ref.text.substring(prevEnd, m.index);
-        prevEnd = m.index + m[0].length;
-        if (!code || code === ref.stream) {
-          // Self-stream or unknown — keep the marker literal in the text.
-          stripped += m[0];
-          continue;
-        }
-        // Cross-stream marker: try to find the next target ref AFTER the
-        // last one we used (or after this ref's own position to start).
-        let target = null;
-        for (let j = searchAfter + 1; j < flat.length; j++) {
-          if (flat[j].note.stream === code) { target = flat[j]; break; }
-        }
-        if (target) {
-          ref.links = ref.links || [];
-          ref.links.push({ stream: code, num: target.note.num });
-          searchAfter = flat.indexOf(target);
-          // Marker stripped (don't append m[0]) — invisible in apparatus,
-          // matching main-body behavior. Future: renderer can re-emit a
-          // small visible indicator from the `links` metadata.
-          didStrip = true;
-        } else {
-          // No target available — keep the marker literal so the user
-          // can see that they wrote a reference that didn't resolve.
-          stripped += m[0];
+    // Snapshot main-only consumers so adding secondaries doesn't change
+    // the OUTER pane indices we look up against.
+    const mainOnly = {};
+    for (const code of Object.keys(consumersByStream)) {
+      mainOnly[code] = consumersByStream[code].slice();
+    }
+    for (const code of Object.keys(mainOnly)) {
+      for (let i = 0; i < mainOnly[code].length; i++) {
+        const c = mainOnly[code][i];
+        const noteText = streamNotes[code] && streamNotes[code][i];
+        if (noteText === undefined) continue;
+        findRe.lastIndex = 0;
+        let m;
+        while ((m = findRe.exec(noteText)) !== null) {
+          const ycode = paneSymToCode[m[0]];
+          if (!ycode || ycode === code) continue;
+          if (!consumersByStream[ycode]) consumersByStream[ycode] = [];
+          consumersByStream[ycode].push({ paraIdx: c.paraIdx, anchor: c.anchor, priority: 1 });
         }
       }
-      if (didStrip) {
-        stripped += ref.text.substring(prevEnd);
-        // Collapse double spaces left by stripped markers, like the
-        // main body does for its own marker stripping.
-        ref.text = stripped.replace(/  +/g, ' ').trim();
+    }
+    // Re-sort each stream after secondary consumers are added.
+    for (const code of Object.keys(consumersByStream)) {
+      consumersByStream[code].sort((a, b) =>
+        (a.paraIdx - b.paraIdx) || (a.anchor - b.anchor) || (a.priority - b.priority)
+      );
+    }
+  }
+
+  // === Phase C — assign pane content to each consumer in sorted order.
+  // Consumer i of stream X gets streamNotes[X][i]. If the pane runs out,
+  // the consumer is dropped (its anchor produces no apparatus note). ===
+  for (const code of Object.keys(consumersByStream)) {
+    let assigned = 0;
+    for (const c of consumersByStream[code]) {
+      const text = streamNotes[code] && streamNotes[code][assigned];
+      if (text !== undefined) {
+        c.text = text;
+        c.num = assigned + 1;
+      } else {
+        c.text = null;
       }
+      assigned++;
+    }
+  }
+
+  // === Phase D — strip cross-stream `@YY` markers from each consumer's
+  // displayed text (matches the main-body convention where reference
+  // markers don't appear in the rendered output). Self-stream markers are
+  // left literal. ===
+  if (isNestedNotesEnabled() && paneSymbols.length > 0) {
+    const symsSorted = [...paneSymbols].sort((a, b) => b.length - a.length);
+    const stripRe = new RegExp(`(${symsSorted.map(escapeRegex).join('|')})`, 'g');
+    for (const code of Object.keys(consumersByStream)) {
+      for (const c of consumersByStream[code]) {
+        if (!c.text) continue;
+        let stripped = "";
+        let prev = 0;
+        let didStrip = false;
+        let m;
+        stripRe.lastIndex = 0;
+        while ((m = stripRe.exec(c.text)) !== null) {
+          const ycode = paneSymToCode[m[0]];
+          stripped += c.text.substring(prev, m.index);
+          prev = m.index + m[0].length;
+          if (!ycode || ycode === code) {
+            stripped += m[0]; // keep self-stream / unknown markers literal
+          } else {
+            didStrip = true; // cross-stream — drop from display
+          }
+        }
+        if (didStrip) {
+          stripped += c.text.substring(prev);
+          c.text = stripped.replace(/  +/g, ' ').trim();
+        }
+      }
+    }
+  }
+
+  // === Phase E — emit one paragraph object per source paragraph, with all
+  // its consumers (across streams) merged and sorted by anchor + priority. ===
+  const result = [];
+  for (const info of paragraphsInfo) {
+    const paraNotes = [];
+    for (const code of Object.keys(consumersByStream)) {
+      for (const c of consumersByStream[code]) {
+        if (c.paraIdx !== info.paraIdx || c.text === null) continue;
+        paraNotes.push({ stream: code, text: c.text, anchor: c.anchor, num: c.num, priority: c.priority });
+      }
+    }
+    paraNotes.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
+    const cleanNotes = paraNotes.map((n) => ({ stream: n.stream, text: n.text, anchor: n.anchor, num: n.num }));
+    if (info.mainTextNet || cleanNotes.length) {
+      result.push({
+        mainText: info.mainTextNet,
+        notes: cleanNotes,
+        blockType: info.blockType === "heading" ? "heading" : "paragraph",
+        headingLevel: info.blockType === "heading" ? Math.max(1, Math.min(6, info.headingLevel || 1)) : null,
+      });
     }
   }
 
@@ -667,12 +709,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
-    // משה 2026-05-08: V9 (בטה למנהלים) — מנוע אנליטי. כל מילה במיקום
-    // x,y ידוע. מחליף את כל הצינור: domPack + renderPages + talmud_layout
-    // + mishna_wrap + שאר הפאסים. מקדים את V8 כי הוא הגישה החדשה יותר.
-    const v9Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
-    const v9Enabled = v9Auth.admin && localStorage.getItem("ravtext.vilnaV9Beta") === "1";
-    if (v9Enabled) {
+    // משה 2026-05-08: V9 הוא המנוע היחיד למצב גפ"ת. רץ אוטומטית כשהצ'קבוקס
+    // "גפ"ת: צורת הדף" דלוק (localStorage.ravtext.talmudLayout === "1").
+    // V9 בונה את כל העמודים אנליטית — מדלג על domPack, renderPages,
+    // talmud_layout, mishna_wrap, balanced_columns, opening_word, וכו'.
+    const talmudActive = typeof window !== "undefined" &&
+      window.localStorage?.getItem("ravtext.talmudLayout") === "1";
+    if (talmudActive) {
       logEvent("vilna_v9_pipeline_start");
       const v9 = await import("./vilna_v9_apply.js");
       await v9.applyVilnaV9FromPaneManager(content, pagesContainer);
@@ -701,35 +744,8 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
-    logEvent("talmud_layout");
-    // משה 2026-05-08: V8 hybrid (בטה למנהלים) — מחליף את הצורה הוויזואלית
-    // של כל הצינור הסטנדרטי, אבל משאיר את הפגינציה של domPack/renderPages.
-    // אחרי V8, מדלגים על mishna_wrap/balanced/opening_word/overflow_cap.
-    const v8Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
-    const v8Enabled = v8Auth.admin && localStorage.getItem("ravtext.vilnaV8Beta") === "1";
-    if (v8Enabled) {
-      logEvent("vilna_v8_per_page_start");
-      const v8 = await import("./vilna_v8_apply.js");
-      await v8.applyVilnaV8ToPages(pagesContainer);
-      if (myToken !== _renderToken) return;
-      if (pdfToolbarApi) {
-        const pageCount = pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length;
-        pdfToolbarApi.setTotal(pageCount);
-      }
-      logEvent("vilna_v8_per_page_done", {
-        pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,
-      });
-      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-        detail: { pages, content, v8: true },
-      }));
-      return;
-    }
-    if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
-      const v2 = await import("./talmud_engine_v2.js");
-      await v2.applyTalmudLayoutToPagesV2(pagesContainer);
-    } else {
-      applyTalmudLayoutToPages(pagesContainer);
-    }
+    // משה 2026-05-08: שלב talmud_layout הוסר — V1/V2/V8 נמחקו. מצב לא־גפ"ת
+    // ממשיך ישר ל-mishna_wrap ויתר הפאסים.
     logEvent("mishna_wrap");
     await applyMishnaWrapToPages(pagesContainer);
     logEvent("balanced_columns");

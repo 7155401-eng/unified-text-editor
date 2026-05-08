@@ -300,28 +300,8 @@ export function setupSettingsPane() {
     });
   }
 
-  // צוות האתר 2026-05-08: V8/V9 beta — נראה רק למנהלים.
-  const adminBetaSection = document.getElementById("settings-section-admin-beta");
-  const v8Toggle = document.getElementById("settings-vilna-v8-beta");
-  const v9Toggle = document.getElementById("settings-vilna-v9-beta");
-  const auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
-  if (adminBetaSection && auth.admin) {
-    adminBetaSection.hidden = false;
-    if (v8Toggle) {
-      v8Toggle.checked = localStorage.getItem("ravtext.vilnaV8Beta") === "1";
-      v8Toggle.addEventListener("change", () => {
-        localStorage.setItem("ravtext.vilnaV8Beta", v8Toggle.checked ? "1" : "0");
-        if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
-      });
-    }
-    if (v9Toggle) {
-      v9Toggle.checked = localStorage.getItem("ravtext.vilnaV9Beta") === "1";
-      v9Toggle.addEventListener("change", () => {
-        localStorage.setItem("ravtext.vilnaV9Beta", v9Toggle.checked ? "1" : "0");
-        if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
-      });
-    }
-  }
+  // משה 2026-05-08: סקציית "בטה — מנהלים בלבד" עבור V8/V9 הוסרה.
+  // V9 הוא המנוע היחיד למצב גפ"ת ורץ אוטומטית כשהצ'קבוקס "גפ"ת" דלוק.
 
   // Save log toggle
   const saveLog = document.getElementById("settings-save-log");
