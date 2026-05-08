@@ -39,6 +39,7 @@ import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
 import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
+import { openWordExtractor, setupWordExtractor } from "./word_extractor/word_extractor.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
@@ -187,6 +188,7 @@ applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
+setupWordExtractor(paneManager, rerenderPages);
 
 const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
 const STREAM_PANE_WIDTH_KEY = "ravtext.streamPaneWidth";
@@ -1544,6 +1546,10 @@ document.addEventListener("click", async (ev) => {
     }
     case "word-import": {
       importWord(paneManager, rerenderPages);
+      break;
+    }
+    case "word-import-streams": {
+      openWordExtractor(paneManager, rerenderPages);
       break;
     }
     case "word-export": {
