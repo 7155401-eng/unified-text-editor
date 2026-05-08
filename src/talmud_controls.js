@@ -5,9 +5,8 @@
 // הגדרות ב-localStorage ומקשרת את הקונטרולים שבעורך לערכים. אין כאן
 // לוגיקת פריסה — V9 הוא המנוע הויזואלי היחיד.
 
-import { isDemoMode } from "./demo_mode.js";
-
-const TALMUD_DEMO_BLOCKED_MSG = "מצב גמרא חסום למשתמשי ניסיון";
+// משה 2026-05-08: דמו לא חוסם יותר את גפ"ת. סימני המים מטופלים
+// ב-engine_bridge דרך injectDemoWatermarksIfNeeded לפני שהתוכן מגיע ל-V9.
 
 const STORAGE_KEY       = "ravtext.talmudLayout";
 const STREAMS_KEY       = "ravtext.talmudLayout.streams";
@@ -24,14 +23,12 @@ const DEFAULT_HEIGHT_SAFETY = 160;
 const DEFAULT_HEIGHT_SAFETY_REGULAR = 6;
 
 export function isTalmudLayoutEnabled() {
-  if (isDemoMode()) return false;
+  // משה 2026-05-08: גפ"ת פתוח לכולם (גם דמו/אורחים). סימני המים שלrender
+  // מוטמעים בטקסט הראשי דרך injectDemoWatermarksIfNeeded ב-engine_bridge,
+  // אז גם משתמשי דמו רואים את העימוד אבל עם כתמי "DEMO" בטקסט.
   return localStorage.getItem(STORAGE_KEY) === "1";
 }
 export function setTalmudLayoutEnabled(enabled) {
-  if (isDemoMode()) {
-    localStorage.setItem(STORAGE_KEY, "0");
-    return;
-  }
   localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
 }
 
@@ -154,24 +151,7 @@ export function wireTalmudLayoutControls(onChange) {
 
   if (!toggle) return;
 
-  const _demoActive = isDemoMode();
-  if (_demoActive) {
-    try { localStorage.setItem(STORAGE_KEY, "0"); } catch (_) {}
-    toggle.checked = false;
-    toggle.disabled = true;
-    toggle.title = TALMUD_DEMO_BLOCKED_MSG;
-    const lbl = toggle.closest("label");
-    if (lbl) {
-      lbl.style.opacity = "0.5";
-      lbl.style.cursor = "not-allowed";
-      lbl.title = TALMUD_DEMO_BLOCKED_MSG;
-      lbl.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        try { window.alert(TALMUD_DEMO_BLOCKED_MSG); } catch (_) {}
-      });
-    }
-  }
+  // משה 2026-05-08: גפ"ת פתוח לדמו/אורחים (עם סימני מים בטקסט). לא חוסמים את ה-toggle.
 
   toggle.checked = isTalmudLayoutEnabled();
   if (streamsInput) streamsInput.value = getTalmudStreamsText();
@@ -187,11 +167,6 @@ export function wireTalmudLayoutControls(onChange) {
   const commit = () => onChange?.();
 
   toggle.addEventListener("change", () => {
-    if (isDemoMode() && toggle.checked) {
-      toggle.checked = false;
-      try { window.alert(TALMUD_DEMO_BLOCKED_MSG); } catch (_) {}
-      return;
-    }
     setTalmudLayoutEnabled(toggle.checked);
     if (!toggle.checked) {
       const otherAsMishna = document.getElementById("talmud-other-as-mishna");
