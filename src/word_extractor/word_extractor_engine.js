@@ -1177,10 +1177,12 @@ export function _note_to_latex(note_rich, sid, sd) {
   }
   // משה 2026-05-08: שומר את ה-RichText המקורי של ההערה (לפני ההמרה ל-LaTeX),
   // כדי ש-distributeToPanes יוכל להמיר ל-HTML עם עיצוב אמיתי במקום פלט LaTeX.
+  // משה 2026-05-08 (תיקון #6): שומר את note_rich המקורי (לפני הסרת ה-marker prefix)
+  // כדי שה-marker (@06 וכו') יישאר בתחילת כל הערה ב-pane של הזרם — קישור חזותי.
   const series = sd[sid].series || 'A';
   if (!extract_and_process.streamRichTexts) extract_and_process.streamRichTexts = {};
   if (!extract_and_process.streamRichTexts[series]) extract_and_process.streamRichTexts[series] = [];
-  extract_and_process.streamRichTexts[series].push(cr);
+  extract_and_process.streamRichTexts[series].push(note_rich);
   const cleaned = _clean_latex(cr.to_latex());
   if (sd[sid].source_type === SOURCE_SIDENOTE) {
     const pos = sd[sid].position || 'right';
