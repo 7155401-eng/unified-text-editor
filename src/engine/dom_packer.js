@@ -5,7 +5,10 @@
 
 import { streamColorIndex } from "./schema.js";
 import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layout.js";
-import { applyTalmudLayoutToPage, isTalmudLayoutEnabled } from "../talmud_layout.js";
+// משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
+// (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
+// בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
+import { isTalmudLayoutEnabled } from "../talmud_controls.js";
 
 // Pack to ~15px below the rendered page height to leave a safety buffer for
 // sub-pixel rounding / margin-collapse / font-metric drift between the
@@ -318,7 +321,8 @@ function buildMeasurePage(mainSegments, streams) {
     }
     page.appendChild(streamsWrap);
   }
-  if (shouldMeasureTalmudLayout()) applyTalmudLayoutToPage(page);
+  // משה 2026-05-08: applyTalmudLayoutToPage הוסר עם מחיקת V1.
+  // אם talmud דלוק → V9 רץ במסלול נפרד ו-dom_packer לא רץ בכלל.
   if (shouldMeasureMishnaWrap()) applyMishnaWrapToPage(page);
   return page;
 }

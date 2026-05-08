@@ -59,7 +59,8 @@ function injectDemoWatermarksIfNeeded(content) {
 }
 import { renderPages } from "./engine/renderer.js";
 import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
-import { applyTalmudLayoutToPages } from "./talmud_layout.js";
+// משה 2026-05-08: V1 (talmud_layout.js) ו-V2 (talmud_engine_v2.js) ו-V8
+// (vilna_v8.js) הוסרו. V9 הוא המנוע היחיד למצב גפ"ת.
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
@@ -667,12 +668,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
-    // משה 2026-05-08: V9 (בטה למנהלים) — מנוע אנליטי. כל מילה במיקום
-    // x,y ידוע. מחליף את כל הצינור: domPack + renderPages + talmud_layout
-    // + mishna_wrap + שאר הפאסים. מקדים את V8 כי הוא הגישה החדשה יותר.
-    const v9Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
-    const v9Enabled = v9Auth.admin && localStorage.getItem("ravtext.vilnaV9Beta") === "1";
-    if (v9Enabled) {
+    // משה 2026-05-08: V9 הוא המנוע היחיד למצב גפ"ת. רץ אוטומטית כשהצ'קבוקס
+    // "גפ"ת: צורת הדף" דלוק (localStorage.ravtext.talmudLayout === "1").
+    // V9 בונה את כל העמודים אנליטית — מדלג על domPack, renderPages,
+    // talmud_layout, mishna_wrap, balanced_columns, opening_word, וכו'.
+    const talmudActive = typeof window !== "undefined" &&
+      window.localStorage?.getItem("ravtext.talmudLayout") === "1";
+    if (talmudActive) {
       logEvent("vilna_v9_pipeline_start");
       const v9 = await import("./vilna_v9_apply.js");
       await v9.applyVilnaV9FromPaneManager(content, pagesContainer);
@@ -701,35 +703,8 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
-    logEvent("talmud_layout");
-    // משה 2026-05-08: V8 hybrid (בטה למנהלים) — מחליף את הצורה הוויזואלית
-    // של כל הצינור הסטנדרטי, אבל משאיר את הפגינציה של domPack/renderPages.
-    // אחרי V8, מדלגים על mishna_wrap/balanced/opening_word/overflow_cap.
-    const v8Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
-    const v8Enabled = v8Auth.admin && localStorage.getItem("ravtext.vilnaV8Beta") === "1";
-    if (v8Enabled) {
-      logEvent("vilna_v8_per_page_start");
-      const v8 = await import("./vilna_v8_apply.js");
-      await v8.applyVilnaV8ToPages(pagesContainer);
-      if (myToken !== _renderToken) return;
-      if (pdfToolbarApi) {
-        const pageCount = pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length;
-        pdfToolbarApi.setTotal(pageCount);
-      }
-      logEvent("vilna_v8_per_page_done", {
-        pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,
-      });
-      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-        detail: { pages, content, v8: true },
-      }));
-      return;
-    }
-    if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
-      const v2 = await import("./talmud_engine_v2.js");
-      await v2.applyTalmudLayoutToPagesV2(pagesContainer);
-    } else {
-      applyTalmudLayoutToPages(pagesContainer);
-    }
+    // משה 2026-05-08: שלב talmud_layout הוסר — V1/V2/V8 נמחקו. מצב לא־גפ"ת
+    // ממשיך ישר ל-mishna_wrap ויתר הפאסים.
     logEvent("mishna_wrap");
     await applyMishnaWrapToPages(pagesContainer);
     logEvent("balanced_columns");
