@@ -134,6 +134,24 @@ async function fetchSefariaVerse(book, chap, verse) {
     .trim();
 }
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function smallSourceHtml(citationText) {
+  return `<span style="font-size:70%">${escapeHtml(citationText)}</span>`;
+}
+
+function buildCitation(book, chap, verse) {
+  return `(${book} ${numberToHebrewLetters(chap)}, ${numberToHebrewLetters(verse)})`;
+}
+
+function applyNiqqudPref(text, withNiqqud) {
+  return withNiqqud ? stripTaamim(text) : stripAllNiqqud(text);
+}
+
 function buildSelect(id, title, items, placeholder) {
   const sel = document.createElement("select");
   sel.id = id;
@@ -257,24 +275,47 @@ export function wireTorahTools(paneManager) {
   status.id = "torah-verse-status";
   status.style.cssText = "font-size:11px;color:#888;margin-inline-start:6px;";
 
-  fetchBtn.addEventListener("click", async () => {
+  // Source-position toggle (where the citation goes relative to the selected text):
+  // "after" (default) or "before". Persisted in localStorage.
+  const posSel = document.createElement("select");
+  posSel.id = "torah-source-position";
+  posSel.title = "מיקום המקור — לפני או אחרי הטקסט המסומן";
+  posSel.className = "torah-tool-select";
+  posSel.style.cssText = "font-size:11px;padding:2px 4px;";
+  for (const [label, value] of [["מקור אחרי", "after"], ["מקור לפני", "before"]]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    posSel.appendChild(opt);
+  }
+  posSel.value = localStorage.getItem("ravtext.torah.source_position") === "before" ? "before" : "after";
+  posSel.addEventListener("change", () => {
+    localStorage.setItem("ravtext.torah.source_position", posSel.value);
+  });
+
+  function readRefInputs() {
     const book = bookSel.value;
     const chap = parseInt(chapInput.value, 10);
     const verse = parseInt(verseInput.value, 10);
-    if (!book) { alert("בחר ספר."); return; }
-    if (!Number.isFinite(chap) || chap < 1) { chapInput.focus(); return; }
-    if (!Number.isFinite(verse) || verse < 1) { verseInput.focus(); return; }
+    if (!book) { alert("בחר ספר."); return null; }
+    if (!Number.isFinite(chap) || chap < 1) { chapInput.focus(); return null; }
+    if (!Number.isFinite(verse) || verse < 1) { verseInput.focus(); return null; }
+    return { book, chap, verse };
+  }
 
+  fetchBtn.addEventListener("click", async () => {
+    const ref = readRefInputs();
+    if (!ref) return;
     const ed = getEditor();
     if (!ed) { alert("פתח עורך פעיל לפני הכנסת פסוק."); return; }
 
     fetchBtn.disabled = true;
     status.textContent = "טוען מספריא…";
     try {
-      let text = await fetchSefariaVerse(book, chap, verse);
+      let text = await fetchSefariaVerse(ref.book, ref.chap, ref.verse);
       if (!text) throw new Error("הפסוק לא נמצא");
-      text = niqqudCb.checked ? stripTaamim(text) : stripAllNiqqud(text);
-      const citation = ` (${book} ${numberToHebrewLetters(chap)}, ${numberToHebrewLetters(verse)})`;
+      text = applyNiqqudPref(text, niqqudCb.checked);
+      const citation = " " + buildCitation(ref.book, ref.chap, ref.verse);
       ed.chain().focus().insertContent(text + citation).run();
       status.textContent = "הוכנס.";
       setTimeout(() => { status.textContent = ""; }, 2000);
@@ -286,12 +327,112 @@ export function wireTorahTools(paneManager) {
     }
   });
 
+  function ensureSelection(ed) {
+    const { from, to, empty } = ed.state.selection;
+    if (empty) {
+      alert("סמן טקסט בעורך לפני הפעולה.");
+      return null;
+    }
+    return { from, to };
+  }
+
+  async function runAction({ replace, cite }, btn) {
+    const ed = getEditor();
+    if (!ed) { alert("פתח עורך פעיל."); return; }
+    const sel = ensureSelection(ed);
+    if (!sel) return;
+    const ref = readRefInputs();
+    if (!ref) return;
+
+    btn.disabled = true;
+    status.textContent = "טוען מספריא…";
+    try {
+      const pos = posSel.value;
+      const citationHtml = cite
+        ? smallSourceHtml(buildCitation(ref.book, ref.chap, ref.verse))
+        : null;
+
+      if (replace) {
+        let text = await fetchSefariaVerse(ref.book, ref.chap, ref.verse);
+        if (!text) throw new Error("הפסוק לא נמצא");
+        text = applyNiqqudPref(text, niqqudCb.checked);
+        const verseHtml = escapeHtml(text);
+        const html = citationHtml
+          ? (pos === "before"
+              ? `${citationHtml}&nbsp;${verseHtml}`
+              : `${verseHtml}&nbsp;${citationHtml}`)
+          : verseHtml;
+        ed.chain().focus()
+          .setTextSelection({ from: sel.from, to: sel.to })
+          .deleteSelection()
+          .insertContent(html)
+          .run();
+      } else if (citationHtml) {
+        // Cite-only: keep selection's marks intact, insert citation around it.
+        const insertAt = pos === "before" ? sel.from : sel.to;
+        const html = pos === "before" ? `${citationHtml}&nbsp;` : `&nbsp;${citationHtml}`;
+        ed.chain().focus()
+          .setTextSelection({ from: insertAt, to: insertAt })
+          .insertContent(html)
+          .run();
+      }
+
+      status.textContent = "הוכנס.";
+      setTimeout(() => { status.textContent = ""; }, 2000);
+    } catch (e) {
+      console.error("[torah] action:", e);
+      status.textContent = `שגיאה: ${e.message || e}`;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function makeActionBtn(id, label, title, opts) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.id = id;
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", () => runAction(opts, b));
+    return b;
+  }
+
+  const niqqudActionBtn = makeActionBtn(
+    "torah-action-niqqud",
+    "🟦 ניקוד",
+    "החלף את הטקסט המסומן בטקסט המנוקד מהפסוק שנבחר למעלה",
+    { replace: true, cite: false }
+  );
+  const sourceActionBtn = makeActionBtn(
+    "torah-action-source",
+    "🟪 מקור",
+    "השאר את הטקסט המסומן כפי שהוא והוסף מקור בכתב קטן",
+    { replace: false, cite: true }
+  );
+  const bothActionBtn = makeActionBtn(
+    "torah-action-both",
+    "🟧 ניקוד + מקור",
+    "החלף את הטקסט המסומן בטקסט המנוקד והוסף מקור בכתב קטן",
+    { replace: true, cite: true }
+  );
+  const completeActionBtn = makeActionBtn(
+    "torah-action-complete",
+    "🔄 השלמה",
+    "החלף את הטקסט המסומן בניסוח המקורי המלא של הפסוק שנבחר",
+    { replace: true, cite: false }
+  );
+
   groupVerse.appendChild(labelBook);
   groupVerse.appendChild(bookSel);
   groupVerse.appendChild(chapInput);
   groupVerse.appendChild(verseInput);
   groupVerse.appendChild(niqqudLabel);
+  groupVerse.appendChild(posSel);
   groupVerse.appendChild(fetchBtn);
+  groupVerse.appendChild(niqqudActionBtn);
+  groupVerse.appendChild(sourceActionBtn);
+  groupVerse.appendChild(bothActionBtn);
+  groupVerse.appendChild(completeActionBtn);
   groupVerse.appendChild(status);
 
   const sep1 = document.createElement("span");
