@@ -5,7 +5,7 @@
 //
 // Uses fflate for zip creation (browser-safe, ~28KB minified).
 
-import { zipSync, strToU8 } from "fflate";
+import { zipSync, unzipSync, strToU8 } from "fflate";
 
 // ──────────────────────────────────────────────────────────────────────
 // DOCX skeleton XML templates (verbatim from Python)
@@ -350,7 +350,6 @@ export async function readMetadata(fileOrBlob) {
   try {
     const ab = await fileOrBlob.arrayBuffer();
     const u8 = new Uint8Array(ab);
-    const { unzipSync } = await import("fflate");
     const z = unzipSync(u8, { filter: f => f.name === "sefaria_metadata.json" });
     if (!z["sefaria_metadata.json"]) return null;
     const text = new TextDecoder("utf-8").decode(z["sefaria_metadata.json"]);
