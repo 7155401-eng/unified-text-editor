@@ -7,7 +7,9 @@
     "dev": "vite --port 5173 --open",
     "build": "vite build",
     "preview": "vite preview --port 5173",
-    "verify:pages": "node verify-pages.mjs"
+    "verify:pages": "node verify-pages.mjs",
+    "verify:sefaria": "node verify-sefaria-tools.mjs",
+    "build:sefaria-mirror": "node scripts/build_sefaria_mirror.mjs"
   },
   "dependencies": {
     "@tiptap/core": "^3.22.5",

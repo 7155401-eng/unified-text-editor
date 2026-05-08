@@ -9,6 +9,7 @@ import { getVerseText as _getVerseTextFromMirror } from "./sefaria_local.js";
 import { searchByText as _searchByText } from "./sefaria_search.js";
 import { formatCitation as _formatCitation, formatRefLabel as _formatRefLabel } from "./sefaria_ref_format.js";
 import { showMatchDialog as _showMatchDialog } from "./sefaria_match_dialog.js";
+import { findVerseInSelection as _findVerseInSelection } from "./sefaria_locate.js";
 
 const GIMATRIA_VALUES = {
   "א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
@@ -307,52 +308,8 @@ export function wireTorahTools(paneManager) {
     localStorage.setItem("ravtext.torah.source_position", posSel.value);
   });
 
-  // Locate where the (niqqud-stripped) verseText sits inside (niqqud-stripped) selectionText.
-  // Returns { origStart, origEnd } as offsets within selectionText (preserving the
-  // original niqqud-bearing characters), or null if no usable match.
-  // Caveat: assumes the selection is within a single block — multi-paragraph
-  // selections may misalign because PM positions don't equal character offsets
-  // across block boundaries. Acceptable for Phase 1.
-  function findVerseInSelection(verseText, selectionText) {
-    // Strip cantillation marks and niqqud (U+0591-U+05BD, U+05BF-U+05C7).
-    // The Hebrew maqaf (U+05BE, "־") is converted to a space instead of stripped,
-    // because dropping it joins adjacent words ("ויהי־אור" → "ויהיאור") and breaks matching.
-    const isStrip = (ch) => /[֑-ֽֿ-ׇ]/.test(ch);
-    let normSel = "";
-    const normToOrig = [];
-    for (let i = 0; i < selectionText.length; i++) {
-      const ch = selectionText[i];
-      if (isStrip(ch)) continue;
-      const out = ch === "־" ? " " : ch;
-      normSel += out;
-      normToOrig.push(i);
-    }
-    normToOrig.push(selectionText.length);
-    let normVerse = "";
-    for (const ch of verseText) {
-      if (isStrip(ch)) continue;
-      normVerse += ch === "־" ? " " : ch;
-    }
-    if (!normSel || !normVerse) return null;
-
-    const idx = normSel.indexOf(normVerse);
-    if (idx >= 0) {
-      return { origStart: normToOrig[idx], origEnd: normToOrig[idx + normVerse.length] };
-    }
-    // Try shorter contiguous substrings (drop trailing then leading words),
-    // accepting a match of at least 3 words to avoid false positives.
-    const words = normVerse.split(/\s+/).filter(Boolean);
-    for (let n = words.length - 1; n >= 3; n--) {
-      for (let start = 0; start + n <= words.length; start++) {
-        const sub = words.slice(start, start + n).join(" ");
-        const j = normSel.indexOf(sub);
-        if (j >= 0) {
-          return { origStart: normToOrig[j], origEnd: normToOrig[j + sub.length] };
-        }
-      }
-    }
-    return null;
-  }
+  // Locator extracted to src/sefaria_locate.js — see imports at top of file.
+  const findVerseInSelection = _findVerseInSelection;
 
   function readRefInputs({ silent = false } = {}) {
     const book = bookSel.value;
