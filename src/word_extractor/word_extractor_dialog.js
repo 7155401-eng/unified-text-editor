@@ -445,7 +445,9 @@ function distributeToPanes(full, sd) {
     if (!seriesToCode[s.series]) {
       const code = String(nextCode++).padStart(2, '0');
       seriesToCode[s.series] = code;
-      seriesToSymbol[s.series] = s.marker ? `@${s.marker}` : `@${code}`;
+      // משה 2026-05-08: תמיד @<code> (01, 02...) — ה-marker הוא תיוג פנימי
+      // של רב-טקסט בתוך ה-content, לא סמל שצריך להופיע ב-text הראשי.
+      seriesToSymbol[s.series] = `@${code}`;
     }
   }
 
