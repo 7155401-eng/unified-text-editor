@@ -1,0 +1,313 @@
+/* בוט יוצר קריקטורות חרדיות — סגנון חלון בהשראת qt_main.py (Dark only).
+   Pop-up dialog overlay + inner panel. */
+
+.hc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 99000;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  font-family: 'Segoe UI', 'David', sans-serif;
+}
+
+.hc-window {
+  background: #0F1729;
+  color: #E8EAF0;
+  width: min(1180px, 96vw);
+  max-height: 96vh;
+  margin: 2vh auto;
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  direction: rtl;
+}
+
+.hc-topbar {
+  background: #1A2240;
+  height: 70px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hc-title {
+  color: #D4AF37;
+  font-size: 22px;
+  font-weight: 700;
+  flex: 1;
+  text-align: right;
+}
+.hc-topbar button {
+  background: #2A3454;
+  color: #E8EAF0;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.hc-topbar button:hover { background: #3A4474; }
+
+.hc-quota {
+  background: #1D2845;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.hc-quota.ok { color: #4ADE80; }
+.hc-quota.acc { color: #06B6D4; }
+.hc-quota.wait { color: #F87171; }
+
+.hc-body {
+  flex: 1;
+  display: flex;
+  gap: 12px;
+  padding: 14px 20px;
+  overflow: hidden;
+}
+.hc-card {
+  background: #1A2240;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+}
+.hc-controls {
+  width: 540px;
+  flex-shrink: 0;
+  gap: 8px;
+  overflow-y: auto;
+}
+.hc-gallery {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.hc-section {
+  color: #E8EAF0;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+  text-align: right;
+}
+.hc-muted { color: #8892B0; font-size: 11px; text-align: right; }
+
+.hc-controls input[type="text"],
+.hc-controls textarea,
+.hc-controls select,
+.hc-key-textarea {
+  background: #0B1430;
+  color: #E8EAF0;
+  border: 1px solid #2A3454;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.hc-controls textarea { resize: vertical; min-height: 80px; }
+
+.hc-scene-frame {
+  height: 200px;
+  border: 1px solid #2A3454;
+  border-radius: 8px;
+  background: #0B1430;
+  overflow: hidden;
+}
+.hc-scene-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0B1430;
+}
+
+.hc-row { display: flex; gap: 8px; align-items: center; }
+.hc-row > * { flex: 1; }
+.hc-row .hc-mini { flex: 0 0 50px; }
+
+.hc-button {
+  background: #2A3454;
+  color: #E8EAF0;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.hc-button:hover { background: #3A4474; }
+.hc-button:disabled { opacity: 0.6; cursor: not-allowed; }
+.hc-button.go {
+  background: #D4AF37;
+  color: #1A1A2E;
+  padding: 14px 18px;
+  font-size: 16px;
+  font-weight: 800;
+}
+.hc-button.go:hover { background: #E5C04A; }
+.hc-button.go:disabled { background: #6B5A1F; color: #A0A0A0; }
+
+.hc-checkbox {
+  color: #E8EAF0;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-align: right;
+  width: 100%;
+}
+.hc-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #06B6D4;
+}
+
+.hc-status {
+  color: #06B6D4;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 4px 0;
+  text-align: right;
+}
+.hc-status.ok { color: #4ADE80; }
+.hc-status.err { color: #F87171; }
+
+.hc-footer {
+  background: #1A2240;
+  border-top: 1px solid #2A3454;
+  padding: 8px 20px;
+  color: #94A3B8;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.hc-gallery-title {
+  color: #D4AF37;
+  font-size: 16px;
+  font-weight: 800;
+  text-align: right;
+  margin-bottom: 6px;
+}
+.hc-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  padding: 8px;
+}
+@media (max-width: 800px) {
+  .hc-gallery-grid { grid-template-columns: 1fr; }
+}
+.hc-gallery-card {
+  background: #0B1430;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hc-gallery-card img {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #000;
+}
+.hc-gallery-card .hc-name {
+  color: #8892B0;
+  font-size: 11px;
+  text-align: center;
+  word-break: break-all;
+}
+.hc-gallery-card .hc-history {
+  color: #E8EAF0;
+  background: #15203A;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  text-align: right;
+  white-space: pre-wrap;
+  min-height: 80px;
+}
+.hc-icon-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.hc-icon-btn {
+  background: #2A3454;
+  color: #E8EAF0;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.hc-icon-btn:hover { background: #3A4474; }
+
+.hc-empty {
+  color: #8892B0;
+  text-align: center;
+  padding: 40px 20px;
+  white-space: pre-wrap;
+}
+
+/* Key dialog */
+.hc-keydlg {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 99100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.hc-keydlg-inner {
+  background: #0F1729;
+  color: #E8EAF0;
+  border-radius: 12px;
+  padding: 18px;
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  direction: rtl;
+}
+.hc-keydlg-inner textarea {
+  background: #0B1430;
+  color: #E8EAF0;
+  border: 1px solid #2A3454;
+  border-radius: 8px;
+  padding: 8px;
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  min-height: 180px;
+  direction: ltr;
+  text-align: left;
+}
+.hc-keydlg-row {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+}
+
+/* Toolbar trigger button */
+#caricature-launch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
