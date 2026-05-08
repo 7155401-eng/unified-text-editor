@@ -73,12 +73,16 @@ import { installFetchTagger } from "./pwa_install_controller.js";
 import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
 import { wireSefariaTools } from "./sefaria/sefaria.js";
+import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
+import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
+import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
+import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
+import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
-import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -935,6 +939,21 @@ revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
 if (isToolPreviewAllowed("sefaria-full")) {
   setTimeout(() => wireSefariaTools(paneManager), 220);
+}
+if (isToolPreviewAllowed("text-compare-pro")) {
+  setTimeout(() => wireTextComparePro(paneManager), 222);
+}
+if (isToolPreviewAllowed("torah-transcription")) {
+  setTimeout(() => wireTorahTranscription(paneManager), 224);
+}
+if (isToolPreviewAllowed("torah-nikud")) {
+  setTimeout(() => wireTorahNikud(paneManager), 226);
+}
+if (isToolPreviewAllowed("nikud-merger")) {
+  setTimeout(() => wireNikudMergerButton(paneManager), 228);
+}
+if (isToolPreviewAllowed("comparator-tool")) {
+  setTimeout(() => wireComparatorButton(paneManager), 230);
 }
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
