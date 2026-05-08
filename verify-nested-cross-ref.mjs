@@ -164,6 +164,43 @@ function makePaneManager(panes) {
     JSON.stringify(stream1Note?.links));
 }
 
+// --- 4b. Resolved cross-stream marker is STRIPPED from displayed text ---
+{
+  // Per Moshe: "הסימונים @02 מופיעים כרגע באופן גולמי בתוך זרם 01 במקום
+  // לא להופיע" — once a target is found, the marker should not be visible
+  // in the rendered apparatus, just like main-body markers don't appear.
+  const pm = makePaneManager([
+    makePane(null, "@01 outer @02 anchor"),
+    makePane("01", "@01 outer with @02 in middle and tail"),
+    makePane("02", "@02 stream-2-content"),
+  ]);
+  const r = paneManagerToPackerContent(pm);
+  const stream1Note = r[0].notes.find((n) => n.stream === "01");
+  ok("stream-1 text has cross-stream marker stripped",
+    stream1Note && !stream1Note.text.includes("@02"),
+    `stream-1 text: '${stream1Note?.text}'`);
+  ok("surrounding words stay intact",
+    stream1Note?.text?.includes("with") && stream1Note?.text?.includes("middle") && stream1Note?.text?.includes("tail"),
+    `stream-1 text: '${stream1Note?.text}'`);
+  ok("link still recorded after stripping",
+    stream1Note?.links?.[0]?.num === 1, JSON.stringify(stream1Note?.links));
+}
+
+// --- 4c. UNMATCHED cross-stream marker is kept literal ---
+{
+  // No stream-2 note anchored after parent → no target → marker stays.
+  const pm = makePaneManager([
+    makePane(null, "@01 outer-only"),
+    makePane("01", "@01 has @02 nested but no target"),
+    makePane("02", "@02 unreachable"),
+  ]);
+  const r = paneManagerToPackerContent(pm);
+  const stream1Note = r[0].notes.find((n) => n.stream === "01");
+  ok("unmatched @02 stays literal",
+    stream1Note?.text?.includes("@02"),
+    `stream-1 text: '${stream1Note?.text}'`);
+}
+
 // --- 5. Self-stream marker inside a note is left alone ---
 {
   // Stream 1 pane: "@01 outer talks about @01 someone-else"
