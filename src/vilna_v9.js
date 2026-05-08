@@ -587,32 +587,52 @@ function buildPagePlan(pageContent, config) {
   //
   // משה 2026-05-08: pass1.endY נדרש להיות מוגבל ל-pageBottomY כדי שהשורות
   // האחרונות לא ידחסו מעבר לדף.
-  const rightOtherEndY = pass1Left
-    ? Math.min(pass1Left.endY, pageBottomY)
-    : mainTopY;
-  const leftOtherEndY = pass1Right
-    ? Math.min(pass1Right.endY, pageBottomY)
-    : mainTopY;
+  //
+  // משה 2026-05-08 (תיקון איטרציה): ה-otherSideEndY מבוסס על pass1, אבל
+  // pass1 חישב את הצדדים עם naive main bottom שונה מהאמיתי. אחרי שpass2
+  // מחשב צד אחד עם mainBottomY האמיתי, ה-endY האמיתי שלו עשוי להיות שונה
+  // מ-pass1. כדי שגם הצד השני יקבל otherSideEndY מדויק, אנחנו רצים את
+  // pass2 ב-2 איטרציות:
+  //   1. pass2 ימני עם pass1Left.endY (קירוב ראשון)
+  //   2. pass2 שמאלי עם pass2Right.endY (יותר מדויק)
+  //   3. pass2 ימני שוב עם pass2Left.endY (סופי, יציב)
 
+  const cap = (v) => Math.min(v, pageBottomY);
+
+  // איטרציה 1: pass2 ימני עם pass1 שמאלי
+  let pass2Right = null;
   if (pageContent.rightStream) {
-    const box = buildSideStream(pageContent.rightStream, 'right', {
+    pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
-      otherSideEndY: rightOtherEndY,
+      otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
     });
-    if (box) {
-      result.streamBoxes.push(box);
-      if (box.overflowText) result.overflow.streams[box.id] = box.overflowText;
-    }
   }
+  // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
+  let pass2Left = null;
   if (pageContent.leftStream) {
-    const box = buildSideStream(pageContent.leftStream, 'left', {
+    const otherEnd = pass2Right ? cap(pass2Right.endY)
+                   : pass1Right ? cap(pass1Right.endY)
+                   : mainTopY;
+    pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
-      otherSideEndY: leftOtherEndY,
+      otherSideEndY: otherEnd,
     });
-    if (box) {
-      result.streamBoxes.push(box);
-      if (box.overflowText) result.overflow.streams[box.id] = box.overflowText;
-    }
+  }
+  // איטרציה 3: pass2 ימני עם pass2 שמאלי (סופי)
+  if (pageContent.rightStream && pass2Left) {
+    pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+      mainBottomY,
+      otherSideEndY: cap(pass2Left.endY),
+    });
+  }
+
+  if (pass2Right) {
+    result.streamBoxes.push(pass2Right);
+    if (pass2Right.overflowText) result.overflow.streams[pass2Right.id] = pass2Right.overflowText;
+  }
+  if (pass2Left) {
+    result.streamBoxes.push(pass2Left);
+    if (pass2Left.overflowText) result.overflow.streams[pass2Left.id] = pass2Left.overflowText;
   }
 
   // 5. footers — חתוך לפי גבולות הדף.
