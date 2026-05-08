@@ -1640,6 +1640,69 @@ document.addEventListener("click", async (ev) => {
     }
     case "round-trip":     runRoundTripTest(); break;
 
+    case "reset-system-state": {
+      const ok = confirm(
+        "אפס את כל מצב המערכת?\n\n" +
+        "פעולה זו תנקה את כל ההגדרות, המטמון, העוגיות, והקבצים השמורים בדפדפן, ותוציא אותך מהחשבון.\n\n" +
+        "המסמך הפתוח עכשיו לא יישמר אוטומטית. שמור ל-Word לפני שתמשיך אם יש לך תוכן חשוב."
+      );
+      if (!ok) break;
+      (async () => {
+        try {
+          try { paneManager.clearStorage(); } catch (e) { /* תמשיך גם אם נכשל */ }
+          try { localStorage.clear(); } catch (e) {}
+          try { sessionStorage.clear(); } catch (e) {}
+          try {
+            const cookies = document.cookie ? document.cookie.split(";") : [];
+            const host = location.hostname;
+            const hostParts = host.split(".");
+            const domains = new Set([host, "." + host]);
+            for (let i = 1; i < hostParts.length; i++) {
+              const d = hostParts.slice(i).join(".");
+              if (d) { domains.add(d); domains.add("." + d); }
+            }
+            const paths = ["/", location.pathname];
+            for (const raw of cookies) {
+              const eq = raw.indexOf("=");
+              const name = (eq > -1 ? raw.slice(0, eq) : raw).trim();
+              if (!name) continue;
+              for (const p of paths) {
+                document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${p}`;
+                for (const d of domains) {
+                  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${p}; domain=${d}`;
+                }
+              }
+            }
+          } catch (e) {}
+          try {
+            if (window.caches && caches.keys) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map((k) => caches.delete(k)));
+            }
+          } catch (e) {}
+          try {
+            if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map((r) => r.unregister()));
+            }
+          } catch (e) {}
+          try {
+            if (indexedDB && indexedDB.databases) {
+              const dbs = await indexedDB.databases();
+              await Promise.all((dbs || []).map((db) => new Promise((res) => {
+                if (!db || !db.name) { res(); return; }
+                const req = indexedDB.deleteDatabase(db.name);
+                req.onsuccess = req.onerror = req.onblocked = () => res();
+              })));
+            }
+          } catch (e) {}
+        } finally {
+          window.location.replace("/api/auth/logout");
+        }
+      })();
+      break;
+    }
+
     // סימני זרם
     case "stream-01": case "stream-02": case "stream-03": case "stream-04":
     case "stream-05": case "stream-06": case "stream-07": case "stream-08": {
