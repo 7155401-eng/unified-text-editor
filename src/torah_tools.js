@@ -37,6 +37,25 @@ const TANACH_BOOKS = [
   "דניאל", "עזרא", "נחמיה", "דברי הימים א", "דברי הימים ב",
 ];
 
+// Sefaria's /api/texts/ accepts only English book refs.
+// Hebrew refs return 500 or strip the chapter/verse silently.
+const SEFARIA_REF = {
+  "בראשית": "Genesis", "שמות": "Exodus", "ויקרא": "Leviticus",
+  "במדבר": "Numbers", "דברים": "Deuteronomy",
+  "יהושע": "Joshua", "שופטים": "Judges",
+  "שמואל א": "I Samuel", "שמואל ב": "II Samuel",
+  "מלכים א": "I Kings", "מלכים ב": "II Kings",
+  "ישעיהו": "Isaiah", "ירמיהו": "Jeremiah", "יחזקאל": "Ezekiel",
+  "הושע": "Hosea", "יואל": "Joel", "עמוס": "Amos", "עובדיה": "Obadiah",
+  "יונה": "Jonah", "מיכה": "Micah", "נחום": "Nahum", "חבקוק": "Habakkuk",
+  "צפניה": "Zephaniah", "חגי": "Haggai", "זכריה": "Zechariah", "מלאכי": "Malachi",
+  "תהילים": "Psalms", "משלי": "Proverbs", "איוב": "Job",
+  "שיר השירים": "Song of Songs", "רות": "Ruth", "איכה": "Lamentations",
+  "קהלת": "Ecclesiastes", "אסתר": "Esther",
+  "דניאל": "Daniel", "עזרא": "Ezra", "נחמיה": "Nehemiah",
+  "דברי הימים א": "I Chronicles", "דברי הימים ב": "II Chronicles",
+};
+
 const HEB_ONES = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
 const HEB_TENS = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"];
 
@@ -100,7 +119,9 @@ function todayHebrewDate() {
 }
 
 async function fetchSefariaVerse(book, chap, verse) {
-  const ref = `${book} ${chap}.${verse}`;
+  const engBook = SEFARIA_REF[book];
+  if (!engBook) throw new Error(`ספר לא נתמך: ${book}`);
+  const ref = `${engBook} ${chap}.${verse}`;
   const url = `https://www.sefaria.org/api/texts/${encodeURIComponent(ref)}?context=0&commentary=0&pad=0`;
   const r = await fetch(url, { headers: { Accept: "application/json" } });
   if (!r.ok) throw new Error(`Sefaria HTTP ${r.status}`);
