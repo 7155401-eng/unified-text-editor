@@ -354,14 +354,14 @@ export function paneManagerToPackerContent(paneManager) {
   const result = [];
   const noteCounters = {};
 
+  // Pass 1 — walk all main-body markers in document order. Each one
+  // consumes the next available note from its stream's pane pool. Nested
+  // expansion does NOT consume here — that's Pass 2.
   for (const para of mainParagraphs) {
     const { paragraphText, markers, blockType, headingLevel } = para;
     let mainTextNet = "";
+    const notes = [];
     let prevEnd = 0;
-
-    // Pass 1 — main-body markers consume stream-pane pools FIRST (primary
-    // priority). Their notes will keep their natural document-order anchors.
-    const mainRefs = []; // { stream, text, anchor }
     for (const marker of markers) {
       mainTextNet += paragraphText.substring(prevEnd, marker.atInPara);
       const anchor = mainTextNet.length;
@@ -370,7 +370,7 @@ export function paneManagerToPackerContent(paneManager) {
       const noteText = streamNotes[code] && streamNotes[code][idx];
       if (noteText !== undefined) {
         noteCounters[code] = idx + 1;
-        mainRefs.push({ stream: code, text: noteText, anchor });
+        notes.push({ stream: code, text: noteText, anchor });
       } else {
         mainTextNet += marker.sym;
       }
@@ -378,32 +378,6 @@ export function paneManagerToPackerContent(paneManager) {
     }
     mainTextNet += paragraphText.substring(prevEnd);
     mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
-
-    // Pass 2 — when the nested-notes feature is on, expand each main ref's
-    // note body looking for embedded markers (e.g. @02 typed inside stream
-    // 01's note text). Pulled inner notes consume from streamNotes AFTER
-    // Pass 1, so a stream-2 note pulled by main-body @02 stays at its
-    // natural pane index, and the nested ref pulls the next available
-    // pane index. Per Moshe's spec: "the inner note is treated as linked
-    // to the same word in the main document as its parent, with secondary
-    // priority after the parent's note." So the inner appears in its
-    // NATIVE stream's apparatus block (not as inline children of the
-    // outer), anchored at the parent's main-body position.
-    const collected = []; // { stream, text, anchor, priority }
-    for (const ref of mainRefs) {
-      if (isNestedNotesEnabled()) {
-        const inner = expandNestedInNote(ref.text, streamNotes, noteCounters, ref.stream, paneSymbols, paneSymToCode);
-        collected.push({ stream: ref.stream, text: inner.strippedText, anchor: ref.anchor, priority: 0 });
-        collectChildrenAsSiblings(inner.children, ref.anchor, collected);
-      } else {
-        collected.push({ stream: ref.stream, text: ref.text, anchor: ref.anchor, priority: 0 });
-      }
-    }
-    // Stable sort: by anchor, then primary (priority 0) before secondary
-    // (priority 1) when anchors tie. Array.sort in V8/SpiderMonkey is stable.
-    collected.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
-    const notes = collected.map((c) => ({ stream: c.stream, text: c.text, anchor: c.anchor }));
-
     if (mainTextNet || notes.length) {
       result.push({
         mainText: mainTextNet,
@@ -414,11 +388,50 @@ export function paneManagerToPackerContent(paneManager) {
     }
   }
 
-  // Walk the notes tree (parents + children + ...) in document order to
-  // assign per-stream display numbers. Replaces the earlier flat counter loop.
+  // Assign per-stream display numbers in document order.
   const displayCounters = {};
   for (const para of result) {
     numberNotesTree(para.notes, displayCounters);
+  }
+
+  // Pass 2 — when the nested-notes feature is on, scan each note's text
+  // for embedded `@XX` markers and resolve them to a CROSS-REFERENCE: the
+  // next note in stream X whose anchor is AFTER the parent's anchor in
+  // document order. Per Moshe's spec:
+  //   "להערה בזרם 2 הכי קרובה למסמך אחרי הקישור של הערה 1 זרם 1"
+  // Stream 2's apparatus is NOT consumed by these references — it stays
+  // entirely driven by main-body @02 markers. The nested marker becomes a
+  // pointer that the renderer/bubble can use to surface the linked note.
+  if (isNestedNotesEnabled() && paneSymbols.length > 0) {
+    // Flat ordered list of every note across all paragraphs (already in
+    // document order because we built result paragraph-by-paragraph).
+    const flat = [];
+    for (let i = 0; i < result.length; i++) {
+      for (const note of result[i].notes) {
+        flat.push({ note, paraIdx: i });
+      }
+    }
+    const symsSorted = [...paneSymbols].sort((a, b) => b.length - a.length);
+    const findRe = new RegExp(`(${symsSorted.map(escapeRegex).join('|')})`, 'g');
+    for (let i = 0; i < flat.length; i++) {
+      const { note: ref } = flat[i];
+      findRe.lastIndex = 0;
+      let m;
+      let searchAfter = i;
+      while ((m = findRe.exec(ref.text)) !== null) {
+        const code = paneSymToCode[m[0]];
+        if (!code || code === ref.stream) continue;
+        let target = null;
+        for (let j = searchAfter + 1; j < flat.length; j++) {
+          if (flat[j].note.stream === code) { target = flat[j]; break; }
+        }
+        if (target) {
+          ref.links = ref.links || [];
+          ref.links.push({ stream: code, num: target.note.num });
+          searchAfter = flat.indexOf(target);
+        }
+      }
+    }
   }
 
   _packerContentCache = { sig, value: result };
