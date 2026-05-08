@@ -308,6 +308,13 @@ function buildPagePlan(pageContent, config) {
   const mainGap = (cfg.mainGap !== null && cfg.mainGap !== undefined)
     ? cfg.mainGap
     : Math.max(4, Math.floor(innerWidth * 0.015));
+  // משה 2026-05-08: מרווח ~1% בין שני זרמי צד שעומדים זה ליד זה (כתר, או strip 3
+  // במצב 5 שבו שני הצדדים ממשיכים מתחת לראשי). במצב 4 (אחד שורד לרוחב מלא)
+  // אין מרווח כי אין שני זרמים סמוכים.
+  const sideGap = (cfg.sideGap !== null && cfg.sideGap !== undefined)
+    ? cfg.sideGap
+    : Math.max(2, Math.floor(innerWidth * 0.01));
+  const halfMinusGap = Math.max(0, halfWidth - Math.ceil(sideGap / 2));
 
   const mainMetrics = new VilnaMetrics({
     fontFamily: cfg.mainFontFamily,
@@ -394,11 +401,13 @@ function buildPagePlan(pageContent, config) {
     const strips = [];
 
     if (crownHeight > 0 && mainTopY > sideTopY) {
+      // משה 2026-05-08: מרווח sideGap בין שני הכתרים. הימני זז ימינה,
+      // השמאלי מצטמצם מקצהו הפנימי.
       strips.push({
         y_start: sideTopY,
         y_end: Math.min(mainTopY, pageBottomY),
-        width: halfWidth,
-        x: side === 'right' ? halfWidth : 0,
+        width: halfMinusGap,
+        x: side === 'right' ? halfWidth + sideGap - Math.ceil(sideGap / 2) : 0,
       });
     }
 
@@ -422,7 +431,8 @@ function buildPagePlan(pageContent, config) {
     }
 
     // Strip 3: רק אם יש מקום מתחת לראשי בתוך הדף.
-    // אם הצד השני נגמר ב-strips 1+2 → רוחב מלא; אחרת halfWidth.
+    // אם הצד השני נגמר ב-strips 1+2 → רוחב מלא (אין מרווח, אין שני זרמים);
+    // אחרת halfWidth − מרווח 1% בין השניים.
     if (effectiveMainBottomY < pageBottomY) {
       if (otherSideEnded) {
         strips.push({
@@ -435,8 +445,8 @@ function buildPagePlan(pageContent, config) {
         strips.push({
           y_start: effectiveMainBottomY,
           y_end: pageBottomY,
-          width: halfWidth,
-          x: side === 'right' ? halfWidth : 0,
+          width: halfMinusGap,
+          x: side === 'right' ? halfWidth + sideGap - Math.ceil(sideGap / 2) : 0,
         });
       }
     }
