@@ -304,6 +304,14 @@ export async function buildPage(container, pageContent, userCfg) {
       bottom: mainRect.bottom - pageRect.top,
       height: mainRect.height,
     };
+
+    // משה 2026-05-08: cap לגובה המקפיץ. אם הראשי גדול יותר ממה שנכנס בעמוד,
+    // ה-spacers שמועתקים מגובהו יוצרים פס ענק שמזיז את הראשי לתחתית הדף.
+    // התיקון: השתמש בגובה מינימלי בין הטבעי לבין הזמין בעמוד עבור ה-spacers.
+    if (cfg.maxMainHeight && mainBox.height > cfg.maxMainHeight) {
+      mainBox.height = cfg.maxMainHeight;
+      mainBox.bottom = mainBox.top + cfg.maxMainHeight;
+    }
   }
 
   let guestEl = null;
