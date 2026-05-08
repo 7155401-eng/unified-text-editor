@@ -300,6 +300,22 @@ export function setupSettingsPane() {
     });
   }
 
+  // צוות האתר 2026-05-08: V8 hybrid beta — נראה רק למנהלים.
+  const adminBetaSection = document.getElementById("settings-section-admin-beta");
+  const v8Toggle = document.getElementById("settings-vilna-v8-beta");
+  const auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
+  if (adminBetaSection && v8Toggle && auth.admin) {
+    adminBetaSection.hidden = false;
+    const saved = localStorage.getItem("ravtext.vilnaV8Beta") === "1";
+    v8Toggle.checked = saved;
+    v8Toggle.addEventListener("change", () => {
+      localStorage.setItem("ravtext.vilnaV8Beta", v8Toggle.checked ? "1" : "0");
+      if (typeof window.__ravtextRerender === "function") {
+        window.__ravtextRerender();
+      }
+    });
+  }
+
   // Save log toggle
   const saveLog = document.getElementById("settings-save-log");
   const logControls = document.getElementById("settings-log-controls");
