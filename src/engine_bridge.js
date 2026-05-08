@@ -402,6 +402,12 @@ export function paneManagerToPackerContent(paneManager) {
   // Stream 2's apparatus is NOT consumed by these references — it stays
   // entirely driven by main-body @02 markers. The nested marker becomes a
   // pointer that the renderer/bubble can use to surface the linked note.
+  //
+  // The cross-stream `@XX` marker is also STRIPPED from the displayed
+  // note text once a target is found, matching the main-body convention
+  // where references-to-footnotes don't appear in the rendered output.
+  // (Self-stream markers and unmatched markers are kept literal — same
+  // as main body when its stream's pool is exhausted.)
   if (isNestedNotesEnabled() && paneSymbols.length > 0) {
     // Flat ordered list of every note across all paragraphs (already in
     // document order because we built result paragraph-by-paragraph).
@@ -418,9 +424,21 @@ export function paneManagerToPackerContent(paneManager) {
       findRe.lastIndex = 0;
       let m;
       let searchAfter = i;
+      let stripped = "";
+      let prevEnd = 0;
+      let didStrip = false;
       while ((m = findRe.exec(ref.text)) !== null) {
         const code = paneSymToCode[m[0]];
-        if (!code || code === ref.stream) continue;
+        // Always copy the gap before this marker.
+        stripped += ref.text.substring(prevEnd, m.index);
+        prevEnd = m.index + m[0].length;
+        if (!code || code === ref.stream) {
+          // Self-stream or unknown — keep the marker literal in the text.
+          stripped += m[0];
+          continue;
+        }
+        // Cross-stream marker: try to find the next target ref AFTER the
+        // last one we used (or after this ref's own position to start).
         let target = null;
         for (let j = searchAfter + 1; j < flat.length; j++) {
           if (flat[j].note.stream === code) { target = flat[j]; break; }
@@ -429,7 +447,21 @@ export function paneManagerToPackerContent(paneManager) {
           ref.links = ref.links || [];
           ref.links.push({ stream: code, num: target.note.num });
           searchAfter = flat.indexOf(target);
+          // Marker stripped (don't append m[0]) — invisible in apparatus,
+          // matching main-body behavior. Future: renderer can re-emit a
+          // small visible indicator from the `links` metadata.
+          didStrip = true;
+        } else {
+          // No target available — keep the marker literal so the user
+          // can see that they wrote a reference that didn't resolve.
+          stripped += m[0];
         }
+      }
+      if (didStrip) {
+        stripped += ref.text.substring(prevEnd);
+        // Collapse double spaces left by stripped markers, like the
+        // main body does for its own marker stripping.
+        ref.text = stripped.replace(/  +/g, ' ').trim();
       }
     }
   }
