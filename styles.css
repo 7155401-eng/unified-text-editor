@@ -3284,6 +3284,49 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   font-weight: 600;
 }
 
+/* Beginner hint shown above the panes container when 2+ stream panes exist.
+   Discoverability for the nested-notes feature. Dismissible. */
+.nested-notes-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 12px 4px;
+  padding: 10px 12px;
+  background: #fff8e1;
+  border: 1px solid #ffd54f;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #5d4037;
+}
+.nested-notes-hint .nnh-icon {
+  font-size: 16px;
+  line-height: 1.2;
+}
+.nested-notes-hint .nnh-text {
+  flex: 1;
+}
+.nested-notes-hint .nnh-text code {
+  background: #fff3c4;
+  border: 1px solid #ffe082;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: "Courier New", monospace;
+  font-size: 0.95em;
+}
+.nested-notes-hint .nnh-dismiss {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: #8d6e63;
+  padding: 0 4px;
+  line-height: 1;
+}
+.nested-notes-hint .nnh-dismiss:hover {
+  color: #5d4037;
+}
+
 .stream-balanced {
   column-count: auto !important;
   column-gap: normal !important;

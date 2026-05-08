@@ -947,12 +947,38 @@ paneManager.on("change", () => {
   scheduleDiagnosticsRefresh();
   refreshStreamSettingsPanel();
   if (shouldLiveRenderNow()) rerenderPages();
+  updateNestedNotesHint();
 });
 
 paneManager.on("focus", () => {
   scheduleDiagnosticsRefresh();
   refreshStreamSettingsPanel();
 });
+
+// Beginner hint for nested footnotes — shown the first time a user has 2+
+// stream panes, hidden on click of the × button (preference stored locally).
+const NESTED_HINT_DISMISSED_KEY = "ravtext.nestedNotesHint.dismissed";
+function updateNestedNotesHint() {
+  const el = document.getElementById("nested-notes-hint");
+  if (!el) return;
+  if (localStorage.getItem(NESTED_HINT_DISMISSED_KEY) === "1") {
+    el.hidden = true;
+    return;
+  }
+  const streamPanes = paneManager.panes.filter((p) => p.streamCode);
+  el.hidden = streamPanes.length < 2;
+}
+{
+  const dismissBtn = document.getElementById("nested-notes-hint-dismiss");
+  if (dismissBtn) {
+    dismissBtn.addEventListener("click", () => {
+      try { localStorage.setItem(NESTED_HINT_DISMISSED_KEY, "1"); } catch (_) {}
+      const el = document.getElementById("nested-notes-hint");
+      if (el) el.hidden = true;
+    });
+  }
+  updateNestedNotesHint();
+}
 
 window.addEventListener("ravtext:engine-rendered", (ev) => {
   refreshStreamSettingsPanel(ev.detail?.pages || []);

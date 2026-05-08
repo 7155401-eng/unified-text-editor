@@ -281,7 +281,7 @@
           <button data-cmd="sync-toggle" id="sync-btn" title="סנכרון גלילה בין חלוניות" data-i18n="sync">🔗 גלילה</button>
           <button data-cmd="pane-layout-toggle" id="pane-layout-btn" title="החלף בין זרמים זה לצד זה לבין זרמים זה תחת זה">▥ זרמים לרוחב</button>
           <button data-cmd="lines-toggle" title="מצב שורות — שורה לכל הערה" data-i18n="lines">☷ שורות</button>
-          <span class="pane-status">@01 בכל מקום מזוהה אוטומטית • Tab בתוך @NN לקפיצה</span>
+          <span class="pane-status">@01 בכל מקום מזוהה אוטומטית • Tab בתוך @NN לקפיצה • הערה על הערה: @02 בתוך הערת @01</span>
           <span style="flex:1"></span>
           <button data-cmd="pane-clear-storage" title="אפס מצב חלוניות" data-i18n="reset">↺ איפוס</button>
         </div>
@@ -615,6 +615,17 @@
         <!-- v33: settings panel — appears when "הגדרות" ribbon tab is active.
              Placed BEFORE panes so it shows at the top of the editor area when active. -->
         <div id="settings-panel-wrap" class="settings-panel-wrap ribbon-panel" data-ribbon-tab="settings"></div>
+        <!-- Nested-notes hint — shown when 2+ stream panes exist so beginners
+             discover the "הערה על הערה" syntax. Dismissible; preference saved. -->
+        <div id="nested-notes-hint" class="nested-notes-hint" dir="rtl" hidden>
+          <span class="nnh-icon">💡</span>
+          <span class="nnh-text">
+            רוצה שהערה תכיל הערה משלה? הקלד <code>@02</code> בתוך טקסט הערה של זרם 01,
+            וכתוב את תוכן ההערה הפנימית בחלונית של זרם 02. ההערה הפנימית תופיע בתוך
+            הערה החיצונית, מובלטת בנטוי וקטנה יותר.
+          </span>
+          <button type="button" id="nested-notes-hint-dismiss" class="nnh-dismiss" title="הבנתי, לא להציג שוב">×</button>
+        </div>
         <div id="panes-container" class="panes-container" dir="rtl"></div>
         <!-- v33: settings content lives in #settings-panel; moved into wrap by JS -->
         <div id="settings-panel" class="settings-panel ribbon-panel" data-ribbon-tab="settings" dir="rtl">
