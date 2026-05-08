@@ -39,6 +39,7 @@ import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
 import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
 import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
 import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
+import { wireSefariaTools } from "./sefaria/sefaria.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
@@ -906,6 +907,7 @@ setTimeout(() => wireTorahTranscription(paneManager), 222);
 setTimeout(() => wireTorahNikud(paneManager), 224);
 setTimeout(() => wireNikudMergerButton(paneManager), 226);
 setTimeout(() => wireComparatorButton(paneManager), 220);
+setTimeout(() => wireSefariaTools(paneManager), 220);
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
