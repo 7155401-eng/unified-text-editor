@@ -9,7 +9,7 @@ import {
   extract_and_process, count_notes_per_stream,
   extract_doc_titles, extract_headers_footers,
   find_sections_in_docx, find_all_styles_in_docx,
-  RichText, CharToken,
+  RichText, CharToken, richSlice,
 } from "./word_extractor_engine.js";
 import {
   buildDefaultStreamMapping, streamsToSd, findDuplicateSeries,
@@ -349,15 +349,14 @@ async function onConfirm() {
   }
 }
 
-// המרת RichText (פלט extract_and_process) לטקסט/HTML פר-זרם.
-// כל זרם מקבל את כל הטוקנים שמופיעים בו (מזוהים על ידי הסמן \footnoteX{...}
-// שבונה _mk_fn). אחרי החילוץ, גוף הטקסט הראשי (בלי הקריאות לזרמים)
-// נשאר ב-pane הראשי.
+// משה 2026-05-08: distributeToPanes עוברת לפלט HTML עם עיצוב אמיתי.
+// במקום להחזיר LaTeX גולמי לעורך, חותכים את ה-RichText שב-extract_and_process
+// החזיר, שולפים את \footnoteX{...} ו-\ledXnote{...} כ-RichText נפרדים,
+// וממירים כל אחד ל-HTML עם <strong>/<em>/<u>/color/size לעיצוב אמיתי בעורך.
 function distributeToPanes(full, sd) {
   const text = full.get_text();
   const seriesToCode = {};
   const seriesToSymbol = {};
-  // אות → קוד תלת-ספרתי תואם stream_mark (פשוט A=01, B=02 וכו׳, אך אפשר גם להשתמש ב-marker אם קיים)
   let nextCode = 1;
   for (const sid of Object.keys(sd)) {
     const s = sd[sid];
@@ -369,51 +368,71 @@ function distributeToPanes(full, sd) {
     }
   }
 
-  // נחפש את כל המופעים של \footnoteX{...} ב-text כדי לחלץ אותם לזרם המתאים.
-  // הטקסט מכיל גם raw_latex tokens (כולל פקודות LaTeX) — לכן זה יהיה verbatim
-  // למה ש-_mk_fn יצר.
-  const streamBuckets = {}; // series → [{text}]
-  const out = [];
+  // streamBuckets: series → [RichText, RichText, ...] (כל הערה כ-RichText נפרד)
+  const streamBuckets = {};
+  // mainSegments: רצף של מקטעים שמרכיבים את הגוף הראשי. כל מקטע הוא או
+  //   { kind:'rich', start, end } — חתיכת RichText מקורית
+  //   או { kind:'symbol', symbol } — סמל זרם להחלפה (@01 וכו')
+  const mainSegments = [];
+
+  function findBracketEnd(t, openIdx) {
+    // openIdx מצביע על '{'. מחזיר אינדקס של ה-'}' התואם.
+    let depth = 1;
+    let j = openIdx + 1;
+    while (j < t.length && depth > 0) {
+      if (t[j] === '\\' && j + 1 < t.length) { j += 2; continue; }
+      if (t[j] === '{') depth++;
+      else if (t[j] === '}') { depth--; if (depth === 0) return j; }
+      j++;
+    }
+    return -1;
+  }
 
   let i = 0;
+  let lastFlush = 0;
   while (i < text.length) {
+    // \footnoteA{...}
     if (text[i] === '\\' && text.startsWith('\\footnote', i)) {
       const after = i + '\\footnote'.length;
       const seriesChar = text[after];
       if (/[A-L]/.test(seriesChar) && text[after + 1] === '{') {
-        let depth = 1;
-        let j = after + 2;
-        while (j < text.length && depth > 0) {
-          if (text[j] === '\\' && j + 1 < text.length) { j += 2; continue; }
-          if (text[j] === '{') depth++;
-          else if (text[j] === '}') { depth--; if (depth === 0) break; }
-          j++;
+        const innerStart = after + 2;
+        const closeIdx = findBracketEnd(text, after + 1);
+        if (closeIdx > 0) {
+          if (i > lastFlush) mainSegments.push({ kind: 'rich', start: lastFlush, end: i });
+          const noteRich = richSlice(full, innerStart, closeIdx);
+          if (!streamBuckets[seriesChar]) streamBuckets[seriesChar] = [];
+          streamBuckets[seriesChar].push(noteRich);
+          const sym = seriesToSymbol[seriesChar] || `@${seriesChar}`;
+          mainSegments.push({ kind: 'symbol', symbol: sym });
+          i = closeIdx + 1;
+          lastFlush = i;
+          continue;
         }
-        const inner = text.slice(after + 2, j);
-        if (!streamBuckets[seriesChar]) streamBuckets[seriesChar] = [];
-        streamBuckets[seriesChar].push(inner);
-        // ב-main pane מציבים את הסמל המתאים
-        const sym = seriesToSymbol[seriesChar] || `@${seriesChar}`;
-        out.push(sym);
-        i = j + 1;
-        continue;
       }
     }
-    out.push(text[i]);
+    // \ledrightnote / \ledleftnote / \ledinnernote / \ledouternote{...}
+    if (text[i] === '\\') {
+      const sideMatch = text.slice(i).match(/^\\(ledrightnote|ledleftnote|ledinnernote|ledouternote)\{/);
+      if (sideMatch) {
+        const openIdx = i + sideMatch[0].length - 1;
+        const closeIdx = findBracketEnd(text, openIdx);
+        if (closeIdx > 0) {
+          if (i > lastFlush) mainSegments.push({ kind: 'rich', start: lastFlush, end: i });
+          // הערות צד — מסירים מהראשי, ולא משייכים ל-bucket (אין series ידוע)
+          i = closeIdx + 1;
+          lastFlush = i;
+          continue;
+        }
+      }
+    }
     i++;
   }
-  // טיפול גם ב-\ledrightnote / \ledleftnote / \ledinnernote / \ledouternote
-  // הם הערות-צד; נכניסם לזרם המתאים לפי series. ה-port הפשוט: נסיר אותם מ-out
-  // ונכניסם ל-bucket. כיוון שהקוד מעלה כבר חילץ \footnoteX, נריץ scan נוסף
-  // על מה שנשאר.
-  const sidenoteRe = /\\(?:ledrightnote|ledleftnote|ledinnernote|ledouternote)\{[\s\S]*?\}/g;
-  const mainText = out.join('').replace(sidenoteRe, '');
+  if (text.length > lastFlush) mainSegments.push({ kind: 'rich', start: lastFlush, end: text.length });
 
-  // יצירת panes
   if (!_state.paneManagerRef) return;
   const pm = _state.paneManagerRef;
 
-  // נקה pane ראשי
   pm.load({
     version: 1,
     activeId: "word-main",
@@ -425,43 +444,104 @@ function distributeToPanes(full, sd) {
       content: { type: "doc", content: [{ type: "paragraph" }] },
     }],
   });
+
   const mainPane = pm.getMainPane();
   if (mainPane && mainPane.editor) {
-    const mainHtml = textToParagraphsHtml(mainText);
+    const mainHtml = mainSegmentsToHtml(mainSegments, full);
     mainPane.editor.commands.setContent(mainHtml);
   }
 
-  // עבור כל series — חלונית חדשה
   for (const series of Object.keys(streamBuckets)) {
     const code = seriesToCode[series] || series;
     const symbol = seriesToSymbol[series] || `@${code}`;
-    const noteTexts = streamBuckets[series];
+    const noteRichArr = streamBuckets[series];
     let pane = pm.panes.find(p => p.streamCode === code);
     if (!pane) {
-      pane = pm.addPane({
-        streamCode: code,
-        symbol,
-        label: `זרם ${series}`,
-      });
+      pane = pm.addPane({ streamCode: code, symbol, label: `זרם ${series}` });
     }
     if (pane && pane.editor) {
       pane.symbol = symbol;
       if (pane.editor.storage && pane.editor.storage.streamMark) {
         pane.editor.storage.streamMark.symbol = symbol;
       }
-      const html = noteTexts.map(n => `<p>${escapeHtml(n.replace(/\\\w+\b/g, '').replace(/[{}]/g, ''))}</p>`).join('');
-      pane.editor.commands.setContent(html || '<p></p>');
+      const html = noteRichArr.map(r => richToParagraphsHtml(r)).join('') || '<p></p>';
+      pane.editor.commands.setContent(html);
     }
   }
 }
 
-function textToParagraphsHtml(s) {
-  if (!s) return '<p></p>';
-  // ננקה מקרי \par / \\newline ל-<br>
-  const cleaned = s.replace(/\\newline\{\}/g, '\n').replace(/\\par\b/g, '\n');
-  const lines = cleaned.split(/\n+/).map(l => l.trim()).filter(Boolean);
-  if (!lines.length) return '<p></p>';
-  return lines.map(l => `<p>${escapeHtml(l)}</p>`).join('');
+// מצרף mainSegments ל-HTML עם פסקאות (\par) ועיצוב אמיתי.
+function mainSegmentsToHtml(segments, full) {
+  // קודם נבנה רצף כולל של HTML inline (\par יומר ל-marker מיוחד), ואז נפצל לפסקאות.
+  const PAR_MARK = "PAR";
+  const parts = [];
+  for (const seg of segments) {
+    if (seg.kind === 'symbol') {
+      parts.push(seg.symbol);
+    } else if (seg.kind === 'rich') {
+      const sliced = richSlice(full, seg.start, seg.end);
+      // המרת \par / \newline בתוך הקטע ל-marker
+      const html = richToInlineHtml(sliced);
+      parts.push(html);
+    }
+  }
+  let combined = parts.join('');
+  combined = combined.replace(/\\newline\{\}/g, PAR_MARK).replace(/\\par\b\s*/g, PAR_MARK);
+  // הסרת LaTeX commands שנותרו (גודל/צבע wrappers שלא הומרו) — כברירת מחדל לא צריך
+  // כי to_html כבר ממיר size/color ל-<span style>
+  combined = combined.replace(/\\[a-zA-Z]+\b\*?/g, '').replace(/\{|\}/g, '');
+  const blocks = combined.split(PAR_MARK).map(s => s.trim()).filter(Boolean);
+  if (!blocks.length) return '<p></p>';
+  return blocks.map(b => `<p>${b}</p>`).join('');
+}
+
+function richToInlineHtml(rich) {
+  // עוברים tokens, מדלגים על raw_latex, ובונים HTML inline עם <strong>/<em>/<u>/<span>.
+  // אנו לא משתמשים ב-to_html של ה-class כי הוא מדלג על raw_latex לחלוטין;
+  // כאן אנו רוצים לשמר את ה-raw_latex כ-text-מקור (לעיבוד \par אחרי), אבל בלי escape.
+  const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const out = [];
+  let i = 0;
+  const tokens = rich.tokens;
+  while (i < tokens.length) {
+    const t0 = tokens[i];
+    if (t0.is_raw_latex) {
+      // נכניס את ה-raw verbatim (יעובד מאוחר ע"י החלפת \par)
+      out.push(t0.char);
+      i++;
+      continue;
+    }
+    const b = t0.b, it = t0.i, u = t0.u, sz = t0.sz, col = t0.col;
+    let text = "";
+    while (i < tokens.length) {
+      const tt = tokens[i];
+      if (tt.is_raw_latex) break;
+      if (tt.b !== b || tt.i !== it || tt.u !== u || tt.sz !== sz || tt.col !== col) break;
+      text += tt.char;
+      i++;
+    }
+    let chunk = escapeHtml(text);
+    if (u) chunk = `<u>${chunk}</u>`;
+    if (it) chunk = `<em>${chunk}</em>`;
+    if (b) chunk = `<strong>${chunk}</strong>`;
+    const styles = [];
+    if (sz) styles.push(`font-size:${(sz / 2).toFixed(1)}pt`);
+    if (col) styles.push(`color:#${col}`);
+    if (styles.length) chunk = `<span style="${styles.join(';')}">${chunk}</span>`;
+    out.push(chunk);
+  }
+  return out.join('');
+}
+
+function richToParagraphsHtml(rich) {
+  // הערה — ממירים ל-HTML עם פסקאות (\par שובר).
+  const PAR_MARK = "PAR";
+  let html = richToInlineHtml(rich);
+  html = html.replace(/\\newline\{\}/g, PAR_MARK).replace(/\\par\b\s*/g, PAR_MARK);
+  html = html.replace(/\\[a-zA-Z]+\b\*?/g, '').replace(/\{|\}/g, '');
+  const blocks = html.split(PAR_MARK).map(s => s.trim()).filter(Boolean);
+  if (!blocks.length) return '<p></p>';
+  return blocks.map(b => `<p>${b}</p>`).join('');
 }
 
 // =====================================================================

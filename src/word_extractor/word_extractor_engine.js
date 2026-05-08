@@ -53,6 +53,54 @@ export class RichText {
     return new RichText(this.tokens.map(t =>
       new CharToken(t.char, t.b, t.i, t.u, t.sz, t.col, t.is_raw_latex)));
   }
+  // משה 2026-05-08: פלט HTML עם עיצוב אמיתי (b/i/u/color/size) במקום LaTeX,
+  // כדי שהעורך יציג את התוכן בעיצוב מותאם — לא טקסט+תגיות גולמיות.
+  // כברירת מחדל מייצר HTML inline (ללא <p>); מי שצריך פסקאות עוטף בעצמו.
+  to_html(opts) {
+    if (!this.tokens.length) return "";
+    const g_size  = opts && opts.gate_size  === false ? false : true;
+    const g_color = opts && opts.gate_color === false ? false : true;
+    const g_emph  = opts && opts.gate_emph  === false ? false : true;
+
+    const escapeHtml = (s) => s.replace(/&/g, "&amp;")
+                              .replace(/</g, "&lt;")
+                              .replace(/>/g, "&gt;")
+                              .replace(/"/g, "&quot;")
+                              .replace(/'/g, "&#39;");
+
+    const out = [];
+    let i = 0;
+    while (i < this.tokens.length) {
+      const t0 = this.tokens[i];
+      if (t0.is_raw_latex) {
+        // LaTeX גולמי לא מתאים ל-HTML — מדלגים. (השארנו ב-to_latex לתאימות)
+        i++;
+        continue;
+      }
+      // אסוף רצף של tokens עם אותה צורת עיצוב
+      const b = t0.b, it = t0.i, u = t0.u, sz = t0.sz, col = t0.col;
+      let text = "";
+      while (i < this.tokens.length) {
+        const tt = this.tokens[i];
+        if (tt.is_raw_latex) break;
+        if (tt.b !== b || tt.i !== it || tt.u !== u || tt.sz !== sz || tt.col !== col) break;
+        text += tt.char;
+        i++;
+      }
+      let chunk = escapeHtml(text);
+      // פותחים מבפנים החוצה (size+color החיצוניים, emph בפנים)
+      if (g_emph && u) chunk = `<u>${chunk}</u>`;
+      if (g_emph && it) chunk = `<em>${chunk}</em>`;
+      if (g_emph && b) chunk = `<strong>${chunk}</strong>`;
+      const styles = [];
+      if (g_size && sz) styles.push(`font-size:${(sz / 2).toFixed(1)}pt`);
+      if (g_color && col) styles.push(`color:#${col}`);
+      if (styles.length) chunk = `<span style="${styles.join(";")}">${chunk}</span>`;
+      out.push(chunk);
+    }
+    return out.join("");
+  }
+
   to_latex(opts) {
     if (!this.tokens.length) return "";
     // feature_gate שקול: ברירת מחדל true. options: { gate_size, gate_color, gate_emph }
@@ -110,6 +158,30 @@ export class RichText {
     if (depth) result.push(_close_n(depth));
     return result.join("");
   }
+}
+
+// =====================================================================
+// richSlice — חיתוך RichText לפי טווח תוים, שומר על עיצוב כל token
+// (משה 2026-05-08: נוסף עבור הוצאת הערות שוליים בעיצוב אמיתי)
+// =====================================================================
+
+export function richSlice(richText, charStart, charEnd) {
+  const out = [];
+  let charPos = 0;
+  for (const tok of richText.tokens) {
+    const tokStart = charPos;
+    const tokEnd = charPos + tok.char.length;
+    if (tokEnd <= charStart) { charPos = tokEnd; continue; }
+    if (tokStart >= charEnd) break;
+    const sliceStart = Math.max(0, charStart - tokStart);
+    const sliceEnd = Math.min(tok.char.length, charEnd - tokStart);
+    const slicedChar = tok.char.slice(sliceStart, sliceEnd);
+    if (slicedChar) {
+      out.push(new CharToken(slicedChar, tok.b, tok.i, tok.u, tok.sz, tok.col, tok.is_raw_latex));
+    }
+    charPos = tokEnd;
+  }
+  return new RichText(out);
 }
 
 // =====================================================================
