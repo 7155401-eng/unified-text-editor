@@ -3,6 +3,7 @@
 // סימני זרם, מנתח אוטומטי. כעת הכל פועל על החלונית הפעילה.
 
 import { PaneManager } from "./pane_manager.js";
+import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { findAllStreamMarks, countByStream, jumpToNextMarker, colorForStream } from "./stream_mark.js";
 import { parseRawTextToHTML } from "./stream_parser.js";
 import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByMarkers, mergeBackToText } from "./stream_split.js";
@@ -891,8 +892,11 @@ installFetchTagger();
 if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
+revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
-setTimeout(() => wireTextComparePro(paneManager), 220);
+if (isToolPreviewAllowed("text-compare-pro")) {
+  setTimeout(() => wireTextComparePro(paneManager), 220);
+}
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
