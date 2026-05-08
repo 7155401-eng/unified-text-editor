@@ -1,20 +1,6 @@
-// משה 2026-05-08: שער תצוגה מקדימה לכלי מתורגם מ-work-files (פייתון).
-// הכלי מופיע רק אם:
-//   1. המשתמש מחובר כ-admin (window.__RAVTEXT_AUTH__.admin === true)
-//   2. ה-URL מכיל ?tool=<tool-name>
-//   3. ה-URL מכיל ?k=<PREVIEW_SECRET>
-// כדי להסיר את ה-gate ולפתוח את הכלי לכולם — מחק את הקובץ הזה ואת הקריאות שלו ב-main.js + index.html.
-
-const PREVIEW_SECRET = "9q7zX3mP4w";
-
-function readParams() {
-  if (typeof window === "undefined") return null;
-  try {
-    return new URLSearchParams(window.location.search || "");
-  } catch {
-    return null;
-  }
-}
+// משה 2026-05-08: שער תצוגה לכלי המתורגמים מ-work-files (פייתון).
+// ההיגיון: admin שמחובר רואה את כל הכלים החדשים אוטומטית, בלי URL params.
+// משתמש רגיל לא רואה דבר. כשתרצה לפתוח כלי לכולם — נסיר את ה-gate שלו בקומיט קצר.
 
 function isAdmin() {
   if (typeof window === "undefined") return false;
@@ -22,34 +8,20 @@ function isAdmin() {
   return !!(auth && auth.admin === true);
 }
 
-export function isToolPreviewAllowed(toolName) {
-  if (!isAdmin()) return false;
-  const params = readParams();
-  if (!params) return false;
-  if (params.get("k") !== PREVIEW_SECRET) return false;
-  const requested = params.get("tool");
-  if (!requested) return false;
-  if (requested === "all") return true;
-  return requested === toolName;
+export function isToolPreviewAllowed(_toolName) {
+  // כל הכלים החדשים מוצגים יחד למנהל. אין הבחנה בין כלים ב-gate.
+  return isAdmin();
 }
 
 export function getActiveToolName() {
-  if (!isAdmin()) return null;
-  const params = readParams();
-  if (!params) return null;
-  if (params.get("k") !== PREVIEW_SECRET) return null;
-  return params.get("tool") || null;
+  return isAdmin() ? "all" : null;
 }
 
 export function revealToolButtons() {
   if (typeof document === "undefined") return;
-  const active = getActiveToolName();
-  if (!active) return;
+  if (!isAdmin()) return;
   const buttons = document.querySelectorAll("[data-tool-preview]");
   buttons.forEach((btn) => {
-    const tool = btn.getAttribute("data-tool-preview");
-    if (active === "all" || tool === active) {
-      btn.hidden = false;
-    }
+    btn.hidden = false;
   });
 }
