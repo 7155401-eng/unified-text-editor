@@ -516,6 +516,30 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
+    // משה 2026-05-08: V8 hybrid (בטה למנהלים) — מנוע פגינציה חלופי.
+    // כש-V8 דלוק, מדלגים על כל הצינור הסטנדרטי (domPack/renderPages/talmud/
+    // mishna_wrap/balanced/opening_word/overflow_cap/וכו'). V8 מקבל את
+    // הפסקאות המובנות מ-paneManagerToPackerContent ובונה את כל העמודים בעצמו.
+    const v8Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
+    const v8Enabled = v8Auth.admin && localStorage.getItem("ravtext.vilnaV8Beta") === "1";
+    if (v8Enabled) {
+      logEvent("vilna_v8_pipeline_start");
+      const v8 = await import("./vilna_v8_apply.js");
+      await v8.applyVilnaV8FromPaneManager(content, pagesContainer);
+      if (myToken !== _renderToken) return;
+      if (pdfToolbarApi) {
+        const pageCount = pagesContainer.querySelectorAll(".page").length;
+        pdfToolbarApi.setTotal(pageCount);
+      }
+      logEvent("vilna_v8_pipeline_done", {
+        pageCount: pagesContainer.querySelectorAll(".page").length,
+      });
+      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
+        detail: { pages: [], content, v8: true },
+      }));
+      return;
+    }
+
     const pageGeom = getDomPageGeom();
     const pages = await domPack(content, pageGeom, {
       isCurrent: () => myToken === _renderToken,
