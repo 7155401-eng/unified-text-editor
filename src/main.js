@@ -39,7 +39,6 @@
 })();
 
 import { PaneManager } from "./pane_manager.js";
-import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { findAllStreamMarks, countByStream, jumpToNextMarker, colorForStream } from "./stream_mark.js";
 import { parseRawTextToHTML } from "./stream_parser.js";
 import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByMarkers, mergeBackToText } from "./stream_split.js";
@@ -54,7 +53,6 @@ import { wireTalmudLayoutControls } from "./talmud_layout.js";
 import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
-import { openWordExtractor, setupWordExtractor } from "./word_extractor/word_extractor.js";
 import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
 import { installAuthUi } from "./auth_ui.js";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
@@ -72,17 +70,12 @@ import { lockScopeWhileStandalone } from "./pwa_scope_lock.js";
 import { installFetchTagger } from "./pwa_install_controller.js";
 import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
-import { wireSefariaTools } from "./sefaria/sefaria.js";
-import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
-import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
-import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
-import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
-import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
+import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -225,7 +218,6 @@ applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
-setupWordExtractor(paneManager, rerenderPages);
 
 const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
 const STREAM_PANE_WIDTH_KEY = "ravtext.streamPaneWidth";
@@ -935,26 +927,7 @@ installFetchTagger();
 if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
-revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
-if (isToolPreviewAllowed("sefaria-full")) {
-  setTimeout(() => wireSefariaTools(paneManager), 220);
-}
-if (isToolPreviewAllowed("text-compare-pro")) {
-  setTimeout(() => wireTextComparePro(paneManager), 222);
-}
-if (isToolPreviewAllowed("torah-transcription")) {
-  setTimeout(() => wireTorahTranscription(paneManager), 224);
-}
-if (isToolPreviewAllowed("torah-nikud")) {
-  setTimeout(() => wireTorahNikud(paneManager), 226);
-}
-if (isToolPreviewAllowed("nikud-merger")) {
-  setTimeout(() => wireNikudMergerButton(paneManager), 228);
-}
-if (isToolPreviewAllowed("comparator-tool")) {
-  setTimeout(() => wireComparatorButton(paneManager), 230);
-}
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
@@ -1011,12 +984,57 @@ paneManager.on("change", () => {
   scheduleDiagnosticsRefresh();
   refreshStreamSettingsPanel();
   if (shouldLiveRenderNow()) rerenderPages();
+  updateNestedNotesHint();
 });
 
 paneManager.on("focus", () => {
   scheduleDiagnosticsRefresh();
   refreshStreamSettingsPanel();
 });
+
+// Nested-notes feature toggle — single checkbox row above the panes container.
+// Sync state ↔ localStorage flag (which the gate also reads). On the first
+// time the user turns it ON, show the explanation dialog so they understand
+// the linear-ordering semantics. Hovering @XX markers anywhere in any pane
+// shows a content-preview bubble (wired in nested_notes_bubble.js).
+const NESTED_DIALOG_SEEN_KEY = "ravtext.nestedNotesHint.dismissed";
+function syncNestedNotesToggle() {
+  const cb = document.getElementById("nested-notes-toggle");
+  if (!cb) return;
+  cb.checked = isNestedNotesGateOn();
+}
+function updateNestedNotesHint() {
+  syncNestedNotesToggle();
+}
+{
+  const cb = document.getElementById("nested-notes-toggle");
+  const dlg = document.getElementById("nested-notes-explain-dialog");
+  if (cb) {
+    cb.checked = isNestedNotesGateOn();
+    cb.addEventListener("change", () => {
+      try {
+        if (cb.checked) {
+          localStorage.setItem("ravtext.nestedNotes", "1");
+          // First-time check: show the explanation dialog.
+          if (localStorage.getItem(NESTED_DIALOG_SEEN_KEY) !== "1" && dlg && typeof dlg.showModal === "function") {
+            dlg.showModal();
+            localStorage.setItem(NESTED_DIALOG_SEEN_KEY, "1");
+          }
+        } else {
+          localStorage.removeItem("ravtext.nestedNotes");
+        }
+      } catch (_) {}
+      // Drop the gate cache so the next isNestedNotesEnabled() call re-reads.
+      import("./nested_notes_gate.js").then((m) => m._resetNestedNotesGateCache?.());
+      // Trigger a re-render so the change takes effect immediately.
+      if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
+    });
+  }
+}
+// Wire the marker hover bubble (works for any @XX marker in any pane).
+import("./nested_notes_bubble.js").then((m) => {
+  if (typeof m.installNestedNotesBubble === "function") m.installNestedNotesBubble(paneManager);
+}).catch((_) => {});
 
 window.addEventListener("ravtext:engine-rendered", (ev) => {
   refreshStreamSettingsPanel(ev.detail?.pages || []);
@@ -1514,10 +1532,6 @@ document.addEventListener("click", async (ev) => {
       if (panel && !panel.hidden) scheduleDiagnosticsRefresh({ force: true });
       break;
     }
-    case "transfer-settings": {
-      showTransferSettings(paneManager);
-      break;
-    }
     case "tools-toggle": {
       toggleExpandedTools(btn);
       break;
@@ -1557,10 +1571,6 @@ document.addEventListener("click", async (ev) => {
     }
     case "word-import": {
       importWord(paneManager, rerenderPages);
-      break;
-    }
-    case "word-import-streams": {
-      openWordExtractor(paneManager, rerenderPages);
       break;
     }
     case "word-export": {
