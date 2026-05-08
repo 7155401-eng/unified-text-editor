@@ -308,13 +308,16 @@ function buildPagePlan(pageContent, config) {
   const mainGap = (cfg.mainGap !== null && cfg.mainGap !== undefined)
     ? cfg.mainGap
     : Math.max(4, Math.floor(innerWidth * 0.015));
-  // משה 2026-05-08: מרווח ~1.5% בין שני זרמי צד שעומדים זה ליד זה (כתר, או strip 3
-  // במצב 5 שבו שני הצדדים ממשיכים מתחת לראשי). במצב 4 (אחד שורד לרוחב מלא)
+  // משה 2026-05-08: כל זרם צד תופס 49.5% מ-innerWidth (מראש), לא 50%.
+  // הקצאה דומה לזה של הראשי (42%). הרווח של 1% במרכז הוא תוצר טבעי
+  // של ההקצאה — כל אחד תופס מראש פחות, ולא צריך "לקצוץ" gap בנפרד.
+  // חל גם על שורות הזרם וגם על פס הכותרת. במצב 4 (אחד שורד לרוחב מלא)
   // אין מרווח כי אין שני זרמים סמוכים.
-  const sideGap = (cfg.sideGap !== null && cfg.sideGap !== undefined)
-    ? cfg.sideGap
-    : Math.max(3, Math.floor(innerWidth * 0.015));
-  const halfMinusGap = Math.max(0, halfWidth - Math.ceil(sideGap / 2));
+  const sideHalfRatio = (cfg.sideHalfRatio !== null && cfg.sideHalfRatio !== undefined)
+    ? cfg.sideHalfRatio
+    : 0.495;
+  const sideHalfWidth = Math.floor(innerWidth * sideHalfRatio);
+  const sideRightX = innerWidth - sideHalfWidth;
 
   const mainMetrics = new VilnaMetrics({
     fontFamily: cfg.mainFontFamily,
@@ -337,6 +340,8 @@ function buildPagePlan(pageContent, config) {
       padding: cfg.padding,
       innerWidth: innerWidth,
       innerHeight: cfg.pageHeight - 2 * cfg.padding,
+      sideHalfWidth: sideHalfWidth,
+      sideRightX: sideRightX,
     },
     mainBox: null,
     streamBoxes: [],
@@ -401,13 +406,12 @@ function buildPagePlan(pageContent, config) {
     const strips = [];
 
     if (crownHeight > 0 && mainTopY > sideTopY) {
-      // משה 2026-05-08: מרווח sideGap בין שני הכתרים. הימני זז ימינה,
-      // השמאלי מצטמצם מקצהו הפנימי.
+      // משה 2026-05-08: כל צד 49.5% מראש (sideHalfWidth). מרווח 1% במרכז.
       strips.push({
         y_start: sideTopY,
         y_end: Math.min(mainTopY, pageBottomY),
-        width: halfMinusGap,
-        x: side === 'right' ? halfWidth + sideGap - Math.ceil(sideGap / 2) : 0,
+        width: sideHalfWidth,
+        x: side === 'right' ? sideRightX : 0,
       });
     }
 
@@ -445,8 +449,8 @@ function buildPagePlan(pageContent, config) {
         strips.push({
           y_start: effectiveMainBottomY,
           y_end: pageBottomY,
-          width: halfMinusGap,
-          x: side === 'right' ? halfWidth + sideGap - Math.ceil(sideGap / 2) : 0,
+          width: sideHalfWidth,
+          x: side === 'right' ? sideRightX : 0,
         });
       }
     }
@@ -767,9 +771,14 @@ function renderPagePlan(plan, pageEl, cfg) {
 
     const title = (cfg.titles || {})[box.id];
     if (title && box.lines.length > 0) {
-      const halfW = Math.floor(plan.pageBox.innerWidth / 2);
-      const titleX = box.side === 'right' ? halfW : 0;
-      drawTitle(title, titleX, padding, halfW);
+      // משה 2026-05-08: הכותרת תופסת sideHalfWidth (49.5%) ולא 50%,
+      // אותה הקצאה כמו שורות הזרם — רווח 1% במרכז גם בין הכותרות.
+      const sideHalfW = plan.pageBox.sideHalfWidth ||
+        Math.floor(plan.pageBox.innerWidth / 2);
+      const titleRightX = plan.pageBox.sideRightX ||
+        (plan.pageBox.innerWidth - sideHalfW);
+      const titleX = box.side === 'right' ? titleRightX : 0;
+      drawTitle(title, titleX, padding, sideHalfW);
     }
   }
 
