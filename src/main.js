@@ -77,6 +77,8 @@ import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumber
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
+import { setupTransferSettings, showTransferSettings } from "./transfer_settings.js";
+import { showWowAlert, closeWowAlert } from "./wow_alert.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -219,6 +221,7 @@ applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
+setupTransferSettings(paneManager);
 
 const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
 const STREAM_PANE_WIDTH_KEY = "ravtext.streamPaneWidth";
@@ -1490,6 +1493,10 @@ document.addEventListener("click", async (ev) => {
       const panel = document.querySelector("#diagnostics-panel");
       if (panel) panel.hidden = !panel.hidden;
       if (panel && !panel.hidden) scheduleDiagnosticsRefresh({ force: true });
+      break;
+    }
+    case "transfer-settings": {
+      showTransferSettings(paneManager);
       break;
     }
     case "tools-toggle": {
