@@ -3272,6 +3272,144 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   display: inline;
 }
 
+/* Nested footnote ("הערה על הערה") — child note inlined inside its parent's
+   apparatus block. Italic + smaller for visual distinction; color follows
+   the child's own stream via .note-stream-N applied alongside .note-child. */
+.note-child {
+  display: inline;
+  font-style: italic;
+  font-size: 0.92em;
+}
+.note-child .note-lemma {
+  font-weight: 600;
+}
+
+/* Nested-notes feature toggle row above the panes container.
+   Compact — single line; doesn't push panes down meaningfully. */
+.nested-notes-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 12px 2px;
+  font-size: 12px;
+  color: #555;
+}
+.nested-notes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+.nested-notes-toggle input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+.nested-notes-help {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #999;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  cursor: help;
+  background: #f5f5f5;
+}
+.nested-notes-help:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+/* Explanation dialog shown on first toggle-on. */
+.nested-notes-dialog {
+  max-width: 460px;
+  padding: 18px 22px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-family: inherit;
+  line-height: 1.5;
+  text-align: right;
+  direction: rtl;
+}
+.nested-notes-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+.nested-notes-dialog h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.nested-notes-dialog p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #333;
+}
+.nested-notes-dialog .nnd-example {
+  background: #f5f5f5;
+  padding: 8px 10px;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+}
+.nested-notes-dialog code {
+  background: #fff3c4;
+  border: 1px solid #ffe082;
+  border-radius: 3px;
+  padding: 0 4px;
+  font-family: "Courier New", monospace;
+  font-size: 0.9em;
+}
+.nested-notes-dialog form {
+  margin-top: 14px;
+  text-align: left;
+}
+.nested-notes-dialog button.primary {
+  background: #1e3a8a;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.nested-notes-dialog button.primary:hover {
+  background: #2c4ba0;
+}
+
+/* Hover bubble for @XX markers — preview of resolved note content.
+   Floating div positioned near the marker on mouseenter, hidden on leave. */
+.nested-notes-bubble {
+  position: fixed;
+  z-index: 9000;
+  max-width: 360px;
+  padding: 8px 11px;
+  background: #fffbea;
+  border: 1px solid #d4a017;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  line-height: 1.45;
+  color: #333;
+  pointer-events: none;
+  text-align: right;
+  direction: rtl;
+}
+.nested-notes-bubble .nnb-label {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #5d4037;
+}
+.nested-notes-bubble .nnb-snippet {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.nested-notes-bubble .nnb-empty {
+  color: #888;
+  font-style: italic;
+}
+
 .stream-balanced {
   column-count: auto !important;
   column-gap: normal !important;
