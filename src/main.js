@@ -40,6 +40,7 @@ import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import { setupTransferSettings, showTransferSettings } from "./transfer_settings.js";
+import { showWowAlert, closeWowAlert } from "./wow_alert.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
