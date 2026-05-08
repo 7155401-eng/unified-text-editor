@@ -1,6 +1,10 @@
 // משה 2026-05-08: שער תצוגה לכלי מתורגמים מ-work-files (פייתון).
-// admin שמחובר רואה את הכלי אוטומטית. משתמש רגיל לא רואה דבר.
-// כשתרצה להפיץ כלי לכולם — שינוי isToolPreviewAllowed להחזיר true תמיד.
+// admin שמחובר רואה כלי בבטא אוטומטית. משתמש רגיל רואה רק כלים מאושרים.
+// אישור כלי לכולם = הוספת שמו ל-PUBLIC_TOOLS.
+
+const PUBLIC_TOOLS = new Set([
+  "nikud-merger",   // אושר 2026-05-08 — מיזוג ניקוד
+]);
 
 function isAdmin() {
   if (typeof window === "undefined") return false;
@@ -8,7 +12,8 @@ function isAdmin() {
   return !!(auth && auth.admin === true);
 }
 
-export function isToolPreviewAllowed(_toolName) {
+export function isToolPreviewAllowed(toolName) {
+  if (PUBLIC_TOOLS.has(toolName)) return true;
   return isAdmin();
 }
 
