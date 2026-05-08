@@ -88,10 +88,11 @@ export function closeNikudMerger() {
  * @param {object} paneManager — מנהל החלוניות של העורך הראשי. מותר להעביר null.
  */
 export function wireNikudMergerButton(paneManager) {
-  // לא לדפוק חלונית פעילה — נחפש תחילה toolbar קיים
-  const insertToolbar = document.querySelector(".insert-toolbar");
+  // משה 2026-05-08: יעד ראשי = סרגל "סקירה". fallback ל-tab "תורני" / "הוספה".
+  const reviewToolbar = document.querySelector(".review-toolbar");
   const torahToolbar  = document.querySelector(".torah-toolbar");
-  const target = insertToolbar || torahToolbar;
+  const insertToolbar = document.querySelector(".insert-toolbar");
+  const target = reviewToolbar || torahToolbar || insertToolbar;
   if (!target) return;
 
   // אם כפתור כבר קיים, אל תוסיף שוב
