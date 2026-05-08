@@ -19,9 +19,12 @@ export function isToolPreviewAllowed(toolName) {
 
 export function revealToolButtons() {
   if (typeof document === "undefined") return;
-  if (!isAdmin()) return;
+  const admin = isAdmin();
   const buttons = document.querySelectorAll("[data-tool-preview]");
   buttons.forEach((btn) => {
-    btn.hidden = false;
+    const tool = btn.getAttribute("data-tool-preview");
+    if (admin || PUBLIC_TOOLS.has(tool)) {
+      btn.hidden = false;
+    }
   });
 }
