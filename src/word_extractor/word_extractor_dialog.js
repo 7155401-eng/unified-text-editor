@@ -668,29 +668,67 @@ function mainSegmentsToHtml(segments, full) {
 // משאיר את ה-markers (@\d+) ואת סימן הפסקה (\par/\newline -> SENTINEL_PAR).
 function cleanRawLatexRun(raw) {
   let s = raw;
-  // 1. שומרים סימני פסקה
-  s = s.replace(/\\par\b\s*/g, SENTINEL_PAR);
-  s = s.replace(/\\newline\{\}/g, SENTINEL_PAR);
-  // 2a. מסירים את ה-par_cmd השלם של _mk_fn (סדרה ידועה של פקודות עיצוב)
+
+  // PHASE 1 — הסרת blocks שלמים לפני הסרת פקודות בודדות
+  // 1a. par_cmd של _mk_fn — מ-\parfillskip עד \par שאחרי \hfil}
   s = s.replace(
-    /\\parfillskip=0pt plus 1fil\\relax\\lastlinefit=0\\relax\\unskip\\null\\par\\setbox0=\\lastbox\\setbox1=\\hbox\{\\unhbox0\}\\noindent\\hbox to\\hsize\{\\hfil\\box1\\hfil\}\\par/g,
+    /\\parfillskip\s*=\s*0pt\s+plus\s+\d+(?:\.\d+)?\s*fil[\s\S]*?\\hfil\s*\}\s*\\par/g,
     SENTINEL_PAR
   );
-  // 2b. מסירים פקודות עם optional bracket: \nolinebreak[3], \footnote*[1]
-  //     גם \name<digits>: \box1, \setbox0, \unhbox0 וכו'
+  // 1b. \fontsize{X}{Y}\selectfont
+  s = s.replace(/\\fontsize\s*\{[^}]*\}\s*\{[^}]*\}\s*\\selectfont/g, "");
+  // 1c. \textcolor[HTML]{XXXXXX}
+  s = s.replace(/\\textcolor\s*\[HTML\]\s*\{[0-9A-Fa-f]+\}/g, "");
+  // 1d. \textcolor{שם-צבע}
+  s = s.replace(/\\textcolor\s*\{[^}]+\}/g, "");
+  // 1e. \opwhdg{...}{...}{ — wrapper של כותרת (השאריות המוכרות)
+  s = s.replace(/\\opwhdg\s*\{[^}]*\}\s*\{[^}]*\}\s*\{/g, "");
+  // 1f. \opwnote(raised|dropped)<series>{...}
+  s = s.replace(/\\opwnote(?:raised|dropped)[A-L]\s*\{[^}]*\}/g, "");
+  // 1g. \leavevmode\hskip Nem\relax
+  s = s.replace(/\\leavevmode\s*\\hskip\s+\d+(?:\.\d+)?\s*em\s*\\relax/g, "");
+  // 1h. \streamfont<series>
+  s = s.replace(/\\streamfont[A-L]/g, "");
+  // 1i. \setRTL / \setLTR
+  s = s.replace(/\\setRTL/g, "");
+  s = s.replace(/\\setLTR/g, "");
+  // 1j. \strut
+  s = s.replace(/\\strut/g, "");
+
+  // PHASE 2 — סימני פסקה
+  s = s.replace(/\\par\b\s*/g, SENTINEL_PAR);
+  s = s.replace(/\\newline\{\}/g, SENTINEL_PAR);
+
+  // PHASE 3 — פקודות בודדות
   s = s.replace(/\\[a-zA-Z]+[0-9]*\*?\s*(?:\[[^\]]*\])?/g, "");
-  // 3. מסירים פקודות עם תו לא-אות: \, \. \; \: \! \" וכו'
   s = s.replace(/\\[^a-zA-Z\s]/g, "");
-  // 4. שאריות arguments של LaTeX שלא הוזרקו עם command:
-  //    "=0pt plus 1fil", "=0", "0=", "1=", " to0", " to1"
+
+  // PHASE 4 — שאריות args של LaTeX
+  s = s.replace(/0pt\s+plus\s+\d+(?:\.\d+)?\s*fil/g, "");
   s = s.replace(/=\s*\d+\s*pt(?:\s+plus\s+\d+(?:\.\d+)?\s*fil)?/g, "");
   s = s.replace(/=\s*\d+/g, "");
   s = s.replace(/\b\d+\s*=/g, "");
+  s = s.replace(/\bto\s*\\?hsize\b/g, "");
   s = s.replace(/\bto\b\s*\d*/g, "");
-  // 5. מסירים סוגריים מסולסלות LaTeX (התוכן נשאר)
+  s = s.replace(/\bfillskip\b/g, "");
+  s = s.replace(/\bhsize\b/g, "");
+
+  // PHASE 5 — שאריות hex color (אחרי שה-wrappers הוסרו)
+  s = s.replace(/(?<![A-Za-z0-9])[0-9A-F]{6}(?![A-Za-z0-9])/g, "");
+  s = s.replace(/\bHTML\b/g, "");
+
+  // PHASE 6 — שאריות font sizes יתומות (לאחר שה-wrappers הוסרו)
+  s = s.replace(/\b\d+(?:\.\d+)?\s*pt\b/g, "");
+
+  // PHASE 7 — סוגריים מסולסלות LaTeX
   s = s.replace(/[{}]/g, "");
-  // 6. מצמצמים רווחים מרובים שהיווצרו
+
+  // PHASE 8 — צמצום סימני שוויון/רווחים יתומים
+  s = s.replace(/={2,}/g, "");
+  s = s.replace(/\s+=\s+/g, " ");
   s = s.replace(/\s{2,}/g, " ");
+  s = s.replace(/^\s+|\s+$/g, "");
+
   return s;
 }
 
