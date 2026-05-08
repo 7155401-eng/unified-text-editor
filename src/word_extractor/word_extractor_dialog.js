@@ -11,6 +11,7 @@ import {
   find_sections_in_docx, find_all_styles_in_docx,
   RichText, CharToken, richSlice,
 } from "./word_extractor_engine.js";
+import * as engine from "./word_extractor_engine.js";
 import {
   buildDefaultStreamMapping, streamsToSd, findDuplicateSeries,
 } from "./word_extractor_streams.js";
@@ -368,8 +369,14 @@ function distributeToPanes(full, sd) {
     }
   }
 
-  // streamBuckets: series → [RichText, RichText, ...] (כל הערה כ-RichText נפרד)
+  // streamBuckets: series → [RichText, RichText, ...]
+  // משה 2026-05-08: לוקחים מ-engine.extract_and_process.streamRichTexts
+  // (ה-RichText המקורי לפני המרה ל-LaTeX) — שמירת עיצוב אמיתי.
   const streamBuckets = {};
+  const engineBuckets = engine.extract_and_process.streamRichTexts || {};
+  for (const series of Object.keys(engineBuckets)) {
+    streamBuckets[series] = engineBuckets[series].slice();
+  }
   // mainSegments: רצף של מקטעים שמרכיבים את הגוף הראשי. כל מקטע הוא או
   //   { kind:'rich', start, end } — חתיכת RichText מקורית
   //   או { kind:'symbol', symbol } — סמל זרם להחלפה (@01 וכו')
@@ -400,9 +407,8 @@ function distributeToPanes(full, sd) {
         const closeIdx = findBracketEnd(text, after + 1);
         if (closeIdx > 0) {
           if (i > lastFlush) mainSegments.push({ kind: 'rich', start: lastFlush, end: i });
-          const noteRich = richSlice(full, innerStart, closeIdx);
-          if (!streamBuckets[seriesChar]) streamBuckets[seriesChar] = [];
-          streamBuckets[seriesChar].push(noteRich);
+          // לא דוחפים noteRich (LaTeX wrapped) — streamBuckets כבר מאוכלס
+          // מ-extract_and_process.streamRichTexts עם RichText מקורי בלי עטיפת _mk_fn.
           const sym = seriesToSymbol[seriesChar] || `@${seriesChar}`;
           mainSegments.push({ kind: 'symbol', symbol: sym });
           i = closeIdx + 1;

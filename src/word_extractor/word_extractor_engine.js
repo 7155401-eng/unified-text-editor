@@ -1175,6 +1175,12 @@ export function _note_to_latex(note_rich, sid, sd) {
   } else {
     cr = note_rich;
   }
+  // משה 2026-05-08: שומר את ה-RichText המקורי של ההערה (לפני ההמרה ל-LaTeX),
+  // כדי ש-distributeToPanes יוכל להמיר ל-HTML עם עיצוב אמיתי במקום פלט LaTeX.
+  const series = sd[sid].series || 'A';
+  if (!extract_and_process.streamRichTexts) extract_and_process.streamRichTexts = {};
+  if (!extract_and_process.streamRichTexts[series]) extract_and_process.streamRichTexts[series] = [];
+  extract_and_process.streamRichTexts[series].push(cr);
   const cleaned = _clean_latex(cr.to_latex());
   if (sd[sid].source_type === SOURCE_SIDENOTE) {
     const pos = sd[sid].position || 'right';
@@ -1193,6 +1199,8 @@ export function _note_to_latex(note_rich, sid, sd) {
 
 export async function extract_and_process(source_input, sd, ext_map) {
   if (!ext_map) ext_map = {};
+  // משה 2026-05-08: איפוס מאגר ה-RichTexts פר-series לפני כל ריצה.
+  extract_and_process.streamRichTexts = {};
   const zip = await _loadDocxZip(source_input);
 
   const fn_dict = await read_footnotes(zip);
@@ -1496,6 +1504,11 @@ export function _proc_inline(match, rich_text, sid, sd) {
   const s = fullStart + (innerOffset >= 0 ? innerOffset : 0);
   const e = s + inner.length;
   const cr = new RichText(rich_text.tokens.slice(s, e));
+  // משה 2026-05-08: שמירה לזיכרון פר-series ל-distributeToPanes (HTML אמיתי).
+  const series = sd[sid].series || 'A';
+  if (!extract_and_process.streamRichTexts) extract_and_process.streamRichTexts = {};
+  if (!extract_and_process.streamRichTexts[series]) extract_and_process.streamRichTexts[series] = [];
+  extract_and_process.streamRichTexts[series].push(cr);
   return _mk_fn(sd[sid].series, _clean_latex(cr.to_latex()));
 }
 
