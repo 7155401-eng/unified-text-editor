@@ -190,9 +190,26 @@ export const StreamMark = Mark.create({
             return null;
           }
 
-          const re = userSymbol
-            ? new RegExp(escapeRegex(userSymbol), 'g')
-            : /@(\d{1,3})/g;
+          // When the nested-notes feature is on, also detect cross-stream
+          // markers (e.g. @02 typed inside stream-01's pane) so the hover
+          // bubble has something to attach to. The first alternative — the
+          // pane's own symbol — keeps m[1] undefined and routes to userStreamCode
+          // below; the second alternative captures the digits, which routes to
+          // the actual code. Off by default so legacy single-symbol behavior
+          // stays unchanged.
+          let nestedOn = false;
+          try {
+            nestedOn = typeof window !== "undefined" &&
+              window.localStorage?.getItem("ravtext.nestedNotes") === "1";
+          } catch (_) {}
+          let re;
+          if (userSymbol) {
+            re = nestedOn
+              ? new RegExp(`(?:${escapeRegex(userSymbol)})|@(\\d{1,3})`, 'g')
+              : new RegExp(escapeRegex(userSymbol), 'g');
+          } else {
+            re = /@(\d{1,3})/g;
+          }
 
           const tr = newState.tr;
           let changed = false;

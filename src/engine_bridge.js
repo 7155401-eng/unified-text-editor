@@ -279,6 +279,21 @@ function numberNotesTree(notesArr, counters) {
   }
 }
 
+// Flattens an inner.children tree into the same `collected` list used for
+// the parent's siblings, so each pulled inner note ends up in its NATIVE
+// stream's apparatus block (anchored at the parent's main-body position)
+// rather than rendered inline inside the parent's apparatus. Recursive so
+// grandchildren are also surfaced. priority=1 = secondary, ranked after
+// any direct main-body ref at the same anchor.
+function collectChildrenAsSiblings(children, parentAnchor, out) {
+  for (const child of children) {
+    out.push({ stream: child.stream, text: child.text, anchor: parentAnchor, priority: 1 });
+    if (child.children && child.children.length) {
+      collectChildrenAsSiblings(child.children, parentAnchor, out);
+    }
+  }
+}
+
 function applyFirstNoteAsTitle(code, notes) {
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
@@ -342,37 +357,53 @@ export function paneManagerToPackerContent(paneManager) {
   for (const para of mainParagraphs) {
     const { paragraphText, markers, blockType, headingLevel } = para;
     let mainTextNet = "";
-    const notes = [];
     let prevEnd = 0;
 
+    // Pass 1 — main-body markers consume stream-pane pools FIRST (primary
+    // priority). Their notes will keep their natural document-order anchors.
+    const mainRefs = []; // { stream, text, anchor }
     for (const marker of markers) {
       mainTextNet += paragraphText.substring(prevEnd, marker.atInPara);
       const anchor = mainTextNet.length;
       const code = marker.code;
       const idx = noteCounters[code] || 0;
       const noteText = streamNotes[code] && streamNotes[code][idx];
-
       if (noteText !== undefined) {
         noteCounters[code] = idx + 1;
-        // Feature gate: when the nested-notes URL/localStorage flag is OFF,
-        // we keep the legacy flat behavior — embedded `@XX` markers stay as
-        // literal characters in the note's text and no children are pulled.
-        // Same-domain `?nested=1&k=...` links flip the gate on.
-        if (isNestedNotesEnabled()) {
-          const inner = expandNestedInNote(noteText, streamNotes, noteCounters, code, paneSymbols, paneSymToCode);
-          notes.push({ stream: code, text: inner.strippedText, anchor, children: inner.children });
-        } else {
-          notes.push({ stream: code, text: noteText, anchor });
-        }
+        mainRefs.push({ stream: code, text: noteText, anchor });
       } else {
         mainTextNet += marker.sym;
       }
-
       prevEnd = marker.atInPara + marker.sym.length;
     }
-
     mainTextNet += paragraphText.substring(prevEnd);
     mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
+
+    // Pass 2 — when the nested-notes feature is on, expand each main ref's
+    // note body looking for embedded markers (e.g. @02 typed inside stream
+    // 01's note text). Pulled inner notes consume from streamNotes AFTER
+    // Pass 1, so a stream-2 note pulled by main-body @02 stays at its
+    // natural pane index, and the nested ref pulls the next available
+    // pane index. Per Moshe's spec: "the inner note is treated as linked
+    // to the same word in the main document as its parent, with secondary
+    // priority after the parent's note." So the inner appears in its
+    // NATIVE stream's apparatus block (not as inline children of the
+    // outer), anchored at the parent's main-body position.
+    const collected = []; // { stream, text, anchor, priority }
+    for (const ref of mainRefs) {
+      if (isNestedNotesEnabled()) {
+        const inner = expandNestedInNote(ref.text, streamNotes, noteCounters, ref.stream, paneSymbols, paneSymToCode);
+        collected.push({ stream: ref.stream, text: inner.strippedText, anchor: ref.anchor, priority: 0 });
+        collectChildrenAsSiblings(inner.children, ref.anchor, collected);
+      } else {
+        collected.push({ stream: ref.stream, text: ref.text, anchor: ref.anchor, priority: 0 });
+      }
+    }
+    // Stable sort: by anchor, then primary (priority 0) before secondary
+    // (priority 1) when anchors tie. Array.sort in V8/SpiderMonkey is stable.
+    collected.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
+    const notes = collected.map((c) => ({ stream: c.stream, text: c.text, anchor: c.anchor }));
+
     if (mainTextNet || notes.length) {
       result.push({
         mainText: mainTextNet,
