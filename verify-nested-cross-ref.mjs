@@ -1,11 +1,14 @@
-// verify-nested-cross-ref.mjs — covers the cross-reference linking
-// behavior that Moshe specified:
-//   "להערה בזרם 2 הכי קרובה למסמך אחרי הקישור של הערה 1 זרם 1"
+// verify-nested-cross-ref.mjs — verifies the consumption model that
+// matches Moshe's spec:
+//   "הערה הבאה של זרם 02 תקושר לטקסט הראשי היכן שההערה הנוכחית בזרם
+//    01 מקושרת, ואילו ההערה שלאחריה בזרם 02 תקושר לקישור הקרוב 02
+//    בזרם הראשי שיופיע לאחר מכן"
 //
-// The nested @XX inside a stream pane's note text resolves to the next
-// note in stream X whose main-body anchor is AFTER the parent's anchor.
-// Stream 2's apparatus stays entirely driven by main-body @02 markers
-// (no consumption from nested expansion).
+// Each main-body @YY marker AND each nested @YY (inside another stream's
+// note text) is a CONSUMER of stream Y's pane pool. Pane is consumed
+// sequentially in sorted (paraIdx, anchor, primary) order. Stream Y's
+// apparatus shows ALL consumed notes anchored at their consumer's
+// effective position (parent's anchor for nested).
 
 import { JSDOM } from "jsdom";
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -24,8 +27,7 @@ function ok(name, cond, detail = "") {
 
 const { paneManagerToPackerContent } = await import("./src/engine_bridge.js");
 
-// Build a fake paneManager with TipTap-compatible editor stubs.
-function makePane(streamCode, htmlText) {
+function makePane(streamCode, text) {
   const sym = streamCode ? `@${streamCode}` : null;
   return {
     id: streamCode || "main",
@@ -33,190 +35,146 @@ function makePane(streamCode, htmlText) {
     symbol: sym,
     label: streamCode ? `זרם ${streamCode}` : "ראשי",
     editor: {
-      state: {
-        doc: makeFakeDoc(htmlText, streamCode),
-      },
+      state: { doc: { textContent: text, descendants(visit) {
+        visit({
+          type: { name: "paragraph" },
+          attrs: {},
+          descendants(visitChild) { visitChild({ isText: true, text, marks: [] }, 0); },
+        }, 0);
+      } } },
     },
   };
 }
 
-function makeFakeDoc(text, streamCode) {
-  // Minimal stub with the methods engine_bridge calls: descendants + textContent.
-  return {
-    textContent: text,
-    descendants(visit) {
-      // One paragraph node for the whole text.
-      const para = {
-        type: { name: "paragraph" },
-        attrs: {},
-        descendants(visitChild) {
-          const child = {
-            isText: true,
-            text,
-            marks: [],
-          };
-          visitChild(child, 0);
-        },
-      };
-      visit(para, 0);
-    },
-  };
+function makePM(panes) {
+  return { panes, getMainPane() { return panes.find((p) => !p.streamCode); } };
 }
 
-function makePaneManager(panes) {
-  return {
-    panes,
-    getMainPane() { return panes.find((p) => !p.streamCode); },
-  };
-}
-
-// --- 1. Nested @02 finds the FIRST stream-2 ref AFTER parent's anchor ---
+// --- 1. Moshe's headline scenario: nested @02 in stream-01 consumes from
+//        pane 02. Subsequent main @02 consumes the next pane note. ---
 {
-  // Main: "alpha @01 beta @02 gamma"
-  //   Position:  6   ->@01,  next position 16->@02
-  // Stream 1 pane: "@01 outer-with-@02-inside"
-  // Stream 2 pane: "@02 stream2-content"
-  const pm = makePaneManager([
-    makePane(null, "alpha @01 beta @02 gamma"),
-    makePane("01", "@01 outer @02 mid"),
-    makePane("02", "@02 stream2-content"),
+  // Main: "@01 outerAnchor @02 mainAnchor"
+  // Stream 01 pane: "@01 outer with @02 nested"
+  // Stream 02 pane: "@02 first @02 second @02 third"
+  const pm = makePM([
+    makePane(null, "@01 outerAnchor @02 mainAnchor"),
+    makePane("01", "@01 outer with @02 nested"),
+    makePane("02", "@02 first @02 second @02 third"),
   ]);
   const r = paneManagerToPackerContent(pm);
-  ok("1 paragraph", r.length === 1);
-  ok("2 notes (one per main marker)", r[0].notes.length === 2);
-  const stream1Note = r[0].notes.find((n) => n.stream === "01");
-  const stream2Note = r[0].notes.find((n) => n.stream === "02");
-  ok("stream-1 note from main-body @01", !!stream1Note);
-  ok("stream-2 note from main-body @02", !!stream2Note);
-  ok("stream-2 note text comes from stream-2 pane",
-    stream2Note.text === "stream2-content", `got '${stream2Note.text}'`);
-  ok("stream-1 note has 1 link to stream-2",
-    stream1Note.links && stream1Note.links.length === 1, JSON.stringify(stream1Note.links));
-  ok("link points to stream-2 note num=1",
-    stream1Note.links?.[0]?.stream === "02" && stream1Note.links?.[0]?.num === 1,
-    JSON.stringify(stream1Note.links));
+  const stream02Notes = r[0].notes.filter((n) => n.stream === "02");
+  ok("stream 02 has 2 apparatus notes", stream02Notes.length === 2,
+    JSON.stringify(stream02Notes));
+  // First (by anchor): nested ref at outer's anchor → pane[0]="first"
+  ok("nested note appears first (anchored at outer)", stream02Notes[0].text === "first",
+    JSON.stringify(stream02Notes[0]));
+  // Second: main @02 → pane[1]="second"
+  ok("main @02 gets the next pane note (second)", stream02Notes[1].text === "second",
+    JSON.stringify(stream02Notes[1]));
+  // Numbering: assigned by sorted consumption order
+  ok("nested note num=1", stream02Notes[0].num === 1);
+  ok("main @02 num=2", stream02Notes[1].num === 2);
+  // Anchors
+  ok("nested note anchored at outer's main-body position",
+    stream02Notes[0].anchor < stream02Notes[1].anchor,
+    `anchors: ${stream02Notes[0].anchor}, ${stream02Notes[1].anchor}`);
 }
 
-// --- 2. Two main @02 refs → nested @02 in stream 1 links to the one
-//        whose anchor is AFTER the parent (skipping the earlier one) ---
+// --- 2. Outer text in stream-01 apparatus has @02 STRIPPED ---
 {
-  // Main: "@02 first @01 outer-place @02 second"
-  //   Anchors: @02→0, @01→9, @02→24
-  // Stream 1 pane: "@01 here is @02"  (one nested @02)
-  // Stream 2 pane: "@02 first-2 @02 second-2"
-  const pm = makePaneManager([
-    makePane(null, "@02 first @01 outer @02 second"),
-    makePane("01", "@01 here is @02"),
-    makePane("02", "@02 first-2 @02 second-2"),
+  const pm = makePM([
+    makePane(null, "@01 here @02 there"),
+    makePane("01", "@01 outer with @02 cross-ref between"),
+    makePane("02", "@02 alpha @02 beta"),
   ]);
   const r = paneManagerToPackerContent(pm);
-  // 3 notes: @02 (first-2), @01 (outer-text), @02 (second-2)
-  ok("3 notes", r[0].notes.length === 3, JSON.stringify(r[0].notes));
-  // The stream-1 note should link to stream-2 num=2 (the one AFTER its anchor)
-  const stream1Note = r[0].notes.find((n) => n.stream === "01");
-  ok("stream-1 has 1 link", stream1Note?.links?.length === 1,
-    JSON.stringify(stream1Note?.links));
-  ok("link is to stream-2 num=2 (closest after parent)",
-    stream1Note?.links?.[0]?.num === 2,
-    JSON.stringify(stream1Note?.links));
+  const stream01Note = r[0].notes.find((n) => n.stream === "01");
+  ok("outer text has cross-stream @02 stripped",
+    stream01Note && !stream01Note.text.includes("@02"),
+    `text: '${stream01Note?.text}'`);
+  ok("outer text retains surrounding words",
+    stream01Note?.text?.includes("outer with") &&
+    stream01Note?.text?.includes("cross-ref between"),
+    `text: '${stream01Note?.text}'`);
 }
 
-// --- 3. Three nested @02 in stream 1 → each grabs the next stream-2 ref ---
+// --- 3. Three nested @02 inside the SAME outer note → consume 3 sequential
+//        pane 02 notes, all anchored at outer's position ---
 {
-  // Main: "@01 outer @02 a @02 b @02 c"
-  // Stream 1 pane: "@01 outer with @02 first @02 second @02 third"
-  // Stream 2 pane: "@02 a-text @02 b-text @02 c-text"
-  const pm = makePaneManager([
-    makePane(null, "@01 outer @02 a @02 b @02 c"),
-    makePane("01", "@01 outer with @02 first @02 second @02 third"),
-    makePane("02", "@02 a-text @02 b-text @02 c-text"),
+  const pm = makePM([
+    makePane(null, "@01 outer-anchor"),
+    makePane("01", "@01 outer with @02 a @02 b @02 c"),
+    makePane("02", "@02 alpha @02 beta @02 gamma @02 delta"),
   ]);
   const r = paneManagerToPackerContent(pm);
-  const stream1Note = r[0].notes.find((n) => n.stream === "01");
-  ok("stream-1 has 3 links", stream1Note?.links?.length === 3,
-    JSON.stringify(stream1Note?.links));
-  ok("links are to nums [1,2,3] in order",
-    stream1Note?.links?.[0]?.num === 1 &&
-    stream1Note?.links?.[1]?.num === 2 &&
-    stream1Note?.links?.[2]?.num === 3,
-    JSON.stringify(stream1Note?.links));
+  const stream02 = r[0].notes.filter((n) => n.stream === "02");
+  ok("three nested → three stream-02 notes", stream02.length === 3,
+    JSON.stringify(stream02));
+  ok("they consume pane[0..2] in order",
+    stream02[0].text === "alpha" && stream02[1].text === "beta" && stream02[2].text === "gamma",
+    JSON.stringify(stream02));
+  ok("all anchored at outer's position",
+    stream02[0].anchor === stream02[1].anchor && stream02[1].anchor === stream02[2].anchor,
+    JSON.stringify(stream02.map((n) => n.anchor)));
 }
 
-// --- 4. Stream-2 apparatus is NOT consumed by nested expansion ---
+// --- 4. Mix: main @02 + nested @02 + main @02 → 3 stream-02 notes anchored
+//        in document order ---
 {
-  // Main: "@01 just-this" (no main-body @02)
-  // Stream 1 pane: "@01 outer @02 nested-ref"
-  // Stream 2 pane: "@02 unique-text"
-  // Expectation: stream-2 apparatus has NO note (no main-body @02 anchored
-  // it). The nested @02 in stream-1 has nowhere to link to.
-  const pm = makePaneManager([
-    makePane(null, "@01 just-this"),
-    makePane("01", "@01 outer @02 nested-ref"),
-    makePane("02", "@02 unique-text"),
+  // Main: @02 (pos A) ... @01 (pos B) ... @02 (pos C)
+  // Stream 01: "@01 outer with @02 nested"
+  // Stream 02: 4 notes
+  const pm = makePM([
+    makePane(null, "@02 first-pos @01 mid-pos @02 last-pos"),
+    makePane("01", "@01 outer @02 nested"),
+    makePane("02", "@02 alpha @02 beta @02 gamma @02 delta"),
   ]);
   const r = paneManagerToPackerContent(pm);
-  ok("stream-2 apparatus is empty (no main @02)",
-    !r[0].notes.find((n) => n.stream === "02"),
-    JSON.stringify(r[0].notes));
-  const stream1Note = r[0].notes.find((n) => n.stream === "01");
-  ok("stream-1 has no links (no target available)",
-    !stream1Note?.links || stream1Note.links.length === 0,
-    JSON.stringify(stream1Note?.links));
+  const stream02 = r[0].notes.filter((n) => n.stream === "02");
+  ok("3 stream-02 notes (2 main + 1 nested)", stream02.length === 3,
+    JSON.stringify(stream02));
+  // Anchors in document order: main @02 at first-pos, nested at mid-pos, main @02 at last-pos
+  // Pane consumption in that sorted order: pane[0]=alpha → first main, pane[1]=beta → nested, pane[2]=gamma → last main
+  ok("first main @02 → alpha", stream02[0].text === "alpha");
+  ok("nested @02 → beta", stream02[1].text === "beta");
+  ok("last main @02 → gamma", stream02[2].text === "gamma");
 }
 
-// --- 4b. Resolved cross-stream marker is STRIPPED from displayed text ---
+// --- 5. Nested @02 in a stream-01 note that's the SECOND main @01 (pane idx 1) ---
 {
-  // Per Moshe: "הסימונים @02 מופיעים כרגע באופן גולמי בתוך זרם 01 במקום
-  // לא להופיע" — once a target is found, the marker should not be visible
-  // in the rendered apparatus, just like main-body markers don't appear.
-  const pm = makePaneManager([
-    makePane(null, "@01 outer @02 anchor"),
-    makePane("01", "@01 outer with @02 in middle and tail"),
-    makePane("02", "@02 stream-2-content"),
-  ]);
-  const r = paneManagerToPackerContent(pm);
-  const stream1Note = r[0].notes.find((n) => n.stream === "01");
-  ok("stream-1 text has cross-stream marker stripped",
-    stream1Note && !stream1Note.text.includes("@02"),
-    `stream-1 text: '${stream1Note?.text}'`);
-  ok("surrounding words stay intact",
-    stream1Note?.text?.includes("with") && stream1Note?.text?.includes("middle") && stream1Note?.text?.includes("tail"),
-    `stream-1 text: '${stream1Note?.text}'`);
-  ok("link still recorded after stripping",
-    stream1Note?.links?.[0]?.num === 1, JSON.stringify(stream1Note?.links));
-}
-
-// --- 4c. UNMATCHED cross-stream marker is kept literal ---
-{
-  // No stream-2 note anchored after parent → no target → marker stays.
-  const pm = makePaneManager([
-    makePane(null, "@01 outer-only"),
-    makePane("01", "@01 has @02 nested but no target"),
-    makePane("02", "@02 unreachable"),
-  ]);
-  const r = paneManagerToPackerContent(pm);
-  const stream1Note = r[0].notes.find((n) => n.stream === "01");
-  ok("unmatched @02 stays literal",
-    stream1Note?.text?.includes("@02"),
-    `stream-1 text: '${stream1Note?.text}'`);
-}
-
-// --- 5. Self-stream marker inside a note is left alone ---
-{
-  // Stream 1 pane: "@01 outer talks about @01 someone-else"
-  // The second @01 inside the note text is self-stream and shouldn't be
-  // turned into a link.
-  const pm = makePaneManager([
-    makePane(null, "@01 outer @01 second"),
-    makePane("01", "@01 has @01 inside @01 second outer"),
+  // Main: @01 outerA, @01 outerB
+  // Stream 01: 2 notes — only the SECOND has nested
+  // Stream 02: 1 note
+  const pm = makePM([
+    makePane(null, "@01 outerA @01 outerB"),
+    makePane("01", "@01 first @01 second with @02 nested"),
     makePane("02", "@02 alpha"),
   ]);
   const r = paneManagerToPackerContent(pm);
-  const note1 = r[0].notes.find((n) => n.stream === "01");
-  ok("self-stream @01 is not turned into a link",
-    !note1?.links || note1.links.every((l) => l.stream !== "01"),
-    JSON.stringify(note1?.links));
+  const stream02 = r[0].notes.filter((n) => n.stream === "02");
+  ok("1 stream-02 note from the nested @02", stream02.length === 1);
+  ok("anchor matches the SECOND outer's main-body position",
+    stream02[0].anchor > 0,
+    JSON.stringify(stream02));
+  // The first main @01 anchored at "@01 outerA" (anchor 0 after stripping)
+  // The second main @01 anchored at " @01 outerB" → after first marker stripped, anchor = "outerA ".length = 7
+  ok("anchored after first outer (not at 0)", stream02[0].anchor > 0);
 }
 
-console.log(failed === 0 ? "\nAll cross-ref checks passed." : `\n${failed} failures.`);
+// --- 6. Pane 02 runs out → extras drop silently ---
+{
+  const pm = makePM([
+    makePane(null, "@01 anchor @02 main"),
+    makePane("01", "@01 outer @02 nested-overflows"),
+    makePane("02", "@02 only-one"),
+  ]);
+  const r = paneManagerToPackerContent(pm);
+  const stream02 = r[0].notes.filter((n) => n.stream === "02");
+  ok("stream-02 has 1 note (nested took the only one)", stream02.length === 1,
+    JSON.stringify(stream02));
+  ok("nested consumed first (sorted before main @02 by anchor)",
+    stream02[0].text === "only-one");
+}
+
+console.log(failed === 0 ? "\nAll consumption-model checks passed." : `\n${failed} failures.`);
 process.exit(failed === 0 ? 0 : 1);
