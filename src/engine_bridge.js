@@ -528,7 +528,16 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
     logEvent("talmud_layout");
-    if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
+    // משה 2026-05-08: V8 hybrid (בטה למנהלים) דורס את V1/V2 כשדלוק.
+    // הוא מחליף לחלוטין את שלב המבנה התלמודי + משנ"ב באמצעות
+    // ארכיטקטורת host/guest float עם ראשי absolute. עמודי placeholder
+    // נשארים בידי הפלואו הרגיל.
+    const v8Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
+    const v8Enabled = v8Auth.admin && localStorage.getItem("ravtext.vilnaV8Beta") === "1";
+    if (v8Enabled) {
+      const v8 = await import("./vilna_v8_apply.js");
+      await v8.applyVilnaV8ToPages(pagesContainer);
+    } else if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
       const v2 = await import("./talmud_engine_v2.js");
       await v2.applyTalmudLayoutToPagesV2(pagesContainer);
     } else {

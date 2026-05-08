@@ -919,6 +919,10 @@ function rerenderPages() {
   updateOriginalStreamColumnsPanel([], rerenderPages);
   scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi);
 }
+// צוות האתר 2026-05-08: hook לרענון יזום מ-settings_pane (V8 toggle וכו').
+if (typeof window !== "undefined") {
+  window.__ravtextRerender = rerenderPages;
+}
 
 function refreshStreamSettingsPanel(pages = []) {
   for (const p of paneManager.panes) {
