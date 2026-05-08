@@ -401,7 +401,14 @@ function buildPagePlan(pageContent, config) {
     const o = opts || {};
     const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
     const effectiveMainBottomY = Math.min(rawMainBottomY, pageBottomY);
-    const otherSideEnded = !!o.otherSideEnded;
+    // משה 2026-05-08: otherSideEndY הוא ה-y שבו הצד השני נגמר (מ-pass 1).
+    // אם null/undefined — מתייחסים כאל "אין צד שני" → mainTopY (כל strip 3 בעצם
+    // יקבל רוחב מלא). אם >= pageBottom — הצד השני ממשיך עד תחתית הדף → רק halfWidth.
+    // בין לבין — נפצל את strip 3 לשניים: halfWidth עד otherEndY, fullWidth אחריו.
+    const rawOtherEndY = (o.otherSideEndY !== undefined && o.otherSideEndY !== null)
+      ? o.otherSideEndY
+      : mainTopY;
+    const otherEndY = Math.max(effectiveMainBottomY, Math.min(rawOtherEndY, pageBottomY));
 
     const strips = [];
 
@@ -434,25 +441,27 @@ function buildPagePlan(pageContent, config) {
       }
     }
 
-    // Strip 3: רק אם יש מקום מתחת לראשי בתוך הדף.
-    // אם הצד השני נגמר ב-strips 1+2 → רוחב מלא (אין מרווח, אין שני זרמים);
-    // אחרת halfWidth − מרווח 1% בין השניים.
-    if (effectiveMainBottomY < pageBottomY) {
-      if (otherSideEnded) {
-        strips.push({
-          y_start: effectiveMainBottomY,
-          y_end: pageBottomY,
-          width: innerWidth,
-          x: 0,
-        });
-      } else {
-        strips.push({
-          y_start: effectiveMainBottomY,
-          y_end: pageBottomY,
-          width: sideHalfWidth,
-          x: side === 'right' ? sideRightX : 0,
-        });
-      }
+    // Strip 3 — שני סגמנטים אפשריים מתחת לראשי:
+    //   3a (halfWidth, x צד) מ-effectiveMainBottomY עד otherEndY: שני הצדדים פעילים
+    //   3b (innerWidth, x=0) מ-otherEndY עד pageBottomY: הצד השני כבר נגמר → השורד
+    //                                                     לוקח את כל הרוחב
+    // אם otherEndY <= effectiveMainBottomY: רק 3b (הצד השני נגמר ב-strips 1+2)
+    // אם otherEndY >= pageBottomY: רק 3a (הצד השני מגיע עד תחתית הדף)
+    if (effectiveMainBottomY < otherEndY) {
+      strips.push({
+        y_start: effectiveMainBottomY,
+        y_end: otherEndY,
+        width: sideHalfWidth,
+        x: side === 'right' ? sideRightX : 0,
+      });
+    }
+    if (otherEndY < pageBottomY) {
+      strips.push({
+        y_start: otherEndY,
+        y_end: pageBottomY,
+        width: innerWidth,
+        x: 0,
+      });
     }
 
     const flowResult = flowStreamThroughStrips(
@@ -571,21 +580,24 @@ function buildPagePlan(pageContent, config) {
   // 4.6 Pass 2 — חישוב מחדש של הצדדים עם:
   //   1. mainBottomY עדכני (אחרי בר־מצרא של הראשי) — strip 3 מתחיל גבוה יותר אם
   //      הראשי התקצר, ולכן הצד מקבל יותר מקום אנכי.
-  //   2. otherSideEnded — מצב 4 בדינמיקה: אם הצד השני נגמר ב-strips 1+2
-  //      (לפני naiveMainBottomY), הצד השורד מקבל strip 3 ברוחב מלא של הדף.
+  //   2. otherSideEndY — ה-y שבו הצד השני נגמר. ב-strip 3 הצד השורד מקבל
+  //      halfWidth עד otherSideEndY (שם השני עוד פעיל), ו-fullWidth אחריו
+  //      (שם השני כבר נגמר). זה ה"ברך בכל מקום" — מילוי כל שטח ריק
+  //      שיוצא ממנו השכן, גם אם הוא נגמר באמצע strip 3 ולא רק ב-strips 1+2.
   //
-  // משה 2026-05-08: זה ה"ברך בכל מקום" — כשיש מקום פנוי, הצד השורד מתרחב אליו.
-  const rightEndedEarly = pass1Right
-    ? pass1Right.endY < naiveMainBottomY - 0.5
-    : true; // אם אין צד ימני — הצד השמאלי מתייחס ל"שני נגמר" כל הזמן
-  const leftEndedEarly = pass1Left
-    ? pass1Left.endY < naiveMainBottomY - 0.5
-    : true;
+  // משה 2026-05-08: pass1.endY נדרש להיות מוגבל ל-pageBottomY כדי שהשורות
+  // האחרונות לא ידחסו מעבר לדף.
+  const rightOtherEndY = pass1Left
+    ? Math.min(pass1Left.endY, pageBottomY)
+    : mainTopY;
+  const leftOtherEndY = pass1Right
+    ? Math.min(pass1Right.endY, pageBottomY)
+    : mainTopY;
 
   if (pageContent.rightStream) {
     const box = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
-      otherSideEnded: leftEndedEarly,
+      otherSideEndY: rightOtherEndY,
     });
     if (box) {
       result.streamBoxes.push(box);
@@ -595,7 +607,7 @@ function buildPagePlan(pageContent, config) {
   if (pageContent.leftStream) {
     const box = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
-      otherSideEnded: rightEndedEarly,
+      otherSideEndY: leftOtherEndY,
     });
     if (box) {
       result.streamBoxes.push(box);
