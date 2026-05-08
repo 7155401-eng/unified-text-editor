@@ -46,6 +46,7 @@ import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
+import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -189,6 +190,7 @@ const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
 setupWordExtractor(paneManager, rerenderPages);
+installLinkMismatchReporter(paneManager);
 
 const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
 const STREAM_PANE_WIDTH_KEY = "ravtext.streamPaneWidth";
