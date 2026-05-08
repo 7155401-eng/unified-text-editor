@@ -17,6 +17,7 @@ import { wireTalmudLayoutControls } from "./talmud_layout.js";
 import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
+import { openWordExtractor, setupWordExtractor } from "./word_extractor/word_extractor.js";
 import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
 import { installAuthUi } from "./auth_ui.js";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
@@ -181,6 +182,7 @@ applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
+setupWordExtractor(paneManager, rerenderPages);
 
 const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
 const STREAM_PANE_WIDTH_KEY = "ravtext.streamPaneWidth";
@@ -1489,6 +1491,10 @@ document.addEventListener("click", async (ev) => {
     }
     case "word-import": {
       importWord(paneManager, rerenderPages);
+      break;
+    }
+    case "word-import-streams": {
+      openWordExtractor(paneManager, rerenderPages);
       break;
     }
     case "word-export": {
