@@ -372,10 +372,18 @@ function buildPagePlan(pageContent, config) {
   let mainBottomY = naiveMainBottomY; // יעודכן אחרי בר־מצרא
 
   // 4. זרמים צדיים
-  function buildSideStream(streamData, side) {
+  // משה 2026-05-08: עכשיו מקבלת mainBottomY ו-otherSideEnded כפרמטרים,
+  // כדי שאחרי בר־מצרא של הראשי נוכל לחשב את הצדדים מחדש עם:
+  //   - mainBottomY עדכני (אם הראשי התקצר, strip 3 של הצד מתחיל גבוה יותר)
+  //   - otherSideEnded — מצב 4: אם הצד השני נגמר ב-strips 1+2, הצד השורד
+  //     מקבל רוחב מלא ב-strip 3 (במקום halfWidth).
+  function buildSideStream(streamData, side, opts) {
     if (!streamData) return null;
     const text = streamData.items.join(' ');
     if (!text) return null;
+    const o = opts || {};
+    const effectiveMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
+    const otherSideEnded = !!o.otherSideEnded;
 
     const strips = [];
 
@@ -393,26 +401,36 @@ function buildPagePlan(pageContent, config) {
       if (side === 'right') {
         strips.push({
           y_start: mainTopY,
-          y_end: naiveMainBottomY,
+          y_end: effectiveMainBottomY,
           width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
           x: mainX + mainWidth + mainGap,
         });
       } else {
         strips.push({
           y_start: mainTopY,
-          y_end: naiveMainBottomY,
+          y_end: effectiveMainBottomY,
           width: Math.max(0, mainX - mainGap),
           x: 0,
         });
       }
     }
 
-    strips.push({
-      y_start: naiveMainBottomY,
-      y_end: cfg.pageHeight - cfg.padding,
-      width: halfWidth,
-      x: side === 'right' ? halfWidth : 0,
-    });
+    // Strip 3: מתחת לראשי. אם הצד השני נגמר ב-strips 1+2 → רוחב מלא; אחרת halfWidth.
+    if (otherSideEnded) {
+      strips.push({
+        y_start: effectiveMainBottomY,
+        y_end: cfg.pageHeight - cfg.padding,
+        width: innerWidth,
+        x: 0,
+      });
+    } else {
+      strips.push({
+        y_start: effectiveMainBottomY,
+        y_end: cfg.pageHeight - cfg.padding,
+        width: halfWidth,
+        x: side === 'right' ? halfWidth : 0,
+      });
+    }
 
     const flowResult = flowStreamThroughStrips(
       text,
@@ -449,31 +467,24 @@ function buildPagePlan(pageContent, config) {
     };
   }
 
+  // Pass 1: צדדים נאיביים (mainBottomY = naiveMainBottomY, otherSideEnded=false).
+  // הם משמשים לחישוב ה-bar-mitzra של הראשי בלבד.
+  let pass1Right = null;
+  let pass1Left = null;
   if (pageContent.rightStream) {
-    const box = buildSideStream(pageContent.rightStream, 'right');
-    if (box) {
-      result.streamBoxes.push(box);
-      if (box.overflowText) result.overflow.streams[box.id] = box.overflowText;
-    }
+    pass1Right = buildSideStream(pageContent.rightStream, 'right');
   }
   if (pageContent.leftStream) {
-    const box = buildSideStream(pageContent.leftStream, 'left');
-    if (box) {
-      result.streamBoxes.push(box);
-      if (box.overflowText) result.overflow.streams[box.id] = box.overflowText;
-    }
+    pass1Left = buildSideStream(pageContent.leftStream, 'left');
   }
 
   // 4.5 ראשי — בר־מצרא: זורם דרך strips לפי endY של הצדדים.
   // אם פרשן נגמר באמצע (endY < naiveMainBottomY), הראשי מתפשט לתוך שטחו.
   if (pageContent.mainText) {
-    const rightBox = result.streamBoxes.find(b => b.side === 'right');
-    const leftBox  = result.streamBoxes.find(b => b.side === 'left');
-
     // אם אין צד בכלל — endY = mainTopY (פנוי מההתחלה).
     // אם צד קיים אבל endY עבר את naiveMainBottomY — נחשב Infinity (חוסם הכול).
-    const rawRight = rightBox ? rightBox.endY : mainTopY;
-    const rawLeft  = leftBox  ? leftBox.endY  : mainTopY;
+    const rawRight = pass1Right ? pass1Right.endY : mainTopY;
+    const rawLeft  = pass1Left  ? pass1Left.endY  : mainTopY;
     const rightEnd = (rawRight >= naiveMainBottomY - 0.5) ? Infinity : rawRight;
     const leftEnd  = (rawLeft  >= naiveMainBottomY - 0.5) ? Infinity : rawLeft;
 
@@ -531,6 +542,41 @@ function buildPagePlan(pageContent, config) {
     }
 
     mainBottomY = mainFlow.endY;
+  }
+
+  // 4.6 Pass 2 — חישוב מחדש של הצדדים עם:
+  //   1. mainBottomY עדכני (אחרי בר־מצרא של הראשי) — strip 3 מתחיל גבוה יותר אם
+  //      הראשי התקצר, ולכן הצד מקבל יותר מקום אנכי.
+  //   2. otherSideEnded — מצב 4 בדינמיקה: אם הצד השני נגמר ב-strips 1+2
+  //      (לפני naiveMainBottomY), הצד השורד מקבל strip 3 ברוחב מלא של הדף.
+  //
+  // משה 2026-05-08: זה ה"ברך בכל מקום" — כשיש מקום פנוי, הצד השורד מתרחב אליו.
+  const rightEndedEarly = pass1Right
+    ? pass1Right.endY < naiveMainBottomY - 0.5
+    : true; // אם אין צד ימני — הצד השמאלי מתייחס ל"שני נגמר" כל הזמן
+  const leftEndedEarly = pass1Left
+    ? pass1Left.endY < naiveMainBottomY - 0.5
+    : true;
+
+  if (pageContent.rightStream) {
+    const box = buildSideStream(pageContent.rightStream, 'right', {
+      mainBottomY,
+      otherSideEnded: leftEndedEarly,
+    });
+    if (box) {
+      result.streamBoxes.push(box);
+      if (box.overflowText) result.overflow.streams[box.id] = box.overflowText;
+    }
+  }
+  if (pageContent.leftStream) {
+    const box = buildSideStream(pageContent.leftStream, 'left', {
+      mainBottomY,
+      otherSideEnded: rightEndedEarly,
+    });
+    if (box) {
+      result.streamBoxes.push(box);
+      if (box.overflowText) result.overflow.streams[box.id] = box.overflowText;
+    }
   }
 
   // 5. footers
