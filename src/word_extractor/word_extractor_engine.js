@@ -1418,6 +1418,7 @@ export async function extract_and_process(source_input, sd, ext_map) {
         full.append('\\par}', false, false, false, 0, '', true);
       } else {
         full.extend(pr);
+        full.append('\\par', false, false, false, 0, '', true);
       }
       full.append('\n', false, false, false, 0, '', true);
     }
