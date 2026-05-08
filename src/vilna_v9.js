@@ -315,7 +315,7 @@ function buildPagePlan(pageContent, config) {
   // אין מרווח כי אין שני זרמים סמוכים.
   const sideHalfRatio = (cfg.sideHalfRatio !== null && cfg.sideHalfRatio !== undefined)
     ? cfg.sideHalfRatio
-    : 0.495;
+    : 0.49;
   const sideHalfWidth = Math.floor(innerWidth * sideHalfRatio);
   const sideRightX = innerWidth - sideHalfWidth;
 
