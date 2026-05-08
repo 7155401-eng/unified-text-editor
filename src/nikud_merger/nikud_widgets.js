@@ -80,6 +80,8 @@ export class HebrewTextBox {
     this.label = el("span", { cls: "label", text: this._labelText });
 
     this.loadBtn  = this._mkIconBtn("📂", i18n.t("tb_load_file"), () => this._loadFile());
+    this.undoBtn  = this._mkIconBtn("⟲", i18n.t("tb_undo"),     () => this._undo());
+    this.redoBtn  = this._mkIconBtn("⟳", i18n.t("tb_redo"),     () => this._redo());
     this.copyBtn  = this._mkIconBtn("⎘", i18n.t("tb_copy"),    () => this._copyAll());
     this.clearBtn = this._mkIconBtn("✕", i18n.t("tb_clear"),    () => this._clear());
 
@@ -94,7 +96,7 @@ export class HebrewTextBox {
     header.appendChild(this.label);
     const headerSpacer = el("span", { css: { flex: "1" } });
     header.appendChild(headerSpacer);
-    for (const b of [this.loadBtn, this.copyBtn, this.clearBtn]) header.appendChild(b);
+    for (const b of [this.loadBtn, this.undoBtn, this.redoBtn, this.copyBtn, this.clearBtn]) header.appendChild(b);
     header.appendChild(this.directionBtn);
 
     this.root.appendChild(header);
@@ -190,6 +192,20 @@ export class HebrewTextBox {
       this.text.select();
       try { document.execCommand("copy"); } catch (_) {}
     }
+  }
+
+  _undo() {
+    // לטקסטערה אין API ישיר ל-undo, אבל ה-execCommand("undo") עדיין עובד
+    // עבור הפוקוס הנוכחי. נדאג שהפוקוס יהיה על התיבה.
+    try { this.text.focus(); } catch (_) {}
+    try { document.execCommand("undo"); } catch (_) {}
+    this._onTextChange();
+  }
+
+  _redo() {
+    try { this.text.focus(); } catch (_) {}
+    try { document.execCommand("redo"); } catch (_) {}
+    this._onTextChange();
   }
 
   // API
