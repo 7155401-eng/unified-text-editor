@@ -126,6 +126,22 @@ for (const [label, query, expectBook, expectChap, expectVerse] of cases) {
 const nonsense = await searchByText("זהו טקסט שאינו פסוק כלל ועיקר ואין לו שום מקור בספריא", { limit: 5 });
 check("nonsense → 0 results", nonsense.length === 0, `got ${nonsense.length}`);
 
+// Sacred-name canonicalization
+const shemaWithApostrophe = await searchByText("שמע ישראל ה' אלהינו ה' אחד", { limit: 5 });
+const shemaTop = shemaWithApostrophe[0];
+check(
+  "Shema with ה' → matches Deuteronomy 6:4",
+  shemaTop && shemaTop.bookTitle === "Deuteronomy" && shemaTop.chapter === 6 && shemaTop.verse === 4,
+  shemaTop ? `top was ${shemaTop.bookTitle} ${shemaTop.chapter}:${shemaTop.verse}` : "no results"
+);
+const shemaWithHashem = await searchByText("שמע ישראל השם אלהינו השם אחד", { limit: 5 });
+const shemaTop2 = shemaWithHashem[0];
+check(
+  "Shema with השם → matches Deuteronomy 6:4",
+  shemaTop2 && shemaTop2.bookTitle === "Deuteronomy" && shemaTop2.chapter === 6 && shemaTop2.verse === 4,
+  shemaTop2 ? `top was ${shemaTop2.bookTitle} ${shemaTop2.chapter}:${shemaTop2.verse}` : "no results"
+);
+
 // Short query → 0 results (below minWords threshold)
 const tooShort = await searchByText("בראשית", { limit: 5 });
 check("query <minWords → 0 results", tooShort.length === 0, `got ${tooShort.length}`);

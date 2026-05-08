@@ -22,10 +22,28 @@ const _normalizedCache = new Map(); // book.title → { chapters: string[][] } o
 const STRIP_RE = /[֑-ֽֿ-ׇ]/g;
 const PUNCT_RE = /[׃׀,.;:!?()[\]{}״׳"'׳״]/g;
 
+// User-visible spellings of the Tetragrammaton that Sefaria stores as "יהוה".
+// We rewrite them to "יהוה" in the search-normalized form so that a query like
+// "שמע ישראל ה' אלהינו" matches Deut 6:4 even though Sefaria's text uses
+// "יהוה" verbatim. Note: this canonicalization runs only on the SEARCH side.
+// The locator (sefaria_locate.js) does not perform it because the position
+// mapping would have to invent positions for the extra chars; users who want
+// "צמוד לציטוט" to anchor onto a Tetragrammaton must spell it as "יהוה" in
+// the document. Switching to "כל הסימון" works either way.
+function canonicalizeSacredNames(s) {
+  return s
+    .replace(/(^|\s)ה['׳״](?=\s|$)/g, "$1יהוה")     // standalone "ה'" / "ה׳" / "ה״"
+    .replace(/(^|\s)השם(?=\s|$)/g, "$1יהוה");        // standalone "השם"
+}
+
 export function normalizeForSearch(s) {
   if (typeof s !== "string" || !s) return "";
-  return s
-    .replace(STRIP_RE, "")
+  // Strip cantillation/niqqud first.
+  let out = s.replace(STRIP_RE, "");
+  // Canonicalize sacred names BEFORE punctuation stripping — otherwise the
+  // apostrophe in "ה'" gets removed before we can recognize the abbreviation.
+  out = canonicalizeSacredNames(out);
+  return out
     .replace(/־/g, " ")
     .replace(PUNCT_RE, " ")
     .replace(/\s+/g, " ")

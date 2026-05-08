@@ -360,6 +360,16 @@ export function wireTorahTools(paneManager) {
       alert("סמן טקסט בעורך לפני הפעולה.");
       return null;
     }
+    // Quote-relative position math (origStart/origEnd → PM positions) assumes
+    // the selection is contained in a single block. Across blocks, ProseMirror
+    // inserts 2-position transitions while textBetween returns a 1-char
+    // separator — the math drifts. Refuse with a clear message.
+    const fromBlock = ed.state.doc.resolve(from).parent;
+    const toBlock = ed.state.doc.resolve(to).parent;
+    if (fromBlock !== toBlock) {
+      alert("הסימון חוצה יותר מפסקה אחת. סמן בתוך פסקה אחת בלבד.");
+      return null;
+    }
     return { from, to };
   }
 
