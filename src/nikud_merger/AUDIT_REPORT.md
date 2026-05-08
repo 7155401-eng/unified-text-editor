@@ -268,6 +268,7 @@ Legend:
 
 1. `HebrewTextBox` — added `⟲ Undo` and `⟳ Redo` icon buttons in the header (parity with Python `tb_undo`/`tb_redo`).
 2. `HebrewTextBox` — added a custom right-click menu with the six items the Python version exposes (`menu_cut`, `menu_copy`, `menu_paste`, `menu_select_all`, `menu_undo`, `menu_redo`).
+3. `nikud_engine.js / NIKUD_RANGE_RE` — was written using literal Hebrew chars `/[ְ-ּֿׁ-ׂׄ-ׇׅ]/`, whose `ׄ-ׇ` range silently included U+05C6 (nun-hafucha, which is a TAAM in Python). Replaced with explicit escapes `/[ְ-ּֿׁ-ׂׄ-ׇׅ]/` to match Python's `NIKUD_RANGE` byte-for-byte. This fixes a quiet false-positive in `countLettersWithoutNikud` for words that contain U+05C6.
 
 Each fix is in its own commit on `claude-fix-nikud-merger-improvements`.
 
