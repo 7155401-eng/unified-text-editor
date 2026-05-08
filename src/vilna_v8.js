@@ -163,10 +163,14 @@ function createHostElement(stream, hostSide, halfWidth, mainHalfWidth, mainHeigh
     "line-height:" + lineHeightRatio + ";";
 
   const guestSide = hostSide === "right" ? "left" : "right";
+  // ה-spacer של ה-host חייב להיות בצד הפנימי של ה-host (= לכיוון המרכז שבו הראשי).
+  // אם guest בצד right, host בצד left — ה-spacer צריך לצוף ימינה (לכיוון המרכז).
+  // אם guest בצד left, host בצד right — ה-spacer צריך לצוף שמאלה.
+  // לכן הכיוון = guestSide בדיוק.
   const hostMainSpacer = document.createElement("div");
   hostMainSpacer.className = "vilna-v8-host-main-spacer";
   hostMainSpacer.style.cssText =
-    "float:" + (guestSide === "right" ? "left" : "right") + ";" +
+    "float:" + guestSide + ";" +
     "width:" + mainHalfWidth + "px;" +
     "height:" + mainHeight + "px;";
   container.appendChild(hostMainSpacer);
@@ -382,4 +386,149 @@ export async function buildPage(container, pageContent, userCfg) {
   return { pageEl, mainBox,
            hostId: hostStream ? hostStream.id : null,
            guestId: guestStream ? guestStream.id : null };
+}
+
+// =====================================================================
+// buildPages — מקבל מערך פסקאות מובנות (mainText + notes) ו-מפגן לבד
+// לעמודי V8. כל עמוד מקבל כמה פסקאות שנכנסות בלי לחרוג מ-pageHeight.
+// =====================================================================
+//
+// paragraphs: [{ mainText: string, notes: [{stream, text}] }, ...]
+// titles: { '02': 'משנה ברורה', ... }
+// streamSettings: { '02': { mishnaSide: 'right'|'left' }, ... }
+//
+// קונפיגורציה דומה ל-buildPage. תוספות:
+//   maxPages: 100 (ביטחון נגד לולאות)
+//   maxParasPerPage: ניסיון מקסימום פסקאות בעמוד אחד (לפני שמוותרים)
+//
+// אסטרטגיה: לכל עמוד מנסים לסיפח פסקה־אחר־פסקה. אחרי כל הוספה מודדים
+// אם scrollHeight > pageHeight. אם כן — חוזרים אחורה לפסקה האחרונה
+// שנכנסה ומסיימים את העמוד. אם אפילו פסקה אחת לא נכנסת, מקבלים אותה
+// בכל זאת ועוברים לעמוד הבא (overflow visual שהמשתמש יראה).
+
+export async function buildPages(container, paragraphs, userCfg) {
+  ensureGlobalStyles();
+  const cfg = Object.assign({
+    pageWidth: 559,
+    pageHeight: 794,
+    mainFontSize: 13,
+    sideFontSize: 11,
+    lineHeightRatio: 1.55,
+    padding: 12,
+    mainWidthRatio: 0.33,
+    crownLines: 4,
+    titles: {},
+    streamSettings: {},
+    maxPages: 100,
+    maxParasPerPage: 50,
+  }, userCfg || {});
+
+  if (!container || !Array.isArray(paragraphs) || paragraphs.length === 0) {
+    return [];
+  }
+
+  const created = [];
+  let cursor = 0;
+  let pageIdx = 0;
+
+  while (cursor < paragraphs.length && pageIdx < cfg.maxPages) {
+    // קודם מוצאים את N — כמה פסקאות יכולות להיכנס לעמוד הנוכחי
+    let bestN = 1;
+    let n = 1;
+    while (n <= cfg.maxParasPerPage && cursor + n <= paragraphs.length) {
+      const slice = paragraphs.slice(cursor, cursor + n);
+      const aggContent = aggregateParagraphsForV8(slice, cfg.titles, cfg.streamSettings);
+
+      const trial = makePageElement(cfg, true);
+      container.appendChild(trial);
+      await buildPage(trial, aggContent, { ...cfg, useExisting: true });
+
+      const overflows = trial.scrollHeight > cfg.pageHeight + 1;
+      trial.remove();
+
+      if (overflows) {
+        if (n === 1) bestN = 1; // אפילו פסקה אחת חורגת — נקבל אותה בכל זאת
+        break;
+      }
+      bestN = n;
+      n++;
+    }
+
+    // עכשיו רינדור סופי לעמוד הנוכחי
+    const finalSlice = paragraphs.slice(cursor, cursor + bestN);
+    const finalContent = aggregateParagraphsForV8(finalSlice, cfg.titles, cfg.streamSettings);
+    const pageEl = makePageElement(cfg, false);
+    pageEl.dataset.pageIndex = String(pageIdx);
+    pageEl.dataset.realized = "1";
+    container.appendChild(pageEl);
+    await buildPage(pageEl, finalContent, { ...cfg, useExisting: true });
+
+    created.push(pageEl);
+    cursor += bestN;
+    pageIdx++;
+  }
+
+  return created;
+}
+
+function makePageElement(cfg, hidden) {
+  const el = document.createElement("div");
+  el.className = "page vilna-v8-page";
+  el.setAttribute("dir", "rtl");
+  el.style.cssText =
+    "width:" + cfg.pageWidth + "px;" +
+    "height:" + cfg.pageHeight + "px;" +
+    "overflow:hidden;" +
+    "margin:12px auto;" +
+    "border:2px solid #333;" +
+    "padding:" + cfg.padding + "px;" +
+    "background:#faf6e8;" +
+    "position:relative;" +
+    "box-sizing:border-box;" +
+    (hidden ? "visibility:hidden;position:absolute;left:-9999px;top:0;" : "");
+  return el;
+}
+
+function aggregateParagraphsForV8(paragraphs, titles, streamSettings) {
+  // מאחד את הראשי בפסקאות עם רווח כפול בין פסקאות
+  const mainText = paragraphs.map(p => (p.mainText || "").trim()).filter(Boolean).join("  ");
+
+  // אגרגציה של הערות לפי zerm
+  const streamMap = new Map();
+  for (const para of paragraphs) {
+    for (const note of (para.notes || [])) {
+      const sid = note.stream || note.streamId || note.streamCode;
+      if (!sid) continue;
+      if (!streamMap.has(sid)) streamMap.set(sid, []);
+      streamMap.get(sid).push(note.text || "");
+    }
+  }
+
+  const allStreams = Array.from(streamMap.entries()).map(([id, items]) => ({ id, items }));
+
+  // החלטת host/guest/footer לפי mishnaSide
+  let rightStream = null;
+  let leftStream = null;
+  const footerStreams = [];
+
+  for (const s of allStreams) {
+    const side = (streamSettings[s.id] || {}).mishnaSide;
+    if (side === "right" && !rightStream) rightStream = s;
+    else if (side === "left" && !leftStream) leftStream = s;
+    else footerStreams.push(s);
+  }
+
+  // Fallback: אם אף זרם לא הוגדר עם side, ניקח את 2 הראשונים
+  if (!rightStream && !leftStream && allStreams.length >= 1) {
+    rightStream = allStreams[0];
+    if (allStreams.length >= 2) leftStream = allStreams[1];
+    footerStreams.length = 0;
+    for (let i = 2; i < allStreams.length; i++) footerStreams.push(allStreams[i]);
+  } else if (!rightStream && footerStreams.length > 0) {
+    rightStream = footerStreams.shift();
+  } else if (!leftStream && footerStreams.length > 0) {
+    leftStream = footerStreams.shift();
+  }
+
+  return { mainText, rightStream, leftStream, footerStreams, titles };
 }
