@@ -214,6 +214,72 @@ function buildOneLine(words, startIdx, widthPx, metrics) {
 }
 
 // =====================================================================
+// בונה strips לראשי לפי בר־מצרא: כשפרשן נגמר, הראשי מתפשט לתוך שטחו.
+// =====================================================================
+//
+// הקלט:
+//   mainTopY    — התחלת הראשי (אחרי הכתר).
+//   mainX       — x של הראשי בעמוד (בתיאום LTR).
+//   mainWidth   — רוחב בסיסי של הראשי.
+//   mainGap     — מרווח בין הראשי לזרמים (שמתאחד לתוך הראשי כשהפרשן נגמר).
+//   innerWidth  — רוחב פנימי של הדף (אחרי padding).
+//   rightEndY   — y שבו פרשן ימני נגמר (Infinity אם הוא מילא את כל strip 2).
+//   leftEndY    — אותו דבר לשמאל.
+//   pageBottom  — תחתית הדף (pageHeight - padding).
+//
+// הפלט: רשימת strips עם y_start, y_end, width, x.
+// strip 1: שני הצדדים פעילים → רוחב = mainWidth, x = mainX.
+// strip 2: צד אחד נגמר → הראשי מתפשט (רוחב = mainWidth + gap + שטח הצד הנגמר).
+// strip 3: שני הצדדים נגמרו → הראשי לרוחב מלא (innerWidth).
+
+function buildMainStrips(opts) {
+  const { mainTopY, mainX, mainWidth, mainGap, innerWidth,
+          rightEndY, leftEndY, pageBottom } = opts;
+
+  const right = (rightEndY === undefined || rightEndY === null) ? mainTopY : rightEndY;
+  const left  = (leftEndY  === undefined || leftEndY  === null) ? mainTopY : leftEndY;
+
+  const firstEnd  = Math.min(right, left);
+  const secondEnd = Math.max(right, left);
+
+  const strips = [];
+
+  // Strip 1: שני הצדדים עדיין פעילים (mainTopY → firstEnd)
+  if (firstEnd > mainTopY) {
+    const y_end = (firstEnd === Infinity) ? pageBottom : firstEnd;
+    strips.push({ y_start: mainTopY, y_end, width: mainWidth, x: mainX });
+  }
+
+  if (firstEnd === Infinity) return strips; // שני הצדדים מילאו, אין הרחבה
+
+  // Strip 2: צד אחד נגמר. הראשי מתפשט אליו (firstEnd → secondEnd)
+  const firstEndedRight = right <= left;
+  let strip2X, strip2Width;
+  if (firstEndedRight) {
+    // ימני נגמר → הראשי מתפשט ימינה (לערכי x גדולים יותר ב-LTR).
+    strip2X = mainX;
+    strip2Width = innerWidth - mainX;
+  } else {
+    // שמאלי נגמר → הראשי מתפשט שמאלה (ל-x=0).
+    strip2X = 0;
+    strip2Width = mainX + mainWidth;
+  }
+  if (secondEnd > firstEnd) {
+    const y_end = (secondEnd === Infinity) ? pageBottom : secondEnd;
+    strips.push({ y_start: firstEnd, y_end, width: strip2Width, x: strip2X });
+  }
+
+  if (secondEnd === Infinity) return strips; // רק צד אחד נגמר
+
+  // Strip 3: שני הצדדים נגמרו. הראשי ברוחב מלא (secondEnd → pageBottom)
+  if (secondEnd < pageBottom) {
+    strips.push({ y_start: secondEnd, y_end: pageBottom, width: innerWidth, x: 0 });
+  }
+
+  return strips;
+}
+
+// =====================================================================
 // בונה תוכנית עמוד
 // =====================================================================
 function buildPagePlan(pageContent, config) {
@@ -293,39 +359,17 @@ function buildPagePlan(pageContent, config) {
   const sideTopY = cfg.padding + titleHeight;
   const mainTopY = sideTopY + crownHeight;
 
-  // 3. ראשי
-  let mainHeight = 0;
+  // 3. ראשי — ניבוי אורך נאיבי כדי לחשב את הצדדים. הפלייאוט הסופי ייעשה
+  // אחרי שהצדדים נמדדו, כדי לאפשר לראשי להתפשט לתוך מקום של פרשן שנגמר
+  // (בר־מצרא, מצב 2 בדינמיקת הגוף).
+  let naiveMainHeight = 0;
   if (pageContent.mainText) {
-    const lines = mainMetrics.layoutLines(pageContent.mainText, mainWidth);
-    mainHeight = lines.length * mainMetrics.lineHeight;
-
-    const mainLines = [];
-    for (let i = 0; i < lines.length; i++) {
-      mainLines.push({
-        x: mainX,
-        y: mainTopY + i * mainMetrics.lineHeight,
-        width: mainWidth,
-        words: lines[i].words,
-        text: lines[i].words.join(' '),
-        isLast: i === lines.length - 1,
-        naturalWidth: lines[i].width,
-        fontSize: cfg.mainFontSize,
-        lineHeightPx: mainMetrics.lineHeight,
-      });
-    }
-
-    result.mainBox = {
-      id: 'main',
-      role: 'main',
-      x: mainX,
-      y: mainTopY,
-      width: mainWidth,
-      height: mainHeight,
-      lines: mainLines,
-    };
+    const naiveLines = mainMetrics.layoutLines(pageContent.mainText, mainWidth);
+    naiveMainHeight = naiveLines.length * mainMetrics.lineHeight;
   }
 
-  const mainBottomY = mainTopY + mainHeight;
+  const naiveMainBottomY = mainTopY + naiveMainHeight;
+  let mainBottomY = naiveMainBottomY; // יעודכן אחרי בר־מצרא
 
   // 4. זרמים צדיים
   function buildSideStream(streamData, side) {
@@ -344,19 +388,19 @@ function buildPagePlan(pageContent, config) {
       });
     }
 
-    if (mainHeight > 0) {
+    if (naiveMainHeight > 0) {
       // משה 2026-05-08: מרווח mainGap בין הראשי לטור הצד.
       if (side === 'right') {
         strips.push({
           y_start: mainTopY,
-          y_end: mainBottomY,
+          y_end: naiveMainBottomY,
           width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
           x: mainX + mainWidth + mainGap,
         });
       } else {
         strips.push({
           y_start: mainTopY,
-          y_end: mainBottomY,
+          y_end: naiveMainBottomY,
           width: Math.max(0, mainX - mainGap),
           x: 0,
         });
@@ -364,7 +408,7 @@ function buildPagePlan(pageContent, config) {
     }
 
     strips.push({
-      y_start: mainBottomY,
+      y_start: naiveMainBottomY,
       y_end: cfg.pageHeight - cfg.padding,
       width: halfWidth,
       x: side === 'right' ? halfWidth : 0,
@@ -418,6 +462,75 @@ function buildPagePlan(pageContent, config) {
       result.streamBoxes.push(box);
       if (box.overflowText) result.overflow.streams[box.id] = box.overflowText;
     }
+  }
+
+  // 4.5 ראשי — בר־מצרא: זורם דרך strips לפי endY של הצדדים.
+  // אם פרשן נגמר באמצע (endY < naiveMainBottomY), הראשי מתפשט לתוך שטחו.
+  if (pageContent.mainText) {
+    const rightBox = result.streamBoxes.find(b => b.side === 'right');
+    const leftBox  = result.streamBoxes.find(b => b.side === 'left');
+
+    // אם אין צד בכלל — endY = mainTopY (פנוי מההתחלה).
+    // אם צד קיים אבל endY עבר את naiveMainBottomY — נחשב Infinity (חוסם הכול).
+    const rawRight = rightBox ? rightBox.endY : mainTopY;
+    const rawLeft  = leftBox  ? leftBox.endY  : mainTopY;
+    const rightEnd = (rawRight >= naiveMainBottomY - 0.5) ? Infinity : rawRight;
+    const leftEnd  = (rawLeft  >= naiveMainBottomY - 0.5) ? Infinity : rawLeft;
+
+    const mainStrips = buildMainStrips({
+      mainTopY,
+      mainX,
+      mainWidth,
+      mainGap,
+      innerWidth,
+      rightEndY: rightEnd,
+      leftEndY:  leftEnd,
+      pageBottom: cfg.pageHeight - cfg.padding,
+    });
+
+    const mainFlow = flowStreamThroughStrips(
+      pageContent.mainText,
+      mainStrips,
+      mainMetrics,
+      cfg.pageHeight - cfg.padding
+    );
+
+    const mainLines = [];
+    for (const line of mainFlow.lines) {
+      const strip = mainStrips.find(s =>
+        line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
+      if (!strip) continue;
+      mainLines.push({
+        x: strip.x,
+        y: line.y,
+        width: strip.width,
+        words: line.words,
+        text: line.text,
+        isLast: line.isLast,
+        naturalWidth: line.naturalWidth,
+        fontSize: cfg.mainFontSize,
+        lineHeightPx: mainMetrics.lineHeight,
+      });
+    }
+
+    const actualMainHeight = mainFlow.endY - mainTopY;
+
+    result.mainBox = {
+      id: 'main',
+      role: 'main',
+      x: mainX,
+      y: mainTopY,
+      width: mainWidth, // רוחב בסיסי; שורות יחידות עשויות להיות רחבות יותר
+      height: actualMainHeight,
+      lines: mainLines,
+      barMitzraStrips: mainStrips,
+    };
+
+    if (mainFlow.overflowText) {
+      result.overflow.mainText = mainFlow.overflowText;
+    }
+
+    mainBottomY = mainFlow.endY;
   }
 
   // 5. footers
