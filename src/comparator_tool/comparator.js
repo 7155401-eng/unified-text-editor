@@ -10,7 +10,16 @@ import './comparator.css';
 import { mountComparatorUI } from './comparator_ui.js';
 import { mountComparatorIntegratedUI } from './comparator_integrated.js';
 
-const VENDOR_BASE = (import.meta.env?.BASE_URL || '/') + 'vendor/comparator_tool/';
+// Resolve vendor path against the document base URL so it works in dev
+// (vite serves from root), production (relative base './'), and any
+// subpath deployment (Vercel + GH Pages + Cloudflare).
+function _vendorBase() {
+  try {
+    return new URL('vendor/comparator_tool/', document.baseURI).href;
+  } catch (_) {
+    return 'vendor/comparator_tool/';
+  }
+}
 
 let _vendorLoaded = false;
 let _vendorPromise = null;
@@ -40,12 +49,13 @@ async function ensureVendor() {
   if (_vendorLoaded) return;
   if (_vendorPromise) return _vendorPromise;
   _vendorPromise = (async () => {
+    const base = _vendorBase();
     if (!window.Quill) {
-      await _loadStylesheet(VENDOR_BASE + 'quill.snow.css');
-      await _loadScript(VENDOR_BASE + 'quill.min.js');
+      await _loadStylesheet(base + 'quill.snow.css');
+      await _loadScript(base + 'quill.min.js');
     }
     if (!window.JSZip) {
-      await _loadScript(VENDOR_BASE + 'jszip.min.js');
+      await _loadScript(base + 'jszip.min.js');
     }
     _vendorLoaded = true;
   })();
