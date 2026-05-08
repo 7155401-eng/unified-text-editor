@@ -330,7 +330,7 @@ export const IssueKind = Object.freeze({
 });
 
 const HEBREW_LETTER_RE = /[א-ת]/;
-const NIKUD_RANGE_RE   = /[ְ-ּֿׁ-ׂׄ-ׇׅ]/;
+const NIKUD_RANGE_RE   = /[\u05B0-\u05BC\u05BF\u05C1-\u05C2\u05C4-\u05C5\u05C7]/;
 const SHIN             = "ש";
 const SHIN_DOT_RIGHT   = "ׁ";
 const SHIN_DOT_LEFT    = "ׂ";
