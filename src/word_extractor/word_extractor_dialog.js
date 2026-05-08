@@ -612,6 +612,31 @@ function cleanRawLatexRun(raw) {
   s = s.replace(/\\[a-zA-Z]+[0-9]*\*?\s*(?:\[[^\]]*\])?/g, "");
   s = s.replace(/\\[^a-zA-Z\s]/g, "");
 
+  // PHASE 3b — פקודות יתומות (ה-richSlice חתך את ה-\ הקודם):
+  // ravtextbf, textbf, textit, fontsize, textcolor, setbox, hbox, unhbox, lastbox,
+  // box, opwhdg, streamfont, setRTL, strut, noindent, hsize, hfil, relax, unskip,
+  // null, par, parfillskip, lastlinefit, nolinebreak, leavevmode, hskip, selectfont,
+  // footnote, newline.
+  // המילון הזה מחפש את ה-substrings — מחקים מקרים שבהם רק חלק מהשם נשאר.
+  const ORPHAN_LATEX_NAMES = [
+    'ravtextbf','textbf','textit','underline','fontsize','selectfont',
+    'textcolor','setbox','unhbox','lastbox','hbox','box',
+    'opwhdg','opwheading','opwnoteraised','opwnotedropped',
+    'streamfont','setRTL','setLTR','strut','noindent','hsize',
+    'hfil','hfill','hskip','leavevmode','relax','unskip','null',
+    'parfillskip','lastlinefit','nolinebreak','par','newline',
+    'footnote','footnotetext','ledrightnote','ledleftnote','ledinnernote','ledouternote',
+    'centering','raggedleft','raggedright',
+  ];
+  // בונים regex ענק שתופס כל אחד עם digits אופציונליים אחריו ועם opt bracket
+  const orphanRe = new RegExp('\\b(?:' + ORPHAN_LATEX_NAMES.join('|') + ')[A-L]?[0-9]*\\*?(?:\\[[^\\]]*\\])?', 'g');
+  s = s.replace(orphanRe, "");
+  // PHASE 3c — שאריות שיכולות להיוותר בעקבות חיתוך אקראי באמצע מילה:
+  // 'ontE' (חצי מ-fontsize), 'tbf' (חצי מ-textbf), 'box=' וכו'
+  s = s.replace(/\b(?:onts|onte|ontE|tbf|tbox|extbf|extit|nhbox|astbox|amfont|elax|efit|line|inde|HTML|EE\d{4})\b/gi, "");
+  // \\footnote/\\par שכבר טופלו אבל נשארו אותיות יתומות
+  s = s.replace(/\bnoteB\b/g, "");
+
   // PHASE 4 — שאריות args של LaTeX
   s = s.replace(/0pt\s+plus\s+\d+(?:\.\d+)?\s*fil/g, "");
   s = s.replace(/=\s*\d+\s*pt(?:\s+plus\s+\d+(?:\.\d+)?\s*fil)?/g, "");

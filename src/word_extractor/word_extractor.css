@@ -2,7 +2,32 @@
    נטען מתוך word_extractor_dialog.js. */
 
 .we-modal-overlay { direction: rtl; }
-.we-modal { max-width: 880px; width: 90vw; max-height: 90vh; overflow: auto; }
+/* משה 2026-05-08: layout עמודי — header למעלה, content scrollable באמצע, footer (כפתורים) צמוד למטה */
+.we-modal {
+  max-width: 880px;
+  width: 90vw;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+.we-modal > .we-title,
+.we-modal > .we-desc,
+.we-modal > .we-pickrow,
+.we-modal > .we-status { flex-shrink: 0; }
+.we-modal > .we-meta,
+.we-modal > .we-streams-wrap,
+.we-modal > .we-preview,
+.we-modal > .we-brackets-wrap { flex: 1 1 auto; overflow: auto; min-height: 0; }
+.we-modal > .we-btns {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  background: inherit;
+  padding-top: 10px;
+  border-top: 1px solid var(--border, #ddd);
+  margin-top: 10px;
+}
 .we-modal h2.we-title { margin-top: 0; font-size: 1.4rem; }
 .we-modal h3 { margin: 16px 0 6px; font-size: 1.05rem; }
 .we-modal .we-desc { color: var(--text-muted, #888); margin: 4px 0 12px; }
