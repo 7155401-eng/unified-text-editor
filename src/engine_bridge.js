@@ -116,7 +116,10 @@ function docKey(doc) {
 
 function paneManagerContentSignature(paneManager) {
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
-  return paneManager.panes
+  // Include the nested-notes gate flag so toggling the feature on/off
+  // invalidates the cache even when the underlying content is unchanged.
+  const nestedFlag = (typeof window !== "undefined" && window.localStorage?.getItem("ravtext.nestedNotes") === "1") ? "n1" : "n0";
+  const sigParts = paneManager.panes
     .map((p) => [
       p.id,
       p.streamCode || "",
@@ -127,6 +130,7 @@ function paneManagerContentSignature(paneManager) {
       p.editor ? docKey(p.editor.state.doc) : "0",
     ].join(":"))
     .join("|");
+  return sigParts + "##" + nestedFlag;
 }
 
 function extractMainParagraphs(mainPane, paneManager) {
