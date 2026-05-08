@@ -6,6 +6,9 @@
 // This eliminates CSP issues, the 500-on-Hebrew-refs bug, and offline failures.
 
 import { getVerseText as _getVerseTextFromMirror } from "./sefaria_local.js";
+import { searchByText as _searchByText } from "./sefaria_search.js";
+import { formatCitation as _formatCitation, formatRefLabel as _formatRefLabel } from "./sefaria_ref_format.js";
+import { showMatchDialog as _showMatchDialog } from "./sefaria_match_dialog.js";
 
 const GIMATRIA_VALUES = {
   "א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
@@ -351,13 +354,22 @@ export function wireTorahTools(paneManager) {
     return null;
   }
 
-  function readRefInputs() {
+  function readRefInputs({ silent = false } = {}) {
     const book = bookSel.value;
     const chap = parseInt(chapInput.value, 10);
     const verse = parseInt(verseInput.value, 10);
-    if (!book) { alert("בחר ספר."); return null; }
-    if (!Number.isFinite(chap) || chap < 1) { chapInput.focus(); return null; }
-    if (!Number.isFinite(verse) || verse < 1) { verseInput.focus(); return null; }
+    if (!book) {
+      if (!silent) alert("בחר ספר.");
+      return null;
+    }
+    if (!Number.isFinite(chap) || chap < 1) {
+      if (!silent) chapInput.focus();
+      return null;
+    }
+    if (!Number.isFinite(verse) || verse < 1) {
+      if (!silent) verseInput.focus();
+      return null;
+    }
     return { book, chap, verse };
   }
 
@@ -394,47 +406,78 @@ export function wireTorahTools(paneManager) {
     return { from, to };
   }
 
+  // Resolve which Sefaria reference a button click should act on.
+  // Priority:
+  //   1. If the manual dropdown (book/chap/verse) is filled — use it (manual override)
+  //   2. Else search the local mirror for the selected text:
+  //      0 hits   → throws (caller shows the error in the status bar)
+  //      1 hit    → use it
+  //      2+ hits  → modal dialog, user picks
+  // Returned shape matches sefaria_search match objects:
+  //   { corpus, bookTitle, heTitle, chapter, verse, original, matchType }
+  async function resolveMatch(selectionText) {
+    const manual = readRefInputs({ silent: true });
+    if (manual) {
+      const eng = SEFARIA_REF[manual.book];
+      if (!eng) throw new Error(`ספר לא נתמך: ${manual.book}`);
+      const original = await _getVerseTextFromMirror(eng, manual.chap, manual.verse, { corpus: "tanakh" });
+      return {
+        corpus: "tanakh",
+        bookTitle: eng,
+        heTitle: manual.book,
+        chapter: manual.chap,
+        verse: manual.verse,
+        original,
+        matchType: "manual",
+      };
+    }
+    status.textContent = "מאתר במאגר…";
+    const matches = await _searchByText(selectionText);
+    if (matches.length === 0) {
+      throw new Error("הטקסט לא נמצא במאגר ספריא");
+    }
+    if (matches.length === 1) return matches[0];
+    const picked = await _showMatchDialog(matches);
+    if (!picked) {
+      const e = new Error("בוטל");
+      e.cancelled = true;
+      throw e;
+    }
+    return picked;
+  }
+
   async function runAction({ replace, cite }, btn) {
     const ed = getEditor();
     if (!ed) { alert("פתח עורך פעיל."); return; }
     const sel = ensureSelection(ed);
     if (!sel) return;
-    const ref = readRefInputs();
-    if (!ref) return;
 
     btn.disabled = true;
-    status.textContent = "טוען מספריא…";
+    status.textContent = "מאתר במאגר…";
     try {
+      const selectionText = ed.state.doc.textBetween(sel.from, sel.to, " ", " ");
+      const match = await resolveMatch(selectionText);
+
       const posValue = posSel.value;
       const isQuoteRelative = posValue.endsWith("-quote");
       const pos = isQuoteRelative ? posValue.replace("-quote", "") : posValue;
-      const citationHtml = cite
-        ? smallSourceHtml(buildCitation(ref.book, ref.chap, ref.verse))
-        : null;
 
-      // Fetch verse text if we're replacing OR positioning relative to the
-      // verse portion within the selection (since matching needs the verse text).
-      let verseText = null;
-      if (replace || isQuoteRelative) {
-        let t = await fetchSefariaVerse(ref.book, ref.chap, ref.verse);
-        if (!t) throw new Error("הפסוק לא נמצא");
-        verseText = applyNiqqudPref(t, niqqudCb.checked);
-      }
+      const verseText = applyNiqqudPref(match.original, niqqudCb.checked);
+      const citationHtml = cite ? smallSourceHtml(_formatCitation(match)) : null;
 
-      // Resolve the target range: either the whole selection, or the matched
-      // verse-portion inside it. If quote-relative but no match, we silently
-      // fall back to whole-selection and tell the user via status.
+      // For quote-relative modes, locate the verse inside the selection.
+      // Hard-fail (per memory rule feedback_quote_target_strict_after_index)
+      // now that the local index exists — the silent fallback was a Phase 1
+      // workaround for the substring heuristic.
       let targetFrom = sel.from;
       let targetTo = sel.to;
-      let quoteFound = false;
-      if (isQuoteRelative && verseText) {
-        const selectionText = ed.state.doc.textBetween(sel.from, sel.to, " ", " ");
-        const match = findVerseInSelection(verseText, selectionText);
-        if (match) {
-          targetFrom = sel.from + match.origStart;
-          targetTo = sel.from + match.origEnd;
-          quoteFound = true;
+      if (isQuoteRelative) {
+        const inner = findVerseInSelection(match.original, selectionText);
+        if (!inner) {
+          throw new Error("הציטוט לא נמצא בתוך הטקסט המסומן");
         }
+        targetFrom = sel.from + inner.origStart;
+        targetTo = sel.from + inner.origEnd;
       }
 
       if (replace) {
@@ -450,7 +493,6 @@ export function wireTorahTools(paneManager) {
           .insertContent(html)
           .run();
       } else if (citationHtml) {
-        // Cite-only: keep target text & marks intact, insert citation at chosen edge.
         const insertAt = pos === "before" ? targetFrom : targetTo;
         const html = pos === "before" ? `${citationHtml}&nbsp;` : `&nbsp;${citationHtml}`;
         ed.chain().focus()
@@ -459,13 +501,13 @@ export function wireTorahTools(paneManager) {
           .run();
       }
 
-      if (isQuoteRelative && !quoteFound) {
-        status.textContent = "הציטוט לא זוהה — בוצע על כל הסימון.";
-      } else {
-        status.textContent = quoteFound ? "הוכנס צמוד לציטוט." : "הוכנס.";
-      }
+      status.textContent = `הוכנס: ${_formatRefLabel(match)}`;
       setTimeout(() => { status.textContent = ""; }, 3000);
     } catch (e) {
+      if (e && e.cancelled) {
+        status.textContent = "";
+        return;
+      }
       console.error("[torah] action:", e);
       status.textContent = `שגיאה: ${e.message || e}`;
     } finally {
@@ -486,25 +528,25 @@ export function wireTorahTools(paneManager) {
   const niqqudActionBtn = makeActionBtn(
     "torah-action-niqqud",
     "🟦 ניקוד",
-    "החלף את הטקסט המסומן בטקסט המנוקד מהפסוק שנבחר למעלה",
+    "מזהה את הפסוק במאגר וממיר את המסומן לטקסט מנוקד. אם לא מזוהה — מחפש לפי הספר/פרק/פסוק שבחרת",
     { replace: true, cite: false }
   );
   const sourceActionBtn = makeActionBtn(
     "torah-action-source",
     "🟪 מקור",
-    "השאר את הטקסט המסומן כפי שהוא והוסף מקור בכתב קטן",
+    "מזהה את הפסוק ומוסיף מקור בכתב קטן (70%) — לא משנה את הטקסט המסומן",
     { replace: false, cite: true }
   );
   const bothActionBtn = makeActionBtn(
     "torah-action-both",
     "🟧 ניקוד + מקור",
-    "החלף את הטקסט המסומן בטקסט המנוקד והוסף מקור בכתב קטן",
+    "מזהה את הפסוק, ממיר למנוקד, ומוסיף מקור בכתב קטן",
     { replace: true, cite: true }
   );
   const completeActionBtn = makeActionBtn(
     "torah-action-complete",
     "🔄 השלמה",
-    "החלף את הטקסט המסומן בניסוח המקורי המלא של הפסוק שנבחר",
+    "מחליף את המסומן בנוסח המקורי המלא מהמאגר. אם המסומן הוא רק ראשי-תיבות או פרפרזה — מתבצע ניסיון זיהוי",
     { replace: true, cite: false }
   );
 
