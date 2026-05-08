@@ -886,41 +886,47 @@ export async function buildPages(container, paragraphs, config) {
   let carryOver = {};
 
   while ((cursor < paragraphs.length || hasCarryOver(carryOver)) && pageIdx < cfg.maxPages) {
-    let bestN = 1;
-
-    // 1. מצא minN — האינדקס של הפסקה הראשונה עם הערות מ-cursor והלאה.
-    // אם יש carryOver, minN יכול להיות 0 (רק carryOver, בלי פסקאות חדשות).
-    let minN = hasCarryOver(carryOver) ? 0 : 1;
-    let foundWithNotes = false;
-    if (cursor < paragraphs.length) {
-      for (let i = cursor; i < paragraphs.length && i < cursor + 50; i++) {
-        const hasNotes = paragraphs[i].notes && paragraphs[i].notes.length > 0;
-        if (hasNotes) {
-          minN = Math.max(minN, i - cursor + 1);
-          foundWithNotes = true;
-          break;
-        }
-      }
-      if (!foundWithNotes) {
-        minN = Math.max(minN, paragraphs.length - cursor);
-      }
-    }
-
-    // 2. בדיקה: כמה פסקאות נוספות מעבר ל-minN נכנסות?
-    let n = minN;
+    let bestN = 0;
     const maxN = paragraphs.length - cursor;
-    while (n <= 50 && n <= maxN) {
+
+    // משה 2026-05-08: לוגיקה חדשה — מתחילים מ-N=0 (רק carry-over) ומגדילים
+    // עד שלא נכנס. כך ה-carry-over זוכה לעדיפות והערות לא מצטברות לסוף הקובץ.
+    // הראשון שמתאים נשמר; אם אפילו carry-over לבד חורג — נקבל את החריגה
+    // (anyway carry-over מתחדש בעמוד הבא).
+    const trialAtN = (n) => {
       const slice = paragraphs.slice(cursor, cursor + n);
       const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
-      const trialPlan = buildPagePlan(aggContent, cfg);
-      if (trialPlan.overflow.exceedsPage) {
-        if (n === minN) bestN = minN;
-        break;
+      return buildPagePlan(aggContent, cfg);
+    };
+
+    // נסיון 1: N=0 (רק carry-over). אם נכנס, נשתמש בו כבסיס.
+    if (hasCarryOver(carryOver)) {
+      const tp0 = trialAtN(0);
+      if (tp0.overflow.exceedsPage) {
+        // אפילו carry-over לבד חורג. נחזור ל-N=1 רגיל (אם יש פסקאות).
+        bestN = (cursor < paragraphs.length) ? 1 : 0;
+      } else {
+        bestN = 0;
       }
+    } else {
+      // אין carry-over. חייבים לפחות פסקה אחת אם נשארו.
+      bestN = (cursor < paragraphs.length) ? 1 : 0;
+    }
+
+    // נסיון 2+: ננסה להוסיף פסקאות נוספות עד החריגה.
+    let n = bestN + 1;
+    while (n <= 50 && n <= maxN) {
+      const tp = trialAtN(n);
+      if (tp.overflow.exceedsPage) break;
       bestN = n;
       n++;
     }
-    if (bestN < minN) bestN = minN;
+
+    // אם bestN=0 ויש פסקאות שנותרו, נוודא שאנחנו לפחות מנסים פסקה אחת
+    // (אחרת לא נתקדם בקרסור והלולאה תיתקע על ה-carry-over).
+    if (bestN === 0 && cursor < paragraphs.length && !hasCarryOver(carryOver)) {
+      bestN = 1;
+    }
 
     // רינדור סופי לעמוד
     const finalSlice = paragraphs.slice(cursor, cursor + bestN);
@@ -943,6 +949,17 @@ export async function buildPages(container, paragraphs, config) {
         if (text && typeof text === 'string') nextCarry[sid] = text;
       }
     }
+
+    // משה 2026-05-08: הגנה מלולאה אינסופית — אם cursor לא התקדם וגם
+    // carry-over זהה (לא שונה אורך), נכפה התקדמות של פסקה אחת לפחות.
+    if (bestN === 0 && cursor < paragraphs.length) {
+      const prevSize = totalCarrySize(carryOver);
+      const newSize = totalCarrySize(nextCarry);
+      if (newSize >= prevSize) {
+        // לא היה progress. נדרש לקדם פסקה.
+        cursor += 1;
+      }
+    }
     carryOver = nextCarry;
 
     cursor += bestN;
@@ -956,6 +973,13 @@ function hasCarryOver(co) {
   if (!co) return false;
   for (const k in co) if (co[k]) return true;
   return false;
+}
+
+function totalCarrySize(co) {
+  if (!co) return 0;
+  let total = 0;
+  for (const k in co) total += (co[k] ? co[k].length : 0);
+  return total;
 }
 
 // משה 2026-05-08: ניקוי markers שלא הוצאו (`@05`, `{@05 ...}`).
