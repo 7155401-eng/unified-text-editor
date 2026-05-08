@@ -624,28 +624,48 @@ export async function buildPages(container, paragraphs, config) {
   let cursor = 0;
   let pageIdx = 0;
 
-  // לכל עמוד: התחלה עם 1 פסקה, ואם נכנס - לוקחים יותר עד שלא נכנס
+  // משה 2026-05-08: לכל עמוד מובטח לפחות פסקה אחת עם הערות (אם יש כזו עוד
+  // בקלט). מונע עמוד עם רק שורות ראשי באמצע בלי שום מפרשים בצדדים.
+  // אחרי minN, מנסים לסיפח עוד פסקאות עד שמגיעים ל-overflow.
   while (cursor < paragraphs.length && pageIdx < cfg.maxPages) {
     let bestN = 1;
-    let n = 1;
 
+    // 1. מצא minN — האינדקס של הפסקה הראשונה עם הערות מ-cursor והלאה
+    let minN = 1;
+    let foundWithNotes = false;
+    for (let i = cursor; i < paragraphs.length && i < cursor + 50; i++) {
+      const hasNotes = paragraphs[i].notes && paragraphs[i].notes.length > 0;
+      if (hasNotes) {
+        minN = i - cursor + 1;
+        foundWithNotes = true;
+        break;
+      }
+    }
+    if (!foundWithNotes) {
+      // כל הפסקאות שנותרו בלי הערות. ניקח אותן כולן בעמוד אחד (אם יחרגו
+      // ה-overflow loop של הצינור החיצוני יזרוק אותן לעמוד הבא).
+      minN = paragraphs.length - cursor;
+    }
+
+    // 2. בדיקה: כמה פסקאות נוספות מעבר ל-minN נכנסות?
+    let n = minN;
     while (n <= 50 && cursor + n <= paragraphs.length) {
       const slice = paragraphs.slice(cursor, cursor + n);
       const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels);
 
-      // בדיקה: האם נכנס בעמוד?
       const trialPlan = buildPagePlan(aggContent, cfg);
       if (trialPlan.overflow.exceedsPage) {
-        if (n === 1) bestN = 1;
+        if (n === minN) bestN = minN; // לפחות minN, גם אם חורג קצת
         break;
       }
       bestN = n;
       n++;
     }
+    if (bestN < minN) bestN = minN;
 
     // רינדור סופי לעמוד
     const finalSlice = paragraphs.slice(cursor, cursor + bestN);
-    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings);
+    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels);
 
     const pageEl = document.createElement('div');
     pageEl.className = 'page v9-page';
