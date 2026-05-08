@@ -228,6 +228,9 @@ function buildPagePlan(pageContent, config) {
     sideFontFamily: 'serif',
     crownLines: 4,
     mainWidthRatio: 0.42,
+    // משה 2026-05-08: רווח בין הראשי לזרמי הצד (~1.5% מרוחב הדף הפנימי).
+    // ניתן לעקוף ב-config.mainGap.
+    mainGap: null,
     titles: {},
   }, config || {});
 
@@ -235,6 +238,9 @@ function buildPagePlan(pageContent, config) {
   const halfWidth = Math.floor(innerWidth / 2);
   const mainWidth = Math.floor(innerWidth * cfg.mainWidthRatio);
   const mainX = Math.floor((innerWidth - mainWidth) / 2);
+  const mainGap = (cfg.mainGap !== null && cfg.mainGap !== undefined)
+    ? cfg.mainGap
+    : Math.max(4, Math.floor(innerWidth * 0.015));
 
   const mainMetrics = new VilnaMetrics({
     fontFamily: cfg.mainFontFamily,
@@ -339,18 +345,19 @@ function buildPagePlan(pageContent, config) {
     }
 
     if (mainHeight > 0) {
+      // משה 2026-05-08: מרווח mainGap בין הראשי לטור הצד.
       if (side === 'right') {
         strips.push({
           y_start: mainTopY,
           y_end: mainBottomY,
-          width: innerWidth - (mainX + mainWidth),
-          x: mainX + mainWidth,
+          width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
+          x: mainX + mainWidth + mainGap,
         });
       } else {
         strips.push({
           y_start: mainTopY,
           y_end: mainBottomY,
-          width: mainX,
+          width: Math.max(0, mainX - mainGap),
           x: 0,
         });
       }
@@ -606,8 +613,10 @@ export async function buildPages(container, paragraphs, config) {
     sideFontFamily: 'serif',
     crownLines: 4,
     mainWidthRatio: 0.42,
+    mainGap: null,
     titles: {},
     streamSettings: {},
+    levels: [],
     maxPages: 100,
   }, config || {});
 
@@ -615,28 +624,48 @@ export async function buildPages(container, paragraphs, config) {
   let cursor = 0;
   let pageIdx = 0;
 
-  // לכל עמוד: התחלה עם 1 פסקה, ואם נכנס - לוקחים יותר עד שלא נכנס
+  // משה 2026-05-08: לכל עמוד מובטח לפחות פסקה אחת עם הערות (אם יש כזו עוד
+  // בקלט). מונע עמוד עם רק שורות ראשי באמצע בלי שום מפרשים בצדדים.
+  // אחרי minN, מנסים לסיפח עוד פסקאות עד שמגיעים ל-overflow.
   while (cursor < paragraphs.length && pageIdx < cfg.maxPages) {
     let bestN = 1;
-    let n = 1;
 
+    // 1. מצא minN — האינדקס של הפסקה הראשונה עם הערות מ-cursor והלאה
+    let minN = 1;
+    let foundWithNotes = false;
+    for (let i = cursor; i < paragraphs.length && i < cursor + 50; i++) {
+      const hasNotes = paragraphs[i].notes && paragraphs[i].notes.length > 0;
+      if (hasNotes) {
+        minN = i - cursor + 1;
+        foundWithNotes = true;
+        break;
+      }
+    }
+    if (!foundWithNotes) {
+      // כל הפסקאות שנותרו בלי הערות. ניקח אותן כולן בעמוד אחד (אם יחרגו
+      // ה-overflow loop של הצינור החיצוני יזרוק אותן לעמוד הבא).
+      minN = paragraphs.length - cursor;
+    }
+
+    // 2. בדיקה: כמה פסקאות נוספות מעבר ל-minN נכנסות?
+    let n = minN;
     while (n <= 50 && cursor + n <= paragraphs.length) {
       const slice = paragraphs.slice(cursor, cursor + n);
-      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings);
+      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels);
 
-      // בדיקה: האם נכנס בעמוד?
       const trialPlan = buildPagePlan(aggContent, cfg);
       if (trialPlan.overflow.exceedsPage) {
-        if (n === 1) bestN = 1;
+        if (n === minN) bestN = minN; // לפחות minN, גם אם חורג קצת
         break;
       }
       bestN = n;
       n++;
     }
+    if (bestN < minN) bestN = minN;
 
     // רינדור סופי לעמוד
     const finalSlice = paragraphs.slice(cursor, cursor + bestN);
-    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings);
+    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels);
 
     const pageEl = document.createElement('div');
     pageEl.className = 'page v9-page';
@@ -655,9 +684,23 @@ export async function buildPages(container, paragraphs, config) {
   return { pages };
 }
 
+// משה 2026-05-08: ניקוי markers שלא הוצאו (`@05`, `{@05 ...}`).
+// אם הקלט מ-paneManagerToPackerContent השאיר marker בראשי (כי לא הייתה
+// הערה תואמת בזרם), אנחנו לפחות לא מציגים אותו למשתמש.
+function stripStreamMarkers(text) {
+  if (!text) return '';
+  return text
+    .replace(/\{@\d+[^}]*\}/g, '')
+    .replace(/@\d+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // אוסף פסקאות לתוכן עמוד יחיד (בדומה ל-V8)
-function aggregateForV9(paragraphs, titles, streamSettings) {
-  const mainText = paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('  ');
+function aggregateForV9(paragraphs, titles, streamSettings, levels) {
+  const mainText = stripStreamMarkers(
+    paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('  ')
+  );
 
   const streamMap = new Map();
   for (const para of paragraphs) {
@@ -671,27 +714,49 @@ function aggregateForV9(paragraphs, titles, streamSettings) {
 
   const allStreams = Array.from(streamMap.entries()).map(([id, items]) => ({ id, items }));
 
+  // משה 2026-05-08: כיבוד בחירת המשתמש — זרמים שב-levels = side, אחרים = footer.
+  // מיועד למקרה שהמשתמש בחר במפורש איזה זרמים יהיו "סופיים" (footers).
+  const sideCodes = new Set();
+  if (Array.isArray(levels)) {
+    for (const level of levels) {
+      for (const code of level) sideCodes.add(code);
+    }
+  }
+
   let rightStream = null;
   let leftStream = null;
   const footerStreams = [];
+  const sideCandidates = [];
 
   for (const s of allStreams) {
-    const side = (streamSettings[s.id] || {}).mishnaSide;
-    if (side === 'right' && !rightStream) rightStream = s;
-    else if (side === 'left' && !leftStream) leftStream = s;
-    else footerStreams.push(s);
+    const setting = streamSettings[s.id] || {};
+    const explicitSide = setting.mishnaSide; // right/left/auto/outer/inner
+    const isInLevel = sideCodes.has(s.id);
+
+    if (!isInLevel && !explicitSide) {
+      footerStreams.push(s);
+    } else {
+      sideCandidates.push({ s, side: explicitSide || 'auto' });
+    }
   }
 
-  // Fallback: אם אף זרם לא מוגדר עם side, ניקח את 2 הראשונים
-  if (!rightStream && !leftStream && allStreams.length >= 1) {
-    rightStream = allStreams[0];
-    if (allStreams.length >= 2) leftStream = allStreams[1];
-    footerStreams.length = 0;
-    for (let i = 2; i < allStreams.length; i++) footerStreams.push(allStreams[i]);
-  } else if (!rightStream && footerStreams.length > 0) {
+  // צד מפורש קודם
+  for (const c of sideCandidates) {
+    if (c.side === 'right' && !rightStream) rightStream = c.s;
+    else if (c.side === 'left' && !leftStream) leftStream = c.s;
+  }
+  // אז auto/outer/inner למלא מה שנשאר
+  for (const c of sideCandidates) {
+    if (c.s === rightStream || c.s === leftStream) continue;
+    if (!rightStream) rightStream = c.s;
+    else if (!leftStream) leftStream = c.s;
+    else footerStreams.push(c.s);
+  }
+
+  // Fallback אחרון: אם אין levels, אין settings, ויש רק footers — נמלא
+  if (!rightStream && !leftStream && sideCandidates.length === 0 && footerStreams.length >= 1) {
     rightStream = footerStreams.shift();
-  } else if (!leftStream && footerStreams.length > 0) {
-    leftStream = footerStreams.shift();
+    if (footerStreams.length >= 1) leftStream = footerStreams.shift();
   }
 
   return { mainText, rightStream, leftStream, footerStreams, titles };
