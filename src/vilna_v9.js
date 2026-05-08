@@ -579,30 +579,56 @@ function buildPagePlan(pageContent, config) {
     }
   }
 
-  // 5. footers
+  // 5. footers — חתוך לפי גבולות הדף.
+  // משה 2026-05-08: כמו במנוע משנה ברורה: footer שלא נכנס מודחק לעמוד הבא.
+  // כאן (אנליטי): חותכים שורות שעוברות את pageBottom, שומרים את הטקסט המודחק
+  // ב-overflow.streams (כדי ש-buildPages יוכל לדחוף לעמוד הבא דרך carry-over
+  // עתידי או דרך הפחתת פסקאות באיטרציה הבאה).
+  const pageBottom = cfg.pageHeight - cfg.padding;
   let footerY = Math.max(
     ...result.streamBoxes.map(b => b.endY || 0),
     mainBottomY
   ) + 8;
+  let anyFooterTrimmed = false;
 
   if (pageContent.footerStreams && pageContent.footerStreams.length) {
     for (const fs of pageContent.footerStreams) {
       const text = fs.items.join(' ');
       if (!text) continue;
-      const lines = sideMetrics.layoutLines(text, innerWidth);
+
+      // אם אין מקום אפילו לכותרת + שורה אחת, כל ה-footer הזה ל-overflow.
+      if (footerY + titleHeight + sideLineH > pageBottom) {
+        result.overflow.streams[fs.id] = text;
+        anyFooterTrimmed = true;
+        continue;
+      }
+
+      const allLines = sideMetrics.layoutLines(text, innerWidth);
       const titleY = footerY;
       footerY += titleHeight;
 
+      // כמה שורות נכנסות אחרי הכותרת?
+      const remainingY = pageBottom - footerY;
+      const maxLinesFit = Math.max(1, Math.floor(remainingY / sideLineH));
+      const linesToRender = allLines.slice(0, maxLinesFit);
+      const overflowLines = allLines.slice(maxLinesFit);
+
+      if (overflowLines.length > 0) {
+        const overflowWords = overflowLines.flatMap(l => l.words);
+        result.overflow.streams[fs.id] = overflowWords.join(' ');
+        anyFooterTrimmed = true;
+      }
+
       const linesData = [];
-      for (let i = 0; i < lines.length; i++) {
+      for (let i = 0; i < linesToRender.length; i++) {
         linesData.push({
           x: 0,
           y: footerY + i * sideLineH,
           width: innerWidth,
-          words: lines[i].words,
-          text: lines[i].words.join(' '),
-          isLast: i === lines.length - 1,
-          naturalWidth: lines[i].width,
+          words: linesToRender[i].words,
+          text: linesToRender[i].words.join(' '),
+          isLast: i === linesToRender.length - 1,
+          naturalWidth: linesToRender[i].width,
           fontSize: cfg.sideFontSize,
           lineHeightPx: sideLineH,
         });
@@ -614,12 +640,13 @@ function buildPagePlan(pageContent, config) {
         titleY: titleY,
         titleHeight: titleHeight,
       });
-      footerY += lines.length * sideLineH + 8;
+      footerY += linesToRender.length * sideLineH + 8;
     }
   }
 
-  // האם יש overflow מהעמוד?
-  result.overflow.exceedsPage = footerY > cfg.pageHeight;
+  // העמוד נחשב חורג אם footerY עבר את הגובה (לא צריך לקרות עם החיתוך)
+  // או אם נחתך משהו (כדי ש-buildPages יקטין פסקאות וייתן לתוכן הבא להיכנס לעמוד הבא).
+  result.overflow.exceedsPage = footerY > cfg.pageHeight || anyFooterTrimmed;
 
   return result;
 }
