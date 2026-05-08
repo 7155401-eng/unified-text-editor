@@ -4,7 +4,7 @@
 
 import {
   SOURCE_FOOTNOTE, SOURCE_ENDNOTE, SOURCE_COMMENT,
-  SOURCE_CUSTOM, SOURCE_EXTERNAL, SOURCE_SIDENOTE, SOURCE_PARALLEL,
+  SOURCE_CUSTOM, SOURCE_EXTERNAL, SOURCE_SIDENOTE, SOURCE_PARALLEL, SOURCE_BRACKETED,
   SOURCE_LABELS,
 } from "./word_extractor_i18n.js";
 
@@ -1238,8 +1238,14 @@ export async function extract_and_process(source_input, sd, ext_map) {
     } else if (st === SOURCE_CUSTOM) {
       const cp = s.custom_pattern || '';
       if (cp) cust_m2s[cp] = sid;
+    } else if (st === SOURCE_BRACKETED) {
+      // משה 2026-05-08: יטופל בלולאה נפרדת אחרי בולק — הזרם נצבר ב-brk_list דרך sd ישירות
     }
   }
+  // משה 2026-05-08: רשימת הזרמים מסוג "סוגריים"
+  const brk_list = Object.keys(sd)
+    .filter(k => sd[k].source_type === SOURCE_BRACKETED && sd[k].bracket_open && sd[k].bracket_close)
+    .map(k => ({ sid: k, opener: sd[k].bracket_open, closer: sd[k].bracket_close }));
   Object.assign(fn_m2s, sn_fn_m2s);
   Object.assign(en_m2s, sn_en_m2s);
   Object.assign(cm_m2s, sn_cm_m2s);
@@ -1438,6 +1444,17 @@ export async function extract_and_process(source_input, sd, ext_map) {
     full = rich_sub(pat_nb,
       ((s_) => (mt, rt) => _proc_inline(mt, rt, s_, sd))(sid),
       full);
+  }
+
+  // משה 2026-05-08: BRACKETED streams — כל מה שבין opener ל-closer
+  for (const brk of brk_list) {
+    const escO = brk.opener.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escC = brk.closer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pat_br = escO + '\\s*(.*?)\\s*' + escC;
+    const localSid = brk.sid;
+    full = rich_sub(pat_br,
+      ((s_) => (mt, rt) => _proc_inline(mt, rt, s_, sd))(localSid),
+      full, { dotAll: true });
   }
 
   // CUSTOM patterns

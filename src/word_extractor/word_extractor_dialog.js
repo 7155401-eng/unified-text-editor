@@ -37,7 +37,18 @@ let _state = {
   metadata: null,
   paneManagerRef: null,
   onLoadedRef: null,
+  brackets: [], // [{ opener:'{', closer:'}', series:'F' }, ...]
+  externals: [], // [{ file, fileName, zipBuf, marker:'@99', series:'G' }, ...]
 };
+
+const BRACKET_SERIES_DEFAULTS = ['F', 'G', 'H', 'I', 'J', 'K', 'L'];
+const EXTERNAL_SERIES_DEFAULTS = ['G', 'H', 'I', 'J', 'K', 'L'];
+
+function nextSeriesLetter(usedSet, defaults) {
+  for (const ch of defaults) if (!usedSet.has(ch)) return ch;
+  for (const ch of 'ABCDEFGHIJKL') if (!usedSet.has(ch)) return ch;
+  return 'F';
+}
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -91,6 +102,20 @@ function ensureModalShell() {
         <button type="button" class="we-preview-close">${escapeHtml(t('previewClose'))}</button>
       </div>
 
+      <div class="we-brackets-wrap">
+        <h3>קבוצות סוגריים מותאמות</h3>
+        <p class="we-brackets-info">כל מה שבין הסוגריים שתגדיר יילקח מהטקסט הראשי וייכנס לזרם הערות נפרד.</p>
+        <div class="we-brackets-list"></div>
+        <button type="button" class="we-bracket-add">➕ הוסף קבוצה</button>
+      </div>
+
+      <div class="we-external-wrap">
+        <h3>מסמך נפרד (אופציונלי)</h3>
+        <p class="we-external-info">בחר קובץ Word נוסף שיחובר ל-marker מסוים.</p>
+        <div class="we-external-list"></div>
+        <button type="button" class="we-external-add">➕ הוסף מסמך נפרד</button>
+      </div>
+
       <div class="modal-btns we-btns">
         <button type="button" class="we-confirm primary">${escapeHtml(t('confirm'))}</button>
         <button type="button" class="we-cancel">${escapeHtml(t('cancel'))}</button>
@@ -108,14 +133,123 @@ function ensureModalShell() {
   modal.querySelector('.we-preview-close').addEventListener('click', () => {
     modal.querySelector('.we-preview').hidden = true;
   });
+  modal.querySelector('.we-bracket-add').addEventListener('click', () => addBracketRow());
+  modal.querySelector('.we-external-add').addEventListener('click', () => addExternalRow());
   // close on overlay click
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
   return modal;
 }
 
+// =====================================================================
+// Custom-bracket rows + external-doc rows (משה 2026-05-08)
+// =====================================================================
+function addBracketRow(opener = '{', closer = '}', series = null) {
+  const list = document.querySelector('.we-brackets-list');
+  if (!list) return;
+  const used = new Set(_state.brackets.map(b => b.series));
+  const ser = series || nextSeriesLetter(used, BRACKET_SERIES_DEFAULTS);
+  const row = document.createElement('div');
+  row.className = 'we-bracket-row';
+  row.innerHTML = `
+    <label>סוגר התחלה: <input type="text" class="we-br-open" value="${escapeHtml(opener)}" maxlength="3" style="width:40px"></label>
+    <label>סוגר סיום: <input type="text" class="we-br-close" value="${escapeHtml(closer)}" maxlength="3" style="width:40px"></label>
+    <label>אות זרם:
+      <select class="we-br-series">
+        ${'ABCDEFGHIJKL'.split('').map(c => `<option value="${c}"${c === ser ? ' selected' : ''}>${c}</option>`).join('')}
+      </select>
+    </label>
+    <button type="button" class="we-br-remove" title="הסר">✕</button>
+  `;
+  row.querySelector('.we-br-remove').addEventListener('click', () => {
+    row.remove();
+    syncBracketsState();
+  });
+  ['.we-br-open', '.we-br-close', '.we-br-series'].forEach(sel => {
+    row.querySelector(sel).addEventListener('change', syncBracketsState);
+    row.querySelector(sel).addEventListener('input', syncBracketsState);
+  });
+  list.appendChild(row);
+  syncBracketsState();
+}
+
+function syncBracketsState() {
+  const rows = document.querySelectorAll('.we-bracket-row');
+  _state.brackets = Array.from(rows).map(row => ({
+    opener: row.querySelector('.we-br-open').value || '{',
+    closer: row.querySelector('.we-br-close').value || '}',
+    series: row.querySelector('.we-br-series').value || 'F',
+  }));
+}
+
+function addExternalRow() {
+  const list = document.querySelector('.we-external-list');
+  if (!list) return;
+  const idx = _state.externals.length;
+  const used = new Set(_state.externals.map(e => e.series));
+  const defSer = nextSeriesLetter(used, EXTERNAL_SERIES_DEFAULTS);
+  const row = document.createElement('div');
+  row.className = 'we-external-row';
+  row.innerHTML = `
+    <button type="button" class="we-ext-pick">בחר קובץ docx</button>
+    <span class="we-ext-name">לא נבחר קובץ</span>
+    <input type="file" accept=".docx" class="we-ext-file" hidden>
+    <label>סימן: <input type="text" class="we-ext-marker" placeholder="@99" maxlength="6" style="width:60px"></label>
+    <label>אות זרם:
+      <select class="we-ext-series">
+        ${'ABCDEFGHIJKL'.split('').map(c => `<option value="${c}"${c === defSer ? ' selected' : ''}>${c}</option>`).join('')}
+      </select>
+    </label>
+    <button type="button" class="we-ext-remove" title="הסר">✕</button>
+  `;
+  const fileInput = row.querySelector('.we-ext-file');
+  row.querySelector('.we-ext-pick').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    row.querySelector('.we-ext-name').textContent = f.name;
+    const buf = await f.arrayBuffer();
+    if (!_state.externals[idx]) _state.externals[idx] = {};
+    _state.externals[idx].file = f;
+    _state.externals[idx].fileName = f.name;
+    _state.externals[idx].zipBuf = buf;
+    syncExternalsState();
+  });
+  ['.we-ext-marker', '.we-ext-series'].forEach(sel => {
+    row.querySelector(sel).addEventListener('input', syncExternalsState);
+    row.querySelector(sel).addEventListener('change', syncExternalsState);
+  });
+  row.querySelector('.we-ext-remove').addEventListener('click', () => {
+    row.remove();
+    syncExternalsState();
+  });
+  list.appendChild(row);
+  // Initialize entry
+  _state.externals.push({ file: null, fileName: '', zipBuf: null, marker: '', series: defSer });
+  syncExternalsState();
+}
+
+function syncExternalsState() {
+  const rows = document.querySelectorAll('.we-external-row');
+  const arr = [];
+  rows.forEach((row, i) => {
+    const prev = _state.externals[i] || {};
+    arr.push({
+      file: prev.file || null,
+      fileName: prev.fileName || '',
+      zipBuf: prev.zipBuf || null,
+      marker: row.querySelector('.we-ext-marker').value.trim() || '',
+      series: row.querySelector('.we-ext-series').value || 'G',
+    });
+  });
+  _state.externals = arr;
+}
+
 function openModal() {
   const m = ensureModalShell();
   m.classList.add('active');
+  // ברירת מחדל — שורה אחת של {…} אם רשימת הקבוצות ריקה
+  const list = m.querySelector('.we-brackets-list');
+  if (list && list.children.length === 0) addBracketRow('{', '}', 'F');
 }
 export function closeModal() {
   const m = document.getElementById(MODAL_ID);
@@ -342,7 +476,41 @@ async function onConfirm() {
 
   try {
     const sd = streamsToSd(selected);
-    const full = await extract_and_process(_state.zipBuf.slice(0), sd, {});
+    // משה 2026-05-08: מוסיף sd entries עבור קבוצות סוגריים מותאמות
+    syncBracketsState();
+    _state.brackets.forEach((b, i) => {
+      const sid = `brk_${i}`;
+      sd[sid] = {
+        source_type: 'bracketed',
+        series: b.series,
+        bracket_open: b.opener || '{',
+        bracket_close: b.closer || '}',
+        marker: '',
+        count: 0,
+      };
+    });
+    // משה 2026-05-08: מוסיף sd entries עבור מסמכים נפרדים + טוען את הערותיהם
+    syncExternalsState();
+    const ext_map = {};
+    for (let i = 0; i < _state.externals.length; i++) {
+      const ex = _state.externals[i];
+      if (!ex.zipBuf || !ex.marker) continue;
+      const sid = `ext_${i}`;
+      sd[sid] = {
+        source_type: 'external',
+        series: ex.series,
+        target_marker: ex.marker.replace(/^@/, ''),
+        marker: '',
+        count: 0,
+      };
+      try {
+        const notes = await engine.load_external_notes(ex.zipBuf.slice(0), ex.marker);
+        ext_map[ex.marker.replace(/^@/, '')] = notes;
+      } catch (err) {
+        console.warn(`[word_extractor] external ${ex.fileName} failed:`, err);
+      }
+    }
+    const full = await extract_and_process(_state.zipBuf.slice(0), sd, ext_map);
     distributeToPanes(full, sd);
     setStatus('');
     closeModal();

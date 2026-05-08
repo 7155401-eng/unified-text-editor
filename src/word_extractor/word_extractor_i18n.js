@@ -8,6 +8,8 @@ export const SOURCE_CUSTOM = 'custom';
 export const SOURCE_EXTERNAL = 'external';
 export const SOURCE_SIDENOTE = 'sidenote';
 export const SOURCE_PARALLEL = 'parallel';
+// משה 2026-05-08: זרם מסוג "סוגריים" — כל מה שבין opener ל-closer (בלי custom_pattern).
+export const SOURCE_BRACKETED = 'bracketed';
 
 // תוויות עברית עם אמוג׳ים — verbatim מ-word_extractor.py SOURCE_LABELS
 export const SOURCE_LABELS = {
