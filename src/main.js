@@ -2,6 +2,42 @@
 // השלבים הקודמים (7-10) נשמרו: 22 תכונות עיצוב, רשימות מקוננות,
 // סימני זרם, מנתח אוטומטי. כעת הכל פועל על החלונית הפעילה.
 
+// משה 2026-05-08: טוקן URL להפעלת מנועי בטה.
+//   ?engine=v9   — מדליק V9 ומכבה V8
+//   ?engine=v8   — מדליק V8 ומכבה V9
+//   ?engine=off  — מכבה את שניהם
+//   ?k=<TOKEN>   — עוקף את בדיקת ה-admin (מאפשר שיתוף הקישור עם בודקים)
+// רץ ראשון לפני שכל מודול אחר טוען, כדי ש-engine_bridge יראה את המצב הנכון.
+(function applyEngineUrlToken() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const engine = params.get("engine");
+    const k = params.get("k");
+
+    // טוקן בדיקה — אם תואם, מקבלים הרשאת admin client-side לצורך
+    // הפעלת מנוע הבטה. הטוקן ידוע למשה ולמי שהוא משתף איתו את הקישור.
+    const TEST_TOKEN = "9q7zX3mP4w";
+    if (k === TEST_TOKEN) {
+      window.__RAVTEXT_AUTH__ = window.__RAVTEXT_AUTH__ || {};
+      window.__RAVTEXT_AUTH__.admin = true;
+    }
+
+    if (!engine) return;
+    const auth = window.__RAVTEXT_AUTH__ || {};
+    if (!auth.admin) return; // admin בלבד (אלא אם הטוקן כבר נתן הרשאה)
+    if (engine === "v9") {
+      localStorage.setItem("ravtext.vilnaV9Beta", "1");
+      localStorage.setItem("ravtext.vilnaV8Beta", "0");
+    } else if (engine === "v8") {
+      localStorage.setItem("ravtext.vilnaV8Beta", "1");
+      localStorage.setItem("ravtext.vilnaV9Beta", "0");
+    } else if (engine === "off") {
+      localStorage.setItem("ravtext.vilnaV9Beta", "0");
+      localStorage.setItem("ravtext.vilnaV8Beta", "0");
+    }
+  } catch {}
+})();
+
 import { PaneManager } from "./pane_manager.js";
 import { findAllStreamMarks, countByStream, jumpToNextMarker, colorForStream } from "./stream_mark.js";
 import { parseRawTextToHTML } from "./stream_parser.js";
