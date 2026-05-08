@@ -516,6 +516,30 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
+    // משה 2026-05-08: V8 hybrid (בטה למנהלים) — מנוע פגינציה חלופי.
+    // כש-V8 דלוק, מדלגים על כל הצינור הסטנדרטי (domPack/renderPages/talmud/
+    // mishna_wrap/balanced/opening_word/overflow_cap/וכו'). V8 מקבל את
+    // הפסקאות המובנות מ-paneManagerToPackerContent ובונה את כל העמודים בעצמו.
+    const v8Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
+    const v8Enabled = v8Auth.admin && localStorage.getItem("ravtext.vilnaV8Beta") === "1";
+    if (v8Enabled) {
+      logEvent("vilna_v8_pipeline_start");
+      const v8 = await import("./vilna_v8_apply.js");
+      await v8.applyVilnaV8FromPaneManager(content, pagesContainer);
+      if (myToken !== _renderToken) return;
+      if (pdfToolbarApi) {
+        const pageCount = pagesContainer.querySelectorAll(".page").length;
+        pdfToolbarApi.setTotal(pageCount);
+      }
+      logEvent("vilna_v8_pipeline_done", {
+        pageCount: pagesContainer.querySelectorAll(".page").length,
+      });
+      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
+        detail: { pages: [], content, v8: true },
+      }));
+      return;
+    }
+
     const pageGeom = getDomPageGeom();
     const pages = await domPack(content, pageGeom, {
       isCurrent: () => myToken === _renderToken,
@@ -528,16 +552,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
     logEvent("talmud_layout");
-    // משה 2026-05-08: V8 hybrid (בטה למנהלים) דורס את V1/V2 כשדלוק.
-    // הוא מחליף לחלוטין את שלב המבנה התלמודי + משנ"ב באמצעות
-    // ארכיטקטורת host/guest float עם ראשי absolute. עמודי placeholder
-    // נשארים בידי הפלואו הרגיל.
-    const v8Auth = (typeof window !== "undefined" && window.__RAVTEXT_AUTH__) || {};
-    const v8Enabled = v8Auth.admin && localStorage.getItem("ravtext.vilnaV8Beta") === "1";
-    if (v8Enabled) {
-      const v8 = await import("./vilna_v8_apply.js");
-      await v8.applyVilnaV8ToPages(pagesContainer);
-    } else if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
+    if (localStorage.getItem("ravtext.talmudLayout.useV2") === "1") {
       const v2 = await import("./talmud_engine_v2.js");
       await v2.applyTalmudLayoutToPagesV2(pagesContainer);
     } else {
