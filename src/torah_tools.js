@@ -275,23 +275,84 @@ export function wireTorahTools(paneManager) {
   status.id = "torah-verse-status";
   status.style.cssText = "font-size:11px;color:#888;margin-inline-start:6px;";
 
-  // Source-position toggle (where the citation goes relative to the selected text):
-  // "after" (default) or "before". Persisted in localStorage.
+  // Source-position dropdown (where the citation/replacement targets):
+  //   "after"        — right after the entire selection
+  //   "before"       — right before the entire selection
+  //   "after-quote"  — right after the verse-portion identified within the selection
+  //   "before-quote" — right before the verse-portion identified within the selection
+  // Persisted in localStorage. The "-quote" modes fetch the verse from Sefaria
+  // and substring-match it (after stripping niqqud) inside the selected text;
+  // if no match found, falls back to whole-selection behavior.
   const posSel = document.createElement("select");
   posSel.id = "torah-source-position";
-  posSel.title = "מיקום המקור — לפני או אחרי הטקסט המסומן";
+  posSel.title = "מיקום המקור — ביחס לכל הסימון או רק לציטוט שבתוכו";
   posSel.className = "torah-tool-select";
   posSel.style.cssText = "font-size:11px;padding:2px 4px;";
-  for (const [label, value] of [["מקור אחרי", "after"], ["מקור לפני", "before"]]) {
+  const POS_OPTIONS = [
+    ["מקור אחרי הסימון", "after"],
+    ["מקור לפני הסימון", "before"],
+    ["מקור אחרי הציטוט בתוך הסימון", "after-quote"],
+    ["מקור לפני הציטוט בתוך הסימון", "before-quote"],
+  ];
+  const VALID_POS = new Set(POS_OPTIONS.map(([, v]) => v));
+  for (const [label, value] of POS_OPTIONS) {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = label;
     posSel.appendChild(opt);
   }
-  posSel.value = localStorage.getItem("ravtext.torah.source_position") === "before" ? "before" : "after";
+  const savedPos = localStorage.getItem("ravtext.torah.source_position");
+  posSel.value = VALID_POS.has(savedPos) ? savedPos : "after";
   posSel.addEventListener("change", () => {
     localStorage.setItem("ravtext.torah.source_position", posSel.value);
   });
+
+  // Locate where the (niqqud-stripped) verseText sits inside (niqqud-stripped) selectionText.
+  // Returns { origStart, origEnd } as offsets within selectionText (preserving the
+  // original niqqud-bearing characters), or null if no usable match.
+  // Caveat: assumes the selection is within a single block — multi-paragraph
+  // selections may misalign because PM positions don't equal character offsets
+  // across block boundaries. Acceptable for Phase 1.
+  function findVerseInSelection(verseText, selectionText) {
+    // Strip cantillation marks and niqqud (U+0591-U+05BD, U+05BF-U+05C7).
+    // The Hebrew maqaf (U+05BE, "־") is converted to a space instead of stripped,
+    // because dropping it joins adjacent words ("ויהי־אור" → "ויהיאור") and breaks matching.
+    const isStrip = (ch) => /[֑-ֽֿ-ׇ]/.test(ch);
+    let normSel = "";
+    const normToOrig = [];
+    for (let i = 0; i < selectionText.length; i++) {
+      const ch = selectionText[i];
+      if (isStrip(ch)) continue;
+      const out = ch === "־" ? " " : ch;
+      normSel += out;
+      normToOrig.push(i);
+    }
+    normToOrig.push(selectionText.length);
+    let normVerse = "";
+    for (const ch of verseText) {
+      if (isStrip(ch)) continue;
+      normVerse += ch === "־" ? " " : ch;
+    }
+    if (!normSel || !normVerse) return null;
+
+    const idx = normSel.indexOf(normVerse);
+    if (idx >= 0) {
+      return { origStart: normToOrig[idx], origEnd: normToOrig[idx + normVerse.length] };
+    }
+    // Try shorter contiguous substrings (drop trailing then leading words),
+    // accepting a match of at least 3 words to avoid false positives.
+    const words = normVerse.split(/\s+/).filter(Boolean);
+    for (let n = words.length - 1; n >= 3; n--) {
+      for (let start = 0; start + n <= words.length; start++) {
+        const sub = words.slice(start, start + n).join(" ");
+        const j = normSel.indexOf(sub);
+        if (j >= 0) {
+          return { origStart: normToOrig[j], origEnd: normToOrig[j + sub.length] };
+        }
+      }
+    }
+    return null;
+  }
 
   function readRefInputs() {
     const book = bookSel.value;
@@ -347,29 +408,53 @@ export function wireTorahTools(paneManager) {
     btn.disabled = true;
     status.textContent = "טוען מספריא…";
     try {
-      const pos = posSel.value;
+      const posValue = posSel.value;
+      const isQuoteRelative = posValue.endsWith("-quote");
+      const pos = isQuoteRelative ? posValue.replace("-quote", "") : posValue;
       const citationHtml = cite
         ? smallSourceHtml(buildCitation(ref.book, ref.chap, ref.verse))
         : null;
 
+      // Fetch verse text if we're replacing OR positioning relative to the
+      // verse portion within the selection (since matching needs the verse text).
+      let verseText = null;
+      if (replace || isQuoteRelative) {
+        let t = await fetchSefariaVerse(ref.book, ref.chap, ref.verse);
+        if (!t) throw new Error("הפסוק לא נמצא");
+        verseText = applyNiqqudPref(t, niqqudCb.checked);
+      }
+
+      // Resolve the target range: either the whole selection, or the matched
+      // verse-portion inside it. If quote-relative but no match, we silently
+      // fall back to whole-selection and tell the user via status.
+      let targetFrom = sel.from;
+      let targetTo = sel.to;
+      let quoteFound = false;
+      if (isQuoteRelative && verseText) {
+        const selectionText = ed.state.doc.textBetween(sel.from, sel.to, " ", " ");
+        const match = findVerseInSelection(verseText, selectionText);
+        if (match) {
+          targetFrom = sel.from + match.origStart;
+          targetTo = sel.from + match.origEnd;
+          quoteFound = true;
+        }
+      }
+
       if (replace) {
-        let text = await fetchSefariaVerse(ref.book, ref.chap, ref.verse);
-        if (!text) throw new Error("הפסוק לא נמצא");
-        text = applyNiqqudPref(text, niqqudCb.checked);
-        const verseHtml = escapeHtml(text);
+        const verseHtml = escapeHtml(verseText);
         const html = citationHtml
           ? (pos === "before"
               ? `${citationHtml}&nbsp;${verseHtml}`
               : `${verseHtml}&nbsp;${citationHtml}`)
           : verseHtml;
         ed.chain().focus()
-          .setTextSelection({ from: sel.from, to: sel.to })
+          .setTextSelection({ from: targetFrom, to: targetTo })
           .deleteSelection()
           .insertContent(html)
           .run();
       } else if (citationHtml) {
-        // Cite-only: keep selection's marks intact, insert citation around it.
-        const insertAt = pos === "before" ? sel.from : sel.to;
+        // Cite-only: keep target text & marks intact, insert citation at chosen edge.
+        const insertAt = pos === "before" ? targetFrom : targetTo;
         const html = pos === "before" ? `${citationHtml}&nbsp;` : `&nbsp;${citationHtml}`;
         ed.chain().focus()
           .setTextSelection({ from: insertAt, to: insertAt })
@@ -377,8 +462,12 @@ export function wireTorahTools(paneManager) {
           .run();
       }
 
-      status.textContent = "הוכנס.";
-      setTimeout(() => { status.textContent = ""; }, 2000);
+      if (isQuoteRelative && !quoteFound) {
+        status.textContent = "הציטוט לא זוהה — בוצע על כל הסימון.";
+      } else {
+        status.textContent = quoteFound ? "הוכנס צמוד לציטוט." : "הוכנס.";
+      }
+      setTimeout(() => { status.textContent = ""; }, 3000);
     } catch (e) {
       console.error("[torah] action:", e);
       status.textContent = `שגיאה: ${e.message || e}`;
