@@ -880,38 +880,41 @@ export async function buildPages(container, paragraphs, config) {
   let cursor = 0;
   let pageIdx = 0;
 
-  // משה 2026-05-08: לכל עמוד מובטח לפחות פסקה אחת עם הערות (אם יש כזו עוד
-  // בקלט). מונע עמוד עם רק שורות ראשי באמצע בלי שום מפרשים בצדדים.
-  // אחרי minN, מנסים לסיפח עוד פסקאות עד שמגיעים ל-overflow.
-  while (cursor < paragraphs.length && pageIdx < cfg.maxPages) {
+  // משה 2026-05-08: carry-over של טקסט שנחתך מעמוד לעמוד הבא.
+  // streamId → string. בכל עמוד, הטקסט נשמר ב-overflow.streams ומועבר
+  // לתחילת הזרם בעמוד הבא (לפני ההערות מהפסקאות החדשות).
+  let carryOver = {};
+
+  while ((cursor < paragraphs.length || hasCarryOver(carryOver)) && pageIdx < cfg.maxPages) {
     let bestN = 1;
 
-    // 1. מצא minN — האינדקס של הפסקה הראשונה עם הערות מ-cursor והלאה
-    let minN = 1;
+    // 1. מצא minN — האינדקס של הפסקה הראשונה עם הערות מ-cursor והלאה.
+    // אם יש carryOver, minN יכול להיות 0 (רק carryOver, בלי פסקאות חדשות).
+    let minN = hasCarryOver(carryOver) ? 0 : 1;
     let foundWithNotes = false;
-    for (let i = cursor; i < paragraphs.length && i < cursor + 50; i++) {
-      const hasNotes = paragraphs[i].notes && paragraphs[i].notes.length > 0;
-      if (hasNotes) {
-        minN = i - cursor + 1;
-        foundWithNotes = true;
-        break;
+    if (cursor < paragraphs.length) {
+      for (let i = cursor; i < paragraphs.length && i < cursor + 50; i++) {
+        const hasNotes = paragraphs[i].notes && paragraphs[i].notes.length > 0;
+        if (hasNotes) {
+          minN = Math.max(minN, i - cursor + 1);
+          foundWithNotes = true;
+          break;
+        }
       }
-    }
-    if (!foundWithNotes) {
-      // כל הפסקאות שנותרו בלי הערות. ניקח אותן כולן בעמוד אחד (אם יחרגו
-      // ה-overflow loop של הצינור החיצוני יזרוק אותן לעמוד הבא).
-      minN = paragraphs.length - cursor;
+      if (!foundWithNotes) {
+        minN = Math.max(minN, paragraphs.length - cursor);
+      }
     }
 
     // 2. בדיקה: כמה פסקאות נוספות מעבר ל-minN נכנסות?
     let n = minN;
-    while (n <= 50 && cursor + n <= paragraphs.length) {
+    const maxN = paragraphs.length - cursor;
+    while (n <= 50 && n <= maxN) {
       const slice = paragraphs.slice(cursor, cursor + n);
-      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams);
-
+      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
       const trialPlan = buildPagePlan(aggContent, cfg);
       if (trialPlan.overflow.exceedsPage) {
-        if (n === minN) bestN = minN; // לפחות minN, גם אם חורג קצת
+        if (n === minN) bestN = minN;
         break;
       }
       bestN = n;
@@ -921,7 +924,7 @@ export async function buildPages(container, paragraphs, config) {
 
     // רינדור סופי לעמוד
     const finalSlice = paragraphs.slice(cursor, cursor + bestN);
-    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams);
+    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
 
     const pageEl = document.createElement('div');
     pageEl.className = 'page v9-page';
@@ -933,11 +936,26 @@ export async function buildPages(container, paragraphs, config) {
     const plan = buildSinglePage(pageEl, finalContent, cfg);
     pages.push(pageEl);
 
+    // עדכון carryOver — טקסטים שנחתכו בעמוד הזה יעברו לעמוד הבא
+    const nextCarry = {};
+    if (plan && plan.overflow && plan.overflow.streams) {
+      for (const [sid, text] of Object.entries(plan.overflow.streams)) {
+        if (text && typeof text === 'string') nextCarry[sid] = text;
+      }
+    }
+    carryOver = nextCarry;
+
     cursor += bestN;
     pageIdx++;
   }
 
   return { pages };
+}
+
+function hasCarryOver(co) {
+  if (!co) return false;
+  for (const k in co) if (co[k]) return true;
+  return false;
 }
 
 // משה 2026-05-08: ניקוי markers שלא הוצאו (`@05`, `{@05 ...}`).
@@ -953,12 +971,27 @@ function stripStreamMarkers(text) {
 }
 
 // אוסף פסקאות לתוכן עמוד יחיד (בדומה ל-V8)
-function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStreams) {
+// משה 2026-05-08: carryOver = טקסט מ-overflow של העמוד הקודם, מסודר לפי id
+// של הזרם. נשרשר אותו לפני ההערות מהפסקאות החדשות, כדי שייופיע ראשון
+// בעמוד הנוכחי (כמו במנוע משנ"ב — מה שנחתך מעמוד אחד עובר לראש העמוד הבא).
+function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStreams, carryOver) {
   const mainText = stripStreamMarkers(
     paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('  ')
   );
 
   const streamMap = new Map();
+
+  // קודם — carryOver מהעמוד הקודם
+  if (carryOver) {
+    for (const sid in carryOver) {
+      const text = carryOver[sid];
+      if (!text) continue;
+      if (!streamMap.has(sid)) streamMap.set(sid, []);
+      streamMap.get(sid).push(text);
+    }
+  }
+
+  // אחר כך — ההערות מהפסקאות החדשות
   for (const para of paragraphs) {
     for (const note of (para.notes || [])) {
       const sid = note.stream || note.streamId || note.streamCode;
