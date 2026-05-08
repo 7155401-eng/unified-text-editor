@@ -78,8 +78,7 @@ import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumber
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
-import { setupTransferSettings, showTransferSettings } from "./transfer_settings.js";
-import { showWowAlert, closeWowAlert } from "./wow_alert.js";
+import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -934,8 +933,8 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
 }
 revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
-if (isToolPreviewAllowed("nikud-merger")) {
-  setTimeout(() => wireNikudMergerButton(paneManager), 220);
+if (isToolPreviewAllowed("comparator-tool")) {
+  setTimeout(() => wireComparatorButton(paneManager), 220);
 }
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {

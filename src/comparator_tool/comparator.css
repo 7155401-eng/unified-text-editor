@@ -1,0 +1,337 @@
+/* Comparator tool — CSS verbatim port from comparator_tool.py HTML <style>
+   All rules scoped under #comparator-modal-root so they don't leak into the
+   main editor's styles. */
+
+#comparator-modal-root *{box-sizing:border-box;margin:0;padding:0}
+#comparator-modal-root{
+  --bg:#0B1325; --card:#15203A; --border:#1F2E54; --gold:#D4AF37;
+  --txt:#FFF; --muted:#94A3B8; --btn:#1F2E54; --btn-h:#2A3D6E;
+  --ed-bg:#0D1929; --ed-fg:#E2E8F0; --tb-bg:#111B30;
+}
+#comparator-modal-root.light-theme {
+  --bg:#F3F4F6; --card:#FFFFFF; --border:#E5E7EB; --gold:#D97706;
+  --txt:#111827; --muted:#6B7280; --btn:#E5E7EB; --btn-h:#D1D5DB;
+  --ed-bg:#F9FAFB; --ed-fg:#1F2937; --tb-bg:#F3F4F6;
+}
+#comparator-modal-root{background:var(--bg);color:var(--txt);font-family:'Segoe UI','David',sans-serif;direction:rtl; transition: 0.3s;}
+#comparator-modal-root .toolbar{background:var(--card);padding:8px 12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--border)}
+#comparator-modal-root .tb-group{display:flex;align-items:center;gap:4px;background:var(--bg);padding:4px 10px;border-radius:8px;border:1px solid var(--border);position:relative}
+#comparator-modal-root .tb-title{position:absolute;top:-8px;right:8px;font-size:9px;color:var(--gold);background:var(--bg);padding:0 4px;font-weight:bold;letter-spacing:.5px}
+#comparator-modal-root[dir="ltr"] .tb-title { right: auto; left: 8px; }
+#comparator-modal-root .sep{width:1px;height:28px;background:var(--border);margin:0 4px}
+#comparator-modal-root .btn{background:var(--btn);color:var(--txt);border:none;border-radius:6px;padding:7px 16px;font-size:13px;font-weight:bold;cursor:pointer;font-family:inherit;transition:.2s;white-space:nowrap}
+#comparator-modal-root.light-theme .btn { color: #111827; }
+#comparator-modal-root .btn:hover{background:var(--btn-h)}
+#comparator-modal-root .btn.green{background:#065F46 !important; color:#fff !important;}
+#comparator-modal-root .btn.green:hover{background:#047857 !important;}
+#comparator-modal-root .btn.teal{background:#155E75 !important; color:#fff !important;}
+#comparator-modal-root .btn.teal:hover{background:#0E7490 !important;}
+#comparator-modal-root .btn.brown{background:#7C2D12 !important; color:#fff !important;}
+#comparator-modal-root .btn.brown:hover{background:#9A3412 !important;}
+#comparator-modal-root .btn.blue{background:#1E3A5F !important; color:#fff !important;}
+#comparator-modal-root .btn.blue:hover{background:#2563EB !important;}
+#comparator-modal-root .btn.purple{background:#312E81 !important; color:#fff !important;}
+#comparator-modal-root .btn.purple:hover{background:#4338CA !important;}
+#comparator-modal-root .btn.gold{background:var(--gold) !important;color:#000 !important;}
+#comparator-modal-root .btn.gold:hover{background:#C5A028 !important;}
+#comparator-modal-root .btn.active{background:var(--gold)!important;color:#000!important}
+#comparator-modal-root .btn-sm{padding:4px 8px;font-size:12px;min-width:28px}
+
+#comparator-modal-root #global-toolbar {
+    background: var(--tb-bg);
+    border-bottom: 1px solid var(--border);
+    direction: inherit;
+    text-align: right;
+    padding: 6px 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10000 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+#comparator-modal-root[dir="ltr"] #global-toolbar { text-align: left; }
+#comparator-modal-root[dir="rtl"] #global-toolbar { text-align: right; direction: rtl; }
+#comparator-modal-root #global-toolbar .ql-formats { direction: inherit; }
+#comparator-modal-root #global-toolbar .btn { margin: 0 2px; }
+
+/* הבטחה שהכלים מעל כל החלונות */
+#comparator-modal-root .ql-toolbar.ql-snow {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10000 !important;
+    background: var(--tb-bg) !important;
+}
+#comparator-modal-root .ql-toolbar .ql-stroke { stroke: var(--muted) !important; }
+#comparator-modal-root .ql-toolbar .ql-fill { fill: var(--muted) !important; }
+#comparator-modal-root .ql-toolbar .ql-picker-label { color: var(--muted) !important; }
+#comparator-modal-root .ql-toolbar button:hover .ql-stroke,
+#comparator-modal-root .ql-toolbar button.ql-active .ql-stroke { stroke: var(--gold) !important; }
+#comparator-modal-root .ql-toolbar button.ql-active .ql-fill { fill: var(--gold) !important; }
+
+/* תיקון כיתובי כלים - Quill Tooltips */
+#comparator-modal-root .ql-tooltip {
+    position: absolute !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--gold) !important;
+    border-radius: 4px !important;
+    color: var(--white) !important;
+    padding: 4px 8px !important;
+    font-size: 12px !important;
+    z-index: 10000 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+    direction: inherit !important;
+}
+
+/* תיקון labels של כלים */
+#comparator-modal-root .ql-toolbar .ql-picker-label,
+#comparator-modal-root .ql-toolbar button {
+    position: relative !important;
+}
+
+#comparator-modal-root .ql-toolbar button:hover::after {
+    content: attr(data-tooltip) !important;
+    position: absolute !important;
+    bottom: 100% !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    background: var(--bg-card) !important;
+    color: var(--white) !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+    z-index: 9999 !important;
+    margin-bottom: 5px !important;
+    border: 1px solid var(--gold) !important;
+}
+
+/* RTL adjustments for tooltips */
+#comparator-modal-root[dir="rtl"] .ql-tooltip {
+    direction: rtl !important;
+    text-align: right !important;
+}
+
+#comparator-modal-root[dir="rtl"] .ql-toolbar button:hover::after {
+    right: 50% !important;
+    left: auto !important;
+    transform: translateX(50%) !important;
+}
+
+/* תיקון תצוגת picker labels */
+#comparator-modal-root .ql-toolbar .ql-picker-label {
+    padding: 2px 18px 2px 8px !important;
+    overflow: visible !important;
+}
+
+#comparator-modal-root[dir="rtl"] .ql-toolbar .ql-picker-label {
+    padding: 2px 8px 2px 18px !important;
+}
+
+#comparator-modal-root .font-size{color:var(--txt);font-size:14px;font-weight:bold;min-width:24px;text-align:center}
+
+/* Container for all panes */
+#comparator-modal-root .panes{display:flex;flex:1;gap:0;padding:6px 8px;overflow:hidden;flex-direction:row;}
+#comparator-modal-root .pane{flex:1;display:flex;flex-direction:column;background:var(--card);border-radius:8px;border:1px solid var(--border);overflow:hidden;min-width:150px;}
+
+#comparator-modal-root .pane-header{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--border)}
+#comparator-modal-root .pane-header.source{background:#1A1A3E}
+#comparator-modal-root.light-theme .pane-header.source { background: #E5E7EB; }
+#comparator-modal-root .pane-title{color:var(--gold);font-weight:bold;font-size:13px}
+#comparator-modal-root .pane-header.source .pane-title{color:var(--muted)}
+#comparator-modal-root .sym-input{width:60px;text-align:center;background:var(--ed-bg);color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:3px;font-weight:bold;font-size:13px}
+#comparator-modal-root .sym-label{color:var(--muted);font-size:11px;margin-left:6px}
+#comparator-modal-root[dir="ltr"] .sym-label { margin-left: 0; margin-right: 6px; }
+
+/* גבול נגרר (Splitter) */
+#comparator-modal-root .resizer {
+  width: 8px;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.2s;
+  border-radius: 4px;
+  margin: 0 2px;
+}
+#comparator-modal-root .resizer:hover, #comparator-modal-root .resizer.dragging {
+  background: var(--gold);
+}
+
+#comparator-modal-root .marker-bar{font-size:12px;padding:4px 12px;background:var(--tb-bg);color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--border);min-height:26px;direction:ltr;align-items:center}
+#comparator-modal-root .marker-bar .mc{font-weight:bold;display:flex;align-items:center;gap:3px}
+#comparator-modal-root .marker-bar .mc .sym-label-bar{font-size:11px;margin-left:2px;opacity:.7}
+#comparator-modal-root .marker-bar .mc .badge{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:10px;font-size:11px;font-weight:800;color:#fff;padding:0 5px;cursor:pointer;transition:.15s;border:1px solid transparent}
+#comparator-modal-root .marker-bar .mc .badge:hover{transform:scale(1.2);border-color:#fff;box-shadow:0 0 6px rgba(255,255,255,.3)}
+#comparator-modal-root .mc-0 .badge{background:#0984e3}
+#comparator-modal-root .mc-1 .badge{background:#00b894}
+#comparator-modal-root .mc-2 .badge{background:#e17055}
+#comparator-modal-root .mc-3 .badge{background:#6c5ce7}
+#comparator-modal-root .mc-4 .badge{background:#fdcb6e;color:#000}
+#comparator-modal-root .mc-5 .badge{background:#636e72}
+
+#comparator-modal-root .pane .ql-container{border:none!important;flex:1;overflow:auto;font-size:15px}
+#comparator-modal-root .pane .ql-editor{background:var(--ed-bg);color:var(--ed-fg);direction:rtl;text-align:right;font-family:'David','Segoe UI',serif;font-size:15px;line-height:1.9;min-height:200px;padding:12px}
+#comparator-modal-root .pane .ql-editor.ql-blank::before{color:#4A5568;font-style:normal;right:12px;left:auto}
+#comparator-modal-root[dir="ltr"] .pane .ql-editor.ql-blank::before { right: auto; left: 12px; }
+#comparator-modal-root .pane .ql-editor.no-wrap {white-space: pre !important; overflow-x: auto !important;}
+
+/* בועיות מיספור מעל הסימנים בתוך העורך */
+#comparator-modal-root .note-marker {
+    position: relative; display: inline-block; padding: 0 2px;
+    border-radius: 3px; margin: 0 1px;
+}
+#comparator-modal-root .note-marker::after {
+    content: attr(data-num); position: absolute;
+    top: -12px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; font-weight: 900; font-family: sans-serif;
+    background: inherit; color: inherit; padding: 2px 5px;
+    border-radius: 10px; line-height: 1;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3); pointer-events: none;
+}
+
+/* v11.41 — שדרוג ה-modal הקיים לרמת wow */
+#comparator-modal-root .modal-overlay{display:none;position:absolute;inset:0;background:radial-gradient(ellipse at center, rgba(15,23,42,0.82), rgba(2,6,23,0.94));z-index:1000;justify-content:center;align-items:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+#comparator-modal-root .modal-overlay.active{display:flex;animation:comp-wowOverlayIn .18s ease-out}
+#comparator-modal-root .modal{position:relative;background:linear-gradient(145deg, var(--card) 0%, var(--bg) 100%);border-radius:18px;padding:28px 32px;width:560px;max-width:92%;max-height:80vh;overflow:auto;border:2px solid var(--gold);box-shadow: 0 0 0 1px rgba(212,175,55,0.35), 0 20px 60px -10px rgba(0,0,0,0.75), 0 0 90px -20px var(--gold);animation:comp-wowFadeIn .22s cubic-bezier(.2,.9,.3,1.1)}
+#comparator-modal-root .modal::after{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg, transparent, var(--gold), transparent);border-radius:18px 18px 0 0;pointer-events:none}
+#comparator-modal-root .modal h2{color:var(--gold);margin-bottom:14px;font-size:22px;font-weight:800;letter-spacing:0.4px;text-shadow:0 2px 10px rgba(212,175,55,0.3)}
+#comparator-modal-root .stream-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:8px;margin-bottom:8px;border:1px solid transparent;transition:.2s}
+#comparator-modal-root .stream-row:hover{border-color:var(--gold);box-shadow:0 0 0 1px rgba(212,175,55,0.15)}
+#comparator-modal-root .stream-row label{flex:1;cursor:pointer}
+#comparator-modal-root .stream-row input[type=text]{width:60px;text-align:center;background:var(--ed-bg);color:var(--gold);border:1px solid var(--gold);border-radius:6px;padding:5px;font-weight:bold;transition:.2s}
+#comparator-modal-root .stream-row input[type=text]:focus{outline:none;box-shadow:0 0 0 2px rgba(212,175,55,0.3)}
+#comparator-modal-root .modal-btns{display:flex;gap:12px;margin-top:20px;justify-content:center}
+#comparator-modal-root .modal .btn.gold{background:linear-gradient(180deg, var(--gold) 0%, #B8942E 100%);padding:10px 28px;border-radius:10px;box-shadow:0 6px 14px -4px rgba(212,175,55,0.55), inset 0 1px 0 rgba(255,255,255,0.3);transition:.2s;font-weight:800}
+#comparator-modal-root .modal .btn.gold:hover{transform:translateY(-1px);box-shadow:0 10px 22px -4px rgba(212,175,55,0.78), inset 0 1px 0 rgba(255,255,255,0.4)}
+
+/* v11.40 — חלון התראה מעוצב (wow) להחלפת ה-native alert */
+@keyframes comp-wowFadeIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes comp-wowOverlayIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes comp-wowIconPulse { 0%,100% { transform: scale(1); filter: drop-shadow(0 0 8px var(--gold)); } 50% { transform: scale(1.06); filter: drop-shadow(0 0 18px var(--gold)); } }
+#comparator-modal-root .wow-overlay { display:none; position:absolute; inset:0; background:radial-gradient(ellipse at center, rgba(15,23,42,0.82), rgba(2,6,23,0.94)); z-index:2000; justify-content:center; align-items:center; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); animation: comp-wowOverlayIn .18s ease-out; }
+#comparator-modal-root .wow-overlay.active { display:flex; }
+#comparator-modal-root .wow-card { position:relative; background:linear-gradient(145deg, var(--card) 0%, var(--bg) 100%); border:2px solid var(--gold); border-radius:18px; padding:34px 42px 28px; width:540px; max-width:92%; text-align:center; box-shadow: 0 0 0 1px rgba(212,175,55,0.35), 0 20px 60px -10px rgba(0,0,0,0.75), 0 0 90px -20px var(--gold); animation: comp-wowFadeIn .22s cubic-bezier(.2,.9,.3,1.1); direction:rtl; }
+#comparator-modal-root .wow-card::after { content:""; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg, transparent, var(--gold), transparent); border-radius:18px 18px 0 0; }
+#comparator-modal-root .wow-icon { font-size:64px; line-height:1; margin-bottom:14px; color: var(--gold); animation: comp-wowIconPulse 2.2s ease-in-out infinite; display:inline-block; }
+#comparator-modal-root .wow-title { color: var(--gold); font-size:22px; font-weight:800; margin-bottom:10px; letter-spacing:0.4px; text-shadow: 0 2px 10px rgba(212,175,55,0.3); }
+#comparator-modal-root .wow-msg { color: var(--txt); font-size:15px; line-height:1.7; margin-bottom:22px; opacity:.92; }
+#comparator-modal-root .wow-btn { background:linear-gradient(180deg, var(--gold) 0%, #B8942E 100%); color:#0B1325; border:none; border-radius:10px; padding:11px 38px; font-size:15px; font-weight:800; letter-spacing:0.5px; cursor:pointer; font-family:inherit; transition:.2s; box-shadow: 0 6px 14px -4px rgba(212,175,55,0.55), inset 0 1px 0 rgba(255,255,255,0.3); }
+#comparator-modal-root .wow-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -4px rgba(212,175,55,0.78), inset 0 1px 0 rgba(255,255,255,0.4); }
+#comparator-modal-root .wow-btn:active { transform: translateY(0); }
+#comparator-modal-root .wow-info .wow-icon { color:#60A5FA; animation-duration: 2.6s; }
+#comparator-modal-root .wow-info .wow-title { color:#93C5FD; text-shadow: 0 2px 10px rgba(96,165,250,0.35); }
+#comparator-modal-root .wow-warn .wow-icon { color:#F59E0B; animation-duration: 1.6s; }
+#comparator-modal-root .wow-warn .wow-title { color:#FBBF24; text-shadow: 0 2px 10px rgba(245,158,11,0.35); }
+#comparator-modal-root .wow-err .wow-icon { color:#F87171; animation-duration: 1.3s; }
+#comparator-modal-root .wow-err .wow-title { color:#FCA5A5; text-shadow: 0 2px 10px rgba(248,113,113,0.35); }
+#comparator-modal-root .wow-ok .wow-icon { color:#34D399; }
+#comparator-modal-root .wow-ok .wow-title { color:#6EE7B7; text-shadow: 0 2px 10px rgba(52,211,153,0.35); }
+
+/* Outer modal container that hosts the comparator (added by comparator.js) */
+.comparator-host-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 99000;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+}
+.comparator-host-frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #0B1325;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.comparator-host-close {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 12px;
+  z-index: 99999;
+  background: #B91C1C;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.comparator-host-close:hover { background: #DC2626; }
+
+/* Floating language button injected by run-time (matches Python _inject_lang_btn) */
+#comparator-modal-root #rt_lang_btn_floating {
+  position: absolute;
+  top: 8px;
+  inset-inline-start: 10px;
+  z-index: 99999;
+  background: rgba(15,23,42,0.85);
+  color: #FBBF24;
+  border: 1px solid rgba(251,191,36,0.5);
+  border-radius: 6px;
+  padding: 5px 11px;
+  font: 600 12px/1 'Segoe UI', sans-serif;
+  cursor: pointer;
+}
+#comparator-modal-root #rt_lang_btn_floating:hover {
+  background: rgba(15,23,42,0.95);
+}
+
+/* Quick-tag menu (handleCodeModeSelection / showQuickTagMenu in Python) */
+#comparator-modal-root #quick-tag-menu {
+  position: fixed;
+  background: var(--card);
+  border: 1px solid var(--gold);
+  border-radius: 8px;
+  padding: 8px;
+  z-index: 9999;
+  display: flex;
+  gap: 5px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+#comparator-modal-root #quick-tag-menu button {
+  background: var(--gold);
+  color: #0B1325;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* Quick transfer floating button */
+#comparator-modal-root #quick-transfer-btn {
+  position: absolute;
+  background: var(--gold);
+  color: #0B1325;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+/* Expanded tools panel */
+#comparator-modal-root #expanded-tools {
+  display: flex;
+  gap: 5px;
+  margin-top: 5px;
+  padding: 5px;
+  background: var(--ed-bg);
+  border-radius: 5px;
+  flex-wrap: wrap;
+  direction: inherit;
+  text-align: inherit;
+}
+
+/* Vertical layout when host fills the screen */
+#comparator-modal-root .comparator-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
