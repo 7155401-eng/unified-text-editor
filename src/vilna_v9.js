@@ -308,12 +308,12 @@ function buildPagePlan(pageContent, config) {
   const mainGap = (cfg.mainGap !== null && cfg.mainGap !== undefined)
     ? cfg.mainGap
     : Math.max(4, Math.floor(innerWidth * 0.015));
-  // משה 2026-05-08: מרווח ~1% בין שני זרמי צד שעומדים זה ליד זה (כתר, או strip 3
+  // משה 2026-05-08: מרווח ~1.5% בין שני זרמי צד שעומדים זה ליד זה (כתר, או strip 3
   // במצב 5 שבו שני הצדדים ממשיכים מתחת לראשי). במצב 4 (אחד שורד לרוחב מלא)
   // אין מרווח כי אין שני זרמים סמוכים.
   const sideGap = (cfg.sideGap !== null && cfg.sideGap !== undefined)
     ? cfg.sideGap
-    : Math.max(2, Math.floor(innerWidth * 0.01));
+    : Math.max(3, Math.floor(innerWidth * 0.015));
   const halfMinusGap = Math.max(0, halfWidth - Math.ceil(sideGap / 2));
 
   const mainMetrics = new VilnaMetrics({
