@@ -71,7 +71,7 @@ import { lockScopeWhileStandalone } from "./pwa_scope_lock.js";
 import { installFetchTagger } from "./pwa_install_controller.js";
 import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
-import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
+import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
@@ -933,8 +933,8 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
 }
 revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
-if (isToolPreviewAllowed("torah-nikud")) {
-  setTimeout(() => wireTorahNikud(paneManager), 220);
+if (isToolPreviewAllowed("nikud-merger")) {
+  setTimeout(() => wireNikudMergerButton(paneManager), 220);
 }
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
