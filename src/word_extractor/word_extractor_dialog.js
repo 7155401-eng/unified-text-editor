@@ -23,6 +23,9 @@ import {
 } from "./word_extractor_i18n.js";
 import "./word_extractor.css";
 
+// משה 2026-05-08: סמני בקרה ייחודיים, כך ש-PARBREAK לא יבלבל אם מופיע בטקסט המשתמש
+const SENTINEL_PAR = "PARBREAK";
+
 const MODAL_ID = "word-extractor-modal";
 
 let _state = {
@@ -478,33 +481,40 @@ function distributeToPanes(full, sd) {
 
 // מצרף mainSegments ל-HTML עם פסקאות (\par) ועיצוב אמיתי.
 function mainSegmentsToHtml(segments, full) {
-  // קודם נבנה רצף כולל של HTML inline (\par יומר ל-marker מיוחד), ואז נפצל לפסקאות.
-  const PAR_MARK = "PAR";
   const parts = [];
   for (const seg of segments) {
     if (seg.kind === 'symbol') {
       parts.push(seg.symbol);
     } else if (seg.kind === 'rich') {
       const sliced = richSlice(full, seg.start, seg.end);
-      // המרת \par / \newline בתוך הקטע ל-marker
-      const html = richToInlineHtml(sliced);
-      parts.push(html);
+      parts.push(richToInlineHtml(sliced));
     }
   }
-  let combined = parts.join('');
-  combined = combined.replace(/\\newline\{\}/g, PAR_MARK).replace(/\\par\b\s*/g, PAR_MARK);
-  // הסרת LaTeX commands שנותרו (גודל/צבע wrappers שלא הומרו) — כברירת מחדל לא צריך
-  // כי to_html כבר ממיר size/color ל-<span style>
-  combined = combined.replace(/\\[a-zA-Z]+\b\*?/g, '').replace(/\{|\}/g, '');
-  const blocks = combined.split(PAR_MARK).map(s => s.trim()).filter(Boolean);
+  const combined = parts.join('');
+  const blocks = combined.split(SENTINEL_PAR).map(s => s.trim()).filter(Boolean);
   if (!blocks.length) return '<p></p>';
   return blocks.map(b => `<p>${b}</p>`).join('');
 }
 
+// מנקה רצף raw_latex tokens מ-LaTeX commands שאין להם תרגום HTML, אבל
+// משאיר את ה-markers (@\d+) ואת סימן הפסקה (\par/\newline -> SENTINEL_PAR).
+function cleanRawLatexRun(raw) {
+  let s = raw;
+  // 1. שומרים סימני פסקה
+  s = s.replace(/\\par\b\s*/g, SENTINEL_PAR);
+  s = s.replace(/\\newline\{\}/g, SENTINEL_PAR);
+  // 2. מסירים פקודות עם optional bracket: \nolinebreak[3], \footnote*[1]
+  s = s.replace(/\\[a-zA-Z]+\*?\s*(?:\[[^\]]*\])?/g, "");
+  // 3. מסירים פקודות עם תו לא-אות: \, \. \; \: \! \" וכו'
+  s = s.replace(/\\[^a-zA-Z\s]/g, "");
+  // 4. מסירים סוגריים מסולסלות LaTeX (התוכן נשאר)
+  s = s.replace(/[{}]/g, "");
+  return s;
+}
+
 function richToInlineHtml(rich) {
-  // עוברים tokens, מדלגים על raw_latex, ובונים HTML inline עם <strong>/<em>/<u>/<span>.
-  // אנו לא משתמשים ב-to_html של ה-class כי הוא מדלג על raw_latex לחלוטין;
-  // כאן אנו רוצים לשמר את ה-raw_latex כ-text-מקור (לעיבוד \par אחרי), אבל בלי escape.
+  // עוברים tokens. raw_latex נצברים כ-string רצוף ועוברים cleanRawLatexRun
+  // כדי להסיר LaTeX wrappers ולשמר רק markers + סמני פסקה.
   const escapeHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const out = [];
   let i = 0;
@@ -512,9 +522,12 @@ function richToInlineHtml(rich) {
   while (i < tokens.length) {
     const t0 = tokens[i];
     if (t0.is_raw_latex) {
-      // נכניס את ה-raw verbatim (יעובד מאוחר ע"י החלפת \par)
-      out.push(t0.char);
-      i++;
+      let raw = "";
+      while (i < tokens.length && tokens[i].is_raw_latex) {
+        raw += tokens[i].char;
+        i++;
+      }
+      out.push(cleanRawLatexRun(raw));
       continue;
     }
     const b = t0.b, it = t0.i, u = t0.u, sz = t0.sz, col = t0.col;
@@ -540,12 +553,8 @@ function richToInlineHtml(rich) {
 }
 
 function richToParagraphsHtml(rich) {
-  // הערה — ממירים ל-HTML עם פסקאות (\par שובר).
-  const PAR_MARK = "PAR";
-  let html = richToInlineHtml(rich);
-  html = html.replace(/\\newline\{\}/g, PAR_MARK).replace(/\\par\b\s*/g, PAR_MARK);
-  html = html.replace(/\\[a-zA-Z]+\b\*?/g, '').replace(/\{|\}/g, '');
-  const blocks = html.split(PAR_MARK).map(s => s.trim()).filter(Boolean);
+  const html = richToInlineHtml(rich);
+  const blocks = html.split(SENTINEL_PAR).map(s => s.trim()).filter(Boolean);
   if (!blocks.length) return '<p></p>';
   return blocks.map(b => `<p>${b}</p>`).join('');
 }
