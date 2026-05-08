@@ -889,43 +889,29 @@ export async function buildPages(container, paragraphs, config) {
     let bestN = 0;
     const maxN = paragraphs.length - cursor;
 
-    // משה 2026-05-08: לוגיקה חדשה — מתחילים מ-N=0 (רק carry-over) ומגדילים
-    // עד שלא נכנס. כך ה-carry-over זוכה לעדיפות והערות לא מצטברות לסוף הקובץ.
-    // הראשון שמתאים נשמר; אם אפילו carry-over לבד חורג — נקבל את החריגה
-    // (anyway carry-over מתחדש בעמוד הבא).
+    // משה 2026-05-08: היברידי — תמיד פסקה לפחות אם נשארה. carry-over משלים
+    // את שאר העמוד. עודף נדחף לעמוד הבא. כך אין עמודי "ניקוז" בלבד —
+    // כל עמוד יש לו פסקה ראשי + סיידים + footer מאוזן עם ה-carry-over.
+
     const trialAtN = (n) => {
       const slice = paragraphs.slice(cursor, cursor + n);
       const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
       return buildPagePlan(aggContent, cfg);
     };
 
-    // נסיון 1: N=0 (רק carry-over). אם נכנס, נשתמש בו כבסיס.
-    if (hasCarryOver(carryOver)) {
-      const tp0 = trialAtN(0);
-      if (tp0.overflow.exceedsPage) {
-        // אפילו carry-over לבד חורג. נחזור ל-N=1 רגיל (אם יש פסקאות).
-        bestN = (cursor < paragraphs.length) ? 1 : 0;
-      } else {
-        bestN = 0;
-      }
+    // קביעת bestN: לפחות 1 אם יש פסקאות, אחרת 0 (רק carry-over).
+    if (cursor >= paragraphs.length) {
+      bestN = 0;
     } else {
-      // אין carry-over. חייבים לפחות פסקה אחת אם נשארו.
-      bestN = (cursor < paragraphs.length) ? 1 : 0;
-    }
-
-    // נסיון 2+: ננסה להוסיף פסקאות נוספות עד החריגה.
-    let n = bestN + 1;
-    while (n <= 50 && n <= maxN) {
-      const tp = trialAtN(n);
-      if (tp.overflow.exceedsPage) break;
-      bestN = n;
-      n++;
-    }
-
-    // אם bestN=0 ויש פסקאות שנותרו, נוודא שאנחנו לפחות מנסים פסקה אחת
-    // (אחרת לא נתקדם בקרסור והלולאה תיתקע על ה-carry-over).
-    if (bestN === 0 && cursor < paragraphs.length && !hasCarryOver(carryOver)) {
       bestN = 1;
+      // ננסה להוסיף פסקאות נוספות, אבל רק אם הן נכנסות בלי שום חריגה.
+      let n = 2;
+      while (n <= 50 && n <= maxN) {
+        const tp = trialAtN(n);
+        if (tp.overflow.exceedsPage) break;
+        bestN = n;
+        n++;
+      }
     }
 
     // רינדור סופי לעמוד
