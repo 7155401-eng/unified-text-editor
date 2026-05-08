@@ -2,6 +2,7 @@ import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 import { runPreflight } from "./render_preflight.js";
+import { isNestedNotesEnabled } from "./nested_notes_gate.js";
 
 function injectDemoWatermarksIfNeeded(content) {
   if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
@@ -349,8 +350,16 @@ export function paneManagerToPackerContent(paneManager) {
 
       if (noteText !== undefined) {
         noteCounters[code] = idx + 1;
-        const inner = expandNestedInNote(noteText, streamNotes, noteCounters, code, paneSymbols, paneSymToCode);
-        notes.push({ stream: code, text: inner.strippedText, anchor, children: inner.children });
+        // Feature gate: when the nested-notes URL/localStorage flag is OFF,
+        // we keep the legacy flat behavior — embedded `@XX` markers stay as
+        // literal characters in the note's text and no children are pulled.
+        // Same-domain `?nested=1&k=...` links flip the gate on.
+        if (isNestedNotesEnabled()) {
+          const inner = expandNestedInNote(noteText, streamNotes, noteCounters, code, paneSymbols, paneSymToCode);
+          notes.push({ stream: code, text: inner.strippedText, anchor, children: inner.children });
+        } else {
+          notes.push({ stream: code, text: noteText, anchor });
+        }
       } else {
         mainTextNet += marker.sym;
       }

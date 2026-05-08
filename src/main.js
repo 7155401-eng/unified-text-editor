@@ -39,6 +39,7 @@ import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumber
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
+import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -957,10 +958,16 @@ paneManager.on("focus", () => {
 
 // Beginner hint for nested footnotes — shown the first time a user has 2+
 // stream panes, hidden on click of the × button (preference stored locally).
+// Also gated by the nested-notes feature flag (URL `?nested=1` or
+// localStorage); never shown when the feature is off.
 const NESTED_HINT_DISMISSED_KEY = "ravtext.nestedNotesHint.dismissed";
 function updateNestedNotesHint() {
   const el = document.getElementById("nested-notes-hint");
   if (!el) return;
+  if (!isNestedNotesGateOn()) {
+    el.hidden = true;
+    return;
+  }
   if (localStorage.getItem(NESTED_HINT_DISMISSED_KEY) === "1") {
     el.hidden = true;
     return;

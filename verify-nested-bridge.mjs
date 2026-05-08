@@ -2,7 +2,9 @@
 // expands nested-note markers embedded in a stream-pane note's text.
 
 import { JSDOM } from "jsdom";
-const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/" });
+// `?nested=1` activates the feature gate. Without this, paneManagerToPackerContent
+// keeps the legacy flat behavior and the bridge never expands nested markers.
+const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/?nested=1" });
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.localStorage = dom.window.localStorage;
