@@ -55,6 +55,11 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   // Build a note's DOM content: "[N] " prefix + lemma (first word, bolded
   // via .note-lemma) + rest. For continuation halves, no prefix and no
   // lemma — the lemma sits with the leading half.
+  //
+  // Nested children (tup[5] = array of {stream, text, num, children}) are
+  // inlined inside the parent's apparatus block at the end of the parent's
+  // text. Each child renders as `[stream-num] lemma rest`, in a span whose
+  // class identifies the child's stream so colors flow through.
   function appendNoteContent(parent, tup, leadingSpace) {
     const text = tup[1] || "";
     if (isCont(tup)) {
@@ -76,6 +81,34 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       lemma.className = "note-lemma";
       lemma.textContent = trimmed;
       parent.appendChild(lemma);
+    }
+    appendChildNotes(parent, Array.isArray(tup[5]) ? tup[5] : []);
+  }
+
+  function appendChildNotes(parent, children) {
+    for (const child of children) {
+      const wrap = document.createElement("span");
+      wrap.className = `note-child note-stream-${streamColorIndex(child.stream)}`;
+      wrap.dataset.stream = child.stream;
+      if (typeof child.num === "number") wrap.dataset.noteNum = String(child.num);
+      wrap.appendChild(document.createTextNode(` [${child.stream}-${child.num || 0}] `));
+      const childTrim = (child.text || "").replace(/^\s+/, "");
+      const sp = childTrim.indexOf(" ");
+      if (sp > 0) {
+        const lem = document.createElement("strong");
+        lem.className = "note-lemma";
+        lem.textContent = childTrim.substring(0, sp);
+        wrap.appendChild(lem);
+        wrap.appendChild(document.createTextNode(childTrim.substring(sp)));
+      } else if (childTrim.length > 0) {
+        const lem = document.createElement("strong");
+        lem.className = "note-lemma";
+        lem.textContent = childTrim;
+        wrap.appendChild(lem);
+      }
+      const grand = Array.isArray(child.children) ? child.children : [];
+      if (grand.length > 0) appendChildNotes(wrap, grand);
+      parent.appendChild(wrap);
     }
   }
   const artificialLastLine = options.pageHasMain && !mishnaWrapActive()
