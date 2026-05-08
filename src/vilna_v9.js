@@ -760,10 +760,19 @@ function renderPagePlan(plan, pageEl, cfg) {
 
   const padding = plan.pageBox.padding;
 
-  function drawBox(box, fontSize, lineHeight, fontFamily) {
+  // משה 2026-05-08: לכל זרם יש צבע (stream-color-1..6) לפי הקוד שלו.
+  // 6 צבעים מתחלפים — קוד 7 חוזר ל-1 וכו'. הצבעים מוגדרים ב-styles.css
+  // עם רקע בהיר. נחיל את הצבע על כל שורה של הזרם וגם על הכותרת.
+  function streamColorClass(streamId) {
+    const n = parseInt(streamId, 10);
+    if (!Number.isFinite(n) || n < 1) return '';
+    return ' stream-color-' + (((n - 1) % 6) + 1);
+  }
+
+  function drawBox(box, fontSize, lineHeight, fontFamily, colorClass) {
     for (const line of box.lines) {
       const lineEl = document.createElement('div');
-      lineEl.className = 'v9-line';
+      lineEl.className = 'v9-line' + (colorClass || '');
       const shouldJustify = !line.isLast && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
       if (shouldJustify) lineEl.className += ' justify';
@@ -779,9 +788,9 @@ function renderPagePlan(plan, pageEl, cfg) {
     }
   }
 
-  function drawTitle(text, x, y, width) {
+  function drawTitle(text, x, y, width, colorClass) {
     const t = document.createElement('div');
-    t.className = 'v9-stream-title';
+    t.className = 'v9-stream-title' + (colorClass || '');
     t.style.left = (padding + x) + 'px';
     t.style.top = y + 'px';
     t.style.width = width + 'px';
@@ -792,34 +801,34 @@ function renderPagePlan(plan, pageEl, cfg) {
     pageEl.appendChild(t);
   }
 
-  // ראשי
+  // ראשי — בלי צבע זרם (הראשי הוא הטקסט המרכזי, לא זרם)
   if (plan.mainBox) {
-    drawBox(plan.mainBox, cfg.mainFontSize || 13, cfg.lineHeightRatio || 1.55, cfg.mainFontFamily);
+    drawBox(plan.mainBox, cfg.mainFontSize || 13, cfg.lineHeightRatio || 1.55, cfg.mainFontFamily, '');
   }
 
-  // זרמים צדיים + כותרות
+  // זרמים צדיים + כותרות — כל זרם בצבע משלו
   for (const box of plan.streamBoxes) {
-    drawBox(box, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily);
+    const colorClass = streamColorClass(box.id);
+    drawBox(box, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
 
     const title = (cfg.titles || {})[box.id];
     if (title && box.lines.length > 0) {
-      // משה 2026-05-08: הכותרת תופסת sideHalfWidth (49.5%) ולא 50%,
-      // אותה הקצאה כמו שורות הזרם — רווח 1% במרכז גם בין הכותרות.
       const sideHalfW = plan.pageBox.sideHalfWidth ||
         Math.floor(plan.pageBox.innerWidth / 2);
       const titleRightX = plan.pageBox.sideRightX ||
         (plan.pageBox.innerWidth - sideHalfW);
       const titleX = box.side === 'right' ? titleRightX : 0;
-      drawTitle(title, titleX, padding, sideHalfW);
+      drawTitle(title, titleX, padding, sideHalfW, colorClass);
     }
   }
 
-  // footers
+  // footers — כל footer בצבע הזרם שלו
   for (const fb of plan.footerBoxes) {
-    drawBox(fb, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily);
+    const colorClass = streamColorClass(fb.id);
+    drawBox(fb, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
     const title = (cfg.titles || {})[fb.id];
     if (title) {
-      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth);
+      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass);
     }
   }
 }
