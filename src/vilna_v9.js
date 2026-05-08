@@ -236,8 +236,11 @@ function buildMainStrips(opts) {
   const { mainTopY, mainX, mainWidth, mainGap, innerWidth,
           rightEndY, leftEndY, pageBottom } = opts;
 
-  const right = (rightEndY === undefined || rightEndY === null) ? mainTopY : rightEndY;
-  const left  = (leftEndY  === undefined || leftEndY  === null) ? mainTopY : leftEndY;
+  // משה 2026-05-08: כל ה-y חסומים ב-pageBottom. אם פאס 1 נתן endY מעבר לדף
+  // (כי naiveMainBottomY היה ענק), חוסמים כדי שה-strips לא ייצרו טווח שלילי.
+  const cap = (v) => (v === Infinity ? Infinity : Math.min(v, pageBottom));
+  const right = (rightEndY === undefined || rightEndY === null) ? mainTopY : cap(rightEndY);
+  const left  = (leftEndY  === undefined || leftEndY  === null) ? mainTopY : cap(leftEndY);
 
   const firstEnd  = Math.min(right, left);
   const secondEnd = Math.max(right, left);
@@ -251,16 +254,15 @@ function buildMainStrips(opts) {
   }
 
   if (firstEnd === Infinity) return strips; // שני הצדדים מילאו, אין הרחבה
+  if (firstEnd >= pageBottom) return strips; // שני הצדדים נמשכים עד תחתית הדף
 
   // Strip 2: צד אחד נגמר. הראשי מתפשט אליו (firstEnd → secondEnd)
   const firstEndedRight = right <= left;
   let strip2X, strip2Width;
   if (firstEndedRight) {
-    // ימני נגמר → הראשי מתפשט ימינה (לערכי x גדולים יותר ב-LTR).
     strip2X = mainX;
     strip2Width = innerWidth - mainX;
   } else {
-    // שמאלי נגמר → הראשי מתפשט שמאלה (ל-x=0).
     strip2X = 0;
     strip2Width = mainX + mainWidth;
   }
@@ -270,11 +272,10 @@ function buildMainStrips(opts) {
   }
 
   if (secondEnd === Infinity) return strips; // רק צד אחד נגמר
+  if (secondEnd >= pageBottom) return strips;
 
   // Strip 3: שני הצדדים נגמרו. הראשי ברוחב מלא (secondEnd → pageBottom)
-  if (secondEnd < pageBottom) {
-    strips.push({ y_start: secondEnd, y_end: pageBottom, width: innerWidth, x: 0 });
-  }
+  strips.push({ y_start: secondEnd, y_end: pageBottom, width: innerWidth, x: 0 });
 
   return strips;
 }
@@ -377,26 +378,31 @@ function buildPagePlan(pageContent, config) {
   //   - mainBottomY עדכני (אם הראשי התקצר, strip 3 של הצד מתחיל גבוה יותר)
   //   - otherSideEnded — מצב 4: אם הצד השני נגמר ב-strips 1+2, הצד השורד
   //     מקבל רוחב מלא ב-strip 3 (במקום halfWidth).
+  // משה 2026-05-08 (תיקון): כל y_start/y_end חסומים ב-pageBottom. אם
+  // naiveMainBottomY ענק (כי הראשי הנאיבי דחוס), strip 2 חסום ב-pageBottom
+  // ו-strip 3 לא נוצר (אין מקום).
+  const pageBottomY = cfg.pageHeight - cfg.padding;
   function buildSideStream(streamData, side, opts) {
     if (!streamData) return null;
     const text = streamData.items.join(' ');
     if (!text) return null;
     const o = opts || {};
-    const effectiveMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
+    const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
+    const effectiveMainBottomY = Math.min(rawMainBottomY, pageBottomY);
     const otherSideEnded = !!o.otherSideEnded;
 
     const strips = [];
 
-    if (crownHeight > 0) {
+    if (crownHeight > 0 && mainTopY > sideTopY) {
       strips.push({
         y_start: sideTopY,
-        y_end: mainTopY,
+        y_end: Math.min(mainTopY, pageBottomY),
         width: halfWidth,
         x: side === 'right' ? halfWidth : 0,
       });
     }
 
-    if (naiveMainHeight > 0) {
+    if (naiveMainHeight > 0 && effectiveMainBottomY > mainTopY) {
       // משה 2026-05-08: מרווח mainGap בין הראשי לטור הצד.
       if (side === 'right') {
         strips.push({
@@ -415,21 +421,24 @@ function buildPagePlan(pageContent, config) {
       }
     }
 
-    // Strip 3: מתחת לראשי. אם הצד השני נגמר ב-strips 1+2 → רוחב מלא; אחרת halfWidth.
-    if (otherSideEnded) {
-      strips.push({
-        y_start: effectiveMainBottomY,
-        y_end: cfg.pageHeight - cfg.padding,
-        width: innerWidth,
-        x: 0,
-      });
-    } else {
-      strips.push({
-        y_start: effectiveMainBottomY,
-        y_end: cfg.pageHeight - cfg.padding,
-        width: halfWidth,
-        x: side === 'right' ? halfWidth : 0,
-      });
+    // Strip 3: רק אם יש מקום מתחת לראשי בתוך הדף.
+    // אם הצד השני נגמר ב-strips 1+2 → רוחב מלא; אחרת halfWidth.
+    if (effectiveMainBottomY < pageBottomY) {
+      if (otherSideEnded) {
+        strips.push({
+          y_start: effectiveMainBottomY,
+          y_end: pageBottomY,
+          width: innerWidth,
+          x: 0,
+        });
+      } else {
+        strips.push({
+          y_start: effectiveMainBottomY,
+          y_end: pageBottomY,
+          width: halfWidth,
+          x: side === 'right' ? halfWidth : 0,
+        });
+      }
     }
 
     const flowResult = flowStreamThroughStrips(
@@ -541,7 +550,8 @@ function buildPagePlan(pageContent, config) {
       result.overflow.mainText = mainFlow.overflowText;
     }
 
-    mainBottomY = mainFlow.endY;
+    // חסימה ב-pageBottom: אם flow לא הצליח לדחוס הכול, mainBottomY עלול לחרוג.
+    mainBottomY = Math.min(mainFlow.endY, cfg.pageHeight - cfg.padding);
   }
 
   // 4.6 Pass 2 — חישוב מחדש של הצדדים עם:
