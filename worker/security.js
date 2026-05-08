@@ -77,12 +77,6 @@ const ALLOWED_ORIGINS = new Set([
   'https://ravtext.com',
 ]);
 
-// משה 2026-05-08: בדיקה ל-Cloudflare preview URLs של ה-workspace שלנו.
-// מאפשר preview של ענף (claude-fix-*-unified-text-editor.7155401.workers.dev)
-// ו-preview של commit (xxx-unified-text-editor.7155401.workers.dev) לעבוד.
-// הדפוס נעול ל-7155401 (ה-account שלנו) כדי שתוקף לא יוכל להירשם בדפוס דומה.
-const ALLOWED_ORIGIN_PATTERN = /^https:\/\/[a-z0-9-]+-unified-text-editor\.7155401\.workers\.dev$/i;
-
 // Engine endpoints — אסור לקרוא להם בלי Origin תקף.
 // Auth + admin + storage לא חוסמים על Origin (חייבים לעבוד מ-redirect של גוגל וכו').
 const ENGINE_API_PREFIXES = [
@@ -105,12 +99,12 @@ export function checkOrigin(request, url) {
   const referer = request.headers.get('referer');
 
   // Either Origin or Referer must match. Prefer Origin (CORS-set, harder to forge in browsers).
-  if (origin && (ALLOWED_ORIGINS.has(origin) || ALLOWED_ORIGIN_PATTERN.test(origin))) return null;
+  if (origin && ALLOWED_ORIGINS.has(origin)) return null;
   if (referer) {
     try {
       const refUrl = new URL(referer);
       const refOrigin = `${refUrl.protocol}//${refUrl.host}`;
-      if (ALLOWED_ORIGINS.has(refOrigin) || ALLOWED_ORIGIN_PATTERN.test(refOrigin)) return null;
+      if (ALLOWED_ORIGINS.has(refOrigin)) return null;
     } catch {}
   }
 
