@@ -142,7 +142,140 @@ export class HebrewTextBox {
   }
 
   _onContextMenu(ev) {
-    // ברירת מחדל בדפדפן מספיק; נשמור התנהגות מקורית
+    // תפריט קליק-ימני מותאם — תואם לפייתון: cut / copy / paste / select all / undo / redo
+    ev.preventDefault();
+
+    // הסרת תפריט קודם (אם נשאר פתוח)
+    if (this._activeMenu && this._activeMenu.parentNode) {
+      this._activeMenu.parentNode.removeChild(this._activeMenu);
+    }
+
+    const menu = el("div", { cls: "hebrew-text-context-menu" });
+    menu.style.cssText =
+      "position:fixed;z-index:10000;min-width:160px;background:#162040;color:#FFF4CC;" +
+      "border:1px solid #8B7333;border-radius:6px;padding:4px 0;" +
+      "box-shadow:0 6px 20px rgba(0,0,0,0.45);font-family:'Segoe UI',sans-serif;font-size:10pt;" +
+      "direction:" + (this._direction === "rtl" ? "rtl" : "ltr") + ";";
+    if (document.body.classList.contains("theme-light") ||
+        document.querySelector(".nikud-merger.theme-light")) {
+      menu.style.background = "#FFFCF2";
+      menu.style.color = "#2A1F0A";
+      menu.style.borderColor = "#B8932E";
+    }
+
+    const addItem = (labelKey, action) => {
+      const item = el("div", { cls: "ctx-item", text: i18n.t(labelKey) });
+      item.style.cssText = "padding:6px 14px;cursor:pointer;";
+      item.addEventListener("mouseenter", () => {
+        item.style.background = "#C9A84C";
+        item.style.color = "#0A1020";
+      });
+      item.addEventListener("mouseleave", () => {
+        item.style.background = "";
+        item.style.color = "";
+      });
+      item.addEventListener("click", () => {
+        try { this.text.focus(); } catch (_) {}
+        try { action(); } catch (_) {}
+        this._closeContextMenu();
+      });
+      menu.appendChild(item);
+    };
+
+    const addSep = () => {
+      const sep = el("div");
+      sep.style.cssText = "height:1px;background:#8B7333;margin:4px 8px;opacity:0.5;";
+      menu.appendChild(sep);
+    };
+
+    addItem("menu_cut", () => {
+      try { document.execCommand("cut"); } catch (_) {
+        try {
+          const start = this.text.selectionStart, end = this.text.selectionEnd;
+          if (end > start) {
+            const sel = this.text.value.slice(start, end);
+            try { navigator.clipboard.writeText(sel); } catch (_) {}
+            this.text.value = this.text.value.slice(0, start) + this.text.value.slice(end);
+            this.text.selectionStart = this.text.selectionEnd = start;
+            this._onTextChange();
+          }
+        } catch (_) {}
+      }
+    });
+    addItem("menu_copy", () => {
+      try { document.execCommand("copy"); } catch (_) {
+        try {
+          const start = this.text.selectionStart, end = this.text.selectionEnd;
+          const sel = this.text.value.slice(start, end);
+          if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+        } catch (_) {}
+      }
+    });
+    addItem("menu_paste", () => {
+      try { document.execCommand("paste"); } catch (_) {
+        try {
+          navigator.clipboard.readText().then(text => {
+            const start = this.text.selectionStart, end = this.text.selectionEnd;
+            this.text.value = this.text.value.slice(0, start) + text + this.text.value.slice(end);
+            this.text.selectionStart = this.text.selectionEnd = start + text.length;
+            this._onTextChange();
+          }).catch(() => {});
+        } catch (_) {}
+      }
+    });
+    addSep();
+    addItem("menu_select_all", () => {
+      try { this.text.select(); } catch (_) {}
+    });
+    addSep();
+    addItem("menu_undo", () => {
+      try { document.execCommand("undo"); } catch (_) {}
+      this._onTextChange();
+    });
+    addItem("menu_redo", () => {
+      try { document.execCommand("redo"); } catch (_) {}
+      this._onTextChange();
+    });
+
+    document.body.appendChild(menu);
+    this._activeMenu = menu;
+
+    // מיקום — צמוד לעכבר, אך בתוך הוויופורט
+    const pad = 6;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const rect = menu.getBoundingClientRect();
+    let x = ev.clientX, y = ev.clientY;
+    if (x + rect.width + pad > vw) x = vw - rect.width - pad;
+    if (y + rect.height + pad > vh) y = vh - rect.height - pad;
+    menu.style.left = Math.max(pad, x) + "px";
+    menu.style.top  = Math.max(pad, y) + "px";
+
+    // סגירה בלחיצה במקום אחר / ESC
+    const closer = (e) => {
+      if (!menu.contains(e.target)) this._closeContextMenu();
+    };
+    const escer = (e) => {
+      if (e.key === "Escape") this._closeContextMenu();
+    };
+    setTimeout(() => {
+      document.addEventListener("mousedown", closer, { once: true });
+      document.addEventListener("keydown", escer, { once: true });
+    }, 0);
+    this._activeMenuClosers = { closer, escer };
+  }
+
+  _closeContextMenu() {
+    if (this._activeMenu && this._activeMenu.parentNode) {
+      this._activeMenu.parentNode.removeChild(this._activeMenu);
+    }
+    this._activeMenu = null;
+    if (this._activeMenuClosers) {
+      try {
+        document.removeEventListener("mousedown", this._activeMenuClosers.closer);
+        document.removeEventListener("keydown", this._activeMenuClosers.escer);
+      } catch (_) {}
+      this._activeMenuClosers = null;
+    }
   }
 
   _loadFile() {
