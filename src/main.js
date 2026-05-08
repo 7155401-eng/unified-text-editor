@@ -36,6 +36,7 @@ import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
 import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
 import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
+import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
@@ -898,6 +899,7 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
 setTimeout(() => wireTorahTools(paneManager), 200);
 setTimeout(() => wireTextComparePro(paneManager), 220);
 setTimeout(() => wireTorahTranscription(paneManager), 222);
+setTimeout(() => wireTorahNikud(paneManager), 224);
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
