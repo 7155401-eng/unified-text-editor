@@ -83,6 +83,8 @@ import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumber
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
+import { setupTransferSettings, showTransferSettings } from "./transfer_settings.js";
+import { showWowAlert, closeWowAlert } from "./wow_alert.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
@@ -186,6 +188,7 @@ setTimeout(() => wireCustomStyles(paneManager), 150);
 setupSettingsPane();
 setupStreamPicker();
 setupMishnaLevelsPicker();
+setupTransferSettings(paneManager);
 // בלוני צד הוסרו — בועות עכשיו inline (data-num מעל כל סימן)
 
 const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ואת הארץ
