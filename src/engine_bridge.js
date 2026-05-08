@@ -219,6 +219,61 @@ export function defaultLabelForCode(code) {
   return DEFAULT_STREAM_LABELS[code] || `זרם ${code}`;
 }
 
+// Recursively scans a note's text for embedded stream markers and pulls the
+// matching child notes from streamNotes, advancing the same shared
+// noteCounters used by the main-body marker loop. Returns the
+// marker-stripped text and a `children` array of {stream, text, anchor,
+// children}. Markers identical to the note's own stream are left as
+// literal text to avoid eating self-references.
+export function expandNestedInNote(noteText, streamNotes, noteCounters, ownCode, paneSymbols, paneSymToCode) {
+  const txt = noteText || "";
+  if (!txt || !paneSymbols || paneSymbols.length === 0) {
+    return { strippedText: txt, children: [] };
+  }
+  // Use a fresh regex on every call so internal lastIndex state is not shared.
+  const symsSorted = [...paneSymbols].sort((a, b) => b.length - a.length);
+  const re = new RegExp(`(${symsSorted.map(escapeRegex).join('|')})`, 'g');
+  let strippedText = "";
+  let prevEnd = 0;
+  const children = [];
+  let m;
+  while ((m = re.exec(txt)) !== null) {
+    const sym = m[0];
+    const code = paneSymToCode[sym];
+    if (!code || code === ownCode) {
+      // self-reference or unknown — keep literal
+      continue;
+    }
+    strippedText += txt.substring(prevEnd, m.index);
+    const anchor = strippedText.length;
+    const idx = noteCounters[code] || 0;
+    const childText = streamNotes[code] && streamNotes[code][idx];
+    if (childText !== undefined) {
+      noteCounters[code] = idx + 1;
+      const inner = expandNestedInNote(childText, streamNotes, noteCounters, code, paneSymbols, paneSymToCode);
+      children.push({ stream: code, text: inner.strippedText, anchor, children: inner.children });
+    } else {
+      // Child stream out of notes — leave the marker as literal text in parent.
+      strippedText += sym;
+    }
+    prevEnd = m.index + sym.length;
+  }
+  strippedText += txt.substring(prevEnd);
+  return { strippedText, children };
+}
+
+// Walks a tree of notes (parent → children → ...) and assigns sequential
+// per-stream display numbers in document order — matches extractor.js so
+// nested numbering is consistent whether the doc came from the engine
+// schema or from the stream-pane bridge.
+function numberNotesTree(notesArr, counters) {
+  for (const n of notesArr) {
+    counters[n.stream] = (counters[n.stream] || 0) + 1;
+    n.num = counters[n.stream];
+    if (n.children && n.children.length) numberNotesTree(n.children, counters);
+  }
+}
+
 function applyFirstNoteAsTitle(code, notes) {
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
@@ -264,9 +319,16 @@ export function paneManagerToPackerContent(paneManager) {
 
   const mainParagraphs = extractMainParagraphs(mainPane, paneManager);
   const streamNotes = {};
+  // Build a shared symbol → code map so expandNestedInNote can detect
+  // markers embedded in note bodies without re-scanning paneManager each call.
+  const paneSymbols = [];
+  const paneSymToCode = {};
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
     streamNotes[p.streamCode] = applyFirstNoteAsTitle(p.streamCode, extractStreamNotes(p));
+    const sym = p.symbol || `@${p.streamCode}`;
+    paneSymbols.push(sym);
+    paneSymToCode[sym] = p.streamCode;
   }
 
   const result = [];
@@ -286,8 +348,9 @@ export function paneManagerToPackerContent(paneManager) {
       const noteText = streamNotes[code] && streamNotes[code][idx];
 
       if (noteText !== undefined) {
-        notes.push({ stream: code, text: noteText, anchor });
         noteCounters[code] = idx + 1;
+        const inner = expandNestedInNote(noteText, streamNotes, noteCounters, code, paneSymbols, paneSymToCode);
+        notes.push({ stream: code, text: inner.strippedText, anchor, children: inner.children });
       } else {
         mainTextNet += marker.sym;
       }
@@ -307,12 +370,11 @@ export function paneManagerToPackerContent(paneManager) {
     }
   }
 
+  // Walk the notes tree (parents + children + ...) in document order to
+  // assign per-stream display numbers. Replaces the earlier flat counter loop.
   const displayCounters = {};
   for (const para of result) {
-    for (const note of para.notes) {
-      displayCounters[note.stream] = (displayCounters[note.stream] || 0) + 1;
-      note.num = displayCounters[note.stream];
-    }
+    numberNotesTree(para.notes, displayCounters);
   }
 
   _packerContentCache = { sig, value: result };
