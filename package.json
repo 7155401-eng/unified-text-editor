@@ -23,6 +23,8 @@
     "@tiptap/extension-underline": "^3.22.5",
     "@tiptap/extension-youtube": "^3.22.5",
     "@tiptap/starter-kit": "^3.22.5",
+    "fflate": "^0.8.2",
+    "jszip": "^3.10.1",
     "prosemirror-model": "^1.24.1",
     "prosemirror-state": "^1.4.3",
     "prosemirror-view": "^1.39.1",

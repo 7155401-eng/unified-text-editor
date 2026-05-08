@@ -1,0 +1,78 @@
+/* word_extractor.css — RTL-first dialog styling.
+   נטען מתוך word_extractor_dialog.js. */
+
+.we-modal-overlay { direction: rtl; }
+.we-modal { max-width: 880px; width: 90vw; max-height: 90vh; overflow: auto; }
+.we-modal h2.we-title { margin-top: 0; font-size: 1.4rem; }
+.we-modal h3 { margin: 16px 0 6px; font-size: 1.05rem; }
+.we-modal .we-desc { color: var(--text-muted, #888); margin: 4px 0 12px; }
+
+.we-pickrow { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.we-pickrow .we-pick-btn {
+  background: var(--accent, #2563eb);
+  color: #fff; border: 0; border-radius: 6px;
+  padding: 8px 14px; cursor: pointer; font-size: 0.95rem;
+}
+.we-pickrow .we-pick-btn:hover { filter: brightness(1.1); }
+.we-filename { color: var(--text, #111); font-size: 0.92rem; }
+
+.we-status {
+  margin: 8px 0; padding: 8px 12px; border-radius: 6px;
+  background: #eef6ff; color: #044; font-size: 0.92rem;
+}
+.we-status.we-error { background: #fee; color: #800; }
+
+.we-meta {
+  margin: 10px 0; padding: 10px 12px; border-radius: 6px;
+  background: var(--surface, #f7f8fa); font-size: 0.9rem;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.we-meta b { margin-inline-end: 4px; }
+
+.we-automap {
+  margin: 4px 0 8px; color: var(--text-muted, #888);
+  font-size: 0.86rem;
+}
+
+.we-table-wrap { overflow: auto; max-height: 320px; border: 1px solid var(--border, #ddd); border-radius: 6px; }
+.we-streams { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.we-streams thead th {
+  position: sticky; top: 0;
+  background: var(--surface, #f3f4f6); padding: 8px;
+  border-bottom: 1px solid var(--border, #ddd); text-align: center;
+}
+.we-streams td {
+  padding: 8px; border-bottom: 1px solid var(--border, #eee);
+  text-align: center; vertical-align: middle;
+}
+.we-streams td small { color: var(--text-muted, #888); font-size: 0.78rem; }
+.we-streams select { padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border, #ccc); }
+.we-streams .we-preview-btn {
+  padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border, #ccc);
+  background: var(--surface, #fff); cursor: pointer; font-size: 0.85rem;
+}
+.we-streams .we-preview-btn:hover { background: var(--accent, #2563eb); color: #fff; }
+
+.we-preview {
+  margin: 12px 0; padding: 12px;
+  background: var(--surface, #f9fafb); border-radius: 6px;
+  border: 1px solid var(--border, #e5e7eb);
+}
+.we-preview h3.we-preview-title { margin: 0 0 8px; font-size: 1rem; }
+.we-preview ol { padding-inline-start: 20px; max-height: 240px; overflow: auto; }
+.we-preview li { padding: 4px 0; line-height: 1.5; }
+.we-preview .we-preview-close {
+  margin-top: 8px; padding: 6px 12px; border-radius: 4px;
+  border: 1px solid var(--border, #ccc); background: var(--surface, #fff); cursor: pointer;
+}
+
+.we-btns { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.we-btns button {
+  padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border, #ccc);
+  background: var(--surface, #fff); cursor: pointer; font-size: 0.95rem;
+}
+.we-btns .we-confirm.primary {
+  background: var(--accent, #2563eb); color: #fff; border-color: var(--accent, #2563eb);
+}
+.we-btns .we-confirm.primary:hover { filter: brightness(1.1); }
+.we-btns .we-cancel:hover { background: #f0f0f0; }
