@@ -107,15 +107,19 @@ async function fetchJson(url) {
 
 // --- Build one category -----------------------------------------------------
 
-async function buildCategory(label, filter, books, outFile) {
+function slugifyTitle(title) {
+  return title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+}
+
+// When split=true, each book is written to its own file and a manifest is also
+// emitted that the client uses to enumerate which files to fetch. This is the
+// path used for Bavli, where the combined file (~29 MB) exceeds Cloudflare
+// Workers Static Assets' 25 MiB per-file ceiling and blocks the entire deploy.
+async function buildCategory(label, filter, books, outDir, { split = false } = {}) {
   const filtered = books.filter(filter);
-  console.log(`\n[${label}] ${filtered.length} works`);
-  const result = {
-    version: new Date().toISOString().slice(0, 10),
-    format: `${label}-v1`,
-    source: "Sefaria-Export GCS bucket (Hebrew, merged)",
-    books: [],
-  };
+  console.log(`\n[${label}] ${filtered.length} works  (split=${split})`);
+  const version = new Date().toISOString().slice(0, 10);
+  const collected = [];
   let i = 0;
   for (const meta of filtered) {
     i++;
@@ -128,21 +132,57 @@ async function buildCategory(label, filter, books, outFile) {
       continue;
     }
     const chapters = cleanText(data.text);
-    result.books.push({
+    const segCount = Array.isArray(chapters) ? chapters.flat(Infinity).filter(Boolean).length : 0;
+    const book = {
       title: meta.title,
       heTitle: data.heTitle ?? "",
       cat: meta.categories,
       chapters,
-    });
-    const segCount = Array.isArray(chapters) ? chapters.flat(Infinity).filter(Boolean).length : 0;
+    };
+    collected.push({ meta, book, segCount });
     console.log(`${Array.isArray(chapters) ? chapters.length : 0} chapters · ${segCount} segments`);
   }
-  await mkdir(dirname(outFile), { recursive: true });
-  const json = JSON.stringify(result);
-  await writeFile(outFile, json);
-  const kb = (json.length / 1024).toFixed(0);
-  console.log(`  → ${outFile} (${kb} KB)`);
-  return result;
+
+  // For split: outDir is the directory itself.
+  // For combined: outDir is the path without ".json" — the parent must exist.
+  await mkdir(split ? outDir : dirname(`${outDir}.json`), { recursive: true });
+  if (split) {
+    const manifestEntries = [];
+    for (const { meta, book, segCount } of collected) {
+      const slug = slugifyTitle(meta.title);
+      const fileJson = JSON.stringify({
+        version, format: `${label}-book-v1`,
+        source: "Sefaria-Export GCS bucket (Hebrew, merged)",
+        book,
+      });
+      const filePath = `${outDir}/${slug}.json`;
+      await writeFile(filePath, fileJson);
+      manifestEntries.push({
+        slug,
+        title: meta.title,
+        heTitle: book.heTitle,
+        cat: meta.categories,
+        sizeKb: Math.round(fileJson.length / 1024),
+        segCount,
+      });
+    }
+    const manifestJson = JSON.stringify({
+      version, format: `${label}-manifest-v1`, books: manifestEntries,
+    });
+    await writeFile(`${outDir}/manifest.json`, manifestJson);
+    const totalKb = manifestEntries.reduce((s, e) => s + e.sizeKb, 0);
+    console.log(`  → ${outDir}/{${manifestEntries.length} per-book files + manifest.json} (~${totalKb} KB total)`);
+  } else {
+    const result = {
+      version, format: `${label}-v1`,
+      source: "Sefaria-Export GCS bucket (Hebrew, merged)",
+      books: collected.map((c) => c.book),
+    };
+    const outFile = `${outDir}.json`;
+    const json = JSON.stringify(result);
+    await writeFile(outFile, json);
+    console.log(`  → ${outFile} (${(json.length / 1024).toFixed(0)} KB)`);
+  }
 }
 
 // --- Main -------------------------------------------------------------------
@@ -156,14 +196,17 @@ async function main() {
   const manifest = await fetchJson(MANIFEST_URL);
   console.log(`  ${manifest.books.length} total entries · bucket=${manifest.bucket}`);
 
+  // Tanakh (~5 MB) and Mishnah (~3 MB) ship as a single combined file each.
+  // Bavli (~29 MB total) is split per tractate because the combined file
+  // exceeds Cloudflare Workers Static Assets' 25 MiB per-file ceiling.
   if (!only || only === "tanakh") {
-    await buildCategory("tanakh", isCanonicalTanakh, manifest.books, resolve(OUT_DIR, "tanakh.json"));
+    await buildCategory("tanakh", isCanonicalTanakh, manifest.books, resolve(OUT_DIR, "tanakh"));
   }
   if (!only || only === "mishnah") {
-    await buildCategory("mishnah", isCanonicalMishnah, manifest.books, resolve(OUT_DIR, "mishnah.json"));
+    await buildCategory("mishnah", isCanonicalMishnah, manifest.books, resolve(OUT_DIR, "mishnah"));
   }
   if (!only || only === "bavli") {
-    await buildCategory("bavli", isCanonicalBavli, manifest.books, resolve(OUT_DIR, "bavli.json"));
+    await buildCategory("bavli", isCanonicalBavli, manifest.books, resolve(OUT_DIR, "bavli"), { split: true });
   }
 
   console.log("\nDone.");
