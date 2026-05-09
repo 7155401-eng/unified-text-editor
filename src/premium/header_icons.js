@@ -112,6 +112,73 @@ function openSettings() {
   document.addEventListener("keydown", escHandler);
 }
 
+// משה 2026-05-10: פופ-אובר הורדות. לשונית הריבון "הורדות" הוסרה (main.js),
+// וכל ההורדה נפתחת מהאייקון 📥 כמודאל מרכזי. אותו דפוס בדיוק כמו openSettings:
+// מעבירים את #downloads-panel ל-host בעת פתיחה, מחזירים בעת סגירה — כך כל
+// ה-listeners שכבר חוברו ב-wireDownloadsPanel() נשארים פעילים.
+
+const DOWNLOADS_OVERLAY_ID = "rt-prem-downloads-overlay";
+const DOWNLOADS_HOST_ID = "rt-prem-downloads-host";
+
+function openDownloads() {
+  if (document.getElementById(DOWNLOADS_OVERLAY_ID)) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = DOWNLOADS_OVERLAY_ID;
+  overlay.className = "rt-prem-settings-overlay";
+  overlay.dir = "rtl";
+
+  const sheet = document.createElement("div");
+  sheet.className = "rt-prem-settings-sheet";
+
+  const header = document.createElement("div");
+  header.className = "rt-prem-settings-header";
+  header.innerHTML = `
+    <div class="rt-prem-settings-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>הורדה ושמירה למחשב</span>
+    </div>
+    <button type="button" class="rt-prem-settings-close" aria-label="סגור">✕</button>
+  `;
+  sheet.appendChild(header);
+
+  const host = document.createElement("div");
+  host.id = DOWNLOADS_HOST_ID;
+  host.className = "rt-prem-settings-host";
+  sheet.appendChild(host);
+
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+  document.documentElement.classList.add("rt-prem-locked");
+
+  const panel = document.getElementById("downloads-panel");
+  const panelAnchor = panel ? document.createComment("downloads-panel-anchor") : null;
+  if (panel && panel.parentNode) {
+    panel.parentNode.insertBefore(panelAnchor, panel);
+    host.appendChild(panel);
+    panel.hidden = false;
+    panel.classList.add("rt-prem-settings-shown");
+  }
+
+  function close() {
+    if (panel && panelAnchor && panelAnchor.parentNode) {
+      panelAnchor.parentNode.insertBefore(panel, panelAnchor);
+      panelAnchor.remove();
+      panel.classList.remove("rt-prem-settings-shown");
+    }
+    overlay.remove();
+    document.documentElement.classList.remove("rt-prem-locked");
+    document.removeEventListener("keydown", escHandler);
+  }
+
+  function escHandler(e) {
+    if (e.key === "Escape") close();
+  }
+  header.querySelector(".rt-prem-settings-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", escHandler);
+}
+
 function buildIconButton({ id, cls, title, label, html }) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -157,6 +224,23 @@ export function installHeaderPremiumIcons() {
     `,
   });
   settingsIcon.addEventListener("click", openSettings);
+
+  // משה 2026-05-10: אייקון הורדה (📥) ליד אייקון ההגדרות. מחליף את לשונית
+  // "הורדות" שהוסרה מהריבון. SVG חץ-יורד-לתוך-תיבה — קריא מיידית כ"הורד למחשב".
+  const downloadsIcon = buildIconButton({
+    id: "rt-prem-icon-downloads",
+    cls: "rt-prem-icon-downloads",
+    title: "הורדות",
+    label: "פתח חלון הורדות",
+    html: `
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+    `,
+  });
+  downloadsIcon.addEventListener("click", openDownloads);
 
   // Gift — מתנה חודשית
   const gift = buildIconButton({
@@ -224,9 +308,11 @@ export function installHeaderPremiumIcons() {
     const ref1 = avatarWrap1 || null;
     if (ref1) {
       actions.insertBefore(settingsIcon, ref1);
+      actions.insertBefore(downloadsIcon, ref1);
       actions.insertBefore(gift, ref1);
     } else {
       actions.appendChild(settingsIcon);
+      actions.appendChild(downloadsIcon);
       actions.appendChild(gift);
     }
     if (avatarWrap1) {
@@ -274,10 +360,12 @@ export function installHeaderPremiumIcons() {
   const ref = avatarWrap || null;
   if (ref) {
     actions.insertBefore(settingsIcon, ref);
+    actions.insertBefore(downloadsIcon, ref);
     actions.insertBefore(gift, ref);
     actions.insertBefore(diamond, ref);
   } else {
     actions.appendChild(settingsIcon);
+    actions.appendChild(downloadsIcon);
     actions.appendChild(gift);
     actions.appendChild(diamond);
   }

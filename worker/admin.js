@@ -4,6 +4,24 @@
 import { getUserFromRequest } from './session.js';
 import { runRecurringBilling } from './recurring.js';
 
+// משה 2026-05-10: דגל גלובלי לכיבוי "מגן הקונסול" (החוסם פתיחת devtools
+// במצב דמו או בכל הסשנים). נשמר ב-app_settings כ-key 'CONSOLE_GUARD_DISABLED'
+// עם value '1' אם המגן כבוי. ברירת המחדל = ריק/'0' = המגן דלוק.
+// הפונקציה נצרכת מ-index.js כדי להזריק את המצב לכל HTML response.
+const CONSOLE_GUARD_KEY = 'CONSOLE_GUARD_DISABLED';
+
+export async function isConsoleGuardEnabled(env) {
+  try {
+    const r = await env.DB.prepare(
+      'SELECT value FROM app_settings WHERE key = ?'
+    ).bind(CONSOLE_GUARD_KEY).first();
+    if (r && String(r.value) === '1') return false;
+  } catch {
+    // הטבלה עוד לא קיימת או DB לא זמין — נכון להתנהג כאילו המגן דלוק.
+  }
+  return true;
+}
+
 async function requireAdmin(request, env) {
   const user = await getUserFromRequest(request, env);
   if (!user) return { error: 'Not logged in', status: 401 };
@@ -57,6 +75,15 @@ export async function handleAdmin(request, env, url) {
     const id = path.split('/').slice(-2)[0];
     return cancelUserSubscription(request, env, Number(id));
   }
+  if (path === '/api/admin/console-guard' && method === 'GET') {
+    const enabled = await isConsoleGuardEnabled(env);
+    return new Response(JSON.stringify({ enabled }), {
+      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    });
+  }
+  if (path === '/api/admin/console-guard' && method === 'POST') {
+    return setConsoleGuard(request, env, auth.user.id);
+  }
   return new Response('Not found', { status: 404 });
 }
 
@@ -70,6 +97,20 @@ async function cancelUserSubscription(request, env, id) {
     "UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?"
   ).bind(nowSec, reason, id).run();
   return Response.json({ ok: true });
+}
+
+async function setConsoleGuard(request, env, userId) {
+  let body;
+  try { body = await request.json(); } catch { body = {}; }
+  const enabled = !!body.enabled;
+  const value = enabled ? '0' : '1';
+  const nowSec = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    'INSERT INTO app_settings (key, value, updated_at, updated_by_user_id) VALUES (?, ?, ?, ?)\n     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by_user_id = excluded.updated_by_user_id'
+  ).bind(CONSOLE_GUARD_KEY, value, nowSec, userId).run();
+  return new Response(JSON.stringify({ ok: true, enabled }), {
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  });
 }
 
 async function listUsers(request, env, url) {
