@@ -703,9 +703,13 @@
             <div class="settings-license-status" id="settings-license-status" data-i18n="settingsLicenseUnset">לא הוטמע עדיין</div>
           </div>
           <div class="settings-section">
-            <h3 class="settings-h3">AI ועיצוב</h3>
+            <h3 class="settings-h3">מפתחות AI אישיים</h3>
+            <div style="font-size:12px;color:#475569;margin-bottom:8px;">
+              ניתן לשמור מפתחות של כמה ספקים בו זמנית. כל מפתח נשמר אצלך בדפדפן בלבד (לא נשלח לשרת שלנו).
+              ספק ברירת המחדל הוא הספק שייעשה בו שימוש כשלא מוגדר אחר.
+            </div>
             <label class="settings-row">
-              <span>ספק AI:</span>
+              <span>ספק ברירת מחדל:</span>
               <select id="settings-ai-provider">
                 <option value="anthropic">Anthropic (Claude)</option>
                 <option value="openai">OpenAI (GPT-4)</option>
@@ -715,11 +719,41 @@
                 <option value="deepseek">DeepSeek</option>
               </select>
             </label>
-            <label class="settings-row">
-              <span>מפתח API:</span>
-              <input type="password" id="settings-ai-apikey" placeholder="sk-ant-..." style="flex:1;" />
-            </label>
-            <div style="font-size:11px;color:#888;">המפתח נשמר רק אצלך בדפדפן (localStorage)</div>
+            <div class="ai-keys-grid">
+              <label class="settings-row ai-key-row">
+                <span class="ai-key-label" data-provider="anthropic">Anthropic (Claude):</span>
+                <input type="password" class="ai-key-input" data-provider="anthropic" placeholder="sk-ant-…" autocomplete="off" />
+                <button type="button" class="ai-key-toggle" data-toggle-for="anthropic" title="הצג/הסתר">👁</button>
+              </label>
+              <label class="settings-row ai-key-row">
+                <span class="ai-key-label" data-provider="openai">OpenAI (GPT-4):</span>
+                <input type="password" class="ai-key-input" data-provider="openai" placeholder="sk-…" autocomplete="off" />
+                <button type="button" class="ai-key-toggle" data-toggle-for="openai" title="הצג/הסתר">👁</button>
+              </label>
+              <label class="settings-row ai-key-row">
+                <span class="ai-key-label" data-provider="google">Google (Gemini):</span>
+                <input type="password" class="ai-key-input" data-provider="google" placeholder="AIza…" autocomplete="off" />
+                <button type="button" class="ai-key-toggle" data-toggle-for="google" title="הצג/הסתר">👁</button>
+              </label>
+              <label class="settings-row ai-key-row">
+                <span class="ai-key-label" data-provider="mistral">Mistral:</span>
+                <input type="password" class="ai-key-input" data-provider="mistral" placeholder="…" autocomplete="off" />
+                <button type="button" class="ai-key-toggle" data-toggle-for="mistral" title="הצג/הסתר">👁</button>
+              </label>
+              <label class="settings-row ai-key-row">
+                <span class="ai-key-label" data-provider="groq">Groq:</span>
+                <input type="password" class="ai-key-input" data-provider="groq" placeholder="gsk_…" autocomplete="off" />
+                <button type="button" class="ai-key-toggle" data-toggle-for="groq" title="הצג/הסתר">👁</button>
+              </label>
+              <label class="settings-row ai-key-row">
+                <span class="ai-key-label" data-provider="deepseek">DeepSeek:</span>
+                <input type="password" class="ai-key-input" data-provider="deepseek" placeholder="sk-…" autocomplete="off" />
+                <button type="button" class="ai-key-toggle" data-toggle-for="deepseek" title="הצג/הסתר">👁</button>
+              </label>
+            </div>
+            <div style="font-size:11px;color:#888;margin-top:6px;">
+              המפתחות נשמרים אצלך בלבד. המנוי לרב טקסט אינו כולל גישה למודלי AI — את המפתחות יש להוציא ישירות מהספקים.
+            </div>
           </div>
           <div class="settings-section">
             <h3 class="settings-h3" data-i18n="settingsDebug">דיבוג</h3>

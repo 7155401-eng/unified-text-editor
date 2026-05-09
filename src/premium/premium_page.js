@@ -4,6 +4,7 @@
 // נפתח כ-overlay מסך מלא; אפשר גם לעקוף ע"י URL ?premium=1 או לחיצה על אייקון הכוכב.
 
 import { startCheckoutYaad, startCheckoutPaypal } from "./payment_api.js";
+import { buildPhoneInput, fetchAccountPhone, savePhone } from "./phone_input.js";
 
 const OVERLAY_ID = "rt-premium-overlay";
 
@@ -18,7 +19,6 @@ const PLANS = {
       "גישה מלאה לכל הכלים — בלי הגבלה",
       "ייצוא מסמכים ללא סימני מים",
       "עימוד גפ\"ת מלא ללא הגבלת זמן",
-      "ביטול בכל עת מהאזור האישי",
     ],
     cta: "הפעל מנוי חודשי",
   },
@@ -34,7 +34,6 @@ const PLANS = {
       "כל מה שיש בחודשי — בחצי מחיר",
       "12 חודשים שימוש ללא הגבלה",
       "תמיכה במייל ובטלפון בעדיפות",
-      "ביטול בכל עת מהאזור האישי",
     ],
     cta: "הפעל מנוי שנתי",
   },
@@ -183,7 +182,7 @@ function buildOverlay() {
   const reasons = [
     { i: "⚡", t: "חוסך לך שעות", d: "במקום לעמד ידנית — המערכת מסיימת ב-2 דקות." },
     { i: "📚", t: "כל הספרים", d: "תנ\"ך, משנה, גמרא, שו\"ע — ספריה אחת מאוחדת." },
-    { i: "🎯", t: "תוצר מקצועי", d: "ייצוא לוורד שמוכן להדפסה, בלי תיקונים." },
+    { i: "🎯", t: "תוצר מקצועי", d: "ייצוא לקובץ שמוכן להדפסה, בלי תיקונים." },
     { i: "🔄", t: "עדכונים שוטפים", d: "כל גרסה חדשה עוברת אוטומטית — אין מה להתקין." },
   ];
   for (const r of reasons) {
@@ -226,10 +225,7 @@ function wireButtons(overlay) {
     const amount = parseInt(btn.getAttribute("data-amount") || "0", 10);
     if (!amount) return;
 
-    btn.disabled = true;
-    const origHtml = btn.innerHTML;
-    btn.innerHTML = `<span class="rt-prem-btn-spin"></span><span>מעביר לתשלום…</span>`;
-    try {
+    async function attemptCheckout() {
       if (provider === "yaad") {
         await startCheckoutYaad({ planCode, packCode, amount });
       } else if (provider === "paypal") {
@@ -238,11 +234,111 @@ function wireButtons(overlay) {
         }
         await startCheckoutPaypal({ planCode, packCode, amount });
       }
+    }
+
+    btn.disabled = true;
+    const origHtml = btn.innerHTML;
+    btn.innerHTML = `<span class="rt-prem-btn-spin"></span><span>מעביר לתשלום…</span>`;
+    try {
+      await attemptCheckout();
     } catch (err) {
+      // משה 2026-05-09: אם השרת אומר שטלפון חסר — פותחים מודאל קלט טלפון,
+      // שומרים, וחוזרים אוטומטית לאותה לחיצת תשלום.
+      if (err && err.code === "phone_required") {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+        const ok = await openPhoneRequiredModal();
+        if (!ok) return;
+        btn.disabled = true;
+        btn.innerHTML = `<span class="rt-prem-btn-spin"></span><span>מעביר לתשלום…</span>`;
+        try {
+          await attemptCheckout();
+        } catch (err2) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          alert((err2 && err2.message) || "אירעה תקלה זמנית. נסה שוב או צור קשר בטלפון.");
+        }
+        return;
+      }
       btn.disabled = false;
       btn.innerHTML = origHtml;
       alert((err && err.message) || "אירעה תקלה זמנית. נסה שוב או צור קשר בטלפון.");
     }
+  });
+}
+
+// משה 2026-05-09: מודאל "טלפון נדרש" — נפתח כשמנסים לשלם בלי טלפון שמור.
+// מחזיר Promise<boolean>: true אם נשמר בהצלחה, false אם המשתמש סגר.
+function openPhoneRequiredModal() {
+  return new Promise((resolve) => {
+    const back = document.createElement("div");
+    back.className = "rt-prem-overlay rt-phone-modal-overlay";
+    back.dir = "rtl";
+    back.style.zIndex = 100001;
+
+    const sheet = document.createElement("div");
+    sheet.className = "rt-prem-sheet rt-phone-modal-sheet";
+
+    sheet.innerHTML = `
+      <div class="rt-phone-modal-title">📞 דרוש מספר טלפון</div>
+      <div class="rt-phone-modal-msg">
+        לפני התשלום אנחנו זקוקים למספר טלפון שלך. הוא יישמר אצלנו בלבד וישמש
+        לחשבונית, אישור עסקה והתקשרות במקרה הצורך. ברירת המחדל היא ישראל,
+        ניתן לבחור מדינה אחרת.
+      </div>
+      <div class="rt-phone-modal-host"></div>
+      <div class="rt-phone-modal-status"></div>
+      <div class="rt-phone-modal-actions">
+        <button type="button" class="rt-prem-btn rt-prem-btn-yaad rt-phone-modal-save">שמירה והמשך לתשלום</button>
+        <button type="button" class="rt-prem-btn-mini rt-phone-modal-cancel">ביטול</button>
+      </div>
+    `;
+    back.appendChild(sheet);
+    document.body.appendChild(back);
+
+    let cleanedUp = false;
+    function cleanup(result) {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      back.remove();
+      resolve(result);
+    }
+
+    // טען טלפון קודם אם יש
+    fetchAccountPhone().then((info) => {
+      const ctrl = buildPhoneInput({
+        country: info?.phoneCountry || "IL",
+        phone: info?.phone || "",
+      });
+      const host = sheet.querySelector(".rt-phone-modal-host");
+      host.appendChild(ctrl.wrap);
+      ctrl.focus();
+
+      const statusEl = sheet.querySelector(".rt-phone-modal-status");
+      const saveBtn = sheet.querySelector(".rt-phone-modal-save");
+      saveBtn.addEventListener("click", async () => {
+        const v = ctrl.getValue();
+        if (!v.valid) {
+          statusEl.textContent = "מספר לא תקין";
+          statusEl.className = "rt-phone-modal-status rt-phone-status-err";
+          return;
+        }
+        saveBtn.disabled = true;
+        statusEl.textContent = "שומר…";
+        statusEl.className = "rt-phone-modal-status";
+        try {
+          await savePhone({ country: v.country, phone: v.phone });
+          cleanup(true);
+        } catch (err) {
+          statusEl.textContent = err?.message || "שגיאה בשמירה";
+          statusEl.className = "rt-phone-modal-status rt-phone-status-err";
+          saveBtn.disabled = false;
+        }
+      });
+    });
+
+    sheet.querySelector(".rt-phone-modal-cancel").addEventListener("click", () => cleanup(false));
+    back.addEventListener("click", (ev) => { if (ev.target === back) cleanup(false); });
   });
 }
 

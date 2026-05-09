@@ -116,15 +116,26 @@
   border-color: #e5e7eb;
 }
 
-/* מפתח שוודי / הגדרות */
-.rt-prem-icon-wrench {
+/* גלגל שיניים אלגנטי / הגדרות (החליף את המפתח השוודי) */
+.rt-prem-icon-settings {
   color: #475569;
   border-color: #cbd5e1;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 100%);
 }
-.rt-prem-icon-wrench:hover {
-  background: rgba(71, 85, 105, 0.08);
+.rt-prem-icon-settings:hover {
   color: #1e293b;
   border-color: #475569;
+  background: linear-gradient(135deg, #eef2f7 0%, #e2e8f0 100%);
+  box-shadow: 0 0 0 3px rgba(71, 85, 105, 0.10);
+}
+.rt-prem-icon-settings .rt-prem-settings-svg {
+  transition: transform 0.6s cubic-bezier(.34, 1.56, .64, 1);
+}
+.rt-prem-icon-settings:hover .rt-prem-settings-svg {
+  transform: rotate(60deg);
+}
+.rt-prem-icon-settings:active .rt-prem-settings-svg {
+  transform: rotate(120deg);
 }
 
 /* ============ Overlay תשלום ============ */
@@ -747,6 +758,99 @@
   font-size: 14px;
 }
 
+/* ============ קלט טלפון ============ */
+.rt-phone-input {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  width: 100%;
+  max-width: 360px;
+}
+.rt-phone-input:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+.rt-phone-country {
+  border: 0;
+  border-inline-end: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 8px 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  flex: 0 0 auto;
+}
+.rt-phone-country:hover { background: #eef2f7; }
+.rt-phone-number {
+  flex: 1;
+  border: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: 'Courier New', Consolas, monospace;
+  outline: none;
+  letter-spacing: 0.5px;
+}
+
+/* סקציית טלפון בהגדרות */
+.rt-phone-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 6px;
+}
+.rt-phone-section.rt-phone-missing {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+.rt-phone-label { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+.rt-phone-required { color: #dc2626; font-weight: 800; }
+.rt-phone-host { margin-bottom: 8px; }
+.rt-phone-help { font-size: 12px; color: #64748b; margin-bottom: 10px; line-height: 1.4; }
+.rt-phone-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.rt-phone-save {
+  background: #2563eb;
+  color: #fff;
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rt-phone-save:hover:not(:disabled) { background: #1d4ed8; }
+.rt-phone-save:disabled { opacity: 0.6; cursor: wait; }
+.rt-phone-status { font-size: 12px; color: #64748b; }
+.rt-phone-status-ok { color: #059669; font-weight: 600; }
+.rt-phone-status-err { color: #dc2626; font-weight: 600; }
+
+/* מודאל טלפון נדרש מתוך עמוד התשלום */
+.rt-phone-modal-overlay { padding-top: 80px; }
+.rt-phone-modal-sheet { max-width: 480px; padding: 28px; text-align: center; }
+.rt-phone-modal-title { font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }
+.rt-phone-modal-msg { font-size: 14px; color: #475569; margin-bottom: 20px; line-height: 1.55; }
+.rt-phone-modal-host { display: flex; justify-content: center; margin-bottom: 12px; }
+.rt-phone-modal-host .rt-phone-input { max-width: 100%; }
+.rt-phone-modal-status { font-size: 13px; color: #475569; min-height: 18px; margin-bottom: 12px; }
+.rt-phone-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.rt-phone-modal-save { min-width: 220px; }
+.rt-phone-modal-cancel { background: #f1f5f9; color: #475569; }
+
 /* ============ פופ-אובר הגדרות ============ */
 .rt-prem-settings-overlay {
   position: fixed;
@@ -816,6 +920,118 @@
 .rt-prem-settings-host .ribbon-panel,
 .rt-prem-settings-host .ribbon-panel.ribbon-hidden { display: block !important; }
 .rt-prem-settings-host .settings-panel-wrap { display: block !important; }
+
+/* ============ מפתחות AI מרובי ספקים ============ */
+.ai-keys-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ai-key-row {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+.ai-key-label {
+  width: 150px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #475569;
+}
+.ai-key-input {
+  flex: 1;
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  min-width: 0;
+}
+.ai-key-toggle {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.ai-key-toggle:hover { background: #e2e8f0; }
+
+/* ============ סקציית פרטי חשבון בהגדרות ============ */
+.settings-premium-section {
+  /* יורש מ-.settings-section אבל מקבל מסגרת מודגשת */
+}
+.rt-prem-status-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border: 1.5px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-top: 8px;
+}
+.rt-prem-status-card.rt-prem-status-active {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #6ee7b7;
+}
+.rt-prem-status-card.rt-prem-status-empty {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+.rt-prem-status-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(148,163,184,0.2);
+  font-size: 13.5px;
+}
+.rt-prem-status-line:last-of-type { border-bottom: 0; }
+.rt-prem-status-label { color: #475569; font-weight: 500; }
+.rt-prem-status-value { color: #0f172a; font-weight: 700; }
+.rt-prem-status-email { font-family: 'Courier New', Consolas, monospace; font-size: 12.5px; }
+.rt-prem-status-sub { font-weight: 500; color: #64748b; font-size: 12px; }
+.rt-prem-status-plan-subscription { color: #047857; }
+.rt-prem-status-plan-hours { color: #1e40af; }
+.rt-prem-status-plan-none { color: #b45309; }
+.rt-prem-status-help {
+  font-size: 12.5px;
+  color: #475569;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+.rt-prem-status-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.rt-prem-status-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  transition: transform 0.12s, filter 0.12s;
+}
+.rt-prem-status-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.rt-prem-status-btn-primary {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  color: #fff;
+}
+.rt-prem-status-btn-secondary {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
 
 /* Demo mode lock screen */
 .rt-prem-demo-lock {

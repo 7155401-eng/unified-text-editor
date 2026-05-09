@@ -99,10 +99,15 @@ function buildDesignJson() {
 }
 
 async function callAI(prompt) {
+  // משה 2026-05-09: כל ספק שומר מפתח נפרד ב-`ravtext.ai.apiKey.<provider>`.
+  // ספק ברירת המחדל ב-`ravtext.ai.provider`. תאימות: אם נשאר ערך ב-`ravtext.ai.apiKey`
+  // הישן, נשתמש בו כ-fallback למניעת שבירה.
   const provider = localStorage.getItem("ravtext.ai.provider") || "anthropic";
-  const apiKey = localStorage.getItem("ravtext.ai.apiKey") || "";
+  const apiKey = localStorage.getItem(`ravtext.ai.apiKey.${provider}`)
+    || localStorage.getItem("ravtext.ai.apiKey")
+    || "";
   if (!apiKey) {
-    alert("נדרש מפתח API. הזן בהגדרות.");
+    alert(`נדרש מפתח API לספק "${provider}". הזן בהגדרות → מפתחות AI אישיים.`);
     return null;
   }
   if (provider === "anthropic") {

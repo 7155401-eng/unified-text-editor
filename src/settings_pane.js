@@ -140,14 +140,48 @@ function applyTheme(themeId) {
   } else {
     document.body.dataset.theme = themeId;
   }
+  // משה 2026-05-09: גם הוספת class הישן ל-body (.dark-theme / .light-theme).
+  // קודם רק data-theme השתנה, אבל חלק מה-CSS עדיין מסתמך על ה-class הישן —
+  // וזה הסיבה ש"מצב כהה" לא נראה משנה כלום ויזואלית.
+  applyDarkMode(themeId === "dark");
   // Sync dark mode checkbox with theme
   const dm = document.getElementById("settings-dark-mode");
   if (dm) dm.checked = (themeId === "dark");
   // Show/hide custom theme picker
   const ct = document.getElementById("settings-custom-theme");
   if (ct) ct.hidden = (themeId !== "custom");
-  // If custom — re-apply saved colors
-  if (themeId === "custom") applyCustomThemeFromStorage();
+  // If custom — re-apply saved colors, או אתחל מהצבעים הנוכחיים אם אין שמורים.
+  if (themeId === "custom") {
+    initCustomThemeIfEmpty();
+    applyCustomThemeFromStorage();
+  }
+}
+
+// משה 2026-05-09: בפעם הראשונה שבוחרים "מותאם אישית" אם אין צבעים שמורים,
+// קודם זה היה משאיר את התצוגה ללא שינוי וגם המאפיינים בלוח לא שיקפו את
+// המצב הנוכחי. עכשיו אנחנו דוגמים את הצבעים הנוכחיים מה-CSS, שומרים אותם
+// כתחילת התאמה אישית, וגם מסנכרנים את שדות הצבע בלוח.
+function initCustomThemeIfEmpty() {
+  try {
+    const stored = JSON.parse(localStorage.getItem("ravtext.settings.customTheme") || "{}");
+    if (stored && Object.keys(stored).length > 0) return;
+    const seeded = {};
+    const computed = getComputedStyle(document.body);
+    for (const key of CUSTOM_KEYS) {
+      const cssVal = computed.getPropertyValue(`--rt-${key}`).trim();
+      const input = document.getElementById(`ct-${key}`);
+      const fallback = input ? input.defaultValue || input.value : "";
+      const hex = rgbToHex(cssVal) || (cssVal.startsWith("#") ? cssVal : null) || fallback;
+      if (hex) {
+        seeded[key] = hex;
+        if (input) input.value = hex;
+      }
+    }
+    if (Object.keys(seeded).length) {
+      localStorage.setItem("ravtext.settings.customTheme", JSON.stringify(seeded));
+      applyCustomTheme(seeded);
+    }
+  } catch {}
 }
 
 const CUSTOM_KEYS = ["bg","bg-panel","bg-toolbar","fg","fg-muted","border","accent","accent-hover","btn-bg"];

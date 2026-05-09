@@ -71,7 +71,7 @@ export async function getUserFromRequest(request, env) {
   if (payload.exp && payload.exp < nowSec) return null;
 
   const row = await env.DB.prepare(
-    'SELECT id, email, status, expires_at, is_admin FROM users WHERE email = ?'
+    'SELECT id, email, status, expires_at, is_admin, plan_type, balance_seconds FROM users WHERE email = ?'
   ).bind(payload.email).first();
   if (!row) return null;
 
@@ -86,6 +86,8 @@ export async function getUserFromRequest(request, env) {
     expires_at: row.expires_at,
     is_admin: row.is_admin === 1,
     paid: isPaid,
+    plan_type: row.plan_type || null,
+    balance_seconds: row.balance_seconds || 0,
   };
 }
 

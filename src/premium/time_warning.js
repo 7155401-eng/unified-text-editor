@@ -130,7 +130,7 @@ function showLockScreen() {
       <div class="rt-prem-demo-lock-title">הזמן בחשבונך הסתיים</div>
       <div class="rt-prem-demo-lock-msg">
         אנא הטען את יתרתך כדי להמשיך לעבוד עם הכלים המלאים. עד אז העורך
-        חוזר למצב דמו עם סימני מים. הקבצים שלך מאובסנים ויחזרו ברגע שתחדש.
+        חוזר למצב דמו עם סימני מים. הקבצים שלך מאוחסנים ויחזרו ברגע שתחדש.
       </div>
       <button type="button" class="rt-prem-demo-lock-cta" id="rt-prem-demo-lock-cta">לעמוד התשלום</button>
       <div style="margin-top:12px"><button type="button" id="rt-prem-demo-lock-back" style="background:transparent;color:#cbd5e1;border:0;font-size:13px;cursor:pointer;">חזרה למצב דמו</button></div>

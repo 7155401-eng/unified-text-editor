@@ -14,6 +14,7 @@ import { handleAdmin } from './admin.js';
 import { handleAdminInbox, handlePublicInbox } from './inbox.js';
 import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
+import { handleAccount } from './account.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -46,6 +47,9 @@ export default {
           email: user?.email || null,
           admin: !!user?.is_admin,
           status: user?.status || null,
+          planType: user?.plan_type || null,
+          expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
+          balanceSeconds: user?.balance_seconds || 0,
         },
         { headers: { 'cache-control': 'no-store' } }
       );
@@ -67,6 +71,8 @@ export default {
       response = await handlePublicInbox(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
+    } else if (url.pathname.startsWith('/api/account/')) {
+      response = await handleAccount(request, env, url);
     } else if (
       url.pathname.startsWith('/api/documents') ||
       url.pathname === '/api/settings'
@@ -124,6 +130,9 @@ export default {
           email: user?.email || null,
           admin: !!user?.is_admin,
           status: user?.status || null,
+          planType: user?.plan_type || null,
+          expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
+          balanceSeconds: user?.balance_seconds || 0,
         };
         // צוות האתר 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
         // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י צוות האתר ב-DB).

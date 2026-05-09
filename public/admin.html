@@ -135,6 +135,8 @@
     .btn-small.activate { background: #d1fae5; color: #065f46; }
     .btn-small.disable { background: #fef3c7; color: #92400e; }
     .btn-small.delete { background: #fee2e2; color: #991b1b; }
+    .btn-small.recharge { background: #dbeafe; color: #1e40af; font-weight: 600; }
+    .btn-small.recharge:hover { background: #bfdbfe; }
     .balance-cell { white-space: nowrap; }
     .balance-amount { font-variant-numeric: tabular-nums; font-weight: 600; color: #1e293b; }
     .balance-quick { display: inline-flex; gap: 4px; margin-inline-start: 8px; }
@@ -612,6 +614,7 @@
                       <td class="row-actions">
                         ${u.status !== 'active' ? `<button class="btn-small activate" data-action="activate" data-id="${u.id}">אשר</button>` : ''}
                         ${u.status === 'active' ? `<button class="btn-small disable" data-action="disable" data-id="${u.id}">חסום</button>` : ''}
+                        ${(u.yaad_token || u.paypal_payer_id) ? `<button class="btn-small recharge" data-action="recharge" data-id="${u.id}" title="חיוב חוזר על אמצעי התשלום השמור (${u.last_payment_provider || ''})${u.failed_charge_count ? ' · נכשלו ' + u.failed_charge_count : ''}">↻ חייב</button>` : ''}
                         <button class="btn-small" data-action="edit" data-id="${u.id}">עריכה</button>
                         <button class="btn-small delete" data-action="delete" data-id="${u.id}">מחק</button>
                       </td>
@@ -1198,6 +1201,17 @@
         await promptAdjustMinutes(user, +1);
       } else if (action === 'sub-min') {
         await promptAdjustMinutes(user, -1);
+      } else if (action === 'recharge') {
+        const provider = user.last_payment_provider || (user.yaad_token ? 'yaad' : 'paypal');
+        const raw = prompt(`חיוב חוזר עבור ${user.email}\nספק: ${provider}\n\nהזן סכום בש"ח לחיוב:`, '50');
+        if (raw == null) return;
+        const amount = parseFloat(raw);
+        if (!Number.isFinite(amount) || amount <= 0) { toast('סכום לא חוקי', true); return; }
+        if (!confirm(`לחייב את ${user.email} ב-${amount} ₪ על אמצעי התשלום השמור?`)) return;
+        const res = await api(`/api/admin/users/${user.id}/recharge`, { method: 'POST', body: JSON.stringify({ amount }) });
+        if (res && res.ok) {
+          toast(`${user.email}: בקשת חיוב חוזר נרשמה (${provider})`);
+        }
       } else if (action === 'edit') {
         openEditModal(user);
         return;
