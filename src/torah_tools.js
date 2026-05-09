@@ -577,16 +577,20 @@ export function wireTorahTools(paneManager) {
     { replace: true, cite: false, dialogDefaults: { withNiqqud: false, withSource: true } }
   );
 
-  // Inputs group: book picker, chapter, verse, niqqud toggle, position select
+  // Inputs group: book picker, chapter, verse, niqqud toggle, position select,
+  // and 📜 הכנס פסוק. The fetch button drives off the inputs directly (it
+  // inserts the chosen ref's verse text into the editor) so it belongs here,
+  // not with the selection-aware action buttons below.
   groupVerseInputs.appendChild(labelBook);
   groupVerseInputs.appendChild(bookSel);
   groupVerseInputs.appendChild(chapInput);
   groupVerseInputs.appendChild(verseInput);
   groupVerseInputs.appendChild(niqqudLabel);
   groupVerseInputs.appendChild(posSel);
+  groupVerseInputs.appendChild(fetchBtn);
 
-  // Actions group: 📜 הכנס פסוק + the four selection-aware action buttons + status
-  groupVerseActions.appendChild(fetchBtn);
+  // Actions group: the four buttons that operate on the selected text using
+  // auto-detect across the local mirror (Tanakh + Mishnah + Bavli) + status.
   groupVerseActions.appendChild(niqqudActionBtn);
   groupVerseActions.appendChild(sourceActionBtn);
   groupVerseActions.appendChild(bothActionBtn);
