@@ -2695,6 +2695,27 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 .torah-toolbar .tb-group select,
 .torah-toolbar .tb-group input { vertical-align: middle; }
 
+/* The Sefaria-related controls (book picker, fetch button, four action
+   buttons + status) all live in one .torah-verse-group. Moshe (2026-05-09):
+   give that group a subtle distinct frame so it visually reads as one unit,
+   and lift the separator before it so the eye can see the boundary between
+   "Sefaria" and the unrelated groups (special chars, gimatria, date). */
+.torah-toolbar .torah-verse-group {
+  background: rgba(74, 127, 192, 0.08);
+  border: 1px solid rgba(74, 127, 192, 0.32);
+  padding: 5px 10px 5px;
+  gap: 5px;
+}
+.torah-toolbar .torah-verse-group::before { color: #2c5aa0; }
+.torah-toolbar .sep {
+  width: 1px;
+  height: 30px;
+  background: var(--border, rgba(0,0,0,0.18));
+  margin: 0 10px;
+  align-self: center;
+  opacity: 0.85;
+}
+
 /* Show formatting marks (paragraph/line-break indicators) */
 body.show-formatting-marks .ProseMirror p::after {
   content: "¶";

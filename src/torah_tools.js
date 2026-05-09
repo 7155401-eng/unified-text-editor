@@ -564,7 +564,7 @@ export function wireTorahTools(paneManager) {
   const completeActionBtn = makeActionBtn(
     "torah-action-complete",
     "complete",
-    "השלמה",
+    "השלמת כל המקור",
     "מחליף את המסומן בנוסח המקורי המלא מהמאגר. אם המסומן הוא רק ראשי-תיבות או פרפרזה — מתבצע ניסיון זיהוי",
     { replace: true, cite: false, dialogDefaults: { withNiqqud: false, withSource: true } }
   );
