@@ -388,7 +388,7 @@ export function wireTorahTools(paneManager) {
   //     dialog (those checkboxes override the toolbar's niqqud + the button's cite).
   //     For manual / single-match paths they are undefined → caller falls back
   //     to button intent + toolbar checkbox.
-  async function resolveMatch(selectionText) {
+  async function resolveMatch(selectionText, dialogDefaults) {
     const manual = readRefInputs({ silent: true });
     if (manual) {
       const eng = SEFARIA_REF[manual.book];
@@ -424,7 +424,7 @@ export function wireTorahTools(paneManager) {
       throw new Error("הטקסט לא נמצא במאגר ספריא");
     }
     if (matches.length === 1) return { match: matches[0] };
-    const picked = await _showMatchDialog(matches);
+    const picked = await _showMatchDialog(matches, dialogDefaults);
     if (!picked) {
       const e = new Error("בוטל");
       e.cancelled = true;
@@ -434,7 +434,7 @@ export function wireTorahTools(paneManager) {
     return picked;
   }
 
-  async function runAction({ replace, cite }, btn) {
+  async function runAction({ replace, cite, dialogDefaults }, btn) {
     const ed = getEditor();
     if (!ed) { alert("פתח עורך פעיל."); return; }
     const sel = ensureSelection(ed);
@@ -444,7 +444,7 @@ export function wireTorahTools(paneManager) {
     status.textContent = "מאתר במאגר…";
     try {
       const selectionText = ed.state.doc.textBetween(sel.from, sel.to, " ", " ");
-      const resolved = await resolveMatch(selectionText);
+      const resolved = await resolveMatch(selectionText, dialogDefaults);
       const match = resolved.match;
 
       const posValue = posSel.value;
@@ -516,39 +516,57 @@ export function wireTorahTools(paneManager) {
     }
   }
 
-  function makeActionBtn(id, label, title, opts) {
+  // Inline SVGs (Lucide-style strokes, 14px, currentColor — adapt to button text color).
+  // Lighter visual weight than the previous colored-square emojis.
+  const ICONS = {
+    niqqud: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-inline-end:5px;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>`,
+    source: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-inline-end:5px;"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+    both: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-inline-end:5px;"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>`,
+    complete: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-inline-end:5px;"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
+  };
+
+  function makeActionBtn(id, iconKey, label, title, opts) {
     const b = document.createElement("button");
     b.type = "button";
     b.id = id;
-    b.textContent = label;
+    b.innerHTML = ICONS[iconKey] + label;
     b.title = title;
     b.addEventListener("click", () => runAction(opts, b));
     return b;
   }
 
+  // Per-button defaults for the multi-match dialog (per Moshe 2026-05-09):
+  //   ניקוד    → niqqud=ON,  source=OFF
+  //   מקור     → niqqud=OFF, source=ON
+  //   ניקוד+מקור → niqqud=ON, source=ON
+  //   השלמה    → niqqud=OFF, source=ON
   const niqqudActionBtn = makeActionBtn(
     "torah-action-niqqud",
-    "🟦 ניקוד",
+    "niqqud",
+    "ניקוד",
     "מזהה את הפסוק במאגר וממיר את המסומן לטקסט מנוקד. אם לא מזוהה — מחפש לפי הספר/פרק/פסוק שבחרת",
-    { replace: true, cite: false }
+    { replace: true, cite: false, dialogDefaults: { withNiqqud: true, withSource: false } }
   );
   const sourceActionBtn = makeActionBtn(
     "torah-action-source",
-    "🟪 מקור",
+    "source",
+    "מקור",
     "מזהה את הפסוק ומוסיף מקור בכתב קטן (70%) — לא משנה את הטקסט המסומן",
-    { replace: false, cite: true }
+    { replace: false, cite: true, dialogDefaults: { withNiqqud: false, withSource: true } }
   );
   const bothActionBtn = makeActionBtn(
     "torah-action-both",
-    "🟧 ניקוד + מקור",
+    "both",
+    "ניקוד + מקור",
     "מזהה את הפסוק, ממיר למנוקד, ומוסיף מקור בכתב קטן",
-    { replace: true, cite: true }
+    { replace: true, cite: true, dialogDefaults: { withNiqqud: true, withSource: true } }
   );
   const completeActionBtn = makeActionBtn(
     "torah-action-complete",
-    "🔄 השלמה",
+    "complete",
+    "השלמה",
     "מחליף את המסומן בנוסח המקורי המלא מהמאגר. אם המסומן הוא רק ראשי-תיבות או פרפרזה — מתבצע ניסיון זיהוי",
-    { replace: true, cite: false }
+    { replace: true, cite: false, dialogDefaults: { withNiqqud: false, withSource: true } }
   );
 
   groupVerse.appendChild(labelBook);
