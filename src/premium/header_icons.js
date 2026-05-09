@@ -179,14 +179,22 @@ function openDownloads() {
   document.addEventListener("keydown", escHandler);
 }
 
-function buildIconButton({ id, cls, title, label, html }) {
+function buildIconButton({ id, cls, title, label, html, text }) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.id = id;
   btn.className = `rt-prem-icon-btn ${cls}`;
   btn.title = title;
   btn.setAttribute("aria-label", label);
-  btn.innerHTML = html;
+  // משה 2026-05-10: עוטפים את האייקון ב-.rt-prem-icon-glyph ומוסיפים
+  // .rt-prem-icon-text שנשלף בריחוף — אותו דפוס כמו "עדכוני פיתוח".
+  // הטקסט הוא string פשוט (לא HTML) כדי שלא יהיה סיכון להזרקה.
+  const glyph = `<span class="rt-prem-icon-glyph">${html}</span>`;
+  const textSpan = text ? `<span class="rt-prem-icon-text"></span>` : "";
+  btn.innerHTML = glyph + textSpan;
+  if (text) {
+    btn.querySelector(".rt-prem-icon-text").textContent = text;
+  }
   return btn;
 }
 
@@ -209,6 +217,7 @@ export function installHeaderPremiumIcons() {
     cls: "rt-prem-icon-settings",
     title: "הגדרות",
     label: "פתח הגדרות",
+    text: "הגדרות",
     html: `
       <svg class="rt-prem-settings-svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
         <defs>
@@ -232,6 +241,7 @@ export function installHeaderPremiumIcons() {
     cls: "rt-prem-icon-downloads",
     title: "הורדות",
     label: "פתח חלון הורדות",
+    text: "הורדות",
     html: `
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -250,6 +260,7 @@ export function installHeaderPremiumIcons() {
       ? "המתנה החודשית כבר מומשה. תחזור בחודש הבא :)"
       : "מתנה חודשית: 20 דקות שימוש חינם — לחץ למימוש",
     label: "מימוש מתנה חודשית",
+    text: "מתנה",
     html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>`,
   });
   if (isGiftAlreadyClaimed()) gift.disabled = true;
@@ -335,6 +346,7 @@ export function installHeaderPremiumIcons() {
       ? "החשבון שלך פעיל. לחץ להטענת זמן נוסף"
       : "שדרג לפרמיום — שימוש מלא ללא הגבלה",
     label: "פרמיום",
+    text: "פרמיום",
     html: `
       <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" class="rt-prem-diamond-svg">
         <defs>
