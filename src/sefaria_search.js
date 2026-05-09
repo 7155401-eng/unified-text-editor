@@ -107,7 +107,10 @@ function longestQueryWindowIn(verseNorm, queryWords, minWords) {
  */
 export async function searchByText(query, opts = {}) {
   const limit = opts.limit ?? 20;
-  const minWords = opts.minWords ?? 3;
+  // 2-word minimum: a single Hebrew word like "אדם" appears in thousands of
+  // verses and produces a useless match list. Two consecutive words is the
+  // shortest selection that's specific enough to surface a meaningful set.
+  const minWords = opts.minWords ?? 2;
   const corpora = opts.corpora ?? CORPORA;
 
   const nQuery = normalizeForSearch(query);

@@ -122,9 +122,11 @@ for (const [label, query, expectBook, expectChap, expectVerse] of cases) {
   );
 }
 
-// Negative case
-const nonsense = await searchByText("זהו טקסט שאינו פסוק כלל ועיקר ואין לו שום מקור בספריא", { limit: 5 });
-check("nonsense → 0 results", nonsense.length === 0, `got ${nonsense.length}`);
+// Negative case — modern Hebrew words that don't appear together in any
+// canonical text. Avoid common idioms like "כלל ועיקר" which DO match
+// when the minWords threshold is 2 (they appear in Mishnah/Bavli).
+const nonsense = await searchByText("מחשב מקלדת מסך", { limit: 5 });
+check("modern-only words → 0 results", nonsense.length === 0, `got ${nonsense.length}`);
 
 // Sacred-name canonicalization
 const shemaWithApostrophe = await searchByText("שמע ישראל ה' אלהינו ה' אחד", { limit: 5 });
@@ -142,9 +144,17 @@ check(
   shemaTop2 ? `top was ${shemaTop2.bookTitle} ${shemaTop2.chapter}:${shemaTop2.verse}` : "no results"
 );
 
-// Short query → 0 results (below minWords threshold)
+// Single-word query → 0 results (below 2-word minimum threshold)
 const tooShort = await searchByText("בראשית", { limit: 5 });
 check("query <minWords → 0 results", tooShort.length === 0, `got ${tooShort.length}`);
+
+// Two-word query SHOULD work (matches the new minWords=2 default)
+const twoWord = await searchByText("פרי הגפן", { limit: 5 });
+check(
+  "two-word query → returns results (not empty)",
+  twoWord.length > 0,
+  `got ${twoWord.length} results`
+);
 
 console.log("\n=== sefaria_locate.findVerseInSelection ===");
 const { findVerseInSelection } = await import("./src/sefaria_locate.js");
