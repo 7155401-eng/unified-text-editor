@@ -2695,18 +2695,21 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 .torah-toolbar .tb-group select,
 .torah-toolbar .tb-group input { vertical-align: middle; }
 
-/* The Sefaria-related controls (book picker, fetch button, four action
-   buttons + status) all live in one .torah-verse-group. Moshe (2026-05-09):
-   give that group a subtle distinct frame so it visually reads as one unit,
-   and lift the separator before it so the eye can see the boundary between
-   "Sefaria" and the unrelated groups (special chars, gimatria, date). */
-.torah-toolbar .torah-verse-group {
-  background: rgba(74, 127, 192, 0.08);
-  border: 1px solid rgba(74, 127, 192, 0.32);
+/* The Sefaria-related controls split into two groups (Moshe, 2026-05-09):
+     .torah-verse-inputs-group  — book/chap/verse + niqqud + position
+     .torah-verse-actions-group — 📜 הכנס פסוק + the four action buttons + status
+   The ACTIONS group gets a distinct subtle blue frame so it visually reads
+   as one unit, with the eye pulling 📜 הכנס פסוק together with the four
+   selection-aware buttons. The inputs group keeps the standard chrome.
+   Separators between groups are taller and clearer than the default so the
+   boundary doesn't disappear under the theme. */
+.torah-toolbar .torah-verse-actions-group {
+  background: rgba(74, 127, 192, 0.10);
+  border: 1px solid rgba(74, 127, 192, 0.38);
   padding: 5px 10px 5px;
   gap: 5px;
 }
-.torah-toolbar .torah-verse-group::before { color: #2c5aa0; }
+.torah-toolbar .torah-verse-actions-group::before { color: #2c5aa0; }
 .torah-toolbar .sep {
   width: 1px;
   height: 30px;

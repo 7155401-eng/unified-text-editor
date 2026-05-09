@@ -225,10 +225,18 @@ export function wireTorahTools(paneManager) {
   dateBtn.addEventListener("click", () => insertText(getEditor(), todayHebrewDate()));
   groupCalc.appendChild(dateBtn);
 
-  // === Group: Sefaria verse picker ===
-  const groupVerse = document.createElement("span");
-  groupVerse.className = "tb-group torah-verse-group";
-  groupVerse.dataset.title = "פסוק מהתנ\"ך — ספריא";
+  // === Two Sefaria groups ===
+  // Per Moshe (2026-05-09): the action buttons (📜 הכנס פסוק + the four
+  // ניקוד / מקור / שניהם / השלמת כל המקור) belong together and apart from
+  // the inputs (book picker, chapter, verse, niqqud checkbox, position).
+  // So we render two adjacent .tb-group containers with a separator between.
+  const groupVerseInputs = document.createElement("span");
+  groupVerseInputs.className = "tb-group torah-verse-inputs-group";
+  groupVerseInputs.dataset.title = "ספר / פרק / פסוק";
+
+  const groupVerseActions = document.createElement("span");
+  groupVerseActions.className = "tb-group torah-verse-actions-group";
+  groupVerseActions.dataset.title = "פעולות ספריא";
 
   const labelBook = document.createElement("span");
   labelBook.style.cssText = "font-size:12px;color:#555;";
@@ -570,26 +578,33 @@ export function wireTorahTools(paneManager) {
   );
 
   groupVerse.appendChild(labelBook);
-  groupVerse.appendChild(bookSel);
-  groupVerse.appendChild(chapInput);
-  groupVerse.appendChild(verseInput);
-  groupVerse.appendChild(niqqudLabel);
-  groupVerse.appendChild(posSel);
-  groupVerse.appendChild(fetchBtn);
-  groupVerse.appendChild(niqqudActionBtn);
-  groupVerse.appendChild(sourceActionBtn);
-  groupVerse.appendChild(bothActionBtn);
-  groupVerse.appendChild(completeActionBtn);
-  groupVerse.appendChild(status);
+  // Inputs group: book picker, chapter, verse, niqqud toggle, position select
+  groupVerseInputs.appendChild(labelBook);
+  groupVerseInputs.appendChild(bookSel);
+  groupVerseInputs.appendChild(chapInput);
+  groupVerseInputs.appendChild(verseInput);
+  groupVerseInputs.appendChild(niqqudLabel);
+  groupVerseInputs.appendChild(posSel);
 
-  const sep1 = document.createElement("span");
-  sep1.className = "sep";
-  const sep2 = document.createElement("span");
-  sep2.className = "sep";
+  // Actions group: 📜 הכנס פסוק + the four selection-aware action buttons + status
+  groupVerseActions.appendChild(fetchBtn);
+  groupVerseActions.appendChild(niqqudActionBtn);
+  groupVerseActions.appendChild(sourceActionBtn);
+  groupVerseActions.appendChild(bothActionBtn);
+  groupVerseActions.appendChild(completeActionBtn);
+  groupVerseActions.appendChild(status);
+
+  function makeSep() {
+    const s = document.createElement("span");
+    s.className = "sep";
+    return s;
+  }
 
   toolbar.appendChild(groupChars);
-  toolbar.appendChild(sep1);
+  toolbar.appendChild(makeSep());
   toolbar.appendChild(groupCalc);
-  toolbar.appendChild(sep2);
-  toolbar.appendChild(groupVerse);
+  toolbar.appendChild(makeSep());
+  toolbar.appendChild(groupVerseInputs);
+  toolbar.appendChild(makeSep());
+  toolbar.appendChild(groupVerseActions);
 }
