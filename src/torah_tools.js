@@ -577,7 +577,6 @@ export function wireTorahTools(paneManager) {
     { replace: true, cite: false, dialogDefaults: { withNiqqud: false, withSource: true } }
   );
 
-  groupVerse.appendChild(labelBook);
   // Inputs group: book picker, chapter, verse, niqqud toggle, position select
   groupVerseInputs.appendChild(labelBook);
   groupVerseInputs.appendChild(bookSel);
