@@ -84,7 +84,7 @@ export function tryUseTool(toolName, niceName) {
     showToast({
       kind: "info",
       title: "צריך להתחבר",
-      msg: `כדי להפעיל את "${niceName || toolName}" צריך להתחבר עם גוגל. משתמשים מחוברים מקבלים שימוש יומי חינם.`,
+      msg: `כדי להפעיל את "${niceName || toolName}" צריך להתחבר עם גוגל. משתמשים מחוברים מקבלים שימוש חודשי חינם.`,
       actionText: "התחברות",
       action: () => { window.location.href = "/api/auth/login"; },
       autoCloseMs: 8000,
