@@ -16,6 +16,7 @@ import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
 import { handleAccount } from './account.js';
 import { handlePaymentAdmin, handlePackageLookup } from './payment_admin.js';
+import { runRecurringBilling, handleManualRecur } from './recurring.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -170,5 +171,10 @@ export default {
     }
 
     return applySecurityHeaders(response, isHtml);
+  },
+
+  // משה 2026-05-10: cron יומי — חיוב חוזר אוטומטי. רץ כל בוקר ב-04:00 UTC.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runRecurringBilling(env).catch(() => null));
   },
 };

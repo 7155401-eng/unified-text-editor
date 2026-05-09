@@ -16,8 +16,11 @@ async function postJson(url, body) {
       const j = await res.json();
       if (j && j.error) {
         msg = j.error;
-        // משה 2026-05-09: קוד שגיאה מובנה — phone_required מטופל ע"י החזית
-        if (typeof j.error === "string" && j.error.startsWith("phone_required")) code = "phone_required";
+        // משה 2026-05-09/10: קודי שגיאה מובנים — phone_required, id_required.
+        if (typeof j.error === "string") {
+          if (j.error.startsWith("phone_required")) code = "phone_required";
+          else if (j.error.startsWith("id_required")) code = "id_required";
+        }
       }
     } catch {}
     const err = new Error(msg);
@@ -66,6 +69,6 @@ export async function claimMonthlyGift() {
   return postJson("/api/payments/gift/claim", {});
 }
 
-export async function cancelSubscription() {
-  return postJson("/api/payments/cancel", {});
+export async function cancelSubscription(opts = {}) {
+  return postJson("/api/payments/cancel", { reason: opts.reason || "" });
 }

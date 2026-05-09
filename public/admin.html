@@ -621,6 +621,7 @@
                         ${u.status !== 'active' ? `<button class="btn-small activate" data-action="activate" data-id="${u.id}">אשר</button>` : ''}
                         ${u.status === 'active' ? `<button class="btn-small disable" data-action="disable" data-id="${u.id}">חסום</button>` : ''}
                         ${(u.yaad_token || u.paypal_payer_id) ? `<button class="btn-small recharge" data-action="recharge" data-id="${u.id}" title="חיוב חוזר על אמצעי התשלום השמור (${u.last_payment_provider || ''})${u.failed_charge_count ? ' · נכשלו ' + u.failed_charge_count : ''}">↻ חייב</button>` : ''}
+                        ${u.plan_type === 'subscription' && u.subscription_active !== 0 ? `<button class="btn-small" data-action="cancel-sub" data-id="${u.id}" title="ביטול חידוש אוטומטי של המנוי">✕ ביטול חידוש</button>` : ''}
                         <button class="btn-small" data-action="edit" data-id="${u.id}">עריכה</button>
                         <button class="btn-small" data-action="user-contacts" data-id="${u.id}" data-email="${escapeAttr(u.email || '')}" title="הצג את כל הפניות שהמשתמש שלח">📬 פניות</button>
                         <button class="btn-small delete" data-action="delete" data-id="${u.id}">מחק</button>
@@ -1283,15 +1284,21 @@
         await promptAdjustMinutes(user, -1);
       } else if (action === 'recharge') {
         const provider = user.last_payment_provider || (user.yaad_token ? 'yaad' : 'paypal');
-        const raw = prompt(`חיוב חוזר עבור ${user.email}\nספק: ${provider}\n\nהזן סכום בש"ח לחיוב:`, '50');
-        if (raw == null) return;
-        const amount = parseFloat(raw);
-        if (!Number.isFinite(amount) || amount <= 0) { toast('סכום לא חוקי', true); return; }
-        if (!confirm(`לחייב את ${user.email} ב-${amount} ₪ על אמצעי התשלום השמור?`)) return;
-        const res = await api(`/api/admin/users/${user.id}/recharge`, { method: 'POST', body: JSON.stringify({ amount }) });
-        if (res && res.ok) {
-          toast(`${user.email}: בקשת חיוב חוזר נרשמה (${provider})`);
+        if (!confirm(`להריץ חיוב חוזר עבור ${user.email}? המערכת תחייב את אותו אמצעי תשלום (${provider}) לפי המנוי האחרון.`)) return;
+        const res = await api(`/api/admin/users/${user.id}/recharge`, { method: 'POST', body: JSON.stringify({}) });
+        const last = res && res.last;
+        if (last && last.status === 'succeeded') {
+          toast(`${user.email}: חיוב חוזר הצליח ✓`);
+        } else if (last && last.status === 'failed') {
+          toast(`${user.email}: החיוב נכשל — ${last.error || 'שגיאה'}`, true);
+        } else {
+          toast(`${user.email}: ניסיון חיוב חוזר נשלח`);
         }
+      } else if (action === 'cancel-sub') {
+        if (!confirm(`לבטל את חידוש המנוי של ${user.email}? המנוי יישאר פעיל עד תום התקופה ולא יחויב יותר.`)) return;
+        const reason = prompt(`סיבה לביטול (אופציונלי):`, '') || '';
+        await api(`/api/admin/users/${user.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+        toast(`${user.email}: חידוש המנוי בוטל`);
       } else if (action === 'edit') {
         openEditModal(user);
         return;
