@@ -116,6 +116,23 @@
   border-color: #e5e7eb;
 }
 
+/* הורדה — חץ לתוך תיבה. החליף את לשונית "הורדות" שהוסרה מהריבון. */
+.rt-prem-icon-downloads {
+  color: #0e7490;
+  border-color: #a5f3fc;
+  background: linear-gradient(135deg, #ecfeff 0%, #cffafe 100%);
+}
+.rt-prem-icon-downloads:hover {
+  color: #155e75;
+  border-color: #06b6d4;
+  background: linear-gradient(135deg, #cffafe 0%, #a5f3fc 100%);
+  box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.10);
+}
+.rt-prem-icon-downloads:hover svg {
+  transform: translateY(2px);
+  transition: transform 0.18s ease;
+}
+
 /* גלגל שיניים אלגנטי / הגדרות (החליף את המפתח השוודי) */
 .rt-prem-icon-settings {
   color: #475569;

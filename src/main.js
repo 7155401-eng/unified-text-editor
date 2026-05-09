@@ -604,9 +604,10 @@ function setupRibbonTabs() {
 
   // משה 2026-05-09: לשונית "הגדרות" הוסרה מהריבון; כל ההגדרות נפתחות מאייקון
   // המפתח-שוודי בכותרת (ראה src/premium/header_icons.js openSettings()).
+  // משה 2026-05-10: גם "הורדות" הוסרה מהריבון; פותחת מאייקון ההורדה
+  // (📥) בכותרת — אותו דפוס מודאל בדיוק כמו הגדרות.
   const tabs = [
     ["file", "קובץ"],
-    ["downloads", "הורדות"],
     ["home", "בית"],
     ["streams", "זרמים"],
     ["insert", "הוספה"],
@@ -638,11 +639,11 @@ function setupRibbonTabs() {
     Array.from(tabsBar.querySelectorAll(".ribbon-tab, .ribbon-tab-render-slot"))
       .forEach(el => el.remove());
     const tabTitles = {
-      file: "פעולות קובץ", downloads: "הורדה ושמירה למחשב", home: "עיצוב טקסט", streams: "ניהול זרמים",
+      file: "פעולות קובץ", home: "עיצוב טקסט", streams: "ניהול זרמים",
       insert: "הוספת אלמנטים", layout: "פריסת עמודים — כולל משנ\"ב וגפ\"ת",
       torah: "כלים תורניים — גימטריה, ראשי תיבות, גרשיים, תאריך עברי",
       review: "סקירה ובדיקה", view: "תצוגה",
-      advanced: "מתקדם", settings: "הגדרות מערכת",
+      advanced: "מתקדם", settings: "הגדרות מערכת", downloads: "הורדה ושמירה למחשב",
     };
     for (const [id, label] of tabs) {
       const button = document.createElement("button");
@@ -671,6 +672,11 @@ function setupRibbonTabs() {
   // וקבוצות קריטיות נעלמו מ"בית". כל הקבוצות שצריכות להיות זמינות בלשונית
   // הראשית — כיוון, גופן, גודל-גלובלי, גודל-טקסט-נבחר, כללי, ניהול —
   // ממופות עכשיו ל-"home" כדי שיופיעו בלשונית "בית" כברירת מחדל.
+  // משה 2026-05-10: קבוצת "זרמים" (data-cmd=stream-01..08) הוסרה מ-HTML.
+  // הייתה כפלות לוגית עם "סמן בחירה כזרם" ב-.source-stream-toolbar — שתיהן
+  // הריצו toggleStream על אותו עורך, אבל הקבוצה הזו איבדה את הסימון בלחיצה.
+  // 07/08 ו-× הועברו ל-.source-stream-toolbar שם הם עובדים אמין.
+  // האינדקסים זזו ב-1: 19→18, 20→19, 21→20, 22→21.
   const groupTabs = [
     "home",   //  0 טקסט
     "home",   //  1 צבע
@@ -690,11 +696,10 @@ function setupRibbonTabs() {
     "home",   // 15 גודל טקסט נבחר
     "home",   // 16 כללי (theme + lang)
     "home",   // 17 ניהול (clear/undo/redo)
-    "streams", // 18 זרמים
-    "streams", // 19 ניווט סימנים
-    "advanced", // 20 זיהוי אוטומטי
-    "advanced", // 21 Word
-    "file",    // 22 פעולות
+    "streams", // 18 ניווט סימנים
+    "advanced", // 19 זיהוי אוטומטי
+    "advanced", // 20 Word
+    "file",    // 21 פעולות
   ];
   // משה 2026-05-07: כיבוד ribbon-tab שנקבע ידנית ב-HTML כעוקף עליון. כך
   // קבוצות חדשות שמתפצלות בעתיד יכולות להגדיר את עצמן ב-HTML ולא להישבר
@@ -704,17 +709,25 @@ function setupRibbonTabs() {
     group.dataset.ribbonTab = groupTabs[index] || "advanced";
   });
 
+  // משה 2026-05-10: ניקוי כפילויות בלשונית "זרמים":
+  //   .panes-toolbar היה מסומן "streams view" — אותו אלמנט DOM הוצג בשתי
+  //                  הכרטיסיות. נשאר רק ב-"view" (כפי שהמשתמש ביקש: "הסר
+  //                  מ'זרמים' והשאר בכרטיסיות האחרות").
+  //   #stream-columns-panel היה "streams layout" — אותו אלמנט DOM בשתיהן.
+  //                          נשאר רק ב-"layout".
+  // קבוצות אחרות שיש להן שמות זרמים (.tb-group "זרמים" עם stream-btn מול
+  // .source-stream-toolbar עם btn-stream) נשארות שתיהן — הקלאסים, הצבעים
+  // ומספר הכפתורים שונים, אז זו לא כפלות ודאית לפי הקריטריונים שנקבעו.
   const panelTabs = [
     [".source-stream-toolbar", "streams"],
-    [".panes-toolbar", "streams view"],
+    [".panes-toolbar", "view"],
     ["#expanded-tools", "advanced view"],
     [".source-bottom-toolbar", "file"],
     [".mishna-toolbar", "layout"],
     [".talmud-toolbar", "layout"],
     [".opening-word-toolbar", "layout"],
-    ["#stream-columns-panel", "streams layout"],
+    ["#stream-columns-panel", "layout"],
     [".stress-toolbar", "advanced"],
-    ["#downloads-panel", "downloads"],
     [".torah-toolbar", "torah"],
     [".insert-toolbar", "insert"],
     [".review-toolbar", "review"],
@@ -1239,6 +1252,17 @@ document.querySelectorAll(".btn-stream").forEach((btn) => {
     activeChain()?.toggleStream(btn.dataset.stream).run();
   });
 });
+
+// משה 2026-05-10: כפתור × להסרת סימן הזרם מהטקסט הנבחר. הועבר מקבוצת
+// "זרמים" הישנה (data-cmd="stream-clear") שנמחקה — הוא יושב עכשיו
+// ב-.source-stream-toolbar עם אותה הגנת mousedown ככל הכפתורים שם.
+const btnStreamClear = document.getElementById("btn-stream-clear");
+if (btnStreamClear) {
+  btnStreamClear.addEventListener("mousedown", (e) => e.preventDefault());
+  btnStreamClear.addEventListener("click", () => {
+    activeChain()?.unsetStream().run();
+  });
+}
 
 const customStreamInput = document.getElementById("custom-stream-input");
 const btnCustomStream = document.getElementById("btn-custom-stream");

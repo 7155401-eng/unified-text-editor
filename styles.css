@@ -2046,6 +2046,8 @@ body.light-theme .pdf-scroll-progress-fill {
 .stream-color-4 { background: #fbecc6; }
 .stream-color-5 { background: #fcdada; }
 .stream-color-6 { background: #fde0c2; }
+.stream-color-7 { background: #fad6e8; }
+.stream-color-8 { background: #d9dce0; }
 
 @page {
   size: A4 portrait;
