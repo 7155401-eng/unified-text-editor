@@ -2713,60 +2713,62 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
    (0,2,1) without resorting to !important. The other Torah rules use a
    `body ` prefix to lift to 0,2,1 — beats body.light-theme. */
 .torah-toolbar.toolbar.ribbon-panel {
-  background: linear-gradient(180deg, #faf6ec 0%, #f5edd6 100%);
-  border-bottom: 1px solid #d4af37;
+  background: linear-gradient(180deg, #fefcf6 0%, #fbf8ee 100%);
+  border-bottom: 1px solid #ead9a3;
   padding: 10px 14px;
   gap: 10px;
   align-items: center;
 }
 
 /* Every Sefaria-toolbar group is a parchment card. Two specialized groups
-   below override accent colors to indigo and gold respectively. */
+   below override accent colors to indigo and gold respectively.
+   Moshe (2026-05-09): make this MORE SUBTLE — lighter base, softer borders,
+   gentler shadows. Less "bold", more "elegant breath". */
 body .torah-toolbar .tb-group {
-  background: linear-gradient(180deg, #fdfaf3 0%, #faf6ec 100%);
-  border: 1px solid #d6c89a;
-  border-radius: 8px;
+  background: linear-gradient(180deg, #fefcf6 0%, #fbf6e8 100%);
+  border: 1px solid #e6d8b3;
+  border-radius: 7px;
   padding: 7px 14px;
   gap: 6px;
   box-shadow:
-    0 1px 4px rgba(184, 134, 11, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    0 1px 2px rgba(184, 134, 11, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 body .torah-toolbar .tb-group::before {
-  color: #b8860b;
+  color: #c79a3a;
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.7px;
-  background: #faf6ec;
-  border: 1px solid #d6c89a;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: #fbf8ee;
+  border: 1px solid #ead9a3;
   border-radius: 3px;
   padding: 1px 7px;
   top: -8px;
 }
 
-/* Inputs group — תכלת (indigo) tint */
+/* Inputs group — תכלת (indigo) tint, softer */
 body .torah-toolbar .torah-verse-inputs-group {
-  background: linear-gradient(180deg, #f5f8ff 0%, #e9eff8 100%);
-  border-color: #b4c6e0;
+  background: linear-gradient(180deg, #fbfcff 0%, #f3f6fc 100%);
+  border-color: #d6e0ee;
 }
 body .torah-toolbar .torah-verse-inputs-group::before {
-  color: #2c5aa0;
-  background: #f5f8ff;
-  border-color: #b4c6e0;
+  color: #5b7cb1;
+  background: #fbfcff;
+  border-color: #d6e0ee;
 }
 
-/* Actions group — זהב (gold), the showpiece */
+/* Actions group — זהב (gold), softer / less saturated */
 body .torah-toolbar .torah-verse-actions-group {
-  background: linear-gradient(180deg, #fffbef 0%, #fef3d4 100%);
-  border-color: #d4af37;
+  background: linear-gradient(180deg, #fffdf3 0%, #fcf6dd 100%);
+  border-color: #e8d68f;
   box-shadow:
-    0 2px 8px rgba(212, 175, 55, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    0 1px 4px rgba(212, 175, 55, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 body .torah-toolbar .torah-verse-actions-group::before {
-  color: #722f37;
-  background: #fffbef;
-  border-color: #d4af37;
+  color: #9a4a52;
+  background: #fffdf3;
+  border-color: #e8d68f;
 }
 
 /* Inline hint at the start of each Sefaria group — italic burgundy ink
@@ -2774,7 +2776,7 @@ body .torah-toolbar .torah-verse-actions-group::before {
 body .torah-toolbar .torah-group-hint {
   font-size: 11.5px;
   font-style: italic;
-  color: #722f37;
+  color: #9a4a52;
   font-weight: 500;
   letter-spacing: 0.2px;
   margin-inline-end: 8px;
@@ -2782,42 +2784,40 @@ body .torah-toolbar .torah-group-hint {
   align-self: center;
 }
 
-/* Separator — gold gradient bar, fades at the ends so it reads as a divider
-   without being a hard line. */
+/* Separator — softer gold gradient that fades at the ends. */
 body .torah-toolbar .sep {
   width: 1px;
-  height: 38px;
+  height: 36px;
   background: linear-gradient(180deg,
     transparent 0%,
-    rgba(184, 134, 11, 0.20) 20%,
-    rgba(184, 134, 11, 0.70) 50%,
-    rgba(184, 134, 11, 0.20) 80%,
+    rgba(184, 134, 11, 0.10) 25%,
+    rgba(184, 134, 11, 0.40) 50%,
+    rgba(184, 134, 11, 0.10) 75%,
     transparent 100%);
-  margin: 0 10px;
+  margin: 0 9px;
   align-self: center;
 }
 
-/* Buttons — cream-gold soft chrome, indigo ink, gold-glow hover.
-   `body` prefix raises specificity past the body.light-theme rules. */
+/* Buttons — almost-white with a hint of cream, gentle gold glow on hover. */
 body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn) {
-  background: linear-gradient(180deg, #ffffff 0%, #faf6ec 100%);
-  border: 1px solid #c8b878;
-  color: #1e3a6f;
-  border-radius: 6px;
+  background: linear-gradient(180deg, #ffffff 0%, #fcf9f0 100%);
+  border: 1px solid #ddc99a;
+  color: #2a4677;
+  border-radius: 5px;
   padding: 6px 12px;
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.18s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.16s ease;
+  box-shadow: 0 1px 1.5px rgba(0, 0, 0, 0.03);
   cursor: pointer;
 }
 body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):hover {
-  background: linear-gradient(180deg, #fff9e6 0%, #fef3d4 100%);
-  border-color: #b8860b;
-  color: #722f37;
+  background: linear-gradient(180deg, #fffceb 0%, #fdf5d6 100%);
+  border-color: #c79a3a;
+  color: #8a3f47;
   box-shadow:
-    0 3px 10px rgba(184, 134, 11, 0.30),
-    0 0 0 1px rgba(184, 134, 11, 0.10);
+    0 2px 6px rgba(184, 134, 11, 0.16),
+    0 0 0 1px rgba(184, 134, 11, 0.06);
   transform: translateY(-1px);
 }
 body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):active {
@@ -2831,7 +2831,7 @@ body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn)
   box-shadow: none;
 }
 
-/* Action buttons get heavier weight + a richer hover (the "wow" buttons) */
+/* Action buttons stay almost-white but gain a slightly thicker hover halo */
 body .torah-toolbar .torah-verse-actions-group button {
   font-weight: 600;
   background: linear-gradient(180deg, #ffffff 0%, #fef9e3 100%);
@@ -2840,34 +2840,34 @@ body .torah-toolbar .torah-verse-actions-group button {
 /* Selects + inputs */
 body .torah-toolbar select,
 body .torah-toolbar input {
-  background: #fdfaf3;
-  border: 1px solid #c8b878;
-  border-radius: 5px;
+  background: #fdfbf3;
+  border: 1px solid #d6c89a;
+  border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
-  color: #1e3a6f;
+  color: #2a4677;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 body .torah-toolbar select:focus,
 body .torah-toolbar input:focus {
   outline: none;
-  border-color: #b8860b;
-  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.18);
+  border-color: #c79a3a;
+  box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.12);
 }
 
 /* Niqqud checkbox row */
 body .torah-toolbar .toolbar-checkbox {
-  color: #1e3a6f;
+  color: #2a4677;
   font-size: 12px;
   font-weight: 500;
 }
 body .torah-toolbar .toolbar-checkbox input[type="checkbox"] {
-  accent-color: #b8860b;
+  accent-color: #c79a3a;
 }
 
 /* Status text */
 .torah-toolbar #torah-verse-status {
-  color: #722f37 !important;
+  color: #9a4a52 !important;
   font-style: italic;
   font-size: 11.5px;
   font-weight: 500;
