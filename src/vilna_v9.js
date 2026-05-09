@@ -969,10 +969,16 @@ export async function buildPages(container, paragraphs, config) {
     let bestN;
     if (splitInfo) {
       bestN = bestN_clean + 1;
+    } else if (bestN_clean < totalAvail) {
+      // משה 2026-05-09: split נכשל אבל יש פסקה נוספת זמינה — force-take שלה
+      // (גם אם ההערות שלה לא נכנסות במלואן). העודף ייכנס ל-carry-over,
+      // וה-drain marker שלמטה ייצור עמוד drain צמוד שיכלול את ההערות החסרות.
+      // עדיף מאשר עמוד עם רק כותרת (bestN_clean=1 לבד = עמוד כמעט ריק).
+      bestN = bestN_clean + 1;
     } else if (bestN_clean > 0) {
       bestN = bestN_clean;
     } else {
-      // אין clean fit ואין split אפשרי — force-take 1 (פסקה+הערות גדולות מעמוד)
+      // אין clean fit ואין split אפשרי וגם אין פסקאות — שום דבר לקחת
       bestN = totalAvail > 0 ? 1 : 0;
     }
 
@@ -1002,6 +1008,7 @@ export async function buildPages(container, paragraphs, config) {
 
     // התקדמות מצב: pendingParagraph + cursor מתעדכנים לפי הצריכה
     const hadPending = !!pendingParagraph;
+    const wasDrainMarker = !!pendingParagraph?._drainMarker;
     if (splitInfo) {
       // sliceIdx = איפה הפיצול במערך הזמינות. צרכנו slice[0..sliceIdx-1] במלואם
       // וגם את slice[sliceIdx] חצי ראשון. החצי השני יוצא ל-pendingParagraph.
@@ -1026,6 +1033,19 @@ export async function buildPages(container, paragraphs, config) {
         consumed -= 1;
       }
       cursor += consumed;
+    }
+
+    // משה 2026-05-09: ★ סמן ניקוז (drain marker) — אם בוצע force-take עם הערות שעלו,
+    // יוצרים pendingParagraph ריק (mainText="") שמייצג "המשך הערות הפסקה הקודמת".
+    // זה מונע מקריירי-אובר לזרום לעמוד עם פסקה חדשה (חוסר קישור). העמוד הבא
+    // יהיה drain עם carry-over בלבד, אבל הוא יהיה צמוד לפסקה המקור.
+    const hasOverflowNotes = Object.keys(nextCarry).some(k => nextCarry[k]);
+    if (hasOverflowNotes && !splitInfo && !pendingParagraph) {
+      pendingParagraph = { mainText: '', notes: [], _drainMarker: true };
+    }
+    // אם זה היה drain marker וה-carry-over כבר התרוקן — נקה גם את ה-marker
+    if (wasDrainMarker && pendingParagraph?._drainMarker && !hasOverflowNotes) {
+      pendingParagraph = null;
     }
 
     // משה 2026-05-08: הגנה מלולאה אינסופית — אם לא הייתה צריכה (bestN=0, אין split)
