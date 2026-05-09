@@ -49,7 +49,7 @@ async function getMe(request, env) {
   const user = await getUserFromRequest(request, env);
   if (!user) return jsonResponse({ error: 'Not logged in' }, { status: 401 });
   const row = await env.DB.prepare(
-    'SELECT phone, phone_country, phone_e164 FROM users WHERE id = ?'
+    'SELECT phone, phone_country, phone_e164, id_number, subscription_active FROM users WHERE id = ?'
   ).bind(user.id).first();
   return jsonResponse({
     email: user.email,
@@ -57,7 +57,52 @@ async function getMe(request, env) {
     phoneCountry: row?.phone_country || 'IL',
     phoneE164: row?.phone_e164 || '',
     hasPhone: !!(row?.phone_e164),
+    idNumber: row?.id_number || '',
+    hasIdNumber: !!(row?.id_number),
+    subscriptionActive: row?.subscription_active == null ? true : !!row.subscription_active,
   });
+}
+
+// משה 2026-05-10: שמירת ת.ז. בנפרד מטלפון (גם זה דרישה של יעד שריג).
+// אורך 5–12 ספרות מתקבל; checksum ישראלי לא נאכף כדי לאפשר זרים/דרכון.
+async function putIdNumber(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse({ error: 'Not logged in' }, { status: 401 });
+  let body;
+  try { body = await request.json(); } catch { return jsonResponse({ error: 'Bad JSON' }, { status: 400 }); }
+  const raw = String(body?.idNumber || '').trim();
+  const digits = raw.replace(/\D+/g, '');
+  if (digits.length < 5 || digits.length > 12) {
+    return jsonResponse({ error: 'מספר ת.ז. חייב להיות בין 5 ל-12 ספרות' }, { status: 400 });
+  }
+  await env.DB.prepare('UPDATE users SET id_number = ? WHERE id = ?')
+    .bind(digits, user.id).run();
+  return jsonResponse({ ok: true, idNumber: digits });
+}
+
+// משה 2026-05-10: ביטול חידוש אוטומטי ע"י המשתמש. לא מבטל מנוי קיים —
+// המנוי ימשיך עד תוקף, פשוט לא יחודש.
+async function cancelByUser(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse({ error: 'Not logged in' }, { status: 401 });
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const reason = String(body?.reason || '').slice(0, 500);
+  const nowSec = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    'UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?'
+  ).bind(nowSec, reason || null, user.id).run();
+  return jsonResponse({ ok: true });
+}
+
+async function reactivate(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse({ error: 'Not logged in' }, { status: 401 });
+  const row = await env.DB.prepare('SELECT expires_at FROM users WHERE id = ?').bind(user.id).first();
+  await env.DB.prepare(
+    'UPDATE users SET subscription_active = 1, plan_renew_at = ?, cancelled_at = NULL, cancellation_reason = NULL WHERE id = ?'
+  ).bind(row?.expires_at || 0, user.id).run();
+  return jsonResponse({ ok: true });
 }
 
 async function putPhone(request, env) {
@@ -84,5 +129,8 @@ export async function handleAccount(request, env, url) {
   const method = request.method;
   if (path === '/api/account/me' && method === 'GET') return getMe(request, env);
   if (path === '/api/account/phone' && method === 'PUT') return putPhone(request, env);
+  if (path === '/api/account/id-number' && method === 'PUT') return putIdNumber(request, env);
+  if (path === '/api/account/cancel' && method === 'POST') return cancelByUser(request, env);
+  if (path === '/api/account/reactivate' && method === 'POST') return reactivate(request, env);
   return new Response('Not found', { status: 404 });
 }

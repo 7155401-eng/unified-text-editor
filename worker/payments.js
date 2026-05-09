@@ -118,7 +118,7 @@ async function buildYaadRedirect(env, intent, returnOrigin) {
     Currency: '1', // ILS
     UTF8: 'True',
     UTF8out: 'True',
-    UserId: '0',
+    UserId: intent.idNumber || '0',
     ClientName: '',
     ClientLName: '',
     Coin: '1',
@@ -167,11 +167,15 @@ async function startYaad(request, env, url) {
   if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) {
     return jsonError('סכום לא תואם לתוכנית הנבחרת');
   }
-  // משה 2026-05-09: חובה לבדוק שיש טלפון לפני שמתחילים תשלום (יעד שריג מצריך
-  // טלפון לחשבונית מס + תיעוד לפרסום חוקי).
-  const phoneRow = await env.DB.prepare('SELECT phone_e164 FROM users WHERE id = ?').bind(user.id).first();
-  if (!phoneRow?.phone_e164) {
+  // משה 2026-05-09/10: חובה לבדוק שיש טלפון *וגם* ת.ז. לפני שמתחילים תשלום
+  // (יעד שריג מצריך תעודת זהות לחשבונית מס + תיעוד חוקי). אנחנו אוספים אצלנו
+  // ולא בדשבורד יעד שריג, כך שאפשר לשתף את הטרמינל עם אתר אחר ועדיין לאכוף ת.ז.
+  const userRow = await env.DB.prepare('SELECT phone_e164, id_number FROM users WHERE id = ?').bind(user.id).first();
+  if (!userRow?.phone_e164) {
     return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
+  }
+  if (!userRow?.id_number) {
+    return jsonError('id_required: יש להזין תעודת זהות לפני התשלום', 412);
   }
 
   const token = randomToken();
@@ -189,7 +193,7 @@ async function startYaad(request, env, url) {
     'pending', nowSec
   ).run();
 
-  const intent = { token, amount: choice.def.amount, label };
+  const intent = { token, amount: choice.def.amount, label, idNumber: userRow.id_number };
   const redirectUrl = await buildYaadRedirect(env, intent, url.origin);
   return jsonResponse({ redirectUrl, token });
 }
@@ -251,11 +255,14 @@ async function startPaypal(request, env, url) {
   if (!choice) return jsonError('בחירה לא חוקית');
   if (choice.def.amount < 30) return jsonError('פייפאל זמין מ-30 ש"ח ומעלה');
   if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) return jsonError('סכום לא תואם');
-  // משה 2026-05-09: חובה טלפון גם לפייפאל (אחיד עם יעד שריג + נדרש לפי חוק
-  // הגנת הצרכן בעסקה לתושב ישראל).
-  const phoneRow = await env.DB.prepare('SELECT phone_e164 FROM users WHERE id = ?').bind(user.id).first();
-  if (!phoneRow?.phone_e164) {
+  // משה 2026-05-09/10: חובה טלפון *וגם* ת.ז. גם לפייפאל (אחיד עם יעד שריג +
+  // נדרש לפי חוק הגנת הצרכן בעסקה לתושב ישראל).
+  const userRow = await env.DB.prepare('SELECT phone_e164, id_number FROM users WHERE id = ?').bind(user.id).first();
+  if (!userRow?.phone_e164) {
     return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
+  }
+  if (!userRow?.id_number) {
+    return jsonError('id_required: יש להזין תעודת זהות לפני התשלום', 412);
   }
 
   const config = await getPaymentConfig(env);
@@ -434,9 +441,13 @@ async function getStatus(request, env) {
 async function cancelSubscription(request, env) {
   const user = await getUserFromRequest(request, env);
   if (!user) return jsonError('נדרש להתחבר תחילה', 401);
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const reason = String(body?.reason || '').slice(0, 500);
+  const nowSec = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
-    "UPDATE users SET plan_renew_at = 0 WHERE id = ?"
-  ).bind(user.id).run();
+    "UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?"
+  ).bind(nowSec, reason || null, user.id).run();
   return jsonResponse({ ok: true });
 }
 

@@ -2,6 +2,7 @@
 // כל בקשה מאומתת תחילה דרך getUserFromRequest; בלי הרשאת admin → 403.
 
 import { getUserFromRequest } from './session.js';
+import { runRecurringBilling } from './recurring.js';
 
 // משה 2026-05-10: דגל גלובלי לכיבוי "מגן הקונסול" (החוסם פתיחת devtools
 // במצב דמו או בכל הסשנים). נשמר ב-app_settings כ-key 'CONSOLE_GUARD_DISABLED'
@@ -65,6 +66,15 @@ export async function handleAdmin(request, env, url) {
   if (path === '/api/admin/stats' && method === 'GET') {
     return getStats(request, env);
   }
+  if (path === '/api/admin/recurring/run' && method === 'POST') {
+    // משה 2026-05-10: הפעלה ידנית של לולאת החיוב החוזר ע"י המנהל.
+    const summary = await runRecurringBilling(env);
+    return Response.json(summary);
+  }
+  if (path.startsWith('/api/admin/users/') && path.endsWith('/cancel') && method === 'POST') {
+    const id = path.split('/').slice(-2)[0];
+    return cancelUserSubscription(request, env, Number(id));
+  }
   if (path === '/api/admin/console-guard' && method === 'GET') {
     const enabled = await isConsoleGuardEnabled(env);
     return new Response(JSON.stringify({ enabled }), {
@@ -75,6 +85,18 @@ export async function handleAdmin(request, env, url) {
     return setConsoleGuard(request, env, auth.user.id);
   }
   return new Response('Not found', { status: 404 });
+}
+
+async function cancelUserSubscription(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return new Response('Bad id', { status: 400 });
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const reason = String(body?.reason || 'admin').slice(0, 500);
+  const nowSec = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    "UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?"
+  ).bind(nowSec, reason, id).run();
+  return Response.json({ ok: true });
 }
 
 async function setConsoleGuard(request, env, userId) {
@@ -129,7 +151,8 @@ async function listUsers(request, env, url) {
   const rows = await env.DB.prepare(
     `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
             balance_seconds, plan_type, plan_renew_at,
-            yaad_token, paypal_payer_id, last_payment_provider, last_payment_at, failed_charge_count
+            yaad_token, paypal_payer_id, last_payment_provider, last_payment_at, failed_charge_count,
+            subscription_active, cancelled_at, cancellation_reason, id_number
      FROM users ${whereSql} ${orderSql} LIMIT ? OFFSET ?`
   ).bind(...binds, limit, offset).all();
 
@@ -257,37 +280,30 @@ async function adjustUserMinutes(request, env, id) {
 //
 // בקשה: { amount: number (₪), planCode?: 'monthly'|'yearly', packCode?: 'h1'..'h20' }
 async function rechargeUser(request, env, id) {
+  // משה 2026-05-10: עכשיו באמת מבצע חיוב חוזר דרך runRecurringBilling.
+  // לוגיקת בחירת ספק + חישוב תקופה נמצאת שם — לא משכפלים כאן.
   if (!Number.isFinite(id) || id <= 0) return new Response('Bad id', { status: 400 });
-  let body;
-  try { body = await request.json(); } catch { return new Response('Bad JSON', { status: 400 }); }
-  const amount = Number(body?.amount);
-  if (!Number.isFinite(amount) || amount <= 0) return new Response('Bad amount', { status: 400 });
-
   const user = await env.DB.prepare(
-    'SELECT id, email, yaad_token, paypal_payer_id, last_payment_provider FROM users WHERE id = ?'
+    'SELECT id, expires_at, subscription_active FROM users WHERE id = ?'
   ).bind(id).first();
   if (!user) return new Response('Not found', { status: 404 });
 
-  const provider = user.last_payment_provider || (user.yaad_token ? 'yaad' : (user.paypal_payer_id ? 'paypal' : null));
-  if (!provider) {
-    return Response.json({ error: 'אין טוקן תשלום שמור עבור משתמש זה. הוא עוד לא ביצע תשלום מוצלח.' }, { status: 400 });
-  }
-
-  // הערה חשובה: הקריאה הזאת רק מפיקה לוג ומציינת שיש לבצע ניסיון חוזר.
-  // ביצוע חיוב חוזר אמיתי דורש קריאת API ייעודית של יעד שריג (J5Charge) או
-  // PayPal (Reference Transaction / Subscription) — שדורשת secrets שעדיין
-  // לא מוגדרים בענף הזה. כשהם יוגדרו, נחבר את הקריאה.
+  // נכריח את הלולאה לרוץ על המשתמש הזה ע"י דחיפה זמנית של expires_at לעבר.
+  // אחרי הריצה — הלולאה משחזרת אותו עם תאריך תוקף חדש (אם ההצלחה הצליחה).
   const nowSec = Math.floor(Date.now() / 1000);
   await env.DB.prepare(
-    'INSERT INTO payments (user_id, provider, amount, plan_code, pack_code, txn_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).bind(id, provider, amount, body?.planCode || null, body?.packCode || null, 'admin_recharge_request', nowSec).run().catch(() => {});
+    'UPDATE users SET subscription_active = 1, expires_at = COALESCE(NULLIF(expires_at, 0), 0) WHERE id = ?'
+  ).bind(id).run();
+  // נריץ — הלולאה מטפלת רק במשתמשים שתפוגתם בקרוב, לכן נוודא שזה המקרה.
+  await env.DB.prepare('UPDATE users SET expires_at = ? WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)')
+    .bind(nowSec, id, nowSec + 23 * 3600).run();
 
-  return Response.json({
-    ok: true,
-    queued: true,
-    provider,
-    note: 'בקשת חיוב חוזר נרשמה. ביצוע אוטומטי דורש secrets של הספק (יוגדרו בנפרד).',
-  });
+  const summary = await runRecurringBilling(env);
+  // מצב התשלום שנרשם
+  const last = await env.DB.prepare(
+    'SELECT status, error, txn_id, attempted_at FROM recurring_charges WHERE user_id = ? ORDER BY id DESC LIMIT 1'
+  ).bind(id).first();
+  return Response.json({ ok: true, summary, last });
 }
 
 async function deleteUser(request, env, id, currentAdminId) {

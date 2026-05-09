@@ -15,5 +15,8 @@
       "database_name": "ravtext-subscribers",
       "database_id": "57193d48-4241-4e4e-acd0-5168e9133bf3"
     }
-  ]
+  ],
+  "triggers": {
+    "crons": ["0 4 * * *"]
+  }
 }
