@@ -11,6 +11,7 @@ import { applySecurityHeaders, checkRateLimit, isBadBot, isEngineApi, checkOrigi
 import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide, checkNonce } from './render_planner.js';
 import { handleAdmin } from './admin.js';
+import { handleAdminInbox, handlePublicInbox } from './inbox.js';
 import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
 
@@ -48,8 +49,22 @@ export default {
         },
         { headers: { 'cache-control': 'no-store' } }
       );
+    } else if (
+      url.pathname === '/api/admin/bug-reports' ||
+      url.pathname.startsWith('/api/admin/bug-reports/') ||
+      url.pathname === '/api/admin/contact-messages' ||
+      url.pathname.startsWith('/api/admin/contact-messages/') ||
+      url.pathname === '/api/admin/usage'
+    ) {
+      response = await handleAdminInbox(request, env, url);
     } else if (url.pathname.startsWith('/api/admin/')) {
       response = await handleAdmin(request, env, url);
+    } else if (
+      url.pathname === '/api/bug-reports' ||
+      url.pathname === '/api/contact' ||
+      url.pathname === '/api/usage/track'
+    ) {
+      response = await handlePublicInbox(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
     } else if (

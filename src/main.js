@@ -53,9 +53,13 @@ import { wireDocumentFeatures } from "./document_features.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
+import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
+// משה 2026-05-09: לוג כניסת משתמש בכל טעינת עמוד למחוברים. מאפשר לבנות ציר זמן
+// של פעילות לכל משתמש בפאנל הניהול.
+trackUsage("session_start");
 installHeaderPremiumIcons();
 installHeaderTimer();
 maybeAutoOpenFromUrl();
@@ -1320,64 +1324,35 @@ if (btnJumpStream && jumpStreamInput) {
 document.getElementById("btn-load-internal")?.addEventListener("click", () => {
   loadEditableDefaultSample(paneManager);
   rerenderPages();
+  trackUsage("sample_load", { sample: "internal" });
 });
 
 document.getElementById("btn-load-inline")?.addEventListener("click", async () => {
   await loadSampleByName(paneManager, "hebrew");
   rerenderPages();
+  trackUsage("sample_load", { sample: "hebrew" });
 });
 
 document.getElementById("btn-load-shulchan")?.addEventListener("click", async () => {
   await loadSampleByName(paneManager, "shulchan");
   rerenderPages();
+  trackUsage("sample_load", { sample: "shulchan" });
 });
 
 document.getElementById("btn-load-talmud")?.addEventListener("click", async () => {
   await loadSampleByName(paneManager, "talmud");
   rerenderPages();
+  trackUsage("sample_load", { sample: "talmud" });
 });
 
-document.getElementById("btn-render")?.addEventListener("click", rerenderPages);
+document.getElementById("btn-render")?.addEventListener("click", () => {
+  rerenderPages();
+  trackUsage("render");
+});
 
-// משה 2026-05-07: כפתורי דיווח באג / צור קשר בכותרת. פותחים אימייל מוכן
-// עם נושא+גוף שמכילים מידע סביבת הרצה (גרסה, דפדפן, גודל מסך) שיעזור לאבחון.
-function buildSupportMailto({ kind }) {
-  const subjectMap = {
-    bug: "דיווח באג — רב טקסט לוורד AI",
-    contact: "פנייה — רב טקסט לוורד AI",
-  };
-  const subject = subjectMap[kind] || subjectMap.contact;
-  const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
-  const lang = (typeof navigator !== "undefined" && navigator.language) || "";
-  const screen = (typeof window !== "undefined" && window.innerWidth)
-    ? `${window.innerWidth}×${window.innerHeight}` : "";
-  const url = (typeof location !== "undefined" && location.href) || "";
-  const body = kind === "bug"
-    ? [
-        "תאר את הבאג כאן:",
-        "",
-        "",
-        "----- מידע סביבה (אל תמחוק, עוזר לאבחון) -----",
-        `URL: ${url}`,
-        `דפדפן: ${ua}`,
-        `שפה: ${lang}`,
-        `מסך: ${screen}`,
-      ].join("\n")
-    : [
-        "כתוב את פנייתך כאן:",
-        "",
-      ].join("\n");
-  // משה 2026-05-07: כתובת המייל זהה לזו שבתוכנה הקודמת (work-files/app_ui.py)
-  // — yiddishebilder@gmail.com. שומר על זרימת תמיכה אחידה ללקוחות הקיימים.
-  const mailto = `mailto:yiddishebilder@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return mailto;
-}
-document.getElementById("btn-report-bug")?.addEventListener("click", () => {
-  window.location.href = buildSupportMailto({ kind: "bug" });
-});
-document.getElementById("btn-contact")?.addEventListener("click", () => {
-  window.location.href = buildSupportMailto({ kind: "contact" });
-});
+// משה 2026-05-09: כפתורי דיווח באג / צור קשר. פעם פתחו mailto;
+// עכשיו פותחים מודלים שנשלחים ל-Worker → D1 → פאנל המנהל.
+wireInboxButtons();
 
 wireTalmudLayoutControls(rerenderPages);
 wireMishnaWrapToggle(rerenderPages);
@@ -1684,6 +1659,7 @@ document.addEventListener("click", async (ev) => {
     case "word-export": {
       if (!tryUseTool("word-export", "ייצוא לוורד")) break;
       exportWord(paneManager);
+      trackUsage("export", { format: "docx" });
       break;
     }
 
