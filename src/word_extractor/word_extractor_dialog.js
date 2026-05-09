@@ -403,24 +403,24 @@ async function onConfirm() {
   setStatus(t('scanning'));
 
   try {
-    const sd = streamsToSd(selected);
-    // משה 2026-05-08: מוסיף sd entries עבור קבוצות סוגריים מותאמות
+    // משה 2026-05-09: מסלול ב — חיקוי docx_extract של comparator_tool.py.
+    // בגוף נכנס רק הסמל (@01), תוכן ההערה לזרם הנפרד. אין LaTeX, אין סינון.
     syncBracketsState();
-    _state.brackets.forEach((b, i) => {
-      const sid = `brk_${i}`;
-      sd[sid] = {
-        source_type: 'bracketed',
-        series: b.series,
-        bracket_open: b.opener || '{',
-        bracket_close: b.closer || '}',
-        marker: '',
-        count: 0,
-      };
-    });
-    // משה 2026-05-08: מסמכים חיצוניים אינם חלק מהייבוא — בתוכנה הישנה זו פעולה
-    // נפרדת ב-app_ui.py (load_external_notes), נטענת רק בעת ייצוא LaTeX. נשאר כך.
-    const full = await extract_and_process(_state.zipBuf.slice(0), sd, {});
-    distributeToPanes(full, sd);
+    const simpleSelected = [];
+    let nextCode = 1;
+    const seriesToCode = {};
+    for (const s of selected) {
+      if (!seriesToCode[s.series]) {
+        seriesToCode[s.series] = String(nextCode++).padStart(2, '0');
+      }
+      simpleSelected.push({
+        source: s.source_type || s.sourceType,
+        marker: s.marker || null,
+        symbol: '@' + seriesToCode[s.series],
+      });
+    }
+    const result = await engine.docx_extract_simple(_state.zipBuf.slice(0), simpleSelected);
+    distributeToPanesSimple(result);
     setStatus('');
     closeModal();
     if (typeof _state.onLoadedRef === 'function') _state.onLoadedRef();
@@ -432,6 +432,52 @@ async function onConfirm() {
 
 // משה 2026-05-08: distributeToPanes עוברת לפלט HTML עם עיצוב אמיתי.
 // במקום להחזיר LaTeX גולמי לעורך, חותכים את ה-RichText שב-extract_and_process
+// משה 2026-05-09: distributeToPanesSimple — מקבלת { main, streams } מ-docx_extract_simple.
+// המרת \n ל-<p>, אפס LaTeX, אפס regex cleanup. בדיוק כמו ב-comparator_tool.py.
+function escTxt(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function plainToHtml(s) {
+  if (!s) return '<p></p>';
+  const lines = s.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return '<p></p>';
+  return lines.map(l => `<p>${escTxt(l)}</p>`).join('');
+}
+function distributeToPanesSimple(result) {
+  if (!_state.paneManagerRef) return;
+  const pm = _state.paneManagerRef;
+  pm.load({
+    version: 1,
+    activeId: 'word-main',
+    panes: [{
+      id: 'word-main',
+      streamCode: null,
+      symbol: '',
+      label: 'ראשי',
+      content: { type: 'doc', content: [{ type: 'paragraph' }] },
+    }],
+  });
+  const mainPane = pm.getMainPane();
+  if (mainPane && mainPane.editor) {
+    mainPane.editor.commands.setContent(plainToHtml(result.main));
+  }
+  for (const [sym, txt] of result.streams) {
+    const code = sym.replace(/^@/, '');
+    let pane = pm.panes.find(p => p.symbol === sym || p.streamCode === code);
+    if (!pane) {
+      pane = pm.addPane({ streamCode: code, symbol: sym, label: `זרם ${sym}` });
+    }
+    if (pane && pane.editor) {
+      pane.symbol = sym;
+      if (pane.editor.storage && pane.editor.storage.streamMark) {
+        pane.editor.storage.streamMark.symbol = sym;
+      }
+      pane.editor.commands.setContent(plainToHtml(txt));
+    }
+  }
+}
+
 // החזיר, שולפים את \footnoteX{...} ו-\ledXnote{...} כ-RichText נפרדים,
 // וממירים כל אחד ל-HTML עם <strong>/<em>/<u>/color/size לעיצוב אמיתי בעורך.
 function distributeToPanes(full, sd) {

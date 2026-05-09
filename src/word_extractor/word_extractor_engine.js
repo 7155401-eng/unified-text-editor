@@ -563,6 +563,105 @@ export async function read_comments(input) {
 }
 
 // =====================================================================
+// משה 2026-05-09: docx_extract_simple — port מדויק של comparator_tool.py
+// docx_extract (שורות 200–251). פלט פשוט: { main: string, streams: [...] }.
+// בגוף מוכנס רק הסמל (@01). תוכן ההערה הולך תמיד לזרם הנפרד. אף LaTeX.
+// selected = [{source:'footnote'|'endnote'|'comment', marker:'06'|null, symbol:'@01'}, ...]
+// =====================================================================
+
+async function _dnotes_plain(zip, xml_file, note_tag) {
+  const out = {};
+  try {
+    const data = await zip.read(xml_file);
+    const root = _parseXml(data);
+    for (const note of findAll(root, note_tag)) {
+      const nid = getAttrW(note, 'id');
+      if (nid === null || nid === undefined) continue;
+      out[nid] = _plain(note, WNS);
+    }
+  } catch (e) { /* missing file → empty map */ }
+  return out;
+}
+
+export async function docx_extract_simple(input, selected) {
+  const zip = await _loadDocxZip(input);
+  const fn_d = await _dnotes_plain(zip, 'word/footnotes.xml', 'footnote');
+  const en_d = await _dnotes_plain(zip, 'word/endnotes.xml',  'endnote');
+  const cm_d = await _dnotes_plain(zip, 'word/comments.xml',  'comment');
+
+  const fn_m = {}, en_m = {}, cm_m = {};
+  let fn_n = null, en_n = null, cm_n = null;
+  const sn = {};
+  for (const it of selected) {
+    const sym = it.symbol;
+    sn[sym] = [];
+    const src = it.source, mk = it.marker;
+    if (src === 'footnote') { if (mk) fn_m[mk] = sym; else fn_n = sym; }
+    else if (src === 'endnote') { if (mk) en_m[mk] = sym; else en_n = sym; }
+    else if (src === 'comment') { if (mk) cm_m[mk] = sym; else cm_n = sym; }
+  }
+
+  function _res(txt, m2s, nsym) {
+    const m = txt.match(/@(\d+)/);
+    if (m && m[1] in m2s) {
+      const stripped = txt.replace(new RegExp('^.*?@' + m[1] + '\\s*:?\\s*'), '').trim();
+      return [m2s[m[1]], stripped];
+    }
+    if (nsym && !m) return [nsym, txt.trim()];
+    return [null, txt.trim()];
+  }
+
+  const data = await zip.read('word/document.xml');
+  const root = _parseXml(data);
+  const parts = [];
+  for (const para of findAll(root, 'p')) {
+    const pt = [];
+    for (const ch of iterAll(para)) {
+      const ln = ch.namespaceURI === WNS ? ch.localName : null;
+      if (ln === 't' && ch.textContent) {
+        pt.push(ch.textContent);
+      } else if (ln === 'footnoteReference') {
+        const fid = getAttrW(ch, 'id');
+        if (fid && (fid in fn_d)) {
+          const [s, c] = _res(fn_d[fid], fn_m, fn_n);
+          if (s) { pt.push(s); sn[s].push(`${s}${c}`); }
+        }
+      } else if (ln === 'endnoteReference') {
+        const eid = getAttrW(ch, 'id');
+        if (eid && (eid in en_d)) {
+          const [s, c] = _res(en_d[eid], en_m, en_n);
+          if (s) { pt.push(s); sn[s].push(`${s}${c}`); }
+        }
+      } else if (ln === 'commentReference') {
+        const cid = getAttrW(ch, 'id');
+        if (cid && (cid in cm_d)) {
+          const [s, c] = _res(cm_d[cid], cm_m, cm_n);
+          if (s) { pt.push(s); sn[s].push(`${s}${c}`); }
+        }
+      } else if (ln === 'br') {
+        pt.push('\n');
+      }
+    }
+    const line = pt.join('').trim();
+    if (line) parts.push(line);
+  }
+  let main = parts.join('\n');
+
+  // inline @marker → symbol replacement (lines 248-250 in Python)
+  for (const it of selected) {
+    if (it.source === 'inline' && it.marker) {
+      main = main.replace(new RegExp('@' + it.marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), it.symbol);
+    }
+  }
+
+  const streams = [];
+  for (const sym of Object.keys(sn)) {
+    if (sn[sym].length) streams.push([sym, sn[sym].join('\n')]);
+  }
+  return { main, streams };
+}
+
+// =====================================================================
 // find_all_note_sources
 // =====================================================================
 
