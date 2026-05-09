@@ -1,13 +1,18 @@
 /* משה 2026-05-09: סגנונות עמוד פרמיום + אייקוני ראש (כוכב/מתנה/מפתח) + טוסטים. */
 
 /* ============ אייקוני סרגל עליון ============ */
+/* משה 2026-05-10: דפוס "אייקון + טקסט נשלף בריחוף" — זהה ל-.header-action-btn-icon
+   של "עדכוני פיתוח". קודם זה היה עיגול 36×36 עם title-tooltip בלבד; עכשיו זה
+   pill שמתרחב באנימציה חלקה כשמרחפים, כדי שהמילה (הגדרות/מתנה/פרמיום/הורדות)
+   תהיה ברורה ולא רק tooltip של דפדפן. */
 .rt-prem-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
   height: 36px;
-  border-radius: 50%;
+  min-width: 36px;
+  padding: 0 9px;
+  border-radius: 18px;
   border: 1px solid var(--border, #d4dce8);
   background: transparent;
   cursor: pointer;
@@ -15,7 +20,6 @@
   line-height: 1;
   color: var(--muted, #5e6a7d);
   transition: background 0.12s, border-color 0.12s, transform 0.12s, color 0.12s;
-  padding: 0;
   position: relative;
 }
 .rt-prem-icon-btn:hover {
@@ -27,6 +31,30 @@
 .rt-prem-icon-btn:focus-visible {
   outline: 2px solid var(--word-blue, #2B579A);
   outline-offset: 2px;
+}
+.rt-prem-icon-btn .rt-prem-icon-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.rt-prem-icon-btn .rt-prem-icon-text {
+  display: inline-block;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  margin-inline-start: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  transition: max-width 0.18s ease, opacity 0.18s ease, margin-inline-start 0.18s ease;
+}
+.rt-prem-icon-btn:hover .rt-prem-icon-text,
+.rt-prem-icon-btn:focus-visible .rt-prem-icon-text {
+  max-width: 200px;
+  opacity: 1;
+  margin-inline-start: 6px;
 }
 
 /* יהלום פרמיום — מהבהב + מחליף צבעים */
@@ -937,6 +965,104 @@
 .rt-prem-settings-host .ribbon-panel,
 .rt-prem-settings-host .ribbon-panel.ribbon-hidden { display: block !important; }
 .rt-prem-settings-host .settings-panel-wrap { display: block !important; }
+
+/* משה 2026-05-10: כשפאנל ההורדות מוצג בתוך מודאל, לעצב מחדש מסרגל אופקי
+   צר ל-stack של כרטיסים אנכי. בלי זה הפאנל נראה רע — labels זעירים בזהב
+   צף, כפתורים נמתחים, וקבוצות נדחסות לרוחב המודאל בצורה מבולגנת. */
+.rt-prem-settings-host #downloads-panel {
+  display: flex !important;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 0 0;
+  background: transparent;
+  border: 0;
+  margin: 0;
+}
+.rt-prem-settings-host #downloads-panel > .sep {
+  display: none;
+}
+.rt-prem-settings-host #downloads-panel > .tb-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 20px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  position: relative;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.rt-prem-settings-host #downloads-panel > .tb-group::before {
+  content: attr(data-title);
+  position: absolute;
+  top: -10px;
+  right: 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e40af;
+  background: #ffffff;
+  padding: 2px 10px;
+  letter-spacing: 0.2px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.rt-prem-settings-host #downloads-panel > .tb-group > button {
+  padding: 9px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #1e293b;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.12s, box-shadow 0.12s;
+  min-height: 36px;
+}
+.rt-prem-settings-host #downloads-panel > .tb-group > button:hover {
+  background: #eff6ff;
+  border-color: #2c5aa0;
+  color: #1e3a8a;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(43, 87, 154, 0.15);
+}
+.rt-prem-settings-host #downloads-panel > .tb-group > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f1f5f9;
+  transform: none;
+  box-shadow: none;
+}
+.rt-prem-settings-host #downloads-panel .toolbar-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #1e293b;
+  cursor: pointer;
+}
+.rt-prem-settings-host #downloads-panel .toolbar-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.rt-prem-settings-host #downloads-panel #dl-folder-status,
+.rt-prem-settings-host #downloads-panel #dl-last-save,
+.rt-prem-settings-host #downloads-panel #dl-install-status {
+  font-size: 13px;
+  color: #64748b;
+  flex-basis: 100%;
+  margin: 0;
+  padding: 0;
+}
+/* "פתיחה בחלון משלה, נעול לאתר רב טקסט" — ספאן הסבר משני בקבוצת ההתקנה.
+   ב-HTML יש לו inline style ישן; כאן רק מסדרים שתפוס שורה משלו. */
+.rt-prem-settings-host #downloads-panel > .tb-group > span:not([id]):not(.sep) {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
+}
 
 /* ============ מפתחות AI מרובי ספקים ============ */
 .ai-keys-grid {
