@@ -135,6 +135,25 @@
     .btn-small.activate { background: #d1fae5; color: #065f46; }
     .btn-small.disable { background: #fef3c7; color: #92400e; }
     .btn-small.delete { background: #fee2e2; color: #991b1b; }
+    .balance-cell { white-space: nowrap; }
+    .balance-amount { font-variant-numeric: tabular-nums; font-weight: 600; color: #1e293b; }
+    .balance-quick { display: inline-flex; gap: 4px; margin-inline-start: 8px; }
+    .btn-mini {
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1;
+      border-radius: 4px;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .btn-mini-plus { background: #d1fae5; color: #065f46; }
+    .btn-mini-plus:hover { background: #a7f3d0; }
+    .btn-mini-minus { background: #fee2e2; color: #991b1b; }
+    .btn-mini-minus:hover { background: #fecaca; }
+    .badge-plan { background: #ede9fe; color: #5b21b6; }
     .pagination {
       display: flex;
       gap: 8px;
@@ -378,6 +397,7 @@
                     <th>מייל</th>
                     <th>סטטוס</th>
                     <th>תוקף</th>
+                    <th>יתרה (דק')</th>
                     <th>נרשם</th>
                     <th>חיבור אחרון</th>
                     <th>פעולות</th>
@@ -386,9 +406,16 @@
                 <tbody>
                   ${users.map(u => `
                     <tr>
-                      <td><strong>${u.email}</strong>${u.is_admin ? '<span class="badge badge-admin">מנהל</span>' : ''}</td>
+                      <td><strong>${u.email}</strong>${u.is_admin ? '<span class="badge badge-admin">מנהל</span>' : ''}${u.plan_type ? `<span class="badge badge-plan">${planLabel(u.plan_type)}</span>` : ''}</td>
                       <td><span class="badge badge-${u.status}">${statusLabel(u.status)}</span></td>
                       <td>${u.expires_at ? fmtDate(u.expires_at) : '—'}</td>
+                      <td class="balance-cell">
+                        <span class="balance-amount">${minutesFromSec(u.balance_seconds)}</span>
+                        <span class="balance-quick">
+                          <button class="btn-mini btn-mini-plus" data-action="add-min" data-id="${u.id}" title="הוסף דקות">+</button>
+                          <button class="btn-mini btn-mini-minus" data-action="sub-min" data-id="${u.id}" title="הורד דקות">−</button>
+                        </span>
+                      </td>
                       <td>${fmtDate(u.created_at)}</td>
                       <td>${fmtDateTime(u.last_login_at)}</td>
                       <td class="row-actions">
@@ -416,6 +443,38 @@
 
     function statusLabel(s) {
       return { active: 'פעיל', unauthorized: 'לא מאושר', disabled: 'חסום' }[s] || s;
+    }
+
+    function planLabel(p) {
+      return { subscription: 'מנוי', hours: 'שעות' }[p] || p;
+    }
+
+    function minutesFromSec(sec) {
+      const m = Math.floor((Number(sec) || 0) / 60);
+      if (m < 60) return `${m}`;
+      const h = Math.floor(m / 60);
+      const rem = m % 60;
+      return rem ? `${m} (${h}ש' ${rem}ד')` : `${m} (${h}ש')`;
+    }
+
+    async function promptAdjustMinutes(user, sign) {
+      const verb = sign > 0 ? 'הוסף' : 'הורד';
+      const def = sign > 0 ? '20' : '20';
+      const raw = prompt(`${verb} דקות עבור ${user.email}\nיתרה נוכחית: ${minutesFromSec(user.balance_seconds)} דק'\n\nהזן מספר דקות:`, def);
+      if (raw == null) return;
+      const minutes = parseInt(raw, 10);
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        toast('מספר לא חוקי', true);
+        return;
+      }
+      const delta = sign * minutes;
+      const res = await api(`/api/admin/users/${user.id}/minutes`, {
+        method: 'POST',
+        body: JSON.stringify({ deltaMinutes: delta }),
+      });
+      if (res && res.ok) {
+        toast(`${user.email}: ${sign > 0 ? '+' : '−'}${minutes} דק'. יתרה: ${minutesFromSec(res.user?.balance_seconds || 0)}`);
+      }
     }
 
     function bindEvents() {
@@ -468,6 +527,10 @@
       } else if (action === 'disable') {
         await api(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify({ status: 'disabled' }) });
         toast(`${user.email} נחסם`);
+      } else if (action === 'add-min') {
+        await promptAdjustMinutes(user, +1);
+      } else if (action === 'sub-min') {
+        await promptAdjustMinutes(user, -1);
       } else if (action === 'edit') {
         openEditModal(user);
         return;
