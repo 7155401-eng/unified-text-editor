@@ -125,7 +125,9 @@ function buildIconButton({ id, cls, title, label, html }) {
 
 export function installHeaderPremiumIcons() {
   if (typeof document === "undefined") return;
-  if (document.getElementById("rt-prem-icon-star")) return;
+  // משה 2026-05-10: בודקים את אייקון ההגדרות (תמיד מוצג לכולם), כי היהלום לא
+  // מותקן למנויים — שימוש בו כ-guard יחמיץ את ההגנה למנויים.
+  if (document.getElementById("rt-prem-icon-settings")) return;
 
   const actions = document.querySelector(".app-header .app-header-actions");
   if (!actions) return;
