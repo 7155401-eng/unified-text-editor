@@ -616,6 +616,7 @@
                         ${u.status === 'active' ? `<button class="btn-small disable" data-action="disable" data-id="${u.id}">חסום</button>` : ''}
                         ${(u.yaad_token || u.paypal_payer_id) ? `<button class="btn-small recharge" data-action="recharge" data-id="${u.id}" title="חיוב חוזר על אמצעי התשלום השמור (${u.last_payment_provider || ''})${u.failed_charge_count ? ' · נכשלו ' + u.failed_charge_count : ''}">↻ חייב</button>` : ''}
                         <button class="btn-small" data-action="edit" data-id="${u.id}">עריכה</button>
+                        <button class="btn-small" data-action="user-contacts" data-id="${u.id}" data-email="${escapeAttr(u.email || '')}" title="הצג את כל הפניות שהמשתמש שלח">📬 פניות</button>
                         <button class="btn-small delete" data-action="delete" data-id="${u.id}">מחק</button>
                       </td>
                     </tr>
@@ -1147,6 +1148,79 @@
       });
     }
 
+    // משה 2026-05-10: בכרטיס משתמש — צפייה בכל הפניות שהוא שלח, וסימון כנקרא ישירות מהכאן.
+    async function openUserContactsModal(user) {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop show';
+      backdrop.style.zIndex = 200;
+      backdrop.innerHTML = `
+        <div class="modal" dir="rtl" style="width: 640px; max-height: 86vh; display: flex; flex-direction: column;">
+          <h2>📬 פניות מ-${escapeHtml(user.email || '—')}</h2>
+          <div id="user-contacts-summary" style="font-size:12px;color:#64748b;margin-bottom:8px;">טוען...</div>
+          <div id="user-contacts-body" style="flex:1;overflow-y:auto;padding:4px 2px;">
+            <div style="text-align:center;color:#64748b;padding:20px;">טוען...</div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-small" id="user-contacts-close">סגור</button>
+          </div>
+        </div>`;
+      document.body.appendChild(backdrop);
+      const close = () => backdrop.remove();
+      backdrop.querySelector('#user-contacts-close').addEventListener('click', close);
+      backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) close(); });
+
+      const refresh = async () => {
+        try {
+          const data = await api(`/api/admin/users/${user.id}/contact-messages`);
+          const items = data.items || [];
+          const summary = backdrop.querySelector('#user-contacts-summary');
+          summary.textContent = `סה"כ ${data.totalCount || 0} פניות · ${data.unreadCount || 0} לא נקראו`;
+          const body = backdrop.querySelector('#user-contacts-body');
+          if (items.length === 0) {
+            body.innerHTML = '<div class="empty">המשתמש עוד לא שלח אף פנייה.</div>';
+            return;
+          }
+          body.innerHTML = items.map(c => `
+            <div class="contact-card ${c.read_at ? '' : 'unread'}" data-id="${c.id}">
+              <div class="contact-card-head">
+                <span class="contact-card-meta">
+                  <span>📅 ${fmtDateTime(c.created_at)}</span>
+                  ${c.read_at ? `<span style="color:#047857;">✓ נקרא ${fmtDateTime(c.read_at)}</span>` : '<span style="color:#b45309;font-weight:600;">חדש</span>'}
+                </span>
+              </div>
+              <div class="contact-card-body">${escapeHtml(c.body)}</div>
+              <div class="bug-card-actions">
+                ${c.read_at ? '' : `<button class="btn-small activate" data-uc-action="read" data-id="${c.id}">סמן כנקרא</button>`}
+                <button class="btn-small delete" data-uc-action="delete" data-id="${c.id}">מחק</button>
+              </div>
+            </div>`).join('');
+          body.querySelectorAll('[data-uc-action]').forEach(b => {
+            b.addEventListener('click', async () => {
+              const cid = Number(b.dataset.id);
+              if (b.dataset.ucAction === 'read') {
+                await api(`/api/admin/contact-messages/${cid}/read`, { method: 'POST' });
+                toast('סומן כנקרא');
+              } else if (b.dataset.ucAction === 'delete') {
+                if (!confirm(`למחוק את הפנייה #${cid}?`)) return;
+                await api(`/api/admin/contact-messages/${cid}`, { method: 'DELETE' });
+                toast('נמחק');
+              }
+              await refresh();
+              if (state.tab === 'contact') {
+                await loadContacts(); renderTabBody();
+              }
+              await loadContactsCount();
+              if (state.tab === 'users') render();
+            });
+          });
+        } catch (err) {
+          backdrop.querySelector('#user-contacts-body').innerHTML =
+            `<div class="empty" style="color:#b91c1c;">טעינה נכשלה: ${escapeHtml(err.message || String(err))}</div>`;
+        }
+      };
+      refresh();
+    }
+
     function bindEvents() {
       let searchTimer;
       document.getElementById('search').addEventListener('input', (e) => {
@@ -1214,6 +1288,9 @@
         }
       } else if (action === 'edit') {
         openEditModal(user);
+        return;
+      } else if (action === 'user-contacts') {
+        openUserContactsModal(user);
         return;
       } else if (action === 'delete') {
         if (!confirm(`למחוק את ${user.email} לחלוטין? הפעולה לא הפיכה.`)) return;

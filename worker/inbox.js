@@ -65,8 +65,30 @@ export async function handlePublicInbox(request, env, url) {
 
   if (path === '/api/bug-reports' && method === 'POST') return submitBugReport(request, env, user);
   if (path === '/api/contact' && method === 'POST') return submitContact(request, env, user);
+  // משה 2026-05-10: המשתמש רואה את הפניות שלו עצמו ב"אזור שלו" באפליקציה.
+  if (path === '/api/contact/mine' && method === 'GET') return listMyContactMessages(request, env, user);
   if (path === '/api/usage/track' && method === 'POST') return trackUsage(request, env, user);
   return new Response('Not found', { status: 404 });
+}
+
+async function listMyContactMessages(request, env, user) {
+  const params = new URL(request.url).searchParams;
+  const limit = Math.max(1, Math.min(200, Number(params.get('limit')) || 50));
+  const offset = Math.max(0, Number(params.get('offset')) || 0);
+  const rows = await env.DB.prepare(
+    `SELECT id, body, created_at, read_at
+     FROM contact_messages WHERE user_id = ?
+     ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(user.id, limit, offset).all();
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages WHERE user_id = ?`
+  ).bind(user.id).first();
+  return jsonRes({
+    items: rows.results || [],
+    totalCount: totalRow?.c || 0,
+    limit,
+    offset,
+  });
 }
 
 async function listPublicBugReports(request, env, url) {
@@ -174,7 +196,37 @@ export async function handleAdminInbox(request, env, url) {
     if (method === 'DELETE') return deleteContactMessage(request, env, id);
   }
   if (path === '/api/admin/usage' && method === 'GET') return listUsage(request, env, url);
+  // משה 2026-05-10: בכרטיס משתמש בפאנל ניהול — כפתור "פניות" שמציג את הפניות שלו.
+  const userContactMatch = path.match(/^\/api\/admin\/users\/(\d+)\/contact-messages$/);
+  if (userContactMatch && method === 'GET') {
+    return listContactMessagesForUser(request, env, Number(userContactMatch[1]));
+  }
   return new Response('Not found', { status: 404 });
+}
+
+async function listContactMessagesForUser(request, env, userId) {
+  if (!Number.isFinite(userId) || userId <= 0) return bad('Bad user id');
+  const params = new URL(request.url).searchParams;
+  const limit = Math.max(1, Math.min(500, Number(params.get('limit')) || 200));
+  const offset = Math.max(0, Number(params.get('offset')) || 0);
+  const rows = await env.DB.prepare(
+    `SELECT id, user_id, user_email, body, meta, created_at, read_at
+     FROM contact_messages WHERE user_id = ?
+     ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(userId, limit, offset).all();
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages WHERE user_id = ?`
+  ).bind(userId).first();
+  const unreadRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages WHERE user_id = ? AND read_at IS NULL`
+  ).bind(userId).first();
+  return jsonRes({
+    items: rows.results || [],
+    totalCount: totalRow?.c || 0,
+    unreadCount: unreadRow?.c || 0,
+    limit,
+    offset,
+  });
 }
 
 async function listBugReports(request, env, url) {
