@@ -2,9 +2,13 @@
 // selection. Returns a Promise that resolves with { match, withNiqqud, withSource }
 // (the user's pick + their checkbox state), or null if cancelled.
 //
-// Defaults per Moshe (2026-05-09): WITHOUT niqqud, WITH source. The caller is
-// responsible for honoring these — they override the toolbar's niqqud checkbox
-// and the action button's cite parameter for this interaction.
+// Defaults flow from the action button the user clicked (Moshe, 2026-05-09):
+//   ניקוד    → niqqud=ON,  source=OFF
+//   מקור     → niqqud=OFF, source=ON
+//   ניקוד+מקור → niqqud=ON, source=ON
+//   השלמה    → niqqud=OFF, source=ON
+// The caller passes those defaults in; whatever the user changes before
+// clicking a match overrides the toolbar's niqqud + the button's cite param.
 
 import { formatRefLabel } from "./sefaria_ref_format.js";
 
@@ -29,7 +33,9 @@ const TYPE_BADGE = {
   "selection-in-verse": "הסימון בתוך הפסוק",
 };
 
-export function showMatchDialog(matches) {
+export function showMatchDialog(matches, defaults = {}) {
+  const initialNiqqud = defaults.withNiqqud === true;
+  const initialSource = defaults.withSource !== false; // default to true if not given
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.style.cssText = STYLES.overlay;
@@ -45,9 +51,8 @@ export function showMatchDialog(matches) {
     modal.appendChild(title);
 
     // === Options strip ===
-    // Two checkboxes per Moshe's spec (2026-05-09): default OFF for niqqud,
-    // ON for source. The caller takes whichever values are set when the user
-    // clicks a match; the per-action button's cite/niqqud params are overridden.
+    // Defaults are passed in by the caller, derived from which action button
+    // was clicked. The user can override before picking a match.
     const options = document.createElement("div");
     options.style.cssText = STYLES.options;
 
@@ -64,8 +69,8 @@ export function showMatchDialog(matches) {
       wrap.appendChild(span);
       return { wrap, cb };
     }
-    const niqqud = makeCheckbox("smd-niqqud", "להכניס עם ניקוד", false);
-    const source = makeCheckbox("smd-source", "להכניס עם מקור", true);
+    const niqqud = makeCheckbox("smd-niqqud", "להכניס עם ניקוד", initialNiqqud);
+    const source = makeCheckbox("smd-source", "להכניס עם מקור", initialSource);
     options.appendChild(niqqud.wrap);
     options.appendChild(source.wrap);
     modal.appendChild(options);
