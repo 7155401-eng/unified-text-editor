@@ -12,6 +12,7 @@ import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide, checkNonce } from './render_planner.js';
 import { handleAdmin } from './admin.js';
 import { handleStorage } from './storage.js';
+import { handlePayments } from './payments.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -49,6 +50,8 @@ export default {
       );
     } else if (url.pathname.startsWith('/api/admin/')) {
       response = await handleAdmin(request, env, url);
+    } else if (url.pathname.startsWith('/api/payments/')) {
+      response = await handlePayments(request, env, url);
     } else if (
       url.pathname.startsWith('/api/documents') ||
       url.pathname === '/api/settings'

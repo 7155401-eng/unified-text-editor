@@ -24,6 +24,10 @@ function startLogin(env, url) {
   if (!env.GOOGLE_CLIENT_ID) {
     return new Response('Google OAuth not configured yet', { status: 503 });
   }
+  // Preserve the post-login destination via the OAuth `state` parameter so the
+  // callback knows where to send the user (e.g., back to the premium overlay).
+  const next = url.searchParams.get('next') || '/';
+  const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/';
   const params = new URLSearchParams({
     client_id: env.GOOGLE_CLIENT_ID,
     redirect_uri: `${url.origin}/api/auth/callback`,
@@ -31,6 +35,7 @@ function startLogin(env, url) {
     scope: 'openid email',
     access_type: 'online',
     prompt: 'select_account',
+    state: safeNext,
   });
   return Response.redirect(`${GOOGLE_AUTH_URL}?${params}`, 302);
 }
@@ -98,7 +103,9 @@ async function handleCallback(request, env, url) {
   // עוגייה ניתנת תמיד. paid/demo נקבע בכל בקשה לפי status ב-DB.
   const cookie = await buildSessionCookie(email, env);
   const isPaid = row.status === 'active' && (!row.expires_at || row.expires_at >= nowSec);
-  const dest = isPaid ? '/' : '/?login=demo';
+  const stateNext = url.searchParams.get('state');
+  const safeNext = stateNext && stateNext.startsWith('/') && !stateNext.startsWith('//') ? stateNext : null;
+  const dest = safeNext || (isPaid ? '/' : '/?login=demo');
   return new Response(null, {
     status: 302,
     headers: {

@@ -22,6 +22,10 @@ import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
 import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesForDemoWatermarks } from "./demo_mode.js";
 import { installAuthUi } from "./auth_ui.js";
+import { installHeaderPremiumIcons } from "./premium/header_icons.js";
+import { maybeAutoOpenFromUrl } from "./premium/premium_page.js";
+import { startTimeWarningEngine } from "./premium/time_warning.js";
+import "./premium/premium_styles.css";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
@@ -41,6 +45,7 @@ import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js"
 import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
 import { openWordExtractor, setupWordExtractor } from "./word_extractor/word_extractor.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
+import { tryUseTool } from "./premium/daily_quota_gate.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
@@ -50,6 +55,9 @@ import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
+installHeaderPremiumIcons();
+maybeAutoOpenFromUrl();
+startTimeWarningEngine();
 installConsoleGuard();
 installTalmudDebugApi();
 setupFindReplace();
@@ -1661,14 +1669,17 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "word-import": {
+      if (!tryUseTool("word-import", "ייבוא מוורד")) break;
       importWord(paneManager, rerenderPages);
       break;
     }
     case "word-import-streams": {
+      if (!tryUseTool("word-extractor", "פירוק מסמך וורד לזרמים")) break;
       openWordExtractor(paneManager, rerenderPages);
       break;
     }
     case "word-export": {
+      if (!tryUseTool("word-export", "ייצוא לוורד")) break;
       exportWord(paneManager);
       break;
     }
