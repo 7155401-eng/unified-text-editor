@@ -672,6 +672,11 @@ function setupRibbonTabs() {
   // וקבוצות קריטיות נעלמו מ"בית". כל הקבוצות שצריכות להיות זמינות בלשונית
   // הראשית — כיוון, גופן, גודל-גלובלי, גודל-טקסט-נבחר, כללי, ניהול —
   // ממופות עכשיו ל-"home" כדי שיופיעו בלשונית "בית" כברירת מחדל.
+  // משה 2026-05-10: קבוצת "זרמים" (data-cmd=stream-01..08) הוסרה מ-HTML.
+  // הייתה כפלות לוגית עם "סמן בחירה כזרם" ב-.source-stream-toolbar — שתיהן
+  // הריצו toggleStream על אותו עורך, אבל הקבוצה הזו איבדה את הסימון בלחיצה.
+  // 07/08 ו-× הועברו ל-.source-stream-toolbar שם הם עובדים אמין.
+  // האינדקסים זזו ב-1: 19→18, 20→19, 21→20, 22→21.
   const groupTabs = [
     "home",   //  0 טקסט
     "home",   //  1 צבע
@@ -691,11 +696,10 @@ function setupRibbonTabs() {
     "home",   // 15 גודל טקסט נבחר
     "home",   // 16 כללי (theme + lang)
     "home",   // 17 ניהול (clear/undo/redo)
-    "streams", // 18 זרמים
-    "streams", // 19 ניווט סימנים
-    "advanced", // 20 זיהוי אוטומטי
-    "advanced", // 21 Word
-    "file",    // 22 פעולות
+    "streams", // 18 ניווט סימנים
+    "advanced", // 19 זיהוי אוטומטי
+    "advanced", // 20 Word
+    "file",    // 21 פעולות
   ];
   // משה 2026-05-07: כיבוד ribbon-tab שנקבע ידנית ב-HTML כעוקף עליון. כך
   // קבוצות חדשות שמתפצלות בעתיד יכולות להגדיר את עצמן ב-HTML ולא להישבר
@@ -1248,6 +1252,17 @@ document.querySelectorAll(".btn-stream").forEach((btn) => {
     activeChain()?.toggleStream(btn.dataset.stream).run();
   });
 });
+
+// משה 2026-05-10: כפתור × להסרת סימן הזרם מהטקסט הנבחר. הועבר מקבוצת
+// "זרמים" הישנה (data-cmd="stream-clear") שנמחקה — הוא יושב עכשיו
+// ב-.source-stream-toolbar עם אותה הגנת mousedown ככל הכפתורים שם.
+const btnStreamClear = document.getElementById("btn-stream-clear");
+if (btnStreamClear) {
+  btnStreamClear.addEventListener("mousedown", (e) => e.preventDefault());
+  btnStreamClear.addEventListener("click", () => {
+    activeChain()?.unsetStream().run();
+  });
+}
 
 const customStreamInput = document.getElementById("custom-stream-input");
 const btnCustomStream = document.getElementById("btn-custom-stream");
