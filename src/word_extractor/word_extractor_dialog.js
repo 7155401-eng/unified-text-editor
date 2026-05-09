@@ -420,6 +420,30 @@ async function onConfirm() {
       });
     }
     const result = await engine.docx_extract_simple(_state.zipBuf.slice(0), simpleSelected);
+    // משה 2026-05-09: החזרת תמיכת קבוצות סוגריים מותאמות (שהוסרה בטעות).
+    // לכל שורת bracket: חותכים מ-result.main את הטקסט שבין opener ל-closer
+    // ומעבירים אותו לזרם מתאים, במקום משאירים סמל בגוף.
+    if (_state.brackets && _state.brackets.length) {
+      for (const b of _state.brackets) {
+        if (!seriesToCode[b.series]) {
+          seriesToCode[b.series] = String(nextCode++).padStart(2, '0');
+        }
+        const sym = '@' + seriesToCode[b.series];
+        const collected = [];
+        const escO = (b.opener || '{').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escC = (b.closer || '}').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(escO + '\\s*([\\s\\S]*?)\\s*' + escC, 'g');
+        result.main = result.main.replace(re, (_m, inner) => {
+          collected.push(`${sym}${inner}`);
+          return sym;
+        });
+        if (collected.length) {
+          const existing = result.streams.find(([s]) => s === sym);
+          if (existing) existing[1] = existing[1] + '\n' + collected.join('\n');
+          else result.streams.push([sym, collected.join('\n')]);
+        }
+      }
+    }
     distributeToPanesSimple(result);
     setStatus('');
     closeModal();
