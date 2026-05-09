@@ -4,19 +4,58 @@
 // Memory rule (feedback_sefaria_tools_use_local_mirror): all Sefaria features
 // must read from this module, never from sefaria.org HTTP APIs.
 
+// Tanakh (~5 MB) and Mishnah (~3 MB) ship as one combined JSON each — single
+// HTTP request loads the whole corpus.
+//
+// Bavli (~29 MB combined) exceeds Cloudflare Workers Static Assets' 25 MiB
+// per-file limit. Instead it ships as one manifest plus 37 per-tractate files
+// under /data/sefaria/bavli/. The client fetches the manifest once, then all
+// tractates in parallel, and merges them into the same in-memory shape Tanakh
+// and Mishnah produce — so the rest of the search/render code is corpus-agnostic.
 const CORPORA = ["tanakh", "mishnah", "bavli"];
+const SPLIT_CORPORA = new Set(["bavli"]);
 const _loaded = new Map(); // name → { books: [...] }
 const _loading = new Map(); // name → Promise
 const _byEnglishTitle = new Map(); // englishTitle → { book, source }
+
+async function fetchJsonOrThrow(url) {
+  const r = await fetch(url, { credentials: "same-origin" });
+  if (!r.ok) throw new Error(`Failed to load ${url} (HTTP ${r.status})`);
+  return r.json();
+}
+
+async function loadSingleFileCorpus(name) {
+  const data = await fetchJsonOrThrow(`/data/sefaria/${name}.json`);
+  return data;
+}
+
+async function loadSplitCorpus(name) {
+  const manifest = await fetchJsonOrThrow(`/data/sefaria/${name}/manifest.json`);
+  if (!Array.isArray(manifest.books)) {
+    throw new Error(`Manifest for ${name} is missing books[]`);
+  }
+  const bookFiles = await Promise.all(
+    manifest.books.map((entry) =>
+      fetchJsonOrThrow(`/data/sefaria/${name}/${entry.slug}.json`)
+        .then((d) => d.book)
+    )
+  );
+  return {
+    version: manifest.version,
+    format: `${name}-v1`,
+    source: "Sefaria-Export GCS bucket (Hebrew, merged) — split per tractate",
+    books: bookFiles,
+  };
+}
 
 async function loadCorpus(name) {
   if (_loaded.has(name)) return _loaded.get(name);
   if (_loading.has(name)) return _loading.get(name);
   if (!CORPORA.includes(name)) throw new Error(`Unknown corpus: ${name}`);
   const p = (async () => {
-    const r = await fetch(`/data/sefaria/${name}.json`, { credentials: "same-origin" });
-    if (!r.ok) throw new Error(`Failed to load ${name}.json (HTTP ${r.status})`);
-    const data = await r.json();
+    const data = SPLIT_CORPORA.has(name)
+      ? await loadSplitCorpus(name)
+      : await loadSingleFileCorpus(name);
     _loaded.set(name, data);
     for (const book of data.books) {
       _byEnglishTitle.set(book.title, { book, source: name });
