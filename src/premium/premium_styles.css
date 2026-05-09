@@ -817,6 +817,118 @@
 .rt-prem-settings-host .ribbon-panel.ribbon-hidden { display: block !important; }
 .rt-prem-settings-host .settings-panel-wrap { display: block !important; }
 
+/* ============ מפתחות AI מרובי ספקים ============ */
+.ai-keys-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ai-key-row {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+.ai-key-label {
+  width: 150px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #475569;
+}
+.ai-key-input {
+  flex: 1;
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 12px;
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  min-width: 0;
+}
+.ai-key-toggle {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  flex-shrink: 0;
+}
+.ai-key-toggle:hover { background: #e2e8f0; }
+
+/* ============ סקציית פרטי חשבון בהגדרות ============ */
+.settings-premium-section {
+  /* יורש מ-.settings-section אבל מקבל מסגרת מודגשת */
+}
+.rt-prem-status-card {
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+  border: 1.5px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-top: 8px;
+}
+.rt-prem-status-card.rt-prem-status-active {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border-color: #6ee7b7;
+}
+.rt-prem-status-card.rt-prem-status-empty {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+.rt-prem-status-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(148,163,184,0.2);
+  font-size: 13.5px;
+}
+.rt-prem-status-line:last-of-type { border-bottom: 0; }
+.rt-prem-status-label { color: #475569; font-weight: 500; }
+.rt-prem-status-value { color: #0f172a; font-weight: 700; }
+.rt-prem-status-email { font-family: 'Courier New', Consolas, monospace; font-size: 12.5px; }
+.rt-prem-status-sub { font-weight: 500; color: #64748b; font-size: 12px; }
+.rt-prem-status-plan-subscription { color: #047857; }
+.rt-prem-status-plan-hours { color: #1e40af; }
+.rt-prem-status-plan-none { color: #b45309; }
+.rt-prem-status-help {
+  font-size: 12.5px;
+  color: #475569;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+.rt-prem-status-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.rt-prem-status-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+  transition: transform 0.12s, filter 0.12s;
+}
+.rt-prem-status-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.rt-prem-status-btn-primary {
+  background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+  color: #fff;
+}
+.rt-prem-status-btn-secondary {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
 /* Demo mode lock screen */
 .rt-prem-demo-lock {
   position: fixed;

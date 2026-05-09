@@ -26,6 +26,8 @@ import { installHeaderPremiumIcons } from "./premium/header_icons.js";
 import { maybeAutoOpenFromUrl } from "./premium/premium_page.js";
 import { startTimeWarningEngine } from "./premium/time_warning.js";
 import { installHeaderTimer } from "./premium/header_timer.js";
+import { setupAiKeysSettings, getActiveAiKey, getActiveAiProvider } from "./premium/ai_keys_settings.js";
+import { setupPremiumStatusSection } from "./premium/premium_status_section.js";
 import "./premium/premium_styles.css";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
@@ -65,20 +67,10 @@ installTalmudDebugApi();
 setupFindReplace();
 setupStreamRolesPicker();
 setTimeout(setupCssInjectPanel, 500);
-// Wire AI settings
-setTimeout(() => {
-  const prov = document.getElementById("settings-ai-provider");
-  const key = document.getElementById("settings-ai-apikey");
-  if (prov) {
-    prov.value = localStorage.getItem("ravtext.ai.provider") || "anthropic";
-    prov.addEventListener("change", () => localStorage.setItem("ravtext.ai.provider", prov.value));
-  }
-  if (key) {
-    key.value = localStorage.getItem("ravtext.ai.apiKey") || "";
-    key.addEventListener("change", () => localStorage.setItem("ravtext.ai.apiKey", key.value));
-    key.addEventListener("blur", () => localStorage.setItem("ravtext.ai.apiKey", key.value));
-  }
-}, 500);
+// Wire AI settings — multi-provider keys (משה 2026-05-09)
+setTimeout(setupAiKeysSettings, 500);
+// Premium status section in settings
+setTimeout(setupPremiumStatusSection, 600);
 // משה 2026-05-06: Checkbox "שאר הזרמים = משנ״ב" — מפעיל אוטומטית מצב Mishna wrap
 // וכותב את כל הזרמים שאינם תלמוד כרמות.
 function wireOtherAsMishna() {

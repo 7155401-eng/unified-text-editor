@@ -85,6 +85,9 @@ function openSettings() {
     panel.classList.add("rt-prem-settings-shown");
   }
 
+  // הודעה למודולים שמסך ההגדרות נפתח כדי שיוכלו לרענן
+  document.dispatchEvent(new CustomEvent("ravtext:settings-opened"));
+
   function close() {
     // החזרת התוכן למקום המקורי כדי לא לשבור את העץ
     if (panel && panelAnchor && panelAnchor.parentNode) {
@@ -193,12 +196,41 @@ export function installHeaderPremiumIcons() {
     }
   });
 
+  // משה 2026-05-09: היהלום נעלם רק למשתמשים עם מנוי תקופתי פעיל (subscription).
+  // משתמשי חבילת שעות / מקבלי מתנה / חינמיים — רואים את היהלום כדי שיוכלו להטעין.
+  // עד אז עשיתי שכולם רואים אותו, וזה הסתיר/שינה אותו לשגוי לקבוצות שאמורות
+  // עדיין להיתקל בקריאה לפעולה.
+  const hideForActiveSubscription = !!(auth.paid && auth.planType === "subscription");
+
+  if (hideForActiveSubscription) {
+    // אין יהלום למנוי פעיל. מציבים רק את הטיימר/מתנה/מפתח/אווטאר.
+    const avatarWrap1 = document.getElementById("profile-avatar-wrap");
+    const ref1 = avatarWrap1 || null;
+    if (ref1) {
+      actions.insertBefore(wrench, ref1);
+      actions.insertBefore(gift, ref1);
+    } else {
+      actions.appendChild(wrench);
+      actions.appendChild(gift);
+    }
+    if (avatarWrap1) {
+      const avatarBtn = avatarWrap1.querySelector(".profile-avatar");
+      if (avatarBtn && !avatarBtn.querySelector(".rt-prem-active-ribbon")) {
+        const ribbon = document.createElement("span");
+        ribbon.className = "rt-prem-active-ribbon";
+        ribbon.textContent = "מנוי";
+        avatarBtn.appendChild(ribbon);
+      }
+    }
+    return;
+  }
+
   // Premium diamond — יהלום מהבהב מתחלף צבעים
   const diamond = buildIconButton({
     id: "rt-prem-icon-diamond",
     cls: "rt-prem-icon-diamond" + (auth.paid ? " rt-prem-paid" : " rt-prem-shine"),
     title: auth.paid
-      ? "המנוי שלך פעיל. לחץ לניהול"
+      ? "החשבון שלך פעיל. לחץ להטענת זמן נוסף"
       : "שדרג לפרמיום — שימוש מלא ללא הגבלה",
     label: "פרמיום",
     html: `

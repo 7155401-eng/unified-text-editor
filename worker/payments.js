@@ -170,10 +170,17 @@ async function yaadCallback(request, env, url) {
 
   if (!ok) {
     await env.DB.prepare("UPDATE payment_intents SET status = 'failed' WHERE id = ?").bind(intent.id).run();
+    await env.DB.prepare("UPDATE users SET failed_charge_count = COALESCE(failed_charge_count,0) + 1 WHERE id = ?")
+      .bind(intent.user_id).run().catch(() => {});
     return Response.redirect(`${url.origin}/?premium=failed`, 302);
   }
 
-  await applySuccessfulPayment(env, intent, params.get('Id') || '');
+  // משה 2026-05-09: יעד שריג מחזירים בפרמטר `Token` או `J5Token` את ה-Authorization
+  // Token — מזהה ייחודי שמאפשר חיוב חוזר ללא שמירת פרטי כרטיס. שומרים אותו
+  // ב-users.yaad_token כדי לאפשר למנהל להריץ חיוב חוזר במקרה של כישלון.
+  const yaadToken = params.get('Token') || params.get('J5Token') || '';
+  const txnId = params.get('Id') || '';
+  await applySuccessfulPayment(env, intent, txnId, { yaadToken });
   return Response.redirect(`${url.origin}/?premium=success`, 302);
 }
 
@@ -277,7 +284,10 @@ async function paypalCallback(request, env, url) {
     }
     const cap = await captureRes.json();
     const captureId = cap?.purchase_units?.[0]?.payments?.captures?.[0]?.id || '';
-    await applySuccessfulPayment(env, intent, captureId);
+    // משה 2026-05-09: payer.payer_id הוא מזהה שמאפשר billing agreement עתידי
+    // (Vault) לחיוב חוזר בלי לשמור פרטי כרטיס.
+    const payerId = cap?.payer?.payer_id || '';
+    await applySuccessfulPayment(env, intent, captureId, { payerId });
     return Response.redirect(`${url.origin}/?premium=success`, 302);
   } catch {
     return Response.redirect(`${url.origin}/?premium=failed`, 302);
@@ -285,10 +295,22 @@ async function paypalCallback(request, env, url) {
 }
 
 // =============== Apply payment to user ===============
-async function applySuccessfulPayment(env, intent, externalTxnId) {
+async function applySuccessfulPayment(env, intent, externalTxnId, tokens = {}) {
   const nowSec = Math.floor(Date.now() / 1000);
   const user = await env.DB.prepare('SELECT id, status, expires_at, balance_seconds, plan_type FROM users WHERE id = ?').bind(intent.user_id).first();
   if (!user) return;
+
+  // משה 2026-05-09: שמירת טוקן הספק לחיוב חוזר עתידי (לא שומרים פרטי כרטיס).
+  if (tokens.yaadToken) {
+    await env.DB.prepare("UPDATE users SET yaad_token = ?, last_payment_provider = 'yaad' WHERE id = ?")
+      .bind(tokens.yaadToken, user.id).run().catch(() => {});
+  }
+  if (tokens.payerId) {
+    await env.DB.prepare("UPDATE users SET paypal_payer_id = ?, last_payment_provider = 'paypal' WHERE id = ?")
+      .bind(tokens.payerId, user.id).run().catch(() => {});
+  }
+  await env.DB.prepare("UPDATE users SET last_payment_at = ?, failed_charge_count = 0 WHERE id = ?")
+    .bind(nowSec, user.id).run().catch(() => {});
 
   if (intent.plan_code) {
     const plan = PLAN_DEFS[intent.plan_code];

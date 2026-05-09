@@ -32,6 +32,10 @@ export async function handleAdmin(request, env, url) {
     const id = path.split('/').slice(-2)[0];
     return adjustUserMinutes(request, env, Number(id));
   }
+  if (path.startsWith('/api/admin/users/') && path.endsWith('/recharge') && method === 'POST') {
+    const id = path.split('/').slice(-2)[0];
+    return rechargeUser(request, env, Number(id));
+  }
   if (path.startsWith('/api/admin/users/') && method === 'PATCH') {
     const id = path.split('/').pop();
     return updateUser(request, env, Number(id));
@@ -83,7 +87,8 @@ async function listUsers(request, env, url) {
 
   const rows = await env.DB.prepare(
     `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
-            balance_seconds, plan_type, plan_renew_at
+            balance_seconds, plan_type, plan_renew_at,
+            yaad_token, paypal_payer_id, last_payment_provider, last_payment_at, failed_charge_count
      FROM users ${whereSql} ${orderSql} LIMIT ? OFFSET ?`
   ).bind(...binds, limit, offset).all();
 
@@ -203,6 +208,45 @@ async function adjustUserMinutes(request, env, id) {
   ).bind(id).first();
 
   return Response.json({ ok: true, user: updated, deltaMinutes });
+}
+
+// משה 2026-05-09: חיוב חוזר ידני ע"י המנהל באמצעות טוקן ספק שמור.
+// אנחנו לא שומרים פרטי כרטיס; שומרים טוקן Authorization של יעד שריג / payer_id
+// של פייפאל. הקריאה הזאת מפעילה חיוב נוסף על אותו אמצעי תשלום בסכום שנקבע.
+//
+// בקשה: { amount: number (₪), planCode?: 'monthly'|'yearly', packCode?: 'h1'..'h20' }
+async function rechargeUser(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return new Response('Bad id', { status: 400 });
+  let body;
+  try { body = await request.json(); } catch { return new Response('Bad JSON', { status: 400 }); }
+  const amount = Number(body?.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return new Response('Bad amount', { status: 400 });
+
+  const user = await env.DB.prepare(
+    'SELECT id, email, yaad_token, paypal_payer_id, last_payment_provider FROM users WHERE id = ?'
+  ).bind(id).first();
+  if (!user) return new Response('Not found', { status: 404 });
+
+  const provider = user.last_payment_provider || (user.yaad_token ? 'yaad' : (user.paypal_payer_id ? 'paypal' : null));
+  if (!provider) {
+    return Response.json({ error: 'אין טוקן תשלום שמור עבור משתמש זה. הוא עוד לא ביצע תשלום מוצלח.' }, { status: 400 });
+  }
+
+  // הערה חשובה: הקריאה הזאת רק מפיקה לוג ומציינת שיש לבצע ניסיון חוזר.
+  // ביצוע חיוב חוזר אמיתי דורש קריאת API ייעודית של יעד שריג (J5Charge) או
+  // PayPal (Reference Transaction / Subscription) — שדורשת secrets שעדיין
+  // לא מוגדרים בענף הזה. כשהם יוגדרו, נחבר את הקריאה.
+  const nowSec = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    'INSERT INTO payments (user_id, provider, amount, plan_code, pack_code, txn_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, provider, amount, body?.planCode || null, body?.packCode || null, 'admin_recharge_request', nowSec).run().catch(() => {});
+
+  return Response.json({
+    ok: true,
+    queued: true,
+    provider,
+    note: 'בקשת חיוב חוזר נרשמה. ביצוע אוטומטי דורש secrets של הספק (יוגדרו בנפרד).',
+  });
 }
 
 async function deleteUser(request, env, id, currentAdminId) {
