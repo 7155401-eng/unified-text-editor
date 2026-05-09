@@ -581,6 +581,10 @@ export function wireTorahTools(paneManager) {
   // and 📜 הכנס פסוק. The fetch button drives off the inputs directly (it
   // inserts the chosen ref's verse text into the editor) so it belongs here,
   // not with the selection-aware action buttons below.
+  const inputsHint = document.createElement("span");
+  inputsHint.className = "torah-group-hint";
+  inputsHint.textContent = "בחר מקור להכנסה לטקסט:";
+  groupVerseInputs.appendChild(inputsHint);
   groupVerseInputs.appendChild(labelBook);
   groupVerseInputs.appendChild(bookSel);
   groupVerseInputs.appendChild(chapInput);
@@ -591,6 +595,10 @@ export function wireTorahTools(paneManager) {
 
   // Actions group: the four buttons that operate on the selected text using
   // auto-detect across the local mirror (Tanakh + Mishnah + Bavli) + status.
+  const actionsHint = document.createElement("span");
+  actionsHint.className = "torah-group-hint";
+  actionsHint.textContent = "עובד על טקסט מסומן — סמן 2 מילים או יותר:";
+  groupVerseActions.appendChild(actionsHint);
   groupVerseActions.appendChild(niqqudActionBtn);
   groupVerseActions.appendChild(sourceActionBtn);
   groupVerseActions.appendChild(bothActionBtn);

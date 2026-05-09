@@ -2710,6 +2710,19 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   gap: 5px;
 }
 .torah-toolbar .torah-verse-actions-group::before { color: #2c5aa0; }
+
+/* Inline hint at the start of each Sefaria group — small grey italic text
+   that explains what the group is for ("בחר מקור להכנסה לטקסט:" /
+   "עובד על טקסט מסומן — סמן 2 מילים או יותר:"). Sits next to the controls
+   so the user reads it at the same eye level as the buttons. */
+.torah-toolbar .torah-group-hint {
+  font-size: 11px;
+  color: #5a6470;
+  font-style: italic;
+  align-self: center;
+  margin-inline-end: 6px;
+  white-space: nowrap;
+}
 .torah-toolbar .sep {
   width: 1px;
   height: 30px;
