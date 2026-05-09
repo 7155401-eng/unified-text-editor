@@ -943,18 +943,27 @@ export async function buildPages(container, paragraphs, config) {
       // משה 2026-05-09: MIN_SPLIT=8 — מאפשר פיצולים אגרסיביים של פסקאות עם הרבה
       // הערות. גבוה מדי = pendings שלא מצליחים להתפצל; נמוך מדי = רעש.
       const MIN_SPLIT = 8;
-      // עזרי-עוגן: anchor=0 ברירת-מחדל אם חסר; פיצול לפי תפיסת המנוע הרגיל.
+      // משה 2026-05-09: פיצול הערות לפי anchor + חלוקה פרופורציונלית של חסרות-anchor.
+      // הערות עם anchor (number) מתחלקות לפי המיקום בטקסט.
+      // הערות חסרות-anchor (undefined/null) מתחלקות לפי יחס prefix/total — אחרת
+      // הן כולן מצטברות לחצי ראשון וגורמות לחריגה שמונעת פיצול נוסף.
       const allNotes = target?.notes || [];
-      const notesBeforeAnchor = (anchor) => allNotes.filter(n => {
-        const a = typeof n.anchor === 'number' ? n.anchor : 0;
-        return a < anchor;
-      });
-      const notesFromAnchor = (anchor) => allNotes
-        .filter(n => {
-          const a = typeof n.anchor === 'number' ? n.anchor : 0;
-          return a >= anchor;
-        })
-        .map(n => ({ ...n, anchor: (typeof n.anchor === 'number' ? n.anchor : 0) - anchor }));
+      const anchored = allNotes.filter(n => typeof n.anchor === 'number');
+      const anchorless = allNotes.filter(n => typeof n.anchor !== 'number');
+      const notesBeforeAnchor = (len) => {
+        const ratio = fullText.length > 0 ? len / fullText.length : 0;
+        const anchorlessShare = Math.round(anchorless.length * ratio);
+        const anchoredBefore = anchored.filter(n => n.anchor < len);
+        return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore];
+      };
+      const notesFromAnchor = (len) => {
+        const ratio = fullText.length > 0 ? len / fullText.length : 0;
+        const anchorlessShare = Math.round(anchorless.length * ratio);
+        const anchoredFrom = anchored
+          .filter(n => n.anchor >= len)
+          .map(n => ({ ...n, anchor: n.anchor - len }));
+        return [...anchorless.slice(anchorlessShare), ...anchoredFrom];
+      };
       if (fullText.length >= MIN_SPLIT) {
         const baseSlice = getSlice(bestN_clean);
         // משה 2026-05-09: tryPrefix מתעלם מ-carryOver — מחפשים את ה-prefix המקסימלי
