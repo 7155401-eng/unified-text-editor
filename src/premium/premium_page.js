@@ -140,7 +140,52 @@ function buildHourCard(pack) {
   return card;
 }
 
-function buildOverlay() {
+// משה 2026-05-10: חבילת בדיקה פרטית — נטענת רק כש-URL מכיל ?pkg=<token>.
+// שאר המשתמשים לא רואים אותה. הפרטים נשלפים מהשרת לפי הטוקן.
+async function fetchCustomPackage(token) {
+  if (!token) return null;
+  try {
+    const res = await fetch(`/api/payments/package/${encodeURIComponent(token)}`, { credentials: "same-origin" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+function buildCustomPackageCard(pkg) {
+  const card = el("div", { cls: "rt-prem-plan rt-prem-plan-hot rt-prem-plan-custom" });
+  card.appendChild(el("div", { cls: "rt-prem-badge", text: "חבילת בדיקה ייעודית" }));
+  card.appendChild(el("div", { cls: "rt-prem-plan-title", text: pkg.label }));
+  const priceWrap = el("div", { cls: "rt-prem-plan-price" });
+  priceWrap.appendChild(el("span", { cls: "rt-prem-currency", text: "₪" }));
+  priceWrap.appendChild(el("span", { cls: "rt-prem-amount", text: String(pkg.amount) }));
+  card.appendChild(priceWrap);
+  let durText = "";
+  if (pkg.days != null && pkg.days > 0) durText = `${pkg.days} ימים שימוש מלא`;
+  else if (pkg.hours != null && pkg.hours > 0) durText = `${pkg.hours} שעות שימוש מלא`;
+  if (durText) card.appendChild(el("div", { cls: "rt-prem-save-line", text: durText }));
+
+  const buttons = el("div", { cls: "rt-prem-buttons" });
+  const yaadBtn = el("button", {
+    cls: "rt-prem-btn rt-prem-btn-yaad",
+    attrs: { type: "button", "data-pay": "yaad", "data-pkg-token": pkg.token, "data-amount": String(pkg.amount) },
+  });
+  yaadBtn.innerHTML = `<span class="rt-prem-btn-icon">💳</span><span>תשלום באשראי — ${pkg.amount} ₪</span>`;
+  buttons.appendChild(yaadBtn);
+
+  if (pkg.amount >= 30) {
+    const paypalBtn = el("button", {
+      cls: "rt-prem-btn rt-prem-btn-paypal",
+      attrs: { type: "button", "data-pay": "paypal", "data-pkg-token": pkg.token, "data-amount": String(pkg.amount) },
+    });
+    paypalBtn.innerHTML = `<span class="rt-prem-btn-icon">PayPal</span><span>תשלום בפייפאל</span>`;
+    buttons.appendChild(paypalBtn);
+  }
+  card.appendChild(buttons);
+  return card;
+}
+
+function buildOverlay(opts = {}) {
+  const customPkg = opts.customPackage || null;
   const overlay = el("div", { id: OVERLAY_ID, cls: "rt-prem-overlay", attrs: { dir: "rtl", role: "dialog", "aria-modal": "true", "aria-labelledby": "rt-prem-h" } });
   overlay.tabIndex = -1;
 
@@ -161,19 +206,27 @@ function buildOverlay() {
   hero.appendChild(trustRow);
   sheet.appendChild(hero);
 
-  // Plans
-  const plansWrap = el("div", { cls: "rt-prem-plans-wrap" });
-  plansWrap.appendChild(buildPlanCard(PLANS.monthly));
-  plansWrap.appendChild(buildPlanCard(PLANS.yearly));
-  sheet.appendChild(plansWrap);
+  if (customPkg) {
+    // משה 2026-05-10: מוד "חבילת בדיקה" — מציגים רק את החבילה הייעודית
+    // ולא את התוכניות הציבוריות. שאר העמוד נשאר זהה (אמון, נימוקים, פוטר).
+    const customWrap = el("div", { cls: "rt-prem-plans-wrap rt-prem-plans-custom" });
+    customWrap.appendChild(buildCustomPackageCard(customPkg));
+    sheet.appendChild(customWrap);
+  } else {
+    // Plans
+    const plansWrap = el("div", { cls: "rt-prem-plans-wrap" });
+    plansWrap.appendChild(buildPlanCard(PLANS.monthly));
+    plansWrap.appendChild(buildPlanCard(PLANS.yearly));
+    sheet.appendChild(plansWrap);
 
-  // Hours section
-  const hourTitle = el("div", { cls: "rt-prem-hour-section-title", text: "לא מוכנים למנוי? קונים שעות עבודה בודדות:" });
-  sheet.appendChild(hourTitle);
+    // Hours section
+    const hourTitle = el("div", { cls: "rt-prem-hour-section-title", text: "לא מוכנים למנוי? קונים שעות עבודה בודדות:" });
+    sheet.appendChild(hourTitle);
 
-  const hourGrid = el("div", { cls: "rt-prem-hour-grid" });
-  for (const p of HOUR_PACKS) hourGrid.appendChild(buildHourCard(p));
-  sheet.appendChild(hourGrid);
+    const hourGrid = el("div", { cls: "rt-prem-hour-grid" });
+    for (const p of HOUR_PACKS) hourGrid.appendChild(buildHourCard(p));
+    sheet.appendChild(hourGrid);
+  }
 
   // Why section
   const whySection = el("div", { cls: "rt-prem-why-section" });
@@ -222,17 +275,18 @@ function wireButtons(overlay) {
     const provider = btn.getAttribute("data-pay");
     const planCode = btn.getAttribute("data-plan") || null;
     const packCode = btn.getAttribute("data-pack") || null;
-    const amount = parseInt(btn.getAttribute("data-amount") || "0", 10);
+    const pkgToken = btn.getAttribute("data-pkg-token") || null;
+    const amount = Number(btn.getAttribute("data-amount") || "0");
     if (!amount) return;
 
     async function attemptCheckout() {
       if (provider === "yaad") {
-        await startCheckoutYaad({ planCode, packCode, amount });
+        await startCheckoutYaad({ planCode, packCode, pkgToken, amount });
       } else if (provider === "paypal") {
         if (amount < 30) {
           throw new Error("פייפאל זמין מ-30 ₪ ומעלה. בחרו חבילה גדולה יותר או תשלום באשראי.");
         }
-        await startCheckoutPaypal({ planCode, packCode, amount });
+        await startCheckoutPaypal({ planCode, packCode, pkgToken, amount });
       }
     }
 
@@ -342,10 +396,17 @@ function openPhoneRequiredModal() {
   });
 }
 
-export function openPremiumPage() {
+export async function openPremiumPage(opts = {}) {
   if (typeof document === "undefined") return;
   closePremiumPage();
-  const { overlay, closeBtn } = buildOverlay();
+  let customPackage = null;
+  if (opts.pkgToken) {
+    customPackage = await fetchCustomPackage(opts.pkgToken);
+    if (!customPackage) {
+      alert("הקישור לחבילה לא תקין או שפג תוקפה. פותחים את העמוד הרגיל.");
+    }
+  }
+  const { overlay, closeBtn } = buildOverlay({ customPackage });
   document.body.appendChild(overlay);
   document.documentElement.classList.add("rt-prem-locked");
 
@@ -361,7 +422,6 @@ export function openPremiumPage() {
     }
   });
   wireButtons(overlay);
-  // focus management
   setTimeout(() => overlay.focus(), 30);
 }
 
@@ -371,13 +431,18 @@ export function closePremiumPage() {
   document.documentElement.classList.remove("rt-prem-locked");
 }
 
-// Auto-open if ?premium=1 in URL
+// Auto-open if ?premium=1 in URL. אם יש גם ?pkg=<token> — פותחים במצב חבילה ייעודית.
 export function maybeAutoOpenFromUrl() {
   if (typeof window === "undefined") return;
   try {
     const p = new URLSearchParams(window.location.search);
+    const pkgToken = p.get("pkg");
+    if (pkgToken) {
+      setTimeout(() => openPremiumPage({ pkgToken }), 200);
+      return;
+    }
     if (p.get("premium") === "1" || p.get("upgrade") === "1") {
-      setTimeout(openPremiumPage, 200);
+      setTimeout(() => openPremiumPage(), 200);
     }
   } catch {}
 }

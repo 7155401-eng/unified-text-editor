@@ -521,6 +521,8 @@
           <button class="tab ${state.tab === 'bugs' ? 'active' : ''}" data-tab="bugs">באגים ועדכונים</button>
           <button class="tab ${state.tab === 'contact' ? 'active' : ''}" data-tab="contact">פניות${unread ? ` <span class="tab-count unread">${unread}</span>` : ''}</button>
           <button class="tab ${state.tab === 'usage' ? 'active' : ''}" data-tab="usage">שימושים</button>
+          <button class="tab ${state.tab === 'paymentConfig' ? 'active' : ''}" data-tab="paymentConfig">חיבור תשלומים</button>
+          <button class="tab ${state.tab === 'testPackages' ? 'active' : ''}" data-tab="testPackages">חבילות בדיקה</button>
         </div>
         <div class="container" id="tab-body"></div>
       `;
@@ -538,6 +540,8 @@
         else if (name === 'contact') await loadContacts();
         else if (name === 'usage') await loadUsage();
         else if (name === 'users') await Promise.all([loadStats(), loadUsers()]);
+        else if (name === 'paymentConfig') await loadPaymentConfig();
+        else if (name === 'testPackages') await loadTestPackages();
       } catch (_) { /* api כבר הציג toast */ }
       render();
     }
@@ -547,6 +551,8 @@
       if (state.tab === 'bugs') return renderBugsTab();
       if (state.tab === 'contact') return renderContactTab();
       if (state.tab === 'usage') return renderUsageTab();
+      if (state.tab === 'paymentConfig') return renderPaymentConfigTab();
+      if (state.tab === 'testPackages') return renderTestPackagesTab();
     }
 
     function renderUsersTab() {
@@ -1355,6 +1361,163 @@
     document.getElementById('modal').addEventListener('click', (e) => {
       if (e.target.id === 'modal') closeModal();
     });
+
+    /* ============ חיבור תשלומים ============ */
+    async function loadPaymentConfig() {
+      const data = await api('/api/admin/payment-config');
+      state.paymentConfig = data.status || {};
+    }
+
+    function renderPaymentConfigTab() {
+      const body = document.getElementById('tab-body');
+      const cfg = state.paymentConfig || {};
+      const row = (key, title, hint) => {
+        const c = cfg[key] || {};
+        const status = c.configured ? `<span style="color:#16a34a">✓ מוגדר (${c.masked || ''})</span>` : `<span style="color:#dc2626">✗ לא מוגדר</span>`;
+        return `<div class="pc-row"><label>${title}<small>${hint||''}</small></label><div class="pc-input"><input type="text" name="${key}" placeholder="${c.configured ? 'השאר ריק כדי לא לשנות' : ''}" autocomplete="off" /></div><div class="pc-status">${status}</div></div>`;
+      };
+      body.innerHTML = `
+        <div class="panel">
+          <h2>חיבור יעד שריג + פייפאל</h2>
+          <p>כל ערך נשמר בענן ברגע השמירה. שדה ריק לא משנה את הערך הקיים.</p>
+          <p>פייפאל מאומת מיד מול שרת פייפאל החי לפני שמירה.</p>
+          <h3 style="margin-top:24px">יעד שריג</h3>
+          <form id="pc-form-yaad" class="pc-form">
+            ${row('YAAD_TERMINAL', 'מספר מסוף', 'לדוגמה 5601118018')}
+            ${row('YAAD_API_KEY', 'מפתח API', 'מסך הגדרות יעד שריג → אימות → API Key')}
+            ${row('YAAD_BASE_URL', 'כתובת שרת יעד', 'ברירת מחדל: https://icom.yaad.net/p/')}
+            <button type="submit">שמור הגדרות יעד שריג</button>
+          </form>
+          <h3 style="margin-top:32px">פייפאל (חי בלבד)</h3>
+          <p style="background:#fef9c3;padding:8px;border-radius:6px">
+            כדי לקבל את שני השדות הבאים: היכנס ל-<a href="https://developer.paypal.com/dashboard/applications/live" target="_blank" rel="noopener">developer.paypal.com</a>, צור App במצב Live, והעתק Client ID ו-Secret.
+          </p>
+          <form id="pc-form-paypal" class="pc-form">
+            ${row('PAYPAL_CLIENT_ID', 'Client ID', 'מזהה לקוח של פייפאל')}
+            ${row('PAYPAL_SECRET', 'Secret', 'הסוד של פייפאל')}
+            ${row('PAYPAL_BASE_URL', 'כתובת שרת פייפאל', 'ברירת מחדל: https://api-m.paypal.com')}
+            <button type="submit">שמור הגדרות פייפאל ובדוק חיבור</button>
+          </form>
+        </div>
+        <style>
+          .pc-form{display:flex;flex-direction:column;gap:12px;max-width:720px}
+          .pc-row{display:grid;grid-template-columns:200px 1fr 200px;gap:12px;align-items:center}
+          .pc-row label{display:flex;flex-direction:column;font-weight:600}
+          .pc-row label small{font-weight:400;color:#666;font-size:11px;margin-top:2px}
+          .pc-row input{width:100%;padding:6px 10px;border:1px solid #ccc;border-radius:6px;font:inherit}
+          .pc-row .pc-status{font-size:12px;text-align:start}
+          .pc-form button{align-self:flex-start;padding:8px 16px;background:#5C64FF;color:white;border:none;border-radius:6px;cursor:pointer;font:inherit}
+          .pc-form button:hover{background:#4a52d6}
+          .pc-form button:disabled{opacity:.5;cursor:wait}
+        </style>
+      `;
+      document.getElementById('pc-form-yaad').addEventListener('submit', (ev) => savePaymentConfigForm(ev, 'yaad'));
+      document.getElementById('pc-form-paypal').addEventListener('submit', (ev) => savePaymentConfigForm(ev, 'paypal'));
+    }
+
+    async function savePaymentConfigForm(ev, kind) {
+      ev.preventDefault();
+      const form = ev.target;
+      const btn = form.querySelector('button[type="submit"]');
+      const inputs = form.querySelectorAll('input');
+      const body = {};
+      inputs.forEach((i) => { if (i.value.trim()) body[i.name] = i.value.trim(); });
+      if (Object.keys(body).length === 0) { toast('לא הוזנו שינויים', 'warn'); return; }
+      btn.disabled = true; btn.textContent = kind === 'paypal' ? 'בודק חיבור...' : 'שומר...';
+      try {
+        const r = await api('/api/admin/payment-config', { method: 'POST', body: JSON.stringify(body) });
+        toast(kind === 'paypal' ? 'פייפאל מחובר ✓' : 'יעד שריג נשמר ✓');
+        await loadPaymentConfig();
+        render();
+      } catch (e) {
+        // api כבר הציג toast
+      } finally {
+        btn.disabled = false;
+        btn.textContent = kind === 'paypal' ? 'שמור הגדרות פייפאל ובדוק חיבור' : 'שמור הגדרות יעד שריג';
+      }
+    }
+
+    /* ============ חבילות בדיקה ============ */
+    async function loadTestPackages() {
+      const data = await api('/api/admin/test-packages');
+      state.testPackages = data.packages || [];
+    }
+
+    function renderTestPackagesTab() {
+      const body = document.getElementById('tab-body');
+      const pkgs = (state.testPackages || []).filter(p => p.active);
+      const origin = window.location.origin;
+      const rows = pkgs.length === 0 ? `<tr><td colspan="6" style="text-align:center;color:#888;padding:24px">אין חבילות פעילות</td></tr>` :
+        pkgs.map(p => `
+          <tr>
+            <td>${escapeHtml(p.label)}</td>
+            <td>${p.amount} ₪</td>
+            <td>${p.days != null ? p.days + ' ימים' : (p.hours != null ? p.hours + ' שעות' : '—')}</td>
+            <td>${p.used_count}${p.max_uses ? '/' + p.max_uses : ''}</td>
+            <td><a href="${origin}/?premium=1&pkg=${p.token}" target="_blank">העתק קישור</a></td>
+            <td><button class="del-pkg" data-id="${p.id}">בטל</button></td>
+          </tr>`).join('');
+      body.innerHTML = `
+        <div class="panel">
+          <h2>חבילות בדיקה</h2>
+          <p>צור חבילה במחיר נמוך (למשל ₪1) שתופיע רק לאנשים שיקבלו ממך את הקישור הייעודי. שאר המשתמשים לא יראו אותה.</p>
+          <form id="tp-form" class="pc-form">
+            <div class="pc-row"><label>שם<small>למשל: בדיקה אישית למשה</small></label><div class="pc-input"><input type="text" name="label" required /></div><div></div></div>
+            <div class="pc-row"><label>סכום בש"ח</label><div class="pc-input"><input type="number" step="0.01" min="0.5" name="amount" required value="1" /></div><div></div></div>
+            <div class="pc-row"><label>שעות<small>השאר ריק אם זה מנוי לימים</small></label><div class="pc-input"><input type="number" step="0.1" min="0" name="hours" /></div><div></div></div>
+            <div class="pc-row"><label>ימים<small>השאר ריק אם זה חבילת שעות</small></label><div class="pc-input"><input type="number" step="1" min="0" name="days" /></div><div></div></div>
+            <div class="pc-row"><label>הגבלת מספר שימושים<small>אופציונלי</small></label><div class="pc-input"><input type="number" step="1" min="1" name="maxUses" /></div><div></div></div>
+            <button type="submit">צור חבילה וקישור</button>
+          </form>
+          <h3 style="margin-top:24px">חבילות קיימות</h3>
+          <table class="users">
+            <thead><tr><th>שם</th><th>סכום</th><th>זמן</th><th>שימושים</th><th>קישור</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <style>
+          .del-pkg{background:#dc2626;color:white;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font:inherit}
+        </style>
+      `;
+      document.getElementById('tp-form').addEventListener('submit', createTestPackage);
+      document.querySelectorAll('.del-pkg').forEach(b => b.addEventListener('click', () => deleteTestPackage(Number(b.dataset.id))));
+    }
+
+    async function createTestPackage(ev) {
+      ev.preventDefault();
+      const form = ev.target;
+      const fd = new FormData(form);
+      const body = {
+        label: fd.get('label'),
+        amount: Number(fd.get('amount')),
+        hours: fd.get('hours') ? Number(fd.get('hours')) : null,
+        days: fd.get('days') ? Number(fd.get('days')) : null,
+        maxUses: fd.get('maxUses') ? Number(fd.get('maxUses')) : null,
+      };
+      try {
+        const r = await api('/api/admin/test-packages', { method: 'POST', body: JSON.stringify(body) });
+        const url = `${window.location.origin}/?premium=1&pkg=${r.token}`;
+        await navigator.clipboard.writeText(url).catch(() => {});
+        toast('חבילה נוצרה. הקישור הועתק ללוח.');
+        form.reset();
+        await loadTestPackages();
+        render();
+      } catch (_) { /* toast כבר הוצג */ }
+    }
+
+    async function deleteTestPackage(id) {
+      if (!confirm('לבטל את החבילה? לא ניתן יהיה לקנות אותה יותר.')) return;
+      try {
+        await api(`/api/admin/test-packages/${id}`, { method: 'DELETE' });
+        toast('החבילה בוטלה');
+        await loadTestPackages();
+        render();
+      } catch (_) {}
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
 
     load().catch(err => console.error(err));
   </script>

@@ -37,17 +37,17 @@ function requireLogin() {
   }
 }
 
-export async function startCheckoutYaad({ planCode, packCode, amount }) {
+export async function startCheckoutYaad({ planCode, packCode, pkgToken, amount }) {
   requireLogin();
-  const data = await postJson("/api/payments/yaad/start", { planCode, packCode, amount });
+  const data = await postJson("/api/payments/yaad/start", { planCode, packCode, pkgToken, amount });
   if (!data || !data.redirectUrl) throw new Error("השרת לא החזיר כתובת תשלום");
   window.location.href = data.redirectUrl;
 }
 
-export async function startCheckoutPaypal({ planCode, packCode, amount }) {
+export async function startCheckoutPaypal({ planCode, packCode, pkgToken, amount }) {
   requireLogin();
   if (amount < 30) throw new Error("פייפאל זמין מ-30 ₪ ומעלה");
-  const data = await postJson("/api/payments/paypal/start", { planCode, packCode, amount });
+  const data = await postJson("/api/payments/paypal/start", { planCode, packCode, pkgToken, amount });
   if (!data || !data.redirectUrl) throw new Error("השרת לא החזיר כתובת תשלום");
   window.location.href = data.redirectUrl;
 }
