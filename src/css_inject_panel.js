@@ -533,10 +533,52 @@ function buildPanel() {
       clone.querySelectorAll("[style]").forEach(el => el.removeAttribute("style"));
       htmlSnippet += `\n<!-- Page ${i + 1} -->\n` + clone.outerHTML.slice(0, 4000);
     });
+    const v9KnowledgeBase = `
+== מבנה הקלאסים והקוד של V9 (מנוע פריסת וילנא) ==
+
+מבנה DOM:
+- .pages-container — מיכל כל העמודים. dir=rtl. CSS variables --ravtext-page-width (380px ברירת מחדל), --ravtext-page-height (537px), --ravtext-page-main-size (12px), --ravtext-page-stream-size (10px), --ravtext-page-font-family.
+- .page.v9-page — עמוד יחיד. position:relative, overflow:hidden, רוחב/גובה קבועים, padding=12px. dataset: data-page-index="0", data-realized="1".
+- .v9-line — שורת טקסט בודדת. position:absolute. inline style: left, top, width, height, font-size, line-height, font-family. עם class "justify" אם השורה מוצדקת (לא אחרונה בפסקה).
+- .v9-stream-title — כותרת של זרם (למשל "מגן אברהם"). position:absolute. font-weight:bold, border-bottom. עם class stream-color-N (1-6) לרקע צבעוני: 1=תכלת, 2=ירוק, 3=סגול, 4=צהוב, 5=ורוד, 6=כתום.
+
+מבנה הפריסה (Talmud V9):
+- שני זרמי "sides" בראש העמוד: ימני left=194 width=174, שמאלי left=12 width=174 (פיזיות RTL: ימין=high left).
+- כתר (crown): לפעמים מופיע בראש לפני הראשי, 4 שורות ברירת מחדל (cfg.crownLines).
+- ראשי: מתחת לסיידים. מתפרס בפסים (strips) עם רוחבים שונים לפי בר־מצרא: כשפרשן מסתיים, הראשי מתפשט לתוך השטח שלו. רוחב strip 1 = mainWidth (~149px), strip 2 = רחב יותר (~253px), strip 3 = הכי רחב (~356px).
+- footer streams: מתחת לראשי, full-width 356px, font-size 10px. כל זרם מקבל כותרת (.v9-stream-title stream-color-N).
+
+מבנה הקלט והנתונים:
+- paragraphs[] = רשימת פסקאות. כל פסקה: { mainText: string, notes: [{stream, text, anchor, num}] }.
+- notes[].anchor = אופסט תווים ב-mainText בו מופיע ה-marker של ההערה (1-based offset של מילה).
+- notes[].stream = קוד זרם דו-ספרתי "01"-"99": 01=מגן אברהם, 02=משנה ברורה, 03=ביאור הלכה, 04=טורי זהב, 05=כף החיים.
+- talmudStreams config = מערך קודי זרמים שהמשתמש בחר; הראשון=ימני, השני=שמאלי, השאר=footer.
+
+מנגנון פיצול ועיגון (V9 internals):
+- buildPages(container, paragraphs, config) — כניסה ראשית, אסינכרוני.
+- aggregateForV9(slice, ...) — בונה תוכן עמוד מפסקאות + carryOver.
+- buildPagePlan / buildSinglePage — מתכנן ומרנדר עמוד יחיד.
+- pendingParagraph — המשך פסקה שפוצלה (mainText חתוך, notes חתוכים לפי anchor).
+- carryOver — overflow.streams שעולה מעמוד אחד לבא (text per streamId).
+- _drainMarker — pendingParagraph ריק שמייצג "המשך הערות הפסקה הקודמת" — מונע מ-carry לזרום לעמוד עם פסקה חדשה.
+- fitsClean(tp) — בודק שהעמוד לא חורג ושום הערה לא נחתכה.
+- אנקור-ספליט — כשפסקה מפוצלת, הערות עם anchor < נקודת-הפיצול נשארות בחצי הראשון; אנקור >= נקודת-הפיצול עוברים לחצי השני (אנקור מתעדכן ב-minus).
+
+localStorage keys:
+- ravtext.talmudLayout = "0"/"1" — האם מצב גפ"ת פעיל
+- ravtext.talmudLayout.streams = "01,02,03" — קודי זרמים
+- ravtext.vilnaV9Beta = "0"/"1" — V9 (admin only)
+- ravtext.talmudLayout.crownLines = number — שורות בכתר
+- ravtext.talmudLayout.mainWidth = percent — רוחב ראשי
+- ravtext.talmudLayout.sideMode = "auto"/"right-left"/"inner-outer"
+
+נתיב הקובץ: src/vilna_v9.js (~1100 שורות), src/vilna_v9_apply.js (gateway), src/talmud_controls.js (UI wiring).
+`;
     const fullPrompt =
       `אני משתמש במערכת "רב טקסט" עם פריסת תלמוד. הנה נתוני העיצוב הנוכחי:\n\n` +
       `\`\`\`json\n${json}\n\`\`\`\n\n` +
-      `הנה דוגמא של ה-HTML של העמודים:\n\`\`\`html\n${htmlSnippet}\n\`\`\`\n\n` +
+      `הנה דוגמא של ה-HTML של העמודים:\n\`\`\`html\n${htmlSnippet}\n\`\`\`\n` +
+      v9KnowledgeBase + `\n` +
       `הבקשה שלי:\n${userPrompt}\n\n` +
       `הוראות: החזר CSS בלבד שיכניס לתיבת ה-CSS המותאם. עטוף בבלוק \`\`\`css ... \`\`\`. בלי הסברים, בלי טקסט נוסף.`;
     try {

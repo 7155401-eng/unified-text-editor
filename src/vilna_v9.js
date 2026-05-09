@@ -940,7 +940,9 @@ export async function buildPages(container, paragraphs, config) {
         ? pendingParagraph
         : paragraphs[cursor + fromArrayOffset];
       const fullText = (target?.mainText || '').trim();
-      const MIN_SPLIT = 30;
+      // משה 2026-05-09: MIN_SPLIT=8 — מאפשר פיצולים אגרסיביים של פסקאות עם הרבה
+      // הערות. גבוה מדי = pendings שלא מצליחים להתפצל; נמוך מדי = רעש.
+      const MIN_SPLIT = 8;
       // עזרי-עוגן: anchor=0 ברירת-מחדל אם חסר; פיצול לפי תפיסת המנוע הרגיל.
       const allNotes = target?.notes || [];
       const notesBeforeAnchor = (anchor) => allNotes.filter(n => {
@@ -955,10 +957,13 @@ export async function buildPages(container, paragraphs, config) {
         .map(n => ({ ...n, anchor: (typeof n.anchor === 'number' ? n.anchor : 0) - anchor }));
       if (fullText.length >= MIN_SPLIT) {
         const baseSlice = getSlice(bestN_clean);
+        // משה 2026-05-09: tryPrefix מתעלם מ-carryOver — מחפשים את ה-prefix המקסימלי
+        // של הפסקה שנכנס נקי לבד (עם הערות מעוגנות בלבד). כך carry שגדל מעמודים
+        // קודמים לא חוסם פיצול נוסף; ה-carry יזרום בעמודי drain ייעודיים.
         const tryPrefix = (len) => {
           const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len) };
           const slice = [...baseSlice, half];
-          return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+          return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, {}), cfg);
         };
         let lo = 0, hi = fullText.length;
         while (lo < hi) {
@@ -976,6 +981,26 @@ export async function buildPages(container, paragraphs, config) {
             splitInfo = { firstHalf, secondHalf, sliceIdx };
           }
         }
+      }
+    }
+
+    // משה 2026-05-09: ★ drain-alone — אם יש pending + carry-over שלבד חורג, נריץ
+    // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
+    // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
+    let drainAloneMode = false;
+    if (!splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
+      // בדוק אם carry לבד (slice ריק) חורג
+      const carryAloneTrial = buildPagePlan(
+        aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+        cfg
+      );
+      // אם carry לבד חורג OR pending+carry חורגים אבל carry לבד נכנס — drain alone
+      if (carryAloneTrial.overflow.exceedsPage) {
+        drainAloneMode = true;
+      } else {
+        // carry לבד נכנס. בדוק אם pending+carry בלי overflow — אם לא, drain
+        const combined = trialAtN(1);
+        if (!fitsClean(combined)) drainAloneMode = true;
       }
     }
 
@@ -997,9 +1022,10 @@ export async function buildPages(container, paragraphs, config) {
     }
 
     // רינדור סופי לעמוד
-    const finalSlice = splitInfo
-      ? [...getSlice(bestN_clean), splitInfo.firstHalf]
-      : getSlice(bestN);
+    // אם drainAloneMode — slice ריק (רק carry-over)
+    const finalSlice = drainAloneMode
+      ? []
+      : (splitInfo ? [...getSlice(bestN_clean), splitInfo.firstHalf] : getSlice(bestN));
     const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
 
     const pageEl = document.createElement('div');
@@ -1023,7 +1049,10 @@ export async function buildPages(container, paragraphs, config) {
     // התקדמות מצב: pendingParagraph + cursor מתעדכנים לפי הצריכה
     const hadPending = !!pendingParagraph;
     const wasDrainMarker = !!pendingParagraph?._drainMarker;
-    if (splitInfo) {
+    if (drainAloneMode) {
+      // עמוד drain בלי שום פסקה — pending נשאר כמו שהוא, cursor לא זז
+      // carry-over יתעדכן מהעמוד; כשיתרוקן ה-pending יוכל להירנדר נקי
+    } else if (splitInfo) {
       // sliceIdx = איפה הפיצול במערך הזמינות. צרכנו slice[0..sliceIdx-1] במלואם
       // וגם את slice[sliceIdx] חצי ראשון. החצי השני יוצא ל-pendingParagraph.
       const sliceIdx = splitInfo.sliceIdx;
