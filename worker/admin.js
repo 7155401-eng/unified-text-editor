@@ -28,6 +28,10 @@ export async function handleAdmin(request, env, url) {
   if (path === '/api/admin/users' && method === 'POST') {
     return createUser(request, env);
   }
+  if (path.startsWith('/api/admin/users/') && path.endsWith('/minutes') && method === 'POST') {
+    const id = path.split('/').slice(-2)[0];
+    return adjustUserMinutes(request, env, Number(id));
+  }
   if (path.startsWith('/api/admin/users/') && method === 'PATCH') {
     const id = path.split('/').pop();
     return updateUser(request, env, Number(id));
@@ -78,7 +82,8 @@ async function listUsers(request, env, url) {
   const totalCount = countQ?.c || 0;
 
   const rows = await env.DB.prepare(
-    `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin
+    `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
+            balance_seconds, plan_type, plan_renew_at
      FROM users ${whereSql} ${orderSql} LIMIT ? OFFSET ?`
   ).bind(...binds, limit, offset).all();
 
@@ -140,10 +145,64 @@ async function updateUser(request, env, id) {
   await env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
 
   const row = await env.DB.prepare(
-    'SELECT id, email, status, expires_at, created_at, last_login_at, is_admin FROM users WHERE id = ?'
+    `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
+            balance_seconds, plan_type, plan_renew_at FROM users WHERE id = ?`
   ).bind(id).first();
 
   return Response.json(row || { error: 'Not found' });
+}
+
+// משה 2026-05-09: התאמת יתרת זמן ידנית. delta_minutes חיובי = הוספה,
+// שלילי = הורדה. מתאים גם את expires_at אם יש יתרת שעות (plan_type='hours'
+// או null) — מנוי-תקופה לא נוגעים בו, רק במאזן השעות.
+async function adjustUserMinutes(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return new Response('Bad id', { status: 400 });
+  let body;
+  try { body = await request.json(); } catch { return new Response('Bad JSON', { status: 400 }); }
+  const deltaMinutes = Number(body?.deltaMinutes);
+  if (!Number.isFinite(deltaMinutes) || deltaMinutes === 0) return new Response('Bad deltaMinutes', { status: 400 });
+
+  const row = await env.DB.prepare(
+    'SELECT id, balance_seconds, expires_at, plan_type, status FROM users WHERE id = ?'
+  ).bind(id).first();
+  if (!row) return new Response('Not found', { status: 404 });
+
+  const deltaSec = Math.round(deltaMinutes * 60);
+  const newBalance = Math.max(0, (row.balance_seconds || 0) + deltaSec);
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  let newExpires = row.expires_at || 0;
+  // עבור משתמשי שעות (או חשבון חדש ללא תוכנית) — הוסף/הורד גם מ-expires_at.
+  // למנוי תקופה (subscription) — לא נוגעים ב-expires_at, רק ביתרה הצדדית.
+  if (row.plan_type !== 'subscription') {
+    if (deltaSec > 0) {
+      const base = (newExpires && newExpires > nowSec) ? newExpires : nowSec;
+      newExpires = base + deltaSec;
+    } else {
+      newExpires = Math.max(nowSec, newExpires + deltaSec);
+    }
+  }
+
+  // פתיחת חשבון = שדרוג 'unauthorized' → 'active' אם המנהל הוסיף זמן.
+  const newStatus = (row.status === 'unauthorized' && deltaSec > 0) ? 'active' : row.status;
+  const newPlanType = row.plan_type || (deltaSec > 0 ? 'hours' : row.plan_type);
+
+  await env.DB.prepare(
+    'UPDATE users SET balance_seconds = ?, expires_at = ?, status = ?, plan_type = ? WHERE id = ?'
+  ).bind(newBalance, newExpires, newStatus, newPlanType, id).run();
+
+  // היסטוריה: לרשום את ההתאמה בטבלת payments עם provider='admin'.
+  // amount=0 כדי להבדיל מתשלומים אמיתיים.
+  await env.DB.prepare(
+    'INSERT INTO payments (user_id, provider, amount, plan_code, pack_code, txn_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).bind(id, 'admin', 0, null, `adjust_${deltaMinutes > 0 ? '+' : ''}${deltaMinutes}min`, '', nowSec).run().catch(() => {});
+
+  const updated = await env.DB.prepare(
+    `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
+            balance_seconds, plan_type, plan_renew_at FROM users WHERE id = ?`
+  ).bind(id).first();
+
+  return Response.json({ ok: true, user: updated, deltaMinutes });
 }
 
 async function deleteUser(request, env, id, currentAdminId) {
