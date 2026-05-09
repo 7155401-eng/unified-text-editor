@@ -2706,7 +2706,13 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
    overrides further down the file still apply when the user picks a non-default
    theme — the design here is for the default light theme. */
 
-.torah-toolbar {
+/* Specificity note: existing `body.light-theme .toolbar` rules at line ~64
+   beat a single `.torah-toolbar` selector. Triple-class chain
+   `.torah-toolbar.toolbar.ribbon-panel` (specificity 0,3,0) wins against
+   both `body.light-theme .toolbar` (0,2,0) and `body[data-theme] .toolbar`
+   (0,2,1) without resorting to !important. The other Torah rules use a
+   `body ` prefix to lift to 0,2,1 — beats body.light-theme. */
+.torah-toolbar.toolbar.ribbon-panel {
   background: linear-gradient(180deg, #faf6ec 0%, #f5edd6 100%);
   border-bottom: 1px solid #d4af37;
   padding: 10px 14px;
@@ -2716,7 +2722,7 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 
 /* Every Sefaria-toolbar group is a parchment card. Two specialized groups
    below override accent colors to indigo and gold respectively. */
-.torah-toolbar .tb-group {
+body .torah-toolbar .tb-group {
   background: linear-gradient(180deg, #fdfaf3 0%, #faf6ec 100%);
   border: 1px solid #d6c89a;
   border-radius: 8px;
@@ -2726,7 +2732,7 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
     0 1px 4px rgba(184, 134, 11, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
-.torah-toolbar .tb-group::before {
+body .torah-toolbar .tb-group::before {
   color: #b8860b;
   font-size: 10px;
   font-weight: 700;
@@ -2739,25 +2745,25 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 }
 
 /* Inputs group — תכלת (indigo) tint */
-.torah-toolbar .torah-verse-inputs-group {
+body .torah-toolbar .torah-verse-inputs-group {
   background: linear-gradient(180deg, #f5f8ff 0%, #e9eff8 100%);
   border-color: #b4c6e0;
 }
-.torah-toolbar .torah-verse-inputs-group::before {
+body .torah-toolbar .torah-verse-inputs-group::before {
   color: #2c5aa0;
   background: #f5f8ff;
   border-color: #b4c6e0;
 }
 
 /* Actions group — זהב (gold), the showpiece */
-.torah-toolbar .torah-verse-actions-group {
+body .torah-toolbar .torah-verse-actions-group {
   background: linear-gradient(180deg, #fffbef 0%, #fef3d4 100%);
   border-color: #d4af37;
   box-shadow:
     0 2px 8px rgba(212, 175, 55, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
-.torah-toolbar .torah-verse-actions-group::before {
+body .torah-toolbar .torah-verse-actions-group::before {
   color: #722f37;
   background: #fffbef;
   border-color: #d4af37;
@@ -2765,7 +2771,7 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 
 /* Inline hint at the start of each Sefaria group — italic burgundy ink
    ("בחר מקור להכנסה לטקסט:" / "עובד על טקסט מסומן — סמן 2 מילים או יותר:"). */
-.torah-toolbar .torah-group-hint {
+body .torah-toolbar .torah-group-hint {
   font-size: 11.5px;
   font-style: italic;
   color: #722f37;
@@ -2778,7 +2784,7 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 
 /* Separator — gold gradient bar, fades at the ends so it reads as a divider
    without being a hard line. */
-.torah-toolbar .sep {
+body .torah-toolbar .sep {
   width: 1px;
   height: 38px;
   background: linear-gradient(180deg,
@@ -2792,9 +2798,8 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 }
 
 /* Buttons — cream-gold soft chrome, indigo ink, gold-glow hover.
-   Specificity matches the global `.tb-group button:not(...)` rule (~line 4345)
-   and wins by being later in the cascade for default theme. */
-.torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn) {
+   `body` prefix raises specificity past the body.light-theme rules. */
+body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn) {
   background: linear-gradient(180deg, #ffffff 0%, #faf6ec 100%);
   border: 1px solid #c8b878;
   color: #1e3a6f;
@@ -2806,7 +2811,7 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   cursor: pointer;
 }
-.torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):hover {
+body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):hover {
   background: linear-gradient(180deg, #fff9e6 0%, #fef3d4 100%);
   border-color: #b8860b;
   color: #722f37;
@@ -2815,11 +2820,11 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
     0 0 0 1px rgba(184, 134, 11, 0.10);
   transform: translateY(-1px);
 }
-.torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):active {
+body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):active {
   transform: translateY(0);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
 }
-.torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):disabled {
+body .torah-toolbar .tb-group button:not(.btn-render-prominent):not(.pdf-tb-btn):disabled {
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
@@ -2827,14 +2832,14 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
 }
 
 /* Action buttons get heavier weight + a richer hover (the "wow" buttons) */
-.torah-toolbar .torah-verse-actions-group button {
+body .torah-toolbar .torah-verse-actions-group button {
   font-weight: 600;
   background: linear-gradient(180deg, #ffffff 0%, #fef9e3 100%);
 }
 
 /* Selects + inputs */
-.torah-toolbar select,
-.torah-toolbar input {
+body .torah-toolbar select,
+body .torah-toolbar input {
   background: #fdfaf3;
   border: 1px solid #c8b878;
   border-radius: 5px;
@@ -2843,20 +2848,20 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   color: #1e3a6f;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.torah-toolbar select:focus,
-.torah-toolbar input:focus {
+body .torah-toolbar select:focus,
+body .torah-toolbar input:focus {
   outline: none;
   border-color: #b8860b;
   box-shadow: 0 0 0 2px rgba(184, 134, 11, 0.18);
 }
 
 /* Niqqud checkbox row */
-.torah-toolbar .toolbar-checkbox {
+body .torah-toolbar .toolbar-checkbox {
   color: #1e3a6f;
   font-size: 12px;
   font-weight: 500;
 }
-.torah-toolbar .toolbar-checkbox input[type="checkbox"] {
+body .torah-toolbar .toolbar-checkbox input[type="checkbox"] {
   accent-color: #b8860b;
 }
 
