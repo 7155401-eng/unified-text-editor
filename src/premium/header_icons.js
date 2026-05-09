@@ -122,7 +122,7 @@ function buildIconButton({ id, cls, title, label, html }) {
 
 export function installHeaderPremiumIcons() {
   if (typeof document === "undefined") return;
-  if (document.getElementById("rt-prem-icon-star")) return;
+  if (document.getElementById("rt-prem-icon-diamond")) return;
 
   const actions = document.querySelector(".app-header .app-header-actions");
   if (!actions) return;
@@ -219,7 +219,7 @@ export function installHeaderPremiumIcons() {
   diamond.addEventListener("click", openPremiumPage);
 
   // סדר הוספה ל-flex-RTL: append מוסיף לשמאל. הסדר הוויזואלי משמאל לימין:
-  // [wrench] [gift] [star] [avatar]. אנחנו רוצים [avatar] בקצה השמאלי הביותר,
+  // [wrench] [gift] [diamond] [avatar]. אנחנו רוצים [avatar] בקצה השמאלי הביותר,
   // שכבר נוסף ע"י installAuthUi לפני הקריאה הזאת. לכן נכניס את 3 האייקונים
   // *לפני* ה-avatar באמצעות insertBefore.
   const avatarWrap = document.getElementById("profile-avatar-wrap");
@@ -227,11 +227,11 @@ export function installHeaderPremiumIcons() {
   if (ref) {
     actions.insertBefore(wrench, ref);
     actions.insertBefore(gift, ref);
-    actions.insertBefore(star, ref);
+    actions.insertBefore(diamond, ref);
   } else {
     actions.appendChild(wrench);
     actions.appendChild(gift);
-    actions.appendChild(star);
+    actions.appendChild(diamond);
   }
 
   // אם המנוי פעיל — הצג סרט קטן על האווטאר
