@@ -523,6 +523,7 @@
           <button class="tab ${state.tab === 'usage' ? 'active' : ''}" data-tab="usage">שימושים</button>
           <button class="tab ${state.tab === 'paymentConfig' ? 'active' : ''}" data-tab="paymentConfig">חיבור תשלומים</button>
           <button class="tab ${state.tab === 'testPackages' ? 'active' : ''}" data-tab="testPackages">חבילות בדיקה</button>
+          <button class="tab ${state.tab === 'security' ? 'active' : ''}" data-tab="security">אבטחה</button>
         </div>
         <div class="container" id="tab-body"></div>
       `;
@@ -542,6 +543,7 @@
         else if (name === 'users') await Promise.all([loadStats(), loadUsers()]);
         else if (name === 'paymentConfig') await loadPaymentConfig();
         else if (name === 'testPackages') await loadTestPackages();
+        else if (name === 'security') await loadSecurity();
       } catch (_) { /* api כבר הציג toast */ }
       render();
     }
@@ -553,6 +555,7 @@
       if (state.tab === 'usage') return renderUsageTab();
       if (state.tab === 'paymentConfig') return renderPaymentConfigTab();
       if (state.tab === 'testPackages') return renderTestPackagesTab();
+      if (state.tab === 'security') return renderSecurityTab();
     }
 
     function renderUsersTab() {
@@ -1517,6 +1520,59 @@
 
     function escapeHtml(s) {
       return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    /* ============ אבטחה: מגן הקונסול ============ */
+    async function loadSecurity() {
+      const data = await api('/api/admin/console-guard');
+      state.security = { consoleGuardEnabled: !!data.enabled };
+    }
+
+    function renderSecurityTab() {
+      const body = document.getElementById('tab-body');
+      const enabled = !!(state.security && state.security.consoleGuardEnabled);
+      body.innerHTML = `
+        <div class="panel" style="padding:20px">
+          <h2 style="margin-top:0">מגן הקונסול</h2>
+          <p>כאשר המגן <b>דלוק</b>, פתיחת כלי המפתחים בדפדפן (Console / DevTools / F12) חוסמת את המסך לחמש דקות. זה מונע ממשתמשים להריץ פקודות שעוקפות את מגבלות הדמו.</p>
+          <p>כאשר המגן <b>כבוי</b>, ניתן לפתוח קונסול חופשי בכל הדפדפנים — שימושי כשרוצים לאתר באג עם משתמש או לבדוק משהו ישירות באתר החי.</p>
+          <div class="cg-row">
+            <div class="cg-status">
+              <span class="cg-dot ${enabled ? 'on' : 'off'}"></span>
+              <span class="cg-label">המגן כעת: <b>${enabled ? 'דלוק' : 'כבוי'}</b></span>
+            </div>
+            <button id="cg-toggle" class="btn-small ${enabled ? 'disable' : 'activate'}">${enabled ? 'כבה את המגן' : 'הפעל את המגן'}</button>
+          </div>
+          <p class="cg-note">השינוי תקף מיידית לכל גלישה חדשה (ולמשתמשים שירעננו את הדף).</p>
+        </div>
+        <style>
+          .cg-row{display:flex;align-items:center;gap:24px;margin-top:18px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}
+          .cg-status{display:flex;align-items:center;gap:10px;flex:1}
+          .cg-dot{width:14px;height:14px;border-radius:50%;display:inline-block}
+          .cg-dot.on{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,0.18)}
+          .cg-dot.off{background:#dc2626;box-shadow:0 0 0 3px rgba(220,38,38,0.18)}
+          .cg-label{font-size:15px}
+          .cg-note{margin-top:14px;color:#64748b;font-size:12px}
+        </style>
+      `;
+      document.getElementById('cg-toggle').addEventListener('click', toggleConsoleGuard);
+    }
+
+    async function toggleConsoleGuard() {
+      const cur = !!(state.security && state.security.consoleGuardEnabled);
+      const next = !cur;
+      const btn = document.getElementById('cg-toggle');
+      btn.disabled = true;
+      btn.textContent = 'שומר...';
+      try {
+        await api('/api/admin/console-guard', { method: 'POST', body: JSON.stringify({ enabled: next }) });
+        toast(next ? 'המגן הופעל' : 'המגן כובה');
+        await loadSecurity();
+        renderTabBody();
+      } catch (_) {
+        btn.disabled = false;
+        btn.textContent = cur ? 'כבה את המגן' : 'הפעל את המגן';
+      }
     }
 
     load().catch(err => console.error(err));

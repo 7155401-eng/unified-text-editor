@@ -430,6 +430,18 @@ function blockConsoleAccess() {
 }
 
 export function installConsoleGuard() {
+  // משה 2026-05-10: דגל ניהולי גלובלי. ב-/admin אפשר לכבות את כל המגן
+  // (consoleGuardEnabled=false). השרת מזריק את הדגל לתוך window.__RAVTEXT_AUTH__
+  // לפני שה-JS עולה, כך שהבדיקה כאן אמינה ברגע הטעינה.
+  // אם המגן כבוי — מנקים גם חסימה שנשארה מסשנים קודמים (אחרת המשתמש
+  // ייתקע במסך הירוק עד שתפוג החסימה הישנה).
+  try {
+    if (window.__RAVTEXT_AUTH__ && window.__RAVTEXT_AUTH__.consoleGuardEnabled === false) {
+      safeStorageSet(CONSOLE_BLOCK_KEY, "0");
+      return;
+    }
+  } catch (_) {}
+
   // משה 2026-05-06: טוקן סודי בכתובת מבטל את חוסם הקונסול. קשה לנחש.
   try {
     const params = new URLSearchParams(window.location.search || "");

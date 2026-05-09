@@ -10,7 +10,7 @@ import { getUserFromRequest } from './session.js';
 import { applySecurityHeaders, checkRateLimit, isBadBot, isEngineApi, checkOrigin } from './security.js';
 import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide, checkNonce } from './render_planner.js';
-import { handleAdmin } from './admin.js';
+import { handleAdmin, isConsoleGuardEnabled } from './admin.js';
 import { handleAdminInbox, handlePublicInbox } from './inbox.js';
 import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
@@ -41,6 +41,7 @@ export default {
       response = await handleAuth(request, env, url);
     } else if (url.pathname === '/api/me') {
       const user = await getUserFromRequest(request, env);
+      const consoleGuardEnabled = await isConsoleGuardEnabled(env);
       response = Response.json(
         {
           loggedIn: !!user,
@@ -51,6 +52,7 @@ export default {
           planType: user?.plan_type || null,
           expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
           balanceSeconds: user?.balance_seconds || 0,
+          consoleGuardEnabled,
         },
         { headers: { 'cache-control': 'no-store' } }
       );
@@ -135,6 +137,7 @@ export default {
       } else {
         const user = await getUserFromRequest(request, env);
         const html = await assetResponse.text();
+        const consoleGuardEnabled = await isConsoleGuardEnabled(env);
 
         const authState = {
           loggedIn: !!user,
@@ -145,6 +148,7 @@ export default {
           planType: user?.plan_type || null,
           expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
           balanceSeconds: user?.balance_seconds || 0,
+          consoleGuardEnabled,
         };
         // צוות האתר 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
         // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י צוות האתר ב-DB).
