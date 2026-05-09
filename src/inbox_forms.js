@@ -309,6 +309,108 @@ export function trackUsage(event, detail = null) {
   flushTrackQueue();
 }
 
+// משה 2026-05-10: חלון "עדכוני פיתוח" — מציג למשתמש את כל הרשומות
+// (גם דיווחים מהקהל וגם רשומות שהמנהל הוסיף בתכנון/בפיתוח/הסתיים),
+// מקובצות לפי סטטוס. ה-admin_note (הערה פרטית) לא מגיע מהשרת בכלל.
+
+const STATUS_LABELS = {
+  new: 'חדש',
+  planning: 'בתכנון',
+  in_dev: 'בפיתוח',
+  done: 'הסתיים',
+};
+const STATUS_COLORS = {
+  new: { bg: '#fee2e2', fg: '#991b1b' },
+  planning: { bg: '#ede9fe', fg: '#5b21b6' },
+  in_dev: { bg: '#fef3c7', fg: '#92400e' },
+  done: { bg: '#d1fae5', fg: '#065f46' },
+};
+const STATUS_ORDER = ['in_dev', 'planning', 'done', 'new'];
+
+function statusLabel(s) { return STATUS_LABELS[s] || s; }
+function statusBadgeStyle(s) {
+  const c = STATUS_COLORS[s] || { bg: '#dbeafe', fg: '#1e3a8a' };
+  return `background:${c.bg};color:${c.fg};padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;`;
+}
+
+function escapeText(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function formatDateShort(unixSec) {
+  if (!unixSec) return '';
+  const d = new Date(unixSec * 1000);
+  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function buildDevUpdatesList(items) {
+  if (!items || items.length === 0) {
+    return '<div style="text-align:center;color:#64748b;padding:30px 10px;font-size:14px;">עוד אין עדכונים — חזרו בהמשך.</div>';
+  }
+  // קיבוץ לפי סטטוס. סדר הצגה: בפיתוח → בתכנון → הסתיים → חדש → תיוגים מותאמים.
+  const groups = new Map();
+  for (const item of items) {
+    const key = item.status || 'new';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  const orderedKeys = [
+    ...STATUS_ORDER.filter(k => groups.has(k)),
+    ...[...groups.keys()].filter(k => !STATUS_ORDER.includes(k)),
+  ];
+  const html = orderedKeys.map(key => {
+    const list = groups.get(key);
+    const label = statusLabel(key);
+    const badge = `<span style="${statusBadgeStyle(key)}">${escapeText(label)}</span>`;
+    const cards = list.map(it => `
+      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:8px;background:white;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
+          <div style="font-size:14px;font-weight:600;color:#0f172a;">${escapeText(it.title)}</div>
+          <div style="font-size:11px;color:#94a3b8;white-space:nowrap;">${formatDateShort(it.updated_at || it.created_at)}</div>
+        </div>
+        <div style="font-size:13px;color:#334155;white-space:pre-wrap;line-height:1.5;">${escapeText(it.body)}</div>
+      </div>
+    `).join('');
+    return `
+      <section style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          ${badge}
+          <span style="font-size:13px;color:#64748b;">(${list.length})</span>
+        </div>
+        ${cards}
+      </section>`;
+  }).join('');
+  return html;
+}
+
+export async function openDevUpdatesModal() {
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <p style="margin:0 0 12px;font-size:13px;color:#475569;">
+      מה אנחנו עובדים עליו עכשיו, מה בתכנון, ומה כבר מוכן.
+    </p>
+    <div id="dev-updates-list" style="font-family:'Segoe UI',system-ui,sans-serif;">
+      <div style="text-align:center;color:#64748b;padding:20px;">טוען...</div>
+    </div>`;
+
+  openModal({ title: '📰 עדכוני פיתוח', body });
+
+  try {
+    const res = await fetch('/api/bug-reports/public');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const target = document.getElementById('dev-updates-list');
+    if (target) target.innerHTML = buildDevUpdatesList(data.items || []);
+  } catch (err) {
+    const target = document.getElementById('dev-updates-list');
+    if (target) {
+      target.innerHTML = `<div style="text-align:center;color:#b91c1c;padding:20px;">טעינה נכשלה: ${escapeText(err.message || err)}</div>`;
+    }
+  }
+}
+
 export function wireInboxButtons() {
   const bugBtn = document.getElementById('btn-report-bug');
   if (bugBtn) {
@@ -322,6 +424,13 @@ export function wireInboxButtons() {
     contactBtn.addEventListener('click', (ev) => {
       ev.preventDefault();
       openContactModal();
+    });
+  }
+  const devUpdatesBtn = document.getElementById('btn-dev-updates');
+  if (devUpdatesBtn) {
+    devUpdatesBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      openDevUpdatesModal();
     });
   }
 }

@@ -331,6 +331,34 @@ a.header-action-btn:visited {
   letter-spacing: 0.2px;
 }
 
+/* משה 2026-05-10: כפתורי דיווח/יצירת-קשר/עדכוני-פיתוח —
+   אייקון בלבד כברירת מחדל, הטקסט נחשף בעת ריחוף עם מעבר חלק. */
+.header-action-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 7px 9px;
+}
+.header-action-btn-icon .header-action-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.header-action-btn-icon .header-action-text {
+  display: inline-block;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  opacity: 0;
+  margin-inline-start: 0;
+  transition: max-width 0.18s ease, opacity 0.18s ease, margin-inline-start 0.18s ease;
+}
+.header-action-btn-icon:hover .header-action-text,
+.header-action-btn-icon:focus-visible .header-action-text {
+  max-width: 200px;
+  opacity: 1;
+  margin-inline-start: 6px;
+}
+
 /* משה 2026-05-07: אייקון פרופיל עגול בכותרת + תפריט נשלף.
    יושב בתוך .app-header-actions עם הכפתורים הרגילים — בלי position:absolute,
    כדי שלא תיווצר חפיפה (כפי שהיה ב-auth_ui הישן). */
