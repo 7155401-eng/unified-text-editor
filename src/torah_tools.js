@@ -399,6 +399,18 @@ export function wireTorahTools(paneManager) {
       };
     }
     status.textContent = "מאתר במאגר…";
+    // Quick word-count sanity check — single-word selections produce thousands
+    // of matches and a useless dialog, so we refuse them early with a clear
+    // message rather than letting searchByText silently return [].
+    const wordCount = selectionText
+      .replace(/[֑-ׇ׃׀,.;:!?()[\]{}״׳"'׳״]/g, " ")
+      .replace(/־/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length;
+    if (wordCount < 2) {
+      throw new Error("הסימון קצר מדי — סמן לפחות שתי מילים");
+    }
     const matches = await _searchByText(selectionText);
     if (matches.length === 0) {
       throw new Error("הטקסט לא נמצא במאגר ספריא");
