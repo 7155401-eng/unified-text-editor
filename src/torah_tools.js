@@ -349,6 +349,7 @@ export function wireTorahTools(paneManager) {
     } catch (e) {
       console.error("[torah] sefaria fetch:", e);
       status.textContent = `שגיאה: ${e.message || e}`;
+      setTimeout(() => { status.textContent = ""; }, 4000);
     } finally {
       fetchBtn.disabled = false;
     }
@@ -509,6 +510,7 @@ export function wireTorahTools(paneManager) {
       }
       console.error("[torah] action:", e);
       status.textContent = `שגיאה: ${e.message || e}`;
+      setTimeout(() => { status.textContent = ""; }, 4000);
     } finally {
       btn.disabled = false;
     }
