@@ -196,9 +196,19 @@ function buildOverlay() {
   whySection.appendChild(whyGrid);
   sheet.appendChild(whySection);
 
+  // Note about AI provider keys
+  const aiNote = el("div", { cls: "rt-prem-ai-note" });
+  aiNote.innerHTML = `
+    <div class="rt-prem-ai-note-icon">ℹ️</div>
+    <div class="rt-prem-ai-note-body">
+      <div class="rt-prem-ai-note-title">לתשומת לבך</div>
+      <div class="rt-prem-ai-note-text">המנוי פותח את כל הכלים והעימוד במערכת. הוא <b>לא מחליף</b> מפתחות API אישיים של ספקי בינה מלאכותית (כמו OpenAI, Anthropic, Gemini) — אלה נשארים באחריותך ומוגדרים בנפרד דרך מסך ההגדרות.</div>
+    </div>
+  `;
+  sheet.appendChild(aiNote);
+
   // Footer
   const footer = el("div", { cls: "rt-prem-footer" });
-  footer.appendChild(el("div", { cls: "rt-prem-footer-line", text: "כל התשלומים מאובטחים. אין שמירה של פרטי כרטיס אצלנו." }));
   footer.appendChild(el("div", { cls: "rt-prem-footer-line", text: "שאלות? כתבו לנו: yiddishebilder@gmail.com · 052-7155401" }));
   sheet.appendChild(footer);
 
