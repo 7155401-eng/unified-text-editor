@@ -11,11 +11,19 @@ async function postJson(url, body) {
   });
   if (!res.ok) {
     let msg = `שגיאה (${res.status})`;
+    let code = null;
     try {
       const j = await res.json();
-      if (j && j.error) msg = j.error;
+      if (j && j.error) {
+        msg = j.error;
+        // משה 2026-05-09: קוד שגיאה מובנה — phone_required מטופל ע"י החזית
+        if (typeof j.error === "string" && j.error.startsWith("phone_required")) code = "phone_required";
+      }
     } catch {}
-    throw new Error(msg);
+    const err = new Error(msg);
+    err.code = code;
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }

@@ -758,6 +758,99 @@
   font-size: 14px;
 }
 
+/* ============ קלט טלפון ============ */
+.rt-phone-input {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  width: 100%;
+  max-width: 360px;
+}
+.rt-phone-input:focus-within {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.15);
+}
+.rt-phone-country {
+  border: 0;
+  border-inline-end: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 8px 6px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  flex: 0 0 auto;
+}
+.rt-phone-country:hover { background: #eef2f7; }
+.rt-phone-number {
+  flex: 1;
+  border: 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: 'Courier New', Consolas, monospace;
+  outline: none;
+  letter-spacing: 0.5px;
+}
+
+/* סקציית טלפון בהגדרות */
+.rt-phone-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 6px;
+}
+.rt-phone-section.rt-phone-missing {
+  border-color: #f59e0b;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+}
+.rt-phone-label { font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+.rt-phone-required { color: #dc2626; font-weight: 800; }
+.rt-phone-host { margin-bottom: 8px; }
+.rt-phone-help { font-size: 12px; color: #64748b; margin-bottom: 10px; line-height: 1.4; }
+.rt-phone-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.rt-phone-save {
+  background: #2563eb;
+  color: #fff;
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+.rt-phone-save:hover:not(:disabled) { background: #1d4ed8; }
+.rt-phone-save:disabled { opacity: 0.6; cursor: wait; }
+.rt-phone-status { font-size: 12px; color: #64748b; }
+.rt-phone-status-ok { color: #059669; font-weight: 600; }
+.rt-phone-status-err { color: #dc2626; font-weight: 600; }
+
+/* מודאל טלפון נדרש מתוך עמוד התשלום */
+.rt-phone-modal-overlay { padding-top: 80px; }
+.rt-phone-modal-sheet { max-width: 480px; padding: 28px; text-align: center; }
+.rt-phone-modal-title { font-size: 22px; font-weight: 800; color: #0f172a; margin-bottom: 12px; }
+.rt-phone-modal-msg { font-size: 14px; color: #475569; margin-bottom: 20px; line-height: 1.55; }
+.rt-phone-modal-host { display: flex; justify-content: center; margin-bottom: 12px; }
+.rt-phone-modal-host .rt-phone-input { max-width: 100%; }
+.rt-phone-modal-status { font-size: 13px; color: #475569; min-height: 18px; margin-bottom: 12px; }
+.rt-phone-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.rt-phone-modal-save { min-width: 220px; }
+.rt-phone-modal-cancel { background: #f1f5f9; color: #475569; }
+
 /* ============ פופ-אובר הגדרות ============ */
 .rt-prem-settings-overlay {
   position: fixed;

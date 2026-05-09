@@ -13,6 +13,7 @@ import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaD
 import { handleAdmin } from './admin.js';
 import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
+import { handleAccount } from './account.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -55,6 +56,8 @@ export default {
       response = await handleAdmin(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
+    } else if (url.pathname.startsWith('/api/account/')) {
+      response = await handleAccount(request, env, url);
     } else if (
       url.pathname.startsWith('/api/documents') ||
       url.pathname === '/api/settings'

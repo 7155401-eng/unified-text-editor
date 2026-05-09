@@ -134,6 +134,12 @@ async function startYaad(request, env, url) {
   if (!Number.isFinite(body.amount) || body.amount !== choice.def.amount) {
     return jsonError('סכום לא תואם לתוכנית הנבחרת');
   }
+  // משה 2026-05-09: חובה לבדוק שיש טלפון לפני שמתחילים תשלום (יעד שריג מצריך
+  // טלפון לחשבונית מס + תיעוד לפרסום חוקי).
+  const phoneRow = await env.DB.prepare('SELECT phone_e164 FROM users WHERE id = ?').bind(user.id).first();
+  if (!phoneRow?.phone_e164) {
+    return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
+  }
 
   const token = randomToken();
   const label = choice.kind === 'plan' ? `מנוי-${choice.code}` : `שעות-${choice.code}`;
@@ -208,6 +214,12 @@ async function startPaypal(request, env, url) {
   if (!choice) return jsonError('בחירה לא חוקית');
   if (choice.def.amount < 30) return jsonError('פייפאל זמין מ-30 ש"ח ומעלה');
   if (!Number.isFinite(body.amount) || body.amount !== choice.def.amount) return jsonError('סכום לא תואם');
+  // משה 2026-05-09: חובה טלפון גם לפייפאל (אחיד עם יעד שריג + נדרש לפי חוק
+  // הגנת הצרכן בעסקה לתושב ישראל).
+  const phoneRow = await env.DB.prepare('SELECT phone_e164 FROM users WHERE id = ?').bind(user.id).first();
+  if (!phoneRow?.phone_e164) {
+    return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
+  }
 
   if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_SECRET) {
     return jsonError('שירות פייפאל אינו מוגדר עדיין. אנא בחרו תשלום באשראי.', 503);

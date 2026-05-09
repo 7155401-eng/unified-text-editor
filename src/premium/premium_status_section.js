@@ -8,8 +8,10 @@
 import { getAccountStatus, cancelSubscription } from "./payment_api.js";
 import { openPremiumPage } from "./premium_page.js";
 import { showToast } from "./time_warning.js";
+import { buildPhoneInput, fetchAccountPhone, savePhone } from "./phone_input.js";
 
 const SECTION_ID = "settings-premium-status";
+const PHONE_SECTION_ID = "settings-account-phone";
 
 function fmtDate(epochSec) {
   if (!epochSec) return "—";
@@ -166,15 +168,86 @@ async function load() {
   const auth = window.__RAVTEXT_AUTH__;
   if (!auth || !auth.loggedIn) {
     renderEmpty(section);
+    removePhoneSection();
     return;
   }
   try {
     const status = await getAccountStatus();
-    if (!status) { renderEmpty(section); return; }
-    renderStatus(section, status);
+    if (!status) { renderEmpty(section); }
+    else renderStatus(section, status);
   } catch {
     renderEmpty(section);
   }
+  // טען וצייר את סקציית הטלפון מתחת לסטטוס
+  await renderPhoneSection(section);
+}
+
+function removePhoneSection() {
+  document.getElementById(PHONE_SECTION_ID)?.remove();
+}
+
+async function renderPhoneSection(afterSection) {
+  let section = document.getElementById(PHONE_SECTION_ID);
+  if (!section) {
+    section = document.createElement("div");
+    section.id = PHONE_SECTION_ID;
+    section.className = "settings-section";
+    afterSection.parentNode.insertBefore(section, afterSection.nextSibling);
+  }
+  const info = await fetchAccountPhone();
+  const country = info?.phoneCountry || "IL";
+  const phone = info?.phone || "";
+  const hasPhone = !!info?.hasPhone;
+
+  section.innerHTML = `
+    <h3 class="settings-h3">פרטי קשר</h3>
+    <div class="rt-phone-section ${hasPhone ? '' : 'rt-phone-missing'}">
+      <div class="rt-phone-label">טלפון <span class="rt-phone-required">*</span></div>
+      <div class="rt-phone-host"></div>
+      <div class="rt-phone-help">${hasPhone ? "המספר שמור במערכת. ניתן לעדכן בכל עת." : "הזנת מספר טלפון נדרשת לפני ביצוע תשלום."}</div>
+      <div class="rt-phone-actions">
+        <button type="button" class="rt-phone-save">שמור טלפון</button>
+        <span class="rt-phone-status"></span>
+      </div>
+    </div>
+  `;
+
+  const host = section.querySelector(".rt-phone-host");
+  let lastValid = false;
+  const ctrl = buildPhoneInput({
+    country,
+    phone,
+    onChange: ({ valid }) => { lastValid = valid; },
+  });
+  host.appendChild(ctrl.wrap);
+
+  const statusEl = section.querySelector(".rt-phone-status");
+  const saveBtn = section.querySelector(".rt-phone-save");
+  saveBtn.addEventListener("click", async () => {
+    const v = ctrl.getValue();
+    if (!v.valid) {
+      statusEl.textContent = "מספר לא תקין";
+      statusEl.className = "rt-phone-status rt-phone-status-err";
+      return;
+    }
+    saveBtn.disabled = true;
+    statusEl.textContent = "שומר…";
+    statusEl.className = "rt-phone-status";
+    try {
+      await savePhone({ country: v.country, phone: v.phone });
+      statusEl.textContent = "נשמר ✓";
+      statusEl.className = "rt-phone-status rt-phone-status-ok";
+      const wrap = section.querySelector(".rt-phone-section");
+      wrap.classList.remove("rt-phone-missing");
+      const help = section.querySelector(".rt-phone-help");
+      if (help) help.textContent = "המספר שמור במערכת. ניתן לעדכן בכל עת.";
+    } catch (err) {
+      statusEl.textContent = err?.message || "שגיאה בשמירה";
+      statusEl.className = "rt-phone-status rt-phone-status-err";
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
 }
 
 export function setupPremiumStatusSection() {
