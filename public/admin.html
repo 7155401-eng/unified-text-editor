@@ -233,6 +233,139 @@
       box-shadow: 0 4px 16px rgba(0,0,0,0.08);
     }
     .blocked h1 { color: #b91c1c; }
+
+    /* משה 2026-05-09: ניווט בין טאבים — משתמשים / באגים / פניות / שימושים */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 24px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .tab {
+      padding: 14px 18px;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #64748b;
+      border-bottom: 3px solid transparent;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .tab:hover { color: #1e3a8a; }
+    .tab.active {
+      color: #1e3a8a;
+      border-bottom-color: #1e3a8a;
+      font-weight: 600;
+    }
+    .tab .tab-count {
+      background: #e2e8f0;
+      color: #475569;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .tab.active .tab-count { background: #dbeafe; color: #1e3a8a; }
+    .tab .tab-count.unread { background: #fee2e2; color: #991b1b; }
+
+    .bug-card, .contact-card {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .bug-card.unread, .contact-card.unread { border-right: 3px solid #f59e0b; }
+    .bug-card-head, .contact-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+    .bug-card-title { font-size: 15px; font-weight: 600; color: #0f172a; flex: 1; }
+    .bug-card-meta, .contact-card-meta {
+      font-size: 12px; color: #64748b;
+      display: flex; gap: 12px; flex-wrap: wrap;
+    }
+    .bug-card-body, .contact-card-body {
+      font-size: 13px; color: #334155;
+      white-space: pre-wrap;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border-radius: 6px;
+      margin-top: 8px;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .bug-card-note {
+      font-size: 13px; color: #92400e;
+      background: #fffbeb;
+      border: 1px dashed #f59e0b;
+      padding: 8px 12px;
+      border-radius: 6px;
+      margin-top: 8px;
+      white-space: pre-wrap;
+    }
+    .bug-card-note-label {
+      font-size: 11px; font-weight: 700; color: #b45309;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .bug-card-actions {
+      display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
+    }
+    .status-tag {
+      display: inline-flex; align-items: center;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .status-tag-new { background: #fee2e2; color: #991b1b; }
+    .status-tag-planning { background: #ede9fe; color: #5b21b6; }
+    .status-tag-in_dev { background: #fef3c7; color: #92400e; }
+    .status-tag-done { background: #d1fae5; color: #065f46; }
+    .status-tag-custom { background: #dbeafe; color: #1e3a8a; }
+    .source-tag-admin { background: #fdf4ff; color: #86198f; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+    .source-tag-user { background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px; margin-bottom: 16px;
+    }
+    .summary-cell {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .summary-cell .lbl { font-size: 11px; color: #64748b; }
+    .summary-cell .val { font-size: 18px; font-weight: 700; color: #1e3a8a; }
+    textarea.field {
+      width: 100%;
+      min-height: 80px;
+      padding: 8px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    .compact-table { font-size: 12px; }
+    .compact-table th, .compact-table td { padding: 8px 10px; }
   </style>
 </head>
 <body>
@@ -269,12 +402,27 @@
   <div class="toast" id="toast"></div>
 
   <script>
+    // משה 2026-05-09: ה-state הורחב לתמוך 4 טאבים. כל טאב מחזיק
+    // items/filter/page נפרדים. רענון של טאב לא מתערב באחרים.
     const state = {
       me: null,
+      tab: 'users',
       users: [],
       stats: null,
       filter: { search: '', status: '', sort: 'created_desc' },
       page: { limit: 50, offset: 0, total: 0 },
+
+      bugs: { items: [], counts: {}, totalCount: 0,
+              filter: { search: '', status: '', source: '' },
+              page: { limit: 100, offset: 0, total: 0 } },
+
+      contacts: { items: [], totalCount: 0, unreadCount: 0,
+                  filter: { search: '', unread: false },
+                  page: { limit: 100, offset: 0, total: 0 } },
+
+      usage: { items: [], totalCount: 0, summaryByEvent: [], topUsersWeek: [],
+               filter: { search: '', event: '', user_id: '', from: '', to: '' },
+               page: { limit: 200, offset: 0, total: 0 } },
     };
 
     async function api(path, opts = {}) {
@@ -327,8 +475,15 @@
       state.me = me;
       if (!me.loggedIn) return renderBlocked(401);
       if (!me.admin) return renderBlocked(403);
-      await Promise.all([loadStats(), loadUsers()]);
+      await Promise.all([loadStats(), loadUsers(), loadContactsCount()]);
       render();
+    }
+
+    async function loadContactsCount() {
+      try {
+        const data = await api('/api/admin/contact-messages?limit=1&unread=1');
+        state.contacts.unreadCount = data.unreadCount || 0;
+      } catch (_) { /* לא קריטי */ }
     }
 
     async function loadStats() {
@@ -348,8 +503,8 @@
     }
 
     function render() {
-      const { stats, users, filter, page } = state;
       const root = document.getElementById('root');
+      const unread = state.contacts.unreadCount || 0;
       root.innerHTML = `
         <div class="topbar">
           <h1>מנהל מערכת — רב טקסט</h1>
@@ -359,7 +514,43 @@
             <a href="/api/auth/logout">יציאה (${state.me.email})</a>
           </div>
         </div>
-        <div class="container">
+        <div class="tabs">
+          <button class="tab ${state.tab === 'users' ? 'active' : ''}" data-tab="users">משתמשים</button>
+          <button class="tab ${state.tab === 'bugs' ? 'active' : ''}" data-tab="bugs">באגים ועדכונים</button>
+          <button class="tab ${state.tab === 'contact' ? 'active' : ''}" data-tab="contact">פניות${unread ? ` <span class="tab-count unread">${unread}</span>` : ''}</button>
+          <button class="tab ${state.tab === 'usage' ? 'active' : ''}" data-tab="usage">שימושים</button>
+        </div>
+        <div class="container" id="tab-body"></div>
+      `;
+      document.querySelectorAll('.tab').forEach(b => {
+        b.addEventListener('click', () => switchTab(b.dataset.tab));
+      });
+      renderTabBody();
+    }
+
+    async function switchTab(name) {
+      if (state.tab === name) return;
+      state.tab = name;
+      try {
+        if (name === 'bugs') await loadBugs();
+        else if (name === 'contact') await loadContacts();
+        else if (name === 'usage') await loadUsage();
+        else if (name === 'users') await Promise.all([loadStats(), loadUsers()]);
+      } catch (_) { /* api כבר הציג toast */ }
+      render();
+    }
+
+    function renderTabBody() {
+      if (state.tab === 'users') return renderUsersTab();
+      if (state.tab === 'bugs') return renderBugsTab();
+      if (state.tab === 'contact') return renderContactTab();
+      if (state.tab === 'usage') return renderUsageTab();
+    }
+
+    function renderUsersTab() {
+      const { stats, users, filter, page } = state;
+      const body = document.getElementById('tab-body');
+      body.innerHTML = `
           <div class="stats">
             <div class="stat-card"><div class="label">סך משתמשים</div><div class="value">${stats.total}</div></div>
             <div class="stat-card good"><div class="label">מנויים פעילים</div><div class="value">${stats.active}</div></div>
@@ -435,7 +626,6 @@
               </div>
             `}
           </div>
-        </div>
       `;
 
       bindEvents();
@@ -475,6 +665,483 @@
       if (res && res.ok) {
         toast(`${user.email}: ${sign > 0 ? '+' : '−'}${minutes} דק'. יתרה: ${minutesFromSec(res.user?.balance_seconds || 0)}`);
       }
+    }
+
+    // ====== טאב באגים ועדכונים ======
+
+    const STATUS_OPTIONS = [
+      { value: 'new', label: 'חדש' },
+      { value: 'planning', label: 'בתכנון' },
+      { value: 'in_dev', label: 'בפיתוח' },
+      { value: 'done', label: 'הסתיים' },
+    ];
+
+    function bugStatusLabel(s) {
+      const m = STATUS_OPTIONS.find(o => o.value === s);
+      return m ? m.label : s;
+    }
+    function bugStatusClass(s) {
+      const known = STATUS_OPTIONS.find(o => o.value === s);
+      return known ? `status-tag-${s}` : 'status-tag-custom';
+    }
+
+    async function loadBugs() {
+      const f = state.bugs.filter, p = state.bugs.page;
+      const params = new URLSearchParams();
+      if (f.search) params.set('search', f.search);
+      if (f.status) params.set('status', f.status);
+      if (f.source) params.set('source', f.source);
+      params.set('limit', p.limit);
+      params.set('offset', p.offset);
+      const data = await api(`/api/admin/bug-reports?${params}`);
+      state.bugs.items = data.items || [];
+      state.bugs.totalCount = data.totalCount || 0;
+      state.bugs.counts = data.counts || {};
+    }
+
+    function renderBugsTab() {
+      const { items, totalCount, counts, filter, page } = state.bugs;
+      const body = document.getElementById('tab-body');
+      const customStatuses = Object.keys(counts).filter(s => !STATUS_OPTIONS.some(o => o.value === s));
+      const statusOpts = [...STATUS_OPTIONS, ...customStatuses.map(s => ({ value: s, label: s }))];
+
+      body.innerHTML = `
+        <div class="summary-grid">
+          ${STATUS_OPTIONS.map(o => `
+            <div class="summary-cell">
+              <div class="lbl">${o.label}</div>
+              <div class="val">${counts[o.value] || 0}</div>
+            </div>`).join('')}
+          <div class="summary-cell">
+            <div class="lbl">סה"כ</div>
+            <div class="val">${totalCount}</div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="toolbar">
+            <input type="search" id="bugs-search" placeholder="חיפוש בכותרת/פירוט/מייל/הערה..." value="${escapeAttr(filter.search)}" />
+            <select id="bugs-status">
+              <option value="">כל הסטטוסים</option>
+              ${statusOpts.map(o => `<option value="${o.value}" ${filter.status === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+            </select>
+            <select id="bugs-source">
+              <option value="" ${!filter.source ? 'selected' : ''}>הכל</option>
+              <option value="user" ${filter.source === 'user' ? 'selected' : ''}>ממשתמשים</option>
+              <option value="admin" ${filter.source === 'admin' ? 'selected' : ''}>שלי (פנימי)</option>
+            </select>
+            <button id="bugs-add">+ הוסף רשומה</button>
+            <span class="right info">סה"כ: <strong>${totalCount}</strong></span>
+          </div>
+          ${items.length === 0 ? '<div class="empty">אין רשומות התואמות לסינון.</div>' : `
+            <div style="padding: 14px 16px;">
+              ${items.map(b => `
+                <div class="bug-card" data-id="${b.id}">
+                  <div class="bug-card-head">
+                    <div class="bug-card-title">${escapeHtml(b.title)}</div>
+                    <span class="status-tag ${bugStatusClass(b.status)}" data-action="cycle-status" data-id="${b.id}" title="לחץ לשינוי סטטוס">${bugStatusLabel(b.status)}</span>
+                  </div>
+                  <div class="bug-card-meta">
+                    <span class="source-tag-${b.source}">${b.source === 'admin' ? 'רשומה פנימית' : 'ממשתמש'}</span>
+                    ${b.user_email ? `<span>📧 ${escapeHtml(b.user_email)}</span>` : ''}
+                    <span>📅 ${fmtDateTime(b.created_at)}</span>
+                    ${b.updated_at && b.updated_at !== b.created_at ? `<span>✎ ${fmtDateTime(b.updated_at)}</span>` : ''}
+                  </div>
+                  <div class="bug-card-body">${escapeHtml(b.body)}</div>
+                  ${b.admin_note ? `
+                    <div class="bug-card-note">
+                      <div class="bug-card-note-label">הערה פרטית (רק מנהלים רואים)</div>
+                      ${escapeHtml(b.admin_note)}
+                    </div>` : ''}
+                  <div class="bug-card-actions">
+                    <button class="btn-small" data-action="bug-edit" data-id="${b.id}">עריכה</button>
+                    <button class="btn-small" data-action="bug-note" data-id="${b.id}">${b.admin_note ? 'ערוך הערה' : '+ הערה פרטית'}</button>
+                    <button class="btn-small" data-action="bug-tag" data-id="${b.id}">תיוג מותאם...</button>
+                    <button class="btn-small delete" data-action="bug-delete" data-id="${b.id}">מחק</button>
+                  </div>
+                </div>`).join('')}
+            </div>
+            <div class="pagination">
+              <span class="info">מציג ${page.offset + 1}–${Math.min(page.offset + items.length, totalCount)} מתוך ${totalCount}</span>
+              <button class="btn-small" id="bugs-prev" ${page.offset === 0 ? 'disabled' : ''}>הקודם</button>
+              <button class="btn-small" id="bugs-next" ${page.offset + items.length >= totalCount ? 'disabled' : ''}>הבא</button>
+            </div>`}
+        </div>
+      `;
+      bindBugsTab();
+    }
+
+    function bindBugsTab() {
+      let timer;
+      const search = document.getElementById('bugs-search');
+      if (search) search.addEventListener('input', (e) => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          state.bugs.filter.search = e.target.value;
+          state.bugs.page.offset = 0;
+          await loadBugs();
+          renderTabBody();
+        }, 250);
+      });
+      document.getElementById('bugs-status')?.addEventListener('change', async (e) => {
+        state.bugs.filter.status = e.target.value;
+        state.bugs.page.offset = 0;
+        await loadBugs();
+        renderTabBody();
+      });
+      document.getElementById('bugs-source')?.addEventListener('change', async (e) => {
+        state.bugs.filter.source = e.target.value;
+        state.bugs.page.offset = 0;
+        await loadBugs();
+        renderTabBody();
+      });
+      document.getElementById('bugs-prev')?.addEventListener('click', async () => {
+        state.bugs.page.offset = Math.max(0, state.bugs.page.offset - state.bugs.page.limit);
+        await loadBugs(); renderTabBody();
+      });
+      document.getElementById('bugs-next')?.addEventListener('click', async () => {
+        state.bugs.page.offset += state.bugs.page.limit;
+        await loadBugs(); renderTabBody();
+      });
+      document.getElementById('bugs-add')?.addEventListener('click', () => openBugEditor(null));
+      document.querySelectorAll('#tab-body [data-action]').forEach(b => {
+        b.addEventListener('click', () => handleBugAction(b.dataset.action, Number(b.dataset.id)));
+      });
+    }
+
+    async function handleBugAction(action, id) {
+      const item = state.bugs.items.find(x => x.id === id);
+      if (action === 'bug-edit') return openBugEditor(item);
+      if (action === 'bug-note') return openBugNoteEditor(item);
+      if (action === 'bug-tag') return openBugTagEditor(item);
+      if (action === 'bug-delete') {
+        if (!confirm(`למחוק את הדיווח #${id}?`)) return;
+        await api(`/api/admin/bug-reports/${id}`, { method: 'DELETE' });
+        toast('נמחק');
+        await loadBugs(); renderTabBody();
+        return;
+      }
+      if (action === 'cycle-status') {
+        const order = ['new', 'planning', 'in_dev', 'done'];
+        const idx = order.indexOf(item?.status);
+        const next = order[(idx + 1) % order.length];
+        await api(`/api/admin/bug-reports/${id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) });
+        toast(`סטטוס: ${bugStatusLabel(next)}`);
+        await loadBugs(); renderTabBody();
+      }
+    }
+
+    function openBugEditor(item) {
+      const isNew = !item;
+      openInlineDialog(isNew ? 'הוספת רשומה' : `עריכת רשומה #${item.id}`, `
+        <label><span>כותרת</span><input type="text" id="bf-title" value="${isNew ? '' : escapeAttr(item.title)}" /></label>
+        <label><span>פירוט</span><textarea class="field" id="bf-body" rows="6">${isNew ? '' : escapeHtml(item.body)}</textarea></label>
+        <label><span>סטטוס</span>
+          <select id="bf-status">
+            ${STATUS_OPTIONS.map(o => `<option value="${o.value}" ${(item?.status || (isNew ? 'planning' : 'new')) === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+          </select>
+        </label>
+      `, async () => {
+        const title = document.getElementById('bf-title').value.trim();
+        const body = document.getElementById('bf-body').value.trim();
+        const status = document.getElementById('bf-status').value;
+        if (!title || !body) { toast('כותרת ופירוט חובה', true); return false; }
+        if (isNew) {
+          await api('/api/admin/bug-reports', { method: 'POST', body: JSON.stringify({ title, body, status }) });
+          toast('נוסף');
+        } else {
+          await api(`/api/admin/bug-reports/${item.id}`, { method: 'PATCH', body: JSON.stringify({ title, body, status }) });
+          toast('נשמר');
+        }
+        await loadBugs(); renderTabBody();
+        return true;
+      });
+    }
+
+    function openBugNoteEditor(item) {
+      if (!item) return;
+      openInlineDialog(`הערה פרטית — #${item.id}`, `
+        <p style="font-size:12px;color:#64748b;margin:0 0 8px;">ההערה הזו רק במנהל. הלקוח לא רואה אותה.</p>
+        <label><span>תוכן ההערה</span><textarea class="field" id="bf-note" rows="6">${item.admin_note ? escapeHtml(item.admin_note) : ''}</textarea></label>
+      `, async () => {
+        const note = document.getElementById('bf-note').value;
+        await api(`/api/admin/bug-reports/${item.id}`, { method: 'PATCH', body: JSON.stringify({ admin_note: note || null }) });
+        toast('הערה נשמרה');
+        await loadBugs(); renderTabBody();
+        return true;
+      });
+    }
+
+    function openBugTagEditor(item) {
+      if (!item) return;
+      openInlineDialog(`תיוג מותאם — #${item.id}`, `
+        <p style="font-size:12px;color:#64748b;margin:0 0 8px;">סטטוס מותאם אישית (חוץ מ-חדש/בתכנון/בפיתוח/הסתיים). לדוגמה: "ממתין למשתמש".</p>
+        <label><span>תווית</span><input type="text" id="bf-tag" value="${escapeAttr(item.status || '')}" maxlength="60" /></label>
+      `, async () => {
+        const tag = document.getElementById('bf-tag').value.trim();
+        if (!tag) { toast('תווית ריקה', true); return false; }
+        await api(`/api/admin/bug-reports/${item.id}`, { method: 'PATCH', body: JSON.stringify({ status: tag }) });
+        toast('תויג');
+        await loadBugs(); renderTabBody();
+        return true;
+      });
+    }
+
+    // ====== טאב פניות יצירת קשר ======
+
+    async function loadContacts() {
+      const f = state.contacts.filter, p = state.contacts.page;
+      const params = new URLSearchParams();
+      if (f.search) params.set('search', f.search);
+      if (f.unread) params.set('unread', '1');
+      params.set('limit', p.limit);
+      params.set('offset', p.offset);
+      const data = await api(`/api/admin/contact-messages?${params}`);
+      state.contacts.items = data.items || [];
+      state.contacts.totalCount = data.totalCount || 0;
+      state.contacts.unreadCount = data.unreadCount || 0;
+    }
+
+    function renderContactTab() {
+      const { items, totalCount, unreadCount, filter, page } = state.contacts;
+      const body = document.getElementById('tab-body');
+      body.innerHTML = `
+        <div class="summary-grid">
+          <div class="summary-cell"><div class="lbl">סה"כ פניות</div><div class="val">${totalCount}</div></div>
+          <div class="summary-cell"><div class="lbl">לא נקראו</div><div class="val" style="color:#b45309;">${unreadCount}</div></div>
+        </div>
+        <div class="panel">
+          <div class="toolbar">
+            <input type="search" id="contact-search" placeholder="חיפוש בתוכן/מייל..." value="${escapeAttr(filter.search)}" />
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;">
+              <input type="checkbox" id="contact-unread" ${filter.unread ? 'checked' : ''} />
+              רק שלא נקראו
+            </label>
+            <span class="right info">סה"כ: <strong>${totalCount}</strong></span>
+          </div>
+          ${items.length === 0 ? '<div class="empty">אין פניות.</div>' : `
+            <div style="padding: 14px 16px;">
+              ${items.map(c => `
+                <div class="contact-card ${c.read_at ? '' : 'unread'}" data-id="${c.id}">
+                  <div class="contact-card-head">
+                    <strong>${c.user_email ? escapeHtml(c.user_email) : 'אנונימי'}</strong>
+                    <span class="contact-card-meta">
+                      <span>📅 ${fmtDateTime(c.created_at)}</span>
+                      ${c.read_at ? `<span style="color:#047857;">✓ נקרא</span>` : '<span style="color:#b45309;font-weight:600;">חדש</span>'}
+                    </span>
+                  </div>
+                  <div class="contact-card-body">${escapeHtml(c.body)}</div>
+                  <div class="bug-card-actions">
+                    ${c.read_at ? '' : `<button class="btn-small activate" data-action="contact-read" data-id="${c.id}">סמן כנקרא</button>`}
+                    <button class="btn-small delete" data-action="contact-delete" data-id="${c.id}">מחק</button>
+                  </div>
+                </div>`).join('')}
+            </div>
+            <div class="pagination">
+              <span class="info">מציג ${page.offset + 1}–${Math.min(page.offset + items.length, totalCount)} מתוך ${totalCount}</span>
+              <button class="btn-small" id="contact-prev" ${page.offset === 0 ? 'disabled' : ''}>הקודם</button>
+              <button class="btn-small" id="contact-next" ${page.offset + items.length >= totalCount ? 'disabled' : ''}>הבא</button>
+            </div>`}
+        </div>
+      `;
+      bindContactTab();
+    }
+
+    function bindContactTab() {
+      let timer;
+      document.getElementById('contact-search')?.addEventListener('input', (e) => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          state.contacts.filter.search = e.target.value;
+          state.contacts.page.offset = 0;
+          await loadContacts();
+          renderTabBody();
+        }, 250);
+      });
+      document.getElementById('contact-unread')?.addEventListener('change', async (e) => {
+        state.contacts.filter.unread = e.target.checked;
+        state.contacts.page.offset = 0;
+        await loadContacts();
+        renderTabBody();
+      });
+      document.getElementById('contact-prev')?.addEventListener('click', async () => {
+        state.contacts.page.offset = Math.max(0, state.contacts.page.offset - state.contacts.page.limit);
+        await loadContacts(); renderTabBody();
+      });
+      document.getElementById('contact-next')?.addEventListener('click', async () => {
+        state.contacts.page.offset += state.contacts.page.limit;
+        await loadContacts(); renderTabBody();
+      });
+      document.querySelectorAll('#tab-body [data-action^="contact-"]').forEach(b => {
+        b.addEventListener('click', async () => {
+          const id = Number(b.dataset.id);
+          if (b.dataset.action === 'contact-read') {
+            await api(`/api/admin/contact-messages/${id}/read`, { method: 'POST' });
+            toast('סומן כנקרא');
+          } else if (b.dataset.action === 'contact-delete') {
+            if (!confirm(`למחוק את הפנייה #${id}?`)) return;
+            await api(`/api/admin/contact-messages/${id}`, { method: 'DELETE' });
+            toast('נמחק');
+          }
+          await loadContacts();
+          render();
+        });
+      });
+    }
+
+    // ====== טאב שימושים ======
+
+    const USAGE_EVENT_LABELS = {
+      session_start: 'כניסה',
+      sample_load: 'טעינת דוגמה',
+      render: 'רנדור',
+      export: 'ייצוא',
+      bug_submit: 'דיווח באג',
+      contact_submit: 'שליחת פנייה',
+    };
+
+    function usageEventLabel(e) { return USAGE_EVENT_LABELS[e] || e; }
+
+    async function loadUsage() {
+      const f = state.usage.filter, p = state.usage.page;
+      const params = new URLSearchParams();
+      if (f.search) params.set('search', f.search);
+      if (f.event) params.set('event', f.event);
+      if (f.user_id) params.set('user_id', f.user_id);
+      if (f.from) params.set('from', String(Math.floor(new Date(f.from).getTime() / 1000)));
+      if (f.to) params.set('to', String(Math.floor(new Date(f.to).getTime() / 1000) + 86400));
+      params.set('limit', p.limit);
+      params.set('offset', p.offset);
+      const data = await api(`/api/admin/usage?${params}`);
+      state.usage.items = data.items || [];
+      state.usage.totalCount = data.totalCount || 0;
+      state.usage.summaryByEvent = data.summaryByEvent || [];
+      state.usage.topUsersWeek = data.topUsersWeek || [];
+    }
+
+    function renderUsageTab() {
+      const { items, totalCount, summaryByEvent, topUsersWeek, filter, page } = state.usage;
+      const body = document.getElementById('tab-body');
+      const eventOptions = Object.keys(USAGE_EVENT_LABELS);
+      summaryByEvent.forEach(s => { if (!eventOptions.includes(s.event)) eventOptions.push(s.event); });
+      body.innerHTML = `
+        <div class="summary-grid">
+          ${summaryByEvent.slice(0, 8).map(s => `
+            <div class="summary-cell">
+              <div class="lbl">${escapeHtml(usageEventLabel(s.event))} · 7 ימים</div>
+              <div class="val">${s.c}</div>
+            </div>`).join('')}
+        </div>
+        ${topUsersWeek.length > 0 ? `
+          <div class="panel" style="margin-bottom:16px;">
+            <div class="toolbar"><strong>פעילים השבוע (top 20)</strong></div>
+            <table class="compact-table">
+              <thead><tr><th>מייל</th><th>אירועים</th></tr></thead>
+              <tbody>
+                ${topUsersWeek.map(u => `<tr><td>${escapeHtml(u.user_email || '—')}</td><td>${u.c}</td></tr>`).join('')}
+              </tbody>
+            </table>
+          </div>` : ''}
+        <div class="panel">
+          <div class="toolbar">
+            <input type="search" id="usage-search" placeholder="חיפוש במייל/פירוט..." value="${escapeAttr(filter.search)}" />
+            <select id="usage-event">
+              <option value="">כל האירועים</option>
+              ${eventOptions.map(e => `<option value="${e}" ${filter.event === e ? 'selected' : ''}>${usageEventLabel(e)}</option>`).join('')}
+            </select>
+            <input type="date" id="usage-from" value="${filter.from}" title="מתאריך" />
+            <input type="date" id="usage-to" value="${filter.to}" title="עד תאריך" />
+            <span class="right info">סה"כ: <strong>${totalCount}</strong></span>
+          </div>
+          ${items.length === 0 ? '<div class="empty">אין אירועים.</div>' : `
+            <table class="compact-table">
+              <thead>
+                <tr><th>מתי</th><th>מייל</th><th>אירוע</th><th>פירוט</th></tr>
+              </thead>
+              <tbody>
+                ${items.map(e => `
+                  <tr>
+                    <td>${fmtDateTime(e.created_at)}</td>
+                    <td>${escapeHtml(e.user_email || '—')}</td>
+                    <td><span class="badge badge-plan">${escapeHtml(usageEventLabel(e.event))}</span></td>
+                    <td><code style="font-size:11px;color:#475569;">${escapeHtml(e.detail || '')}</code></td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+            <div class="pagination">
+              <span class="info">מציג ${page.offset + 1}–${Math.min(page.offset + items.length, totalCount)} מתוך ${totalCount}</span>
+              <button class="btn-small" id="usage-prev" ${page.offset === 0 ? 'disabled' : ''}>הקודם</button>
+              <button class="btn-small" id="usage-next" ${page.offset + items.length >= totalCount ? 'disabled' : ''}>הבא</button>
+            </div>`}
+        </div>
+      `;
+      bindUsageTab();
+    }
+
+    function bindUsageTab() {
+      let timer;
+      document.getElementById('usage-search')?.addEventListener('input', (e) => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          state.usage.filter.search = e.target.value;
+          state.usage.page.offset = 0;
+          await loadUsage(); renderTabBody();
+        }, 250);
+      });
+      document.getElementById('usage-event')?.addEventListener('change', async (e) => {
+        state.usage.filter.event = e.target.value;
+        state.usage.page.offset = 0;
+        await loadUsage(); renderTabBody();
+      });
+      document.getElementById('usage-from')?.addEventListener('change', async (e) => {
+        state.usage.filter.from = e.target.value;
+        state.usage.page.offset = 0;
+        await loadUsage(); renderTabBody();
+      });
+      document.getElementById('usage-to')?.addEventListener('change', async (e) => {
+        state.usage.filter.to = e.target.value;
+        state.usage.page.offset = 0;
+        await loadUsage(); renderTabBody();
+      });
+      document.getElementById('usage-prev')?.addEventListener('click', async () => {
+        state.usage.page.offset = Math.max(0, state.usage.page.offset - state.usage.page.limit);
+        await loadUsage(); renderTabBody();
+      });
+      document.getElementById('usage-next')?.addEventListener('click', async () => {
+        state.usage.page.offset += state.usage.page.limit;
+        await loadUsage(); renderTabBody();
+      });
+    }
+
+    // ====== עזר ======
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    function escapeAttr(s) { return escapeHtml(s); }
+
+    function openInlineDialog(title, bodyHtml, onSubmit) {
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop show';
+      backdrop.style.zIndex = 200;
+      backdrop.innerHTML = `
+        <div class="modal" dir="rtl" style="width: 560px;">
+          <h2>${escapeHtml(title)}</h2>
+          <div id="inline-body">${bodyHtml}</div>
+          <div class="modal-actions">
+            <button type="button" class="btn-small" id="inline-cancel">ביטול</button>
+            <button type="button" class="btn-small activate" id="inline-save">שמור</button>
+          </div>
+        </div>`;
+      document.body.appendChild(backdrop);
+      const close = () => backdrop.remove();
+      backdrop.querySelector('#inline-cancel').addEventListener('click', close);
+      backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) close(); });
+      backdrop.querySelector('#inline-save').addEventListener('click', async () => {
+        const ok = await onSubmit();
+        if (ok !== false) close();
+      });
     }
 
     function bindEvents() {
