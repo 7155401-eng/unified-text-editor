@@ -53,6 +53,9 @@ export async function handlePublicInbox(request, env, url) {
   const method = request.method;
 
   // משה 2026-05-10: לוח עדכוני פיתוח — נתון פתוח לכולם, גם בלי התחברות.
+  // מציג רק רשומות שהמנהל פרסם (source='admin'). דיווחי משתמשים
+  // (source='user') הולכים לתיבת המנהל בלבד ולא מופיעים כאן עד שהמנהל
+  // יוצר רשומה משלו על בסיסם.
   // לעולם לא מחזיר admin_note (הערה פרטית למנהל).
   if (path === '/api/bug-reports/public' && method === 'GET') {
     return listPublicBugReports(request, env, url);
@@ -97,11 +100,15 @@ async function listPublicBugReports(request, env, url) {
   const offset = Math.max(0, Number(params.get('offset')) || 0);
   // לא מציגים admin_note — שדה פרטי למנהל בלבד.
   // לא מציגים user_email — פרטיות של מי שדיווח.
+  // משה 2026-05-10: רק רשומות שהמנהל פרסם (source='admin'). דיווחי משתמשים
+  // לא מופיעים כאן אוטומטית — הם מגיעים לתיבת המנהל בלבד.
   const rows = await env.DB.prepare(
     `SELECT id, source, title, body, status, created_at, updated_at
-     FROM bug_reports ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+     FROM bug_reports WHERE source = 'admin' ORDER BY updated_at DESC LIMIT ? OFFSET ?`
   ).bind(limit, offset).all();
-  const totalRow = await env.DB.prepare('SELECT COUNT(*) as c FROM bug_reports').first();
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM bug_reports WHERE source = 'admin'`
+  ).first();
   return jsonRes({
     items: rows.results || [],
     totalCount: totalRow?.c || 0,
