@@ -12,21 +12,21 @@
 
 import { formatRefLabel } from "./sefaria_ref_format.js";
 
-// Visual palette matches the Torah toolbar (parchment + indigo + gold + burgundy).
+// Visual palette matches the Torah toolbar — softer/lighter version per Moshe (2026-05-09).
 const STYLES = {
-  overlay:  "position:fixed;inset:0;background:rgba(30,40,60,0.55);backdrop-filter:blur(2px);z-index:99999;display:flex;align-items:center;justify-content:center;",
-  modal:    "background:linear-gradient(180deg,#fdfaf3 0%,#faf6ec 100%);border:2px solid #d4af37;border-radius:10px;padding:20px 22px 16px;max-width:680px;width:92%;max-height:80vh;overflow-y:auto;direction:rtl;font-family:inherit;box-shadow:0 16px 48px rgba(30,40,60,0.30),0 0 60px rgba(212,175,55,0.18);",
-  title:    "margin:0 0 8px 0;font-size:16px;font-weight:700;color:#1e3a6f;letter-spacing:0.2px;",
-  hint:     "margin:0 0 14px 0;font-size:12px;color:#722f37;font-style:italic;",
-  options:  "display:flex;gap:20px;padding:10px 14px;margin:0 0 14px 0;background:linear-gradient(180deg,#fffbef 0%,#fef3d4 100%);border:1px solid #d4af37;border-radius:6px;font-size:13px;color:#1e3a6f;font-weight:500;",
+  overlay:  "position:fixed;inset:0;background:rgba(30,40,60,0.40);backdrop-filter:blur(1px);z-index:99999;display:flex;align-items:center;justify-content:center;",
+  modal:    "background:linear-gradient(180deg,#fefcf6 0%,#fbf8ee 100%);border:1px solid #e8d68f;border-radius:9px;padding:20px 22px 16px;max-width:680px;width:92%;max-height:80vh;overflow-y:auto;direction:rtl;font-family:inherit;box-shadow:0 12px 36px rgba(30,40,60,0.18),0 0 32px rgba(212,175,55,0.08);",
+  title:    "margin:0 0 8px 0;font-size:16px;font-weight:700;color:#2a4677;letter-spacing:0.2px;",
+  hint:     "margin:0 0 14px 0;font-size:12px;color:#9a4a52;font-style:italic;",
+  options:  "display:flex;gap:20px;padding:9px 14px;margin:0 0 14px 0;background:linear-gradient(180deg,#fffdf3 0%,#fcf6dd 100%);border:1px solid #e8d68f;border-radius:5px;font-size:13px;color:#2a4677;font-weight:500;",
   optLabel: "display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;",
   list:     "display:flex;flex-direction:column;gap:7px;",
-  item:     "display:block;width:100%;text-align:right;padding:11px 14px;border:1px solid #d6c89a;background:linear-gradient(180deg,#ffffff 0%,#faf6ec 100%);cursor:pointer;font:inherit;font-size:13px;border-radius:6px;transition:all 0.15s ease;",
-  itemRef:  "display:block;font-weight:700;color:#1e3a6f;margin-bottom:4px;font-size:14px;",
-  itemSnip: "display:block;color:#3a3a3a;font-size:12px;line-height:1.6;",
-  badge:    "display:inline-block;font-size:10px;background:#fef3d4;color:#722f37;padding:2px 8px;border-radius:10px;border:1px solid #d4af37;margin-inline-start:8px;vertical-align:middle;font-weight:600;letter-spacing:0.2px;",
+  item:     "display:block;width:100%;text-align:right;padding:11px 14px;border:1px solid #e6d8b3;background:linear-gradient(180deg,#ffffff 0%,#fcf9f0 100%);cursor:pointer;font:inherit;font-size:13px;border-radius:6px;transition:all 0.15s ease;",
+  itemRef:  "display:block;font-weight:700;color:#2a4677;margin-bottom:4px;font-size:14px;",
+  itemSnip: "display:block;color:#4a4a4a;font-size:12px;line-height:1.6;",
+  badge:    "display:inline-block;font-size:10px;background:#fef9e3;color:#9a4a52;padding:2px 8px;border-radius:10px;border:1px solid #e8d68f;margin-inline-start:8px;vertical-align:middle;font-weight:600;letter-spacing:0.2px;",
   footer:   "margin-top:16px;display:flex;justify-content:flex-start;",
-  cancel:   "padding:7px 20px;border:1px solid #c8b878;background:linear-gradient(180deg,#ffffff 0%,#faf6ec 100%);color:#1e3a6f;cursor:pointer;border-radius:6px;font:inherit;font-size:13px;font-weight:500;transition:all 0.15s ease;",
+  cancel:   "padding:7px 20px;border:1px solid #ddc99a;background:linear-gradient(180deg,#ffffff 0%,#fcf9f0 100%);color:#2a4677;cursor:pointer;border-radius:6px;font:inherit;font-size:13px;font-weight:500;transition:all 0.15s ease;",
 };
 
 const TYPE_BADGE = {
@@ -120,13 +120,13 @@ export function showMatchDialog(matches, defaults = {}) {
         withSource: source.cb.checked,
       }));
       item.addEventListener("mouseenter", () => {
-        item.style.background = "linear-gradient(180deg,#fff9e6 0%,#fef3d4 100%)";
-        item.style.borderColor = "#b8860b";
-        item.style.boxShadow = "0 3px 10px rgba(184,134,11,0.20)";
+        item.style.background = "linear-gradient(180deg,#fffceb 0%,#fdf5d6 100%)";
+        item.style.borderColor = "#c79a3a";
+        item.style.boxShadow = "0 2px 6px rgba(184,134,11,0.12)";
       });
       item.addEventListener("mouseleave", () => {
-        item.style.background = "linear-gradient(180deg,#ffffff 0%,#faf6ec 100%)";
-        item.style.borderColor = "#d6c89a";
+        item.style.background = "linear-gradient(180deg,#ffffff 0%,#fcf9f0 100%)";
+        item.style.borderColor = "#e6d8b3";
         item.style.boxShadow = "none";
       });
       list.appendChild(item);
