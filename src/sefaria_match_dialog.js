@@ -12,20 +12,21 @@
 
 import { formatRefLabel } from "./sefaria_ref_format.js";
 
+// Visual palette matches the Torah toolbar (parchment + indigo + gold + burgundy).
 const STYLES = {
-  overlay:  "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;",
-  modal:    "background:#fff;border-radius:8px;padding:18px 18px 14px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto;direction:rtl;font-family:inherit;box-shadow:0 8px 32px rgba(0,0,0,0.2);",
-  title:    "margin:0 0 8px 0;font-size:15px;font-weight:600;color:#222;",
-  hint:     "margin:0 0 12px 0;font-size:12px;color:#666;",
-  options:  "display:flex;gap:18px;padding:8px 10px;margin:0 0 12px 0;background:#f7f9fc;border:1px solid #e0e6ef;border-radius:5px;font-size:13px;",
-  optLabel: "display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;",
-  list:     "display:flex;flex-direction:column;gap:6px;",
-  item:     "display:block;width:100%;text-align:right;padding:10px 12px;border:1px solid #d8d8dc;background:#fff;cursor:pointer;font:inherit;font-size:13px;border-radius:5px;",
-  itemRef:  "display:block;font-weight:600;color:#1a3d70;margin-bottom:3px;",
-  itemSnip: "display:block;color:#555;font-size:12px;line-height:1.5;",
-  badge:    "display:inline-block;font-size:10px;background:#eef2ff;color:#3949a3;padding:1px 6px;border-radius:8px;margin-inline-start:6px;vertical-align:middle;",
-  footer:   "margin-top:14px;display:flex;justify-content:flex-start;",
-  cancel:   "padding:6px 18px;border:1px solid #ccc;background:#f5f5f7;cursor:pointer;border-radius:5px;font:inherit;font-size:13px;",
+  overlay:  "position:fixed;inset:0;background:rgba(30,40,60,0.55);backdrop-filter:blur(2px);z-index:99999;display:flex;align-items:center;justify-content:center;",
+  modal:    "background:linear-gradient(180deg,#fdfaf3 0%,#faf6ec 100%);border:2px solid #d4af37;border-radius:10px;padding:20px 22px 16px;max-width:680px;width:92%;max-height:80vh;overflow-y:auto;direction:rtl;font-family:inherit;box-shadow:0 16px 48px rgba(30,40,60,0.30),0 0 60px rgba(212,175,55,0.18);",
+  title:    "margin:0 0 8px 0;font-size:16px;font-weight:700;color:#1e3a6f;letter-spacing:0.2px;",
+  hint:     "margin:0 0 14px 0;font-size:12px;color:#722f37;font-style:italic;",
+  options:  "display:flex;gap:20px;padding:10px 14px;margin:0 0 14px 0;background:linear-gradient(180deg,#fffbef 0%,#fef3d4 100%);border:1px solid #d4af37;border-radius:6px;font-size:13px;color:#1e3a6f;font-weight:500;",
+  optLabel: "display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;",
+  list:     "display:flex;flex-direction:column;gap:7px;",
+  item:     "display:block;width:100%;text-align:right;padding:11px 14px;border:1px solid #d6c89a;background:linear-gradient(180deg,#ffffff 0%,#faf6ec 100%);cursor:pointer;font:inherit;font-size:13px;border-radius:6px;transition:all 0.15s ease;",
+  itemRef:  "display:block;font-weight:700;color:#1e3a6f;margin-bottom:4px;font-size:14px;",
+  itemSnip: "display:block;color:#3a3a3a;font-size:12px;line-height:1.6;",
+  badge:    "display:inline-block;font-size:10px;background:#fef3d4;color:#722f37;padding:2px 8px;border-radius:10px;border:1px solid #d4af37;margin-inline-start:8px;vertical-align:middle;font-weight:600;letter-spacing:0.2px;",
+  footer:   "margin-top:16px;display:flex;justify-content:flex-start;",
+  cancel:   "padding:7px 20px;border:1px solid #c8b878;background:linear-gradient(180deg,#ffffff 0%,#faf6ec 100%);color:#1e3a6f;cursor:pointer;border-radius:6px;font:inherit;font-size:13px;font-weight:500;transition:all 0.15s ease;",
 };
 
 const TYPE_BADGE = {
@@ -118,8 +119,16 @@ export function showMatchDialog(matches, defaults = {}) {
         withNiqqud: niqqud.cb.checked,
         withSource: source.cb.checked,
       }));
-      item.addEventListener("mouseenter", () => { item.style.background = "#f7f9fc"; });
-      item.addEventListener("mouseleave", () => { item.style.background = "#fff"; });
+      item.addEventListener("mouseenter", () => {
+        item.style.background = "linear-gradient(180deg,#fff9e6 0%,#fef3d4 100%)";
+        item.style.borderColor = "#b8860b";
+        item.style.boxShadow = "0 3px 10px rgba(184,134,11,0.20)";
+      });
+      item.addEventListener("mouseleave", () => {
+        item.style.background = "linear-gradient(180deg,#ffffff 0%,#faf6ec 100%)";
+        item.style.borderColor = "#d6c89a";
+        item.style.boxShadow = "none";
+      });
       list.appendChild(item);
     }
     modal.appendChild(list);
