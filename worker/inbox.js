@@ -49,16 +49,43 @@ async function requireAdmin(request, env) {
 // ====== נתיבים פומביים (דורש login) ======
 
 export async function handlePublicInbox(request, env, url) {
+  const path = url.pathname;
+  const method = request.method;
+
+  // משה 2026-05-10: לוח עדכוני פיתוח — נתון פתוח לכולם, גם בלי התחברות.
+  // לעולם לא מחזיר admin_note (הערה פרטית למנהל).
+  if (path === '/api/bug-reports/public' && method === 'GET') {
+    return listPublicBugReports(request, env, url);
+  }
+
+  // שאר הנתיבים — דורש login.
   const auth = await requireLogin(request, env);
   if (auth.error) return auth.error;
   const user = auth.user;
-  const path = url.pathname;
-  const method = request.method;
 
   if (path === '/api/bug-reports' && method === 'POST') return submitBugReport(request, env, user);
   if (path === '/api/contact' && method === 'POST') return submitContact(request, env, user);
   if (path === '/api/usage/track' && method === 'POST') return trackUsage(request, env, user);
   return new Response('Not found', { status: 404 });
+}
+
+async function listPublicBugReports(request, env, url) {
+  const params = url.searchParams;
+  const limit = Math.max(1, Math.min(500, Number(params.get('limit')) || 200));
+  const offset = Math.max(0, Number(params.get('offset')) || 0);
+  // לא מציגים admin_note — שדה פרטי למנהל בלבד.
+  // לא מציגים user_email — פרטיות של מי שדיווח.
+  const rows = await env.DB.prepare(
+    `SELECT id, source, title, body, status, created_at, updated_at
+     FROM bug_reports ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all();
+  const totalRow = await env.DB.prepare('SELECT COUNT(*) as c FROM bug_reports').first();
+  return jsonRes({
+    items: rows.results || [],
+    totalCount: totalRow?.c || 0,
+    limit,
+    offset,
+  });
 }
 
 async function submitBugReport(request, env, user) {

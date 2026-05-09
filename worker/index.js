@@ -65,6 +65,7 @@ export default {
       response = await handleAdmin(request, env, url);
     } else if (
       url.pathname === '/api/bug-reports' ||
+      url.pathname === '/api/bug-reports/public' ||
       url.pathname === '/api/contact' ||
       url.pathname === '/api/usage/track'
     ) {
