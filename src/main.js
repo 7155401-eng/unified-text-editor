@@ -604,9 +604,10 @@ function setupRibbonTabs() {
 
   // משה 2026-05-09: לשונית "הגדרות" הוסרה מהריבון; כל ההגדרות נפתחות מאייקון
   // המפתח-שוודי בכותרת (ראה src/premium/header_icons.js openSettings()).
+  // משה 2026-05-10: גם "הורדות" הוסרה מהריבון; פותחת מאייקון ההורדה
+  // (📥) בכותרת — אותו דפוס מודאל בדיוק כמו הגדרות.
   const tabs = [
     ["file", "קובץ"],
-    ["downloads", "הורדות"],
     ["home", "בית"],
     ["streams", "זרמים"],
     ["insert", "הוספה"],
@@ -638,11 +639,11 @@ function setupRibbonTabs() {
     Array.from(tabsBar.querySelectorAll(".ribbon-tab, .ribbon-tab-render-slot"))
       .forEach(el => el.remove());
     const tabTitles = {
-      file: "פעולות קובץ", downloads: "הורדה ושמירה למחשב", home: "עיצוב טקסט", streams: "ניהול זרמים",
+      file: "פעולות קובץ", home: "עיצוב טקסט", streams: "ניהול זרמים",
       insert: "הוספת אלמנטים", layout: "פריסת עמודים — כולל משנ\"ב וגפ\"ת",
       torah: "כלים תורניים — גימטריה, ראשי תיבות, גרשיים, תאריך עברי",
       review: "סקירה ובדיקה", view: "תצוגה",
-      advanced: "מתקדם", settings: "הגדרות מערכת",
+      advanced: "מתקדם", settings: "הגדרות מערכת", downloads: "הורדה ושמירה למחשב",
     };
     for (const [id, label] of tabs) {
       const button = document.createElement("button");
@@ -704,17 +705,25 @@ function setupRibbonTabs() {
     group.dataset.ribbonTab = groupTabs[index] || "advanced";
   });
 
+  // משה 2026-05-10: ניקוי כפילויות בלשונית "זרמים":
+  //   .panes-toolbar היה מסומן "streams view" — אותו אלמנט DOM הוצג בשתי
+  //                  הכרטיסיות. נשאר רק ב-"view" (כפי שהמשתמש ביקש: "הסר
+  //                  מ'זרמים' והשאר בכרטיסיות האחרות").
+  //   #stream-columns-panel היה "streams layout" — אותו אלמנט DOM בשתיהן.
+  //                          נשאר רק ב-"layout".
+  // קבוצות אחרות שיש להן שמות זרמים (.tb-group "זרמים" עם stream-btn מול
+  // .source-stream-toolbar עם btn-stream) נשארות שתיהן — הקלאסים, הצבעים
+  // ומספר הכפתורים שונים, אז זו לא כפלות ודאית לפי הקריטריונים שנקבעו.
   const panelTabs = [
     [".source-stream-toolbar", "streams"],
-    [".panes-toolbar", "streams view"],
+    [".panes-toolbar", "view"],
     ["#expanded-tools", "advanced view"],
     [".source-bottom-toolbar", "file"],
     [".mishna-toolbar", "layout"],
     [".talmud-toolbar", "layout"],
     [".opening-word-toolbar", "layout"],
-    ["#stream-columns-panel", "streams layout"],
+    ["#stream-columns-panel", "layout"],
     [".stress-toolbar", "advanced"],
-    ["#downloads-panel", "downloads"],
     [".torah-toolbar", "torah"],
     [".insert-toolbar", "insert"],
     [".review-toolbar", "review"],
