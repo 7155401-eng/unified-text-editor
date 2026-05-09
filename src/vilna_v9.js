@@ -929,7 +929,9 @@ export async function buildPages(container, paragraphs, config) {
     }
 
     // 2. אם נשארו פסקאות שלא נכנסו נקי — ננסה לקחת prefix של הבאה.
-    // זה משאיר את ההערות של אותה פסקה איתה (לא בעמוד הבא בלי פסקה).
+    // משה 2026-05-09: ★ פיצול מעוגן — ההערות מתחלקות לפי anchor (מיקום בטקסט).
+    // ההערות שמעוגנות לפני נקודת הפיצול הולכות לעמוד הזה, השאר לעמוד הבא.
+    // כך כל עמוד מקבל רק את הפרשנים של השורות שעליו (כמו במנוע הרגיל).
     let splitInfo = null;
     if (bestN_clean < totalAvail) {
       const sliceIdx = bestN_clean;
@@ -939,10 +941,22 @@ export async function buildPages(container, paragraphs, config) {
         : paragraphs[cursor + fromArrayOffset];
       const fullText = (target?.mainText || '').trim();
       const MIN_SPLIT = 30;
+      // עזרי-עוגן: anchor=0 ברירת-מחדל אם חסר; פיצול לפי תפיסת המנוע הרגיל.
+      const allNotes = target?.notes || [];
+      const notesBeforeAnchor = (anchor) => allNotes.filter(n => {
+        const a = typeof n.anchor === 'number' ? n.anchor : 0;
+        return a < anchor;
+      });
+      const notesFromAnchor = (anchor) => allNotes
+        .filter(n => {
+          const a = typeof n.anchor === 'number' ? n.anchor : 0;
+          return a >= anchor;
+        })
+        .map(n => ({ ...n, anchor: (typeof n.anchor === 'number' ? n.anchor : 0) - anchor }));
       if (fullText.length >= MIN_SPLIT) {
         const baseSlice = getSlice(bestN_clean);
         const tryPrefix = (len) => {
-          const half = { ...target, mainText: fullText.substring(0, len), notes: target.notes || [] };
+          const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len) };
           const slice = [...baseSlice, half];
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
         };
@@ -957,8 +971,8 @@ export async function buildPages(container, paragraphs, config) {
           let wordEnd = lo;
           while (wordEnd > MIN_SPLIT && !/\s/.test(fullText[wordEnd])) wordEnd--;
           if (wordEnd >= MIN_SPLIT && wordEnd < fullText.length) {
-            const firstHalf = { ...target, mainText: fullText.substring(0, wordEnd).trimEnd(), notes: target.notes || [] };
-            const secondHalf = { ...target, mainText: fullText.substring(wordEnd).trimStart(), notes: [] };
+            const firstHalf = { ...target, mainText: fullText.substring(0, wordEnd).trimEnd(), notes: notesBeforeAnchor(wordEnd) };
+            const secondHalf = { ...target, mainText: fullText.substring(wordEnd).trimStart(), notes: notesFromAnchor(wordEnd) };
             splitInfo = { firstHalf, secondHalf, sliceIdx };
           }
         }
