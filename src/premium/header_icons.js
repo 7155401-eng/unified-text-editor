@@ -125,8 +125,9 @@ function buildIconButton({ id, cls, title, label, html }) {
 
 export function installHeaderPremiumIcons() {
   if (typeof document === "undefined") return;
-  // משה 2026-05-10: בודקים את אייקון ההגדרות (תמיד מוצג לכולם), כי היהלום לא
-  // מותקן למנויים — שימוש בו כ-guard יחמיץ את ההגנה למנויים.
+  // משה 2026-05-10: guard לפי אייקון ההגדרות (תמיד מותקן לכולם), כי היהלום לא
+  // מותקן למשתמשים עם מנוי תקופתי — שימוש בו כ-guard יחמיץ הגנה כפולה למנויים.
+  // (משלב את התיקון שעשה משה ב-PR #160 שהשתמש ב-diamond, עם הזיהוי שלי.)
   if (document.getElementById("rt-prem-icon-settings")) return;
 
   const actions = document.querySelector(".app-header .app-header-actions");
@@ -266,7 +267,7 @@ export function installHeaderPremiumIcons() {
   diamond.addEventListener("click", openPremiumPage);
 
   // סדר הוספה ל-flex-RTL: append מוסיף לשמאל. הסדר הוויזואלי משמאל לימין:
-  // [wrench] [gift] [star] [avatar]. אנחנו רוצים [avatar] בקצה השמאלי הביותר,
+  // [wrench] [gift] [diamond] [avatar]. אנחנו רוצים [avatar] בקצה השמאלי הביותר,
   // שכבר נוסף ע"י installAuthUi לפני הקריאה הזאת. לכן נכניס את 3 האייקונים
   // *לפני* ה-avatar באמצעות insertBefore.
   const avatarWrap = document.getElementById("profile-avatar-wrap");
