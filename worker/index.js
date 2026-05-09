@@ -15,6 +15,7 @@ import { handleAdminInbox, handlePublicInbox } from './inbox.js';
 import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
 import { handleAccount } from './account.js';
+import { handlePaymentAdmin, handlePackageLookup } from './payment_admin.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -62,6 +63,12 @@ export default {
       /^\/api\/admin\/users\/\d+\/contact-messages$/.test(url.pathname)
     ) {
       response = await handleAdminInbox(request, env, url);
+    } else if (
+      url.pathname === '/api/admin/payment-config' ||
+      url.pathname === '/api/admin/test-packages' ||
+      url.pathname.startsWith('/api/admin/test-packages/')
+    ) {
+      response = await handlePaymentAdmin(request, env, url);
     } else if (url.pathname.startsWith('/api/admin/')) {
       response = await handleAdmin(request, env, url);
     } else if (
@@ -72,6 +79,8 @@ export default {
       url.pathname === '/api/usage/track'
     ) {
       response = await handlePublicInbox(request, env, url);
+    } else if (url.pathname.startsWith('/api/payments/package/')) {
+      response = await handlePackageLookup(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
     } else if (url.pathname.startsWith('/api/account/')) {

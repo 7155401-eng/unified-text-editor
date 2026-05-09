@@ -18,6 +18,7 @@
 //   gift_claims(user_id, year_month UNIQUE)
 
 import { getUserFromRequest } from './session.js';
+import { getPaymentConfig, getPackageByToken } from './payment_admin.js';
 
 const PLAN_DEFS = {
   monthly: { type: 'subscription', amount: 50,  durationSec: 30 * 24 * 60 * 60 },
@@ -60,6 +61,29 @@ function resolvePlanOrPack(body) {
   return null;
 }
 
+// משה 2026-05-10: חבילת בדיקה מותאמת (לא נמצאת ב-PLAN_DEFS/PACK_DEFS).
+// קוראים ל-DB דרך טוקן; אם תקין — מחזירים שכבת אחיד עם def דמוי-pack.
+async function resolveCustomPackage(env, body) {
+  if (!body.pkgToken) return null;
+  const pkg = await getPackageByToken(env, body.pkgToken);
+  if (!pkg) return null;
+  const durationSec = pkg.days != null ? pkg.days * 24 * 60 * 60 : (pkg.hours || 0) * 60 * 60;
+  return {
+    kind: 'custom',
+    code: `custom-${pkg.id}`,
+    customId: pkg.id,
+    customToken: pkg.token,
+    def: {
+      type: pkg.days != null ? 'subscription' : 'hours',
+      amount: pkg.amount,
+      hours: pkg.hours || 0,
+      days: pkg.days || 0,
+      durationSec,
+      label: pkg.label,
+    },
+  };
+}
+
 async function readBody(request) {
   try { return await request.json(); } catch { return {}; }
 }
@@ -76,11 +100,18 @@ async function readBody(request) {
 //   YAAD_API_KEY   — מפתח API לחתימה
 //   YAAD_BASE_URL  — בדרך כלל https://icom.yaad.net/p/
 
-async function buildYaadRedirect(env, intent) {
-  const base = env.YAAD_BASE_URL || 'https://icom.yaad.net/p/';
+async function buildYaadRedirect(env, intent, returnOrigin) {
+  // משה 2026-05-10: כל הסודות מגיעים דרך getPaymentConfig (DB→env fallback).
+  // הטרמינל של יעד שריג נשאר משותף עם shvilim.online; כדי לא לשנות שם
+  // הגדרות ניהוליות, אנחנו מעבירים את כתובת החזרה בפרמטר UrlBack ובודקים
+  // את ה-Order שלנו אחר כך — כך החזרה הולכת לכתובת ravtext גם אם בדשבורד
+  // יש כתובת אחרת (יעד שריג מקבלים פרמטר UrlBack שדוחה את ההגדרה).
+  const config = await getPaymentConfig(env);
+  const base = (config.YAAD_BASE_URL || 'https://icom.yaad.net/p/').replace(/\/?$/, '/');
+  const callbackUrl = `${returnOrigin}/api/payments/yaad/callback`;
   const params = new URLSearchParams({
     action: 'pay',
-    Masof: env.YAAD_TERMINAL || '',
+    Masof: config.YAAD_TERMINAL || '',
     Order: intent.token,
     Info: intent.label,
     Amount: String(intent.amount),
@@ -95,13 +126,15 @@ async function buildYaadRedirect(env, intent) {
     FixTash: 'True',
     sendemail: 'True',
     SendHesh: 'True',
+    MoreData: 'True',
     PageLang: 'HEB',
     tmp: '13',
+    UrlBack: callbackUrl,
   });
   // יעד שריג מבקשים סימן Signature אם רוצים חתימה — נדרש קוד צד שרת
-  // אם YAAD_API_KEY מוגדר, מחשבים HMAC-MD5 כפי שיעד שריג מצפים.
-  if (env.YAAD_API_KEY) {
-    const signed = await signYaadParams(params, env.YAAD_API_KEY);
+  // אם YAAD_API_KEY מוגדר, מחשבים HMAC-SHA256 כפי שיעד שריג מצפים.
+  if (config.YAAD_API_KEY) {
+    const signed = await signYaadParams(params, config.YAAD_API_KEY);
     return `${base}?${signed}`;
   }
   return `${base}?${params.toString()}`;
@@ -129,9 +162,9 @@ async function startYaad(request, env, url) {
   if (!user) return jsonError('נדרש להתחבר תחילה', 401);
 
   const body = await readBody(request);
-  const choice = resolvePlanOrPack(body);
+  const choice = (await resolveCustomPackage(env, body)) || resolvePlanOrPack(body);
   if (!choice) return jsonError('בחירה לא חוקית');
-  if (!Number.isFinite(body.amount) || body.amount !== choice.def.amount) {
+  if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) {
     return jsonError('סכום לא תואם לתוכנית הנבחרת');
   }
   // משה 2026-05-09: חובה לבדוק שיש טלפון לפני שמתחילים תשלום (יעד שריג מצריך
@@ -142,7 +175,9 @@ async function startYaad(request, env, url) {
   }
 
   const token = randomToken();
-  const label = choice.kind === 'plan' ? `מנוי-${choice.code}` : `שעות-${choice.code}`;
+  const label = choice.kind === 'plan' ? `מנוי-${choice.code}` :
+                choice.kind === 'pack' ? `שעות-${choice.code}` :
+                `מותאם-${choice.def.label || choice.customId}`;
   const nowSec = Math.floor(Date.now() / 1000);
 
   await env.DB.prepare(
@@ -150,12 +185,12 @@ async function startYaad(request, env, url) {
   ).bind(
     user.id, 'yaad', token, choice.def.amount,
     choice.kind === 'plan' ? choice.code : null,
-    choice.kind === 'pack' ? choice.code : null,
+    choice.kind === 'pack' ? choice.code : (choice.kind === 'custom' ? `custom:${choice.customToken}` : null),
     'pending', nowSec
   ).run();
 
   const intent = { token, amount: choice.def.amount, label };
-  const redirectUrl = await buildYaadRedirect(env, intent);
+  const redirectUrl = await buildYaadRedirect(env, intent, url.origin);
   return jsonResponse({ redirectUrl, token });
 }
 
@@ -192,10 +227,12 @@ async function yaadCallback(request, env, url) {
 
 // =============== PayPal ===============
 async function paypalToken(env) {
-  const r = await fetch(`${env.PAYPAL_BASE_URL || 'https://api-m.paypal.com'}/v1/oauth2/token`, {
+  const config = await getPaymentConfig(env);
+  const base = (config.PAYPAL_BASE_URL || 'https://api-m.paypal.com').replace(/\/$/, '');
+  const r = await fetch(`${base}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${btoa(`${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_SECRET}`)}`,
+      Authorization: `Basic ${btoa(`${config.PAYPAL_CLIENT_ID}:${config.PAYPAL_SECRET}`)}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: 'grant_type=client_credentials',
@@ -210,10 +247,10 @@ async function startPaypal(request, env, url) {
   if (!user) return jsonError('נדרש להתחבר תחילה', 401);
 
   const body = await readBody(request);
-  const choice = resolvePlanOrPack(body);
+  const choice = (await resolveCustomPackage(env, body)) || resolvePlanOrPack(body);
   if (!choice) return jsonError('בחירה לא חוקית');
   if (choice.def.amount < 30) return jsonError('פייפאל זמין מ-30 ש"ח ומעלה');
-  if (!Number.isFinite(body.amount) || body.amount !== choice.def.amount) return jsonError('סכום לא תואם');
+  if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) return jsonError('סכום לא תואם');
   // משה 2026-05-09: חובה טלפון גם לפייפאל (אחיד עם יעד שריג + נדרש לפי חוק
   // הגנת הצרכן בעסקה לתושב ישראל).
   const phoneRow = await env.DB.prepare('SELECT phone_e164 FROM users WHERE id = ?').bind(user.id).first();
@@ -221,9 +258,11 @@ async function startPaypal(request, env, url) {
     return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
   }
 
-  if (!env.PAYPAL_CLIENT_ID || !env.PAYPAL_SECRET) {
+  const config = await getPaymentConfig(env);
+  if (!config.PAYPAL_CLIENT_ID || !config.PAYPAL_SECRET) {
     return jsonError('שירות פייפאל אינו מוגדר עדיין. אנא בחרו תשלום באשראי.', 503);
   }
+  const paypalBase = (config.PAYPAL_BASE_URL || 'https://api-m.paypal.com').replace(/\/$/, '');
 
   const token = randomToken();
   const nowSec = Math.floor(Date.now() / 1000);
@@ -232,14 +271,14 @@ async function startPaypal(request, env, url) {
   ).bind(
     user.id, 'paypal', token, choice.def.amount,
     choice.kind === 'plan' ? choice.code : null,
-    choice.kind === 'pack' ? choice.code : null,
+    choice.kind === 'pack' ? choice.code : (choice.kind === 'custom' ? `custom:${choice.customToken}` : null),
     'pending', nowSec
   ).run();
 
   const accessToken = await paypalToken(env);
   // ILS אינו נתמך במלואו ב-PayPal; ממירים USD-ILS לפי שער קבוע 1USD≈3.7ILS,
   // או משתמשים ב-currency_code=ILS אם המוכר תמך. כאן: ILS.
-  const orderRes = await fetch(`${env.PAYPAL_BASE_URL || 'https://api-m.paypal.com'}/v2/checkout/orders`, {
+  const orderRes = await fetch(`${paypalBase}/v2/checkout/orders`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -286,7 +325,9 @@ async function paypalCallback(request, env, url) {
 
   try {
     const accessToken = await paypalToken(env);
-    const captureRes = await fetch(`${env.PAYPAL_BASE_URL || 'https://api-m.paypal.com'}/v2/checkout/orders/${paypalOrderId}/capture`, {
+    const cfg = await getPaymentConfig(env);
+    const ppBase = (cfg.PAYPAL_BASE_URL || 'https://api-m.paypal.com').replace(/\/$/, '');
+    const captureRes = await fetch(`${ppBase}/v2/checkout/orders/${paypalOrderId}/capture`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     });
@@ -332,6 +373,28 @@ async function applySuccessfulPayment(env, intent, externalTxnId, tokens = {}) {
     await env.DB.prepare(
       "UPDATE users SET status = 'active', plan_type = ?, expires_at = ?, plan_renew_at = ? WHERE id = ?"
     ).bind('subscription', newExpire, newExpire, user.id).run();
+  } else if (intent.pack_code && intent.pack_code.startsWith('custom:')) {
+    // משה 2026-05-10: חבילת בדיקה מותאמת — שולפים מ-DB ומחילים ע"פ ימים/שעות.
+    const customToken = intent.pack_code.slice('custom:'.length);
+    const pkg = await env.DB.prepare(
+      'SELECT id, hours, days FROM custom_packages WHERE token = ?'
+    ).bind(customToken).first();
+    if (!pkg) return;
+    if (pkg.days != null && pkg.days > 0) {
+      const baseExpire = (user.expires_at && user.expires_at > nowSec) ? user.expires_at : nowSec;
+      const newExpire = baseExpire + pkg.days * 24 * 60 * 60;
+      await env.DB.prepare(
+        "UPDATE users SET status = 'active', plan_type = COALESCE(plan_type,'subscription'), expires_at = ?, plan_renew_at = ? WHERE id = ?"
+      ).bind(newExpire, newExpire, user.id).run();
+    } else if (pkg.hours != null && pkg.hours > 0) {
+      const seconds = Math.round(pkg.hours * 3600);
+      const newBalance = (user.balance_seconds || 0) + seconds;
+      const expireMin = nowSec + newBalance;
+      await env.DB.prepare(
+        "UPDATE users SET status = 'active', plan_type = COALESCE(plan_type,'hours'), balance_seconds = ?, expires_at = ? WHERE id = ?"
+      ).bind(newBalance, expireMin, user.id).run();
+    }
+    await env.DB.prepare('UPDATE custom_packages SET used_count = used_count + 1 WHERE id = ?').bind(pkg.id).run().catch(() => {});
   } else if (intent.pack_code) {
     const pack = PACK_DEFS[intent.pack_code];
     if (!pack) return;
