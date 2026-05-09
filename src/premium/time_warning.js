@@ -13,11 +13,41 @@ const WARN_1MIN_KEY = "ravtext.timewarn.1min";
 
 let _expiresAtMs = null;        // זמן פקיעת חשבון (ms epoch)
 let _planType = null;            // "subscription" | "hours" | null
+let _balanceSeconds = 0;         // יתרת שעות נטו (שניות)
 let _tickHandle = null;
 let _pollHandle = null;
 let _warned5 = false;
 let _warned1 = false;
 let _expiredHandled = false;
+const _timerListeners = new Set();
+
+function notifyTimerListeners() {
+  const snap = getTimerSnapshot();
+  for (const fn of _timerListeners) {
+    try { fn(snap); } catch {}
+  }
+}
+
+export function getTimerSnapshot() {
+  if (!_expiresAtMs) {
+    return { active: false, planType: _planType, remainMs: 0, balanceSeconds: _balanceSeconds };
+  }
+  const remainMs = Math.max(0, _expiresAtMs - Date.now());
+  return {
+    active: true,
+    planType: _planType,
+    remainMs,
+    balanceSeconds: _balanceSeconds,
+    expiresAtMs: _expiresAtMs,
+  };
+}
+
+export function onTimerUpdate(fn) {
+  _timerListeners.add(fn);
+  // מסר ראשוני מיידי
+  try { fn(getTimerSnapshot()); } catch {}
+  return () => _timerListeners.delete(fn);
+}
 
 function ensureToastStack() {
   let stack = document.getElementById("rt-toast-stack");
@@ -128,9 +158,10 @@ function forceDemoMode() {
 }
 
 function tick() {
-  if (!_expiresAtMs) return;
+  if (!_expiresAtMs) { notifyTimerListeners(); return; }
   const now = Date.now();
   const remainMs = _expiresAtMs - now;
+  notifyTimerListeners();
 
   if (remainMs <= 0) {
     if (_expiredHandled) return;
@@ -171,6 +202,7 @@ async function poll() {
     if (!status) return;
     // status: { planType: "subscription"|"hours"|null, expiresAt: ms epoch | null, paid: bool }
     _planType = status.planType || null;
+    _balanceSeconds = Number(status.balanceSeconds) || 0;
     if (status.expiresAt && Number.isFinite(status.expiresAt)) {
       _expiresAtMs = status.expiresAt;
       // אם השרת חידש לטווח רחוק → איפוס דגלי אזהרה
@@ -184,6 +216,7 @@ async function poll() {
     } else {
       _expiresAtMs = null;
     }
+    notifyTimerListeners();
   } catch {}
 }
 

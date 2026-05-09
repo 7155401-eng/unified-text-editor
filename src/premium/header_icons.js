@@ -28,23 +28,85 @@ function markGiftClaimedLocally() {
   try { localStorage.setItem(GIFT_LOCAL_KEY, thisMonth()); } catch {}
 }
 
+// משה 2026-05-09: פופ-אובר הגדרות. לשונית הריבון "הגדרות" הוסרה (main.js),
+// וכל ההגדרות נפתחות מהאייקון מפתח-שוודי כמודאל מרכזי. המקור של תוכן ההגדרות
+// (#settings-panel + #settings-panel-wrap) נשאר במקום ב-DOM כדי לשמור על כל
+// ה-listeners והקישורים. אנחנו רק מציגים את ההורה שלהם כמודאל בעל position:fixed.
+
+const SETTINGS_OVERLAY_ID = "rt-prem-settings-overlay";
+const SETTINGS_HOST_ID = "rt-prem-settings-host";
+
 function openSettings() {
-  // Settings is rendered as a ribbon-tab (data-ribbon-tab="settings").
-  // Try to switch the ribbon to "settings"; if no ribbon system answers,
-  // scroll the panel into view as a fallback.
-  const tab = document.querySelector('[data-ribbon-tab-trigger="settings"], [data-tab-target="settings"]');
-  if (tab && typeof tab.click === "function") {
-    tab.click();
+  if (document.getElementById(SETTINGS_OVERLAY_ID)) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = SETTINGS_OVERLAY_ID;
+  overlay.className = "rt-prem-settings-overlay";
+  overlay.dir = "rtl";
+
+  const sheet = document.createElement("div");
+  sheet.className = "rt-prem-settings-sheet";
+
+  const header = document.createElement("div");
+  header.className = "rt-prem-settings-header";
+  header.innerHTML = `
+    <div class="rt-prem-settings-title">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      <span>הגדרות מערכת</span>
+    </div>
+    <button type="button" class="rt-prem-settings-close" aria-label="סגור">✕</button>
+  `;
+  sheet.appendChild(header);
+
+  const host = document.createElement("div");
+  host.id = SETTINGS_HOST_ID;
+  host.className = "rt-prem-settings-host";
+  sheet.appendChild(host);
+
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+  document.documentElement.classList.add("rt-prem-locked");
+
+  // העברת תוכן ההגדרות (settings-panel + settings-panel-wrap) לתוך ה-host.
+  // שומרים מצביע למקום המקורי כדי להחזיר בעת סגירה.
+  const wrap = document.getElementById("settings-panel-wrap");
+  const panel = document.getElementById("settings-panel");
+  const wrapAnchor = wrap ? document.createComment("settings-panel-wrap-anchor") : null;
+  const panelAnchor = panel ? document.createComment("settings-panel-anchor") : null;
+  if (wrap && wrap.parentNode) {
+    wrap.parentNode.insertBefore(wrapAnchor, wrap);
+    host.appendChild(wrap);
+    wrap.hidden = false;
   }
-  const panel = document.getElementById("settings-panel-wrap");
-  if (panel) {
+  if (panel && panel.parentNode) {
+    panel.parentNode.insertBefore(panelAnchor, panel);
+    host.appendChild(panel);
     panel.hidden = false;
-    panel.classList.add("rt-prem-settings-active");
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
-  } else {
-    // last-resort: dispatch a custom event other modules can listen to
-    document.dispatchEvent(new CustomEvent("ravtext:open-settings"));
+    panel.classList.add("rt-prem-settings-shown");
   }
+
+  function close() {
+    // החזרת התוכן למקום המקורי כדי לא לשבור את העץ
+    if (panel && panelAnchor && panelAnchor.parentNode) {
+      panelAnchor.parentNode.insertBefore(panel, panelAnchor);
+      panelAnchor.remove();
+      panel.classList.remove("rt-prem-settings-shown");
+    }
+    if (wrap && wrapAnchor && wrapAnchor.parentNode) {
+      wrapAnchor.parentNode.insertBefore(wrap, wrapAnchor);
+      wrapAnchor.remove();
+    }
+    overlay.remove();
+    document.documentElement.classList.remove("rt-prem-locked");
+    document.removeEventListener("keydown", escHandler);
+  }
+
+  function escHandler(e) {
+    if (e.key === "Escape") close();
+  }
+  header.querySelector(".rt-prem-settings-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", escHandler);
 }
 
 function buildIconButton({ id, cls, title, label, html }) {
@@ -131,17 +193,30 @@ export function installHeaderPremiumIcons() {
     }
   });
 
-  // Premium star — מרכז העניין
-  const star = buildIconButton({
-    id: "rt-prem-icon-star",
-    cls: "rt-prem-icon-star" + (auth.paid ? "" : " rt-prem-pulse"),
+  // Premium diamond — יהלום מהבהב מתחלף צבעים
+  const diamond = buildIconButton({
+    id: "rt-prem-icon-diamond",
+    cls: "rt-prem-icon-diamond" + (auth.paid ? " rt-prem-paid" : " rt-prem-shine"),
     title: auth.paid
       ? "המנוי שלך פעיל. לחץ לניהול"
       : "שדרג לפרמיום — שימוש מלא ללא הגבלה",
     label: "פרמיום",
-    html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="0.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+    html: `
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" class="rt-prem-diamond-svg">
+        <defs>
+          <linearGradient id="rt-prem-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="currentColor" stop-opacity="1"/>
+            <stop offset="50%" stop-color="currentColor" stop-opacity="0.85"/>
+            <stop offset="100%" stop-color="currentColor" stop-opacity="1"/>
+          </linearGradient>
+        </defs>
+        <path d="M6 3 H18 L22 9 L12 22 L2 9 Z" fill="url(#rt-prem-grad)" stroke="rgba(255,255,255,0.65)" stroke-width="0.6" stroke-linejoin="round"/>
+        <path d="M6 3 L9 9 L2 9 Z M18 3 L15 9 L22 9 Z M9 9 L15 9 L12 22 Z M9 9 L12 3 L15 9 Z" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.4)" stroke-width="0.4" stroke-linejoin="round"/>
+        <path d="M8 5 L10 8" stroke="rgba(255,255,255,0.85)" stroke-width="0.7" stroke-linecap="round" class="rt-prem-diamond-spark"/>
+      </svg>
+    `,
   });
-  star.addEventListener("click", openPremiumPage);
+  diamond.addEventListener("click", openPremiumPage);
 
   // סדר הוספה ל-flex-RTL: append מוסיף לשמאל. הסדר הוויזואלי משמאל לימין:
   // [wrench] [gift] [star] [avatar]. אנחנו רוצים [avatar] בקצה השמאלי הביותר,

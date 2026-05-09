@@ -25,6 +25,7 @@ import { installAuthUi } from "./auth_ui.js";
 import { installHeaderPremiumIcons } from "./premium/header_icons.js";
 import { maybeAutoOpenFromUrl } from "./premium/premium_page.js";
 import { startTimeWarningEngine } from "./premium/time_warning.js";
+import { installHeaderTimer } from "./premium/header_timer.js";
 import "./premium/premium_styles.css";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
@@ -56,6 +57,7 @@ import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 installAuthUi();
 installHeaderPremiumIcons();
+installHeaderTimer();
 maybeAutoOpenFromUrl();
 startTimeWarningEngine();
 installConsoleGuard();
@@ -604,6 +606,8 @@ function setupRibbonTabs() {
   const mainToolbar = getMainRibbonToolbar();
   if (!mainToolbar) return;
 
+  // משה 2026-05-09: לשונית "הגדרות" הוסרה מהריבון; כל ההגדרות נפתחות מאייקון
+  // המפתח-שוודי בכותרת (ראה src/premium/header_icons.js openSettings()).
   const tabs = [
     ["file", "קובץ"],
     ["downloads", "הורדות"],
@@ -615,7 +619,6 @@ function setupRibbonTabs() {
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
-    ["settings", "הגדרות"],
   ];
 
   let tabsBar = document.getElementById("ribbon-tabs");
