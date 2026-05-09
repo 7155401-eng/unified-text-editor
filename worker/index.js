@@ -58,7 +58,8 @@ export default {
       url.pathname.startsWith('/api/admin/bug-reports/') ||
       url.pathname === '/api/admin/contact-messages' ||
       url.pathname.startsWith('/api/admin/contact-messages/') ||
-      url.pathname === '/api/admin/usage'
+      url.pathname === '/api/admin/usage' ||
+      /^\/api\/admin\/users\/\d+\/contact-messages$/.test(url.pathname)
     ) {
       response = await handleAdminInbox(request, env, url);
     } else if (url.pathname.startsWith('/api/admin/')) {
@@ -67,6 +68,7 @@ export default {
       url.pathname === '/api/bug-reports' ||
       url.pathname === '/api/bug-reports/public' ||
       url.pathname === '/api/contact' ||
+      url.pathname === '/api/contact/mine' ||
       url.pathname === '/api/usage/track'
     ) {
       response = await handlePublicInbox(request, env, url);

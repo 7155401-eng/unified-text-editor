@@ -228,7 +228,15 @@ export function openContactModal() {
     <textarea id="contact-body" rows="6" placeholder="כתוב כאן את הפנייה..."
            style="width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1;
                   border-radius: 6px; font-size: 14px; font-family: inherit;
-                  resize: vertical; box-sizing: border-box;"></textarea>`;
+                  resize: vertical; box-sizing: border-box;"></textarea>
+    <details id="my-contacts-section" style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+      <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: #1e3a8a; user-select: none;">
+        📬 הפניות הקודמות שלי
+      </summary>
+      <div id="my-contacts-list" style="margin-top: 10px;">
+        <div style="text-align: center; color: #64748b; padding: 12px; font-size: 13px;">טוען...</div>
+      </div>
+    </details>`;
 
   const footer = document.createElement('div');
   footer.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
@@ -278,6 +286,41 @@ export function openContactModal() {
   });
 
   setTimeout(() => document.getElementById('contact-body')?.focus(), 50);
+
+  // משה 2026-05-10: כשפותחים את האקורדיון, טוענים פעם אחת את הפניות הקודמות.
+  const details = document.getElementById('my-contacts-section');
+  let loadedOnce = false;
+  details?.addEventListener('toggle', async () => {
+    if (!details.open || loadedOnce) return;
+    loadedOnce = true;
+    await renderMyContactsInto(document.getElementById('my-contacts-list'));
+  });
+}
+
+async function renderMyContactsInto(target) {
+  if (!target) return;
+  try {
+    const res = await fetch('/api/contact/mine');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const items = data.items || [];
+    if (items.length === 0) {
+      target.innerHTML = '<div style="text-align:center;color:#64748b;padding:14px;font-size:13px;">עוד לא שלחת אף פנייה.</div>';
+      return;
+    }
+    target.innerHTML = items.map(c => `
+      <div style="border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:8px;background:#f8fafc;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;margin-bottom:6px;">
+          <span>📅 ${formatDateShort(c.created_at)}</span>
+          <span style="${c.read_at ? 'color:#047857;' : 'color:#b45309;font-weight:600;'}">
+            ${c.read_at ? '✓ נקרא על ידינו' : '⏳ ממתין למענה'}
+          </span>
+        </div>
+        <div style="font-size:13px;color:#334155;white-space:pre-wrap;line-height:1.45;">${escapeText(c.body)}</div>
+      </div>`).join('');
+  } catch (err) {
+    target.innerHTML = `<div style="text-align:center;color:#b91c1c;padding:12px;font-size:13px;">טעינה נכשלה: ${escapeText(err.message || err)}</div>`;
+  }
 }
 
 let trackInflight = false;
