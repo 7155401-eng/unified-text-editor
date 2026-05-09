@@ -132,15 +132,28 @@ export function installHeaderPremiumIcons() {
 
   const auth = window.__RAVTEXT_AUTH__ || { loggedIn: false, paid: false };
 
-  // Wrench (settings) — תמיד מוצג
-  const wrench = buildIconButton({
-    id: "rt-prem-icon-wrench",
-    cls: "rt-prem-icon-wrench",
+  // משה 2026-05-09: גלגל שיניים אלגנטי עם גרדיאנט פנימי + סיבוב hover.
+  // (קודם היה מפתח שוודי — חסר השראה. הגלגל מקובל יותר ומיד מזוהה כ"הגדרות".)
+  const settingsIcon = buildIconButton({
+    id: "rt-prem-icon-settings",
+    cls: "rt-prem-icon-settings",
     title: "הגדרות",
     label: "פתח הגדרות",
-    html: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
+    html: `
+      <svg class="rt-prem-settings-svg" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="rt-prem-gear-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="currentColor" stop-opacity="1"/>
+            <stop offset="100%" stop-color="currentColor" stop-opacity="0.78"/>
+          </linearGradient>
+        </defs>
+        <path d="M19.4 13c.04-.33.07-.66.07-1s-.03-.67-.07-1l2.11-1.65a.5.5 0 0 0 .12-.64l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.4 7.4 0 0 0-1.73-1L14.5 2.42A.5.5 0 0 0 14 2h-4a.5.5 0 0 0-.5.42l-.38 2.61a7.4 7.4 0 0 0-1.73 1l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.64L4.53 11c-.04.33-.07.66-.07 1s.03.67.07 1l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46a.5.5 0 0 0 .61.22l2.49-1a7.4 7.4 0 0 0 1.73 1l.38 2.61A.5.5 0 0 0 10 22h4a.5.5 0 0 0 .5-.42l.38-2.61a7.4 7.4 0 0 0 1.73-1l2.49 1a.5.5 0 0 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.64L19.4 13z" fill="url(#rt-prem-gear-grad)" stroke="currentColor" stroke-width="0.6" stroke-linejoin="round"/>
+        <circle cx="12" cy="12" r="3.2" fill="rgba(255,255,255,0.95)" stroke="currentColor" stroke-width="0.6"/>
+        <circle cx="12" cy="12" r="1.4" fill="currentColor"/>
+      </svg>
+    `,
   });
-  wrench.addEventListener("click", openSettings);
+  settingsIcon.addEventListener("click", openSettings);
 
   // Gift — מתנה חודשית
   const gift = buildIconButton({
@@ -207,10 +220,10 @@ export function installHeaderPremiumIcons() {
     const avatarWrap1 = document.getElementById("profile-avatar-wrap");
     const ref1 = avatarWrap1 || null;
     if (ref1) {
-      actions.insertBefore(wrench, ref1);
+      actions.insertBefore(settingsIcon, ref1);
       actions.insertBefore(gift, ref1);
     } else {
-      actions.appendChild(wrench);
+      actions.appendChild(settingsIcon);
       actions.appendChild(gift);
     }
     if (avatarWrap1) {
@@ -257,13 +270,13 @@ export function installHeaderPremiumIcons() {
   const avatarWrap = document.getElementById("profile-avatar-wrap");
   const ref = avatarWrap || null;
   if (ref) {
-    actions.insertBefore(wrench, ref);
+    actions.insertBefore(settingsIcon, ref);
     actions.insertBefore(gift, ref);
-    actions.insertBefore(star, ref);
+    actions.insertBefore(diamond, ref);
   } else {
-    actions.appendChild(wrench);
+    actions.appendChild(settingsIcon);
     actions.appendChild(gift);
-    actions.appendChild(star);
+    actions.appendChild(diamond);
   }
 
   // אם המנוי פעיל — הצג סרט קטן על האווטאר

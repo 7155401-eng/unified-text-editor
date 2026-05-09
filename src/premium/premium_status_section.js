@@ -114,7 +114,7 @@ function renderStatus(section, status) {
   } else if (planType === "hours" || balanceSec > 0) {
     items.push(`
       <div class="rt-prem-status-line">
-        <span class="rt-prem-status-label">יתרה נותרת:</span>
+        <span class="rt-prem-status-label">יתרה שנותרה:</span>
         <span class="rt-prem-status-value">${fmtRemainSeconds(balanceSec)}</span>
       </div>
     `);

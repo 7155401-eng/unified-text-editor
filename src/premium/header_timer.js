@@ -37,12 +37,12 @@ function fmtRemain(remainMs, planType) {
   if (totalSec >= 3600) {
     const hrs = Math.floor(totalSec / 3600);
     const mins = Math.floor((totalSec % 3600) / 60);
-    return { value: `${hrs}:${String(mins).padStart(2, "0")}`, label: "שעות נותרות" };
+    return { value: `${hrs}:${String(mins).padStart(2, "0")}`, label: "שעות נותרו" };
   }
   // פחות משעה — דקות:שניות
   const mins = Math.floor(totalSec / 60);
   const secs = totalSec % 60;
-  return { value: `${mins}:${String(secs).padStart(2, "0")}`, label: "דקות נותרות" };
+  return { value: `${mins}:${String(secs).padStart(2, "0")}`, label: "דקות נותרו" };
 }
 
 function classFor(snap) {

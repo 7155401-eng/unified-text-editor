@@ -11,10 +11,23 @@ const DEBOUNCE_MS = 2000;
 const SETTINGS_PREFIX = 'ravtext.';
 // מפתחות שלא נסנכרן (סודיים / זמניים / מצביעי הגנה):
 const SETTINGS_BLACKLIST = new Set([
-  'ravtext.ai.apiKey',
+  'ravtext.ai.apiKey',                 // legacy
   'ravtext.demo.blockedUntil',
   'ravtext.demoMode',
 ]);
+// משה 2026-05-09: אסור לסנכרן מפתחות API של ספקי AI לשרת — הם פרטיים למשתמש.
+// הוספתי תחילית כך שכל ravtext.ai.apiKey.<provider> נחסם.
+const SETTINGS_BLACKLIST_PREFIXES = [
+  'ravtext.ai.apiKey.',
+];
+
+function isBlacklisted(key) {
+  if (SETTINGS_BLACKLIST.has(key)) return true;
+  for (const prefix of SETTINGS_BLACKLIST_PREFIXES) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
+}
 
 let _docDebounceTimer = null;
 let _settingsDebounceTimer = null;
@@ -33,7 +46,7 @@ function collectLocalSettings() {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key || !key.startsWith(SETTINGS_PREFIX)) continue;
-      if (SETTINGS_BLACKLIST.has(key)) continue;
+      if (isBlacklisted(key)) continue;
       out[key] = localStorage.getItem(key);
     }
   } catch (e) {
@@ -47,7 +60,7 @@ function applyLocalSettings(settings) {
   try {
     for (const [key, value] of Object.entries(settings)) {
       if (!key.startsWith(SETTINGS_PREFIX)) continue;
-      if (SETTINGS_BLACKLIST.has(key)) continue;
+      if (isBlacklisted(key)) continue;
       if (value == null) continue;
       localStorage.setItem(key, String(value));
     }
@@ -162,7 +175,7 @@ export function attachAutoSync(paneManager) {
       if (
         typeof key === 'string' &&
         key.startsWith(SETTINGS_PREFIX) &&
-        !SETTINGS_BLACKLIST.has(key)
+        !isBlacklisted(key)
       ) {
         scheduleSettingsSync();
       }
