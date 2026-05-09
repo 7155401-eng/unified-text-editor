@@ -1,21 +1,27 @@
 // Modal dialog shown when auto-detect finds multiple candidate refs for a
-// selection. Returns a Promise that resolves with the picked match, or null
-// if the user cancelled.
+// selection. Returns a Promise that resolves with { match, withNiqqud, withSource }
+// (the user's pick + their checkbox state), or null if cancelled.
+//
+// Defaults per Moshe (2026-05-09): WITHOUT niqqud, WITH source. The caller is
+// responsible for honoring these — they override the toolbar's niqqud checkbox
+// and the action button's cite parameter for this interaction.
 
 import { formatRefLabel } from "./sefaria_ref_format.js";
 
 const STYLES = {
-  overlay: "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;",
-  modal:   "background:#fff;border-radius:8px;padding:18px 18px 14px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto;direction:rtl;font-family:inherit;box-shadow:0 8px 32px rgba(0,0,0,0.2);",
-  title:   "margin:0 0 12px 0;font-size:15px;font-weight:600;color:#222;",
-  hint:    "margin:0 0 12px 0;font-size:12px;color:#666;",
-  list:    "display:flex;flex-direction:column;gap:6px;",
-  item:    "display:block;width:100%;text-align:right;padding:10px 12px;border:1px solid #d8d8dc;background:#fff;cursor:pointer;font:inherit;font-size:13px;border-radius:5px;",
-  itemRef: "display:block;font-weight:600;color:#1a3d70;margin-bottom:3px;",
-  itemSnip:"display:block;color:#555;font-size:12px;line-height:1.5;",
-  badge:   "display:inline-block;font-size:10px;background:#eef2ff;color:#3949a3;padding:1px 6px;border-radius:8px;margin-inline-start:6px;vertical-align:middle;",
-  footer:  "margin-top:14px;display:flex;justify-content:flex-start;",
-  cancel:  "padding:6px 18px;border:1px solid #ccc;background:#f5f5f7;cursor:pointer;border-radius:5px;font:inherit;font-size:13px;",
+  overlay:  "position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:99999;display:flex;align-items:center;justify-content:center;",
+  modal:    "background:#fff;border-radius:8px;padding:18px 18px 14px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto;direction:rtl;font-family:inherit;box-shadow:0 8px 32px rgba(0,0,0,0.2);",
+  title:    "margin:0 0 8px 0;font-size:15px;font-weight:600;color:#222;",
+  hint:     "margin:0 0 12px 0;font-size:12px;color:#666;",
+  options:  "display:flex;gap:18px;padding:8px 10px;margin:0 0 12px 0;background:#f7f9fc;border:1px solid #e0e6ef;border-radius:5px;font-size:13px;",
+  optLabel: "display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;",
+  list:     "display:flex;flex-direction:column;gap:6px;",
+  item:     "display:block;width:100%;text-align:right;padding:10px 12px;border:1px solid #d8d8dc;background:#fff;cursor:pointer;font:inherit;font-size:13px;border-radius:5px;",
+  itemRef:  "display:block;font-weight:600;color:#1a3d70;margin-bottom:3px;",
+  itemSnip: "display:block;color:#555;font-size:12px;line-height:1.5;",
+  badge:    "display:inline-block;font-size:10px;background:#eef2ff;color:#3949a3;padding:1px 6px;border-radius:8px;margin-inline-start:6px;vertical-align:middle;",
+  footer:   "margin-top:14px;display:flex;justify-content:flex-start;",
+  cancel:   "padding:6px 18px;border:1px solid #ccc;background:#f5f5f7;cursor:pointer;border-radius:5px;font:inherit;font-size:13px;",
 };
 
 const TYPE_BADGE = {
@@ -37,6 +43,32 @@ export function showMatchDialog(matches) {
     title.textContent = `מצאתי ${matches.length} התאמות אפשריות — בחר את הנכונה:`;
     title.style.cssText = STYLES.title;
     modal.appendChild(title);
+
+    // === Options strip ===
+    // Two checkboxes per Moshe's spec (2026-05-09): default OFF for niqqud,
+    // ON for source. The caller takes whichever values are set when the user
+    // clicks a match; the per-action button's cite/niqqud params are overridden.
+    const options = document.createElement("div");
+    options.style.cssText = STYLES.options;
+
+    function makeCheckbox(id, label, defaultChecked) {
+      const wrap = document.createElement("label");
+      wrap.style.cssText = STYLES.optLabel;
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = id;
+      cb.checked = defaultChecked;
+      const span = document.createElement("span");
+      span.textContent = label;
+      wrap.appendChild(cb);
+      wrap.appendChild(span);
+      return { wrap, cb };
+    }
+    const niqqud = makeCheckbox("smd-niqqud", "להכניס עם ניקוד", false);
+    const source = makeCheckbox("smd-source", "להכניס עם מקור", true);
+    options.appendChild(niqqud.wrap);
+    options.appendChild(source.wrap);
+    modal.appendChild(options);
 
     const hint = document.createElement("p");
     hint.textContent = "ההתאמות מסודרות לפי איכות המתאם (מהארוך לקצר).";
@@ -76,7 +108,11 @@ export function showMatchDialog(matches) {
       snip.textContent = text.length > 140 ? text.slice(0, 140) + "…" : text;
       item.appendChild(snip);
 
-      item.addEventListener("click", () => close(match));
+      item.addEventListener("click", () => close({
+        match,
+        withNiqqud: niqqud.cb.checked,
+        withSource: source.cb.checked,
+      }));
       item.addEventListener("mouseenter", () => { item.style.background = "#f7f9fc"; });
       item.addEventListener("mouseleave", () => { item.style.background = "#fff"; });
       list.appendChild(item);

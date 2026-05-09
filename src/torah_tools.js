@@ -380,8 +380,13 @@ export function wireTorahTools(paneManager) {
   //      0 hits   → throws (caller shows the error in the status bar)
   //      1 hit    → use it
   //      2+ hits  → modal dialog, user picks
-  // Returned shape matches sefaria_search match objects:
-  //   { corpus, bookTitle, heTitle, chapter, verse, original, matchType }
+  // Returns:
+  //   { match, withNiqqud, withSource }
+  //   - match always present
+  //   - withNiqqud / withSource only set when the user picked from the multi-match
+  //     dialog (those checkboxes override the toolbar's niqqud + the button's cite).
+  //     For manual / single-match paths they are undefined → caller falls back
+  //     to button intent + toolbar checkbox.
   async function resolveMatch(selectionText) {
     const manual = readRefInputs({ silent: true });
     if (manual) {
@@ -389,13 +394,15 @@ export function wireTorahTools(paneManager) {
       if (!eng) throw new Error(`ספר לא נתמך: ${manual.book}`);
       const original = await _getVerseTextFromMirror(eng, manual.chap, manual.verse, { corpus: "tanakh" });
       return {
-        corpus: "tanakh",
-        bookTitle: eng,
-        heTitle: manual.book,
-        chapter: manual.chap,
-        verse: manual.verse,
-        original,
-        matchType: "manual",
+        match: {
+          corpus: "tanakh",
+          bookTitle: eng,
+          heTitle: manual.book,
+          chapter: manual.chap,
+          verse: manual.verse,
+          original,
+          matchType: "manual",
+        },
       };
     }
     status.textContent = "מאתר במאגר…";
@@ -409,19 +416,20 @@ export function wireTorahTools(paneManager) {
       .split(/\s+/)
       .filter(Boolean).length;
     if (wordCount < 2) {
-      throw new Error("הסימון קצר מדי — סמן לפחות שתי מילים");
+      throw new Error("נא חפש לפחות 2 מילים");
     }
     const matches = await _searchByText(selectionText);
     if (matches.length === 0) {
       throw new Error("הטקסט לא נמצא במאגר ספריא");
     }
-    if (matches.length === 1) return matches[0];
+    if (matches.length === 1) return { match: matches[0] };
     const picked = await _showMatchDialog(matches);
     if (!picked) {
       const e = new Error("בוטל");
       e.cancelled = true;
       throw e;
     }
+    // picked is { match, withNiqqud, withSource } — flow it through to runAction.
     return picked;
   }
 
@@ -435,14 +443,21 @@ export function wireTorahTools(paneManager) {
     status.textContent = "מאתר במאגר…";
     try {
       const selectionText = ed.state.doc.textBetween(sel.from, sel.to, " ", " ");
-      const match = await resolveMatch(selectionText);
+      const resolved = await resolveMatch(selectionText);
+      const match = resolved.match;
 
       const posValue = posSel.value;
       const isQuoteRelative = posValue.endsWith("-quote");
       const pos = isQuoteRelative ? posValue.replace("-quote", "") : posValue;
 
-      const verseText = applyNiqqudPref(match.original, niqqudCb.checked);
-      const citationHtml = cite ? smallSourceHtml(_formatCitation(match)) : null;
+      // Multi-match dialog returns checkbox state — that overrides the toolbar
+      // niqqud + the button's cite param for THIS interaction. Single-match
+      // and manual paths use button intent + toolbar checkbox unchanged.
+      const useNiqqud = resolved.withNiqqud !== undefined ? resolved.withNiqqud : niqqudCb.checked;
+      const useCite   = resolved.withSource !== undefined ? resolved.withSource : cite;
+
+      const verseText = applyNiqqudPref(match.original, useNiqqud);
+      const citationHtml = useCite ? smallSourceHtml(_formatCitation(match)) : null;
 
       // For quote-relative modes, locate the verse inside the selection.
       // Hard-fail (per memory rule feedback_quote_target_strict_after_index)
@@ -478,6 +493,11 @@ export function wireTorahTools(paneManager) {
           .setTextSelection({ from: insertAt, to: insertAt })
           .insertContent(html)
           .run();
+      } else {
+        // Cite-only button + user unchecked source in dialog → nothing to do.
+        status.textContent = "לא בוצעה פעולה — סמן ניקוד או מקור בדיאלוג";
+        setTimeout(() => { status.textContent = ""; }, 3000);
+        return;
       }
 
       status.textContent = `הוכנס: ${_formatRefLabel(match)}`;
