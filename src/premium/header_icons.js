@@ -230,7 +230,7 @@ export function installHeaderPremiumIcons() {
   const downloadsIcon = buildIconButton({
     id: "rt-prem-icon-downloads",
     cls: "rt-prem-icon-downloads",
-    title: "הורדה ושמירה למחשב",
+    title: "הורדות",
     label: "פתח חלון הורדות",
     html: `
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
