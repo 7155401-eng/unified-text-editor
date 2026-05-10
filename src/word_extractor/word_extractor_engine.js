@@ -583,18 +583,116 @@ async function _dnotes_plain(zip, xml_file, note_tag) {
   return out;
 }
 
-export async function docx_extract_simple(input, selected) {
+// משה 2026-05-10: _note_to_html — בונה HTML מהערה תוך שמירת bold/italic/underline.
+// מחזיר string של פסקאות עטופות ב-<p>...</p>. תווי טקסט מוברחים לבטיחות.
+function _escapeForHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function _runToHtml(rEl) {
+  let bold = false, italic = false, underline = false;
+  let text = '';
+  for (const ch of Array.from(rEl.childNodes)) {
+    if (ch.nodeType !== 1) continue;
+    if (ch.namespaceURI !== WNS) continue;
+    const ln = ch.localName;
+    if (ln === 'rPr') {
+      for (const p of Array.from(ch.childNodes)) {
+        if (p.nodeType !== 1 || p.namespaceURI !== WNS) continue;
+        const pn = p.localName;
+        if (pn === 'b' || pn === 'bCs') {
+          const v = p.getAttributeNS(WNS, 'val');
+          if (v !== '0' && v !== 'false') bold = true;
+        } else if (pn === 'i' || pn === 'iCs') {
+          const v = p.getAttributeNS(WNS, 'val');
+          if (v !== '0' && v !== 'false') italic = true;
+        } else if (pn === 'u') {
+          const v = p.getAttributeNS(WNS, 'val');
+          if (v && v !== 'none') underline = true;
+        }
+      }
+    } else if (ln === 't') {
+      text += ch.textContent || '';
+    } else if (ln === 'tab') {
+      text += '\t';
+    } else if (ln === 'br') {
+      text += '\n';
+    }
+  }
+  if (!text) return '';
+  let html = _escapeForHtml(text);
+  if (underline) html = `<u>${html}</u>`;
+  if (italic) html = `<em>${html}</em>`;
+  if (bold) html = `<strong>${html}</strong>`;
+  return html;
+}
+
+function _note_to_html(noteEl) {
+  if (!noteEl) return '';
+  const paras = [];
+  for (const para of findAll(noteEl, 'p')) {
+    const parts = [];
+    for (const ch of Array.from(para.childNodes)) {
+      if (ch.nodeType !== 1 || ch.namespaceURI !== WNS) continue;
+      if (ch.localName === 'r') {
+        parts.push(_runToHtml(ch));
+      }
+    }
+    const inner = parts.join('');
+    paras.push(`<p>${inner || '&nbsp;'}</p>`);
+  }
+  return paras.join('');
+}
+
+async function _dnotes_html(zip, xml_file, note_tag) {
+  const out = {};
+  try {
+    const data = await zip.read(xml_file);
+    const root = _parseXml(data);
+    for (const note of findAll(root, note_tag)) {
+      const nid = getAttrW(note, 'id');
+      if (nid === null || nid === undefined) continue;
+      out[nid] = _note_to_html(note);
+    }
+  } catch (e) { /* missing file → empty map */ }
+  return out;
+}
+
+// משה 2026-05-10: מסיר את ה-marker @N: מתחילת ה-HTML, גם אם הוא בתוך <strong>.
+function _stripMarkerFromHtml(html, marker) {
+  if (!html || !marker) return html;
+  const escaped = String(marker).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^(?:<[^>]+>|[^<])*?@' + escaped + '\\s*:?\\s*');
+  return html.replace(re, '');
+}
+
+export async function docx_extract_simple(input, selected, opts = {}) {
   const zip = await _loadDocxZip(input);
   const fn_d = await _dnotes_plain(zip, 'word/footnotes.xml', 'footnote');
   const en_d = await _dnotes_plain(zip, 'word/endnotes.xml',  'endnote');
   const cm_d = await _dnotes_plain(zip, 'word/comments.xml',  'comment');
+  // משה 2026-05-10: HTML — אם הקורא העביר מפה עשירה (ממאמות' עם תמונות/רשימות/טבלאות),
+  // משתמשים בה. אחרת fallback ל-_dnotes_html (bold/italic/underline בלבד).
+  const richMap = opts.notesHtmlMap || {};
+  const fn_h = (richMap.footnotes && Object.keys(richMap.footnotes).length)
+    ? richMap.footnotes
+    : await _dnotes_html(zip, 'word/footnotes.xml', 'footnote');
+  const en_h = (richMap.endnotes && Object.keys(richMap.endnotes).length)
+    ? richMap.endnotes
+    : await _dnotes_html(zip, 'word/endnotes.xml', 'endnote');
+  const cm_h = (richMap.comments && Object.keys(richMap.comments).length)
+    ? richMap.comments
+    : await _dnotes_html(zip, 'word/comments.xml', 'comment');
 
   const fn_m = {}, en_m = {}, cm_m = {};
   let fn_n = null, en_n = null, cm_n = null;
   const sn = {};
+  const snHtml = {}; // משה 2026-05-10: HTML מקביל ל-sn
   for (const it of selected) {
     const sym = it.symbol;
     sn[sym] = [];
+    snHtml[sym] = [];
     const src = it.source, mk = it.marker;
     if (src === 'footnote') { if (mk) fn_m[mk] = sym; else fn_n = sym; }
     else if (src === 'endnote') { if (mk) en_m[mk] = sym; else en_n = sym; }
@@ -605,10 +703,10 @@ export async function docx_extract_simple(input, selected) {
     const m = txt.match(/@(\d+)/);
     if (m && m[1] in m2s) {
       const stripped = txt.replace(new RegExp('^.*?@' + m[1] + '\\s*:?\\s*'), '').trim();
-      return [m2s[m[1]], stripped];
+      return [m2s[m[1]], stripped, m[1]];
     }
-    if (nsym && !m) return [nsym, txt.trim()];
-    return [null, txt.trim()];
+    if (nsym && !m) return [nsym, txt.trim(), null];
+    return [null, txt.trim(), null];
   }
 
   const data = await zip.read('word/document.xml');
@@ -623,20 +721,36 @@ export async function docx_extract_simple(input, selected) {
       } else if (ln === 'footnoteReference') {
         const fid = getAttrW(ch, 'id');
         if (fid && (fid in fn_d)) {
-          const [s, c] = _res(fn_d[fid], fn_m, fn_n);
-          if (s) { pt.push(s); sn[s].push(`${s}${c}`); }
+          const [s, c, mk] = _res(fn_d[fid], fn_m, fn_n);
+          if (s) {
+            pt.push(s); sn[s].push(`${s}${c}`);
+            // משה 2026-05-10: גרסת HTML — מסיר את ה-marker ומוסיף את הסמל בתחילת ה-HTML
+            const rawHtml = fn_h[fid] || '';
+            const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
+            snHtml[s].push(`<p>${s}</p>${stripped}`);
+          }
         }
       } else if (ln === 'endnoteReference') {
         const eid = getAttrW(ch, 'id');
         if (eid && (eid in en_d)) {
-          const [s, c] = _res(en_d[eid], en_m, en_n);
-          if (s) { pt.push(s); sn[s].push(`${s}${c}`); }
+          const [s, c, mk] = _res(en_d[eid], en_m, en_n);
+          if (s) {
+            pt.push(s); sn[s].push(`${s}${c}`);
+            const rawHtml = en_h[eid] || '';
+            const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
+            snHtml[s].push(`<p>${s}</p>${stripped}`);
+          }
         }
       } else if (ln === 'commentReference') {
         const cid = getAttrW(ch, 'id');
         if (cid && (cid in cm_d)) {
-          const [s, c] = _res(cm_d[cid], cm_m, cm_n);
-          if (s) { pt.push(s); sn[s].push(`${s}${c}`); }
+          const [s, c, mk] = _res(cm_d[cid], cm_m, cm_n);
+          if (s) {
+            pt.push(s); sn[s].push(`${s}${c}`);
+            const rawHtml = cm_h[cid] || '';
+            const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
+            snHtml[s].push(`<p>${s}</p>${stripped}`);
+          }
         }
       } else if (ln === 'br') {
         pt.push('\n');
@@ -655,10 +769,14 @@ export async function docx_extract_simple(input, selected) {
   }
 
   const streams = [];
+  const streamsHtml = []; // משה 2026-05-10: גרסת HTML מקבילה לזרמים
   for (const sym of Object.keys(sn)) {
-    if (sn[sym].length) streams.push([sym, sn[sym].join('\n')]);
+    if (sn[sym].length) {
+      streams.push([sym, sn[sym].join('\n')]);
+      streamsHtml.push([sym, snHtml[sym].join('')]);
+    }
   }
-  return { main, streams };
+  return { main, streams, streamsHtml };
 }
 
 // =====================================================================

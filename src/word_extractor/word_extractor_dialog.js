@@ -13,7 +13,7 @@ import {
 } from "./word_extractor_engine.js";
 import * as engine from "./word_extractor_engine.js";
 import {
-  extractBodyHtmlWithSymbols, buildDynamicStyleMap, buildStylesCss, injectStylesCss,
+  extractBodyHtmlWithSymbols, extractNotesHtmlMap, buildDynamicStyleMap, buildStylesCss, injectStylesCss,
 } from "./word_extractor_mammoth.js";
 import {
   buildDefaultStreamMapping, streamsToSd, findDuplicateSeries,
@@ -436,7 +436,18 @@ async function onConfirm() {
         symbol: '@' + seriesToCode[s.series],
       });
     }
-    const result = await engine.docx_extract_simple(_state.zipBuf.slice(0), simpleSelected);
+    // משה 2026-05-10: ראשית — מפת HTML של הערות מ-mammoth (תמונות/רשימות/טבלאות).
+    // נופלים ל-_dnotes_html שב-engine אם mammoth נכשל.
+    let notesHtmlMap = {};
+    try {
+      const dynamicMap0 = buildDynamicStyleMap(_state.stylesFull || {});
+      notesHtmlMap = await extractNotesHtmlMap(_state.zipBuf.slice(0), { styleMap: dynamicMap0 });
+    } catch (notesErr) {
+      console.warn('[word_extractor] notes mammoth fallback to plain:', notesErr);
+    }
+    const result = await engine.docx_extract_simple(
+      _state.zipBuf.slice(0), simpleSelected, { notesHtmlMap }
+    );
     // משה 2026-05-09: שלב 1+2 — mammoth מספק HTML מעוצב לגוף עם סמלי הזרמים שלנו.
     // הזרמים עצמם ממשיכים להגיע מ-docx_extract_simple. הגוף = mammoth, זרמים = result.streams.
     let bodyHtml = null;
@@ -540,6 +551,11 @@ function distributeToPanesSimple(result, bodyHtml, mode = 'replace') {
       mainPane.editor.commands.setContent(html);
     }
   }
+  // משה 2026-05-10: בונים מילון symbol → HTML מ-streamsHtml אם קיים (כדי לשמר bold/italic).
+  const htmlBySym = {};
+  if (result.streamsHtml && Array.isArray(result.streamsHtml)) {
+    for (const [sym, h] of result.streamsHtml) htmlBySym[sym] = h;
+  }
   for (const [sym, txt] of result.streams) {
     const code = sym.replace(/^@/, '');
     let pane = pm.panes.find(p => p.symbol === sym || p.streamCode === code);
@@ -551,7 +567,8 @@ function distributeToPanesSimple(result, bodyHtml, mode = 'replace') {
       if (pane.editor.storage && pane.editor.storage.streamMark) {
         pane.editor.storage.streamMark.symbol = sym;
       }
-      const streamHtml = plainToHtml(txt);
+      // משה 2026-05-10: עדיפות ל-HTML עם עיצוב; נפילה ל-plainToHtml אם חסר.
+      const streamHtml = htmlBySym[sym] || plainToHtml(txt);
       if (mode === 'append') {
         pane.editor.chain().focus('end').insertContent(streamHtml).run();
       } else {

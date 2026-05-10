@@ -141,6 +141,110 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
 }
 
 // =====================================================================
+// משה 2026-05-10: extractNotesHtmlMap — מריצה mammoth על מסמך סינתטי
+// שבונים מהערות (footnotes/endnotes/comments). מחזירה מפת id → HTML מלא
+// עם bold/italic/lists/tables/images — בדיוק כמו הגוף הראשי.
+//
+// מחזיר:
+//   { footnotes: { "1": "<p>...</p>", "2": "..." }, endnotes: {...}, comments: {...} }
+// =====================================================================
+export async function extractNotesHtmlMap(arrayBuffer, options = {}) {
+  const result = { footnotes: {}, endnotes: {}, comments: {} };
+  const zip = await JSZip.loadAsync(arrayBuffer);
+
+  // אוספים את כל ההערות מהקבצים השונים
+  const all = []; // [{ type, id, innerXml }, ...]
+  const sources = [
+    { type: "footnotes", file: "word/footnotes.xml", tag: "footnote" },
+    { type: "endnotes",  file: "word/endnotes.xml",  tag: "endnote" },
+    { type: "comments",  file: "word/comments.xml",  tag: "comment" },
+  ];
+  for (const src of sources) {
+    const f = zip.file(src.file);
+    if (!f) continue;
+    const xml = await f.async("string");
+    // <w:footnote ... w:id="N" ... > ... </w:footnote>
+    // (גם self-closing נדיר אך אפשרי — מתעלמים מ-separator/continuationSeparator)
+    const re = new RegExp(
+      `<w:${src.tag}\\b([^>]*?)>([\\s\\S]*?)</w:${src.tag}>`,
+      "g"
+    );
+    let m;
+    while ((m = re.exec(xml)) !== null) {
+      const attrs = m[1] || "";
+      const inner = m[2] || "";
+      const idMatch = attrs.match(/\bw:id="(\d+)"/);
+      if (!idMatch) continue;
+      const id = idMatch[1];
+      // דילוג על separator/continuationSeparator (אינם הערות אמיתיות)
+      if (/w:type="(separator|continuationSeparator|continuationNotice)"/.test(attrs)) continue;
+      all.push({ type: src.type, id, innerXml: inner });
+    }
+  }
+  if (all.length === 0) return result;
+
+  // בונים document.xml סינתטי: לפני כל הערה — פסקת מארקר ייחודית
+  const mark = (type, id) => `<w:p><w:r><w:t xml:space="preserve">__RX_NOTE_${type.toUpperCase()}_${id}__</w:t></w:r></w:p>`;
+  const endMark = `<w:p><w:r><w:t xml:space="preserve">__RX_NOTE_END__</w:t></w:r></w:p>`;
+  let body = "";
+  for (const note of all) {
+    body += mark(note.type, note.id);
+    body += note.innerXml;
+  }
+  body += endMark;
+
+  const synthDoc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
+<w:body>${body}</w:body></w:document>`;
+
+  zip.file("word/document.xml", synthDoc);
+  const newBuf = await zip.generateAsync({ type: "arraybuffer" });
+
+  // אותם styleMap ו-convertImage כמו הגוף — תמיכה זהה
+  const styleMap = [...defaultStyleMap(), ...((options.styleMap) || [])];
+  const convertImage = mammoth.images.imgElement(function (image) {
+    return image.read("base64").then(function (data) {
+      return { src: "data:" + (image.contentType || "image/png") + ";base64," + data };
+    });
+  });
+  const mres = await mammoth.convertToHtml(
+    { arrayBuffer: newBuf },
+    { styleMap, includeDefaultStyleMap: true, ignoreEmptyParagraphs: false, convertImage }
+  );
+  let html = mres.value || "";
+
+  // משה 2026-05-10: שומרים פלט גולמי לדיבוג
+  try {
+    if (typeof window !== "undefined") {
+      window.__lastNotesMammothHtml = html;
+      window.__lastNotesMammothMessages = mres.messages || [];
+    }
+  } catch (_) { /* */ }
+
+  // הסרת רשימות footnotes/endnotes שmammoth מוסיף בסוף
+  html = html.replace(/<ol[^>]*id="footnotes?"[\s\S]*?<\/ol>/gi, "");
+  html = html.replace(/<ol[^>]*id="endnotes?"[\s\S]*?<\/ol>/gi, "");
+
+  // פילוח לפי המארקרים
+  const markerRe = /<p>__RX_NOTE_(FOOTNOTES|ENDNOTES|COMMENTS)_(\d+)__<\/p>/g;
+  const matches = [];
+  let mm;
+  while ((mm = markerRe.exec(html)) !== null) {
+    matches.push({ index: mm.index, length: mm[0].length, type: mm[1].toLowerCase(), id: mm[2] });
+  }
+  const endIdx = html.indexOf("<p>__RX_NOTE_END__</p>");
+
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i];
+    const start = cur.index + cur.length;
+    const stop = (i + 1 < matches.length) ? matches[i + 1].index : (endIdx >= 0 ? endIdx : html.length);
+    const noteHtml = html.substring(start, stop).trim();
+    result[cur.type][cur.id] = noteHtml;
+  }
+  return result;
+}
+
+// =====================================================================
 // בנייה דינמית של styleMap ו-CSS לפי קטלוג הסגנונות שב-DOCX (find_all_styles_full).
 // =====================================================================
 
