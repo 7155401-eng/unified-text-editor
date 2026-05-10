@@ -492,7 +492,11 @@ function buildPagePlan(pageContent, config) {
         x: side === 'right' ? sideRightX : 0,
       });
     }
-    if (otherEndY < pageBottomY) {
+    // משה 2026-05-10: בתרחיש 1, רק לצד אחד (השמאלי = החצי השני בסדר הקריאה)
+    // יש strip 3 ברוחב מלא. אחרת שני הצדדים יציירו על אותו אזור (חפיפה).
+    // הימני (החצי הראשון) — אם יש לו עודף, הוא ייכנס ל-carry-over.
+    const suppressFullStrip3 = o.suppressFullStrip3 === true;
+    if (otherEndY < pageBottomY && !suppressFullStrip3) {
       strips.push({
         y_start: otherEndY,
         y_end: pageBottomY,
@@ -637,11 +641,16 @@ function buildPagePlan(pageContent, config) {
   const cap = (v) => Math.min(v, pageBottomY);
 
   // איטרציה 1: pass2 ימני עם pass1 שמאלי
+  // משה 2026-05-10: בתרחיש 1, הימני (חצי ראשון בסדר קריאה) לא מקבל strip 3
+  // ברוחב מלא — אחרת הוא יחפוף עם strip 3 של השמאלי. השמאלי (חצי שני)
+  // לוקח את הרוחב המלא בתחתית כי הוא ההמשך הטבעי של הקריאה.
+  const isScenario1 = (scenario.name === 'one_long_split');
   let pass2Right = null;
   if (pageContent.rightStream) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
+      suppressFullStrip3: isScenario1,
     });
   }
   // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
@@ -660,6 +669,7 @@ function buildPagePlan(pageContent, config) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: cap(pass2Left.endY),
+      suppressFullStrip3: isScenario1,
     });
   }
 
