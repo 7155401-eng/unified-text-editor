@@ -196,6 +196,31 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     }
 
     curY += linesConsumed.length * lineH;
+
+    // משה 2026-05-10: לולאת מילוי-פערים — אחרי הלולאה הראשית, אם נשאר מקום
+    // לפני ה-strip הבא ויש תוכן נוסף, מוסיפים שורות נוספות ברוחב ה-strip
+    // הנוכחי. כך ההמשך נראה רציף ולא נוצר פער ויזואלי.
+    while (tokenIdx < tokens.length && curY + lineH <= nextStripY) {
+      const fillLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
+      if (fillLine.tokensConsumed === 0) break;
+      if (fillLine.words.length === 0 && fillLine.forcedBreak) {
+        tokenIdx += fillLine.tokensConsumed;
+        continue;
+      }
+      const isLastFillLine = (tokenIdx + fillLine.tokensConsumed >= tokens.length);
+      allLines.push({
+        y: curY,
+        width: strip.width,
+        words: fillLine.words,
+        text: fillLine.words.join(' '),
+        naturalWidth: fillLine.width,
+        isLast: isLastFillLine,
+        forcedBreak: fillLine.forcedBreak,
+      });
+      tokenIdx += fillLine.tokensConsumed;
+      curY += lineH;
+    }
+
     if (tokenIdx >= tokens.length) break;
   }
 
