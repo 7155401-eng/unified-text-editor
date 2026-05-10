@@ -101,27 +101,29 @@ async function readBody(request) {
 //   YAAD_BASE_URL  — בדרך כלל https://icom.yaad.net/p/
 
 async function buildYaadRedirect(env, intent, returnOrigin) {
-  // משה 2026-05-10: כל הסודות מגיעים דרך getPaymentConfig (DB→env fallback).
-  // הטרמינל של יעד שריג נשאר משותף עם shvilim.online; כדי לא לשנות שם
-  // הגדרות ניהוליות, אנחנו מעבירים את כתובת החזרה בפרמטר UrlBack ובודקים
-  // את ה-Order שלנו אחר כך — כך החזרה הולכת לכתובת ravtext גם אם בדשבורד
-  // יש כתובת אחרת (יעד שריג מקבלים פרמטר UrlBack שדוחה את ההגדרה).
+  // משה 2026-05-10: זרימת APISign — קריאה שרת-לשרת ליעד שריג שמחזירה
+  // query string חתום. אנחנו לא מחתימים מקומית; יעד שריג מחתימים אצלם
+  // ובודקים את החתימה כשהמשתמש מגיע. כך נעקפת בדיקת ה-Referer/RemoteHost
+  // (שגיאת אימות), כי APISign הוא ערוץ אמין שאינו תלוי במקור הדפדפן.
+  //
+  // הפרמטרים: KEY=API key, PassP=סיסמת אימות, Masof=טרמינל, ושאר פרמטרי התשלום.
   const config = await getPaymentConfig(env);
   const base = (config.YAAD_BASE_URL || 'https://icom.yaad.net/p/').replace(/\/?$/, '/');
   const callbackUrl = `${returnOrigin}/api/payments/yaad/callback`;
-  const params = new URLSearchParams({
-    action: 'pay',
+
+  const apiSignParams = new URLSearchParams({
+    action: 'APISign',
+    What: 'SIGN',
+    KEY: config.YAAD_API_KEY || '',
+    PassP: config.YAAD_PASSP || '',
     Masof: config.YAAD_TERMINAL || '',
     Order: intent.token,
     Info: intent.label,
     Amount: String(intent.amount),
-    Currency: '1', // ILS
+    Coin: '1',
     UTF8: 'True',
     UTF8out: 'True',
     UserId: intent.idNumber || '0',
-    ClientName: '',
-    ClientLName: '',
-    Coin: '1',
     Tash: '1',
     FixTash: 'True',
     sendemail: 'True',
@@ -131,30 +133,23 @@ async function buildYaadRedirect(env, intent, returnOrigin) {
     tmp: '13',
     UrlBack: callbackUrl,
   });
-  // יעד שריג מבקשים סימן Signature אם רוצים חתימה — נדרש קוד צד שרת
-  // אם YAAD_API_KEY מוגדר, מחשבים HMAC-SHA256 כפי שיעד שריג מצפים.
-  if (config.YAAD_API_KEY) {
-    const signed = await signYaadParams(params, config.YAAD_API_KEY);
-    return `${base}?${signed}`;
-  }
-  return `${base}?${params.toString()}`;
-}
 
-async function signYaadParams(params, apiKey) {
-  // יעד שריג: Signature = HMAC-SHA256(apiKey, sorted_params_string), hex.
-  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const data = sorted.map(([k, v]) => `${k}=${v}`).join('&');
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(apiKey),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-  const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  params.append('Signature', hex);
-  return params.toString();
+  let signedQuery;
+  try {
+    const signRes = await fetch(`${base}?${apiSignParams.toString()}`, { method: 'GET' });
+    signedQuery = (await signRes.text()).trim();
+  } catch (e) {
+    throw new Error(`Yaad APISign network failure: ${(e && e.message) || 'unknown'}`);
+  }
+
+  // הצלחה: התשובה היא query string שמכיל signature=...
+  // כישלון: התשובה מכילה ErrCode/Error/CCode!=0 או טקסט HTML של שגיאה.
+  const lower = signedQuery.toLowerCase();
+  if (!signedQuery.includes('signature=') || lower.includes('error') || lower.includes('errcode')) {
+    throw new Error(`Yaad APISign rejected: ${signedQuery.slice(0, 250)}`);
+  }
+
+  return `${base}?action=pay&${signedQuery}`;
 }
 
 async function startYaad(request, env, url) {

@@ -103,8 +103,13 @@ async function chargeYaadRecurring(env, user, amount, planCode) {
     return { ok: false, error: 'yaad not configured' };
   }
   const base = (config.YAAD_BASE_URL || 'https://icom.yaad.net/p/').replace(/\/?$/, '/');
+  // משה 2026-05-10: חיוב חוזר דרך APISign + J5. שולחים KEY+PassP+AuthNum,
+  // ויעד שריג מבצעים את החיוב ומחזירים תוצאה. אין צורך בחתימה מקומית.
   const params = new URLSearchParams({
-    action: 'pay',
+    action: 'APISign',
+    What: 'VERIFY',
+    KEY: config.YAAD_API_KEY,
+    PassP: config.YAAD_PASSP || '',
     Masof: config.YAAD_TERMINAL,
     Amount: String(amount),
     UserId: user.id_number || '0',
@@ -120,20 +125,9 @@ async function chargeYaadRecurring(env, user, amount, planCode) {
     J5: 'True',
     AuthNum: user.yaad_token,
   });
-  // חתימה
-  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
-  const data = sorted.map(([k, v]) => `${k}=${v}`).join('&');
-  const key = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(config.YAAD_API_KEY),
-    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
-  const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, '0')).join('');
-  params.append('Signature', hex);
 
   try {
     const r = await fetch(`${base}?${params.toString()}`, { method: 'GET', redirect: 'manual' });
-    // יעד שריג מחזירים text/html או query-string-like response עם CCode=0 בהצלחה
     const txt = await r.text();
     const ok = /CCode=0|Status=0/.test(txt) || /<\s*Status\s*>0<\/Status>/.test(txt);
     if (!ok) return { ok: false, error: txt.slice(0, 200) };
