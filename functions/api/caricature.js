@@ -6,11 +6,22 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-export async function onRequestOptions() {
-  return new Response(null, { status: 204, headers: corsHeaders });
-}
-
-export async function onRequestPost({ request }) {
+export async function onRequest({ request }) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+  if (request.method !== "POST") {
+    return new Response(JSON.stringify({
+      error: "method_not_allowed",
+      message: "Use POST",
+    }), {
+      status: 405,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json; charset=utf-8",
+      },
+    });
+  }
   try {
     const body = await request.text();
     const upstream = await fetch(GAS_URL, {
