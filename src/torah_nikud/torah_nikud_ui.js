@@ -21,6 +21,7 @@ import {
 import {
   DAILY_FREE_CHARS, usedToday, canSend, recordUsage,
 } from "./torah_nikud_quota.js";
+import { hasCurrentAppLicense } from "../current_license.js";
 
 const SETTINGS_KEY = "ravtext.torah_nikud.settings";
 const RECENT_KEY = "ravtext.torah_nikud.recent";
@@ -64,11 +65,16 @@ function isPaidUser() {
   // we cannot verify the license cryptographically — assume free unless
   // explicitly flagged. Consumers can override via window.tnkIsPaid().
   try {
+    if (hasCurrentAppLicense()) return true;
     if (typeof window !== "undefined" && typeof window.tnkIsPaid === "function") {
       return !!window.tnkIsPaid();
     }
   } catch (e) { /* noop */ }
   return false;
+}
+
+function useLegacyPremiumMode(apiMode) {
+  return !hasCurrentAppLicense() && apiMode === "premium";
 }
 
 // Strip BiDi marks (mirrors webview_app.Api.get_settings._strip)
@@ -855,7 +861,7 @@ function wireEvents() {
     const text = $("tnk-text-box").value.trim();
     if (!text) { alert(t(lang, "no_text_to_send")); return; }
     const apiMode = (modalEl.querySelector('input[name="tnk-api-mode"]:checked') || {}).value;
-    saveSetting("use_premium", apiMode === "premium");
+    saveSetting("use_premium", useLegacyPremiumMode(apiMode));
     saveSetting("access_code", $("tnk-access-code").value.trim());
     saveSetting("gemini_api_key", $("tnk-gemini-key").value.trim());
     saveSetting("claude_api_key", $("tnk-claude-key").value.trim());
@@ -894,7 +900,7 @@ function wireEvents() {
       multi_mix_claude: parseInt($("tnk-mix-claude-slider").value || "0", 10),
       multi_mix_dicta: parseInt($("tnk-mix-dicta-slider").value || "0", 10),
       provider: (modalEl.querySelector('input[name="tnk-provider"]:checked') || {}).value,
-      use_premium: (modalEl.querySelector('input[name="tnk-api-mode"]:checked') || {}).value === "premium",
+      use_premium: useLegacyPremiumMode((modalEl.querySelector('input[name="tnk-api-mode"]:checked') || {}).value),
       access_code: $("tnk-access-code").value.trim(),
       gemini_api_key: $("tnk-gemini-key").value.trim(),
       claude_api_key: $("tnk-claude-key").value.trim(),
@@ -991,8 +997,14 @@ export async function openTorahNikudModal(opts = {}) {
   $("tnk-access-code").value = stripBidi(cfg.access_code) || "";
   $("tnk-gemini-key").value = stripBidi(cfg.gemini_api_key) || "";
   $("tnk-claude-key").value = stripBidi(cfg.claude_api_key) || "";
-  if (cfg.use_premium) {
-    const radio = modalEl.querySelector('input[name="tnk-api-mode"][value="premium"]');
+  const legacyPremiumRadio = modalEl.querySelector('input[name="tnk-api-mode"][value="premium"]');
+  const personalRadio = modalEl.querySelector('input[name="tnk-api-mode"][value="personal"]');
+  if (hasCurrentAppLicense()) {
+    if (legacyPremiumRadio) legacyPremiumRadio.disabled = true;
+    $("tnk-access-code").disabled = true;
+    if (personalRadio) personalRadio.checked = true;
+  } else if (cfg.use_premium) {
+    const radio = legacyPremiumRadio;
     if (radio) radio.checked = true;
   }
   if (opts.initialText) $("tnk-text-box").value = opts.initialText;

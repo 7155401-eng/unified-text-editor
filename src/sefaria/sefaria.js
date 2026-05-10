@@ -8,6 +8,7 @@ import { openSefariaDownloader as openSefariaDownloaderModal } from "./sefaria_d
 import { openSefariaLive as openSefariaLiveModal } from "./sefaria_live_modal.js";
 import { t } from "./sefaria_i18n.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
+import { hasCurrentAppLicense } from "../current_license.js";
 
 import "./sefaria_modal.css";
 
@@ -119,7 +120,7 @@ export function wireSefariaTools(paneManager) {
     await openSefariaLive({
       prefillText: prefill,
       onAccept: html => _insertHtmlAtCursor(paneManager, html),
-      isVip: false,  // wired to license/quota in the main editor harness
+      isVip: hasCurrentAppLicense(),
     });
   });
   });

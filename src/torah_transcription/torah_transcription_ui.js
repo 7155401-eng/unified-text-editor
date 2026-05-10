@@ -10,8 +10,14 @@ import {
   detectFileType,
 } from "./torah_transcription_gas.js";
 import { friendlyError } from "./torah_transcription_errors.js";
+import { hasCurrentAppLicense } from "../current_license.js";
 
 const CONFIG_KEY = "ravtext.torah_transcription.config";
+
+function useLegacyPremiumMode(mode) {
+  if (hasCurrentAppLicense()) return false;
+  return mode === true || mode === "premium";
+}
 
 function loadConfig() {
   try {
@@ -135,7 +141,7 @@ export class TranscriptionWindow {
 
     // === מצב הריצה ===
     this.appState = {
-      use_premium: !!this.config.use_premium,
+      use_premium: useLegacyPremiumMode(!!this.config.use_premium),
       access_code: this.config.access_code || "",
       gemini_api_key: this.config.gemini_api_key != null ? this.config.gemini_api_key : "",
       claude_api_key: this.config.claude_api_key || "",
@@ -299,6 +305,7 @@ export class TranscriptionWindow {
   // === שלב 1: חשבון ===
   _buildAccountFrame() {
     const f = this._newFrame("account");
+    const hasCurrentLicense = hasCurrentAppLicense();
 
     f.appendChild(el("div", { class: "tt-h1" }, "איך אתה משתמש בתוכנה?"));
     f.appendChild(el(
@@ -323,6 +330,7 @@ export class TranscriptionWindow {
         type: "radio",
         name: "tt-usage",
         value: "premium",
+        ...(hasCurrentLicense ? { disabled: "disabled" } : {}),
         ...(this.appState.use_premium ? { checked: "checked" } : {}),
         onchange: () => this._onUsageChange(),
       })
@@ -345,6 +353,7 @@ export class TranscriptionWindow {
       placeholder: "הדבק כאן את קוד הגישה שקיבלת",
       style: "width:calc(100% - 50px); margin: 0 25px 14px 25px;",
       value: this.appState.access_code,
+      ...(hasCurrentLicense ? { disabled: "disabled" } : {}),
     });
     prem.appendChild(this.accessEntry);
 
@@ -1589,7 +1598,7 @@ export class TranscriptionWindow {
     const key = STEPS[idx][0];
     if (key === "account") {
       const mode = this._getUsageMode();
-      if (mode === "premium") {
+      if (useLegacyPremiumMode(mode)) {
         const code = (this.accessEntry.value || "").trim();
         if (!code) return "חסר קוד גישה לפרמיום.";
       } else {
@@ -1601,7 +1610,7 @@ export class TranscriptionWindow {
       if (!this.appState.file_blob) return "לא נבחר קובץ.";
     } else if (key === "judge") {
       const mode = this._getUsageMode();
-      if (mode !== "premium") {
+      if (!useLegacyPremiumMode(mode)) {
         const judge =
           (this.judgeRadios && this.judgeRadios.claude && this.judgeRadios.claude.checked)
             ? "claude"
@@ -1621,7 +1630,7 @@ export class TranscriptionWindow {
     const key = STEPS[this.currentStep][0];
     if (key === "account") {
       const mode = this._getUsageMode();
-      this.appState.use_premium = (mode === "premium");
+      this.appState.use_premium = useLegacyPremiumMode(mode);
       this.appState.access_code = (this.accessEntry.value || "").trim();
       this.appState.gemini_api_key = (this.geminiEntry.value || "").trim();
       this.appState.claude_api_key = (this.claudeEntry.value || "").trim();
@@ -1748,6 +1757,7 @@ export class TranscriptionWindow {
     log("_doRun start");
     try {
       const s = this.appState;
+      const use_premium = useLegacyPremiumMode(s.use_premium);
 
       // קביעת prompt_type לפי סוג קובץ + מצב
       const ftype = detectFileType(s.file_name);
@@ -1789,8 +1799,8 @@ export class TranscriptionWindow {
         const resp = await client.call({
           prompt_type,
           model: model_gemini,
-          access_code: s.use_premium ? s.access_code : null,
-          api_key: !s.use_premium ? s.gemini_api_key : null,
+          access_code: use_premium ? s.access_code : null,
+          api_key: !use_premium ? s.gemini_api_key : null,
           files: filesToSend,
           ocr_examples: s.ocr_examples.length ? s.ocr_examples : null,
           custom_prompt: s.custom_prompt || null,
@@ -1853,11 +1863,11 @@ export class TranscriptionWindow {
 
       // מודל להכרעה: gemini_only מכריע על המודל הזה ללא קשר לפרמיום
       const edition_model = s.gemini_only ? "gemini-3.1-pro-preview" : "claude-opus-4-7";
-      const edition_api_key = s.use_premium
+      const edition_api_key = use_premium
         ? null
         : (s.gemini_only ? s.gemini_api_key : s.claude_api_key);
       log(`edition: model=${edition_model} gemini_only=${s.gemini_only} ` +
-          `premium=${s.use_premium} key_present=${!!edition_api_key}`);
+          `premium=${use_premium} key_present=${!!edition_api_key}`);
 
       const payload_parts = witnesses.map(
         (w, i) => `--- עד נוסח ${i + 1} [Gemini] ---\n${w}`
@@ -1883,7 +1893,7 @@ export class TranscriptionWindow {
       const edition_resp = await client.call({
         prompt_type: "claude_edition",
         model: edition_model,
-        access_code: s.use_premium ? s.access_code : null,
+        access_code: use_premium ? s.access_code : null,
         api_key: edition_api_key,
         text_payload: payload_parts.join("\n\n"),
         custom_prompt: s.custom_prompt || null,
@@ -1992,6 +2002,7 @@ export class TranscriptionWindow {
     log("_doRunTorahStyle start");
     try {
       const s = this.appState;
+      const use_premium = useLegacyPremiumMode(s.use_premium);
       let style_name = "combined";
       const radios = this.modal.querySelectorAll('input[name="tt-torah-style"]');
       for (const r of radios) {
@@ -1999,7 +2010,7 @@ export class TranscriptionWindow {
       }
       log(`torah_style: style=${style_name} edition_chars=${edition.length}`);
       const edition_model = s.gemini_only ? "gemini-3.1-pro-preview" : "claude-opus-4-7";
-      const edition_api_key = s.use_premium
+      const edition_api_key = use_premium
         ? null
         : (s.gemini_only ? s.gemini_api_key : s.claude_api_key);
 
@@ -2010,7 +2021,7 @@ export class TranscriptionWindow {
       const resp = await client.call({
         prompt_type: `torah_style_${style_name}`,
         model: edition_model,
-        access_code: s.use_premium ? s.access_code : null,
+        access_code: use_premium ? s.access_code : null,
         api_key: edition_api_key,
         text_payload: edition,
         custom_prompt: s.custom_prompt || null,

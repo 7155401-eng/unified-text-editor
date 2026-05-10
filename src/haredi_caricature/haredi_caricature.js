@@ -12,6 +12,7 @@
 import "./caricature.css";
 import { openCaricatureWindow } from "./caricature_ui.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
+import { hasCurrentAppLicense } from "../current_license.js";
 
 let _windowInstance = null;
 
@@ -28,7 +29,11 @@ export async function openCaricatureBot(opts = {}) {
   if (_windowInstance && _windowInstance.overlay && _windowInstance.overlay.parentNode) {
     _windowInstance.close();
   }
-  _windowInstance = openCaricatureWindow(opts);
+  const windowOpts = {
+    ...opts,
+    licensed: opts.licensed != null ? !!opts.licensed : hasCurrentAppLicense(),
+  };
+  _windowInstance = openCaricatureWindow(windowOpts);
 
   // Pre-fill initial scene if provided (e.g. from selected text)
   if (opts.initialScene) {
