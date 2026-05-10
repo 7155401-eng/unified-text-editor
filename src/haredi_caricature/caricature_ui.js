@@ -246,11 +246,13 @@ export class CaricatureWindow {
 
     const sceneFrame = document.createElement("div");
     sceneFrame.className = "hc-scene-frame";
-    this.sceneIframe = document.createElement("iframe");
-    this.sceneIframe.title = "scene editor";
-    // Use vendored editor.html (Quill)
-    this.sceneIframe.src = "/vendor/haredi_caricature/editor.html";
-    sceneFrame.appendChild(this.sceneIframe);
+    this.sceneInput = document.createElement("textarea");
+    this.sceneInput.className = "hc-scene-input";
+    this.sceneInput.addEventListener("input", () => {
+      this._lastSceneText = this.sceneInput.value || "";
+    });
+    attachContextMenu(this.sceneInput, this.lang);
+    sceneFrame.appendChild(this.sceneInput);
     parent.appendChild(sceneFrame);
 
     // Listen for text updates from iframe
@@ -413,6 +415,11 @@ export class CaricatureWindow {
 
   _postToScene(msg) {
     try {
+      if (this.sceneInput) {
+        if (msg.type === "hc-quill-clear") this.sceneInput.value = "";
+        if (msg.type === "hc-quill-set") this.sceneInput.value = msg.text || "";
+        this._lastSceneText = this.sceneInput.value || "";
+      }
       if (this.sceneIframe && this.sceneIframe.contentWindow) {
         this.sceneIframe.contentWindow.postMessage(msg, "*");
       }
@@ -557,8 +564,9 @@ export class CaricatureWindow {
       return;
     }
 
-    // Pull current scene text — try the iframe direct getter, fall back to lastSceneText
+    // Pull current scene text — use the inline editor, then fall back to lastSceneText.
     let sceneText = (this._lastSceneText || "").trim();
+    if (this.sceneInput) sceneText = (this.sceneInput.value || "").trim() || sceneText;
     try {
       // Synchronous attempt via contentWindow.getText (same-origin)
       const cw = this.sceneIframe && this.sceneIframe.contentWindow;

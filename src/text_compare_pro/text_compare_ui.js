@@ -21,6 +21,7 @@ import {
   clearHistory,
 } from "./text_compare_storage.js";
 import { readDocx, readText } from "./text_compare_docx_reader.js";
+import { openNikudMerger } from "../nikud_merger/nikud_merger.js";
 
 let modalRoot = null; // overlay element
 let modalEl = null; // .tcp-modal element
@@ -64,6 +65,11 @@ function buildModalHTML() {
         <span class="tcp-tab-icon">🕒</span>
         <span class="tcp-tab-label">היסטוריית השוואות</span>
         <span class="tcp-tab-desc">50 השוואות אחרונות</span>
+      </button>
+      <button class="tcp-tab-btn" data-tab="nikud">
+        <span class="tcp-tab-icon">📜</span>
+        <span class="tcp-tab-label">מיזוג ניקוד</span>
+        <span class="tcp-tab-desc">הפעלת כלי מיזוג הניקוד</span>
       </button>
       <button class="tcp-tab-btn" data-tab="settings">
         <span class="tcp-tab-icon">⚙</span>
@@ -250,6 +256,16 @@ function buildModalHTML() {
         <button class="tcp-action-btn ghost danger" data-action="clear-history">🗑 נקה היסטוריה</button>
       </div>
       <div data-id="historyList" class="tcp-history-list">טוען...</div>
+    </section>
+
+    <section class="tcp-pane" data-pane="nikud">
+      <header class="tcp-pane-header">
+        <h1>מיזוג ניקוד</h1>
+        <p>פתח את כלי מיזוג הניקוד הקיים מתוך חלון השוואת הטקסטים.</p>
+      </header>
+      <div class="tcp-card">
+        <button class="tcp-primary-btn" data-action="open-nikud-merger">פתח מיזוג ניקוד</button>
+      </div>
     </section>
 
     <!-- TAB: Settings -->
@@ -879,6 +895,7 @@ function bindUI() {
     const target = t.dataset.target;
     switch (action) {
       case "close": closeModal(); break;
+      case "open-nikud-merger": openNikudMerger({ cleanText: ($("doc1Text")?.value || "") }); break;
       case "open-file": $(target + "File").click(); break;
       case "fill-from-active": fillFromActive(target); break;
       case "clear": clearArea(target); break;
@@ -950,7 +967,7 @@ export async function openModal(opts) {
 
   // Restore active tab (default to smart_compare === 'smart')
   const tab = settings.active_tab;
-  if (tab === "integrity" || tab === "history" || tab === "settings") {
+  if (tab === "integrity" || tab === "history" || tab === "nikud" || tab === "settings") {
     switchTab(tab);
   } else {
     switchTab("smart");

@@ -8,6 +8,8 @@ const PUBLIC_TOOLS = new Set([
   "torah-transcription",// אושר 2026-05-10 — תמלול אודיו / OCR / עריכה לשונית תורנית
   "torah-nikud",        // אושר 2026-05-10 — ניקוד תורני אוטומטי
   "haredi-caricature",  // אושר 2026-05-10 — קריקטורה AI
+  "text-compare-pro",
+  "sefaria-downloader",
 ]);
 
 function isAdmin() {
