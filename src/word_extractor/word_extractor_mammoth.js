@@ -102,30 +102,6 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
     }
   );
 
-  // משה 2026-05-09 DEBUG: לוכד את הפלט הגולמי של mammoth + הודעות אזהרה.
-  // לבדיקה ב-DevTools: window.__lastMammothHtml, window.__lastMammothMessages.
-  try {
-    if (typeof window !== "undefined") {
-      window.__lastMammothHtml = result.value || "";
-      window.__lastMammothMessages = result.messages || [];
-    }
-    /* eslint-disable no-console */
-    console.group("[mammoth] raw output");
-    console.log("HTML length:", (result.value || "").length);
-    console.log("HTML first 2000 chars:", (result.value || "").slice(0, 2000));
-    console.log("Contains <strong>:", (result.value || "").includes("<strong>"));
-    console.log("Contains <b>:", /<b[\s>]/.test(result.value || ""));
-    console.log("Contains <em>:", (result.value || "").includes("<em>"));
-    console.log("Contains <u>:", /<u[\s>]/.test(result.value || ""));
-    console.log("Contains <span style:", (result.value || "").includes("<span style"));
-    console.log("Messages count:", (result.messages || []).length);
-    (result.messages || []).forEach((m, i) => {
-      console.log(`  [${i}] ${m.type}: ${m.message}`);
-    });
-    console.groupEnd();
-    /* eslint-enable no-console */
-  } catch (e) { /* DEBUG must never throw */ }
-
   // 6) ניקוי כל section של footnotes/endnotes ש-mammoth מצרף בסוף (אמורים להיות ריקים, אבל ליתר ביטחון)
   let html = result.value || "";
   html = html.replace(/<ol>[\s\S]*?id="footnote-\d+"[\s\S]*?<\/ol>/gi, "");
@@ -212,14 +188,6 @@ export async function extractNotesHtmlMap(arrayBuffer, options = {}) {
     { styleMap, includeDefaultStyleMap: true, ignoreEmptyParagraphs: false, convertImage }
   );
   let html = mres.value || "";
-
-  // משה 2026-05-10: שומרים פלט גולמי לדיבוג
-  try {
-    if (typeof window !== "undefined") {
-      window.__lastNotesMammothHtml = html;
-      window.__lastNotesMammothMessages = mres.messages || [];
-    }
-  } catch (_) { /* */ }
 
   // הסרת רשימות footnotes/endnotes שmammoth מוסיף בסוף
   html = html.replace(/<ol[^>]*id="footnotes?"[\s\S]*?<\/ol>/gi, "");
@@ -474,5 +442,21 @@ function defaultStyleMap() {
     "r[style-id='Emphasis'] => em",
     "r[style-id='Bold'] => strong",
     "r[style-id='Italic'] => em",
+    // משה 2026-05-10: Highlight (הדגשה צבעונית) — w:highlight של Word
+    "r[highlight='yellow'] => mark[data-color='yellow']",
+    "r[highlight='green'] => mark[data-color='green']",
+    "r[highlight='cyan'] => mark[data-color='cyan']",
+    "r[highlight='magenta'] => mark[data-color='magenta']",
+    "r[highlight='blue'] => mark[data-color='blue']",
+    "r[highlight='red'] => mark[data-color='red']",
+    "r[highlight='darkBlue'] => mark[data-color='darkBlue']",
+    "r[highlight='darkCyan'] => mark[data-color='darkCyan']",
+    "r[highlight='darkGreen'] => mark[data-color='darkGreen']",
+    "r[highlight='darkMagenta'] => mark[data-color='darkMagenta']",
+    "r[highlight='darkRed'] => mark[data-color='darkRed']",
+    "r[highlight='darkYellow'] => mark[data-color='darkYellow']",
+    "r[highlight='darkGray'] => mark[data-color='darkGray']",
+    "r[highlight='lightGray'] => mark[data-color='lightGray']",
+    "r[highlight='black'] => mark[data-color='black']",
   ];
 }
