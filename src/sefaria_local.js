@@ -17,6 +17,7 @@ const SPLIT_CORPORA = new Set(["bavli"]);
 const _loaded = new Map(); // name → { books: [...] }
 const _loading = new Map(); // name → Promise
 const _byEnglishTitle = new Map(); // englishTitle → { book, source }
+const _byHebrewTitle = new Map(); // heTitle → { book, source }
 
 async function fetchJsonOrThrow(url) {
   const r = await fetch(url, { credentials: "same-origin" });
@@ -59,6 +60,7 @@ async function loadCorpus(name) {
     _loaded.set(name, data);
     for (const book of data.books) {
       _byEnglishTitle.set(book.title, { book, source: name });
+      if (book.heTitle) _byHebrewTitle.set(book.heTitle, { book, source: name });
     }
     return data;
   })();
@@ -71,21 +73,43 @@ export async function ensureCorpus(name) {
   return loadCorpus(name);
 }
 
-// Public: get the canonical Hebrew text (with niqqud + taamim, no HTML) for a
-// given English book + chapter + verse. Returns the string or throws.
-export async function getVerseText(englishBook, chapter, verse, { corpus } = {}) {
-  // If caller didn't say which corpus, try the most likely one based on the title.
-  // For the four-button toolbar today we only consult Tanakh; the Mishnah/Bavli
-  // entries will be wired up when the UI gains those dropdowns.
-  const candidate = corpus || (englishBook.startsWith("Mishnah ") ? "mishnah" : "tanakh");
-  await loadCorpus(candidate);
+// Public: list books in a loaded corpus as [{ englishTitle, heTitle }].
+// Caller must await ensureCorpus(name) first.
+export function listBooks(name) {
+  const data = _loaded.get(name);
+  if (!data) return [];
+  return data.books.map((b) => ({ englishTitle: b.title, heTitle: b.heTitle }));
+}
+
+// Public: which corpus contains an English book title (after corpora are loaded).
+export function corpusForBook(englishBook) {
   const entry = _byEnglishTitle.get(englishBook);
-  if (!entry) throw new Error(`לא נמצא הספר: ${englishBook}`);
+  return entry ? entry.source : null;
+}
+
+// Public: get the canonical Hebrew text (with niqqud + taamim, no HTML) for a
+// given book + chapter + verse. Book may be the English title ("Genesis") or
+// the Hebrew title ("בראשית"). The optional `corpus` selects which corpus to
+// load; when omitted we infer from the title prefix.
+//
+// Bavli note: Sefaria stores the daf as the chapter index (chapter[1] = ב.,
+// chapter[2] = ב:, etc. — 1-indexed daf, segments inside are sub-lines).
+export async function getVerseText(book, chapter, verse, { corpus } = {}) {
+  const candidate =
+    corpus ||
+    (book.startsWith("Mishnah ") || book.startsWith("משנה ") ? "mishnah" : "tanakh");
+  await loadCorpus(candidate);
+  const entry = _byEnglishTitle.get(book) || _byHebrewTitle.get(book);
+  if (!entry) throw new Error(`לא נמצא הספר: ${book}`);
   const chapters = entry.book.chapters;
-  if (!Array.isArray(chapters)) throw new Error(`מבנה לא תקין: ${englishBook}`);
+  if (!Array.isArray(chapters)) throw new Error(`מבנה לא תקין: ${book}`);
   const ch = chapters[chapter - 1];
-  if (!Array.isArray(ch)) throw new Error(`פרק ${chapter} לא נמצא ב-${englishBook}`);
+  if (!Array.isArray(ch) || ch.length === 0) {
+    throw new Error(`פרק ${chapter} לא נמצא ב-${book}`);
+  }
   const v = ch[verse - 1];
-  if (typeof v !== "string" || !v) throw new Error(`פסוק ${chapter}:${verse} לא נמצא ב-${englishBook}`);
+  if (typeof v !== "string" || !v) {
+    throw new Error(`פסוק ${chapter}:${verse} לא נמצא ב-${book}`);
+  }
   return v;
 }
