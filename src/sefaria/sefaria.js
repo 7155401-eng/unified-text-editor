@@ -59,6 +59,22 @@ async function _defaultLoadDocxIntoEditor(blob, filename) {
 }
 
 export function wireSefariaTools(paneManager) {
+  const toolbar = document.querySelector(".torah-toolbar");
+  if (toolbar && !toolbar.querySelector('[data-action="open-sefaria-downloader"]')) {
+    const group = document.createElement("span");
+    group.className = "tb-group";
+    group.dataset.title = "ספריא";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "הורד ספר מספריא";
+    btn.title = "הורדת ספר מספריא כ-DOCX עם הערות שוליים";
+    btn.hidden = true;
+    btn.setAttribute("data-action", "open-sefaria-downloader");
+    btn.setAttribute("data-tool-preview", "sefaria-downloader");
+    group.appendChild(btn);
+    toolbar.appendChild(group);
+  }
+
   document.querySelectorAll('[data-action="open-sefaria-downloader"]').forEach((btn) => {
     if (btn.dataset.sefWired) return;
     btn.dataset.sefWired = "1";

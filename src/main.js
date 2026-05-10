@@ -933,7 +933,11 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
 revealToolButtons();
-setTimeout(() => wireTorahTools(paneManager), 200);
+setTimeout(() => {
+  wireTorahTools(paneManager);
+  wireSefariaTools(paneManager);
+  revealToolButtons();
+}, 200);
 if (isToolPreviewAllowed("nikud-merger")) {
   setTimeout(() => wireNikudMergerButton(paneManager), 220);
 }
