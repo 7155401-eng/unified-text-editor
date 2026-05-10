@@ -73,6 +73,7 @@ import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
 import { repaginateMainOverflow } from "./talmud_overflow_repagination.js";
 import { applyYSegmentsToAllPages } from "./talmud_y_segments.js";
 import { logEvent, logMove } from "./settings_pane.js";
+import { applyVilnaV9FromPaneManager } from "./vilna_v9_apply.js";
 
 // v33: expose helpers for diagnostic tools to call directly.
 if (typeof window !== "undefined") {
@@ -717,8 +718,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       window.localStorage?.getItem("ravtext.talmudLayout") === "1";
     if (talmudActive) {
       logEvent("vilna_v9_pipeline_start");
-      const v9 = await import("./vilna_v9_apply.js");
-      await v9.applyVilnaV9FromPaneManager(content, pagesContainer);
+      await applyVilnaV9FromPaneManager(content, pagesContainer);
       if (myToken !== _renderToken) return;
       if (pdfToolbarApi) {
         const pageCount = pagesContainer.querySelectorAll(".page").length;
