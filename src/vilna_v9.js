@@ -143,8 +143,16 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
   const allLines = [];
   let curY = strips[0].y_start;
 
-  const remainingWords = text.split(/\s+/).filter(Boolean);
-  let wordIdx = 0;
+  // משה 2026-05-10: tokenize — מילים רגילות + מרקרים של שבירת שורה ('\n').
+  // כש-buildOneLine נתקל ב-'\n', הוא עוצר השורה הנוכחית והמרקר נצרך בלי טקסט.
+  const tokens = [];
+  const lines = text.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const ws = lines[i].split(/[\t ]+/).filter(Boolean);
+    for (const w of ws) tokens.push(w);
+    if (i < lines.length - 1) tokens.push('\n');
+  }
+  let tokenIdx = 0;
 
   for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
     const strip = strips[stripIdx];
@@ -159,17 +167,17 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     let linesInStrip = 0;
     const linesConsumed = [];
 
-    while (linesInStrip < availableLines && wordIdx < remainingWords.length) {
-      const line = buildOneLine(remainingWords, wordIdx, strip.width, metrics);
-      if (line.wordCount === 0) break;
+    while (linesInStrip < availableLines && tokenIdx < tokens.length) {
+      const line = buildOneLine(tokens, tokenIdx, strip.width, metrics);
+      if (line.tokensConsumed === 0) break;
       linesConsumed.push(line);
-      wordIdx += line.wordCount;
+      tokenIdx += line.tokensConsumed;
       linesInStrip++;
     }
 
     for (let i = 0; i < linesConsumed.length; i++) {
       const line = linesConsumed[i];
-      const isLastLine = (i === linesConsumed.length - 1) && (wordIdx >= remainingWords.length);
+      const isLastLine = (i === linesConsumed.length - 1) && (tokenIdx >= tokens.length);
       allLines.push({
         y: curY + i * lineH,
         width: strip.width,
@@ -177,40 +185,59 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
         text: line.words.join(' '),
         naturalWidth: line.width,
         isLast: isLastLine,
+        forcedBreak: line.forcedBreak,
       });
     }
 
     curY += linesConsumed.length * lineH;
-    if (wordIdx >= remainingWords.length) break;
+    if (tokenIdx >= tokens.length) break;
+  }
+
+  // overflowText — שחזור הטקסט שנשאר עם \n בנקודות הנכונות
+  const remainingTokens = tokens.slice(tokenIdx);
+  let overflowText = '';
+  for (const t of remainingTokens) {
+    if (t === '\n') overflowText += '\n';
+    else overflowText += (overflowText && !overflowText.endsWith('\n') ? ' ' : '') + t;
   }
 
   return {
     lines: allLines,
-    overflowText: remainingWords.slice(wordIdx).join(' '),
-    consumedWords: wordIdx,
-    totalWords: remainingWords.length,
+    overflowText: overflowText.trim(),
+    consumedWords: tokenIdx,
+    totalWords: tokens.length,
     endY: curY,
   };
 }
 
-function buildOneLine(words, startIdx, widthPx, metrics) {
+function buildOneLine(tokens, startIdx, widthPx, metrics) {
   const spaceW = metrics.spaceWidth;
   let curWidth = 0;
   const lineWords = [];
+  let forcedBreak = false;
+  let tokensConsumed = 0;
 
-  for (let i = startIdx; i < words.length; i++) {
-    const word = words[i];
-    const wordW = metrics.measureWord(word);
+  for (let i = startIdx; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok === '\n') {
+      // שבירת שורה מאולצת — נצרך גם אם לא הוסיף תוכן, ועוצרים השורה.
+      tokensConsumed++;
+      forcedBreak = true;
+      // משה 2026-05-10: שורה לפני שבירה נחשבת "אחרונה לוגית" — לא תיושר.
+      break;
+    }
+    const wordW = metrics.measureWord(tok);
     const addW = lineWords.length === 0 ? wordW : curWidth + spaceW + wordW;
 
     if (addW <= widthPx || lineWords.length === 0) {
-      lineWords.push(word);
+      lineWords.push(tok);
       curWidth = addW;
+      tokensConsumed++;
     } else {
       break;
     }
   }
-  return { words: lineWords, wordCount: lineWords.length, width: curWidth };
+  return { words: lineWords, wordCount: lineWords.length, tokensConsumed, width: curWidth, forcedBreak };
 }
 
 // =====================================================================
@@ -841,7 +868,8 @@ function renderPagePlan(plan, pageEl, cfg) {
     for (const line of box.lines) {
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
-      const shouldJustify = !line.isLast && line.words && line.words.length > 1
+      // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
+      const shouldJustify = !line.isLast && !line.forcedBreak && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
       // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת (לפי כללי ספרי קודש).
       const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
@@ -1260,10 +1288,13 @@ function totalCarrySize(co) {
 // הערה תואמת בזרם), אנחנו לפחות לא מציגים אותו למשתמש.
 function stripStreamMarkers(text) {
   if (!text) return '';
+  // משה 2026-05-10: שומרים \n (שבירות שורה אמיתיות מהמקור) — מאחדים רק
+  // רווחים וטאבים. ה-flow יזהה \n כשבירת שורה מאולצת.
   return text
     .replace(/\{@\d+[^}]*\}/g, '')
     .replace(/@\d+/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/[\t ]+/g, ' ')
+    .replace(/ *\n */g, '\n')
     .trim();
 }
 
@@ -1272,8 +1303,11 @@ function stripStreamMarkers(text) {
 // של הזרם. נשרשר אותו לפני ההערות מהפסקאות החדשות, כדי שייופיע ראשון
 // בעמוד הנוכחי (כמו במנוע משנ"ב — מה שנחתך מעמוד אחד עובר לראש העמוד הבא).
 function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStreams, carryOver) {
+  // משה 2026-05-10: מצרפים פסקאות עם \n כדי לשמור את שבירת השורה ביניהן.
+  // ה-flow יראה \n ויעבור לשורה חדשה. גם שבירות שורה בתוך פסקה (\n ב-mainText)
+  // יישמרו.
   const mainText = stripStreamMarkers(
-    paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('  ')
+    paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('\n')
   );
 
   const streamMap = new Map();
