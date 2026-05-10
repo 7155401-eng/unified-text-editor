@@ -108,6 +108,7 @@ const ENGINE_API_PREFIXES = [
   '/api/nikud-merger',
   '/api/text-compare-pro',
   '/api/sefaria/',
+  '/api/main-text-tools',
   '/api/caricature',
 ];
 
@@ -173,6 +174,7 @@ const RATE_LIMITS = {
   '/api/nikud-merger': { window: 60, max: 120 },
   '/api/text-compare-pro': { window: 60, max: 120 },
   '/api/sefaria': { window: 60, max: 180 },
+  '/api/main-text-tools': { window: 60, max: 180 },
   '/api/admin': { window: 60, max: 300 },
   '/api/documents': { window: 60, max: 120 },
   '/api/settings': { window: 60, max: 120 },

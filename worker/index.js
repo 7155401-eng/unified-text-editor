@@ -23,6 +23,7 @@ import { handleToolPreflight } from './tool_gate.js';
 import { handleNikudMerger } from './nikud_merger.js';
 import { handleTextComparePro } from './text_compare_pro.js';
 import { handleSefariaProxy } from './sefaria_proxy.js';
+import { handleMainTextTools } from './main_text_tools.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -113,6 +114,8 @@ export default {
       response = await handleTextComparePro(request);
     } else if (url.pathname.startsWith('/api/sefaria/')) {
       response = await handleSefariaProxy(request, url);
+    } else if (url.pathname === '/api/main-text-tools') {
+      response = await handleMainTextTools(request);
     } else if (url.pathname === '/admin' || url.pathname === '/admin/') {
       const adminUrl = new URL(request.url);
       adminUrl.pathname = '/admin.html';

@@ -8,7 +8,7 @@
 import { PaneManager } from "./pane_manager.js";
 import { findAllStreamMarks, countByStream, jumpToNextMarker, colorForStream } from "./stream_mark.js";
 import { parseRawTextToHTML } from "./stream_parser.js";
-import { splitTextByMarkers, buildMainHTML, buildStreamHTML, splitStreamNotesByMarkers, mergeBackToText } from "./stream_split.js";
+import { splitMarkersOnServer, mergeBackOnServer, inlineMergeOnServer, inlineSplitOnServer, loadSyncScrollEnabledFromServer, saveSyncScrollEnabledToServer } from "./main_text_tools_client.js";
 import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
@@ -202,6 +202,11 @@ loadInitialState(paneManager).then((res) => {
 const pagesContainer = document.querySelector("#pages-container");
 applyPageSettings(pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
+
+loadSyncScrollEnabledFromServer().then((enabled) => {
+  paneManager.syncEnabled = !!enabled;
+  document.getElementById("sync-btn")?.classList.toggle("active", paneManager.syncEnabled);
+}).catch(() => {});
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
 setupWordExtractor(paneManager, rerenderPages);
@@ -1109,10 +1114,6 @@ function escapeForHTML(text) {
     .replace(/>/g, "&gt;");
 }
 
-function escapeForRegex(text) {
-  return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function plainTextToHTML(text) {
   const lines = String(text || "").split(/\n/);
   return lines.map(line => `<p>${escapeForHTML(line) || "<br>"}</p>`).join("");
@@ -1213,26 +1214,26 @@ function updateMergeToggleButton() {
   btn.textContent = paneManager.merged ? "🔓 פרק" : "🔗 מזג / פרק";
 }
 
-function toggleInlineMerge() {
+async function toggleInlineMerge() {
   const main = paneManager.getMainPane();
   if (!main?.editor) return;
   let mainText = main.editor.state.doc.textContent;
+  const panes = paneManager.panes
+    .filter(p => p.streamCode && p.editor)
+    .map(p => ({
+      streamCode: p.streamCode,
+      symbol: p.symbol || "",
+      text: p.editor.state.doc.textContent,
+    }));
 
   if (paneManager.merged) {
+    const result = await inlineSplitOnServer(mainText, panes);
+    mainText = result.mainText || "";
     for (const p of paneManager.panes) {
       if (!p.streamCode || !p.editor) continue;
-      const sym = (p.symbol || "").trim();
-      if (!sym) continue;
-
-      const extracted = [];
-      const regex = new RegExp(`\\[\\[${escapeForRegex(sym)}([\\s\\S]*?)\\]\\]`, "g");
-      mainText = mainText.replace(regex, (_match, content) => {
-        extracted.push(content.trim());
-        return sym;
-      });
-
-      if (extracted.length > 0) {
-        p.editor.commands.setContent(plainTextToHTML(extracted.map(n => `${sym} ${n}`).join("\n")));
+      const streamText = result.streamTexts?.[p.streamCode];
+      if (streamText) {
+        p.editor.commands.setContent(plainTextToHTML(streamText));
       }
     }
     main.editor.commands.setContent(plainTextToHTML(mainText));
@@ -1243,27 +1244,8 @@ function toggleInlineMerge() {
     return;
   }
 
-  for (const p of paneManager.panes) {
-    if (!p.streamCode || !p.editor) continue;
-    const sym = (p.symbol || "").trim();
-    if (!sym) continue;
-    const noteText = p.editor.state.doc.textContent.trim();
-    if (!noteText) continue;
-
-    let parts = noteText.split(sym);
-    if (parts.length > 0 && parts[0].trim() === "") parts.shift();
-
-    let counter = 0;
-    const regex = new RegExp(escapeForRegex(sym), "g");
-    mainText = mainText.replace(regex, (match) => {
-      if (counter < parts.length) {
-        const note = parts[counter].trim();
-        counter++;
-        return `[[${sym} ${note}]]`;
-      }
-      return match;
-    });
-  }
+  const result = await inlineMergeOnServer(mainText, panes);
+  mainText = result.mainText || "";
 
   main.editor.commands.setContent(plainTextToHTML(mainText));
   paneManager.merged = true;
@@ -1902,14 +1884,14 @@ document.addEventListener("click", async (ev) => {
       const main = paneManager.getMainPane();
       if (!main || !main.editor) { alert("אין חלונית ראשית"); break; }
       const rawText = main.editor.state.doc.textContent;
-      const { mainText, streams } = splitTextByMarkers(rawText);
+      const { streams, mainHtml, streamHtml } = await splitMarkersOnServer(rawText);
       const codes = Object.keys(streams).sort();
       if (codes.length === 0) {
         alert("לא נמצאו סימני @NN בתוכן הראשי");
         break;
       }
       // עדכון הראשי
-      main.editor.commands.setContent(buildMainHTML(rawText));
+      main.editor.commands.setContent(mainHtml);
       // יצירת/עדכון חלוניות זרמים
       let created = 0, updated = 0;
       for (const code of codes) {
@@ -1925,7 +1907,7 @@ document.addEventListener("click", async (ev) => {
           updated++;
         }
         if (pane && pane.editor) {
-          pane.editor.commands.setContent(buildStreamHTML(code, streams[code]));
+          pane.editor.commands.setContent(streamHtml[code]);
         }
       }
       const lines = [`פיצול הושלם:`];
@@ -1945,7 +1927,7 @@ document.addEventListener("click", async (ev) => {
     }
     case "merge-toggle":
     case "toggle-merge": {
-      toggleInlineMerge();
+      await toggleInlineMerge();
       break;
     }
     case "lines-toggle": {
@@ -1970,6 +1952,9 @@ document.addEventListener("click", async (ev) => {
     case "sync-toggle": {
       paneManager.syncEnabled = !paneManager.syncEnabled;
       btn.classList.toggle("active", paneManager.syncEnabled);
+      saveSyncScrollEnabledToServer(paneManager.syncEnabled).then((ok) => {
+        if (!ok) console.warn("[sync-scroll] server did not persist toggle state");
+      });
       break;
     }
 
@@ -1987,10 +1972,10 @@ document.addEventListener("click", async (ev) => {
       for (const p of paneManager.panes) {
         if (!p.streamCode || !p.editor) continue;
         const text = p.editor.state.doc.textContent;
-        const items = splitStreamNotesByMarkers(text);
-        streams[p.streamCode] = items;
+        streams[p.streamCode] = text;
       }
-      const merged = mergeBackToText(mainText, streams);
+      const result = await mergeBackOnServer(mainText, streams);
+      const merged = result.merged || "";
       // הצגה כטקסט פשוט בראשי
       main.editor.commands.setContent(`<p>${merged.replace(/\n/g, "<br>")}</p>`);
       alert(`איחוד הושלם — ${Object.keys(streams).length} זרמים שולבו לראשי.`);

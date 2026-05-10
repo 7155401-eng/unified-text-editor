@@ -38,6 +38,9 @@ export async function handleStorage(request, env, url) {
   if (path === '/api/settings' && method === 'PUT') {
     return putSettings(request, env, auth.user);
   }
+  if (path === '/api/settings' && method === 'PATCH') {
+    return patchSettings(request, env, auth.user);
+  }
   return new Response('Not found', { status: 404 });
 }
 
@@ -118,6 +121,47 @@ async function putSettings(request, env, user) {
   const settings = body?.settings;
   if (settings == null || typeof settings !== 'object') {
     return new Response('Missing settings object', { status: 400 });
+  }
+
+  const json = JSON.stringify(settings);
+  const bytes = new TextEncoder().encode(json).byteLength;
+  if (bytes > MAX_SETTINGS_BYTES) {
+    return new Response(`Settings too large: ${bytes} > ${MAX_SETTINGS_BYTES}`, { status: 413 });
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    `INSERT INTO user_settings (user_id, settings_json, size_bytes, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       settings_json = excluded.settings_json,
+       size_bytes = excluded.size_bytes,
+       updated_at = excluded.updated_at`
+  ).bind(user.id, json, bytes, now).run();
+
+  return Response.json({ sizeBytes: bytes, updatedAt: now });
+}
+
+async function patchSettings(request, env, user) {
+  let body;
+  try { body = await request.json(); } catch { return new Response('Bad JSON', { status: 400 }); }
+
+  const patch = body?.settings;
+  if (patch == null || typeof patch !== 'object') {
+    return new Response('Missing settings object', { status: 400 });
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT settings_json FROM user_settings WHERE user_id = ?`
+  ).bind(user.id).first();
+
+  let settings = {};
+  if (row?.settings_json) {
+    try { settings = JSON.parse(row.settings_json) || {}; } catch { settings = {}; }
+  }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value == null) delete settings[key];
+    else settings[key] = String(value);
   }
 
   const json = JSON.stringify(settings);
