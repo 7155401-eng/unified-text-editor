@@ -134,3 +134,42 @@
 .tnk-root .close-x {
   font-size: 22px; line-height: 1; padding: 0 8px; cursor: pointer;
 }
+
+/* Host-aware defaults. The modal still has its internal light/dark toggle, but
+   first open now matches the surrounding RavText theme. */
+.tnk-root.light {
+  --bg-main: var(--rt-bg, #f5f5f7);
+  --bg-card: var(--rt-bg-panel, #ffffff);
+  --bg-input: var(--rt-input-bg, #ffffff);
+  --bg-header: var(--rt-bg-toolbar, #ebeef2);
+  --gold: var(--rt-accent, #2c5aa0);
+  --gold-light: var(--rt-accent, #2c5aa0);
+  --gold-dark: var(--rt-accent-hover, #1e4078);
+  --text-primary: var(--rt-fg, #1d1d1f);
+  --text-secondary: var(--rt-fg, #1d1d1f);
+  --text-muted: var(--rt-fg-muted, #6e6e73);
+  --text-on-gold: #ffffff;
+  --border: var(--rt-border, #d0d0d4);
+  --link: var(--rt-accent, #2c5aa0);
+  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.18);
+}
+
+body[data-theme="royal"] .tnk-root {
+  --bg-main: var(--rt-bg, #0d1b3a);
+  --bg-card: var(--rt-bg-panel, #1a2a4f);
+  --bg-input: var(--rt-input-bg, #0a1530);
+  --bg-header: var(--rt-bg-toolbar, #14224a);
+  --gold: var(--rt-accent, #d4af37);
+  --gold-light: var(--rt-accent, #d4af37);
+  --gold-dark: var(--rt-accent-hover, #b48820);
+  --text-primary: var(--rt-fg, #f5e6c8);
+  --text-secondary: var(--rt-fg, #f5e6c8);
+  --text-muted: var(--rt-fg-muted, #c8b07a);
+  --text-on-gold: #0d1b2a;
+  --border: var(--rt-border, #8a6512);
+  --link: var(--rt-accent, #d4af37);
+}
+
+.tnk-root.light .step-bar {
+  background: var(--bg-header);
+}

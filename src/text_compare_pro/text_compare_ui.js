@@ -946,12 +946,14 @@ export async function openModal(opts) {
   document.body.appendChild(modalRoot);
   modalEl = modalRoot.querySelector(".tcp-modal");
 
-  // Light-theme follow: if host body has 'dark' or 'theme-dark' we leave
-  // the default dark theme; otherwise add tcp-light.
+  // Follow the host theme. Default site theme is light; royal keeps the
+  // imported dark/gold character intentionally.
   const hostDark =
     document.body.classList.contains("dark") ||
     document.body.classList.contains("theme-dark") ||
-    document.documentElement.getAttribute("data-theme") === "dark";
+    document.body.classList.contains("dark-theme") ||
+    ["dark", "royal"].includes(document.body.dataset.theme || "") ||
+    ["dark", "royal"].includes(document.documentElement.getAttribute("data-theme") || "");
   if (!hostDark) modalEl.classList.add("tcp-light");
 
   bindUI();

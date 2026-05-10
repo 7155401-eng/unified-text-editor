@@ -85,13 +85,24 @@ function stripBidi(s) {
 let modalEl = null;
 let cssInjected = false;
 let lang = "he";
-let appearance = "dark";
+let appearance = readHostAppearance();
 let extEditions = [];          // {name, text}
 let currentStep = 1;
 let gasClient = null;
 let dictaClient = null;
 let cancelFlag = false;
 let onResultCb = null;
+
+function readHostAppearance() {
+  try {
+    const hostTheme = (document.body?.dataset?.theme || document.documentElement?.dataset?.theme || "").toLowerCase();
+    if (hostTheme === "dark" || hostTheme === "royal") return "dark";
+    if (document.body?.classList?.contains("dark-theme")) return "dark";
+    return "light";
+  } catch (_) {
+    return "light";
+  }
+}
 
 // ---------- modal creation ----------
 

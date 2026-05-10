@@ -32,10 +32,14 @@ export function toggleLangPref() {
 
 export function getThemePref() {
   try {
-    const v = (localStorage.getItem(KEY_THEME) || '').toLowerCase();
-    return v === 'light' ? 'light' : 'dark';
+    const saved = (localStorage.getItem(KEY_THEME) || '').toLowerCase();
+    if (saved === 'light' || saved === 'dark') return saved;
+    const hostTheme = (document.body?.dataset?.theme || document.documentElement?.dataset?.theme || '').toLowerCase();
+    if (hostTheme === 'dark' || hostTheme === 'royal') return 'dark';
+    if (document.body?.classList?.contains('dark-theme')) return 'dark';
+    return 'light';
   } catch (_) {
-    return 'dark';
+    return 'light';
   }
 }
 

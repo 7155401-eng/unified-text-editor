@@ -535,3 +535,143 @@
 
 /* Hidden helper */
 .tt-hidden { display: none !important; }
+
+/* Host-aware theme bridge. The default site theme is light and neutral; the
+   royal theme inherits the site's royal dark/gold tokens. */
+.tt-modal {
+  --tt-bg: var(--rt-bg, #f5f5f7);
+  --tt-panel: var(--rt-bg-panel, #ffffff);
+  --tt-toolbar: var(--rt-bg-toolbar, #ebeef2);
+  --tt-input: var(--rt-input-bg, #ffffff);
+  --tt-text: var(--rt-fg, #1d1d1f);
+  --tt-muted: var(--rt-fg-muted, #6e6e73);
+  --tt-border: var(--rt-border, #d0d0d4);
+  --tt-accent: var(--rt-accent, #2c5aa0);
+  --tt-accent-hover: var(--rt-accent-hover, #1e4078);
+  --tt-button: var(--rt-btn-bg, #ffffff);
+  --tt-button-hover: var(--rt-btn-hover, #e5e7eb);
+  background: var(--tt-bg);
+  color: var(--tt-text);
+  border: 1px solid var(--tt-border);
+  box-shadow: 0 12px 48px rgba(15, 23, 42, 0.18);
+}
+
+body[data-theme="royal"] .tt-modal {
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+.tt-header,
+.tt-body,
+.tt-content-area {
+  background: var(--tt-bg);
+  color: var(--tt-text);
+}
+
+.tt-header {
+  border-bottom-color: var(--tt-accent);
+}
+
+.tt-sidebar,
+.tt-nav,
+.tt-tabview,
+.tt-card,
+.tt-card-gold,
+.tt-card-gold-light {
+  background: var(--tt-panel);
+  color: var(--tt-text);
+  border-color: var(--tt-border);
+}
+
+.tt-header-title,
+.tt-sidebar-title,
+.tt-h1,
+.tt-h2,
+.tt-slider-value {
+  color: var(--tt-accent);
+}
+
+.tt-info,
+.tt-status {
+  color: var(--tt-text);
+}
+
+.tt-note,
+.tt-file-name.muted,
+.tt-remove-service-btn {
+  color: var(--tt-muted);
+}
+
+.tt-label,
+.tt-radio-row,
+.tt-check-row,
+.tt-file-name,
+.tt-ext-name {
+  color: var(--tt-text);
+}
+
+.tt-input,
+.tt-textarea,
+.tt-textarea[readonly],
+.tt-progress,
+.tt-tabview-tab,
+.tt-ext-remove {
+  background: var(--tt-input);
+  color: var(--tt-text);
+  border-color: var(--tt-border);
+}
+
+.tt-input:focus,
+.tt-textarea:focus {
+  border-color: var(--tt-accent);
+}
+
+.tt-tab-btn,
+.tt-btn-secondary,
+.tt-close-btn,
+.tt-remove-service-btn {
+  background: var(--tt-button);
+  color: var(--tt-text);
+  border: 1px solid var(--tt-border);
+}
+
+.tt-tab-btn:hover,
+.tt-btn-secondary:hover,
+.tt-close-btn:hover,
+.tt-remove-service-btn:hover,
+.tt-ext-remove:hover {
+  background: var(--tt-button-hover);
+}
+
+.tt-tab-btn.active,
+.tt-btn-primary,
+.tt-tabview-tab.active,
+.tt-add-service-btn,
+.tt-run-btn,
+.tt-style-btn,
+.tt-progress-fill {
+  background: var(--tt-accent);
+  color: #ffffff;
+  border-color: var(--tt-accent);
+}
+
+.tt-btn-primary:hover,
+.tt-add-service-btn:hover,
+.tt-run-btn:hover,
+.tt-style-btn:hover {
+  background: var(--tt-accent-hover);
+}
+
+.tt-slider,
+.tt-radio-row input,
+.tt-check-row input {
+  accent-color: var(--tt-accent);
+}
+
+body[data-theme="royal"] .tt-tab-btn.active,
+body[data-theme="royal"] .tt-btn-primary,
+body[data-theme="royal"] .tt-tabview-tab.active,
+body[data-theme="royal"] .tt-add-service-btn,
+body[data-theme="royal"] .tt-run-btn,
+body[data-theme="royal"] .tt-style-btn {
+  color: #0d1b2a;
+}

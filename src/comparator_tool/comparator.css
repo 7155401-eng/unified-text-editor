@@ -9,8 +9,8 @@
   --ed-bg:#0D1929; --ed-fg:#E2E8F0; --tb-bg:#111B30;
 }
 #comparator-modal-root.light-theme {
-  --bg:#F3F4F6; --card:#FFFFFF; --border:#E5E7EB; --gold:#D97706;
-  --txt:#111827; --muted:#6B7280; --btn:#E5E7EB; --btn-h:#D1D5DB;
+  --bg:#F5F5F7; --card:#FFFFFF; --border:#D0D0D4; --gold:#2C5AA0;
+  --txt:#1D1D1F; --muted:#6E6E73; --btn:#FFFFFF; --btn-h:#E5E7EB;
   --ed-bg:#F9FAFB; --ed-fg:#1F2937; --tb-bg:#F3F4F6;
 }
 #comparator-modal-root{background:var(--bg);color:var(--txt);font-family:'Segoe UI','David',sans-serif;direction:rtl; transition: 0.3s;}
@@ -334,4 +334,33 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+}
+
+body[data-theme="royal"] #comparator-modal-root {
+  --bg: var(--rt-bg, #0d1b3a);
+  --card: var(--rt-bg-panel, #1a2a4f);
+  --border: var(--rt-border, #8a6512);
+  --gold: var(--rt-accent, #d4af37);
+  --txt: var(--rt-fg, #f5e6c8);
+  --muted: var(--rt-fg-muted, #c8b07a);
+  --btn: var(--rt-btn-bg, #2a3d6e);
+  --btn-h: var(--rt-btn-hover, #3b4f85);
+  --ed-bg: var(--rt-input-bg, #0a1530);
+  --ed-fg: var(--rt-input-fg, #f5e6c8);
+  --tb-bg: var(--rt-bg-toolbar, #14224a);
+}
+
+#comparator-modal-root.light-theme .modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+}
+
+#comparator-modal-root.light-theme .modal::after {
+  display: none;
+}
+
+#comparator-modal-root.light-theme .modal h2 {
+  color: var(--gold);
+  text-shadow: none;
 }

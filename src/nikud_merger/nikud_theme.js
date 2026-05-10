@@ -102,6 +102,9 @@ function readGlobalThemePref() {
   // fallback ל-localStorage. ברירת המחדל בעורך הראשי = light, אז גם כאן.
   try {
     if (typeof document !== "undefined" && document.body) {
+      const hostTheme = (document.body.dataset?.theme || document.documentElement?.dataset?.theme || "").trim().toLowerCase();
+      if (hostTheme === "dark" || hostTheme === "royal") return "dark";
+      if (hostTheme) return "light";
       if (document.body.classList.contains("light-theme")) return "light";
       if (document.body.classList.contains("dark-theme")) return "dark";
     }

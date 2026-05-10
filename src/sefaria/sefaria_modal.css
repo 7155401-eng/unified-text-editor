@@ -36,6 +36,21 @@ body.theme-light .sef-modal,
   --sef-ed-fg: #1F2937;
   --sef-tb-bg: #F3F4F6;
 }
+body[data-theme="royal"] .sef-modal,
+.sef-modal[data-theme="royal"] {
+  --sef-bg: var(--rt-bg, #0d1b3a);
+  --sef-card: var(--rt-bg-panel, #1a2a4f);
+  --sef-border: var(--rt-border, #8a6512);
+  --sef-gold: var(--rt-accent, #d4af37);
+  --sef-gold-hover: var(--rt-accent-hover, #b48820);
+  --sef-text: var(--rt-fg, #f5e6c8);
+  --sef-muted: var(--rt-fg-muted, #c8b07a);
+  --sef-accent: var(--rt-btn-bg, #2a3d6e);
+  --sef-accent-hover: var(--rt-btn-hover, #3b4f85);
+  --sef-ed-bg: var(--rt-input-bg, #0a1530);
+  --sef-ed-fg: var(--rt-input-fg, #f5e6c8);
+  --sef-tb-bg: var(--rt-bg-toolbar, #14224a);
+}
 
 .sef-overlay {
   position: fixed; inset: 0;
@@ -47,14 +62,19 @@ body.theme-light .sef-modal,
 .sef-modal {
   background: var(--sef-card);
   color: var(--sef-text);
-  border: 3px solid var(--sef-gold);
+  border: 1px solid var(--sef-border);
   border-radius: 12px;
   width: min(85vw, 1280px);
   height: min(88vh, 820px);
   display: flex; flex-direction: column;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.18);
   font-family: "Segoe UI", "David", sans-serif;
   direction: rtl;
+}
+body[data-theme="royal"] .sef-modal,
+.sef-modal[data-theme="royal"] {
+  border: 3px solid var(--sef-gold);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
 }
 .sef-modal[dir="ltr"] { direction: ltr; }
 .sef-modal[data-variant="live"] { width: min(90vw, 1300px); height: min(90vh, 850px); }

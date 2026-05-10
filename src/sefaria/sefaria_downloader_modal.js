@@ -47,9 +47,12 @@ function clear(node) { while (node.firstChild) node.removeChild(node.firstChild)
 
 function readTheme() {
   try {
+    const hostTheme = (document.body?.dataset?.theme || document.documentElement?.dataset?.theme || "").toLowerCase();
+    if (hostTheme === "royal") return "royal";
+    if (hostTheme === "dark" || document.body?.classList?.contains("dark-theme")) return "dark";
     const t = (localStorage.getItem("ravtext.theme") || "").toLowerCase();
-    return t === "light" ? "light" : "dark";
-  } catch (_) { return "dark"; }
+    return t === "dark" ? "dark" : "light";
+  } catch (_) { return "light"; }
 }
 
 // ────────────────────────────────────────────────────────────────────

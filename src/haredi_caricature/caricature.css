@@ -321,3 +321,102 @@
   align-items: center;
   gap: 4px;
 }
+
+/* Host-aware theme bridge. Default follows the site; royal keeps the imported
+   dark/gold character through the same RavText tokens. */
+.hc-window,
+.hc-keydlg-inner {
+  --hc-bg: var(--rt-bg-panel, #ffffff);
+  --hc-panel: var(--rt-bg-toolbar, #ebeef2);
+  --hc-card: var(--rt-bg-panel, #ffffff);
+  --hc-input: var(--rt-input-bg, #ffffff);
+  --hc-border: var(--rt-border, #d0d0d4);
+  --hc-text: var(--rt-fg, #1d1d1f);
+  --hc-muted: var(--rt-fg-muted, #6e6e73);
+  --hc-accent: var(--rt-accent, #2c5aa0);
+  --hc-accent-hover: var(--rt-accent-hover, #1e4078);
+  --hc-button: var(--rt-btn-bg, #ffffff);
+  --hc-button-hover: var(--rt-btn-hover, #e5e7eb);
+  background: var(--hc-bg);
+  color: var(--hc-text);
+  border: 1px solid var(--hc-border);
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.18);
+}
+
+body[data-theme="royal"] .hc-window,
+body[data-theme="royal"] .hc-keydlg-inner {
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
+
+.hc-topbar,
+.hc-footer,
+.hc-card,
+.hc-quota {
+  background: var(--hc-panel);
+  color: var(--hc-text);
+  border-color: var(--hc-border);
+}
+
+.hc-title,
+.hc-gallery-title,
+.hc-section,
+.hc-status {
+  color: var(--hc-accent);
+}
+
+.hc-muted,
+.hc-empty,
+.hc-gallery-card .hc-name,
+.hc-footer {
+  color: var(--hc-muted);
+}
+
+.hc-controls input[type="text"],
+.hc-controls textarea,
+.hc-controls select,
+.hc-key-textarea,
+.hc-scene-frame,
+.hc-scene-input,
+.hc-gallery-card,
+.hc-gallery-card .hc-history,
+.hc-keydlg-inner textarea {
+  background: var(--hc-input);
+  color: var(--hc-text);
+  border-color: var(--hc-border);
+}
+
+.hc-checkbox {
+  color: var(--hc-text);
+}
+
+.hc-checkbox input[type="checkbox"] {
+  accent-color: var(--hc-accent);
+}
+
+.hc-topbar button,
+.hc-button,
+.hc-icon-btn {
+  background: var(--hc-button);
+  color: var(--hc-text);
+  border: 1px solid var(--hc-border);
+}
+
+.hc-topbar button:hover,
+.hc-button:hover,
+.hc-icon-btn:hover {
+  background: var(--hc-button-hover);
+}
+
+.hc-button.go {
+  background: var(--hc-accent);
+  color: #ffffff;
+  border-color: var(--hc-accent);
+}
+
+.hc-button.go:hover {
+  background: var(--hc-accent-hover);
+}
+
+body[data-theme="royal"] .hc-button.go {
+  color: #1a1a2e;
+}
