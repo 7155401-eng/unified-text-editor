@@ -1,9 +1,10 @@
 // משה 2026-05-10: הרחבות TipTap מותאמות לייבוא DOCX.
 // LineHeight  — מרווח שורות לפסקאות וכותרות.
 // Indent      — הזחת פסקה (margin-inline-start), נקראת גם מ-style="margin-*".
-// שתיהן עובדות גם עבור parseHTML (ייבוא) וגם renderHTML (שמירה/הצגה).
+// Insertion   — סימון תוספת (מעקב שינויים) — <ins>.
+// Deletion    — סימון מחיקה (מעקב שינויים) — <del>.
 
-import { Extension } from "@tiptap/core";
+import { Extension, Mark } from "@tiptap/core";
 
 // ─────────────────────────────────────────────────────────
 // LineHeight
@@ -122,6 +123,54 @@ export const Indent = Extension.create({
     return {
       indent: () => adjust(1),
       outdent: () => adjust(-1),
+    };
+  },
+});
+
+// ─────────────────────────────────────────────────────────
+// Insertion (Track Changes — added text)
+// ─────────────────────────────────────────────────────────
+export const Insertion = Mark.create({
+  name: "insertion",
+
+  parseHTML() {
+    return [{ tag: "ins" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["ins", { class: "tracked-ins", ...HTMLAttributes }, 0];
+  },
+
+  addAttributes() {
+    return {
+      author: { default: null, parseHTML: (el) => el.getAttribute("data-author") || null,
+        renderHTML: (attrs) => (attrs.author ? { "data-author": attrs.author } : {}) },
+      date: { default: null, parseHTML: (el) => el.getAttribute("data-date") || null,
+        renderHTML: (attrs) => (attrs.date ? { "data-date": attrs.date } : {}) },
+    };
+  },
+});
+
+// ─────────────────────────────────────────────────────────
+// Deletion (Track Changes — removed text)
+// ─────────────────────────────────────────────────────────
+export const Deletion = Mark.create({
+  name: "deletion",
+
+  parseHTML() {
+    return [{ tag: "del" }, { tag: "s" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ["del", { class: "tracked-del", ...HTMLAttributes }, 0];
+  },
+
+  addAttributes() {
+    return {
+      author: { default: null, parseHTML: (el) => el.getAttribute("data-author") || null,
+        renderHTML: (attrs) => (attrs.author ? { "data-author": attrs.author } : {}) },
+      date: { default: null, parseHTML: (el) => el.getAttribute("data-date") || null,
+        renderHTML: (attrs) => (attrs.date ? { "data-date": attrs.date } : {}) },
     };
   },
 });

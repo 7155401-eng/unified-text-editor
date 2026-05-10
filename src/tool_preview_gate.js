@@ -3,8 +3,11 @@
 // אישור כלי לכולם = הוספת שמו ל-PUBLIC_TOOLS.
 
 const PUBLIC_TOOLS = new Set([
-  "nikud-merger",   // אושר 2026-05-08 — מיזוג ניקוד
-  "word-extractor", // אושר 2026-05-09 — ייבוא Word עם זרמים מלאים
+  "nikud-merger",       // אושר 2026-05-08 — מיזוג ניקוד
+  "word-extractor",     // אושר 2026-05-09 — ייבוא Word עם זרמים מלאים
+  "torah-transcription",// אושר 2026-05-10 — תמלול אודיו / OCR / עריכה לשונית תורנית
+  "torah-nikud",        // אושר 2026-05-10 — ניקוד תורני אוטומטי
+  "haredi-caricature",  // אושר 2026-05-10 — קריקטורה AI
 ]);
 
 function isAdmin() {

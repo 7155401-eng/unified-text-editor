@@ -76,6 +76,9 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
   // משה 2026-05-09: שלב 5 — צבעים וגדלים מ-document.xml.
   // לפני שmammoth מעבד, אנחנו מקיפים runs עם w:color/w:sz/w:rFonts בסימני placeholder
   // שיחזרו כטקסט אחרי mammoth, ואותם נמיר ל-<span style>.
+  // משה 2026-05-10: עוטף <w:ins>/<w:del> בסימני placeholder שיחזרו כטקסט אחרי mammoth
+  // ויהפכו ל-<ins>/<del> ב-post-processing.
+  docXml = wrapTrackedChanges(docXml);
   docXml = wrapColorAndSizeRuns(docXml);
 
   zip.file("word/document.xml", docXml);
@@ -112,6 +115,8 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
 
   // משה 2026-05-09: שלב 5 — המרת ה-placeholders של צבע/גודל ל-<span style>.
   html = unwrapColorAndSizePlaceholders(html);
+  // משה 2026-05-10: ממיר את ה-placeholders של מעקב שינויים ל-<ins>/<del>.
+  html = unwrapTrackedChanges(html);
 
   return { html, warnings: result.messages || [] };
 }
@@ -390,6 +395,75 @@ function unwrapColorAndSizePlaceholders(html) {
       return `<span style="${decl.join(" ")}">${inner}</span>`;
     }
   );
+}
+
+// =====================================================================
+// משה 2026-05-10: Track Changes (מעקב שינויים) — <w:ins>/<w:del>
+// עוטפים את ה-runs בתוכם בסימני placeholder ‹‹INS:author|date›› ו-‹‹DEL:author|date››,
+// כדי ש-mammoth יחזיר אותם כטקסט שנוכל להמיר ל-<ins>/<del>.
+// =====================================================================
+const TC_INS_OPEN = (a, d) => `‹‹TCI:${a || ""}|${d || ""}‹‹`;
+const TC_INS_CLOSE = "‹‹/TCI‹‹";
+const TC_DEL_OPEN = (a, d) => `‹‹TCD:${a || ""}|${d || ""}‹‹`;
+const TC_DEL_CLOSE = "‹‹/TCD‹‹";
+
+function wrapTrackedChanges(xml) {
+  // <w:ins ...>...</w:ins>
+  let out = xml.replace(
+    /<w:ins\b([^>]*)>([\s\S]*?)<\/w:ins>/g,
+    (m, attrs, body) => {
+      const author = (attrs.match(/\bw:author="([^"]*)"/) || [, ""])[1];
+      const date = (attrs.match(/\bw:date="([^"]*)"/) || [, ""])[1];
+      // מזריקים placeholder לפני ואחרי ה-body. ה-runs בפנים נשארים.
+      const open = `<w:r><w:t xml:space="preserve">${TC_INS_OPEN(author, date)}</w:t></w:r>`;
+      const close = `<w:r><w:t xml:space="preserve">${TC_INS_CLOSE}</w:t></w:r>`;
+      return open + body + close;
+    }
+  );
+  // <w:del ...><w:r><w:delText>...</w:delText></w:r></w:del>
+  out = out.replace(
+    /<w:del\b([^>]*)>([\s\S]*?)<\/w:del>/g,
+    (m, attrs, body) => {
+      const author = (attrs.match(/\bw:author="([^"]*)"/) || [, ""])[1];
+      const date = (attrs.match(/\bw:date="([^"]*)"/) || [, ""])[1];
+      // ממירים <w:delText> ל-<w:t> כדי ש-mammoth יציג את הטקסט המחוק.
+      const bodyConverted = body.replace(/<w:delText\b([^>]*)>/g, "<w:t$1>")
+                                 .replace(/<\/w:delText>/g, "</w:t>");
+      const open = `<w:r><w:t xml:space="preserve">${TC_DEL_OPEN(author, date)}</w:t></w:r>`;
+      const close = `<w:r><w:t xml:space="preserve">${TC_DEL_CLOSE}</w:t></w:r>`;
+      return open + bodyConverted + close;
+    }
+  );
+  return out;
+}
+
+function unwrapTrackedChanges(html) {
+  // ‹‹TCI:author|date›› ... ‹‹/TCI›› → <ins data-author data-date>...</ins>
+  let out = html.replace(
+    /‹‹TCI:([^|]*)\|([^‹]*)‹‹([\s\S]*?)‹‹\/TCI‹‹/g,
+    (m, author, date, inner) => {
+      const attrs = [];
+      attrs.push('class="tracked-ins"');
+      if (author) attrs.push(`data-author="${escForAttr(author)}"`);
+      if (date) attrs.push(`data-date="${escForAttr(date)}"`);
+      return `<ins ${attrs.join(" ")}>${inner}</ins>`;
+    }
+  );
+  out = out.replace(
+    /‹‹TCD:([^|]*)\|([^‹]*)‹‹([\s\S]*?)‹‹\/TCD‹‹/g,
+    (m, author, date, inner) => {
+      const attrs = [];
+      attrs.push('class="tracked-del"');
+      if (author) attrs.push(`data-author="${escForAttr(author)}"`);
+      if (date) attrs.push(`data-date="${escForAttr(date)}"`);
+      return `<del ${attrs.join(" ")}>${inner}</del>`;
+    }
+  );
+  return out;
+}
+
+function escForAttr(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function defaultStyleMap() {
