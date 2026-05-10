@@ -42,6 +42,10 @@ function setSelected(codes) {
 function renderPicker() {
   const picker = document.getElementById(PICKER_ID);
   if (!picker) return;
+  // משה 2026-05-10: עדכון מצב הכפתור בכל renderPicker — ערך הקלט נטען מ-localStorage
+  // אחרי setupStreamPicker (talmud_controls מאוחר יותר), בלי dispatch של change.
+  // כל קריאה ל-renderPicker עכשיו תעדכן גם את הכפתור.
+  updateAddButtonState();
   const selected = getCurrentSelected();
   const available = getAvailableStreamCodes();
 
@@ -132,6 +136,10 @@ export function setupStreamPicker() {
   // Initial render
   renderPicker();
   updateAddButtonState();
+  // משה 2026-05-10: רנדור נוסף אחרי 100ms לתפוס מצב שערך הקלט נטען מ-localStorage
+  // ע"י talmud_controls שרץ אחרי setupStreamPicker.
+  setTimeout(() => { renderPicker(); updateAddButtonState(); }, 100);
+  setTimeout(() => { renderPicker(); updateAddButtonState(); }, 500);
   // Re-render when input changes externally
   document.getElementById(HIDDEN_INPUT_ID)?.addEventListener("change", () => {
     renderPicker();
