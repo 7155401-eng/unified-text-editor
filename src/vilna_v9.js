@@ -1064,8 +1064,22 @@ export async function buildPages(container, paragraphs, config) {
           else hi = mid - 1;
         }
         if (lo >= MIN_SPLIT) {
+          // משה 2026-05-10: חיפוש גבול מילה — אסור לפצל באמצע מילה.
+          // הולכים אחורה עד תו רווח אמיתי. אם לא נמצא רווח כלל בטווח —
+          // לא מפצלים בכלל (בלי lock על MIN_SPLIT שהיה גורם לפיצול מילה).
           let wordEnd = lo;
-          while (wordEnd > MIN_SPLIT && !/\s/.test(fullText[wordEnd])) wordEnd--;
+          while (wordEnd > 0 && !/\s/.test(fullText[wordEnd])) wordEnd--;
+          // wordEnd עכשיו על תו רווח (או 0). אם 0 — אין רווח בכלל לפני lo,
+          // לא ניתן לפצל בלי לחתוך מילה. ניסיון אחר: ללכת קדימה לרווח הבא.
+          if (wordEnd === 0 || wordEnd < MIN_SPLIT) {
+            let forwardEnd = lo;
+            while (forwardEnd < fullText.length && !/\s/.test(fullText[forwardEnd])) forwardEnd++;
+            if (forwardEnd > MIN_SPLIT && forwardEnd < fullText.length) {
+              wordEnd = forwardEnd;
+            } else {
+              wordEnd = -1;  // סימן שאין נקודת פיצול תקינה
+            }
+          }
           if (wordEnd >= MIN_SPLIT && wordEnd < fullText.length) {
             const firstHalf = { ...target, mainText: fullText.substring(0, wordEnd).trimEnd(), notes: notesBeforeAnchor(wordEnd) };
             const secondHalf = { ...target, mainText: fullText.substring(wordEnd).trimStart(), notes: notesFromAnchor(wordEnd) };
