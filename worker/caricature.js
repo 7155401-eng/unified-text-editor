@@ -1,16 +1,9 @@
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbyvt7yUPa2jNiTtTzKli8R8GmNI_plIeOwwFuTgu733es5mFfhEKcTcInP3yzFnlQQCvw/exec';
 
-const CORS_HEADERS = {
-  'access-control-allow-origin': '*',
-  'access-control-allow-methods': 'POST, OPTIONS',
-  'access-control-allow-headers': 'Content-Type',
-};
-
 function jsonResponse(body, status) {
   return Response.json(body, {
     status,
     headers: {
-      ...CORS_HEADERS,
       'cache-control': 'no-store',
     },
   });
@@ -18,10 +11,7 @@ function jsonResponse(body, status) {
 
 export async function handleCaricature(request, env) {
   if (request.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: CORS_HEADERS,
-    });
+    return new Response(null, { status: 204 });
   }
 
   if (request.method !== 'POST') {
@@ -51,7 +41,6 @@ export async function handleCaricature(request, env) {
     return new Response(text, {
       status: upstream.status,
       headers: {
-        ...CORS_HEADERS,
         'cache-control': 'no-store',
         'content-type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
       },

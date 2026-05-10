@@ -2,6 +2,8 @@
 // Allows pasting custom CSS scoped to: page, paragraph, note, stream, or
 // arbitrary selector. Exports current design state as JSON for AI prompts.
 
+import { assertToolAllowed } from "./tool_runtime_gate.js";
+
 const STORAGE_KEY = "ravtext.cssInject.css";
 const SCOPE_KEY = "ravtext.cssInject.scope";
 const HISTORY_KEY = "ravtext.cssInject.history";
@@ -99,6 +101,7 @@ function buildDesignJson() {
 }
 
 async function callAI(prompt) {
+  await assertToolAllowed("css-ai");
   // משה 2026-05-09: כל ספק שומר מפתח נפרד ב-`ravtext.ai.apiKey.<provider>`.
   // ספק ברירת המחדל ב-`ravtext.ai.provider`. תאימות: אם נשאר ערך ב-`ravtext.ai.apiKey`
   // הישן, נשתמש בו כ-fallback למניעת שבירה.

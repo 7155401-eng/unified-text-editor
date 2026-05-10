@@ -90,6 +90,8 @@ const ENGINE_API_PREFIXES = [
   '/api/mishna/',
   '/api/streams/',
   '/api/ai-tools/',
+  '/api/tools/',
+  '/api/caricature',
 ];
 
 export function isEngineApi(pathname) {
@@ -150,6 +152,7 @@ const RATE_LIMITS = {
   '/api/caricature': { window: 60, max: 30 },
   '/api/ai-tools/gas': { window: 60, max: 60 },
   '/api/ai-tools/chat': { window: 60, max: 60 },
+  '/api/tools/preflight': { window: 60, max: 240 },
   '/api/admin': { window: 60, max: 300 },
   '/api/documents': { window: 60, max: 120 },
   '/api/settings': { window: 60, max: 120 },

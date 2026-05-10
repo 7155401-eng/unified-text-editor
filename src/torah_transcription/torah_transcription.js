@@ -4,6 +4,7 @@
 
 import "./torah_transcription.css";
 import { TranscriptionWindow } from "./torah_transcription_ui.js";
+import { assertToolAllowed } from "../tool_runtime_gate.js";
 
 /**
  * משה 2026-05-10: שלושה כפתורים נפרדים — תמלול אודיו (STT), OCR (סריקת תמונה),
@@ -27,9 +28,10 @@ export function wireTorahTranscription(paneManager) {
   sttBtn.type = "button";
   sttBtn.textContent = "🎙 תמלול אודיו";
   sttBtn.title = "תמלול קובץ אודיו/וידאו דרך Gemini עם הכרעת נוסח (Apps Script)";
-  sttBtn.addEventListener("click", () =>
-    openTranscriptionWindow(paneManager, { initialMode: "transcription" })
-  );
+  sttBtn.addEventListener("click", async () => {
+    await assertToolAllowed("torah-transcription");
+    await openTranscriptionWindow(paneManager, { initialMode: "transcription" });
+  });
   group.appendChild(sttBtn);
 
   // 2) OCR (סריקת תמונה / כתב יד / דפוס)
@@ -38,9 +40,10 @@ export function wireTorahTranscription(paneManager) {
   ocrBtn.type = "button";
   ocrBtn.textContent = "🖼 OCR (סריקת תמונה)";
   ocrBtn.title = "זיהוי טקסט בכתב יד / דפוס מתמונה דרך Gemini";
-  ocrBtn.addEventListener("click", () =>
-    openTranscriptionWindow(paneManager, { initialMode: "ocr" })
-  );
+  ocrBtn.addEventListener("click", async () => {
+    await assertToolAllowed("torah-transcription");
+    await openTranscriptionWindow(paneManager, { initialMode: "ocr" });
+  });
   group.appendChild(ocrBtn);
 
   // 3) עריכה לשונית תורנית (השלב האחרון בלבד — בלי תמלול)
@@ -49,7 +52,10 @@ export function wireTorahTranscription(paneManager) {
   lingBtn.type = "button";
   lingBtn.textContent = "✍ עריכה לשונית תורנית";
   lingBtn.title = "סגנון תורני (עתיק/מודרני/משולב) — מקבל טקסט מהעורך הפעיל או מההזנה";
-  lingBtn.addEventListener("click", () => openLinguisticEditingWindow(paneManager));
+  lingBtn.addEventListener("click", async () => {
+    await assertToolAllowed("torah-transcription");
+    await openLinguisticEditingWindow(paneManager);
+  });
   group.appendChild(lingBtn);
 
   toolbar.appendChild(group);
@@ -59,7 +65,8 @@ export function wireTorahTranscription(paneManager) {
  * פותח את חלון התמלול עם אפשרות לבחור מצב ראשוני.
  * opts: { initialMode?: "transcription"|"ocr", jumpToStep?: string, initialText?: string }
  */
-export function openTranscriptionWindow(paneManager, opts = {}) {
+export async function openTranscriptionWindow(paneManager, opts = {}) {
+  await assertToolAllowed("torah-transcription");
   const win = new TranscriptionWindow({
     initialMode: opts.initialMode || null,
     jumpToStep: opts.jumpToStep || null,
@@ -100,7 +107,8 @@ export function openTranscriptionWindow(paneManager, opts = {}) {
  * משה 2026-05-10: עריכה לשונית תורנית — חלון נקי עם שלב הסגנון התורני בלבד.
  * לוקח טקסט מהעורך הפעיל (אם יש) או פותח חלון להזנה ידנית.
  */
-export function openLinguisticEditingWindow(paneManager) {
+export async function openLinguisticEditingWindow(paneManager) {
+  await assertToolAllowed("torah-transcription");
   // ניסיון לקחת טקסט נבחר / טקסט שלם מהעורך
   let initialText = "";
   try {

@@ -1,7 +1,13 @@
 // torah_nikud.js — main entry. Wires a "ניקוד אוטומטי" button into the
 // torah-toolbar of the unified editor and opens the modal on click.
 
-import { openTorahNikudModal } from "./torah_nikud_ui.js";
+import { openTorahNikudModal as openTorahNikudModalUi } from "./torah_nikud_ui.js";
+import { assertToolAllowed } from "../tool_runtime_gate.js";
+
+export async function openTorahNikudModal(options = {}) {
+  await assertToolAllowed("torah-nikud");
+  return openTorahNikudModalUi(options);
+}
 
 // Returns the active editor's selected text, or its full text if no
 // selection exists. Tries Tiptap-style API first, then plain DOM.
@@ -69,5 +75,3 @@ export function wireTorahNikud(paneManager) {
 
   toolbar.appendChild(group);
 }
-
-export { openTorahNikudModal };

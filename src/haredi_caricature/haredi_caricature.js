@@ -11,6 +11,7 @@
 
 import "./caricature.css";
 import { openCaricatureWindow } from "./caricature_ui.js";
+import { assertToolAllowed } from "../tool_runtime_gate.js";
 
 let _windowInstance = null;
 
@@ -22,7 +23,8 @@ let _windowInstance = null;
  *        callback להכנסת התמונה לעורך הראשי
  * @param {string} [opts.initialScene]         טקסט פתיחה (טקסט נבחר מהעורך)
  */
-export function openCaricatureBot(opts = {}) {
+export async function openCaricatureBot(opts = {}) {
+  await assertToolAllowed("haredi-caricature");
   if (_windowInstance && _windowInstance.overlay && _windowInstance.overlay.parentNode) {
     _windowInstance.close();
   }
@@ -74,7 +76,8 @@ export function wireCaricatureBot(paneManager) {
   btn.type = "button";
   btn.textContent = "🎭 צור איור AI";
   btn.title = "פתיחת חלון יצירת קריקטורה חרדית — Imagen דרך Apps Script";
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
+    await assertToolAllowed("haredi-caricature");
     // מנסים לקחת טקסט נבחר מהעורך הפעיל בתור scene
     let initialScene = "";
     try {
@@ -85,7 +88,7 @@ export function wireCaricatureBot(paneManager) {
         initialScene = editor.state.doc.textBetween(from, to, " ").trim();
       }
     } catch (_) { /* */ }
-    openCaricatureBot({
+    await openCaricatureBot({
       initialScene,
       onInsertImage: (img) => {
         try {

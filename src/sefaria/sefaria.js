@@ -4,11 +4,22 @@
 //   🔍 השלם פסוקים בטקסט   — opens sefaria_live_modal
 // Both can pre-fill from the active stream (Moshe's "כל כלי כפעולה על זרם").
 
-import { openSefariaDownloader } from "./sefaria_downloader_modal.js";
-import { openSefariaLive } from "./sefaria_live_modal.js";
+import { openSefariaDownloader as openSefariaDownloaderModal } from "./sefaria_downloader_modal.js";
+import { openSefariaLive as openSefariaLiveModal } from "./sefaria_live_modal.js";
 import { t } from "./sefaria_i18n.js";
+import { assertToolAllowed } from "../tool_runtime_gate.js";
 
 import "./sefaria_modal.css";
+
+export async function openSefariaDownloader(options = {}) {
+  await assertToolAllowed("sefaria-downloader");
+  return openSefariaDownloaderModal(options);
+}
+
+export async function openSefariaLive(options = {}) {
+  await assertToolAllowed("sefaria-live");
+  return openSefariaLiveModal(options);
+}
 
 function _selectedTextFromEditor(paneManager) {
   try {
@@ -93,8 +104,8 @@ export function wireSefariaTools(paneManager) {
   document.querySelectorAll('[data-action="open-sefaria-downloader"]').forEach((btn) => {
     if (btn.dataset.sefWired) return;
     btn.dataset.sefWired = "1";
-    btn.addEventListener("click", () => {
-    openSefariaDownloader({
+    btn.addEventListener("click", async () => {
+    await openSefariaDownloader({
       loadDocxIntoEditor: _defaultLoadDocxIntoEditor,
     });
   });
@@ -103,9 +114,9 @@ export function wireSefariaTools(paneManager) {
   document.querySelectorAll('[data-action="open-sefaria-live"]').forEach((btn) => {
     if (btn.dataset.sefWired) return;
     btn.dataset.sefWired = "1";
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
     const prefill = _streamTextFromEditor(paneManager);
-    openSefariaLive({
+    await openSefariaLive({
       prefillText: prefill,
       onAccept: html => _insertHtmlAtCursor(paneManager, html),
       isVip: false,  // wired to license/quota in the main editor harness
@@ -116,4 +127,3 @@ export function wireSefariaTools(paneManager) {
 
 // Re-exports so other code (tests, debug consoles) can poke individual
 // pieces without going through the toolbar wiring.
-export { openSefariaDownloader, openSefariaLive };

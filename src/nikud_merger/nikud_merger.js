@@ -9,6 +9,7 @@ import { MainView } from "./nikud_ui.js";
 import * as theme from "./nikud_theme.js";
 import * as i18n from "./nikud_i18n.js";
 import { tryUseTool } from "../premium/daily_quota_gate.js";
+import { assertToolAllowed } from "../tool_runtime_gate.js";
 
 let _activeMainView = null;
 let _activeBackdrop = null;
@@ -24,7 +25,8 @@ let _activeBackdrop = null;
  *
  * @returns MainView — אובייקט המסך, אפשר לסגור עם .destroy()
  */
-export function openNikudMerger(opts = {}) {
+export async function openNikudMerger(opts = {}) {
+  await assertToolAllowed("nikud-merger");
   if (_activeBackdrop) return _activeMainView;  // כבר פתוח
 
   // החלת פונט עברי על האפליקציה הזו
@@ -111,7 +113,7 @@ export function wireNikudMergerButton(paneManager) {
   btn.type = "button";
   btn.title = "פתח חלון מיזוג ניקוד — מיזוג טקסט מוגה עם מקור מנוקד";
   btn.textContent = "📜 מיזוג ניקוד";
-  btn.addEventListener("click", () => {
+  btn.addEventListener("click", async () => {
     if (!tryUseTool("nikud-merger", "מיזוג ניקוד")) return;
     // ננסה לאסוף את הטקסט הנבחר מהעורך הפעיל כטקסט מוגה ראשוני
     let cleanText = "";
@@ -125,7 +127,7 @@ export function wireNikudMergerButton(paneManager) {
       }
     } catch (_) { /* ignore — open empty */ }
 
-    openNikudMerger({ cleanText });
+    openNikudMerger({ cleanText }).catch((err) => console.warn("[nikud-merger] blocked:", err));
   });
   group.appendChild(btn);
 

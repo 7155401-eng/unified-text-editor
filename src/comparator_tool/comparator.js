@@ -9,6 +9,7 @@
 import './comparator.css';
 import { mountComparatorUI } from './comparator_ui.js';
 import { mountComparatorIntegratedUI } from './comparator_integrated.js';
+import { assertToolAllowed } from '../tool_runtime_gate.js';
 
 // Resolve vendor path against the document base URL so it works in dev
 // (vite serves from root), production (relative base './'), and any
@@ -79,6 +80,7 @@ function _closeActive() {
  * @param {string} [options.lang]  - 'he' / 'en' override
  */
 export async function openComparator(options = {}) {
+  await assertToolAllowed('comparator-tool');
   await ensureVendor();
   _closeActive();
 
@@ -137,12 +139,12 @@ export function wireComparatorButton(_paneManager) {
     if (btn) {
       ev.preventDefault();
       const variant = btn.getAttribute('data-variant') === 'integrated' ? 'integrated' : 'full';
-      openComparator({ variant });
+      openComparator({ variant }).catch((err) => console.warn('[comparator] blocked:', err));
     }
     const integratedBtn = ev.target.closest('[data-cmd="open-comparator-integrated"]');
     if (integratedBtn) {
       ev.preventDefault();
-      openComparator({ variant: 'integrated' });
+      openComparator({ variant: 'integrated' }).catch((err) => console.warn('[comparator] blocked:', err));
     }
   });
 }

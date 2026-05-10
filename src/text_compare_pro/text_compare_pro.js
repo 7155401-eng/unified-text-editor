@@ -2,7 +2,13 @@
 // Translated from work-files/text_compare_pro/ (Python + embedded WebView).
 
 import "./text_compare_modal.css";
-import { openModal, closeModal } from "./text_compare_ui.js";
+import { openModal as openTextCompareModal, closeModal } from "./text_compare_ui.js";
+import { assertToolAllowed } from "../tool_runtime_gate.js";
+
+export async function openModal(options = {}) {
+  await assertToolAllowed("text-compare-pro");
+  return openTextCompareModal(options);
+}
 
 /**
  * Wire a button into the host editor's toolbar that opens the modal.
@@ -17,10 +23,10 @@ export function wireTextComparePro(paneManager) {
   document.querySelectorAll('[data-action="open-text-compare-pro"]').forEach((btn) => {
     if (btn.dataset.tcpWired) return;
     btn.dataset.tcpWired = "1";
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       openModal({ prefillFromActive: true });
     });
   });
 }
 
-export { openModal, closeModal };
+export { closeModal };
