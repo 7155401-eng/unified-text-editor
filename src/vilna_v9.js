@@ -668,12 +668,15 @@ function buildPagePlan(pageContent, config) {
     // מדלג על הכותרת בראש (יקבל אותה מתחת לכתר, מעל התוכן שלו).
     if (fullCrownSide === 'right') pass2Right.fullWidthTitle = true;
     if (fullCrownSide && fullCrownSide !== 'right') pass2Right.skipTopTitle = true;
+    // משה 2026-05-10: סימון לצורה 1 — רק שם נדרשת מרכוז שורה אחרונה רוחב מלא
+    if (scenario.name === 'one_long_split') pass2Right.isScenario1Split = true;
     result.streamBoxes.push(pass2Right);
     if (pass2Right.overflowText) result.overflow.streams[pass2Right.id] = pass2Right.overflowText;
   }
   if (pass2Left) {
     if (fullCrownSide === 'left') pass2Left.fullWidthTitle = true;
     if (fullCrownSide && fullCrownSide !== 'left') pass2Left.skipTopTitle = true;
+    if (scenario.name === 'one_long_split') pass2Left.isScenario1Split = true;
     result.streamBoxes.push(pass2Left);
     if (pass2Left.overflowText) result.overflow.streams[pass2Left.id] = pass2Left.overflowText;
   }
@@ -823,9 +826,10 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.className = 'v9-line' + (colorClass || '');
       const shouldJustify = !line.isLast && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
-      // משה 2026-05-10: צורה 1 — שורה אחרונה ברוחב מלא (=ה"בין־טורית"
-      // העודפת על שני הטורים) צריכה להיות ממורכזת, לא מיושרת.
-      const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
+      // משה 2026-05-10: צורה 1 בלבד — שורה אחרונה ברוחב מלא (=ה"בין־טורית"
+      // העודפת על שני הטורים) ממורכזת. רק לזרמים שסומנו isScenario1Split,
+      // לא ל-footers ולא לזרמים רגילים (שם שורה אחרונה לא צריכה מרכוז).
+      const isFullWidthOrphan = box.isScenario1Split && line.isLast && line.width >= innerW - 5;
       if (isFullWidthOrphan) lineEl.className += ' center';
       else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
