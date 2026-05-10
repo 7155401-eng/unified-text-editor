@@ -52,9 +52,9 @@ export function installGiftPromoBanner() {
         <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" fill="none" stroke="url(#rt-gift-grad)" stroke-width="1.8" stroke-linejoin="round"/>
       </svg>
     </div>
-    <h3 class="rt-gift-promo-title">🎁 מתנה לחברים רשומים</h3>
-    <p class="rt-gift-promo-headline">20 דקות שימוש מלא, <strong>בכל חודש</strong>, חינם</p>
-    <p class="rt-gift-promo-body">בלי כרטיס אשראי. בלי התחייבות. רק נרשמים — ומקבלים 20 דקות מתחדשות בכל חודש, לכל החיים.</p>
+    <h3 class="rt-gift-promo-title">🎁 לחברי האתר — בכל חודש</h3>
+    <p class="rt-gift-promo-headline">20 דקות שימוש מלא, <strong>חינם</strong></p>
+    <p class="rt-gift-promo-body">פותחים חשבון בלחיצה אחת, ובכל חודש מחכות לכם 20 דקות לעבודה רציפה. בלי כרטיס אשראי, בלי התחייבות, בלי תשלום מאחורי הקלעים.</p>
     <a href="/api/auth/login" class="rt-gift-promo-cta">
       <span>פתיחת חשבון בחינם</span>
       <span aria-hidden="true">←</span>
