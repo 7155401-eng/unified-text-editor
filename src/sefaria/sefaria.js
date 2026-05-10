@@ -74,6 +74,21 @@ export function wireSefariaTools(paneManager) {
     group.appendChild(btn);
     toolbar.appendChild(group);
   }
+  if (toolbar && !toolbar.querySelector('[data-action="open-sefaria-live"]')) {
+    const group = toolbar.querySelector('[data-sefaria-live-group="1"]') || document.createElement("span");
+    group.className = "tb-group";
+    group.dataset.title = "תורה אור";
+    group.dataset.sefariaLiveGroup = "1";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "תורה אור השלם";
+    btn.title = "השלמת פסוקים בטקסט לפי מקורות";
+    btn.hidden = true;
+    btn.setAttribute("data-action", "open-sefaria-live");
+    btn.setAttribute("data-tool-preview", "sefaria-live");
+    group.appendChild(btn);
+    if (!group.parentNode) toolbar.appendChild(group);
+  }
 
   document.querySelectorAll('[data-action="open-sefaria-downloader"]').forEach((btn) => {
     if (btn.dataset.sefWired) return;

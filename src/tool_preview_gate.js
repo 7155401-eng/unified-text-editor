@@ -10,6 +10,7 @@ const PUBLIC_TOOLS = new Set([
   "haredi-caricature",  // אושר 2026-05-10 — קריקטורה AI
   "text-compare-pro",
   "sefaria-downloader",
+  "sefaria-live",
 ]);
 
 function isAdmin() {
