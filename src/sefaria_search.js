@@ -15,6 +15,17 @@ import { ensureCorpus } from "./sefaria_local.js";
 const CORPORA = ["tanakh", "mishnah", "bavli"];
 const _normalizedCache = new Map(); // book.title → { chapters: string[][] } of normalized text
 
+// Reverse index: word → array of [bookKey, chapterIdx, verseIdx] tuples.
+// Built lazily per (corpus, book, chapter, verse) the first time it is queried.
+// "bookKey" is `${corpusName}::${bookTitleEn}` so the entry is uniquely findable.
+// Frequent common words like "את" or "בן" produce huge lists, so the search
+// picks the rarest query word as the anchor and uses its list as the candidate
+// pool — typically a few hundred verses instead of half a million.
+const _wordIndex = new Map(); // word → number[]  (packed: book_id*1e8 + chap*1e4 + verse)
+const _bookKeyToIdx = new Map(); // bookKey → small integer id
+const _bookIdxToInfo = []; // [{ corpusName, book }]
+const _indexedCorpora = new Set();
+
 // Strip cantillation + niqqud (U+0591–U+05BD, U+05BF–U+05C7); replace the
 // Hebrew maqaf "־" with a space so "ויהי־אור" does not collapse to "ויהיאור";
 // drop punctuation that varies between sources (sof-pasuq ׃, sub-pasuq ׀,
@@ -25,11 +36,9 @@ const PUNCT_RE = /[׃׀,.;:!?()[\]{}״׳"'׳״]/g;
 // User-visible spellings of the Tetragrammaton that Sefaria stores as "יהוה".
 // We rewrite them to "יהוה" in the search-normalized form so that a query like
 // "שמע ישראל ה' אלהינו" matches Deut 6:4 even though Sefaria's text uses
-// "יהוה" verbatim. Note: this canonicalization runs only on the SEARCH side.
-// The locator (sefaria_locate.js) does not perform it because the position
-// mapping would have to invent positions for the extra chars; users who want
-// "צמוד לציטוט" to anchor onto a Tetragrammaton must spell it as "יהוה" in
-// the document. Switching to "כל הסימון" works either way.
+// "יהוה" verbatim. The locator (sefaria_locate.js) performs the same expansion
+// while preserving a position map, so "צמוד לציטוט" anchors onto the original
+// "ה'" / "השם" in the user's document.
 function canonicalizeSacredNames(s) {
   return s
     .replace(/(^|\s)ה['׳״](?=\s|$)/g, "$1יהוה")     // standalone "ה'" / "ה׳" / "ה״"
@@ -64,6 +73,59 @@ function getNormalizedBook(corpusName, book) {
 
 async function ensureAll() {
   await Promise.all(CORPORA.map((c) => ensureCorpus(c)));
+}
+
+// Build the inverted word index for one corpus the first time it's queried.
+// One full sweep over all normalized verses; thereafter searches are O(rare-word-matches)
+// instead of O(all verses).
+function buildIndexForCorpus(corpusName, corpus) {
+  if (_indexedCorpora.has(corpusName)) return;
+  _indexedCorpora.add(corpusName);
+  for (const book of corpus.books) {
+    const bookKey = `${corpusName}::${book.title}`;
+    let bookIdx = _bookKeyToIdx.get(bookKey);
+    if (bookIdx === undefined) {
+      bookIdx = _bookIdxToInfo.length;
+      _bookKeyToIdx.set(bookKey, bookIdx);
+      _bookIdxToInfo.push({ corpusName, book });
+    }
+    const norm = getNormalizedBook(corpusName, book);
+    for (let ci = 0; ci < book.chapters.length; ci++) {
+      const ch = book.chapters[ci];
+      const nCh = norm.chapters[ci];
+      if (!Array.isArray(ch) || !Array.isArray(nCh)) continue;
+      for (let vi = 0; vi < ch.length; vi++) {
+        const nVerse = nCh[vi];
+        if (!nVerse) continue;
+        const packed = bookIdx * 100000000 + (ci + 1) * 10000 + (vi + 1);
+        const seen = new Set();
+        const words = nVerse.split(" ");
+        for (const w of words) {
+          if (!w || seen.has(w)) continue;
+          seen.add(w);
+          let arr = _wordIndex.get(w);
+          if (!arr) { arr = []; _wordIndex.set(w, arr); }
+          arr.push(packed);
+        }
+      }
+    }
+  }
+}
+
+// Pick the query word with the smallest posting list — that's the cheapest
+// anchor for finding candidate verses.
+function rarestWord(queryWords) {
+  let best = null;
+  let bestSize = Infinity;
+  for (const w of queryWords) {
+    const arr = _wordIndex.get(w);
+    if (!arr) return { word: w, list: [] }; // a word missing from the index → no matches at all
+    if (arr.length < bestSize) {
+      bestSize = arr.length;
+      best = { word: w, list: arr };
+    }
+  }
+  return best;
 }
 
 // For a given verse, find the longest window of consecutive query-words that
@@ -118,50 +180,57 @@ export async function searchByText(query, opts = {}) {
   if (queryWords.length < minWords) return [];
 
   await ensureAll();
-
-  const results = [];
   for (const corpusName of corpora) {
     const corpus = await ensureCorpus(corpusName);
-    for (const book of corpus.books) {
-      const norm = getNormalizedBook(corpusName, book);
-      for (let ci = 0; ci < book.chapters.length; ci++) {
-        const ch = book.chapters[ci];
-        const nCh = norm.chapters[ci];
-        if (!Array.isArray(ch) || !Array.isArray(nCh)) continue;
-        for (let vi = 0; vi < ch.length; vi++) {
-          const original = ch[vi];
-          const nVerse = nCh[vi];
-          if (!original || !nVerse) continue;
+    buildIndexForCorpus(corpusName, corpus);
+  }
 
-          // Quick pre-filter: every match needs at least one query-word in the verse.
-          // (This skips most verses for free since indexOf bails early on no-match.)
-          if (nVerse.indexOf(queryWords[0]) < 0 &&
-              nVerse.indexOf(queryWords[Math.floor(queryWords.length / 2)]) < 0 &&
-              nVerse.indexOf(queryWords[queryWords.length - 1]) < 0) {
-            continue;
-          }
+  // Build candidate set from the rarest query word's posting list.
+  // For 2-word queries this is one lookup + a few hundred verse checks.
+  const anchor = rarestWord(queryWords);
+  if (!anchor || anchor.list.length === 0) return [];
 
-          const win = longestQueryWindowIn(nVerse, queryWords, minWords);
-          if (win === 0) continue;
+  const corpusFilter = new Set(corpora);
+  const results = [];
+  const seenPacked = new Set();
 
-          // Classify match type for the dialog and "צמוד לציטוט" handling.
-          let matchType;
-          if (win === queryWords.length && nVerse.indexOf(nQuery) >= 0) {
-            matchType = "selection-in-verse";
-          } else if (nVerse.length <= nQuery.length && nQuery.indexOf(nVerse) >= 0) {
-            matchType = "verse-in-selection";
-          } else {
-            matchType = "partial";
-          }
+  for (const packed of anchor.list) {
+    if (seenPacked.has(packed)) continue;
+    seenPacked.add(packed);
 
-          results.push({
-            corpus: corpusName, bookTitle: book.title, heTitle: book.heTitle,
-            chapter: ci + 1, verse: vi + 1, original, normalized: nVerse,
-            matchType, score: win,
-          });
-        }
-      }
+    const bookIdx = Math.floor(packed / 100000000);
+    const rest = packed - bookIdx * 100000000;
+    const ci = Math.floor(rest / 10000) - 1;
+    const vi = (rest - (ci + 1) * 10000) - 1;
+    const info = _bookIdxToInfo[bookIdx];
+    if (!info || !corpusFilter.has(info.corpusName)) continue;
+
+    const ch = info.book.chapters[ci];
+    if (!Array.isArray(ch)) continue;
+    const original = ch[vi];
+    if (!original) continue;
+
+    const nCh = getNormalizedBook(info.corpusName, info.book).chapters[ci];
+    const nVerse = nCh[vi];
+    if (!nVerse) continue;
+
+    const win = longestQueryWindowIn(nVerse, queryWords, minWords);
+    if (win === 0) continue;
+
+    let matchType;
+    if (win === queryWords.length && nVerse.indexOf(nQuery) >= 0) {
+      matchType = "selection-in-verse";
+    } else if (nVerse.length <= nQuery.length && nQuery.indexOf(nVerse) >= 0) {
+      matchType = "verse-in-selection";
+    } else {
+      matchType = "partial";
     }
+
+    results.push({
+      corpus: info.corpusName, bookTitle: info.book.title, heTitle: info.book.heTitle,
+      chapter: ci + 1, verse: vi + 1, original, normalized: nVerse,
+      matchType, score: win,
+    });
   }
 
   const corpusOrder = { tanakh: 0, mishnah: 1, bavli: 2 };

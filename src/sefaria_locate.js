@@ -8,16 +8,62 @@
 // Normalization MUST match sefaria_search.normalizeForSearch (same characters
 // stripped, maqaf treated as a separator) so that what auto-detect found in
 // the corpus is also locatable inside the user's selection.
+//
+// Sacred-name canonicalization: the user may write "ה'" / "ה׳" / "ה״" / "השם"
+// for the Tetragrammaton; Sefaria stores it as "יהוה". We expand the user's
+// short form to "יהוה" in the normalized stream and map all 4 expanded chars
+// back to the orig-position of the leading "ה" — so when the matched window
+// gets sliced out of the selection, the slice starts at "ה" and ends after
+// the apostrophe / "השם" tail. Same expansion is NOT applied to verseText
+// (Sefaria's text is already "יהוה"), so indexOf alignment is symmetric.
 
 const STRIP_RE = /[֑-ֽֿ-ׇ]/;       // cantillation + niqqud
 const PUNCT_RE = /[׃׀,.;:!?()[\]{}״׳"'׳״]/;
+const SEPARATOR_RE = /[\s־]/;
+const APOSTROPHE_RE = /['׳״]/;
+
+function isWordBoundary(text, i) {
+  if (i < 0 || i >= text.length) return true;
+  const ch = text[i];
+  return SEPARATOR_RE.test(ch) || PUNCT_RE.test(ch);
+}
 
 function normalizeWithMap(text) {
   let norm = "";
   const normToOrig = [];
-  for (let i = 0; i < text.length; i++) {
+  let i = 0;
+  while (i < text.length) {
     const ch = text[i];
-    if (STRIP_RE.test(ch)) continue;
+
+    // Standalone "ה'" / "ה׳" / "ה״" → "יהוה".
+    if (ch === "ה" && i + 1 < text.length && APOSTROPHE_RE.test(text[i + 1])) {
+      const beforeOk = isWordBoundary(text, i - 1);
+      const afterOk = isWordBoundary(text, i + 2);
+      if (beforeOk && afterOk) {
+        for (let k = 0; k < 4; k++) {
+          norm += "יהוה"[k];
+          normToOrig.push(i);
+        }
+        i += 2;
+        continue;
+      }
+    }
+
+    // Standalone "השם" → "יהוה".
+    if (ch === "ה" && text[i + 1] === "ש" && text[i + 2] === "ם") {
+      const beforeOk = isWordBoundary(text, i - 1);
+      const afterOk = isWordBoundary(text, i + 3);
+      if (beforeOk && afterOk) {
+        for (let k = 0; k < 4; k++) {
+          norm += "יהוה"[k];
+          normToOrig.push(i);
+        }
+        i += 3;
+        continue;
+      }
+    }
+
+    if (STRIP_RE.test(ch)) { i++; continue; }
     if (ch === "־" || PUNCT_RE.test(ch) || /\s/.test(ch)) {
       // Collapse all separators (maqaf, punctuation, whitespace) into a single
       // space — preserves word boundaries without producing runs of spaces.
@@ -25,10 +71,12 @@ function normalizeWithMap(text) {
         norm += " ";
         normToOrig.push(i);
       }
+      i++;
       continue;
     }
     norm += ch;
     normToOrig.push(i);
+    i++;
   }
   while (norm.endsWith(" ")) {
     norm = norm.slice(0, -1);

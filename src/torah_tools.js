@@ -5,11 +5,12 @@
 // (src/sefaria_local.js → public/data/sefaria/*.json), never from sefaria.org.
 // This eliminates CSP issues, the 500-on-Hebrew-refs bug, and offline failures.
 
-import { getVerseText as _getVerseTextFromMirror } from "./sefaria_local.js";
+import { getVerseText as _getVerseTextFromMirror, ensureCorpus as _ensureCorpus, listBooks as _listBooks } from "./sefaria_local.js";
 import { searchByText as _searchByText } from "./sefaria_search.js";
 import { formatCitation as _formatCitation, formatRefLabel as _formatRefLabel } from "./sefaria_ref_format.js";
 import { showMatchDialog as _showMatchDialog } from "./sefaria_match_dialog.js";
 import { findVerseInSelection as _findVerseInSelection } from "./sefaria_locate.js";
+import { parseUserRef as _parseUserRef } from "./sefaria_parse_ref.js";
 
 const GIMATRIA_VALUES = {
   "א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
@@ -128,11 +129,16 @@ function todayHebrewDate() {
   }
 }
 
-async function fetchSefariaVerse(book, chap, verse) {
-  const engBook = SEFARIA_REF[book];
-  if (!engBook) throw new Error(`ספר לא נתמך: ${book}`);
-  // Mirror text already has HTML stripped, niqqud + taamim preserved, whitespace normalized.
-  return _getVerseTextFromMirror(engBook, chap, verse, { corpus: "tanakh" });
+// Fetch a verse by its Hebrew book title. The book lives in one of three
+// corpora; bookCorpus tells us which one to pass. For Tanakh we also have
+// the English-name map (SEFARIA_REF) for backward compatibility.
+async function fetchSefariaVerse(book, chap, verse, corpusName) {
+  if (corpusName === "tanakh") {
+    const engBook = SEFARIA_REF[book] || book;
+    return _getVerseTextFromMirror(engBook, chap, verse, { corpus: "tanakh" });
+  }
+  // Mishnah + Bavli: pass the Hebrew title directly; sefaria_local resolves it.
+  return _getVerseTextFromMirror(book, chap, verse, { corpus: corpusName });
 }
 
 function escapeHtml(s) {
@@ -145,7 +151,10 @@ function smallSourceHtml(citationText) {
   return `<span style="font-size:70%">${escapeHtml(citationText)}</span>`;
 }
 
-function buildCitation(book, chap, verse) {
+function buildCitation(book, chap, verse, corpus) {
+  // Bavli convention: "(שבת ד, ב)" reads weird; common form is "(שבת ד.)" or
+  // "(שבת ד:)" but we don't know amud from segment-index. Stick with the
+  // generic gematria form for all corpora — caller can edit after.
   return `(${book} ${numberToHebrewLetters(chap)}, ${numberToHebrewLetters(verse)})`;
 }
 
@@ -241,13 +250,73 @@ export function wireTorahTools(paneManager) {
   const labelBook = document.createElement("span");
   labelBook.style.cssText = "font-size:12px;color:#555;";
   labelBook.textContent = "ספר:";
-  const bookSel = buildSelect("torah-book-select", "בחר ספר מהתנ\"ך", TANACH_BOOKS, "— בחר —");
+
+  // Single grouped <select> with three optgroups: תנ"ך, משנה, בבלי.
+  // Each option's value is "<corpus>::<heTitle>" so the click handler knows
+  // which corpus to load and which book to ask for. Mishnah + Bavli get
+  // populated lazily on first selection (loadCorpus is cached).
+  const bookSel = document.createElement("select");
+  bookSel.id = "torah-book-select";
+  bookSel.title = "בחר ספר — תנ\"ך, משנה, או בבלי";
+  bookSel.className = "torah-tool-select";
+  bookSel.style.cssText = "max-width:200px;";
+
+  const blankOpt = document.createElement("option");
+  blankOpt.value = "";
+  blankOpt.textContent = "— בחר ספר —";
+  bookSel.appendChild(blankOpt);
+
+  const tanakhGroup = document.createElement("optgroup");
+  tanakhGroup.label = "תנ\"ך";
+  for (const heTitle of TANACH_BOOKS) {
+    const o = document.createElement("option");
+    o.value = `tanakh::${heTitle}`;
+    o.textContent = heTitle;
+    tanakhGroup.appendChild(o);
+  }
+  bookSel.appendChild(tanakhGroup);
+
+  const mishnahGroup = document.createElement("optgroup");
+  mishnahGroup.label = "משנה";
+  bookSel.appendChild(mishnahGroup);
+
+  const bavliGroup = document.createElement("optgroup");
+  bavliGroup.label = "בבלי";
+  bookSel.appendChild(bavliGroup);
+
+  // Populate Mishnah + Bavli on demand when the user opens the dropdown the
+  // first time. Awaiting on focus keeps the initial toolbar render instant.
+  let _populatedMishnahBavli = false;
+  async function populateMishnahBavli() {
+    if (_populatedMishnahBavli) return;
+    _populatedMishnahBavli = true;
+    try {
+      await Promise.all([_ensureCorpus("mishnah"), _ensureCorpus("bavli")]);
+      const fillGroup = (group, corpusName) => {
+        const books = _listBooks(corpusName);
+        for (const { heTitle } of books) {
+          if (!heTitle) continue;
+          const o = document.createElement("option");
+          o.value = `${corpusName}::${heTitle}`;
+          o.textContent = heTitle;
+          group.appendChild(o);
+        }
+      };
+      fillGroup(mishnahGroup, "mishnah");
+      fillGroup(bavliGroup, "bavli");
+    } catch (e) {
+      console.warn("[torah] could not populate Mishnah/Bavli:", e);
+      _populatedMishnahBavli = false;
+    }
+  }
+  bookSel.addEventListener("focus", populateMishnahBavli, { once: false });
+  bookSel.addEventListener("mousedown", populateMishnahBavli, { once: false });
 
   const chapInput = document.createElement("input");
   chapInput.type = "number";
   chapInput.min = "1";
   chapInput.placeholder = "פרק";
-  chapInput.title = "מספר פרק";
+  chapInput.title = "מספר פרק (משנה: פרק • בבלי: דף)";
   chapInput.id = "torah-chap-input";
   chapInput.style.cssText = "width:60px;font-size:12px;padding:3px 6px;";
 
@@ -255,9 +324,25 @@ export function wireTorahTools(paneManager) {
   verseInput.type = "number";
   verseInput.min = "1";
   verseInput.placeholder = "פסוק";
-  verseInput.title = "מספר פסוק";
+  verseInput.title = "מספר פסוק (משנה: משנה • בבלי: שורה)";
   verseInput.id = "torah-verse-input";
   verseInput.style.cssText = "width:60px;font-size:12px;padding:3px 6px;";
+
+  // Update placeholders + chap/verse hints when the user picks a book — so
+  // they can see at a glance whether to type a chapter or a daf.
+  bookSel.addEventListener("change", () => {
+    const v = bookSel.value;
+    if (v.startsWith("bavli::")) {
+      chapInput.placeholder = "דף";
+      verseInput.placeholder = "שורה";
+    } else if (v.startsWith("mishnah::")) {
+      chapInput.placeholder = "פרק";
+      verseInput.placeholder = "משנה";
+    } else {
+      chapInput.placeholder = "פרק";
+      verseInput.placeholder = "פסוק";
+    }
+  });
 
   const niqqudLabel = document.createElement("label");
   niqqudLabel.className = "toolbar-checkbox";
@@ -320,13 +405,16 @@ export function wireTorahTools(paneManager) {
   const findVerseInSelection = _findVerseInSelection;
 
   function readRefInputs({ silent = false } = {}) {
-    const book = bookSel.value;
+    const raw = bookSel.value;
     const chap = parseInt(chapInput.value, 10);
     const verse = parseInt(verseInput.value, 10);
-    if (!book) {
+    if (!raw) {
       if (!silent) alert("בחר ספר.");
       return null;
     }
+    const sep = raw.indexOf("::");
+    const corpus = sep >= 0 ? raw.slice(0, sep) : "tanakh";
+    const book = sep >= 0 ? raw.slice(sep + 2) : raw;
     if (!Number.isFinite(chap) || chap < 1) {
       if (!silent) chapInput.focus();
       return null;
@@ -335,7 +423,7 @@ export function wireTorahTools(paneManager) {
       if (!silent) verseInput.focus();
       return null;
     }
-    return { book, chap, verse };
+    return { book, chap, verse, corpus };
   }
 
   fetchBtn.addEventListener("click", async () => {
@@ -347,10 +435,10 @@ export function wireTorahTools(paneManager) {
     fetchBtn.disabled = true;
     status.textContent = "טוען מספריא…";
     try {
-      let text = await fetchSefariaVerse(ref.book, ref.chap, ref.verse);
+      let text = await fetchSefariaVerse(ref.book, ref.chap, ref.verse, ref.corpus);
       if (!text) throw new Error("הפסוק לא נמצא");
       text = applyNiqqudPref(text, niqqudCb.checked);
-      const citation = " " + buildCitation(ref.book, ref.chap, ref.verse);
+      const citation = " " + buildCitation(ref.book, ref.chap, ref.verse, ref.corpus);
       ed.chain().focus().insertContent(text + citation).run();
       status.textContent = "הוכנס.";
       setTimeout(() => { status.textContent = ""; }, 2000);
@@ -399,13 +487,14 @@ export function wireTorahTools(paneManager) {
   async function resolveMatch(selectionText, dialogDefaults) {
     const manual = readRefInputs({ silent: true });
     if (manual) {
-      const eng = SEFARIA_REF[manual.book];
-      if (!eng) throw new Error(`ספר לא נתמך: ${manual.book}`);
-      const original = await _getVerseTextFromMirror(eng, manual.chap, manual.verse, { corpus: "tanakh" });
+      const original = await fetchSefariaVerse(manual.book, manual.chap, manual.verse, manual.corpus);
+      const englishTitle = manual.corpus === "tanakh"
+        ? (SEFARIA_REF[manual.book] || manual.book)
+        : manual.book;
       return {
         match: {
-          corpus: "tanakh",
-          bookTitle: eng,
+          corpus: manual.corpus,
+          bookTitle: englishTitle,
           heTitle: manual.book,
           chapter: manual.chap,
           verse: manual.verse,
@@ -577,6 +666,100 @@ export function wireTorahTools(paneManager) {
     { replace: true, cite: false, dialogDefaults: { withNiqqud: false, withSource: true } }
   );
 
+  // "זהה מקור" — the user selects an address (e.g. "מלכים ב ג ד" or "תהילים
+  // קיט") and we resolve it to one or more concrete refs. If a single match
+  // is unambiguous we offer to insert the verse text right after the
+  // selection; if multiple parses exist, the user picks from a small dialog.
+  const parseRefBtn = document.createElement("button");
+  parseRefBtn.type = "button";
+  parseRefBtn.id = "torah-action-parse-ref";
+  parseRefBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-inline-end:5px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>זהה מקור`;
+  parseRefBtn.title = "סמן מקור (כמו \"מלכים ב ג ד\" או \"תהילים קיט\") והכלי יביא את הפסוק";
+  parseRefBtn.addEventListener("click", async () => {
+    const ed = getEditor();
+    if (!ed) { alert("פתח עורך פעיל."); return; }
+    const sel = ensureSelection(ed);
+    if (!sel) return;
+    parseRefBtn.disabled = true;
+    status.textContent = "מפענח מקור…";
+    try {
+      const selectionText = ed.state.doc.textBetween(sel.from, sel.to, " ", " ");
+      const candidates = await _parseUserRef(selectionText);
+      if (candidates.length === 0) {
+        throw new Error("לא זוהה מקור בטקסט המסומן (לדוגמה: \"מלכים ב ג ד\")");
+      }
+      // Try to fetch each candidate's verse text. Drop ones that don't resolve
+      // (e.g. chapter that doesn't exist in the book). If one survives → use it;
+      // if several → show the picker dialog.
+      const enriched = [];
+      for (const c of candidates) {
+        try {
+          let original = "";
+          if (c.kind === "verse") {
+            original = await _getVerseTextFromMirror(c.englishTitle, c.chapter, c.verse, { corpus: c.corpus });
+          } else {
+            // Whole chapter — concatenate. Caller can trim later.
+            await _ensureCorpus(c.corpus);
+            // Fetch a tiny preview to confirm chapter exists.
+            const v1 = await _getVerseTextFromMirror(c.englishTitle, c.chapter, 1, { corpus: c.corpus });
+            original = v1;
+          }
+          enriched.push({
+            match: {
+              corpus: c.corpus,
+              bookTitle: c.englishTitle,
+              heTitle: c.heTitle,
+              chapter: c.chapter,
+              verse: c.kind === "verse" ? c.verse : 1,
+              original,
+              normalized: original,
+              matchType: c.kind === "verse" ? "ref-verse" : "ref-chapter",
+              score: 1,
+            },
+          });
+        } catch (e) {
+          // Skip — this candidate doesn't exist in the corpus.
+        }
+      }
+      if (enriched.length === 0) {
+        throw new Error("המקור זוהה אבל הפסוק לא נמצא במאגר");
+      }
+      let picked;
+      if (enriched.length === 1) {
+        picked = enriched[0];
+      } else {
+        const dialogPick = await _showMatchDialog(
+          enriched.map((e) => e.match),
+          { withNiqqud: niqqudCb.checked, withSource: true }
+        );
+        if (!dialogPick) { status.textContent = ""; return; }
+        picked = dialogPick;
+      }
+      const match = picked.match;
+      const useNiqqud = picked.withNiqqud !== undefined ? picked.withNiqqud : niqqudCb.checked;
+      const useCite = picked.withSource !== undefined ? picked.withSource : true;
+      const verseText = applyNiqqudPref(match.original, useNiqqud);
+      const citationHtml = useCite ? smallSourceHtml(_formatCitation(match)) : null;
+      const verseHtml = escapeHtml(verseText);
+      const html = citationHtml
+        ? `${verseHtml}&nbsp;${citationHtml}`
+        : verseHtml;
+      ed.chain().focus()
+        .setTextSelection({ from: sel.from, to: sel.to })
+        .deleteSelection()
+        .insertContent(html)
+        .run();
+      status.textContent = `הוכנס: ${_formatRefLabel(match)}`;
+      setTimeout(() => { status.textContent = ""; }, 3000);
+    } catch (e) {
+      console.error("[torah] parse-ref:", e);
+      status.textContent = `שגיאה: ${e.message || e}`;
+      setTimeout(() => { status.textContent = ""; }, 4000);
+    } finally {
+      parseRefBtn.disabled = false;
+    }
+  });
+
   // Inputs group: book picker, chapter, verse, niqqud toggle, position select,
   // and 📜 הכנס פסוק. The fetch button drives off the inputs directly (it
   // inserts the chosen ref's verse text into the editor) so it belongs here,
@@ -603,6 +786,7 @@ export function wireTorahTools(paneManager) {
   groupVerseActions.appendChild(sourceActionBtn);
   groupVerseActions.appendChild(bothActionBtn);
   groupVerseActions.appendChild(completeActionBtn);
+  groupVerseActions.appendChild(parseRefBtn);
   groupVerseActions.appendChild(status);
 
   function makeSep() {
