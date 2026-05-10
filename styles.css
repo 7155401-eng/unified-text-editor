@@ -924,7 +924,23 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   width: 16px;
   height: 16px;
   flex: 0 0 auto;
-  transition: transform 180ms cubic-bezier(.4, 0, .2, 1);
+  transition: transform 180ms cubic-bezier(.4, 0, .2, 1),
+              filter 220ms cubic-bezier(.4, 0, .2, 1);
+}
+
+/* "Wow" finish — גרדיאנט עדין בריחוף לאייקונים מרכזיים בסרגל */
+.pdf-tb-btn.pdf-tb-fancy:hover svg {
+  filter: drop-shadow(0 1px 2px rgba(201, 161, 74, 0.45))
+          drop-shadow(0 0 4px rgba(201, 161, 74, 0.20));
+  transform: scale(1.12) rotate(-1deg);
+}
+.pdf-tb-btn.pdf-tb-fancy:active svg {
+  transform: scale(0.96) rotate(0deg);
+  filter: drop-shadow(0 0 2px rgba(201, 161, 74, 0.30));
+}
+body.light-theme .pdf-tb-btn.pdf-tb-fancy:hover svg {
+  filter: drop-shadow(0 1px 2px rgba(43, 87, 154, 0.35))
+          drop-shadow(0 0 4px rgba(43, 87, 154, 0.18));
 }
 
 /* hover-state עם נגיעת זהב */
