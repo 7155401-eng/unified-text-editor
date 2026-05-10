@@ -197,28 +197,30 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
 
     curY += linesConsumed.length * lineH;
 
-    // משה 2026-05-10: לולאת מילוי-פערים — אחרי הלולאה הראשית, אם נשאר מקום
-    // לפני ה-strip הבא ויש תוכן נוסף, מוסיפים שורות נוספות ברוחב ה-strip
-    // הנוכחי. כך ההמשך נראה רציף ולא נוצר פער ויזואלי.
-    while (tokenIdx < tokens.length && curY + lineH <= nextStripY) {
+    // משה 2026-05-10: לולאת מילוי-פערים — אחרי הלולאה הראשית, אם יש פער
+    // ויזואלי (אפילו קטן) לפני ה-strip הבא, מוסיפים שורה אחת ברוחב ה-strip
+    // הנוכחי. השורה עלולה להיכנס מעט לאזור ה-strip הבא (חפיפה של פיקסלים
+    // בודדים) — זה עדיף על פער ריק נראה לעין.
+    if (tokenIdx < tokens.length && curY < nextStripY && stripIdx < strips.length - 1) {
       const fillLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
-      if (fillLine.tokensConsumed === 0) break;
-      if (fillLine.words.length === 0 && fillLine.forcedBreak) {
-        tokenIdx += fillLine.tokensConsumed;
-        continue;
+      if (fillLine.tokensConsumed > 0) {
+        if (fillLine.words.length === 0 && fillLine.forcedBreak) {
+          tokenIdx += fillLine.tokensConsumed;
+        } else {
+          const isLastFillLine = (tokenIdx + fillLine.tokensConsumed >= tokens.length);
+          allLines.push({
+            y: curY,
+            width: strip.width,
+            words: fillLine.words,
+            text: fillLine.words.join(' '),
+            naturalWidth: fillLine.width,
+            isLast: isLastFillLine,
+            forcedBreak: fillLine.forcedBreak,
+          });
+          tokenIdx += fillLine.tokensConsumed;
+          curY += lineH;
+        }
       }
-      const isLastFillLine = (tokenIdx + fillLine.tokensConsumed >= tokens.length);
-      allLines.push({
-        y: curY,
-        width: strip.width,
-        words: fillLine.words,
-        text: fillLine.words.join(' '),
-        naturalWidth: fillLine.width,
-        isLast: isLastFillLine,
-        forcedBreak: fillLine.forcedBreak,
-      });
-      tokenIdx += fillLine.tokensConsumed;
-      curY += lineH;
     }
 
     if (tokenIdx >= tokens.length) break;
