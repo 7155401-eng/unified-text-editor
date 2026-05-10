@@ -162,15 +162,11 @@ async function startYaad(request, env, url) {
   if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) {
     return jsonError('סכום לא תואם לתוכנית הנבחרת');
   }
-  // משה 2026-05-09/10: חובה לבדוק שיש טלפון *וגם* ת.ז. לפני שמתחילים תשלום
-  // (יעד שריג מצריך תעודת זהות לחשבונית מס + תיעוד חוקי). אנחנו אוספים אצלנו
-  // ולא בדשבורד יעד שריג, כך שאפשר לשתף את הטרמינל עם אתר אחר ועדיין לאכוף ת.ז.
+  // משה 2026-05-09/10: חובה טלפון לפני תשלום (לחשבונית). ת.ז. כבר נאספת
+  // בטופס האשראי של יעד שריג עצמו — אין כפילות אצלנו.
   const userRow = await env.DB.prepare('SELECT phone_e164, id_number FROM users WHERE id = ?').bind(user.id).first();
   if (!userRow?.phone_e164) {
     return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
-  }
-  if (!userRow?.id_number) {
-    return jsonError('id_required: יש להזין תעודת זהות לפני התשלום', 412);
   }
 
   const token = randomToken();
@@ -188,7 +184,8 @@ async function startYaad(request, env, url) {
     'pending', nowSec
   ).run();
 
-  const intent = { token, amount: choice.def.amount, label, idNumber: userRow.id_number };
+  // UserId='0' מאפשר ליעד שריג לבקש את ה-ת.ז. בעמוד שלהם.
+  const intent = { token, amount: choice.def.amount, label, idNumber: userRow.id_number || '0' };
   const redirectUrl = await buildYaadRedirect(env, intent, url.origin);
   return jsonResponse({ redirectUrl, token });
 }
@@ -250,14 +247,10 @@ async function startPaypal(request, env, url) {
   if (!choice) return jsonError('בחירה לא חוקית');
   if (choice.def.amount < 30) return jsonError('פייפאל זמין מ-30 ש"ח ומעלה');
   if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) return jsonError('סכום לא תואם');
-  // משה 2026-05-09/10: חובה טלפון *וגם* ת.ז. גם לפייפאל (אחיד עם יעד שריג +
-  // נדרש לפי חוק הגנת הצרכן בעסקה לתושב ישראל).
-  const userRow = await env.DB.prepare('SELECT phone_e164, id_number FROM users WHERE id = ?').bind(user.id).first();
+  // משה 2026-05-09/10: חובה טלפון. ת.ז. נאספת בטופס האשראי עצמו (יעד שריג).
+  const userRow = await env.DB.prepare('SELECT phone_e164 FROM users WHERE id = ?').bind(user.id).first();
   if (!userRow?.phone_e164) {
     return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
-  }
-  if (!userRow?.id_number) {
-    return jsonError('id_required: יש להזין תעודת זהות לפני התשלום', 412);
   }
 
   const config = await getPaymentConfig(env);

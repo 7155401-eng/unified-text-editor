@@ -296,10 +296,10 @@ function wireButtons(overlay) {
     try {
       await attemptCheckout();
     } catch (err) {
-      // משה 2026-05-09/10: אם חסר טלפון או ת.ז. — פותחים טופס פרטי תשלום
-      // (לא חלון קטן — זרם המשך לטופס התשלום) שאוסף את שני הפרטים בבת אחת,
-      // אם זה הצורך, ולוחץ "המשך" כדי להמשיך לתשלום.
-      if (err && (err.code === "phone_required" || err.code === "id_required")) {
+      // משה 2026-05-09/10: אם חסר טלפון — פותחים טופס פרטי תשלום
+      // (זרם המשך לטופס התשלום, לא חלון קטן). ת.ז. נאספת בטופס האשראי
+      // של יעד שריג עצמו ולכן אינה כאן.
+      if (err && err.code === "phone_required") {
         btn.innerHTML = origHtml;
         btn.disabled = false;
         const ok = await openPaymentDetailsForm();
@@ -311,11 +311,7 @@ function wireButtons(overlay) {
         } catch (err2) {
           btn.disabled = false;
           btn.innerHTML = origHtml;
-          if (err2 && (err2.code === "phone_required" || err2.code === "id_required")) {
-            alert("חסרים פרטים. אנא וודא שהזנת גם טלפון וגם ת.ז.");
-          } else {
-            alert((err2 && err2.message) || "אירעה תקלה זמנית. נסה שוב או צור קשר בטלפון.");
-          }
+          alert((err2 && err2.message) || "אירעה תקלה זמנית. נסה שוב או צור קשר בטלפון.");
         }
         return;
       }
@@ -326,9 +322,10 @@ function wireButtons(overlay) {
   });
 }
 
-// משה 2026-05-10: טופס פרטי תשלום — אוסף טלפון + ת.ז. כחלק מטופס התשלום.
-// מוצג בתוך אותו overlay של הפרמיום, כסקציית המשך — לא חלון קטן צף נפרד.
-// מחזיר Promise<boolean>: true אם הפרטים נשמרו, false אם המשתמש סגר.
+// משה 2026-05-10: טופס פרטי תשלום — אוסף רק טלפון (ת.ז. נאספת בטופס האשראי
+// של יעד שריג עצמו, אין כפילות). מוצג כסקציית המשך לטופס התשלום, לא חלון קטן צף.
+// השדה ממורכז כי הוא היחיד.
+// מחזיר Promise<boolean>: true אם נשמר, false אם המשתמש סגר.
 function openPaymentDetailsForm() {
   return new Promise((resolve) => {
     const back = document.createElement("div");
@@ -341,31 +338,28 @@ function openPaymentDetailsForm() {
     sheet.innerHTML = `
       <button class="rt-prem-close" type="button" aria-label="סגור">✕</button>
       <h2 style="text-align:center;margin:8px 0 4px">פרטי תשלום</h2>
-      <p style="text-align:center;color:#666;margin:0 0 24px">לפני המעבר לתשלום, נדרשים פרטים אלו לחשבונית מס. הם נשמרים אצלנו בלבד.</p>
+      <p style="text-align:center;color:#666;margin:0 0 28px">לפני המעבר לתשלום אנחנו זקוקים למספר הטלפון שלך — לחשבונית מס ולתיעוד העסקה. נשמר אצלנו בלבד.</p>
 
-      <div class="rt-pd-row">
+      <div class="rt-pd-row rt-pd-row-only">
         <label class="rt-pd-label">📞 מספר טלפון</label>
         <div class="rt-pd-host-phone"></div>
         <div class="rt-pd-status rt-pd-status-phone"></div>
       </div>
 
-      <div class="rt-pd-row" style="margin-top:18px">
-        <label class="rt-pd-label">🪪 תעודת זהות</label>
-        <input type="text" class="rt-pd-id-input" inputmode="numeric" maxlength="12" placeholder="9 ספרות" dir="ltr" />
-        <div class="rt-pd-status rt-pd-status-id"></div>
-      </div>
-
-      <div style="margin-top:24px;display:flex;flex-direction:column;gap:8px">
-        <button type="button" class="rt-prem-btn rt-prem-btn-yaad rt-pd-save" style="font-size:18px">שמור והמשך לתשלום</button>
-        <button type="button" class="rt-pd-cancel" style="background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;font:inherit;padding:8px;align-self:center">ביטול</button>
+      <div style="margin-top:28px;display:flex;flex-direction:column;gap:10px;align-items:center">
+        <button type="button" class="rt-prem-btn rt-prem-btn-yaad rt-pd-save" style="font-size:18px;min-width:280px">שמור והמשך לתשלום</button>
+        <button type="button" class="rt-pd-cancel" style="background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;font:inherit;padding:8px">ביטול</button>
       </div>
       <style>
-        .rt-payment-details-sheet .rt-pd-row{display:flex;flex-direction:column;gap:6px}
+        .rt-payment-details-sheet{max-width:520px}
+        .rt-payment-details-sheet .rt-pd-row{display:flex;flex-direction:column;gap:8px}
+        .rt-payment-details-sheet .rt-pd-row-only{align-items:center;text-align:center}
+        .rt-payment-details-sheet .rt-pd-row-only .rt-pd-host-phone{display:flex;justify-content:center;width:100%}
         .rt-payment-details-sheet .rt-pd-label{font-weight:600;font-size:15px}
-        .rt-payment-details-sheet .rt-pd-id-input{padding:12px;border:1px solid #ccc;border-radius:8px;font-size:18px;font:inherit;width:100%}
-        .rt-payment-details-sheet .rt-pd-status{font-size:13px;min-height:18px}
+        .rt-payment-details-sheet .rt-pd-status{font-size:13px;min-height:18px;text-align:center}
         .rt-payment-details-sheet .rt-pd-status.rt-phone-status-err{color:#dc2626}
         .rt-payment-details-sheet .rt-pd-status.rt-phone-status-ok{color:#16a34a}
+        .rt-payment-details-sheet .rt-phone-input{max-width:340px}
       </style>
     `;
     back.appendChild(sheet);
@@ -386,50 +380,29 @@ function openPaymentDetailsForm() {
       });
       const phoneHost = sheet.querySelector(".rt-pd-host-phone");
       phoneHost.appendChild(ctrl.wrap);
-
-      const idInput = sheet.querySelector(".rt-pd-id-input");
-      idInput.value = info?.idNumber || "";
+      ctrl.focus();
 
       const phoneStatus = sheet.querySelector(".rt-pd-status-phone");
-      const idStatus = sheet.querySelector(".rt-pd-status-id");
       const saveBtn = sheet.querySelector(".rt-pd-save");
-
-      // אם טלפון כבר קיים, נתמקד ב-ת.ז.; אחרת בטלפון.
-      if (info?.hasPhone && !info?.hasIdNumber) idInput.focus();
-      else ctrl.focus();
 
       saveBtn.addEventListener("click", async () => {
         const v = ctrl.getValue();
-        const idDigits = (idInput.value || "").replace(/\D+/g, "");
-
-        // ולידציה
-        let bad = false;
-        if (!v.valid) { phoneStatus.textContent = "מספר טלפון לא תקין"; phoneStatus.className = "rt-pd-status rt-pd-status-phone rt-phone-status-err"; bad = true; }
-        else { phoneStatus.textContent = ""; }
-        if (idDigits.length < 5 || idDigits.length > 12) { idStatus.textContent = "ת.ז. צריכה להיות בין 5 ל-12 ספרות"; idStatus.className = "rt-pd-status rt-pd-status-id rt-phone-status-err"; bad = true; }
-        else { idStatus.textContent = ""; }
-        if (bad) return;
-
+        if (!v.valid) {
+          phoneStatus.textContent = "מספר טלפון לא תקין";
+          phoneStatus.className = "rt-pd-status rt-pd-status-phone rt-phone-status-err";
+          return;
+        }
+        phoneStatus.textContent = "";
         saveBtn.disabled = true;
         saveBtn.textContent = "שומר…";
         try {
           await savePhone({ country: v.country, phone: v.phone });
-          const r = await fetch("/api/account/id-number", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ idNumber: idDigits }),
-            credentials: "same-origin",
-          });
-          if (!r.ok) {
-            const j = await r.json().catch(() => ({}));
-            throw new Error(j?.error || "שגיאה בשמירת ת.ז.");
-          }
           cleanup(true);
         } catch (err) {
           saveBtn.disabled = false;
           saveBtn.textContent = "שמור והמשך לתשלום";
-          idStatus.textContent = err?.message || "שגיאה";
-          idStatus.className = "rt-pd-status rt-pd-status-id rt-phone-status-err";
+          phoneStatus.textContent = err?.message || "שגיאה";
+          phoneStatus.className = "rt-pd-status rt-pd-status-phone rt-phone-status-err";
         }
       });
     });
