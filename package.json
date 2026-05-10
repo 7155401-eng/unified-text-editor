@@ -14,7 +14,7 @@
   "dependencies": {
     "@tiptap/core": "^3.22.5",
     "@tiptap/extension-color": "^3.22.5",
-    "@tiptap/extension-highlight": "^3.22.5",
+    "@tiptap/extension-highlight": "3.22.5",
     "@tiptap/extension-image": "^3.22.5",
     "@tiptap/extension-link": "^3.22.5",
     "@tiptap/extension-subscript": "^3.22.5",
