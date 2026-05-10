@@ -31,7 +31,8 @@ function setSelected(codes) {
   const input = document.getElementById(HIDDEN_INPUT_ID);
   if (!input) return;
   // Hard cap at TALMUD_MAX_STREAMS (2). Any extras are truncated.
-  const capped = codes.slice(0, TALMUD_MAX_STREAMS);
+  // משה 2026-05-10: מיון עולה — קוד נמוך = ימני, גבוה = שמאלי (סדר וילנא קלאסי).
+  const capped = codes.slice(0, TALMUD_MAX_STREAMS).slice().sort();
   input.value = capped.join(",");
   // Trigger change event so existing listeners pick up.
   input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -102,11 +103,12 @@ function updateAddButtonState() {
   const btn = document.getElementById(ADD_BTN_ID);
   if (!btn) return;
   const selected = getCurrentSelected();
+  // משה 2026-05-10: בגפ"ת תמיד בדיוק 2 זרמים, אז הכפתור "+" מיותר. מסתירים
+  // אותו לחלוטין כשיש 2. אם פחות מ-2 (ברירת מחדל ממילא ממלאת ל-2), הוא נראה.
   if (selected.length >= TALMUD_MAX_STREAMS) {
-    btn.disabled = true;
-    btn.style.opacity = "0.4";
-    btn.title = "גפ\"ת מוגבל ל-2 זרמים. לחץ × על אחד מהקיימים כדי להחליף.";
+    btn.style.display = "none";
   } else {
+    btn.style.display = "";
     btn.disabled = false;
     btn.style.opacity = "";
     btn.title = "הוסף זרם";
