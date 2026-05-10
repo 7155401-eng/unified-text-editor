@@ -833,10 +833,8 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.className = 'v9-line' + (colorClass || '');
       const shouldJustify = !line.isLast && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
-      // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת — רק בתרחיש 1 (זרם
-      // אחד מפוצל לשני טורים) שבו ה"orphan" המשותף שייך לשניהם. הראשי וזרמים
-      // רגילים — לא ממורכזים גם אם השורה האחרונה שלהם ברוחב מלא.
-      const isFullWidthOrphan = box.isScenario1Split && line.isLast && line.width >= innerW - 5;
+      // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת — על כל דבר (כללי ספרי קודש).
+      const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
       if (isFullWidthOrphan) lineEl.className += ' center';
       else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
