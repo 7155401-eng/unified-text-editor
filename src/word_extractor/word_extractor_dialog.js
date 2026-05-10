@@ -13,6 +13,9 @@ import {
 } from "./word_extractor_engine.js";
 import * as engine from "./word_extractor_engine.js";
 import {
+  extractBodyHtmlWithSymbols, extractNotesHtmlMap, buildDynamicStyleMap, buildStylesCss, injectStylesCss,
+} from "./word_extractor_mammoth.js";
+import {
   buildDefaultStreamMapping, streamsToSd, findDuplicateSeries,
 } from "./word_extractor_streams.js";
 import {
@@ -105,6 +108,18 @@ function ensureModalShell() {
         <p class="we-brackets-info">כל מה שבין הסוגריים שתגדיר יילקח מהטקסט הראשי וייכנס לזרם הערות נפרד.</p>
         <div class="we-brackets-list"></div>
         <button type="button" class="we-bracket-add">➕ הוסף קבוצה</button>
+      </div>
+
+      <div class="we-mode-wrap" style="margin:10px 0; padding:8px 10px; border:1px solid var(--border,#ccc); border-radius:6px;">
+        <h3 style="margin:0 0 6px;">בעת ייבוא</h3>
+        <label style="display:block; padding:3px 0;">
+          <input type="radio" name="we-import-mode" value="replace" class="we-mode-replace" checked>
+          דרוס את כל הטקסט הקיים
+        </label>
+        <label style="display:block; padding:3px 0;">
+          <input type="radio" name="we-import-mode" value="append" class="we-mode-append">
+          הוסף בסוף הטקסט הקיים
+        </label>
       </div>
 
       <div class="modal-btns we-btns">
@@ -204,14 +219,16 @@ async function onFileChange(ev) {
 
   try {
     _state.zipBuf = await file.arrayBuffer();
-    const [titles, headerFooter, sections, styles, sources] = await Promise.all([
+    const [titles, headerFooter, sections, styles, sources, stylesFull] = await Promise.all([
       extract_doc_titles(_state.zipBuf.slice(0)),
       extract_headers_footers(_state.zipBuf.slice(0)),
       find_sections_in_docx(_state.zipBuf.slice(0)),
       find_all_styles_in_docx(_state.zipBuf.slice(0)),
       find_all_note_sources(_state.zipBuf.slice(0)),
+      engine.find_all_styles_full(_state.zipBuf.slice(0)),
     ]);
     _state.metadata = { titles, headerFooter, sections, styles };
+    _state.stylesFull = stylesFull;
     _state.sources = sources;
     _state.streams = buildDefaultStreamMapping(sources);
     renderMeta();
@@ -419,7 +436,33 @@ async function onConfirm() {
         symbol: '@' + seriesToCode[s.series],
       });
     }
-    const result = await engine.docx_extract_simple(_state.zipBuf.slice(0), simpleSelected);
+    // משה 2026-05-10: ראשית — מפת HTML של הערות מ-mammoth (תמונות/רשימות/טבלאות).
+    // נופלים ל-_dnotes_html שב-engine אם mammoth נכשל.
+    let notesHtmlMap = {};
+    try {
+      const dynamicMap0 = buildDynamicStyleMap(_state.stylesFull || {});
+      notesHtmlMap = await extractNotesHtmlMap(_state.zipBuf.slice(0), { styleMap: dynamicMap0 });
+    } catch (notesErr) {
+      console.warn('[word_extractor] notes mammoth fallback to plain:', notesErr);
+    }
+    const result = await engine.docx_extract_simple(
+      _state.zipBuf.slice(0), simpleSelected, { notesHtmlMap }
+    );
+    // משה 2026-05-09: שלב 1+2 — mammoth מספק HTML מעוצב לגוף עם סמלי הזרמים שלנו.
+    // הזרמים עצמם ממשיכים להגיע מ-docx_extract_simple. הגוף = mammoth, זרמים = result.streams.
+    let bodyHtml = null;
+    try {
+      // משה 2026-05-09: שלב 4 — styleMap דינמי לפי קטלוג הסגנונות, ו-CSS שמוזרק לעמוד.
+      const dynamicMap = buildDynamicStyleMap(_state.stylesFull || {});
+      const css = buildStylesCss(_state.stylesFull || {});
+      if (css) injectStylesCss(css);
+      const mres = await extractBodyHtmlWithSymbols(
+        _state.zipBuf.slice(0), simpleSelected, { styleMap: dynamicMap }
+      );
+      bodyHtml = mres.html;
+    } catch (mammothErr) {
+      console.warn('[word_extractor] mammoth fallback to plain:', mammothErr);
+    }
     // משה 2026-05-09: החזרת תמיכת קבוצות סוגריים מותאמות (שהוסרה בטעות).
     // לכל שורת bracket: חותכים מ-result.main את הטקסט שבין opener ל-closer
     // ומעבירים אותו לזרם מתאים, במקום משאירים סמל בגוף.
@@ -437,6 +480,14 @@ async function onConfirm() {
           collected.push(`${sym}${inner}`);
           return sym;
         });
+        // משה 2026-05-09: גם ב-bodyHtml של mammoth — להחליף סוגריים בסמלים.
+        if (bodyHtml) {
+          bodyHtml = bodyHtml.replace(re, (_m, inner) => {
+            // ה-inner שמגיע ב-bodyHtml יכול להכיל תגי HTML; אנחנו אוספים רק את הטקסט
+            // לזרם, ובמקום הסוגריים בגוף נשאיר את הסמל.
+            return sym;
+          });
+        }
         if (collected.length) {
           const existing = result.streams.find(([s]) => s === sym);
           if (existing) existing[1] = existing[1] + '\n' + collected.join('\n');
@@ -444,7 +495,10 @@ async function onConfirm() {
         }
       }
     }
-    distributeToPanesSimple(result);
+    // משה 2026-05-09: מצב ייבוא — דרוס/הוסף בסוף
+    const modeEl = document.querySelector('.we-mode-append');
+    const importMode = (modeEl && modeEl.checked) ? 'append' : 'replace';
+    distributeToPanesSimple(result, bodyHtml, importMode);
     setStatus('');
     closeModal();
     if (typeof _state.onLoadedRef === 'function') _state.onLoadedRef();
@@ -468,23 +522,39 @@ function plainToHtml(s) {
   if (!lines.length) return '<p></p>';
   return lines.map(l => `<p>${escTxt(l)}</p>`).join('');
 }
-function distributeToPanesSimple(result) {
+function distributeToPanesSimple(result, bodyHtml, mode = 'replace') {
   if (!_state.paneManagerRef) return;
   const pm = _state.paneManagerRef;
-  pm.load({
-    version: 1,
-    activeId: 'word-main',
-    panes: [{
-      id: 'word-main',
-      streamCode: null,
-      symbol: '',
-      label: 'ראשי',
-      content: { type: 'doc', content: [{ type: 'paragraph' }] },
-    }],
-  });
+  // משה 2026-05-09: במצב 'replace' (ברירת מחדל) — אתחול מלא של הפנייות.
+  // במצב 'append' — לא מאתחלים, מוסיפים לסוף הקיים.
+  if (mode !== 'append') {
+    pm.load({
+      version: 1,
+      activeId: 'word-main',
+      panes: [{
+        id: 'word-main',
+        streamCode: null,
+        symbol: '',
+        label: 'ראשי',
+        content: { type: 'doc', content: [{ type: 'paragraph' }] },
+      }],
+    });
+  }
   const mainPane = pm.getMainPane();
   if (mainPane && mainPane.editor) {
-    mainPane.editor.commands.setContent(plainToHtml(result.main));
+    // משה 2026-05-09: עדיפות ל-HTML המעוצב מ-mammoth; נפילה ל-plainToHtml אם נכשל.
+    const html = (bodyHtml && bodyHtml.length) ? bodyHtml : plainToHtml(result.main);
+    if (mode === 'append') {
+      // הוספה בסוף — ללא דריסה
+      mainPane.editor.chain().focus('end').insertContent(html).run();
+    } else {
+      mainPane.editor.commands.setContent(html);
+    }
+  }
+  // משה 2026-05-10: בונים מילון symbol → HTML מ-streamsHtml אם קיים (כדי לשמר bold/italic).
+  const htmlBySym = {};
+  if (result.streamsHtml && Array.isArray(result.streamsHtml)) {
+    for (const [sym, h] of result.streamsHtml) htmlBySym[sym] = h;
   }
   for (const [sym, txt] of result.streams) {
     const code = sym.replace(/^@/, '');
@@ -497,7 +567,13 @@ function distributeToPanesSimple(result) {
       if (pane.editor.storage && pane.editor.storage.streamMark) {
         pane.editor.storage.streamMark.symbol = sym;
       }
-      pane.editor.commands.setContent(plainToHtml(txt));
+      // משה 2026-05-10: עדיפות ל-HTML עם עיצוב; נפילה ל-plainToHtml אם חסר.
+      const streamHtml = htmlBySym[sym] || plainToHtml(txt);
+      if (mode === 'append') {
+        pane.editor.chain().focus('end').insertContent(streamHtml).run();
+      } else {
+        pane.editor.commands.setContent(streamHtml);
+      }
     }
   }
 }
