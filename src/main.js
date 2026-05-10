@@ -48,6 +48,9 @@ import { wireTorahTools } from "./torah_tools.js";
 import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
 import { openWordExtractor, setupWordExtractor } from "./word_extractor/word_extractor.js";
+import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
+import { wireComparatorButton } from "./comparator_tool/comparator.js";
+import { wireSefariaTools } from "./sefaria/sefaria.js";
 // משה 2026-05-10: שחזור 3 כלי AI לעורך — טרנסקריפציה, ניקוד תורני, קריקטורה
 import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
 import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
@@ -202,6 +205,9 @@ const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
 setupWordExtractor(paneManager, rerenderPages);
+wireTextComparePro(paneManager);
+wireComparatorButton(paneManager);
+wireSefariaTools(paneManager);
 installLinkMismatchReporter(paneManager);
 
 const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
