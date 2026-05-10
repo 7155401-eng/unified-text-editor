@@ -81,9 +81,23 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:8787',
 ]);
 
-// Engine endpoints — אסור לקרוא להם בלי Origin תקף.
-// Auth + admin + storage לא חוסמים על Origin (חייבים לעבוד מ-redirect של גוגל וכו').
+// Site/API endpoints — אסור לקרוא להם בלי Origin/Referer תקף של האתר.
+// OAuth callbacks ו-payment callbacks נשארים מחוץ לרשימה כי הם מגיעים מספקים חיצוניים.
 const ENGINE_API_PREFIXES = [
+  '/api/me',
+  '/api/admin/',
+  '/api/bug-reports',
+  '/api/contact',
+  '/api/usage/track',
+  '/api/payments/package/',
+  '/api/payments/yaad/start',
+  '/api/payments/paypal/start',
+  '/api/payments/status',
+  '/api/payments/cancel',
+  '/api/payments/gift/claim',
+  '/api/account/',
+  '/api/documents',
+  '/api/settings',
   '/api/render/',
   '/api/talmud/',
   '/api/balance/',
