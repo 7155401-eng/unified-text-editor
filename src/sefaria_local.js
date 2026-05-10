@@ -7,13 +7,13 @@
 // Tanakh (~5 MB) and Mishnah (~3 MB) ship as one combined JSON each — single
 // HTTP request loads the whole corpus.
 //
-// Bavli (~29 MB combined) exceeds Cloudflare Workers Static Assets' 25 MiB
-// per-file limit. Instead it ships as one manifest plus 37 per-tractate files
-// under /data/sefaria/bavli/. The client fetches the manifest once, then all
-// tractates in parallel, and merges them into the same in-memory shape Tanakh
-// and Mishnah produce — so the rest of the search/render code is corpus-agnostic.
-const CORPORA = ["tanakh", "mishnah", "bavli"];
-const SPLIT_CORPORA = new Set(["bavli"]);
+// Bavli (~29 MB), Rambam (~6 MB across 84 books), and Shulchan Arukh (~3.6 MB
+// across 4 chelkim) ship as one manifest plus per-book files. Two reasons:
+// (1) some single combined files would exceed Cloudflare Workers Static Assets'
+// 25 MiB per-file ceiling and block the deploy; (2) per-book splits let us
+// fetch in parallel, which is faster than one giant download.
+const CORPORA = ["tanakh", "mishnah", "bavli", "rambam", "shulchan_arukh"];
+const SPLIT_CORPORA = new Set(["bavli", "rambam", "shulchan_arukh"]);
 const _loaded = new Map(); // name → { books: [...] }
 const _loading = new Map(); // name → Promise
 const _byEnglishTitle = new Map(); // englishTitle → { book, source }
@@ -87,6 +87,27 @@ export function corpusForBook(englishBook) {
   return entry ? entry.source : null;
 }
 
+// Public: get every segment of an entire chapter joined with separators.
+// Used by "פרק כולו" / "דף כולו" — verse=null skips the per-segment fetch.
+// `joiner` defaults to a single space; callers that want one-segment-per-line
+// can pass "\n" instead.
+export async function getChapterText(book, chapter, { corpus, joiner = " " } = {}) {
+  const candidate =
+    corpus ||
+    (book.startsWith("Mishnah ") || book.startsWith("משנה ") ? "mishnah" :
+     book.startsWith("Mishneh Torah") || book.startsWith("רמב\"ם") ? "rambam" :
+     book.startsWith("Shulchan Arukh") || book.startsWith("שולחן ערוך") ? "shulchan_arukh" :
+     "tanakh");
+  await loadCorpus(candidate);
+  const entry = _byEnglishTitle.get(book) || _byHebrewTitle.get(book);
+  if (!entry) throw new Error(`לא נמצא הספר: ${book}`);
+  const ch = entry.book.chapters[chapter - 1];
+  if (!Array.isArray(ch) || ch.length === 0) {
+    throw new Error(`פרק ${chapter} לא נמצא ב-${book}`);
+  }
+  return ch.filter((s) => typeof s === "string" && s).join(joiner);
+}
+
 // Public: get the canonical Hebrew text (with niqqud + taamim, no HTML) for a
 // given book + chapter + verse. Book may be the English title ("Genesis") or
 // the Hebrew title ("בראשית"). The optional `corpus` selects which corpus to
@@ -97,7 +118,10 @@ export function corpusForBook(englishBook) {
 export async function getVerseText(book, chapter, verse, { corpus } = {}) {
   const candidate =
     corpus ||
-    (book.startsWith("Mishnah ") || book.startsWith("משנה ") ? "mishnah" : "tanakh");
+    (book.startsWith("Mishnah ") || book.startsWith("משנה ") ? "mishnah" :
+     book.startsWith("Mishneh Torah") || book.startsWith("רמב\"ם") ? "rambam" :
+     book.startsWith("Shulchan Arukh") || book.startsWith("שולחן ערוך") ? "shulchan_arukh" :
+     "tanakh");
   await loadCorpus(candidate);
   const entry = _byEnglishTitle.get(book) || _byHebrewTitle.get(book);
   if (!entry) throw new Error(`לא נמצא הספר: ${book}`);

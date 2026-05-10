@@ -25,6 +25,12 @@ export function normalizeForAlias(s) {
     .replace(/[֑-ׇ]/g, "")           // niqqud + cantillation
     .replace(/[׳״'"`]/g, "")         // gershayim/geresh/apostrophes
     .replace(/[.,:;\-־()[\]{}]/g, " ")
+    // Final-form letters → regular letters. After stripping gershayim, words
+    // like "חו"מ" become "חומ" with a non-final "מ"; aliases written with the
+    // final form ("חום") wouldn't match unless we also fold the user's input
+    // the same way. We fold both sides to non-final forms.
+    .replace(/ך/g, "כ").replace(/ם/g, "מ").replace(/ן/g, "נ")
+    .replace(/ף/g, "פ").replace(/ץ/g, "צ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -243,21 +249,185 @@ const BAVLI = BAVLI_NAMES.map(([heTitle, englishTitle, baseAliases]) => {
   return E("bavli", heTitle, englishTitle, all);
 });
 
-export const ALL_BOOKS = [...TANAKH, ...MISHNAH, ...BAVLI];
+// === Rambam — Mishneh Torah (84 books) ===========================
+// Each book in Sefaria is "משנה תורה, הלכות X". Users typically write:
+//   "רמב"ם הל' שבת פ"א ה"א" / "רמב"ם שבת פ"א ה"א" / "רמב"ם הלכות שבת"
+//   "משנה תורה הלכות שבת א, א"
+// We never accept the bare topic name ("שבת") as a Rambam reference — that
+// would conflict with Mishnah Shabbat and Bavli Shabbat. The "רמב"ם" /
+// "משנה תורה" / "הלכות" prefix is required.
+//
+// Topic name format taken directly from data.heTitle (verified 2026-05-10):
+// "משנה תורה, הלכות X" → topic = "X" (we strip the "משנה תורה, הלכות " prefix).
+
+const RAMBAM_NAMES = [
+  ["משנה תורה, הלכות ביאת מקדש", "Mishneh Torah, Admission into the Sanctuary", "ביאת מקדש"],
+  ["משנה תורה, הלכות שלוחין ושותפין", "Mishneh Torah, Agents and Partners", "שלוחין ושותפין"],
+  ["משנה תורה, הלכות ערכים וחרמין", "Mishneh Torah, Appraisals and Devoted Property", "ערכים וחרמין"],
+  ["משנה תורה, הלכות ברכות", "Mishneh Torah, Blessings", "ברכות"],
+  ["משנה תורה, הלכות שאלה ופיקדון", "Mishneh Torah, Borrowing and Deposit", "שאלה ופיקדון"],
+  ["משנה תורה, הלכות מילה", "Mishneh Torah, Circumcision", "מילה"],
+  ["משנה תורה, הלכות מלווה ולווה", "Mishneh Torah, Creditor and Debtor", "מלווה ולווה"],
+  ["משנה תורה, הלכות תמידים ומוספין", "Mishneh Torah, Daily Offerings and Additional Offerings", "תמידים ומוספין"],
+  ["משנה תורה, הלכות נזקי ממון", "Mishneh Torah, Damages to Property", "נזקי ממון"],
+  ["משנה תורה, הלכות טומאת צרעת", "Mishneh Torah, Defilement by Leprosy", "טומאת צרעת"],
+  ["משנה תורה, הלכות טומאת מת", "Mishneh Torah, Defilement by a Corpse", "טומאת מת"],
+  ["משנה תורה, הלכות טומאת אוכלים", "Mishneh Torah, Defilement of Foods", "טומאת אוכלים"],
+  ["משנה תורה, הלכות כלאים", "Mishneh Torah, Diverse Species", "כלאים"],
+  ["משנה תורה, הלכות גירושין", "Mishneh Torah, Divorce", "גירושין"],
+  ["משנה תורה, הלכות עירובין", "Mishneh Torah, Eruvin", "עירובין"],
+  ["משנה תורה, הלכות תעניות", "Mishneh Torah, Fasts", "תעניות"],
+  ["משנה תורה, הלכות חגיגה", "Mishneh Torah, Festival Offering", "חגיגה"],
+  ["משנה תורה, הלכות ביכורים ושאר מתנות כהונה שבגבולין", "Mishneh Torah, First Fruits and other Gifts to Priests Outside the Sanctuary", "ביכורים"],
+  ["משנה תורה, הלכות בכורות", "Mishneh Torah, Firstlings", "בכורות"],
+  ["משנה תורה, הלכות מאכלות אסורות", "Mishneh Torah, Forbidden Foods", "מאכלות אסורות"],
+  ["משנה תורה, הלכות איסורי ביאה", "Mishneh Torah, Forbidden Intercourse", "איסורי ביאה"],
+  ["משנה תורה, הלכות עבודה זרה וחוקות הגויים", "Mishneh Torah, Foreign Worship and Customs of the Nations", "עבודה זרה"],
+  ["משנה תורה, הלכות יסודי התורה", "Mishneh Torah, Foundations of the Torah", "יסודי התורה"],
+  ["משנה תורה, הלכות ציצית", "Mishneh Torah, Fringes", "ציצית"],
+  ["משנה תורה, הלכות מתנות עניים", "Mishneh Torah, Gifts to the Poor", "מתנות עניים"],
+  ["משנה תורה, הלכות תרומות", "Mishneh Torah, Heave Offerings", "תרומות"],
+  ["משנה תורה, הלכות שכירות", "Mishneh Torah, Hiring", "שכירות"],
+  ["משנה תורה, הלכות דעות", "Mishneh Torah, Human Dispositions", "דעות"],
+  ["משנה תורה, הלכות מקואות", "Mishneh Torah, Immersion Pools", "מקואות"],
+  ["משנה תורה, הלכות נחלות", "Mishneh Torah, Inheritances", "נחלות"],
+  ["משנה תורה, הלכות מלכים ומלחמות", "Mishneh Torah, Kings and Wars", "מלכים ומלחמות"],
+  ["משנה תורה, הלכות חמץ ומצה", "Mishneh Torah, Leavened and Unleavened Bread", "חמץ ומצה"],
+  ["משנה תורה, הלכות יבום וחליצה", "Mishneh Torah, Levirate Marriage and Release", "יבום וחליצה"],
+  ["משנה תורה, הלכות אישות", "Mishneh Torah, Marriage", "אישות"],
+  ["משנה תורה, הלכות אבל", "Mishneh Torah, Mourning", "אבל"],
+  ["משנה תורה, הלכות רוצח ושמירת נפש", "Mishneh Torah, Murderer and the Preservation of Life", "רוצח ושמירת נפש"],
+  ["משנה תורה, הלכות נזירות", "Mishneh Torah, Nazariteship", "נזירות"],
+  ["משנה תורה, הלכות שכנים", "Mishneh Torah, Neighbors", "שכנים"],
+  ["משנה תורה, הלכות שבועות", "Mishneh Torah, Oaths", "שבועות"],
+  ["משנה תורה, הלכות מחוסרי כפרה", "Mishneh Torah, Offerings for Those with Incomplete Atonement", "מחוסרי כפרה"],
+  ["משנה תורה, הלכות שגגות", "Mishneh Torah, Offerings for Unintentional Transgressions", "שגגות"],
+  ["משנה תורה, הלכות חובל ומזיק", "Mishneh Torah, One Who Injures a Person or Property", "חובל ומזיק"],
+  ["משנה תורה, הלכות שאר אבות הטומאות", "Mishneh Torah, Other Sources of Defilement", "שאר אבות הטומאות"],
+  ["משנה תורה, הלכות זכייה ומתנה", "Mishneh Torah, Ownerless Property and Gifts", "זכייה ומתנה"],
+  ["משנה תורה, הלכות קרבן פסח", "Mishneh Torah, Paschal Offering", "קרבן פסח"],
+  ["משנה תורה, הלכות טוען ונטען", "Mishneh Torah, Plaintiff and Defendant", "טוען ונטען"],
+  ["משנה תורה, הלכות תפילה וברכת כהנים", "Mishneh Torah, Prayer and the Priestly Blessing", "תפילה"],
+  ["משנה תורה, הלכות קריאת שמע", "Mishneh Torah, Reading the Shema", "קריאת שמע"],
+  ["משנה תורה, הלכות ממרים", "Mishneh Torah, Rebels", "ממרים"],
+  ["משנה תורה, הלכות פרה אדומה", "Mishneh Torah, Red Heifer", "פרה אדומה"],
+  ["משנה תורה, הלכות תשובה", "Mishneh Torah, Repentance", "תשובה"],
+  ["משנה תורה, הלכות שביתת יום טוב", "Mishneh Torah, Rest on a Holiday", "שביתת יום טוב"],
+  ["משנה תורה, הלכות שביתת עשור", "Mishneh Torah, Rest on the Tenth of Tishrei", "שביתת עשור"],
+  ["משנה תורה, הלכות שחיטה", "Mishneh Torah, Ritual Slaughter", "שחיטה"],
+  ["משנה תורה, הלכות גזילה ואבידה", "Mishneh Torah, Robbery and Lost Property", "גזילה ואבידה"],
+  ["משנה תורה, הלכות שבת", "Mishneh Torah, Sabbath", "שבת"],
+  ["משנה תורה, הלכות שמיטה ויובל", "Mishneh Torah, Sabbatical Year and the Jubilee", "שמיטה ויובל"],
+  ["משנה תורה, הלכות פסולי המוקדשין", "Mishneh Torah, Sacrifices Rendered Unfit", "פסולי המוקדשין"],
+  ["משנה תורה, הלכות מעשה הקרבנות", "Mishneh Torah, Sacrificial Procedure", "מעשה הקרבנות"],
+  ["משנה תורה, הלכות מכירה", "Mishneh Torah, Sales", "מכירה"],
+  ["משנה תורה, הלכות קידוש החודש", "Mishneh Torah, Sanctification of the New Month", "קידוש החודש"],
+  ["משנה תורה, הלכות מגילה וחנוכה", "Mishneh Torah, Scroll of Esther and Hanukkah", "מגילה וחנוכה"],
+  ["משנה תורה, הלכות מעשר שני ונטע רבעי", "Mishneh Torah, Second Tithes and Fourth Year's Fruit", "מעשר שני"],
+  ["משנה תורה, הלכות עבודת יום הכפורים", "Mishneh Torah, Service on the Day of Atonement", "עבודת יום הכפורים"],
+  ["משנה תורה, הלכות שקלים", "Mishneh Torah, Sheqel Dues", "שקלים"],
+  ["משנה תורה, הלכות שופר וסוכה ולולב", "Mishneh Torah, Shofar, Sukkah and Lulav", "שופר וסוכה ולולב"],
+  ["משנה תורה, הלכות עבדים", "Mishneh Torah, Slaves", "עבדים"],
+  ["משנה תורה, הלכות תמורה", "Mishneh Torah, Substitution", "תמורה"],
+  ["משנה תורה, הלכות תפילין ומזוזה וספר תורה", "Mishneh Torah, Tefillin, Mezuzah and the Torah Scroll", "תפילין"],
+  ["משנה תורה, הלכות עדות", "Mishneh Torah, Testimony", "עדות"],
+  ["משנה תורה, הלכות בית הבחירה", "Mishneh Torah, The Chosen Temple", "בית הבחירה"],
+  ["משנה תורה, סדר התפילה", "Mishneh Torah, The Order of Prayer", "סדר התפילה"],
+  ["משנה תורה, הלכות סנהדרין והעונשין המסורין להם", "Mishneh Torah, The Sanhedrin and the Penalties within Their Jurisdiction", "סנהדרין"],
+  ["משנה תורה, הלכות גניבה", "Mishneh Torah, Theft", "גניבה"],
+  ["משנה תורה, הלכות איסורי המזבח", "Mishneh Torah, Things Forbidden on the Altar", "איסורי המזבח"],
+  ["משנה תורה, הלכות מטמאי משכב ומושב", "Mishneh Torah, Those Who Defile Bed or Seat", "מטמאי משכב ומושב"],
+  ["משנה תורה, הלכות מעשרות", "Mishneh Torah, Tithes", "מעשרות"],
+  ["משנה תורה, הלכות תלמוד תורה", "Mishneh Torah, Torah Study", "תלמוד תורה"],
+  ["משנה תורה, הלכות מעילה", "Mishneh Torah, Trespass", "מעילה"],
+  ["משנה תורה, הלכות כלים", "Mishneh Torah, Vessels", "כלים"],
+  ["משנה תורה, הלכות כלי המקדש והעובדין בו", "Mishneh Torah, Vessels of the Sanctuary and Those Who Serve Therein", "כלי המקדש"],
+  ["משנה תורה, הלכות נערה בתולה", "Mishneh Torah, Virgin Maiden", "נערה בתולה"],
+  ["משנה תורה, הלכות נדרים", "Mishneh Torah, Vows", "נדרים"],
+  ["משנה תורה, הלכות סוטה", "Mishneh Torah, Woman Suspected of Infidelity", "סוטה"],
+];
+
+const RAMBAM = RAMBAM_NAMES.map(([heTitle, englishTitle, topic]) => {
+  // Each topic accepts these prefixes (and ONLY these prefixes — bare topic
+  // would conflict with Mishnah/Bavli):
+  //   "רמב"ם <topic>" / "רמבם <topic>"
+  //   "רמב"ם הלכות <topic>" / "רמב"ם הל <topic>"
+  //   "משנה תורה הלכות <topic>" / "משנה תורה <topic>"
+  //   The full canonical heTitle.
+  const all = [
+    `רמבם ${topic}`,
+    `רמבם הלכות ${topic}`,
+    `רמבם הל ${topic}`,
+    `משנה תורה ${topic}`,
+    `משנה תורה הלכות ${topic}`,
+    heTitle,
+  ];
+  return E("rambam", heTitle, englishTitle, all);
+});
+
+// === Shulchan Arukh (4 chelkim) ==================================
+// Standard ראשי-תיבות:
+//   או"ח = אורח חיים
+//   יו"ד = יורה דעה
+//   אה"ע = אבן העזר   (also אבהע"ז)
+//   חו"מ = חושן משפט   (also חו"מ, חוש"מ)
+// User typically writes "שו"ע או"ח סי' רב סע' א" or "או"ח רב, א".
+
+const SHULCHAN_ARUKH = [
+  E("shulchan_arukh", "שולחן ערוך, אורח חיים", "Shulchan Arukh, Orach Chayim", [
+    "שולחן ערוך אורח חיים",
+    "שוע אורח חיים",
+    "שוע אוח",
+    "אורח חיים",
+    "אוח",
+    "שולחן ערוך אוח",
+  ]),
+  E("shulchan_arukh", "שולחן ערוך, יורה דעה", "Shulchan Arukh, Yoreh De'ah", [
+    "שולחן ערוך יורה דעה",
+    "שוע יורה דעה",
+    "שוע יוד",
+    "יורה דעה",
+    "יוד",
+    "שולחן ערוך יוד",
+  ]),
+  E("shulchan_arukh", "שולחן ערוך, אבן העזר", "Shulchan Arukh, Even HaEzer", [
+    "שולחן ערוך אבן העזר",
+    "שוע אבן העזר",
+    "שוע אהע",
+    "אבן העזר",
+    "אהע",
+    "אבהעז",
+    "שולחן ערוך אהע",
+  ]),
+  E("shulchan_arukh", "שולחן ערוך, חושן משפט", "Shulchan Arukh, Choshen Mishpat", [
+    "שולחן ערוך חושן משפט",
+    "שוע חושן משפט",
+    "שוע חום",
+    "חושן משפט",
+    "חום",
+    "חושמ",
+    "שולחן ערוך חום",
+  ]),
+];
+
+export const ALL_BOOKS = [...TANAKH, ...MISHNAH, ...BAVLI, ...RAMBAM, ...SHULCHAN_ARUKH];
 
 // Optional helper words the parser can strip *between* book and numbers:
 //   "פרק", "פסוק", "משנה" (when used as "פרק א משנה ב"), "דף", "עמוד"
 // Kept as a separate set so the parser knows to ignore them, not match them.
+// Filler words are normalized through normalizeForAlias before being added to
+// the set, so callers can compare against them without re-folding final-form
+// letters (סימן→סימנ, סעיף→סעיפ, עמוד→עמוד, etc.).
 export const FILLER_WORDS = new Set([
   "פרק", "פר", "פ",
   "פסוק", "פס",
   "משנה", "מש", "מ",
   "דף",
   "עמוד", "עמ", "ע",
-  "הלכה", "הל",
+  "הלכה", "הלכות", "הל",
   "סימן", "סי",
   "סעיף", "סע",
-]);
+].map(normalizeForAlias));
 
 // Amud markers in Bavli: ע"א / ע"ב / "." (amud alef) / ":" (amud bet).
 // The parser converts the daf+amud combo into the chapter index used by the

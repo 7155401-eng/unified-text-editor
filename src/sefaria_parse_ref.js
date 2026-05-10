@@ -55,13 +55,13 @@ function tryParseNumber(tok) {
   if (!tok) return null;
   if (/^\d+$/.test(tok)) return parseInt(tok, 10);
   if (!HEB_NUM_RE.test(tok)) return null;
-  // Reject tokens that are just plural/grammar Hebrew but not gematria —
-  // those resolve to absurdly large numbers (>500). For chapter/verse we
-  // accept up to 200 (Psalms 119 is the longest chapter; Tanakh max chapter
-  // count is 150 in Psalms; Bavli max daf is ~176 for Bava Batra).
+  // Cap at 1000 — covers every realistic chapter/verse/siman/daf:
+  //   Tanakh max chapter = 150 (Psalms), Bavli max daf = 176 (Bava Batra),
+  //   Mishnah max chapter = ~14, Rambam max chapter = ~30, SU max siman = 697.
+  // Tokens beyond 1000 are almost certainly not citations.
   const n = gematria(tok);
   if (n === null) return null;
-  if (n > 200) return null;
+  if (n > 1000) return null;
   return n;
 }
 
@@ -141,10 +141,36 @@ function matchBookPrefix(tokens) {
   return null;
 }
 
+// Compact filler+number forms common in halachic citation:
+//   "פ"א" → after gershayim strip → "פא" → meaning "פרק א" → number 1
+//   "מ"ב" → "מב" → "משנה ב" → 2
+//   "ה"ג" → "הג" → "הלכה ג" → 3
+//   "סי'רב" / "סי״רב" → after strip → "סירב" — also handled here.
+// Maps the two-letter tokens like פ+digit, מ+digit, ה+digit, ס+digit when the
+// suffix is a single Hebrew letter (1-9 in gematria). Two-letter form is the
+// classic style; three-letter forms like "פרק" / "משנה" / "הלכה" go through
+// FILLER_WORDS instead.
+const COMPACT_FILLER_PREFIX = new Set(["פ", "מ", "ה", "ס", "ע"]);
+
+function expandCompactFiller(tok) {
+  if (tok.length !== 2) return null;
+  const prefix = tok[0];
+  const tail = tok[1];
+  if (!COMPACT_FILLER_PREFIX.has(prefix)) return null;
+  // Tail must be a single Hebrew letter that is also a 1-9 unit gematria value.
+  // Specifically: not a tens letter (י/כ/ל/מ/נ/ס/ע/פ/צ) — those would imply
+  // a real two-letter number like "מב" = 42, not "פרק 2".
+  const tailVal = HEB_LETTER_VALUES[tail];
+  if (tailVal === undefined || tailVal < 1 || tailVal > 9) return null;
+  return tailVal;
+}
+
 // Read up to two number-tokens from `tokens`, skipping FILLER_WORDS and
 // "." / ":" tokens (which are amud markers handled separately for Bavli).
 // Returns { numbers: number[], amudHint: "א"|"ב"|null, consumed: number }.
-function readNumbersAndAmud(tokens, isBavli) {
+// allowCompact is true only for rambam/shulchan_arukh — for Tanakh, "תהילים פב"
+// must parse as chapter 82, not "פרק ב" = 2.
+function readNumbersAndAmud(tokens, isBavli, allowCompact = false) {
   const numbers = [];
   let amudHint = null;
   let i = 0;
@@ -163,6 +189,15 @@ function readNumbersAndAmud(tokens, isBavli) {
     if (FILLER_WORDS.has(t)) {
       i++;
       continue;
+    }
+    // Compact form: "פא" / "מב" / "הג" — equivalent to "פרק א" / "משנה ב" / "הלכה ג".
+    if (allowCompact) {
+      const compact = expandCompactFiller(t);
+      if (compact !== null) {
+        numbers.push(compact);
+        i++;
+        continue;
+      }
     }
     // Bavli amud markers as words: "ע"א" (which after stripping gershayim
     // becomes the two tokens "ע" + "א") or just the single token "עא"/"עב".
@@ -223,7 +258,6 @@ export function parseUserRefSync(text) {
   if (!norm) return [];
   const tokens = tokenize(norm);
   if (tokens.length < 2) return [];
-
   const matched = matchBookPrefix(tokens);
   if (!matched) return [];
 
@@ -234,7 +268,11 @@ export function parseUserRefSync(text) {
   const out = [];
   for (const book of matched.books) {
     const isBavli = book.corpus === "bavli";
-    const { numbers, amudHint } = readNumbersAndAmud(rest, isBavli);
+    // Compact filler ("פא" → 1 from "פרק א") is enabled only for Rambam.
+    // For Shulchan Arukh "פז" must remain 87 (a real siman), not "פרק 7".
+    // For Tanakh "תהילים פב" must remain 82, not 2.
+    const allowCompact = book.corpus === "rambam";
+    const { numbers, amudHint } = readNumbersAndAmud(rest, isBavli, allowCompact);
 
     if (numbers.length === 0) {
       // Book name only — no numbers. Skip this candidate; we don't insert
