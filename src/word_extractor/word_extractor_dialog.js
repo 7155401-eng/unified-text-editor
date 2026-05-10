@@ -41,9 +41,11 @@ let _state = {
   paneManagerRef: null,
   onLoadedRef: null,
   brackets: [], // [{ opener:'{', closer:'}', series:'F' }, ...]
+  externals: [], // [{ file, fileName, zipBuf, marker:'@99', series:'G' }, ...] משה 2026-05-10
 };
 
 const BRACKET_SERIES_DEFAULTS = ['F', 'G', 'H', 'I', 'J', 'K', 'L'];
+const EXTERNAL_SERIES_DEFAULTS = ['G', 'H', 'I', 'J', 'K', 'L'];
 
 function nextSeriesLetter(usedSet, defaults) {
   for (const ch of defaults) if (!usedSet.has(ch)) return ch;
@@ -110,6 +112,13 @@ function ensureModalShell() {
         <button type="button" class="we-bracket-add">➕ הוסף קבוצה</button>
       </div>
 
+      <div class="we-external-wrap">
+        <h3>מסמך נפרד (אופציונלי)</h3>
+        <p class="we-external-info">בחר קובץ Word נוסף שיחובר ל-marker מסוים. הסימן (למשל @99) שנמצא בטקסט הראשי יוחלף בהערה מהמסמך הנפרד.</p>
+        <div class="we-external-list"></div>
+        <button type="button" class="we-external-add">➕ הוסף מסמך נפרד</button>
+      </div>
+
       <div class="we-mode-wrap" style="margin:10px 0; padding:8px 10px; border:1px solid var(--border,#ccc); border-radius:6px;">
         <h3 style="margin:0 0 6px;">בעת ייבוא</h3>
         <label style="display:block; padding:3px 0;">
@@ -140,6 +149,7 @@ function ensureModalShell() {
     modal.querySelector('.we-preview').hidden = true;
   });
   modal.querySelector('.we-bracket-add').addEventListener('click', () => addBracketRow());
+  modal.querySelector('.we-external-add').addEventListener('click', () => addExternalRow());
   // close on overlay click
   modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
   return modal;
@@ -184,6 +194,69 @@ function syncBracketsState() {
     closer: row.querySelector('.we-br-close').value || '}',
     series: row.querySelector('.we-br-series').value || 'F',
   }));
+}
+
+// משה 2026-05-10: שורות מסמך נפרד — מאפשר להעלות docx נוסף שיתחבר ל-marker.
+function addExternalRow() {
+  const list = document.querySelector('.we-external-list');
+  if (!list) return;
+  const idx = _state.externals.length;
+  const used = new Set(_state.externals.map(e => e.series));
+  const defSer = nextSeriesLetter(used, EXTERNAL_SERIES_DEFAULTS);
+  const row = document.createElement('div');
+  row.className = 'we-external-row';
+  row.innerHTML = `
+    <button type="button" class="we-ext-pick">בחר קובץ docx</button>
+    <span class="we-ext-name">לא נבחר קובץ</span>
+    <input type="file" accept=".docx" class="we-ext-file" hidden>
+    <label>סימן: <input type="text" class="we-ext-marker" placeholder="@99" maxlength="6" style="width:60px"></label>
+    <label>אות זרם:
+      <select class="we-ext-series">
+        ${'ABCDEFGHIJKL'.split('').map(c => `<option value="${c}"${c === defSer ? ' selected' : ''}>${c}</option>`).join('')}
+      </select>
+    </label>
+    <button type="button" class="we-ext-remove" title="הסר">✕</button>
+  `;
+  const fileInput = row.querySelector('.we-ext-file');
+  row.querySelector('.we-ext-pick').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async (ev) => {
+    const f = ev.target.files && ev.target.files[0];
+    if (!f) return;
+    row.querySelector('.we-ext-name').textContent = f.name;
+    const buf = await f.arrayBuffer();
+    if (!_state.externals[idx]) _state.externals[idx] = {};
+    _state.externals[idx].file = f;
+    _state.externals[idx].fileName = f.name;
+    _state.externals[idx].zipBuf = buf;
+    syncExternalsState();
+  });
+  ['.we-ext-marker', '.we-ext-series'].forEach(sel => {
+    row.querySelector(sel).addEventListener('input', syncExternalsState);
+    row.querySelector(sel).addEventListener('change', syncExternalsState);
+  });
+  row.querySelector('.we-ext-remove').addEventListener('click', () => {
+    row.remove();
+    syncExternalsState();
+  });
+  list.appendChild(row);
+  _state.externals.push({ file: null, fileName: '', zipBuf: null, marker: '', series: defSer });
+  syncExternalsState();
+}
+
+function syncExternalsState() {
+  const rows = document.querySelectorAll('.we-external-row');
+  const arr = [];
+  rows.forEach((row, i) => {
+    const prev = _state.externals[i] || {};
+    arr.push({
+      file: prev.file || null,
+      fileName: prev.fileName || '',
+      zipBuf: prev.zipBuf || null,
+      marker: row.querySelector('.we-ext-marker').value.trim() || '',
+      series: row.querySelector('.we-ext-series').value || 'G',
+    });
+  });
+  _state.externals = arr;
 }
 
 
@@ -492,6 +565,47 @@ async function onConfirm() {
           const existing = result.streams.find(([s]) => s === sym);
           if (existing) existing[1] = existing[1] + '\n' + collected.join('\n');
           else result.streams.push([sym, collected.join('\n')]);
+        }
+      }
+    }
+    // משה 2026-05-10: מסמכים נפרדים — לכל external רץ mammoth, מחליף את ה-marker
+    // בגוף ובגוף ה-HTML בסמל הסדרה, ומוסיף את התוכן כזרם נפרד.
+    syncExternalsState();
+    if (_state.externals && _state.externals.length) {
+      // result.streamsHtml הופך לחובה אם יש externals — נוסיף HTML גם לזרמים שכבר קיימים
+      if (!result.streamsHtml) {
+        result.streamsHtml = result.streams.map(([s, t]) => [s, plainToHtml(t)]);
+      }
+      for (const ex of _state.externals) {
+        if (!ex.zipBuf || !ex.marker) continue;
+        if (!seriesToCode[ex.series]) {
+          seriesToCode[ex.series] = String(nextCode++).padStart(2, '0');
+        }
+        const sym = '@' + seriesToCode[ex.series];
+        const markerNoAt = ex.marker.replace(/^@/, '');
+        const escMarker = markerNoAt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // החלפת @<marker> → @<sym> בגוף הראשי וב-HTML
+        result.main = result.main.replace(new RegExp('@' + escMarker, 'g'), sym);
+        if (bodyHtml) bodyHtml = bodyHtml.replace(new RegExp('@' + escMarker, 'g'), sym);
+        // טעינת המסמך הנפרד דרך mammoth — תמיכה מלאה (bold/lists/tables/images)
+        let extHtml = '';
+        let extPlain = '';
+        try {
+          const mres = await extractBodyHtmlWithSymbols(ex.zipBuf.slice(0), [], {});
+          extHtml = mres.html || '';
+          // טקסט פשוט לזרם הקלאסי
+          extPlain = extHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        } catch (extErr) {
+          console.warn('[word_extractor] external doc failed:', extErr);
+        }
+        if (extHtml || extPlain) {
+          // חיבור לזרם — אם הסמל כבר קיים, מצרפים. אחרת יוצרים חדש.
+          const existing = result.streams.find(([s]) => s === sym);
+          if (existing) existing[1] = existing[1] + '\n' + extPlain;
+          else result.streams.push([sym, extPlain]);
+          const existingH = result.streamsHtml.find(([s]) => s === sym);
+          if (existingH) existingH[1] = existingH[1] + extHtml;
+          else result.streamsHtml.push([sym, extHtml]);
         }
       }
     }

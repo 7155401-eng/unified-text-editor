@@ -659,6 +659,19 @@ async function _dnotes_html(zip, xml_file, note_tag) {
   return out;
 }
 
+// משה 2026-05-10: משלב את הסמל (@01) לתחילת ה-<p> הראשונה של ההערה,
+// במקום לייצר פסקה נפרדת. אם אין <p> בתחילה — עוטף ב-<p> חדש.
+function _prependSymbolToHtml(symbol, html) {
+  const h = String(html || '').trim();
+  if (!h) return `<p>${symbol}</p>`;
+  // אם מתחיל ב-<p ...> — מזריקים את הסמל אחרי תג הפתיחה
+  const m = h.match(/^<p(\s[^>]*)?>/);
+  if (m) {
+    return h.slice(0, m[0].length) + symbol + ' ' + h.slice(m[0].length);
+  }
+  return `<p>${symbol} ${h}</p>`;
+}
+
 // משה 2026-05-10: מסיר את ה-marker @N: מתחילת ה-HTML, גם אם הוא בתוך <strong>.
 function _stripMarkerFromHtml(html, marker) {
   if (!html || !marker) return html;
@@ -727,7 +740,7 @@ export async function docx_extract_simple(input, selected, opts = {}) {
             // משה 2026-05-10: גרסת HTML — מסיר את ה-marker ומוסיף את הסמל בתחילת ה-HTML
             const rawHtml = fn_h[fid] || '';
             const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
-            snHtml[s].push(`<p>${s}</p>${stripped}`);
+            snHtml[s].push(_prependSymbolToHtml(s, stripped));
           }
         }
       } else if (ln === 'endnoteReference') {
@@ -738,7 +751,7 @@ export async function docx_extract_simple(input, selected, opts = {}) {
             pt.push(s); sn[s].push(`${s}${c}`);
             const rawHtml = en_h[eid] || '';
             const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
-            snHtml[s].push(`<p>${s}</p>${stripped}`);
+            snHtml[s].push(_prependSymbolToHtml(s, stripped));
           }
         }
       } else if (ln === 'commentReference') {
@@ -749,7 +762,7 @@ export async function docx_extract_simple(input, selected, opts = {}) {
             pt.push(s); sn[s].push(`${s}${c}`);
             const rawHtml = cm_h[cid] || '';
             const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
-            snHtml[s].push(`<p>${s}</p>${stripped}`);
+            snHtml[s].push(_prependSymbolToHtml(s, stripped));
           }
         }
       } else if (ln === 'br') {

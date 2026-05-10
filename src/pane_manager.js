@@ -15,6 +15,9 @@ import TaskItem from "@tiptap/extension-task-item";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Youtube from "@tiptap/extension-youtube";
+import Highlight from "@tiptap/extension-highlight";
+// משה 2026-05-10: הרחבות מותאמות ל-line-height ו-indent (ייבוא DOCX).
+import { LineHeight, Indent } from "./tiptap_custom_extensions.js";
 import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js";
 import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
@@ -126,6 +129,9 @@ function buildEditorExtensions() {
     TableRowExt,
     TableCellExt,
     StreamMark,
+    Highlight.configure({ multicolor: true }),
+    LineHeight,
+    Indent,
   ];
 }
 
