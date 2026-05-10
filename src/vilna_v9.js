@@ -170,6 +170,12 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     while (linesInStrip < availableLines && tokenIdx < tokens.length) {
       const line = buildOneLine(tokens, tokenIdx, strip.width, metrics);
       if (line.tokensConsumed === 0) break;
+      // משה 2026-05-10: \n בודד בלי מילים = שורה ריקה. צרכים את הטוקן אבל
+      // לא מציירים שורה — אחרת רואים פער ויזואלי בלי תוכן.
+      if (line.words.length === 0 && line.forcedBreak) {
+        tokenIdx += line.tokensConsumed;
+        continue;
+      }
       linesConsumed.push(line);
       tokenIdx += line.tokensConsumed;
       linesInStrip++;
