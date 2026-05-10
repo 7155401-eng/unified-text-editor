@@ -91,6 +91,7 @@ const ENGINE_API_PREFIXES = [
   '/api/streams/',
   '/api/ai-tools/',
   '/api/tools/',
+  '/api/nikud-merger',
   '/api/caricature',
 ];
 
@@ -153,6 +154,7 @@ const RATE_LIMITS = {
   '/api/ai-tools/gas': { window: 60, max: 60 },
   '/api/ai-tools/chat': { window: 60, max: 60 },
   '/api/tools/preflight': { window: 60, max: 240 },
+  '/api/nikud-merger': { window: 60, max: 120 },
   '/api/admin': { window: 60, max: 300 },
   '/api/documents': { window: 60, max: 120 },
   '/api/settings': { window: 60, max: 120 },

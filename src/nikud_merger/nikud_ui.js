@@ -10,7 +10,7 @@ import {
   checkText, summarizeIssues,
   saveProject, loadProject, autosave, loadAutosave,
   makeProjectData, makeTabData,
-} from "./nikud_engine.js";
+} from "./nikud_client_engine.js";
 import * as i18n from "./nikud_i18n.js";
 import * as theme from "./nikud_theme.js";
 import { HebrewTextBox, FilterPanel, DiffView } from "./nikud_widgets.js";
@@ -271,12 +271,12 @@ export class MergerTab {
     this.filterSummary.textContent = i18n.t("filter_summary", { n: active });
   }
 
-  _checkQuality() {
+  async _checkQuality() {
     if (this._sources.length === 0) return;
     const text = this._sources[0].tb.getContent();
     if (!text.trim()) return;
-    const issues = checkText(text);
-    const summary = summarizeIssues(issues);
+    const issues = await checkText(text);
+    const summary = await summarizeIssues(issues);
     if (summary.total === 0) {
       alert(i18n.isRtl() ? "לא נמצאו בעיות ניקוד." : "No nikud issues.");
       return;
@@ -382,21 +382,21 @@ export class MergerTab {
     setTimeout(() => this._runMerge(clean, sources), 10);
   }
 
-  _runMerge(clean, sources) {
+  async _runMerge(clean, sources) {
     try {
       const onProgress = (pct) => {
         this.progressBar.value = pct;
       };
       let result;
       if (sources.length === 1) {
-        result = merge(clean, sources[0][1], {
+        result = await merge(clean, sources[0][1], {
           config: this.filterConfig,
           progressCallback: onProgress,
           stopFlag: this.stopFlag,
           mode: this._mergeMode,
         });
       } else {
-        const mr = mergeAllSources(clean, sources, {
+        const mr = await mergeAllSources(clean, sources, {
           config: this.filterConfig,
           progressCallback: onProgress,
           stopFlag: this.stopFlag,

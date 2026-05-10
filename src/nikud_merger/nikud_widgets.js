@@ -11,7 +11,7 @@ import {
   SCOPE_LABELS, SCOPE_LABELS_EN,
   SegmentKind,
   renderAsHtml, renderAsPlain,
-} from "./nikud_engine.js";
+} from "./nikud_client_engine.js";
 import * as i18n from "./nikud_i18n.js";
 
 const SCOPE_VALUES = [SCOPE_OFF, SCOPE_VOC, SCOPE_CLEAN, SCOPE_BOTH];
