@@ -142,18 +142,18 @@ async function _request(url, params) {
 // Public API
 // ──────────────────────────────────────────────────────────────────────
 export function getIndex() {
-  return _request(`${BASE_URL}/api/index`);
+  return _request(`${BASE_URL}/index`);
 }
 
 export function getShape(bookName) {
-  return _request(`${BASE_URL}/api/shape/${encodeURIComponent(bookName)}`);
+  return _request(`${BASE_URL}/shape/${encodeURIComponent(bookName)}`);
 }
 
 export async function getText(ref, opts) {
   opts = opts || {};
   const params = { return_format: "default" };
   if (opts.version) params.versions = opts.version;
-  const data = await _request(`${BASE_URL}/api/v3/texts/${encodeURIComponent(ref)}`, params);
+  const data = await _request(`${BASE_URL}/v3/texts/${encodeURIComponent(ref)}`, params);
   if (data === null) return null;
   if (data && typeof data === "object") {
     const versions = data.versions || [];
@@ -190,15 +190,15 @@ export function stripMarks(s, keepVowels, keepCantillation) {
 
 export function getLinks(ref, withText) {
   const wt = (withText === undefined || withText === true) ? 1 : 0;
-  return _request(`${BASE_URL}/api/links/${encodeURIComponent(ref)}`, { with_text: wt });
+  return _request(`${BASE_URL}/links/${encodeURIComponent(ref)}`, { with_text: wt });
 }
 
 export function getCalendars() {
-  return _request(`${BASE_URL}/api/calendars`);
+  return _request(`${BASE_URL}/calendars`);
 }
 
 export function getVersions(bookName) {
-  return _request(`${BASE_URL}/api/texts/versions/${encodeURIComponent(bookName)}`);
+  return _request(`${BASE_URL}/texts/versions/${encodeURIComponent(bookName)}`);
 }
 
 // High-level helpers
