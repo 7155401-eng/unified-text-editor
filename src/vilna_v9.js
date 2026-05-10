@@ -668,17 +668,24 @@ function buildPagePlan(pageContent, config) {
     // מדלג על הכותרת בראש (יקבל אותה מתחת לכתר, מעל התוכן שלו).
     if (fullCrownSide === 'right') pass2Right.fullWidthTitle = true;
     if (fullCrownSide && fullCrownSide !== 'right') pass2Right.skipTopTitle = true;
-    // משה 2026-05-10: סימון לצורה 1 — רק שם נדרשת מרכוז שורה אחרונה רוחב מלא
     if (scenario.name === 'one_long_split') pass2Right.isScenario1Split = true;
     result.streamBoxes.push(pass2Right);
-    if (pass2Right.overflowText) result.overflow.streams[pass2Right.id] = pass2Right.overflowText;
+    // משה 2026-05-10: בתרחיש 1, שני הצדדים = אותו זרם, אותו id. אם נכתוב שניהם
+    // לאותו מפתח באוברפלאו — השני ידרוס את הראשון ותוכן ייאבד. במקום, נצרף.
+    if (pass2Right.overflowText) {
+      const prev = result.overflow.streams[pass2Right.id] || '';
+      result.overflow.streams[pass2Right.id] = prev ? (prev + ' ' + pass2Right.overflowText) : pass2Right.overflowText;
+    }
   }
   if (pass2Left) {
     if (fullCrownSide === 'left') pass2Left.fullWidthTitle = true;
     if (fullCrownSide && fullCrownSide !== 'left') pass2Left.skipTopTitle = true;
     if (scenario.name === 'one_long_split') pass2Left.isScenario1Split = true;
     result.streamBoxes.push(pass2Left);
-    if (pass2Left.overflowText) result.overflow.streams[pass2Left.id] = pass2Left.overflowText;
+    if (pass2Left.overflowText) {
+      const prev = result.overflow.streams[pass2Left.id] || '';
+      result.overflow.streams[pass2Left.id] = prev ? (prev + ' ' + pass2Left.overflowText) : pass2Left.overflowText;
+    }
   }
 
   // 5. footers — חתוך לפי גבולות הדף.
@@ -826,8 +833,8 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.className = 'v9-line' + (colorClass || '');
       const shouldJustify = !line.isLast && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
-      // משה 2026-05-10: צורה 1 בלבד — שורה אחרונה ברוחב מלא ממורכזת.
-      const isFullWidthOrphan = box.isScenario1Split && line.isLast && line.width >= innerW - 5;
+      // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת (לפי כללי ספרי קודש).
+      const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
       if (isFullWidthOrphan) lineEl.className += ' center';
       else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
