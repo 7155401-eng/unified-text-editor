@@ -181,6 +181,7 @@ function readTheme() {
   try {
     const hostTheme = (document.body?.dataset?.theme || document.documentElement?.dataset?.theme || "").toLowerCase();
     if (hostTheme === "royal") return "royal";
+    if (hostTheme === "light" || document.body?.classList?.contains("light-theme")) return "light";
     if (hostTheme === "dark" || document.body?.classList?.contains("dark-theme")) return "dark";
     const t = (localStorage.getItem("ravtext.theme") || "").toLowerCase();
     return t === "dark" ? "dark" : "light";
