@@ -79,6 +79,10 @@ async function handleCallback(request, env, url) {
   if (!email || info.email_verified === false) {
     return Response.redirect(`${url.origin}/?login=no_email`, 302);
   }
+  // משה 2026-05-10: שומרים שם פרטי + משפחה מ-Google userinfo כדי לשלוח אותם
+  // ליעד שריג כ-ClientName/ClientLName. בלי זה יעד שריג דוחים עם שגיאה 401.
+  const firstName = String(info.given_name || '').trim().slice(0, 50);
+  const lastName = String(info.family_name || '').trim().slice(0, 50);
 
   const nowSec = Math.floor(Date.now() / 1000);
   let row = await env.DB.prepare(
@@ -91,14 +95,18 @@ async function handleCallback(request, env, url) {
   // הטקסטים וההגדרות שלו (טבלאות נפרדות בעתיד) קשורים למייל ולכן נשמרים בין כניסות.
   if (!row) {
     await env.DB.prepare(
-      'INSERT INTO users (email, status, expires_at, is_admin) VALUES (?, ?, 0, 0)'
-    ).bind(email, 'unauthorized').run();
+      'INSERT INTO users (email, status, expires_at, is_admin, first_name, last_name) VALUES (?, ?, 0, 0, ?, ?)'
+    ).bind(email, 'unauthorized', firstName || null, lastName || null).run();
     row = await env.DB.prepare(
       'SELECT id, email, status, expires_at FROM users WHERE email = ?'
     ).bind(email).first();
   }
 
-  await env.DB.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(nowSec, row.id).run();
+  // משה 2026-05-10: עדכון שם בכל כניסה (מקרים: משתמש קיים שמיגרציה הוסיפה לו עמודות
+  // ריקות, או שינוי שם בגוגל). לא דורסים אם אין שם חדש.
+  await env.DB.prepare(
+    'UPDATE users SET last_login_at = ?, first_name = COALESCE(NULLIF(?, \'\'), first_name), last_name = COALESCE(NULLIF(?, \'\'), last_name) WHERE id = ?'
+  ).bind(nowSec, firstName, lastName, row.id).run();
 
   // עוגייה ניתנת תמיד. paid/demo נקבע בכל בקשה לפי status ב-DB.
   const cookie = await buildSessionCookie(email, env);

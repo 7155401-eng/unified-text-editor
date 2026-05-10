@@ -124,6 +124,8 @@ async function buildYaadRedirect(env, intent, returnOrigin) {
     UTF8: 'True',
     UTF8out: 'True',
     UserId: intent.idNumber || '0',
+    ClientName: intent.firstName || '',
+    ClientLName: intent.lastName || '',
     Tash: '1',
     FixTash: 'True',
     sendemail: 'True',
@@ -164,7 +166,9 @@ async function startYaad(request, env, url) {
   }
   // משה 2026-05-09/10: חובה טלפון לפני תשלום (לחשבונית). ת.ז. כבר נאספת
   // בטופס האשראי של יעד שריג עצמו — אין כפילות אצלנו.
-  const userRow = await env.DB.prepare('SELECT phone_e164, id_number FROM users WHERE id = ?').bind(user.id).first();
+  const userRow = await env.DB.prepare(
+    'SELECT phone_e164, id_number, first_name, last_name, email FROM users WHERE id = ?'
+  ).bind(user.id).first();
   if (!userRow?.phone_e164) {
     return jsonError('phone_required: יש להזין טלפון לפני התשלום', 412);
   }
@@ -184,8 +188,20 @@ async function startYaad(request, env, url) {
     'pending', nowSec
   ).run();
 
+  // משה 2026-05-10: יעד שריג דורשים ClientName/ClientLName. אם אין שם מ-Google,
+  // נופלים על שם המשתמש (חלק לפני @ במייל) — עדיף ערך כלשהו על דחייה.
+  const fallback = (userRow.email || '').split('@')[0] || 'לקוח';
+  const firstName = (userRow.first_name || fallback).slice(0, 30);
+  const lastName = (userRow.last_name || fallback).slice(0, 30);
   // UserId='0' מאפשר ליעד שריג לבקש את ה-ת.ז. בעמוד שלהם.
-  const intent = { token, amount: choice.def.amount, label, idNumber: userRow.id_number || '0' };
+  const intent = {
+    token,
+    amount: choice.def.amount,
+    label,
+    idNumber: userRow.id_number || '0',
+    firstName,
+    lastName,
+  };
   const redirectUrl = await buildYaadRedirect(env, intent, url.origin);
   return jsonResponse({ redirectUrl, token });
 }
