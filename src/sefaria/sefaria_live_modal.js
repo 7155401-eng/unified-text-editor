@@ -99,7 +99,7 @@ const _verseCache = new Map();
 async function fetchVerseFromSefaria(book, chapter, verse) {
   const key = `${book}|${chapter}|${verse}`;
   if (_verseCache.has(key)) return { text: _verseCache.get(key), error: null };
-  const url = `https://www.sefaria.org/api/texts/${encodeURIComponent(book)}.${chapter}.${verse}?context=0&lang=he`;
+  const url = `/api/sefaria/texts/${encodeURIComponent(book)}.${chapter}.${verse}?context=0&lang=he`;
   let resp;
   try {
     const r = await fetch(url, { headers: { Accept: "application/json" } });

@@ -12,7 +12,7 @@ import {
   getBlocks,
   escapeHtml,
   ensureVendorLoaded,
-} from "./text_compare_engine.js";
+} from "./text_compare_client_engine.js";
 import {
   loadSettings,
   saveSettings,
@@ -464,10 +464,6 @@ function bindFile(inputId, targetId) {
 
 /* === Smart Compare action === */
 function runSmartCompare() {
-  if (typeof window.Diff === "undefined") {
-    alert("ספריית diff לא נטענה. נסה שוב בעוד רגע.");
-    return;
-  }
   const t1 = $("doc1").value;
   const t2 = $("doc2").value;
   if (!t1.trim() || !t2.trim()) {
@@ -483,9 +479,9 @@ function runSmartCompare() {
     long
   );
 
-  setTimeout(() => {
+  setTimeout(async () => {
     try {
-      const report = computeSmartCompare(t1, t2, {
+      const report = await computeSmartCompare(t1, t2, {
         simThreshold: parseInt($("simThreshold").value, 10) || 60,
         consecLimit: parseInt($("consecLimit").value, 10) || 0,
         ignoreNikud: $("ignoreNikud").checked,
@@ -518,10 +514,6 @@ function runSmartCompare() {
 
 /* === Integrity action === */
 function runIntegrityCheck() {
-  if (typeof window.Diff === "undefined") {
-    alert("ספריית diff לא נטענה. נסה שוב בעוד רגע.");
-    return;
-  }
   const base = $("textBase").value;
   const insert = $("textInsert").value;
   const merged = $("textMerged").value;
@@ -537,9 +529,9 @@ function runIntegrityCheck() {
     longLen > 5000
   );
 
-  setTimeout(() => {
+  setTimeout(async () => {
     try {
-      const report = computeIntegrity(base, insert, merged, {
+      const report = await computeIntegrity(base, insert, merged, {
         ignoreNikud: $("integrityIgnoreNikud").checked,
         useIgnoreList: $("integrityUseIgnoreList").checked,
         ignoreItems: settings.ignore_items,

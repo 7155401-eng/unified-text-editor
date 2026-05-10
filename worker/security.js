@@ -22,7 +22,7 @@ const CSP_HTML = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
-  "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://www.sefaria.org",
+  "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com",
   "frame-src 'none'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
@@ -106,6 +106,8 @@ const ENGINE_API_PREFIXES = [
   '/api/ai-tools/',
   '/api/tools/',
   '/api/nikud-merger',
+  '/api/text-compare-pro',
+  '/api/sefaria/',
   '/api/caricature',
 ];
 
@@ -169,6 +171,8 @@ const RATE_LIMITS = {
   '/api/ai-tools/chat': { window: 60, max: 60 },
   '/api/tools/preflight': { window: 60, max: 240 },
   '/api/nikud-merger': { window: 60, max: 120 },
+  '/api/text-compare-pro': { window: 60, max: 120 },
+  '/api/sefaria': { window: 60, max: 180 },
   '/api/admin': { window: 60, max: 300 },
   '/api/documents': { window: 60, max: 120 },
   '/api/settings': { window: 60, max: 120 },

@@ -14,7 +14,7 @@
 
 import { errorsLogPath } from "./sefaria_book_metadata.js";
 
-export const BASE_URL = "https://www.sefaria.org";
+export const BASE_URL = "/api/sefaria";
 export const DEFAULT_TIMEOUT_MS = 15000;
 const RATE_INTERVAL_MS = 1000.0 / 5.0;  // 5 req/sec
 let lastRequestTime = 0;

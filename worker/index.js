@@ -21,6 +21,8 @@ import { handleCaricature } from './caricature.js';
 import { handleAiChat, handleAiTools } from './ai_tools.js';
 import { handleToolPreflight } from './tool_gate.js';
 import { handleNikudMerger } from './nikud_merger.js';
+import { handleTextComparePro } from './text_compare_pro.js';
+import { handleSefariaProxy } from './sefaria_proxy.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -107,6 +109,10 @@ export default {
       response = await handleToolPreflight(request, env);
     } else if (url.pathname === '/api/nikud-merger') {
       response = await handleNikudMerger(request);
+    } else if (url.pathname === '/api/text-compare-pro') {
+      response = await handleTextComparePro(request);
+    } else if (url.pathname.startsWith('/api/sefaria/')) {
+      response = await handleSefariaProxy(request, url);
     } else if (url.pathname === '/admin' || url.pathname === '/admin/') {
       const adminUrl = new URL(request.url);
       adminUrl.pathname = '/admin.html';
