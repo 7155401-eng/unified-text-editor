@@ -75,6 +75,10 @@ const ALLOWED_ORIGINS = new Set([
   'https://app.ravtext.com',
   'https://unified-text-editor.7155401.workers.dev',
   'https://ravtext.com',
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+  'http://127.0.0.1:8787',
+  'http://localhost:8787',
 ]);
 
 // Engine endpoints — אסור לקרוא להם בלי Origin תקף.
@@ -85,6 +89,7 @@ const ENGINE_API_PREFIXES = [
   '/api/balance/',
   '/api/mishna/',
   '/api/streams/',
+  '/api/ai-tools/',
 ];
 
 export function isEngineApi(pathname) {
@@ -143,6 +148,8 @@ const RATE_LIMITS = {
   '/api/balance/decide': { window: 60, max: 600 },
   '/api/mishna/decide': { window: 60, max: 600 },
   '/api/caricature': { window: 60, max: 30 },
+  '/api/ai-tools/gas': { window: 60, max: 60 },
+  '/api/ai-tools/chat': { window: 60, max: 60 },
   '/api/admin': { window: 60, max: 300 },
   '/api/documents': { window: 60, max: 120 },
   '/api/settings': { window: 60, max: 120 },

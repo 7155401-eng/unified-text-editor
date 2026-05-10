@@ -3,9 +3,7 @@
 // === כתובת ה-Web App מגיעה מ-gas_config.py בריפו (מקור-אמת יחיד) ===
 // RAVTEXT_GAS_URL גובר אם הוגדר.
 export const DEFAULT_GAS_URL = (
-  "https://script.google.com/macros/s/" +
-  "AKfycbyvt7yUPa2jNiTtTzKli8R8GmNI_plIeOwwFuTgu733es5mFfhEKcTcInP3yzFnlQQCvw" +
-  "/exec"
+  "/api/ai-tools/gas"
 );
 
 function _log(msg, level = "INFO") {

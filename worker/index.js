@@ -18,6 +18,7 @@ import { handleAccount } from './account.js';
 import { handlePaymentAdmin, handlePackageLookup } from './payment_admin.js';
 import { runRecurringBilling, handleManualRecur } from './recurring.js';
 import { handleCaricature } from './caricature.js';
+import { handleAiChat, handleAiTools } from './ai_tools.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -96,6 +97,10 @@ export default {
       response = await handleStorage(request, env, url);
     } else if (url.pathname === '/api/caricature') {
       response = await handleCaricature(request, env);
+    } else if (url.pathname === '/api/ai-tools/gas') {
+      response = await handleAiTools(request, env);
+    } else if (url.pathname === '/api/ai-tools/chat') {
+      response = await handleAiChat(request);
     } else if (url.pathname === '/admin' || url.pathname === '/admin/') {
       const adminUrl = new URL(request.url);
       adminUrl.pathname = '/admin.html';

@@ -3,9 +3,7 @@
 // "All AI through GAS" — never call Anthropic/Gemini directly from JS.
 
 export const DEFAULT_GAS_URL = (
-  "https://script.google.com/macros/s/" +
-  "AKfycbyvt7yUPa2jNiTtTzKli8R8GmNI_plIeOwwFuTgu733es5mFfhEKcTcInP3yzFnlQQCvw" +
-  "/exec"
+  "/api/ai-tools/gas"
 );
 
 export class GasServerError extends Error {

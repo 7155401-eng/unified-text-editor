@@ -110,89 +110,16 @@ async function callAI(prompt) {
     alert(`נדרש מפתח API לספק "${provider}". הזן בהגדרות → מפתחות AI אישיים.`);
     return null;
   }
-  if (provider === "anthropic") {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await resp.json();
-    return data.content?.[0]?.text || JSON.stringify(data);
+  const resp = await fetch("/api/ai-tools/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, api_key: apiKey, prompt }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) {
+    throw new Error(data.message || data.error || `AI request failed (${resp.status})`);
   }
-  if (provider === "openai") {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await resp.json();
-    return data.choices?.[0]?.message?.content || JSON.stringify(data);
-  }
-  if (provider === "google") {
-    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 2000 },
-      }),
-    });
-    const data = await resp.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data);
-  }
-  if (provider === "mistral") {
-    const resp = await fetch("https://api.mistral.ai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "mistral-large-latest",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await resp.json();
-    return data.choices?.[0]?.message?.content || JSON.stringify(data);
-  }
-  if (provider === "groq") {
-    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await resp.json();
-    return data.choices?.[0]?.message?.content || JSON.stringify(data);
-  }
-  if (provider === "deepseek") {
-    const resp = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-    const data = await resp.json();
-    return data.choices?.[0]?.message?.content || JSON.stringify(data);
-  }
-  return null;
+  return data.text || JSON.stringify(data);
 }
 
 // Drag-resize: handle sits on left or right edge of panel; cursor delta updates the panel's
