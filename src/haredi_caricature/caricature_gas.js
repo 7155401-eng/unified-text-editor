@@ -13,9 +13,7 @@
 
 // כתובת ברירת מחדל מגיעה מ-gas_config (אותה זו שב-Python).
 const DEFAULT_FROM_CONFIG =
-  "https://script.google.com/macros/s/" +
-  "AKfycbyvt7yUPa2jNiTtTzKli8R8GmNI_plIeOwwFuTgu733es5mFfhEKcTcInP3yzFnlQQCvw" +
-  "/exec";
+  "/api/caricature";
 
 export const TIMEOUT_SECONDS = 240;
 
@@ -33,7 +31,10 @@ function gasUrl() {
   // מאפשר עדכון runtime בלי לערוך את הקובץ
   try {
     const override = localStorage.getItem(LS_KEY_GAS);
-    if (override && override.trim()) return override.trim();
+    if (override && override.trim()) {
+      const value = override.trim();
+      if (!value.includes("script.google.com/macros/")) return value;
+    }
   } catch (e) { /* ignore */ }
   return DEFAULT_FROM_CONFIG;
 }
