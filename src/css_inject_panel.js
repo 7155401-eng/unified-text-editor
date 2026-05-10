@@ -332,13 +332,41 @@ function buildPanel() {
     }
     #${PANEL_ID} .ci-btn-primary:hover { background: var(--word-blue-dark,#185ABD); }
     #${TOGGLE_ID} {
-      background: var(--btn,#fff); color: var(--word-blue,#2B579A);
-      border: 1px solid var(--border,#d0d0d4); border-radius: 4px;
-      padding: 4px 10px; font-size: 12px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 5px;
+      background: linear-gradient(135deg, #faf6ff 0%, #f0f6ff 50%, #ecfeff 100%);
+      color: #4c1d95;
+      border: 1px solid #c4b5fd; border-radius: 6px;
+      padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
       margin-inline-start: 8px;
+      box-shadow: 0 1px 2px rgba(124, 58, 237, 0.10);
+      transition: all 0.18s ease;
     }
-    #${TOGGLE_ID}:hover { background: var(--btn-h,#f0f0f0); }
-    #${TOGGLE_ID}.active { background: var(--word-blue,#2B579A); color: #fff; }
+    #${TOGGLE_ID} .ci-toggle-icon {
+      width: 16px; height: 16px; flex: 0 0 auto;
+      filter: drop-shadow(0 1px 1px rgba(124, 58, 237, 0.20));
+    }
+    #${TOGGLE_ID} .ci-toggle-label {
+      letter-spacing: 0.5px;
+      background: linear-gradient(135deg, #7C3AED, #2563EB, #06B6D4);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent; color: transparent;
+    }
+    #${TOGGLE_ID}:hover {
+      background: linear-gradient(135deg, #f3e8ff 0%, #dbeafe 50%, #cffafe 100%);
+      border-color: #a78bfa; transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(124, 58, 237, 0.18);
+    }
+    #${TOGGLE_ID}.active {
+      background: linear-gradient(135deg, #7C3AED 0%, #2563EB 50%, #06B6D4 100%);
+      border-color: #6d28d9; color: #fff;
+      box-shadow: 0 2px 6px rgba(124, 58, 237, 0.35);
+    }
+    #${TOGGLE_ID}.active .ci-toggle-icon path,
+    #${TOGGLE_ID}.active .ci-toggle-icon circle { fill: #fff; stroke: #fff; }
+    #${TOGGLE_ID}.active .ci-toggle-label {
+      -webkit-text-fill-color: #fff; color: #fff;
+      background: none;
+    }
     .preview-pane.has-css-panel { display: flex; flex-direction: row-reverse; }
     .preview-pane.has-css-panel > #${PANEL_ID} { order: -1; }
   `;
@@ -366,8 +394,24 @@ function buildPanel() {
     const toggle = document.createElement("button");
     toggle.id = TOGGLE_ID;
     toggle.type = "button";
-    toggle.title = "פאנל CSS + AI";
-    toggle.textContent = "{ } CSS";
+    toggle.title = "AI · עיצוב חכם בעזרת בינה מלאכותית";
+    toggle.innerHTML = `
+      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" class="ci-toggle-icon">
+        <defs>
+          <linearGradient id="ci-ai-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%"  stop-color="#7C3AED"/>
+            <stop offset="50%" stop-color="#2563EB"/>
+            <stop offset="100%" stop-color="#06B6D4"/>
+          </linearGradient>
+        </defs>
+        <path d="M10 2.2 L11.4 6.4 L15.6 7.5 L12.2 10 L13.2 14.2 L10 11.9 L6.8 14.2 L7.8 10 L4.4 7.5 L8.6 6.4 Z"
+              fill="url(#ci-ai-grad)" stroke="url(#ci-ai-grad)" stroke-width="0.6" stroke-linejoin="round"/>
+        <circle cx="16.2" cy="3.8" r="1.0" fill="url(#ci-ai-grad)"/>
+        <circle cx="3.6"  cy="14.2" r="0.8" fill="url(#ci-ai-grad)"/>
+        <circle cx="15.6" cy="15.0" r="0.7" fill="url(#ci-ai-grad)"/>
+      </svg>
+      <span class="ci-toggle-label">AI</span>
+    `;
     toggle.addEventListener("click", () => {
       const willOpen = panel.hidden;
       panel.hidden = !willOpen ? true : false;
