@@ -22,6 +22,12 @@ import {
   DAILY_FREE_CHARS, usedToday, canSend, recordUsage,
 } from "./torah_nikud_quota.js";
 import { hasCurrentAppLicense } from "../current_license.js";
+import {
+  getSyncedClaudeApiKey,
+  getSyncedGeminiApiKey,
+  saveSyncedClaudeApiKey,
+  saveSyncedGeminiApiKey,
+} from "../ai_key_sync.js";
 
 const SETTINGS_KEY = "ravtext.torah_nikud.settings";
 const RECENT_KEY = "ravtext.torah_nikud.recent";
@@ -865,6 +871,8 @@ function wireEvents() {
     saveSetting("access_code", $("tnk-access-code").value.trim());
     saveSetting("gemini_api_key", $("tnk-gemini-key").value.trim());
     saveSetting("claude_api_key", $("tnk-claude-key").value.trim());
+    saveSyncedGeminiApiKey($("tnk-gemini-key").value.trim());
+    saveSyncedClaudeApiKey($("tnk-claude-key").value.trim());
     showStep(2);
   });
   $("tnk-btn-back-load").addEventListener("click", () => showStep(1));
@@ -995,8 +1003,8 @@ export async function openTorahNikudModal(opts = {}) {
   modalEl.classList.toggle("light", appearance === "light");
   $("tnk-btn-theme").textContent = appearance === "dark" ? "☀" : "☾";
   $("tnk-access-code").value = stripBidi(cfg.access_code) || "";
-  $("tnk-gemini-key").value = stripBidi(cfg.gemini_api_key) || "";
-  $("tnk-claude-key").value = stripBidi(cfg.claude_api_key) || "";
+  $("tnk-gemini-key").value = getSyncedGeminiApiKey(stripBidi(cfg.gemini_api_key) || "");
+  $("tnk-claude-key").value = getSyncedClaudeApiKey(stripBidi(cfg.claude_api_key) || "");
   const legacyPremiumRadio = modalEl.querySelector('input[name="tnk-api-mode"][value="premium"]');
   const personalRadio = modalEl.querySelector('input[name="tnk-api-mode"][value="personal"]');
   if (hasCurrentAppLicense()) {

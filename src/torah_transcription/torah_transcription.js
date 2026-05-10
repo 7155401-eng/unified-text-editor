@@ -5,6 +5,7 @@
 import "./torah_transcription.css";
 import { TranscriptionWindow } from "./torah_transcription_ui.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
+import { openTorahLinguisticEditor } from "./torah_linguistic_editing.js";
 
 /**
  * משה 2026-05-10: שלושה כפתורים נפרדים — תמלול אודיו (STT), OCR (סריקת תמונה),
@@ -109,32 +110,5 @@ export async function openTranscriptionWindow(paneManager, opts = {}) {
  */
 export async function openLinguisticEditingWindow(paneManager) {
   await assertToolAllowed("torah-transcription");
-  // ניסיון לקחת טקסט נבחר / טקסט שלם מהעורך
-  let initialText = "";
-  try {
-    const editor = paneManager && paneManager.getActiveEditor
-      ? paneManager.getActiveEditor() : null;
-    if (editor) {
-      const sel = editor.state.selection;
-      if (sel && sel.from !== sel.to) {
-        initialText = editor.state.doc.textBetween(sel.from, sel.to, "\n").trim();
-      }
-      if (!initialText) {
-        initialText = editor.getText ? (editor.getText() || "").trim() : "";
-      }
-    }
-  } catch (_) { /* */ }
-
-  if (!initialText) {
-    initialText = window.prompt(
-      "הדבק את הטקסט לעריכה לשונית תורנית:",
-      ""
-    ) || "";
-    if (!initialText.trim()) return null;
-  }
-
-  return openTranscriptionWindow(paneManager, {
-    initialText,
-    jumpToStep: "torah_style",
-  });
+  return openTorahLinguisticEditor({ paneManager });
 }

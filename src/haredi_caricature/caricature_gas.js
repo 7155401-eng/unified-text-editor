@@ -11,6 +11,8 @@
 // ה-Apps Script מבצע: בונה את הפרומפט המלא עם ההנחיות הסודיות,
 // קורא ל-Gemini מהשרת, ומחזיר את התמונות כ-base64.
 
+import { getSyncedGeminiApiKey, saveSyncedGeminiApiKey } from "../ai_key_sync.js";
+
 // כתובת ברירת מחדל מגיעה מ-gas_config (אותה זו שב-Python).
 const DEFAULT_FROM_CONFIG =
   "/api/caricature";
@@ -46,6 +48,8 @@ export function isConfigured() {
 function userApiKey() {
   // מפתח המשתמש מ-localStorage (החלופה של gemini_api_key.txt בדפדפן)
   try {
+    const synced = getSyncedGeminiApiKey();
+    if (synced) return synced;
     const txt = localStorage.getItem(LS_KEY_API);
     if (!txt) return null;
     for (const ln of String(txt).split(/\r?\n/)) {
@@ -62,6 +66,7 @@ export function saveUserApiKey(keys) {
     const cleaned = (keys || [])
       .map((k) => String(k || "").trim())
       .filter(Boolean);
+    if (cleaned[0]) saveSyncedGeminiApiKey(cleaned[0]);
     localStorage.setItem(LS_KEY_API, cleaned.join("\n") + "\n");
     return true;
   } catch (e) {
@@ -71,6 +76,8 @@ export function saveUserApiKey(keys) {
 
 export function loadUserApiKeys() {
   try {
+    const synced = getSyncedGeminiApiKey();
+    if (synced) return [synced];
     const txt = localStorage.getItem(LS_KEY_API);
     if (!txt) return [];
     return String(txt)

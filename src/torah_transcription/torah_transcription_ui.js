@@ -11,6 +11,12 @@ import {
 } from "./torah_transcription_gas.js";
 import { friendlyError } from "./torah_transcription_errors.js";
 import { hasCurrentAppLicense } from "../current_license.js";
+import {
+  getSyncedClaudeApiKey,
+  getSyncedGeminiApiKey,
+  saveSyncedClaudeApiKey,
+  saveSyncedGeminiApiKey,
+} from "../ai_key_sync.js";
 
 const CONFIG_KEY = "ravtext.torah_transcription.config";
 
@@ -143,8 +149,8 @@ export class TranscriptionWindow {
     this.appState = {
       use_premium: useLegacyPremiumMode(!!this.config.use_premium),
       access_code: this.config.access_code || "",
-      gemini_api_key: this.config.gemini_api_key != null ? this.config.gemini_api_key : "",
-      claude_api_key: this.config.claude_api_key || "",
+      gemini_api_key: getSyncedGeminiApiKey(this.config.gemini_api_key != null ? this.config.gemini_api_key : ""),
+      claude_api_key: getSyncedClaudeApiKey(this.config.claude_api_key || ""),
       elevenlabs_api_key: this.config.elevenlabs_api_key || "",
       gemini_only: !!this.config.gemini_only,
       file_path: "",
@@ -1634,6 +1640,8 @@ export class TranscriptionWindow {
       this.appState.access_code = (this.accessEntry.value || "").trim();
       this.appState.gemini_api_key = (this.geminiEntry.value || "").trim();
       this.appState.claude_api_key = (this.claudeEntry.value || "").trim();
+      saveSyncedGeminiApiKey(this.appState.gemini_api_key);
+      saveSyncedClaudeApiKey(this.appState.claude_api_key);
       this.appState.elevenlabs_api_key = (this.elevenlabsEntry.value || "").trim();
       this.appState.gemini_only = !!this.geminiOnlyCheck.checked;
       saveConfig({
