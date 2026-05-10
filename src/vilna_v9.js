@@ -820,12 +820,16 @@ function renderPagePlan(plan, pageEl, cfg) {
   }
 
   function drawBox(box, fontSize, lineHeight, fontFamily, colorClass) {
+    const innerW = plan.pageBox.innerWidth;
     for (const line of box.lines) {
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       const shouldJustify = !line.isLast && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
-      if (shouldJustify) lineEl.className += ' justify';
+      // משה 2026-05-10: צורה 1 בלבד — שורה אחרונה ברוחב מלא ממורכזת.
+      const isFullWidthOrphan = box.isScenario1Split && line.isLast && line.width >= innerW - 5;
+      if (isFullWidthOrphan) lineEl.className += ' center';
+      else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
       lineEl.style.width = line.width + 'px';
