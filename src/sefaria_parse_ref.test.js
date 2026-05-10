@@ -89,5 +89,27 @@ console.log("\n=== Decorations & ambiguity ===");
 expect('בראשית-א-א', hasRef("tanakh", "בראשית", 1, 1), "hyphens");
 expect('בראשית—א—א', hasRef("tanakh", "בראשית", 1, 1), "em-dash hyphens");
 
+console.log("\n=== Rambam ===");
+expect("רמב\"ם הלכות שבת פ\"א ה\"א", hasRef("rambam", "משנה תורה, הלכות שבת", 1, 1));
+expect("רמב\"ם הל' שבת פ\"א ה\"א", hasRef("rambam", "משנה תורה, הלכות שבת", 1, 1));
+expect("רמבם שבת א, א", hasRef("rambam", "משנה תורה, הלכות שבת", 1, 1));
+expect("רמבם הלכות תשובה ג ד", hasRef("rambam", "משנה תורה, הלכות תשובה", 3, 4));
+expect("משנה תורה הלכות שבת א, א", hasRef("rambam", "משנה תורה, הלכות שבת", 1, 1));
+expect("רמבם הלכות שבת פרק כט", hasRef("rambam", "משנה תורה, הלכות שבת", 29, null), "chapter only");
+
+console.log("\n=== Shulchan Arukh ===");
+expect("שו\"ע או\"ח סי' רב סע' א", hasRef("shulchan_arukh", "שולחן ערוך, אורח חיים", 202, 1));
+expect("שוע אוח רב, א", hasRef("shulchan_arukh", "שולחן ערוך, אורח חיים", 202, 1));
+expect("שולחן ערוך אורח חיים רב, א", hasRef("shulchan_arukh", "שולחן ערוך, אורח חיים", 202, 1));
+expect("או\"ח רב א", hasRef("shulchan_arukh", "שולחן ערוך, אורח חיים", 202, 1));
+expect("יו\"ד פז ב", hasRef("shulchan_arukh", "שולחן ערוך, יורה דעה", 87, 2));
+expect("יוד פז ב", hasRef("shulchan_arukh", "שולחן ערוך, יורה דעה", 87, 2));
+expect("חו\"מ רכז ה", hasRef("shulchan_arukh", "שולחן ערוך, חושן משפט", 227, 5));
+expect("אה\"ע יז ג", hasRef("shulchan_arukh", "שולחן ערוך, אבן העזר", 17, 3));
+expect("שו\"ע או\"ח סימן רב", hasRef("shulchan_arukh", "שולחן ערוך, אורח חיים", 202, null), "siman only");
+
+console.log("\n=== Rambam: bare topic does NOT match (must have prefix) ===");
+expect("שבת פ\"א ה\"א", (got) => !got.some(c => c.corpus === "rambam"), "bare 'שבת' is bavli/mishnah, not rambam");
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

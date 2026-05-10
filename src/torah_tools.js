@@ -5,7 +5,7 @@
 // (src/sefaria_local.js → public/data/sefaria/*.json), never from sefaria.org.
 // This eliminates CSP issues, the 500-on-Hebrew-refs bug, and offline failures.
 
-import { getVerseText as _getVerseTextFromMirror, ensureCorpus as _ensureCorpus, listBooks as _listBooks } from "./sefaria_local.js";
+import { getVerseText as _getVerseTextFromMirror, getChapterText as _getChapterTextFromMirror, ensureCorpus as _ensureCorpus, listBooks as _listBooks } from "./sefaria_local.js";
 import { searchByText as _searchByText } from "./sefaria_search.js";
 import { formatCitation as _formatCitation, formatRefLabel as _formatRefLabel } from "./sefaria_ref_format.js";
 import { showMatchDialog as _showMatchDialog } from "./sefaria_match_dialog.js";
@@ -284,14 +284,28 @@ export function wireTorahTools(paneManager) {
   bavliGroup.label = "בבלי";
   bookSel.appendChild(bavliGroup);
 
-  // Populate Mishnah + Bavli on demand when the user opens the dropdown the
-  // first time. Awaiting on focus keeps the initial toolbar render instant.
-  let _populatedMishnahBavli = false;
-  async function populateMishnahBavli() {
-    if (_populatedMishnahBavli) return;
-    _populatedMishnahBavli = true;
+  const rambamGroup = document.createElement("optgroup");
+  rambamGroup.label = "רמב\"ם (משנה תורה)";
+  bookSel.appendChild(rambamGroup);
+
+  const shulchanGroup = document.createElement("optgroup");
+  shulchanGroup.label = "שולחן ערוך";
+  bookSel.appendChild(shulchanGroup);
+
+  // Populate the four secondary corpora on demand when the user opens the
+  // dropdown the first time. Awaiting on focus keeps the initial toolbar
+  // render instant; the JSON fetches run in parallel.
+  let _populatedSecondary = false;
+  async function populateSecondary() {
+    if (_populatedSecondary) return;
+    _populatedSecondary = true;
     try {
-      await Promise.all([_ensureCorpus("mishnah"), _ensureCorpus("bavli")]);
+      await Promise.all([
+        _ensureCorpus("mishnah"),
+        _ensureCorpus("bavli"),
+        _ensureCorpus("rambam"),
+        _ensureCorpus("shulchan_arukh"),
+      ]);
       const fillGroup = (group, corpusName) => {
         const books = _listBooks(corpusName);
         for (const { heTitle } of books) {
@@ -304,13 +318,15 @@ export function wireTorahTools(paneManager) {
       };
       fillGroup(mishnahGroup, "mishnah");
       fillGroup(bavliGroup, "bavli");
+      fillGroup(rambamGroup, "rambam");
+      fillGroup(shulchanGroup, "shulchan_arukh");
     } catch (e) {
-      console.warn("[torah] could not populate Mishnah/Bavli:", e);
-      _populatedMishnahBavli = false;
+      console.warn("[torah] could not populate secondary corpora:", e);
+      _populatedSecondary = false;
     }
   }
-  bookSel.addEventListener("focus", populateMishnahBavli, { once: false });
-  bookSel.addEventListener("mousedown", populateMishnahBavli, { once: false });
+  bookSel.addEventListener("focus", populateSecondary, { once: false });
+  bookSel.addEventListener("mousedown", populateSecondary, { once: false });
 
   const chapInput = document.createElement("input");
   chapInput.type = "number";
@@ -329,7 +345,7 @@ export function wireTorahTools(paneManager) {
   verseInput.style.cssText = "width:60px;font-size:12px;padding:3px 6px;";
 
   // Update placeholders + chap/verse hints when the user picks a book — so
-  // they can see at a glance whether to type a chapter or a daf.
+  // they can see at a glance whether to type a chapter or a daf or a siman.
   bookSel.addEventListener("change", () => {
     const v = bookSel.value;
     if (v.startsWith("bavli::")) {
@@ -338,6 +354,12 @@ export function wireTorahTools(paneManager) {
     } else if (v.startsWith("mishnah::")) {
       chapInput.placeholder = "פרק";
       verseInput.placeholder = "משנה";
+    } else if (v.startsWith("rambam::")) {
+      chapInput.placeholder = "פרק";
+      verseInput.placeholder = "הלכה";
+    } else if (v.startsWith("shulchan_arukh::")) {
+      chapInput.placeholder = "סימן";
+      verseInput.placeholder = "סעיף";
     } else {
       chapInput.placeholder = "פרק";
       verseInput.placeholder = "פסוק";
@@ -358,6 +380,42 @@ export function wireTorahTools(paneManager) {
   niqqudCb.addEventListener("change", () => {
     localStorage.setItem("ravtext.torah.niqqud", niqqudCb.checked ? "1" : "0");
   });
+
+  // "פרק שלם" — when checked, the verse number is ignored and the entire
+  // chapter (or daf, or siman) is inserted as one block. Label adapts to the
+  // selected book's terminology.
+  const wholeLabel = document.createElement("label");
+  wholeLabel.className = "toolbar-checkbox";
+  wholeLabel.title = "כשמסומן — מוכנס הפרק כולו (או דף שלם / סימן שלם); המספר השני נעלם";
+  const wholeCb = document.createElement("input");
+  wholeCb.type = "checkbox";
+  wholeCb.id = "torah-whole-chapter-toggle";
+  wholeCb.checked = false;
+  const wholeText = document.createElement("span");
+  wholeText.textContent = "פרק שלם";
+  wholeLabel.appendChild(wholeCb);
+  wholeLabel.appendChild(wholeText);
+
+  function updateWholeLabel() {
+    const v = bookSel.value;
+    if (v.startsWith("bavli::")) wholeText.textContent = "דף שלם";
+    else if (v.startsWith("shulchan_arukh::")) wholeText.textContent = "סימן שלם";
+    else wholeText.textContent = "פרק שלם";
+  }
+  bookSel.addEventListener("change", updateWholeLabel);
+
+  // When "whole chapter" is on, dim the second number input — visually
+  // signals that it's ignored.
+  function reflectWholeState() {
+    if (wholeCb.checked) {
+      verseInput.disabled = true;
+      verseInput.style.opacity = "0.4";
+    } else {
+      verseInput.disabled = false;
+      verseInput.style.opacity = "";
+    }
+  }
+  wholeCb.addEventListener("change", reflectWholeState);
 
   const fetchBtn = document.createElement("button");
   fetchBtn.type = "button";
@@ -407,7 +465,8 @@ export function wireTorahTools(paneManager) {
   function readRefInputs({ silent = false } = {}) {
     const raw = bookSel.value;
     const chap = parseInt(chapInput.value, 10);
-    const verse = parseInt(verseInput.value, 10);
+    const verseRaw = parseInt(verseInput.value, 10);
+    const wholeChapter = wholeCb.checked;
     if (!raw) {
       if (!silent) alert("בחר ספר.");
       return null;
@@ -419,11 +478,17 @@ export function wireTorahTools(paneManager) {
       if (!silent) chapInput.focus();
       return null;
     }
-    if (!Number.isFinite(verse) || verse < 1) {
-      if (!silent) verseInput.focus();
-      return null;
+    // When wholeChapter is on, the verse field is ignored — passing `null`
+    // signals "fetch the entire chapter".
+    let verse = null;
+    if (!wholeChapter) {
+      if (!Number.isFinite(verseRaw) || verseRaw < 1) {
+        if (!silent) verseInput.focus();
+        return null;
+      }
+      verse = verseRaw;
     }
-    return { book, chap, verse, corpus };
+    return { book, chap, verse, corpus, wholeChapter };
   }
 
   fetchBtn.addEventListener("click", async () => {
@@ -433,12 +498,19 @@ export function wireTorahTools(paneManager) {
     if (!ed) { alert("פתח עורך פעיל לפני הכנסת פסוק."); return; }
 
     fetchBtn.disabled = true;
-    status.textContent = "טוען מספריא…";
+    status.textContent = ref.wholeChapter ? "טוען פרק שלם…" : "טוען מספריא…";
     try {
-      let text = await fetchSefariaVerse(ref.book, ref.chap, ref.verse, ref.corpus);
-      if (!text) throw new Error("הפסוק לא נמצא");
+      let text;
+      if (ref.wholeChapter) {
+        text = await _getChapterTextFromMirror(ref.book, ref.chap, { corpus: ref.corpus });
+      } else {
+        text = await fetchSefariaVerse(ref.book, ref.chap, ref.verse, ref.corpus);
+      }
+      if (!text) throw new Error("הטקסט לא נמצא");
       text = applyNiqqudPref(text, niqqudCb.checked);
-      const citation = " " + buildCitation(ref.book, ref.chap, ref.verse, ref.corpus);
+      const citation = " " + (ref.wholeChapter
+        ? `(${ref.book} ${numberToHebrewLetters(ref.chap)})`
+        : buildCitation(ref.book, ref.chap, ref.verse, ref.corpus));
       ed.chain().focus().insertContent(text + citation).run();
       status.textContent = "הוכנס.";
       setTimeout(() => { status.textContent = ""; }, 2000);
@@ -698,11 +770,8 @@ export function wireTorahTools(paneManager) {
           if (c.kind === "verse") {
             original = await _getVerseTextFromMirror(c.englishTitle, c.chapter, c.verse, { corpus: c.corpus });
           } else {
-            // Whole chapter — concatenate. Caller can trim later.
-            await _ensureCorpus(c.corpus);
-            // Fetch a tiny preview to confirm chapter exists.
-            const v1 = await _getVerseTextFromMirror(c.englishTitle, c.chapter, 1, { corpus: c.corpus });
-            original = v1;
+            // Whole chapter — fetch every segment and join into one block.
+            original = await _getChapterTextFromMirror(c.englishTitle, c.chapter, { corpus: c.corpus });
           }
           enriched.push({
             match: {
@@ -710,7 +779,7 @@ export function wireTorahTools(paneManager) {
               bookTitle: c.englishTitle,
               heTitle: c.heTitle,
               chapter: c.chapter,
-              verse: c.kind === "verse" ? c.verse : 1,
+              verse: c.kind === "verse" ? c.verse : null,
               original,
               normalized: original,
               matchType: c.kind === "verse" ? "ref-verse" : "ref-chapter",
@@ -773,6 +842,7 @@ export function wireTorahTools(paneManager) {
   groupVerseInputs.appendChild(chapInput);
   groupVerseInputs.appendChild(verseInput);
   groupVerseInputs.appendChild(niqqudLabel);
+  groupVerseInputs.appendChild(wholeLabel);
   groupVerseInputs.appendChild(posSel);
   groupVerseInputs.appendChild(fetchBtn);
 

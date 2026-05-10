@@ -12,7 +12,7 @@
 
 import { ensureCorpus } from "./sefaria_local.js";
 
-const CORPORA = ["tanakh", "mishnah", "bavli"];
+const CORPORA = ["tanakh", "mishnah", "bavli", "rambam", "shulchan_arukh"];
 const _normalizedCache = new Map(); // book.title → { chapters: string[][] } of normalized text
 
 // Reverse index: word → array of [bookKey, chapterIdx, verseIdx] tuples.
@@ -233,7 +233,7 @@ export async function searchByText(query, opts = {}) {
     });
   }
 
-  const corpusOrder = { tanakh: 0, mishnah: 1, bavli: 2 };
+  const corpusOrder = { tanakh: 0, mishnah: 1, bavli: 2, rambam: 3, shulchan_arukh: 4 };
   results.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
     if (corpusOrder[a.corpus] !== corpusOrder[b.corpus]) return corpusOrder[a.corpus] - corpusOrder[b.corpus];

@@ -50,6 +50,26 @@ function isCanonicalBavli(book) {
     /^Seder /.test(book.categories[2]);
 }
 
+// Pure Mishneh Torah (Rambam) — 84 books, each "Sefer X" houses ~6 books.
+// We exclude commentary subtrees by requiring the third category to start
+// with "Sefer " (commentary trees use names like "Annotations of...").
+function isCanonicalRambam(book) {
+  return isHebMerged(book) &&
+    Array.isArray(book.categories) && book.categories.length === 3 &&
+    book.categories[0] === "Halakhah" && book.categories[1] === "Mishneh Torah" &&
+    /^Sefer /.test(book.categories[2]);
+}
+
+// Shulchan Arukh proper — the four chelkim only (Orach Chayim, Yoreh De'ah,
+// Even HaEzer, Choshen Mishpat). The "Introduction" entry is metadata, not
+// halakhic content; the title prefix "Shulchan Arukh, " filters it cleanly.
+function isCanonicalShulchanArukh(book) {
+  return isHebMerged(book) &&
+    Array.isArray(book.categories) && book.categories.length === 2 &&
+    book.categories[0] === "Halakhah" && book.categories[1] === "Shulchan Arukh" &&
+    /^Shulchan Arukh, (Orach Chayim|Yoreh De'ah|Even HaEzer|Choshen Mishpat)$/.test(book.title);
+}
+
 // --- Cleaning ---------------------------------------------------------------
 
 // Strip HTML and editorial markers, decode common entities, normalize spaces,
@@ -131,7 +151,13 @@ async function buildCategory(label, filter, books, outDir, { split = false } = {
       console.log(`SKIP (${e.message})`);
       continue;
     }
-    const chapters = cleanText(data.text);
+    // Complex-schema books (e.g. Shulchan Arukh, Even HaEzer) put the main
+    // chelek text under data.text[''] and aux schema-nodes under named keys.
+    // Use the default node for those; otherwise data.text is the array directly.
+    const rawText = Array.isArray(data.text)
+      ? data.text
+      : (data.text && Array.isArray(data.text[""]) ? data.text[""] : data.text);
+    const chapters = cleanText(rawText);
     const segCount = Array.isArray(chapters) ? chapters.flat(Infinity).filter(Boolean).length : 0;
     const book = {
       title: meta.title,
@@ -197,8 +223,9 @@ async function main() {
   console.log(`  ${manifest.books.length} total entries · bucket=${manifest.bucket}`);
 
   // Tanakh (~5 MB) and Mishnah (~3 MB) ship as a single combined file each.
-  // Bavli (~29 MB total) is split per tractate because the combined file
-  // exceeds Cloudflare Workers Static Assets' 25 MiB per-file ceiling.
+  // Bavli, Rambam, and Shulchan Arukh are split per book/tractate because the
+  // combined files exceed Cloudflare Workers Static Assets' 25 MiB per-file
+  // ceiling, which would block the entire deploy.
   if (!only || only === "tanakh") {
     await buildCategory("tanakh", isCanonicalTanakh, manifest.books, resolve(OUT_DIR, "tanakh"));
   }
@@ -207,6 +234,12 @@ async function main() {
   }
   if (!only || only === "bavli") {
     await buildCategory("bavli", isCanonicalBavli, manifest.books, resolve(OUT_DIR, "bavli"), { split: true });
+  }
+  if (!only || only === "rambam") {
+    await buildCategory("rambam", isCanonicalRambam, manifest.books, resolve(OUT_DIR, "rambam"), { split: true });
+  }
+  if (!only || only === "shulchan_arukh") {
+    await buildCategory("shulchan_arukh", isCanonicalShulchanArukh, manifest.books, resolve(OUT_DIR, "shulchan_arukh"), { split: true });
   }
 
   console.log("\nDone.");
