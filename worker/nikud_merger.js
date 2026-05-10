@@ -40,7 +40,6 @@ export async function handleNikudMerger(request) {
         stopFlag: null,
         mode,
       });
-      result.matchRatio = result.matchCount / Math.max(1, result.cleanWordCount);
     } else {
       result = mergeAllSources(clean, sources, {
         config,
@@ -49,6 +48,10 @@ export async function handleNikudMerger(request) {
         mode,
       });
     }
+    result = {
+      ...result,
+      matchRatio: result.matchCount / Math.max(1, result.cleanWordCount),
+    };
 
     return jsonResponse({ result });
   }
