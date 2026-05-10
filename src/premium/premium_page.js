@@ -523,17 +523,81 @@ export function closePremiumPage() {
   document.documentElement.classList.remove("rt-prem-locked");
 }
 
+// משה 2026-05-10: באנר תוצאת תשלום — נפתח כש-URL מכיל ?premium=success או ?premium=failed
+// (יעד שריג / פייפאל מפנים אלינו עם הפרמטר אחרי תשלום). הבאנר ברור וגדול
+// כדי שלא יחזור "בשקט לדף הבית" כפי שקרה במצב הקודם.
+function showPaymentResultBanner(kind, reason) {
+  if (typeof document === "undefined") return;
+  const back = document.createElement("div");
+  back.className = "rt-prem-overlay rt-payment-result-overlay";
+  back.dir = "rtl";
+  back.style.zIndex = 100002;
+
+  const isSuccess = kind === "success";
+  const sheet = document.createElement("div");
+  sheet.className = "rt-prem-sheet rt-payment-result-sheet";
+  sheet.style.maxWidth = "480px";
+  sheet.style.textAlign = "center";
+
+  const reasonNote = reason ? `<div style="margin-top:10px;color:#888;font-size:13px">קוד: ${String(reason).replace(/[^a-z_0-9-]/gi, "")}</div>` : "";
+  sheet.innerHTML = isSuccess ? `
+    <div style="font-size:64px;line-height:1;margin:8px 0">✅</div>
+    <h2 style="margin:8px 0;color:#16a34a">התשלום הושלם בהצלחה</h2>
+    <p style="color:#444">תודה על הרכישה! המנוי שלך פעיל מיד. תוכל להתחיל להשתמש בכל הכלים בלי הגבלה.</p>
+    <button class="rt-prem-btn rt-prem-btn-yaad rt-pr-close" style="margin-top:18px;font-size:18px;min-width:240px">התחלת עבודה</button>
+  ` : `
+    <div style="font-size:64px;line-height:1;margin:8px 0">⚠️</div>
+    <h2 style="margin:8px 0;color:#dc2626">התשלום לא הושלם</h2>
+    <p style="color:#444">העסקה לא אושרה. ייתכן שהכרטיס נדחה, שהפרטים שגויים, או שהיתה בעיה זמנית. לא חויבת.</p>
+    ${reasonNote}
+    <div style="margin-top:18px;display:flex;flex-direction:column;gap:8px;align-items:center">
+      <button class="rt-prem-btn rt-prem-btn-yaad rt-pr-retry" style="font-size:18px;min-width:240px">לנסות שוב</button>
+      <button class="rt-pr-close" style="background:none;border:none;color:#888;text-decoration:underline;cursor:pointer;font:inherit;padding:8px">סגור</button>
+    </div>
+  `;
+  back.appendChild(sheet);
+  document.body.appendChild(back);
+
+  function clearUrlParam() {
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.delete("premium");
+      u.searchParams.delete("reason");
+      window.history.replaceState({}, "", u.toString());
+    } catch {}
+  }
+  function close() {
+    back.remove();
+    clearUrlParam();
+  }
+  sheet.querySelector(".rt-pr-close")?.addEventListener("click", close);
+  sheet.querySelector(".rt-pr-retry")?.addEventListener("click", () => {
+    close();
+    setTimeout(() => openPremiumPage(), 100);
+  });
+}
+
 // Auto-open if ?premium=1 in URL. אם יש גם ?pkg=<token> — פותחים במצב חבילה ייעודית.
+// אם ?premium=success או ?premium=failed — מציגים באנר תוצאה.
 export function maybeAutoOpenFromUrl() {
   if (typeof window === "undefined") return;
   try {
     const p = new URLSearchParams(window.location.search);
+    const premium = p.get("premium");
+    if (premium === "success") {
+      setTimeout(() => showPaymentResultBanner("success"), 200);
+      return;
+    }
+    if (premium === "failed") {
+      setTimeout(() => showPaymentResultBanner("failed", p.get("reason")), 200);
+      return;
+    }
     const pkgToken = p.get("pkg");
     if (pkgToken) {
       setTimeout(() => openPremiumPage({ pkgToken }), 200);
       return;
     }
-    if (p.get("premium") === "1" || p.get("upgrade") === "1") {
+    if (premium === "1" || p.get("upgrade") === "1") {
       setTimeout(() => openPremiumPage(), 200);
     }
   } catch {}

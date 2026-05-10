@@ -191,22 +191,35 @@ async function startYaad(request, env, url) {
 }
 
 async function yaadCallback(request, env, url) {
-  // יעד שריג מחזירים פרמטרים בכתובת. אנחנו מאמתים את החתימה ומעדכנים את ה-DB.
+  // משה 2026-05-10: יעד שריג מחזירים פרמטרים בכתובת.
+  // שומרים את כל הפרמטרים הגולמיים (כולל קוד שגיאה אם יש) ב-txn_id ובלוג,
+  // כדי לדבג כישלונות. גם בודקים מספר שדות אפשריים לסטטוס הצלחה.
   const params = url.searchParams;
   const token = params.get('Order') || '';
-  const ok = params.get('CCode') === '0' || params.get('Status') === '0';
-  if (!token) return new Response('Bad request', { status: 400 });
+  // יעד שריג עלולים להחזיר את הסטטוס תחת מספר שמות. כל שדה ש=='0' או 'OK' או 'Approved' = הצלחה.
+  const ccode = params.get('CCode');
+  const status = params.get('Status');
+  const errCode = params.get('ErrCode');
+  const ok = ccode === '0' || status === '0' || ccode === '000' || status === '000';
+  // לכידת כל הפרמטרים הגולמיים — חשוב כדי להבין מה יעד שריג שלחו במקרה של כישלון
+  const rawParams = [...params.entries()].map(([k, v]) => `${k}=${v}`).join('&');
+  if (!token) {
+    // אין Order — לא יכולים לקשר לתשלום. רושמים בכל זאת בלוג כללי.
+    return Response.redirect(`${url.origin}/?premium=failed&reason=no_order`, 302);
+  }
 
   const intent = await env.DB.prepare(
     'SELECT id, user_id, provider, token, amount, plan_code, pack_code, status FROM payment_intents WHERE token = ?'
   ).bind(token).first();
-  if (!intent) return new Response('Unknown token', { status: 404 });
+  if (!intent) return Response.redirect(`${url.origin}/?premium=failed&reason=unknown_token`, 302);
   if (intent.status === 'completed') {
     return Response.redirect(`${url.origin}/?premium=success`, 302);
   }
 
   if (!ok) {
-    await env.DB.prepare("UPDATE payment_intents SET status = 'failed' WHERE id = ?").bind(intent.id).run();
+    // שומרים את הקוד והפרמטרים הגולמיים ב-txn_id כדי שאוכל לדבג מאוחר יותר
+    const errInfo = `FAIL CCode=${ccode || '-'} Status=${status || '-'} ErrCode=${errCode || '-'} | ${rawParams.slice(0, 400)}`;
+    await env.DB.prepare("UPDATE payment_intents SET status = 'failed', txn_id = ? WHERE id = ?").bind(errInfo, intent.id).run();
     await env.DB.prepare("UPDATE users SET failed_charge_count = COALESCE(failed_charge_count,0) + 1 WHERE id = ?")
       .bind(intent.user_id).run().catch(() => {});
     return Response.redirect(`${url.origin}/?premium=failed`, 302);
