@@ -361,6 +361,21 @@ function buildPagePlan(pageContent, config) {
   );
   result.crownScenario = scenario;
 
+  // משה 2026-05-10: צורה 1 — זרם אחד מפוצל לשני טורים מקבילים.
+  // לוקחים את הזרם היחיד שזוהה כארוך וחותכים את הטקסט בערך באמצע (לפי מילים).
+  // החצי הראשון לטור הימני, החצי השני לשמאלי. שניהם עם אותו id (אותו שם זרם,
+  // אותו צבע). מתקבל דפוס וילנא הקלאסי של פירוש אחד בשני טורים.
+  if (scenario.name === 'one_long_split') {
+    const single = pageContent.rightStream || pageContent.leftStream;
+    if (single) {
+      const allText = single.items.join(' ').trim();
+      const words = allText.split(/\s+/).filter(Boolean);
+      const midIdx = Math.ceil(words.length / 2);
+      pageContent.rightStream = { id: single.id, items: [words.slice(0, midIdx).join(' ')] };
+      pageContent.leftStream  = { id: single.id, items: [words.slice(midIdx).join(' ')] };
+    }
+  }
+
   // 2. מיקום ראשי
   let crownHeight = 0;
   if (scenario.name === 'two_long_parallel' ||
@@ -368,6 +383,12 @@ function buildPagePlan(pageContent, config) {
       scenario.name === 'one_long_split') {
     crownHeight = cfg.crownLines * sideLineH;
   }
+
+  // משה 2026-05-10: צורה 4 — הזרם הארוך מקבל כתר ברוחב מלא של הדף.
+  // הצד הקצר מדלג על הכתר ומתחיל ישר מתחת לאזור הכתר.
+  const fullCrownSide = (scenario.name === 'one_full_one_short')
+    ? scenario.longSide
+    : null;
 
   const sideTopY = cfg.padding + titleHeight;
   const mainTopY = sideTopY + crownHeight;
@@ -413,27 +434,43 @@ function buildPagePlan(pageContent, config) {
     const strips = [];
 
     if (crownHeight > 0 && mainTopY > sideTopY) {
-      // משה 2026-05-08: כל צד 49.5% מראש (sideHalfWidth). מרווח 1% במרכז.
-      strips.push({
-        y_start: sideTopY,
-        y_end: Math.min(mainTopY, pageBottomY),
-        width: sideHalfWidth,
-        x: side === 'right' ? sideRightX : 0,
-      });
+      // משה 2026-05-10: צורה 4 — צד הארוך מקבל crown ברוחב מלא, השני מדלג על crown.
+      if (fullCrownSide === side) {
+        strips.push({
+          y_start: sideTopY,
+          y_end: Math.min(mainTopY, pageBottomY),
+          width: innerWidth,
+          x: 0,
+        });
+      } else if (fullCrownSide && fullCrownSide !== side) {
+        // הצד הקצר — מדלג על crown לגמרי, יתחיל מתחת לכתר
+      } else {
+        // משה 2026-05-08: כל צד 49.5% מראש (sideHalfWidth). מרווח 1% במרכז.
+        strips.push({
+          y_start: sideTopY,
+          y_end: Math.min(mainTopY, pageBottomY),
+          width: sideHalfWidth,
+          x: side === 'right' ? sideRightX : 0,
+        });
+      }
     }
 
     if (naiveMainHeight > 0 && effectiveMainBottomY > mainTopY) {
+      // משה 2026-05-10: צורה 4 — צד הקצר מדלג על הכתר וצריך מקום לכותרת
+      // משלו מתחת לכתר. לכן strip 2 שלו מתחיל ב-mainTopY + titleHeight.
+      const shortStreamGap = (fullCrownSide && fullCrownSide !== side) ? titleHeight : 0;
+      const stripTop = mainTopY + shortStreamGap;
       // משה 2026-05-08: מרווח mainGap בין הראשי לטור הצד.
       if (side === 'right') {
         strips.push({
-          y_start: mainTopY,
+          y_start: stripTop,
           y_end: effectiveMainBottomY,
           width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
           x: mainX + mainWidth + mainGap,
         });
       } else {
         strips.push({
-          y_start: mainTopY,
+          y_start: stripTop,
           y_end: effectiveMainBottomY,
           width: Math.max(0, mainX - mainGap),
           x: 0,
@@ -627,10 +664,16 @@ function buildPagePlan(pageContent, config) {
   }
 
   if (pass2Right) {
+    // משה 2026-05-10: צורה 4 — סימון איזה צד מקבל כותרת ברוחב מלא ואיזה
+    // מדלג על הכותרת בראש (יקבל אותה מתחת לכתר, מעל התוכן שלו).
+    if (fullCrownSide === 'right') pass2Right.fullWidthTitle = true;
+    if (fullCrownSide && fullCrownSide !== 'right') pass2Right.skipTopTitle = true;
     result.streamBoxes.push(pass2Right);
     if (pass2Right.overflowText) result.overflow.streams[pass2Right.id] = pass2Right.overflowText;
   }
   if (pass2Left) {
+    if (fullCrownSide === 'left') pass2Left.fullWidthTitle = true;
+    if (fullCrownSide && fullCrownSide !== 'left') pass2Left.skipTopTitle = true;
     result.streamBoxes.push(pass2Left);
     if (pass2Left.overflowText) result.overflow.streams[pass2Left.id] = pass2Left.overflowText;
   }
@@ -736,6 +779,10 @@ function ensureGlobalStyles() {
       text-align: justify;
       text-align-last: justify;
     }
+    .v9-line.center {
+      white-space: normal;
+      text-align: center;
+    }
     .v9-stream-title {
       position: absolute;
       font-weight: bold;
@@ -770,12 +817,17 @@ function renderPagePlan(plan, pageEl, cfg) {
   }
 
   function drawBox(box, fontSize, lineHeight, fontFamily, colorClass) {
+    const innerW = plan.pageBox.innerWidth;
     for (const line of box.lines) {
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       const shouldJustify = !line.isLast && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
-      if (shouldJustify) lineEl.className += ' justify';
+      // משה 2026-05-10: צורה 1 — שורה אחרונה ברוחב מלא (=ה"בין־טורית"
+      // העודפת על שני הטורים) צריכה להיות ממורכזת, לא מיושרת.
+      const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
+      if (isFullWidthOrphan) lineEl.className += ' center';
+      else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
       lineEl.style.width = line.width + 'px';
@@ -818,7 +870,18 @@ function renderPagePlan(plan, pageEl, cfg) {
       const titleRightX = plan.pageBox.sideRightX ||
         (plan.pageBox.innerWidth - sideHalfW);
       const titleX = box.side === 'right' ? titleRightX : 0;
-      drawTitle(title, titleX, padding, sideHalfW, colorClass);
+      // משה 2026-05-10: צורה 4 —
+      //   fullWidthTitle: צד הארוך מקבל כותרת ברוחב מלא של הדף
+      //   skipTopTitle: צד הקצר מקבל כותרת מתחת לכתר, מעל התוכן שלו,
+      //                 ברוחב + מיקום של עמודת הזרם האמיתית מתחתיה
+      if (box.fullWidthTitle) {
+        drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass);
+      } else if (box.skipTopTitle) {
+        const firstLine = box.lines[0];
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass);
+      } else {
+        drawTitle(title, titleX, padding, sideHalfW, colorClass);
+      }
     }
   }
 
@@ -1028,6 +1091,37 @@ export async function buildPages(container, paragraphs, config) {
     } else {
       // אין clean fit ואין split אפשרי וגם אין פסקאות — שום דבר לקחת
       bestN = totalAvail > 0 ? 1 : 0;
+    }
+
+    // משה 2026-05-10: לולאת הגנה — אם הקומפוזיציה הסופית מורידה footer לחלוטין,
+    // נצמצם (קודם מבטלים split, אחר כך מורידים bestN ב-1) עד שלא נופל footer.
+    // לעולם לא יורדים מתחת ל-1 פסקה — זה יעצור את הקרסור (לולאה אינסופית).
+    const sliceForN = (n) => {
+      const out = [];
+      let need = n;
+      if (pendingParagraph && need > 0) { out.push(pendingParagraph); need--; }
+      if (need > 0) out.push(...paragraphs.slice(cursor, cursor + need));
+      return out;
+    };
+    const droppedFootersOf = (slice) => {
+      const agg = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+      const tp = buildPagePlan(agg, cfg);
+      const dropped = [];
+      for (const fs of (agg.footerStreams || [])) {
+        const totalText = (fs.items || []).join(' ').trim();
+        if (!totalText) continue;
+        const overflowText = ((tp.overflow && tp.overflow.streams && tp.overflow.streams[fs.id]) || '').trim();
+        if (overflowText && overflowText.length >= totalText.length * 0.95) dropped.push(fs.id);
+      }
+      return dropped;
+    };
+    let safetyTries = 0;
+    while (safetyTries < 5 && bestN > 1) {
+      const checkSlice = splitInfo ? [...sliceForN(bestN_clean), splitInfo.firstHalf] : sliceForN(bestN);
+      if (droppedFootersOf(checkSlice).length === 0) break;
+      if (splitInfo) { splitInfo = null; bestN = bestN_clean; }
+      else { bestN--; }
+      safetyTries++;
     }
 
     // רינדור סופי לעמוד
