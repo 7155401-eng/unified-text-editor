@@ -48,6 +48,10 @@ import { wireTorahTools } from "./torah_tools.js";
 import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
 import { openWordExtractor, setupWordExtractor } from "./word_extractor/word_extractor.js";
+// משה 2026-05-10: שחזור 3 כלי AI לעורך — טרנסקריפציה, ניקוד תורני, קריקטורה
+import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
+import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
+import { wireCaricatureBot } from "./haredi_caricature/haredi_caricature.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
 import { tryUseTool } from "./premium/daily_quota_gate.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
@@ -926,6 +930,16 @@ revealToolButtons();
 setTimeout(() => wireTorahTools(paneManager), 200);
 if (isToolPreviewAllowed("nikud-merger")) {
   setTimeout(() => wireNikudMergerButton(paneManager), 220);
+}
+// משה 2026-05-10: 3 כלי AI שחזרו ל-main
+if (isToolPreviewAllowed("torah-transcription")) {
+  setTimeout(() => wireTorahTranscription(paneManager), 222);
+}
+if (isToolPreviewAllowed("torah-nikud")) {
+  setTimeout(() => wireTorahNikud(paneManager), 224);
+}
+if (isToolPreviewAllowed("haredi-caricature")) {
+  setTimeout(() => wireCaricatureBot(paneManager), 226);
 }
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {

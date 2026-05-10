@@ -4806,3 +4806,40 @@ body[data-theme="dark"] .ProseMirror pre {
   border-top: 2px solid var(--rt-border, #ccc);
   margin: 12px 0;
 }
+
+/* משה 2026-05-10: מעקב שינויים — Track Changes */
+.ProseMirror ins.tracked-ins,
+.editor ins.tracked-ins {
+  background: rgba(34, 197, 94, 0.18);
+  color: #15803d;
+  text-decoration: underline;
+  text-decoration-color: #22c55e;
+  text-decoration-thickness: 2px;
+  padding: 0 1px;
+}
+.ProseMirror del.tracked-del,
+.editor del.tracked-del {
+  background: rgba(239, 68, 68, 0.18);
+  color: #b91c1c;
+  text-decoration: line-through;
+  text-decoration-color: #ef4444;
+  text-decoration-thickness: 2px;
+  padding: 0 1px;
+}
+
+/* Highlight (mark) — בייבוא DOCX */
+.ProseMirror mark[data-color="yellow"] { background: #fff59d; }
+.ProseMirror mark[data-color="green"] { background: #b9f6ca; }
+.ProseMirror mark[data-color="cyan"] { background: #84ffff; }
+.ProseMirror mark[data-color="magenta"] { background: #ea80fc; }
+.ProseMirror mark[data-color="blue"] { background: #82b1ff; }
+.ProseMirror mark[data-color="red"] { background: #ff8a80; }
+.ProseMirror mark[data-color="darkBlue"] { background: #0d47a1; color: #fff; }
+.ProseMirror mark[data-color="darkCyan"] { background: #006064; color: #fff; }
+.ProseMirror mark[data-color="darkGreen"] { background: #1b5e20; color: #fff; }
+.ProseMirror mark[data-color="darkMagenta"] { background: #4a148c; color: #fff; }
+.ProseMirror mark[data-color="darkRed"] { background: #b71c1c; color: #fff; }
+.ProseMirror mark[data-color="darkYellow"] { background: #ff8f00; }
+.ProseMirror mark[data-color="darkGray"] { background: #424242; color: #fff; }
+.ProseMirror mark[data-color="lightGray"] { background: #e0e0e0; }
+.ProseMirror mark[data-color="black"] { background: #000; color: #fff; }
