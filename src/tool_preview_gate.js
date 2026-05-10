@@ -4,6 +4,7 @@
 
 const PUBLIC_TOOLS = new Set([
   "nikud-merger",   // אושר 2026-05-08 — מיזוג ניקוד
+  "word-extractor", // אושר 2026-05-09 — ייבוא Word עם זרמים מלאים
 ]);
 
 function isAdmin() {
