@@ -1088,6 +1088,11 @@ export async function buildPages(container, paragraphs, config) {
   let pendingParagraph = null;
 
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
+    if (pendingParagraph?._drainMarker && !hasCarryOver(carryOver)) {
+      pendingParagraph = null;
+      if (cursor >= paragraphs.length) break;
+    }
+
     // אורך הזמינות הכולל = pendingParagraph (אם קיים) + פסקאות שלא נצרכו
     const totalAvail = (pendingParagraph ? 1 : 0) + (paragraphs.length - cursor);
 
@@ -1152,6 +1157,9 @@ export async function buildPages(container, paragraphs, config) {
       const footerCount = (tp && tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
       return streamCount + footerCount > 0;
     };
+    const planMainLineCount = (tp) =>
+      (tp && tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
+    const carryActive = hasCarryOver(carryOver);
 
     const dynamicGapFillMaxMainLines = () => {
       const explicit = parseInt(cfg.gapFillMaxMainLines, 10);
@@ -1160,6 +1168,7 @@ export async function buildPages(container, paragraphs, config) {
       const availableLines = Math.max(1, Math.floor((cfg.pageHeight - 2 * cfg.padding) / lineH));
       return Math.max(4, Math.min(9, Math.round(availableLines * 0.22)));
     };
+    const carryGapMaxMainLines = () => Math.max(3, Math.min(5, dynamicGapFillMaxMainLines()));
 
     // 1. מצא bestN_clean = מקסימום פסקאות שנכנסות נקי (כולל כל ההערות שלהן)
     let bestN_clean = 0;
@@ -1226,7 +1235,7 @@ export async function buildPages(container, paragraphs, config) {
         };
         const splitPlanScore = (tp, movedNotes) => {
           if (!tp || !tp.overflow || tp.overflow.mainText) return -Infinity;
-          const lineCount = (tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
+          const lineCount = planMainLineCount(tp);
           const streamCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
           const footerCount = (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
           const commentaryCount = streamCount + footerCount;
@@ -1235,6 +1244,7 @@ export async function buildPages(container, paragraphs, config) {
           if (hasNoteOverflow) {
             if (!Array.isArray(movedNotes) || movedNotes.length === 0) return -Infinity;
             if (commentaryCount === 0) return -Infinity;
+            if (carryActive && lineCount > carryGapMaxMainLines()) return -Infinity;
           } else if (!fitsClean(tp)) {
             return -Infinity;
           }
@@ -1248,7 +1258,8 @@ export async function buildPages(container, paragraphs, config) {
           const extraMainPenalty = hasNoteOverflow
             ? Math.max(0, lineCount - dynamicGapFillMaxMainLines()) * 0.01
             : 0;
-          return fill - overflowPenalty - belowTargetPenalty - extraMainPenalty;
+          const carryMainPenalty = carryActive && hasNoteOverflow ? Math.max(0, lineCount - 2) * 0.04 : 0;
+          return fill - overflowPenalty - belowTargetPenalty - extraMainPenalty - carryMainPenalty;
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
@@ -1336,12 +1347,18 @@ export async function buildPages(container, paragraphs, config) {
           };
 
           const baseSlice = getSlice(baseN);
-          const rescueEnds = [...new Set([
+          let rescueEnds = [...new Set([
             ...mainLineEndCandidates(fullText, splitMetrics, splitMainWidth),
             ...wordEndCandidates(fullText),
           ])]
             .filter(n => n >= 2 && n < fullText.length)
             .sort((a, b) => a - b);
+          if (carryActive) {
+            const visualEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
+              .filter(n => n >= 2 && n < fullText.length)
+              .sort((a, b) => a - b);
+            rescueEnds = visualEnds.length ? visualEnds.slice(0, carryGapMaxMainLines()) : rescueEnds.slice(0, carryGapMaxMainLines() + 1);
+          }
           for (const len of rescueEnds) {
             const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
@@ -1355,8 +1372,10 @@ export async function buildPages(container, paragraphs, config) {
             const fill = planFillRatio(tp);
             if (fill < currentFill - 0.04) continue;
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
-            const mainProgressBonus = Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
-            const score = fill + mainProgressBonus - (noteOverflow ? 0.01 : 0);
+            if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
+            const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
+            const carryMainPenalty = carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0;
+            const score = fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.01 : 0);
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
             rescueBest = {
@@ -1429,9 +1448,13 @@ export async function buildPages(container, paragraphs, config) {
           const slice = [...getSlice(splitInfo.baseN), firstHalf];
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
+          const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
+          if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
           const fill = planFillRatio(tp);
           if (fill < currentFill - 0.04) continue;
-          const score = fill + Math.min(0.12, (len / Math.max(1, secondText.length)) * 0.12);
+          const score = fill
+            + (carryActive ? 0 : Math.min(0.12, (len / Math.max(1, secondText.length)) * 0.12))
+            - (carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0);
           if (score < bestExtendedScore) continue;
           bestExtendedScore = score;
           bestExtended = { firstHalf, secondHalf };
@@ -1443,7 +1466,7 @@ export async function buildPages(container, paragraphs, config) {
     }
 
     let overflowTakeN = 0;
-    if (bestN_clean < totalAvail) {
+    if (!carryActive && bestN_clean < totalAvail) {
       const candidateN = bestN_clean + 1;
       const tp = trialAtN(candidateN);
       const ovs = (tp && tp.overflow && tp.overflow.streams) || {};
@@ -1545,6 +1568,13 @@ export async function buildPages(container, paragraphs, config) {
       ? []
       : (splitInfo ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf] : getSlice(bestN));
     const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+    const finalHasText = !!(
+      (finalContent.mainText || '').trim() ||
+      (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
+      (finalContent.leftStream && (finalContent.leftStream.items || []).join(' ').trim()) ||
+      (finalContent.footerStreams || []).some(fs => (fs.items || []).join(' ').trim())
+    );
+    if (!finalHasText) break;
 
     const pageEl = document.createElement('div');
     pageEl.className = 'page v9-page';
