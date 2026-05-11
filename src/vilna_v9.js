@@ -1292,6 +1292,72 @@ export async function buildPages(container, paragraphs, config) {
     // משה 2026-05-09: ★ drain-alone — אם יש pending + carry-over שלבד חורג, נריץ
     // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
     // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
+    // Line-first split: add a main line with the note prefix it owns, and let
+    // long notes continue to the next page instead of rejecting the main line.
+    if (totalAvail > 0) {
+      let lineFirstBest = null;
+      let lineFirstBestScore = -Infinity;
+      for (let sliceIdx = 0; sliceIdx < Math.min(totalAvail, 3); sliceIdx++) {
+        const baseN = Math.max(0, sliceIdx);
+        const fromArrayOffset = pendingParagraph ? sliceIdx - 1 : sliceIdx;
+        const target = (pendingParagraph && sliceIdx === 0)
+          ? pendingParagraph
+          : paragraphs[cursor + fromArrayOffset];
+        const fullText = (target?.mainText || '').trim();
+        if (fullText.length < 2) continue;
+
+        const allNotes = target?.notes || [];
+        const anchored = allNotes.filter(n => typeof n.anchor === 'number');
+        const anchorless = allNotes.filter(n => typeof n.anchor !== 'number');
+        const notesBeforeAnchor = (len) => {
+          const ratio = fullText.length > 0 ? len / fullText.length : 0;
+          const anchorlessShare = Math.round(anchorless.length * ratio);
+          const anchoredBefore = anchored.filter(n => n.anchor <= len);
+          return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
+            .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
+        };
+        const notesFromAnchor = (len, movedNotes) => {
+          const moved = new Set(movedNotes || []);
+          const ratio = fullText.length > 0 ? len / fullText.length : 0;
+          const anchorlessShare = Math.round(anchorless.length * ratio);
+          const anchorlessFrom = anchorless.slice(anchorlessShare).filter(n => !moved.has(n));
+          const anchoredFrom = anchored
+            .filter(n => !moved.has(n))
+            .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
+          return [...anchorlessFrom, ...anchoredFrom];
+        };
+
+        const baseSlice = getSlice(baseN);
+        const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
+          .filter(n => n >= 2 && n < fullText.length);
+        for (const len of lineEnds) {
+          const movedNotes = notesBeforeAnchor(len);
+          const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
+          const slice = [...baseSlice, firstHalf];
+          const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+          if (!tp || !tp.overflow || tp.overflow.mainText) continue;
+          const lineCount = (tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
+          if (lineCount > dynamicGapFillMaxMainLines()) continue;
+          const commentaryCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0)
+            + (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+          const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
+          if (movedNotes.length > 0 && commentaryCount === 0) continue;
+          if (noteOverflow && movedNotes.length === 0) continue;
+          const fill = planBottomY(tp) / Math.max(1, cfg.pageHeight - cfg.padding);
+          const score = fill + Math.min(lineCount, 3) * 0.01 - (noteOverflow ? 0.015 : 0);
+          if (score < lineFirstBestScore) continue;
+          lineFirstBestScore = score;
+          lineFirstBest = {
+            firstHalf,
+            secondHalf: { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) },
+            sliceIdx,
+            baseN,
+          };
+        }
+      }
+      if (lineFirstBest) splitInfo = lineFirstBest;
+    }
+
     let drainAloneMode = false;
     if (!splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
       // בדוק אם carry לבד (slice ריק) חורג
