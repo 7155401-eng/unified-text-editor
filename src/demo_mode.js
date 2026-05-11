@@ -60,6 +60,11 @@ function isTruthyModeValue(value) {
   return normalized === "" || normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
 }
 
+function isRegisteredUser() {
+  const auth = typeof window !== "undefined" ? window.__RAVTEXT_AUTH__ : null;
+  return !!(auth && auth.loggedIn);
+}
+
 export function isDemoMode() {
   if (typeof window === "undefined") return false;
   if (_demoLocked) return true;
@@ -317,7 +322,7 @@ function installDemoBanner() {
   banner.dataset.ravtextDemoCanary = "1";
   banner.innerHTML = `
     <strong data-i18n="demoTitle">מצב משתמש ניסיוני</strong>
-    <span data-i18n="demoBody">השינויים אינם נשמרים. הדמו מתאפס כל דקה, וכל יצוא או הדפסה מסומן.</span>
+    <span data-i18n="demoBody">${isRegisteredUser() ? "השינויים נשמרים למשתמש רשום. יצוא או הדפסה במצב חינמי מסומנים." : "השינויים אינם נשמרים. הדמו מתאפס כל דקה למשתמש לא רשום; כדי למנוע איפוס הירשם או התחבר. כל יצוא או הדפסה מסומן."}</span>
     <span class="demo-reset-clock" id="demo-reset-clock"></span>
   `;
   document.body.prepend(banner);
@@ -454,12 +459,15 @@ export function installConsoleGuard() {
     }
   } catch (_) {}
 
-  // אם נחסם בסשן קודם — להציג את מסך החסימה עד שיפוג זמן החסימה.
-  const stored = parseInt(safeStorageGet(CONSOLE_BLOCK_KEY) || "0", 10);
-  if (stored > Date.now()) {
-    showBlockedScreen(stored);
-    return;
-  }
+  safeStorageSet(CONSOLE_BLOCK_KEY, "0");
+  let warned = false;
+  const warnOnly = () => {
+    if (warned) return;
+    warned = true;
+    try {
+      console.warn("אזהרת אבטחה: אל תדביק כאן קוד שאינך מבין. צוות רב טקסט לא יבקש ממך להריץ פקודות בקונסול.");
+    } catch (_) {}
+  };
 
   // משה 2026-05-07: זיהוי devtools חכם — לא ע"י סף קבוע (שגרם ל-false-positives
   // עם בר-סימניות / DPI גבוה / ולעקיפה כשהסף הוגדל יותר מדי), אלא ע"י השוואה
@@ -493,7 +501,7 @@ export function installConsoleGuard() {
     if (guardSuspended > 0 || !baselineSet) return;
     const current = measureDelta();
     if (current > baselineDelta + ABOVE_BASELINE) {
-      blockConsoleAccess();
+      warnOnly();
     }
   };
 
@@ -596,13 +604,14 @@ export function setupDemoMode({ paneManager, reset } = {}) {
     return { active: true, blocked: true };
   }
   document.body.classList.add("demo-mode");
-  paneManager?.clearStorage?.();
+  const registered = isRegisteredUser();
+  if (!registered) paneManager?.clearStorage?.();
   installDemoBanner();
   installTamperMonitor();
   installPasteGuard();
   installPrintGuard();
   lockDemoFlags();
   // installConsoleGuard now called from main.js for all modes.
-  startResetLoop(reset);
+  if (!registered) startResetLoop(reset);
   return { active: true };
 }
