@@ -1176,7 +1176,7 @@ export async function buildPages(container, paragraphs, config) {
     // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
     // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
     let drainAloneMode = false;
-    if (!splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
+    if (false && !splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
       // בדוק אם carry לבד (slice ריק) חורג
       const carryAloneTrial = buildPagePlan(
         aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
@@ -1298,7 +1298,7 @@ export async function buildPages(container, paragraphs, config) {
     // זה מונע מקריירי-אובר לזרום לעמוד עם פסקה חדשה (חוסר קישור). העמוד הבא
     // יהיה drain עם carry-over בלבד, אבל הוא יהיה צמוד לפסקה המקור.
     const hasOverflowNotes = Object.keys(nextCarry).some(k => nextCarry[k]);
-    if (hasOverflowNotes && !splitInfo && !pendingParagraph) {
+    if (false && hasOverflowNotes && !splitInfo && !pendingParagraph) {
       pendingParagraph = { mainText: '', notes: [], _drainMarker: true };
     }
     // אם זה היה drain marker וה-carry-over כבר התרוקן — נקה גם את ה-marker
