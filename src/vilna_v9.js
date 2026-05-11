@@ -426,8 +426,10 @@ function buildPagePlan(pageContent, config) {
     // ניתן לעקוף ב-config.mainGap.
     mainGap: null,
     titles: {},
+    streamSettings: {},
   }, config || {});
 
+  const streamSettings = cfg.streamSettings || {};
   const innerWidth = cfg.pageWidth - 2 * cfg.padding;
   const halfWidth = Math.floor(innerWidth / 2);
   const mainWidth = Math.floor(innerWidth * cfg.mainWidthRatio);
