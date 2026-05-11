@@ -1112,6 +1112,29 @@ export async function buildPages(container, paragraphs, config) {
       return true;
     };
 
+    const planBottomY = (tp) => {
+      if (!tp) return 0;
+      let bottom = 0;
+      const visitLines = (lines) => {
+        for (const line of (lines || [])) {
+          bottom = Math.max(bottom, (line.y || 0) + (line.lineHeightPx || line.height || 0));
+        }
+      };
+      visitLines(tp.mainBox && tp.mainBox.lines);
+      for (const box of (tp.streamBoxes || [])) visitLines(box && box.lines);
+      for (const box of (tp.footerBoxes || [])) {
+        bottom = Math.max(bottom, (box.titleY || 0) + (box.titleHeight || 0));
+        visitLines(box && box.lines);
+      }
+      return bottom;
+    };
+
+    const fillsPageEnough = (tp, minRatio = 0.82) => {
+      const pageBottom = cfg.pageHeight - cfg.padding;
+      if (!pageBottom) return false;
+      return planBottomY(tp) / pageBottom >= minRatio;
+    };
+
     // 1. מצא bestN_clean = מקסימום פסקאות שנכנסות נקי (כולל כל ההערות שלהן)
     let bestN_clean = 0;
     let bestCleanPlan = null;
@@ -1183,10 +1206,16 @@ export async function buildPages(container, paragraphs, config) {
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, {}), cfg);
         };
         const acceptSplitPlan = (tp, movedNotes) => {
-          if (!fitsClean(tp)) return false;
+          if (!tp || !tp.overflow || tp.overflow.mainText) return false;
+          const lineCount = (tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
+          const ovs = tp.overflow.streams || {};
+          const hasNoteOverflow = Object.keys(ovs).some(k => ovs[k]);
+          if (hasNoteOverflow && (!Array.isArray(movedNotes) || movedNotes.length === 0)) return false;
+          if (hasNoteOverflow && !fillsPageEnough(tp)) return false;
+          if (hasNoteOverflow && lineCount > 6) return false;
+          if (!hasNoteOverflow && !fitsClean(tp)) return false;
           if (proactiveSplit && sliceIdx < bestN_clean) {
             const noteCount = Array.isArray(movedNotes) ? movedNotes.length : 0;
-            const lineCount = (tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
             const streamCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
             const footerCount = (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
             const commentaryCount = streamCount + footerCount;
