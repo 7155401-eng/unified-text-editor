@@ -1182,14 +1182,25 @@ export async function buildPages(container, paragraphs, config) {
           const slice = [...baseSlice, half];
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, {}), cfg);
         };
+        const acceptSplitPlan = (tp, movedNotes) => {
+          if (!fitsClean(tp)) return false;
+          if (proactiveSplit && sliceIdx < bestN_clean) {
+            const noteCount = Array.isArray(movedNotes) ? movedNotes.length : 0;
+            const lineCount = (tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
+            const streamCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+            if (noteCount === 0 && streamCount === 0) return false;
+            if (lineCount < 3 && streamCount === 0) return false;
+          }
+          return true;
+        };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
         for (let i = lineEnds.length - 1; i >= 0 && !splitInfo; i--) {
           const len = lineEnds[i];
           const before = notesBeforeAnchor(len);
           for (let keep = before.length; keep >= 0; keep--) {
-            if (!fitsClean(tryPrefix(len, keep))) continue;
             const movedNotes = notesBeforeAnchor(len, keep);
+            if (!acceptSplitPlan(tryPrefix(len, keep), movedNotes)) continue;
             const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
             const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
             splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
@@ -1203,8 +1214,8 @@ export async function buildPages(container, paragraphs, config) {
           for (const len of candidates) {
             const before = notesBeforeAnchor(len);
             for (let keep = before.length; keep >= 0; keep--) {
-              if (!fitsClean(tryPrefix(len, keep))) continue;
               const movedNotes = notesBeforeAnchor(len, keep);
+              if (!acceptSplitPlan(tryPrefix(len, keep), movedNotes)) continue;
               const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
               const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
               splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
