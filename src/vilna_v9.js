@@ -1106,6 +1106,7 @@ export async function buildPages(container, paragraphs, config) {
     const fitsClean = (tp) => {
       if (!tp || !tp.overflow) return false;
       if (tp.overflow.exceedsPage) return false;
+      if (tp.overflow.mainText) return false;
       const ovs = tp.overflow.streams || {};
       for (const k in ovs) if (ovs[k]) return false;
       return true;
