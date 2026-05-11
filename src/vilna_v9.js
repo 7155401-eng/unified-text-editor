@@ -427,7 +427,7 @@ function buildPagePlan(pageContent, config) {
     mainGap: null,
     titles: {},
   }, config || {});
-  const streamSettings = cfg.streamSettings || {};
+
   const innerWidth = cfg.pageWidth - 2 * cfg.padding;
   const halfWidth = Math.floor(innerWidth / 2);
   const mainWidth = Math.floor(innerWidth * cfg.mainWidthRatio);
