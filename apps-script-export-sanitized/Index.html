@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <title>ניהול - מערכת תמלול תורה</title>
+  <style>
+    body {
+      font-family: 'Rubik', 'Assistant', Arial, sans-serif;
+      background: #f5f7fa;
+      color: #1b263b;
+      margin: 0;
+      padding: 20px;
+      direction: rtl;
+    }
+    h1 {
+      color: #0d1b2a;
+      border-bottom: 3px solid #d4af37;
+      padding-bottom: 10px;
+    }
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 10px 20px;
+      background: #e0e7ee;
+      border-radius: 8px 8px 0 0;
+      cursor: pointer;
+      border: 1px solid #c0c8d0;
+      border-bottom: none;
+    }
+    .tab.active {
+      background: #0d1b2a;
+      color: #d4af37;
+      font-weight: bold;
+    }
+    .panel {
+      background: white;
+      border: 1px solid #c0c8d0;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    .panel.active { display: block; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px 12px;
+      text-align: right;
+    }
+    th {
+      background: #0d1b2a;
+      color: #d4af37;
+    }
+    tr:nth-child(even) { background: #f9fafb; }
+
+    button {
+      padding: 8px 16px;
+      background: #0d1b2a;
+      color: #d4af37;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 4px 2px;
+    }
+    button:hover { background: #1b263b; }
+    button.danger { background: #c0392b; color: white; }
+
+    input, select {
+      padding: 8px;
+      border: 1px solid #c0c8d0;
+      border-radius: 4px;
+      font-size: 14px;
+      margin: 3px;
+    }
+
+    .form-row {
+      margin: 10px 0;
+    }
+    .form-row label {
+      display: inline-block;
+      width: 130px;
+      font-weight: bold;
+    }
+
+    .balance-low { color: #c0392b; font-weight: bold; }
+    .balance-ok { color: #16a085; }
+    .status-active { color: #27ae60; }
+    .status-blocked { color: #c0392b; }
+
+    .alert {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      padding: 10px;
+      border-radius: 6px;
+      margin: 10px 0;
+    }
+
+    .new-code {
+      background: #d4edda;
+      border: 2px solid #28a745;
+      padding: 15px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 16px;
+      margin: 10px 0;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <h1>ניהול מערכת תמלול תורה</h1>
+
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('customers')">לקוחות</div>
+    <div class="tab" onclick="showTab('add_customer')">הוספת לקוח</div>
+    <div class="tab" onclick="showTab('reports')">דוחות</div>
+    <div class="tab" onclick="showTab('keys')">מפתחות שרת</div>
+  </div>
+
+  <!-- ===== לקוחות ===== -->
+  <div id="panel-customers" class="panel active">
+    <h2>רשימת לקוחות</h2>
+    <button onclick="loadCustomers()">🔄 רענן</button>
+    <input type="text" id="search-customer" placeholder="חיפוש (שם / מייל / קוד)" oninput="filterCustomers()">
+    <div id="customers-table">טוען...</div>
+  </div>
+
+  <!-- ===== הוספת לקוח ===== -->
+  <div id="panel-add_customer" class="panel">
+    <h2>הוספת לקוח חדש</h2>
+    <div class="form-row">
+      <label>שם:</label>
+      <input type="text" id="new-name" />
+    </div>
+    <div class="form-row">
+      <label>אימייל:</label>
+      <input type="email" id="new-email" />
+    </div>
+    <div class="form-row">
+      <label>טלפון:</label>
+      <input type="tel" id="new-phone" />
+    </div>
+    <button onclick="createCustomerAction()">צור לקוח</button>
+    <div id="new-customer-result"></div>
+  </div>
+
+  <!-- ===== דוחות ===== -->
+  <div id="panel-reports" class="panel">
+    <h2>דוח חודשי</h2>
+    <div class="form-row">
+      <label>שנה:</label>
+      <input type="number" id="report-year" value="2026" />
+      <label>חודש:</label>
+      <input type="number" id="report-month" min="1" max="12" value="4" />
+      <button onclick="loadReport()">הצג דוח</button>
+    </div>
+    <div id="report-result"></div>
+  </div>
+
+  <!-- ===== מפתחות שרת ===== -->
+  <div id="panel-keys" class="panel">
+    <h2>מפתחות API של השרת</h2>
+    <p>המפתחות נשמרים ב-Script Properties (לא בקוד). הם משמשים לקריאות פרמיום.</p>
+    <div id="keys-status">טוען...</div>
+
+    <h3>עדכן מפתח</h3>
+    <div class="form-row">
+      <label>ספק:</label>
+      <select id="key-provider">
+        <option value="gemini">Gemini</option>
+        <option value="claude">Claude</option>
+        <option value="openai">OpenAI</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>מפתח:</label>
+      <input type="password" id="new-api-key" style="width:400px" />
+    </div>
+    <button onclick="saveServerKey()">שמור</button>
+    <div id="key-save-result"></div>
+  </div>
+
+
+  <script>
+    var allCustomers = [];
+
+    function showTab(tabName) {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+      event.target.classList.add('active');
+      document.getElementById('panel-' + tabName).classList.add('active');
+
+      if (tabName === 'customers') loadCustomers();
+      if (tabName === 'keys') loadKeys();
+    }
+
+    function loadCustomers() {
+      document.getElementById('customers-table').innerHTML = 'טוען...';
+      google.script.run
+        .withSuccessHandler(function(customers) {
+          allCustomers = customers;
+          renderCustomersTable(customers);
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('customers-table').innerHTML =
+            '<div class="alert">שגיאה: ' + err.message + '</div>';
+        })
+        .admin_listCustomers();
+    }
+
+    function filterCustomers() {
+      var q = document.getElementById('search-customer').value.toLowerCase();
+      var filtered = allCustomers.filter(function(c) {
+        return (c.name && c.name.toString().toLowerCase().indexOf(q) >= 0) ||
+               (c.email && c.email.toString().toLowerCase().indexOf(q) >= 0) ||
+               (c.access_code && c.access_code.toString().toLowerCase().indexOf(q) >= 0);
+      });
+      renderCustomersTable(filtered);
+    }
+
+    function renderCustomersTable(customers) {
+      if (!customers || customers.length === 0) {
+        document.getElementById('customers-table').innerHTML = '<p>אין לקוחות עדיין.</p>';
+        return;
+      }
+      var html = '<table><thead><tr>' +
+        '<th>ID</th><th>שם</th><th>מייל</th><th>סטטוס</th>' +
+        '<th>יתרה (ש"ח)</th><th>נצרך (ש"ח)</th>' +
+        '<th>פעולות</th></tr></thead><tbody>';
+
+      customers.forEach(function(c) {
+        var balance = (parseInt(c.balance_agorot || 0) / 100).toFixed(2);
+        var used = (parseInt(c.total_used_agorot || 0) / 100).toFixed(2);
+        var balanceClass = parseInt(c.balance_agorot || 0) < 1000 ? 'balance-low' : 'balance-ok';
+        var statusClass = c.status === 'active' ? 'status-active' : 'status-blocked';
+
+        html += '<tr>' +
+          '<td>' + (c.customer_id || '') + '</td>' +
+          '<td>' + (c.name || '') + '</td>' +
+          '<td>' + (c.email || '') + '</td>' +
+          '<td class="' + statusClass + '">' + c.status + '</td>' +
+          '<td class="' + balanceClass + '">' + balance + '</td>' +
+          '<td>' + used + '</td>' +
+          '<td>' +
+            '<button onclick="addPointsAction(\'' + c.customer_id + '\')">+ נקודות</button>' +
+            '<button class="danger" onclick="toggleStatus(\'' + c.customer_id + '\', \'' + c.status + '\')">' +
+              (c.status === 'active' ? 'חסום' : 'שחרר') + '</button>' +
+            '<button onclick="regenerateCode(\'' + c.customer_id + '\')">קוד חדש</button>' +
+          '</td></tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById('customers-table').innerHTML = html;
+    }
+
+    function createCustomerAction() {
+      var name = document.getElementById('new-name').value;
+      var email = document.getElementById('new-email').value;
+      var phone = document.getElementById('new-phone').value;
+      if (!name) { alert('שם נדרש'); return; }
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          document.getElementById('new-customer-result').innerHTML =
+            '<div class="new-code">לקוח נוצר! זה הקוד האישי - העתק עכשיו!<br>' +
+            '<strong>' + result.access_code + '</strong><br>' +
+            'הקוד לא יוצג שוב!</div>';
+          document.getElementById('new-name').value = '';
+          document.getElementById('new-email').value = '';
+          document.getElementById('new-phone').value = '';
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('new-customer-result').innerHTML =
+            '<div class="alert">שגיאה: ' + err.message + '</div>';
+        })
+        .admin_addCustomer(name, email, phone);
+    }
+
+    function addPointsAction(customerId) {
+      var shekels = prompt('כמה שקלים להוסיף?');
+      if (!shekels) return;
+      var note = prompt('הערה (אופציונלי):') || '';
+
+      google.script.run
+        .withSuccessHandler(function() { alert('נוסף בהצלחה'); loadCustomers(); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .admin_addPoints(customerId, shekels, note);
+    }
+
+    function toggleStatus(customerId, currentStatus) {
+      var newStatus = currentStatus === 'active' ? 'blocked' : 'active';
+      if (!confirm('לשנות סטטוס ל-' + newStatus + '?')) return;
+      google.script.run
+        .withSuccessHandler(function() { loadCustomers(); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .admin_setStatus(customerId, newStatus);
+    }
+
+    function regenerateCode(customerId) {
+      if (!confirm('ליצור קוד חדש? (הקוד הישן לא יעבוד יותר)')) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          alert('קוד חדש: ' + result.new_access_code + '\n\nשמור אותו - הוא לא יוצג שוב!');
+          loadCustomers();
+        })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .admin_regenerateCode(customerId);
+    }
+
+    function loadReport() {
+      var year = parseInt(document.getElementById('report-year').value);
+      var month = parseInt(document.getElementById('report-month').value);
+      document.getElementById('report-result').innerHTML = 'טוען...';
+
+      google.script.run
+        .withSuccessHandler(function(report) {
+          var html = '<table>' +
+            '<tr><th>קריאות</th><td>' + report.calls_count + '</td></tr>' +
+            '<tr><th>הכנסות</th><td>' + report.total_revenue_shekels + ' ש"ח</td></tr>' +
+            '<tr><th>הוצאות (בינה)</th><td>' + report.total_cost_shekels + ' ש"ח</td></tr>' +
+            '<tr><th>רווח</th><td><strong>' + report.profit_shekels + ' ש"ח</strong></td></tr>' +
+            '</table>';
+
+          if (report.top_customers && report.top_customers.length > 0) {
+            html += '<h3>10 הלקוחות הכי פעילים</h3><table><thead><tr>' +
+              '<th>ID</th><th>קריאות</th><th>הכנסה (ש"ח)</th></tr></thead><tbody>';
+            report.top_customers.forEach(function(tc) {
+              html += '<tr><td>' + tc.customer_id + '</td><td>' + tc.calls +
+                '</td><td>' + (tc.revenue_agorot / 100).toFixed(2) + '</td></tr>';
+            });
+            html += '</tbody></table>';
+          }
+
+          document.getElementById('report-result').innerHTML = html;
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('report-result').innerHTML =
+            '<div class="alert">שגיאה: ' + err.message + '</div>';
+        })
+        .admin_getMonthlyReport(year, month);
+    }
+
+    function loadKeys() {
+      google.script.run
+        .withSuccessHandler(function(status) {
+          document.getElementById('keys-status').innerHTML =
+            '<table>' +
+            '<tr><th>Gemini</th><td>' + (status.has_gemini ? '✓ מוגדר' : '✗ חסר') + '</td></tr>' +
+            '<tr><th>Claude</th><td>' + (status.has_claude ? '✓ מוגדר' : '✗ חסר') + '</td></tr>' +
+            '<tr><th>OpenAI</th><td>' + (status.has_openai ? '✓ מוגדר' : '✗ חסר') + '</td></tr>' +
+            '</table>';
+        })
+        .admin_getServerKeys();
+    }
+
+    function saveServerKey() {
+      var provider = document.getElementById('key-provider').value;
+      var apiKey = document.getElementById('new-api-key').value;
+      if (!apiKey) { alert('הזן מפתח'); return; }
+
+      google.script.run
+        .withSuccessHandler(function() {
+          document.getElementById('key-save-result').innerHTML =
+            '<div class="new-code">המפתח נשמר בהצלחה</div>';
+          document.getElementById('new-api-key').value = '';
+          loadKeys();
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('key-save-result').innerHTML =
+            '<div class="alert">שגיאה: ' + err.message + '</div>';
+        })
+        .admin_setServerKey(provider, apiKey);
+    }
+
+    // טעינה ראשונית
+    loadCustomers();
+  </script>
+</body>
+</html>
