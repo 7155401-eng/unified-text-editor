@@ -1131,9 +1131,17 @@ export async function buildPages(container, paragraphs, config) {
     const cleanStreamLines = (bestCleanPlan && bestCleanPlan.streamBoxes || [])
       .reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
     const proactiveSplit = bestN_clean > 0 && cleanStreamLines > 0 && cleanMainLines.length > 10;
-    if (bestN_clean < totalAvail || proactiveSplit) {
-      const sliceIdx = proactiveSplit ? bestN_clean - 1 : bestN_clean;
-      const baseN = proactiveSplit ? Math.max(0, bestN_clean - 1) : bestN_clean;
+    const proactiveTargets = proactiveSplit
+      ? Array.from({ length: bestN_clean }, (_v, i) => bestN_clean - 1 - i)
+      : [];
+    const splitTargets = [
+      ...proactiveTargets,
+      ...(bestN_clean < totalAvail ? [bestN_clean] : []),
+    ];
+    for (const targetSliceIdx of splitTargets) {
+      if (splitInfo) break;
+      const sliceIdx = targetSliceIdx;
+      const baseN = Math.max(0, sliceIdx);
       const fromArrayOffset = pendingParagraph ? sliceIdx - 1 : sliceIdx;
       const target = (pendingParagraph && sliceIdx === 0)
         ? pendingParagraph
