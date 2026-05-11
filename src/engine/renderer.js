@@ -1,4 +1,5 @@
 import { streamColorIndex } from "./schema.js";
+import { applyStyleToElement } from "../style_registry.js";
 
 function streamTitleForCode(code) {
   const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
@@ -31,6 +32,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   wrap.setAttribute("data-stream", streamCode);
 
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[streamCode]) || {};
+  applyStyleToElement(wrap, settings.styleId);
   const userCols = settings.cols || 1;
   // משה 2026-05-06: בחירת עמודות לפי הגדרת המשתמש בלבד, ללא הערכת שורות
   // לפי תווים (החישוב של 52 תווים/שורה לא תאם את המציאות).
@@ -50,6 +52,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   const title = document.createElement("div");
   title.className = "stream-title";
   title.textContent = streamTitleForCode(streamCode);
+  applyStyleToElement(title, settings.titleStyleId);
   wrap.appendChild(title);
 
   const notes = notesArr;

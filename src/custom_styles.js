@@ -2,22 +2,15 @@
 // dropdown ("+ הוסף סגנון משלך"), persists user-defined styles, and applies
 // them to the active selection via TipTap chain commands.
 
-const STORAGE_KEY = "ravtext.customStyles.v1";
+import { loadTextStyles, saveTextStyles } from "./style_registry.js";
 const ID_PREFIX = "user-";
 
-function loadStyles() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
+export function loadStyles() {
+  return loadTextStyles();
 }
 
-function saveStyles(styles) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(styles));
+export function saveStyles(styles) {
+  saveTextStyles(styles);
 }
 
 function uniqueId(existing) {
@@ -26,7 +19,8 @@ function uniqueId(existing) {
   return ID_PREFIX + n;
 }
 
-function refreshDropdown(select, styles) {
+export function refreshCustomStylesGallery(select = document.getElementById("styles-gallery-select"), styles = loadStyles()) {
+  if (!select) return;
   Array.from(select.querySelectorAll("option[data-user-style]")).forEach(o => o.remove());
   const addOption = select.querySelector('option[value="__add-custom__"]');
   for (const s of styles) {
@@ -252,7 +246,7 @@ function refreshSavedList(dialog, paneManager, select) {
     if (btn.dataset.action === "delete") {
       const next = styles.filter(s => s.id !== id);
       saveStyles(next);
-      refreshDropdown(select, next);
+      refreshCustomStylesGallery(select, next);
       refreshSavedList(dialog, paneManager, select);
     } else if (btn.dataset.action === "edit") {
       const target = styles.find(s => s.id === id);
@@ -275,7 +269,8 @@ export function wireCustomStyles(paneManager) {
     select.appendChild(opt);
   }
 
-  refreshDropdown(select, loadStyles());
+  refreshCustomStylesGallery(select, loadStyles());
+  window.addEventListener("ravtext:styles-changed", () => refreshCustomStylesGallery(select, loadStyles()));
 
   const dialog = buildDialog();
 
@@ -320,7 +315,7 @@ export function wireCustomStyles(paneManager) {
       styles.push({ id: uniqueId(styles), ...style });
     }
     saveStyles(styles);
-    refreshDropdown(select, styles);
+    refreshCustomStylesGallery(select, styles);
     refreshSavedList(dialog, paneManager, select);
     delete dialog.dataset.editingId;
   });

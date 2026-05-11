@@ -1,4 +1,6 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
+import { applyStyleToElement } from "./style_registry.js";
+
 //
 // שיטה: חישוב אנליטי מלא ב-JavaScript. כל מילה ממוקמת ב-x,y ידועים.
 // ה-DOM הוא רק position:absolute במיקומים שכבר חושבו.
@@ -658,6 +660,8 @@ function buildPagePlan(pageContent, config) {
       id: streamData.id,
       role: side,
       side: side,
+      styleId: streamSettings[streamData.id]?.styleId || "",
+      titleStyleId: streamSettings[streamData.id]?.titleStyleId || "",
       strips: strips,
       lines: lines,
       endY: flowResult.endY,
@@ -883,6 +887,8 @@ function buildPagePlan(pageContent, config) {
 
       result.footerBoxes.push({
         id: fs.id,
+        styleId: streamSettings[fs.id]?.styleId || "",
+        titleStyleId: streamSettings[fs.id]?.titleStyleId || "",
         lines: linesData,
         titleY: titleY,
         titleHeight: titleHeight,
@@ -991,12 +997,13 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.style.fontSize = fontSize + 'px';
       lineEl.style.lineHeight = (fontSize * lineHeight) + 'px';
       if (fontFamily) lineEl.style.fontFamily = fontFamily;
+      applyStyleToElement(lineEl, box.styleId);
       lineEl.textContent = line.text;
       pageEl.appendChild(lineEl);
     }
   }
 
-  function drawTitle(text, x, y, width, colorClass) {
+  function drawTitle(text, x, y, width, colorClass, styleId) {
     const t = document.createElement('div');
     t.className = 'v9-stream-title' + (colorClass || '');
     t.style.left = (padding + x) + 'px';
@@ -1005,6 +1012,7 @@ function renderPagePlan(plan, pageEl, cfg) {
     t.style.height = plan.titleHeight + 'px';
     t.style.fontSize = (cfg.sideFontSize || 11) + 'px';
     t.style.lineHeight = plan.titleHeight + 'px';
+    applyStyleToElement(t, styleId);
     t.textContent = text;
     pageEl.appendChild(t);
   }
@@ -1027,11 +1035,11 @@ function renderPagePlan(plan, pageEl, cfg) {
       //   skipTopTitle: צד הקצר מקבל כותרת מתחת לכתר, מעל התוכן שלו,
       //                 ברוחב + מיקום של עמודת הזרם האמיתית מתחתיה
       if (box.fullWidthTitle) {
-        drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass);
+        drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass, box.titleStyleId);
       } else if (box.skipTopTitle) {
-        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass);
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId);
       } else {
-        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass);
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId);
       }
     }
   }
@@ -1042,7 +1050,7 @@ function renderPagePlan(plan, pageEl, cfg) {
     drawBox(fb, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
     const title = (cfg.titles || {})[fb.id];
     if (title) {
-      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass);
+      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass, fb.titleStyleId);
     }
   }
 }

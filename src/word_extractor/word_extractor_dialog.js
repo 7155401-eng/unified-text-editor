@@ -18,6 +18,7 @@ import {
 import {
   buildDefaultStreamMapping, streamsToSd, findDuplicateSeries,
 } from "./word_extractor_streams.js";
+import { mergeDocxStylesIntoRegistry } from "../style_registry.js";
 import {
   SOURCE_LABELS, SOURCE_HEB_NAMES, SERIES_LETTERS,
   SOURCE_FOOTNOTE, SOURCE_ENDNOTE, SOURCE_COMMENT,
@@ -121,6 +122,10 @@ function ensureModalShell() {
 
       <div class="we-mode-wrap" style="margin:10px 0; padding:8px 10px; border:1px solid var(--border,#ccc); border-radius:6px;">
         <h3 style="margin:0 0 6px;">בעת ייבוא</h3>
+        <label style="display:block; padding:3px 0;">
+          <input type="checkbox" class="we-import-styles" checked>
+          ייבא סגנונות Word לגלריית הסגנונות
+        </label>
         <label style="display:block; padding:3px 0;">
           <input type="radio" name="we-import-mode" value="replace" class="we-mode-replace" checked>
           דרוס את כל הטקסט הקיים
@@ -496,6 +501,9 @@ async function onConfirm() {
     // משה 2026-05-09: מסלול ב — חיקוי docx_extract של comparator_tool.py.
     // בגוף נכנס רק הסמל (@01), תוכן ההערה לזרם הנפרד. אין LaTeX, אין סינון.
     syncBracketsState();
+    if (document.querySelector('.we-import-styles')?.checked !== false) {
+      mergeDocxStylesIntoRegistry(_state.stylesFull || {});
+    }
     const simpleSelected = [];
     let nextCode = 1;
     const seriesToCode = {};

@@ -2,6 +2,7 @@
 // current render callback instead of the original local scheduleRender().
 
 import { normalizeStreamOpeningWordSettings } from "./opening_word.js";
+import { styleOptionsHtml } from "./style_registry.js";
 
 const STREAM_SETTINGS_KEY = "ravtext.streamSettings.v1";
 const DEFAULT_STREAM_SETTINGS = {
@@ -11,6 +12,8 @@ const DEFAULT_STREAM_SETTINGS = {
   lastLineCenter: true,
   firstNoteAsTitle: false,
   minLinesForCols: 3,
+  styleId: "",
+  titleStyleId: "",
 };
 
 export function getStreamSettings() {
@@ -85,9 +88,38 @@ function makeCheckbox(labelText, checked, onChange) {
   return label;
 }
 
+function makeStyleSelect(labelText, value, onChange) {
+  const label = document.createElement("label");
+  label.className = "stream-col-input";
+  const span = document.createElement("span");
+  span.textContent = labelText;
+  const select = document.createElement("select");
+  select.className = "stream-style-select";
+  select.innerHTML = styleOptionsHtml(value || "");
+  select.addEventListener("change", () => {
+    if (select.value === "__add-custom__") {
+      const gallery = document.getElementById("styles-gallery-select");
+      if (gallery) {
+        gallery.value = "__add-custom__";
+        gallery.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      select.value = value || "";
+      return;
+    }
+    onChange(select.value);
+  });
+  label.appendChild(span);
+  label.appendChild(select);
+  return label;
+}
+
 export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   const panel = document.getElementById("stream-columns-panel");
   if (!panel) return;
+  if (!panel.dataset.styleRefreshBound) {
+    panel.dataset.styleRefreshBound = "1";
+    window.addEventListener("ravtext:styles-changed", () => updateOriginalStreamColumnsPanel(pages, scheduleRender));
+  }
   const used = new Set();
   for (const p of pages) for (const c of Object.keys(p.streams || {})) used.add(c);
   for (const pane of window.paneManager?.panes || []) {
@@ -196,6 +228,16 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
 
     block.appendChild(makeCheckbox("הערה ראשונה ככותרת", cur.firstNoteAsTitle, (checked) => {
       cur.firstNoteAsTitle = checked;
+      commitRender();
+    }));
+
+    block.appendChild(makeStyleSelect("סגנון זרם:", cur.styleId || "", (value) => {
+      cur.styleId = value;
+      commitRender();
+    }));
+
+    block.appendChild(makeStyleSelect("סגנון כותרת:", cur.titleStyleId || "", (value) => {
+      cur.titleStyleId = value;
       commitRender();
     }));
 

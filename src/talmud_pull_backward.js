@@ -97,6 +97,54 @@ function pullMainParagraph(curPageEl, nextPageEl) {
   return true;
 }
 
+function streamSortValue(streamEl) {
+  const n = parseInt(streamEl?.getAttribute("data-stream") || "", 10);
+  return Number.isFinite(n) ? n : 9999;
+}
+
+function insertStreamByCode(streamsWrap, streamEl) {
+  const val = streamSortValue(streamEl);
+  const before = Array.from(streamsWrap.querySelectorAll(":scope > .stream[data-stream]"))
+    .find(s => streamSortValue(s) > val);
+  if (before) streamsWrap.insertBefore(streamEl, before);
+  else streamsWrap.appendChild(streamEl);
+}
+
+function pullPageStreamBackward(curPageEl, nextPageEl) {
+  const curPS = curPageEl.querySelector(":scope > .page-streams");
+  const nextPS = nextPageEl.querySelector(":scope > .page-streams");
+  if (!curPS || !nextPS) return false;
+
+  const nextStream = Array.from(nextPS.querySelectorAll(":scope > .stream[data-stream]"))
+    .find(s => Array.from(s.children).some(c => !c.classList?.contains("stream-title")));
+  if (!nextStream) return false;
+
+  const gap = pageGap(curPageEl);
+  const streamH = nextStream.getBoundingClientRect().height;
+  if (streamH <= 0 || streamH >= gap - 12) return false;
+
+  const fromIdx = parseInt(nextPageEl.dataset.pageIndex || "?", 10);
+  const toIdx = parseInt(curPageEl.dataset.pageIndex || "?", 10);
+  const oldNext = nextStream.nextSibling;
+  insertStreamByCode(curPS, nextStream);
+  void curPageEl.offsetHeight;
+  const overflow = curPageEl.scrollHeight - curPageEl.clientHeight;
+  if (overflow > 5) {
+    if (oldNext) nextPS.insertBefore(nextStream, oldNext);
+    else nextPS.appendChild(nextStream);
+    return false;
+  }
+
+  logMove("pull-page-stream-backward", {
+    el: nextStream,
+    fromPage: fromIdx,
+    toPage: toIdx,
+    trigger: "large gap in mishna/page-streams page",
+    reason: `stream ${nextStream.getAttribute("data-stream") || "?"} fits: ${Math.round(streamH)}px in ${Math.round(gap)}px gap`,
+  });
+  return true;
+}
+
 function pullOnePage(curPageEl, nextPageEl) {
   let gap = pageGap(curPageEl);
   if (gap <= GAP_THRESHOLD_PX) return 0;
@@ -141,6 +189,17 @@ function pullOnePage(curPageEl, nextPageEl) {
       }
       if (!movedThisRound) break;
     }
+  }
+
+  // STRATEGY 1.5: regular/mishna-wrap pages have .page-streams instead of
+  // talmud bodies. If the first stream on the next page fits the current gap,
+  // pull it back in stream-code order; this prevents a blank half page when a
+  // commentary stream merely started one page too late.
+  for (let safety = 0; safety < CHUNK_LIMIT && gap > GAP_THRESHOLD_PX; safety++) {
+    const moved = pullPageStreamBackward(curPageEl, nextPageEl);
+    if (!moved) break;
+    pulled++;
+    gap = pageGap(curPageEl);
   }
 
   // STRATEGY 2: If gap still big and next page has tiny total content,
