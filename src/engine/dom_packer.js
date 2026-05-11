@@ -323,7 +323,7 @@ function buildMeasurePage(mainSegments, streams) {
   }
   // משה 2026-05-08: applyTalmudLayoutToPage הוסר עם מחיקת V1.
   // אם talmud דלוק → V9 רץ במסלול נפרד ו-dom_packer לא רץ בכלל.
-  if (shouldMeasureMishnaWrap()) applyMishnaWrapToPage(page);
+  if (shouldMeasureMishnaWrap()) applyMishnaWrapToPage(page, { skipServerDecision: true });
   return page;
 }
 

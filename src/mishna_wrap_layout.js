@@ -149,7 +149,7 @@ function layoutLevel(streamsWrap, levelStreams, levelIndex) {
   streamsWrap.appendChild(levelEl);
 }
 
-export async function applyMishnaWrapToPage(pageEl) {
+export async function applyMishnaWrapToPage(pageEl, options = {}) {
   const streamsWrap = pageEl && pageEl.querySelector(".page-streams");
   if (!streamsWrap) return;
 
@@ -188,7 +188,11 @@ export async function applyMishnaWrapToPage(pageEl) {
 
   // צוות האתר 2026-05-07: pre-fetch להחלטות צד. אם השרת זמין → cache ימולא.
   // אם לא — fallback לחישוב המקומי המקורי. הרוחב נשאר מקומי בכל מקרה.
-  await preflightMishnaSides(streams, streamsWrap);
+  if (!options.skipServerDecision) {
+    await preflightMishnaSides(streams, streamsWrap);
+  } else {
+    _serverSideCache = null;
+  }
 
   const byCode = new Map(streams.map((stream) => [codeForStream(stream), stream]));
   const used = new Set();
@@ -218,6 +222,12 @@ export async function applyMishnaWrapToPages(container) {
       await applyMishnaWrapToPage(page);
     }
     return;
+  }
+  if (typeof container.__realizePage === "function") {
+    const total = Number(container.__pageCount || 0);
+    for (let i = 0; i < total; i++) {
+      container.__realizePage(i);
+    }
   }
   const pages = Array.from(container.querySelectorAll(".page:not(.page-placeholder)"));
   for (const page of pages) {

@@ -7,7 +7,7 @@ const ENDPOINT = '/api/render/preflight';
 function detectLayoutType() {
   if (typeof localStorage === 'undefined') return 'regular';
   if (localStorage.getItem('ravtext.talmudLayout') === '1') return 'talmud';
-  if (localStorage.getItem('ravtext.mishna_wrap_layout') === '1') return 'mishna-wrap';
+  if (localStorage.getItem('ravtext.mishnaWrap') === '1') return 'mishna-wrap';
   if (localStorage.getItem('ravtext.balancedColumns') === '1') return 'balanced';
   return 'regular';
 }
