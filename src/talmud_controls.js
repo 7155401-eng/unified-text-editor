@@ -18,6 +18,9 @@ const PRESERVE_BREAKS_KEY = "ravtext.talmudLayout.preserveBreaks";
 const HEIGHT_SAFETY_KEY = "ravtext.talmudLayout.heightSafety";
 const HEIGHT_SAFETY_REGULAR_KEY = "ravtext.layout.heightSafetyRegular";
 const HEIGHT_SAFETY_PER_PAGE_KEY = "ravtext.talmudLayout.heightSafetyPerPage";
+const GAP_FILL_MIN_KEY = "ravtext.talmudLayout.gapFillMin";
+const GAP_FILL_MAX_MAIN_LINES_KEY = "ravtext.talmudLayout.gapFillMaxMainLines";
+const CARRY_ONLY_MIN_KEY = "ravtext.talmudLayout.carryOnlyMin";
 const DEFAULT_SIDE_GAP  = 12;
 const DEFAULT_HEIGHT_SAFETY = 160;
 const DEFAULT_HEIGHT_SAFETY_REGULAR = 6;
@@ -134,6 +137,51 @@ export function setTalmudHeightSafetyPerPage(value) {
   localStorage.setItem(HEIGHT_SAFETY_PER_PAGE_KEY, parts.join(','));
 }
 
+export function getTalmudGapFillMin() {
+  const raw = localStorage.getItem(GAP_FILL_MIN_KEY);
+  if (raw === null) return "";
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? Math.max(50, Math.min(98, n)) : "";
+}
+export function setTalmudGapFillMin(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n < 50 || n > 98) {
+    localStorage.removeItem(GAP_FILL_MIN_KEY);
+    return;
+  }
+  localStorage.setItem(GAP_FILL_MIN_KEY, String(n));
+}
+
+export function getTalmudGapFillMaxMainLines() {
+  const raw = localStorage.getItem(GAP_FILL_MAX_MAIN_LINES_KEY);
+  if (raw === null) return "";
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) ? Math.max(1, Math.min(30, n)) : "";
+}
+export function setTalmudGapFillMaxMainLines(value) {
+  const n = parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 1 || n > 30) {
+    localStorage.removeItem(GAP_FILL_MAX_MAIN_LINES_KEY);
+    return;
+  }
+  localStorage.setItem(GAP_FILL_MAX_MAIN_LINES_KEY, String(n));
+}
+
+export function getTalmudCarryOnlyMin() {
+  const raw = localStorage.getItem(CARRY_ONLY_MIN_KEY);
+  if (raw === null) return "";
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? Math.max(50, Math.min(98, n)) : "";
+}
+export function setTalmudCarryOnlyMin(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n < 50 || n > 98) {
+    localStorage.removeItem(CARRY_ONLY_MIN_KEY);
+    return;
+  }
+  localStorage.setItem(CARRY_ONLY_MIN_KEY, String(n));
+}
+
 export function wireTalmudLayoutControls(onChange) {
   const toggle       = document.getElementById("talmud-layout-toggle");
   const streamsInput = document.getElementById("talmud-streams-input");
@@ -148,6 +196,9 @@ export function wireTalmudLayoutControls(onChange) {
                     || document.getElementById("talmud-smart-engine-toggle");
   const perPageInput = document.getElementById("layout-height-safety-per-page-input")
                     || document.getElementById("talmud-height-safety-per-page-input");
+  const gapFillInput = document.getElementById("talmud-gap-fill-min-input");
+  const maxMainInput = document.getElementById("talmud-gap-fill-max-main-lines-input");
+  const carryOnlyInput = document.getElementById("talmud-carry-only-min-input");
 
   if (!toggle) return;
 
@@ -163,6 +214,9 @@ export function wireTalmudLayoutControls(onChange) {
   if (safetyInput)  safetyInput.value  = getEffectiveHeightSafety();
   if (smartToggle)  smartToggle.checked = localStorage.getItem("ravtext.talmudLayout.smartEngine") === "1";
   if (perPageInput) perPageInput.value = getTalmudHeightSafetyPerPage();
+  if (gapFillInput) gapFillInput.value = getTalmudGapFillMin();
+  if (maxMainInput) maxMainInput.value = getTalmudGapFillMaxMainLines();
+  if (carryOnlyInput) carryOnlyInput.value = getTalmudCarryOnlyMin();
 
   const commit = () => onChange?.();
 
@@ -229,6 +283,21 @@ export function wireTalmudLayoutControls(onChange) {
   perPageInput?.addEventListener("change", () => {
     setTalmudHeightSafetyPerPage(perPageInput.value);
     perPageInput.value = getTalmudHeightSafetyPerPage();
+    commit();
+  });
+  gapFillInput?.addEventListener("change", () => {
+    setTalmudGapFillMin(gapFillInput.value);
+    gapFillInput.value = getTalmudGapFillMin();
+    commit();
+  });
+  maxMainInput?.addEventListener("change", () => {
+    setTalmudGapFillMaxMainLines(maxMainInput.value);
+    maxMainInput.value = getTalmudGapFillMaxMainLines();
+    commit();
+  });
+  carryOnlyInput?.addEventListener("change", () => {
+    setTalmudCarryOnlyMin(carryOnlyInput.value);
+    carryOnlyInput.value = getTalmudCarryOnlyMin();
     commit();
   });
 }

@@ -548,6 +548,18 @@
               <input type="checkbox" id="layout-smart-engine-toggle" />
               <span>מנוע חכם (השתמש בזהירות)</span>
             </label>
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="V9: אחוז מילוי מינימלי לפני שמותר להשאיר המשך הערות לעמוד הבא. ריק = ברירת מחדל.">
+              <span>V9 מילוי %:</span>
+              <input type="number" id="talmud-gap-fill-min-input" min="50" max="98" placeholder="82" style="width:54px;font-size:12px;padding:3px 6px;" />
+            </label>
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="V9: מקסימום שורות ראשי בעמוד שממשיך הערות לעמוד הבא. ריק = חישוב לפי גובה הדף.">
+              <span>שורות ראשי:</span>
+              <input type="number" id="talmud-gap-fill-max-main-lines-input" min="1" max="30" placeholder="auto" style="width:58px;font-size:12px;padding:3px 6px;" />
+            </label>
+            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="V9: אחוז מילוי שמעליו עמוד המשך הערות נשאר לבד. מתחת לזה המנוע ינסה לצרף ראשי הבא.">
+              <span>Carry %:</span>
+              <input type="number" id="talmud-carry-only-min-input" min="50" max="98" placeholder="78" style="width:54px;font-size:12px;padding:3px 6px;" />
+            </label>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כותרת עליונה ותחתונה">

@@ -88,6 +88,24 @@ function readPageGeomFromContainer(container) {
   return { pageWidth, pageHeight, mainSize, sideSize, fontFamily };
 }
 
+function readPercentSetting(key, fallback, min, max) {
+  if (typeof localStorage === "undefined") return fallback;
+  const raw = localStorage.getItem(key);
+  if (raw === null || raw === "") return fallback;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n)) / 100;
+}
+
+function readIntSetting(key, fallback, min, max) {
+  if (typeof localStorage === "undefined") return fallback;
+  const raw = localStorage.getItem(key);
+  if (raw === null || raw === "") return fallback;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
 export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   if (!container || !Array.isArray(paragraphs)) return;
 
@@ -114,8 +132,11 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     sideFontFamily: geom.fontFamily,
     lineHeightRatio: 1.55,
     padding: 12,
-    mainWidthRatio: 0.42,
-    crownLines: 4,
+    mainWidthRatio: readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
+    crownLines: readIntSetting("ravtext.talmudLayout.crownLines", 4, 0, 12),
+    gapFillMinRatio: readPercentSetting("ravtext.talmudLayout.gapFillMin", 82, 50, 98),
+    gapFillMaxMainLines: readIntSetting("ravtext.talmudLayout.gapFillMaxMainLines", null, 1, 30),
+    carryOnlyMinRatio: readPercentSetting("ravtext.talmudLayout.carryOnlyMin", 78, 50, 98),
     titles,
     streamSettings,
     levels,

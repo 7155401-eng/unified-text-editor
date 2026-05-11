@@ -908,7 +908,10 @@ function renderPagePlan(plan, pageEl, cfg) {
                              && (line.naturalWidth < line.width - 2);
       // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת (לפי כללי ספרי קודש).
       const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
-      if (isFullWidthOrphan) lineEl.className += ' center';
+      const isParagraphEnd = (line.isLast || line.forcedBreak)
+        && line.words && line.words.length > 0
+        && line.naturalWidth < line.width - 2;
+      if (isFullWidthOrphan || isParagraphEnd) lineEl.className += ' center';
       else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
@@ -1054,6 +1057,9 @@ export async function buildPages(container, paragraphs, config) {
     crownLines: 4,
     mainWidthRatio: 0.42,
     mainGap: null,
+    gapFillMinRatio: 0.82,
+    gapFillMaxMainLines: null,
+    carryOnlyMinRatio: 0.78,
     titles: {},
     streamSettings: {},
     levels: [],
@@ -1135,6 +1141,14 @@ export async function buildPages(container, paragraphs, config) {
       return planBottomY(tp) / pageBottom >= minRatio;
     };
 
+    const dynamicGapFillMaxMainLines = () => {
+      const explicit = parseInt(cfg.gapFillMaxMainLines, 10);
+      if (Number.isFinite(explicit) && explicit > 0) return explicit;
+      const lineH = cfg.mainFontSize * cfg.lineHeightRatio;
+      const availableLines = Math.max(1, Math.floor((cfg.pageHeight - 2 * cfg.padding) / lineH));
+      return Math.max(4, Math.min(9, Math.round(availableLines * 0.22)));
+    };
+
     // 1. מצא bestN_clean = מקסימום פסקאות שנכנסות נקי (כולל כל ההערות שלהן)
     let bestN_clean = 0;
     let bestCleanPlan = null;
@@ -1211,8 +1225,8 @@ export async function buildPages(container, paragraphs, config) {
           const ovs = tp.overflow.streams || {};
           const hasNoteOverflow = Object.keys(ovs).some(k => ovs[k]);
           if (hasNoteOverflow && (!Array.isArray(movedNotes) || movedNotes.length === 0)) return false;
-          if (hasNoteOverflow && !fillsPageEnough(tp)) return false;
-          if (hasNoteOverflow && lineCount > 6) return false;
+          if (hasNoteOverflow && !fillsPageEnough(tp, cfg.gapFillMinRatio)) return false;
+          if (hasNoteOverflow && lineCount > dynamicGapFillMaxMainLines()) return false;
           if (!hasNoteOverflow && !fitsClean(tp)) return false;
           if (proactiveSplit && sliceIdx < bestN_clean) {
             const noteCount = Array.isArray(movedNotes) ? movedNotes.length : 0;
@@ -1276,7 +1290,7 @@ export async function buildPages(container, paragraphs, config) {
       if (carryAloneTrial.overflow.exceedsPage) {
         drainAloneMode = true;
       } else {
-        drainAloneMode = fillsPageEnough(carryAloneTrial, 0.78);
+        drainAloneMode = fillsPageEnough(carryAloneTrial, cfg.carryOnlyMinRatio);
       }
     }
 
