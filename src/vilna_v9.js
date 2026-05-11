@@ -162,7 +162,34 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
 
     const availableHeight = nextStripY - curY;
     const availableLines = Math.floor(availableHeight / lineH);
-    if (availableLines <= 0) continue;
+    if (availableLines <= 0) {
+      if (
+        tokenIdx < tokens.length &&
+        availableHeight > 0 &&
+        stripIdx + 1 < strips.length &&
+        strips[stripIdx + 1].width > strip.width
+      ) {
+        const bridgeLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
+        if (bridgeLine.tokensConsumed > 0) {
+          if (bridgeLine.words.length === 0 && bridgeLine.forcedBreak) {
+            tokenIdx += bridgeLine.tokensConsumed;
+          } else {
+            allLines.push({
+              y: curY,
+              width: strip.width,
+              words: bridgeLine.words,
+              text: bridgeLine.words.join(' '),
+              naturalWidth: bridgeLine.width,
+              isLast: tokenIdx + bridgeLine.tokensConsumed >= tokens.length,
+              forcedBreak: bridgeLine.forcedBreak,
+            });
+            tokenIdx += bridgeLine.tokensConsumed;
+            curY += lineH;
+          }
+        }
+      }
+      continue;
+    }
 
     let linesInStrip = 0;
     const linesConsumed = [];
@@ -196,6 +223,14 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     }
 
     curY += linesConsumed.length * lineH;
+    if (
+      stripIdx + 1 < strips.length &&
+      tokenIdx < tokens.length &&
+      curY < strips[stripIdx + 1].y_start &&
+      strips[stripIdx + 1].width > strip.width
+    ) {
+      strips[stripIdx + 1].y_start = curY;
+    }
 
     // משה 2026-05-10: לולאת מילוי-פערים — אחרי הלולאה הראשית, אם יש פער
     // ויזואלי (אפילו קטן) לפני ה-strip הבא, מוסיפים שורה אחת ברוחב ה-strip
