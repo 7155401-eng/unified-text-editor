@@ -1114,10 +1114,12 @@ export async function buildPages(container, paragraphs, config) {
 
     // 1. מצא bestN_clean = מקסימום פסקאות שנכנסות נקי (כולל כל ההערות שלהן)
     let bestN_clean = 0;
+    let bestCleanPlan = null;
     for (let n = 1; n <= 50 && n <= totalAvail; n++) {
       const tp = trialAtN(n);
       if (!fitsClean(tp)) break;
       bestN_clean = n;
+      bestCleanPlan = tp;
     }
 
     // 2. אם נשארו פסקאות שלא נכנסו נקי — ננסה לקחת prefix של הבאה.
@@ -1125,8 +1127,13 @@ export async function buildPages(container, paragraphs, config) {
     // ההערות שמעוגנות לפני נקודת הפיצול הולכות לעמוד הזה, השאר לעמוד הבא.
     // כך כל עמוד מקבל רק את הפרשנים של השורות שעליו (כמו במנוע הרגיל).
     let splitInfo = null;
-    if (bestN_clean < totalAvail) {
-      const sliceIdx = bestN_clean;
+    const cleanMainLines = (bestCleanPlan && bestCleanPlan.mainBox && bestCleanPlan.mainBox.lines) || [];
+    const cleanStreamLines = (bestCleanPlan && bestCleanPlan.streamBoxes || [])
+      .reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+    const proactiveSplit = bestN_clean > 0 && cleanStreamLines > 0 && cleanMainLines.length > 10;
+    if (bestN_clean < totalAvail || proactiveSplit) {
+      const sliceIdx = proactiveSplit ? bestN_clean - 1 : bestN_clean;
+      const baseN = proactiveSplit ? Math.max(0, bestN_clean - 1) : bestN_clean;
       const fromArrayOffset = pendingParagraph ? sliceIdx - 1 : sliceIdx;
       const target = (pendingParagraph && sliceIdx === 0)
         ? pendingParagraph
@@ -1161,7 +1168,7 @@ export async function buildPages(container, paragraphs, config) {
         return [...anchorlessFrom, ...anchoredFrom];
       };
       if (fullText.length >= MIN_SPLIT) {
-        const baseSlice = getSlice(bestN_clean);
+        const baseSlice = getSlice(baseN);
         const tryPrefix = (len, keepCount) => {
           const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len, keepCount) };
           const slice = [...baseSlice, half];
@@ -1177,7 +1184,7 @@ export async function buildPages(container, paragraphs, config) {
             const movedNotes = notesBeforeAnchor(len, keep);
             const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
             const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
-            splitInfo = { firstHalf, secondHalf, sliceIdx };
+            splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
             break;
           }
         }
@@ -1192,7 +1199,7 @@ export async function buildPages(container, paragraphs, config) {
               const movedNotes = notesBeforeAnchor(len, keep);
               const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
               const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
-              splitInfo = { firstHalf, secondHalf, sliceIdx };
+              splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
               break;
             }
             if (splitInfo) break;
@@ -1224,7 +1231,7 @@ export async function buildPages(container, paragraphs, config) {
     // 3. קביעת bestN סופי
     let bestN;
     if (splitInfo) {
-      bestN = bestN_clean + 1;
+      bestN = splitInfo.baseN + 1;
     } else if (bestN_clean > 0) {
       bestN = bestN_clean;
     } else if (bestN_clean < totalAvail) {
@@ -1258,7 +1265,7 @@ export async function buildPages(container, paragraphs, config) {
     };
     let safetyTries = 0;
     while (safetyTries < 5 && bestN > 1) {
-      const checkSlice = splitInfo ? [...sliceForN(bestN_clean), splitInfo.firstHalf] : sliceForN(bestN);
+      const checkSlice = splitInfo ? [...sliceForN(splitInfo.baseN), splitInfo.firstHalf] : sliceForN(bestN);
       if (droppedFootersOf(checkSlice).length === 0) break;
       if (splitInfo) { splitInfo = null; bestN = bestN_clean; }
       else { bestN--; }
@@ -1269,7 +1276,7 @@ export async function buildPages(container, paragraphs, config) {
     // אם drainAloneMode — slice ריק (רק carry-over)
     const finalSlice = drainAloneMode
       ? []
-      : (splitInfo ? [...getSlice(bestN_clean), splitInfo.firstHalf] : getSlice(bestN));
+      : (splitInfo ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf] : getSlice(bestN));
     const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
 
     const pageEl = document.createElement('div');
