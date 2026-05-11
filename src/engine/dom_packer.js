@@ -1337,6 +1337,8 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
     }
     await rebalancePages(pages, effectiveGeom, rebalanceOpts);
     mergeAdjacentNotesOnlyPages(pages, effectiveGeom);
+    seedNotesOnlyPagesWithMain(pages, effectiveGeom);
+    mergeAdjacentNotesOnlyPages(pages, effectiveGeom);
     if (typeof opts.isCurrent === "function" && !opts.isCurrent()) return pages;
     sortStreamNotes(pages);
     if (debug) {
@@ -1459,6 +1461,20 @@ function mergeAdjacentNotesOnlyPages(pages, geom) {
       continue;
     }
     i++;
+  }
+}
+
+function seedNotesOnlyPagesWithMain(pages, geom) {
+  if (!Array.isArray(pages) || pages.length < 2) return;
+  let safety = pages.length * 4;
+  for (let i = 0; i < pages.length - 1 && safety-- > 0; i++) {
+    const cur = pages[i];
+    const nxt = pages[i + 1];
+    if ((cur.main || []).length > 0 || !hasPageNotes(cur)) continue;
+    if (!nxt.main || nxt.main.length === 0) continue;
+    if (tryPullMainBack(cur, nxt, geom)) {
+      i = Math.max(-1, i - 2);
+    }
   }
 }
 
