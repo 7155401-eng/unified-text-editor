@@ -1145,6 +1145,13 @@ export async function buildPages(container, paragraphs, config) {
       const pageBottom = Math.max(1, cfg.pageHeight - cfg.padding);
       return planBottomY(tp) / pageBottom;
     };
+    const rescueMinFillRatio = Math.max(cfg.gapFillMinRatio || 0, 0.82);
+
+    const planHasCommentaryStart = (tp) => {
+      const streamCount = (tp && tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+      const footerCount = (tp && tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+      return streamCount + footerCount > 0;
+    };
 
     const dynamicGapFillMaxMainLines = () => {
       const explicit = parseInt(cfg.gapFillMaxMainLines, 10);
@@ -1195,7 +1202,7 @@ export async function buildPages(container, paragraphs, config) {
       const notesBeforeAnchor = (len) => {
         const ratio = fullText.length > 0 ? len / fullText.length : 0;
         const anchorlessShare = Math.round(anchorless.length * ratio);
-        const anchoredBefore = anchored.filter(n => n.anchor <= len);
+        const anchoredBefore = anchored.filter(n => n.anchor < len);
         const before = [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
           .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
         return before;
@@ -1294,7 +1301,7 @@ export async function buildPages(container, paragraphs, config) {
         : getSlice(bestN_clean);
       const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
-      if (currentFill < cfg.gapFillMinRatio && totalAvail > 0) {
+      if (currentFill < rescueMinFillRatio && totalAvail > 0) {
         let rescueBest = null;
         let rescueBestScore = currentFill;
         for (let sliceIdx = 0; sliceIdx < Math.min(totalAvail, 3); sliceIdx++) {
@@ -1313,7 +1320,7 @@ export async function buildPages(container, paragraphs, config) {
           const notesBeforeAnchor = (len) => {
             const ratio = fullText.length > 0 ? len / fullText.length : 0;
             const anchorlessShare = Math.round(anchorless.length * ratio);
-            const anchoredBefore = anchored.filter(n => n.anchor <= len);
+            const anchoredBefore = anchored.filter(n => n.anchor < len);
             return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
               .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
           };
@@ -1329,9 +1336,13 @@ export async function buildPages(container, paragraphs, config) {
           };
 
           const baseSlice = getSlice(baseN);
-          const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
-            .filter(n => n >= 2 && n < fullText.length);
-          for (const len of lineEnds) {
+          const rescueEnds = [...new Set([
+            ...mainLineEndCandidates(fullText, splitMetrics, splitMainWidth),
+            ...wordEndCandidates(fullText),
+          ])]
+            .filter(n => n >= 2 && n < fullText.length)
+            .sort((a, b) => a - b);
+          for (const len of rescueEnds) {
             const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
             const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
@@ -1342,9 +1353,10 @@ export async function buildPages(container, paragraphs, config) {
               + (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
             if (commentaryCount === 0) continue;
             const fill = planFillRatio(tp);
-            if (fill < currentFill + 0.12) continue;
+            if (fill < currentFill - 0.04) continue;
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
-            const score = fill - (noteOverflow ? 0.01 : 0);
+            const mainProgressBonus = Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
+            const score = fill + mainProgressBonus - (noteOverflow ? 0.01 : 0);
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
             rescueBest = {
@@ -1359,24 +1371,98 @@ export async function buildPages(container, paragraphs, config) {
       }
     }
 
+    if (splitInfo) {
+      const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
+      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+      const currentFill = planFillRatio(currentPlan);
+      const secondText = (splitInfo.secondHalf?.mainText || '').trim();
+      if (currentFill < rescueMinFillRatio && secondText.length > 0) {
+        const secondNotes = splitInfo.secondHalf.notes || [];
+        const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
+        const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
+        const notesBeforeAnchor = (len) => {
+          const ratio = secondText.length > 0 ? len / secondText.length : 0;
+          const anchorlessShare = Math.round(anchorless.length * ratio);
+          const anchoredBefore = anchored.filter(n => n.anchor < len);
+          return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
+            .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
+        };
+        const notesFromAnchor = (len, movedNotes) => {
+          const moved = new Set(movedNotes || []);
+          const ratio = secondText.length > 0 ? len / secondText.length : 0;
+          const anchorlessShare = Math.round(anchorless.length * ratio);
+          const anchorlessFrom = anchorless.slice(anchorlessShare).filter(n => !moved.has(n));
+          const anchoredFrom = anchored
+            .filter(n => !moved.has(n))
+            .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
+          return [...anchorlessFrom, ...anchoredFrom];
+        };
+        const visualLineEnds = mainLineEndCandidates(secondText, splitMetrics, splitMainWidth)
+          .filter(n => n >= 2 && n <= secondText.length)
+          .sort((a, b) => a - b);
+        const firstVisualEnd = visualLineEnds[0];
+        const secondVisualEnd = visualLineEnds[1];
+        const extendEnds = [...new Set([
+          firstVisualEnd,
+          secondVisualEnd && secondVisualEnd <= Math.max(firstVisualEnd || 0, 1) * 2 ? secondVisualEnd : null,
+          secondText.length <= 90 ? secondText.length : null,
+        ])]
+          .filter(n => n && n >= 2 && n <= secondText.length)
+          .sort((a, b) => a - b);
+        let bestExtended = null;
+        let bestExtendedScore = currentFill;
+        for (const len of extendEnds) {
+          const movedNotes = notesBeforeAnchor(len);
+          const prefix = secondText.substring(0, len).trim();
+          const rest = secondText.substring(len).trim();
+          if (!prefix) continue;
+          const firstHalf = {
+            ...splitInfo.firstHalf,
+            mainText: `${(splitInfo.firstHalf.mainText || '').trim()} ${prefix}`.trim(),
+            notes: [...(splitInfo.firstHalf.notes || []), ...movedNotes],
+          };
+          const secondHalf = {
+            ...splitInfo.secondHalf,
+            mainText: rest,
+            notes: notesFromAnchor(len, movedNotes),
+          };
+          const slice = [...getSlice(splitInfo.baseN), firstHalf];
+          const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+          if (!tp || !tp.overflow || tp.overflow.mainText) continue;
+          const fill = planFillRatio(tp);
+          if (fill < currentFill - 0.04) continue;
+          const score = fill + Math.min(0.12, (len / Math.max(1, secondText.length)) * 0.12);
+          if (score < bestExtendedScore) continue;
+          bestExtendedScore = score;
+          bestExtended = { firstHalf, secondHalf };
+        }
+        if (bestExtended) {
+          splitInfo = { ...splitInfo, ...bestExtended };
+        }
+      }
+    }
+
     let overflowTakeN = 0;
-    if (!splitInfo && bestN_clean < totalAvail) {
+    if (bestN_clean < totalAvail) {
       const candidateN = bestN_clean + 1;
       const tp = trialAtN(candidateN);
       const ovs = (tp && tp.overflow && tp.overflow.streams) || {};
       const hasNoteOverflow = Object.keys(ovs).some(k => ovs[k]);
-      const streamCount = (tp && tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
-      const footerCount = (tp && tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
       const fill = planFillRatio(tp);
+      const currentSlice = splitInfo
+        ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
+        : getSlice(bestN_clean);
+      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+      const currentFill = planFillRatio(currentPlan);
       if (
         tp && tp.overflow &&
-        !tp.overflow.exceedsPage &&
         !tp.overflow.mainText &&
         hasNoteOverflow &&
-        streamCount + footerCount > 0 &&
-        fill > cleanFill + 0.08
+        planHasCommentaryStart(tp) &&
+        (fill > currentFill + 0.08 || (currentFill < rescueMinFillRatio && fill >= currentFill - 0.04))
       ) {
         overflowTakeN = candidateN;
+        splitInfo = null;
       }
     }
 
