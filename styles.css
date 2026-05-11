@@ -2179,6 +2179,7 @@ body.light-theme .pdf-scroll-progress-fill {
     transform-origin: top left !important;
     content-visibility: visible !important;
     contain-intrinsic-size: auto !important;
+    overflow: hidden !important;
     box-shadow: none !important;
     border: 0 !important;
     page-break-after: always;
