@@ -345,9 +345,11 @@ export class Pane {
     mgr.syncBusy = true;
     const body = this._body;
     const anchor = visibleMarkerAnchor(body);
+    if (anchor) mgr._lastSyncAnchor = anchor;
+    const syncAnchor = anchor || mgr._lastSyncAnchor;
     for (const other of mgr.panes) {
       if (other === this || !other._body) continue;
-      if (anchor && scrollPaneToAnchor(other, anchor)) continue;
+      if (syncAnchor && scrollPaneToAnchor(other, syncAnchor)) continue;
       syncPaneByFraction(body, other._body);
     }
     requestAnimationFrame(() => { mgr.syncBusy = false; });
@@ -554,6 +556,7 @@ export class PaneManager {
     this._listeners = { change: [], focus: [] };
     this.syncEnabled = false;
     this.syncBusy = false;
+    this._lastSyncAnchor = null;
     this.lineMode = false;
     this.merged = false;
     this._dragPaneId = null;
