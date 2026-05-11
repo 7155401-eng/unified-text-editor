@@ -1022,6 +1022,17 @@ function mainLineEndCandidates(text, metrics, widthPx) {
   return out;
 }
 
+function wordEndCandidates(text) {
+  if (!text) return [];
+  const out = [];
+  const re = /\S+/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    out.push(match.index + match[0].length);
+  }
+  return out;
+}
+
 // buildPages: בונה דפים מרובים מרצף פסקאות (כמו V8)
 //   - container: האלמנט שאליו יוסיפו דפים
 //   - paragraphs: רשימת פסקאות (mainText + notes)
@@ -1167,6 +1178,23 @@ export async function buildPages(container, paragraphs, config) {
             const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
             splitInfo = { firstHalf, secondHalf, sliceIdx };
             break;
+          }
+        }
+        if (!splitInfo) {
+          const candidates = wordEndCandidates(fullText)
+            .filter(n => n >= MIN_SPLIT && n < fullText.length)
+            .sort((a, b) => b - a);
+          for (const len of candidates) {
+            const before = notesBeforeAnchor(len);
+            for (let keep = before.length; keep >= 0; keep--) {
+              if (!fitsClean(tryPrefix(len, keep))) continue;
+              const movedNotes = notesBeforeAnchor(len, keep);
+              const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
+              const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
+              splitInfo = { firstHalf, secondHalf, sliceIdx };
+              break;
+            }
+            if (splitInfo) break;
           }
         }
       }

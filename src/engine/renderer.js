@@ -18,13 +18,20 @@ function mainBlockTagFor(tup) {
 }
 
 function createStreamElement(streamCode, streamData, streamNumLastPage, pageIndex, options = {}) {
+  const notesArr = (streamData && streamData.notes) || [];
+  const hasNoteText = notesArr.some((tup) => {
+    const text = (tup && tup[1]) || "";
+    const children = Array.isArray(tup && tup[5]) ? tup[5] : [];
+    return text.trim().length > 0 || children.some((child) => ((child && child.text) || "").trim().length > 0);
+  });
+  if (!hasNoteText) return null;
+
   const wrap = document.createElement("div");
   wrap.className = `stream stream-color-${streamColorIndex(streamCode)}`;
   wrap.setAttribute("data-stream", streamCode);
 
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[streamCode]) || {};
   const userCols = settings.cols || 1;
-  const notesArr = (streamData && streamData.notes) || [];
   // משה 2026-05-06: בחירת עמודות לפי הגדרת המשתמש בלבד, ללא הערכת שורות
   // לפי תווים (החישוב של 52 תווים/שורה לא תאם את המציאות).
   const cols = userCols;
@@ -219,11 +226,10 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     const streamsWrap = document.createElement("div");
     streamsWrap.className = "page-streams";
     for (const code of codes) {
-      streamsWrap.appendChild(
-        createStreamElement(code, pageData.streams[code], streamNumLastPage, pageIndex, { pageHasMain })
-      );
+      const streamEl = createStreamElement(code, pageData.streams[code], streamNumLastPage, pageIndex, { pageHasMain });
+      if (streamEl) streamsWrap.appendChild(streamEl);
     }
-    page.appendChild(streamsWrap);
+    if (streamsWrap.children.length > 0) page.appendChild(streamsWrap);
   }
 
   return page;
