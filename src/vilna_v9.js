@@ -1022,17 +1022,6 @@ function mainLineEndCandidates(text, metrics, widthPx) {
   return out;
 }
 
-function wordEndCandidates(text) {
-  if (!text) return [];
-  const out = [];
-  const re = /\S+/g;
-  let match;
-  while ((match = re.exec(text)) !== null) {
-    out.push(match.index + match[0].length);
-  }
-  return out;
-}
-
 // buildPages: בונה דפים מרובים מרצף פסקאות (כמו V8)
 //   - container: האלמנט שאליו יוסיפו דפים
 //   - paragraphs: רשימת פסקאות (mainText + notes)
@@ -1176,18 +1165,6 @@ export async function buildPages(container, paragraphs, config) {
             const movedNotes = notesBeforeAnchor(len, keep);
             const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
             const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
-            splitInfo = { firstHalf, secondHalf, sliceIdx };
-            break;
-          }
-        }
-        if (!splitInfo) {
-          const fallbackCandidates = wordEndCandidates(fullText)
-            .filter(n => n >= MIN_SPLIT && n < fullText.length)
-            .sort((a, b) => b - a);
-          for (const fallbackLen of fallbackCandidates) {
-            if (!fitsClean(tryPrefix(fallbackLen, 0))) continue;
-            const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: [] };
-            const secondHalf = { ...target, mainText: fullText.substring(fallbackLen).trimStart(), notes: notesFromAnchor(fallbackLen, []) };
             splitInfo = { firstHalf, secondHalf, sliceIdx };
             break;
           }
