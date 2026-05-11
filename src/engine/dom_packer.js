@@ -5,6 +5,8 @@
 
 import { streamColorIndex } from "./schema.js";
 import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layout.js";
+import { applyMainTextStyleToElement } from "../document_style_settings.js";
+import { applyStyleToElement } from "../style_registry.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
@@ -138,6 +140,23 @@ function mainBlockTagFor(idx) {
   return "p";
 }
 
+function applyBlockStyleMeta(el, idx) {
+  const style = blockMetaFor(idx).style || {};
+  if (style.fontFamily) el.style.fontFamily = style.fontFamily;
+  if (style.fontSize) el.style.fontSize = style.fontSize;
+  if (style.color) el.style.color = style.color;
+  if (style.backgroundColor) el.style.backgroundColor = style.backgroundColor;
+  if (style.bold) el.style.fontWeight = "700";
+  if (style.italic) el.style.fontStyle = "italic";
+  if (style.underline) el.style.textDecoration = "underline";
+  if (style.textAlign) el.style.textAlign = style.textAlign;
+  if (style.lineHeight) el.style.lineHeight = String(style.lineHeight);
+  if (style.indent) el.style.marginInlineStart = `${Number(style.indent) * 24}px`;
+  if (style.textIndent != null) el.style.textIndent = `${style.textIndent}em`;
+  if (style.marginTop != null) el.style.marginTop = `${style.marginTop}px`;
+  if (style.marginBottom != null) el.style.marginBottom = `${style.marginBottom}px`;
+}
+
 function streamTitleForCode(code) {
   const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
   return (labels && labels[code]) || code;
@@ -227,6 +246,7 @@ function buildMeasurePage(mainSegments, streams) {
 
   const main = document.createElement("div");
   main.className = "page-main";
+  applyMainTextStyleToElement(main);
   let lastIdx = null;
   let lastP = null;
   for (const seg of mainSegments) {
@@ -235,6 +255,7 @@ function buildMeasurePage(mainSegments, streams) {
     } else {
       const p = document.createElement(mainBlockTagFor(seg.idx));
       p.textContent = seg.text;
+      applyBlockStyleMeta(p, seg.idx);
       main.appendChild(p);
       lastP = p;
       lastIdx = seg.idx;
@@ -255,6 +276,7 @@ function buildMeasurePage(mainSegments, streams) {
       s.dataset.stream = code;
 
       const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
+      applyStyleToElement(s, settings.styleId);
       const userCols = settings.cols || 1;
       // משה 2026-05-06: לא להשתמש בהערכת שורות — לבחור עמודות לפי רצון
       // המשתמש בלבד; אם מסתבר שהזרם קצר מדי, ה-CSS כבר מטפל בכך באלגנטיות.
@@ -274,6 +296,7 @@ function buildMeasurePage(mainSegments, streams) {
       const title = document.createElement("div");
       title.className = "stream-title";
       title.textContent = streamTitleForCode(code);
+      applyStyleToElement(title, settings.titleStyleId);
       s.appendChild(title);
 
       // Default = inline (continuous notes); user can toggle off per-stream.
@@ -1321,6 +1344,7 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
              : item?.blockType === "blockquote" ? "blockquote"
              : "paragraph",
     headingLevel: item?.blockType === "heading" ? Math.max(1, Math.min(6, parseInt(item.headingLevel || 1, 10))) : null,
+    style: item?.style || {},
   }));
   if (typeof window !== "undefined") window.__MAIN_BLOCK_META__ = _activeContentMeta;
   try {

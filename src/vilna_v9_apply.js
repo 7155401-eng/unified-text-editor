@@ -15,6 +15,7 @@
 
 import { buildPages } from "./vilna_v9.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
+import { getMainTextStyle } from "./document_style_settings.js";
 
 // משה 2026-05-08: קריאת קודי הזרמים שהוגדרו לגפ"ת ע"י המשתמש.
 // פורמט: "01,02" → ["01","02"]. אלה הזרמים שיהיו בצדדים בעימוד גפ"ת.
@@ -80,15 +81,18 @@ function readPageGeomFromContainer(container) {
   };
   const pageWidth  = pickPx(cs?.getPropertyValue("--ravtext-page-width"), 559);
   const pageHeight = pickPx(cs?.getPropertyValue("--ravtext-page-height"), 794);
-  const mainSize   = pickPx(cs?.getPropertyValue("--ravtext-page-main-size"), 13);
+  const mainStyle = getMainTextStyle();
+  const mainSize   = Number(mainStyle?.fontSize) > 0
+    ? Number(mainStyle.fontSize)
+    : pickPx(cs?.getPropertyValue("--ravtext-page-main-size"), 13);
   const sideSize   = pickPx(cs?.getPropertyValue("--ravtext-page-stream-size"), 11);
   const lineHeightRatio = (() => {
     const n = parseFloat(cs?.getPropertyValue("--ravtext-v9-line-height") || "");
-    return Number.isFinite(n) && n > 0 ? n : 1.55;
+    return Number(mainStyle?.lineHeight) > 0 ? Number(mainStyle.lineHeight) : (Number.isFinite(n) && n > 0 ? n : 1.55);
   })();
   const mainGap = pickPx(cs?.getPropertyValue("--ravtext-v9-main-gap"), 8);
   // קריאת font-family מהcontainer
-  const fontFamily = (cs?.getPropertyValue("--ravtext-page-font-family") || "")
+  const fontFamily = (mainStyle?.fontFamily || cs?.getPropertyValue("--ravtext-page-font-family") || "")
     .replace(/^\s+|\s+$/g, "") || "serif";
   return { pageWidth, pageHeight, mainSize, sideSize, fontFamily, lineHeightRatio, mainGap };
 }

@@ -101,6 +101,41 @@ function stripDisplayNum(s) {
   return s.trim().replace(/^\[\d+\]\s*/, "");
 }
 
+function styleMetaForNode(node) {
+  const style = {};
+  const attrs = node?.attrs || {};
+  if (attrs.textAlign) style.textAlign = attrs.textAlign;
+  if (attrs.lineHeight) style.lineHeight = attrs.lineHeight;
+  if (attrs.indent) style.indent = attrs.indent;
+  if (attrs.textIndent != null) style.textIndent = attrs.textIndent;
+  if (attrs.marginTop != null) style.marginTop = attrs.marginTop;
+  if (attrs.marginBottom != null) style.marginBottom = attrs.marginBottom;
+
+  node?.descendants?.((child) => {
+    if (!child.isText) return false;
+    for (const mark of child.marks || []) {
+      const mAttrs = mark.attrs || {};
+      if (mark.type?.name === "textStyle") {
+        if (!style.fontFamily && mAttrs.fontFamily) style.fontFamily = mAttrs.fontFamily;
+        if (!style.fontSize && mAttrs.fontSize) style.fontSize = mAttrs.fontSize;
+        if (!style.color && mAttrs.color) style.color = mAttrs.color;
+        if (!style.backgroundColor && (mAttrs.backgroundColor || mAttrs.bgColor)) {
+          style.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
+        }
+      }
+      if (mark.type?.name === "bold") style.bold = true;
+      if (mark.type?.name === "italic") style.italic = true;
+      if (mark.type?.name === "underline") style.underline = true;
+      if (mark.type?.name === "highlight" && !style.backgroundColor) {
+        style.backgroundColor = mAttrs.color;
+      }
+    }
+    return false;
+  });
+
+  return style;
+}
+
 let _docKeyCounter = 0;
 const _docKeys = new WeakMap();
 let _packerContentCache = { sig: "", value: null };
@@ -162,6 +197,7 @@ function extractMainParagraphs(mainPane, paneManager) {
         markers: [],
         blockType: node.type.name === "heading" ? "heading" : node.type.name,
         headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
+        style: styleMetaForNode(node),
       });
       return false;
     });
@@ -196,6 +232,7 @@ function extractMainParagraphs(mainPane, paneManager) {
       markers,
       blockType: node.type.name === "heading" ? "heading" : node.type.name,
       headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
+      style: styleMetaForNode(node),
     });
     return false;
   });
@@ -376,6 +413,7 @@ export function paneManagerToPackerContent(paneManager) {
       mainConsumers,
       blockType: para.blockType,
       headingLevel: para.headingLevel,
+      style: para.style || {},
     });
   }
 
@@ -505,6 +543,7 @@ export function paneManagerToPackerContent(paneManager) {
         notes: cleanNotes,
         blockType: info.blockType === "heading" ? "heading" : "paragraph",
         headingLevel: info.blockType === "heading" ? Math.max(1, Math.min(6, info.headingLevel || 1)) : null,
+        style: info.style || {},
       });
     }
   }

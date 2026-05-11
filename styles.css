@@ -4871,3 +4871,13 @@ body[data-theme="dark"] .ProseMirror pre {
 .spacing-toolbar select {
   max-width: 170px;
 }
+
+.document-style-toolbar {
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.document-style-toolbar select {
+  max-width: 180px;
+}

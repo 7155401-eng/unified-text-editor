@@ -33,7 +33,7 @@ export function refreshCustomStylesGallery(select = document.getElementById("sty
   }
 }
 
-function applyCustomStyleToActiveEditor(style, paneManager) {
+export function applyCustomStyleToActiveEditor(style, paneManager) {
   const editor = paneManager.getActiveEditor?.();
   if (!editor) return;
   let chain = editor.chain().focus();
@@ -58,21 +58,15 @@ function applyCustomStyleToActiveEditor(style, paneManager) {
   if (style.underline) chain = chain.setUnderline?.() || chain;
   else chain = chain.unsetUnderline?.() || chain;
   if (style.align) chain = chain.setTextAlign?.(style.align) || chain;
-  chain.run();
-  if (style.lineHeight || style.indent || style.marginTop || style.marginBottom) {
-    requestAnimationFrame(() => {
-      const sel = editor.view?.state.selection;
-      if (!sel) return;
-      const dom = editor.view.domAtPos(sel.from)?.node;
-      const block = (dom && (dom.nodeType === 1 ? dom : dom.parentElement))
-        ?.closest("p, h1, h2, h3, h4, h5, h6, blockquote, li");
-      if (!block) return;
-      if (style.lineHeight) block.style.lineHeight = String(style.lineHeight);
-      if (style.indent) block.style.textIndent = `${style.indent}em`;
-      if (style.marginTop != null) block.style.marginTop = `${style.marginTop}px`;
-      if (style.marginBottom != null) block.style.marginBottom = `${style.marginBottom}px`;
-    });
+  if (style.lineHeight) chain = chain.setLineHeight?.(String(style.lineHeight)) || chain;
+  if (style.indent != null) chain = chain.setTextIndent?.(style.indent) || chain;
+  if (style.marginTop != null || style.marginBottom != null) {
+    chain = chain.setBlockSpacing?.({
+      marginTop: style.marginTop,
+      marginBottom: style.marginBottom,
+    }) || chain;
   }
+  chain.run();
 }
 
 function buildDialog() {
@@ -330,7 +324,7 @@ export function wireCustomStyles(paneManager) {
       openDialog();
       return;
     }
-    if (v && v.startsWith(ID_PREFIX)) {
+    if (v) {
       ev.stopImmediatePropagation();
       const styles = loadStyles();
       const target = styles.find(s => s.id === v);

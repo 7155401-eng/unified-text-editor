@@ -1,5 +1,6 @@
 import { streamColorIndex } from "./schema.js";
 import { applyStyleToElement } from "../style_registry.js";
+import { applyMainTextStyleToElement } from "../document_style_settings.js";
 
 function streamTitleForCode(code) {
   const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
@@ -16,6 +17,23 @@ function mainBlockTagFor(tup) {
   if (meta.blockType !== "heading") return "p";
   const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
   return `h${level}`;
+}
+
+function applyBlockStyleMeta(el, meta = {}) {
+  const style = meta.style || {};
+  if (style.fontFamily) el.style.fontFamily = style.fontFamily;
+  if (style.fontSize) el.style.fontSize = style.fontSize;
+  if (style.color) el.style.color = style.color;
+  if (style.backgroundColor) el.style.backgroundColor = style.backgroundColor;
+  if (style.bold) el.style.fontWeight = "700";
+  if (style.italic) el.style.fontStyle = "italic";
+  if (style.underline) el.style.textDecoration = "underline";
+  if (style.textAlign) el.style.textAlign = style.textAlign;
+  if (style.lineHeight) el.style.lineHeight = String(style.lineHeight);
+  if (style.indent) el.style.marginInlineStart = `${Number(style.indent) * 24}px`;
+  if (style.textIndent != null) el.style.textIndent = `${style.textIndent}em`;
+  if (style.marginTop != null) el.style.marginTop = `${style.marginTop}px`;
+  if (style.marginBottom != null) el.style.marginBottom = `${style.marginBottom}px`;
 }
 
 function createStreamElement(streamCode, streamData, streamNumLastPage, pageIndex, options = {}) {
@@ -185,6 +203,7 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
 
   const main = document.createElement("div");
   main.className = "page-main";
+  applyMainTextStyleToElement(main);
   let lastIdx = null;
   let lastP = null;
   for (const tup of pageData.main) {
@@ -195,6 +214,7 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     } else {
       const p = document.createElement(mainBlockTagFor(tup));
       p.textContent = text;
+      applyBlockStyleMeta(p, (tup && tup[4]) || {});
       // v33: mark this paragraph as a continuation FROM a previous page
       // (its idx already appeared on an earlier page). opening_word.js skips
       // these so we don't apply opening-word styling to mid-sentence text.

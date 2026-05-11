@@ -33,6 +33,7 @@ import "./premium/premium_styles.css";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { applySpacingSettings, loadSpacingSettings, wireSpacingControls } from "./spacing_settings.js";
+import { wireDocumentStyleControls } from "./document_style_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
 import { setupStreamPicker } from "./stream_picker.js";
@@ -979,6 +980,7 @@ wirePageSettingsControls(() => {
 });
 wireSpacingControls({ pagesContainer, rerender: rerenderPages });
 wireOutputBackgroundControl();
+wireDocumentStyleControls({ pagesContainer, rerender: rerenderPages });
 
 function rerenderPages() {
   applySpacingSettings(loadSpacingSettings(), pagesContainer);

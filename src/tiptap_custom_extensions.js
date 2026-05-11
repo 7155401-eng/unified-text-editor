@@ -121,8 +121,143 @@ export const Indent = Extension.create({
       return changed;
     };
     return {
+      setIndent:
+        (value) =>
+        ({ state, dispatch }) => {
+          const next = Math.max(0, Math.min(this.options.max, Number(value) || 0));
+          const { selection, tr } = state;
+          let changed = false;
+          state.doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+            if (!this.options.types.includes(node.type.name)) return;
+            if ((node.attrs.indent || 0) !== next) {
+              tr.setNodeMarkup(pos, null, { ...node.attrs, indent: next });
+              changed = true;
+            }
+          });
+          if (changed && dispatch) dispatch(tr);
+          return changed;
+        },
       indent: () => adjust(1),
       outdent: () => adjust(-1),
+    };
+  },
+});
+
+export const BlockSpacing = Extension.create({
+  name: "blockSpacing",
+
+  addOptions() {
+    return {
+      types: ["paragraph", "heading"],
+    };
+  },
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          marginTop: {
+            default: null,
+            parseHTML: (el) => {
+              const n = parseFloat(el?.style?.marginTop || "");
+              return Number.isFinite(n) ? n : null;
+            },
+            renderHTML: (attrs) => attrs.marginTop != null
+              ? { style: `margin-top: ${attrs.marginTop}px` }
+              : {},
+          },
+          marginBottom: {
+            default: null,
+            parseHTML: (el) => {
+              const n = parseFloat(el?.style?.marginBottom || "");
+              return Number.isFinite(n) ? n : null;
+            },
+            renderHTML: (attrs) => attrs.marginBottom != null
+              ? { style: `margin-bottom: ${attrs.marginBottom}px` }
+              : {},
+          },
+        },
+      },
+    ];
+  },
+
+  addCommands() {
+    return {
+      setBlockSpacing:
+        (attrs = {}) =>
+        ({ state, dispatch }) => {
+          const nextAttrs = {};
+          if (attrs.marginTop !== undefined) {
+            const n = Number(attrs.marginTop);
+            nextAttrs.marginTop = Number.isFinite(n) ? Math.max(0, n) : null;
+          }
+          if (attrs.marginBottom !== undefined) {
+            const n = Number(attrs.marginBottom);
+            nextAttrs.marginBottom = Number.isFinite(n) ? Math.max(0, n) : null;
+          }
+          const { selection, tr } = state;
+          let changed = false;
+          state.doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+            if (!this.options.types.includes(node.type.name)) return;
+            tr.setNodeMarkup(pos, null, { ...node.attrs, ...nextAttrs });
+            changed = true;
+          });
+          if (changed && dispatch) dispatch(tr);
+          return changed;
+        },
+    };
+  },
+});
+
+export const TextIndent = Extension.create({
+  name: "textIndent",
+
+  addOptions() {
+    return {
+      types: ["paragraph", "heading"],
+    };
+  },
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          textIndent: {
+            default: null,
+            parseHTML: (el) => {
+              const raw = el?.style?.textIndent || "";
+              const n = parseFloat(raw);
+              if (!Number.isFinite(n)) return null;
+              return raw.trim().endsWith("px") ? n / 16 : n;
+            },
+            renderHTML: (attrs) => attrs.textIndent != null
+              ? { style: `text-indent: ${attrs.textIndent}em` }
+              : {},
+          },
+        },
+      },
+    ];
+  },
+
+  addCommands() {
+    return {
+      setTextIndent:
+        (value) =>
+        ({ state, dispatch }) => {
+          const n = Number(value);
+          const next = Number.isFinite(n) ? Math.max(0, n) : null;
+          const { selection, tr } = state;
+          let changed = false;
+          state.doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+            if (!this.options.types.includes(node.type.name)) return;
+            tr.setNodeMarkup(pos, null, { ...node.attrs, textIndent: next });
+            changed = true;
+          });
+          if (changed && dispatch) dispatch(tr);
+          return changed;
+        },
     };
   },
 });

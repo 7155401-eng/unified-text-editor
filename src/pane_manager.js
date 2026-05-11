@@ -17,7 +17,7 @@ import Link from "@tiptap/extension-link";
 import Youtube from "@tiptap/extension-youtube";
 import Highlight from "@tiptap/extension-highlight";
 // משה 2026-05-10: הרחבות מותאמות ל-line-height, indent, ומעקב שינויים (track-changes).
-import { LineHeight, Indent, Insertion, Deletion } from "./tiptap_custom_extensions.js";
+import { LineHeight, Indent, BlockSpacing, TextIndent, Insertion, Deletion } from "./tiptap_custom_extensions.js";
 import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js";
 import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
@@ -132,6 +132,8 @@ function buildEditorExtensions() {
     Highlight.configure({ multicolor: true }),
     LineHeight,
     Indent,
+    BlockSpacing,
+    TextIndent,
     Insertion,
     Deletion,
   ];
