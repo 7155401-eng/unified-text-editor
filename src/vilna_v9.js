@@ -1157,6 +1157,11 @@ export async function buildPages(container, paragraphs, config) {
       const footerCount = (tp && tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
       return streamCount + footerCount > 0;
     };
+    const planCommentaryLineCount = (tp) => {
+      const streamCount = (tp && tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+      const footerCount = (tp && tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+      return streamCount + footerCount;
+    };
     const planMainLineCount = (tp) =>
       (tp && tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
     const carryActive = hasCarryOver(carryOver);
@@ -1489,6 +1494,7 @@ export async function buildPages(container, paragraphs, config) {
         !tp.overflow.mainText &&
         hasNoteOverflow &&
         !currentHasNoteOverflow &&
+        planMainLineCount(tp) <= carryGapMaxMainLines() &&
         planHasCommentaryStart(tp) &&
         (fill > currentFill + 0.08 || (currentFill < rescueMinFillRatio && fill >= currentFill - 0.04))
       ) {
@@ -1501,7 +1507,7 @@ export async function buildPages(container, paragraphs, config) {
     // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
     // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
     let drainAloneMode = false;
-    if (!splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
+    if (!splitInfo && hasCarryOver(carryOver)) {
       // בדוק אם carry לבד (slice ריק) חורג
       const carryAloneTrial = buildPagePlan(
         aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
@@ -1509,11 +1515,7 @@ export async function buildPages(container, paragraphs, config) {
       );
       // אם carry לבד חורג, או שהוא מספיק מלא, ננקז אותו לבד.
       // אם הוא קצר, עדיף לצרף אליו מעט מהראשי הבא כדי לא ליצור עמוד חצי ריק.
-      if (carryAloneTrial.overflow.exceedsPage) {
-        drainAloneMode = true;
-      } else {
-        drainAloneMode = fillsPageEnough(carryAloneTrial, cfg.carryOnlyMinRatio);
-      }
+      drainAloneMode = planCommentaryLineCount(carryAloneTrial) >= 5;
     }
 
     // 3. קביעת bestN סופי
