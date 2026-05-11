@@ -308,6 +308,36 @@ function buildOneLine(tokens, startIdx, widthPx, metrics) {
   return { words: lineWords, wordCount: lineWords.length, tokensConsumed, width: curWidth, forcedBreak };
 }
 
+function splitWordsAtVisualLine(text, metrics, widthPx) {
+  const words = (text || '').split(/\s+/).filter(Boolean);
+  if (words.length < 2 || !metrics || !widthPx) {
+    return {
+      first: words.join(' '),
+      second: '',
+    };
+  }
+
+  const lines = metrics.layoutLines(words.join(' '), widthPx);
+  if (lines.length < 2) {
+    const midIdx = Math.ceil(words.length / 2);
+    return {
+      first: words.slice(0, midIdx).join(' '),
+      second: words.slice(midIdx).join(' '),
+    };
+  }
+
+  const targetLine = Math.max(1, Math.ceil(lines.length / 2));
+  const firstWordCount = lines
+    .slice(0, targetLine)
+    .reduce((sum, line) => sum + ((line && line.words && line.words.length) || 0), 0);
+  const splitIdx = Math.min(words.length - 1, Math.max(1, firstWordCount));
+
+  return {
+    first: words.slice(0, splitIdx).join(' '),
+    second: words.slice(splitIdx).join(' '),
+  };
+}
+
 // =====================================================================
 // בונה strips לראשי לפי בר־מצרא: כשפרשן נגמר, הראשי מתפשט לתוך שטחו.
 // =====================================================================
@@ -464,10 +494,9 @@ function buildPagePlan(pageContent, config) {
     const single = pageContent.rightStream || pageContent.leftStream;
     if (single) {
       const allText = single.items.join(' ').trim();
-      const words = allText.split(/\s+/).filter(Boolean);
-      const midIdx = Math.ceil(words.length / 2);
-      pageContent.rightStream = { id: single.id, items: [words.slice(0, midIdx).join(' ')] };
-      pageContent.leftStream  = { id: single.id, items: [words.slice(midIdx).join(' ')] };
+      const parts = splitWordsAtVisualLine(allText, sideMetrics, sideHalfWidth);
+      pageContent.rightStream = { id: single.id, items: [parts.first] };
+      pageContent.leftStream  = { id: single.id, items: [parts.second] };
     }
   }
 
@@ -1312,16 +1341,25 @@ export async function buildPages(container, paragraphs, config) {
         const chooseStepwiseSplit = (ends) => {
           let lastClean = null;
           let lastCleanScore = -Infinity;
+          let lastCleanMeta = null;
+          let lastCleanMovedNotes = [];
           for (const len of ends) {
             const movedNotes = notesBeforeAnchor(len);
             const meta = splitPlanMeta(tryPrefix(len), movedNotes);
             if (!meta) continue;
             if (meta.hasNoteOverflow) {
+              const introducesNewNote = movedNotes.some(n => !lastCleanMovedNotes.includes(n));
+              const stepBackMinFill = Math.max(0.66, Math.min(0.74, rescueMinFillRatio - 0.08));
+              if (introducesNewNote && lastClean && lastCleanMeta && lastCleanMeta.fill >= stepBackMinFill) {
+                return lastClean;
+              }
               return makeSplit(len, movedNotes);
             }
             if (meta.score >= lastCleanScore) {
               lastCleanScore = meta.score;
               lastClean = makeSplit(len, movedNotes);
+              lastCleanMeta = meta;
+              lastCleanMovedNotes = movedNotes;
             }
           }
           return lastClean;
