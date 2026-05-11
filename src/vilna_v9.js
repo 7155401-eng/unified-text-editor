@@ -1271,13 +1271,12 @@ export async function buildPages(container, paragraphs, config) {
         aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
         cfg
       );
-      // אם carry לבד חורג OR pending+carry חורגים אבל carry לבד נכנס — drain alone
+      // אם carry לבד חורג, או שהוא מספיק מלא, ננקז אותו לבד.
+      // אם הוא קצר, עדיף לצרף אליו מעט מהראשי הבא כדי לא ליצור עמוד חצי ריק.
       if (carryAloneTrial.overflow.exceedsPage) {
         drainAloneMode = true;
       } else {
-        // carry לבד נכנס. בדוק אם pending+carry בלי overflow — אם לא, drain
-        const combined = trialAtN(1);
-        if (!fitsClean(combined)) drainAloneMode = true;
+        drainAloneMode = fillsPageEnough(carryAloneTrial, 0.78);
       }
     }
 
