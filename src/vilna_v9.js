@@ -1022,6 +1022,17 @@ function mainLineEndCandidates(text, metrics, widthPx) {
   return out;
 }
 
+function wordEndCandidates(text) {
+  if (!text) return [];
+  const out = [];
+  const re = /\S+/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    out.push(match.index + match[0].length);
+  }
+  return out;
+}
+
 // buildPages: בונה דפים מרובים מרצף פסקאות (כמו V8)
 //   - container: האלמנט שאליו יוסיפו דפים
 //   - paragraphs: רשימת פסקאות (mainText + notes)
@@ -1070,7 +1081,7 @@ export async function buildPages(container, paragraphs, config) {
   // (טקסט בלבד, ללא הערות — הן כבר ניתנו) נשמר ל-pendingParagraph לעמוד הבא.
   let pendingParagraph = null;
 
-  while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
+  while ((cursor < paragraphs.length || pendingParagraph) && pageIdx < cfg.maxPages) {
     // אורך הזמינות הכולל = pendingParagraph (אם קיים) + פסקאות שלא נצרכו
     const totalAvail = (pendingParagraph ? 1 : 0) + (paragraphs.length - cursor);
 
@@ -1169,26 +1180,19 @@ export async function buildPages(container, paragraphs, config) {
             break;
           }
         }
-      }
-    }
-
-    // משה 2026-05-09: ★ drain-alone — אם יש pending + carry-over שלבד חורג, נריץ
-    // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
-    // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
-    let drainAloneMode = false;
-    if (!splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
-      // בדוק אם carry לבד (slice ריק) חורג
-      const carryAloneTrial = buildPagePlan(
-        aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
-        cfg
-      );
-      // אם carry לבד חורג OR pending+carry חורגים אבל carry לבד נכנס — drain alone
-      if (carryAloneTrial.overflow.exceedsPage) {
-        drainAloneMode = true;
-      } else {
-        // carry לבד נכנס. בדוק אם pending+carry בלי overflow — אם לא, drain
-        const combined = trialAtN(1);
-        if (!fitsClean(combined)) drainAloneMode = true;
+        if (!splitInfo) {
+          const fallbackCandidates = wordEndCandidates(fullText)
+            .filter(n => n >= MIN_SPLIT && n < fullText.length)
+            .sort((a, b) => a - b);
+          for (const fallbackLen of fallbackCandidates) {
+            if (fitsClean(tryPrefix(fallbackLen, 0))) {
+              const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: [] };
+              const secondHalf = { ...target, mainText: fullText.substring(fallbackLen).trimStart(), notes: notesFromAnchor(fallbackLen, []) };
+              splitInfo = { firstHalf, secondHalf, sliceIdx };
+              break;
+            }
+          }
+        }
       }
     }
 
@@ -1198,11 +1202,9 @@ export async function buildPages(container, paragraphs, config) {
       bestN = bestN_clean + 1;
     } else if (bestN_clean > 0) {
       bestN = bestN_clean;
-    } else if (bestN_clean < totalAvail) {
-      bestN = 1;
     } else {
       // אין clean fit ואין split אפשרי וגם אין פסקאות — שום דבר לקחת
-      bestN = totalAvail > 0 ? 1 : 0;
+      bestN = 0;
     }
 
     // משה 2026-05-10: לולאת הגנה — אם הקומפוזיציה הסופית מורידה footer לחלוטין,
@@ -1238,9 +1240,7 @@ export async function buildPages(container, paragraphs, config) {
 
     // רינדור סופי לעמוד
     // אם drainAloneMode — slice ריק (רק carry-over)
-    const finalSlice = drainAloneMode
-      ? []
-      : (splitInfo ? [...getSlice(bestN_clean), splitInfo.firstHalf] : getSlice(bestN));
+    const finalSlice = splitInfo ? [...getSlice(bestN_clean), splitInfo.firstHalf] : getSlice(bestN);
     const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
 
     const pageEl = document.createElement('div');
@@ -1253,21 +1253,11 @@ export async function buildPages(container, paragraphs, config) {
     const plan = buildSinglePage(pageEl, finalContent, cfg);
     pages.push(pageEl);
 
-    // עדכון carryOver — טקסטים שנחתכו בעמוד הזה יעברו לעמוד הבא
     const nextCarry = {};
-    if (plan && plan.overflow && plan.overflow.streams) {
-      for (const [sid, text] of Object.entries(plan.overflow.streams)) {
-        if (text && typeof text === 'string') nextCarry[sid] = text;
-      }
-    }
 
     // התקדמות מצב: pendingParagraph + cursor מתעדכנים לפי הצריכה
     const hadPending = !!pendingParagraph;
-    const wasDrainMarker = !!pendingParagraph?._drainMarker;
-    if (drainAloneMode) {
-      // עמוד drain בלי שום פסקה — pending נשאר כמו שהוא, cursor לא זז
-      // carry-over יתעדכן מהעמוד; כשיתרוקן ה-pending יוכל להירנדר נקי
-    } else if (splitInfo) {
+    if (splitInfo) {
       // sliceIdx = איפה הפיצול במערך הזמינות. צרכנו slice[0..sliceIdx-1] במלואם
       // וגם את slice[sliceIdx] חצי ראשון. החצי השני יוצא ל-pendingParagraph.
       const sliceIdx = splitInfo.sliceIdx;
@@ -1291,19 +1281,6 @@ export async function buildPages(container, paragraphs, config) {
         consumed -= 1;
       }
       cursor += consumed;
-    }
-
-    // משה 2026-05-09: ★ סמן ניקוז (drain marker) — אם בוצע force-take עם הערות שעלו,
-    // יוצרים pendingParagraph ריק (mainText="") שמייצג "המשך הערות הפסקה הקודמת".
-    // זה מונע מקריירי-אובר לזרום לעמוד עם פסקה חדשה (חוסר קישור). העמוד הבא
-    // יהיה drain עם carry-over בלבד, אבל הוא יהיה צמוד לפסקה המקור.
-    const hasOverflowNotes = Object.keys(nextCarry).some(k => nextCarry[k]);
-    if (hasOverflowNotes && !splitInfo && !pendingParagraph) {
-      pendingParagraph = { mainText: '', notes: [], _drainMarker: true };
-    }
-    // אם זה היה drain marker וה-carry-over כבר התרוקן — נקה גם את ה-marker
-    if (wasDrainMarker && pendingParagraph?._drainMarker && !hasOverflowNotes) {
-      pendingParagraph = null;
     }
 
     // משה 2026-05-08: הגנה מלולאה אינסופית — אם לא הייתה צריכה (bestN=0, אין split)
