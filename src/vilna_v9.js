@@ -994,6 +994,34 @@ export function buildSinglePage(pageEl, pageContent, config) {
   return plan;
 }
 
+function mainLineEndCandidates(text, metrics, widthPx) {
+  if (!text || !metrics || !widthPx) return [];
+  const out = [];
+  const re = /\S+/g;
+  let match;
+  let lineWidth = 0;
+  let wordsInLine = 0;
+  let lastEnd = 0;
+  const spaceW = metrics.spaceWidth;
+  while ((match = re.exec(text)) !== null) {
+    const word = match[0];
+    const wordW = metrics.measureWord(word);
+    const addW = wordsInLine === 0 ? wordW : lineWidth + spaceW + wordW;
+    if (addW <= widthPx || wordsInLine === 0) {
+      lineWidth = addW;
+      wordsInLine++;
+      lastEnd = match.index + word.length;
+      continue;
+    }
+    if (lastEnd > 0) out.push(lastEnd);
+    lineWidth = wordW;
+    wordsInLine = 1;
+    lastEnd = match.index + word.length;
+  }
+  if (lastEnd > 0) out.push(lastEnd);
+  return out;
+}
+
 // buildPages: בונה דפים מרובים מרצף פסקאות (כמו V8)
 //   - container: האלמנט שאליו יוסיפו דפים
 //   - paragraphs: רשימת פסקאות (mainText + notes)
@@ -1024,6 +1052,13 @@ export async function buildPages(container, paragraphs, config) {
   const pages = [];
   let cursor = 0;
   let pageIdx = 0;
+  const splitMetrics = new VilnaMetrics({
+    fontFamily: cfg.mainFontFamily,
+    fontSize: cfg.mainFontSize,
+    lineHeightRatio: cfg.lineHeightRatio,
+  });
+  const splitInnerWidth = cfg.pageWidth - 2 * cfg.padding;
+  const splitMainWidth = Math.floor(splitInnerWidth * cfg.mainWidthRatio);
 
   // משה 2026-05-08: carry-over של טקסט שנחתך מעמוד לעמוד הבא.
   // streamId → string. בכל עמוד, הטקסט נשמר ב-overflow.streams ומועבר
@@ -1095,58 +1130,43 @@ export async function buildPages(container, paragraphs, config) {
       const allNotes = target?.notes || [];
       const anchored = allNotes.filter(n => typeof n.anchor === 'number');
       const anchorless = allNotes.filter(n => typeof n.anchor !== 'number');
-      const notesBeforeAnchor = (len) => {
+      const notesBeforeAnchor = (len, keepCount) => {
         const ratio = fullText.length > 0 ? len / fullText.length : 0;
         const anchorlessShare = Math.round(anchorless.length * ratio);
         const anchoredBefore = anchored.filter(n => n.anchor < len);
-        return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore];
+        const before = [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
+          .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
+        return typeof keepCount === 'number' ? before.slice(0, Math.max(0, keepCount)) : before;
       };
-      const notesFromAnchor = (len) => {
+      const notesFromAnchor = (len, movedNotes) => {
+        const moved = new Set(movedNotes || []);
         const ratio = fullText.length > 0 ? len / fullText.length : 0;
         const anchorlessShare = Math.round(anchorless.length * ratio);
+        const anchorlessFrom = anchorless.slice(anchorlessShare).filter(n => !moved.has(n));
         const anchoredFrom = anchored
-          .filter(n => n.anchor >= len)
-          .map(n => ({ ...n, anchor: n.anchor - len }));
-        return [...anchorless.slice(anchorlessShare), ...anchoredFrom];
+          .filter(n => !moved.has(n))
+          .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
+        return [...anchorlessFrom, ...anchoredFrom];
       };
       if (fullText.length >= MIN_SPLIT) {
         const baseSlice = getSlice(bestN_clean);
-        // משה 2026-05-09: tryPrefix מתעלם מ-carryOver — מחפשים את ה-prefix המקסימלי
-        // של הפסקה שנכנס נקי לבד (עם הערות מעוגנות בלבד). כך carry שגדל מעמודים
-        // קודמים לא חוסם פיצול נוסף; ה-carry יזרום בעמודי drain ייעודיים.
-        const tryPrefix = (len) => {
-          const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len) };
+        const tryPrefix = (len, keepCount) => {
+          const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len, keepCount) };
           const slice = [...baseSlice, half];
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, {}), cfg);
         };
-        let lo = 0, hi = fullText.length;
-        while (lo < hi) {
-          const mid = Math.ceil((lo + hi + 1) / 2);
-          if (mid >= fullText.length) { hi = fullText.length - 1; break; }
-          if (fitsClean(tryPrefix(mid))) lo = mid;
-          else hi = mid - 1;
-        }
-        if (lo >= MIN_SPLIT) {
-          // משה 2026-05-10: חיפוש גבול מילה — אסור לפצל באמצע מילה.
-          // הולכים אחורה עד תו רווח אמיתי. אם לא נמצא רווח כלל בטווח —
-          // לא מפצלים בכלל (בלי lock על MIN_SPLIT שהיה גורם לפיצול מילה).
-          let wordEnd = lo;
-          while (wordEnd > 0 && !/\s/.test(fullText[wordEnd])) wordEnd--;
-          // wordEnd עכשיו על תו רווח (או 0). אם 0 — אין רווח בכלל לפני lo,
-          // לא ניתן לפצל בלי לחתוך מילה. ניסיון אחר: ללכת קדימה לרווח הבא.
-          if (wordEnd === 0 || wordEnd < MIN_SPLIT) {
-            let forwardEnd = lo;
-            while (forwardEnd < fullText.length && !/\s/.test(fullText[forwardEnd])) forwardEnd++;
-            if (forwardEnd > MIN_SPLIT && forwardEnd < fullText.length) {
-              wordEnd = forwardEnd;
-            } else {
-              wordEnd = -1;  // סימן שאין נקודת פיצול תקינה
-            }
-          }
-          if (wordEnd >= MIN_SPLIT && wordEnd < fullText.length) {
-            const firstHalf = { ...target, mainText: fullText.substring(0, wordEnd).trimEnd(), notes: notesBeforeAnchor(wordEnd) };
-            const secondHalf = { ...target, mainText: fullText.substring(wordEnd).trimStart(), notes: notesFromAnchor(wordEnd) };
+        const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
+          .filter(n => n >= MIN_SPLIT && n < fullText.length);
+        for (let i = lineEnds.length - 1; i >= 0 && !splitInfo; i--) {
+          const len = lineEnds[i];
+          const before = notesBeforeAnchor(len);
+          for (let keep = before.length; keep >= 0; keep--) {
+            if (!fitsClean(tryPrefix(len, keep))) continue;
+            const movedNotes = notesBeforeAnchor(len, keep);
+            const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
+            const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
             splitInfo = { firstHalf, secondHalf, sliceIdx };
+            break;
           }
         }
       }
