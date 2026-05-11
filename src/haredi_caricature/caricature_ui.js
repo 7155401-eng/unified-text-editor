@@ -554,6 +554,7 @@ export class CaricatureWindow {
       window.addEventListener("message", onMessage);
       for (const iframe of frames) {
         try {
+          iframe.contentWindow.postMessage({ type: "hc-quill-get" }, "*");
           iframe.contentWindow.postMessage({ type: "hc-quill-get-text" }, "*");
           iframe.contentWindow.postMessage({ type: "hc-quill-request-text" }, "*");
           iframe.contentWindow.postMessage({ type: "hc-scene-get-text" }, "*");
@@ -731,9 +732,7 @@ export class CaricatureWindow {
     console.log("[caricature] scene text length:", sceneText.length);
 
     if (!sceneText) {
-      alert(tr("no_text", this.lang) + "
-
-" + tr("no_text_msg", this.lang));
+      alert(tr("no_text", this.lang) + "\n\n" + tr("no_text_msg", this.lang));
       return;
     }
 
