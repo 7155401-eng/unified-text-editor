@@ -1168,7 +1168,7 @@ export async function buildPages(container, paragraphs, config) {
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
-        for (let i = 0; i < lineEnds.length && !splitInfo; i++) {
+        for (let i = lineEnds.length - 1; i >= 0 && !splitInfo; i--) {
           const len = lineEnds[i];
           const before = notesBeforeAnchor(len);
           for (let keep = before.length; keep >= 0; keep--) {
@@ -1183,7 +1183,7 @@ export async function buildPages(container, paragraphs, config) {
         if (!splitInfo) {
           const candidates = wordEndCandidates(fullText)
             .filter(n => n >= MIN_SPLIT && n < fullText.length)
-            .sort((a, b) => a - b);
+            .sort((a, b) => b - a);
           for (const len of candidates) {
             const before = notesBeforeAnchor(len);
             for (let keep = before.length; keep >= 0; keep--) {
