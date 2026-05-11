@@ -598,6 +598,7 @@ function buildPagePlan(pageContent, config) {
       lines: lines,
       endY: flowResult.endY,
       overflowText: flowResult.overflowText,
+      continues: !!flowResult.overflowText,
     };
   }
 
@@ -670,6 +671,7 @@ function buildPagePlan(pageContent, config) {
       height: actualMainHeight,
       lines: mainLines,
       barMitzraStrips: mainStrips,
+      continues: !!mainFlow.overflowText || !!pageContent.mainContinues,
     };
 
     if (mainFlow.overflowText) {
@@ -904,14 +906,19 @@ function renderPagePlan(plan, pageEl, cfg) {
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
-      const shouldJustify = !line.isLast && !line.forcedBreak && line.words && line.words.length > 1
+      const isContinuationCut = box.continues && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 1
+        && line.naturalWidth >= line.width * 0.65
+        && line.naturalWidth < line.width - 2;
+      const shouldJustify = ((!line.isLast && !line.forcedBreak) || isContinuationCut)
+                             && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
       // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת (לפי כללי ספרי קודש).
       const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
       const isParagraphEnd = (line.isLast || line.forcedBreak)
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;
-      if (isFullWidthOrphan || isParagraphEnd) lineEl.className += ' center';
+      if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
       else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
@@ -950,11 +957,7 @@ function renderPagePlan(plan, pageEl, cfg) {
 
     const title = (cfg.titles || {})[box.id];
     if (title && box.lines.length > 0) {
-      const sideHalfW = plan.pageBox.sideHalfWidth ||
-        Math.floor(plan.pageBox.innerWidth / 2);
-      const titleRightX = plan.pageBox.sideRightX ||
-        (plan.pageBox.innerWidth - sideHalfW);
-      const titleX = box.side === 'right' ? titleRightX : 0;
+      const firstLine = box.lines[0];
       // משה 2026-05-10: צורה 4 —
       //   fullWidthTitle: צד הארוך מקבל כותרת ברוחב מלא של הדף
       //   skipTopTitle: צד הקצר מקבל כותרת מתחת לכתר, מעל התוכן שלו,
@@ -962,10 +965,9 @@ function renderPagePlan(plan, pageEl, cfg) {
       if (box.fullWidthTitle) {
         drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass);
       } else if (box.skipTopTitle) {
-        const firstLine = box.lines[0];
         drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass);
       } else {
-        drawTitle(title, titleX, padding, sideHalfW, colorClass);
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass);
       }
     }
   }
@@ -1267,7 +1269,7 @@ export async function buildPages(container, paragraphs, config) {
           return { score, hasNoteOverflow, fill, lineCount, commentaryCount };
         };
         const makeSplit = (len, movedNotes) => ({
-          firstHalf: { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes },
+          firstHalf: { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes, _continues: true },
           secondHalf: { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) },
           sliceIdx,
           baseN,
@@ -1302,7 +1304,7 @@ export async function buildPages(container, paragraphs, config) {
           const fallbackLen = lineEnds[0] || wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length);
           if (fallbackLen) {
             const movedNotes = notesBeforeAnchor(fallbackLen);
-            const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: movedNotes };
+            const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: movedNotes, _continues: true };
             const secondHalf = { ...target, mainText: fullText.substring(fallbackLen).trimStart(), notes: notesFromAnchor(fallbackLen, movedNotes) };
             splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
           }
@@ -1370,7 +1372,7 @@ export async function buildPages(container, paragraphs, config) {
           for (const len of rescueEnds) {
             const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
-            const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
+            const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes, _continues: true };
             const slice = [...baseSlice, firstHalf];
             const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
             if (!tp || !tp.overflow || tp.overflow.mainText) continue;
@@ -1449,6 +1451,7 @@ export async function buildPages(container, paragraphs, config) {
             ...splitInfo.firstHalf,
             mainText: `${(splitInfo.firstHalf.mainText || '').trim()} ${prefix}`.trim(),
             notes: [...(splitInfo.firstHalf.notes || []), ...movedNotes],
+            _continues: true,
           };
           const secondHalf = {
             ...splitInfo.secondHalf,
@@ -1515,7 +1518,7 @@ export async function buildPages(container, paragraphs, config) {
       );
       // אם carry לבד חורג, או שהוא מספיק מלא, ננקז אותו לבד.
       // אם הוא קצר, עדיף לצרף אליו מעט מהראשי הבא כדי לא ליצור עמוד חצי ריק.
-      drainAloneMode = planCommentaryLineCount(carryAloneTrial) >= 5;
+      drainAloneMode = planCommentaryLineCount(carryAloneTrial) >= 6;
     }
 
     // 3. קביעת bestN סופי
@@ -1703,6 +1706,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   const mainText = stripStreamMarkers(
     paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('\n')
   );
+  const mainContinues = paragraphs.some(p => p && p._continues);
 
   const streamMap = new Map();
 
@@ -1748,7 +1752,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
         footerStreams.push(s);
       }
     }
-    return { mainText, rightStream, leftStream, footerStreams, titles };
+    return { mainText, mainContinues, rightStream, leftStream, footerStreams, titles };
   }
 
   // Fallback ישן: levels של משנ"ב + mishnaSide. נשאר לתאימות עם מצבי
@@ -1790,5 +1794,5 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     if (footerStreams.length >= 1) leftStream = footerStreams.shift();
   }
 
-  return { mainText, rightStream, leftStream, footerStreams, titles };
+  return { mainText, mainContinues, rightStream, leftStream, footerStreams, titles };
 }
