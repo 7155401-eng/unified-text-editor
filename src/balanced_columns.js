@@ -1,10 +1,12 @@
+import { getEffectiveStreamSettings } from "./original_stream_columns.js";
+
 function getStreamSettings(code) {
-  return (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
+  return getEffectiveStreamSettings(code);
 }
 
 function hasTwoColumnStreams() {
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
-  return Object.values(settings).some((item) => (item?.cols || 1) === 2);
+  return Object.keys(settings).some((code) => (getStreamSettings(code)?.cols || 1) === 2);
 }
 
 function streamTextWithoutTitle(streamEl) {

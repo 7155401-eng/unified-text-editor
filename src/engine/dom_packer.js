@@ -7,6 +7,7 @@ import { streamColorIndex } from "./schema.js";
 import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layout.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
 import { applyStyleToElement } from "../style_registry.js";
+import { getEffectiveStreamSettings } from "../original_stream_columns.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
@@ -275,7 +276,7 @@ function buildMeasurePage(mainSegments, streams) {
       s.className = `stream stream-color-${streamColorIndex(code)}`;
       s.dataset.stream = code;
 
-      const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
+      const settings = getEffectiveStreamSettings(code);
       applyStyleToElement(s, settings.styleId);
       const userCols = settings.cols || 1;
       // משה 2026-05-06: לא להשתמש בהערכת שורות — לבחור עמודות לפי רצון

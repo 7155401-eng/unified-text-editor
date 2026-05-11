@@ -4881,3 +4881,26 @@ body[data-theme="dark"] .ProseMirror pre {
 .document-style-toolbar select {
   max-width: 180px;
 }
+
+.global-stream-overrides {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.global-stream-override-field {
+  gap: 4px;
+}
+
+.global-stream-override-enable {
+  width: 14px;
+  height: 14px;
+  accent-color: #f59e0b;
+}
+
+.global-stream-overrides input[type="number"] {
+  width: 46px;
+}
+
+.global-stream-overrides input[type="text"] {
+  width: 72px;
+}

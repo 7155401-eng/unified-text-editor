@@ -1,6 +1,7 @@
 import { streamColorIndex } from "./schema.js";
 import { applyStyleToElement } from "../style_registry.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
+import { getEffectiveStreamSettings } from "../original_stream_columns.js";
 
 function streamTitleForCode(code) {
   const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
@@ -49,7 +50,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   wrap.className = `stream stream-color-${streamColorIndex(streamCode)}`;
   wrap.setAttribute("data-stream", streamCode);
 
-  const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[streamCode]) || {};
+  const settings = getEffectiveStreamSettings(streamCode);
   applyStyleToElement(wrap, settings.styleId);
   const userCols = settings.cols || 1;
   // משה 2026-05-06: בחירת עמודות לפי הגדרת המשתמש בלבד, ללא הערכת שורות

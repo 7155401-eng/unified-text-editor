@@ -72,7 +72,7 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
   panel.dataset.bound = "1";
 
   panel.innerHTML = `
-    <span class="stream-label-static">רווחים:</span>
+    <span class="stream-label-static">הגדרות כלליות - רווחים:</span>
     ${FIELDS.map(([key, label, type, min, max, step]) => `
       <label class="stream-col-input spacing-input">
         <span>${label}:</span>
@@ -179,7 +179,11 @@ function ensurePanel() {
   if (!anchor) return;
   const panel = document.createElement("div");
   panel.id = "spacing-settings-panel";
-  panel.className = "toolbar spacing-toolbar";
+  panel.className = "toolbar spacing-toolbar ribbon-panel";
+  panel.dataset.ribbonTab = "layout";
+  if ((localStorage.getItem("ravtext.ribbonTab") || "home") !== "layout") {
+    panel.classList.add("ribbon-hidden");
+  }
   panel.dir = "rtl";
-  anchor.insertAdjacentElement("afterend", panel);
+  anchor.insertAdjacentElement("beforebegin", panel);
 }

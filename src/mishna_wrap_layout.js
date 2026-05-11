@@ -1,6 +1,7 @@
 const STORAGE_KEY = "ravtext.mishnaWrap";
 const LEVELS_KEY = "ravtext.mishnaWrap.levels";
 import { applyFloatFlowLevel, originalOrder, streamTextLength, widthForFlowFloat } from "./flow_layout.js";
+import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 
 export function isMishnaWrapEnabled() {
   return localStorage.getItem(STORAGE_KEY) === "1";
@@ -61,7 +62,7 @@ function codeForStream(streamEl) {
 
 function settingsForStream(streamEl) {
   const code = codeForStream(streamEl);
-  return (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
+  return getEffectiveStreamSettings(code);
 }
 
 function pageNumberFor(streamsWrap) {

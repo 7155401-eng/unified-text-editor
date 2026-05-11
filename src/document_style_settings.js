@@ -37,7 +37,7 @@ export function wireDocumentStyleControls({ pagesContainer, rerender } = {}) {
   panel.dataset.bound = "1";
 
   panel.innerHTML = `
-    <span class="stream-label-static">סגנונות מסמך:</span>
+    <span class="stream-label-static">הגדרות כלליות - סגנונות מסמך:</span>
     <label class="stream-col-input">
       <span>טקסט ראשי:</span>
       <select id="document-main-style-select"></select>
@@ -91,7 +91,11 @@ function ensurePanel() {
   if (!anchor) return;
   const panel = document.createElement("div");
   panel.id = "document-style-panel";
-  panel.className = "toolbar document-style-toolbar";
+  panel.className = "toolbar document-style-toolbar ribbon-panel";
+  panel.dataset.ribbonTab = "layout";
+  if ((localStorage.getItem("ravtext.ribbonTab") || "home") !== "layout") {
+    panel.classList.add("ribbon-hidden");
+  }
   panel.dir = "rtl";
   anchor.insertAdjacentElement("afterend", panel);
 }

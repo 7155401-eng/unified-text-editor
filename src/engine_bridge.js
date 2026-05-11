@@ -64,7 +64,7 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
-import { getStreamSettings } from "./original_stream_columns.js";
+import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
 import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
@@ -156,6 +156,9 @@ function paneManagerContentSignature(paneManager) {
   // Include the nested-notes gate flag so toggling the feature on/off
   // invalidates the cache even when the underlying content is unchanged.
   const nestedFlag = (typeof window !== "undefined" && window.localStorage?.getItem("ravtext.nestedNotes") === "1") ? "n1" : "n0";
+  const globalStreamOverridesSig = (typeof window !== "undefined" && window.localStorage)
+    ? window.localStorage.getItem("ravtext.globalStreamOverrides.v1") || ""
+    : "";
   const sigParts = paneManager.panes
     .map((p) => [
       p.id,
@@ -167,7 +170,7 @@ function paneManagerContentSignature(paneManager) {
       p.editor ? docKey(p.editor.state.doc) : "0",
     ].join(":"))
     .join("|");
-  return sigParts + "##" + nestedFlag;
+  return sigParts + "##" + nestedFlag + "##" + globalStreamOverridesSig;
 }
 
 function extractMainParagraphs(mainPane, paneManager) {
@@ -334,9 +337,8 @@ function collectChildrenAsSiblings(children, parentAnchor, out) {
 }
 
 function applyFirstNoteAsTitle(code, notes) {
-  const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
-  const streamSettings = settings[code] || {};
+  const streamSettings = getEffectiveStreamSettings(code);
   const manualTitle = String(streamSettings.title || "").trim();
   if (manualTitle) {
     labels[code] = manualTitle;

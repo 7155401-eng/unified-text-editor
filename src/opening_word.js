@@ -31,6 +31,26 @@ const STREAM_DEFAULTS = {
   opwCenterFull: false,
 };
 
+const STREAM_OPW_OVERRIDE_KEYS = [
+  "opwEnabled", "opwTarget", "opwCount", "opwStyle", "opwSize", "opwFont",
+  "opwWeight", "opwPosition", "opwDropLines", "opwSpaceAfter",
+  "opwSkipOrphan", "opwCenterFull",
+];
+
+function applyOpeningWordGlobalOverrides(raw = {}) {
+  let overrides = {};
+  try {
+    overrides = JSON.parse(localStorage.getItem("ravtext.globalStreamOverrides.v1") || "{}") || {};
+  } catch (_err) {
+    overrides = {};
+  }
+  const out = { ...raw };
+  for (const key of STREAM_OPW_OVERRIDE_KEYS) {
+    if (overrides[key]?.enabled) out[key] = overrides[key].value;
+  }
+  return out;
+}
+
 const FONT_STACKS = {
   inherit: "inherit",
   David: '"David", "David Libre", "Frank Ruhl Libre", serif',
@@ -577,7 +597,7 @@ function applyStreamOpeningWords(pageEl, streamSettings) {
   pageEl.querySelectorAll(".stream[data-stream]").forEach((streamEl) => {
     if (streamEl.closest(".talmud-layout")) return;
     const code = streamEl.getAttribute("data-stream");
-    const raw = streamSettings[code];
+    const raw = applyOpeningWordGlobalOverrides(streamSettings[code]);
     if (!raw || !raw.opwEnabled) return;
     const settings = streamToOpeningSettings(raw);
     const noteTargets = streamEl.querySelectorAll(".note-part, .note:not(.note-inline)");
@@ -605,7 +625,8 @@ export function applyOpeningWordsToPage(pageEl, mainSettings, streamSettings) {
 export function applyOpeningWordsToPages(container) {
   const mainSettings = getOpeningWordSettings();
   const streamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
-  const hasStreamOpening = Object.values(streamSettings).some((settings) => settings?.opwEnabled);
+  const hasStreamOpening = Object.values(streamSettings)
+    .some((settings) => applyOpeningWordGlobalOverrides(settings)?.opwEnabled);
   if (!mainSettings.enabled && !hasStreamOpening) return;
 
   container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => {

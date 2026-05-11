@@ -5,6 +5,7 @@ import { normalizeStreamOpeningWordSettings } from "./opening_word.js";
 import { styleOptionsHtml } from "./style_registry.js";
 
 const STREAM_SETTINGS_KEY = "ravtext.streamSettings.v1";
+const GLOBAL_STREAM_OVERRIDES_KEY = "ravtext.globalStreamOverrides.v1";
 const DEFAULT_STREAM_SETTINGS = {
   title: "",
   cols: 1,
@@ -14,6 +15,28 @@ const DEFAULT_STREAM_SETTINGS = {
   minLinesForCols: 3,
   styleId: "",
   titleStyleId: "",
+};
+
+const GLOBAL_OVERRIDE_DEFS = {
+  styleId: { label: "סגנון זרם", type: "style", value: "" },
+  titleStyleId: { label: "סגנון כותרת", type: "style", value: "" },
+  cols: { label: "טורים", type: "number", value: 1, min: 1, max: 6, step: 1 },
+  minLinesForCols: { label: "מינ' שורות לטור", type: "number", value: 3, min: 1, max: 20, step: 1 },
+  inline: { label: "תצוגה רציפה", type: "boolean", value: true },
+  lastLineCenter: { label: "מרכז שורה אחרונה", type: "boolean", value: true },
+  firstNoteAsTitle: { label: "הערה ראשונה ככותרת", type: "boolean", value: false },
+  opwEnabled: { label: "מילה פותחת", type: "boolean", value: false },
+  opwTarget: { label: "מילה פותחת: יעד", type: "select", value: "word", options: [["word", "מילה"], ["letter", "אות"], ["words", "מילים"]] },
+  opwCount: { label: "מילה פותחת: N", type: "number", value: 1, min: 1, max: 12, step: 1 },
+  opwStyle: { label: "מילה פותחת: סגנון", type: "text", value: "" },
+  opwSize: { label: "מילה פותחת: גודל%", type: "number", value: 135, min: 80, max: 500, step: 1 },
+  opwFont: { label: "מילה פותחת: גופן", type: "text", value: "David" },
+  opwWeight: { label: "מילה פותחת: משקל", type: "select", value: "bold", options: [["normal", "רגיל"], ["bold", "מודגש"], ["heavy", "כבד"]] },
+  opwPosition: { label: "מילה פותחת: מיקום", type: "select", value: "dropped", options: [["raised", "מוגבהת"], ["dropped", "נפתחת"]] },
+  opwDropLines: { label: "מילה פותחת: שורות שחרור", type: "number", value: 1, min: 1, max: 8, step: 1 },
+  opwSpaceAfter: { label: "מילה פותחת: רווח", type: "number", value: 0.3, min: 0, max: 4, step: 0.1 },
+  opwSkipOrphan: { label: "מילה פותחת: דלג קצר", type: "boolean", value: false },
+  opwCenterFull: { label: "מילה פותחת: מרכוז מלא", type: "boolean", value: false },
 };
 
 export function getStreamSettings() {
@@ -88,6 +111,52 @@ function makeCheckbox(labelText, checked, onChange) {
   return label;
 }
 
+export function loadGlobalStreamOverrides() {
+  let raw = {};
+  try {
+    raw = JSON.parse(localStorage.getItem(GLOBAL_STREAM_OVERRIDES_KEY) || "{}") || {};
+  } catch (_err) {
+    raw = {};
+  }
+  const out = {};
+  for (const [key, def] of Object.entries(GLOBAL_OVERRIDE_DEFS)) {
+    const item = raw[key] || {};
+    out[key] = {
+      enabled: !!item.enabled,
+      value: item.value !== undefined ? item.value : def.value,
+    };
+  }
+  return out;
+}
+
+export function saveGlobalStreamOverrides(overrides) {
+  localStorage.setItem(GLOBAL_STREAM_OVERRIDES_KEY, JSON.stringify(overrides || {}));
+}
+
+export function getEffectiveStreamSettings(code) {
+  const base = normalizeStreamOpeningWordSettings({
+    ...DEFAULT_STREAM_SETTINGS,
+    ...((typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {}),
+  });
+  const overrides = loadGlobalStreamOverrides();
+  const out = { ...base };
+  for (const [key, item] of Object.entries(overrides)) {
+    if (!item?.enabled) continue;
+    const def = GLOBAL_OVERRIDE_DEFS[key];
+    if (!def) continue;
+    let value = item.value;
+    if (def.type === "number") {
+      const n = Number(value);
+      if (!Number.isFinite(n)) continue;
+      value = Math.max(def.min ?? n, Math.min(def.max ?? n, n));
+    } else if (def.type === "boolean") {
+      value = !!value;
+    }
+    out[key] = value;
+  }
+  return normalizeStreamOpeningWordSettings(out);
+}
+
 function makeStyleSelect(labelText, value, onChange) {
   const label = document.createElement("label");
   label.className = "stream-col-input";
@@ -111,6 +180,98 @@ function makeStyleSelect(labelText, value, onChange) {
   label.appendChild(span);
   label.appendChild(select);
   return label;
+}
+
+function makeGlobalOverrideControl(key, item, onCommit) {
+  const def = GLOBAL_OVERRIDE_DEFS[key];
+  const label = document.createElement("label");
+  label.className = "stream-col-input global-stream-override-field";
+
+  const enable = document.createElement("input");
+  enable.type = "checkbox";
+  enable.className = "global-stream-override-enable";
+  enable.checked = !!item.enabled;
+  enable.title = "סמן כדי לדרוס את ההגדרה הזו בכל זרמי ההערות";
+  label.appendChild(enable);
+
+  const span = document.createElement("span");
+  span.textContent = `${def.label}:`;
+  label.appendChild(span);
+
+  let valueEl;
+  if (def.type === "style") {
+    valueEl = document.createElement("select");
+    valueEl.className = "stream-style-select";
+    valueEl.innerHTML = styleOptionsHtml(item.value || "");
+    valueEl.value = item.value || "";
+    valueEl.addEventListener("change", () => {
+      if (valueEl.value === "__add-custom__") {
+        const gallery = document.getElementById("styles-gallery-select");
+        if (gallery) {
+          gallery.value = "__add-custom__";
+          gallery.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        valueEl.value = item.value || "";
+        return;
+      }
+      item.value = valueEl.value;
+      onCommit();
+    });
+  } else if (def.type === "select") {
+    valueEl = makeSelect(def.options, item.value ?? def.value, (value) => {
+      item.value = value;
+      onCommit();
+    });
+  } else if (def.type === "boolean") {
+    valueEl = document.createElement("input");
+    valueEl.type = "checkbox";
+    valueEl.checked = !!item.value;
+    valueEl.addEventListener("change", () => {
+      item.value = valueEl.checked;
+      onCommit();
+    });
+  } else {
+    valueEl = document.createElement("input");
+    valueEl.type = def.type === "number" ? "number" : "text";
+    if (def.min !== undefined) valueEl.min = String(def.min);
+    if (def.max !== undefined) valueEl.max = String(def.max);
+    if (def.step !== undefined) valueEl.step = String(def.step);
+    valueEl.value = item.value ?? def.value ?? "";
+    valueEl.addEventListener("change", () => {
+      item.value = def.type === "number" ? Number(valueEl.value) : valueEl.value;
+      onCommit();
+    });
+  }
+  label.appendChild(valueEl);
+
+  enable.addEventListener("change", () => {
+    item.enabled = enable.checked;
+    onCommit();
+  });
+
+  return label;
+}
+
+function appendGlobalOverridesPanel(panel, scheduleRender) {
+  const overrides = loadGlobalStreamOverrides();
+  const block = document.createElement("span");
+  block.className = "global-stream-overrides stream-settings-block";
+
+  const heading = document.createElement("strong");
+  heading.className = "stream-settings-code";
+  heading.textContent = "כל זרמי ההערות";
+  heading.title = "כל שדה מסומן דורס את אותו שדה בהגדרות הזרם הפרטי";
+  block.appendChild(heading);
+
+  const commit = () => {
+    saveGlobalStreamOverrides(overrides);
+    scheduleRender();
+  };
+
+  for (const key of Object.keys(GLOBAL_OVERRIDE_DEFS)) {
+    block.appendChild(makeGlobalOverrideControl(key, overrides[key], commit));
+  }
+  panel.appendChild(block);
 }
 
 export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
@@ -138,6 +299,7 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   heading.className = "stream-label-static";
   heading.textContent = "הגדרות זרמים במקום אחד:";
   panel.appendChild(heading);
+  appendGlobalOverridesPanel(panel, commitRender);
 
   const sorted = Array.from(used).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
   for (const code of sorted) {

@@ -16,6 +16,7 @@
 import { buildPages } from "./vilna_v9.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle } from "./document_style_settings.js";
+import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 
 // משה 2026-05-08: קריאת קודי הזרמים שהוגדרו לגפ"ת ע"י המשתמש.
 // פורמט: "01,02" → ["01","02"]. אלה הזרמים שיהיו בצדדים בעימוד גפ"ת.
@@ -128,7 +129,11 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
   const titles = Object.assign({}, DEFAULT_TITLES, labels);
 
-  const streamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+  const rawStreamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+  const streamSettings = {};
+  for (const code of Object.keys(rawStreamSettings)) {
+    streamSettings[code] = getEffectiveStreamSettings(code);
+  }
   const levels = readLevelsFromLocalStorage();
   const talmudStreams = readTalmudStreamCodes();
 
