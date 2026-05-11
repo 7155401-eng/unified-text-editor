@@ -128,15 +128,29 @@ export async function generateCaricatures({
     };
   }
 
+  const cleanSceneText = String(scene_text || "")
+    .replace(/\u200B/g, "")
+    .replace(/\u00A0/g, " ")
+    .trim();
+
+  if (!cleanSceneText) {
+    return {
+      images: [],
+      error: "הטקסט שנשלח לשרת ריק. בדוק שהטקסט נקרא מתוך עורך Quill/iframe לפני השליחה.",
+    };
+  }
+
   const body = {
     prompt_type: "caricature",
-    scene_text: scene_text || "",
+    // Only the user's scene text is sent, under one explicit field.
+    scene_text: cleanSceneText,
     style_key: style_key || "איור מצחיק/הומוריסטי/משעשע",
     aspect: aspect || "1:1",
     count: Math.max(1, Math.min(parseInt(count, 10) || 1, 4)),
     negative: negative || "",
     polish: Boolean(polish),
   };
+  console.log("[caricature] sending payload scene_text length:", cleanSceneText.length);
   const apiKey = userApiKey();
   if (apiKey) body.api_key = apiKey;
 
