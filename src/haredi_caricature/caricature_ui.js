@@ -256,13 +256,18 @@ export class CaricatureWindow {
     sceneFrame.appendChild(this.sceneInput);
     parent.appendChild(sceneFrame);
 
-    // Listen for text updates from iframe
+    // Listen for text updates from the scene iframe only.
     this._lastSceneText = "";
     window.addEventListener("message", (ev) => {
       const d = ev.data || {};
-      if (d.type === "hc-quill-text") {
-        this._lastSceneText = d.text || "";
-      }
+      if (!["hc-quill-text", "hc-quill-response", "hc-quill-get-text-response", "hc-scene-text"].includes(d.type)) return;
+
+      // Privacy guard: accept text only from the scene iframe owned by this window.
+      const frames = this._findSceneIframes();
+      if (!frames.some((f) => f.contentWindow === ev.source)) return;
+
+      const text = d.text ?? d.scene_text ?? d.sceneText ?? "";
+      this._lastSceneText = this._normalizeSceneText(text);
     });
 
     // Random + clear row
@@ -431,65 +436,154 @@ export class CaricatureWindow {
     return String(value || "")
       .replace(/\u200B/g, "")
       .replace(/\u00A0/g, " ")
+      .replace(/\r/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
       .trim();
+  }
+
+  _readSceneTextFromDocument(doc) {
+    if (!doc) return "";
+
+    // Privacy guard: read only the dedicated scene editor.
+    // Do not scan arbitrary textarea/input/contenteditable fields.
+    const selectors = [
+      ".ql-editor",
+      ".hc-scene-input",
+      "#hc-scene-input",
+      "[data-hc-scene-input]",
+      "[data-hc-scene-text]",
+    ];
+
+    for (const sel of selectors) {
+      const el = doc.querySelector(sel);
+      if (!el) continue;
+      const raw = ("value" in el) ? el.value : (el.innerText || el.textContent || "");
+      const text = this._normalizeSceneText(raw);
+      if (text) return text;
+    }
+
+    return "";
+  }
+
+  _findSceneIframes() {
+    const out = [];
+    const add = (node) => {
+      if (!node) return;
+      if (node.tagName && String(node.tagName).toLowerCase() === "iframe") {
+        out.push(node);
+      } else if (node.querySelectorAll) {
+        out.push(...node.querySelectorAll("iframe"));
+      }
+    };
+
+    // Privacy guard: search only inside this caricature window/scene frame.
+    // Do not scan every iframe on the page.
+    add(this.sceneIframe);
+    add(this.sceneFrame);
+    add(this.win && this.win.querySelector(".hc-scene-frame"));
+    add(this.win && this.win.querySelector("iframe.hc-scene-iframe"));
+    add(this.win);
+
+    return [...new Set(out)].filter((iframe) => iframe && iframe.contentWindow);
   }
 
   _readSceneTextFromIframe(iframeElement) {
     if (!iframeElement) return "";
 
     try {
-      const doc = iframeElement.contentWindow.document || iframeElement.contentDocument;
-      if (!doc) return "";
-
-      const quillEditor = doc.querySelector(".ql-editor");
-      if (quillEditor) {
-        const text = this._normalizeSceneText(quillEditor.innerText || quillEditor.textContent);
+      const cw = iframeElement.contentWindow;
+      if (cw && typeof cw.getText === "function") {
+        const text = this._normalizeSceneText(cw.getText());
         if (text) return text;
       }
-
-      const editable = doc.querySelector('[contenteditable="true"]');
-      if (editable) {
-        const text = this._normalizeSceneText(editable.innerText || editable.textContent);
+      if (cw && typeof cw.getSceneText === "function") {
+        const text = this._normalizeSceneText(cw.getSceneText());
         if (text) return text;
       }
-
-      const textarea = doc.querySelector("textarea");
-      if (textarea) {
-        const text = this._normalizeSceneText(textarea.value);
-        if (text) return text;
-      }
-
-      const input = doc.querySelector('input[type="text"], input:not([type])');
-      if (input) {
-        const text = this._normalizeSceneText(input.value);
+      if (cw && cw.quill && typeof cw.quill.getText === "function") {
+        const text = this._normalizeSceneText(cw.quill.getText());
         if (text) return text;
       }
     } catch (e) {
-      // Cross-origin iframe or not fully loaded
+      // Cross-origin iframe: direct access is blocked. Use postMessage cache/request below.
+    }
+
+    try {
+      const doc = iframeElement.contentDocument ||
+                  (iframeElement.contentWindow && iframeElement.contentWindow.document);
+      const text = this._readSceneTextFromDocument(doc);
+      if (text) return text;
+    } catch (e) {
+      // Cross-origin iframe or not fully loaded.
     }
 
     return "";
   }
 
-  _readSceneText() {
-    // חיפוש מקיף של כל חלונית iframe כדי להבטיח קריאה של Quill
-    try {
-      const iframes = this.win ? this.win.querySelectorAll("iframe") : document.querySelectorAll("iframe");
-      for (let i = 0; i < iframes.length; i++) {
-        const text = this._readSceneTextFromIframe(iframes[i]);
-        if (text) {
-          this._lastSceneText = text;
-          return text;
-        }
-      }
-    } catch (e) {}
+  _requestSceneTextFromIframes(timeoutMs = 500) {
+    const frames = this._findSceneIframes();
+    if (!frames.length) return Promise.resolve("");
 
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (text) => {
+        if (done) return;
+        const normalized = this._normalizeSceneText(text);
+        if (!normalized) return;
+        done = true;
+        window.removeEventListener("message", onMessage);
+        clearTimeout(timer);
+        this._lastSceneText = normalized;
+        resolve(normalized);
+      };
+      const frameWindows = new Set(frames.map((f) => f.contentWindow).filter(Boolean));
+      const onMessage = (ev) => {
+        if (!frameWindows.has(ev.source)) return;
+        const d = ev.data || {};
+        if (!["hc-quill-text", "hc-quill-response", "hc-quill-get-text-response", "hc-scene-text"].includes(d.type)) return;
+        finish(d.text ?? d.scene_text ?? d.sceneText ?? "");
+      };
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        window.removeEventListener("message", onMessage);
+        resolve("");
+      }, timeoutMs);
+
+      window.addEventListener("message", onMessage);
+      for (const iframe of frames) {
+        try {
+          iframe.contentWindow.postMessage({ type: "hc-quill-get-text" }, "*");
+          iframe.contentWindow.postMessage({ type: "hc-quill-request-text" }, "*");
+          iframe.contentWindow.postMessage({ type: "hc-scene-get-text" }, "*");
+        } catch (e) {}
+      }
+    });
+  }
+
+  async _readSceneText() {
+    // Preferred: read Quill directly from same-origin iframe.
+    for (const iframeElement of this._findSceneIframes()) {
+      const text = this._readSceneTextFromIframe(iframeElement);
+      if (text) {
+        this._lastSceneText = text;
+        return text;
+      }
+    }
+
+    // If direct access failed, ask the iframe to send the current text now.
+    const iframeText = await this._requestSceneTextFromIframes(500);
+    if (iframeText) return iframeText;
+
+    // Fallback: inline textarea, if this build uses it instead of iframe.
     const inlineText = this._normalizeSceneText(this.sceneInput && this.sceneInput.value);
     if (inlineText) {
       this._lastSceneText = inlineText;
       return inlineText;
     }
 
+    // Last fallback: latest text received from postMessage input events.
     return this._normalizeSceneText(this._lastSceneText);
   }
 
@@ -631,12 +725,15 @@ export class CaricatureWindow {
       return;
     }
 
-    // Pull current scene text from Quill inside iframe first.
-    // Fallback order: iframe/Quill -> textarea -> cached postMessage text.
-    const sceneText = this._readSceneText();
+    // Pull current scene text robustly.
+    // Order: Quill inside iframe -> iframe postMessage response -> inline textarea -> cached postMessage text.
+    const sceneText = await this._readSceneText();
+    console.log("[caricature] scene text length:", sceneText.length);
 
     if (!sceneText) {
-      alert(tr("no_text", this.lang) + "\n\n" + tr("no_text_msg", this.lang));
+      alert(tr("no_text", this.lang) + "
+
+" + tr("no_text_msg", this.lang));
       return;
     }
 
