@@ -82,10 +82,15 @@ function readPageGeomFromContainer(container) {
   const pageHeight = pickPx(cs?.getPropertyValue("--ravtext-page-height"), 794);
   const mainSize   = pickPx(cs?.getPropertyValue("--ravtext-page-main-size"), 13);
   const sideSize   = pickPx(cs?.getPropertyValue("--ravtext-page-stream-size"), 11);
+  const lineHeightRatio = (() => {
+    const n = parseFloat(cs?.getPropertyValue("--ravtext-v9-line-height") || "");
+    return Number.isFinite(n) && n > 0 ? n : 1.55;
+  })();
+  const mainGap = pickPx(cs?.getPropertyValue("--ravtext-v9-main-gap"), 8);
   // קריאת font-family מהcontainer
   const fontFamily = (cs?.getPropertyValue("--ravtext-page-font-family") || "")
     .replace(/^\s+|\s+$/g, "") || "serif";
-  return { pageWidth, pageHeight, mainSize, sideSize, fontFamily };
+  return { pageWidth, pageHeight, mainSize, sideSize, fontFamily, lineHeightRatio, mainGap };
 }
 
 function readPercentSetting(key, fallback, min, max) {
@@ -130,8 +135,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     sideFontSize: geom.sideSize,
     mainFontFamily: geom.fontFamily,
     sideFontFamily: geom.fontFamily,
-    lineHeightRatio: 1.55,
+    lineHeightRatio: geom.lineHeightRatio,
     padding: 12,
+    mainGap: geom.mainGap,
     mainWidthRatio: readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
     crownLines: readIntSetting("ravtext.talmudLayout.crownLines", 4, 0, 12),
     gapFillMinRatio: readPercentSetting("ravtext.talmudLayout.gapFillMin", 82, 50, 98),

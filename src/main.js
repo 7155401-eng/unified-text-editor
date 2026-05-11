@@ -32,6 +32,7 @@ import { setupPremiumStatusSection } from "./premium/premium_status_section.js";
 import "./premium/premium_styles.css";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
+import { applySpacingSettings, loadSpacingSettings, wireSpacingControls } from "./spacing_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
 import { setupStreamPicker } from "./stream_picker.js";
@@ -201,6 +202,7 @@ loadInitialState(paneManager).then((res) => {
 });
 const pagesContainer = document.querySelector("#pages-container");
 applyPageSettings(pagesContainer);
+applySpacingSettings(loadSpacingSettings(), pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
 
 loadSyncScrollEnabledFromServer().then((enabled) => {
@@ -975,9 +977,11 @@ wirePageSettingsControls(() => {
   applyPageSettings(pagesContainer);
   rerenderPages();
 });
+wireSpacingControls({ pagesContainer, rerender: rerenderPages });
 wireOutputBackgroundControl();
 
 function rerenderPages() {
+  applySpacingSettings(loadSpacingSettings(), pagesContainer);
   for (const p of paneManager.panes) {
     if (p.streamCode) ensureOriginalStreamSettings(p.streamCode);
   }

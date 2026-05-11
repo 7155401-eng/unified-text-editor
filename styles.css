@@ -223,8 +223,15 @@ html, body {
 
 .editor, .editor .ProseMirror {
   font-family: var(--ravtext-editor-font-family);
+  line-height: var(--ravtext-editor-line-height, 1.55);
   font-feature-settings: "kern" 1, "liga" 1;
   unicode-bidi: plaintext;
+}
+
+.editor .ProseMirror p,
+.pane-body .ProseMirror p {
+  margin-top: 0;
+  margin-bottom: var(--ravtext-editor-paragraph-gap, 6px);
 }
 
 /* משה 2026-05-07: layout התאמה-עצמית לגובה החלון. במקום `calc(100vh - 128px)`
@@ -1574,10 +1581,10 @@ body.light-theme .pdf-scroll-progress-fill {
 
 .page-main {
   font-size: var(--ravtext-page-main-size);
-  line-height: 1.55;
+  line-height: var(--ravtext-page-main-line-height, 1.55);
   direction: rtl;
   text-align: right;
-  margin-bottom: 8px;
+  margin-bottom: var(--ravtext-page-main-stream-gap, 8px);
 }
 
 .page-main:empty {
@@ -1586,7 +1593,7 @@ body.light-theme .pdf-scroll-progress-fill {
 
 .page-main p {
   direction: rtl;
-  margin: 0 0 6px 0;
+  margin: 0 0 var(--ravtext-page-main-paragraph-gap, 6px) 0;
   text-align: justify;
   text-align-last: center;
   widows: 2;
@@ -1600,7 +1607,7 @@ body.light-theme .pdf-scroll-progress-fill {
 .page-main h5,
 .page-main h6 {
   direction: rtl;
-  margin: 0 0 6px 0;
+  margin: 0 0 var(--ravtext-page-main-paragraph-gap, 6px) 0;
   text-align: center;
   text-align-last: center;
   font-weight: 700;
@@ -1631,7 +1638,7 @@ body.light-theme .pdf-scroll-progress-fill {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--ravtext-page-stream-gap, 4px);
 }
 
 .page-main:empty + .page-streams {
@@ -2010,7 +2017,7 @@ body.light-theme .pdf-scroll-progress-fill {
   padding: 2px 8px 4px 8px;
   border-radius: 2px;
   font-size: var(--ravtext-page-stream-size);
-  line-height: 1.4;
+  line-height: var(--ravtext-page-stream-line-height, 1.4);
   direction: rtl;
   text-align: justify;
   text-align-last: center;
@@ -2030,13 +2037,13 @@ body.light-theme .pdf-scroll-progress-fill {
   text-align-last: center;
   border-bottom: 1px solid rgba(0, 0, 0, 0.25);
   padding-bottom: 1px;
-  margin-bottom: 1px;
+  margin-bottom: var(--ravtext-page-stream-title-gap, 1px);
   letter-spacing: 0.3px;
   column-span: all;
 }
 
 .stream .note {
-  margin: 1px 0;
+  margin: var(--ravtext-page-stream-note-gap, 1px) 0;
   direction: rtl;
   cursor: pointer;
   /* משה 2026-05-06: pretty = שיפור איזון שורות (פחות מילה בודדת בסוף עמודה).
@@ -4844,3 +4851,23 @@ body[data-theme="dark"] .ProseMirror pre {
 .ProseMirror mark[data-color="darkGray"] { background: #424242; color: #fff; }
 .ProseMirror mark[data-color="lightGray"] { background: #e0e0e0; }
 .ProseMirror mark[data-color="black"] { background: #000; color: #fff; }
+
+.spacing-toolbar {
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.spacing-toolbar .spacing-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.spacing-toolbar .spacing-input input {
+  width: 56px;
+}
+
+.spacing-toolbar select {
+  max-width: 170px;
+}
