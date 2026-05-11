@@ -1233,8 +1233,8 @@ export async function buildPages(container, paragraphs, config) {
           const slice = [...baseSlice, half];
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
         };
-        const splitPlanScore = (tp, movedNotes) => {
-          if (!tp || !tp.overflow || tp.overflow.mainText) return -Infinity;
+        const splitPlanMeta = (tp, movedNotes) => {
+          if (!tp || !tp.overflow || tp.overflow.mainText) return null;
           const lineCount = planMainLineCount(tp);
           const streamCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
           const footerCount = (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
@@ -1242,15 +1242,14 @@ export async function buildPages(container, paragraphs, config) {
           const ovs = tp.overflow.streams || {};
           const hasNoteOverflow = Object.keys(ovs).some(k => ovs[k]);
           if (hasNoteOverflow) {
-            if (!Array.isArray(movedNotes) || movedNotes.length === 0) return -Infinity;
-            if (commentaryCount === 0) return -Infinity;
-            if (carryActive && lineCount > carryGapMaxMainLines()) return -Infinity;
+            if (!Array.isArray(movedNotes) || movedNotes.length === 0) return null;
+            if (commentaryCount === 0) return null;
           } else if (!fitsClean(tp)) {
-            return -Infinity;
+            return null;
           }
-          if (bestN_clean > 0 && !hasNoteOverflow && commentaryCount === 0 && fillsPageEnough(bestCleanPlan, 0.72)) return -Infinity;
+          if (bestN_clean > 0 && !hasNoteOverflow && commentaryCount === 0 && fillsPageEnough(bestCleanPlan, 0.72)) return null;
           const fill = planFillRatio(tp);
-          if (bestN_clean > 0 && fill <= cleanFill + 0.03) return -Infinity;
+          if (bestN_clean > 0 && fill <= cleanFill + 0.03) return null;
           const belowTargetPenalty = hasNoteOverflow && fill < cfg.gapFillMinRatio
             ? (cfg.gapFillMinRatio - fill) * 0.25
             : 0;
@@ -1259,38 +1258,40 @@ export async function buildPages(container, paragraphs, config) {
             ? Math.max(0, lineCount - dynamicGapFillMaxMainLines()) * 0.01
             : 0;
           const carryMainPenalty = carryActive && hasNoteOverflow ? Math.max(0, lineCount - 2) * 0.04 : 0;
-          return fill - overflowPenalty - belowTargetPenalty - extraMainPenalty - carryMainPenalty;
+          const score = fill - overflowPenalty - belowTargetPenalty - extraMainPenalty - carryMainPenalty;
+          return { score, hasNoteOverflow, fill, lineCount, commentaryCount };
+        };
+        const makeSplit = (len, movedNotes) => ({
+          firstHalf: { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes },
+          secondHalf: { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) },
+          sliceIdx,
+          baseN,
+        });
+        const chooseStepwiseSplit = (ends) => {
+          let lastClean = null;
+          let lastCleanScore = -Infinity;
+          for (const len of ends) {
+            const movedNotes = notesBeforeAnchor(len);
+            const meta = splitPlanMeta(tryPrefix(len), movedNotes);
+            if (!meta) continue;
+            if (meta.hasNoteOverflow) {
+              return makeSplit(len, movedNotes);
+            }
+            if (meta.score >= lastCleanScore) {
+              lastCleanScore = meta.score;
+              lastClean = makeSplit(len, movedNotes);
+            }
+          }
+          return lastClean;
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
-        let bestLineSplit = null;
-        let bestLineScore = -Infinity;
-        for (const len of lineEnds) {
-          const movedNotes = notesBeforeAnchor(len);
-          const score = splitPlanScore(tryPrefix(len), movedNotes);
-          if (!Number.isFinite(score) || score < bestLineScore) continue;
-          const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
-          const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
-          bestLineSplit = { firstHalf, secondHalf, sliceIdx, baseN };
-          bestLineScore = score;
-        }
-        if (bestLineSplit) splitInfo = bestLineSplit;
+        splitInfo = chooseStepwiseSplit(lineEnds);
         if (!splitInfo) {
           const candidates = wordEndCandidates(fullText)
             .filter(n => n >= MIN_SPLIT && n < fullText.length)
             .sort((a, b) => a - b);
-          let bestWordSplit = null;
-          let bestWordScore = -Infinity;
-          for (const len of candidates) {
-            const movedNotes = notesBeforeAnchor(len);
-            const score = splitPlanScore(tryPrefix(len), movedNotes);
-            if (!Number.isFinite(score) || score < bestWordScore) continue;
-            const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
-            const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
-            bestWordSplit = { firstHalf, secondHalf, sliceIdx, baseN };
-            bestWordScore = score;
-          }
-          if (bestWordSplit) splitInfo = bestWordSplit;
+          splitInfo = chooseStepwiseSplit(candidates);
         }
         if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
           const fallbackLen = lineEnds[0] || wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length);
@@ -1312,7 +1313,9 @@ export async function buildPages(container, paragraphs, config) {
         : getSlice(bestN_clean);
       const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
-      if (currentFill < rescueMinFillRatio && totalAvail > 0) {
+      const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
+        .some(k => currentPlan.overflow.streams[k]);
+      if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && totalAvail > 0) {
         let rescueBest = null;
         let rescueBestScore = currentFill;
         for (let sliceIdx = 0; sliceIdx < Math.min(totalAvail, 3); sliceIdx++) {
@@ -1394,8 +1397,10 @@ export async function buildPages(container, paragraphs, config) {
       const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
       const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
+      const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
+        .some(k => currentPlan.overflow.streams[k]);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
-      if (currentFill < rescueMinFillRatio && secondText.length > 0) {
+      if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
@@ -1477,10 +1482,13 @@ export async function buildPages(container, paragraphs, config) {
         : getSlice(bestN_clean);
       const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
+      const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
+        .some(k => currentPlan.overflow.streams[k]);
       if (
         tp && tp.overflow &&
         !tp.overflow.mainText &&
         hasNoteOverflow &&
+        !currentHasNoteOverflow &&
         planHasCommentaryStart(tp) &&
         (fill > currentFill + 0.08 || (currentFill < rescueMinFillRatio && fill >= currentFill - 0.04))
       ) {
