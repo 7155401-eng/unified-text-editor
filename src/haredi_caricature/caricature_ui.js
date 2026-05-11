@@ -438,19 +438,7 @@ export class CaricatureWindow {
     if (!iframeElement) return "";
 
     try {
-      const cw = iframeElement.contentWindow;
-      if (cw && typeof cw.getText === "function") {
-        const text = this._normalizeSceneText(cw.getText());
-        if (text) return text;
-      }
-    } catch (e) {
-      // Cross-origin iframe: direct access is blocked, so use cached postMessage text.
-      return "";
-    }
-
-    try {
-      const doc = iframeElement.contentDocument ||
-                  (iframeElement.contentWindow && iframeElement.contentWindow.document);
+      const doc = iframeElement.contentWindow.document || iframeElement.contentDocument;
       if (!doc) return "";
 
       const quillEditor = doc.querySelector(".ql-editor");
@@ -477,27 +465,24 @@ export class CaricatureWindow {
         if (text) return text;
       }
     } catch (e) {
-      // Cross-origin iframe or not fully loaded: fall back below.
+      // Cross-origin iframe or not fully loaded
     }
 
     return "";
   }
 
   _readSceneText() {
-    const iframeCandidates = [
-      this.sceneIframe,
-      this.sceneFrame && this.sceneFrame.querySelector("iframe"),
-      this.win && this.win.querySelector(".hc-scene-frame iframe"),
-      this.win && this.win.querySelector("iframe.hc-scene-iframe"),
-    ].filter(Boolean);
-
-    for (const iframeElement of iframeCandidates) {
-      const text = this._readSceneTextFromIframe(iframeElement);
-      if (text) {
-        this._lastSceneText = text;
-        return text;
+    // חיפוש מקיף של כל חלונית iframe כדי להבטיח קריאה של Quill
+    try {
+      const iframes = this.win ? this.win.querySelectorAll("iframe") : document.querySelectorAll("iframe");
+      for (let i = 0; i < iframes.length; i++) {
+        const text = this._readSceneTextFromIframe(iframes[i]);
+        if (text) {
+          this._lastSceneText = text;
+          return text;
+        }
       }
-    }
+    } catch (e) {}
 
     const inlineText = this._normalizeSceneText(this.sceneInput && this.sceneInput.value);
     if (inlineText) {
