@@ -246,6 +246,7 @@ export class CaricatureWindow {
 
     const sceneFrame = document.createElement("div");
     sceneFrame.className = "hc-scene-frame";
+    this.sceneFrame = sceneFrame;
     this.sceneInput = document.createElement("textarea");
     this.sceneInput.className = "hc-scene-input";
     this.sceneInput.addEventListener("input", () => {
@@ -426,6 +427,87 @@ export class CaricatureWindow {
     } catch (e) {}
   }
 
+  _normalizeSceneText(value) {
+    return String(value || "")
+      .replace(/\u200B/g, "")
+      .replace(/\u00A0/g, " ")
+      .trim();
+  }
+
+  _readSceneTextFromIframe(iframeElement) {
+    if (!iframeElement) return "";
+
+    try {
+      const cw = iframeElement.contentWindow;
+      if (cw && typeof cw.getText === "function") {
+        const text = this._normalizeSceneText(cw.getText());
+        if (text) return text;
+      }
+    } catch (e) {
+      // Cross-origin iframe: direct access is blocked, so use cached postMessage text.
+      return "";
+    }
+
+    try {
+      const doc = iframeElement.contentDocument ||
+                  (iframeElement.contentWindow && iframeElement.contentWindow.document);
+      if (!doc) return "";
+
+      const quillEditor = doc.querySelector(".ql-editor");
+      if (quillEditor) {
+        const text = this._normalizeSceneText(quillEditor.innerText || quillEditor.textContent);
+        if (text) return text;
+      }
+
+      const editable = doc.querySelector('[contenteditable="true"]');
+      if (editable) {
+        const text = this._normalizeSceneText(editable.innerText || editable.textContent);
+        if (text) return text;
+      }
+
+      const textarea = doc.querySelector("textarea");
+      if (textarea) {
+        const text = this._normalizeSceneText(textarea.value);
+        if (text) return text;
+      }
+
+      const input = doc.querySelector('input[type="text"], input:not([type])');
+      if (input) {
+        const text = this._normalizeSceneText(input.value);
+        if (text) return text;
+      }
+    } catch (e) {
+      // Cross-origin iframe or not fully loaded: fall back below.
+    }
+
+    return "";
+  }
+
+  _readSceneText() {
+    const iframeCandidates = [
+      this.sceneIframe,
+      this.sceneFrame && this.sceneFrame.querySelector("iframe"),
+      this.win && this.win.querySelector(".hc-scene-frame iframe"),
+      this.win && this.win.querySelector("iframe.hc-scene-iframe"),
+    ].filter(Boolean);
+
+    for (const iframeElement of iframeCandidates) {
+      const text = this._readSceneTextFromIframe(iframeElement);
+      if (text) {
+        this._lastSceneText = text;
+        return text;
+      }
+    }
+
+    const inlineText = this._normalizeSceneText(this.sceneInput && this.sceneInput.value);
+    if (inlineText) {
+      this._lastSceneText = inlineText;
+      return inlineText;
+    }
+
+    return this._normalizeSceneText(this._lastSceneText);
+  }
+
   _setStatus(key, kind = "acc", kw = {}) {
     if (!this.statusLbl) return;
     this.statusLbl.classList.remove("ok", "err");
@@ -564,17 +646,9 @@ export class CaricatureWindow {
       return;
     }
 
-    // Pull current scene text — use the inline editor, then fall back to lastSceneText.
-    let sceneText = (this._lastSceneText || "").trim();
-    if (this.sceneInput) sceneText = (this.sceneInput.value || "").trim() || sceneText;
-    try {
-      // Synchronous attempt via contentWindow.getText (same-origin)
-      const cw = this.sceneIframe && this.sceneIframe.contentWindow;
-      if (cw && typeof cw.getText === "function") {
-        const t = cw.getText();
-        if (typeof t === "string") sceneText = t.trim() || sceneText;
-      }
-    } catch (e) { /* cross-origin: rely on postMessage cached value */ }
+    // Pull current scene text from Quill inside iframe first.
+    // Fallback order: iframe/Quill -> textarea -> cached postMessage text.
+    const sceneText = this._readSceneText();
 
     if (!sceneText) {
       alert(tr("no_text", this.lang) + "\n\n" + tr("no_text_msg", this.lang));
