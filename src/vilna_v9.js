@@ -1176,14 +1176,10 @@ export async function buildPages(container, paragraphs, config) {
     let bestN;
     if (splitInfo) {
       bestN = bestN_clean + 1;
-    } else if (bestN_clean < totalAvail) {
-      // משה 2026-05-09: split נכשל אבל יש פסקה נוספת זמינה — force-take שלה
-      // (גם אם ההערות שלה לא נכנסות במלואן). העודף ייכנס ל-carry-over,
-      // וה-drain marker שלמטה ייצור עמוד drain צמוד שיכלול את ההערות החסרות.
-      // עדיף מאשר עמוד עם רק כותרת (bestN_clean=1 לבד = עמוד כמעט ריק).
-      bestN = bestN_clean + 1;
     } else if (bestN_clean > 0) {
       bestN = bestN_clean;
+    } else if (bestN_clean < totalAvail) {
+      bestN = 1;
     } else {
       // אין clean fit ואין split אפשרי וגם אין פסקאות — שום דבר לקחת
       bestN = totalAvail > 0 ? 1 : 0;
