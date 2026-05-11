@@ -1157,13 +1157,13 @@ export async function buildPages(container, paragraphs, config) {
       const allNotes = target?.notes || [];
       const anchored = allNotes.filter(n => typeof n.anchor === 'number');
       const anchorless = allNotes.filter(n => typeof n.anchor !== 'number');
-      const notesBeforeAnchor = (len, keepCount) => {
+      const notesBeforeAnchor = (len) => {
         const ratio = fullText.length > 0 ? len / fullText.length : 0;
         const anchorlessShare = Math.round(anchorless.length * ratio);
         const anchoredBefore = anchored.filter(n => n.anchor < len);
         const before = [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
           .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
-        return typeof keepCount === 'number' ? before.slice(0, Math.max(0, keepCount)) : before;
+        return before;
       };
       const notesFromAnchor = (len, movedNotes) => {
         const moved = new Set(movedNotes || []);
@@ -1177,8 +1177,8 @@ export async function buildPages(container, paragraphs, config) {
       };
       if (fullText.length >= MIN_SPLIT) {
         const baseSlice = getSlice(baseN);
-        const tryPrefix = (len, keepCount) => {
-          const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len, keepCount) };
+        const tryPrefix = (len) => {
+          const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len) };
           const slice = [...baseSlice, half];
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, {}), cfg);
         };
@@ -1188,40 +1188,45 @@ export async function buildPages(container, paragraphs, config) {
             const noteCount = Array.isArray(movedNotes) ? movedNotes.length : 0;
             const lineCount = (tp.mainBox && Array.isArray(tp.mainBox.lines)) ? tp.mainBox.lines.length : 0;
             const streamCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
-            if (noteCount === 0 && streamCount === 0) return false;
-            if (lineCount < 3 && streamCount === 0) return false;
+            const footerCount = (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
+            const commentaryCount = streamCount + footerCount;
+            if (noteCount === 0 && commentaryCount === 0) return false;
+            if (lineCount < 3 && commentaryCount === 0) return false;
           }
           return true;
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
-        for (let i = lineEnds.length - 1; i >= 0 && !splitInfo; i--) {
-          const len = lineEnds[i];
-          const before = notesBeforeAnchor(len);
-          for (let keep = before.length; keep >= 0; keep--) {
-            const movedNotes = notesBeforeAnchor(len, keep);
-            if (!acceptSplitPlan(tryPrefix(len, keep), movedNotes)) continue;
-            const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
-            const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
-            splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
-            break;
-          }
+        let bestLineSplit = null;
+        for (const len of lineEnds) {
+          const movedNotes = notesBeforeAnchor(len);
+          if (!acceptSplitPlan(tryPrefix(len), movedNotes)) continue;
+          const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
+          const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
+          bestLineSplit = { firstHalf, secondHalf, sliceIdx, baseN };
         }
+        if (bestLineSplit) splitInfo = bestLineSplit;
         if (!splitInfo) {
           const candidates = wordEndCandidates(fullText)
             .filter(n => n >= MIN_SPLIT && n < fullText.length)
-            .sort((a, b) => b - a);
+            .sort((a, b) => a - b);
+          let bestWordSplit = null;
           for (const len of candidates) {
-            const before = notesBeforeAnchor(len);
-            for (let keep = before.length; keep >= 0; keep--) {
-              const movedNotes = notesBeforeAnchor(len, keep);
-              if (!acceptSplitPlan(tryPrefix(len, keep), movedNotes)) continue;
-              const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
-              const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
-              splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
-              break;
-            }
-            if (splitInfo) break;
+            const movedNotes = notesBeforeAnchor(len);
+            if (!acceptSplitPlan(tryPrefix(len), movedNotes)) continue;
+            const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes };
+            const secondHalf = { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) };
+            bestWordSplit = { firstHalf, secondHalf, sliceIdx, baseN };
+          }
+          if (bestWordSplit) splitInfo = bestWordSplit;
+        }
+        if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
+          const fallbackLen = lineEnds[0] || wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length);
+          if (fallbackLen) {
+            const movedNotes = notesBeforeAnchor(fallbackLen);
+            const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: movedNotes };
+            const secondHalf = { ...target, mainText: fullText.substring(fallbackLen).trimStart(), notes: notesFromAnchor(fallbackLen, movedNotes) };
+            splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
           }
         }
       }
@@ -1231,7 +1236,7 @@ export async function buildPages(container, paragraphs, config) {
     // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
     // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
     let drainAloneMode = false;
-    if (false && !splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
+    if (!splitInfo && pendingParagraph && hasCarryOver(carryOver)) {
       // בדוק אם carry לבד (slice ריק) חורג
       const carryAloneTrial = buildPagePlan(
         aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
@@ -1353,7 +1358,7 @@ export async function buildPages(container, paragraphs, config) {
     // זה מונע מקריירי-אובר לזרום לעמוד עם פסקה חדשה (חוסר קישור). העמוד הבא
     // יהיה drain עם carry-over בלבד, אבל הוא יהיה צמוד לפסקה המקור.
     const hasOverflowNotes = Object.keys(nextCarry).some(k => nextCarry[k]);
-    if (false && hasOverflowNotes && !splitInfo && !pendingParagraph) {
+    if (hasOverflowNotes && !splitInfo && !pendingParagraph && !drainAloneMode) {
       pendingParagraph = { mainText: '', notes: [], _drainMarker: true };
     }
     // אם זה היה drain marker וה-carry-over כבר התרוקן — נקה גם את ה-marker
