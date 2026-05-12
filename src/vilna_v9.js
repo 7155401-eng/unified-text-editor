@@ -425,6 +425,7 @@ function buildPagePlan(pageContent, config) {
     // משה 2026-05-08: רווח בין הראשי לזרמי הצד (~1.5% מרוחב הדף הפנימי).
     // ניתן לעקוף ב-config.mainGap.
     mainGap: null,
+    streamHorizontalGap: 8,
     titles: {},
     streamSettings: {},
   }, config || {});
@@ -856,13 +857,20 @@ function buildPagePlan(pageContent, config) {
         continue;
       }
 
-      const allLines = sideMetrics.layoutLines(text, innerWidth);
+      const settings = streamSettings[fs.id] || {};
+      const footerCols = Math.max(1, Math.min(6, parseInt(settings.cols || 1, 10) || 1));
+      const colGap = Math.max(0, Number(cfg.streamHorizontalGap) || 0);
+      const colWidth = footerCols > 1
+        ? Math.max(24, (innerWidth - colGap * (footerCols - 1)) / footerCols)
+        : innerWidth;
+      const allLines = sideMetrics.layoutLines(text, colWidth);
       const titleY = footerY;
       footerY += titleHeight;
 
       // כמה שורות נכנסות אחרי הכותרת?
       const remainingY = pageBottom - footerY;
-      const maxLinesFit = Math.max(1, Math.floor(remainingY / sideLineH));
+      const rowsPerCol = Math.max(1, Math.floor(remainingY / sideLineH));
+      const maxLinesFit = rowsPerCol * footerCols;
       const linesToRender = allLines.slice(0, maxLinesFit);
       const overflowLines = allLines.slice(maxLinesFit);
 
@@ -874,10 +882,14 @@ function buildPagePlan(pageContent, config) {
 
       const linesData = [];
       for (let i = 0; i < linesToRender.length; i++) {
+        const col = Math.floor(i / rowsPerCol);
+        const row = i % rowsPerCol;
+        const rtlCol = footerCols - 1 - Math.min(col, footerCols - 1);
+        const x = footerCols > 1 ? rtlCol * (colWidth + colGap) : 0;
         linesData.push({
-          x: 0,
-          y: footerY + i * sideLineH,
-          width: innerWidth,
+          x,
+          y: footerY + row * sideLineH,
+          width: colWidth,
           words: linesToRender[i].words,
           text: linesToRender[i].words.join(' '),
           isLast: i === linesToRender.length - 1,
@@ -889,13 +901,16 @@ function buildPagePlan(pageContent, config) {
 
       result.footerBoxes.push({
         id: fs.id,
-        styleId: streamSettings[fs.id]?.styleId || "",
-        titleStyleId: streamSettings[fs.id]?.titleStyleId || "",
+        styleId: settings.styleId || "",
+        titleStyleId: settings.titleStyleId || "",
         lines: linesData,
         titleY: titleY,
         titleHeight: titleHeight,
       });
-      footerY += linesToRender.length * sideLineH + 8;
+      const renderedRows = footerCols > 1
+        ? Math.min(rowsPerCol, linesToRender.length)
+        : linesToRender.length;
+      footerY += renderedRows * sideLineH + 8;
     }
   }
 
@@ -1133,6 +1148,7 @@ export async function buildPages(container, paragraphs, config) {
     crownLines: 4,
     mainWidthRatio: 0.42,
     mainGap: null,
+    streamHorizontalGap: 8,
     gapFillMinRatio: 0.82,
     gapFillMaxMainLines: null,
     carryOnlyMinRatio: 0.78,
@@ -1602,9 +1618,12 @@ export async function buildPages(container, paragraphs, config) {
         aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
         cfg
       );
-      // אם carry לבד חורג, או שהוא מספיק מלא, ננקז אותו לבד.
-      // אם הוא קצר, עדיף לצרף אליו מעט מהראשי הבא כדי לא ליצור עמוד חצי ריק.
-      drainAloneMode = planCommentaryLineCount(carryAloneTrial) >= 6;
+      // אם carry לבד חורג, או שהוא ממלא את העמוד דינמית, ננקז אותו לבד.
+      // אם הוא קצר, מצרפים אליו מהראשי הבא; סף שורות קשיח יצר עמודים כמעט ריקים.
+      drainAloneMode = !!(
+        carryAloneTrial?.overflow?.exceedsPage ||
+        fillsPageEnough(carryAloneTrial, cfg.carryOnlyMinRatio || 0.78)
+      );
     }
 
     // 3. קביעת bestN סופי
