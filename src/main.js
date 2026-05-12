@@ -1684,7 +1684,6 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "word-import-streams": {
-      if (!tryUseTool("word-extractor", "פירוק מסמך וורד לזרמים")) break;
       openWordExtractor(paneManager, rerenderPages);
       break;
     }

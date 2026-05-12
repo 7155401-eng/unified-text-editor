@@ -12,8 +12,11 @@ const DEFAULTS = {
   streamGap: 4,
   streamNoteGap: 1,
   streamTitleGap: 1,
+  ravtextStreamVerticalGap: 4,
+  ravtextStreamHorizontalGap: 8,
   v9LineHeight: 1.55,
   v9MainGap: 8,
+  noMidLineSplits: false,
 };
 
 const FIELDS = [
@@ -24,10 +27,13 @@ const FIELDS = [
   ["mainStreamGap", "PDF: ראשי-הערות", "number", 0, 80, 1],
   ["streamLineHeight", "זרמים: גובה שורה", "number", 0.8, 3, 0.05],
   ["streamGap", "בין זרמים", "number", 0, 80, 1],
+  ["ravtextStreamVerticalGap", "רב טקסט: בין זרמים אנכית", "number", 0, 80, 1],
+  ["ravtextStreamHorizontalGap", "רב טקסט: בין זרמים אופקית", "number", 0, 80, 1],
   ["streamNoteGap", "בין הערות", "number", 0, 40, 1],
   ["streamTitleGap", "כותרת-תוכן", "number", 0, 40, 1],
   ["v9LineHeight", "V9: גובה שורה", "number", 0.8, 3, 0.05],
   ["v9MainGap", "V9: ראשי-צד", "number", 0, 60, 1],
+  ["noMidLineSplits", "לא לפצל באמצע שורות כלל", "checkbox", 0, 1, 1],
 ];
 
 export function loadSpacingSettings() {
@@ -54,6 +60,8 @@ export function applySpacingSettings(settings = loadSpacingSettings(), pagesCont
     "--ravtext-page-main-stream-gap": `${s.mainStreamGap}px`,
     "--ravtext-page-stream-line-height": String(s.streamLineHeight),
     "--ravtext-page-stream-gap": `${s.streamGap}px`,
+    "--ravtext-stream-vertical-gap": `${s.ravtextStreamVerticalGap}px`,
+    "--ravtext-stream-horizontal-gap": `${s.ravtextStreamHorizontalGap}px`,
     "--ravtext-page-stream-note-gap": `${s.streamNoteGap}px`,
     "--ravtext-page-stream-title-gap": `${s.streamTitleGap}px`,
     "--ravtext-v9-line-height": String(s.v9LineHeight),
@@ -91,7 +99,9 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
     const s = loadSpacingSettings();
     for (const [key] of FIELDS) {
       const input = panel.querySelector(`[data-spacing-key="${key}"]`);
-      if (input) input.value = s[key];
+      if (!input) continue;
+      if (input.type === "checkbox") input.checked = !!s[key];
+      else input.value = s[key];
     }
     const styleSelect = panel.querySelector("#spacing-style-select");
     if (styleSelect) styleSelect.innerHTML = styleOptionsHtml(styleSelect.value || "");
@@ -102,6 +112,10 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
     for (const [key] of FIELDS) {
       const input = panel.querySelector(`[data-spacing-key="${key}"]`);
       if (!input) continue;
+      if (input.type === "checkbox") {
+        current[key] = !!input.checked;
+        continue;
+      }
       const n = Number(input.value);
       if (Number.isFinite(n)) current[key] = n;
     }
@@ -161,6 +175,10 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
 function normalizeSpacing(settings) {
   const out = { ...DEFAULTS, ...(settings || {}) };
   for (const [key, , , min, max] of FIELDS) {
+    if (typeof DEFAULTS[key] === "boolean") {
+      out[key] = !!out[key];
+      continue;
+    }
     const n = Number(out[key]);
     out[key] = Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : DEFAULTS[key];
   }

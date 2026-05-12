@@ -37,6 +37,10 @@ function isPaid() {
   return !!(auth && auth.paid);
 }
 
+export function isPaidAccount() {
+  return isPaid();
+}
+
 function isLoggedIn() {
   const auth = (typeof window !== "undefined") ? window.__RAVTEXT_AUTH__ : null;
   return !!(auth && auth.loggedIn);
@@ -70,6 +74,29 @@ export function markToolUsed(toolName) {
   return all[key][toolName];
 }
 
+export function showToolBlocked(toolName, niceName, reason) {
+  if (reason === "login") {
+    showToast({
+      kind: "info",
+      title: "צריך להתחבר",
+      msg: `${niceName || toolName} צריך להתחבר. משתמשים משלמים מקבלים שימוש ללא הגבלה, ומשתמשים חינמיים מקבלים שימוש אחד בכל כלי.`,
+      actionText: "התחברות",
+      action: () => { window.location.href = "/api/auth/login"; },
+      autoCloseMs: 8000,
+    });
+  } else if (reason === "quota") {
+    showToast({
+      kind: "warn",
+      title: "המכסה היומית נוצלה",
+      msg: `${niceName || toolName} זמין פעם אחת בחשבון חינמי. שדרג לפרמיום לשימוש ללא הגבלה.`,
+      actionText: "לפרמיום",
+      action: openPremiumPage,
+      secondaryText: "סגור",
+      autoCloseMs: 8000,
+    });
+  }
+}
+
 /**
  * Try to consume one daily use of a tool. Shows the right toast when blocked.
  * @returns {boolean} true if allowed (and consumed), false if blocked.
@@ -80,25 +107,6 @@ export function tryUseTool(toolName, niceName) {
     if (!isPaid()) markToolUsed(toolName);
     return true;
   }
-  if (check.reason === "login") {
-    showToast({
-      kind: "info",
-      title: "צריך להתחבר",
-      msg: `כדי להפעיל את "${niceName || toolName}" צריך להתחבר עם גוגל. משתמשים מחוברים מקבלים שימוש חודשי חינם.`,
-      actionText: "התחברות",
-      action: () => { window.location.href = "/api/auth/login"; },
-      autoCloseMs: 8000,
-    });
-  } else if (check.reason === "quota") {
-    showToast({
-      kind: "warn",
-      title: "המכסה היומית נוצלה",
-      msg: `${niceName || toolName} זמין פעם אחת ביום בחשבון חינמי. שדרג לפרמיום לשימוש ללא הגבלה.`,
-      actionText: "לפרמיום",
-      action: openPremiumPage,
-      secondaryText: "סגור",
-      autoCloseMs: 8000,
-    });
-  }
+  showToolBlocked(toolName, niceName, check.reason);
   return false;
 }

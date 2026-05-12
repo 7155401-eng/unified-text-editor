@@ -58,7 +58,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   const cols = userCols;
   if (cols > 1) {
     wrap.style.columnCount = cols;
-    wrap.style.columnGap = "8px";
+    wrap.style.columnGap = "var(--ravtext-stream-horizontal-gap, 8px)";
   }
   // Stream-level default for the last line of TRULY-ENDING notes — never
   // stretched, since the user said "don't justify both sides at a real end".

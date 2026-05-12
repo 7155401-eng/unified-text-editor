@@ -813,7 +813,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
         const h = s.getBoundingClientRect().height;
         if (h > pageH * 0.5) {
           s.style.columnCount = "2";
-          s.style.columnGap = "8px";
+          s.style.columnGap = "var(--ravtext-stream-horizontal-gap, 8px)";
           s.dataset.streamCols = "auto-2";
         }
       });

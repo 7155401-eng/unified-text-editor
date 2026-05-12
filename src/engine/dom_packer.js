@@ -34,6 +34,7 @@ const MIN_CONTINUED_MAIN_CHARS = 44;
 const MIN_CONTINUED_MAIN_WORDS = 4;
 const MIN_FORWARD_LAST_LINE_FILL = 0.72;
 const MIN_NOTE_SPLIT_LINE_FILL = 0.72;
+const MIN_UNBROKEN_LINE_FILL = 0.96;
 const MAX_SPLIT_REFINE_STEPS = 32;
 const MAX_NOTE_SPLIT_REFINE_STEPS = 14;
 const MISHNA_WRAP_HEIGHT_SAFETY = 30;
@@ -285,7 +286,7 @@ function buildMeasurePage(mainSegments, streams) {
       const cols = userCols;
       if (cols > 1) {
         s.style.columnCount = cols;
-        s.style.columnGap = "8px";
+        s.style.columnGap = "var(--ravtext-stream-horizontal-gap, 8px)";
       }
       // Default = center last line (matches CSS default). User can opt out
       // per-stream → fall back to plain right-align (no stretching).
@@ -430,6 +431,28 @@ function lastStreamLineFillRatio(streamCode = null) {
   const notes = scope.querySelectorAll(".stream .note-inline, .stream .note, .note-inline, .note");
   if (notes.length === 0) return 1;
   return lineFillRatioForElement(notes[notes.length - 1]);
+}
+
+function noMidLineSplitsEnabled() {
+  try {
+    const raw = localStorage.getItem("ravtext.spacing.v1");
+    const settings = raw ? JSON.parse(raw) : null;
+    return !!settings?.noMidLineSplits;
+  } catch {
+    return false;
+  }
+}
+
+function minMainSplitLineFill() {
+  return noMidLineSplitsEnabled() ? MIN_UNBROKEN_LINE_FILL : MIN_FORWARD_LAST_LINE_FILL;
+}
+
+function minNoteSplitLineFill() {
+  return noMidLineSplitsEnabled() ? MIN_UNBROKEN_LINE_FILL : MIN_NOTE_SPLIT_LINE_FILL;
+}
+
+function minBackwardMainSplitLineFill() {
+  return noMidLineSplitsEnabled() ? MIN_UNBROKEN_LINE_FILL : MIN_LAST_LINE_FILL;
 }
 
 function cloneStreams(streams) {
@@ -636,7 +659,7 @@ function refineFittingPrefix(prevSegments, prevStreams, paraIdx, text, notes, pr
       const tryAll = prevSegments.concat([{ idx: paraIdx, text: tryText }]);
       const tryStreams = addNotesToStreams(prevStreams, paraIdx, tryNotes);
       const h = measureHeight(tryAll, tryStreams);
-      if (h <= maxHeight && lastMainLineFillRatio() >= MIN_FORWARD_LAST_LINE_FILL) {
+      if (h <= maxHeight && lastMainLineFillRatio() >= minMainSplitLineFill()) {
         return end;
       }
     }
@@ -693,7 +716,7 @@ function refineNoteSplitPrefix(mainSegments, baseStreams, paraIdx, note, maxHeig
     };
     const tryStreams = addNotesToStreams(baseStreams, paraIdx, [tryNote]);
     const h = measureHeight(mainSegments, tryStreams, { forceRender: true });
-    if (h <= maxHeight && lastStreamLineFillRatio(note.stream) >= MIN_NOTE_SPLIT_LINE_FILL) {
+    if (h <= maxHeight && lastStreamLineFillRatio(note.stream) >= minNoteSplitLineFill()) {
       return end;
     }
     end = previousWordBoundaryBefore(note.text, end - 1);
@@ -1867,7 +1890,7 @@ function trySplitFirstAnchoredNoteOntoCur(cur, nxt, paraIdx, geom) {
     const h = measurePageData(trialCur, { forceRender: true });
     if (
       h <= geom.maxPageHeight &&
-      lastStreamLineFillRatio(target.code) >= MIN_NOTE_SPLIT_LINE_FILL
+      lastStreamLineFillRatio(target.code) >= minNoteSplitLineFill()
     ) {
       best = { trialCur, trialNxt };
       lo = mid + 1;
@@ -1910,7 +1933,7 @@ function binarySearchPrefix(cur, nxt, paraIdx, segText, segStart, segEnd, keepCo
       // Also reject splits that produce an awkwardly short last line on cur,
       // which would stretch unnaturally when justified at the page break.
       const fill = lastMainLineFillRatio();
-      if (fill >= MIN_LAST_LINE_FILL) {
+      if (fill >= minBackwardMainSplitLineFill()) {
         best = trial;
         lo = mid + 1;
       } else {
@@ -2021,7 +2044,7 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
     const h = measurePageData(trialCur, { forceRender: true });
     if (
       h <= geom.maxPageHeight &&
-      lastStreamLineFillRatio(earliest.code) >= MIN_NOTE_SPLIT_LINE_FILL
+      lastStreamLineFillRatio(earliest.code) >= minNoteSplitLineFill()
     ) {
       best = { trialCur, trialNxt };
       lo = mid + 1;
@@ -2167,7 +2190,7 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
         const h2 = measurePageData(t2, { forceRender: true });
         if (
           h2 <= geom.maxPageHeight &&
-          lastStreamLineFillRatio(target.code) >= MIN_NOTE_SPLIT_LINE_FILL
+          lastStreamLineFillRatio(target.code) >= minNoteSplitLineFill()
         ) {
           s_best = { tc: t2, we };
           s_lo = s_mid + 1;

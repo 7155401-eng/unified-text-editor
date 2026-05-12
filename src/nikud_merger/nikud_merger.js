@@ -8,7 +8,6 @@ import "./nikud_merger.css";
 import { MainView } from "./nikud_ui.js";
 import * as theme from "./nikud_theme.js";
 import * as i18n from "./nikud_i18n.js";
-import { tryUseTool } from "../premium/daily_quota_gate.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
 
 let _activeMainView = null;
@@ -114,7 +113,6 @@ export function wireNikudMergerButton(paneManager) {
   btn.title = "פתח חלון מיזוג ניקוד — מיזוג טקסט מוגה עם מקור מנוקד";
   btn.textContent = "📜 מיזוג ניקוד";
   btn.addEventListener("click", async () => {
-    if (!tryUseTool("nikud-merger", "מיזוג ניקוד")) return;
     // ננסה לאסוף את הטקסט הנבחר מהעורך הפעיל כטקסט מוגה ראשוני
     let cleanText = "";
     try {
