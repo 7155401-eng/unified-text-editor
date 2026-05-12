@@ -74,19 +74,27 @@ async function getCaricatureGasUrl(env) {
 }
 
 async function getCaricatureConfig(env) {
-  return {
-    apiKey: await getSetting(env, 'GEMINI_API_KEY', ''),
-    imageModel: await getSetting(env, 'CARICATURE_IMAGE_MODEL', DEFAULT_IMAGE_MODEL),
+  return {    imageModel: await getSetting(env, 'CARICATURE_IMAGE_MODEL', DEFAULT_IMAGE_MODEL),
     systemPrompt: await getSetting(env, 'CARICATURE_SYSTEM_PROMPT', DEFAULT_SYSTEM_PROMPT),
     hardRules: await getSetting(env, 'CARICATURE_HARD_RULES', DEFAULT_HARD_RULES),
     negativeDefault: await getSetting(env, 'CARICATURE_NEGATIVE_DEFAULT', ''),
     referenceImageB64: await getSetting(env, 'CARICATURE_REFERENCE_IMAGE_B64', ''),
-    referenceImageMime: await getSetting(env, 'CARICATURE_REFERENCE_IMAGE_MIME', 'image/jpeg'),
-    useGasFallback: await getBoolSetting(env, 'CARICATURE_USE_GAS_FALLBACK', true),
-    debug: await getBoolSetting(env, 'CARICATURE_DEBUG', false),
+    referenceImageMime: await getSetting(env, 'CARICATURE_REFERENCE_IMAGE_MIME', 'image/jpeg'),    debug: await getBoolSetting(env, 'CARICATURE_DEBUG', false),
   };
 }
 
+function clientApiKey(bodyJson) {
+  return String(
+    bodyJson?.api_key ||
+    bodyJson?.apiKey ||
+    bodyJson?.gemini_api_key ||
+    bodyJson?.geminiApiKey ||
+    bodyJson?.user_key ||
+    bodyJson?.userKey ||
+    bodyJson?.image_api_key ||
+    ''
+  ).trim();
+}
 function summarizeRequestBody(bodyJson) {
   const sceneText = String(bodyJson?.scene_text || '').trim();
   return {
@@ -99,6 +107,7 @@ function summarizeRequestBody(bodyJson) {
     negative_len: String(bodyJson?.negative || '').length,
     scene_text_len: sceneText.length,
     scene_text_preview: clip(sceneText.replace(/\s+/g, ' '), MAX_PREVIEW),
+    key_source: clientApiKey(bodyJson) ? 'client_supplied' : 'missing',
   };
 }
 
@@ -257,10 +266,14 @@ async function handleDirectGemini(request, env, cfg, bodyJson, startedMs) {
     return jsonResponse(out, 400);
   }
 
-  if (!cfg.apiKey) {
-    const out = { error: 'server_api_key_missing', message: 'GEMINI_API_KEY לא מוגדר בשרת' };
-    await logCaricatureUsage(env, request, bodyJson, summarizeResult(out, 500, Date.now() - startedMs), startedMs);
-    return jsonResponse(out, 500);
+  const apiKey = clientApiKey(bodyJson);
+  if (!apiKey) {
+    const out = {
+      error: 'client_api_key_required',
+      message: 'No personal Gemini key was received. Add a key in the global AI key settings or in the caricature widget.'
+    };
+    await logCaricatureUsage(env, request, bodyJson, summarizeResult(out, 401, Date.now() - startedMs), startedMs);
+    return jsonResponse(out, 401);
   }
 
   const count = Math.max(1, Math.min(Number(bodyJson.count) || 1, MAX_COUNT));
@@ -274,7 +287,7 @@ async function handleDirectGemini(request, env, cfg, bodyJson, startedMs) {
     const prompt = count > 1
       ? `${basePrompt}\n\nVariation ${i + 1} of ${count}: keep the same scene but vary composition and gestures.`
       : basePrompt;
-    const r = await callGeminiImage({ apiKey: cfg.apiKey, model: cfg.imageModel, prompt, cfg });
+    const r = await callGeminiImage({ apiKey, model: cfg.imageModel, prompt, cfg });
     lastHttpStatus = r.httpStatus || lastHttpStatus;
     if (r.error) lastError = r.error;
     if (r.text) noImageTexts.push(r.text);
@@ -370,11 +383,5 @@ export async function handleCaricature(request, env) {
   }
 
   const cfg = await getCaricatureConfig(env);
-
-  // Preferred route: direct Cloudflare Worker -> Gemini. Temporary fallback keeps production alive until GEMINI_API_KEY is configured.
-  if (cfg.apiKey || !cfg.useGasFallback) {
-    return handleDirectGemini(request, env, cfg, bodyJson, startedMs);
-  }
-
-  return handleGasFallback(request, env, body, bodyJson, startedMs);
+  return handleDirectGemini(request, env, cfg, bodyJson, startedMs);
 }

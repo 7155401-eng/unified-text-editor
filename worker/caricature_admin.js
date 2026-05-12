@@ -1,8 +1,6 @@
 import { getUserFromRequest } from './session.js';
 
-const KEYS = [
-  'GEMINI_API_KEY',
-  'CARICATURE_GAS_URL',
+const KEYS = [  'CARICATURE_GAS_URL',
   'CARICATURE_USE_GAS_FALLBACK',
   'CARICATURE_IMAGE_MODEL',
   'CARICATURE_SYSTEM_PROMPT',
@@ -13,7 +11,7 @@ const KEYS = [
   'CARICATURE_DEBUG',
 ];
 
-const SECRET_KEYS = new Set(['GEMINI_API_KEY']);
+const SECRET_KEYS = new Set();
 
 const DEFAULTS = {
   CARICATURE_USE_GAS_FALLBACK: '1',
@@ -42,10 +40,7 @@ function clip(v, n) {
 }
 
 function clean(key, value) {
-  const s = String(value == null ? '' : value);
-
-  if (key === 'GEMINI_API_KEY') return clip(s.trim(), 500);
-  if (key === 'CARICATURE_REFERENCE_IMAGE_B64') return s.replace(/\s+/g, '').slice(0, 2500000);
+  const s = String(value == null ? '' : value);  if (key === 'CARICATURE_REFERENCE_IMAGE_B64') return s.replace(/\s+/g, '').slice(0, 2500000);
   if (key === 'CARICATURE_SYSTEM_PROMPT' || key === 'CARICATURE_HARD_RULES') return clip(s, 30000);
   if (key === 'CARICATURE_NEGATIVE_DEFAULT') return clip(s, 5000);
   if (key === 'CARICATURE_GAS_URL') return clip(s.trim(), 1500);
@@ -139,9 +134,6 @@ async function saveSettings(request, env, user) {
     if (env?.[key] != null) continue;
 
     const value = clean(key, input[key]);
-
-    if (SECRET_KEYS.has(key) && !value) continue;
-
     await env.DB.prepare(
       `INSERT INTO app_settings (key,value,updated_at,updated_by_user_id)
        VALUES (?,?,?,?)
