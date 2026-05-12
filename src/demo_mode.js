@@ -321,10 +321,10 @@ function installDemoBanner() {
   banner.className = "demo-mode-banner";
   banner.dataset.ravtextDemoCanary = "1";
   const registeredBody = "בחשבון חינמי כל יצוא או הדפסה מסומן.";
-  const guestBody = "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<br>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.";
+  const guestBody = "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<p>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.</p>";
   banner.innerHTML = `
-    <strong data-i18n="demoTitle">מצב דמו</strong>
-    <span data-i18n="demoBody">${isRegisteredUser() ? registeredBody : guestBody}</span>
+    <strong data-i18n="demoTitle">מצב דמו,</strong>
+    <div data-i18n="demoBody">${isRegisteredUser() ? registeredBody : guestBody}</div>
     <span class="demo-reset-clock" id="demo-reset-clock"></span>
   `;
   document.body.prepend(banner);
@@ -422,8 +422,8 @@ function startResetLoop(reset) {
 }
 
 // v33: detect open devtools (estimate via window dimensions delta).
-// When devtools open → instant block. Active in BOTH demo and non-demo
-// modes per Moshe's request 2026-05-06.
+// Warn on the first suspicious signal, and block only after repeated hits.
+// Active in BOTH demo and non-demo modes per Moshe's request 2026-05-06.
 const CONSOLE_BLOCK_KEY = "ravtext-console-block-until";
 const CONSOLE_BLOCK_MS = 5 * 60 * 1000;
 
@@ -488,6 +488,8 @@ export function installConsoleGuard() {
   let baselineDelta = 0;
   let baselineSet = false;
   const ABOVE_BASELINE = 100;
+  let suspiciousHits = 0;
+  let lastSuspiciousAt = 0;
 
   const measureDelta = () => Math.max(
     window.outerWidth - window.innerWidth,
@@ -504,6 +506,14 @@ export function installConsoleGuard() {
     const current = measureDelta();
     if (current > baselineDelta + ABOVE_BASELINE) {
       warnOnly();
+      const now = Date.now();
+      suspiciousHits = (now - lastSuspiciousAt) < 7000 ? suspiciousHits + 1 : 1;
+      lastSuspiciousAt = now;
+      if (suspiciousHits >= 3) {
+        blockConsoleAccess();
+      }
+    } else if (suspiciousHits > 0) {
+      suspiciousHits = Math.max(0, suspiciousHits - 1);
     }
   };
 

@@ -443,6 +443,10 @@ function noMidLineSplitsEnabled() {
   }
 }
 
+function noSplitsAtAllEnabled() {
+  return noMidLineSplitsEnabled();
+}
+
 function minMainSplitLineFill() {
   return noMidLineSplitsEnabled() ? MIN_UNBROKEN_LINE_FILL : MIN_FORWARD_LAST_LINE_FILL;
 }
@@ -814,6 +818,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   // Returns [part1, part2] where part1 is what fits and part2 is the rest.
   // Adds "…" markers to indicate continuation.
   function splitNote(note, maxHeight) {
+    if (noSplitsAtAllEnabled()) return [note, null];
     const charsThatFit = fitNoteCharPrefix(note.stream, note.anchor, note.text, maxHeight);
     if (charsThatFit <= 0) {
       // Can't fit even a single char — force the whole note (overflow).
@@ -844,6 +849,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   }
 
   function preSplitLongNote(note) {
+    if (noSplitsAtAllEnabled()) return [note];
     const text = note.text || "";
     if (text.length <= LONG_NOTE_CHUNK_CHARS) return [note];
     const key = [
@@ -946,6 +952,13 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       }
 
       if (lo === 0) {
+        if (noSplitsAtAllEnabled()) {
+          pageStreams = addNotesToStreams({}, paraIdx, [toPlace[0]]);
+          pageHeight = measureHeight([], pageStreams);
+          toPlace = toPlace.slice(1);
+          if (toPlace.length > 0) finalizePage();
+          continue;
+        }
         // Even one note alone doesn't fit. Split it.
         const [part1, part2] = splitNote(toPlace[0], geomLocal.maxPageHeight);
         pageStreams = addNotesToStreams({}, paraIdx, [part1]);
@@ -964,6 +977,13 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       // (lo+1)th note so its prefix fills the remaining space on this page.
       const placed = toPlace.slice(0, lo);
       if (lo < toPlace.length) {
+        if (noSplitsAtAllEnabled()) {
+          pageStreams = addNotesToStreams({}, paraIdx, placed);
+          pageHeight = measureHeight([], pageStreams);
+          toPlace = toPlace.slice(lo);
+          finalizePage();
+          continue;
+        }
         const next = toPlace[lo];
         const fitChars = fitNoteCharPrefixAlongside(
           placed,
@@ -1035,6 +1055,18 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
         break; // done with paragraph
       }
 
+      if (noSplitsAtAllEnabled()) {
+        if (pageMain.length > 0 || Object.keys(pageStreams).length > 0) {
+          finalizePage();
+          continue;
+        }
+        pageMain = tryAll;
+        pageStreams = tryStreams;
+        pageHeight = fullH;
+        finalizePage();
+        break;
+      }
+
       // Doesn't fit. Find the maximum char prefix that fits.
       const fitChars = findMaxFittingPrefix(
         pageMain,
@@ -1098,6 +1130,10 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
               if (h <= geom.maxPageHeight) {
                 pageStreams = tryStreams;
                 pageHeight = h;
+                continue;
+              }
+              if (noSplitsAtAllEnabled()) {
+                skipped.push(note);
                 continue;
               }
               // Try splitting this note to fit a prefix.
@@ -1282,6 +1318,10 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
               if (prefix < para.mainText.length || sortedFurther.length > 1) {
                 finalizePage();
               }
+              continue;
+            }
+            if (noSplitsAtAllEnabled()) {
+              finalizePage();
               continue;
             }
             // Try splitting next note
@@ -1696,6 +1736,8 @@ function tryPullMainBack(cur, nxt, geom) {
     }
   }
 
+  if (noSplitsAtAllEnabled()) return false;
+
   // 2) Binary-search the largest prefix that fits, WITH all anchored notes.
   if (segText.length < 2) return false;
   let best = binarySearchPrefix(cur, nxt, paraIdx, segText, segStart, segEnd, undefined, geom);
@@ -2015,6 +2057,7 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
   }
 
   // 2) Try splitting the note: prefix on cur, suffix stays on nxt.
+  if (noSplitsAtAllEnabled()) return false;
   // Skip if the note is too short to split meaningfully — leaving just the
   // lemma + a couple of words on cur (widow) is worse than leaving the
   // whole note on nxt.
@@ -2078,6 +2121,7 @@ function pullAllAnchoredNotes(cur, nxt, geom, allPages, curIndex) {
 // Only commit the push if a note was actually pulled — and only if cur stays
 // at least as full as it was (no net loss). Returns true if any move happened.
 function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
+  if (noSplitsAtAllEnabled()) return false;
   // Identify the earliest type-A note that didn't fit.
   let target = null;
   for (const code of Object.keys(nxt.streams || {})) {
