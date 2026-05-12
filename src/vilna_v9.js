@@ -494,17 +494,17 @@ function buildPagePlan(pageContent, config) {
   }
   result.crownScenario = scenario;
 
-  // משה 2026-05-10: צורה 1 — זרם אחד מפוצל לשני טורים מקבילים.
-  // לוקחים את הזרם היחיד שזוהה כארוך וחותכים את הטקסט בערך באמצע (לפי מילים).
-  // החצי הראשון לטור הימני, החצי השני לשמאלי. שניהם עם אותו id (אותו שם זרם,
-  // אותו צבע). מתקבל דפוס וילנא הקלאסי של פירוש אחד בשני טורים.
+  // משה 2026-05-13: צורה 1 — זרם אחד מפוצל לשני טורים מקבילים.
+  // במקום לחתוך את הטקסט מראש, נותנים לטור הימני לזרום רגיל ו-overflow שלו
+  // יועבר אוטומטית לטור השמאלי דרך carryFromOtherSide ב-buildSideStream.
+  // זה מבטיח שלא נאבד מילים ושהזרימה תהיה רציפה מטור לטור.
   if (scenario.name === 'one_long_split') {
     const single = pageContent.rightStream || pageContent.leftStream;
     if (single) {
-      const allText = single.items.join(' ').trim();
-      const parts = splitWordsAtVisualLine(allText, sideMetrics, sideHalfWidth);
-      pageContent.rightStream = { id: single.id, items: [parts.first] };
-      pageContent.leftStream  = { id: single.id, items: [parts.second] };
+      // שני הטורים מקבלים את אותו הזרם - הימני יזרום ראשון,
+      // overflow שלו יועבר לשמאלי בשלב הבנייה
+      pageContent.rightStream = { id: single.id, items: single.items };
+      pageContent.leftStream  = { id: single.id, items: [] }; // ריק - יקבל מ-carry
     }
   }
 
@@ -549,7 +549,13 @@ function buildPagePlan(pageContent, config) {
   const pageBottomY = cfg.pageHeight - cfg.padding;
   function buildSideStream(streamData, side, opts) {
     if (!streamData) return null;
-    const text = streamData.items.join(' ');
+    
+    // משה 2026-05-13: carryFromOtherSide = overflow מהטור האחר (בתרחיש 1).
+    // הטור הימני זורם ראשון, overflow שלו מועבר כ-prefix לטור השמאלי.
+    const carryPrefix = (opts && opts.carryFromOtherSide) || '';
+    const baseText = streamData.items.join(' ');
+    const text = carryPrefix ? (carryPrefix + ' ' + baseText).trim() : baseText;
+    
     if (!text) return null;
     const o = opts || {};
     const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
@@ -791,6 +797,13 @@ function buildPagePlan(pageContent, config) {
       suppressFullStrip3: isScenario1,
     });
   }
+  
+  // משה 2026-05-13: בתרחיש 1 - overflow של הימני עובר לשמאלי
+  let rightOverflowCarry = '';
+  if (isScenario1 && pass2Right && pass2Right.overflowText) {
+    rightOverflowCarry = pass2Right.overflowText;
+  }
+  
   // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
   let pass2Left = null;
   if (pageContent.leftStream) {
@@ -800,6 +813,7 @@ function buildPagePlan(pageContent, config) {
     pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
+      carryFromOtherSide: rightOverflowCarry, // משה 2026-05-13: קבלת overflow מהימני
     });
   }
   // איטרציה 3: pass2 ימני עם pass2 שמאלי (סופי)
@@ -818,9 +832,9 @@ function buildPagePlan(pageContent, config) {
     if (fullCrownSide && fullCrownSide !== 'right') pass2Right.skipTopTitle = true;
     if (scenario.name === 'one_long_split') pass2Right.isScenario1Split = true;
     result.streamBoxes.push(pass2Right);
-    // משה 2026-05-10: בתרחיש 1, שני הצדדים = אותו זרם, אותו id. אם נכתוב שניהם
-    // לאותו מפתח באוברפלאו — השני ידרוס את הראשון ותוכן ייאבד. במקום, נצרף.
-    if (pass2Right.overflowText) {
+    // משה 2026-05-13: בתרחיש 1, overflow של הימני כבר הועבר לשמאלי דרך carryFromOtherSide.
+    // לא שומרים אותו ב-result.overflow כי הוא כבר בשימוש. רק בתרחישים אחרים שומרים.
+    if (pass2Right.overflowText && !isScenario1) {
       const prev = result.overflow.streams[pass2Right.id] || '';
       result.overflow.streams[pass2Right.id] = prev ? (prev + ' ' + pass2Right.overflowText) : pass2Right.overflowText;
     }
@@ -830,6 +844,8 @@ function buildPagePlan(pageContent, config) {
     if (fullCrownSide && fullCrownSide !== 'left') pass2Left.skipTopTitle = true;
     if (scenario.name === 'one_long_split') pass2Left.isScenario1Split = true;
     result.streamBoxes.push(pass2Left);
+    // משה 2026-05-13: בתרחיש 1, רק overflow של השמאלי (שכבר קיבל את overflow הימני)
+    // נשמר ב-result.overflow. זה ה-overflow האמיתי שלא נכנס בעמוד.
     if (pass2Left.overflowText) {
       const prev = result.overflow.streams[pass2Left.id] || '';
       result.overflow.streams[pass2Left.id] = prev ? (prev + ' ' + pass2Left.overflowText) : pass2Left.overflowText;
@@ -1017,6 +1033,16 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.style.fontSize = fontSize + 'px';
       lineEl.style.lineHeight = (fontSize * lineHeight) + 'px';
       if (fontFamily) lineEl.style.fontFamily = fontFamily;
+      
+      // משה 2026-05-13: החלת סגנון מלא על הטקסט הראשי
+      if (box.role === 'main' && cfg.mainTextStyle) {
+        if (cfg.mainTextStyle.bold) lineEl.style.fontWeight = '700';
+        if (cfg.mainTextStyle.italic) lineEl.style.fontStyle = 'italic';
+        if (cfg.mainTextStyle.underline) lineEl.style.textDecoration = 'underline';
+        if (cfg.mainTextStyle.color) lineEl.style.color = cfg.mainTextStyle.color;
+        if (cfg.mainTextStyle.bgColor) lineEl.style.backgroundColor = cfg.mainTextStyle.bgColor;
+      }
+      
       applyStyleToElement(lineEl, box.styleId);
       lineEl.textContent = line.text;
       pageEl.appendChild(lineEl);
