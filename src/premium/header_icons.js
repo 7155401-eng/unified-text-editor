@@ -180,8 +180,10 @@ function openDownloads() {
 }
 
 const VIDEOS_OVERLAY_ID = "rt-video-gallery-overlay";
-const VIDEOS_PLAYLISTS_KEY = "ravtext.videoGallery.playlists";
-const VIDEOS_LAST_PLAYLIST_KEY = "ravtext.videoGallery.lastPlaylist";
+
+// פלייליסט סרטוני הדרכה בשליטת שרת בלבד.
+// משתמש רגיל לא בוחר, לא מדביק ולא שומר פלייליסט.
+// מנהל יכול לשנות רק דרך API שמבצע בדיקת is_admin בצד שרת.
 
 function parsePlaylistId(value) {
   const raw = String(value || "").trim();
@@ -195,29 +197,50 @@ function parsePlaylistId(value) {
   }
 }
 
-function readVideoPlaylists() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(VIDEOS_PLAYLISTS_KEY) || "[]");
-    if (Array.isArray(saved)) {
-      return saved
-        .map((item) => ({
-          name: String(item.name || "").trim(),
-          list: parsePlaylistId(item.list || item.id || ""),
-        }))
-        .filter((item) => item.name && item.list);
-    }
-  } catch {}
-  return [];
+function isVideoGalleryAdmin() {
+  const auth = window.__RAVTEXT_AUTH__ || {};
+  return !!auth.admin;
 }
 
-function saveVideoPlaylists(items) {
-  try {
-    localStorage.setItem(VIDEOS_PLAYLISTS_KEY, JSON.stringify(items));
-  } catch {}
+async function fetchServerVideoPlaylist() {
+  const res = await fetch("/api/video-gallery/playlist", {
+    method: "GET",
+    credentials: "same-origin",
+    headers: { "Accept": "application/json" },
+  });
+
+  if (!res.ok) {
+    throw new Error(`video playlist load failed: ${res.status}`);
+  }
+
+  return res.json();
 }
 
-function openVideoGallery() {
+async function saveServerVideoPlaylist({ name, playlistId }) {
+  const res = await fetch("/api/admin/video-gallery/playlist", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name, playlistId }),
+  });
+
+  let data = {};
+  try { data = await res.json(); } catch {}
+
+  if (!res.ok) {
+    throw new Error(data?.error || `video playlist save failed: ${res.status}`);
+  }
+
+  return data;
+}
+
+async function openVideoGallery() {
   if (document.getElementById(VIDEOS_OVERLAY_ID)) return;
+
+  const isAdmin = isVideoGalleryAdmin();
 
   const overlay = document.createElement("div");
   overlay.id = VIDEOS_OVERLAY_ID;
@@ -248,127 +271,127 @@ function openVideoGallery() {
   `;
   sheet.appendChild(header);
 
+  const adminControls = isAdmin ? `
+    <label class="rt-video-gallery-field rt-video-gallery-field-wide">
+      <span>ניהול מנהל: קישור או מזהה פלייליסט מיוטיוב</span>
+      <input class="rt-video-gallery-admin-input" type="text" dir="ltr" placeholder="https://www.youtube.com/playlist?list=..." />
+    </label>
+    <button type="button" class="rt-video-gallery-admin-save">שמור פלייליסט מנהל</button>
+  ` : "";
+
   const body = document.createElement("div");
   body.className = "rt-video-gallery-body";
   body.innerHTML = `
     <div class="rt-video-gallery-controls">
-      <label class="rt-video-gallery-field">
-        <span>פלייליסט</span>
-        <select class="rt-video-gallery-select"></select>
-      </label>
-      <label class="rt-video-gallery-field rt-video-gallery-field-wide">
-        <span>קישור או מזהה פלייליסט מיוטיוב</span>
-        <input class="rt-video-gallery-input" type="text" dir="ltr" placeholder="https://www.youtube.com/playlist?list=..." />
-      </label>
-      <button type="button" class="rt-video-gallery-open">פתח</button>
-      <button type="button" class="rt-video-gallery-save">שמור לרשימה</button>
+      <div class="rt-video-gallery-field rt-video-gallery-field-wide">
+        <span>פלייליסט פעיל</span>
+        <strong class="rt-video-gallery-active-name">טוען...</strong>
+        <small>הפלייליסט נקבע על ידי מנהל המערכת בצד שרת. משתמש רגיל אינו יכול לבחור פלייליסט במסך זה.</small>
+      </div>
+      ${adminControls}
     </div>
     <div class="rt-video-gallery-stage">
       <iframe class="rt-video-gallery-frame" title="YouTube playlist" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-      <div class="rt-video-gallery-empty">
-        הדבק קישור פלייליסט מיוטיוב או בחר פלייליסט שמור.
-      </div>
+      <div class="rt-video-gallery-empty">טוען פלייליסט...</div>
     </div>
     <div class="rt-video-gallery-footer">
       <a class="rt-video-gallery-youtube" href="#" target="_blank" rel="noopener">פתח ביוטיוב</a>
     </div>
   `;
+
   sheet.appendChild(body);
   overlay.appendChild(sheet);
   document.body.appendChild(overlay);
   document.documentElement.classList.add("rt-prem-locked");
 
-  const select = body.querySelector(".rt-video-gallery-select");
-  const input = body.querySelector(".rt-video-gallery-input");
   const iframe = body.querySelector(".rt-video-gallery-frame");
   const empty = body.querySelector(".rt-video-gallery-empty");
   const youtubeLink = body.querySelector(".rt-video-gallery-youtube");
+  const activeName = body.querySelector(".rt-video-gallery-active-name");
+  const adminInput = body.querySelector(".rt-video-gallery-admin-input");
+  const adminSave = body.querySelector(".rt-video-gallery-admin-save");
 
-  function playlists() {
-    return readVideoPlaylists();
-  }
+  function showPlaylist(item) {
+    const list = parsePlaylistId(item?.playlistId || item?.list || "");
+    const name = String(item?.name || "סרטוני הדרכה").trim() || "סרטוני הדרכה";
 
-  function renderSelect(selectedList = "") {
-    const items = playlists();
-    select.innerHTML = "";
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = items.length ? "בחר פלייליסט שמור" : "אין עדיין פלייליסטים שמורים";
-    select.appendChild(placeholder);
-    for (const item of items) {
-      const opt = document.createElement("option");
-      opt.value = item.list;
-      opt.textContent = item.name;
-      select.appendChild(opt);
-    }
-    if (selectedList && Array.from(select.options).some((opt) => opt.value === selectedList)) {
-      select.value = selectedList;
-    }
-  }
+    activeName.textContent = name;
+    if (adminInput) adminInput.value = list;
 
-  function showPlaylist(rawList) {
-    const list = parsePlaylistId(rawList);
     if (!list) {
       iframe.removeAttribute("src");
       iframe.hidden = true;
       empty.hidden = false;
+      empty.textContent = isAdmin
+        ? "לא הוגדר עדיין פלייליסט בשרת. הזן קישור פלייליסט ושמור כמנהל."
+        : "לא הוגדר עדיין פלייליסט על ידי מנהל המערכת.";
       youtubeLink.classList.add("rt-video-gallery-link-disabled");
       youtubeLink.href = "#";
       return;
     }
-    try { localStorage.setItem(VIDEOS_LAST_PLAYLIST_KEY, list); } catch {}
+
     iframe.hidden = false;
     empty.hidden = true;
     iframe.src = `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(list)}`;
     youtubeLink.href = `https://www.youtube.com/playlist?list=${encodeURIComponent(list)}`;
     youtubeLink.classList.remove("rt-video-gallery-link-disabled");
-    input.value = list;
   }
 
-  renderSelect();
-  const last = parsePlaylistId(localStorage.getItem(VIDEOS_LAST_PLAYLIST_KEY) || "");
-  if (last) {
-    renderSelect(last);
-    showPlaylist(last);
-  } else {
-    showPlaylist("");
-  }
-
-  select.addEventListener("change", () => showPlaylist(select.value));
-  body.querySelector(".rt-video-gallery-open").addEventListener("click", () => showPlaylist(input.value));
-  input.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") {
-      ev.preventDefault();
-      showPlaylist(input.value);
+  async function reloadPlaylist() {
+    try {
+      showPlaylist(await fetchServerVideoPlaylist());
+    } catch {
+      showPlaylist({ name: "סרטוני הדרכה", playlistId: "" });
+      empty.textContent = "שגיאה בטעינת הפלייליסט מהשרת.";
     }
-  });
-  body.querySelector(".rt-video-gallery-save").addEventListener("click", () => {
-    const list = parsePlaylistId(input.value);
-    if (!list) {
+  }
+
+  async function saveAdminPlaylist() {
+    if (!isAdmin || !adminInput) return;
+
+    const playlistId = parsePlaylistId(adminInput.value);
+    if (!playlistId) {
       window.alert("הדבק קישור או מזהה פלייליסט לפני שמירה.");
       return;
     }
-    const current = playlists().filter((item) => item.list !== list);
-    const name = window.prompt("שם הפלייליסט ברשימה:", "פלייליסט הדרכה") || "";
-    const cleanName = name.trim();
-    if (!cleanName) return;
-    const next = [{ name: cleanName, list }, ...current].slice(0, 24);
-    saveVideoPlaylists(next);
-    renderSelect(list);
-    showPlaylist(list);
-  });
+
+    const currentName = activeName.textContent || "סרטוני הדרכה";
+    const name = window.prompt("שם הפלייליסט למשתמשים:", currentName) || currentName;
+
+    try {
+      const saved = await saveServerVideoPlaylist({ name, playlistId });
+      showPlaylist(saved);
+      window.alert("הפלייליסט נשמר בצד השרת.");
+    } catch (err) {
+      window.alert(`שמירת הפלייליסט נכשלה: ${err?.message || err}`);
+    }
+  }
+
+  if (adminSave) adminSave.addEventListener("click", saveAdminPlaylist);
+  if (adminInput) {
+    adminInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        saveAdminPlaylist();
+      }
+    });
+  }
 
   function close() {
     overlay.remove();
     document.documentElement.classList.remove("rt-prem-locked");
     document.removeEventListener("keydown", escHandler);
   }
+
   function escHandler(e) {
     if (e.key === "Escape") close();
   }
+
   header.querySelector(".rt-prem-settings-close").addEventListener("click", close);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
   document.addEventListener("keydown", escHandler);
+
+  reloadPlaylist();
 }
 
 function buildIconButton({ id, cls, title, label, html, text }) {
