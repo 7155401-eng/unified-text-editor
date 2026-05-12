@@ -47,12 +47,6 @@ export class NikudDictaClient {
     text,
     torah_mode,
     preserve_spelling = false,
-    // ignored but kept for signature parity:
-    provider = "dicta",     // eslint-disable-line no-unused-vars
-    access_code = null,     // eslint-disable-line no-unused-vars
-    api_key = null,         // eslint-disable-line no-unused-vars
-    retry_on_quota = 0,     // eslint-disable-line no-unused-vars
-    retry_wait_sec = 0,     // eslint-disable-line no-unused-vars
     status_callback = null,
   }) {
     if (!(text || "").trim()) {
