@@ -127,6 +127,17 @@ function ensureModalShell() {
           ייבא סגנונות Word לגלריית הסגנונות
         </label>
         <label style="display:block; padding:3px 0;">
+          <input type="checkbox" class="we-skip-empty-notes" checked>
+          דלג על הערות ריקות (רווחים בלבד)
+        </label>
+        <label style="display:block; padding:3px 0; margin-top:6px;">
+          התאמת סימן בהערות:
+          <select class="we-marker-match-mode" style="margin-right:6px; padding:2px 6px;">
+            <option value="starts">מתחילה ב־ (אחרי רווחים)</option>
+            <option value="contains">מכילה (בכל מקום)</option>
+          </select>
+        </label>
+        <label style="display:block; padding:3px 0;">
           <input type="radio" name="we-import-mode" value="replace" class="we-mode-replace" checked>
           דרוס את כל הטקסט הקיים
         </label>
@@ -171,8 +182,8 @@ function addBracketRow(opener = '{', closer = '}', series = null) {
   const row = document.createElement('div');
   row.className = 'we-bracket-row';
   row.innerHTML = `
-    <label>סוגר התחלה: <input type="text" class="we-br-open" value="${escapeHtml(opener)}" maxlength="3" style="width:40px"></label>
-    <label>סוגר סיום: <input type="text" class="we-br-close" value="${escapeHtml(closer)}" maxlength="3" style="width:40px"></label>
+    <label>סוגר התחלה: <input type="text" class="we-br-open" value="${escapeHtml(opener)}" style="width:60px"></label>
+    <label>סוגר סיום: <input type="text" class="we-br-close" value="${escapeHtml(closer)}" style="width:60px"></label>
     <label>אות זרם:
       <select class="we-br-series">
         ${'ABCDEFGHIJKL'.split('').map(c => `<option value="${c}"${c === ser ? ' selected' : ''}>${c}</option>`).join('')}
@@ -498,6 +509,10 @@ async function onConfirm() {
   setStatus(t('scanning'));
 
   try {
+    // משה 2026-05-14: קריאת אפשרויות נוספות
+    const skipEmptyNotes = document.querySelector('.we-skip-empty-notes')?.checked !== false;
+    const markerMatchMode = document.querySelector('.we-marker-match-mode')?.value || 'starts';
+    
     // משה 2026-05-09: מסלול ב — חיקוי docx_extract של comparator_tool.py.
     // בגוף נכנס רק הסמל (@01), תוכן ההערה לזרם הנפרד. אין LaTeX, אין סינון.
     syncBracketsState();
@@ -527,7 +542,11 @@ async function onConfirm() {
       console.warn('[word_extractor] notes mammoth fallback to plain:', notesErr);
     }
     const result = await engine.docx_extract_simple(
-      _state.zipBuf.slice(0), simpleSelected, { notesHtmlMap }
+      _state.zipBuf.slice(0), simpleSelected, { 
+        notesHtmlMap,
+        skipEmptyNotes,
+        markerMatchMode 
+      }
     );
     // משה 2026-05-09: שלב 1+2 — mammoth מספק HTML מעוצב לגוף עם סמלי הזרמים שלנו.
     // הזרמים עצמם ממשיכים להגיע מ-docx_extract_simple. הגוף = mammoth, זרמים = result.streams.
