@@ -381,7 +381,14 @@ function wrapColorAndSizeRuns(xml) {
       const a = tAttrs || ' xml:space="preserve"';
       return `<w:t${a}>${open}${txt}${CST_CLOSE}</w:t>`;
     });
-    return `<w:r${attrs || ""}>${newBody}</w:r>`;
+    
+    // קריטי: הסרת w:color ו-w:sz מה-rPr כדי שmammoth לא יכפיל!
+    let cleanedBody = newBody;
+    cleanedBody = cleanedBody.replace(/<w:color\s+[^>]*\/>/g, '');
+    cleanedBody = cleanedBody.replace(/<w:sz\s+[^>]*\/>/g, '');
+    cleanedBody = cleanedBody.replace(/<w:szCs\s+[^>]*\/>/g, '');
+    
+    return `<w:r${attrs || ""}>${cleanedBody}</w:r>`;
   });
 }
 
