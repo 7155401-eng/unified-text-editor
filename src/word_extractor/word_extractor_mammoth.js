@@ -45,31 +45,45 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
   if (!docFile) throw new Error("document.xml not found in DOCX");
   let docXml = await docFile.async("string");
 
+  // משה 2026-05-14: תיקון - שמירת rPr של run המכיל הפניה כדי לשמר עיצוב
   docXml = docXml.replace(
-    /<w:footnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>/g,
-    (m, id) => {
+    /<w:r(\s[^>]*)?>([\ s\S]*?)<w:footnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>([\ s\S]*?)<\/w:r>/g,
+    (m, rAttrs, before, id, after) => {
       const txt = fn_d[id];
       if (txt === undefined) return "";
       const sym = resolve(txt, fn_m, fn_n);
-      return sym ? wrapTextRun(sym) : "";
+      if (!sym) return "";
+      // שמירת rPr אם קיים, והחלפת footnoteReference ב-w:t עם הסמל
+      const rPrMatch = before.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/);
+      const rPr = rPrMatch ? rPrMatch[0] : "";
+      const cleanBefore = before.replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, "");
+      return `<w:r${rAttrs || ""}>${rPr}${cleanBefore}<w:t xml:space="preserve">${escapeXml(sym)}</w:t>${after}</w:r>`;
     }
   );
   docXml = docXml.replace(
-    /<w:endnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>/g,
-    (m, id) => {
+    /<w:r(\s[^>]*)?>([\ s\S]*?)<w:endnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>([\ s\S]*?)<\/w:r>/g,
+    (m, rAttrs, before, id, after) => {
       const txt = en_d[id];
       if (txt === undefined) return "";
       const sym = resolve(txt, en_m, en_n);
-      return sym ? wrapTextRun(sym) : "";
+      if (!sym) return "";
+      const rPrMatch = before.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/);
+      const rPr = rPrMatch ? rPrMatch[0] : "";
+      const cleanBefore = before.replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, "");
+      return `<w:r${rAttrs || ""}>${rPr}${cleanBefore}<w:t xml:space="preserve">${escapeXml(sym)}</w:t>${after}</w:r>`;
     }
   );
   docXml = docXml.replace(
-    /<w:commentReference\b[^/]*\bw:id="(\d+)"[^/]*\/>/g,
-    (m, id) => {
+    /<w:r(\s[^>]*)?>([\ s\S]*?)<w:commentReference\b[^/]*\bw:id="(\d+)"[^/]*\/>([\ s\S]*?)<\/w:r>/g,
+    (m, rAttrs, before, id, after) => {
       const txt = cm_d[id];
       if (txt === undefined) return "";
       const sym = resolve(txt, cm_m, cm_n);
-      return sym ? wrapTextRun(sym) : "";
+      if (!sym) return "";
+      const rPrMatch = before.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/);
+      const rPr = rPrMatch ? rPrMatch[0] : "";
+      const cleanBefore = before.replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, "");
+      return `<w:r${rAttrs || ""}>${rPr}${cleanBefore}<w:t xml:space="preserve">${escapeXml(sym)}</w:t>${after}</w:r>`;
     }
   );
 
@@ -343,6 +357,16 @@ function wrapTextRun(text) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
   return `<w:r><w:t xml:space="preserve">${safe}</w:t></w:r>`;
+}
+
+// משה 2026-05-14: escape לטקסט בתוך XML
+function escapeXml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 // =====================================================================
