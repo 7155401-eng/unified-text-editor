@@ -268,13 +268,9 @@ function syncExternalsState() {
 function openModal() {
   const m = ensureModalShell();
   m.classList.add('active');
-
-  // לא מפעילים {…} אוטומטית.
-  // במסמכי רב-טקסט יש אלפי {@16...}; זה תוכן אמיתי, לא קבוצת הערות.
+  // ברירת מחדל — שורה אחת של {…} אם רשימת הקבוצות ריקה
   const list = m.querySelector('.we-brackets-list');
-  if (list && list.children.length === 0) {
-    _state.brackets = [];
-  }
+  if (list && list.children.length === 0) addBracketRow('{', '}', 'F');
 }
 export function closeModal() {
   const m = document.getElementById(MODAL_ID);
