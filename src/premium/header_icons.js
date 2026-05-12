@@ -180,10 +180,215 @@ function openDownloads() {
 }
 
 const VIDEOS_OVERLAY_ID = "rt-video-gallery-overlay";
+const VIDEOS_STYLE_ID = "rt-video-gallery-inline-style";
 
-// פלייליסט סרטוני הדרכה בשליטת שרת בלבד.
-// משתמש רגיל לא בוחר, לא מדביק ולא שומר פלייליסט.
-// מנהל יכול לשנות רק דרך API שמבצע בדיקת is_admin בצד שרת.
+function ensureVideoGalleryStyles() {
+  if (document.getElementById(VIDEOS_STYLE_ID)) return;
+
+  const style = document.createElement("style");
+  style.id = VIDEOS_STYLE_ID;
+  style.textContent = `
+    .rt-video-gallery-sheet {
+      width: min(1120px, calc(100vw - 34px));
+      max-height: min(760px, calc(100vh - 34px));
+    }
+
+    .rt-video-gallery-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 16px;
+    }
+
+    .rt-video-gallery-topline {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .rt-video-gallery-heading {
+      display: grid;
+      gap: 3px;
+    }
+
+    .rt-video-gallery-heading strong {
+      font-size: 18px;
+    }
+
+    .rt-video-gallery-heading small {
+      opacity: .76;
+      font-size: 13px;
+    }
+
+    .rt-video-gallery-admin {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      flex-wrap: wrap;
+      padding: 10px;
+      border: 1px solid rgba(148, 163, 184, .35);
+      border-radius: 14px;
+      background: rgba(15, 23, 42, .035);
+    }
+
+    .rt-video-gallery-admin label {
+      display: grid;
+      gap: 5px;
+      min-width: min(420px, 100%);
+      font-size: 13px;
+    }
+
+    .rt-video-gallery-admin input {
+      direction: ltr;
+      text-align: left;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, .55);
+    }
+
+    .rt-video-gallery-layout {
+      display: flex;
+      flex-direction: row;
+      gap: 16px;
+      align-items: stretch;
+      min-height: 500px;
+    }
+
+    .rt-video-gallery-list {
+      width: 330px;
+      max-width: 38%;
+      border: 1px solid rgba(148, 163, 184, .32);
+      border-radius: 16px;
+      overflow: hidden;
+      background: rgba(248, 250, 252, .78);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .rt-video-gallery-list-title {
+      padding: 12px 14px;
+      font-weight: 700;
+      border-bottom: 1px solid rgba(148, 163, 184, .24);
+      background: rgba(255, 255, 255, .72);
+    }
+
+    .rt-video-gallery-list-items {
+      overflow: auto;
+      padding: 8px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .rt-video-gallery-video-btn {
+      display: grid;
+      grid-template-columns: 92px 1fr;
+      gap: 10px;
+      width: 100%;
+      text-align: right;
+      border: 1px solid transparent;
+      border-radius: 13px;
+      padding: 7px;
+      background: transparent;
+      cursor: pointer;
+      color: inherit;
+    }
+
+    .rt-video-gallery-video-btn:hover,
+    .rt-video-gallery-video-btn.rt-video-gallery-selected {
+      border-color: rgba(59, 130, 246, .42);
+      background: rgba(59, 130, 246, .08);
+    }
+
+    .rt-video-gallery-thumb {
+      width: 92px;
+      height: 52px;
+      border-radius: 9px;
+      object-fit: cover;
+      background: #e5e7eb;
+    }
+
+    .rt-video-gallery-video-title {
+      align-self: center;
+      font-size: 13px;
+      line-height: 1.35;
+      font-weight: 650;
+    }
+
+    .rt-video-gallery-preview {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .rt-video-gallery-frame-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 430px;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #0f172a;
+      border: 1px solid rgba(15, 23, 42, .16);
+    }
+
+    .rt-video-gallery-frame {
+      width: 100%;
+      height: 100%;
+      min-height: 430px;
+      border: 0;
+      display: block;
+    }
+
+    .rt-video-gallery-empty {
+      display: grid;
+      place-items: center;
+      min-height: 430px;
+      padding: 24px;
+      text-align: center;
+      color: #475569;
+      background: #f8fafc;
+    }
+
+    .rt-video-gallery-current-title {
+      font-weight: 700;
+      min-height: 22px;
+    }
+
+    .rt-video-gallery-footer {
+      display: flex;
+      justify-content: flex-start;
+      gap: 10px;
+    }
+
+    .rt-video-gallery-link-disabled {
+      pointer-events: none;
+      opacity: .45;
+    }
+
+    @media (max-width: 820px) {
+      .rt-video-gallery-layout {
+        flex-direction: column;
+      }
+
+      .rt-video-gallery-list {
+        width: 100%;
+        max-width: none;
+        max-height: 260px;
+      }
+
+      .rt-video-gallery-frame-wrap,
+      .rt-video-gallery-frame,
+      .rt-video-gallery-empty {
+        min-height: 280px;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
 
 function parsePlaylistId(value) {
   const raw = String(value || "").trim();
@@ -240,6 +445,8 @@ async function saveServerVideoPlaylist({ name, playlistId }) {
 async function openVideoGallery() {
   if (document.getElementById(VIDEOS_OVERLAY_ID)) return;
 
+  ensureVideoGalleryStyles();
+
   const isAdmin = isVideoGalleryAdmin();
 
   const overlay = document.createElement("div");
@@ -265,37 +472,49 @@ async function openVideoGallery() {
         <rect x="2.5" y="5" width="19" height="14" rx="4" fill="url(#rt-video-title-grad)"/>
         <path d="M10 9.2v5.6l5-2.8-5-2.8z" fill="#fff"/>
       </svg>
-      <span>גלריית סרטוני הדרכה</span>
+      <span>סרטוני עזרה והדרכה</span>
     </div>
     <button type="button" class="rt-prem-settings-close" aria-label="סגור">x</button>
   `;
   sheet.appendChild(header);
 
   const adminControls = isAdmin ? `
-    <label class="rt-video-gallery-field rt-video-gallery-field-wide">
-      <span>ניהול מנהל: קישור או מזהה פלייליסט מיוטיוב</span>
-      <input class="rt-video-gallery-admin-input" type="text" dir="ltr" placeholder="https://www.youtube.com/playlist?list=..." />
-    </label>
-    <button type="button" class="rt-video-gallery-admin-save">שמור פלייליסט מנהל</button>
+    <div class="rt-video-gallery-admin">
+      <label>
+        <span>הגדרת מנהל: קישור או מזהה פלייליסט YouTube</span>
+        <input class="rt-video-gallery-admin-input" type="text" dir="ltr" placeholder="https://www.youtube.com/playlist?list=..." />
+      </label>
+      <button type="button" class="rt-video-gallery-admin-save">שמור פלייליסט</button>
+    </div>
   ` : "";
 
   const body = document.createElement("div");
   body.className = "rt-video-gallery-body";
   body.innerHTML = `
-    <div class="rt-video-gallery-controls">
-      <div class="rt-video-gallery-field rt-video-gallery-field-wide">
-        <span>פלייליסט פעיל</span>
-        <strong class="rt-video-gallery-active-name">טוען...</strong>
-        <small>הפלייליסט נקבע על ידי מנהל המערכת בצד שרת. משתמש רגיל אינו יכול לבחור פלייליסט במסך זה.</small>
+    <div class="rt-video-gallery-topline">
+      <div class="rt-video-gallery-heading">
+        <strong>סרטוני עזרה והדרכה</strong>
+        <small>בחר סרטון מהרשימה וצפה בו בתצוגה המקדימה.</small>
       </div>
       ${adminControls}
     </div>
-    <div class="rt-video-gallery-stage">
-      <iframe class="rt-video-gallery-frame" title="YouTube playlist" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-      <div class="rt-video-gallery-empty">טוען פלייליסט...</div>
-    </div>
-    <div class="rt-video-gallery-footer">
-      <a class="rt-video-gallery-youtube" href="#" target="_blank" rel="noopener">פתח ביוטיוב</a>
+
+    <div class="rt-video-gallery-layout">
+      <aside class="rt-video-gallery-list" aria-label="רשימת סרטוני הדרכה">
+        <div class="rt-video-gallery-list-title">רשימת סרטונים</div>
+        <div class="rt-video-gallery-list-items"></div>
+      </aside>
+
+      <section class="rt-video-gallery-preview">
+        <div class="rt-video-gallery-current-title"></div>
+        <div class="rt-video-gallery-frame-wrap">
+          <iframe class="rt-video-gallery-frame" title="סרטון הדרכה" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+          <div class="rt-video-gallery-empty">טוען סרטונים...</div>
+        </div>
+        <div class="rt-video-gallery-footer">
+          <a class="rt-video-gallery-youtube" href="#" target="_blank" rel="noopener">פתח ביוטיוב</a>
+        </div>
+      </section>
     </div>
   `;
 
@@ -307,42 +526,119 @@ async function openVideoGallery() {
   const iframe = body.querySelector(".rt-video-gallery-frame");
   const empty = body.querySelector(".rt-video-gallery-empty");
   const youtubeLink = body.querySelector(".rt-video-gallery-youtube");
-  const activeName = body.querySelector(".rt-video-gallery-active-name");
+  const currentTitle = body.querySelector(".rt-video-gallery-current-title");
+  const listItems = body.querySelector(".rt-video-gallery-list-items");
   const adminInput = body.querySelector(".rt-video-gallery-admin-input");
   const adminSave = body.querySelector(".rt-video-gallery-admin-save");
 
-  function showPlaylist(item) {
-    const list = parsePlaylistId(item?.playlistId || item?.list || "");
-    const name = String(item?.name || "סרטוני הדרכה").trim() || "סרטוני הדרכה";
+  let currentPlaylistId = "";
 
-    activeName.textContent = name;
-    if (adminInput) adminInput.value = list;
+  function setEmpty(message) {
+    iframe.removeAttribute("src");
+    iframe.hidden = true;
+    empty.hidden = false;
+    empty.textContent = message;
+    youtubeLink.classList.add("rt-video-gallery-link-disabled");
+    youtubeLink.href = "#";
+  }
 
-    if (!list) {
-      iframe.removeAttribute("src");
-      iframe.hidden = true;
-      empty.hidden = false;
-      empty.textContent = isAdmin
-        ? "לא הוגדר עדיין פלייליסט בשרת. הזן קישור פלייליסט ושמור כמנהל."
-        : "לא הוגדר עדיין פלייליסט על ידי מנהל המערכת.";
-      youtubeLink.classList.add("rt-video-gallery-link-disabled");
-      youtubeLink.href = "#";
+  function showVideo(video, allVideos = []) {
+    if (!video?.videoId) {
+      if (currentPlaylistId) {
+        iframe.hidden = false;
+        empty.hidden = true;
+        iframe.src = `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(currentPlaylistId)}`;
+        youtubeLink.href = `https://www.youtube.com/playlist?list=${encodeURIComponent(currentPlaylistId)}`;
+        youtubeLink.classList.remove("rt-video-gallery-link-disabled");
+        currentTitle.textContent = "סרטוני עזרה והדרכה";
+      }
       return;
     }
 
     iframe.hidden = false;
     empty.hidden = true;
-    iframe.src = `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(list)}`;
-    youtubeLink.href = `https://www.youtube.com/playlist?list=${encodeURIComponent(list)}`;
+    iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(video.videoId)}?rel=0&list=${encodeURIComponent(currentPlaylistId)}`;
+    youtubeLink.href = video.url || `https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`;
     youtubeLink.classList.remove("rt-video-gallery-link-disabled");
+    currentTitle.textContent = video.title || "סרטון הדרכה";
+
+    for (const btn of listItems.querySelectorAll(".rt-video-gallery-video-btn")) {
+      btn.classList.toggle("rt-video-gallery-selected", btn.dataset.videoId === video.videoId);
+    }
+  }
+
+  function renderVideoList(items) {
+    listItems.innerHTML = "";
+
+    if (!items.length) {
+      const msg = document.createElement("div");
+      msg.className = "rt-video-gallery-empty-list";
+      msg.textContent = currentPlaylistId
+        ? "לא נמצאו סרטונים להצגה ברשימה. ניתן לצפות בפלייליסט בתצוגה המקדימה."
+        : "לא הוגדרו עדיין סרטונים.";
+      listItems.appendChild(msg);
+      return;
+    }
+
+    for (const video of items) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "rt-video-gallery-video-btn";
+      btn.dataset.videoId = video.videoId || "";
+
+      const img = document.createElement("img");
+      img.className = "rt-video-gallery-thumb";
+      img.alt = "";
+      img.loading = "lazy";
+      img.src = video.thumbnail || `https://i.ytimg.com/vi/${encodeURIComponent(video.videoId)}/mqdefault.jpg`;
+
+      const title = document.createElement("span");
+      title.className = "rt-video-gallery-video-title";
+      title.textContent = video.title || "סרטון הדרכה";
+
+      btn.appendChild(img);
+      btn.appendChild(title);
+      btn.addEventListener("click", () => showVideo(video, items));
+
+      listItems.appendChild(btn);
+    }
+  }
+
+  function showPlaylist(data) {
+    currentPlaylistId = parsePlaylistId(data?.playlistId || data?.list || "");
+    const items = Array.isArray(data?.items) ? data.items : [];
+
+    if (adminInput) adminInput.value = currentPlaylistId;
+
+    renderVideoList(items);
+
+    if (!currentPlaylistId) {
+      setEmpty(isAdmin
+        ? "לא הוגדר עדיין פלייליסט. הדבק קישור פלייליסט ושמור אותו."
+        : "עדיין לא הוגדרו סרטוני עזרה והדרכה."
+      );
+      currentTitle.textContent = "";
+      return;
+    }
+
+    if (items.length) {
+      showVideo(items[0], items);
+    } else {
+      iframe.hidden = false;
+      empty.hidden = true;
+      iframe.src = `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(currentPlaylistId)}`;
+      youtubeLink.href = `https://www.youtube.com/playlist?list=${encodeURIComponent(currentPlaylistId)}`;
+      youtubeLink.classList.remove("rt-video-gallery-link-disabled");
+      currentTitle.textContent = "סרטוני עזרה והדרכה";
+    }
   }
 
   async function reloadPlaylist() {
     try {
       showPlaylist(await fetchServerVideoPlaylist());
     } catch {
-      showPlaylist({ name: "סרטוני הדרכה", playlistId: "" });
-      empty.textContent = "שגיאה בטעינת הפלייליסט מהשרת.";
+      setEmpty("שגיאה בטעינת סרטוני העזרה וההדרכה.");
+      currentTitle.textContent = "";
     }
   }
 
@@ -355,13 +651,13 @@ async function openVideoGallery() {
       return;
     }
 
-    const currentName = activeName.textContent || "סרטוני הדרכה";
-    const name = window.prompt("שם הפלייליסט למשתמשים:", currentName) || currentName;
-
     try {
-      const saved = await saveServerVideoPlaylist({ name, playlistId });
+      const saved = await saveServerVideoPlaylist({
+        name: "סרטוני עזרה והדרכה",
+        playlistId,
+      });
       showPlaylist(saved);
-      window.alert("הפלייליסט נשמר בצד השרת.");
+      window.alert("פלייליסט סרטוני העזרה וההדרכה נשמר.");
     } catch (err) {
       window.alert(`שמירת הפלייליסט נכשלה: ${err?.message || err}`);
     }
