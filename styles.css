@@ -162,6 +162,10 @@ body.light-theme .toast { background: #FFFFFF; color: #185ABD; border-color: #18
   color: #fde68a;
 }
 
+.demo-mode-banner [data-i18n="demoBody"] p {
+  margin: 2px 0 0;
+}
+
 .ravtext-demo-print-mark {
   display: inline !important;
   color: #991b1b !important;

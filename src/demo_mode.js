@@ -321,10 +321,10 @@ function installDemoBanner() {
   banner.className = "demo-mode-banner";
   banner.dataset.ravtextDemoCanary = "1";
   const registeredBody = "בחשבון חינמי כל יצוא או הדפסה מסומן.";
-  const guestBody = "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<br>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.";
+  const guestBody = "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<p>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.</p>";
   banner.innerHTML = `
-    <strong data-i18n="demoTitle">מצב דמו</strong>
-    <span data-i18n="demoBody">${isRegisteredUser() ? registeredBody : guestBody}</span>
+    <strong data-i18n="demoTitle">מצב דמו,</strong>
+    <div data-i18n="demoBody">${isRegisteredUser() ? registeredBody : guestBody}</div>
     <span class="demo-reset-clock" id="demo-reset-clock"></span>
   `;
   document.body.prepend(banner);

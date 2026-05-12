@@ -59,8 +59,8 @@ const tr = {
     advanced: "מתקדם",
     settings: "הגדרות",
     // demo banner
-    demoTitle: "מצב דמו",
-    demoBody: "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<br>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.",
+    demoTitle: "מצב דמו,",
+    demoBody: "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<p>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.</p>",
     // font names (display only — internal font identifiers stay in data-cmd)
     "font-david": "דוד",
     "font-frank": "פרנק",
@@ -124,8 +124,8 @@ const tr = {
     advanced: "Advanced",
     settings: "Settings",
     // demo banner
-    demoTitle: "Demo Mode",
-    demoBody: "Changes are not saved and the app resets every minute in this mode.<br>To prevent reset, register or sign in. In a free account, every export or print is watermarked.",
+    demoTitle: "Demo Mode,",
+    demoBody: "Changes are not saved and the app resets every minute in this mode.<p>To prevent reset, register or sign in. In a free account, every export or print is watermarked.</p>",
     // font names (display only — internal font identifiers stay in data-cmd)
     "font-david": "David",
     "font-frank": "Frank",
