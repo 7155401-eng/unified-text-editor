@@ -116,6 +116,16 @@ function readIntSetting(key, fallback, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+function readSpacingBool(key, fallback = false) {
+  try {
+    const raw = localStorage.getItem("ravtext.spacing.v1");
+    const settings = raw ? JSON.parse(raw) : null;
+    return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   if (!container || !Array.isArray(paragraphs)) return;
 
@@ -156,5 +166,6 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     streamSettings,
     levels,
     talmudStreams,
+    noMidLineSplits: readSpacingBool("noMidLineSplits", false),
   });
 }

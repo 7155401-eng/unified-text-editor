@@ -1139,6 +1139,7 @@ export async function buildPages(container, paragraphs, config) {
     titles: {},
     streamSettings: {},
     levels: [],
+    noMidLineSplits: false,
     maxPages: 100,
   }, config || {});
 
@@ -1377,14 +1378,16 @@ export async function buildPages(container, paragraphs, config) {
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
         splitInfo = chooseStepwiseSplit(lineEnds);
-        if (!splitInfo) {
+        if (!splitInfo && !cfg.noMidLineSplits) {
           const candidates = wordEndCandidates(fullText)
             .filter(n => n >= MIN_SPLIT && n < fullText.length)
             .sort((a, b) => a - b);
           splitInfo = chooseStepwiseSplit(candidates);
         }
         if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
-          const fallbackLen = lineEnds[0] || wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length);
+          const fallbackLen = lineEnds[0] || (!cfg.noMidLineSplits
+            ? wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length)
+            : null);
           if (fallbackLen) {
             const movedNotes = notesBeforeAnchor(fallbackLen);
             const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: movedNotes, _continues: true };
@@ -1442,7 +1445,7 @@ export async function buildPages(container, paragraphs, config) {
           const baseSlice = getSlice(baseN);
           let rescueEnds = [...new Set([
             ...mainLineEndCandidates(fullText, splitMetrics, splitMainWidth),
-            ...wordEndCandidates(fullText),
+            ...(cfg.noMidLineSplits ? [] : wordEndCandidates(fullText)),
           ])]
             .filter(n => n >= 2 && n < fullText.length)
             .sort((a, b) => a - b);

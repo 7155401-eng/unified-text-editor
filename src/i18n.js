@@ -59,8 +59,8 @@ const tr = {
     advanced: "מתקדם",
     settings: "הגדרות",
     // demo banner
-    demoTitle: "מצב משתמש ניסיוני",
-    demoBody: "השינויים אינם נשמרים. הדמו מתאפס כל דקה, וכל יצוא או הדפסה מסומן.",
+    demoTitle: "מצב דמו",
+    demoBody: "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<br>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.",
     // font names (display only — internal font identifiers stay in data-cmd)
     "font-david": "דוד",
     "font-frank": "פרנק",
@@ -124,8 +124,8 @@ const tr = {
     advanced: "Advanced",
     settings: "Settings",
     // demo banner
-    demoTitle: "Trial Mode",
-    demoBody: "Changes are not saved. The demo resets every minute and every export or print is watermarked.",
+    demoTitle: "Demo Mode",
+    demoBody: "Changes are not saved and the app resets every minute in this mode.<br>To prevent reset, register or sign in. In a free account, every export or print is watermarked.",
     // font names (display only — internal font identifiers stay in data-cmd)
     "font-david": "David",
     "font-frank": "Frank",
@@ -156,7 +156,8 @@ export function applyLanguage(forceLang) {
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
     if (tr[currentLang][key]) {
-      el.textContent = tr[currentLang][key];
+      if (key === "demoBody") el.innerHTML = tr[currentLang][key];
+      else el.textContent = tr[currentLang][key];
     }
   });
 
