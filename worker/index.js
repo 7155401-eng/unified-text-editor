@@ -26,6 +26,20 @@ import { handleTextComparePro } from './text_compare_pro.js';
 import { handleSefariaProxy } from './sefaria_proxy.js';
 import { handleMainTextTools } from './main_text_tools.js';
 
+async function serveAdminPage(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) {
+    return new Response('Not logged in', { status: 401, headers: { 'cache-control': 'no-store' } });
+  }
+  if (!user.is_admin) {
+    return new Response('Forbidden', { status: 403, headers: { 'cache-control': 'no-store' } });
+  }
+  const adminUrl = new URL(request.url);
+  adminUrl.pathname = '/admin.html';
+  const adminReq = new Request(adminUrl.toString(), request);
+  return env.ASSETS.fetch(adminReq);
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -93,7 +107,7 @@ export default {
     ) {
       response = await handlePublicInbox(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/package/')) {
-      response = await handlePackageLookup(request, env);
+      response = await handlePackageLookup(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
     } else if (url.pathname.startsWith('/api/account/')) {
@@ -119,12 +133,9 @@ export default {
       response = await handleSefariaProxy(request, url);
     } else if (url.pathname === '/api/main-text-tools') {
       response = await handleMainTextTools(request);
-    } else if (url.pathname === '/admin' || url.pathname === '/admin/') {
-      const adminUrl = new URL(request.url);
-      adminUrl.pathname = '/admin.html';
-      const adminReq = new Request(adminUrl.toString(), request);
-      response = await env.ASSETS.fetch(adminReq);
-      isHtml = true;
+    } else if (url.pathname === '/admin' || url.pathname === '/admin/' || url.pathname === '/admin.html') {
+      response = await serveAdminPage(request, env);
+      isHtml = response.headers.get('content-type')?.includes('text/html') || response.status < 400;
     } else if (url.pathname === '/api/render/preflight' && request.method === 'POST') {
       response = await handlePreflight(request, env);
     } else if (url.pathname === '/api/talmud/decide' && request.method === 'POST') {
