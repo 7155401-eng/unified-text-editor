@@ -18,6 +18,7 @@ import { handleAccount } from './account.js';
 import { handlePaymentAdmin, handlePackageLookup } from './payment_admin.js';
 import { runRecurringBilling, handleManualRecur } from './recurring.js';
 import { handleCaricature } from './caricature.js';
+import { handleCaricatureAdmin } from './caricature_admin.js';
 import { handleAiChat, handleAiTools } from './ai_tools.js';
 import { handleToolPreflight } from './tool_gate.js';
 import { handleNikudMerger } from './nikud_merger.js';
@@ -79,6 +80,8 @@ export default {
       url.pathname.startsWith('/api/admin/test-packages/')
     ) {
       response = await handlePaymentAdmin(request, env, url);
+    } else if (url.pathname === '/api/admin/caricature-settings') {
+      response = await handleCaricatureAdmin(request, env, url);
     } else if (url.pathname.startsWith('/api/admin/')) {
       response = await handleAdmin(request, env, url);
     } else if (
@@ -90,7 +93,7 @@ export default {
     ) {
       response = await handlePublicInbox(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/package/')) {
-      response = await handlePackageLookup(request, env, url);
+      response = await handlePackageLookup(request, env);
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
     } else if (url.pathname.startsWith('/api/account/')) {
