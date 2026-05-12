@@ -27,6 +27,18 @@ export async function assertToolAllowed(toolName) {
     body: JSON.stringify({ toolName: key, timestamp: Date.now() }),
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      showToolBlocked(key, key, "login");
+      const err = new Error("LOGIN_REQUIRED");
+      err.code = "login";
+      throw err;
+    }
+    if (res.status === 429) {
+      showToolBlocked(key, key, "quota");
+      const err = new Error("TOOL_QUOTA_EXCEEDED");
+      err.code = "quota";
+      throw err;
+    }
     throw new Error(`Tool preflight failed: HTTP ${res.status}`);
   }
   const data = await res.json();

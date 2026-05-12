@@ -422,8 +422,8 @@ function startResetLoop(reset) {
 }
 
 // v33: detect open devtools (estimate via window dimensions delta).
-// When devtools open → instant block. Active in BOTH demo and non-demo
-// modes per Moshe's request 2026-05-06.
+// Warn on the first suspicious signal, and block only after repeated hits.
+// Active in BOTH demo and non-demo modes per Moshe's request 2026-05-06.
 const CONSOLE_BLOCK_KEY = "ravtext-console-block-until";
 const CONSOLE_BLOCK_MS = 5 * 60 * 1000;
 
@@ -488,6 +488,8 @@ export function installConsoleGuard() {
   let baselineDelta = 0;
   let baselineSet = false;
   const ABOVE_BASELINE = 100;
+  let suspiciousHits = 0;
+  let lastSuspiciousAt = 0;
 
   const measureDelta = () => Math.max(
     window.outerWidth - window.innerWidth,
@@ -504,6 +506,14 @@ export function installConsoleGuard() {
     const current = measureDelta();
     if (current > baselineDelta + ABOVE_BASELINE) {
       warnOnly();
+      const now = Date.now();
+      suspiciousHits = (now - lastSuspiciousAt) < 7000 ? suspiciousHits + 1 : 1;
+      lastSuspiciousAt = now;
+      if (suspiciousHits >= 3) {
+        blockConsoleAccess();
+      }
+    } else if (suspiciousHits > 0) {
+      suspiciousHits = Math.max(0, suspiciousHits - 1);
     }
   };
 

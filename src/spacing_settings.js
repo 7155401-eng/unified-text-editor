@@ -62,6 +62,8 @@ export function applySpacingSettings(settings = loadSpacingSettings(), pagesCont
     "--ravtext-page-stream-gap": `${s.streamGap}px`,
     "--ravtext-stream-vertical-gap": `${s.ravtextStreamVerticalGap}px`,
     "--ravtext-stream-horizontal-gap": `${s.ravtextStreamHorizontalGap}px`,
+    "--ravtext-editor-stream-vertical-gap": `${s.ravtextStreamVerticalGap}px`,
+    "--ravtext-editor-stream-horizontal-gap": `${s.ravtextStreamHorizontalGap}px`,
     "--ravtext-page-stream-note-gap": `${s.streamNoteGap}px`,
     "--ravtext-page-stream-title-gap": `${s.streamTitleGap}px`,
     "--ravtext-v9-line-height": String(s.v9LineHeight),

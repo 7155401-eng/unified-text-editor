@@ -485,10 +485,13 @@ function buildPagePlan(pageContent, config) {
   const rText = pageContent.rightStream ? pageContent.rightStream.items.join(' ') : null;
   const lText = pageContent.leftStream ? pageContent.leftStream.items.join(' ') : null;
 
-  const scenario = chooseCrownScenario(
+  let scenario = chooseCrownScenario(
     { right: rText, left: lText },
     { metrics: sideMetrics, halfWidth, fullWidth: innerWidth, crownLines: cfg.crownLines }
   );
+  if (cfg.noMidLineSplits && scenario.name === 'one_long_split') {
+    scenario = { name: 'one_short_no_crown', streamSide: scenario.streamSide };
+  }
   result.crownScenario = scenario;
 
   // משה 2026-05-10: צורה 1 — זרם אחד מפוצל לשני טורים מקבילים.
@@ -1284,9 +1287,11 @@ export async function buildPages(container, paragraphs, config) {
     // כך כל עמוד מקבל רק את הפרשנים של השורות שעליו (כמו במנוע הרגיל).
     let splitInfo = null;
     const cleanFill = planFillRatio(bestCleanPlan);
-    const splitTargets = [
-      ...(bestN_clean < totalAvail ? [bestN_clean] : []),
-    ];
+    const splitTargets = cfg.noMidLineSplits
+      ? []
+      : [
+          ...(bestN_clean < totalAvail ? [bestN_clean] : []),
+        ];
     for (const targetSliceIdx of splitTargets) {
       if (splitInfo) break;
       const sliceIdx = targetSliceIdx;
@@ -1416,7 +1421,7 @@ export async function buildPages(container, paragraphs, config) {
 
     // Gap rescue: only after the clean/anchored policy has a weak page, try a
     // line-first split that carries real notes and materially improves fill.
-    {
+    if (!cfg.noMidLineSplits) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
@@ -1502,7 +1507,7 @@ export async function buildPages(container, paragraphs, config) {
       }
     }
 
-    if (splitInfo) {
+    if (splitInfo && !cfg.noMidLineSplits) {
       const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
       const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);

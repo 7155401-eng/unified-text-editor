@@ -70,6 +70,12 @@ import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
+try {
+  document.documentElement.classList.toggle(
+    "rt-auth-logged-in",
+    !!window.__RAVTEXT_AUTH__?.loggedIn
+  );
+} catch (_) {}
 installAuthUi();
 // משה 2026-05-09: לוג כניסת משתמש בכל טעינת עמוד למחוברים. מאפשר לבנות ציר זמן
 // של פעילות לכל משתמש בפאנל הניהול.
@@ -624,6 +630,14 @@ function setupLiveRenderToggle() {
 function setupRibbonTabs() {
   const mainToolbar = getMainRibbonToolbar();
   if (!mainToolbar) return;
+  const authForRibbon = window.__RAVTEXT_AUTH__ || {};
+  const canSeeTorahTab = !!authForRibbon.loggedIn;
+  if (!canSeeTorahTab) {
+    document.querySelector(".torah-toolbar")?.remove();
+    if ((localStorage.getItem("ravtext.ribbonTab") || "") === "torah") {
+      localStorage.setItem("ravtext.ribbonTab", "home");
+    }
+  }
 
   // משה 2026-05-09: לשונית "הגדרות" הוסרה מהריבון; כל ההגדרות נפתחות מאייקון
   // המפתח-שוודי בכותרת (ראה src/premium/header_icons.js openSettings()).
@@ -635,7 +649,7 @@ function setupRibbonTabs() {
     ["streams", "זרמים"],
     ["insert", "הוספה"],
     ["layout", "פריסה"],
-    ["torah", "תורני"],
+    ...(canSeeTorahTab ? [["torah", "תורני"]] : []),
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],

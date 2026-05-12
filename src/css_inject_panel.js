@@ -551,6 +551,15 @@ localStorage keys:
 - ravtext.talmudLayout.mainWidth = percent — רוחב ראשי
 - ravtext.talmudLayout.sideMode = "auto"/"right-left"/"inner-outer"
 
+== מבנה כללי לכל סוגי הפריסות ==
+- פלט רגיל / רב-טקסט: .page > .page-main + .page-streams. בתוך .page-main יש p/h1-h6; בתוך .page-streams יש .stream[data-stream] עם .stream-title ו-.note/.note-inline/.note-part.
+- פריסת משנה ברורה: אותה מעטפת עמוד, עם .mishna-wrap-page, .mishna-level, .mishna-float, .mishna-flow. אין להניח שכל הזרמים הם ילדים ישירים של .page-streams.
+- פריסת תלמוד שאינה V9: .talmud-layout-page, .talmud-layout, .talmud-main, .talmud-crown-portion, .talmud-body-portion, .talmud-body-expanded, .talmud-right, .talmud-left.
+- פריסת V9: .page.v9-page עם .v9-line ו-.v9-stream-title. ב-V9 אין .page-main/.page-streams רגילים.
+- מחלקות צבע זרם: .stream-color-1 עד .stream-color-8, ולפעמים note-stream-N עבור הערות מקוננות.
+- משתני ריווח פעילים: --ravtext-page-main-stream-gap, --ravtext-stream-vertical-gap, --ravtext-stream-horizontal-gap, --ravtext-page-stream-note-gap, --ravtext-page-stream-title-gap, --ravtext-editor-stream-vertical-gap, --ravtext-editor-stream-horizontal-gap.
+- אל תחזיר CSS שפונה רק ל-V9 אם הבקשה כללית; כתוב selectors שמכסים גם .page-main/.page-streams וגם .v9-page כאשר רלוונטי.
+
 נתיב הקובץ: src/vilna_v9.js (~1100 שורות), src/vilna_v9_apply.js (gateway), src/talmud_controls.js (UI wiring).
 `;
     const fullPrompt =
@@ -559,7 +568,7 @@ localStorage keys:
       `הנה דוגמא של ה-HTML של העמודים:\n\`\`\`html\n${htmlSnippet}\n\`\`\`\n` +
       v9KnowledgeBase + `\n` +
       `הבקשה שלי:\n${userPrompt}\n\n` +
-      `הוראות: החזר CSS בלבד שיכניס לתיבת ה-CSS המותאם. עטוף בבלוק \`\`\`css ... \`\`\`. בלי הסברים, בלי טקסט נוסף.`;
+      `הוראות: החזר CSS בלבד שיכניס לתיבת ה-CSS המותאם. עטוף בבלוק \`\`\`css ... \`\`\`. השתמש בקלאסים הקיימים של רב טקסט ובמשתני הריווח הקיימים, ואל תמציא מבנה DOM שאינו מופיע למעלה. בלי הסברים, בלי טקסט נוסף.`;
     try {
       const reply = await callAI(fullPrompt);
       if (reply) {

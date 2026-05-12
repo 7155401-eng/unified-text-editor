@@ -2778,6 +2778,10 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   align-items: center;
 }
 
+html:not(.rt-auth-logged-in) .torah-toolbar.toolbar.ribbon-panel {
+  display: none !important;
+}
+
 /* Every Sefaria-toolbar group is a parchment card. Two specialized groups
    below override accent colors to indigo and gold respectively.
    Moshe (2026-05-09): make this MORE SUBTLE — lighter base, softer borders,
@@ -4013,7 +4017,8 @@ body.lang-en .toast { direction: ltr; }
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
-  gap: 0;
+  row-gap: var(--ravtext-editor-stream-vertical-gap, 0px);
+  column-gap: var(--ravtext-editor-stream-horizontal-gap, 0px);
   flex: 1 1 auto;
   height: calc(100vh - 360px);
   min-height: 420px;
@@ -4045,7 +4050,7 @@ body.lang-en .toast { direction: ltr; }
   height: 100%;
   min-height: 220px;
   max-height: none;
-  margin-bottom: 10px;
+  margin-bottom: var(--ravtext-editor-stream-vertical-gap, 10px);
 }
 
 .panes-container.has-stream-panes .pane.main-pane {
@@ -4057,7 +4062,7 @@ body.lang-en .toast { direction: ltr; }
   width: auto;
   min-width: 240px;
   max-width: none;
-  height: calc(100% - var(--main-pane-share, 42%) - 18px);
+  height: calc(100% - var(--main-pane-share, 42%) - 18px - var(--ravtext-editor-stream-vertical-gap, 0px));
 }
 
 .main-stream-resizer {
@@ -4077,7 +4082,7 @@ body.lang-en .toast { direction: ltr; }
 }
 
 .panes-container.has-stream-panes .resizer {
-  height: calc(100% - var(--main-pane-share, 42%) - 18px);
+  height: calc(100% - var(--main-pane-share, 42%) - 18px - var(--ravtext-editor-stream-vertical-gap, 0px));
 }
 
 .panes-container.streams-stacked {
@@ -4102,7 +4107,7 @@ body.lang-en .toast { direction: ltr; }
   z-index: 10;
   transition: background 0.2s;
   border-radius: 4px;
-  margin: 0 2px;
+  margin: 0 calc(var(--ravtext-editor-stream-horizontal-gap, 4px) / 2);
   flex: 0 0 8px;
   min-width: 8px;
 }
