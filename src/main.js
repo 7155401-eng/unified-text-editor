@@ -631,13 +631,6 @@ function setupRibbonTabs() {
   const mainToolbar = getMainRibbonToolbar();
   if (!mainToolbar) return;
   const authForRibbon = window.__RAVTEXT_AUTH__ || {};
-  const canSeeTorahTab = !!authForRibbon.loggedIn;
-  if (!canSeeTorahTab) {
-    document.querySelector(".torah-toolbar")?.remove();
-    if ((localStorage.getItem("ravtext.ribbonTab") || "") === "torah") {
-      localStorage.setItem("ravtext.ribbonTab", "home");
-    }
-  }
 
   // משה 2026-05-09: לשונית "הגדרות" הוסרה מהריבון; כל ההגדרות נפתחות מאייקון
   // המפתח-שוודי בכותרת (ראה src/premium/header_icons.js openSettings()).
@@ -649,7 +642,7 @@ function setupRibbonTabs() {
     ["streams", "זרמים"],
     ["insert", "הוספה"],
     ["layout", "פריסה"],
-    ...(canSeeTorahTab ? [["torah", "תורני"]] : []),
+    ["torah", "תורני"],
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
@@ -959,23 +952,29 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
 }
 revealToolButtons();
 setTimeout(() => {
-  wireTorahTools(paneManager);
-  wireSefariaTools(paneManager);
+  if (window.__RAVTEXT_AUTH__?.loggedIn) {
+    wireTorahTools(paneManager);
+    wireSefariaTools(paneManager);
+  }
   revealToolButtons();
 }, 200);
-if (isToolPreviewAllowed("nikud-merger")) {
-  setTimeout(() => wireNikudMergerButton(paneManager), 220);
+
+if (window.__RAVTEXT_AUTH__?.loggedIn) {
+  if (isToolPreviewAllowed("nikud-merger")) {
+    setTimeout(() => wireNikudMergerButton(paneManager), 220);
+  }
+  // משה 2026-05-10: 3 כלי AI שחזרו ל-main
+  if (isToolPreviewAllowed("torah-transcription")) {
+    setTimeout(() => wireTorahTranscription(paneManager), 222);
+  }
+  if (isToolPreviewAllowed("torah-nikud")) {
+    setTimeout(() => wireTorahNikud(paneManager), 224);
+  }
+  if (isToolPreviewAllowed("haredi-caricature")) {
+    setTimeout(() => wireCaricatureBot(paneManager), 226);
+  }
 }
-// משה 2026-05-10: 3 כלי AI שחזרו ל-main
-if (isToolPreviewAllowed("torah-transcription")) {
-  setTimeout(() => wireTorahTranscription(paneManager), 222);
-}
-if (isToolPreviewAllowed("torah-nikud")) {
-  setTimeout(() => wireTorahNikud(paneManager), 224);
-}
-if (isToolPreviewAllowed("haredi-caricature")) {
-  setTimeout(() => wireCaricatureBot(paneManager), 226);
-}
+
 setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
