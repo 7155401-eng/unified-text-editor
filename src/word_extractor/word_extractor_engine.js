@@ -712,11 +712,35 @@ export async function docx_extract_simple(input, selected, opts = {}) {
     else if (src === 'comment') { if (mk) cm_m[mk] = sym; else cm_n = sym; }
   }
 
+  // משה 2026-05-14: תמיכה ב-skipEmptyNotes + markerMatchMode
+  const skipEmptyNotes = opts.skipEmptyNotes !== false;
+  const markerMatchMode = opts.markerMatchMode || 'starts';
+
   function _res(txt, m2s, nsym) {
+    // דילוג על הערות ריקות (רווחים בלבד)
+    if (skipEmptyNotes && !txt.trim()) {
+      return [null, '', null];
+    }
+    
     const m = txt.match(/@(\d+)/);
     if (m && m[1] in m2s) {
-      const stripped = txt.replace(new RegExp('^.*?@' + m[1] + '\\s*:?\\s*'), '').trim();
-      return [m2s[m[1]], stripped, m[1]];
+      const symbol = m2s[m[1]];
+      let stripped = txt;
+      
+      if (markerMatchMode === 'starts') {
+        // מתחילה ב-@N (אחרי רווחים אופציונליים)
+        const pattern = new RegExp('^\\s*@' + m[1] + '\\s*:?\\s*');
+        if (pattern.test(txt)) {
+          stripped = txt.replace(pattern, '').trim();
+          return [symbol, stripped, m[1]];
+        }
+        // אם @N לא בהתחלה - לא מתאים
+        return [null, txt.trim(), null];
+      } else {
+        // מכילה @N בכל מקום - מסיר רק את @N:
+        stripped = txt.replace(new RegExp('@' + m[1] + '\\s*:?\\s*'), '').trim();
+        return [symbol, stripped, m[1]];
+      }
     }
     if (nsym && !m) return [nsym, txt.trim(), null];
     return [null, txt.trim(), null];
