@@ -45,16 +45,41 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
   if (!docFile) throw new Error("document.xml not found in DOCX");
   let docXml = await docFile.async("string");
 
-  docXml = replaceNoteReferenceRuns(docXml, "footnoteReference", fn_d, fn_m, fn_n);
-  docXml = replaceNoteReferenceRuns(docXml, "endnoteReference", en_d, en_m, en_n);
-  docXml = replaceNoteReferenceRuns(docXml, "commentReference", cm_d, cm_m, cm_n);
+  docXml = docXml.replace(
+    /<w:footnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>/g,
+    (m, id) => {
+      const txt = fn_d[id];
+      if (txt === undefined) return "";
+      const sym = resolve(txt, fn_m, fn_n);
+      return sym ? wrapTextRun(sym) : "";
+    }
+  );
+  docXml = docXml.replace(
+    /<w:endnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>/g,
+    (m, id) => {
+      const txt = en_d[id];
+      if (txt === undefined) return "";
+      const sym = resolve(txt, en_m, en_n);
+      return sym ? wrapTextRun(sym) : "";
+    }
+  );
+  docXml = docXml.replace(
+    /<w:commentReference\b[^/]*\bw:id="(\d+)"[^/]*\/>/g,
+    (m, id) => {
+      const txt = cm_d[id];
+      if (txt === undefined) return "";
+      const sym = resolve(txt, cm_m, cm_n);
+      return sym ? wrapTextRun(sym) : "";
+    }
+  );
 
   // משה 2026-05-09: שלב 5 — צבעים וגדלים מ-document.xml.
   // לפני שmammoth מעבד, אנחנו מקיפים runs עם w:color/w:sz/w:rFonts בסימני placeholder
   // שיחזרו כטקסט אחרי mammoth, ואותם נמיר ל-<span style>.
   // משה 2026-05-10: עוטף <w:ins>/<w:del> בסימני placeholder שיחזרו כטקסט אחרי mammoth
   // ויהפכו ל-<ins>/<del> ב-post-processing.
-  docXml = prepareDocXmlForMammoth(docXml);
+  docXml = wrapTrackedChanges(docXml);
+  docXml = wrapColorAndSizeRuns(docXml);
 
   zip.file("word/document.xml", docXml);
 
@@ -89,7 +114,9 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
   html = html.replace(/<sup>\s*<a[^>]*href="#endnote-\d+"[^>]*>[^<]*<\/a>\s*<\/sup>/gi, "");
 
   // משה 2026-05-09: שלב 5 — המרת ה-placeholders של צבע/גודל ל-<span style>.
-  html = postProcessMammothHtml(html);
+  html = unwrapColorAndSizePlaceholders(html);
+  // משה 2026-05-10: ממיר את ה-placeholders של מעקב שינויים ל-<ins>/<del>.
+  html = unwrapTrackedChanges(html);
 
   return { html, warnings: result.messages || [] };
 }
@@ -147,11 +174,9 @@ export async function extractNotesHtmlMap(arrayBuffer, options = {}) {
   }
   body += endMark;
 
-  let synthDoc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const synthDoc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
 <w:body>${body}</w:body></w:document>`;
-
-  synthDoc = prepareDocXmlForMammoth(synthDoc);
 
   zip.file("word/document.xml", synthDoc);
   const newBuf = await zip.generateAsync({ type: "arraybuffer" });
@@ -168,7 +193,6 @@ export async function extractNotesHtmlMap(arrayBuffer, options = {}) {
     { styleMap, includeDefaultStyleMap: true, ignoreEmptyParagraphs: false, convertImage }
   );
   let html = mres.value || "";
-  html = postProcessMammothHtml(html);
 
   // הסרת רשימות footnotes/endnotes שmammoth מוסיף בסוף
   html = html.replace(/<ol[^>]*id="footnotes?"[\s\S]*?<\/ol>/gi, "");
@@ -313,88 +337,6 @@ async function readNotesPlain(zip, path, tag) {
   return out;
 }
 
-
-function resolveNoteSymbol(noteText, markerToSymbol, noneSymbol) {
-  const m = String(noteText || "").match(/@(\d+)/);
-  if (m && Object.prototype.hasOwnProperty.call(markerToSymbol, m[1])) {
-    return markerToSymbol[m[1]];
-  }
-  if (noneSymbol && !m) return noneSymbol;
-  return null;
-}
-
-function replaceNoteReferenceRuns(xml, refTag, notesDict, markerToSymbol, noneSymbol) {
-  // מחליפים את כל ה-run של הפניית ההערה, לא רק את התג הפנימי.
-  // כך @01/@02 לא יורשים צבע/גודל/פונט של מספר הערת Word.
-  const runWithRefRe = new RegExp(
-    `<w:r\\b[^>]*>[\\s\\S]*?<w:${refTag}\\b[^>]*\\bw:id="(\\d+)"[^>]*/>[\\s\\S]*?</w:r>`,
-    "g"
-  );
-
-  xml = xml.replace(runWithRefRe, (_fullRun, id) => {
-    const noteText = notesDict[id];
-    if (noteText === undefined) return "";
-    const symbol = resolveNoteSymbol(noteText, markerToSymbol, noneSymbol);
-    return symbol ? wrapTextRun(symbol) : "";
-  });
-
-  // fallback נדיר אם ההפניה אינה עטופה ב-run רגיל.
-  const bareRefRe = new RegExp(
-    `<w:${refTag}\\b[^>]*\\bw:id="(\\d+)"[^>]*/>`,
-    "g"
-  );
-
-  return xml.replace(bareRefRe, (_m, id) => {
-    const noteText = notesDict[id];
-    if (noteText === undefined) return "";
-    const symbol = resolveNoteSymbol(noteText, markerToSymbol, noneSymbol);
-    return symbol ? wrapTextRun(symbol) : "";
-  });
-}
-
-function prepareDocXmlForMammoth(xml) {
-  let out = String(xml || "");
-  out = wrapTrackedChanges(out);
-  out = wrapColorAndSizeRuns(out);
-  return out;
-}
-
-function postProcessMammothHtml(html) {
-  let out = String(html || "");
-  out = unwrapColorAndSizePlaceholders(out);
-  out = unwrapTrackedChanges(out);
-  out = stripInternalImportPlaceholders(out);
-  return out;
-}
-
-function cleanCssFontName(font) {
-  return String(font || "")
-    .replace(/[<>"`;]/g, "")
-    .replace(/'/g, "")
-    .trim();
-}
-
-function stripInternalImportPlaceholders(html) {
-  let out = String(html || "");
-
-  // CST תקין שנשאר בטעות.
-  out = out.replace(/‹‹CST:[^‹]*‹‹/g, "");
-  out = out.replace(/‹‹\/CST‹‹/g, "");
-
-  // CST שבור חלקית.
-  out = out.replace(/CST:[0-9a-fA-F]{0,6}\|[0-9.]*\|[^‹<]*‹‹/g, "");
-
-  // Track Changes placeholders אם דלפו.
-  out = out.replace(/‹‹TCI:[^‹]*‹‹/g, "");
-  out = out.replace(/‹‹\/TCI‹‹/g, "");
-  out = out.replace(/‹‹TCD:[^‹]*‹‹/g, "");
-  out = out.replace(/‹‹\/TCD‹‹/g, "");
-
-  // כל שאריות placeholder פנימיות.
-  out = out.replace(/‹‹/g, "");
-
-  return out;
-}
 function wrapTextRun(text) {
   const safe = String(text)
     .replace(/&/g, "&amp;")
@@ -448,8 +390,7 @@ function unwrapColorAndSizePlaceholders(html) {
       const decl = [];
       if (color) decl.push(`color: #${color};`);
       if (size) decl.push(`font-size: ${size}pt;`);
-      const safeFont = cleanCssFontName(font);
-      if (safeFont) decl.push(`font-family: '${safeFont}';`);
+      if (font) decl.push(`font-family: "${font.replace(/"/g, "")}";`);
       if (!decl.length) return inner;
       return `<span style="${decl.join(" ")}">${inner}</span>`;
     }
