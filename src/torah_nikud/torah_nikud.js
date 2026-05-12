@@ -3,6 +3,7 @@
 
 import { openTorahNikudModal as openTorahNikudModalUi } from "./torah_nikud_ui.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
+import { trimTorahOrTextForFreeUser } from "../torah_free_limit.js";
 
 export async function openTorahNikudModal(options = {}) {
   await assertToolAllowed("torah-nikud");
@@ -64,8 +65,9 @@ export function wireTorahNikud(paneManager) {
   btn.title = "פותח את כלי הניקוד המדוייק (AI) של RavText";
   btn.addEventListener("click", async () => {
     const { text, editor } = getSelectedOrAllText(paneManager);
+    const limited = trimTorahOrTextForFreeUser(text);
     await openTorahNikudModal({
-      initialText: text,
+      initialText: limited.text,
       onResult: (vocalized) => {
         if (editor) replaceInEditor(editor, vocalized);
       },

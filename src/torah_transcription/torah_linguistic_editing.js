@@ -1,4 +1,5 @@
 import { getSyncedGeminiApiKey } from "../ai_key_sync.js";
+import { trimTorahOrTextForFreeUser } from "../torah_free_limit.js";
 import { GasClient } from "./torah_transcription_gas.js";
 
 const CONFIG_KEY = "ravtext.torah_transcription.config";
@@ -91,6 +92,7 @@ export function openTorahLinguisticEditor({ paneManager } = {}) {
     ? paneManager.getActiveEditor()
     : null;
   const editorText = readEditorText(activeEditor);
+  const limitedEditorText = trimTorahOrTextForFreeUser(editorText.text);
   const cfg = loadConfig();
   let client = null;
 
@@ -127,7 +129,7 @@ export function openTorahLinguisticEditor({ paneManager } = {}) {
     style: "min-height:150px;",
     placeholder: "הדבק כאן טקסט לעריכה לשונית תורנית...",
   });
-  inputBox.value = editorText.text || "";
+  inputBox.value = limitedEditorText.text || "";
   wrap.appendChild(el("div", { class: "tt-card" },
     el("div", { class: "tt-h2" }, "טקסט לעריכה"),
     inputBox

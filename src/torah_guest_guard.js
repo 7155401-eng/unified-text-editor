@@ -1,4 +1,4 @@
-const FREE_LIMIT_TORAH_OR = 500;
+import { FREE_LIMIT_TORAH_OR } from "./torah_free_limit.js";
 
 function authState() {
   return window.__RAVTEXT_AUTH__ || {};
@@ -49,7 +49,9 @@ function selectedTextFromEditor() {
     const ed = pm?.getActiveEditor?.();
     if (!ed) return '';
     const sel = ed.state?.selection;
-    if (!sel || sel.empty) return '';
+    if (!sel || sel.empty) {
+      return ed.state?.doc?.textBetween?.(0, ed.state.doc.content.size, '\n', '\n').trim() || '';
+    }
     return ed.state.doc.textBetween(sel.from, sel.to, '\n', '\n').trim();
   } catch {
     return '';

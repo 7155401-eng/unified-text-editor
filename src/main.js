@@ -63,6 +63,7 @@ import { tryUseTool } from "./premium/daily_quota_gate.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
+import { wireChapterSplitter } from "./document_chapter_splitter.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
@@ -965,6 +966,7 @@ setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
   wireTrackChanges(paneManager);
+  wireChapterSplitter(paneManager);
 }, 300);
 setTimeout(() => {
   wireWordCount(paneManager);

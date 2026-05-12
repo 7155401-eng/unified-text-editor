@@ -179,6 +179,198 @@ function openDownloads() {
   document.addEventListener("keydown", escHandler);
 }
 
+const VIDEOS_OVERLAY_ID = "rt-video-gallery-overlay";
+const VIDEOS_PLAYLISTS_KEY = "ravtext.videoGallery.playlists";
+const VIDEOS_LAST_PLAYLIST_KEY = "ravtext.videoGallery.lastPlaylist";
+
+function parsePlaylistId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    return url.searchParams.get("list") || raw;
+  } catch {
+    const match = raw.match(/[?&]list=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : raw.replace(/^list=/, "").trim();
+  }
+}
+
+function readVideoPlaylists() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(VIDEOS_PLAYLISTS_KEY) || "[]");
+    if (Array.isArray(saved)) {
+      return saved
+        .map((item) => ({
+          name: String(item.name || "").trim(),
+          list: parsePlaylistId(item.list || item.id || ""),
+        }))
+        .filter((item) => item.name && item.list);
+    }
+  } catch {}
+  return [];
+}
+
+function saveVideoPlaylists(items) {
+  try {
+    localStorage.setItem(VIDEOS_PLAYLISTS_KEY, JSON.stringify(items));
+  } catch {}
+}
+
+function openVideoGallery() {
+  if (document.getElementById(VIDEOS_OVERLAY_ID)) return;
+
+  const overlay = document.createElement("div");
+  overlay.id = VIDEOS_OVERLAY_ID;
+  overlay.className = "rt-prem-settings-overlay rt-video-gallery-overlay";
+  overlay.dir = "rtl";
+
+  const sheet = document.createElement("div");
+  sheet.className = "rt-prem-settings-sheet rt-video-gallery-sheet";
+
+  const header = document.createElement("div");
+  header.className = "rt-prem-settings-header rt-video-gallery-header";
+  header.innerHTML = `
+    <div class="rt-prem-settings-title rt-video-gallery-title">
+      <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="rt-video-title-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff2d55"/>
+            <stop offset="55%" stop-color="#ff7a18"/>
+            <stop offset="100%" stop-color="#ffd166"/>
+          </linearGradient>
+        </defs>
+        <rect x="2.5" y="5" width="19" height="14" rx="4" fill="url(#rt-video-title-grad)"/>
+        <path d="M10 9.2v5.6l5-2.8-5-2.8z" fill="#fff"/>
+      </svg>
+      <span>גלריית סרטוני הדרכה</span>
+    </div>
+    <button type="button" class="rt-prem-settings-close" aria-label="סגור">x</button>
+  `;
+  sheet.appendChild(header);
+
+  const body = document.createElement("div");
+  body.className = "rt-video-gallery-body";
+  body.innerHTML = `
+    <div class="rt-video-gallery-controls">
+      <label class="rt-video-gallery-field">
+        <span>פלייליסט</span>
+        <select class="rt-video-gallery-select"></select>
+      </label>
+      <label class="rt-video-gallery-field rt-video-gallery-field-wide">
+        <span>קישור או מזהה פלייליסט מיוטיוב</span>
+        <input class="rt-video-gallery-input" type="text" dir="ltr" placeholder="https://www.youtube.com/playlist?list=..." />
+      </label>
+      <button type="button" class="rt-video-gallery-open">פתח</button>
+      <button type="button" class="rt-video-gallery-save">שמור לרשימה</button>
+    </div>
+    <div class="rt-video-gallery-stage">
+      <iframe class="rt-video-gallery-frame" title="YouTube playlist" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+      <div class="rt-video-gallery-empty">
+        הדבק קישור פלייליסט מיוטיוב או בחר פלייליסט שמור.
+      </div>
+    </div>
+    <div class="rt-video-gallery-footer">
+      <a class="rt-video-gallery-youtube" href="#" target="_blank" rel="noopener">פתח ביוטיוב</a>
+    </div>
+  `;
+  sheet.appendChild(body);
+  overlay.appendChild(sheet);
+  document.body.appendChild(overlay);
+  document.documentElement.classList.add("rt-prem-locked");
+
+  const select = body.querySelector(".rt-video-gallery-select");
+  const input = body.querySelector(".rt-video-gallery-input");
+  const iframe = body.querySelector(".rt-video-gallery-frame");
+  const empty = body.querySelector(".rt-video-gallery-empty");
+  const youtubeLink = body.querySelector(".rt-video-gallery-youtube");
+
+  function playlists() {
+    return readVideoPlaylists();
+  }
+
+  function renderSelect(selectedList = "") {
+    const items = playlists();
+    select.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = items.length ? "בחר פלייליסט שמור" : "אין עדיין פלייליסטים שמורים";
+    select.appendChild(placeholder);
+    for (const item of items) {
+      const opt = document.createElement("option");
+      opt.value = item.list;
+      opt.textContent = item.name;
+      select.appendChild(opt);
+    }
+    if (selectedList && Array.from(select.options).some((opt) => opt.value === selectedList)) {
+      select.value = selectedList;
+    }
+  }
+
+  function showPlaylist(rawList) {
+    const list = parsePlaylistId(rawList);
+    if (!list) {
+      iframe.removeAttribute("src");
+      iframe.hidden = true;
+      empty.hidden = false;
+      youtubeLink.classList.add("rt-video-gallery-link-disabled");
+      youtubeLink.href = "#";
+      return;
+    }
+    try { localStorage.setItem(VIDEOS_LAST_PLAYLIST_KEY, list); } catch {}
+    iframe.hidden = false;
+    empty.hidden = true;
+    iframe.src = `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(list)}`;
+    youtubeLink.href = `https://www.youtube.com/playlist?list=${encodeURIComponent(list)}`;
+    youtubeLink.classList.remove("rt-video-gallery-link-disabled");
+    input.value = list;
+  }
+
+  renderSelect();
+  const last = parsePlaylistId(localStorage.getItem(VIDEOS_LAST_PLAYLIST_KEY) || "");
+  if (last) {
+    renderSelect(last);
+    showPlaylist(last);
+  } else {
+    showPlaylist("");
+  }
+
+  select.addEventListener("change", () => showPlaylist(select.value));
+  body.querySelector(".rt-video-gallery-open").addEventListener("click", () => showPlaylist(input.value));
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      showPlaylist(input.value);
+    }
+  });
+  body.querySelector(".rt-video-gallery-save").addEventListener("click", () => {
+    const list = parsePlaylistId(input.value);
+    if (!list) {
+      window.alert("הדבק קישור או מזהה פלייליסט לפני שמירה.");
+      return;
+    }
+    const current = playlists().filter((item) => item.list !== list);
+    const name = window.prompt("שם הפלייליסט ברשימה:", "פלייליסט הדרכה") || "";
+    const cleanName = name.trim();
+    if (!cleanName) return;
+    const next = [{ name: cleanName, list }, ...current].slice(0, 24);
+    saveVideoPlaylists(next);
+    renderSelect(list);
+    showPlaylist(list);
+  });
+
+  function close() {
+    overlay.remove();
+    document.documentElement.classList.remove("rt-prem-locked");
+    document.removeEventListener("keydown", escHandler);
+  }
+  function escHandler(e) {
+    if (e.key === "Escape") close();
+  }
+  header.querySelector(".rt-prem-settings-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  document.addEventListener("keydown", escHandler);
+}
+
 function buildIconButton({ id, cls, title, label, html, text }) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -209,6 +401,28 @@ export function installHeaderPremiumIcons() {
   if (!actions) return;
 
   const auth = window.__RAVTEXT_AUTH__ || { loggedIn: false, paid: false };
+
+  const videosIcon = buildIconButton({
+    id: "rt-prem-icon-videos",
+    cls: "rt-prem-icon-videos",
+    title: "סרטוני הדרכה",
+    label: "פתח גלריית סרטונים",
+    text: "סרטונים",
+    html: `
+      <svg class="rt-video-icon-svg" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="rt-video-icon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="currentColor" stop-opacity="1"/>
+            <stop offset="100%" stop-color="currentColor" stop-opacity="0.78"/>
+          </linearGradient>
+        </defs>
+        <rect x="2.25" y="5" width="19.5" height="14" rx="4.2" fill="url(#rt-video-icon-grad)" stroke="rgba(255,255,255,0.72)" stroke-width="0.65"/>
+        <path class="rt-video-icon-play" d="M10.2 8.7v6.6l5.7-3.3-5.7-3.3z" fill="rgba(255,255,255,0.96)"/>
+        <path class="rt-video-icon-glint" d="M6 7.4h5.2" stroke="rgba(255,255,255,0.78)" stroke-width="1.1" stroke-linecap="round"/>
+      </svg>
+    `,
+  });
+  videosIcon.addEventListener("click", openVideoGallery);
 
   // משה 2026-05-09: גלגל שיניים אלגנטי עם גרדיאנט פנימי + סיבוב hover.
   // (קודם היה מפתח שוודי — חסר השראה. הגלגל מקובל יותר ומיד מזוהה כ"הגדרות".)
@@ -318,10 +532,12 @@ export function installHeaderPremiumIcons() {
     const avatarWrap1 = document.getElementById("profile-avatar-wrap");
     const ref1 = avatarWrap1 || null;
     if (ref1) {
+      actions.insertBefore(videosIcon, ref1);
       actions.insertBefore(settingsIcon, ref1);
       actions.insertBefore(downloadsIcon, ref1);
       actions.insertBefore(gift, ref1);
     } else {
+      actions.appendChild(videosIcon);
       actions.appendChild(settingsIcon);
       actions.appendChild(downloadsIcon);
       actions.appendChild(gift);
@@ -371,11 +587,13 @@ export function installHeaderPremiumIcons() {
   const avatarWrap = document.getElementById("profile-avatar-wrap");
   const ref = avatarWrap || null;
   if (ref) {
+    actions.insertBefore(videosIcon, ref);
     actions.insertBefore(settingsIcon, ref);
     actions.insertBefore(downloadsIcon, ref);
     actions.insertBefore(gift, ref);
     actions.insertBefore(diamond, ref);
   } else {
+    actions.appendChild(videosIcon);
     actions.appendChild(settingsIcon);
     actions.appendChild(downloadsIcon);
     actions.appendChild(gift);

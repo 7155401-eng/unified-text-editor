@@ -4904,3 +4904,170 @@ body[data-theme="dark"] .ProseMirror pre {
 .global-stream-overrides input[type="text"] {
   width: 72px;
 }
+
+.chapter-splitter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 34px 16px;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.64);
+  backdrop-filter: blur(6px);
+}
+.chapter-splitter-modal {
+  width: min(1100px, 96vw);
+  max-height: calc(100vh - 68px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.38);
+}
+.chapter-splitter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+}
+.chapter-splitter-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  color: #0f172a;
+}
+.chapter-splitter-header p {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+}
+.chapter-splitter-close {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  color: #64748b;
+}
+.chapter-splitter-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+.chapter-splitter-body {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.95fr) minmax(320px, 1.05fr);
+  gap: 18px;
+  padding: 18px 20px 22px;
+  overflow: auto;
+}
+.chapter-splitter-controls,
+.chapter-splitter-preview-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chapter-splitter-row {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+.chapter-splitter-controls label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #334155;
+}
+.chapter-splitter-file {
+  flex: 1 1 220px;
+}
+.chapter-splitter-file input,
+.chapter-splitter-pattern {
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 9px;
+  font: inherit;
+  background: #fff;
+}
+.chapter-splitter-source {
+  min-height: 360px;
+  resize: vertical;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 12px;
+  font: 14px/1.5 "David Libre", "Segoe UI", sans-serif;
+}
+.chapter-splitter-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.chapter-splitter-from-editor,
+.chapter-splitter-preview,
+.chapter-splitter-zip {
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #f8fafc;
+  color: #1e293b;
+}
+.chapter-splitter-preview,
+.chapter-splitter-zip {
+  color: #fff;
+  border-color: #2563eb;
+  background: #2563eb;
+}
+.chapter-splitter-zip {
+  border-color: #0f766e;
+  background: #0f766e;
+}
+.chapter-splitter-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+.chapter-splitter-list {
+  display: grid;
+  gap: 10px;
+}
+.chapter-splitter-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px;
+  background: #f8fafc;
+}
+.chapter-splitter-item strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+.chapter-splitter-item span {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.chapter-splitter-item p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.5;
+}
+@media (max-width: 860px) {
+  .chapter-splitter-body {
+    grid-template-columns: 1fr;
+  }
+}
