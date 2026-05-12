@@ -384,17 +384,23 @@ function wrapColorAndSizeRuns(xml) {
 function unwrapColorAndSizePlaceholders(html) {
   // ‹‹CST:HEX|SIZE|FONT›› ... ‹‹/CST›› → <span style="...">...</span>
   // ה-placeholder עלול להיחתך ע"י תגי mammoth (strong/em). נחפש זוגות פשוטים בתוך טקסט.
-  return html.replace(
-    /‹‹CST:([0-9a-fA-F]{0,6})\|(\d{0,4}(?:\.\d+)?)\|([^|]*)‹‹([\s\S]*?)‹‹\/CST‹‹/g,
-    (m, color, size, font, inner) => {
-      const decl = [];
-      if (color) decl.push(`color: #${color};`);
-      if (size) decl.push(`font-size: ${size}pt;`);
-      if (font) decl.push(`font-family: "${font.replace(/"/g, "")}";`);
-      if (!decl.length) return inner;
-      return `<span style="${decl.join(" ")}">${inner}</span>`;
-    }
-  );
+  return html
+    .replace(
+      /‹‹CST:([0-9a-fA-F]{0,6})\|(\d{0,4}(?:\.\d+)?)\|([^|]*)‹‹([\s\S]*?)‹‹\/CST‹‹/g,
+      (m, color, size, font, inner) => {
+        const decl = [];
+        if (color) decl.push(`color: #${color};`);
+        if (size) decl.push(`font-size: ${size}pt;`);
+        if (font) decl.push(`font-family: "${font.replace(/"/g, "")}";`);
+        // תמיד מחזיר את התוכן — עם span אם יש סגנון, בלי אם ריק
+        return decl.length 
+          ? `<span style="${decl.join(" ")}">${inner}</span>`
+          : inner;
+      }
+    )
+    // ניקוי סימנים שנשארו (במקרה של חיתוך ע"י mammoth)
+    .replace(/‹‹CST:[^‹]*‹‹/g, '')
+    .replace(/‹‹\/CST‹‹/g, '');
 }
 
 // =====================================================================
