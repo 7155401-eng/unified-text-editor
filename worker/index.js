@@ -11,6 +11,7 @@ import { applySecurityHeaders, checkRateLimit, isBadBot, isEngineApi, checkOrigi
 import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide, checkNonce } from './render_planner.js';
 import { handleAdmin, isConsoleGuardEnabled } from './admin.js';
+import { handleVideoGallery, handleAdminVideoGallery } from './video_gallery.js';
 import { handleAdminInbox, handlePublicInbox } from './inbox.js';
 import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
@@ -96,6 +97,8 @@ export default {
       response = await handlePaymentAdmin(request, env, url);
     } else if (url.pathname === '/api/admin/caricature-settings') {
       response = await handleCaricatureAdmin(request, env, url);
+    } else if (url.pathname === '/api/admin/video-gallery/playlist') {
+      response = await handleAdminVideoGallery(request, env, url);
     } else if (url.pathname.startsWith('/api/admin/')) {
       response = await handleAdmin(request, env, url);
     } else if (
@@ -106,6 +109,8 @@ export default {
       url.pathname === '/api/usage/track'
     ) {
       response = await handlePublicInbox(request, env, url);
+    } else if (url.pathname === '/api/video-gallery/playlist') {
+      response = await handleVideoGallery(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/package/')) {
       response = await handlePackageLookup(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/')) {
