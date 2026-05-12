@@ -532,6 +532,18 @@ async function openVideoGallery() {
   const adminSave = body.querySelector(".rt-video-gallery-admin-save");
 
   let currentPlaylistId = "";
+  let videoLoadTimer = 0;
+
+  function armVideoLoadFallback() {
+    window.clearTimeout(videoLoadTimer);
+    videoLoadTimer = window.setTimeout(() => {
+      if (!iframe.hidden && iframe.getAttribute("src")) {
+        // אי אפשר לזהות בוודאות חסימת iframe חיצוני בגלל cross-origin,
+        // לכן לא מסתירים את הנגן אלא רק משאירים קישור פתיחה ביוטיוב.
+        youtubeLink.textContent = "אם הסרטון לא נטען כאן, פתח ביוטיוב";
+      }
+    }, 4500);
+  }
 
   function setEmpty(message) {
     iframe.removeAttribute("src");
@@ -547,7 +559,7 @@ async function openVideoGallery() {
       if (currentPlaylistId) {
         iframe.hidden = false;
         empty.hidden = true;
-        iframe.src = `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(currentPlaylistId)}`;
+        iframe.src = `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(currentPlaylistId)}`;
         youtubeLink.href = `https://www.youtube.com/playlist?list=${encodeURIComponent(currentPlaylistId)}`;
         youtubeLink.classList.remove("rt-video-gallery-link-disabled");
         currentTitle.textContent = "סרטוני עזרה והדרכה";
@@ -557,7 +569,7 @@ async function openVideoGallery() {
 
     iframe.hidden = false;
     empty.hidden = true;
-    iframe.src = `https://www.youtube.com/embed/${encodeURIComponent(video.videoId)}?rel=0&list=${encodeURIComponent(currentPlaylistId)}`;
+    iframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(video.videoId)}?rel=0&list=${encodeURIComponent(currentPlaylistId)}`;
     youtubeLink.href = video.url || `https://www.youtube.com/watch?v=${encodeURIComponent(video.videoId)}`;
     youtubeLink.classList.remove("rt-video-gallery-link-disabled");
     currentTitle.textContent = video.title || "סרטון הדרכה";
@@ -626,7 +638,7 @@ async function openVideoGallery() {
     } else {
       iframe.hidden = false;
       empty.hidden = true;
-      iframe.src = `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(currentPlaylistId)}`;
+      iframe.src = `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(currentPlaylistId)}`;
       youtubeLink.href = `https://www.youtube.com/playlist?list=${encodeURIComponent(currentPlaylistId)}`;
       youtubeLink.classList.remove("rt-video-gallery-link-disabled");
       currentTitle.textContent = "סרטוני עזרה והדרכה";
