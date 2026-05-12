@@ -1,4 +1,4 @@
-// משה 2026-05-09: 3 אייקונים בכותרת ליד הפרופיל:
+﻿// משה 2026-05-09: 3 אייקונים בכותרת ליד הפרופיל:
 //   ✦ כוכב — פרמיום (פותח מסך תשלום)
 //   🎁 מתנה — מימוש 20 דק' חינם בחודש
 //   🔧 מפתח שוודי — הגדרות (מעביר את "הגדרות" מתוך התפריט הישן)
@@ -180,8 +180,8 @@ function openDownloads() {
 }
 
 const VIDEOS_OVERLAY_ID = "rt-video-gallery-overlay";
-const VIDEOS_PLAYLISTS_KEY = "ravtext.videoGallery.playlists";
-const VIDEOS_LAST_PLAYLIST_KEY = "ravtext.videoGallery.lastPlaylist";
+const VIDEOS_ADMIN_PLAYLIST_KEY = "ravtext.videoGallery.adminPlaylist";
+const VIDEOS_ADMIN_PLAYLIST_NAME_KEY = "ravtext.videoGallery.adminPlaylistName";
 
 function parsePlaylistId(value) {
   const raw = String(value || "").trim();
@@ -197,7 +197,9 @@ function parsePlaylistId(value) {
 
 function readVideoPlaylists() {
   try {
-    const saved = JSON.parse(localStorage.getItem(VIDEOS_PLAYLISTS_KEY) || "[]");
+    const adminList = parsePlaylistId(localStorage.getItem(VIDEOS_ADMIN_PLAYLIST_KEY) || "");
+    const adminName = String(localStorage.getItem(VIDEOS_ADMIN_PLAYLIST_NAME_KEY) || "סרטוני הדרכה").trim() || "סרטוני הדרכה";
+    const saved = adminList ? [{ name: adminName, list: adminList }] : [];
     if (Array.isArray(saved)) {
       return saved
         .map((item) => ({
@@ -335,14 +337,14 @@ function openVideoGallery() {
   }
 
   select.addEventListener("change", () => showPlaylist(select.value));
-  body.querySelector(".rt-video-gallery-open").addEventListener("click", () => showPlaylist(input.value));
+  body.querySelector(".rt-video-gallery-open")?.addEventListener("click", () => showPlaylist(input.value));
   input.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter") {
       ev.preventDefault();
       showPlaylist(input.value);
     }
   });
-  body.querySelector(".rt-video-gallery-save").addEventListener("click", () => {
+  body.querySelector(".rt-video-gallery-save")?.addEventListener("click", () => {
     const list = parsePlaylistId(input.value);
     if (!list) {
       window.alert("הדבק קישור או מזהה פלייליסט לפני שמירה.");
