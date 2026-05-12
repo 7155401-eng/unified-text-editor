@@ -371,6 +371,10 @@ function wrapColorAndSizeRuns(xml) {
     const sizeHalf = szMatch ? parseInt(szMatch[1], 10) : 0;
     const sizePt = sizeHalf ? (sizeHalf / 2) : 0;
     const font = fontMatch ? fontMatch[1].replace(/\|/g, "") : "";
+    
+    // רק אם יש צבע או גודל — פונט לבד לא מספיק
+    if (!color && !sizePt) return full;
+    
     const open = `‹‹CST:${color}|${sizePt || ""}|${font}‹‹`;
     // עוטפים כל <w:t>...</w:t> בתוך ה-run
     const newBody = body.replace(/<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/g, (m, tAttrs, txt) => {
