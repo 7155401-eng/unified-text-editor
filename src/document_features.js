@@ -8,6 +8,11 @@ const FOOTER_KEY = "ravtext.pageFooter";
 const WATERMARK_KEY = "ravtext.watermark";
 const WATERMARK_OPACITY_KEY = "ravtext.watermarkOpacity";
 
+// Estimated pixel height of each overlay element (font + padding + border).
+const HEADER_OVERLAP_PX = 10;
+const FOOTER_OVERLAP_PX = 10;
+const PAGENUM_OVERLAP_PX = 14;
+
 function pageElements() {
   return document.querySelectorAll("#pages-container .page, .pages-container .page");
 }
@@ -80,6 +85,22 @@ function applyWatermark() {
   });
 }
 
+function syncReservedSpace() {
+  const hasHeader = !!localStorage.getItem(HEADER_KEY);
+  const hasFooter = !!localStorage.getItem(FOOTER_KEY);
+  const hasPageNum = localStorage.getItem(PAGE_NUM_KEY) === "1";
+  const headPx = hasHeader ? HEADER_OVERLAP_PX : 0;
+  const footPx = hasFooter ? FOOTER_OVERLAP_PX : 0;
+  const numPx = hasPageNum ? PAGENUM_OVERLAP_PX : 0;
+  document.documentElement.style.setProperty("--ravtext-features-header-reserved", headPx + "px");
+  document.documentElement.style.setProperty("--ravtext-features-footer-reserved", footPx + "px");
+  document.documentElement.style.setProperty("--ravtext-features-pagenumber-reserved", numPx + "px");
+}
+
+function rerender() {
+  if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
+}
+
 function applyAll() {
   applyPageNumbers();
   applyHeaderFooter();
@@ -108,21 +129,27 @@ export function wireDocumentFeatures() {
     pageNumCb.checked = localStorage.getItem(PAGE_NUM_KEY) === "1";
     pageNumCb.addEventListener("change", () => {
       localStorage.setItem(PAGE_NUM_KEY, pageNumCb.checked ? "1" : "0");
-      applyPageNumbers();
+      syncReservedSpace();
+      rerender();
     });
   }
+  let headerTimer, footerTimer;
   if (headerInput) {
     headerInput.value = localStorage.getItem(HEADER_KEY) || "";
     headerInput.addEventListener("input", () => {
       localStorage.setItem(HEADER_KEY, headerInput.value);
-      applyHeaderFooter();
+      syncReservedSpace();
+      clearTimeout(headerTimer);
+      headerTimer = setTimeout(rerender, 300);
     });
   }
   if (footerInput) {
     footerInput.value = localStorage.getItem(FOOTER_KEY) || "";
     footerInput.addEventListener("input", () => {
       localStorage.setItem(FOOTER_KEY, footerInput.value);
-      applyHeaderFooter();
+      syncReservedSpace();
+      clearTimeout(footerTimer);
+      footerTimer = setTimeout(rerender, 300);
     });
   }
   if (watermarkInput) {
@@ -144,6 +171,7 @@ export function wireDocumentFeatures() {
     installRealizedPageHook();
     applyAll();
   });
+  syncReservedSpace();
   setTimeout(() => {
     installRealizedPageHook();
     applyAll();
