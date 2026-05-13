@@ -111,10 +111,15 @@ export function getDomPageGeom() {
   const pageWidth = cssPxVar("--ravtext-page-width", DOM_PAGE_GEOM.pageWidth);
   const pageHeight = cssPxVar("--ravtext-page-height", DOM_PAGE_GEOM.pageHeight);
   const safety = getRegularHeightSafety();
+  const topReserved = cssPxVar("--ravtext-features-header-reserved", 0);
+  const bottomReserved = Math.max(
+    cssPxVar("--ravtext-features-footer-reserved", 0),
+    cssPxVar("--ravtext-features-pagenumber-reserved", 0),
+  );
   return {
     pageWidth,
     pageHeight,
-    maxPageHeight: Math.max(360, pageHeight - Math.max(0, safety)),
+    maxPageHeight: Math.max(360, pageHeight - Math.max(0, safety) - topReserved - bottomReserved),
   };
 }
 

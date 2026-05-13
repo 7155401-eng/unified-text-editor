@@ -84,7 +84,69 @@ export async function handleAdmin(request, env, url) {
   if (path === '/api/admin/console-guard' && method === 'POST') {
     return setConsoleGuard(request, env, auth.user.id);
   }
+  if (path === '/api/admin/payments-report' && method === 'GET') {
+    return getPaymentsReport(request, env, url);
+  }
   return new Response('Not found', { status: 404 });
+}
+
+async function getPaymentsReport(request, env, url) {
+  const params = url.searchParams;
+  const search = (params.get('search') || '').trim().toLowerCase();
+  const provider = params.get('provider');
+  const status = params.get('status');
+  const limit = Math.max(1, Math.min(500, Number(params.get('limit')) || 100));
+  const offset = Math.max(0, Number(params.get('offset')) || 0);
+
+  const txnsQuery = `
+    SELECT p.id as record_id, p.user_id, p.provider, p.amount, p.plan_code, p.pack_code, p.txn_id, p.created_at, 'completed' as status, 'payment' as record_type
+    FROM payments p
+    UNION ALL
+    SELECT pi.id as record_id, pi.user_id, pi.provider, pi.amount, pi.plan_code, pi.pack_code, pi.txn_id, pi.created_at, pi.status, 'intent' as record_type
+    FROM payment_intents pi
+    WHERE pi.status != 'completed'
+  `;
+
+  const where = [];
+  const binds = [];
+
+  if (search) {
+    where.push('u.email LIKE ?');
+    binds.push(`%${search}%`);
+  }
+  if (provider) {
+    where.push('t.provider = ?');
+    binds.push(provider);
+  }
+  if (status) {
+    where.push('t.status = ?');
+    binds.push(status);
+  }
+
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const countQ = await env.DB.prepare(
+    `WITH txns AS (${txnsQuery})
+     SELECT COUNT(*) as c FROM txns t LEFT JOIN users u ON t.user_id = u.id ${whereSql}`
+  ).bind(...binds).first();
+  const totalCount = countQ?.c || 0;
+
+  const rows = await env.DB.prepare(
+    `WITH txns AS (${txnsQuery})
+     SELECT t.*, u.email
+     FROM txns t
+     LEFT JOIN users u ON t.user_id = u.id
+     ${whereSql}
+     ORDER BY t.created_at DESC
+     LIMIT ? OFFSET ?`
+  ).bind(...binds, limit, offset).all();
+
+  return Response.json({
+    payments: rows.results,
+    totalCount,
+    limit,
+    offset,
+  }, { headers: { 'cache-control': 'no-store' } });
 }
 
 async function cancelUserSubscription(request, env, id) {
