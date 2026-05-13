@@ -4,18 +4,31 @@ import { defineConfig } from 'vite'
 // ב-GitHub Pages (subpath). אין צורך במשתנה סביבה.
 const BASE = process.env.VITE_BASE || './'
 
-// משה 2026-05-13: cache-busting לקבצי public/ (CSS/JS תבניות). vite לא
-// hash-ים אותם, ולכן דפדפנים שמשתמשים בגירסה ישנה רואים crash חלקי
-// (חצי דף נסתר עד שמרעננים cache). הplugin הזה דוחף ?v=<timestamp> לכל
-// תיוג <link>/<script> של theme/template ב-index.html בזמן בנייה,
-// כך שדפדפן מקבל URL חדש בכל deploy ולא מגיש קובץ ישן מ-cache.
+// משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
+// עם slash בתחילת הנתיב. זה מונע מצב שבו הדפדפן/Cloudflare ממשיכים להגיש
+// CSS ישן וגורמים לבאג "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
+const PUBLIC_CACHE_BUST_FILES = [
+  'styles.css',
+  'theme-base-refresh.css',
+  'template-word-style.css',
+  'template-judaica.css',
+  'template-picker.css',
+  'template-picker.js',
+  'bridge_shim.js',
+];
+
 const PUBLIC_CACHE_BUST = {
   name: 'public-css-cache-bust',
   enforce: 'post',
   transformIndexHtml(html) {
     const v = String(Date.now());
+    const files = PUBLIC_CACHE_BUST_FILES
+      .map((file) => file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    const re = new RegExp(`(href|src)="([./\\/]*)(${files})"`, 'g');
+
     return html.replace(
-      /(href|src)="(\.\/)?(theme-base-refresh\.css|template-word-style\.css|template-judaica\.css|template-picker\.css|template-picker\.js|bridge_shim\.js)"/g,
+      re,
       (m, attr, prefix, file) => `${attr}="${prefix || ''}${file}?v=${v}"`
     );
   },
