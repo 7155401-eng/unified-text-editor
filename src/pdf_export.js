@@ -48,8 +48,22 @@ function collectCssText() {
 
   const root = getComputedStyle(document.documentElement);
   const vars = [
+    "--ravtext-page-font-family",
+    "--ravtext-page-width",
+    "--ravtext-page-height",
+    "--ravtext-page-pack-safety",
     "--ravtext-page-main-size",
+    "--ravtext-page-main-line-height",
+    "--ravtext-page-main-paragraph-gap",
+    "--ravtext-page-main-stream-gap",
     "--ravtext-page-stream-size",
+    "--ravtext-page-stream-line-height",
+    "--ravtext-page-stream-note-gap",
+    "--ravtext-page-stream-title-gap",
+    "--ravtext-stream-vertical-gap",
+    "--ravtext-stream-horizontal-gap",
+    "--ravtext-editor-stream-vertical-gap",
+    "--ravtext-editor-stream-horizontal-gap",
     "--ravtext-page-margin-top",
     "--ravtext-page-margin-right",
     "--ravtext-page-margin-bottom",

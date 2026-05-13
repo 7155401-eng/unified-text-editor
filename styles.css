@@ -1387,6 +1387,13 @@ mark.pdf-find-hit-current {
   color: #000;
 }
 
+.ravtext-preview-selection-hit {
+  background: #fde68a;
+  color: inherit;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(217,119,6,0.35);
+}
+
 .pages-container {
   flex: 1 1 0;
   min-height: 0;
@@ -2556,6 +2563,45 @@ body.light-theme .pdf-scroll-progress-fill {
 }
 /* אייקון מופיע רק כשיש מה לגלול בטאבים */
 .ribbon-tabs.has-overflow .ribbon-tab-render-slot::before { opacity: 0.6; }
+
+/* Final render-button reset: keep one clean visual layer after older theme rules. */
+#btn-render.btn-render-prominent {
+  appearance: none;
+  background: #185ABD;
+  color: #fff;
+  border: 1px solid #154a96;
+  border-radius: 6px;
+  padding: 7px 16px;
+  min-width: 96px;
+  min-height: 34px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 2px 5px rgba(24,90,189,0.22);
+  text-shadow: none;
+}
+
+#btn-render.btn-render-prominent::before {
+  content: "↻";
+  font-size: 15px;
+  line-height: 1;
+}
+
+#btn-render.btn-render-prominent:hover {
+  background: #1f6cc7;
+  border-color: #185ABD;
+  box-shadow: 0 3px 8px rgba(24,90,189,0.30);
+}
+
+.ribbon-tab-render-slot {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+}
 .ribbon-tabs {
   display: flex;
   align-items: center;

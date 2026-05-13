@@ -86,6 +86,17 @@ function applyAll() {
   applyWatermark();
 }
 
+function installRealizedPageHook() {
+  const container = document.getElementById("pages-container");
+  if (!container || container.__documentFeaturesHooked) return;
+  const previous = container.__processRealizedPage;
+  container.__processRealizedPage = (page, idx) => {
+    if (typeof previous === "function") previous(page, idx);
+    applyAll();
+  };
+  container.__documentFeaturesHooked = true;
+}
+
 export function wireDocumentFeatures() {
   const pageNumCb = document.getElementById("doc-page-numbers-toggle");
   const headerInput = document.getElementById("doc-header-input");
@@ -129,6 +140,12 @@ export function wireDocumentFeatures() {
     });
   }
 
-  window.addEventListener("ravtext:engine-rendered", applyAll);
-  setTimeout(applyAll, 500);
+  window.addEventListener("ravtext:engine-rendered", () => {
+    installRealizedPageHook();
+    applyAll();
+  });
+  setTimeout(() => {
+    installRealizedPageHook();
+    applyAll();
+  }, 500);
 }

@@ -139,7 +139,25 @@ function mainBlockTagFor(idx) {
   }
   if (meta.blockType === "codeBlock") return "pre";
   if (meta.blockType === "blockquote") return "blockquote";
+  if (meta.blockType === "table") return "table";
   return "p";
+}
+
+function appendTableRows(table, rows = []) {
+  table.classList.add("ravtext-table");
+  const tbody = document.createElement("tbody");
+  for (const row of rows || []) {
+    const tr = document.createElement("tr");
+    for (const cell of row || []) {
+      const td = document.createElement("td");
+      const p = document.createElement("p");
+      p.textContent = cell || "";
+      td.appendChild(p);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
 }
 
 function applyBlockStyleMeta(el, idx) {
@@ -217,7 +235,10 @@ function makeMeasureKey(mainSegments, streams) {
   hash = hashAppend(hash, shouldMeasureMishnaWrap() ? "mishna:1" : "mishna:0");
   for (const seg of mainSegments || []) {
     const text = seg.text || "";
+    const meta = blockMetaFor(seg.idx);
     hash = hashAppend(hash, seg.idx);
+    hash = hashAppend(hash, meta.blockType || "");
+    if (meta.tableRows) hash = hashAppend(hash, JSON.stringify(meta.tableRows));
     hash = hashAppend(hash, text.length);
     hash = hashAppend(hash, text);
   }
@@ -256,7 +277,12 @@ function buildMeasurePage(mainSegments, streams) {
       lastP.textContent += " " + seg.text;
     } else {
       const p = document.createElement(mainBlockTagFor(seg.idx));
-      p.textContent = seg.text;
+      const meta = blockMetaFor(seg.idx);
+      if (meta.blockType === "table") {
+        appendTableRows(p, meta.tableRows || []);
+      } else {
+        p.textContent = seg.text;
+      }
       applyBlockStyleMeta(p, seg.idx);
       main.appendChild(p);
       lastP = p;
@@ -1055,6 +1081,18 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
         break; // done with paragraph
       }
 
+      if (para.blockType === "table") {
+        if (pageMain.length > 0 || Object.keys(pageStreams).length > 0) {
+          finalizePage();
+          continue;
+        }
+        pageMain = tryAll;
+        pageStreams = tryStreams;
+        pageHeight = fullH;
+        finalizePage();
+        break;
+      }
+
       if (noSplitsAtAllEnabled()) {
         if (pageMain.length > 0 || Object.keys(pageStreams).length > 0) {
           finalizePage();
@@ -1406,9 +1444,11 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
     blockType: item?.blockType === "heading" ? "heading"
              : item?.blockType === "codeBlock" ? "codeBlock"
              : item?.blockType === "blockquote" ? "blockquote"
+             : item?.blockType === "table" ? "table"
              : "paragraph",
     headingLevel: item?.blockType === "heading" ? Math.max(1, Math.min(6, parseInt(item.headingLevel || 1, 10))) : null,
     style: item?.style || {},
+    tableRows: Array.isArray(item?.tableRows) ? item.tableRows : null,
   }));
   if (typeof window !== "undefined") window.__MAIN_BLOCK_META__ = _activeContentMeta;
   try {

@@ -20,6 +20,35 @@ function mainBlockTagFor(tup) {
   return `h${level}`;
 }
 
+function appendTableRows(table, rows = []) {
+  table.classList.add("ravtext-table");
+  const tbody = document.createElement("tbody");
+  for (const row of rows || []) {
+    const tr = document.createElement("tr");
+    for (const cell of row || []) {
+      const td = document.createElement("td");
+      const p = document.createElement("p");
+      p.textContent = cell || "";
+      td.appendChild(p);
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+}
+
+function createMainBlockElement(tup) {
+  const meta = (tup && tup[4]) || {};
+  if (meta.blockType === "table") {
+    const table = document.createElement("table");
+    appendTableRows(table, meta.tableRows || []);
+    return table;
+  }
+  const p = document.createElement(mainBlockTagFor(tup));
+  p.textContent = tup[1] || "";
+  return p;
+}
+
 function applyBlockStyleMeta(el, meta = {}) {
   const style = meta.style || {};
   if (style.fontFamily) el.style.fontFamily = style.fontFamily;
@@ -213,8 +242,7 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     if (idx === lastIdx && lastP) {
       lastP.textContent += " " + text;
     } else {
-      const p = document.createElement(mainBlockTagFor(tup));
-      p.textContent = text;
+      const p = createMainBlockElement(tup);
       applyBlockStyleMeta(p, (tup && tup[4]) || {});
       // v33: mark this paragraph as a continuation FROM a previous page
       // (its idx already appeared on an earlier page). opening_word.js skips
@@ -305,6 +333,7 @@ export function renderPages(packerOutput, container) {
   }
   container.__pageObserver = null;
   container.__processRealizedPage = null;
+  container.__documentFeaturesHooked = false;
   container.innerHTML = "";
   const paraLastPage = computeLastPageByParaIdx(packerOutput);
   const paraFirstPage = computeFirstPageByParaIdx(packerOutput);

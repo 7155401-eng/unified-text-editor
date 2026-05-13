@@ -58,7 +58,7 @@ import { wireSefariaTools } from "./sefaria/sefaria.js";
 import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
 import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
 import { wireCaricatureBot } from "./haredi_caricature/haredi_caricature.js";
-import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wireQuickInsertActions } from "./editor_utilities.js";
+import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wirePreviewSelectionSync, wireQuickInsertActions } from "./editor_utilities.js";
 import { tryUseTool } from "./premium/daily_quota_gate.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
@@ -695,7 +695,6 @@ function setupRibbonTabs() {
     // Render button at end of tabs bar — like Word's menu button.
     const renderBtnSlot = document.createElement("div");
     renderBtnSlot.className = "ribbon-tab-render-slot";
-    renderBtnSlot.style.cssText = "margin-inline-start:auto;display:flex;align-items:center;padding:0 8px;";
     const renderBtn = document.getElementById("btn-render");
     if (renderBtn) {
       renderBtn.classList.add("btn-render-prominent");
@@ -988,6 +987,7 @@ setTimeout(() => {
   wireZoom();
   wireFormattingMarks();
   wireSpellcheck(paneManager);
+  wirePreviewSelectionSync();
   wireQuickInsertActions(paneManager);
 }, 250);
 setupWidthSlider();

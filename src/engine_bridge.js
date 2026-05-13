@@ -136,6 +136,27 @@ function styleMetaForNode(node) {
   return style;
 }
 
+function textFromNode(node) {
+  let text = "";
+  node?.descendants?.((child) => {
+    if (child.isText) text += child.text;
+    return false;
+  });
+  return text;
+}
+
+function tableRowsFromNode(node) {
+  const rows = [];
+  node?.forEach?.((rowNode) => {
+    const row = [];
+    rowNode.forEach((cellNode) => {
+      row.push(textFromNode(cellNode).trim());
+    });
+    rows.push(row);
+  });
+  return rows;
+}
+
 let _docKeyCounter = 0;
 const _docKeys = new WeakMap();
 let _packerContentCache = { sig: "", value: null };
@@ -156,6 +177,7 @@ function paneManagerContentSignature(paneManager) {
   // Include the nested-notes gate flag so toggling the feature on/off
   // invalidates the cache even when the underlying content is unchanged.
   const nestedFlag = (typeof window !== "undefined" && window.localStorage?.getItem("ravtext.nestedNotes") === "1") ? "n1" : "n0";
+  const demoFlag = (typeof window !== "undefined" && isDemoMode()) ? "demo1" : "demo0";
   const globalStreamOverridesSig = (typeof window !== "undefined" && window.localStorage)
     ? window.localStorage.getItem("ravtext.globalStreamOverrides.v1") || ""
     : "";
@@ -170,7 +192,7 @@ function paneManagerContentSignature(paneManager) {
       p.editor ? docKey(p.editor.state.doc) : "0",
     ].join(":"))
     .join("|");
-  return sigParts + "##" + nestedFlag + "##" + globalStreamOverridesSig;
+  return sigParts + "##" + nestedFlag + "##" + demoFlag + "##" + globalStreamOverridesSig;
 }
 
 function extractMainParagraphs(mainPane, paneManager) {
@@ -188,19 +210,17 @@ function extractMainParagraphs(mainPane, paneManager) {
   if (symbols.length === 0) {
     const paragraphs = [];
     mainPane.editor.state.doc.descendants((node) => {
-      const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote'];
+      const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
       if (!allowed.includes(node.type.name)) return;
-      let paragraphText = '';
-      node.descendants((child) => {
-        if (child.isText) paragraphText += child.text;
-        return false;
-      });
+      const isTable = node.type.name === "table";
+      const paragraphText = isTable ? textFromNode(node) : textFromNode(node);
       paragraphs.push({
         paragraphText,
         markers: [],
-        blockType: node.type.name === "heading" ? "heading" : node.type.name,
+        blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
         headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
         style: styleMetaForNode(node),
+        tableRows: isTable ? tableRowsFromNode(node) : null,
       });
       return false;
     });
@@ -213,13 +233,10 @@ function extractMainParagraphs(mainPane, paneManager) {
 
   const paragraphs = [];
   mainPane.editor.state.doc.descendants((node) => {
-    const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote'];
+    const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
     if (!allowed.includes(node.type.name)) return;
-    let paragraphText = '';
-    node.descendants((child) => {
-      if (child.isText) paragraphText += child.text;
-      return false;
-    });
+    const isTable = node.type.name === "table";
+    const paragraphText = textFromNode(node);
     const markers = [];
     re.lastIndex = 0;
     let m;
@@ -233,9 +250,10 @@ function extractMainParagraphs(mainPane, paneManager) {
     paragraphs.push({
       paragraphText,
       markers,
-      blockType: node.type.name === "heading" ? "heading" : node.type.name,
+      blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
       headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
       style: styleMetaForNode(node),
+      tableRows: isTable ? tableRowsFromNode(node) : null,
     });
     return false;
   });
@@ -416,6 +434,7 @@ export function paneManagerToPackerContent(paneManager) {
       blockType: para.blockType,
       headingLevel: para.headingLevel,
       style: para.style || {},
+      tableRows: para.tableRows || null,
     });
   }
 
@@ -544,6 +563,7 @@ export function paneManagerToPackerContent(paneManager) {
         mainText: info.mainTextNet,
         notes: cleanNotes,
         blockType: info.blockType === "heading" ? "heading" : "paragraph",
+        ...(info.blockType === "table" ? { blockType: "table", tableRows: info.tableRows || [] } : {}),
         headingLevel: info.blockType === "heading" ? Math.max(1, Math.min(6, info.headingLevel || 1)) : null,
         style: info.style || {},
       });
