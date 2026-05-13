@@ -8,6 +8,7 @@ import {
   shouldBoldStreamLemma,
   applyBarStyleToElement,
 } from "../original_stream_columns.js";
+import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
 
 // משה 2026-05-13: הוספת מספר זרם לפני טקסט הערה/תת-הערה.
 // ברירת המחדל של formatStreamNumber זהה לפלט הישן ("[N]" להערה, "[code-num]"
@@ -71,7 +72,27 @@ function createMainBlockElement(tup) {
     return table;
   }
   const p = document.createElement(mainBlockTagFor(tup));
-  p.textContent = tup[1] || "";
+  // משה 2026-05-13: רינדור inline runs לטקסט הראשי. tup[1] הוא הקטע של הפסקה
+  // בעמוד הזה (אחרי pagination split). tup[2]/tup[3] = start/end ביחס ל-fullMainText.
+  // ה-mainRuns שמורים ב-meta; חותכים אותם לטווח של הקטע הנוכחי.
+  const segText = tup[1] || "";
+  const segStart = typeof tup[2] === "number" ? tup[2] : 0;
+  const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;
+  const paragraphRuns = Array.isArray(meta.mainRuns) ? meta.mainRuns : [];
+  if (paragraphRuns.length > 0) {
+    const sliced = [];
+    for (const r of paragraphRuns) {
+      if (r.end <= segStart || r.start >= segEnd) continue;
+      sliced.push({
+        start: Math.max(0, r.start - segStart),
+        end: Math.min(segText.length, r.end - segStart),
+        marks: r.marks,
+      });
+    }
+    appendTextWithRuns(p, segText, sliced);
+  } else {
+    p.textContent = segText;
+  }
   return p;
 }
 
@@ -149,34 +170,44 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   // class identifies the child's stream so colors flow through.
   function appendNoteContent(parent, tup, leadingSpace) {
     const text = tup[1] || "";
+    const runs = Array.isArray(tup[6]) ? tup[6] : [];
     if (isCont(tup)) {
-      parent.appendChild(document.createTextNode((leadingSpace ? " " : "") + text));
+      if (leadingSpace) parent.appendChild(document.createTextNode(" "));
+      appendTextWithRuns(parent, text, runs);
       return;
     }
     // משה 2026-05-13: מספר ההערה דרך formatStreamNumber. ברירת מחדל מחזירה
     // "[N] " — אותו פלט כמו הקוד הישן; UI מאפשר לשנות סוגריים/הדגשה.
     appendNumberPrefix(parent, streamCode, displayNum(tup), "note", leadingSpace);
+    // משה 2026-05-13: ה-runs מתייחסים לטקסט המקורי לפני trim של רווחים מובילים.
+    // נחשב כמה הוסר ונכוון את האופסטים.
+    const leadingWs = text.length - text.replace(/^\s+/, "").length;
     const trimmed = text.replace(/^\s+/, "");
+    const trimmedRuns = sliceRuns(runs, leadingWs, leadingWs + trimmed.length);
     const spaceIdx = trimmed.indexOf(" ");
     const boldLemma = shouldBoldStreamLemma(streamCode);
     if (spaceIdx > 0) {
+      const lemmaText = trimmed.substring(0, spaceIdx);
+      const restText = trimmed.substring(spaceIdx);
+      const lemmaRuns = sliceRuns(trimmedRuns, 0, spaceIdx);
+      const restRuns = sliceRuns(trimmedRuns, spaceIdx, trimmed.length);
       if (boldLemma) {
         const lemma = document.createElement("strong");
         lemma.className = "note-lemma";
-        lemma.textContent = trimmed.substring(0, spaceIdx);
+        appendTextWithRuns(lemma, lemmaText, lemmaRuns);
         parent.appendChild(lemma);
       } else {
-        parent.appendChild(document.createTextNode(trimmed.substring(0, spaceIdx)));
+        appendTextWithRuns(parent, lemmaText, lemmaRuns);
       }
-      parent.appendChild(document.createTextNode(trimmed.substring(spaceIdx)));
+      appendTextWithRuns(parent, restText, restRuns);
     } else if (trimmed.length > 0) {
       if (boldLemma) {
         const lemma = document.createElement("strong");
         lemma.className = "note-lemma";
-        lemma.textContent = trimmed;
+        appendTextWithRuns(lemma, trimmed, trimmedRuns);
         parent.appendChild(lemma);
       } else {
-        parent.appendChild(document.createTextNode(trimmed));
+        appendTextWithRuns(parent, trimmed, trimmedRuns);
       }
     }
     appendChildNotes(parent, Array.isArray(tup[5]) ? tup[5] : []);

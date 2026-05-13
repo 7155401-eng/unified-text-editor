@@ -506,7 +506,9 @@ function addNotesToStreams(streams, paraIdx, notes) {
     // tup[5] = children (nested notes — "הערה על הערה"). Empty array for
     // legacy mark-form notes and for continuation halves of split notes.
     const children = Array.isArray(note.children) ? note.children : [];
-    out[note.stream].push([paraIdx, note.text, anchor, num, cont, children]);
+    // משה 2026-05-13: tup[6] = runs (inline marks) — בולד/הדגשה/צבע פר-מילה.
+    const runs = Array.isArray(note.runs) ? note.runs : [];
+    out[note.stream].push([paraIdx, note.text, anchor, num, cont, children, runs]);
   }
   return out;
 }
@@ -1454,6 +1456,9 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
     headingLevel: item?.blockType === "heading" ? Math.max(1, Math.min(6, parseInt(item.headingLevel || 1, 10))) : null,
     style: item?.style || {},
     tableRows: Array.isArray(item?.tableRows) ? item.tableRows : null,
+    // משה 2026-05-13: mainRuns מועבר ל-blockMeta כדי לאפשר רינדור inline פר-מילה.
+    mainRuns: Array.isArray(item?.mainRuns) ? item.mainRuns : [],
+    fullMainText: typeof item?.mainText === "string" ? item.mainText : "",
   }));
   if (typeof window !== "undefined") window.__MAIN_BLOCK_META__ = _activeContentMeta;
   try {
