@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
@@ -25,12 +25,50 @@
   <body class="light-theme">
     <header class="app-header">
       <div class="app-header-row">
-        <h1 data-i18n="appTitle" dir="rtl"><img src="/public/favicon.svg" alt="" class="app-logo" />רב טקסט לוורד AI</h1>
+        <h1 data-i18n="appTitle" dir="rtl">
+          <img src="/public/favicon.svg" alt="" class="app-logo" />רב טקסט לוורד
+          AI
+        </h1>
         <div class="app-header-actions" dir="rtl">
-          <button type="button" id="btn-dev-updates" class="header-action-btn header-action-btn-icon" title="עדכוני פיתוח — מה חדש ומה בדרך"><span class="header-action-icon">📰</span><span class="header-action-text">עדכוני פיתוח</span></button>
-          <button type="button" id="btn-report-bug" class="header-action-btn header-action-btn-icon" title="דווח על באג שמצאת"><span class="header-action-icon">🐞</span><span class="header-action-text">דיווח באג</span></button>
-          <button type="button" id="btn-contact" class="header-action-btn header-action-btn-icon" title="צור קשר במייל"><span class="header-action-icon">✉️</span><span class="header-action-text">צור קשר</span></button>
-          <a href="tel:+972527155401" id="btn-phone" class="header-action-btn header-action-btn-phone" title="טלפון לשאלות — לחץ לחיוג, או הקלד 052-7155401" dir="ltr">📞 052-7155401</a>
+          <button
+            type="button"
+            id="btn-dev-updates"
+            class="header-action-btn header-action-btn-icon"
+            title="עדכוני פיתוח — מה חדש ומה בדרך"
+            aria-label="עדכוני פיתוח — מה חדש ומה בדרך"
+          >
+            <span class="header-action-icon">📰</span
+            ><span class="header-action-text">עדכוני פיתוח</span>
+          </button>
+          <button
+            type="button"
+            id="btn-report-bug"
+            class="header-action-btn header-action-btn-icon"
+            title="דווח על באג שמצאת"
+            aria-label="דווח על באג שמצאת"
+          >
+            <span class="header-action-icon">🐞</span
+            ><span class="header-action-text">דיווח באג</span>
+          </button>
+          <button
+            type="button"
+            id="btn-contact"
+            class="header-action-btn header-action-btn-icon"
+            title="צור קשר במייל"
+            aria-label="צור קשר במייל"
+          >
+            <span class="header-action-icon">✉️</span
+            ><span class="header-action-text">צור קשר</span>
+          </button>
+          <a
+            href="tel:+972527155401"
+            id="btn-phone"
+            class="header-action-btn header-action-btn-phone"
+            title="טלפון לשאלות — לחץ לחיוג, או הקלד 052-7155401"
+            aria-label="טלפון לשאלות"
+            dir="ltr"
+            >📞 052-7155401</a
+          >
         </div>
       </div>
       <div id="status" class="status status-row" dir="rtl" data-i18n="status">
@@ -42,15 +80,76 @@
       <section class="panel">
         <div class="toolbar source-stream-toolbar" dir="rtl">
           <span class="tb-group" data-title="סמן בחירה כזרם">
-            <span class="stream-label-static" title="בחר טקסט בעורך הראשי, ולחץ על מספר זרם כדי לסמן את הבחירה ולהעבירה לזרם הזה" data-i18n="markAsStream">📌 סמן בחירה כזרם:</span>
-            <button type="button" data-stream="01" class="btn-stream stream-color-1" title="סמן טקסט נבחר כמגן אברהם">מגן אברהם</button>
-            <button type="button" data-stream="02" class="btn-stream stream-color-2" title="סמן טקסט נבחר כמשנה ברורה">משנה ברורה</button>
-            <button type="button" data-stream="03" class="btn-stream stream-color-3" title="סמן טקסט נבחר כביאור הלכה">ביאור הלכה</button>
-            <button type="button" data-stream="04" class="btn-stream stream-color-4" title="סמן טקסט נבחר כטורי זהב">טורי זהב</button>
-            <button type="button" data-stream="05" class="btn-stream stream-color-5" title="סמן טקסט נבחר ככף החיים">כף החיים</button>
-            <button type="button" data-stream="06" class="btn-stream stream-color-6" title="סמן טקסט נבחר כזרם 06">זרם 06</button>
-            <button type="button" data-stream="07" class="btn-stream stream-color-7" title="סמן טקסט נבחר כזרם 07">07</button>
-            <button type="button" data-stream="08" class="btn-stream stream-color-8" title="סמן טקסט נבחר כזרם 08">08</button>
+            <span
+              class="stream-label-static"
+              title="בחר טקסט בעורך הראשי, ולחץ על מספר זרם כדי לסמן את הבחירה ולהעבירה לזרם הזה"
+              data-i18n="markAsStream"
+              >📌 סמן בחירה כזרם:</span
+            >
+            <button
+              type="button"
+              data-stream="01"
+              class="btn-stream stream-color-1"
+              title="סמן טקסט נבחר כמגן אברהם"
+            >
+              מגן אברהם
+            </button>
+            <button
+              type="button"
+              data-stream="02"
+              class="btn-stream stream-color-2"
+              title="סמן טקסט נבחר כמשנה ברורה"
+            >
+              משנה ברורה
+            </button>
+            <button
+              type="button"
+              data-stream="03"
+              class="btn-stream stream-color-3"
+              title="סמן טקסט נבחר כביאור הלכה"
+            >
+              ביאור הלכה
+            </button>
+            <button
+              type="button"
+              data-stream="04"
+              class="btn-stream stream-color-4"
+              title="סמן טקסט נבחר כטורי זהב"
+            >
+              טורי זהב
+            </button>
+            <button
+              type="button"
+              data-stream="05"
+              class="btn-stream stream-color-5"
+              title="סמן טקסט נבחר ככף החיים"
+            >
+              כף החיים
+            </button>
+            <button
+              type="button"
+              data-stream="06"
+              class="btn-stream stream-color-6"
+              title="סמן טקסט נבחר כזרם 06"
+            >
+              זרם 06
+            </button>
+            <button
+              type="button"
+              data-stream="07"
+              class="btn-stream stream-color-7"
+              title="סמן טקסט נבחר כזרם 07"
+            >
+              07
+            </button>
+            <button
+              type="button"
+              data-stream="08"
+              class="btn-stream stream-color-8"
+              title="סמן טקסט נבחר כזרם 08"
+            >
+              08
+            </button>
             <input
               type="number"
               id="custom-stream-input"
@@ -59,18 +158,79 @@
               placeholder="מס׳"
               class="custom-stream-input"
             />
-            <button type="button" id="btn-custom-stream" title="סמן את הבחירה כזרם המספר שהוזן" data-i18n="mark">סמן</button>
-            <button type="button" id="btn-stream-clear" title="הסר את סימן הזרם מהטקסט הנבחר">×</button>
+            <button
+              type="button"
+              id="btn-custom-stream"
+              title="סמן את הבחירה כזרם המספר שהוזן"
+              aria-label="סמן את הבחירה כזרם"
+              data-i18n="mark"
+            >
+              סמן
+            </button>
+            <button
+              type="button"
+              id="btn-stream-clear"
+              title="הסר את סימן הזרם מהטקסט הנבחר"
+              aria-label="הסר את סימן הזרם מהטקסט הנבחר"
+            >
+              ×
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="קפוץ לזרם בתצוגת העמודים">
-            <span class="stream-label-static" title="לחץ על מספר זרם כדי לגלול את התצוגה אל הזרם הזה בעמודים המרונדרים">🔍 קפוץ לזרם:</span>
-            <button type="button" data-stream="01" class="btn-stream-jump stream-color-1" title="גלול למגן אברהם בתצוגת העמודים">מגן אברהם</button>
-            <button type="button" data-stream="02" class="btn-stream-jump stream-color-2" title="גלול למשנה ברורה בתצוגת העמודים">משנה ברורה</button>
-            <button type="button" data-stream="03" class="btn-stream-jump stream-color-3" title="גלול לביאור הלכה בתצוגת העמודים">ביאור הלכה</button>
-            <button type="button" data-stream="04" class="btn-stream-jump stream-color-4" title="גלול לטורי זהב בתצוגת העמודים">טורי זהב</button>
-            <button type="button" data-stream="05" class="btn-stream-jump stream-color-5" title="גלול לכף החיים בתצוגת העמודים">כף החיים</button>
-            <button type="button" data-stream="06" class="btn-stream-jump stream-color-6" title="גלול לזרם 06 בתצוגת העמודים">זרם 06</button>
+            <span
+              class="stream-label-static"
+              title="לחץ על מספר זרם כדי לגלול את התצוגה אל הזרם הזה בעמודים המרונדרים"
+              >🔍 קפוץ לזרם:</span
+            >
+            <button
+              type="button"
+              data-stream="01"
+              class="btn-stream-jump stream-color-1"
+              title="גלול למגן אברהם בתצוגת העמודים"
+            >
+              מגן אברהם
+            </button>
+            <button
+              type="button"
+              data-stream="02"
+              class="btn-stream-jump stream-color-2"
+              title="גלול למשנה ברורה בתצוגת העמודים"
+            >
+              משנה ברורה
+            </button>
+            <button
+              type="button"
+              data-stream="03"
+              class="btn-stream-jump stream-color-3"
+              title="גלול לביאור הלכה בתצוגת העמודים"
+            >
+              ביאור הלכה
+            </button>
+            <button
+              type="button"
+              data-stream="04"
+              class="btn-stream-jump stream-color-4"
+              title="גלול לטורי זהב בתצוגת העמודים"
+            >
+              טורי זהב
+            </button>
+            <button
+              type="button"
+              data-stream="05"
+              class="btn-stream-jump stream-color-5"
+              title="גלול לכף החיים בתצוגת העמודים"
+            >
+              כף החיים
+            </button>
+            <button
+              type="button"
+              data-stream="06"
+              class="btn-stream-jump stream-color-6"
+              title="גלול לזרם 06 בתצוגת העמודים"
+            >
+              זרם 06
+            </button>
             <input
               type="number"
               id="jump-stream-input"
@@ -79,38 +239,140 @@
               placeholder="מס׳"
               class="custom-stream-input"
             />
-            <button type="button" id="btn-jump-stream" title="גלול לזרם המספר שהוזן">קפוץ</button>
+            <button
+              type="button"
+              id="btn-jump-stream"
+              title="גלול לזרם המספר שהוזן"
+              aria-label="גלול לזרם"
+            >
+              קפוץ
+            </button>
           </span>
         </div>
         <div class="toolbar" dir="rtl">
           <span class="tb-group" data-title="טקסט">
-            <button data-cmd="bold" title="מודגש"><b>B</b></button>
-            <button data-cmd="italic" title="נטוי"><i>I</i></button>
-            <button data-cmd="underline" title="קו תחתון"><u>U</u></button>
-            <button data-cmd="strike" title="קו חוצה"><s>S</s></button>
-            <button data-cmd="super" title="כתב עילי">x²</button>
-            <button data-cmd="sub" title="כתב תחתי">x₂</button>
+            <button data-cmd="bold" title="מודגש" aria-label="מודגש">
+              <b>B</b>
+            </button>
+            <button data-cmd="italic" title="נטוי" aria-label="נטוי">
+              <i>I</i>
+            </button>
+            <button data-cmd="underline" title="קו תחתון" aria-label="קו תחתון">
+              <u>U</u>
+            </button>
+            <button data-cmd="strike" title="קו חוצה" aria-label="קו חוצה">
+              <s>S</s>
+            </button>
+            <button data-cmd="super" title="כתב עילי" aria-label="כתב עילי">
+              x²
+            </button>
+            <button data-cmd="sub" title="כתב תחתי" aria-label="כתב תחתי">
+              x₂
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="צבע">
-            <button data-cmd="color-red" title="טקסט אדום" style="color:#dc2626">A</button>
-            <button data-cmd="color-blue" title="טקסט כחול" style="color:#2563eb">A</button>
-            <button data-cmd="color-green" title="טקסט ירוק" style="color:#16a34a">A</button>
-            <button data-cmd="color-gold" title="טקסט זהב" style="color:#D4AF37">A</button>
-            <button data-cmd="color-clear" title="ניקוי צבע">A×</button>
+            <button
+              data-cmd="color-red"
+              title="טקסט אדום"
+              aria-label="טקסט אדום"
+              style="color: #dc2626"
+            >
+              A
+            </button>
+            <button
+              data-cmd="color-blue"
+              title="טקסט כחול"
+              aria-label="טקסט כחול"
+              style="color: #2563eb"
+            >
+              A
+            </button>
+            <button
+              data-cmd="color-green"
+              title="טקסט ירוק"
+              aria-label="טקסט ירוק"
+              style="color: #16a34a"
+            >
+              A
+            </button>
+            <button
+              data-cmd="color-gold"
+              title="טקסט זהב"
+              aria-label="טקסט זהב"
+              style="color: #d4af37"
+            >
+              A
+            </button>
+            <button
+              data-cmd="color-clear"
+              title="ניקוי צבע"
+              aria-label="ניקוי צבע"
+            >
+              A×
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="רקע">
-            <button data-cmd="bg-yellow" title="רקע צהוב" style="background:#fef08a;color:#000">●</button>
-            <button data-cmd="bg-cyan" title="רקע ציאן" style="background:#a5f3fc;color:#000">●</button>
-            <button data-cmd="bg-pink" title="רקע ורוד" style="background:#fbcfe8;color:#000">●</button>
-            <button data-cmd="bg-clear" title="ניקוי רקע">●×</button>
+            <button
+              data-cmd="bg-yellow"
+              title="רקע צהוב"
+              aria-label="רקע צהוב"
+              style="background: #fef08a; color: #000"
+            >
+              ●
+            </button>
+            <button
+              data-cmd="bg-cyan"
+              title="רקע ציאן"
+              aria-label="רקע ציאן"
+              style="background: #a5f3fc; color: #000"
+            >
+              ●
+            </button>
+            <button
+              data-cmd="bg-pink"
+              title="רקע ורוד"
+              aria-label="רקע ורוד"
+              style="background: #fbcfe8; color: #000"
+            >
+              ●
+            </button>
+            <button
+              data-cmd="bg-clear"
+              title="ניקוי רקע"
+              aria-label="ניקוי רקע"
+            >
+              ●×
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="הדגשה ומברשת עיצוב">
-            <button type="button" id="btn-highlight" title="הדגש את הטקסט הנבחר ברקע צהוב — קיצור מהיר" style="background:#fef08a;color:#000;font-weight:bold">🖍 הדגש</button>
-            <button type="button" id="btn-highlight-clear" title="הסר הדגשה">×</button>
-            <button type="button" id="btn-format-painter" title="העתק את העיצוב מהבחירה הנוכחית. לאחר מכן בחר טקסט יעד והעיצוב יוחל אליו">🎨 מברשת</button>
+            <button
+              type="button"
+              id="btn-highlight"
+              title="הדגש את הטקסט הנבחר ברקע צהוב — קיצור מהיר"
+              aria-label="הדגש את הטקסט הנבחר"
+              style="background: #fef08a; color: #000; font-weight: bold"
+            >
+              🖍 הדגש
+            </button>
+            <button
+              type="button"
+              id="btn-highlight-clear"
+              title="הסר הדגשה"
+              aria-label="הסר הדגשה"
+            >
+              ×
+            </button>
+            <button
+              type="button"
+              id="btn-format-painter"
+              title="העתק את העיצוב מהבחירה הנוכחית. לאחר מכן בחר טקסט יעד והעיצוב יוחל אליו"
+              aria-label="מברשת עיצוב"
+            >
+              🎨 מברשת
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כותרות">
@@ -123,26 +385,106 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="רשימות">
-            <button data-cmd="bullet" title="נקודות">•</button>
-            <button data-cmd="ordered" title="ממוספרת">1.</button>
-            <button data-cmd="check" title="וי">✓</button>
-            <button data-cmd="indent-in" title="הזחה פנימה">⇨⇨</button>
-            <button data-cmd="indent-out" title="הזחה החוצה">⇦⇦</button>
+            <button data-cmd="bullet" title="נקודות" aria-label="רשימת נקודות">
+              •
+            </button>
+            <button
+              data-cmd="ordered"
+              title="ממוספרת"
+              aria-label="רשימה ממוספרת"
+            >
+              1.
+            </button>
+            <button data-cmd="check" title="וי" aria-label="רשימת סימון">
+              ✓
+            </button>
+            <button
+              data-cmd="indent-in"
+              title="הזחה פנימה"
+              aria-label="הזחה פנימה"
+            >
+              ⇨⇨
+            </button>
+            <button
+              data-cmd="indent-out"
+              title="הזחה החוצה"
+              aria-label="הזחה החוצה"
+            >
+              ⇦⇦
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="יישור">
-            <button data-cmd="align-right" title="ימין">⇨</button>
-            <button data-cmd="align-center" title="מרכז">↔</button>
-            <button data-cmd="align-left" title="שמאל">⇦</button>
-            <button data-cmd="align-justify" title="מוצדק">═</button>
+            <button
+              data-cmd="align-right"
+              title="ימין"
+              aria-label="יישור לימין"
+            >
+              ⇨
+            </button>
+            <button
+              data-cmd="align-center"
+              title="מרכז"
+              aria-label="יישור למרכז"
+            >
+              ↔
+            </button>
+            <button data-cmd="align-left" title="שמאל" aria-label="יישור לשמאל">
+              ⇦
+            </button>
+            <button
+              data-cmd="align-justify"
+              title="מוצדק"
+              aria-label="יישור לשני הצדדים"
+            >
+              ═
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כיוון">
-            <button data-cmd="rtl" title="כיוון מימין לשמאל" aria-label="כיוון מימין לשמאל">
-              <svg viewBox="0 0 20 14" width="18" height="14" aria-hidden="true" focusable="false"><path d="M16 7 H4 M8 3 L4 7 L8 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              data-cmd="rtl"
+              title="כיוון מימין לשמאל"
+              aria-label="כיוון מימין לשמאל"
+            >
+              <svg
+                viewBox="0 0 20 14"
+                width="18"
+                height="14"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  d="M16 7 H4 M8 3 L4 7 L8 11"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
-            <button data-cmd="ltr" title="כיוון משמאל לימין" aria-label="כיוון משמאל לימין">
-              <svg viewBox="0 0 20 14" width="18" height="14" aria-hidden="true" focusable="false"><path d="M4 7 H16 M12 3 L16 7 L12 11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              data-cmd="ltr"
+              title="כיוון משמאל לימין"
+              aria-label="כיוון משמאל לימין"
+            >
+              <svg
+                viewBox="0 0 20 14"
+                width="18"
+                height="14"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <path
+                  d="M4 7 H16 M12 3 L16 7 L12 11"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
           </span>
           <span class="sep"></span>
@@ -153,18 +495,30 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="קישור" data-ribbon-tab="home">
-            <button data-cmd="link" title="קישור">🔗</button>
+            <button data-cmd="link" title="קישור" aria-label="הוסף קישור">
+              🔗
+            </button>
             <button data-cmd="unlink" title="הסר קישור">⛓⃠</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="מדיה" data-ribbon-tab="home">
-            <button data-cmd="image" title="תמונה">🖼</button>
-            <button data-cmd="video" title="וידאו">▶</button>
-            <button data-cmd="formula" title="נוסחה">∑</button>
+            <button data-cmd="image" title="תמונה" aria-label="הוסף תמונה">
+              🖼
+            </button>
+            <button data-cmd="video" title="וידאו" aria-label="הוסף וידאו">
+              ▶
+            </button>
+            <button data-cmd="formula" title="נוסחה" aria-label="הוסף נוסחה">
+              ∑
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="סגנונות">
-            <select id="styles-gallery-select" title="סגנון לטקסט נבחר" style="min-width:120px;font-size:12px;padding:3px 6px;">
+            <select
+              id="styles-gallery-select"
+              title="סגנון לטקסט נבחר"
+              style="min-width: 120px; font-size: 12px; padding: 3px 6px"
+            >
               <option value="">סגנון…</option>
               <option value="paragraph">רגיל</option>
               <option value="heading-1">כותרת 1</option>
@@ -182,24 +536,84 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="גופן מותאם" data-ribbon-tab="home">
-            <select id="local-font-select" class="font-gallery-select" title="גופנים במחשב"></select>
-            <button type="button" id="local-font-load" title="רענן גופנים">↻</button>
-            <button type="button" id="local-font-upload-btn" title="טען פונט מהמחשב">📁 טען</button>
-            <input type="file" id="local-font-upload-input" accept=".ttf,.otf,.woff,.woff2"
-                   style="display:none" />
+            <select
+              id="local-font-select"
+              class="font-gallery-select"
+              title="גופנים במחשב"
+            ></select>
+            <button
+              type="button"
+              id="local-font-load"
+              title="רענן גופנים"
+              aria-label="רענן גופנים"
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              id="local-font-upload-btn"
+              title="טען פונט מהמחשב"
+            >
+              📁 טען
+            </button>
+            <input
+              type="file"
+              id="local-font-upload-input"
+              accept=".ttf,.otf,.woff,.woff2"
+              style="display: none"
+            />
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="גודל גלובלי (כל המסמך)">
-            <button data-cmd="size-down-double" title="הקטן את גודל הטקסט הגלובלי ב-2 (משפיע על כל המסמך + העמודים)">−2</button>
-            <button data-cmd="size-down" title="הקטן את גודל הטקסט הגלובלי ב-1 (משפיע על כל המסמך + העמודים)">−1</button>
-            <span id="fs-label" style="margin:0 6px;font-weight:bold" title="הגודל הגלובלי הנוכחי">16</span>
-            <button data-cmd="size-up" title="הגדל את גודל הטקסט הגלובלי ב-1 (משפיע על כל המסמך + העמודים)">+1</button>
-            <button data-cmd="size-up-double" title="הגדל את גודל הטקסט הגלובלי ב-2 (משפיע על כל המסמך + העמודים)">+2</button>
+            <button
+              data-cmd="size-down-double"
+              title="הקטן את גודל הטקסט הגלובלי ב-2 (משפיע על כל המסמך + העמודים)"
+              aria-label="הקטן את גודל הטקסט הגלובלי ב-2"
+            >
+              −2
+            </button>
+            <button
+              data-cmd="size-down"
+              title="הקטן את גודל הטקסט הגלובלי ב-1 (משפיע על כל המסמך + העמודים)"
+              aria-label="הקטן את גודל הטקסט הגלובלי ב-1"
+            >
+              −1
+            </button>
+            <span
+              id="fs-label"
+              style="margin: 0 6px; font-weight: bold"
+              title="הגודל הגלובלי הנוכחי"
+              >16</span
+            >
+            <button
+              data-cmd="size-up"
+              title="הגדל את גודל הטקסט הגלובלי ב-1 (משפיע על כל המסמך + העמודים)"
+              aria-label="הגדל את גודל הטקסט הגלובלי ב-1"
+            >
+              +1
+            </button>
+            <button
+              data-cmd="size-up-double"
+              title="הגדל את גודל הטקסט הגלובלי ב-2 (משפיע על כל המסמך + העמודים)"
+              aria-label="הגדל את גודל הטקסט הגלובלי ב-2"
+            >
+              +2
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="גודל טקסט נבחר">
-            <button data-cmd="size-selected-down" title="הקטן את גודל הטקסט הנבחר ב-1">−1</button>
-            <select id="size-selected-select" title="בחר גודל לטקסט הנבחר" style="font-size:12px;padding:3px 4px;min-width:54px;">
+            <button
+              data-cmd="size-selected-down"
+              title="הקטן את גודל הטקסט הנבחר ב-1"
+              aria-label="הקטן את גודל הטקסט הנבחר ב-1"
+            >
+              −1
+            </button>
+            <select
+              id="size-selected-select"
+              title="בחר גודל לטקסט הנבחר"
+              style="font-size: 12px; padding: 3px 4px; min-width: 54px"
+            >
               <option value="">גודל…</option>
               <option value="8">8</option>
               <option value="9">9</option>
@@ -218,69 +632,254 @@
               <option value="48">48</option>
               <option value="72">72</option>
             </select>
-            <button data-cmd="size-selected-up" title="הגדל את גודל הטקסט הנבחר ב-1">+1</button>
-            <button data-cmd="size-12" title="הגדר את הטקסט הנבחר ל-12px">12</button>
-            <button data-cmd="size-15" title="הגדר את הטקסט הנבחר ל-15px">15</button>
-            <button data-cmd="size-18" title="הגדר את הטקסט הנבחר ל-18px">18</button>
-            <button data-cmd="size-24" title="הגדר את הטקסט הנבחר ל-24px">24</button>
+            <button
+              data-cmd="size-selected-up"
+              title="הגדל את גודל הטקסט הנבחר ב-1"
+              aria-label="הגדל את גודל הטקסט הנבחר ב-1"
+            >
+              +1
+            </button>
+            <button data-cmd="size-12" title="הגדר את הטקסט הנבחר ל-12px">
+              12
+            </button>
+            <button data-cmd="size-15" title="הגדר את הטקסט הנבחר ל-15px">
+              15
+            </button>
+            <button data-cmd="size-18" title="הגדר את הטקסט הנבחר ל-18px">
+              18
+            </button>
+            <button data-cmd="size-24" title="הגדר את הטקסט הנבחר ל-24px">
+              24
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כללי">
-            <button data-cmd="theme-toggle" title="בהיר/כהה">☀️/🌙</button>
-            <button data-cmd="lang-toggle" id="langBtn" title="שפה">EN</button>
+            <button
+              data-cmd="theme-toggle"
+              title="בהיר/כהה"
+              aria-label="החלף מצב בהיר/כהה"
+            >
+              ☀️/🌙
+            </button>
+            <button
+              data-cmd="lang-toggle"
+              id="langBtn"
+              title="שפה"
+              aria-label="החלף שפה"
+            >
+              EN
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="ניהול">
-            <button data-cmd="clear" title="ניקוי עיצוב">⌫</button>
-            <button data-cmd="clear-all" title="נקה את כל השדות — מוחק את הטקסט מכל החלוניות" class="btn-clear-all">🗑️</button>
-            <button data-cmd="undo" title="ביטול">↶</button>
-            <button data-cmd="redo" title="חזרה">↷</button>
+            <button
+              data-cmd="clear"
+              title="ניקוי עיצוב"
+              aria-label="ניקוי עיצוב"
+            >
+              ⌫
+            </button>
+            <button
+              data-cmd="clear-all"
+              title="נקה את כל השדות — מוחק את הטקסט מכל החלוניות"
+              class="btn-clear-all"
+              aria-label="נקה את כל השדות"
+            >
+              🗑️
+            </button>
+            <button
+              data-cmd="undo"
+              title="ביטול"
+              aria-label="ביטול פעולה אחרונה"
+            >
+              ↶
+            </button>
+            <button data-cmd="redo" title="חזרה" aria-label="חזרה על פעולה">
+              ↷
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="ניווט סימנים">
-            <button data-cmd="stream-prev" title="סימן קודם">▲</button>
-            <button data-cmd="stream-next" title="סימן הבא">▼</button>
-            <button data-cmd="stream-count" title="ספירה">∑</button>
+            <button
+              data-cmd="stream-prev"
+              title="סימן קודם"
+              aria-label="סימן קודם"
+            >
+              ▲
+            </button>
+            <button
+              data-cmd="stream-next"
+              title="סימן הבא"
+              aria-label="סימן הבא"
+            >
+              ▼
+            </button>
+            <button data-cmd="stream-count" title="ספירה" aria-label="ספירה">
+              ∑
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="זיהוי אוטומטי">
-            <button data-cmd="auto-parse" title="הדבק טקסט גולמי וזהה דפוסים">📥 הדבק וזהה</button>
-            <button data-cmd="auto-parse-paste" title="זהה דפוסים בתוכן הקיים">🔍 זהה תוכן</button>
+            <button data-cmd="auto-parse" title="הדבק טקסט גולמי וזהה דפוסים">
+              📥 הדבק וזהה
+            </button>
+            <button data-cmd="auto-parse-paste" title="זהה דפוסים בתוכן הקיים">
+              🔍 זהה תוכן
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="פעולות">
             <button data-cmd="export-json" data-i18n="json">JSON</button>
-            <button data-cmd="round-trip" data-i18n="roundTrip">round-trip</button>
-            <button data-cmd="diag-toggle" title="פתח/סגור אבחון" data-i18n="diagnostics">אבחון</button>
+            <button data-cmd="round-trip" data-i18n="roundTrip">
+              round-trip
+            </button>
+            <button
+              data-cmd="diag-toggle"
+              title="פתח/סגור אבחון"
+              data-i18n="diagnostics"
+            >
+              אבחון
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="קובץ" data-ribbon-tab="file">
-            <button data-cmd="open-comparator" data-tool-preview="comparator-tool" title="כלי עריכת הערות שוליים — גרסה מלאה" hidden>השוואת מהדורות</button>
-            <button data-cmd="open-comparator-integrated" data-tool-preview="comparator-tool" title="כלי עריכת הערות שוליים — גרסה משתלבת" hidden>השוואת מהדורות משתלב</button>
-            <button data-cmd="word-import-streams" data-tool-preview="word-extractor" title="ייבוא DOCX מתקדם — שוליים, סיום, בלונים והערות צד כזרמים נפרדים" hidden>ייבא Word עם זרמים מלאים</button>
-            <button data-cmd="word-export" data-i18n="wordExport">שמור ל-Word</button>
+            <button
+              data-cmd="open-comparator"
+              data-tool-preview="comparator-tool"
+              title="כלי עריכת הערות שוליים — גרסה מלאה"
+              hidden
+            >
+              השוואת מהדורות
+            </button>
+            <button
+              data-cmd="open-comparator-integrated"
+              data-tool-preview="comparator-tool"
+              title="כלי עריכת הערות שוליים — גרסה משתלבת"
+              hidden
+            >
+              השוואת מהדורות משתלב
+            </button>
+            <button
+              data-cmd="word-import-streams"
+              data-tool-preview="word-extractor"
+              title="ייבוא DOCX מתקדם — שוליים, סיום, בלונים והערות צד כזרמים נפרדים"
+              hidden
+            >
+              ייבא Word עם זרמים מלאים
+            </button>
+            <button data-cmd="word-export" data-i18n="wordExport">
+              שמור ל-Word
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="מערכת" data-ribbon-tab="file">
-            <button data-cmd="reset-system-state" title="ניקוי מטמון ועוגיות ויציאה מהחשבון — חזרה למצב התחלתי">↻ אפס מצב מערכת</button>
+            <button
+              data-cmd="reset-system-state"
+              title="ניקוי מטמון ועוגיות ויציאה מהחשבון — חזרה למצב התחלתי"
+            >
+              ↻ אפס מצב מערכת
+            </button>
           </span>
         </div>
         <div class="panes-toolbar">
-          <button data-cmd="pane-add" class="primary" title="הוסף חלונית עם זרם" data-i18n="addPane">+ חלונית</button>
-          <button data-cmd="pane-remove" title="מחק חלונית פעילה" data-i18n="removePane">✕ הסר חלונית</button>
-          <span class="sep" style="height:24px;width:1px;background:var(--border)"></span>
-          <button data-cmd="split-to-panes" class="primary" title="פצל את הראשי לחלוניות לפי @NN" data-i18n="split">✂ פצל לחלוניות</button>
-          <button data-cmd="split-special-notes" title="הפרד הערות מתוך הזרם הראשון לפי סימן פנימי" data-i18n="splitNotes">✂ הפרד הערות</button>
-          <button data-cmd="merge-toggle" id="merge-toggle-btn" title="מזג הערות לתוך הראשי או פרק חזרה" data-i18n="mergeToggle">🔗 מזג / פרק</button>
-          <button data-cmd="merge-from-panes" title="אחד את החלוניות חזרה לראשי" data-i18n="merge">⤺ אחד</button>
-          <button data-cmd="preview-toggle" id="preview-toggle-btn" title="מצב קריאה" data-i18n="preview">👁 תצוגה</button>
-          <button data-cmd="tools-toggle" id="expand-tools-btn" title="כלים מורחבים">⚙ כלים</button>
-          <button data-cmd="sync-toggle" id="sync-btn" title="סנכרון גלילה בין חלוניות" data-i18n="sync">🔗 גלילה</button>
-          <button data-cmd="pane-layout-toggle" id="pane-layout-btn" title="החלף בין זרמים זה לצד זה לבין זרמים זה תחת זה">▥ זרמים לרוחב</button>
-          <button data-cmd="lines-toggle" title="מצב שורות — שורה לכל הערה" data-i18n="lines">☷ שורות</button>
-          <span class="pane-status">@01 בכל מקום מזוהה אוטומטית • Tab בתוך @NN לקפיצה • הערה על הערה: @02 בתוך הערת @01</span>
-          <span style="flex:1"></span>
-          <button data-cmd="pane-clear-storage" title="אפס מצב חלוניות" data-i18n="reset">↺ איפוס</button>
+          <button
+            data-cmd="pane-add"
+            class="primary"
+            title="הוסף חלונית עם זרם"
+            data-i18n="addPane"
+          >
+            + חלונית
+          </button>
+          <button
+            data-cmd="pane-remove"
+            title="מחק חלונית פעילה"
+            data-i18n="removePane"
+          >
+            ✕ הסר חלונית
+          </button>
+          <span
+            class="sep"
+            style="height: 24px; width: 1px; background: var(--border)"
+          ></span>
+          <button
+            data-cmd="split-to-panes"
+            class="primary"
+            title="פצל את הראשי לחלוניות לפי @NN"
+            data-i18n="split"
+          >
+            ✂ פצל לחלוניות
+          </button>
+          <button
+            data-cmd="split-special-notes"
+            title="הפרד הערות מתוך הזרם הראשון לפי סימן פנימי"
+            data-i18n="splitNotes"
+          >
+            ✂ הפרד הערות
+          </button>
+          <button
+            data-cmd="merge-toggle"
+            id="merge-toggle-btn"
+            title="מזג הערות לתוך הראשי או פרק חזרה"
+            data-i18n="mergeToggle"
+          >
+            🔗 מזג / פרק
+          </button>
+          <button
+            data-cmd="merge-from-panes"
+            title="אחד את החלוניות חזרה לראשי"
+            data-i18n="merge"
+          >
+            ⤺ אחד
+          </button>
+          <button
+            data-cmd="preview-toggle"
+            id="preview-toggle-btn"
+            title="מצב קריאה"
+            data-i18n="preview"
+          >
+            👁 תצוגה
+          </button>
+          <button
+            data-cmd="tools-toggle"
+            id="expand-tools-btn"
+            title="כלים מורחבים"
+          >
+            ⚙ כלים
+          </button>
+          <button
+            data-cmd="sync-toggle"
+            id="sync-btn"
+            title="סנכרון גלילה בין חלוניות"
+            data-i18n="sync"
+          >
+            🔗 גלילה
+          </button>
+          <button
+            data-cmd="pane-layout-toggle"
+            id="pane-layout-btn"
+            title="החלף בין זרמים זה לצד זה לבין זרמים זה תחת זה"
+          >
+            ▥ זרמים לרוחב
+          </button>
+          <button
+            data-cmd="lines-toggle"
+            title="מצב שורות — שורה לכל הערה"
+            data-i18n="lines"
+          >
+            ☷ שורות
+          </button>
+          <span class="pane-status"
+            >@01 בכל מקום מזוהה אוטומטית • Tab בתוך @NN לקפיצה • הערה על הערה:
+            @02 בתוך הערת @01</span
+          >
+          <span style="flex: 1"></span>
+          <button
+            data-cmd="pane-clear-storage"
+            title="אפס מצב חלוניות"
+            data-i18n="reset"
+          >
+            ↺ איפוס
+          </button>
         </div>
         <div id="expanded-tools" class="expanded-tools" hidden>
           <button data-cmd="show-stats">סטטיסטיקות</button>
@@ -293,7 +892,9 @@
           <button data-cmd="advanced-settings">הגדרות</button>
         </div>
         <div class="toolbar bottom-toolbar source-bottom-toolbar" dir="rtl">
-          <button type="button" id="btn-render" data-i18n="renderPages">רנדר</button>
+          <button type="button" id="btn-render" data-i18n="renderPages">
+            רנדר
+          </button>
         </div>
         <div class="toolbar mishna-toolbar" dir="rtl">
           <h3 class="ribbon-section-title">משנ"ב — תבנית משנה ברורה</h3>
@@ -308,27 +909,40 @@
               id="mishna-levels-input"
               placeholder="01,02 | 03,04"
               title="כל רמה מופרדת בקו אנכי. לדוגמה: 01,02 | 03,04"
-              style="display:none"
+              style="display: none"
             />
             <span id="mishna-levels-picker" class="mishna-levels-picker"></span>
-            <button type="button" id="mishna-add-level-btn" class="stream-picker-add">+ רמה</button>
+            <button
+              type="button"
+              id="mishna-add-level-btn"
+              class="stream-picker-add"
+            >
+              + רמה
+            </button>
           </label>
         </div>
         <div class="toolbar talmud-toolbar" dir="rtl">
           <h3 class="ribbon-section-title">גפ"ת — תבנית תלמוד</h3>
-          <div class="talmud-experimental-notice" role="note" aria-label="הודעת ניסיון">
+          <div
+            class="talmud-experimental-notice"
+            role="note"
+            aria-label="הודעת ניסיון"
+          >
             <span class="talmud-experimental-badge">ניסיוני</span>
             <span class="talmud-experimental-text">
-              <strong>שימו לב:</strong> פריסת גפ"ת (צורת הדף) נמצאת בשלב פיתוח ניסיוני.
-              ייתכנו תוצאות לא צפויות, פערים בעימוד, ובעיות תצוגה.
-              משוב יתקבל בברכה — אך אין להסתמך על הפריסה לעבודה סופית בשלב זה.
+              <strong>שימו לב:</strong> פריסת גפ"ת (צורת הדף) נמצאת בשלב פיתוח
+              ניסיוני. ייתכנו תוצאות לא צפויות, פערים בעימוד, ובעיות תצוגה. משוב
+              יתקבל בברכה — אך אין להסתמך על הפריסה לעבודה סופית בשלב זה.
             </span>
           </div>
           <label class="toolbar-checkbox">
             <input type="checkbox" id="talmud-layout-toggle" />
             <span>גפ"ת: צורת הדף</span>
           </label>
-          <label class="toolbar-checkbox" title="כשמופעל גפ״ת — שאר הזרמים יקבלו אוטומטית מצב משנה ברורה במקום מצב זרם רגיל">
+          <label
+            class="toolbar-checkbox"
+            title="כשמופעל גפ״ת — שאר הזרמים יקבלו אוטומטית מצב משנה ברורה במקום מצב זרם רגיל"
+          >
             <input type="checkbox" id="talmud-other-as-mishna" />
             <span>שאר הזרמים = משנ״ב</span>
           </label>
@@ -339,18 +953,36 @@
               id="talmud-streams-input"
               placeholder="01,02"
               title="עד שני זרמים שיוצבו כפרשני תלמוד"
-              style="display:none"
+              style="display: none"
             />
             <span id="talmud-stream-picker" class="stream-picker"></span>
-            <button type="button" id="talmud-add-stream-btn" class="stream-picker-add">+ זרם</button>
+            <button
+              type="button"
+              id="talmud-add-stream-btn"
+              class="stream-picker-add"
+            >
+              + זרם
+            </button>
           </label>
           <label class="opw-control">
             <span>כתר:</span>
-            <input type="number" id="talmud-crown-lines-input" min="0" max="12" value="4" />
+            <input
+              type="number"
+              id="talmud-crown-lines-input"
+              min="0"
+              max="12"
+              value="4"
+            />
           </label>
           <label class="opw-control">
             <span>ראשי %:</span>
-            <input type="number" id="talmud-main-width-input" min="20" max="80" value="42" />
+            <input
+              type="number"
+              id="talmud-main-width-input"
+              min="20"
+              max="80"
+              value="42"
+            />
           </label>
           <label class="opw-control">
             <span>סדר צדדים:</span>
@@ -360,18 +992,41 @@
               <option value="auto">אוטו</option>
             </select>
           </label>
-          <span id="talmud-stream-roles-picker" class="stream-roles-picker"
-                style="display:inline-flex;gap:8px;align-items:center;font-size:12px;color:#555;"></span>
+          <span
+            id="talmud-stream-roles-picker"
+            class="stream-roles-picker"
+            style="
+              display: inline-flex;
+              gap: 8px;
+              align-items: center;
+              font-size: 12px;
+              color: #555;
+            "
+          ></span>
           <label class="opw-control">
             <span>רווח צדדי (px):</span>
-            <input type="number" id="talmud-side-gap-input" min="0" max="60" value="12" title="רווח בין הזרם המרכזי לפרשנים שבצדדים" />
+            <input
+              type="number"
+              id="talmud-side-gap-input"
+              min="0"
+              max="60"
+              value="12"
+              title="רווח בין הזרם המרכזי לפרשנים שבצדדים"
+            />
           </label>
-          <label class="toolbar-checkbox" title="כשמסומן: שבירות פסקה בכתר נשמרות (פסקה אמיתית לא נמתחת בכוח). לא רלוונטי לשאר התבנית.">
+          <label
+            class="toolbar-checkbox"
+            title="כשמסומן: שבירות פסקה בכתר נשמרות (פסקה אמיתית לא נמתחת בכוח). לא רלוונטי לשאר התבנית."
+          >
             <input type="checkbox" id="talmud-preserve-breaks" />
             <span>שמור שבירות פסקה בכתר</span>
           </label>
         </div>
-        <div id="opening-word-controls" class="toolbar opening-word-toolbar" dir="rtl">
+        <div
+          id="opening-word-controls"
+          class="toolbar opening-word-toolbar"
+          dir="rtl"
+        >
           <label class="toolbar-checkbox">
             <input type="checkbox" id="opw-enabled" />
             <span>מילה פותחת</span>
@@ -409,7 +1064,9 @@
               <option value="inherit">כמו הטקסט</option>
               <option value="David" data-i18n="font-david">David</option>
               <option value="David Libre">David Libre</option>
-              <option value="Frank Ruhl Libre" data-i18n="font-frank">Frank</option>
+              <option value="Frank Ruhl Libre" data-i18n="font-frank">
+                Frank
+              </option>
               <option value="Segoe UI" data-i18n="font-segoe">Segoe</option>
             </select>
           </label>
@@ -423,11 +1080,24 @@
           </label>
           <label class="opw-control">
             <span>שורות:</span>
-            <input type="number" id="opw-drop-lines" min="1" max="8" value="2" />
+            <input
+              type="number"
+              id="opw-drop-lines"
+              min="1"
+              max="8"
+              value="2"
+            />
           </label>
           <label class="opw-control">
             <span>רווח em:</span>
-            <input type="number" id="opw-space-after" min="0" max="4" step="0.1" value="0.3" />
+            <input
+              type="number"
+              id="opw-space-after"
+              min="0"
+              max="4"
+              step="0.1"
+              value="0.3"
+            />
           </label>
           <label class="opw-control">
             <span>תחולה:</span>
@@ -442,7 +1112,13 @@
           </label>
           <label class="opw-control">
             <span>סף קצר:</span>
-            <input type="number" id="opw-heading-min" min="0" max="500" value="80" />
+            <input
+              type="number"
+              id="opw-heading-min"
+              min="0"
+              max="500"
+              value="80"
+            />
           </label>
           <label class="toolbar-checkbox">
             <input type="checkbox" id="talmud-layout-toggle" />
@@ -458,7 +1134,11 @@
             />
           </label>
         </div>
-        <div id="stream-columns-panel" class="toolbar stream-columns-toolbar" dir="rtl"></div>
+        <div
+          id="stream-columns-panel"
+          class="toolbar stream-columns-toolbar"
+          dir="rtl"
+        ></div>
         <div class="toolbar stress-toolbar" dir="rtl">
           <span class="stress-label" data-i18n="stress">בדיקת עומס:</span>
           <button type="button" data-mul="3" class="btn-stress">×3</button>
@@ -466,53 +1146,198 @@
           <button type="button" data-mul="30" class="btn-stress">×30</button>
           <button type="button" data-mul="100" class="btn-stress">×100</button>
         </div>
-        <div class="toolbar torah-toolbar ribbon-panel" data-ribbon-tab="torah" dir="rtl">
+        <div
+          class="toolbar torah-toolbar ribbon-panel"
+          data-ribbon-tab="torah"
+          dir="rtl"
+        >
           <span class="tb-group" data-title="ספריא">
-            <button data-action="open-sefaria-downloader" data-tool-preview="sefaria-downloader" title="הורדת ספר מספריא כ-DOCX עם הערות שוליים" hidden>הורד ספר מספריא</button>
+            <button
+              data-action="open-sefaria-downloader"
+              data-tool-preview="sefaria-downloader"
+              title="הורדת ספר מספריא כ-DOCX עם הערות שוליים"
+              hidden
+            >
+              הורד ספר מספריא
+            </button>
           </span>
         </div>
-        <div class="toolbar insert-toolbar ribbon-panel" data-ribbon-tab="insert" dir="rtl">
+        <div
+          class="toolbar insert-toolbar ribbon-panel"
+          data-ribbon-tab="insert"
+          dir="rtl"
+        >
           <span class="tb-group" data-title="אלמנטים">
-            <button type="button" id="btn-insert-hr" title="הוסף קו אופקי מפריד">― קו אופקי</button>
-            <button type="button" id="btn-insert-page-break" title="הוסף שבירת עמוד ידנית">⤓ שבירת עמוד</button>
-            <button type="button" id="btn-insert-hardbreak" title="הוסף שבירת שורה (ללא פסקה חדשה)">↵ שבירת שורה</button>
+            <button
+              type="button"
+              id="btn-insert-hr"
+              title="הוסף קו אופקי מפריד"
+            >
+              ― קו אופקי
+            </button>
+            <button
+              type="button"
+              id="btn-insert-page-break"
+              title="הוסף שבירת עמוד ידנית"
+            >
+              ⤓ שבירת עמוד
+            </button>
+            <button
+              type="button"
+              id="btn-insert-hardbreak"
+              title="הוסף שבירת שורה (ללא פסקה חדשה)"
+            >
+              ↵ שבירת שורה
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="קוד ומסמכי תיעוד">
-            <button type="button" data-cmd="toggle-line-numbers" title="הצג/הסתר מספור שורות בבלוקי קוד">№ מספור שורות</button>
-            <button type="button" data-cmd="insert-details" title="הוסף בלוק שניתן לפתוח/לסגור עם כותרת — לכיסוי לוגים ארוכים, קטעי קוד, הערות מורחבות">▾ בלוק נפתח</button>
+            <button
+              type="button"
+              data-cmd="toggle-line-numbers"
+              title="הצג/הסתר מספור שורות בבלוקי קוד"
+            >
+              № מספור שורות
+            </button>
+            <button
+              type="button"
+              data-cmd="insert-details"
+              title="הוסף בלוק שניתן לפתוח/לסגור עם כותרת — לכיסוי לוגים ארוכים, קטעי קוד, הערות מורחבות"
+            >
+              ▾ בלוק נפתח
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="נוסחאות ותרשימים">
-            <button type="button" data-cmd="insert-math" title="הכנס נוסחה מתמטית בפורמט LaTeX (KaTeX)">∑ נוסחה</button>
-            <button type="button" data-cmd="insert-mermaid" title="הכנס תרשים זרימה / רצף / UML מקוד טקסטואלי (Mermaid)">📈 תרשים</button>
-            <button type="button" data-cmd="insert-comment" title="הכנס הערת שוליים על טקסט נבחר">💬 הערה</button>
+            <button
+              type="button"
+              data-cmd="insert-math"
+              title="הכנס נוסחה מתמטית בפורמט LaTeX (KaTeX)"
+            >
+              ∑ נוסחה
+            </button>
+            <button
+              type="button"
+              data-cmd="insert-mermaid"
+              title="הכנס תרשים זרימה / רצף / UML מקוד טקסטואלי (Mermaid)"
+            >
+              📈 תרשים
+            </button>
+            <button
+              type="button"
+              data-cmd="insert-comment"
+              title="הכנס הערת שוליים על טקסט נבחר"
+            >
+              💬 הערה
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="עריכה תורנית">
-            <button type="button" data-cmd="insert-chapter-heading" title="הכנס כותרת סימן/פרק עם מספר וכותרת">📖 סימן/פרק</button>
-            <button type="button" data-cmd="auto-number-clauses" title="ממספר את הפסקאות באותיות עבריות (א. ב. ג.)">🔢 מספור סעיפים</button>
+            <button
+              type="button"
+              data-cmd="insert-chapter-heading"
+              title="הכנס כותרת סימן/פרק עם מספר וכותרת"
+            >
+              📖 סימן/פרק
+            </button>
+            <button
+              type="button"
+              data-cmd="auto-number-clauses"
+              title="ממספר את הפסקאות באותיות עבריות (א. ב. ג.)"
+            >
+              🔢 מספור סעיפים
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="הערות ותוכן">
-            <button type="button" data-cmd="insert-footnote" title="הוסף הערת שוליים ממוספרת — מספר עליון בנקודת הסמן + טקסט בסוף המסמך">⁽¹⁾ הערת שוליים</button>
-            <button type="button" data-cmd="insert-toc" title="צור תוכן עניינים מכל הכותרות (H1/H2/H3) במסמך">📑 תוכן עניינים</button>
+            <button
+              type="button"
+              data-cmd="insert-footnote"
+              title="הוסף הערת שוליים ממוספרת — מספר עליון בנקודת הסמן + טקסט בסוף המסמך"
+            >
+              ⁽¹⁾ הערת שוליים
+            </button>
+            <button
+              type="button"
+              data-cmd="insert-toc"
+              title="צור תוכן עניינים מכל הכותרות (H1/H2/H3) במסמך"
+            >
+              📑 תוכן עניינים
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="טבלאות">
-            <button type="button" data-cmd="insert-table" title="הכנס טבלה חדשה — שורות x עמודות (לדוגמה 3x4)">▦ הכנס טבלה</button>
-            <button type="button" data-cmd="table-add-row-after" title="הוסף שורה אחרי השורה הנוכחית">+ שורה ↓</button>
-            <button type="button" data-cmd="table-add-row-before" title="הוסף שורה לפני השורה הנוכחית">+ שורה ↑</button>
-            <button type="button" data-cmd="table-del-row" title="מחק את השורה הנוכחית">− שורה</button>
-            <button type="button" data-cmd="table-add-col-after" title="הוסף עמודה אחרי העמודה הנוכחית">+ עמודה ←</button>
-            <button type="button" data-cmd="table-add-col-before" title="הוסף עמודה לפני העמודה הנוכחית">+ עמודה →</button>
-            <button type="button" data-cmd="table-del-col" title="מחק את העמודה הנוכחית">− עמודה</button>
-            <button type="button" data-cmd="table-del" title="מחק את כל הטבלה">🗑 טבלה</button>
+            <button
+              type="button"
+              data-cmd="insert-table"
+              title="הכנס טבלה חדשה — שורות x עמודות (לדוגמה 3x4)"
+            >
+              ▦ הכנס טבלה
+            </button>
+            <button
+              type="button"
+              data-cmd="table-add-row-after"
+              title="הוסף שורה אחרי השורה הנוכחית"
+            >
+              + שורה ↓
+            </button>
+            <button
+              type="button"
+              data-cmd="table-add-row-before"
+              title="הוסף שורה לפני השורה הנוכחית"
+            >
+              + שורה ↑
+            </button>
+            <button
+              type="button"
+              data-cmd="table-del-row"
+              title="מחק את השורה הנוכחית"
+            >
+              − שורה
+            </button>
+            <button
+              type="button"
+              data-cmd="table-add-col-after"
+              title="הוסף עמודה אחרי העמודה הנוכחית"
+            >
+              + עמודה ←
+            </button>
+            <button
+              type="button"
+              data-cmd="table-add-col-before"
+              title="הוסף עמודה לפני העמודה הנוכחית"
+            >
+              + עמודה →
+            </button>
+            <button
+              type="button"
+              data-cmd="table-del-col"
+              title="מחק את העמודה הנוכחית"
+            >
+              − עמודה
+            </button>
+            <button type="button" data-cmd="table-del" title="מחק את כל הטבלה">
+              🗑 טבלה
+            </button>
           </span>
         </div>
-        <div class="toolbar review-toolbar ribbon-panel" data-ribbon-tab="review" dir="rtl">
+        <div
+          class="toolbar review-toolbar ribbon-panel"
+          data-ribbon-tab="review"
+          dir="rtl"
+        >
           <span class="tb-group" data-title="ספירה">
-            <span id="editor-stats-display" style="font-size:13px;color:#444;padding:4px 10px;background:rgba(0,0,0,0.04);border-radius:4px;">מילים: 0 • תווים: 0 • פסקאות: 0</span>
+            <span
+              id="editor-stats-display"
+              style="
+                font-size: 13px;
+                color: #444;
+                padding: 4px 10px;
+                background: rgba(0, 0, 0, 0.04);
+                border-radius: 4px;
+              "
+              >מילים: 0 • תווים: 0 • פסקאות: 0</span
+            >
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="איות">
@@ -523,53 +1348,179 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="מעקב שינויים">
-            <label class="toolbar-checkbox" title="מסמן את המצב הנוכחי כתמונת מצב; לחיצה על 'הצג שינויים' תבליט את הפסקאות ששונו">
+            <label
+              class="toolbar-checkbox"
+              title="מסמן את המצב הנוכחי כתמונת מצב; לחיצה על 'הצג שינויים' תבליט את הפסקאות ששונו"
+            >
               <input type="checkbox" id="track-changes-toggle" />
               <span>הפעל מעקב</span>
             </label>
-            <button type="button" id="track-changes-show" title="הצג את ההבדלים מתמונת המצב — פסקאות חדשות בירוק, שונו בצהוב">⚖ הצג שינויים</button>
+            <button
+              type="button"
+              id="track-changes-show"
+              title="הצג את ההבדלים מתמונת המצב — פסקאות חדשות בירוק, שונו בצהוב"
+            >
+              ⚖ הצג שינויים
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="השוואה">
-            <button data-action="open-text-compare-pro" data-tool-preview="text-compare-pro" title="השוואת טקסטים מקצועית" hidden>השוואת טקסטים</button>
+            <button
+              data-action="open-text-compare-pro"
+              data-tool-preview="text-compare-pro"
+              title="השוואת טקסטים מקצועית"
+              hidden
+            >
+              השוואת טקסטים
+            </button>
           </span>
         </div>
-        <div class="toolbar layout-extra-toolbar ribbon-panel" data-ribbon-tab="layout" dir="rtl">
+        <div
+          class="toolbar layout-extra-toolbar ribbon-panel"
+          data-ribbon-tab="layout"
+          dir="rtl"
+        >
           <span class="tb-group" data-title="מנוע אריזת עמוד">
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="כמה פיקסלים להשאיר פנויים בכל דף. ערך גבוה = פחות חריגות, יותר רווחים. ברירת מחדל מותאמת: 160 בפריסת תלמוד, 6 בפריסה רגילה.">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="כמה פיקסלים להשאיר פנויים בכל דף. ערך גבוה = פחות חריגות, יותר רווחים. ברירת מחדל מותאמת: 160 בפריסת תלמוד, 6 בפריסה רגילה."
+            >
               <span>כרית גובה (px):</span>
-              <input type="number" id="layout-height-safety-input" min="0" max="400" style="width:60px;font-size:12px;padding:3px 6px;" />
+              <input
+                type="number"
+                id="layout-height-safety-input"
+                min="0"
+                max="400"
+                style="width: 60px; font-size: 12px; padding: 3px 6px"
+              />
             </label>
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="ערכי כרית נפרדים לעמודים מסוימים. פורמט: 1:120, 3:80 (מספר העמוד:כרית). עמוד שלא מוזכר משתמש בערך הכללי. השאר ריק לביטול.">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="ערכי כרית נפרדים לעמודים מסוימים. פורמט: 1:120, 3:80 (מספר העמוד:כרית). עמוד שלא מוזכר משתמש בערך הכללי. השאר ריק לביטול."
+            >
               <span>פר-עמוד:</span>
-              <input type="text" id="layout-height-safety-per-page-input" placeholder="1:120, 3:80" style="width:120px;font-size:12px;padding:3px 6px;" />
+              <input
+                type="text"
+                id="layout-height-safety-per-page-input"
+                placeholder="1:120, 3:80"
+                style="width: 120px; font-size: 12px; padding: 3px 6px"
+              />
             </label>
-            <label class="toolbar-checkbox" title="מודד את הדף אחרי הרינדור ומכוון את הכרית בעצמו עד שמוצא ערך אופטימלי לכל מסמך. ניסיוני — לעיתים יוצר חריגות במקום לתקן. השתמש בזהירות.">
+            <label
+              class="toolbar-checkbox"
+              title="מודד את הדף אחרי הרינדור ומכוון את הכרית בעצמו עד שמוצא ערך אופטימלי לכל מסמך. ניסיוני — לעיתים יוצר חריגות במקום לתקן. השתמש בזהירות."
+            >
               <input type="checkbox" id="layout-smart-engine-toggle" />
               <span>מנוע חכם (השתמש בזהירות)</span>
             </label>
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="V9: אחוז מילוי מינימלי לפני שמותר להשאיר המשך הערות לעמוד הבא. ריק = ברירת מחדל.">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="V9: אחוז מילוי מינימלי לפני שמותר להשאיר המשך הערות לעמוד הבא. ריק = ברירת מחדל."
+            >
               <span>V9 מילוי %:</span>
-              <input type="number" id="talmud-gap-fill-min-input" min="50" max="98" placeholder="82" style="width:54px;font-size:12px;padding:3px 6px;" />
+              <input
+                type="number"
+                id="talmud-gap-fill-min-input"
+                min="50"
+                max="98"
+                placeholder="82"
+                style="width: 54px; font-size: 12px; padding: 3px 6px"
+              />
             </label>
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="V9: מקסימום שורות ראשי בעמוד שממשיך הערות לעמוד הבא. ריק = חישוב לפי גובה הדף.">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="V9: מקסימום שורות ראשי בעמוד שממשיך הערות לעמוד הבא. ריק = חישוב לפי גובה הדף."
+            >
               <span>שורות ראשי:</span>
-              <input type="number" id="talmud-gap-fill-max-main-lines-input" min="1" max="30" placeholder="auto" style="width:58px;font-size:12px;padding:3px 6px;" />
+              <input
+                type="number"
+                id="talmud-gap-fill-max-main-lines-input"
+                min="1"
+                max="30"
+                placeholder="auto"
+                style="width: 58px; font-size: 12px; padding: 3px 6px"
+              />
             </label>
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;" title="V9: אחוז מילוי שמעליו עמוד המשך הערות נשאר לבד. מתחת לזה המנוע ינסה לצרף ראשי הבא.">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="V9: אחוז מילוי שמעליו עמוד המשך הערות נשאר לבד. מתחת לזה המנוע ינסה לצרף ראשי הבא."
+            >
               <span>Carry %:</span>
-              <input type="number" id="talmud-carry-only-min-input" min="50" max="98" placeholder="78" style="width:54px;font-size:12px;padding:3px 6px;" />
+              <input
+                type="number"
+                id="talmud-carry-only-min-input"
+                min="50"
+                max="98"
+                placeholder="78"
+                style="width: 54px; font-size: 12px; padding: 3px 6px"
+              />
             </label>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כותרת עליונה ותחתונה">
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+            >
               <span>כותרת עליונה:</span>
-              <input type="text" id="doc-header-input" style="width:160px;font-size:12px;padding:3px 6px;" placeholder="כותרת עליונה לכל עמוד" />
+              <input
+                type="text"
+                id="doc-header-input"
+                style="width: 160px; font-size: 12px; padding: 3px 6px"
+                placeholder="כותרת עליונה לכל עמוד"
+              />
             </label>
-            <label style="font-size:12px;color:#555;display:inline-flex;align-items:center;gap:4px;">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+            >
               <span>תחתונה:</span>
-              <input type="text" id="doc-footer-input" style="width:160px;font-size:12px;padding:3px 6px;" placeholder="כותרת תחתונה לכל עמוד" />
+              <input
+                type="text"
+                id="doc-footer-input"
+                style="width: 160px; font-size: 12px; padding: 3px 6px"
+                placeholder="כותרת תחתונה לכל עמוד"
+              />
             </label>
           </span>
           <span class="sep"></span>
@@ -581,38 +1532,112 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="סימן מים">
-            <input type="text" id="doc-watermark-input" style="width:140px;font-size:12px;padding:3px 6px;" placeholder='לדוגמה: "טיוטה"' />
-            <span style="font-size:11px;color:#666;">שקיפות:</span>
-            <input type="range" id="doc-watermark-opacity" min="0.05" max="0.5" step="0.01" value="0.12" style="width:80px;" />
+            <input
+              type="text"
+              id="doc-watermark-input"
+              style="width: 140px; font-size: 12px; padding: 3px 6px"
+              placeholder='לדוגמה: "טיוטה"'
+            />
+            <span style="font-size: 11px; color: #666">שקיפות:</span>
+            <input
+              type="range"
+              id="doc-watermark-opacity"
+              min="0.05"
+              max="0.5"
+              step="0.01"
+              value="0.12"
+              style="width: 80px"
+            />
           </span>
         </div>
-        <div class="toolbar view-toolbar ribbon-panel" data-ribbon-tab="view" dir="rtl">
+        <div
+          class="toolbar view-toolbar ribbon-panel"
+          data-ribbon-tab="view"
+          dir="rtl"
+        >
           <span class="tb-group" data-title="זום על תצוגת העמודים">
-            <span style="font-size:12px;color:#555;">זום:</span>
-            <input type="range" id="zoom-slider" min="50" max="200" step="5" value="100" style="width:140px;" />
-            <span id="zoom-label" style="font-size:12px;min-width:36px;text-align:center;">100%</span>
-            <button type="button" id="zoom-reset" title="איפוס לזום 100%">100%</button>
+            <span style="font-size: 12px; color: #555">זום:</span>
+            <input
+              type="range"
+              id="zoom-slider"
+              min="50"
+              max="200"
+              step="5"
+              value="100"
+              style="width: 140px"
+            />
+            <span
+              id="zoom-label"
+              style="font-size: 12px; min-width: 36px; text-align: center"
+              >100%</span
+            >
+            <button type="button" id="zoom-reset" title="איפוס לזום 100%">
+              100%
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="תצוגה">
-            <button type="button" id="btn-fullscreen" title="עבור למסך מלא (F11)">⛶ מסך מלא</button>
+            <button
+              type="button"
+              id="btn-fullscreen"
+              title="עבור למסך מלא (F11)"
+            >
+              ⛶ מסך מלא
+            </button>
             <label class="toolbar-checkbox">
               <input type="checkbox" id="formatting-marks-toggle" />
               <span>הצג סימני עיצוב</span>
             </label>
           </span>
         </div>
-        <div id="downloads-panel" class="toolbar downloads-toolbar ribbon-panel" data-ribbon-tab="downloads" dir="rtl">
+        <div
+          id="downloads-panel"
+          class="toolbar downloads-toolbar ribbon-panel"
+          data-ribbon-tab="downloads"
+          dir="rtl"
+        >
           <span class="tb-group" data-title="הורדה ישירה">
-            <button type="button" id="dl-download-doc" title="הורד את העמודים המרונדרים כקובץ HTML עצמאי שמשקף את התצוגה האונליין">💾 הורד עמודים (HTML)</button>
-            <button type="button" id="dl-download-json" title="הורד את נתוני המסמך כ-JSON להעברה/גיבוי">📦 הורד נתונים (JSON)</button>
+            <button
+              type="button"
+              id="dl-download-doc"
+              title="הורד את העמודים המרונדרים כקובץ HTML עצמאי שמשקף את התצוגה האונליין"
+            >
+              💾 הורד עמודים (HTML)
+            </button>
+            <button
+              type="button"
+              id="dl-download-json"
+              title="הורד את נתוני המסמך כ-JSON להעברה/גיבוי"
+            >
+              📦 הורד נתונים (JSON)
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="תיקיית יעד עם הרשאות">
-            <button type="button" id="dl-pick-folder" title="בחר תיקייה במחשב — מבקש הרשאת קריאה/כתיבה פעם אחת ושומר אותה">📁 בחר תיקיית יעד…</button>
-            <span id="dl-folder-status" style="font-size:12px;color:#555;">(טרם נבחרה תיקייה)</span>
-            <button type="button" id="dl-sync-now" title="שמור עכשיו לתיקייה — משקף את האונליין">🔄 סנכרן עכשיו</button>
-            <button type="button" id="dl-clear-folder" title="נתק את התיקייה השמורה">✕ נתק</button>
+            <button
+              type="button"
+              id="dl-pick-folder"
+              title="בחר תיקייה במחשב — מבקש הרשאת קריאה/כתיבה פעם אחת ושומר אותה"
+            >
+              📁 בחר תיקיית יעד…
+            </button>
+            <span id="dl-folder-status" style="font-size: 12px; color: #555"
+              >(טרם נבחרה תיקייה)</span
+            >
+            <button
+              type="button"
+              id="dl-sync-now"
+              title="שמור עכשיו לתיקייה — משקף את האונליין"
+            >
+              🔄 סנכרן עכשיו
+            </button>
+            <button
+              type="button"
+              id="dl-clear-folder"
+              title="נתק את התיקייה השמורה"
+            >
+              ✕ נתק
+            </button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="הגדרות">
@@ -620,18 +1645,36 @@
               <input type="checkbox" id="dl-auto-sync" />
               <span>סנכרון אוטומטי בכל רינדור</span>
             </label>
-            <span id="dl-last-save" style="font-size:12px;color:#555;margin-inline-start:12px;">לא נשמר עדיין</span>
+            <span
+              id="dl-last-save"
+              style="font-size: 12px; color: #555; margin-inline-start: 12px"
+              >לא נשמר עדיין</span
+            >
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="התקנת האתר כאפליקציה">
-            <button type="button" id="dl-install-app" title="התקן את האתר כאפליקציה עצמאית — תיפתח בחלון נפרד כמו תוכנה רגילה, פעילה רק על רב טקסט בלי אפשרות לגלוש לאתרים אחרים">📲 התקן כאפליקציה</button>
-            <span id="dl-install-status" style="font-size:12px;color:#555;">טוען זמינות התקנה…</span>
-            <span style="font-size:11px;color:#888;margin-inline-start:8px;">פתיחה בחלון משלה, נעול לאתר רב טקסט</span>
+            <button
+              type="button"
+              id="dl-install-app"
+              title="התקן את האתר כאפליקציה עצמאית — תיפתח בחלון נפרד כמו תוכנה רגילה, פעילה רק על רב טקסט בלי אפשרות לגלוש לאתרים אחרים"
+            >
+              📲 התקן כאפליקציה
+            </button>
+            <span id="dl-install-status" style="font-size: 12px; color: #555"
+              >טוען זמינות התקנה…</span
+            >
+            <span style="font-size: 11px; color: #888; margin-inline-start: 8px"
+              >פתיחה בחלון משלה, נעול לאתר רב טקסט</span
+            >
           </span>
         </div>
         <!-- v33: settings panel — appears when "הגדרות" ribbon tab is active.
              Placed BEFORE panes so it shows at the top of the editor area when active. -->
-        <div id="settings-panel-wrap" class="settings-panel-wrap ribbon-panel" data-ribbon-tab="settings"></div>
+        <div
+          id="settings-panel-wrap"
+          class="settings-panel-wrap ribbon-panel"
+          data-ribbon-tab="settings"
+        ></div>
         <!-- Nested-notes feature toggle — single row above the panes container.
              Default unchecked; on first check, an explanation dialog appears.
              URL `?nested=1` pre-checks. -->
@@ -640,21 +1683,24 @@
             <input type="checkbox" id="nested-notes-toggle" />
             <span>תמיכה בהערות להערות</span>
           </label>
-          <span class="nested-notes-help" title="הקלד @02 בתוך טקסט הערה של זרם 01 ובחלונית 02 כתוב את תוכן ההערה הפנימית. ההערה הפנימית תופיע בתוך החיצונית.">?</span>
+          <span
+            class="nested-notes-help"
+            title="הקלד @02 בתוך טקסט הערה של זרם 01 ובחלונית 02 כתוב את תוכן ההערה הפנימית. ההערה הפנימית תופיע בתוך החיצונית."
+            >?</span
+          >
         </div>
         <!-- Explanation dialog shown the first time the toggle is checked. -->
         <dialog id="nested-notes-explain-dialog" class="nested-notes-dialog">
           <h3>תמיכה בהערות להערות</h3>
           <p>
-            במקרה שיש הפניות לזרם ספציפי מכמה זרמים, תמיד הקישורים יופנו
-            בסדר לוגי — כל הערה נחשבת כעומדת בתוך הזרם הראשי, במקום שאליו
-            היא מקושרת.
+            במקרה שיש הפניות לזרם ספציפי מכמה זרמים, תמיד הקישורים יופנו בסדר
+            לוגי — כל הערה נחשבת כעומדת בתוך הזרם הראשי, במקום שאליו היא מקושרת.
           </p>
           <p class="nnd-example">
             <strong>דוגמה:</strong> אם בגוף יש <code>@02</code> ובתוך הערת
-            <code>@01</code> הראשונה יש <code>@02</code> נוסף — הסדר נקבע
-            לפי המיקום במסמך: ההפניה הראשונה שתיקרא תקבל את ההערה הראשונה
-            של זרם 02, השנייה את השנייה, וכן הלאה.
+            <code>@01</code> הראשונה יש <code>@02</code> נוסף — הסדר נקבע לפי
+            המיקום במסמך: ההפניה הראשונה שתיקרא תקבל את ההערה הראשונה של זרם 02,
+            השנייה את השנייה, וכן הלאה.
           </p>
           <form method="dialog">
             <button type="submit" class="primary">הבנתי</button>
@@ -662,7 +1708,12 @@
         </dialog>
         <div id="panes-container" class="panes-container" dir="rtl"></div>
         <!-- v33: settings content lives in #settings-panel; moved into wrap by JS -->
-        <div id="settings-panel" class="settings-panel ribbon-panel" data-ribbon-tab="settings" dir="rtl">
+        <div
+          id="settings-panel"
+          class="settings-panel ribbon-panel"
+          data-ribbon-tab="settings"
+          dir="rtl"
+        >
           <div class="settings-section">
             <h3 class="settings-h3" data-i18n="settingsDisplay">תצוגה</h3>
             <label class="settings-row">
@@ -677,26 +1728,71 @@
                 <option value="custom">מותאם אישית</option>
               </select>
             </label>
-            <div id="settings-custom-theme" class="settings-custom-theme" hidden>
+            <div
+              id="settings-custom-theme"
+              class="settings-custom-theme"
+              hidden
+            >
               <div class="custom-theme-row">
-                <label><span>רקע ראשי:</span><input type="color" id="ct-bg" value="#f5f5f7" /></label>
-                <label><span>רקע פנל:</span><input type="color" id="ct-bg-panel" value="#ffffff" /></label>
-                <label><span>רקע סרגל:</span><input type="color" id="ct-bg-toolbar" value="#ebeef2" /></label>
+                <label
+                  ><span>רקע ראשי:</span
+                  ><input type="color" id="ct-bg" value="#f5f5f7"
+                /></label>
+                <label
+                  ><span>רקע פנל:</span
+                  ><input type="color" id="ct-bg-panel" value="#ffffff"
+                /></label>
+                <label
+                  ><span>רקע סרגל:</span
+                  ><input type="color" id="ct-bg-toolbar" value="#ebeef2"
+                /></label>
               </div>
               <div class="custom-theme-row">
-                <label><span>טקסט:</span><input type="color" id="ct-fg" value="#1d1d1f" /></label>
-                <label><span>טקסט משני:</span><input type="color" id="ct-fg-muted" value="#6e6e73" /></label>
-                <label><span>גבולות:</span><input type="color" id="ct-border" value="#d0d0d4" /></label>
+                <label
+                  ><span>טקסט:</span
+                  ><input type="color" id="ct-fg" value="#1d1d1f"
+                /></label>
+                <label
+                  ><span>טקסט משני:</span
+                  ><input type="color" id="ct-fg-muted" value="#6e6e73"
+                /></label>
+                <label
+                  ><span>גבולות:</span
+                  ><input type="color" id="ct-border" value="#d0d0d4"
+                /></label>
               </div>
               <div class="custom-theme-row">
-                <label><span>צבע דגש:</span><input type="color" id="ct-accent" value="#2c5aa0" /></label>
-                <label><span>דגש hover:</span><input type="color" id="ct-accent-hover" value="#1e4078" /></label>
-                <label><span>רקע כפתור:</span><input type="color" id="ct-btn-bg" value="#ffffff" /></label>
+                <label
+                  ><span>צבע דגש:</span
+                  ><input type="color" id="ct-accent" value="#2c5aa0"
+                /></label>
+                <label
+                  ><span>דגש hover:</span
+                  ><input type="color" id="ct-accent-hover" value="#1e4078"
+                /></label>
+                <label
+                  ><span>רקע כפתור:</span
+                  ><input type="color" id="ct-btn-bg" value="#ffffff"
+                /></label>
               </div>
               <div class="custom-theme-row">
-                <button type="button" id="ct-reset" class="settings-btn">איפוס לברירת מחדל</button>
-                <button type="button" id="ct-preset-modern" class="settings-btn">פלטה מודרנית</button>
-                <button type="button" id="ct-preset-vintage" class="settings-btn">פלטה ויטאג'</button>
+                <button type="button" id="ct-reset" class="settings-btn">
+                  איפוס לברירת מחדל
+                </button>
+                <button
+                  type="button"
+                  id="ct-preset-modern"
+                  class="settings-btn"
+                >
+                  פלטה מודרנית
+                </button>
+                <button
+                  type="button"
+                  id="ct-preset-vintage"
+                  class="settings-btn"
+                >
+                  פלטה ויטאג'
+                </button>
               </div>
             </div>
             <label class="settings-row">
@@ -712,14 +1808,23 @@
             </label>
           </div>
           <div class="settings-section">
-            <h3 class="settings-h3" data-i18n="settingsLicense">רישיון משתמש</h3>
-            <div class="settings-license-status" id="settings-license-status" data-i18n="settingsLicenseUnset">לא הוטמע עדיין</div>
+            <h3 class="settings-h3" data-i18n="settingsLicense">
+              רישיון משתמש
+            </h3>
+            <div
+              class="settings-license-status"
+              id="settings-license-status"
+              data-i18n="settingsLicenseUnset"
+            >
+              לא הוטמע עדיין
+            </div>
           </div>
           <div class="settings-section">
             <h3 class="settings-h3">מפתחות AI אישיים</h3>
-            <div style="font-size:12px;color:#475569;margin-bottom:8px;">
-              ניתן לשמור מפתחות של כמה ספקים בו זמנית. כל מפתח נשמר אצלך בדפדפן בלבד (לא נשלח לשרת שלנו).
-              ספק ברירת המחדל הוא הספק שייעשה בו שימוש כשלא מוגדר אחר.
+            <div style="font-size: 12px; color: #475569; margin-bottom: 8px">
+              ניתן לשמור מפתחות של כמה ספקים בו זמנית. כל מפתח נשמר אצלך בדפדפן
+              בלבד (לא נשלח לשרת שלנו). ספק ברירת המחדל הוא הספק שייעשה בו שימוש
+              כשלא מוגדר אחר.
             </div>
             <label class="settings-row">
               <span>ספק ברירת מחדל:</span>
@@ -734,38 +1839,127 @@
             </label>
             <div class="ai-keys-grid">
               <label class="settings-row ai-key-row">
-                <span class="ai-key-label" data-provider="anthropic">Anthropic (Claude):</span>
-                <input type="password" class="ai-key-input" data-provider="anthropic" placeholder="sk-ant-…" autocomplete="off" />
-                <button type="button" class="ai-key-toggle" data-toggle-for="anthropic" title="הצג/הסתר">👁</button>
+                <span class="ai-key-label" data-provider="anthropic"
+                  >Anthropic (Claude):</span
+                >
+                <input
+                  type="password"
+                  class="ai-key-input"
+                  data-provider="anthropic"
+                  placeholder="sk-ant-…"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="ai-key-toggle"
+                  data-toggle-for="anthropic"
+                  title="הצג/הסתר"
+                >
+                  👁
+                </button>
               </label>
               <label class="settings-row ai-key-row">
-                <span class="ai-key-label" data-provider="openai">OpenAI (GPT-4):</span>
-                <input type="password" class="ai-key-input" data-provider="openai" placeholder="sk-…" autocomplete="off" />
-                <button type="button" class="ai-key-toggle" data-toggle-for="openai" title="הצג/הסתר">👁</button>
+                <span class="ai-key-label" data-provider="openai"
+                  >OpenAI (GPT-4):</span
+                >
+                <input
+                  type="password"
+                  class="ai-key-input"
+                  data-provider="openai"
+                  placeholder="sk-…"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="ai-key-toggle"
+                  data-toggle-for="openai"
+                  title="הצג/הסתר"
+                >
+                  👁
+                </button>
               </label>
               <label class="settings-row ai-key-row">
-                <span class="ai-key-label" data-provider="google">Google (Gemini):</span>
-                <input type="password" class="ai-key-input" data-provider="google" placeholder="AIza…" autocomplete="off" />
-                <button type="button" class="ai-key-toggle" data-toggle-for="google" title="הצג/הסתר">👁</button>
+                <span class="ai-key-label" data-provider="google"
+                  >Google (Gemini):</span
+                >
+                <input
+                  type="password"
+                  class="ai-key-input"
+                  data-provider="google"
+                  placeholder="AIza…"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="ai-key-toggle"
+                  data-toggle-for="google"
+                  title="הצג/הסתר"
+                >
+                  👁
+                </button>
               </label>
               <label class="settings-row ai-key-row">
-                <span class="ai-key-label" data-provider="mistral">Mistral:</span>
-                <input type="password" class="ai-key-input" data-provider="mistral" placeholder="…" autocomplete="off" />
-                <button type="button" class="ai-key-toggle" data-toggle-for="mistral" title="הצג/הסתר">👁</button>
+                <span class="ai-key-label" data-provider="mistral"
+                  >Mistral:</span
+                >
+                <input
+                  type="password"
+                  class="ai-key-input"
+                  data-provider="mistral"
+                  placeholder="…"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="ai-key-toggle"
+                  data-toggle-for="mistral"
+                  title="הצג/הסתר"
+                >
+                  👁
+                </button>
               </label>
               <label class="settings-row ai-key-row">
                 <span class="ai-key-label" data-provider="groq">Groq:</span>
-                <input type="password" class="ai-key-input" data-provider="groq" placeholder="gsk_…" autocomplete="off" />
-                <button type="button" class="ai-key-toggle" data-toggle-for="groq" title="הצג/הסתר">👁</button>
+                <input
+                  type="password"
+                  class="ai-key-input"
+                  data-provider="groq"
+                  placeholder="gsk_…"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="ai-key-toggle"
+                  data-toggle-for="groq"
+                  title="הצג/הסתר"
+                >
+                  👁
+                </button>
               </label>
               <label class="settings-row ai-key-row">
-                <span class="ai-key-label" data-provider="deepseek">DeepSeek:</span>
-                <input type="password" class="ai-key-input" data-provider="deepseek" placeholder="sk-…" autocomplete="off" />
-                <button type="button" class="ai-key-toggle" data-toggle-for="deepseek" title="הצג/הסתר">👁</button>
+                <span class="ai-key-label" data-provider="deepseek"
+                  >DeepSeek:</span
+                >
+                <input
+                  type="password"
+                  class="ai-key-input"
+                  data-provider="deepseek"
+                  placeholder="sk-…"
+                  autocomplete="off"
+                />
+                <button
+                  type="button"
+                  class="ai-key-toggle"
+                  data-toggle-for="deepseek"
+                  title="הצג/הסתר"
+                >
+                  👁
+                </button>
               </label>
             </div>
-            <div style="font-size:11px;color:#888;margin-top:6px;">
-              המפתחות נשמרים אצלך בלבד. המנוי לרב טקסט אינו כולל גישה למודלי AI — את המפתחות יש להוציא ישירות מהספקים.
+            <div style="font-size: 11px; color: #888; margin-top: 6px">
+              המפתחות נשמרים אצלך בלבד. המנוי לרב טקסט אינו כולל גישה למודלי AI
+              — את המפתחות יש להוציא ישירות מהספקים.
             </div>
           </div>
           <div class="settings-section">
@@ -774,19 +1968,55 @@
               <span data-i18n="settingsSaveLog">שמור לוג רינדור מפורט:</span>
               <input type="checkbox" id="settings-save-log" />
             </label>
-            <div class="settings-log-controls" id="settings-log-controls" hidden>
-              <button type="button" id="settings-log-copy" class="settings-btn" data-i18n="settingsLogCopy">העתק לוג</button>
-              <button type="button" id="settings-log-download" class="settings-btn" data-i18n="settingsLogDownload">הורד לוג</button>
-              <button type="button" id="settings-log-clear" class="settings-btn" data-i18n="settingsLogClear">נקה לוג</button>
+            <div
+              class="settings-log-controls"
+              id="settings-log-controls"
+              hidden
+            >
+              <button
+                type="button"
+                id="settings-log-copy"
+                class="settings-btn"
+                data-i18n="settingsLogCopy"
+              >
+                העתק לוג
+              </button>
+              <button
+                type="button"
+                id="settings-log-download"
+                class="settings-btn"
+                data-i18n="settingsLogDownload"
+              >
+                הורד לוג
+              </button>
+              <button
+                type="button"
+                id="settings-log-clear"
+                class="settings-btn"
+                data-i18n="settingsLogClear"
+              >
+                נקה לוג
+              </button>
             </div>
-            <textarea id="settings-log-output" class="settings-log-output" readonly hidden
-              placeholder="הלוג של פעולות הרינדור יופיע כאן…"></textarea>
+            <textarea
+              id="settings-log-output"
+              class="settings-log-output"
+              readonly
+              hidden
+              placeholder="הלוג של פעולות הרינדור יופיע כאן…"
+            ></textarea>
           </div>
           <div class="settings-section">
             <h3 class="settings-h3">אודות</h3>
             <div class="settings-row">
               <span>צור קשר במייל:</span>
-              <a id="settings-about-email" href="mailto:yiddishebilder@gmail.com" dir="ltr" style="font-weight:600;">yiddishebilder@gmail.com</a>
+              <a
+                id="settings-about-email"
+                href="mailto:yiddishebilder@gmail.com"
+                dir="ltr"
+                style="font-weight: 600"
+                >yiddishebilder@gmail.com</a
+              >
             </div>
             <div class="settings-row">
               <span>טלפון:</span>
@@ -794,57 +2024,254 @@
             </div>
             <div class="settings-row">
               <span>אתר:</span>
-              <a href="https://ravtext.com" target="_blank" rel="noopener" dir="ltr">ravtext.com</a>
+              <a
+                href="https://ravtext.com"
+                target="_blank"
+                rel="noopener"
+                dir="ltr"
+                >ravtext.com</a
+              >
             </div>
           </div>
         </div>
       </section>
 
       <aside class="panel preview-pane">
-        <div class="main-resize-handle" id="main-resize-handle" title="גרור כדי לשנות רוחב חלון התצוגה" aria-label="שנה רוחב תצוגה"></div>
-        <h2 data-i18n="preview">תצוגה<button type="button" id="preview-minimize-toggle" class="preview-minimize-btn" title="מזער את חלון התצוגה כך שהעורך יקבל את כל הרוחב" aria-label="מזער/הרחב חלון תצוגה">⤧</button></h2>
+        <div
+          class="main-resize-handle"
+          id="main-resize-handle"
+          title="גרור כדי לשנות רוחב חלון התצוגה"
+          aria-label="שנה רוחב תצוגה"
+        ></div>
+        <h2 data-i18n="preview">
+          תצוגה<button
+            type="button"
+            id="preview-minimize-toggle"
+            class="preview-minimize-btn"
+            title="מזער את חלון התצוגה כך שהעורך יקבל את כל הרוחב"
+            aria-label="מזער/הרחב חלון תצוגה"
+          >
+            ⤧
+          </button>
+        </h2>
         <div id="pdf-toolbar" class="pdf-toolbar" dir="rtl">
           <!-- קבוצה: Sidebar toggle (תפריט עמודים) -->
-          <button type="button" id="pdf-sidebar-toggle" title="לוח עמודים — תצוגת ממוזערת של כל העמודים" aria-label="לוח עמודים" class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy">
-            <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><rect x="2.2" y="3" width="4" height="12" rx="1" fill="currentColor" opacity="0.85"/><rect x="7.4" y="3" width="8.4" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9 6.2 h5 M9 9 h5 M9 11.8 h3.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.65"/></svg>
+          <button
+            type="button"
+            id="pdf-sidebar-toggle"
+            title="לוח עמודים — תצוגת ממוזערת של כל העמודים"
+            aria-label="לוח עמודים"
+            class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy"
+          >
+            <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+              <rect
+                x="2.2"
+                y="3"
+                width="4"
+                height="12"
+                rx="1"
+                fill="currentColor"
+                opacity="0.85"
+              />
+              <rect
+                x="7.4"
+                y="3"
+                width="8.4"
+                height="12"
+                rx="1"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.4"
+              />
+              <path
+                d="M9 6.2 h5 M9 9 h5 M9 11.8 h3.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.2"
+                stroke-linecap="round"
+                opacity="0.65"
+              />
+            </svg>
           </button>
 
           <!-- קבוצה: ניווט עמודים -->
           <span class="pdf-tb-group" role="group" aria-label="ניווט עמודים">
-            <button type="button" id="pdf-first" title="עמוד ראשון" aria-label="עמוד ראשון" class="pdf-tb-btn pdf-tb-icon">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M5 4 L10 9 L5 14 M11 4 L16 9 L11 14 M3 4 v10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-first"
+              title="עמוד ראשון"
+              aria-label="עמוד ראשון"
+              class="pdf-tb-btn pdf-tb-icon"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M5 4 L10 9 L5 14 M11 4 L16 9 L11 14 M3 4 v10"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
-            <button type="button" id="pdf-prev" title="עמוד קודם" aria-label="עמוד קודם" class="pdf-tb-btn pdf-tb-icon">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M7 4 L12 9 L7 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-prev"
+              title="עמוד קודם"
+              aria-label="עמוד קודם"
+              class="pdf-tb-btn pdf-tb-icon"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M7 4 L12 9 L7 14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
             <span class="pdf-tb-page">
-              <input type="number" id="pdf-page-input" min="1" value="1" class="pdf-tb-page-input" aria-label="מספר עמוד" />
+              <input
+                type="number"
+                id="pdf-page-input"
+                min="1"
+                value="1"
+                class="pdf-tb-page-input"
+                aria-label="מספר עמוד"
+              />
               <span id="pdf-page-total" class="pdf-tb-page-total">/ 0</span>
             </span>
-            <button type="button" id="pdf-next" title="עמוד הבא" aria-label="עמוד הבא" class="pdf-tb-btn pdf-tb-icon">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M11 4 L6 9 L11 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-next"
+              title="עמוד הבא"
+              aria-label="עמוד הבא"
+              class="pdf-tb-btn pdf-tb-icon"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M11 4 L6 9 L11 14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
-            <button type="button" id="pdf-last" title="עמוד אחרון" aria-label="עמוד אחרון" class="pdf-tb-btn pdf-tb-icon">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M13 4 L8 9 L13 14 M7 4 L2 9 L7 14 M15 4 v10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-last"
+              title="עמוד אחרון"
+              aria-label="עמוד אחרון"
+              class="pdf-tb-btn pdf-tb-icon"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M13 4 L8 9 L13 14 M7 4 L2 9 L7 14 M15 4 v10"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
           </span>
 
           <!-- קבוצה: גלילה במציג -->
-          <span class="pdf-tb-group pdf-tb-scroll-group" role="group" aria-label="גלילה במציג">
-            <button type="button" id="pdf-scroll-up" title="גלול למעלה" aria-label="גלול למעלה" class="pdf-tb-btn pdf-tb-icon pdf-tb-scroll-btn">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span
+            class="pdf-tb-group pdf-tb-scroll-group"
+            role="group"
+            aria-label="גלילה במציג"
+          >
+            <button
+              type="button"
+              id="pdf-scroll-up"
+              title="גלול למעלה"
+              aria-label="גלול למעלה"
+              class="pdf-tb-btn pdf-tb-icon pdf-tb-scroll-btn"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M3.5 11.5 L9 6 L14.5 11.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
-            <button type="button" id="pdf-scroll-down" title="גלול למטה" aria-label="גלול למטה" class="pdf-tb-btn pdf-tb-icon pdf-tb-scroll-btn">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-scroll-down"
+              title="גלול למטה"
+              aria-label="גלול למטה"
+              class="pdf-tb-btn pdf-tb-icon pdf-tb-scroll-btn"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M3.5 6.5 L9 12 L14.5 6.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
           </span>
 
           <!-- קבוצה: זום -->
           <span class="pdf-tb-group" role="group" aria-label="זום">
-            <button type="button" id="pdf-zoom-out" title="הקטן" aria-label="הקטן" class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="7.6" cy="7.6" r="4.4" fill="currentColor" opacity="0.10"/><circle cx="7.6" cy="7.6" r="4.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 7.6 h4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M11 11 L14.8 14.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <button
+              type="button"
+              id="pdf-zoom-out"
+              title="הקטן"
+              aria-label="הקטן"
+              class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <circle
+                  cx="7.6"
+                  cy="7.6"
+                  r="4.4"
+                  fill="currentColor"
+                  opacity="0.10"
+                />
+                <circle
+                  cx="7.6"
+                  cy="7.6"
+                  r="4.4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                />
+                <path
+                  d="M5.4 7.6 h4.4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M11 11 L14.8 14.8"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                />
+              </svg>
             </button>
-            <select id="pdf-zoom-select" class="pdf-tb-zoom-select" title="זום" aria-label="רמת זום">
+            <select
+              id="pdf-zoom-select"
+              class="pdf-tb-zoom-select"
+              title="זום"
+              aria-label="רמת זום"
+            >
               <option value="auto" selected>אוטומטי</option>
               <option value="fit">התאם רוחב</option>
               <option value="actual">גודל מקורי</option>
@@ -856,22 +2283,114 @@
               <option value="2">200%</option>
               <option value="3">300%</option>
             </select>
-            <button type="button" id="pdf-zoom-in" title="הגדל" aria-label="הגדל" class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="7.6" cy="7.6" r="4.4" fill="currentColor" opacity="0.10"/><circle cx="7.6" cy="7.6" r="4.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.4 7.6 h4.4 M7.6 5.4 v4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M11 11 L14.8 14.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <button
+              type="button"
+              id="pdf-zoom-in"
+              title="הגדל"
+              aria-label="הגדל"
+              class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <circle
+                  cx="7.6"
+                  cy="7.6"
+                  r="4.4"
+                  fill="currentColor"
+                  opacity="0.10"
+                />
+                <circle
+                  cx="7.6"
+                  cy="7.6"
+                  r="4.4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                />
+                <path
+                  d="M5.4 7.6 h4.4 M7.6 5.4 v4.4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M11 11 L14.8 14.8"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.7"
+                  stroke-linecap="round"
+                />
+              </svg>
             </button>
           </span>
 
           <!-- קבוצה: חיפוש -->
-          <span class="pdf-tb-group pdf-tb-find-group" role="group" aria-label="חיפוש בטקסט">
+          <span
+            class="pdf-tb-group pdf-tb-find-group"
+            role="group"
+            aria-label="חיפוש בטקסט"
+          >
             <span class="pdf-tb-find-icon" aria-hidden="true">
-              <svg viewBox="0 0 18 18" focusable="false"><circle cx="8" cy="8" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11.4 11.4 L15 15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <svg viewBox="0 0 18 18" focusable="false">
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="4.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                />
+                <path
+                  d="M11.4 11.4 L15 15"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+              </svg>
             </span>
-            <input type="search" id="pdf-find-input" placeholder="חיפוש בטקסט..." class="pdf-tb-find" aria-label="חיפוש בטקסט" />
-            <button type="button" id="pdf-find-prev" title="התאמה קודמת" aria-label="התאמה קודמת" class="pdf-tb-btn pdf-tb-icon">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 11.5 L9 6 L14.5 11.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <input
+              type="search"
+              id="pdf-find-input"
+              placeholder="חיפוש בטקסט..."
+              class="pdf-tb-find"
+              aria-label="חיפוש בטקסט"
+            />
+            <button
+              type="button"
+              id="pdf-find-prev"
+              title="התאמה קודמת"
+              aria-label="התאמה קודמת"
+              class="pdf-tb-btn pdf-tb-icon"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M3.5 11.5 L9 6 L14.5 11.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
-            <button type="button" id="pdf-find-next" title="התאמה הבאה" aria-label="התאמה הבאה" class="pdf-tb-btn pdf-tb-icon">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M3.5 6.5 L9 12 L14.5 6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-find-next"
+              title="התאמה הבאה"
+              aria-label="התאמה הבאה"
+              class="pdf-tb-btn pdf-tb-icon"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M3.5 6.5 L9 12 L14.5 6.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </button>
             <span id="pdf-find-status" class="pdf-tb-find-status"></span>
           </span>
@@ -880,31 +2399,197 @@
           <span class="pdf-tb-spacer"></span>
 
           <!-- קבוצה: פעולות פלט (הדפסה / הורדה) -->
-          <span class="pdf-tb-group pdf-tb-action-group" role="group" aria-label="פעולות פלט">
-            <button type="button" id="pdf-print" title="הדפס" aria-label="הדפס" class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><rect x="5" y="2.8" width="8" height="3.6" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M3 7 h12 a1 1 0 0 1 1 1 v3.5 a1 1 0 0 1 -1 1 h-2 v-2 h-8 v2 h-2 a1 1 0 0 1 -1 -1 v-3.5 a1 1 0 0 1 1 -1 z" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><rect x="5" y="10" width="8" height="5" rx="0.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 12 h4 M7 13.5 h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" opacity="0.7"/><circle cx="13.4" cy="9" r="0.55" fill="currentColor"/></svg>
+          <span
+            class="pdf-tb-group pdf-tb-action-group"
+            role="group"
+            aria-label="פעולות פלט"
+          >
+            <button
+              type="button"
+              id="pdf-print"
+              title="הדפס"
+              aria-label="הדפס"
+              class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <rect
+                  x="5"
+                  y="2.8"
+                  width="8"
+                  height="3.6"
+                  rx="0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M3 7 h12 a1 1 0 0 1 1 1 v3.5 a1 1 0 0 1 -1 1 h-2 v-2 h-8 v2 h-2 a1 1 0 0 1 -1 -1 v-3.5 a1 1 0 0 1 1 -1 z"
+                  fill="currentColor"
+                  opacity="0.18"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+                <rect
+                  x="5"
+                  y="10"
+                  width="8"
+                  height="5"
+                  rx="0.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M7 12 h4 M7 13.5 h4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.1"
+                  stroke-linecap="round"
+                  opacity="0.7"
+                />
+                <circle cx="13.4" cy="9" r="0.55" fill="currentColor" />
+              </svg>
             </button>
-            <button type="button" id="pdf-download" title="הורד PDF" class="pdf-tb-btn pdf-tb-action-btn">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false" class="pdf-tb-action-icon"><path d="M5 2.5 h6 l3 3 v9 a1 1 0 0 1 -1 1 h-8 a1 1 0 0 1 -1 -1 v-11 a1 1 0 0 1 1 -1 z" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M11 2.5 v3 h3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M9 8 v4 M7 10.5 L9 12.5 L11 10.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-download"
+              title="הורד PDF"
+              class="pdf-tb-btn pdf-tb-action-btn"
+            >
+              <svg
+                viewBox="0 0 18 18"
+                aria-hidden="true"
+                focusable="false"
+                class="pdf-tb-action-icon"
+              >
+                <path
+                  d="M5 2.5 h6 l3 3 v9 a1 1 0 0 1 -1 1 h-8 a1 1 0 0 1 -1 -1 v-11 a1 1 0 0 1 1 -1 z"
+                  fill="currentColor"
+                  opacity="0.18"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M11 2.5 v3 h3"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M9 8 v4 M7 10.5 L9 12.5 L11 10.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
               <span>PDF</span>
             </button>
-            <button type="button" id="pdf-download-html" title="הורד HTML לדיבוג — קוד מקור למפתחים" class="pdf-tb-btn pdf-tb-action-btn pdf-tb-action-secondary">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false" class="pdf-tb-action-icon"><path d="M6.5 5.5 L3 9 L6.5 12.5 M11.5 5.5 L15 9 L11.5 12.5 M10.2 4 L7.8 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <button
+              type="button"
+              id="pdf-download-html"
+              title="הורד HTML לדיבוג — קוד מקור למפתחים"
+              class="pdf-tb-btn pdf-tb-action-btn pdf-tb-action-secondary"
+            >
+              <svg
+                viewBox="0 0 18 18"
+                aria-hidden="true"
+                focusable="false"
+                class="pdf-tb-action-icon"
+              >
+                <path
+                  d="M6.5 5.5 L3 9 L6.5 12.5 M11.5 5.5 L15 9 L11.5 12.5 M10.2 4 L7.8 14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
               <span>HTML</span>
             </button>
           </span>
 
           <!-- קבוצה: כלי דיבוג (יוקטנו ל-icons בלבד) -->
-          <span class="pdf-tb-group pdf-tb-debug-group" role="group" aria-label="כלי דיבוג">
-            <button type="button" id="pdf-debug-snapshot" title="הורד JSON של מצב דיבוג" aria-label="הורד JSON של מצב דיבוג" class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M6.5 3.5 C5 3.5 4.5 4 4.5 5.5 v2 C4.5 8.5 4 9 3 9 C4 9 4.5 9.5 4.5 10.5 v2 C4.5 14 5 14.5 6.5 14.5 M11.5 3.5 C13 3.5 13.5 4 13.5 5.5 v2 C13.5 8.5 14 9 15 9 C14 9 13.5 9.5 13.5 10.5 v2 C13.5 14 13 14.5 11.5 14.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6.5" cy="9" r="0.9" fill="currentColor"/><circle cx="9" cy="9" r="0.9" fill="currentColor"/><circle cx="11.5" cy="9" r="0.9" fill="currentColor"/></svg>
+          <span
+            class="pdf-tb-group pdf-tb-debug-group"
+            role="group"
+            aria-label="כלי דיבוג"
+          >
+            <button
+              type="button"
+              id="pdf-debug-snapshot"
+              title="הורד JSON של מצב דיבוג"
+              aria-label="הורד JSON של מצב דיבוג"
+              class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <path
+                  d="M6.5 3.5 C5 3.5 4.5 4 4.5 5.5 v2 C4.5 8.5 4 9 3 9 C4 9 4.5 9.5 4.5 10.5 v2 C4.5 14 5 14.5 6.5 14.5 M11.5 3.5 C13 3.5 13.5 4 13.5 5.5 v2 C13.5 8.5 14 9 15 9 C14 9 13.5 9.5 13.5 10.5 v2 C13.5 14 13 14.5 11.5 14.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <circle cx="6.5" cy="9" r="0.9" fill="currentColor" />
+                <circle cx="9" cy="9" r="0.9" fill="currentColor" />
+                <circle cx="11.5" cy="9" r="0.9" fill="currentColor" />
+              </svg>
             </button>
-            <button type="button" id="pdf-debug-highlight" title="הדגש בעיות" aria-label="הדגש בעיות" class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy">
-              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5" fill="currentColor" opacity="0.15"/><circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11.7 11.7 L15.2 15.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 5.5 v3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="10.6" r="0.65" fill="currentColor"/></svg>
+            <button
+              type="button"
+              id="pdf-debug-highlight"
+              title="הדגש בעיות"
+              aria-label="הדגש בעיות"
+              class="pdf-tb-btn pdf-tb-icon pdf-tb-fancy"
+            >
+              <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false">
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="5"
+                  fill="currentColor"
+                  opacity="0.15"
+                />
+                <circle
+                  cx="8"
+                  cy="8"
+                  r="5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                />
+                <path
+                  d="M11.7 11.7 L15.2 15.2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M8 5.5 v3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+                <circle cx="8" cy="10.6" r="0.65" fill="currentColor" />
+              </svg>
             </button>
           </span>
         </div>
-        <div id="pdf-scroll-progress" class="pdf-scroll-progress" aria-hidden="true">
+        <div
+          id="pdf-scroll-progress"
+          class="pdf-scroll-progress"
+          aria-hidden="true"
+        >
           <div class="pdf-scroll-progress-fill"></div>
         </div>
         <div class="pdf-body">
@@ -919,18 +2604,31 @@
     <section class="modal-overlay" id="word-import-modal">
       <div class="modal" dir="rtl">
         <h2 data-i18n="wordImportTitle">טעינה מקובץ Word</h2>
-        <p class="modal-desc" data-i18n="wordImportDesc">סמן זרמים והגדר סימן קישור:</p>
+        <p class="modal-desc" data-i18n="wordImportDesc">
+          סמן זרמים והגדר סימן קישור:
+        </p>
         <div id="word-stream-list"></div>
         <div class="modal-btns">
-          <button type="button" id="word-import-confirm" data-i18n="load">טען</button>
-          <button type="button" id="word-import-cancel" data-i18n="cancel">ביטול</button>
+          <button type="button" id="word-import-confirm" data-i18n="load">
+            טען
+          </button>
+          <button type="button" id="word-import-cancel" data-i18n="cancel">
+            ביטול
+          </button>
         </div>
       </div>
     </section>
 
     <section id="diagnostics-panel" class="diag-panel diag" hidden>
       <div class="diag-panel-inner">
-        <button data-cmd="diag-toggle" class="diag-close" title="סגור">×</button>
+        <button
+          data-cmd="diag-toggle"
+          class="diag-close"
+          title="סגור"
+          aria-label="סגור אבחון"
+        >
+          ×
+        </button>
         <h2>אבחון מלא</h2>
         <ul id="diag-list"></ul>
         <h3>JSON</h3>
