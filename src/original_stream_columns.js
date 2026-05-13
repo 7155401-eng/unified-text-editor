@@ -35,15 +35,36 @@ export function getOrderedStreamCodes(codes) {
   return [...inOrder, ...rest];
 }
 
-export function moveStreamInOrder(code, direction) {
-  const order = loadStreamOrder();
-  const all = order.includes(code) ? order : [...order, code];
-  const idx = all.indexOf(code);
+export function moveStreamInOrder(code, direction, allCodes) {
+  // משה 2026-05-13: באג קודם — כשלא היה סדר שמור, ה-loadStreamOrder החזיר []
+  // ו-moveStreamInOrder ניסה להזיז יחיד בתוך מערך של איבר אחד → לא קרה כלום.
+  // עכשיו: אם הקריאה כוללת את רשימת הזרמים הנראים (allCodes), אנחנו מתחילים
+  // ממנה (לפי הסדר הנוכחי כפי שהוא מוצג), מוצאים את הקוד ומחליפים שכן.
+  const saved = loadStreamOrder();
+  const visible = Array.isArray(allCodes) && allCodes.length
+    ? allCodes.filter(Boolean)
+    : null;
+  let working;
+  if (visible) {
+    working = getOrderedStreamCodes(visible);
+  } else if (saved.includes(code)) {
+    working = [...saved];
+  } else {
+    working = [...saved, code];
+  }
+  const idx = working.indexOf(code);
   if (idx === -1) return;
   const swap = direction === "up" ? idx - 1 : idx + 1;
-  if (swap < 0 || swap >= all.length) return;
-  [all[swap], all[idx]] = [all[idx], all[swap]];
-  saveStreamOrder(all);
+  if (swap < 0 || swap >= working.length) return;
+  [working[swap], working[idx]] = [working[idx], working[swap]];
+  saveStreamOrder(working);
+}
+
+// משה 2026-05-13: הזזת זרם ליעד מפורש (לשימוש drag-and-drop).
+export function setStreamOrder(orderedCodes) {
+  if (!Array.isArray(orderedCodes)) return;
+  const clean = orderedCodes.filter(c => /^\d{1,3}$/.test(String(c)));
+  saveStreamOrder(clean);
 }
 const DEFAULT_STREAM_SETTINGS = {
   title: "",
@@ -487,8 +508,46 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     codeLabel.className = "stream-settings-code";
     block.appendChild(codeLabel);
 
-    // משה 2026-05-13: שינוי סדר זרמים בטבלת פריסה — חצי ↑/↓ ברורים וגדולים.
-    // השינוי נשמר ב-localStorage ומשפיע על כל מקום שצורך getOrderedStreamCodes.
+    // משה 2026-05-13: שינוי סדר זרמים — חצי ↑/↓ + ידית גרירה ⋮⋮.
+    // חצים מעבירים את הרשימה הנוכחית כפרמטר ל-moveStreamInOrder (תיקון לבאג
+    // שהחצים לא עשו כלום בכניסה ראשונה).
+    block.draggable = true;
+    block.dataset.streamCode = code;
+    block.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/stream-code", code);
+      e.dataTransfer.effectAllowed = "move";
+      block.style.opacity = "0.45";
+    });
+    block.addEventListener("dragend", () => { block.style.opacity = ""; });
+    block.addEventListener("dragover", (e) => {
+      if (e.dataTransfer.types.includes("text/stream-code")) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        block.style.outline = "2px dashed var(--rt-accent-2,#185abd)";
+      }
+    });
+    block.addEventListener("dragleave", () => { block.style.outline = ""; });
+    block.addEventListener("drop", (e) => {
+      e.preventDefault();
+      block.style.outline = "";
+      const dragged = e.dataTransfer.getData("text/stream-code");
+      if (!dragged || dragged === code) return;
+      const order = getOrderedStreamCodes(sorted);
+      const fromIdx = order.indexOf(dragged);
+      const toIdx = order.indexOf(code);
+      if (fromIdx === -1 || toIdx === -1) return;
+      order.splice(fromIdx, 1);
+      order.splice(toIdx, 0, dragged);
+      setStreamOrder(order);
+      commitRender();
+    });
+
+    const dragHandle = document.createElement("span");
+    dragHandle.textContent = "⋮⋮";
+    dragHandle.title = "גרור כדי לשנות סדר";
+    dragHandle.style.cssText = "display:inline-block;cursor:grab;font-size:16px;color:var(--rt-ink-3,#5a4d3a);padding:0 4px;user-select:none;";
+    block.appendChild(dragHandle);
+
     const orderControls = document.createElement("span");
     orderControls.className = "stream-order-controls";
     orderControls.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;margin:0 6px;vertical-align:middle;";
@@ -504,7 +563,7 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
         b.style.cursor = "not-allowed";
       }
       b.addEventListener("click", () => {
-        moveStreamInOrder(code, dir);
+        moveStreamInOrder(code, dir, sorted);
         commitRender();
       });
       return b;
