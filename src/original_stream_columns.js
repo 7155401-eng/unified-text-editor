@@ -487,33 +487,30 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     codeLabel.className = "stream-settings-code";
     block.appendChild(codeLabel);
 
-    // משה 2026-05-13: חצי סדר ↑/↓ — מאפשרים שינוי סדר זרמים בטבלה. השינוי
-    // נשמר ב-localStorage ומשפיע על הסדר בכל המקומות שצורכים את getOrderedStreamCodes.
+    // משה 2026-05-13: שינוי סדר זרמים בטבלת פריסה — חצי ↑/↓ ברורים וגדולים.
+    // השינוי נשמר ב-localStorage ומשפיע על כל מקום שצורך getOrderedStreamCodes.
     const orderControls = document.createElement("span");
     orderControls.className = "stream-order-controls";
-    orderControls.style.cssText = "display:inline-flex;flex-direction:column;gap:1px;margin:0 4px;";
-    const upBtn = document.createElement("button");
-    upBtn.type = "button";
-    upBtn.textContent = "↑";
-    upBtn.title = "הזז למעלה";
-    upBtn.style.cssText = "font-size:10px;line-height:1;padding:1px 4px;cursor:pointer;";
-    upBtn.disabled = codeIdx === 0;
-    upBtn.addEventListener("click", () => {
-      moveStreamInOrder(code, "up");
-      commitRender();
-    });
-    const downBtn = document.createElement("button");
-    downBtn.type = "button";
-    downBtn.textContent = "↓";
-    downBtn.title = "הזז למטה";
-    downBtn.style.cssText = "font-size:10px;line-height:1;padding:1px 4px;cursor:pointer;";
-    downBtn.disabled = codeIdx === sorted.length - 1;
-    downBtn.addEventListener("click", () => {
-      moveStreamInOrder(code, "down");
-      commitRender();
-    });
-    orderControls.appendChild(upBtn);
-    orderControls.appendChild(downBtn);
+    orderControls.style.cssText = "display:inline-flex;flex-direction:column;gap:2px;margin:0 6px;vertical-align:middle;";
+    const makeArrowBtn = (label, title, dir, disabled) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.title = title;
+      b.style.cssText = "font-size:14px;line-height:1;padding:2px 8px;cursor:pointer;background:var(--rt-surface-3,#f4f1ea);border:1px solid var(--rt-line,#d7d0be);border-radius:3px;color:var(--rt-ink,#222);font-weight:700;min-width:24px;";
+      if (disabled) {
+        b.disabled = true;
+        b.style.opacity = "0.35";
+        b.style.cursor = "not-allowed";
+      }
+      b.addEventListener("click", () => {
+        moveStreamInOrder(code, dir);
+        commitRender();
+      });
+      return b;
+    };
+    orderControls.appendChild(makeArrowBtn("▲", "הזז למעלה", "up", codeIdx === 0));
+    orderControls.appendChild(makeArrowBtn("▼", "הזז למטה", "down", codeIdx === sorted.length - 1));
     block.appendChild(orderControls);
 
     block.appendChild(makeLabeledInput("כותרת:", cur.title || "", { type: "text" }, (input) => {
