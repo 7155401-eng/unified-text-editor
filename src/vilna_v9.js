@@ -1318,9 +1318,18 @@ function autoResolveV9CrownMainOverlap(pageEl) {
 
       if (blockers.length) {
         const blockerBottom = Math.max(...blockers.map(x => x.box.bottom));
-        const dynamicGap = Math.max(2, avgMainHeight * 0.18);
+        const blockerMaxHeight = Math.max(...blockers.map(x => x.box.height));
+        // משה 2026-05-13: ה-gap הישן (avgMainHeight*0.18 ≈ 3.35px) היה קטן
+        // מדי — descenders של ך'/ץ'/ם' בכתר נגעו ב-ascender של שורת הראשי.
+        // הנוסחה החדשה דינמית: מבוססת על גובה השורה של החוסם (כתר) ועל
+        // הראשי, ומבטיחה מינימום 8px ניגודיות ויזואלית.
+        const dynamicGap = Math.max(
+          8,
+          blockerMaxHeight * 0.5,
+          avgMainHeight * 0.35
+        );
         const delta = blockerBottom + dynamicGap - firstMainTop;
-        if (delta > 0 && delta <= Math.max(40, avgMainHeight * 3)) {
+        if (delta > 0 && delta <= Math.max(60, avgMainHeight * 4)) {
           for (const el of mainLines) {
             const oldTop = n(el.style.top);
             el.style.top = (oldTop + delta) + "px";
