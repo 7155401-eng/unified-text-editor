@@ -101,13 +101,13 @@ function hashStyleName(name) {
   return (h >>> 0).toString(36);
 }
 
-function escapeHtml(s) {
+export function escapeHtml(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
 
-function escapeAttr(s) {
+export function escapeAttr(s) {
   return escapeHtml(s).replace(/"/g, "&quot;");
 }
