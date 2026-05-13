@@ -340,6 +340,110 @@ function splitWordsAtVisualLine(text, metrics, widthPx) {
   };
 }
 
+// משה 2026-05-13: חיתוך טקסט לפי מבנה רצועות אמיתי (תרחיש 1).
+// המטרה: לחתוך את הטקסט כך ששני הטורים (ימני ושמאלי, בעלי מבנה רצועות זהה)
+// יסיימו באותה גובה אנכית — איזון ויזואלי קלאסי של דפוס וילנא.
+//
+// אסטרטגיה: חיפוש בינארי בנקודת החיתוך N, כך ש:
+//   X(words[0..N]) ≈ X(words[N..])
+// כאשר X(text) = מספר השורות שייקח לטקסט לזרום דרך הרצועות (strip1+strip2+strip3a).
+//
+// מבנה הטור: רצועה 1 רחבה (sideHalfWidth) → רצועה 2 צרה (ליד הראשי) → רצועה 3a רחבה
+// שורות ברצועה צרה צורכות פחות מילים → צריך יותר שורות לאותו טקסט.
+//
+// אם המידע על הרצועות לא זמין/לא תקין — מחזיר null (אות לקרוא ל-fallback).
+function splitWordsByStrips(text, metrics, rightStrips) {
+  const words = (text || '').split(/\s+/).filter(Boolean);
+  if (words.length < 2 || !metrics || !Array.isArray(rightStrips) || rightStrips.length === 0) {
+    return null;
+  }
+  
+  const lineH = metrics.lineHeight;
+  if (!lineH || lineH <= 0) return null;
+  
+  // הסר רצועות לא תקינות
+  const strips = rightStrips.filter(s => 
+    s && s.width > 0 && s.height > 0 && Math.floor(s.height / lineH) > 0
+  );
+  if (strips.length === 0) return null;
+  
+  // פונקציה עזר: כמה שורות יקח טקסט (מערך מילים) לזרום דרך הרצועות.
+  // החזרה כוללת גם אם הטקסט גלש מעבר לרצועות (נסכם גם את השארית עם רוחב strip האחרון).
+  function linesForWordSlice(wordSlice) {
+    if (!wordSlice || wordSlice.length === 0) return 0;
+    
+    let cursor = 0;
+    let total = 0;
+    
+    for (let i = 0; i < strips.length; i++) {
+      const strip = strips[i];
+      if (cursor >= wordSlice.length) break;
+      
+      const maxLines = Math.floor(strip.height / lineH);
+      if (maxLines <= 0) continue;
+      
+      const remaining = wordSlice.slice(cursor).join(' ');
+      const lines = metrics.layoutLines(remaining, strip.width);
+      if (!lines || lines.length === 0) break;
+      
+      const isLastStrip = (i === strips.length - 1);
+      const linesUsed = isLastStrip 
+        ? lines.length  // ברצועה האחרונה - הכל נחשב (גם אם חורג)
+        : Math.min(maxLines, lines.length);
+      
+      for (let j = 0; j < linesUsed; j++) {
+        if (lines[j] && lines[j].words) cursor += lines[j].words.length;
+      }
+      total += linesUsed;
+      
+      // אם הטקסט נכנס לחלוטין ברצועה הזו (לא חרג) - סיים
+      if (lines.length <= maxLines) break;
+    }
+    
+    return total;
+  }
+  
+  // חיפוש בינארי על N: נקודת החיתוך
+  // המטרה: מינימום של |linesForWordSlice(left) - linesForWordSlice(right)|
+  let lo = 1;
+  let hi = words.length - 1;
+  
+  // ערך ראשוני: ניחוש = חצי המילים
+  let bestN = Math.floor(words.length / 2);
+  let bestDiff = Infinity;
+  
+  // 30 איטרציות זה מספיק בשביל log2(words.length) רוב המקרים
+  for (let iter = 0; iter < 30 && lo <= hi; iter++) {
+    const mid = Math.floor((lo + hi) / 2);
+    const linesRight = linesForWordSlice(words.slice(0, mid));
+    const linesLeft  = linesForWordSlice(words.slice(mid));
+    const diff = linesRight - linesLeft;
+    const absDiff = Math.abs(diff);
+    
+    if (absDiff < bestDiff) {
+      bestDiff = absDiff;
+      bestN = mid;
+    }
+    
+    if (diff === 0) break; // מצב מאוזן מושלם
+    if (diff < 0) {
+      // הימני קצר מדי, צריך להעביר עוד מילים אליו
+      lo = mid + 1;
+    } else {
+      // הימני ארוך מדי, צריך להפחית
+      hi = mid - 1;
+    }
+  }
+  
+  // הגנה: לפחות מילה אחת בכל צד
+  const splitIdx = Math.min(words.length - 1, Math.max(1, bestN));
+  
+  return {
+    first: words.slice(0, splitIdx).join(' '),
+    second: words.slice(splitIdx).join(' '),
+  };
+}
+
 // =====================================================================
 // בונה strips לראשי לפי בר־מצרא: כשפרשן נגמר, הראשי מתפשט לתוך שטחו.
 // =====================================================================
@@ -494,20 +598,6 @@ function buildPagePlan(pageContent, config) {
   }
   result.crownScenario = scenario;
 
-  // משה 2026-05-10: צורה 1 — זרם אחד מפוצל לשני טורים מקבילים.
-  // לוקחים את הזרם היחיד שזוהה כארוך וחותכים את הטקסט בערך באמצע (לפי מילים).
-  // החצי הראשון לטור הימני, החצי השני לשמאלי. שניהם עם אותו id (אותו שם זרם,
-  // אותו צבע). מתקבל דפוס וילנא הקלאסי של פירוש אחד בשני טורים.
-  if (scenario.name === 'one_long_split') {
-    const single = pageContent.rightStream || pageContent.leftStream;
-    if (single) {
-      const allText = single.items.join(' ').trim();
-      const parts = splitWordsAtVisualLine(allText, sideMetrics, sideHalfWidth);
-      pageContent.rightStream = { id: single.id, items: [parts.first] };
-      pageContent.leftStream  = { id: single.id, items: [parts.second] };
-    }
-  }
-
   // 2. מיקום ראשי
   let crownHeight = 0;
   if (scenario.name === 'two_long_parallel' ||
@@ -537,6 +627,64 @@ function buildPagePlan(pageContent, config) {
   const naiveMainBottomY = mainTopY + naiveMainHeight;
   let mainBottomY = naiveMainBottomY; // יעודכן אחרי בר־מצרא
 
+  // משה 2026-05-10: צורה 1 — זרם אחד מפוצל לשני טורים מקבילים.
+  // לוקחים את הזרם היחיד שזוהה כארוך וחותכים את הטקסט בערך באמצע (לפי מילים).
+  // החצי הראשון לטור הימני, החצי השני לשמאלי. שניהם עם אותו id (אותו שם זרם,
+  // אותו צבע). מתקבל דפוס וילנא הקלאסי של פירוש אחד בשני טורים.
+  //
+  // משה 2026-05-13: החיתוך עכשיו מבוסס על מבנה הרצועות האמיתי של הטור הימני,
+  // לא על "חצי השורות" ברוחב קבוע. הטור הימני מורכב מ-3 רצועות באורכים שונים
+  // (strip 1 רחב, strip 2 צר ליד הראשי, strip 3a רחב חזרה). חיתוך לפי רוחב
+  // קבוע יצר חיתוך מוטעה וגרם לרווח גדול בתחתית הטור הימני וקפיצות בקריאה.
+  // הקטע הוזז לכאן (אחרי הגדרת mainTopY/naiveMainBottomY) כי הוא צריך אותם.
+  if (scenario.name === 'one_long_split') {
+    const single = pageContent.rightStream || pageContent.leftStream;
+    if (single) {
+      const allText = single.items.join(' ').trim();
+      
+      // pageBottomY מקומי לחישוב (יוגדר בהמשך אבל אנחנו צריכים אותו עכשיו)
+      const _pageBottomYForSplit = cfg.pageHeight - cfg.padding;
+      
+      // בניית רצועות הטור הימני לצורך חישוב חיתוך מדויק.
+      // משקפת בדיוק את הרצועות שייווצרו ב-buildSideStream עבור side='right'.
+      const rightStrips = [];
+      // strip 1: אזור הכתר
+      if (crownHeight > 0 && mainTopY > sideTopY) {
+        rightStrips.push({
+          width: sideHalfWidth,
+          height: Math.min(mainTopY, _pageBottomYForSplit) - sideTopY,
+        });
+      }
+      // strip 2: צמוד לראשי (רוחב מצומצם)
+      if (naiveMainHeight > 0) {
+        const strip2BottomY = Math.min(naiveMainBottomY, _pageBottomYForSplit);
+        const strip2Width = Math.max(0, innerWidth - (mainX + mainWidth) - mainGap);
+        if (strip2BottomY > mainTopY && strip2Width > 0) {
+          rightStrips.push({
+            width: strip2Width,
+            height: strip2BottomY - mainTopY,
+          });
+        }
+      }
+      // strip 3a: מתחת לראשי (חזרה ל-sideHalfWidth) - רק עד תחתית הדף
+      // בתרחיש 1 הימני לא מקבל strip3 מלא (זה לשמאלי), אז חצי-רוחב בלבד
+      if (naiveMainBottomY < _pageBottomYForSplit) {
+        rightStrips.push({
+          width: sideHalfWidth,
+          height: _pageBottomYForSplit - naiveMainBottomY,
+        });
+      }
+      
+      let parts = splitWordsByStrips(allText, sideMetrics, rightStrips);
+      // fallback אם הפונקציה החדשה לא הצליחה (רצועות לא תקינות וכו')
+      if (!parts) {
+        parts = splitWordsAtVisualLine(allText, sideMetrics, sideHalfWidth);
+      }
+      pageContent.rightStream = { id: single.id, items: [parts.first] };
+      pageContent.leftStream  = { id: single.id, items: [parts.second] };
+    }
+  }
+
   // 4. זרמים צדיים
   // משה 2026-05-08: עכשיו מקבלת mainBottomY ו-otherSideEnded כפרמטרים,
   // כדי שאחרי בר־מצרא של הראשי נוכל לחשב את הצדדים מחדש עם:
@@ -549,12 +697,7 @@ function buildPagePlan(pageContent, config) {
   const pageBottomY = cfg.pageHeight - cfg.padding;
   function buildSideStream(streamData, side, opts) {
     if (!streamData) return null;
-    // משה 2026-05-13: carryFromOtherSide — בתרחיש 1, ה-overflow של הימני
-    // מועבר כ-prefix לשמאלי כדי לסגור פערים ויזואליים מ-splitWordsAtVisualLine
-    // שמחלקת לפי רוחב הנחה (sideHalfWidth) אבל בפועל הטורים יכולים להיות רחבים יותר.
-    const carryPrefix = (opts && opts.carryFromOtherSide) || '';
-    const baseText = streamData.items.join(' ');
-    const text = carryPrefix ? (carryPrefix + ' ' + baseText).trim() : baseText;
+    const text = streamData.items.join(' ');
     if (!text) return null;
     const o = opts || {};
     const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
@@ -797,27 +940,18 @@ function buildPagePlan(pageContent, config) {
     });
   }
   // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
-  // משה 2026-05-13: בתרחיש 1, מעבירים את overflow של הימני כ-carry לשמאלי
-  // לסגירת פערים מ-splitWordsAtVisualLine שלא מדויקת לרוחבי הטורים בפועל.
   let pass2Left = null;
   if (pageContent.leftStream) {
     const otherEnd = pass2Right ? cap(pass2Right.endY)
                    : pass1Right ? cap(pass1Right.endY)
                    : mainTopY;
-    const rightCarry = (isScenario1 && pass2Right && pass2Right.overflowText)
-      ? pass2Right.overflowText
-      : '';
     pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
-      carryFromOtherSide: rightCarry,
     });
   }
   // איטרציה 3: pass2 ימני עם pass2 שמאלי (סופי)
-  // משה 2026-05-13: בתרחיש 1 לדלג — overflow של הימני כבר הועבר לשמאלי.
-  // חישוב מחדש של pass2Right ישנה את ה-overflow שלו ויצור אי-התאמה עם השמאלי
-  // שכבר נבנה (גורם לכפילות או איבוד מילים).
-  if (pageContent.rightStream && pass2Left && !isScenario1) {
+  if (pageContent.rightStream && pass2Left) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: cap(pass2Left.endY),
@@ -832,9 +966,9 @@ function buildPagePlan(pageContent, config) {
     if (fullCrownSide && fullCrownSide !== 'right') pass2Right.skipTopTitle = true;
     if (scenario.name === 'one_long_split') pass2Right.isScenario1Split = true;
     result.streamBoxes.push(pass2Right);
-    // משה 2026-05-13: בתרחיש 1, overflow של הימני כבר הועבר לשמאלי דרך carryFromOtherSide,
-    // אז לא שומרים אותו ב-overflow.streams (אחרת ייכפל). בשאר התרחישים — כמו במקור.
-    if (pass2Right.overflowText && !isScenario1) {
+    // משה 2026-05-10: בתרחיש 1, שני הצדדים = אותו זרם, אותו id. אם נכתוב שניהם
+    // לאותו מפתח באוברפלאו — השני ידרוס את הראשון ותוכן ייאבד. במקום, נצרף.
+    if (pass2Right.overflowText) {
       const prev = result.overflow.streams[pass2Right.id] || '';
       result.overflow.streams[pass2Right.id] = prev ? (prev + ' ' + pass2Right.overflowText) : pass2Right.overflowText;
     }
