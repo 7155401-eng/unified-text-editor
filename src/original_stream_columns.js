@@ -157,51 +157,6 @@ export function getEffectiveStreamSettings(code) {
   return normalizeStreamOpeningWordSettings(out);
 }
 
-function _streamTextSetting(value, fallback) {
-  return value === undefined || value === null ? fallback : String(value);
-}
-
-function _streamBoolSetting(value, fallback) {
-  return typeof value === "boolean" ? value : fallback;
-}
-
-export function formatStreamNumber(code, num, place = "note") {
-  const n = num === undefined || num === null ? "" : String(num);
-  const s = getEffectiveStreamSettings(code);
-
-  if (place === "main") {
-    if (!_streamBoolSetting(s.mainRefEnabled, true)) return "";
-    return _streamTextSetting(s.mainRefPrefix, "[") + n + _streamTextSetting(s.mainRefSuffix, "]");
-  }
-
-  if (place === "child") {
-    const body = _streamBoolSetting(s.childNumShowStream, true) ? `${code}-${n}` : n;
-    return _streamTextSetting(s.childNumPrefix, "[") + body + _streamTextSetting(s.childNumSuffix, "]");
-  }
-
-  if (!_streamBoolSetting(s.noteNumEnabled, true)) return "";
-  return _streamTextSetting(s.noteNumPrefix, "[") + n + _streamTextSetting(s.noteNumSuffix, "]");
-}
-
-export function shouldBoldStreamNumber(code, place = "note") {
-  const s = getEffectiveStreamSettings(code);
-  if (place === "main") return _streamBoolSetting(s.mainRefBold, false);
-  return _streamBoolSetting(s.noteNumBold, false);
-}
-
-export function shouldBoldStreamLemma(code) {
-  const s = getEffectiveStreamSettings(code);
-  return _streamBoolSetting(s.lemmaBold, true);
-}
-
-export function noteTextPrefixForStream(code) {
-  return _streamTextSetting(getEffectiveStreamSettings(code).noteTextPrefix, "");
-}
-
-export function noteTextSuffixForStream(code) {
-  return _streamTextSetting(getEffectiveStreamSettings(code).noteTextSuffix, "");
-}
-
 function makeStyleSelect(labelText, value, onChange) {
   const label = document.createElement("label");
   label.className = "stream-col-input";

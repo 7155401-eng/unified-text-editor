@@ -1,14 +1,7 @@
 import { streamColorIndex } from "./schema.js";
 import { applyStyleToElement } from "../style_registry.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
-import {
-  getEffectiveStreamSettings,
-  formatStreamNumber,
-  shouldBoldStreamNumber,
-  shouldBoldStreamLemma,
-  noteTextPrefixForStream,
-  noteTextSuffixForStream,
-} from "../original_stream_columns.js";
+import { getEffectiveStreamSettings } from "../original_stream_columns.js";
 
 function streamTitleForCode(code) {
   const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
@@ -156,7 +149,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       wrap.className = `note-child note-stream-${streamColorIndex(child.stream)}`;
       wrap.dataset.stream = child.stream;
       if (typeof child.num === "number") wrap.dataset.noteNum = String(child.num);
-      appendNumberPrefix(wrap, child.stream, child.num || 0, "child", true);
+      wrap.appendChild(document.createTextNode(` [${child.stream}-${child.num || 0}] `));
       const childTrim = (child.text || "").replace(/^\s+/, "");
       const sp = childTrim.indexOf(" ");
       if (sp > 0) {
@@ -176,24 +169,6 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       parent.appendChild(wrap);
     }
   }
-
-  function appendNumberPrefix(parent, code, num, place, leadingSpace = false) {
-    const formatted = formatStreamNumber(code, num, place);
-    if (!formatted) {
-      if (leadingSpace) parent.appendChild(document.createTextNode(" "));
-      return;
-    }
-    const text = (leadingSpace ? " " : "") + formatted + " ";
-    if (shouldBoldStreamNumber(code, place)) {
-      const strong = document.createElement("strong");
-      strong.className = "note-number";
-      strong.textContent = text;
-      parent.appendChild(strong);
-    } else {
-      parent.appendChild(document.createTextNode(text));
-    }
-  }
-
   const artificialLastLine = options.pageHasMain && !mishnaWrapActive()
     ? "justify"
     : "right";
