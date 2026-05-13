@@ -612,11 +612,70 @@ function applyStreamOpeningWords(pageEl, streamSettings) {
   });
 }
 
+function applyMainOpeningWordsV9(pageEl, settings) {
+  // משה 2026-05-13: V9 לא מייצר .page-main p — הוא יוצר .v9-line עם data-v9-role.
+  // מילת פתיח על המנוע החדש: לוקחים את שורת הראשי הראשונה, חולצים את הקטע
+  // ופוצלים ל-span מסוגנן + שאר השורה כטקסט.
+  const mainLines = Array.from(pageEl.querySelectorAll('.v9-line[data-v9-role]'))
+    .filter(el => String(el.dataset.v9Role || "").toLowerCase().includes("main"));
+  if (!mainLines.length) return;
+
+  // ממיינים לפי top — השורה הראשונה היא הגבוהה ביותר.
+  mainLines.sort((a, b) => parseFloat(a.style.top || 0) - parseFloat(b.style.top || 0));
+  const firstLine = mainLines[0];
+  if (!firstLine || firstLine.dataset.opwApplied === "1") return;
+
+  const text = firstLine.textContent || "";
+  if (!text.trim()) return;
+
+  const parts = extractOpeningSegment(text, settings, { skipLeadingControls: true });
+  if (!parts) return;
+
+  // ב-V9 השורות בפועל absolute-positioned עם גובה קבוע — מצב "dropped" לא נתמך
+  // לוגית (אין float). נאלץ raised כדי לא לשבור גיאומטריה.
+  const forceRaised = { ...settings, position: "raised" };
+  setWrappedText(firstLine, parts, forceRaised, { _forceRaised: true });
+}
+
+function applyStreamOpeningWordsV9(pageEl, streamSettings) {
+  // כל שורה ראשונה של זרם (data-v9-role לא-main) מקבלת טיפול מילת-פתיח
+  // אם הוגדר opwEnabled לזרם הזה. כמו ב-main: רק raised.
+  const byStream = new Map();
+  pageEl.querySelectorAll('.v9-line[data-v9-box-id]').forEach((el) => {
+    const id = el.dataset.v9BoxId;
+    if (!id || id === "main") return;
+    if (!byStream.has(id)) byStream.set(id, []);
+    byStream.get(id).push(el);
+  });
+  for (const [code, lines] of byStream.entries()) {
+    const raw = applyOpeningWordGlobalOverrides(streamSettings[code]);
+    if (!raw || !raw.opwEnabled) continue;
+    const settings = streamToOpeningSettings(raw);
+    if (!settings.enabled) continue;
+    lines.sort((a, b) => parseFloat(a.style.top || 0) - parseFloat(b.style.top || 0));
+    const first = lines[0];
+    if (!first || first.dataset.opwApplied === "1") continue;
+    const text = first.textContent || "";
+    if (!text.trim()) continue;
+    const parts = extractOpeningSegment(text, settings, { skipLeadingControls: false });
+    if (!parts) continue;
+    setWrappedText(first, parts, { ...settings, position: "raised" }, { _forceRaised: true, centerFull: settings.centerFull });
+  }
+}
+
 export function applyOpeningWordsToPage(pageEl, mainSettings, streamSettings) {
   if (!pageEl || pageEl.classList.contains("page-placeholder")) return;
 
   const globalSettings = mainSettings || getOpeningWordSettings();
   const streams = streamSettings || (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+
+  // משה 2026-05-13: זיהוי מנוע V9 לפי ה-class על העמוד. אם זה V9 — נתיב שונה
+  // (השורות ב-position:absolute, לא DOM נחשב); אחרת — נתיב קלאסי של .page-main.
+  if (pageEl.classList.contains("v9-page")) {
+    if (globalSettings.enabled) applyMainOpeningWordsV9(pageEl, globalSettings);
+    applyStreamOpeningWordsV9(pageEl, streams);
+    return;
+  }
 
   if (globalSettings.enabled) applyMainOpeningWords(pageEl, globalSettings);
   applyStreamOpeningWords(pageEl, streams);

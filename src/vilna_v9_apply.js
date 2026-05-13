@@ -15,7 +15,7 @@
 
 import { buildPages } from "./vilna_v9.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
-import { getMainTextStyle } from "./document_style_settings.js";
+import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 
 // משה 2026-05-08: קריאת קודי הזרמים שהוגדרו לגפ"ת ע"י המשתמש.
@@ -157,6 +157,11 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   const levels = readLevelsFromLocalStorage();
   const talmudStreams = readTalmudStreamCodes();
 
+  // משה 2026-05-13: סגנון של "טקסט ראשי" — הזרמת ה-id והאובייקט הגולמי למנוע
+  // כדי שהבולד/האיטליק וכל שאר התכונות יחולו על שורות הראשי ב-V9.
+  const mainStyleId = loadDocumentStyleSettings().mainStyleId || "";
+  const mainInlineStyle = getMainTextStyle() || null;
+
   await buildPages(container, paragraphs, {
     pageWidth: geom.pageWidth,
     pageHeight: geom.pageHeight,
@@ -170,6 +175,8 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     padding: 12,
     mainGap: geom.mainGap,
     streamHorizontalGap: geom.streamHorizontalGap,
+    mainStyleId,
+    mainInlineStyle,
     mainWidthRatio: readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
     crownLines: readIntSetting("ravtext.talmudLayout.crownLines", 4, 0, 12),
     gapFillMinRatio: readPercentSetting("ravtext.talmudLayout.gapFillMin", 82, 50, 98),

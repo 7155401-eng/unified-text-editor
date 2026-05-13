@@ -1,7 +1,32 @@
 import { streamColorIndex } from "./schema.js";
 import { applyStyleToElement } from "../style_registry.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
-import { getEffectiveStreamSettings } from "../original_stream_columns.js";
+import {
+  getEffectiveStreamSettings,
+  formatStreamNumber,
+  shouldBoldStreamNumber,
+  shouldBoldStreamLemma,
+} from "../original_stream_columns.js";
+
+// משה 2026-05-13: הוספת מספר זרם לפני טקסט הערה/תת-הערה.
+// ברירת המחדל של formatStreamNumber זהה לפלט הישן ("[N]" להערה, "[code-num]"
+// לתת-הערה) — אז ההחלפה לא משנה התנהגות עד שמשה ישנה הגדרה ב-UI.
+function appendNumberPrefix(parent, code, num, place, leadingSpace = false) {
+  const formatted = formatStreamNumber(code, num, place);
+  if (!formatted) {
+    if (leadingSpace) parent.appendChild(document.createTextNode(" "));
+    return;
+  }
+  const text = (leadingSpace ? " " : "") + formatted + " ";
+  if (shouldBoldStreamNumber(code, place)) {
+    const strong = document.createElement("strong");
+    strong.className = "note-number";
+    strong.textContent = text;
+    parent.appendChild(strong);
+  } else {
+    parent.appendChild(document.createTextNode(text));
+  }
+}
 
 function streamTitleForCode(code) {
   const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
@@ -124,21 +149,31 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       parent.appendChild(document.createTextNode((leadingSpace ? " " : "") + text));
       return;
     }
-    const prefix = (leadingSpace ? " " : "") + `[${displayNum(tup)}] `;
-    parent.appendChild(document.createTextNode(prefix));
+    // משה 2026-05-13: מספר ההערה דרך formatStreamNumber. ברירת מחדל מחזירה
+    // "[N] " — אותו פלט כמו הקוד הישן; UI מאפשר לשנות סוגריים/הדגשה.
+    appendNumberPrefix(parent, streamCode, displayNum(tup), "note", leadingSpace);
     const trimmed = text.replace(/^\s+/, "");
     const spaceIdx = trimmed.indexOf(" ");
+    const boldLemma = shouldBoldStreamLemma(streamCode);
     if (spaceIdx > 0) {
-      const lemma = document.createElement("strong");
-      lemma.className = "note-lemma";
-      lemma.textContent = trimmed.substring(0, spaceIdx);
-      parent.appendChild(lemma);
+      if (boldLemma) {
+        const lemma = document.createElement("strong");
+        lemma.className = "note-lemma";
+        lemma.textContent = trimmed.substring(0, spaceIdx);
+        parent.appendChild(lemma);
+      } else {
+        parent.appendChild(document.createTextNode(trimmed.substring(0, spaceIdx)));
+      }
       parent.appendChild(document.createTextNode(trimmed.substring(spaceIdx)));
     } else if (trimmed.length > 0) {
-      const lemma = document.createElement("strong");
-      lemma.className = "note-lemma";
-      lemma.textContent = trimmed;
-      parent.appendChild(lemma);
+      if (boldLemma) {
+        const lemma = document.createElement("strong");
+        lemma.className = "note-lemma";
+        lemma.textContent = trimmed;
+        parent.appendChild(lemma);
+      } else {
+        parent.appendChild(document.createTextNode(trimmed));
+      }
     }
     appendChildNotes(parent, Array.isArray(tup[5]) ? tup[5] : []);
   }
@@ -149,20 +184,30 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       wrap.className = `note-child note-stream-${streamColorIndex(child.stream)}`;
       wrap.dataset.stream = child.stream;
       if (typeof child.num === "number") wrap.dataset.noteNum = String(child.num);
-      wrap.appendChild(document.createTextNode(` [${child.stream}-${child.num || 0}] `));
+      // משה 2026-05-13: ברירת מחדל = " [code-num] " (זהה לפלט הישן).
+      appendNumberPrefix(wrap, child.stream, child.num || 0, "child", true);
       const childTrim = (child.text || "").replace(/^\s+/, "");
       const sp = childTrim.indexOf(" ");
+      const boldChildLemma = shouldBoldStreamLemma(child.stream);
       if (sp > 0) {
-        const lem = document.createElement("strong");
-        lem.className = "note-lemma";
-        lem.textContent = childTrim.substring(0, sp);
-        wrap.appendChild(lem);
+        if (boldChildLemma) {
+          const lem = document.createElement("strong");
+          lem.className = "note-lemma";
+          lem.textContent = childTrim.substring(0, sp);
+          wrap.appendChild(lem);
+        } else {
+          wrap.appendChild(document.createTextNode(childTrim.substring(0, sp)));
+        }
         wrap.appendChild(document.createTextNode(childTrim.substring(sp)));
       } else if (childTrim.length > 0) {
-        const lem = document.createElement("strong");
-        lem.className = "note-lemma";
-        lem.textContent = childTrim;
-        wrap.appendChild(lem);
+        if (boldChildLemma) {
+          const lem = document.createElement("strong");
+          lem.className = "note-lemma";
+          lem.textContent = childTrim;
+          wrap.appendChild(lem);
+        } else {
+          wrap.appendChild(document.createTextNode(childTrim));
+        }
       }
       const grand = Array.isArray(child.children) ? child.children : [];
       if (grand.length > 0) appendChildNotes(wrap, grand);

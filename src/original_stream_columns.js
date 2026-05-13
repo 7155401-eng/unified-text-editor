@@ -6,6 +6,45 @@ import { styleOptionsHtml } from "./style_registry.js";
 
 const STREAM_SETTINGS_KEY = "ravtext.streamSettings.v1";
 const GLOBAL_STREAM_OVERRIDES_KEY = "ravtext.globalStreamOverrides.v1";
+const STREAM_ORDER_KEY = "ravtext.streamOrder.v1";
+
+// משה 2026-05-13: סדר תצוגה של זרמים בטבלת "פריסה".
+// localStorage שומר רשימה: ["03","01","02"]. כל זרם שלא במפה הולך אחרי המוסדרים
+// לפי הסדר המספרי. ↑/↓ מזיזים שורה אחת בכל לחיצה.
+function loadStreamOrder() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STREAM_ORDER_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter(c => /^\d{1,3}$/.test(String(c))) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStreamOrder(order) {
+  try {
+    localStorage.setItem(STREAM_ORDER_KEY, JSON.stringify(order || []));
+    window.dispatchEvent(new CustomEvent("ravtext:stream-order-changed"));
+  } catch (_) {}
+}
+
+export function getOrderedStreamCodes(codes) {
+  const all = Array.from(new Set(codes || [])).filter(Boolean);
+  const order = loadStreamOrder();
+  const inOrder = order.filter(c => all.includes(c));
+  const rest = all.filter(c => !order.includes(c)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  return [...inOrder, ...rest];
+}
+
+export function moveStreamInOrder(code, direction) {
+  const order = loadStreamOrder();
+  const all = order.includes(code) ? order : [...order, code];
+  const idx = all.indexOf(code);
+  if (idx === -1) return;
+  const swap = direction === "up" ? idx - 1 : idx + 1;
+  if (swap < 0 || swap >= all.length) return;
+  [all[swap], all[idx]] = [all[idx], all[swap]];
+  saveStreamOrder(all);
+}
 const DEFAULT_STREAM_SETTINGS = {
   title: "",
   cols: 1,
@@ -15,6 +54,11 @@ const DEFAULT_STREAM_SETTINGS = {
   minLinesForCols: 3,
   styleId: "",
   titleStyleId: "",
+  // משה 2026-05-13: שליטה ב"פס" שמתחת לכותרת המפרש — כמו בתוכנה הישנה.
+  // ברירת מחדל = פס דק אפור (התנהגות נוכחית). אפשר לכבות לחלוטין.
+  barShow: true,
+  barColor: "#888",
+  barThickness: 1,
 };
 
 const GLOBAL_OVERRIDE_DEFS = {
@@ -37,6 +81,26 @@ const GLOBAL_OVERRIDE_DEFS = {
   opwSpaceAfter: { label: "מילה פותחת: רווח", type: "number", value: 0.3, min: 0, max: 4, step: 0.1 },
   opwSkipOrphan: { label: "מילה פותחת: דלג קצר", type: "boolean", value: false },
   opwCenterFull: { label: "מילה פותחת: מרכוז מלא", type: "boolean", value: false },
+  barShow: { label: "פס מעל המפרש", type: "boolean", value: true },
+  barColor: { label: "צבע הפס", type: "text", value: "#888" },
+  barThickness: { label: "עובי הפס (px)", type: "number", value: 1, min: 0, max: 6, step: 1 },
+
+  // משה 2026-05-13: מיספור לזרמים (לתורה אור השלום, להערות וציונים).
+  // ברירת מחדל = כיבוי mainRef (לא מופיע מספר בראשי) — שומר תאימות.
+  mainRefEnabled: { label: "מספר בראשי", type: "boolean", value: false },
+  mainRefPrefix: { label: "ראשי פתיחה", type: "text", value: "[" },
+  mainRefSuffix: { label: "ראשי סגירה", type: "text", value: "]" },
+  mainRefBold: { label: "ראשי מודגש", type: "boolean", value: false },
+  noteNumEnabled: { label: "מספר בהערה", type: "boolean", value: true },
+  noteNumPrefix: { label: "הערה פתיחה", type: "text", value: "[" },
+  noteNumSuffix: { label: "הערה סגירה", type: "text", value: "]" },
+  noteNumBold: { label: "הערה מודגש", type: "boolean", value: false },
+  noteTextPrefix: { label: "סוגר גוף פתיחה", type: "text", value: "" },
+  noteTextSuffix: { label: "סוגר גוף סגירה", type: "text", value: "" },
+  lemmaBold: { label: "דיבור המתחיל מודגש", type: "boolean", value: true },
+  childNumPrefix: { label: "תת-הערה פתיחה", type: "text", value: "[" },
+  childNumSuffix: { label: "תת-הערה סגירה", type: "text", value: "]" },
+  childNumShowStream: { label: "תת-הערה: הצג קוד זרם", type: "boolean", value: true },
 };
 
 export function getStreamSettings() {
@@ -131,6 +195,55 @@ export function loadGlobalStreamOverrides() {
 
 export function saveGlobalStreamOverrides(overrides) {
   localStorage.setItem(GLOBAL_STREAM_OVERRIDES_KEY, JSON.stringify(overrides || {}));
+}
+
+// משה 2026-05-13: תשתית מיספור לזרמים (לראשי, להערה, להערה-בתוך-הערה).
+// הקוד הקודם הוחזר פעמיים — לכן עכשיו אני מציג רק את התשתית; ברירת המחדל
+// משמרת את הפלט הקיים בדיוק (childNum=[code-num] כמו בעבר, mainRef כבוי).
+// כשמשה יבחר להפעיל מיספור — הרינדור יתחיל לבנות לפי השדות האלה.
+function _streamTextSetting(value, fallback) {
+  return value === undefined || value === null ? fallback : String(value);
+}
+
+function _streamBoolSetting(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+export function formatStreamNumber(code, num, place = "note") {
+  const n = num === undefined || num === null ? "" : String(num);
+  const s = getEffectiveStreamSettings(code);
+
+  if (place === "main") {
+    if (!_streamBoolSetting(s.mainRefEnabled, false)) return "";
+    return _streamTextSetting(s.mainRefPrefix, "[") + n + _streamTextSetting(s.mainRefSuffix, "]");
+  }
+
+  if (place === "child") {
+    const body = _streamBoolSetting(s.childNumShowStream, true) ? `${code}-${n}` : n;
+    return _streamTextSetting(s.childNumPrefix, "[") + body + _streamTextSetting(s.childNumSuffix, "]");
+  }
+
+  if (!_streamBoolSetting(s.noteNumEnabled, true)) return "";
+  return _streamTextSetting(s.noteNumPrefix, "[") + n + _streamTextSetting(s.noteNumSuffix, "]");
+}
+
+export function shouldBoldStreamNumber(code, place = "note") {
+  const s = getEffectiveStreamSettings(code);
+  if (place === "main") return _streamBoolSetting(s.mainRefBold, false);
+  return _streamBoolSetting(s.noteNumBold, false);
+}
+
+export function shouldBoldStreamLemma(code) {
+  const s = getEffectiveStreamSettings(code);
+  return _streamBoolSetting(s.lemmaBold, true);
+}
+
+export function noteTextPrefixForStream(code) {
+  return _streamTextSetting(getEffectiveStreamSettings(code).noteTextPrefix, "");
+}
+
+export function noteTextSuffixForStream(code) {
+  return _streamTextSetting(getEffectiveStreamSettings(code).noteTextSuffix, "");
 }
 
 export function getEffectiveStreamSettings(code) {
@@ -301,8 +414,9 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   panel.appendChild(heading);
   appendGlobalOverridesPanel(panel, commitRender);
 
-  const sorted = Array.from(used).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
-  for (const code of sorted) {
+  const sorted = getOrderedStreamCodes(Array.from(used));
+  for (let codeIdx = 0; codeIdx < sorted.length; codeIdx++) {
+    const code = sorted[codeIdx];
     if (!settings[code]) settings[code] = { ...DEFAULT_STREAM_SETTINGS };
     settings[code] = normalizeStreamOpeningWordSettings({ ...DEFAULT_STREAM_SETTINGS, ...settings[code] });
     const cur = settings[code];
@@ -313,6 +427,35 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     codeLabel.textContent = code;
     codeLabel.className = "stream-settings-code";
     block.appendChild(codeLabel);
+
+    // משה 2026-05-13: חצי סדר ↑/↓ — מאפשרים שינוי סדר זרמים בטבלה. השינוי
+    // נשמר ב-localStorage ומשפיע על הסדר בכל המקומות שצורכים את getOrderedStreamCodes.
+    const orderControls = document.createElement("span");
+    orderControls.className = "stream-order-controls";
+    orderControls.style.cssText = "display:inline-flex;flex-direction:column;gap:1px;margin:0 4px;";
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.textContent = "↑";
+    upBtn.title = "הזז למעלה";
+    upBtn.style.cssText = "font-size:10px;line-height:1;padding:1px 4px;cursor:pointer;";
+    upBtn.disabled = codeIdx === 0;
+    upBtn.addEventListener("click", () => {
+      moveStreamInOrder(code, "up");
+      commitRender();
+    });
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.textContent = "↓";
+    downBtn.title = "הזז למטה";
+    downBtn.style.cssText = "font-size:10px;line-height:1;padding:1px 4px;cursor:pointer;";
+    downBtn.disabled = codeIdx === sorted.length - 1;
+    downBtn.addEventListener("click", () => {
+      moveStreamInOrder(code, "down");
+      commitRender();
+    });
+    orderControls.appendChild(upBtn);
+    orderControls.appendChild(downBtn);
+    block.appendChild(orderControls);
 
     block.appendChild(makeLabeledInput("כותרת:", cur.title || "", { type: "text" }, (input) => {
       cur.title = input.value.trim();
@@ -400,6 +543,23 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
 
     block.appendChild(makeStyleSelect("סגנון כותרת:", cur.titleStyleId || "", (value) => {
       cur.titleStyleId = value;
+      commitRender();
+    }));
+
+    // משה 2026-05-13: שליטה בפס שמעל המפרש לכל זרם בנפרד.
+    block.appendChild(makeCheckbox("פס מעל המפרש", cur.barShow !== false, (checked) => {
+      cur.barShow = checked;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("צבע פס:", cur.barColor || "#888", { type: "text" }, (input) => {
+      cur.barColor = input.value.trim() || "#888";
+      input.value = cur.barColor;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("עובי פס:", cur.barThickness ?? 1, { type: "number", min: 0, max: 6, step: 1 }, (input) => {
+      const n = parseInt(input.value, 10);
+      cur.barThickness = Number.isFinite(n) ? Math.max(0, Math.min(6, n)) : 1;
+      input.value = cur.barThickness;
       commitRender();
     }));
 

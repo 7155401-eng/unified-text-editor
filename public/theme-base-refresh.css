@@ -513,15 +513,18 @@ body.light-theme .pdf-tb-action-btn:hover {
   color: #fff;
 }
 body.light-theme .pdf-tb-action-secondary {
-  background: var(--rt-surface);
-  color: var(--rt-ink-2);
-  border: 1px solid var(--rt-line);
+  /* משה 2026-05-13: היה לבן-על-לבן (--rt-surface = #fff וטקסט בוהק מתחת
+     לקסקדה). מסביר לעצמינו ניגודיות באמצעות רקע אפור-בהיר וטקסט כהה,
+     כדי שהמילה "HTML" תהיה קריאה תמיד. */
+  background: var(--rt-surface-3);
+  color: var(--rt-ink) !important;
+  border: 1px solid var(--rt-line-strong);
   box-shadow: none;
 }
 body.light-theme .pdf-tb-action-secondary:hover {
   border-color: var(--rt-line-strong);
-  background: var(--rt-surface-3);
-  color: var(--rt-ink);
+  background: var(--rt-surface-2);
+  color: var(--rt-ink) !important;
 }
 body.light-theme .pdf-scroll-progress-fill {
   background: var(--rt-grad-warm);
