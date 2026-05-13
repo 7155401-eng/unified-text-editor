@@ -18,6 +18,9 @@
   --ravtext-page-width: 380px;
   --ravtext-page-height: 537px;
   --ravtext-page-pack-safety: 50px;
+  --ravtext-features-header-reserved: 0px;
+  --ravtext-features-footer-reserved: 0px;
+  --ravtext-features-pagenumber-reserved: 0px;
   --ravtext-page-margin-top: 22px;
   --ravtext-page-margin-right: 24px;
   --ravtext-page-margin-bottom: 18px;
@@ -3064,7 +3067,7 @@ details.ravtext-collapsible[open] {
 .page { position: relative; }
 .ravtext-page-number-overlay {
   position: absolute;
-  bottom: 6mm;
+  bottom: 4mm;
   inset-inline-start: 50%;
   transform: translateX(50%);
   font-size: 12px;
@@ -3090,7 +3093,7 @@ details.ravtext-collapsible[open] {
 }
 .ravtext-page-footer {
   position: absolute;
-  bottom: 4mm;
+  bottom: 2mm;
   inset-inline-start: 0;
   inset-inline-end: 0;
   text-align: center;
