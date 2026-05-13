@@ -1,5 +1,5 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
-import { applyStyleToElement } from "./style_registry.js";
+import { applyStyleToElement, resolveTextStyle } from "./style_registry.js";
 
 //
 // שיטה: חישוב אנליטי מלא ב-JavaScript. כל מילה ממוקמת ב-x,y ידועים.
@@ -564,6 +564,40 @@ function buildPagePlan(pageContent, config) {
     lineHeightRatio: cfg.lineHeightRatio,
   });
 
+  // משה 2026-05-13: cache של VilnaMetrics לפי styleId. כשמשתמש מחיל סגנון אישי
+  // על זרם צדדי (פונט/גודל שונה), המדידה ב-Canvas חייבת להתאים לפונט/גודל
+  // החדשים — אחרת המנוע מחשב כמה מילים נכנסות לפי ברירת המחדל, ואז כשה-DOM
+  // מצויר עם הפונט הגדול יותר, מילים נחתכות מחוץ ל-strip ונעלמות לראייה.
+  // 
+  // הפונקציה מקבלת styleId ומחזירה VilnaMetrics שמשקף את הסגנון בפועל
+  // (fontFamily, fontSize, lineHeight, bold, italic). אם אין styleId או הסגנון
+  // לא נמצא — מחזירה את sideMetrics הברירת-מחדל.
+  const sideMetricsCache = new Map();
+  function getSideMetricsForStyle(styleId) {
+    if (!styleId) return sideMetrics;
+    if (sideMetricsCache.has(styleId)) return sideMetricsCache.get(styleId);
+    let style = null;
+    try {
+      style = resolveTextStyle(styleId);
+    } catch (_) {
+      style = null;
+    }
+    if (!style) {
+      sideMetricsCache.set(styleId, sideMetrics);
+      return sideMetrics;
+    }
+    // משלב את הסגנון עם ברירות-מחדל של הצד
+    const metrics = new VilnaMetrics({
+      fontFamily: style.fontFamily || cfg.sideFontFamily,
+      fontSize: Number(style.fontSize) > 0 ? Number(style.fontSize) : cfg.sideFontSize,
+      lineHeightRatio: Number(style.lineHeight) > 0 ? Number(style.lineHeight) : cfg.lineHeightRatio,
+      fontWeight: style.bold ? '700' : 'normal',
+      fontStyle: style.italic ? 'italic' : 'normal',
+    });
+    sideMetricsCache.set(styleId, metrics);
+    return metrics;
+  }
+
   const sideLineH = sideMetrics.lineHeight;
   const titleHeight = Math.ceil(cfg.sideFontSize * 1.8);
 
@@ -675,10 +709,15 @@ function buildPagePlan(pageContent, config) {
         });
       }
       
-      let parts = splitWordsByStrips(allText, sideMetrics, rightStrips);
+      // משה 2026-05-13: בתרחיש 1, שני הצדדים הם **אותו זרם** (single.id),
+      // אז ה-metrics זהה. משתמש ב-metrics של הסגנון האישי של הזרם הזה,
+      // כדי שהמדידה בקנבס תתאים לפונט/גודל שיוצגו בפועל ב-DOM.
+      const splitMetricsForStream = getSideMetricsForStyle(streamSettings[single.id]?.styleId || "");
+      
+      let parts = splitWordsByStrips(allText, splitMetricsForStream, rightStrips);
       // fallback אם הפונקציה החדשה לא הצליחה (רצועות לא תקינות וכו')
       if (!parts) {
-        parts = splitWordsAtVisualLine(allText, sideMetrics, sideHalfWidth);
+        parts = splitWordsAtVisualLine(allText, splitMetricsForStream, sideHalfWidth);
       }
       pageContent.rightStream = { id: single.id, items: [parts.first] };
       pageContent.leftStream  = { id: single.id, items: [parts.second] };
@@ -785,10 +824,18 @@ function buildPagePlan(pageContent, config) {
       });
     }
 
+    // משה 2026-05-13: בחירת ה-metrics המתאים לסגנון של הזרם הזה.
+    // אם המשתמש החיל סגנון אישי עם פונט/גודל שונה — המדידה חייבת להתאים,
+    // אחרת ה-DOM יראה משהו שונה ממה שמוחשב, ומילים יחתכו/יעלמו.
+    const streamStyleId = streamSettings[streamData.id]?.styleId || "";
+    const streamMetrics = getSideMetricsForStyle(streamStyleId);
+    const streamLineH = streamMetrics.lineHeight;
+    const streamFontSize = streamMetrics.fontSize;
+
     const flowResult = flowStreamThroughStrips(
       text,
       strips.map(s => ({ y_start: s.y_start, width: s.width })),
-      sideMetrics,
+      streamMetrics,
       cfg.pageHeight - cfg.padding
     );
 
@@ -805,8 +852,8 @@ function buildPagePlan(pageContent, config) {
         isLast: line.isLast,
         forcedBreak: line.forcedBreak,
         naturalWidth: line.naturalWidth,
-        fontSize: cfg.sideFontSize,
-        lineHeightPx: sideLineH,
+        fontSize: streamFontSize,
+        lineHeightPx: streamLineH,
       });
     }
 
@@ -814,7 +861,7 @@ function buildPagePlan(pageContent, config) {
       id: streamData.id,
       role: side,
       side: side,
-      styleId: streamSettings[streamData.id]?.styleId || "",
+      styleId: streamStyleId,
       titleStyleId: streamSettings[streamData.id]?.titleStyleId || "",
       strips: strips,
       lines: lines,
@@ -1001,26 +1048,33 @@ function buildPagePlan(pageContent, config) {
       const text = fs.items.join(' ');
       if (!text) continue;
 
+      const settings = streamSettings[fs.id] || {};
+      // משה 2026-05-13: footer גם משתמש ב-metrics לפי הסגנון של הזרם.
+      // אם המשתמש החיל סגנון עם פונט/גודל שונה — המדידה חייבת להתאים,
+      // אחרת מילים יחתכו/יעלמו.
+      const fsMetrics = getSideMetricsForStyle(settings.styleId || "");
+      const fsLineH = fsMetrics.lineHeight;
+      const fsFontSize = fsMetrics.fontSize;
+
       // אם אין מקום אפילו לכותרת + שורה אחת, כל ה-footer הזה ל-overflow.
-      if (footerY + titleHeight + sideLineH > pageBottom) {
+      if (footerY + titleHeight + fsLineH > pageBottom) {
         result.overflow.streams[fs.id] = text;
         anyFooterTrimmed = true;
         continue;
       }
 
-      const settings = streamSettings[fs.id] || {};
       const footerCols = Math.max(1, Math.min(6, parseInt(settings.cols || 1, 10) || 1));
       const colGap = Math.max(0, Number(cfg.streamHorizontalGap) || 0);
       const colWidth = footerCols > 1
         ? Math.max(24, (innerWidth - colGap * (footerCols - 1)) / footerCols)
         : innerWidth;
-      const allLines = sideMetrics.layoutLines(text, colWidth);
+      const allLines = fsMetrics.layoutLines(text, colWidth);
       const titleY = footerY;
       footerY += titleHeight;
 
       // כמה שורות נכנסות אחרי הכותרת?
       const remainingY = pageBottom - footerY;
-      const rowsPerCol = Math.max(1, Math.floor(remainingY / sideLineH));
+      const rowsPerCol = Math.max(1, Math.floor(remainingY / fsLineH));
       const maxLinesFit = rowsPerCol * footerCols;
       const linesToRender = allLines.slice(0, maxLinesFit);
       const overflowLines = allLines.slice(maxLinesFit);
@@ -1039,14 +1093,14 @@ function buildPagePlan(pageContent, config) {
         const x = footerCols > 1 ? rtlCol * (colWidth + colGap) : 0;
         linesData.push({
           x,
-          y: footerY + row * sideLineH,
+          y: footerY + row * fsLineH,
           width: colWidth,
           words: linesToRender[i].words,
           text: linesToRender[i].words.join(' '),
           isLast: i === linesToRender.length - 1,
           naturalWidth: linesToRender[i].width,
-          fontSize: cfg.sideFontSize,
-          lineHeightPx: sideLineH,
+          fontSize: fsFontSize,
+          lineHeightPx: fsLineH,
         });
       }
 
@@ -1061,7 +1115,7 @@ function buildPagePlan(pageContent, config) {
       const renderedRows = footerCols > 1
         ? Math.min(rowsPerCol, linesToRender.length)
         : linesToRender.length;
-      footerY += renderedRows * sideLineH + 8;
+      footerY += renderedRows * fsLineH + 8;
     }
   }
 
@@ -1961,8 +2015,21 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   // משה 2026-05-10: מצרפים פסקאות עם \n כדי לשמור את שבירת השורה ביניהן.
   // ה-flow יראה \n ויעבור לשורה חדשה. גם שבירות שורה בתוך פסקה (\n ב-mainText)
   // יישמרו.
+  //
+  // משה 2026-05-13: טבלאות מומרות לטקסט שורה אחר שורה (תאים מופרדים ברווחים),
+  // כדי שהן יופיעו בפלט (במקום להיעלם). זה לא ציור טבלה אמיתי, אבל לפחות
+  // התוכן מוצג. שיפור עתידי: ציור טבלה אמיתי ב-V9.
+  const blockToText = (p) => {
+    if (p.blockType === "table" && Array.isArray(p.tableRows) && p.tableRows.length > 0) {
+      // המרת טבלה לטקסט: כל שורה = שורה אחת, תאים מופרדים ב-' | '
+      return p.tableRows
+        .map(row => row.join('  |  '))
+        .join('\n');
+    }
+    return (p.mainText || '').trim();
+  };
   const mainText = stripStreamMarkers(
-    paragraphs.map(p => (p.mainText || '').trim()).filter(Boolean).join('\n')
+    paragraphs.map(blockToText).filter(Boolean).join('\n')
   );
   const mainContinues = paragraphs.some(p => p && p._continues);
 
