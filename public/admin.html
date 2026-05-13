@@ -425,6 +425,10 @@
       usage: { items: [], totalCount: 0, summaryByEvent: [], topUsersWeek: [],
                filter: { search: '', event: '', user_id: '', from: '', to: '' },
                page: { limit: 200, offset: 0, total: 0 } },
+
+      paymentsReport: { items: [], totalCount: 0,
+               filter: { search: '', provider: '', status: '' },
+               page: { limit: 100, offset: 0, total: 0 } },
     };
 
     async function api(path, opts = {}) {
@@ -521,6 +525,7 @@
           <button class="tab ${state.tab === 'bugs' ? 'active' : ''}" data-tab="bugs">באגים ועדכונים</button>
           <button class="tab ${state.tab === 'contact' ? 'active' : ''}" data-tab="contact">פניות${unread ? ` <span class="tab-count unread">${unread}</span>` : ''}</button>
           <button class="tab ${state.tab === 'usage' ? 'active' : ''}" data-tab="usage">שימושים</button>
+          <button class="tab ${state.tab === 'paymentsReport' ? 'active' : ''}" data-tab="paymentsReport">דוח תשלומים</button>
           <button class="tab ${state.tab === 'paymentConfig' ? 'active' : ''}" data-tab="paymentConfig">חיבור תשלומים</button>
           <button class="tab ${state.tab === 'testPackages' ? 'active' : ''}" data-tab="testPackages">חבילות בדיקה</button>
           <button class="tab ${state.tab === 'security' ? 'active' : ''}" data-tab="security">אבטחה</button>
@@ -541,6 +546,7 @@
         else if (name === 'contact') await loadContacts();
         else if (name === 'usage') await loadUsage();
         else if (name === 'users') await Promise.all([loadStats(), loadUsers()]);
+        else if (name === 'paymentsReport') await loadPaymentsReport();
         else if (name === 'paymentConfig') await loadPaymentConfig();
         else if (name === 'testPackages') await loadTestPackages();
         else if (name === 'security') await loadSecurity();
@@ -553,6 +559,7 @@
       if (state.tab === 'bugs') return renderBugsTab();
       if (state.tab === 'contact') return renderContactTab();
       if (state.tab === 'usage') return renderUsageTab();
+      if (state.tab === 'paymentsReport') return renderPaymentsReportTab();
       if (state.tab === 'paymentConfig') return renderPaymentConfigTab();
       if (state.tab === 'testPackages') return renderTestPackagesTab();
       if (state.tab === 'security') return renderSecurityTab();
@@ -1371,6 +1378,125 @@
     document.getElementById('modal').addEventListener('click', (e) => {
       if (e.target.id === 'modal') closeModal();
     });
+
+
+    /* ============ דוח תשלומים ============ */
+    async function loadPaymentsReport() {
+      const { filter, page } = state.paymentsReport;
+      const q = new URLSearchParams();
+      if (filter.search) q.set('search', filter.search);
+      if (filter.provider) q.set('provider', filter.provider);
+      if (filter.status) q.set('status', filter.status);
+      q.set('limit', page.limit);
+      q.set('offset', page.offset);
+      const data = await api('/api/admin/payments-report?' + q.toString());
+      state.paymentsReport.items = data.payments || [];
+      state.paymentsReport.totalCount = data.totalCount || 0;
+      state.paymentsReport.page.total = data.totalCount || 0;
+    }
+
+    function renderPaymentsReportTab() {
+      const { items, filter, page, totalCount } = state.paymentsReport;
+      const body = document.getElementById('tab-body');
+
+      const statusLabel = (st) => {
+        if (st === 'completed') return '<span class="badge" style="background:#dcfce7;color:#166534;">הושלם</span>';
+        if (st === 'failed') return '<span class="badge" style="background:#fee2e2;color:#991b1b;">נכשל</span>';
+        if (st === 'pending') return '<span class="badge" style="background:#fef9c3;color:#854d0e;">ממתין</span>';
+        if (st === 'awaiting_paypal') return '<span class="badge" style="background:#e0f2fe;color:#075985;">ממתין ל-PayPal</span>';
+        return `<span class="badge" style="background:#f1f5f9;color:#475569;">${st}</span>`;
+      };
+
+      const providerLabel = (p) => {
+        if (p === 'paypal') return '<span class="badge" style="background:#e0f2fe;color:#0369a1;">PayPal</span>';
+        if (p === 'yaad') return '<span class="badge" style="background:#fce7f3;color:#be185d;">יעד שריג</span>';
+        if (p === 'admin') return '<span class="badge" style="background:#f3f4f6;color:#374151;">מנהל</span>';
+        return escapeHtml(p || '');
+      };
+
+      body.innerHTML = `
+        <div class="panel">
+          <div class="toolbar">
+            <input type="text" class="field" id="pr-search" placeholder="חיפוש אימייל..." value="${escapeHtml(filter.search)}" style="max-width:200px;">
+            <select class="field" id="pr-provider">
+              <option value="">כל הספקים</option>
+              <option value="paypal" ${filter.provider === 'paypal' ? 'selected' : ''}>PayPal</option>
+              <option value="yaad" ${filter.provider === 'yaad' ? 'selected' : ''}>יעד שריג</option>
+              <option value="admin" ${filter.provider === 'admin' ? 'selected' : ''}>מנהל</option>
+            </select>
+            <select class="field" id="pr-status">
+              <option value="">כל הסטטוסים</option>
+              <option value="completed" ${filter.status === 'completed' ? 'selected' : ''}>הושלם</option>
+              <option value="failed" ${filter.status === 'failed' ? 'selected' : ''}>נכשל</option>
+              <option value="pending" ${filter.status === 'pending' ? 'selected' : ''}>ממתין</option>
+              <option value="awaiting_paypal" ${filter.status === 'awaiting_paypal' ? 'selected' : ''}>ממתין ל-PayPal</option>
+            </select>
+            <button class="btn" id="pr-search-btn">סנן</button>
+            <span style="margin-right:auto; color:#64748b;">${totalCount} רשומות</span>
+          </div>
+
+          <table class="table">
+            <thead>
+              <tr>
+                <th>תאריך</th>
+                <th>משתמש</th>
+                <th>ספק</th>
+                <th>סכום (₪)</th>
+                <th>תוכנית/חבילה</th>
+                <th>מזהה עסקה</th>
+                <th>סטטוס</th>
+                <th>סוג</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map(t => `
+                <tr>
+                  <td style="white-space:nowrap; color:#64748b; font-size:13px;">${t.created_at ? new Date(t.created_at * 1000).toLocaleString('he-IL') : '-'}</td>
+                  <td><strong>${escapeHtml(t.email || '-')}</strong> (${t.user_id})</td>
+                  <td>${providerLabel(t.provider)}</td>
+                  <td><strong>${t.amount || 0} ₪</strong></td>
+                  <td>
+                    ${t.plan_code ? `<span class="badge badge-plan">${escapeHtml(t.plan_code)}</span>` : ''}
+                    ${t.pack_code ? `<span class="badge" style="background:#f3e8ff;color:#6b21a8">${escapeHtml(t.pack_code)}</span>` : ''}
+                  </td>
+                  <td style="font-family:monospace; font-size:12px; max-width:150px; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(t.txn_id || '')}">${escapeHtml(t.txn_id || '-')}</td>
+                  <td>${statusLabel(t.status)}</td>
+                  <td style="font-size:12px; color:#64748b;">${t.record_type === 'intent' ? 'ניסיון' : 'עסקה'}</td>
+                </tr>
+              `).join('')}
+              ${items.length === 0 ? '<tr><td colspan="8" style="text-align:center; padding:32px; color:#64748b;">לא נמצאו נתונים</td></tr>' : ''}
+            </tbody>
+          </table>
+
+          <div class="pagination">
+            <button class="btn" ${page.offset === 0 ? 'disabled' : ''} id="pr-prev">הקודם</button>
+            <span>מציג ${page.offset + 1} עד ${Math.min(page.offset + page.limit, page.total)} מתוך ${page.total}</span>
+            <button class="btn" ${page.offset + page.limit >= page.total ? 'disabled' : ''} id="pr-next">הבא</button>
+          </div>
+        </div>
+      `;
+
+      document.getElementById('pr-search-btn').addEventListener('click', async () => {
+        state.paymentsReport.filter.search = document.getElementById('pr-search').value.trim();
+        state.paymentsReport.filter.provider = document.getElementById('pr-provider').value;
+        state.paymentsReport.filter.status = document.getElementById('pr-status').value;
+        state.paymentsReport.page.offset = 0;
+        await loadPaymentsReport();
+        renderPaymentsReportTab();
+      });
+
+      document.getElementById('pr-prev')?.addEventListener('click', async () => {
+        state.paymentsReport.page.offset = Math.max(0, state.paymentsReport.page.offset - state.paymentsReport.page.limit);
+        await loadPaymentsReport();
+        renderPaymentsReportTab();
+      });
+
+      document.getElementById('pr-next')?.addEventListener('click', async () => {
+        state.paymentsReport.page.offset += state.paymentsReport.page.limit;
+        await loadPaymentsReport();
+        renderPaymentsReportTab();
+      });
+    }
 
     /* ============ חיבור תשלומים ============ */
     async function loadPaymentConfig() {
