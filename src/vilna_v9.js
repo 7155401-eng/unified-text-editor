@@ -1236,30 +1236,22 @@ function ensureGlobalStyles() {
   document.head.appendChild(style);
 }
 
+// משה 2026-05-13: פתרון דינמי אמיתי לחפיפת אלמנטים.
+// אין נוסחאות; אין ספים. מודדים את ה-bounding box של הטקסט בפועל אחרי
+// הציור (Range.getBoundingClientRect — כולל descenders/ascenders אמיתיים),
+// ומזיזים אלמנטים תחתונים עד שאין יותר חפיפה ויזואלית. איטרציה חוזרת עד
+// שהפריסה יציבה. עובד לכל פונט, גודל, ושפה.
 function autoResolveV9CrownMainOverlap(pageEl) {
   if (!pageEl || !pageEl.querySelectorAll) return;
 
   const lines = Array.from(pageEl.querySelectorAll(".v9-line, [data-v9-role]"));
   const titles = Array.from(pageEl.querySelectorAll(".v9-stream-title"));
-  if (!lines.length && !titles.length) return;
+  const allElements = [...lines, ...titles];
+  if (!allElements.length) return;
 
   function n(v) {
     const x = Number.parseFloat(v);
     return Number.isFinite(x) ? x : 0;
-  }
-
-  function boxOf(el) {
-    const top = n(el.style.top);
-    const left = n(el.style.left);
-    const width = n(el.style.width) || el.offsetWidth || 0;
-    const height = n(el.style.height) || el.offsetHeight || n(el.style.lineHeight) || 0;
-    return {
-      top,
-      left,
-      right: left + width,
-      bottom: top + height,
-      height,
-    };
   }
 
   function roleOf(el) {
@@ -1267,16 +1259,52 @@ function autoResolveV9CrownMainOverlap(pageEl) {
   }
 
   function isMainLine(el) {
-    const r = roleOf(el);
-    return r.includes("main");
+    return roleOf(el).includes("main");
   }
 
-  function intersectsX(a, b) {
-    return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
+  function isTitle(el) {
+    return el.classList && el.classList.contains("v9-stream-title");
   }
 
-  function intersectsY(a, b) {
-    return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+  // מודד את הקופסה האמיתית של הטקסט באמצעות Range — כולל descender של
+  // ך'/ץ'/ם' שיוצא מחוץ ל-line-height. אם אין טקסט (כותרת ריקה), נופל
+  // ל-getBoundingClientRect של האלמנט עצמו.
+  function measure(el) {
+    let rect;
+    try {
+      if (el.firstChild) {
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        rect = r.getBoundingClientRect();
+        r.detach && r.detach();
+      }
+    } catch (_) { rect = null; }
+    if (!rect || (!rect.width && !rect.height)) {
+      rect = el.getBoundingClientRect();
+    }
+    return rect;
+  }
+
+  // המרת קואורדינטות מ-viewport ל-coordinates של pageEl (top:absolute).
+  // אנחנו דוחפים אנכית בלבד, אז ה-x-axis לא משנה — נחזיר רק top/bottom יחסיים.
+  function relTopBottom(rect, pageRect) {
+    return {
+      top: rect.top - pageRect.top,
+      bottom: rect.bottom - pageRect.top,
+    };
+  }
+
+  function relLeftRight(rect, pageRect) {
+    return {
+      left: rect.left - pageRect.left,
+      right: rect.right - pageRect.left,
+    };
+  }
+
+  function overlapsXY(a, b) {
+    const xOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+    const yOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+    return xOverlap > 0.5 && yOverlap > 0.5;
   }
 
   const padding = n(pageEl.style.padding);
@@ -1284,14 +1312,9 @@ function autoResolveV9CrownMainOverlap(pageEl) {
   const topLimit = padding;
   const bottomLimit = pageHeight ? pageHeight - padding : Infinity;
 
-  const mainLines = lines.filter(isMainLine);
-  const otherLines = lines.filter(el => !isMainLine(el));
-
-  // === שלב א': אכיפת גבול עליון על כל אלמנט.
-  // אם שורת זרם או כותרת חוצה את ה-padding העליון של העמוד, מזיזים אותה
-  // לקצה העליון. דינמי לפי גובה העמוד; לא תלוי במסמך מסוים.
+  // === שלב א': אכיפת גבול עליון על כל אלמנט (מעל ה-padding).
   let upperShifts = 0;
-  for (const el of [...lines, ...titles]) {
+  for (const el of allElements) {
     const top = n(el.style.top);
     if (top < topLimit - 0.5) {
       el.style.top = topLimit + "px";
@@ -1299,72 +1322,93 @@ function autoResolveV9CrownMainOverlap(pageEl) {
     }
   }
 
-  // === שלב ב': חוצץ ראשי-כתר (התנהגות מקורית, הוזזה למקום מסודר).
-  // כשמשהו לא-ראשי דורך על שורת הראשי הראשונה, דוחפים את כל הראשי למטה.
-  let crownDelta = 0;
-  if (mainLines.length) {
-    const mainBoxes = mainLines.map(boxOf).filter(b => b.height > 0);
-    if (mainBoxes.length) {
-      const firstMainTop = Math.min(...mainBoxes.map(b => b.top));
-      const firstMainBoxes = mainBoxes.filter(b => Math.abs(b.top - firstMainTop) < 2);
-      const avgMainHeight = mainBoxes.reduce((sum, b) => sum + b.height, 0) / mainBoxes.length || 12;
+  // === שלב ב': מדידה איטרטיבית של חפיפות ויזואליות אמיתיות.
+  // לכל איטרציה: בדוק כל זוג (לא-ראשי / כותרת) ↔ (ראשי), אם יש חפיפה
+  // ויזואלית — דחוף את הראשי למטה בדיוק הכמות הדרושה. אם כותרת חופפת ראשי,
+  // דחוף את הכותרת. עוצרים כשאין יותר חפיפה או אחרי MAX_ITERS.
+  const MAX_ITERS = 8;
+  let totalMainShift = 0;
+  let totalTitleShifts = 0;
+  let iteration = 0;
+  let changed = true;
 
-      const blockers = otherLines
-        .map(el => ({ el, box: boxOf(el), role: roleOf(el) }))
-        .filter(x => x.box.height > 0)
-        .filter(x => x.box.bottom > firstMainTop - 0.5)
-        .filter(x => x.box.top < firstMainTop + avgMainHeight * 1.25)
-        .filter(x => firstMainBoxes.some(mb => intersectsX(mb, x.box)));
+  while (changed && iteration < MAX_ITERS) {
+    changed = false;
+    iteration++;
+    const pageRect = pageEl.getBoundingClientRect();
 
-      if (blockers.length) {
-        const blockerBottom = Math.max(...blockers.map(x => x.box.bottom));
-        const blockerMaxHeight = Math.max(...blockers.map(x => x.box.height));
-        // משה 2026-05-13: ה-gap הישן (avgMainHeight*0.18 ≈ 3.35px) היה קטן
-        // מדי — descenders של ך'/ץ'/ם' בכתר נגעו ב-ascender של שורת הראשי.
-        // הנוסחה החדשה דינמית: מבוססת על גובה השורה של החוסם (כתר) ועל
-        // הראשי, ומבטיחה מינימום 8px ניגודיות ויזואלית.
-        const dynamicGap = Math.max(
-          8,
-          blockerMaxHeight * 0.5,
-          avgMainHeight * 0.35
-        );
-        const delta = blockerBottom + dynamicGap - firstMainTop;
-        if (delta > 0 && delta <= Math.max(60, avgMainHeight * 4)) {
-          for (const el of mainLines) {
-            const oldTop = n(el.style.top);
-            el.style.top = (oldTop + delta) + "px";
-          }
-          crownDelta = delta;
+    // מדידה טריה של כל האלמנטים אחרי כל איטרציה (הזזות קודמות שינו מצב).
+    const measured = allElements.map(el => {
+      const rect = measure(el);
+      return {
+        el,
+        isMain: isMainLine(el),
+        isTitle: isTitle(el),
+        topBot: relTopBottom(rect, pageRect),
+        leftRight: relLeftRight(rect, pageRect),
+      };
+    });
+
+    const mains = measured.filter(m => m.isMain && !m.isTitle);
+    const others = measured.filter(m => !m.isMain || m.isTitle);
+
+    // לכל ראשי, בדוק כל "אחר" שלא-ראשי שחופף אותו ויזואלית.
+    for (const m of mains) {
+      const a = { ...m.topBot, ...m.leftRight };
+      let maxPush = 0;
+      for (const o of others) {
+        const b = { ...o.topBot, ...o.leftRight };
+        if (!overlapsXY(a, b)) continue;
+        // אם ה"אחר" נמצא מעל הראשי (top שלו קטן יותר), דוחפים את הראשי למטה.
+        // אם ה"אחר" כותרת footer שמתחת לראשי, דוחפים אותה למטה (שלב ג').
+        if (b.top <= a.top + 0.5) {
+          // האחר מעל — דוחפים ראשי למטה כדי לעבור אותו
+          const push = b.bottom - a.top + 0.5; // 0.5px ביטחון נגד אנטי-אלייסינג
+          if (push > maxPush) maxPush = push;
+        }
+      }
+      if (maxPush > 0.5) {
+        const oldTop = n(m.el.style.top);
+        m.el.style.top = (oldTop + maxPush) + "px";
+        totalMainShift += maxPush;
+        changed = true;
+      }
+    }
+
+    if (changed) continue; // נמדוד מחדש לפני שמטפלים בכותרות
+
+    // שלב ג': כותרת footer/stream שחופפת שורת ראשי — דחוף את הכותרת למטה
+    // (הראשי כבר מעוגן; הכותרת מתחת אמורה לעבור את שורת הראשי האחרונה).
+    const titlesMeasured = measured.filter(m => m.isTitle);
+    for (const t of titlesMeasured) {
+      const tb = { ...t.topBot, ...t.leftRight };
+      let maxPush = 0;
+      for (const m of mains) {
+        const mb = { ...m.topBot, ...m.leftRight };
+        if (!overlapsXY(tb, mb)) continue;
+        // אם הראשי מעל הכותרת (mb.top < tb.top), דוחפים את הכותרת למטה.
+        if (mb.top <= tb.top + 0.5) {
+          const push = mb.bottom - tb.top + 0.5;
+          if (push > maxPush) maxPush = push;
+        }
+      }
+      if (maxPush > 0.5) {
+        const oldTop = n(t.el.style.top);
+        const newTop = oldTop + maxPush;
+        if (newTop <= bottomLimit - 2) {
+          t.el.style.top = newTop + "px";
+          totalTitleShifts++;
+          changed = true;
         }
       }
     }
   }
 
-  // === שלב ג': כותרת footer-stream מכסה שורה תחתונה של ראשי.
-  // פתרון דינמי: אם כותרת חוצה אופקית ואנכית שורת ראשי כלשהי,
-  // מזיזים את הכותרת למטה מתחת לשורת הראשי האחרונה החופפת.
-  let titleShifts = 0;
-  for (const titleEl of titles) {
-    const tb = boxOf(titleEl);
-    if (tb.height <= 0) continue;
-    const offenders = mainLines
-      .map(el => ({ el, box: boxOf(el) }))
-      .filter(x => x.box.height > 0)
-      .filter(x => intersectsY(tb, x.box) && intersectsX(tb, x.box));
-    if (!offenders.length) continue;
-    const offenderBottom = Math.max(...offenders.map(x => x.box.bottom));
-    const gap = Math.max(2, tb.height * 0.15);
-    const newTop = offenderBottom + gap;
-    if (newTop <= tb.top + 0.5) continue;
-    if (newTop > bottomLimit - tb.height) continue; // לא דוחפים אל מחוץ לעמוד
-    titleEl.style.top = newTop + "px";
-    titleShifts++;
-  }
-
   pageEl.dataset.v9LayoutGuard = JSON.stringify({
-    crownDelta: Math.round(crownDelta * 100) / 100,
+    mainShift: Math.round(totalMainShift * 100) / 100,
     upperShifts,
-    titleShifts,
+    titleShifts: totalTitleShifts,
+    iterations: iteration,
   });
 }
 
