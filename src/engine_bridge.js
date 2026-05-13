@@ -136,6 +136,32 @@ function styleMetaForNode(node) {
   return style;
 }
 
+function styleMetaForPane(pane) {
+  const doc = pane?.editor?.state?.doc;
+  if (!doc) return {};
+  return styleMetaForNode(doc) || {};
+}
+
+function hasUsefulInlineStyle(style) {
+  if (!style || typeof style !== "object") return false;
+  return !!(
+    style.fontFamily ||
+    style.fontSize ||
+    style.color ||
+    style.backgroundColor ||
+    style.bgColor ||
+    style.bold ||
+    style.italic ||
+    style.underline ||
+    style.lineHeight ||
+    style.align ||
+    style.indent ||
+    style.marginTop != null ||
+    style.marginBottom != null
+  );
+}
+
+
 function textFromNode(node) {
   let text = "";
   node?.descendants?.((child) => {
@@ -371,8 +397,14 @@ function applyFirstNoteAsTitle(code, notes) {
 function ensureEngineStreamSettings(paneManager) {
   getStreamSettings();
   if (!window.__STREAM_LABELS__) window.__STREAM_LABELS__ = {};
+
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
+
+    const prev = window.__STREAM_SETTINGS__[p.streamCode] || {};
+    const inlineStyle = styleMetaForPane(p);
+    const keepInline = hasUsefulInlineStyle(inlineStyle) ? inlineStyle : (prev.inlineStyle || {});
+
     window.__STREAM_SETTINGS__[p.streamCode] = {
       title: "",
       cols: 1,
@@ -380,8 +412,10 @@ function ensureEngineStreamSettings(paneManager) {
       inline: true,
       lastLineCenter: true,
       firstNoteAsTitle: false,
-      ...(window.__STREAM_SETTINGS__[p.streamCode] || {}),
+      ...prev,
+      inlineStyle: keepInline,
     };
+
     const manualTitle = String(window.__STREAM_SETTINGS__[p.streamCode].title || "").trim();
     window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || defaultLabelForCode(p.streamCode);
   }

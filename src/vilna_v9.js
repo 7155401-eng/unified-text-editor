@@ -1,5 +1,5 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
-import { applyStyleToElement, resolveTextStyle } from "./style_registry.js";
+import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 
 //
 // שיטה: חישוב אנליטי מלא ב-JavaScript. כל מילה ממוקמת ב-x,y ידועים.
@@ -573,6 +573,39 @@ function buildPagePlan(pageContent, config) {
   // (fontFamily, fontSize, lineHeight, bold, italic). אם אין styleId או הסגנון
   // לא נמצא — מחזירה את sideMetrics הברירת-מחדל.
   const sideMetricsCache = new Map();
+
+  function composeStreamTextStyle(streamId) {
+    const settings = streamSettings[streamId] || {};
+    const registryStyle = settings.styleId ? resolveTextStyle(settings.styleId) : null;
+    const inlineStyle = settings.inlineStyle || settings.manualStyle || null;
+
+    // styleId הוא בסיס; סגנון ידני מהעורך גובר עליו.
+    // אין כאן הגדרת line-height גלובלית.
+    return normalizeTextStyle({
+      ...(registryStyle || {}),
+      ...(inlineStyle || {}),
+    });
+  }
+
+  function metricsFromTextStyle(style, fallbackMetrics) {
+    const st = normalizeTextStyle(style);
+    if (!st) return fallbackMetrics || sideMetrics;
+
+    return new VilnaMetrics({
+      fontFamily: st.fontFamily || cfg.sideFontFamily,
+      fontSize: Number(st.fontSize) > 0 ? Number(st.fontSize) : cfg.sideFontSize,
+      lineHeightRatio: Number(st.lineHeight) > 0 ? Number(st.lineHeight) : cfg.lineHeightRatio,
+      fontWeight: st.bold ? "700" : "normal",
+      fontStyle: st.italic ? "italic" : "normal",
+    });
+  }
+
+  function getSideMetricsForStream(streamId) {
+    const st = composeStreamTextStyle(streamId);
+    if (!st) return sideMetrics;
+    return metricsFromTextStyle(st, sideMetrics);
+  }
+
   function getSideMetricsForStyle(styleId) {
     if (!styleId) return sideMetrics;
     if (sideMetricsCache.has(styleId)) return sideMetricsCache.get(styleId);
@@ -712,7 +745,7 @@ function buildPagePlan(pageContent, config) {
       // משה 2026-05-13: בתרחיש 1, שני הצדדים הם **אותו זרם** (single.id),
       // אז ה-metrics זהה. משתמש ב-metrics של הסגנון האישי של הזרם הזה,
       // כדי שהמדידה בקנבס תתאים לפונט/גודל שיוצגו בפועל ב-DOM.
-      const splitMetricsForStream = getSideMetricsForStyle(streamSettings[single.id]?.styleId || "");
+      const splitMetricsForStream = getSideMetricsForStream(single.id);
       
       let parts = splitWordsByStrips(allText, splitMetricsForStream, rightStrips);
       // fallback אם הפונקציה החדשה לא הצליחה (רצועות לא תקינות וכו')
@@ -828,9 +861,10 @@ function buildPagePlan(pageContent, config) {
     // אם המשתמש החיל סגנון אישי עם פונט/גודל שונה — המדידה חייבת להתאים,
     // אחרת ה-DOM יראה משהו שונה ממה שמוחשב, ומילים יחתכו/יעלמו.
     const streamStyleId = streamSettings[streamData.id]?.styleId || "";
-    const streamMetrics = getSideMetricsForStyle(streamStyleId);
-    const streamLineH = streamMetrics.lineHeight;
-    const streamFontSize = streamMetrics.fontSize;
+    const streamResolvedStyle = composeStreamTextStyle(streamData.id);
+    const streamMetrics = getSideMetricsForStream(streamData.id);
+    const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0 ? Number(streamResolvedStyle.fontSize) : streamMetrics.fontSize;
+    const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
 
     const flowResult = flowStreamThroughStrips(
       text,
@@ -862,6 +896,7 @@ function buildPagePlan(pageContent, config) {
       role: side,
       side: side,
       styleId: streamStyleId,
+      inlineStyle: streamResolvedStyle || {},
       titleStyleId: streamSettings[streamData.id]?.titleStyleId || "",
       strips: strips,
       lines: lines,
@@ -1052,9 +1087,10 @@ function buildPagePlan(pageContent, config) {
       // משה 2026-05-13: footer גם משתמש ב-metrics לפי הסגנון של הזרם.
       // אם המשתמש החיל סגנון עם פונט/גודל שונה — המדידה חייבת להתאים,
       // אחרת מילים יחתכו/יעלמו.
-      const fsMetrics = getSideMetricsForStyle(settings.styleId || "");
-      const fsLineH = fsMetrics.lineHeight;
-      const fsFontSize = fsMetrics.fontSize;
+      const fsResolvedStyle = composeStreamTextStyle(fs.id);
+      const fsMetrics = getSideMetricsForStream(fs.id);
+      const fsFontSize = Number(fsResolvedStyle?.fontSize) > 0 ? Number(fsResolvedStyle.fontSize) : fsMetrics.fontSize;
+      const fsLineH = Math.max(fsMetrics.lineHeight, fsFontSize * 1.35);
 
       // אם אין מקום אפילו לכותרת + שורה אחת, כל ה-footer הזה ל-overflow.
       if (footerY + titleHeight + fsLineH > pageBottom) {
@@ -1107,6 +1143,7 @@ function buildPagePlan(pageContent, config) {
       result.footerBoxes.push({
         id: fs.id,
         styleId: settings.styleId || "",
+        inlineStyle: fsResolvedStyle || {},
         titleStyleId: settings.titleStyleId || "",
         lines: linesData,
         titleY: titleY,
@@ -1220,6 +1257,23 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.style.lineHeight = (fontSize * lineHeight) + 'px';
       if (fontFamily) lineEl.style.fontFamily = fontFamily;
       applyStyleToElement(lineEl, box.styleId);
+      if (box.inlineStyle) {
+        applyTextStyleObjectToElement(lineEl, box.inlineStyle);
+      }
+
+      // משה 2026-05-13: הגנה נגד חיתוך אותיות/ניקוד.
+      // אם הפונט בפועל גדול מגובה השורה המחושב, אסור להשאיר height נמוך.
+      const actualFontSize = parseFloat(lineEl.style.fontSize) || line.fontSize || fontSize || 0;
+      const requestedLineHeight = line.lineHeightPx || parseFloat(lineEl.style.lineHeight) || (actualFontSize * lineHeight);
+      const safeLineHeight = Math.max(requestedLineHeight, actualFontSize * 1.35);
+
+      if (actualFontSize > 0) lineEl.style.fontSize = actualFontSize + 'px';
+      if (safeLineHeight > 0) {
+        lineEl.style.lineHeight = safeLineHeight + 'px';
+        lineEl.style.height = safeLineHeight + 'px';
+      }
+      lineEl.style.overflow = 'visible';
+
       lineEl.textContent = line.text;
       pageEl.appendChild(lineEl);
     }

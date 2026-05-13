@@ -24,14 +24,36 @@ export function resolveTextStyle(styleIdOrName) {
   return styles.find(s => s.id === styleIdOrName || s.name === styleIdOrName) || null;
 }
 
-export function applyStyleToElement(el, styleIdOrName) {
-  const style = resolveTextStyle(styleIdOrName);
-  if (!el || !style) return false;
+export function normalizeTextStyle(rawStyle) {
+  if (!rawStyle || typeof rawStyle !== "object") return null;
+  const style = { ...rawStyle };
+
+  if (style.backgroundColor && !style.bgColor) style.bgColor = style.backgroundColor;
+  if (style.bgColor && !style.backgroundColor) style.backgroundColor = style.bgColor;
+
+  if (style.fontSize != null && style.fontSize !== "") {
+    const n = Number(String(style.fontSize).replace(/px$/i, ""));
+    if (Number.isFinite(n) && n > 0) style.fontSize = n;
+  }
+
+  if (style.lineHeight != null && style.lineHeight !== "") {
+    const n = Number(String(style.lineHeight).replace(/px$/i, ""));
+    if (Number.isFinite(n) && n > 0) style.lineHeight = n;
+  }
+
+  return style;
+}
+
+export function applyTextStyleObjectToElement(el, rawStyle) {
+  if (!el) return false;
+  const style = normalizeTextStyle(rawStyle);
+  if (!style) return false;
+
   if (style.fontFamily) el.style.fontFamily = style.fontFamily;
   if (style.fontSize) el.style.fontSize = `${style.fontSize}px`;
   if (style.lineHeight) el.style.lineHeight = String(style.lineHeight);
   if (style.color) el.style.color = style.color;
-  if (style.bgColor) el.style.backgroundColor = style.bgColor;
+  if (style.bgColor || style.backgroundColor) el.style.backgroundColor = style.bgColor || style.backgroundColor;
   if (style.bold) el.style.fontWeight = "700";
   if (style.italic) el.style.fontStyle = "italic";
   if (style.underline) el.style.textDecoration = "underline";
@@ -39,7 +61,15 @@ export function applyStyleToElement(el, styleIdOrName) {
   if (style.indent) el.style.textIndent = `${style.indent}em`;
   if (style.marginTop != null) el.style.marginTop = `${style.marginTop}px`;
   if (style.marginBottom != null) el.style.marginBottom = `${style.marginBottom}px`;
+
   return true;
+}
+
+
+export function applyStyleToElement(el, styleIdOrName) {
+  const style = resolveTextStyle(styleIdOrName);
+  if (!el || !style) return false;
+  return applyTextStyleObjectToElement(el, style);
 }
 
 export function mergeDocxStylesIntoRegistry(stylesCatalog) {
