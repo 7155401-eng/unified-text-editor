@@ -120,8 +120,15 @@ function updateAddButtonState() {
 }
 
 function defaultsIfEmpty() {
+  // משה 2026-05-13: בדיקה כפולה — גם getCurrentSelected (שדה ה-input) וגם localStorage.
+  // אם talmud_controls עדיין לא טען את הערך לשדה, ה-localStorage כבר יכיל אותו,
+  // ואנחנו לא רוצים לדרוס. זה פותר את הבאג של בחירה שחוזרת לברירת מחדל אחרי רענון.
   const selected = getCurrentSelected();
   if (selected.length > 0) return;
+  try {
+    const stored = localStorage.getItem("ravtext.talmudLayout.streams") || "";
+    if (stored.match(/\d{2}/g)) return;
+  } catch (_) {}
   const avail = getAvailableStreamCodes();
   if (avail.length >= 2) {
     setSelected([avail[0], avail[1]]);
