@@ -35,6 +35,15 @@ import {
 const MC = COMPARATOR_MARKER_COLORS;
 const dm = COMPARATOR_DEFAULT_MARKERS;
 
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+
 // HTML body of the comparator (same structure as <body> of HTML in Python).
 function buildComparatorHTML(initialLang) {
   const tr = COMPARATOR_TR[initialLang] || COMPARATOR_TR.he;
@@ -775,7 +784,7 @@ export function mountComparatorUI(rootEl, options = {}) {
       l.innerHTML = '';
       state.impStreams.forEach((s, i) => {
         const sym = dm[i % dm.length];
-        l.innerHTML += '<div class="stream-row"><input type="checkbox" checked id="chk-' + i + '"><label for="chk-' + i + '">' + s.label + ' (' + s.count + ')</label><input type="text" id="si-' + i + '" value="' + sym + '"></div>';
+        l.innerHTML += '<div class="stream-row"><input type="checkbox" checked id="chk-' + i + '"><label for="chk-' + i + '">' + escapeHtml(s.label) + ' (' + escapeHtml(s.count) + ')</label><input type="text" id="si-' + i + '" value="' + escapeHtml(sym) + '"></div>';
       });
       rootEl.querySelector('#importModal').classList.add('active');
     };
@@ -1543,7 +1552,7 @@ export function mountComparatorUI(rootEl, options = {}) {
       l.innerHTML = '';
       state.impStreams.forEach((s, i) => {
         const sym = dm[i % dm.length];
-        l.innerHTML += '<div class="stream-row"><input type="checkbox" checked id="chk-' + i + '"><label for="chk-' + i + '">' + s.label + ' (' + s.count + ')</label><input type="text" id="si-' + i + '" value="' + sym + '"></div>';
+        l.innerHTML += '<div class="stream-row"><input type="checkbox" checked id="chk-' + i + '"><label for="chk-' + i + '">' + escapeHtml(s.label) + ' (' + escapeHtml(s.count) + ')</label><input type="text" id="si-' + i + '" value="' + escapeHtml(sym) + '"></div>';
       });
       rootEl.querySelector('#importModal').classList.add('active');
     },
