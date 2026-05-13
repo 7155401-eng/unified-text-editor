@@ -130,31 +130,57 @@ export function wireSpellcheck(paneManager) {
   function apply() {
     const on = cb.checked;
     const torahOn = !!torahCb?.checked;
+
+    // Apply explicitly to DOM
     document.querySelectorAll(".ProseMirror").forEach((el) => {
       el.setAttribute("spellcheck", on ? "true" : "false");
       el.spellcheck = on;
       el.setAttribute("lang", "he");
       el.setAttribute("dir", el.getAttribute("dir") || "rtl");
     });
-    for (const pane of paneManager.panes || []) {
-      const dom = pane.editor?.view?.dom;
-      if (!dom) continue;
-      dom.setAttribute("spellcheck", on ? "true" : "false");
-      dom.spellcheck = on;
-      dom.setAttribute("lang", "he");
+
+    // Collect all editors: main pane + extra panes
+    const editors = [];
+    if (paneManager.getMainPane && paneManager.getMainPane()?.editor) {
+      editors.push(paneManager.getMainPane().editor);
+    }
+    if (paneManager.panes) {
+      for (const p of paneManager.panes) {
+        if (p.editor && !editors.includes(p.editor)) editors.push(p.editor);
+      }
+    }
+
+    for (const ed of editors) {
       try {
-        pane.editor.setOptions({
+        const dom = ed.view?.dom;
+        if (dom) {
+          dom.setAttribute("spellcheck", on ? "true" : "false");
+          dom.spellcheck = on;
+          dom.setAttribute("lang", "he");
+        }
+
+        // Update Tiptap props
+        ed.setOptions({
           editorProps: {
-            ...(pane.editor.options.editorProps || {}),
+            ...(ed.options.editorProps || {}),
             attributes: {
-              ...((pane.editor.options.editorProps || {}).attributes || {}),
+              ...((ed.options.editorProps || {}).attributes || {}),
               spellcheck: on ? "true" : "false",
               lang: "he",
             },
           },
         });
+
+        // Force ProseMirror to re-read properties by creating an empty transaction
+        if (ed.view && ed.state) {
+          ed.view.updateState(ed.state);
+          // And hack: toggle a class to force browser layout/spellcheck refresh
+          dom?.classList.toggle("force-spellcheck-refresh");
+          setTimeout(() => dom?.classList.toggle("force-spellcheck-refresh"), 10);
+        }
       } catch (_) {}
     }
+
     localStorage.setItem(STORAGE, on ? "1" : "0");
     localStorage.setItem(TORAH_STORAGE, torahOn ? "1" : "0");
     document.body.classList.toggle("torah-spellcheck-enabled", torahOn);
@@ -188,23 +214,107 @@ function torahSpellWords(text) {
   return out;
 }
 
+let _cachedSefariaCorpus = null;
+async function getSefariaCorpus() {
+  if (_cachedSefariaCorpus !== null) return _cachedSefariaCorpus;
+  try {
+    // As a lightweight fallback to the full Sefaria API,
+    // we fetch Sefaria data that is available locally.
+    const filesToLoad = [
+      "/data/sefaria/mishnah.json",
+      "/data/sefaria/tanakh.json",
+      "/data/sefaria/bavli/berakhot.json",
+      "/data/sefaria/bavli/shabbat.json",
+      "/data/sefaria/bavli/eruvin.json",
+      "/data/sefaria/bavli/pesachim.json",
+      "/data/sefaria/bavli/yoma.json",
+      "/data/sefaria/bavli/sukkah.json",
+      "/data/sefaria/bavli/beitzah.json",
+      "/data/sefaria/bavli/rosh-hashanah.json",
+      "/data/sefaria/bavli/taanit.json",
+      "/data/sefaria/bavli/megillah.json",
+      "/data/sefaria/bavli/moed-katan.json",
+      "/data/sefaria/bavli/chagigah.json",
+      "/data/sefaria/bavli/yevamot.json",
+      "/data/sefaria/bavli/ketubot.json",
+      "/data/sefaria/bavli/nedarim.json",
+      "/data/sefaria/bavli/nazir.json",
+      "/data/sefaria/bavli/sotah.json",
+      "/data/sefaria/bavli/gittin.json",
+      "/data/sefaria/bavli/kiddushin.json",
+      "/data/sefaria/bavli/bava-kamma.json",
+      "/data/sefaria/bavli/bava-metzia.json",
+      "/data/sefaria/bavli/bava-batra.json",
+      "/data/sefaria/bavli/sanhedrin.json",
+      "/data/sefaria/bavli/makkot.json",
+      "/data/sefaria/bavli/shevuot.json",
+      "/data/sefaria/bavli/avodah-zarah.json",
+      "/data/sefaria/bavli/horayot.json",
+      "/data/sefaria/bavli/zevachim.json",
+      "/data/sefaria/bavli/menachot.json",
+      "/data/sefaria/bavli/chullin.json",
+      "/data/sefaria/bavli/bekhorot.json",
+      "/data/sefaria/bavli/arakhin.json",
+      "/data/sefaria/bavli/temurah.json",
+      "/data/sefaria/bavli/keritot.json",
+      "/data/sefaria/bavli/meilah.json",
+      "/data/sefaria/bavli/tamid.json",
+      "/data/sefaria/bavli/niddah.json",
+    ];
+    let fullText = "";
+    // Only load up to what's needed or maybe we can load them lazily/parallel
+    // Given the local nature, we'll fetch them in parallel with a Promise.allSettled
+    // Load files sequentially or in small batches to avoid too many requests
+    // that might crash the memory or network in browser
+    let results = [];
+    for (const url of filesToLoad) {
+      try {
+        const r = await fetch(url);
+        if (r.ok) {
+           results.push(await r.json());
+        }
+      } catch(e) {
+        // ignore
+      }
+    }
+
+
+
+    for (const data of results) {
+      if (!data) continue;
+      let texts = [];
+      if (data.book && data.book.chapters) {
+        Object.values(data.book.chapters).forEach((verses) => {
+          if (Array.isArray(verses)) texts.push(...verses);
+        });
+      } else if (Array.isArray(data.text)) {
+        texts.push(...data.text);
+      }
+      fullText += texts.join(" ") + " ";
+    }
+    _cachedSefariaCorpus = fullText;
+    return _cachedSefariaCorpus;
+  } catch (err) {
+    console.error("Failed to init Sefaria corpus", err);
+    _cachedSefariaCorpus = "";
+    return "";
+  }
+}
+
 async function sefariaHitCount(word) {
-  const res = await fetch("https://www.sefaria.org/api/search-wrapper", {
-    method: "POST",
-    headers: { "content-type": "application/json; charset=utf-8" },
-    body: JSON.stringify({
-      query: word,
-      type: "text",
-      field: "naive_lemmatizer",
-      size: 0,
-    }),
-  });
-  if (!res.ok) throw new Error(`Sefaria HTTP ${res.status}`);
-  const data = await res.json();
-  const total = data?.hits?.total;
-  if (typeof total === "number") return total;
-  if (total && typeof total.value === "number") return total.value;
-  return 0;
+  const corpus = await getSefariaCorpus();
+  if (!corpus) return 0;
+  // fast count of occurrences
+  let count = 0;
+  let pos = 0;
+  while (true) {
+    pos = corpus.indexOf(word, pos);
+    if (pos === -1) break;
+    count++;
+    pos += word.length;
+    if (count > 10) break; // We only need to know if it appears at least ~5 times
+  }
+  return count;
 }
 
 async function runTorahSpellcheck(paneManager) {
