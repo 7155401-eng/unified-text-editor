@@ -312,7 +312,7 @@ body > main.main {
 }
 .app-header-row > h1 { margin-bottom: 0; flex-shrink: 0; }
 .app-header-actions {
-  display: flex;
+  display: inline-flex;
   gap: 8px;
   align-items: center;
 }
@@ -337,7 +337,7 @@ body > main.main {
 a.header-action-btn,
 a.header-action-btn:visited {
   text-decoration: none;
-  display: flex;
+  display: inline-flex;
   align-items: center;
 }
 .header-action-btn-phone {
@@ -348,7 +348,7 @@ a.header-action-btn:visited {
 /* משה 2026-05-10: כפתורי דיווח/יצירת-קשר/עדכוני-פיתוח —
    אייקון בלבד כברירת מחדל, הטקסט נחשף בעת ריחוף עם מעבר חלק. */
 .header-action-btn-icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0;
   padding: 7px 9px;
@@ -378,7 +378,7 @@ a.header-action-btn:visited {
    כדי שלא תיווצר חפיפה (כפי שהיה ב-auth_ui הישן). */
 .profile-avatar-wrap {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   margin-inline-start: 4px;
 }
@@ -391,7 +391,7 @@ a.header-action-btn:visited {
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   box-shadow: 0 2px 6px rgba(31, 41, 55, 0.18), 0 0 0 1px rgba(31, 41, 55, 0.06);
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #fff;
@@ -432,7 +432,7 @@ a.header-action-btn:visited {
   letter-spacing: 0;
 }
 .profile-avatar-icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #fff;
@@ -500,7 +500,7 @@ a.header-action-btn:visited {
   width: 42px;
   height: 42px;
   border-radius: 50%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #fff;
@@ -525,7 +525,7 @@ a.header-action-btn:visited {
   font-size: 13px;
 }
 .profile-menu-status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   align-self: flex-start;
   font-size: 11px;
@@ -876,7 +876,7 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
 
 /* קבוצות-pill: כל הילדים על אותו קו אנכי, ללא רווחים מיותרים */
 .pdf-tb-group {
-  display: flex;
+  display: inline-flex;
   align-items: stretch;
   gap: 0;
   height: var(--tb-row-h);
@@ -918,7 +918,7 @@ body.preview-minimized .preview-minimize-btn { transform: rotate(180deg); }
   cursor: pointer;
   height: calc(var(--tb-row-h) - 2px);
   min-width: 28px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -1007,7 +1007,7 @@ body.light-theme .pdf-tb-btn.pdf-tb-fancy:hover svg {
 
 /* קבוצת ניווט: הקלט של מספר העמוד — גובה זהה לכפתורים */
 .pdf-tb-page {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 0 4px;
@@ -1104,7 +1104,7 @@ body.light-theme .pdf-tb-btn.pdf-tb-fancy:hover svg {
   padding-inline-start: 8px;
 }
 .pdf-tb-find-icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--tb-fg-muted);
@@ -1193,7 +1193,7 @@ body.light-theme .pdf-tb-btn.pdf-tb-fancy:hover svg {
 
 /* toggle-checkbox רקע ביצוא — מתאים עם העיצוב החדש */
 .pdf-output-background-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 0 10px;
@@ -2514,7 +2514,7 @@ body.light-theme .pdf-scroll-progress-fill {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   transition: background 0.12s ease, transform 0.06s ease, box-shadow 0.12s ease;
@@ -2578,7 +2578,7 @@ body.light-theme .pdf-scroll-progress-fill {
   min-width: 96px;
   min-height: 34px;
   line-height: 1;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -2716,7 +2716,7 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   width: 40px; height: 28px; padding: 0; border: 1px solid rgba(0,0,0,0.2);
 }
 .custom-style-dialog .csd-toggle {
-  display: flex; align-items: center; gap: 4px; font-size: 13px;
+  display: inline-flex; align-items: center; gap: 4px; font-size: 13px;
   margin-inline-end: 8px;
 }
 .custom-style-dialog .csd-clear {
@@ -3252,7 +3252,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .width-slider-control {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 2px 4px;
@@ -3276,7 +3276,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .tb-group {
-  display: flex;
+  display: inline-flex;
   /* משה 2026-05-07: nowrap בתוך כל קבוצה — הכפתורים נשארים זה לצד זה במקום
      להיערם זה על זה כשהפס צר. רק הקבוצות עצמן מותרות לעבור לשורה חדשה
      (.toolbar שמסביב נשאר flex-wrap:wrap). */
@@ -3355,7 +3355,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .toolbar-checkbox {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
@@ -3363,7 +3363,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .mishna-levels-control {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
@@ -3399,7 +3399,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .stream-settings-block {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
@@ -3414,7 +3414,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .stream-col-input {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 3px;
   color: var(--muted);
@@ -3438,7 +3438,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .page-margin-settings {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
@@ -3448,7 +3448,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .page-margin-input {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 3px;
   color: var(--muted);
@@ -3489,7 +3489,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .opw-control {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   color: var(--muted);
@@ -3585,7 +3585,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   color: #555;
 }
 .nested-notes-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 5px;
   cursor: pointer;
@@ -3596,7 +3596,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   cursor: pointer;
 }
 .nested-notes-help {
-  display: flex;
+  display: inline-flex;
   width: 16px;
   height: 16px;
   align-items: center;
@@ -3831,7 +3831,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
 }
 
 .marker-bar .mc .badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 20px;
@@ -3940,7 +3940,7 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   color: #888;
 }
 .find-replace-panel .fr-scope-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 3px;
   cursor: pointer;
@@ -4917,7 +4917,7 @@ body[data-theme="dark"] .ProseMirror pre {
 }
 
 .spacing-toolbar .spacing-input {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
 }
