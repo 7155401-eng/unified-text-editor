@@ -1,9 +1,8 @@
 /* ============================================================================
    RavText — Template Picker
    ----------------------------------------------------------------------------
-   A small button in the header that opens a popover with three style cards:
-   Default · Word Style · Judaica. Selection is persisted in localStorage and
-   reflected on <body> via class names: template-word-style / template-judaica.
+   The "סגנון" button in the header opens a popover with style cards.
+   Replaces the legacy ☀/🌙 toggle (which is hidden by JS).
    ============================================================================ */
 
 .rt-tp-btn {
@@ -30,21 +29,31 @@
 .rt-tp-btn .rt-tp-swatch {
   width: 14px; height: 14px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #2c5aa0 0%, #2c5aa0 100%);
+  background: linear-gradient(135deg, #2c5aa0 0%, #185ABD 100%);
   box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
   flex-shrink: 0;
 }
 .rt-tp-btn .rt-tp-caret { font-size: 10px; color: var(--muted, #888) }
 
-/* swatch per active template */
-body.template-word-style .rt-tp-btn .rt-tp-swatch {
+/* swatch per active template (data-tpl on the button) */
+.rt-tp-btn[data-tpl="light"] .rt-tp-swatch,
+.rt-tp-btn[data-tpl=""] .rt-tp-swatch {
+  background: linear-gradient(135deg, #2563EB 0%, #185ABD 60%, #1E4078 100%);
+}
+.rt-tp-btn[data-tpl="dark"] .rt-tp-swatch {
+  background: linear-gradient(135deg, #0F172A 0%, #1F2E54 100%);
+  box-shadow: inset 0 0 0 1px rgba(212,175,55,0.4);
+}
+.rt-tp-btn[data-tpl="word-style"] .rt-tp-swatch {
   background: linear-gradient(95deg, #DC6B5C 0%, #C75D7A 60%, #8A3D67 100%);
 }
-body.template-judaica .rt-tp-btn .rt-tp-swatch {
+.rt-tp-btn[data-tpl="judaica"] .rt-tp-swatch {
   background: linear-gradient(135deg, #0E0A06 0%, #C9A35B 100%);
 }
 
-/* popover */
+/* ============================================================================
+   POPOVER
+   ============================================================================ */
 .rt-tp-pop {
   position: fixed;
   background: #FFFFFF;
@@ -55,7 +64,7 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
     0 18px 48px -16px rgba(15,20,25,0.25);
   padding: 16px;
   z-index: 9999;
-  width: 540px;
+  width: 620px;
   max-width: calc(100vw - 32px);
   display: none;
   flex-direction: column;
@@ -88,12 +97,16 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
   color: #6B7280;
 }
 
-/* template card grid */
+/* template card grid — 4 cards */
 .rt-tp-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
 }
+@media (max-width: 720px) {
+  .rt-tp-grid { grid-template-columns: repeat(2, 1fr) }
+}
+
 .rt-tp-card {
   background: #FFFFFF;
   border: 1px solid #E5E7EB;
@@ -111,8 +124,8 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
   box-shadow: 0 8px 24px -12px rgba(15,20,25,0.15);
 }
 .rt-tp-card.cur {
-  border-color: #DC6B5C;
-  box-shadow: 0 0 0 2px rgba(220,107,92,0.18);
+  border-color: #2563EB;
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.18);
 }
 .rt-tp-card .rt-tp-preview {
   height: 96px;
@@ -141,7 +154,7 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
 .rt-tp-card .rt-tp-current {
   position: absolute;
   top: 8px; left: 8px;
-  background: #DC6B5C;
+  background: #2563EB;
   color: #fff;
   font-family: "Heebo", sans-serif;
   font-weight: 600;
@@ -153,28 +166,63 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
 }
 .rt-tp-card.cur .rt-tp-current { display: inline-block }
 
-/* preview thumbnails — each template gets a custom miniature */
+/* ============================================================================
+   PREVIEW THUMBNAILS
+   ============================================================================ */
 
-/* default — blue Word */
-.rt-tp-prev-default {
-  background: linear-gradient(180deg, #FFFFFF, #F6F8FC);
+/* light — blue (default) */
+.rt-tp-prev-light {
+  background: linear-gradient(180deg, #F7F4ED, #F1EEE7);
 }
-.rt-tp-prev-default::before {
+.rt-tp-prev-light::before {
   content: ""; position: absolute; top: 0; left: 0; right: 0; height: 18px;
-  background: #185ABD;
+  background: linear-gradient(180deg, #FFFFFF, #FBFAF6);
+  border-bottom: 1px solid #E6E1D5;
 }
-.rt-tp-prev-default::after {
-  content: ""; position: absolute; top: 26px; left: 12px; right: 12px; height: 62px;
+.rt-tp-prev-light .rt-tp-page {
+  position: absolute; top: 24px; left: 12px; right: 12px; height: 62px;
   background: #FFFFFF;
-  border: 1px solid #D4DCE8;
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 4px 12px -4px rgba(15,20,25,0.12);
+  background-image:
+    linear-gradient(180deg, transparent 8px, #E6E1D5 8px, #E6E1D5 9px, transparent 9px),
+    linear-gradient(180deg, transparent 16px, #E6E1D5 16px, #E6E1D5 17px, transparent 17px),
+    linear-gradient(180deg, transparent 24px, #E6E1D5 24px, #E6E1D5 25px, transparent 25px);
+}
+.rt-tp-prev-light::after {
+  content: ""; position: absolute; bottom: 8px; left: 12px;
+  width: 28px; height: 10px; border-radius: 999px;
+  background: linear-gradient(95deg, #2563EB, #185ABD, #1E4078);
+}
+
+/* dark — navy classic */
+.rt-tp-prev-dark {
+  background: linear-gradient(180deg, #0F172A, #15203A);
+}
+.rt-tp-prev-dark::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 18px;
+  background: #15203A;
+  border-bottom: 1px solid #1F2E54;
+}
+.rt-tp-prev-dark .rt-tp-page {
+  position: absolute; top: 24px; left: 12px; right: 12px; height: 62px;
+  background: #15203A;
+  border: 1px solid #1F2E54;
   border-radius: 4px;
   background-image:
-    linear-gradient(180deg, transparent 6px, #E5E7EB 6px, #E5E7EB 7px, transparent 7px),
-    linear-gradient(180deg, transparent 14px, #E5E7EB 14px, #E5E7EB 15px, transparent 15px),
-    linear-gradient(180deg, transparent 22px, #E5E7EB 22px, #E5E7EB 23px, transparent 23px);
+    linear-gradient(180deg, transparent 8px, #2A3D6E 8px, #2A3D6E 9px, transparent 9px),
+    linear-gradient(180deg, transparent 16px, #2A3D6E 16px, #2A3D6E 17px, transparent 17px),
+    linear-gradient(180deg, transparent 24px, #2A3D6E 24px, #2A3D6E 25px, transparent 25px);
+}
+.rt-tp-prev-dark::after {
+  content: ""; position: absolute; bottom: 8px; left: 12px;
+  width: 28px; height: 10px; border-radius: 999px;
+  background: linear-gradient(135deg, #D4AF37 0%, #FFC130 100%);
 }
 
-/* word-style — coral cream */
+/* word-style — coral on cream */
 .rt-tp-prev-word {
   background: linear-gradient(180deg, #F7F4ED, #F1EEE7);
 }
@@ -184,12 +232,12 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
   border-bottom: 1px solid #E6E1D5;
 }
 .rt-tp-prev-word .rt-tp-page {
-  content: ""; position: absolute; top: 24px; left: 12px; right: 12px; height: 62px;
+  position: absolute; top: 24px; left: 12px; right: 12px; height: 62px;
   background: #FFFFFF;
   border-radius: 4px;
   box-shadow:
     0 1px 0 rgba(255,255,255,0.6) inset,
-    0 4px 12px -4px rgba(15,20,25,0.12);
+    0 4px 12px -4px rgba(199,93,122,0.18);
   background-image:
     linear-gradient(180deg, transparent 8px, #E6E1D5 8px, #E6E1D5 9px, transparent 9px),
     linear-gradient(180deg, transparent 16px, #E6E1D5 16px, #E6E1D5 17px, transparent 17px),
@@ -211,7 +259,7 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
   border-bottom: 1px solid rgba(201,163,91,0.35);
 }
 .rt-tp-prev-judaica .rt-tp-page {
-  content: ""; position: absolute; top: 22px; left: 12px; right: 12px; height: 64px;
+  position: absolute; top: 22px; left: 12px; right: 12px; height: 64px;
   background: linear-gradient(180deg, #FCF7E8, #F7EFD8);
   border: 1px solid #C9B98F;
   background-image:
@@ -224,7 +272,42 @@ body.template-judaica .rt-tp-btn .rt-tp-swatch {
   font-size: 9px; color: #C9A35B; line-height: 16px;
 }
 
-/* The dark page backdrop where the body normally lives */
+/* ============================================================================
+   THEME ADAPTATIONS
+   ============================================================================ */
+
+/* Picker on dark theme — adjust contrast */
+body:not(.light-theme):not(.template-judaica) .rt-tp-btn {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.12);
+  color: #E2E8F0;
+}
+body:not(.light-theme):not(.template-judaica) .rt-tp-btn:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.22);
+}
+body:not(.light-theme):not(.template-judaica) .rt-tp-pop {
+  background: #15203A;
+  border-color: #1F2E54;
+  color: #E2E8F0;
+}
+body:not(.light-theme):not(.template-judaica) .rt-tp-pop-head h4 { color: #FFFFFF }
+body:not(.light-theme):not(.template-judaica) .rt-tp-pop-head small { color: #94A3B8 }
+body:not(.light-theme):not(.template-judaica) .rt-tp-card {
+  background: #1F2E54;
+  border-color: #2A3D6E;
+}
+body:not(.light-theme):not(.template-judaica) .rt-tp-card .rt-tp-name { color: #FFFFFF }
+body:not(.light-theme):not(.template-judaica) .rt-tp-card .rt-tp-desc { color: #94A3B8 }
+body:not(.light-theme):not(.template-judaica) .rt-tp-card.cur {
+  border-color: #D4AF37;
+  box-shadow: 0 0 0 2px rgba(212,175,55,0.18);
+}
+body:not(.light-theme):not(.template-judaica) .rt-tp-card.cur .rt-tp-current {
+  background: #D4AF37; color: #0F172A;
+}
+
+/* Picker on Judaica template */
 body.template-judaica .rt-tp-btn {
   background: rgba(255,255,255,0.04);
   border-color: rgba(201,163,91,0.22);
@@ -238,4 +321,27 @@ body.template-judaica .rt-tp-pop {
   background: linear-gradient(180deg, #FCF7E8, #F7EFD8);
   border: 1px solid #C9B98F;
   box-shadow: 0 30px 80px -30px rgba(0,0,0,0.6);
+}
+body.template-judaica .rt-tp-pop-head h4 { color: #15100A }
+body.template-judaica .rt-tp-pop-head small { color: #3A2F22 }
+body.template-judaica .rt-tp-card {
+  background: rgba(255,255,255,0.4);
+  border-color: #C9B98F;
+}
+body.template-judaica .rt-tp-card.cur {
+  border-color: #8E6A2A;
+  box-shadow: 0 0 0 2px rgba(201,163,91,0.30);
+}
+body.template-judaica .rt-tp-card.cur .rt-tp-current {
+  background: linear-gradient(180deg, #C9A35B, #8E6A2A);
+  color: #15100A;
+}
+
+/* On Word-style — accent ring uses coral */
+body.template-word-style .rt-tp-card.cur {
+  border-color: #DC6B5C;
+  box-shadow: 0 0 0 2px rgba(220,107,92,0.18);
+}
+body.template-word-style .rt-tp-card.cur .rt-tp-current {
+  background: linear-gradient(95deg, #DC6B5C, #C75D7A, #8A3D67);
 }

@@ -1,51 +1,83 @@
 /* ============================================================================
    RavText — Template Picker (vanilla JS, self-contained)
    ----------------------------------------------------------------------------
-   Adds a "סגנון" button to the header actions and a popover with 3 cards.
-   Selection toggles a class on <body> and is persisted in localStorage under
-   key "ravtext-template": "" | "word-style" | "judaica".
+   A unified picker for all built-in styles. Replaces the legacy ☀/🌙 toggle.
+
+   Options:
+     "" / light      → body.light-theme           (default, blue accent)
+     "dark"          → body (no light-theme)      (legacy dark mode)
+     "word-style"    → body.light-theme.template-word-style (coral accent)
+     "judaica"       → body.template-judaica      (parchment on ink)
+
+   Persisted under localStorage key "ravtext-template". Also writes
+   "ravtext.theme" ("light"|"dark") for backward compatibility with the
+   legacy toggle button which we still hide via CSS.
    ============================================================================ */
 (function () {
   'use strict';
 
   var KEY = 'ravtext-template';
+  var LEGACY_KEY = 'ravtext.theme';
+
   var TEMPLATES = [
     {
       id: '',
-      name: 'ברירת מחדל',
-      desc: 'הסגנון המקורי של רב טקסט',
-      previewClass: 'rt-tp-prev-default'
+      name: 'בהיר',
+      desc: 'ברירת המחדל — גוון כחול קלאסי',
+      previewClass: 'rt-tp-prev-light'
+    },
+    {
+      id: 'dark',
+      name: 'כהה',
+      desc: 'מצב לילה — רקע כהה ואותיות בהירות',
+      previewClass: 'rt-tp-prev-dark'
     },
     {
       id: 'word-style',
       name: 'סגנון וורד',
-      desc: 'קנבס קרם, גרדיאנט קוראל, פנלים צפים',
+      desc: 'אותו מבנה, גוון קוראל→שזיף חם',
       previewClass: 'rt-tp-prev-word'
     },
     {
       id: 'judaica',
       name: 'סגנון יודאיקה',
-      desc: 'קלף חם על דיו כהה, זהב עתיק, מקלדת סופרים',
+      desc: 'קלף חם על דיו כהה, זהב עתיק',
       previewClass: 'rt-tp-prev-judaica'
     }
   ];
 
   function getCurrent() {
-    try { return localStorage.getItem(KEY) || ''; }
-    catch (e) { return ''; }
+    try {
+      var t = localStorage.getItem(KEY);
+      if (t !== null) return t;
+      /* backward compat: if legacy stored "dark", show dark as current */
+      var legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy === 'dark') return 'dark';
+      return '';
+    } catch (e) { return ''; }
   }
 
   function setCurrent(id) {
-    try { localStorage.setItem(KEY, id || ''); } catch (e) {}
+    try {
+      localStorage.setItem(KEY, id || '');
+      /* sync legacy key so the rest of the app (and the hidden toggle button)
+         remains consistent */
+      var isDark = (id === 'dark');
+      localStorage.setItem(LEGACY_KEY, isDark ? 'dark' : 'light');
+    } catch (e) {}
     apply(id);
   }
 
   function apply(id) {
     var body = document.body;
-    TEMPLATES.forEach(function (t) {
-      if (t.id) body.classList.remove('template-' + t.id);
-    });
-    if (id) body.classList.add('template-' + id);
+    body.classList.remove('template-word-style', 'template-judaica');
+    if (id === 'dark') {
+      body.classList.remove('light-theme');
+    } else {
+      body.classList.add('light-theme');
+      if (id === 'word-style') body.classList.add('template-word-style');
+      else if (id === 'judaica') body.classList.add('template-judaica');
+    }
   }
 
   function buildPopover() {
@@ -79,7 +111,8 @@
         Array.prototype.forEach.call(grid.querySelectorAll('.rt-tp-card'), function (c) {
           c.classList.toggle('cur', c.dataset.tpl === t.id);
         });
-        setTimeout(closePopover, 180);
+        updateButtonSwatch();
+        setTimeout(closePopover, 160);
       });
       grid.appendChild(card);
     });
@@ -94,10 +127,9 @@
     if (!popover) popover = buildPopover();
     var rect = triggerBtn.getBoundingClientRect();
     popover.classList.add('open');
-    var popWidth = popover.offsetWidth || 540;
+    var popWidth = popover.offsetWidth || 620;
     var top = rect.bottom + 8;
     var right = Math.max(8, window.innerWidth - rect.right);
-    /* keep within viewport */
     if (right + popWidth > window.innerWidth - 8) {
       right = Math.max(8, window.innerWidth - popWidth - 8);
     }
@@ -122,6 +154,12 @@
   }
   function onKey(e) { if (e.key === 'Escape') closePopover(); }
 
+  function updateButtonSwatch() {
+    if (!triggerBtn) return;
+    var cur = getCurrent();
+    triggerBtn.setAttribute('data-tpl', cur || 'light');
+  }
+
   function injectButton() {
     var actions = document.querySelector('.app-header-actions');
     if (!actions) return false;
@@ -129,7 +167,7 @@
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'rt-tp-btn header-action-btn';
-    btn.title = 'בחר תבנית עיצוב — ברירת מחדל / סגנון וורד / סגנון יודאיקה';
+    btn.title = 'בחר תבנית עיצוב — בהיר / כהה / סגנון וורד / סגנון יודאיקה';
     btn.innerHTML =
       '<span class="rt-tp-swatch" aria-hidden="true"></span>' +
       '<span>סגנון</span>' +
@@ -142,17 +180,26 @@
     /* prepend so it appears first in the RTL row (closest to the title) */
     actions.insertBefore(btn, actions.firstChild);
     triggerBtn = btn;
+    updateButtonSwatch();
     return true;
+  }
+
+  /* Hide the legacy ☀/🌙 toggle button — the picker has replaced it. */
+  function hideLegacyThemeToggle() {
+    var legacy = document.querySelector('[data-cmd="theme-toggle"]');
+    if (legacy) legacy.style.display = 'none';
   }
 
   function init() {
     apply(getCurrent());
-    if (!injectButton()) {
-      /* retry once the rest of the app has mounted */
+    var injected = injectButton();
+    hideLegacyThemeToggle();
+    if (!injected) {
       var tries = 0;
       var iv = setInterval(function () {
         tries += 1;
         if (injectButton() || tries > 40) clearInterval(iv);
+        hideLegacyThemeToggle();
       }, 100);
     }
   }
