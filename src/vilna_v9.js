@@ -1076,10 +1076,14 @@ function buildPagePlan(pageContent, config) {
   // ב-overflow.streams (כדי ש-buildPages יוכל לדחוף לעמוד הבא דרך carry-over
   // עתידי או דרך הפחתת פסקאות באיטרציה הבאה).
   const pageBottom = cfg.pageHeight - cfg.padding;
+  // משה 2026-05-13: מרווח בין זרמים דינמי לפי גובה הכותרת. עם הכותרות
+  // המודגשות (פס לבן-על-צבע), הגעצמים נראים דחוסים מדי ב-8px. 0.55 * titleHeight
+  // ≈ 11–13px לזרמים בגודל ברירת מחדל, וגדל אוטומטית כשהפונט גדל.
+  const interStreamGap = Math.max(10, Math.round(titleHeight * 0.55));
   let footerY = Math.max(
     ...result.streamBoxes.map(b => b.endY || 0),
     mainBottomY
-  ) + 8;
+  ) + interStreamGap;
   let anyFooterTrimmed = false;
 
   if (pageContent.footerStreams && pageContent.footerStreams.length) {
@@ -1156,7 +1160,7 @@ function buildPagePlan(pageContent, config) {
       const renderedRows = footerCols > 1
         ? Math.min(rowsPerCol, linesToRender.length)
         : linesToRender.length;
-      footerY += renderedRows * fsLineH + 8;
+      footerY += renderedRows * fsLineH + interStreamGap;
     }
   }
 
@@ -1189,8 +1193,12 @@ function ensureGlobalStyles() {
       position: absolute;
       direction: rtl;
       white-space: nowrap;
-      overflow: hidden;
+      overflow: visible;
     }
+    /* משה 2026-05-13: באג ך' סופית — כשלכל שורה יש רקע מ-stream-color-N,
+       השורה התחתונה מציירת מעל ה-descender של השורה שמעליה. ב-V9 רוצים את
+       הצבע רק על פס הכותרת — לא על השורות הבודדות. */
+    .v9-line[class*="stream-color-"] { background: transparent; }
     .v9-line.justify {
       white-space: normal;
       text-align: justify;
@@ -1202,11 +1210,23 @@ function ensureGlobalStyles() {
     }
     .v9-stream-title {
       position: absolute;
-      font-weight: bold;
+      font-weight: 700;
       text-align: center;
       border-bottom: 1px solid #888;
       direction: rtl;
+      color: #ffffff;
+      letter-spacing: 0.02em;
     }
+    /* משה 2026-05-13: ניגודיות גבוהה לכותרת מפרשים בתבנית תלמוד — לבן על
+       צבע מלא חזק במקום כחול-בהיר על שחור. כל זרם בצבע משלו לזיהוי. */
+    .v9-stream-title.stream-color-1 { background: #2c5aa0; }
+    .v9-stream-title.stream-color-2 { background: #2a7a3a; }
+    .v9-stream-title.stream-color-3 { background: #6b3b9c; }
+    .v9-stream-title.stream-color-4 { background: #a87a2c; }
+    .v9-stream-title.stream-color-5 { background: #a83c3c; }
+    .v9-stream-title.stream-color-6 { background: #a8642c; }
+    .v9-stream-title.stream-color-7 { background: #a83b6e; }
+    .v9-stream-title.stream-color-8 { background: #5c6373; }
   `;
   document.head.appendChild(style);
 }
