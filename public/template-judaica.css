@@ -1,0 +1,731 @@
+/* ============================================================================
+   RavText — TEMPLATE: Judaica (Illuminated Manuscript) 2026
+   ----------------------------------------------------------------------------
+   Editorial scholar aesthetic: warm parchment surfaces on a deep ink chrome,
+   antique gold + wine + indigo accents, hand-set ornaments. Inspired by
+   illuminated Hebrew manuscripts and the Vilna press.
+
+   Opt-in template. Activated when <body> has class "template-judaica".
+   Does not change anything otherwise.
+   ============================================================================ */
+
+/* ---------- 1. design tokens ---------- */
+body.template-judaica {
+  /* Ink — the deep chrome around the work */
+  --rt-ink-950: #0E0A06;
+  --rt-ink-900: #15100A;
+  --rt-ink-800: #1E1810;
+  --rt-ink-700: #2A2218;
+  --rt-ink-600: #3A2F22;
+
+  /* Parchment — the working surface */
+  --rt-vellum-50:  #FCF7E8;
+  --rt-vellum-100: #F7EFD8;
+  --rt-vellum-200: #F0E5C5;
+  --rt-vellum-300: #E6D7A8;
+  --rt-vellum-400: #C9B98F;
+  --rt-vellum-500: #A89971;
+
+  /* Pigments */
+  --rt-gold-leaf:  #C9A35B;
+  --rt-gold-deep:  #8E6A2A;
+  --rt-gold-pale:  #E8D196;
+  --rt-wine:       #8B2E3F;
+  --rt-wine-deep:  #5C1A26;
+  --rt-indigo:     #2A3760;
+  --rt-sage:       #6B7A5C;
+  --rt-vermilion:  #B53A1C;
+
+  /* override the global vars so existing rules adopt the new look */
+  --bg:        var(--rt-ink-900);
+  --panel:     var(--rt-vellum-50);
+  --border:    var(--rt-vellum-400);
+  --gold:      var(--rt-gold-leaf);
+  --txt:       var(--rt-ink-900);
+  --muted:     var(--rt-ink-600);
+  --btn:       var(--rt-vellum-100);
+  --btn-h:     var(--rt-vellum-200);
+  --ed-bg:     var(--rt-vellum-50);
+  --ed-fg:     var(--rt-ink-900);
+  --word-blue:      var(--rt-wine);
+  --word-blue-dark: var(--rt-wine-deep);
+  --word-line:      var(--rt-vellum-400);
+
+  --ravtext-ui-font-family: "Frank Ruhl Libre", "David Libre", "Heebo", serif;
+  --ravtext-editor-font-family: "Frank Ruhl Libre", "David Libre", serif;
+  --ravtext-page-font-family: "Frank Ruhl Libre", "David Libre", serif;
+}
+
+/* ---------- 2. body chrome — deep ink with grain ---------- */
+body.template-judaica {
+  background:
+    radial-gradient(1200px 700px at 70% -10%, rgba(201,163,91,0.10), transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, rgba(139,46,63,0.10), transparent 60%),
+    var(--rt-ink-900);
+  background-attachment: fixed;
+  color: var(--rt-vellum-100);
+  font-family: var(--ravtext-ui-font-family);
+}
+body.template-judaica ::selection { background: rgba(201,163,91,0.30); color: var(--rt-ink-900) }
+
+/* ---------- 3. app header — title plate of a codex ---------- */
+body.template-judaica .app-header {
+  background: linear-gradient(180deg, var(--rt-ink-900), var(--rt-ink-800));
+  border-bottom: 1px solid rgba(201,163,91,0.22);
+  padding: 18px 32px 14px;
+  position: relative;
+  box-shadow: none;
+}
+body.template-judaica .app-header::after {
+  content: "";
+  position: absolute; left: 32px; right: 32px; bottom: 4px; height: 3px;
+  border-top: 1px solid rgba(201,163,91,0.55);
+  border-bottom: 1px solid rgba(201,163,91,0.22);
+  pointer-events: none;
+}
+body.template-judaica .app-header h1 {
+  color: var(--rt-vellum-50);
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-weight: 800;
+  font-size: 30px;
+  letter-spacing: -0.005em;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+body.template-judaica .app-header h1 .app-logo {
+  width: 32px; height: 32px;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.4));
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* header action chips */
+body.template-judaica .header-action-btn {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(201,163,91,0.20);
+  border-radius: 2px;
+  color: var(--rt-vellum-100);
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+  padding: 6px 14px;
+  height: 32px;
+  letter-spacing: 0.01em;
+}
+body.template-judaica .header-action-btn:hover {
+  background: rgba(201,163,91,0.08);
+  border-color: var(--rt-gold-leaf);
+  color: var(--rt-vellum-50);
+  transform: none;
+  box-shadow: none;
+}
+body.template-judaica .header-action-icon { color: var(--rt-gold-leaf) }
+body.template-judaica .header-action-btn-phone {
+  background: rgba(201,163,91,0.10);
+  border-color: var(--rt-gold-leaf);
+  color: var(--rt-gold-pale);
+  font-family: "Fraunces", "Heebo", serif;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+  letter-spacing: 0.06em;
+}
+body.template-judaica .header-action-btn-phone:hover {
+  background: rgba(201,163,91,0.15);
+  color: var(--rt-vellum-50);
+}
+
+/* ---------- 4. status row — like a colophon ---------- */
+body.template-judaica .status,
+body.template-judaica .status-row {
+  background: linear-gradient(180deg, rgba(0,0,0,0.18), transparent);
+  border: 0;
+  border-bottom: 1px solid rgba(201,163,91,0.16);
+  border-radius: 0;
+  font-family: "Fraunces", "Frank Ruhl Libre", serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--rt-vellum-300);
+  padding: 12px 32px;
+  margin: 0;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+body.template-judaica .status::before,
+body.template-judaica .status-row::before {
+  content: "";
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--rt-gold-leaf);
+  box-shadow: 0 0 0 3px rgba(201,163,91,0.18);
+}
+
+/* ---------- 5. main canvas ---------- */
+body.template-judaica .main {
+  padding: 26px 32px 40px;
+  gap: 22px;
+}
+
+/* ---------- 6. panel — parchment sheet pinned to the desk ---------- */
+body.template-judaica .panel {
+  background:
+    radial-gradient(700px 420px at 20% 0%, rgba(255,255,255,0.5), transparent 60%),
+    linear-gradient(180deg, var(--rt-vellum-50), var(--rt-vellum-100));
+  color: var(--rt-ink-900);
+  border: 1px solid var(--rt-vellum-400);
+  border-radius: 2px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.4) inset,
+    0 18px 36px -20px rgba(0,0,0,0.6),
+    0 2px 0 rgba(0,0,0,0.2);
+  padding: 18px 22px 22px;
+  position: relative;
+  overflow: hidden;
+}
+body.template-judaica .panel::before {
+  /* soft paper grain */
+  content: "";
+  position: absolute; inset: 0; pointer-events: none; opacity: .25;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' seed='9'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.36  0 0 0 0 0.20  0 0 0 0.10 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: multiply;
+  border-radius: 2px;
+}
+body.template-judaica .panel > * { position: relative; z-index: 1 }
+
+body.template-judaica .panel h2 {
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--rt-ink-900);
+  letter-spacing: -0.005em;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px dotted var(--rt-vellum-400);
+}
+
+/* ---------- 7. toolbars — scholarly tool bench ---------- */
+body.template-judaica .toolbar,
+body.template-judaica .panes-toolbar {
+  background: rgba(8,5,2,0.5);
+  border: 1px solid rgba(201,163,91,0.18);
+  border-radius: 3px;
+  padding: 12px 12px 14px;
+  gap: 6px;
+  align-items: stretch;
+  box-shadow: none;
+}
+
+body.template-judaica .tb-group {
+  position: relative;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid rgba(201,163,91,0.10);
+  border-radius: 0;
+  padding: 6px 14px 20px;
+  gap: 3px;
+}
+body.template-judaica .tb-group:first-child { border-left: 0 }
+
+body.template-judaica .tb-group::before {
+  content: attr(data-title);
+  position: absolute;
+  top: auto;
+  bottom: 4px;
+  right: 0; left: 0;
+  text-align: center;
+  font-family: "Fraunces", "Frank Ruhl Libre", serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--rt-gold-leaf);
+  background: transparent;
+  padding: 0;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* tool buttons */
+body.template-judaica .toolbar button,
+body.template-judaica .panes-toolbar button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--rt-vellum-100);
+  border-radius: 2px;
+  padding: 4px 10px;
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 14px;
+  min-height: 30px;
+}
+body.template-judaica .toolbar button:hover,
+body.template-judaica .panes-toolbar button:hover {
+  background: rgba(201,163,91,0.10);
+  border-color: rgba(201,163,91,0.45);
+  color: var(--rt-vellum-50);
+}
+
+body.template-judaica .toolbar button.primary,
+body.template-judaica .toolbar button.active,
+body.template-judaica .panes-toolbar button.primary,
+body.template-judaica .panes-toolbar button.active {
+  background: var(--rt-gold-leaf);
+  color: var(--rt-ink-900);
+  border-color: var(--rt-gold-deep);
+  box-shadow: none;
+  font-weight: 600;
+}
+
+/* stream buttons — scholarly pill style */
+body.template-judaica .btn-stream,
+body.template-judaica .btn-stream-jump {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(201,163,91,0.22);
+  border-radius: 999px;
+  padding: 5px 12px;
+  color: var(--rt-vellum-50);
+  font-weight: 500;
+  position: relative;
+  font-family: "Frank Ruhl Libre", serif;
+}
+body.template-judaica .btn-stream:hover,
+body.template-judaica .btn-stream-jump:hover {
+  border-color: var(--rt-gold-leaf);
+  background: rgba(201,163,91,0.10);
+  transform: none;
+  box-shadow: none;
+}
+body.template-judaica .btn-stream::before,
+body.template-judaica .btn-stream-jump::before {
+  content: "";
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--rt-gold-leaf);
+  margin-left: 6px;
+  vertical-align: middle;
+  transform: rotate(45deg);
+}
+body.template-judaica .stream-color-1::before { background: var(--rt-wine) }
+body.template-judaica .stream-color-2::before { background: var(--rt-indigo) }
+body.template-judaica .stream-color-3::before { background: var(--rt-gold-deep) }
+body.template-judaica .stream-color-4::before { background: var(--rt-sage) }
+body.template-judaica .stream-color-5::before { background: var(--rt-vermilion) }
+body.template-judaica .stream-color-6::before { background: var(--rt-gold-pale) }
+body.template-judaica .stream-color-7::before { background: var(--rt-wine-deep) }
+body.template-judaica .stream-color-8::before { background: var(--rt-vellum-300) }
+
+body.template-judaica .stream-label-static,
+body.template-judaica .stress-label {
+  font-family: "Frank Ruhl Libre", serif;
+  font-size: 13px;
+  color: var(--rt-vellum-300);
+  font-weight: 500;
+}
+
+body.template-judaica .custom-stream-input {
+  background: rgba(8,5,2,0.5);
+  border: 1px solid rgba(201,163,91,0.22);
+  border-radius: 2px;
+  color: var(--rt-vellum-50);
+  height: 30px;
+}
+body.template-judaica .custom-stream-input:focus {
+  outline: 0;
+  border-color: var(--rt-gold-leaf);
+  box-shadow: 0 0 0 3px rgba(201,163,91,0.16);
+}
+
+/* render button — gold leaf seal */
+body.template-judaica #btn-render,
+body.template-judaica .bottom-toolbar button {
+  background: linear-gradient(180deg, var(--rt-gold-leaf), var(--rt-gold-deep));
+  color: var(--rt-ink-900);
+  border: 1px solid var(--rt-gold-deep);
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 26px;
+  border-radius: 2px;
+  letter-spacing: 0.01em;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.4) inset,
+    0 4px 12px -4px rgba(0,0,0,0.4);
+}
+body.template-judaica #btn-render:hover,
+body.template-judaica .bottom-toolbar button:hover {
+  filter: brightness(1.06);
+  transform: none;
+}
+body.template-judaica #btn-render::before {
+  content: "✦";
+  margin-left: 8px;
+}
+
+/* ---------- 8. editor surface — vellum sheet ---------- */
+body.template-judaica #editor,
+body.template-judaica .editor,
+body.template-judaica #main-editor,
+body.template-judaica [contenteditable="true"] {
+  background: var(--rt-vellum-50);
+  color: var(--rt-ink-900);
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-size: 17px;
+  line-height: 1.95;
+  border: 1px solid var(--rt-vellum-300);
+  border-radius: 2px;
+  padding: 26px 30px;
+  box-shadow: inset 0 0 80px rgba(168,153,113,0.18);
+}
+body.template-judaica #editor:focus,
+body.template-judaica [contenteditable="true"]:focus {
+  outline: 0;
+  border-color: var(--rt-gold-leaf);
+  box-shadow: inset 0 0 80px rgba(168,153,113,0.22), 0 0 0 3px rgba(201,163,91,0.16);
+}
+
+/* drop cap on first paragraph */
+body.template-judaica #editor > p:first-of-type::first-letter,
+body.template-judaica .editor > p:first-of-type::first-letter {
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 900;
+  font-size: 3.6em;
+  line-height: 0.85;
+  float: right;
+  margin: 6px 0 0 10px;
+  padding: 4px 10px 0 12px;
+  color: var(--rt-wine);
+  background: linear-gradient(180deg, rgba(201,163,91,0.18), rgba(201,163,91,0.04));
+  border: 1px solid var(--rt-gold-leaf);
+}
+
+/* ---------- 9. preview pane — same parchment ---------- */
+body.template-judaica .preview-pane {
+  background:
+    radial-gradient(700px 420px at 20% 0%, rgba(255,255,255,0.5), transparent 60%),
+    linear-gradient(180deg, var(--rt-vellum-50), var(--rt-vellum-100));
+  color: var(--rt-ink-900);
+}
+body.template-judaica .preview-pane h2 {
+  font-family: "Frank Ruhl Libre", serif;
+  color: var(--rt-ink-900);
+}
+body.template-judaica .pages-container {
+  background: var(--rt-vellum-50);
+  border-radius: 0;
+  padding: 18px;
+}
+body.template-judaica .empty-hint {
+  font-family: "Fraunces", "Frank Ruhl Libre", serif;
+  font-style: italic;
+  color: var(--rt-ink-600);
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 15px;
+}
+
+/* ---------- 10. pdf toolbar — refined ink-on-vellum ---------- */
+body.template-judaica .pdf-toolbar {
+  background: var(--rt-vellum-100);
+  border: 1px solid var(--rt-vellum-400);
+  border-radius: 2px;
+  padding: 8px 10px;
+  gap: 6px;
+}
+body.template-judaica .pdf-tb-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--rt-ink-700);
+  border-radius: 2px;
+  width: 30px; height: 30px;
+}
+body.template-judaica .pdf-tb-btn:hover {
+  background: rgba(139,46,63,0.08);
+  border-color: var(--rt-wine);
+  color: var(--rt-wine);
+}
+body.template-judaica .pdf-tb-btn.active,
+body.template-judaica .pdf-tb-btn[aria-pressed="true"] {
+  background: var(--rt-gold-leaf);
+  color: var(--rt-ink-900);
+  border-color: var(--rt-gold-deep);
+}
+body.template-judaica .pdf-tb-page-input,
+body.template-judaica .pdf-tb-zoom-select,
+body.template-judaica .pdf-tb-find {
+  background: var(--rt-vellum-50);
+  border: 1px solid var(--rt-vellum-400);
+  border-radius: 2px;
+  color: var(--rt-ink-900);
+  font-family: "Fraunces", serif;
+  font-style: italic;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}
+body.template-judaica .pdf-tb-action-btn {
+  background: linear-gradient(180deg, var(--rt-gold-leaf), var(--rt-gold-deep));
+  color: var(--rt-ink-900);
+  border: 1px solid var(--rt-gold-deep);
+  border-radius: 2px;
+  height: 30px;
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.4) inset;
+}
+body.template-judaica .pdf-tb-action-btn:hover {
+  filter: brightness(1.05);
+  color: var(--rt-ink-900);
+}
+body.template-judaica .pdf-tb-action-secondary {
+  background: var(--rt-vellum-50);
+  color: var(--rt-ink-700);
+  border: 1px solid var(--rt-vellum-400);
+  box-shadow: none;
+}
+body.template-judaica .pdf-tb-action-secondary:hover {
+  border-color: var(--rt-wine);
+  color: var(--rt-wine);
+  background: var(--rt-vellum-100);
+}
+body.template-judaica .pdf-scroll-progress-fill {
+  background: var(--rt-gold-leaf);
+}
+
+/* ---------- 11. ribbon-section title ---------- */
+body.template-judaica .ribbon-section-title {
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--rt-gold-leaf);
+  letter-spacing: 0.005em;
+  margin: 0 0 6px;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.3);
+}
+
+/* ---------- 12. checkboxes / form controls ---------- */
+body.template-judaica .toolbar-checkbox,
+body.template-judaica .opw-control,
+body.template-judaica .mishna-levels-control {
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+  color: var(--rt-vellum-100);
+}
+body.template-judaica .toolbar-checkbox input[type="checkbox"] {
+  accent-color: var(--rt-gold-leaf);
+  width: 14px; height: 14px;
+}
+body.template-judaica select,
+body.template-judaica input[type="text"]:not(.custom-stream-input),
+body.template-judaica input[type="number"]:not(.custom-stream-input) {
+  background: rgba(8,5,2,0.5);
+  border: 1px solid rgba(201,163,91,0.22);
+  border-radius: 2px;
+  color: var(--rt-vellum-50);
+  font-family: var(--ravtext-ui-font-family);
+  padding: 4px 8px;
+}
+body.template-judaica select:focus,
+body.template-judaica input[type="text"]:focus,
+body.template-judaica input[type="number"]:focus {
+  outline: 0;
+  border-color: var(--rt-gold-leaf);
+  box-shadow: 0 0 0 3px rgba(201,163,91,0.16);
+}
+
+/* the editor panel's controls live on parchment — needs dark text */
+body.template-judaica .panel select,
+body.template-judaica .panel input[type="text"]:not(.custom-stream-input),
+body.template-judaica .panel input[type="number"]:not(.custom-stream-input) {
+  background: var(--rt-vellum-50);
+  border-color: var(--rt-vellum-400);
+  color: var(--rt-ink-900);
+}
+
+/* ---------- 13. talmud / mishna experimental notice ---------- */
+body.template-judaica .talmud-experimental-notice {
+  background: rgba(139,46,63,0.12);
+  border: 1px solid var(--rt-wine);
+  border-radius: 2px;
+  padding: 10px 12px;
+  color: var(--rt-vellum-100);
+}
+body.template-judaica .talmud-experimental-badge {
+  background: var(--rt-wine);
+  color: var(--rt-vellum-50);
+  font-weight: 600;
+  font-family: "Frank Ruhl Libre", serif;
+  border-radius: 0;
+  padding: 2px 9px;
+  font-size: 11px;
+}
+
+/* ---------- 14. modal ---------- */
+body.template-judaica .modal-overlay {
+  background: rgba(14,10,6,0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+body.template-judaica .modal {
+  background:
+    radial-gradient(700px 420px at 20% 0%, rgba(255,255,255,0.5), transparent 60%),
+    linear-gradient(180deg, var(--rt-vellum-50), var(--rt-vellum-100));
+  border: 1px solid var(--rt-vellum-400);
+  border-radius: 2px;
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,0.6);
+  padding: 28px 30px;
+  color: var(--rt-ink-900);
+}
+body.template-judaica .modal h2 {
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--rt-ink-900);
+}
+
+/* ---------- 15. diagnostics panel ---------- */
+body.template-judaica .diag-panel {
+  background: var(--rt-ink-800);
+  border-left: 1px solid rgba(201,163,91,0.22);
+  color: var(--rt-vellum-100);
+  box-shadow: -20px 0 60px -30px rgba(0,0,0,0.5);
+}
+
+/* ---------- 16. context menu + toast ---------- */
+body.template-judaica .ctx-menu {
+  background: var(--rt-vellum-50);
+  border: 1px solid var(--rt-vellum-400);
+  border-radius: 2px;
+  box-shadow: 0 18px 36px -20px rgba(0,0,0,0.6);
+  padding: 6px;
+}
+body.template-judaica .ctx-menu button {
+  font-family: var(--ravtext-ui-font-family);
+  color: var(--rt-ink-900);
+}
+body.template-judaica .ctx-menu button:hover {
+  background: var(--rt-vellum-200);
+}
+body.template-judaica .toast {
+  background: var(--rt-vellum-50);
+  color: var(--rt-ink-900);
+  border: 1px solid var(--rt-vellum-400);
+  border-left: 4px solid var(--rt-gold-leaf);
+  border-radius: 2px;
+  font-family: "Frank Ruhl Libre", serif;
+}
+
+/* ---------- 17. resize handles ---------- */
+body.template-judaica .main-resize-handle,
+body.template-judaica .ci-resize-handle {
+  background: transparent;
+}
+body.template-judaica .main-resize-handle:hover,
+body.template-judaica .ci-resize-handle:hover,
+body.template-judaica .ci-resize-handle.dragging {
+  background: var(--rt-gold-leaf);
+  opacity: 0.45;
+}
+
+/* ---------- 18. scrollbars ---------- */
+body.template-judaica ::-webkit-scrollbar {
+  width: 12px; height: 12px;
+}
+body.template-judaica ::-webkit-scrollbar-track {
+  background: var(--rt-ink-900);
+}
+body.template-judaica ::-webkit-scrollbar-thumb {
+  background: rgba(201,163,91,0.30);
+  border-radius: 0;
+  border: 2px solid var(--rt-ink-900);
+}
+body.template-judaica ::-webkit-scrollbar-thumb:hover {
+  background: var(--rt-gold-leaf);
+}
+
+/* on parchment panels, scrollbars become darker */
+body.template-judaica .panel ::-webkit-scrollbar-thumb {
+  background: rgba(40,28,16,0.30);
+  border: 2px solid var(--rt-vellum-50);
+}
+body.template-judaica .panel ::-webkit-scrollbar-thumb:hover {
+  background: var(--rt-wine);
+}
+
+/* ---------- 19. entrance animation ---------- */
+@keyframes rt-jud-rise {
+  from { opacity: 0; transform: translateY(8px) }
+  to   { opacity: 1; transform: translateY(0) }
+}
+body.template-judaica .main > .panel {
+  animation: rt-jud-rise .6s cubic-bezier(.2,.7,.2,1) both;
+}
+body.template-judaica .main > .panel:nth-child(1) { animation-delay: .05s }
+body.template-judaica .main > .panel:nth-child(2) { animation-delay: .15s }
+
+/* ---------- 20. expanded tools ---------- */
+body.template-judaica .expanded-tools {
+  background: rgba(8,5,2,0.5);
+  border: 1px solid rgba(201,163,91,0.18);
+  border-radius: 2px;
+  padding: 10px;
+  gap: 6px;
+}
+body.template-judaica .expanded-tools button {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(201,163,91,0.18);
+  border-radius: 2px;
+  color: var(--rt-vellum-100);
+  padding: 6px 12px;
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+}
+body.template-judaica .expanded-tools button:hover {
+  border-color: var(--rt-gold-leaf);
+  color: var(--rt-vellum-50);
+  background: rgba(201,163,91,0.10);
+}
+
+/* ---------- 21. font-pick buttons ---------- */
+body.template-judaica [data-cmd^="font-"] {
+  font-family: "Frank Ruhl Libre", serif !important;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ---------- 22. pane-status caption ---------- */
+body.template-judaica .pane-status {
+  font-family: "Fraunces", "Frank Ruhl Libre", serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--rt-vellum-300);
+}
+
+/* ---------- 23. highlights ---------- */
+body.template-judaica .editor mark,
+body.template-judaica #editor mark,
+body.template-judaica [contenteditable] mark {
+  background: linear-gradient(180deg, transparent 60%, rgba(201,163,91,0.30) 60%);
+  color: inherit;
+  padding: 0 2px;
+}
+
+/* ---------- 24. stream-marked spans ---------- */
+body.template-judaica [data-stream="01"] { box-shadow: inset 0 -1.5px 0 var(--rt-wine);     background: linear-gradient(180deg, transparent 65%, rgba(139,46,63,0.14) 65%); }
+body.template-judaica [data-stream="02"] { box-shadow: inset 0 -1.5px 0 var(--rt-indigo);   background: linear-gradient(180deg, transparent 65%, rgba(42,55,96,0.13) 65%); }
+body.template-judaica [data-stream="03"] { box-shadow: inset 0 -1.5px 0 var(--rt-gold-deep);background: linear-gradient(180deg, transparent 65%, rgba(142,106,42,0.18) 65%); }
+body.template-judaica [data-stream="04"] { box-shadow: inset 0 -1.5px 0 var(--rt-sage);    background: linear-gradient(180deg, transparent 65%, rgba(107,122,92,0.16) 65%); }
+body.template-judaica [data-stream="05"] { box-shadow: inset 0 -1.5px 0 var(--rt-vermilion); background: linear-gradient(180deg, transparent 65%, rgba(181,58,28,0.14) 65%); }
+
+/* ---------- 25. premium badge ---------- */
+body.template-judaica .premium-badge,
+body.template-judaica [data-premium] {
+  background: linear-gradient(180deg, var(--rt-gold-leaf), var(--rt-gold-deep));
+  color: var(--rt-ink-900);
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 700;
+  border-radius: 2px;
+  padding: 2px 10px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* end template-judaica.css */
