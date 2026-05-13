@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #0F172A;
   --panel: #15203A;
   --border: #1F2E54;
@@ -5159,5 +5159,35 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .tb-group:not(.ribbon-hid
 
 body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) {
   display: inline-block !important;
+}
+
+/* ============================================================
+   RAVTEXT FINAL RENDER MEASURE GUARD
+
+   לא מסתיר טקסט.
+   מאפשר עטיפה בטוחה לטקסטים שעברו inline-runs / spans / גופנים שונים.
+   ============================================================ */
+
+.page-main,
+.page-main p,
+.stream,
+.note,
+.note-inline,
+.note-part {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.page-main span,
+.stream span,
+.note span,
+.note-inline span,
+.note-part span {
+  max-width: 100%;
+}
+
+.ravtext-final-overflow-detected {
+  outline: 1px dashed rgba(220, 38, 38, 0.45);
+  outline-offset: -1px;
 }
 
