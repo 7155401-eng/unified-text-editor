@@ -1,0 +1,754 @@
+/* ============================================================================
+   RavText — DEFAULT THEME 2026
+   ----------------------------------------------------------------------------
+   Word-shape WOW · warm cream canvas · coral→rose signature gradient
+   Floating page · glass panels · Hebrew literary typography first.
+
+   Load AFTER styles.css. Scoped to body.light-theme so the dark theme
+   and judaica theme are not affected.
+   ============================================================================ */
+
+/* ---------- 1. design tokens ---------- */
+body.light-theme {
+  /* canvas + surfaces */
+  --rt-canvas:    #F1EEE7;
+  --rt-canvas-hi: #F7F4ED;
+  --rt-surface:   #FFFFFF;
+  --rt-surface-2: #FBFAF6;
+  --rt-surface-3: #F4F1EA;
+
+  /* ink */
+  --rt-ink:   #0F1419;
+  --rt-ink-2: #2A3038;
+  --rt-ink-3: #5A6270;
+  --rt-ink-4: #8C95A3;
+
+  /* hairlines */
+  --rt-line:        #E6E1D5;
+  --rt-line-2:      #EFEBE0;
+  --rt-line-strong: #D7D0BE;
+
+  /* signature accents */
+  --rt-coral:     #DC6B5C;
+  --rt-rose:      #C75D7A;
+  --rt-plum:      #8A3D67;
+  --rt-rose-gold: #C9926A;
+  --rt-copper:    #B57448;
+  --rt-gold:      #B6862A;
+  --rt-emerald:   #0F6B58;
+  --rt-indigo:    #1E2761;
+
+  /* signature gradient */
+  --rt-grad-warm:  linear-gradient(95deg, #DC6B5C 0%, #C75D7A 60%, #8A3D67 100%);
+  --rt-grad-soft:  linear-gradient(180deg, rgba(220,107,92,0.10), rgba(199,93,122,0.04));
+
+  /* shadow stack */
+  --rt-shadow-page:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 1px 2px rgba(15,20,25,0.06),
+    0 10px 30px -10px rgba(15,20,25,0.18),
+    0 40px 80px -40px rgba(138,61,103,0.12);
+  --rt-shadow-card:
+    0 1px 2px rgba(15,20,25,0.04),
+    0 8px 24px -12px rgba(15,20,25,0.10);
+
+  /* override the global variables that drive existing rules */
+  --bg:         var(--rt-canvas);
+  --panel:      var(--rt-surface);
+  --border:     var(--rt-line);
+  --gold:       var(--rt-plum);          /* repurposed for accents */
+  --txt:        var(--rt-ink);
+  --muted:      var(--rt-ink-3);
+  --btn:        var(--rt-surface);
+  --btn-h:      var(--rt-surface-3);
+  --ed-bg:      var(--rt-surface);
+  --ed-fg:      var(--rt-ink);
+  --word-blue:        var(--rt-plum);
+  --word-blue-dark:   var(--rt-coral);
+  --word-line:        var(--rt-line);
+
+  --ravtext-ui-font-family: "Heebo", "David Libre", "Frank Ruhl Libre", "Segoe UI", sans-serif;
+  --ravtext-editor-font-family: "Frank Ruhl Libre", "David Libre", serif;
+  --ravtext-page-font-family: "Frank Ruhl Libre", "David Libre", serif;
+}
+
+/* ---------- 2. body canvas ---------- */
+body.light-theme {
+  background:
+    radial-gradient(1400px 700px at 80% -10%, rgba(220,107,92,0.07), transparent 60%),
+    radial-gradient(1100px 800px at -10% 90%, rgba(30,39,97,0.05), transparent 55%),
+    var(--rt-canvas);
+  background-attachment: fixed;
+  font-family: var(--ravtext-ui-font-family);
+  color: var(--rt-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+body.light-theme ::selection { background: rgba(220,107,92,0.22); color: var(--rt-ink) }
+
+/* ---------- 3. app header — title bar ---------- */
+body.light-theme .app-header {
+  background: linear-gradient(180deg, #FFFFFF, #FBFAF6);
+  border-bottom: 1px solid var(--rt-line);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.6), 0 6px 20px -16px rgba(15,20,25,0.18);
+  padding: 14px 28px 14px;
+}
+body.light-theme .app-header h1 {
+  color: var(--rt-ink);
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+body.light-theme .app-header h1 .app-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 4px 12px -4px rgba(199,93,122,0.45);
+  background: var(--rt-grad-warm);
+  padding: 4px;
+}
+/* the actions row — refined pills */
+body.light-theme .app-header-actions { gap: 6px }
+body.light-theme .header-action-btn {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 8px;
+  color: var(--rt-ink-2);
+  font-family: var(--ravtext-ui-font-family);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 6px 12px;
+  height: 32px;
+  transition: all .15s ease;
+  box-shadow: 0 1px 1px rgba(15,20,25,0.03);
+}
+body.light-theme .header-action-btn:hover {
+  background: var(--rt-surface-3);
+  border-color: var(--rt-line-strong);
+  color: var(--rt-ink);
+  transform: translateY(-0.5px);
+  box-shadow: var(--rt-shadow-card);
+}
+body.light-theme .header-action-btn-phone {
+  background: var(--rt-grad-warm);
+  color: #fff;
+  border: 0;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.3) inset,
+    0 6px 14px -6px rgba(199,93,122,0.45);
+}
+body.light-theme .header-action-btn-phone:hover {
+  filter: brightness(1.05);
+  transform: translateY(-0.5px);
+  color: #fff;
+}
+
+/* ---------- 4. status row ---------- */
+body.light-theme .status,
+body.light-theme .status-row {
+  background: rgba(255,255,255,0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid var(--rt-line);
+  border-radius: 10px;
+  color: var(--rt-ink-2);
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+  padding: 8px 14px;
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+body.light-theme .status::before,
+body.light-theme .status-row::before {
+  content: "";
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #2EB872;
+  box-shadow: 0 0 0 3px rgba(46,184,114,0.16);
+  flex-shrink: 0;
+}
+
+/* ---------- 5. main canvas ---------- */
+body.light-theme .main {
+  padding: 24px 28px 40px;
+  gap: 22px;
+}
+
+/* ---------- 6. panel — floating page ---------- */
+body.light-theme .panel {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 14px;
+  box-shadow: var(--rt-shadow-page);
+  padding: 18px 20px 22px;
+  position: relative;
+}
+body.light-theme .panel::before {
+  /* premium sheen at top */
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0; height: 60px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.7), transparent);
+  border-radius: 14px 14px 0 0;
+  pointer-events: none;
+}
+body.light-theme .panel > * { position: relative; z-index: 1 }
+
+body.light-theme .panel h2 {
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--rt-ink);
+  letter-spacing: -0.005em;
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rt-line);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ---------- 7. toolbars — ribbon strip ---------- */
+body.light-theme .toolbar,
+body.light-theme .panes-toolbar {
+  background: var(--rt-surface-2);
+  border: 1px solid var(--rt-line);
+  border-radius: 10px;
+  padding: 10px 10px 10px;
+  gap: 8px;
+  align-items: flex-end;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+}
+
+body.light-theme .tb-group {
+  position: relative;
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 8px;
+  padding: 6px 10px 18px;
+  gap: 3px;
+  box-shadow: 0 1px 1px rgba(15,20,25,0.03);
+}
+
+body.light-theme .tb-group::before {
+  content: attr(data-title);
+  position: absolute;
+  top: auto;
+  bottom: 3px;
+  right: 0; left: 0;
+  text-align: center;
+  font-family: "Heebo", sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--rt-ink-4);
+  background: transparent;
+  padding: 0;
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
+/* tool buttons */
+body.light-theme .toolbar button,
+body.light-theme .panes-toolbar button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--rt-ink-2);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+  min-height: 28px;
+  transition: all .12s ease;
+}
+body.light-theme .toolbar button:hover,
+body.light-theme .panes-toolbar button:hover {
+  background: var(--rt-surface-3);
+  border-color: var(--rt-line);
+  color: var(--rt-ink);
+}
+body.light-theme .toolbar button:active {
+  transform: translateY(0.5px);
+}
+
+body.light-theme .toolbar button.primary,
+body.light-theme .toolbar button.active,
+body.light-theme .panes-toolbar button.primary,
+body.light-theme .panes-toolbar button.active {
+  background: var(--rt-grad-warm);
+  color: #fff;
+  border: 0;
+  font-weight: 600;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.3) inset,
+    0 4px 10px -4px rgba(199,93,122,0.45);
+}
+body.light-theme .toolbar button.primary:hover,
+body.light-theme .panes-toolbar button.primary:hover {
+  filter: brightness(1.05);
+  transform: translateY(-0.5px);
+  color: #fff;
+}
+
+/* stream buttons — round chip style */
+body.light-theme .btn-stream,
+body.light-theme .btn-stream-jump {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-weight: 500;
+  min-height: 28px;
+  color: var(--rt-ink);
+  position: relative;
+  transition: all .15s ease;
+}
+body.light-theme .btn-stream:hover,
+body.light-theme .btn-stream-jump:hover {
+  border-color: var(--rt-line-strong);
+  transform: translateY(-0.5px);
+  box-shadow: var(--rt-shadow-card);
+}
+body.light-theme .btn-stream::before,
+body.light-theme .btn-stream-jump::before {
+  content: "";
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--rt-coral);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+body.light-theme .stream-color-1::before { background: var(--rt-coral) }
+body.light-theme .stream-color-2::before { background: var(--rt-indigo) }
+body.light-theme .stream-color-3::before { background: var(--rt-gold) }
+body.light-theme .stream-color-4::before { background: var(--rt-emerald) }
+body.light-theme .stream-color-5::before { background: var(--rt-plum) }
+body.light-theme .stream-color-6::before { background: var(--rt-rose-gold) }
+body.light-theme .stream-color-7::before { background: var(--rt-copper) }
+body.light-theme .stream-color-8::before { background: var(--rt-rose) }
+
+/* stream label statics — refined */
+body.light-theme .stream-label-static,
+body.light-theme .stress-label {
+  font-family: "Heebo", sans-serif;
+  font-size: 13px;
+  color: var(--rt-ink-3);
+  font-weight: 500;
+}
+
+/* custom stream input */
+body.light-theme .custom-stream-input {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 6px;
+  color: var(--rt-ink);
+  font-family: "Heebo", sans-serif;
+  height: 28px;
+  padding: 4px 8px;
+}
+body.light-theme .custom-stream-input:focus {
+  outline: 0;
+  border-color: var(--rt-coral);
+  box-shadow: 0 0 0 3px rgba(220,107,92,0.16);
+}
+
+/* render button — the WOW CTA */
+body.light-theme #btn-render,
+body.light-theme .bottom-toolbar button {
+  background: var(--rt-grad-warm);
+  color: #fff;
+  border: 0;
+  font-family: var(--ravtext-ui-font-family);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 24px;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.35) inset,
+    0 8px 22px -8px rgba(199,93,122,0.55);
+  transition: all .18s ease;
+}
+body.light-theme #btn-render:hover,
+body.light-theme .bottom-toolbar button:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.35) inset,
+    0 12px 28px -8px rgba(199,93,122,0.6);
+}
+body.light-theme #btn-render::before {
+  content: "✦";
+  margin-left: 8px;
+  display: inline-block;
+}
+
+/* ---------- 8. editor surface ---------- */
+body.light-theme #editor,
+body.light-theme .editor,
+body.light-theme #main-editor,
+body.light-theme [contenteditable="true"] {
+  background: var(--rt-surface);
+  color: var(--rt-ink);
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-size: 17px;
+  line-height: 1.85;
+  border: 0;
+  border-radius: 10px;
+  padding: 22px 26px;
+  box-shadow: inset 0 0 0 1px var(--rt-line);
+}
+body.light-theme #editor:focus,
+body.light-theme [contenteditable="true"]:focus {
+  outline: 0;
+  box-shadow: inset 0 0 0 1px var(--rt-coral), 0 0 0 4px rgba(220,107,92,0.10);
+}
+
+/* drop cap on first paragraph */
+body.light-theme #editor > p:first-of-type::first-letter,
+body.light-theme .editor > p:first-of-type::first-letter {
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 900;
+  font-size: 3.8em;
+  line-height: 0.85;
+  float: right;
+  margin: 6px 0 0 10px;
+  padding: 2px 0 0;
+  background: var(--rt-grad-warm);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------- 9. preview pane — Word document page ---------- */
+body.light-theme .preview-pane {
+  background: var(--rt-surface);
+  box-shadow: var(--rt-shadow-page);
+}
+body.light-theme .preview-pane h2 {
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+}
+body.light-theme .pages-container {
+  background: linear-gradient(180deg, var(--rt-canvas-hi), var(--rt-canvas));
+  border-radius: 10px;
+  padding: 18px;
+}
+body.light-theme .empty-hint {
+  font-family: "Fraunces", "Frank Ruhl Libre", serif;
+  font-style: italic;
+  color: var(--rt-ink-3);
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 15px;
+}
+
+/* ---------- 10. pdf toolbar — refined ---------- */
+body.light-theme .pdf-toolbar {
+  background: var(--rt-surface-2);
+  border: 1px solid var(--rt-line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  gap: 6px;
+}
+body.light-theme .pdf-tb-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--rt-ink-2);
+  border-radius: 6px;
+  width: 30px; height: 30px;
+}
+body.light-theme .pdf-tb-btn:hover {
+  background: var(--rt-surface-3);
+  border-color: var(--rt-line);
+  color: var(--rt-ink);
+}
+body.light-theme .pdf-tb-btn.active,
+body.light-theme .pdf-tb-btn[aria-pressed="true"] {
+  background: rgba(220,107,92,0.12);
+  border-color: rgba(220,107,92,0.35);
+  color: var(--rt-plum);
+}
+body.light-theme .pdf-tb-page-input,
+body.light-theme .pdf-tb-zoom-select,
+body.light-theme .pdf-tb-find {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 6px;
+  color: var(--rt-ink);
+  font-family: "Fraunces", "Heebo", serif;
+  font-style: italic;
+  font-feature-settings: "lnum" 1, "tnum" 1;
+}
+body.light-theme .pdf-tb-action-btn {
+  background: var(--rt-grad-warm);
+  color: #fff;
+  border: 0;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0 14px;
+  height: 30px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.3) inset,
+    0 4px 10px -4px rgba(199,93,122,0.4);
+}
+body.light-theme .pdf-tb-action-btn:hover {
+  filter: brightness(1.05);
+  transform: translateY(-0.5px);
+  color: #fff;
+}
+body.light-theme .pdf-tb-action-secondary {
+  background: var(--rt-surface);
+  color: var(--rt-ink-2);
+  border: 1px solid var(--rt-line);
+  box-shadow: none;
+}
+body.light-theme .pdf-tb-action-secondary:hover {
+  border-color: var(--rt-line-strong);
+  background: var(--rt-surface-3);
+  color: var(--rt-ink);
+}
+body.light-theme .pdf-scroll-progress-fill {
+  background: var(--rt-grad-warm);
+}
+
+/* ---------- 11. ribbon-section title (toolbar headers) ---------- */
+body.light-theme .ribbon-section-title {
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--rt-plum);
+  letter-spacing: -0.005em;
+  margin: 0 0 6px;
+}
+
+/* ---------- 12. checkboxes and form controls ---------- */
+body.light-theme .toolbar-checkbox {
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+  color: var(--rt-ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+body.light-theme .toolbar-checkbox input[type="checkbox"] {
+  accent-color: var(--rt-coral);
+  width: 14px; height: 14px;
+}
+body.light-theme .opw-control,
+body.light-theme .mishna-levels-control {
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+  color: var(--rt-ink-2);
+  gap: 4px;
+}
+body.light-theme select,
+body.light-theme input[type="text"]:not(.custom-stream-input),
+body.light-theme input[type="number"]:not(.custom-stream-input) {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 6px;
+  color: var(--rt-ink);
+  font-family: var(--ravtext-ui-font-family);
+  padding: 4px 8px;
+  transition: all .12s ease;
+}
+body.light-theme select:focus,
+body.light-theme input[type="text"]:focus,
+body.light-theme input[type="number"]:focus {
+  outline: 0;
+  border-color: var(--rt-coral);
+  box-shadow: 0 0 0 3px rgba(220,107,92,0.12);
+}
+
+/* ---------- 13. talmud / mishna experimental notice ---------- */
+body.light-theme .talmud-experimental-notice {
+  background: linear-gradient(180deg, rgba(220,107,92,0.08), rgba(220,107,92,0.03));
+  border: 1px solid rgba(220,107,92,0.30);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+body.light-theme .talmud-experimental-badge {
+  background: var(--rt-grad-warm);
+  color: #fff;
+  font-weight: 600;
+  font-family: var(--ravtext-ui-font-family);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 11px;
+}
+
+/* ---------- 14. modal ---------- */
+body.light-theme .modal-overlay {
+  background: rgba(15,20,25,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+body.light-theme .modal {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 14px;
+  box-shadow: var(--rt-shadow-page);
+  padding: 26px 28px;
+  font-family: var(--ravtext-ui-font-family);
+}
+body.light-theme .modal h2 {
+  font-family: "Frank Ruhl Libre", serif;
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--rt-ink);
+}
+
+/* ---------- 15. diagnostics panel ---------- */
+body.light-theme .diag-panel {
+  background: var(--rt-surface);
+  border-left: 1px solid var(--rt-line);
+  box-shadow: -20px 0 60px -30px rgba(15,20,25,0.2);
+}
+
+/* ---------- 16. context menu + toast ---------- */
+body.light-theme .ctx-menu {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 10px;
+  box-shadow: var(--rt-shadow-card);
+  padding: 6px;
+}
+body.light-theme .ctx-menu button {
+  font-family: var(--ravtext-ui-font-family);
+  border-radius: 6px;
+  color: var(--rt-ink);
+}
+body.light-theme .ctx-menu button:hover {
+  background: var(--rt-surface-3);
+}
+body.light-theme .toast {
+  background: var(--rt-surface);
+  color: var(--rt-ink);
+  border: 1px solid var(--rt-line);
+  border-left: 4px solid;
+  border-image: var(--rt-grad-warm) 1;
+  border-radius: 10px;
+  box-shadow: var(--rt-shadow-card);
+  font-family: var(--ravtext-ui-font-family);
+}
+
+/* ---------- 17. resize handles ---------- */
+body.light-theme .main-resize-handle,
+body.light-theme .ci-resize-handle {
+  background: transparent;
+}
+body.light-theme .main-resize-handle:hover,
+body.light-theme .ci-resize-handle:hover,
+body.light-theme .ci-resize-handle.dragging {
+  background: var(--rt-coral);
+  opacity: 0.45;
+}
+
+/* ---------- 18. scrollbars ---------- */
+body.light-theme ::-webkit-scrollbar {
+  width: 10px; height: 10px;
+}
+body.light-theme ::-webkit-scrollbar-track {
+  background: transparent;
+}
+body.light-theme ::-webkit-scrollbar-thumb {
+  background: rgba(15,20,25,0.16);
+  border-radius: 999px;
+  border: 2px solid var(--rt-canvas);
+}
+body.light-theme ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15,20,25,0.28);
+}
+
+/* ---------- 19. entrance animation ---------- */
+@keyframes rt-rise {
+  from { opacity: 0; transform: translateY(8px) }
+  to   { opacity: 1; transform: translateY(0) }
+}
+body.light-theme .main > .panel {
+  animation: rt-rise .55s cubic-bezier(.2,.7,.2,1) both;
+}
+body.light-theme .main > .panel:nth-child(1) { animation-delay: .05s }
+body.light-theme .main > .panel:nth-child(2) { animation-delay: .15s }
+
+/* ---------- 20. expanded tools (the "more tools" panel) ---------- */
+body.light-theme .expanded-tools {
+  background: var(--rt-surface-2);
+  border: 1px solid var(--rt-line);
+  border-radius: 10px;
+  padding: 10px;
+  gap: 6px;
+}
+body.light-theme .expanded-tools button {
+  background: var(--rt-surface);
+  border: 1px solid var(--rt-line);
+  border-radius: 8px;
+  color: var(--rt-ink-2);
+  padding: 6px 12px;
+  font-family: var(--ravtext-ui-font-family);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all .15s ease;
+}
+body.light-theme .expanded-tools button:hover {
+  border-color: var(--rt-coral);
+  color: var(--rt-plum);
+  background: rgba(220,107,92,0.06);
+  transform: translateY(-0.5px);
+  box-shadow: var(--rt-shadow-card);
+}
+
+/* ---------- 21. font-pick (font buttons) ---------- */
+body.light-theme [data-cmd^="font-"] {
+  font-family: "Frank Ruhl Libre", serif !important;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ---------- 22. inputs: pane-status caption ---------- */
+body.light-theme .pane-status {
+  font-family: "Fraunces", "Heebo", serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--rt-ink-3);
+  padding: 0 8px;
+}
+
+/* ---------- 23. mark / highlight inside editor ---------- */
+body.light-theme .editor mark,
+body.light-theme #editor mark,
+body.light-theme [contenteditable] mark {
+  background: linear-gradient(180deg, transparent 60%, rgba(220,107,92,0.20) 60%);
+  color: inherit;
+  padding: 0 2px;
+}
+
+/* ---------- 24. stream-marked spans ---------- */
+body.light-theme [data-stream="01"] { box-shadow: inset 0 -1.5px 0 var(--rt-coral); background: linear-gradient(180deg, transparent 65%, rgba(220,107,92,0.13) 65%); }
+body.light-theme [data-stream="02"] { box-shadow: inset 0 -1.5px 0 var(--rt-indigo); background: linear-gradient(180deg, transparent 65%, rgba(30,39,97,0.12) 65%); }
+body.light-theme [data-stream="03"] { box-shadow: inset 0 -1.5px 0 var(--rt-gold); background: linear-gradient(180deg, transparent 65%, rgba(182,134,42,0.14) 65%); }
+body.light-theme [data-stream="04"] { box-shadow: inset 0 -1.5px 0 var(--rt-emerald); background: linear-gradient(180deg, transparent 65%, rgba(15,107,88,0.12) 65%); }
+body.light-theme [data-stream="05"] { box-shadow: inset 0 -1.5px 0 var(--rt-plum); background: linear-gradient(180deg, transparent 65%, rgba(138,61,103,0.13) 65%); }
+
+/* ---------- 25. premium badge ---------- */
+body.light-theme .premium-badge,
+body.light-theme [data-premium] {
+  background: var(--rt-grad-warm);
+  color: #fff;
+  font-family: var(--ravtext-ui-font-family);
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+/* end theme-default-2026.css */
