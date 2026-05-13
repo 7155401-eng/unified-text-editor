@@ -1,0 +1,19 @@
+/* ============================================================================
+   RavText — TEMPLATE: Word Style (coral edition)
+   ----------------------------------------------------------------------------
+   This template re-uses the entire base-refresh layout and only swaps the
+   signature accent palette to coral → rose → plum.
+
+   Activated when <body> has class "template-word-style".
+   Requires theme-base-refresh.css (loaded earlier) for the layout itself.
+   ============================================================================ */
+
+body.light-theme.template-word-style,
+body.template-word-style {
+  --rt-accent-1: #DC6B5C;   /* coral */
+  --rt-accent-2: #C75D7A;   /* rose  */
+  --rt-accent-3: #8A3D67;   /* plum  */
+  --rt-accent-1-rgb: 220, 107, 92;
+  --rt-accent-2-rgb: 199, 93, 122;
+  --rt-accent-3-rgb: 138, 61, 103;
+}
