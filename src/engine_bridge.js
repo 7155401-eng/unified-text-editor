@@ -194,6 +194,116 @@ function textFromNode(node) {
   return text;
 }
 
+// משה 2026-05-13: בונה רשימת ריצות-טקסט עם marks ברמת הפסקה. כל ריצה היא
+// { start, end, marks } כאשר start/end הם אופסט תווים ב-textFromNode(node).
+// marks תומך ב: bold, italic, underline, color, backgroundColor, fontFamily,
+// fontSize. כך אפשר לרנדר כל מילה/אות בסגנון משלה בלי לקרוס את כל הפסקה.
+export function runsFromNode(node) {
+  const runs = [];
+  let offset = 0;
+  node?.descendants?.((child) => {
+    if (!child.isText) return false;
+    const text = child.text || "";
+    if (!text.length) return false;
+    const marks = {};
+    for (const mark of child.marks || []) {
+      const mAttrs = mark.attrs || {};
+      const name = mark.type?.name;
+      if (name === "textStyle") {
+        if (mAttrs.fontFamily) marks.fontFamily = mAttrs.fontFamily;
+        if (mAttrs.fontSize) marks.fontSize = mAttrs.fontSize;
+        if (mAttrs.color) marks.color = mAttrs.color;
+        if (mAttrs.backgroundColor || mAttrs.bgColor) marks.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
+      } else if (name === "bold") marks.bold = true;
+      else if (name === "italic") marks.italic = true;
+      else if (name === "underline") marks.underline = true;
+      else if (name === "strike") marks.strike = true;
+      else if (name === "highlight") marks.backgroundColor = mAttrs.color || marks.backgroundColor;
+    }
+    runs.push({ start: offset, end: offset + text.length, marks });
+    offset += text.length;
+    return false;
+  });
+  return runs;
+}
+
+function hasAnyRunMark(runs) {
+  return Array.isArray(runs) && runs.some(r => r.marks && Object.keys(r.marks).length > 0);
+}
+
+// משה 2026-05-13: מסיר טווחי תווים (markers) מטקסט והתאמת runs לפלט החדש.
+// markers: [{ atInPara, sym }]. מחזיר { text, runs }.
+export function stripMarkersAndAlignRuns(paragraphText, runs, markers) {
+  if (!Array.isArray(markers) || markers.length === 0) {
+    return { text: paragraphText, runs: Array.isArray(runs) ? runs.slice() : [] };
+  }
+  const keep = new Array(paragraphText.length).fill(true);
+  for (const m of markers) {
+    const len = (m.sym || "").length;
+    for (let i = m.atInPara; i < m.atInPara + len; i++) {
+      if (i >= 0 && i < paragraphText.length) keep[i] = false;
+    }
+  }
+  let newText = "";
+  const map = new Array(paragraphText.length + 1).fill(0);
+  for (let i = 0; i < paragraphText.length; i++) {
+    map[i] = newText.length;
+    if (keep[i]) newText += paragraphText[i];
+  }
+  map[paragraphText.length] = newText.length;
+  const newRuns = [];
+  if (Array.isArray(runs)) {
+    for (const r of runs) {
+      const ls = map[Math.max(0, Math.min(paragraphText.length, r.start))];
+      const le = map[Math.max(0, Math.min(paragraphText.length, r.end))];
+      if (ls < le) newRuns.push({ start: ls, end: le, marks: r.marks });
+    }
+  }
+  return { text: newText, runs: newRuns };
+}
+
+// אחרי normalize של רווחים, מתאים את ה-runs לטקסט החדש (best-effort).
+export function alignRunsAfterTextNormalize(oldText, newText, runs) {
+  if (!Array.isArray(runs) || runs.length === 0) return [];
+  if (oldText === newText) return runs.slice();
+  // נבנה map מתווי-old → תווי-new. רווחים כפולים בעיקר בתחילה/סוף/באמצע ייעלמו.
+  const map = new Array(oldText.length + 1).fill(0);
+  let oi = 0, ni = 0;
+  // טריאלים שמדמים את הפעולה: replace /  +/g ',' '+trim
+  // במקום להעתיק את הלוגיקה, נבנה new בעצמנו ונסמן.
+  let result = "";
+  // copy oldText to result with normalization, marking source positions
+  let lastWasSpace = false;
+  for (let i = 0; i < oldText.length; i++) {
+    const ch = oldText[i];
+    const isSpace = ch === ' ' || ch === '\t';
+    if (isSpace && lastWasSpace) {
+      map[i] = result.length; // ייבלע — אופסט אחרי הוא היכן שיהיה
+      continue;
+    }
+    map[i] = result.length;
+    result += ch;
+    lastWasSpace = isSpace;
+  }
+  map[oldText.length] = result.length;
+  // trim — מסיר רווחים בהתחלה/סוף של result. נחזיר מהראשון ל-trim.
+  const trimmed = result.trim();
+  const trimStart = result.indexOf(trimmed);
+  if (trimmed !== newText) {
+    // אם הנורמליזציה לא תואמת לחלוטין, נחזיר runs ריקים — אבטחה מפני misalignment.
+    return runs.map(r => ({ ...r }));
+  }
+  const out = [];
+  for (const r of runs) {
+    let ls = map[Math.max(0, Math.min(oldText.length, r.start))] - trimStart;
+    let le = map[Math.max(0, Math.min(oldText.length, r.end))] - trimStart;
+    ls = Math.max(0, Math.min(newText.length, ls));
+    le = Math.max(0, Math.min(newText.length, le));
+    if (ls < le) out.push({ start: ls, end: le, marks: r.marks });
+  }
+  return out;
+}
+
 function tableRowsFromNode(node) {
   const rows = [];
   node?.forEach?.((rowNode) => {
@@ -265,6 +375,7 @@ function extractMainParagraphs(mainPane, paneManager) {
       const paragraphText = isTable ? textFromNode(node) : textFromNode(node);
       paragraphs.push({
         paragraphText,
+        runs: isTable ? [] : runsFromNode(node),
         markers: [],
         blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
         headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
@@ -298,6 +409,7 @@ function extractMainParagraphs(mainPane, paneManager) {
     }
     paragraphs.push({
       paragraphText,
+      runs: isTable ? [] : runsFromNode(node),
       markers,
       blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
       headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
@@ -319,6 +431,70 @@ function extractStreamNotes(streamPane) {
   if (parts.length <= 1) return [stripDisplayNum(fullText)].filter(Boolean);
   parts.shift();
   return parts.map(stripDisplayNum).filter(Boolean);
+}
+
+// משה 2026-05-13: גרסה משופרת המחזירה גם runs לכל הערה — לעיצוב אינליין
+// (בולד/הדגשה/צבע פר-מילה) בתצוגה. מבנה החזרה: { notes: string[], runsPerNote: Run[][] }.
+function extractStreamNotesWithRuns(streamPane) {
+  if (!streamPane || !streamPane.editor) return { notes: [], runsPerNote: [] };
+  const sym = streamPane.symbol || `@${streamPane.streamCode}`;
+  if (!sym) return { notes: [], runsPerNote: [] };
+
+  const doc = streamPane.editor.state.doc;
+  const fullText = doc.textContent;
+  const allRuns = runsFromNode(doc);
+
+  const findAll = (haystack, needle) => {
+    const out = [];
+    if (!needle) return out;
+    let i = haystack.indexOf(needle);
+    while (i !== -1) {
+      out.push({ start: i, end: i + needle.length });
+      i = haystack.indexOf(needle, i + needle.length);
+    }
+    return out;
+  };
+
+  const sliceRuns = (runs, sliceStart, sliceEnd, dropLeading = 0) => {
+    const out = [];
+    const baseStart = sliceStart + dropLeading;
+    for (const r of runs) {
+      if (r.end <= baseStart || r.start >= sliceEnd) continue;
+      const ls = Math.max(0, r.start - baseStart);
+      const le = Math.min(sliceEnd - baseStart, r.end - baseStart);
+      if (ls >= le) continue;
+      out.push({ start: ls, end: le, marks: r.marks });
+    }
+    return out;
+  };
+
+  const markerPositions = findAll(fullText, sym);
+  if (markerPositions.length === 0) {
+    const noteText = stripDisplayNum(fullText);
+    if (!noteText) return { notes: [], runsPerNote: [] };
+    // החלת stripDisplayNum מסירה רווחים מובילים + [N]; חישוב dropLeading עליו
+    const m = fullText.match(/^\s*\[\d+\]\s*/);
+    const dropLeading = m ? m[0].length : 0;
+    return {
+      notes: [noteText],
+      runsPerNote: [sliceRuns(allRuns, 0, fullText.length, dropLeading)],
+    };
+  }
+
+  const notes = [];
+  const runsPerNote = [];
+  for (let i = 0; i < markerPositions.length; i++) {
+    const start = markerPositions[i].end;
+    const end = i + 1 < markerPositions.length ? markerPositions[i + 1].start : fullText.length;
+    const rawNote = fullText.substring(start, end);
+    const stripped = stripDisplayNum(rawNote);
+    if (!stripped) continue;
+    const m = rawNote.match(/^\s*\[\d+\]\s*/);
+    const dropLeading = m ? m[0].length : 0;
+    notes.push(stripped);
+    runsPerNote.push(sliceRuns(allRuns, start, end, dropLeading));
+  }
+  return { notes, runsPerNote };
 }
 
 const DEFAULT_STREAM_LABELS = {
@@ -455,13 +631,19 @@ export function paneManagerToPackerContent(paneManager) {
 
   const mainParagraphs = extractMainParagraphs(mainPane, paneManager);
   const streamNotes = {};
+  const streamNotesRuns = {}; // משה 2026-05-13: runs לכל הערה — לעיצוב אינליין
   // Build a shared symbol → code map so expandNestedInNote can detect
   // markers embedded in note bodies without re-scanning paneManager each call.
   const paneSymbols = [];
   const paneSymToCode = {};
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
-    streamNotes[p.streamCode] = applyFirstNoteAsTitle(p.streamCode, extractStreamNotes(p));
+    const withRuns = extractStreamNotesWithRuns(p);
+    const titled = applyFirstNoteAsTitle(p.streamCode, withRuns.notes);
+    streamNotes[p.streamCode] = titled;
+    // אם applyFirstNoteAsTitle הסיר את ההערה הראשונה, גם נסיר את ה-runs המתאימים
+    const skipped = withRuns.notes.length - titled.length;
+    streamNotesRuns[p.streamCode] = withRuns.runsPerNote.slice(skipped);
     const sym = p.symbol || `@${p.streamCode}`;
     paneSymbols.push(sym);
     paneSymToCode[sym] = p.streamCode;
@@ -470,7 +652,7 @@ export function paneManagerToPackerContent(paneManager) {
   // === Phase A — for each paragraph, walk main-body markers and record
   // each as a "consumer" of its stream's pane pool. We don't pull pane
   // content yet; that happens after we also know the nested consumers. ===
-  const paragraphsInfo = []; // { paraIdx, mainTextNet, mainConsumers[], blockType, headingLevel }
+  const paragraphsInfo = []; // { paraIdx, mainTextNet, mainRuns, mainConsumers[], blockType, headingLevel }
   for (let pi = 0; pi < mainParagraphs.length; pi++) {
     const para = mainParagraphs[pi];
     let mainTextNet = "";
@@ -483,10 +665,20 @@ export function paneManagerToPackerContent(paneManager) {
       prevEnd = marker.atInPara + marker.sym.length;
     }
     mainTextNet += para.paragraphText.substring(prevEnd);
+    const beforeNormalize = mainTextNet;
     mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
+
+    // משה 2026-05-13: חישוב mainRuns שמתאים ל-mainTextNet אחרי הסרת markers ו-normalize.
+    let mainRuns = [];
+    if (Array.isArray(para.runs) && para.runs.length) {
+      const stripped = stripMarkersAndAlignRuns(para.paragraphText, para.runs, para.markers);
+      mainRuns = alignRunsAfterTextNormalize(stripped.text, mainTextNet, stripped.runs);
+    }
+
     paragraphsInfo.push({
       paraIdx: pi,
       mainTextNet,
+      mainRuns,
       mainConsumers,
       blockType: para.blockType,
       headingLevel: para.headingLevel,
@@ -561,9 +753,11 @@ export function paneManagerToPackerContent(paneManager) {
       const text = streamNotes[code] && streamNotes[code][assigned];
       if (text !== undefined) {
         c.text = text;
+        c.runs = (streamNotesRuns[code] && streamNotesRuns[code][assigned]) || [];
         c.num = assigned + 1;
       } else {
         c.text = null;
+        c.runs = [];
       }
       assigned++;
     }
@@ -579,24 +773,23 @@ export function paneManagerToPackerContent(paneManager) {
     for (const code of Object.keys(consumersByStream)) {
       for (const c of consumersByStream[code]) {
         if (!c.text) continue;
-        let stripped = "";
-        let prev = 0;
-        let didStrip = false;
+        // משה 2026-05-13: בנייה משותפת של טקסט + רשימת markers להסרה (כדי
+        // ש-runs יישארו מסונכרנים אחרי ההסרה).
+        const localMarkers = [];
         let m;
         stripRe.lastIndex = 0;
         while ((m = stripRe.exec(c.text)) !== null) {
           const ycode = paneSymToCode[m[0]];
-          stripped += c.text.substring(prev, m.index);
-          prev = m.index + m[0].length;
-          if (!ycode || ycode === code) {
-            stripped += m[0]; // keep self-stream / unknown markers literal
-          } else {
-            didStrip = true; // cross-stream — drop from display
+          if (ycode && ycode !== code) {
+            localMarkers.push({ atInPara: m.index, sym: m[0] });
           }
         }
-        if (didStrip) {
-          stripped += c.text.substring(prev);
-          c.text = stripped.replace(/  +/g, ' ').trim();
+        if (localMarkers.length) {
+          const stripped = stripMarkersAndAlignRuns(c.text, c.runs || [], localMarkers);
+          const beforeNormalize = stripped.text;
+          const normalized = beforeNormalize.replace(/  +/g, ' ').trim();
+          c.text = normalized;
+          c.runs = alignRunsAfterTextNormalize(beforeNormalize, normalized, stripped.runs);
         }
       }
     }
@@ -610,14 +803,15 @@ export function paneManagerToPackerContent(paneManager) {
     for (const code of Object.keys(consumersByStream)) {
       for (const c of consumersByStream[code]) {
         if (c.paraIdx !== info.paraIdx || c.text === null) continue;
-        paraNotes.push({ stream: code, text: c.text, anchor: c.anchor, num: c.num, priority: c.priority });
+        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, num: c.num, priority: c.priority });
       }
     }
     paraNotes.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
-    const cleanNotes = paraNotes.map((n) => ({ stream: n.stream, text: n.text, anchor: n.anchor, num: n.num }));
+    const cleanNotes = paraNotes.map((n) => ({ stream: n.stream, text: n.text, runs: n.runs || [], anchor: n.anchor, num: n.num }));
     if (info.mainTextNet || cleanNotes.length) {
       result.push({
         mainText: info.mainTextNet,
+        mainRuns: info.mainRuns || [],
         notes: cleanNotes,
         blockType: info.blockType === "heading" ? "heading" : "paragraph",
         ...(info.blockType === "table" ? { blockType: "table", tableRows: info.tableRows || [] } : {}),

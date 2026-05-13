@@ -1,6 +1,51 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement } from "./original_stream_columns.js";
+import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
+
+// משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
+// ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
+// בטקסט המקור (סדרתי) ומעתיקים את ה-marks שמכסים אותה. נקרא אחרי בניית lines.
+function attachRunsToLines(lines, originalText, originalRuns) {
+  if (!Array.isArray(lines) || lines.length === 0) return;
+  if (!originalText || !Array.isArray(originalRuns) || originalRuns.length === 0) {
+    for (const line of lines) line.runs = [];
+    return;
+  }
+  let cursor = 0;
+  for (const line of lines) {
+    const words = line.words || [];
+    if (!words.length) { line.runs = []; continue; }
+    const wordOffsets = [];
+    for (const word of words) {
+      const idx = originalText.indexOf(word, cursor);
+      if (idx === -1) {
+        wordOffsets.push(null);
+        continue;
+      }
+      wordOffsets.push({ start: idx, end: idx + word.length });
+      cursor = idx + word.length;
+    }
+    const lineRuns = [];
+    let lineCursor = 0;
+    for (let wi = 0; wi < words.length; wi++) {
+      if (wi > 0) lineCursor += 1; // space separator added by words.join(' ')
+      const wo = wordOffsets[wi];
+      if (wo) {
+        const wordRuns = sliceRuns(originalRuns, wo.start, wo.end);
+        for (const r of wordRuns) {
+          lineRuns.push({
+            start: lineCursor + r.start,
+            end: lineCursor + r.end,
+            marks: r.marks,
+          });
+        }
+      }
+      lineCursor += words[wi].length;
+    }
+    line.runs = lineRuns;
+  }
+}
 
 //
 // שיטה: חישוב אנליטי מלא ב-JavaScript. כל מילה ממוקמת ב-x,y ידועים.
@@ -897,6 +942,12 @@ function buildPagePlan(pageContent, config) {
       });
     }
 
+    // משה 2026-05-13: חיווט inline runs — לכל שורה מחושב אילו marks חלים
+    // על כל מילה בה. השורה ב-drawBox תרונדר עם spans מסוגננים בהתאם.
+    const streamSourceText = streamData.items.join(' ');
+    const streamSourceRuns = Array.isArray(streamData.runs) ? streamData.runs : [];
+    attachRunsToLines(lines, streamSourceText, streamSourceRuns);
+
     return {
       id: streamData.id,
       role: side,
@@ -969,6 +1020,10 @@ function buildPagePlan(pageContent, config) {
         lineHeightPx: mainMetrics.lineHeight,
       });
     }
+
+    // משה 2026-05-13: חיווט inline runs לראשי גם — כל שורה מקבלת runs שיופיעו
+    // ב-drawBox כ-spans (בולד/הדגשה/צבע פר-מילה).
+    attachRunsToLines(mainLines, pageContent.mainText, pageContent.mainRuns || []);
 
     const actualMainHeight = mainFlow.endY - mainTopY;
 
@@ -1153,6 +1208,9 @@ function buildPagePlan(pageContent, config) {
           lineHeightPx: fsLineH,
         });
       }
+
+      // משה 2026-05-13: inline runs לרגל הזרם (footer) — אותו רעיון כמו בזרמי צד.
+      attachRunsToLines(linesData, text, Array.isArray(fs.runs) ? fs.runs : []);
 
       result.footerBoxes.push({
         id: fs.id,
@@ -1486,7 +1544,9 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
-      lineEl.textContent = line.text;
+      // משה 2026-05-13: רינדור עם inline runs — בולד/הדגשה/צבע פר-מילה.
+      // אם line.runs ריק, appendTextWithRuns ייצור textNode רגיל (זהה ל-textContent).
+      appendTextWithRuns(lineEl, line.text, line.runs);
       pageEl.appendChild(lineEl);
     }
   }
@@ -2304,12 +2364,37 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     }
     return (p.mainText || '').trim();
   };
-  const mainText = stripStreamMarkers(
-    paragraphs.map(blockToText).filter(Boolean).join('\n')
-  );
+  // משה 2026-05-13: אגירת mainText + mainRuns יחד. כל פסקה מצורפת ל-mainText
+  // עם '\n' בין פסקאות; ה-runs שלה ממופים לאופסט המתאים בתוך mainText.
+  const mainPieces = [];
+  const mainRunsAccum = [];
+  let mainOffset = 0;
+  for (const p of paragraphs) {
+    const piece = blockToText(p);
+    if (!piece) continue;
+    if (mainPieces.length > 0) mainOffset += 1; // for the '\n' separator
+    mainPieces.push(piece);
+    if (Array.isArray(p.mainRuns) && p.mainRuns.length) {
+      // הסר את stripStreamMarkers שעשוי לשנות תוכן בתוך הפסקה — לפסקאות
+      // טיפוסיות זה רק מנקה רווחים, ה-runs יישארו רוב הזמן נכונים.
+      for (const r of p.mainRuns) {
+        if (r.end > r.start) {
+          mainRunsAccum.push({
+            start: mainOffset + r.start,
+            end: mainOffset + r.end,
+            marks: r.marks,
+          });
+        }
+      }
+    }
+    mainOffset += piece.length;
+  }
+  const mainText = stripStreamMarkers(mainPieces.join('\n'));
+  const mainRuns = mainRunsAccum;
   const mainContinues = paragraphs.some(p => p && p._continues);
 
   const streamMap = new Map();
+  const streamRunsMap = new Map(); // sid → array of runs aligned to items.join(' ')
 
   // קודם — carryOver מהעמוד הקודם
   if (carryOver) {
@@ -2327,11 +2412,51 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
       const sid = note.stream || note.streamId || note.streamCode;
       if (!sid) continue;
       if (!streamMap.has(sid)) streamMap.set(sid, []);
-      streamMap.get(sid).push(note.text || '');
+      if (!streamRunsMap.has(sid)) streamRunsMap.set(sid, []);
+      const items = streamMap.get(sid);
+      const runsList = streamRunsMap.get(sid);
+      // אופסט = סכום אורכי כל ה-items הקודמים + רווחים בין items
+      let offset = 0;
+      for (let i = 0; i < items.length; i++) {
+        offset += items[i].length + 1; // +1 for the space separator in items.join(' ')
+      }
+      items.push(note.text || '');
+      if (Array.isArray(note.runs)) {
+        for (const r of note.runs) {
+          if (r.end > r.start) {
+            runsList.push({
+              start: offset + r.start,
+              end: offset + r.end,
+              marks: r.marks,
+            });
+          }
+        }
+      }
     }
   }
 
-  const allStreams = Array.from(streamMap.entries()).map(([id, items]) => ({ id, items }));
+  // משה 2026-05-13: סדר זרמים מקבל עדיפות מ-ravtext.streamOrder.v1 — אם
+  // המשתמש שינה סדר ידנית, נכבד אותו במקום סדר ההופעה הראשונה במסמך.
+  let savedOrder = [];
+  try {
+    const raw = (typeof localStorage !== "undefined") && localStorage.getItem("ravtext.streamOrder.v1");
+    if (raw) savedOrder = JSON.parse(raw) || [];
+    if (!Array.isArray(savedOrder)) savedOrder = [];
+  } catch (_) { savedOrder = []; }
+  const orderRank = new Map();
+  savedOrder.forEach((c, i) => orderRank.set(String(c), i));
+
+  const rawAllStreams = Array.from(streamMap.entries()).map(([id, items]) => ({
+    id,
+    items,
+    runs: streamRunsMap.get(id) || [],
+  }));
+  const allStreams = rawAllStreams.sort((a, b) => {
+    const ra = orderRank.has(a.id) ? orderRank.get(a.id) : Infinity;
+    const rb = orderRank.has(b.id) ? orderRank.get(b.id) : Infinity;
+    if (ra !== rb) return ra - rb;
+    return parseInt(a.id, 10) - parseInt(b.id, 10);
+  });
 
   let rightStream = null;
   let leftStream = null;
@@ -2353,7 +2478,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
         footerStreams.push(s);
       }
     }
-    return { mainText, mainContinues, rightStream, leftStream, footerStreams, titles };
+    return { mainText, mainRuns, mainContinues, rightStream, leftStream, footerStreams, titles };
   }
 
   // Fallback ישן: levels של משנ"ב + mishnaSide. נשאר לתאימות עם מצבי
@@ -2395,5 +2520,5 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     if (footerStreams.length >= 1) leftStream = footerStreams.shift();
   }
 
-  return { mainText, mainContinues, rightStream, leftStream, footerStreams, titles };
+  return { mainText, mainRuns, mainContinues, rightStream, leftStream, footerStreams, titles };
 }
