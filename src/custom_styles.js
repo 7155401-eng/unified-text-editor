@@ -2,7 +2,7 @@
 // dropdown ("+ הוסף סגנון משלך"), persists user-defined styles, and applies
 // them to the active selection via TipTap chain commands.
 
-import { loadTextStyles, saveTextStyles } from "./style_registry.js";
+import { loadTextStyles, saveTextStyles, escapeHtml, escapeAttr } from "./style_registry.js";
 const ID_PREFIX = "user-";
 
 export function loadStyles() {
@@ -227,9 +227,9 @@ function refreshSavedList(dialog, paneManager, select) {
   }
   for (const s of styles) {
     const li = document.createElement("li");
-    li.innerHTML = `<span class="csd-name-preview">${s.name}</span>
-      <button type="button" data-action="edit" data-id="${s.id}">ערוך</button>
-      <button type="button" data-action="delete" data-id="${s.id}">מחק</button>`;
+    li.innerHTML = `<span class="csd-name-preview">${escapeHtml(s.name)}</span>
+      <button type="button" data-action="edit" data-id="${escapeAttr(s.id)}">ערוך</button>
+      <button type="button" data-action="delete" data-id="${escapeAttr(s.id)}">מחק</button>`;
     ul.appendChild(li);
   }
   ul.onclick = (ev) => {
