@@ -41,6 +41,22 @@ export function normalizeTextStyle(rawStyle) {
     if (Number.isFinite(n) && n > 0) style.lineHeight = n;
   }
 
+  const rawWeight = style.fontWeight ?? style.weight;
+  if (rawWeight != null && rawWeight !== "") {
+    const w = String(rawWeight).trim().toLowerCase();
+    const numeric = Number(w);
+    if (w === "bold" || w === "bolder" || (Number.isFinite(numeric) && numeric >= 600)) {
+      style.bold = true;
+      style.fontWeight = "700";
+    } else {
+      style.fontWeight = rawWeight;
+    }
+  }
+
+  if (style.bold === true) {
+    style.fontWeight = "700";
+  }
+
   return style;
 }
 
@@ -54,7 +70,10 @@ export function applyTextStyleObjectToElement(el, rawStyle) {
   if (style.lineHeight) el.style.lineHeight = String(style.lineHeight);
   if (style.color) el.style.color = style.color;
   if (style.bgColor || style.backgroundColor) el.style.backgroundColor = style.bgColor || style.backgroundColor;
-  if (style.bold) el.style.fontWeight = "700";
+
+  if (style.fontWeight) el.style.fontWeight = String(style.fontWeight);
+  else if (style.bold) el.style.fontWeight = "700";
+
   if (style.italic) el.style.fontStyle = "italic";
   if (style.underline) el.style.textDecoration = "underline";
   if (style.align) el.style.textAlign = style.align;
