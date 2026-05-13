@@ -8,11 +8,6 @@ const FOOTER_KEY = "ravtext.pageFooter";
 const WATERMARK_KEY = "ravtext.watermark";
 const WATERMARK_OPACITY_KEY = "ravtext.watermarkOpacity";
 
-// Estimated pixel height of each overlay element (font + padding + border).
-const HEADER_OVERLAP_PX = 10;
-const FOOTER_OVERLAP_PX = 10;
-const PAGENUM_OVERLAP_PX = 14;
-
 function pageElements() {
   return document.querySelectorAll("#pages-container .page, .pages-container .page");
 }
@@ -85,13 +80,53 @@ function applyWatermark() {
   });
 }
 
+function getOrCreateMeasurePage() {
+  let page = document.querySelector(".page:not(.measure-page)");
+  if (page) return page;
+  page = document.createElement("div");
+  page.className = "page";
+  page.style.cssText = "position:relative;width:380px;height:537px;visibility:hidden;overflow:hidden;box-sizing:border-box;flex:none;";
+  const rootStyle = getComputedStyle(document.documentElement);
+  page.style.paddingTop = rootStyle.getPropertyValue("--ravtext-page-margin-top") || "22px";
+  page.style.paddingBottom = rootStyle.getPropertyValue("--ravtext-page-margin-bottom") || "18px";
+  page.style.paddingLeft = rootStyle.getPropertyValue("--ravtext-page-margin-left") || "24px";
+  page.style.paddingRight = rootStyle.getPropertyValue("--ravtext-page-margin-right") || "24px";
+  document.body.appendChild(page);
+  return page;
+}
+
+function measureOverlayReserved(className, isTop) {
+  const selector = "." + className;
+  let el = document.querySelector(selector);
+  const needsCleanup = !el;
+  if (!el) {
+    const page = getOrCreateMeasurePage();
+    el = document.createElement("div");
+    el.className = className;
+    el.textContent = "מידה";
+    page.appendChild(el);
+  }
+  const cs = getComputedStyle(el);
+  const height = el.getBoundingClientRect().height;
+  const offset = parseFloat(cs[isTop ? "top" : "bottom"]) || 0;
+  const pageEl = el.closest(".page");
+  let padding = isTop ? 22 : 18;
+  if (pageEl) {
+    const pageCs = getComputedStyle(pageEl);
+    const p = parseFloat(pageCs[isTop ? "paddingTop" : "paddingBottom"]);
+    if (Number.isFinite(p)) padding = p;
+  }
+  if (needsCleanup) el.remove();
+  return Math.max(0, Math.round(offset + height - padding));
+}
+
 function syncReservedSpace() {
   const hasHeader = !!localStorage.getItem(HEADER_KEY);
   const hasFooter = !!localStorage.getItem(FOOTER_KEY);
   const hasPageNum = localStorage.getItem(PAGE_NUM_KEY) === "1";
-  const headPx = hasHeader ? HEADER_OVERLAP_PX : 0;
-  const footPx = hasFooter ? FOOTER_OVERLAP_PX : 0;
-  const numPx = hasPageNum ? PAGENUM_OVERLAP_PX : 0;
+  const headPx = hasHeader ? measureOverlayReserved("ravtext-page-header", true) : 0;
+  const footPx = hasFooter ? measureOverlayReserved("ravtext-page-footer", false) : 0;
+  const numPx = hasPageNum ? measureOverlayReserved("ravtext-page-number-overlay", false) : 0;
   document.documentElement.style.setProperty("--ravtext-features-header-reserved", headPx + "px");
   document.documentElement.style.setProperty("--ravtext-features-footer-reserved", footPx + "px");
   document.documentElement.style.setProperty("--ravtext-features-pagenumber-reserved", numPx + "px");
@@ -170,6 +205,7 @@ export function wireDocumentFeatures() {
   window.addEventListener("ravtext:engine-rendered", () => {
     installRealizedPageHook();
     applyAll();
+    syncReservedSpace();
   });
   syncReservedSpace();
   setTimeout(() => {
