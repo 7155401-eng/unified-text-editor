@@ -1,5 +1,6 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
+import { applyBarStyleToElement } from "./original_stream_columns.js";
 
 //
 // שיטה: חישוב אנליטי מלא ב-JavaScript. כל מילה ממוקמת ב-x,y ידועים.
@@ -1490,7 +1491,7 @@ function renderPagePlan(plan, pageEl, cfg) {
     }
   }
 
-  function drawTitle(text, x, y, width, colorClass, styleId, barOverride) {
+  function drawTitle(text, x, y, width, colorClass, styleId, streamId) {
     const t = document.createElement('div');
     t.className = 'v9-stream-title' + (colorClass || '');
     t.style.left = (padding + x) + 'px';
@@ -1500,32 +1501,12 @@ function renderPagePlan(plan, pageEl, cfg) {
     t.style.fontSize = (cfg.sideFontSize || 11) + 'px';
     t.style.lineHeight = plan.titleHeight + 'px';
     applyStyleToElement(t, styleId);
-    // משה 2026-05-13: שליטה בפס שמתחת לכותרת ("פס מעל המפרש") — לפי הגדרות הזרם.
-    // אם barShow=false → אין פס. אחרת — צבע ועובי מההגדרות.
-    if (barOverride && typeof barOverride === "object") {
-      if (barOverride.show === false) {
-        t.style.borderBottom = "none";
-      } else {
-        const thickness = Number(barOverride.thickness);
-        const px = Number.isFinite(thickness) ? Math.max(0, Math.min(6, thickness)) : 1;
-        const color = String(barOverride.color || "#888").trim() || "#888";
-        t.style.borderBottom = px > 0 ? `${px}px solid ${color}` : "none";
-      }
-    }
+    // משה 2026-05-13: שליטה בפס מעל המפרש דרך applyBarStyleToElement —
+    // לוגיקה מאוחדת עם המנוע הרגיל (תומכת barShow/barPreset/barColor/barThickness).
+    const settings = streamId ? (cfg.streamSettings || {})[streamId] : null;
+    if (settings) applyBarStyleToElement(t, settings);
     t.textContent = text;
     pageEl.appendChild(t);
-  }
-
-  function barOverrideForStream(streamId) {
-    const settings = (cfg.streamSettings || {})[streamId] || {};
-    if (!("barShow" in settings) && !("barColor" in settings) && !("barThickness" in settings)) {
-      return null;
-    }
-    return {
-      show: settings.barShow !== false,
-      color: settings.barColor,
-      thickness: settings.barThickness,
-    };
   }
 
   // ראשי — בלי צבע זרם (הראשי הוא הטקסט המרכזי, לא זרם)
@@ -1541,17 +1522,16 @@ function renderPagePlan(plan, pageEl, cfg) {
     const title = (cfg.titles || {})[box.id];
     if (title && box.lines.length > 0) {
       const firstLine = box.lines[0];
-      const bar = barOverrideForStream(box.id);
       // משה 2026-05-10: צורה 4 —
       //   fullWidthTitle: צד הארוך מקבל כותרת ברוחב מלא של הדף
       //   skipTopTitle: צד הקצר מקבל כותרת מתחת לכתר, מעל התוכן שלו,
       //                 ברוחב + מיקום של עמודת הזרם האמיתית מתחתיה
       if (box.fullWidthTitle) {
-        drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass, box.titleStyleId, bar);
+        drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass, box.titleStyleId, box.id);
       } else if (box.skipTopTitle) {
-        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId, bar);
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId, box.id);
       } else {
-        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId, bar);
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId, box.id);
       }
     }
   }
@@ -1562,7 +1542,7 @@ function renderPagePlan(plan, pageEl, cfg) {
     drawBox(fb, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
     const title = (cfg.titles || {})[fb.id];
     if (title) {
-      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass, fb.titleStyleId, barOverrideForStream(fb.id));
+      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass, fb.titleStyleId, fb.id);
     }
   }
 

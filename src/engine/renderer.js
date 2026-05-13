@@ -6,6 +6,7 @@ import {
   formatStreamNumber,
   shouldBoldStreamNumber,
   shouldBoldStreamLemma,
+  applyBarStyleToElement,
 } from "../original_stream_columns.js";
 
 // משה 2026-05-13: הוספת מספר זרם לפני טקסט הערה/תת-הערה.
@@ -126,6 +127,9 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   title.className = "stream-title";
   title.textContent = streamTitleForCode(streamCode);
   applyStyleToElement(title, settings.titleStyleId);
+  // משה 2026-05-13: שליטת "פס מעל המפרש" — לוגיקה מאוחדת בין V9 לרגיל.
+  // לוקח barShow/barPreset/barColor/barThickness מההגדרות.
+  applyBarStyleToElement(title, settings);
   wrap.appendChild(title);
 
   const notes = notesArr;

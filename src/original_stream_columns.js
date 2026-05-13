@@ -59,7 +59,65 @@ const DEFAULT_STREAM_SETTINGS = {
   barShow: true,
   barColor: "#888",
   barThickness: 1,
+  // משה 2026-05-13: סגנונות מוכנים בעיצוב תורני (כתר, וילנא, כתב יד וכו').
+  // ערך ריק = שימוש ב-barColor/barThickness ידני. ערך אחר דורס.
+  barPreset: "",
 };
+
+// משה 2026-05-13: סגנונות מוכנים לפס מעל המפרש — נבחרו במיוחד לעיצוב
+// ספרות תורנית. כל אחד מחזיר אובייקט CSS פשוט להחלה ישירה.
+export const BAR_PRESETS = [
+  { id: "hairline",     name_he: "חוט יחיד",     desc_he: "קו דק וצנוע בסגנון מהדורות קלאסיות.",                     css: "border-bottom: 1px solid #888;" },
+  { id: "double-line",  name_he: "כפול וילנא",   desc_he: "קו כפול בגוון חום־ספר, מזכיר חיתוכי דפוסי וילנא.",       css: "border-bottom: 3px double #6a4e3c;" },
+  { id: "thick-thin",   name_he: "עבה ודק",      desc_he: "קו עליון עבה ותחתון דק, כמסגרת עמוד גמרא מסורתית.",     css: "border-top: 2px solid #3b2a1c; border-bottom: 1px solid #3b2a1c; padding-top: 2px; padding-bottom: 2px;" },
+  { id: "antique-gold", name_he: "זהב עתיק",     desc_he: "פס זהב עמום ברקע, בנוסח כריכות ספרים עתיקות.",          css: "border: none; border-bottom: none; background-image: linear-gradient(to bottom, #c9a86a 0%, #a8853f 50%, #c9a86a 100%); background-size: 100% 4px; background-position: bottom; background-repeat: no-repeat;" },
+  { id: "manuscript",   name_he: "כתב יד",       desc_he: "קו מקווקו דהוי בגוון דיו עתיק, כשורת מחבר בכתב יד.",   css: "border-bottom: 1.5px dashed #5a4632;" },
+  { id: "crown",        name_he: "כתר",          desc_he: "פס כפול עליון עבה ותחתון דק בגוון בורדו, כמסגרת כרך מהודר.", css: "border-top: 3px double #732424; border-bottom: 1px solid #732424; padding-top: 3px; padding-bottom: 3px;" },
+];
+
+// מחיל סגנון פס על אלמנט כותרת (ב-V9 וב-engine רגיל גם יחד). כללי המבט:
+//   1. barShow === false → אין פס כלל.
+//   2. barPreset שמוגדר ב-BAR_PRESETS → מחיל את ה-CSS שלו.
+//   3. אחרת → barColor + barThickness + barStyle כברירת מחדל.
+export function applyBarStyleToElement(el, settings) {
+  if (!el || !settings) return;
+  if (settings.barShow === false) {
+    el.style.borderTop = "none";
+    el.style.borderBottom = "none";
+    el.style.backgroundImage = "";
+    return;
+  }
+  if (settings.barPreset) {
+    const preset = BAR_PRESETS.find(p => p.id === settings.barPreset);
+    if (preset) {
+      // מאפסים את התכונות הרלוונטיות לפני ההחלה כדי שמעבר בין פריסטים לא ישאיר שאריות.
+      el.style.borderTop = "";
+      el.style.borderBottom = "";
+      el.style.backgroundImage = "";
+      el.style.paddingTop = "";
+      el.style.paddingBottom = "";
+      // מחילים את כל ההכרזות מה-css ידנית.
+      preset.css.split(";").forEach(decl => {
+        const trimmed = decl.trim();
+        if (!trimmed) return;
+        const colon = trimmed.indexOf(":");
+        if (colon < 0) return;
+        const prop = trimmed.slice(0, colon).trim();
+        const value = trimmed.slice(colon + 1).trim();
+        const camel = prop.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+        el.style[camel] = value;
+      });
+      return;
+    }
+  }
+  const thickness = Number(settings.barThickness);
+  const px = Number.isFinite(thickness) ? Math.max(0, Math.min(6, thickness)) : 1;
+  const color = String(settings.barColor || "#888").trim() || "#888";
+  const borderStyle = String(settings.barStyle || "solid").trim() || "solid";
+  el.style.borderTop = "none";
+  el.style.backgroundImage = "";
+  el.style.borderBottom = px > 0 ? `${px}px ${borderStyle} ${color}` : "none";
+}
 
 const GLOBAL_OVERRIDE_DEFS = {
   styleId: { label: "סגנון זרם", type: "style", value: "" },
@@ -82,6 +140,7 @@ const GLOBAL_OVERRIDE_DEFS = {
   opwSkipOrphan: { label: "מילה פותחת: דלג קצר", type: "boolean", value: false },
   opwCenterFull: { label: "מילה פותחת: מרכוז מלא", type: "boolean", value: false },
   barShow: { label: "פס מעל המפרש", type: "boolean", value: true },
+  barPreset: { label: "סגנון פס", type: "select", value: "", options: [["", "ידני"], ["hairline", "חוט יחיד"], ["double-line", "כפול וילנא"], ["thick-thin", "עבה ודק"], ["antique-gold", "זהב עתיק"], ["manuscript", "כתב יד"], ["crown", "כתר"]] },
   barColor: { label: "צבע הפס", type: "text", value: "#888" },
   barThickness: { label: "עובי הפס (px)", type: "number", value: 1, min: 0, max: 6, step: 1 },
 
@@ -551,6 +610,16 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       cur.barShow = checked;
       commitRender();
     }));
+    // משה 2026-05-13: בחירת סגנון מוכן (תורני) — או "ידני" לצבע+עובי מותאמים.
+    const barPresetOptions = [["", "ידני"]].concat(BAR_PRESETS.map(p => [p.id, p.name_he]));
+    block.appendChild(makeSelect(
+      barPresetOptions,
+      cur.barPreset || "",
+      (value) => {
+        cur.barPreset = value;
+        commitRender();
+      }
+    ));
     block.appendChild(makeLabeledInput("צבע פס:", cur.barColor || "#888", { type: "text" }, (input) => {
       cur.barColor = input.value.trim() || "#888";
       input.value = cur.barColor;
