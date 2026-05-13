@@ -5129,3 +5129,35 @@ body[data-theme="dark"] .ProseMirror pre {
     grid-template-columns: 1fr;
   }
 }
+
+/* ============================================================
+   RAVTEXT SAFETY PATCH: disable stuck ribbon-collapsed hiding main toolbar
+
+   למה:
+   אם body מקבל בטעות/stale-cache את המחלקה ribbon-collapsed,
+   הכלל הישן הסתיר את כל קבוצות הכפתורים ב-toolbar הראשי:
+   body.ribbon-collapsed #main-ribbon-toolbar .tb-group { display:none!important }
+
+   תוצאה למשתמש: הממשק נראה חתוך / חצי מסך נעלם.
+
+   הפתרון:
+   מנטרלים רק את ההסתרה של toolbar הראשי במצב collapsed.
+   לא נוגעים ב-.ribbon-hidden עצמו, ולכן הסתרות מכוונות של לשוניות עדיין נשמרות.
+   ============================================================ */
+
+body.ribbon-collapsed #main-ribbon-toolbar .tb-group:not(.ribbon-hidden) {
+  display: inline-flex !important;
+}
+
+body.ribbon-collapsed #main-ribbon-toolbar .sep:not(.ribbon-hidden) {
+  display: inline-block !important;
+}
+
+body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .tb-group:not(.ribbon-hidden) {
+  display: inline-flex !important;
+}
+
+body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) {
+  display: inline-block !important;
+}
+
