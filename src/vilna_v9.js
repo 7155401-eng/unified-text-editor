@@ -532,9 +532,14 @@ function buildPagePlan(pageContent, config) {
     streamHorizontalGap: 8,
     titles: {},
     streamSettings: {},
+    reservedTop: 0,
+    reservedBottom: 0,
   }, config || {});
 
   const streamSettings = cfg.streamSettings || {};
+  const reservedTop = cfg.reservedTop || 0;
+  const reservedBottom = cfg.reservedBottom || 0;
+  const effectivePageBottom = cfg.pageHeight - cfg.padding - reservedBottom;
   const innerWidth = cfg.pageWidth - 2 * cfg.padding;
   const halfWidth = Math.floor(innerWidth / 2);
   const mainWidth = Math.floor(innerWidth * cfg.mainWidthRatio);
@@ -640,7 +645,7 @@ function buildPagePlan(pageContent, config) {
       height: cfg.pageHeight,
       padding: cfg.padding,
       innerWidth: innerWidth,
-      innerHeight: cfg.pageHeight - 2 * cfg.padding,
+      innerHeight: cfg.pageHeight - 2 * cfg.padding - reservedTop - reservedBottom,
       sideHalfWidth: sideHalfWidth,
       sideRightX: sideRightX,
     },
@@ -679,7 +684,7 @@ function buildPagePlan(pageContent, config) {
     ? scenario.longSide
     : null;
 
-  const sideTopY = cfg.padding + titleHeight;
+  const sideTopY = cfg.padding + titleHeight + reservedTop;
   const mainTopY = sideTopY + crownHeight;
 
   // 3. ראשי — ניבוי אורך נאיבי כדי לחשב את הצדדים. הפלייאוט הסופי ייעשה
@@ -710,7 +715,7 @@ function buildPagePlan(pageContent, config) {
       const allText = single.items.join(' ').trim();
       
       // pageBottomY מקומי לחישוב (יוגדר בהמשך אבל אנחנו צריכים אותו עכשיו)
-      const _pageBottomYForSplit = cfg.pageHeight - cfg.padding;
+      const _pageBottomYForSplit = effectivePageBottom;
       
       // בניית רצועות הטור הימני לצורך חישוב חיתוך מדויק.
       // משקפת בדיוק את הרצועות שייווצרו ב-buildSideStream עבור side='right'.
@@ -766,7 +771,7 @@ function buildPagePlan(pageContent, config) {
   // משה 2026-05-08 (תיקון): כל y_start/y_end חסומים ב-pageBottom. אם
   // naiveMainBottomY ענק (כי הראשי הנאיבי דחוס), strip 2 חסום ב-pageBottom
   // ו-strip 3 לא נוצר (אין מקום).
-  const pageBottomY = cfg.pageHeight - cfg.padding;
+  const pageBottomY = effectivePageBottom;
   function buildSideStream(streamData, side, opts) {
     if (!streamData) return null;
     const text = streamData.items.join(' ');
@@ -870,7 +875,7 @@ function buildPagePlan(pageContent, config) {
       text,
       strips.map(s => ({ y_start: s.y_start, width: s.width })),
       streamMetrics,
-      cfg.pageHeight - cfg.padding
+      pageBottomY
     );
 
     const lines = [];
@@ -935,14 +940,14 @@ function buildPagePlan(pageContent, config) {
       innerWidth,
       rightEndY: rightEnd,
       leftEndY:  leftEnd,
-      pageBottom: cfg.pageHeight - cfg.padding,
+      pageBottom: effectivePageBottom,
     });
 
     const mainFlow = flowStreamThroughStrips(
       pageContent.mainText,
       mainStrips,
       mainMetrics,
-      cfg.pageHeight - cfg.padding
+      effectivePageBottom
     );
 
     const mainLines = [];
@@ -983,7 +988,7 @@ function buildPagePlan(pageContent, config) {
     }
 
     // חסימה ב-pageBottom: אם flow לא הצליח לדחוס הכול, mainBottomY עלול לחרוג.
-    mainBottomY = Math.min(mainFlow.endY, cfg.pageHeight - cfg.padding);
+    mainBottomY = Math.min(mainFlow.endY, effectivePageBottom);
   }
 
   // 4.6 Pass 2 — חישוב מחדש של הצדדים עם:
@@ -1071,7 +1076,7 @@ function buildPagePlan(pageContent, config) {
   // כאן (אנליטי): חותכים שורות שעוברות את pageBottom, שומרים את הטקסט המודחק
   // ב-overflow.streams (כדי ש-buildPages יוכל לדחוף לעמוד הבא דרך carry-over
   // עתידי או דרך הפחתת פסקאות באיטרציה הבאה).
-  const pageBottom = cfg.pageHeight - cfg.padding;
+  const pageBottom = effectivePageBottom;
   let footerY = Math.max(
     ...result.streamBoxes.map(b => b.endY || 0),
     mainBottomY
@@ -1581,15 +1586,15 @@ export async function buildPages(container, paragraphs, config) {
       return bottom;
     };
 
+    const pageBottomForFill = cfg.pageHeight - cfg.padding - (cfg.reservedBottom || 0);
     const fillsPageEnough = (tp, minRatio = 0.82) => {
-      const pageBottom = cfg.pageHeight - cfg.padding;
-      if (!pageBottom) return false;
-      return planBottomY(tp) / pageBottom >= minRatio;
+      if (!pageBottomForFill) return false;
+      return planBottomY(tp) / pageBottomForFill >= minRatio;
     };
 
     const planFillRatio = (tp) => {
-      const pageBottom = Math.max(1, cfg.pageHeight - cfg.padding);
-      return planBottomY(tp) / pageBottom;
+      const pb = Math.max(1, pageBottomForFill);
+      return planBottomY(tp) / pb;
     };
     const rescueMinFillRatio = Math.max(cfg.gapFillMinRatio || 0, 0.82);
 
