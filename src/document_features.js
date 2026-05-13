@@ -109,15 +109,8 @@ function measureOverlayReserved(className, isTop) {
   const cs = getComputedStyle(el);
   const height = el.getBoundingClientRect().height;
   const offset = parseFloat(cs[isTop ? "top" : "bottom"]) || 0;
-  const pageEl = el.closest(".page");
-  let padding = isTop ? 22 : 18;
-  if (pageEl) {
-    const pageCs = getComputedStyle(pageEl);
-    const p = parseFloat(pageCs[isTop ? "paddingTop" : "paddingBottom"]);
-    if (Number.isFinite(p)) padding = p;
-  }
   if (needsCleanup) el.remove();
-  return Math.max(0, Math.round(offset + height - padding));
+  return Math.max(0, Math.round(offset + height));
 }
 
 function syncReservedSpace() {
