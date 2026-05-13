@@ -17,6 +17,7 @@ import { buildPages } from "./vilna_v9.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
+import { applyOpeningWordsToPages } from "./opening_word.js";
 
 // משה 2026-05-08: קריאת קודי הזרמים שהוגדרו לגפ"ת ע"י המשתמש.
 // פורמט: "01,02" → ["01","02"]. אלה הזרמים שיהיו בצדדים בעימוד גפ"ת.
@@ -82,6 +83,8 @@ function readPageGeomFromContainer(container) {
   };
   const pageWidth  = pickPx(cs?.getPropertyValue("--ravtext-page-width"), 559);
   const pageHeight = pickPx(cs?.getPropertyValue("--ravtext-page-height"), 794);
+  
+  // משה 2026-05-13: קריאת הסגנון המלא של הטקסט הראשי, לא רק fontSize
   const mainStyle = getMainTextStyle();
   const mainSize   = Number(mainStyle?.fontSize) > 0
     ? Number(mainStyle.fontSize)
@@ -96,7 +99,18 @@ function readPageGeomFromContainer(container) {
   // קריאת font-family מהcontainer
   const fontFamily = (mainStyle?.fontFamily || cs?.getPropertyValue("--ravtext-page-font-family") || "")
     .replace(/^\s+|\s+$/g, "") || "serif";
-  return { pageWidth, pageHeight, mainSize, sideSize, fontFamily, lineHeightRatio, mainGap, streamHorizontalGap };
+  
+  return { 
+    pageWidth, 
+    pageHeight, 
+    mainSize, 
+    sideSize, 
+    fontFamily, 
+    lineHeightRatio, 
+    mainGap, 
+    streamHorizontalGap,
+    mainStyle: mainStyle || {} // משה 2026-05-13: החזרת האובייקט המלא
+  };
 }
 
 function readPercentSetting(key, fallback, min, max) {
@@ -169,5 +183,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     levels,
     talmudStreams,
     noMidLineSplits: readSpacingBool("noMidLineSplits", false),
+    mainTextStyle: geom.mainStyle, // משה 2026-05-13: העברת הסגנון המלא
   });
+  
+  // משה 2026-05-13: הפעלת מילת פתיח על עמודי V9
+  applyOpeningWordsToPages(container);
 }

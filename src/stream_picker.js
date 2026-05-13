@@ -9,6 +9,9 @@ const PICKER_ID = "talmud-stream-picker";
 const ADD_BTN_ID = "talmud-add-stream-btn";
 const TALMUD_MAX_STREAMS = 2;
 
+// משה 2026-05-13: דגל למניעת דריסה ע"י defaultsIfEmpty אחרי שכבר נטען מ-localStorage
+let loadedFromStorage = false;
+
 function getAvailableStreamCodes() {
   // Try to find streams in the editor or rendered output.
   const codes = new Set();
@@ -120,6 +123,9 @@ function updateAddButtonState() {
 }
 
 function defaultsIfEmpty() {
+  // משה 2026-05-13: אם כבר נטען מ-localStorage, לא לדרוס
+  if (loadedFromStorage) return;
+  
   const selected = getCurrentSelected();
   if (selected.length > 0) return;
   const avail = getAvailableStreamCodes();
@@ -159,4 +165,9 @@ export function setupStreamPicker() {
   });
   const pagesContainer = document.getElementById("pages-container");
   if (pagesContainer) observer.observe(pagesContainer, { childList: true, subtree: true });
+}
+
+// משה 2026-05-13: פונקציה לסימון שהערך כבר נטען מ-localStorage
+export function markLoadedFromStorage() {
+  loadedFromStorage = true;
 }

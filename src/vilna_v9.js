@@ -453,6 +453,8 @@ function buildPagePlan(pageContent, config) {
     fontFamily: cfg.mainFontFamily,
     fontSize: cfg.mainFontSize,
     lineHeightRatio: cfg.lineHeightRatio,
+    fontWeight: cfg.mainTextStyle?.bold ? '700' : 'normal',
+    fontStyle: cfg.mainTextStyle?.italic ? 'italic' : 'normal',
   });
   const sideMetrics = new VilnaMetrics({
     fontFamily: cfg.sideFontFamily,
@@ -817,7 +819,9 @@ function buildPagePlan(pageContent, config) {
     });
   }
   // איטרציה 3: pass2 ימני עם pass2 שמאלי (סופי)
-  if (pageContent.rightStream && pass2Left) {
+  // משה 2026-05-13: בתרחיש 1 אסור לחשב מחדש את pass2Right כי השמאלי כבר
+  // קיבל את overflow הימני. חישוב מחדש עלול ליצור כפילות או איבוד מילים.
+  if (pageContent.rightStream && pass2Left && !isScenario1) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: cap(pass2Left.endY),
@@ -1798,6 +1802,36 @@ export async function buildPages(container, paragraphs, config) {
     carryOver = nextCarry;
 
     pageIdx++;
+  }
+  
+  // משה 2026-05-13: בדיקת שלמות טקסט — מוודא שלא אבדו מילים בתהליך העימוד.
+  // פועל רק במצב debug (ravtext.debug.v9=1 ב-localStorage).
+  if (typeof console !== 'undefined' && typeof localStorage !== 'undefined' 
+      && localStorage.getItem('ravtext.debug.v9') === '1') {
+    try {
+      const inputWords = paragraphs.flatMap(p => {
+        const texts = [p.mainText];
+        if (p.notes) {
+          texts.push(...p.notes.map(n => n.text).filter(Boolean));
+        }
+        return texts.filter(Boolean)
+          .flatMap(t => t.trim().split(/\s+/).filter(Boolean));
+      });
+      
+      const outputWords = pages.flatMap(page => 
+        Array.from(page.querySelectorAll('.v9-line'))
+          .map(el => el.textContent || '')
+          .flatMap(t => t.trim().split(/\s+/).filter(Boolean))
+      );
+      
+      if (inputWords.length !== outputWords.length) {
+        console.warn(`[V9 Integrity] Word count mismatch: ${inputWords.length} in, ${outputWords.length} out. Difference: ${inputWords.length - outputWords.length}`);
+      } else {
+        console.log(`[V9 Integrity] ✓ Word count matches: ${inputWords.length} words`);
+      }
+    } catch (err) {
+      console.error('[V9 Integrity] Check failed:', err);
+    }
   }
 
   return { pages };

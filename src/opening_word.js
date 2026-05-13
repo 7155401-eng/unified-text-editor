@@ -546,6 +546,43 @@ function applyToTextElement(el, settings, options = {}) {
 }
 
 function applyMainOpeningWords(pageEl, settings) {
+  // משה 2026-05-13: תמיכה ב-V9 - עמודי v9-page עם שורות v9-line
+  if (pageEl.classList.contains('v9-page')) {
+    // מצא את כל שורות הראשי (ללא stream-color)
+    const mainLines = Array.from(pageEl.querySelectorAll('.v9-line:not([class*="stream-color"])'));
+    if (mainLines.length === 0) return;
+    
+    // מילת פתיח רק על השורה הראשונה
+    const firstLine = mainLines[0];
+    const text = firstLine.textContent || '';
+    const parts = extractOpeningSegment(text, settings, { skipLeadingControls: true });
+    if (!parts) return;
+    
+    // בדיקת אורך הסיומת
+    const tooShortSuffix =
+      plainLength(parts.suffix) < MIN_OPENING_SUFFIX_CHARS ||
+      plainWordCount(parts.suffix) < MIN_OPENING_SUFFIX_WORDS;
+    const effectivePosition = tooShortSuffix ? 'raised' : settings.position;
+    
+    // החלפת תוכן השורה עם span מעוצב
+    firstLine.innerHTML = '';
+    if (parts.prefix) {
+      const prefixSpan = document.createElement('span');
+      prefixSpan.textContent = parts.prefix;
+      firstLine.appendChild(prefixSpan);
+    }
+    const segmentSpan = document.createElement('span');
+    applySpanStyle(segmentSpan, settings, effectivePosition);
+    segmentSpan.textContent = parts.segment;
+    firstLine.appendChild(segmentSpan);
+    if (parts.suffix) {
+      const suffixSpan = document.createElement('span');
+      suffixSpan.textContent = parts.suffix;
+      firstLine.appendChild(suffixSpan);
+    }
+    return;
+  }
+  
   // v33-engine fix: only consider DIRECT paragraphs of .page-main, not
   // nested ones (e.g. inside body-portion that we moved INTO mainEl).
   // Without this filter, opening-word lands on a body's first note instead
@@ -595,7 +632,7 @@ function applyMainOpeningWords(pageEl, settings) {
 
 function applyStreamOpeningWords(pageEl, streamSettings) {
   pageEl.querySelectorAll(".stream[data-stream]").forEach((streamEl) => {
-    if (streamEl.closest(".talmud-layout")) return;
+    // משה 2026-05-13: הסרת הדילוג על .talmud-layout כי V9 לא משתמש בזה
     const code = streamEl.getAttribute("data-stream");
     const raw = applyOpeningWordGlobalOverrides(streamSettings[code]);
     if (!raw || !raw.opwEnabled) return;

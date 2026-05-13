@@ -8,6 +8,14 @@
 // משה 2026-05-08: דמו לא חוסם יותר את גפ"ת. סימני המים מטופלים
 // ב-engine_bridge דרך injectDemoWatermarksIfNeeded לפני שהתוכן מגיע ל-V9.
 
+// משה 2026-05-13: ייבוא של markLoadedFromStorage לסימון שהערך נטען
+let markLoadedFromStorageFunc = null;
+try {
+  import('./stream_picker.js').then(module => {
+    markLoadedFromStorageFunc = module.markLoadedFromStorage;
+  });
+} catch (_) {}
+
 const STORAGE_KEY       = "ravtext.talmudLayout";
 const STREAMS_KEY       = "ravtext.talmudLayout.streams";
 const CROWN_LINES_KEY   = "ravtext.talmudLayout.crownLines";
@@ -205,7 +213,15 @@ export function wireTalmudLayoutControls(onChange) {
   // משה 2026-05-08: גפ"ת פתוח לדמו/אורחים (עם סימני מים בטקסט). לא חוסמים את ה-toggle.
 
   toggle.checked = isTalmudLayoutEnabled();
-  if (streamsInput) streamsInput.value = getTalmudStreamsText();
+  if (streamsInput) {
+    streamsInput.value = getTalmudStreamsText();
+    // משה 2026-05-13: סימון שהערך נטען מ-localStorage
+    if (markLoadedFromStorageFunc) {
+      try {
+        markLoadedFromStorageFunc();
+      } catch (_) {}
+    }
+  }
   if (crownInput)   crownInput.value   = getTalmudCrownLines();
   if (widthInput)   widthInput.value   = getTalmudMainWidth();
   if (sideSelect)   sideSelect.value   = getTalmudSideMode();
