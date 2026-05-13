@@ -111,27 +111,50 @@ function styleMetaForNode(node) {
   if (attrs.marginTop != null) style.marginTop = attrs.marginTop;
   if (attrs.marginBottom != null) style.marginBottom = attrs.marginBottom;
 
+  // משה 2026-05-13: באג קודם — הלולאה ראתה מילה אחת מודגשת/צבועה והעלתה את
+  // הסגנון לכל הפסקה. תוצאה: שורה שלמה צבועה כשרק מילה הייתה אמורה להיות.
+  // עכשיו: אוספים marks של כל ילד-טקסט בנפרד; סגנון ברמת פסקה חל רק כשכל
+  // הטקסט הלא-ריק חולק אותו mark (אחיד לחלוטין). אם יש marks חלקיים — לא
+  // מעלים אותם לפסקה (יישמרו לפי-ריצה ב-future enhancement; כרגע פשוט לא
+  // מעוותים את הפלט).
+  const runMarks = [];
   node?.descendants?.((child) => {
     if (!child.isText) return false;
+    if (!child.text || !child.text.trim()) return false;
+    const m = {};
     for (const mark of child.marks || []) {
       const mAttrs = mark.attrs || {};
-      if (mark.type?.name === "textStyle") {
-        if (!style.fontFamily && mAttrs.fontFamily) style.fontFamily = mAttrs.fontFamily;
-        if (!style.fontSize && mAttrs.fontSize) style.fontSize = mAttrs.fontSize;
-        if (!style.color && mAttrs.color) style.color = mAttrs.color;
-        if (!style.backgroundColor && (mAttrs.backgroundColor || mAttrs.bgColor)) {
-          style.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
-        }
-      }
-      if (mark.type?.name === "bold") style.bold = true;
-      if (mark.type?.name === "italic") style.italic = true;
-      if (mark.type?.name === "underline") style.underline = true;
-      if (mark.type?.name === "highlight" && !style.backgroundColor) {
-        style.backgroundColor = mAttrs.color;
-      }
+      const name = mark.type?.name;
+      if (name === "textStyle") {
+        if (mAttrs.fontFamily) m.fontFamily = mAttrs.fontFamily;
+        if (mAttrs.fontSize) m.fontSize = mAttrs.fontSize;
+        if (mAttrs.color) m.color = mAttrs.color;
+        if (mAttrs.backgroundColor || mAttrs.bgColor) m.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
+      } else if (name === "bold") m.bold = true;
+      else if (name === "italic") m.italic = true;
+      else if (name === "underline") m.underline = true;
+      else if (name === "highlight") m.backgroundColor = mAttrs.color;
     }
+    runMarks.push(m);
     return false;
   });
+
+  if (runMarks.length === 0) return style;
+
+  // לכל מאפיין: נבדוק אם הוא קיים זהה בכל הריצות. רק אז נעלה אותו לרמת פסקה.
+  const allHave = (key) => runMarks.every(m => m[key] !== undefined && m[key] !== null && m[key] !== false);
+  const sameValueAcross = (key) => {
+    const first = runMarks[0][key];
+    return runMarks.every(m => m[key] === first);
+  };
+
+  if (allHave("bold") && sameValueAcross("bold")) style.bold = true;
+  if (allHave("italic") && sameValueAcross("italic")) style.italic = true;
+  if (allHave("underline") && sameValueAcross("underline")) style.underline = true;
+  if (allHave("fontFamily") && sameValueAcross("fontFamily")) style.fontFamily = runMarks[0].fontFamily;
+  if (allHave("fontSize") && sameValueAcross("fontSize")) style.fontSize = runMarks[0].fontSize;
+  if (allHave("color") && sameValueAcross("color")) style.color = runMarks[0].color;
+  if (allHave("backgroundColor") && sameValueAcross("backgroundColor")) style.backgroundColor = runMarks[0].backgroundColor;
 
   return style;
 }
