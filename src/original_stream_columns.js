@@ -25,6 +25,20 @@ const GLOBAL_OVERRIDE_DEFS = {
   inline: { label: "תצוגה רציפה", type: "boolean", value: true },
   lastLineCenter: { label: "מרכז שורה אחרונה", type: "boolean", value: true },
   firstNoteAsTitle: { label: "הערה ראשונה ככותרת", type: "boolean", value: false },
+
+  mainRefEnabled: { label: "מספר בראשי", type: "boolean", value: true },
+  mainRefPrefix: { label: "ראשי פתיחה", type: "text", value: "[" },
+  mainRefSuffix: { label: "ראשי סגירה", type: "text", value: "]" },
+  mainRefBold: { label: "ראשי מודגש", type: "boolean", value: false },
+
+  noteNumEnabled: { label: "מספר בהערה", type: "boolean", value: true },
+  noteNumPrefix: { label: "הערה פתיחה", type: "text", value: "[" },
+  noteNumSuffix: { label: "הערה סגירה", type: "text", value: "]" },
+  noteNumBold: { label: "הערה מודגש", type: "boolean", value: false },
+
+  noteTextPrefix: { label: "סוגר גוף פתיחה", type: "text", value: "" },
+  noteTextSuffix: { label: "סוגר גוף סגירה", type: "text", value: "" },
+  lemmaBold: { label: "דיבור המתחיל מודגש", type: "boolean", value: true },
   opwEnabled: { label: "מילה פותחת", type: "boolean", value: false },
   opwTarget: { label: "מילה פותחת: יעד", type: "select", value: "word", options: [["word", "מילה"], ["letter", "אות"], ["words", "מילים"]] },
   opwCount: { label: "מילה פותחת: N", type: "number", value: 1, min: 1, max: 12, step: 1 },
