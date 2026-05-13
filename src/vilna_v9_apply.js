@@ -96,7 +96,16 @@ function readPageGeomFromContainer(container) {
   // קריאת font-family מהcontainer
   const fontFamily = (mainStyle?.fontFamily || cs?.getPropertyValue("--ravtext-page-font-family") || "")
     .replace(/^\s+|\s+$/g, "") || "serif";
-  return { pageWidth, pageHeight, mainSize, sideSize, fontFamily, lineHeightRatio, mainGap, streamHorizontalGap };
+  // reserved space for overlays (set by document_features.js syncReservedSpace)
+  const docCs = (typeof window !== "undefined" && window.getComputedStyle)
+    ? window.getComputedStyle(document.documentElement)
+    : null;
+  const reservedTop = pickPx(docCs?.getPropertyValue("--ravtext-features-header-reserved"), 0);
+  const reservedBottom = Math.max(
+    pickPx(docCs?.getPropertyValue("--ravtext-features-footer-reserved"), 0),
+    pickPx(docCs?.getPropertyValue("--ravtext-features-pagenumber-reserved"), 0),
+  );
+  return { pageWidth, pageHeight, mainSize, sideSize, fontFamily, lineHeightRatio, mainGap, streamHorizontalGap, reservedTop, reservedBottom };
 }
 
 function readPercentSetting(key, fallback, min, max) {
@@ -151,6 +160,8 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   await buildPages(container, paragraphs, {
     pageWidth: geom.pageWidth,
     pageHeight: geom.pageHeight,
+    reservedTop: geom.reservedTop,
+    reservedBottom: geom.reservedBottom,
     mainFontSize: geom.mainSize,
     sideFontSize: geom.sideSize,
     mainFontFamily: geom.fontFamily,
