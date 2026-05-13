@@ -64,7 +64,7 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
-import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
+import { getEffectiveStreamSettings, getStreamSettings, formatStreamNumber } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
 import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
@@ -378,6 +378,25 @@ function collectChildrenAsSiblings(children, parentAnchor, out) {
       collectChildrenAsSiblings(child.children, parentAnchor, out);
     }
   }
+}
+
+
+
+function addMainReferenceNumbers(text, notes) {
+  let out = String(text || "");
+  const inserts = [];
+  for (const n of notes || []) {
+    if (!n || typeof n.anchor !== "number" || typeof n.num !== "number") continue;
+    const ref = formatStreamNumber(n.stream, n.num, "main");
+    if (!ref) continue;
+    inserts.push({ at: n.anchor, ref });
+  }
+  inserts.sort((a, b) => b.at - a.at);
+  for (const item of inserts) {
+    const at = Math.max(0, Math.min(out.length, item.at));
+    out = out.slice(0, at) + item.ref + out.slice(at);
+  }
+  return out;
 }
 
 function applyFirstNoteAsTitle(code, notes) {

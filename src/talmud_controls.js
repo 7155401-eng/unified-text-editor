@@ -25,6 +25,25 @@ const DEFAULT_SIDE_GAP  = 12;
 const DEFAULT_HEIGHT_SAFETY = 160;
 const DEFAULT_HEIGHT_SAFETY_REGULAR = 6;
 
+const OTHER_AS_MISHNA_KEY = "ravtext.talmud.otherAsMishna";
+
+export function isTalmudOtherAsMishna() {
+  try {
+    return localStorage.getItem(OTHER_AS_MISHNA_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setTalmudOtherAsMishna(enabled) {
+  try {
+    localStorage.setItem(OTHER_AS_MISHNA_KEY, enabled ? "1" : "0");
+    // כרגע מנגנון המשנ״ב הקיים נשען על ravtext.mishnaWrap.
+    // לכן ההגדרה הזו מפעילה/מכבה אותו, אבל נשארת הגדרה עצמאית לגפ״ת.
+    localStorage.setItem("ravtext.mishnaWrap", enabled ? "1" : "0");
+  } catch (_) {}
+}
+
 export function isTalmudLayoutEnabled() {
   // משה 2026-05-08: גפ"ת פתוח לכולם (גם דמו/אורחים). סימני המים שלrender
   // מוטמעים בטקסט הראשי דרך injectDemoWatermarksIfNeeded ב-engine_bridge,
