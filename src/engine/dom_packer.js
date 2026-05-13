@@ -106,11 +106,19 @@ function getRegularHeightSafety() {
   if (!Number.isFinite(n)) return cssDefault;
   return Math.max(0, Math.min(400, n));
 }
+function getAutoOverflowSafety() {
+  if (typeof localStorage === "undefined") return 0;
+  const raw = localStorage.getItem("ravtext.layout.autoOverflowSafety");
+  if (raw === null) return 0;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(280, n));
+}
 
 export function getDomPageGeom() {
   const pageWidth = cssPxVar("--ravtext-page-width", DOM_PAGE_GEOM.pageWidth);
   const pageHeight = cssPxVar("--ravtext-page-height", DOM_PAGE_GEOM.pageHeight);
-  const safety = getRegularHeightSafety();
+  const safety = getRegularHeightSafety() + getAutoOverflowSafety();
   const topReserved = cssPxVar("--ravtext-features-header-reserved", 0);
   const bottomReserved = Math.max(
     cssPxVar("--ravtext-features-footer-reserved", 0),
@@ -2491,3 +2499,4 @@ function sortStreamNotes(pages) {
     }
   }
 }
+

@@ -1,4 +1,4 @@
-// שלב 11 — מנהל חלוניות: עורך ראשי + עד 7 חלוניות זרמים.
+﻿// שלב 11 — מנהל חלוניות: עורך ראשי + עד 7 חלוניות זרמים.
 // השלבים הקודמים (7-10) נשמרו: 22 תכונות עיצוב, רשימות מקוננות,
 // סימני זרם, מנתח אוטומטי. כעת הכל פועל על החלונית הפעילה.
 
@@ -12,6 +12,7 @@ import { splitMarkersOnServer, mergeBackOnServer, inlineMergeOnServer, inlineSpl
 import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
+import { installFinalLayoutGuard } from "./engine/final_layout_guard.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
@@ -211,6 +212,24 @@ loadInitialState(paneManager).then((res) => {
   attachAutoSync(paneManager);
 });
 const pagesContainer = document.querySelector("#pages-container");
+
+// Final render guard:
+// מודד את הדף אחרי הרינדור הסופי. אם יש גלישה,
+// מגדיל כרית עימוד ומרנדר מחדש, בלי להסתיר טקסט.
+installFinalLayoutGuard({
+  getPagesContainer: () => pagesContainer,
+  rerender: () => {
+    try {
+      if (typeof rerenderPages === "function") rerenderPages();
+      else if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
+    } catch (err) {
+      console.warn("[final-layout-guard] rerender failed", err);
+    }
+  },
+  tolerance: 1.5,
+  debounceMs: 260,
+  maxAutoSafety: 280,
+});
 applyPageSettings(pagesContainer);
 applySpacingSettings(loadSpacingSettings(), pagesContainer);
 const pdfToolbarApi = setupPdfToolbar(pagesContainer);
@@ -2148,3 +2167,4 @@ window.__streamMarkOnDetected = function (detected) {
 };
 
 scheduleDiagnosticsRefresh({ force: true });
+
