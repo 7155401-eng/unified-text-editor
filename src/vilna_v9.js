@@ -1207,6 +1207,83 @@ function ensureGlobalStyles() {
   document.head.appendChild(style);
 }
 
+function autoResolveV9CrownMainOverlap(pageEl) {
+  if (!pageEl || !pageEl.querySelectorAll) return;
+
+  const lines = Array.from(pageEl.querySelectorAll(".v9-line, [data-v9-role]"));
+  if (!lines.length) return;
+
+  function n(v) {
+    const x = Number.parseFloat(v);
+    return Number.isFinite(x) ? x : 0;
+  }
+
+  function boxOf(el) {
+    const top = n(el.style.top);
+    const left = n(el.style.left);
+    const width = n(el.style.width) || el.offsetWidth || 0;
+    const height = n(el.style.height) || el.offsetHeight || n(el.style.lineHeight) || 0;
+    return {
+      top,
+      left,
+      right: left + width,
+      bottom: top + height,
+      height,
+    };
+  }
+
+  function roleOf(el) {
+    return String(el.dataset.v9Role || el.className || "").toLowerCase();
+  }
+
+  function isMainLine(el) {
+    const r = roleOf(el);
+    return r.includes("main");
+  }
+
+  function intersectsX(a, b) {
+    return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
+  }
+
+  const mainLines = lines.filter(isMainLine);
+  if (!mainLines.length) return;
+
+  const mainBoxes = mainLines.map(boxOf).filter(b => b.height > 0);
+  if (!mainBoxes.length) return;
+
+  const firstMainTop = Math.min(...mainBoxes.map(b => b.top));
+  const firstMainBoxes = mainBoxes.filter(b => Math.abs(b.top - firstMainTop) < 2);
+  const avgMainHeight = mainBoxes.reduce((sum, b) => sum + b.height, 0) / mainBoxes.length || 12;
+
+  // דינמי בלבד:
+  // מחפש שורות שאינן ראשי, שנוגעות בפועל בשורת הראשי הראשונה.
+  // לא משתמש במספר שמתאים למסמך מסוים.
+  const blockers = lines
+    .filter(el => !isMainLine(el))
+    .map(el => ({ el, box: boxOf(el), role: roleOf(el) }))
+    .filter(x => x.box.height > 0)
+    .filter(x => x.box.bottom > firstMainTop - 0.5)
+    .filter(x => x.box.top < firstMainTop + avgMainHeight * 1.25)
+    .filter(x => firstMainBoxes.some(mb => intersectsX(mb, x.box)));
+
+  if (!blockers.length) return;
+
+  const blockerBottom = Math.max(...blockers.map(x => x.box.bottom));
+  const dynamicGap = Math.max(2, avgMainHeight * 0.18);
+  const delta = blockerBottom + dynamicGap - firstMainTop;
+
+  // הגנה: אם יצא מספר מופרך, לא עושים כלום.
+  if (!(delta > 0)) return;
+  if (delta > Math.max(40, avgMainHeight * 3)) return;
+
+  for (const el of mainLines) {
+    const oldTop = n(el.style.top);
+    el.style.top = (oldTop + delta) + "px";
+  }
+
+  pageEl.dataset.v9CrownMainAutoShift = String(Math.round(delta * 100) / 100);
+}
+
 function renderPagePlan(plan, pageEl, cfg) {
   ensureGlobalStyles();
 
@@ -1274,6 +1351,12 @@ function renderPagePlan(plan, pageEl, cfg) {
       }
       lineEl.style.overflow = 'visible';
 
+      const v9Role = String(box.role || box.type || box.kind || (box.id === "main" ? "main" : (box.id ? "stream" : "")) || "");
+      if (v9Role) {
+        lineEl.dataset.v9Role = v9Role;
+        lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
+      }
+      if (box.id) lineEl.dataset.v9BoxId = String(box.id);
       lineEl.textContent = line.text;
       pageEl.appendChild(lineEl);
     }
@@ -1328,6 +1411,12 @@ function renderPagePlan(plan, pageEl, cfg) {
     if (title) {
       drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass, fb.titleStyleId);
     }
+  }
+
+  if (typeof queueMicrotask === "function") {
+    queueMicrotask(() => autoResolveV9CrownMainOverlap(pageEl));
+  } else {
+    setTimeout(() => autoResolveV9CrownMainOverlap(pageEl), 0);
   }
 }
 
