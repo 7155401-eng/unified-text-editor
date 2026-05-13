@@ -976,6 +976,10 @@ function buildPagePlan(pageContent, config) {
       lines: mainLines,
       barMitzraStrips: mainStrips,
       continues: !!mainFlow.overflowText || !!pageContent.mainContinues,
+      // משה 2026-05-13: סגנון "טקסט ראשי" (מ-document_style_settings) חייב להגיע גם למנוע V9.
+      // בלי זה, בולד שהוגדר בסגנון הראשי לא היה מופיע בתצוגה הסופית.
+      styleId: cfg.mainStyleId || "",
+      inlineStyle: cfg.mainInlineStyle || null,
     };
 
     if (mainFlow.overflowText) {
@@ -1211,7 +1215,8 @@ function autoResolveV9CrownMainOverlap(pageEl) {
   if (!pageEl || !pageEl.querySelectorAll) return;
 
   const lines = Array.from(pageEl.querySelectorAll(".v9-line, [data-v9-role]"));
-  if (!lines.length) return;
+  const titles = Array.from(pageEl.querySelectorAll(".v9-stream-title"));
+  if (!lines.length && !titles.length) return;
 
   function n(v) {
     const x = Number.parseFloat(v);
@@ -1245,43 +1250,88 @@ function autoResolveV9CrownMainOverlap(pageEl) {
     return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1;
   }
 
-  const mainLines = lines.filter(isMainLine);
-  if (!mainLines.length) return;
-
-  const mainBoxes = mainLines.map(boxOf).filter(b => b.height > 0);
-  if (!mainBoxes.length) return;
-
-  const firstMainTop = Math.min(...mainBoxes.map(b => b.top));
-  const firstMainBoxes = mainBoxes.filter(b => Math.abs(b.top - firstMainTop) < 2);
-  const avgMainHeight = mainBoxes.reduce((sum, b) => sum + b.height, 0) / mainBoxes.length || 12;
-
-  // דינמי בלבד:
-  // מחפש שורות שאינן ראשי, שנוגעות בפועל בשורת הראשי הראשונה.
-  // לא משתמש במספר שמתאים למסמך מסוים.
-  const blockers = lines
-    .filter(el => !isMainLine(el))
-    .map(el => ({ el, box: boxOf(el), role: roleOf(el) }))
-    .filter(x => x.box.height > 0)
-    .filter(x => x.box.bottom > firstMainTop - 0.5)
-    .filter(x => x.box.top < firstMainTop + avgMainHeight * 1.25)
-    .filter(x => firstMainBoxes.some(mb => intersectsX(mb, x.box)));
-
-  if (!blockers.length) return;
-
-  const blockerBottom = Math.max(...blockers.map(x => x.box.bottom));
-  const dynamicGap = Math.max(2, avgMainHeight * 0.18);
-  const delta = blockerBottom + dynamicGap - firstMainTop;
-
-  // הגנה: אם יצא מספר מופרך, לא עושים כלום.
-  if (!(delta > 0)) return;
-  if (delta > Math.max(40, avgMainHeight * 3)) return;
-
-  for (const el of mainLines) {
-    const oldTop = n(el.style.top);
-    el.style.top = (oldTop + delta) + "px";
+  function intersectsY(a, b) {
+    return Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
   }
 
-  pageEl.dataset.v9CrownMainAutoShift = String(Math.round(delta * 100) / 100);
+  const padding = n(pageEl.style.padding);
+  const pageHeight = n(pageEl.style.height);
+  const topLimit = padding;
+  const bottomLimit = pageHeight ? pageHeight - padding : Infinity;
+
+  const mainLines = lines.filter(isMainLine);
+  const otherLines = lines.filter(el => !isMainLine(el));
+
+  // === שלב א': אכיפת גבול עליון על כל אלמנט.
+  // אם שורת זרם או כותרת חוצה את ה-padding העליון של העמוד, מזיזים אותה
+  // לקצה העליון. דינמי לפי גובה העמוד; לא תלוי במסמך מסוים.
+  let upperShifts = 0;
+  for (const el of [...lines, ...titles]) {
+    const top = n(el.style.top);
+    if (top < topLimit - 0.5) {
+      el.style.top = topLimit + "px";
+      upperShifts++;
+    }
+  }
+
+  // === שלב ב': חוצץ ראשי-כתר (התנהגות מקורית, הוזזה למקום מסודר).
+  // כשמשהו לא-ראשי דורך על שורת הראשי הראשונה, דוחפים את כל הראשי למטה.
+  let crownDelta = 0;
+  if (mainLines.length) {
+    const mainBoxes = mainLines.map(boxOf).filter(b => b.height > 0);
+    if (mainBoxes.length) {
+      const firstMainTop = Math.min(...mainBoxes.map(b => b.top));
+      const firstMainBoxes = mainBoxes.filter(b => Math.abs(b.top - firstMainTop) < 2);
+      const avgMainHeight = mainBoxes.reduce((sum, b) => sum + b.height, 0) / mainBoxes.length || 12;
+
+      const blockers = otherLines
+        .map(el => ({ el, box: boxOf(el), role: roleOf(el) }))
+        .filter(x => x.box.height > 0)
+        .filter(x => x.box.bottom > firstMainTop - 0.5)
+        .filter(x => x.box.top < firstMainTop + avgMainHeight * 1.25)
+        .filter(x => firstMainBoxes.some(mb => intersectsX(mb, x.box)));
+
+      if (blockers.length) {
+        const blockerBottom = Math.max(...blockers.map(x => x.box.bottom));
+        const dynamicGap = Math.max(2, avgMainHeight * 0.18);
+        const delta = blockerBottom + dynamicGap - firstMainTop;
+        if (delta > 0 && delta <= Math.max(40, avgMainHeight * 3)) {
+          for (const el of mainLines) {
+            const oldTop = n(el.style.top);
+            el.style.top = (oldTop + delta) + "px";
+          }
+          crownDelta = delta;
+        }
+      }
+    }
+  }
+
+  // === שלב ג': כותרת footer-stream מכסה שורה תחתונה של ראשי.
+  // פתרון דינמי: אם כותרת חוצה אופקית ואנכית שורת ראשי כלשהי,
+  // מזיזים את הכותרת למטה מתחת לשורת הראשי האחרונה החופפת.
+  let titleShifts = 0;
+  for (const titleEl of titles) {
+    const tb = boxOf(titleEl);
+    if (tb.height <= 0) continue;
+    const offenders = mainLines
+      .map(el => ({ el, box: boxOf(el) }))
+      .filter(x => x.box.height > 0)
+      .filter(x => intersectsY(tb, x.box) && intersectsX(tb, x.box));
+    if (!offenders.length) continue;
+    const offenderBottom = Math.max(...offenders.map(x => x.box.bottom));
+    const gap = Math.max(2, tb.height * 0.15);
+    const newTop = offenderBottom + gap;
+    if (newTop <= tb.top + 0.5) continue;
+    if (newTop > bottomLimit - tb.height) continue; // לא דוחפים אל מחוץ לעמוד
+    titleEl.style.top = newTop + "px";
+    titleShifts++;
+  }
+
+  pageEl.dataset.v9LayoutGuard = JSON.stringify({
+    crownDelta: Math.round(crownDelta * 100) / 100,
+    upperShifts,
+    titleShifts,
+  });
 }
 
 function renderPagePlan(plan, pageEl, cfg) {
@@ -1362,7 +1412,7 @@ function renderPagePlan(plan, pageEl, cfg) {
     }
   }
 
-  function drawTitle(text, x, y, width, colorClass, styleId) {
+  function drawTitle(text, x, y, width, colorClass, styleId, barOverride) {
     const t = document.createElement('div');
     t.className = 'v9-stream-title' + (colorClass || '');
     t.style.left = (padding + x) + 'px';
@@ -1372,8 +1422,32 @@ function renderPagePlan(plan, pageEl, cfg) {
     t.style.fontSize = (cfg.sideFontSize || 11) + 'px';
     t.style.lineHeight = plan.titleHeight + 'px';
     applyStyleToElement(t, styleId);
+    // משה 2026-05-13: שליטה בפס שמתחת לכותרת ("פס מעל המפרש") — לפי הגדרות הזרם.
+    // אם barShow=false → אין פס. אחרת — צבע ועובי מההגדרות.
+    if (barOverride && typeof barOverride === "object") {
+      if (barOverride.show === false) {
+        t.style.borderBottom = "none";
+      } else {
+        const thickness = Number(barOverride.thickness);
+        const px = Number.isFinite(thickness) ? Math.max(0, Math.min(6, thickness)) : 1;
+        const color = String(barOverride.color || "#888").trim() || "#888";
+        t.style.borderBottom = px > 0 ? `${px}px solid ${color}` : "none";
+      }
+    }
     t.textContent = text;
     pageEl.appendChild(t);
+  }
+
+  function barOverrideForStream(streamId) {
+    const settings = (cfg.streamSettings || {})[streamId] || {};
+    if (!("barShow" in settings) && !("barColor" in settings) && !("barThickness" in settings)) {
+      return null;
+    }
+    return {
+      show: settings.barShow !== false,
+      color: settings.barColor,
+      thickness: settings.barThickness,
+    };
   }
 
   // ראשי — בלי צבע זרם (הראשי הוא הטקסט המרכזי, לא זרם)
@@ -1389,16 +1463,17 @@ function renderPagePlan(plan, pageEl, cfg) {
     const title = (cfg.titles || {})[box.id];
     if (title && box.lines.length > 0) {
       const firstLine = box.lines[0];
+      const bar = barOverrideForStream(box.id);
       // משה 2026-05-10: צורה 4 —
       //   fullWidthTitle: צד הארוך מקבל כותרת ברוחב מלא של הדף
       //   skipTopTitle: צד הקצר מקבל כותרת מתחת לכתר, מעל התוכן שלו,
       //                 ברוחב + מיקום של עמודת הזרם האמיתית מתחתיה
       if (box.fullWidthTitle) {
-        drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass, box.titleStyleId);
+        drawTitle(title, 0, padding, plan.pageBox.innerWidth, colorClass, box.titleStyleId, bar);
       } else if (box.skipTopTitle) {
-        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId);
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId, bar);
       } else {
-        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId);
+        drawTitle(title, firstLine.x, firstLine.y - plan.titleHeight, firstLine.width, colorClass, box.titleStyleId, bar);
       }
     }
   }
@@ -1409,7 +1484,7 @@ function renderPagePlan(plan, pageEl, cfg) {
     drawBox(fb, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
     const title = (cfg.titles || {})[fb.id];
     if (title) {
-      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass, fb.titleStyleId);
+      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass, fb.titleStyleId, barOverrideForStream(fb.id));
     }
   }
 
