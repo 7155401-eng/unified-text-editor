@@ -94,17 +94,21 @@ async function fetchBalanceDecision(lineCount, settings) {
   return res.json();
 }
 
-async function applyTwoColumnBalance(streamEl, settings) {
-  if (!streamEl || streamEl.dataset.balancedColumns === "1") return;
-  if (streamEl.closest(".mishna-wrap-page")) return;
+/**
+ * Prepares the balancing decision for a single stream.
+ * Returns an 'apply' function to be executed serially for DOM updates.
+ */
+async function prepareTwoColumnBalance(streamEl, settings) {
+  if (!streamEl || streamEl.dataset.balancedColumns === "1") return null;
+  if (streamEl.closest(".mishna-wrap-page")) return null;
 
   const text = streamTextWithoutTitle(streamEl);
-  if (!text) return;
+  if (!text) return null;
 
   const style = getComputedStyle(streamEl);
   const gap = parseFloat(style.columnGap) || 8;
   const width = streamEl.clientWidth || streamEl.getBoundingClientRect().width || 0;
-  if (width <= 40) return;
+  if (width <= 40) return null;
 
   const columnWidth = (width - gap) / 2;
   const measure = makeMeasureEl(streamEl, columnWidth);
@@ -114,64 +118,87 @@ async function applyTwoColumnBalance(streamEl, settings) {
     const lines = splitTextIntoLines(text, measure, lineHeight);
     // משה 2026-05-07: ההחלטה (האם לאזן, איפה לחתוך, איך לטפל ביתום) רצה בשרת.
     const decision = await fetchBalanceDecision(lines.length, settings);
-    if (!decision.balance) return;
+    if (!decision.balance) return null;
 
-    const rightLines = lines.slice(decision.rightStart, decision.rightEnd);
-    const leftLines = lines.slice(decision.leftStart, decision.leftEnd);
-    const orphan = decision.hasOrphan ? lines[lines.length - 1] || "" : "";
-    const title = streamEl.querySelector(".stream-title")?.cloneNode(true);
+    return () => {
+      const rightLines = lines.slice(decision.rightStart, decision.rightEnd);
+      const leftLines = lines.slice(decision.leftStart, decision.leftEnd);
+      const orphan = decision.hasOrphan ? lines[lines.length - 1] || "" : "";
+      const title = streamEl.querySelector(".stream-title")?.cloneNode(true);
 
-    streamEl.textContent = "";
-    streamEl.style.columnCount = "";
-    streamEl.style.columnGap = "";
-    streamEl.dataset.balancedColumns = "1";
-    streamEl.classList.add("stream-balanced");
-    if (title) streamEl.appendChild(title);
+      streamEl.textContent = "";
+      streamEl.style.columnCount = "";
+      streamEl.style.columnGap = "";
+      streamEl.dataset.balancedColumns = "1";
+      streamEl.classList.add("stream-balanced");
+      if (title) streamEl.appendChild(title);
 
-    const cols = document.createElement("div");
-    cols.className = "stream-balanced-columns";
-    cols.style.columnGap = `${gap}px`;
+      const cols = document.createElement("div");
+      cols.className = "stream-balanced-columns";
+      cols.style.columnGap = `${gap}px`;
 
-    const right = document.createElement("div");
-    right.className = "stream-balanced-col stream-balanced-right";
-    appendLines(right, rightLines);
+      const right = document.createElement("div");
+      right.className = "stream-balanced-col stream-balanced-right";
+      appendLines(right, rightLines);
 
-    const left = document.createElement("div");
-    left.className = "stream-balanced-col stream-balanced-left";
-    appendLines(left, leftLines, { naturalLast: !orphan, centerLast: decision.centerLast });
+      const left = document.createElement("div");
+      left.className = "stream-balanced-col stream-balanced-left";
+      appendLines(left, leftLines, { naturalLast: !orphan, centerLast: decision.centerLast });
 
-    cols.appendChild(right);
-    cols.appendChild(left);
-    streamEl.appendChild(cols);
+      cols.appendChild(right);
+      cols.appendChild(left);
+      streamEl.appendChild(cols);
 
-    if (orphan) {
-      const orphanEl = document.createElement("div");
-      orphanEl.className = `stream-orphan-line ${decision.centerLast ? "stream-balanced-natural-last" : "stream-balanced-natural-last-right"}`;
-      orphanEl.textContent = orphan;
-      streamEl.appendChild(orphanEl);
-    }
+      if (orphan) {
+        const orphanEl = document.createElement("div");
+        orphanEl.className = `stream-orphan-line ${decision.centerLast ? "stream-balanced-natural-last" : "stream-balanced-natural-last-right"}`;
+        orphanEl.textContent = orphan;
+        streamEl.appendChild(orphanEl);
+      }
+    };
   } finally {
     measure.remove();
   }
 }
 
-export async function applyBalancedColumnsToPage(pageEl) {
-  if (!pageEl || pageEl.classList.contains("page-placeholder")) return;
+/**
+ * Prepares all streams on a page in parallel.
+ * Returns an 'apply' function for the entire page.
+ */
+async function preparePageBalancedColumns(pageEl) {
+  if (!pageEl || pageEl.classList.contains("page-placeholder")) return null;
   const streams = Array.from(pageEl.querySelectorAll(".stream[data-stream]"));
-  for (const streamEl of streams) {
-    if (streamEl.closest(".talmud-layout")) continue;
+  const appliers = await Promise.all(streams.map(async (streamEl) => {
+    if (streamEl.closest(".talmud-layout")) return null;
     const code = streamEl.getAttribute("data-stream");
     const settings = getStreamSettings(code);
-    if ((settings.cols || 1) !== 2) continue;
-    await applyTwoColumnBalance(streamEl, settings);
-  }
+    if ((settings.cols || 1) !== 2) return null;
+    return prepareTwoColumnBalance(streamEl, settings);
+  }));
+
+  return () => {
+    for (const apply of appliers) {
+      if (typeof apply === "function") apply();
+    }
+  };
+}
+
+export async function applyBalancedColumnsToPage(pageEl) {
+  const apply = await preparePageBalancedColumns(pageEl);
+  if (typeof apply === "function") apply();
 }
 
 export async function applyBalancedColumnsToPages(container) {
   if (!hasTwoColumnStreams()) return;
   const pages = Array.from(container.querySelectorAll(".page:not(.page-placeholder)"));
-  for (const page of pages) {
-    await applyBalancedColumnsToPage(page);
+
+  // משה 2026-05-13: "Parallel Weighing, Serial Confirming".
+  // Phase 1: Parallel Weighing (Concurrent network requests for all pages)
+  const pageAppliers = await Promise.all(pages.map(page => preparePageBalancedColumns(page)));
+
+  // Phase 2: Serial Confirming (DOM updates from first page to last)
+  for (const applyPage of pageAppliers) {
+    if (typeof applyPage === "function") applyPage();
   }
 
   const prevProcessor = container.__processRealizedPage;
