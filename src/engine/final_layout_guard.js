@@ -1,56 +1,20 @@
-﻿/*
+/*
   final_layout_guard.js
 
-  שכבת הגנה לעימוד:
-  מודדת את הדף אחרי הרינדור הסופי, לא לפניו.
+  תפקיד נכון:
+  לבדוק אחרי הרינדור הסופי אם יש גלישה אמיתית.
 
-  אם אחרי כל הפיצ'רים:
-  inline runs, spans, fontSize, fontFamily, bold, הערות,
-  משנה ברורה/V9, כותרות, מספרי עמודים וכו'
-  עדיין יש טקסט שיוצא מגבול העמוד —
-  לא מסתירים אותו, אלא מגדילים כרית עימוד ומרנדרים שוב.
+  מה אסור:
+  לא להוסיף כרית גלובלית.
+  לא לכתוב ravtext.layout.autoOverflowSafety.
+  לא להפוך דף אחד בעייתי לרווחים בכל המסמך.
+
+  העימוד הדינמי צריך להיות בתוך מנוע העימוד עצמו:
+  המדידה ב-dom_packer/V9 צריכה למדוד את הפלט הסופי.
 */
 
-const AUTO_SAFETY_KEY = "ravtext.layout.autoOverflowSafety";
-const SESSION_ATTEMPTS_KEY = "ravtext.layout.autoOverflowAttempts.v1";
-
-const MAX_AUTO_SAFETY = 280;
-const MIN_INCREMENT = 10;
-const MAX_ATTEMPTS = 8;
-
-function readIntStorage(key, fallback = 0, min = 0, max = 9999) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null || raw === undefined || raw === "") return fallback;
-    const n = parseInt(raw, 10);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.max(min, Math.min(max, n));
-  } catch (_) {
-    return fallback;
-  }
-}
-
-function writeIntStorage(key, value) {
-  try {
-    localStorage.setItem(key, String(Math.max(0, Math.round(value || 0))));
-  } catch (_) {}
-}
-
-function readAttempts() {
-  try {
-    const raw = sessionStorage.getItem(SESSION_ATTEMPTS_KEY);
-    const n = parseInt(raw || "0", 10);
-    return Number.isFinite(n) ? n : 0;
-  } catch (_) {
-    return 0;
-  }
-}
-
-function writeAttempts(n) {
-  try {
-    sessionStorage.setItem(SESSION_ATTEMPTS_KEY, String(Math.max(0, n || 0)));
-  } catch (_) {}
-}
+const OLD_AUTO_SAFETY_KEY = "ravtext.layout.autoOverflowSafety";
+const OLD_SESSION_ATTEMPTS_KEY = "ravtext.layout.autoOverflowAttempts.v1";
 
 function isVisibleElement(el) {
   if (!el || el.nodeType !== 1) return false;
@@ -61,10 +25,8 @@ function isVisibleElement(el) {
 
 function isIgnorable(el) {
   if (!el || !el.classList) return true;
-
   if (el.classList.contains("page-placeholder")) return true;
   if (el.closest(".page-placeholder")) return true;
-
   if (el.closest(".pdf-toolbar")) return true;
   if (el.closest(".toolbar")) return true;
   if (el.closest(".app-header")) return true;
@@ -72,7 +34,6 @@ function isIgnorable(el) {
   if (el.closest(".ctx-menu")) return true;
   if (el.closest(".toast")) return true;
   if (el.closest("#__measure_root")) return true;
-
   return false;
 }
 
@@ -113,12 +74,10 @@ function collectPrintableCandidates(pageEl) {
     ".stream-title",
     ".ravtext-table",
     ".ravtext-table *",
-
     ".v9-line",
     ".v9-line *",
     ".v9-stream-title",
     ".v9-stream-title *",
-
     ".ravtext-page-header",
     ".ravtext-page-header *",
     ".ravtext-page-footer",
@@ -162,7 +121,6 @@ export function measureRenderedPageOverflow(pageEl, opts = {}) {
       const t = allowed.top - r.top;
       const l = allowed.left - r.left;
       const rr = r.right - allowed.right;
-
       const localMax = Math.max(b, t, l, rr);
 
       if (localMax > tolerance) {
@@ -237,38 +195,6 @@ export function validateRenderedPages(container, opts = {}) {
   };
 }
 
-function injectGuardCss() {
-  if (document.getElementById("ravtext-final-layout-guard-css")) return;
-
-  const style = document.createElement("style");
-  style.id = "ravtext-final-layout-guard-css";
-  style.textContent = `
-    .page-main,
-    .page-main p,
-    .stream,
-    .note,
-    .note-inline,
-    .note-part {
-      overflow-wrap: anywhere;
-      word-break: normal;
-    }
-
-    .page-main span,
-    .stream span,
-    .note span,
-    .note-inline span,
-    .note-part span {
-      max-width: 100%;
-    }
-
-    .ravtext-final-overflow-detected {
-      outline: 1px dashed rgba(220, 38, 38, 0.45);
-      outline-offset: -1px;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 function nextAnimationFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
@@ -281,19 +207,17 @@ async function afterPaint() {
 
 export function installFinalLayoutGuard(options = {}) {
   const getPagesContainer = options.getPagesContainer || (() => document.querySelector("#pages-container"));
-  const rerender = options.rerender || (() => {
-    if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
-  });
-
   const tolerance = Number.isFinite(options.tolerance) ? options.tolerance : 1.5;
   const debounceMs = Number.isFinite(options.debounceMs) ? options.debounceMs : 260;
-  const maxAutoSafety = Number.isFinite(options.maxAutoSafety) ? options.maxAutoSafety : MAX_AUTO_SAFETY;
 
-  injectGuardCss();
+  // ניקוי הנזק הישן: לא נותנים ל-280px להמשיך לחיות ב-localStorage.
+  try {
+    localStorage.removeItem(OLD_AUTO_SAFETY_KEY);
+    sessionStorage.removeItem(OLD_SESSION_ATTEMPTS_KEY);
+  } catch (_) {}
 
   let timer = null;
   let running = false;
-  let lastSignature = "";
 
   async function run(reason = "unknown") {
     if (running) return;
@@ -301,54 +225,23 @@ export function installFinalLayoutGuard(options = {}) {
 
     try {
       await afterPaint();
+      const result = validateRenderedPages(getPagesContainer(), { tolerance });
 
-      const container = getPagesContainer();
-      const result = validateRenderedPages(container, { tolerance });
+      window.__RAVTEXT_LAST_FINAL_LAYOUT_REPORT__ = result;
 
-      if (typeof window !== "undefined") {
-        window.__RAVTEXT_LAST_FINAL_LAYOUT_REPORT__ = result;
-      }
-
-      if (result.ok) {
-        writeAttempts(0);
-        return;
-      }
-
-      const bottom = Math.ceil(result.maxBottomOverflow || 0);
-      if (bottom <= tolerance) return;
-
-      const current = readIntStorage(AUTO_SAFETY_KEY, 0, 0, maxAutoSafety);
-      const inc = Math.max(MIN_INCREMENT, bottom + 8);
-      const next = Math.min(maxAutoSafety, current + inc);
-
-      const attempts = readAttempts();
-      const sig = `${Math.round(bottom)}:${current}:${next}:${result.pages.length}`;
-
-      if (attempts >= MAX_ATTEMPTS || next <= current || sig === lastSignature) {
-        console.warn("[final-layout-guard] overflow remains after max attempts", {
+      if (!result.ok) {
+        console.warn("[final-layout-guard] final overflow detected; diagnostic only", {
           reason,
-          current,
-          next,
-          attempts,
+          maxOverflow: Math.round(result.maxOverflow * 100) / 100,
+          maxBottomOverflow: Math.round(result.maxBottomOverflow * 100) / 100,
+          pages: result.pages.length,
           result,
         });
-        return;
+
+        window.dispatchEvent(new CustomEvent("ravtext:final-overflow-detected", {
+          detail: result,
+        }));
       }
-
-      lastSignature = sig;
-      writeAttempts(attempts + 1);
-      writeIntStorage(AUTO_SAFETY_KEY, next);
-
-      console.warn("[final-layout-guard] detected final overflow; increasing layout safety and rerendering", {
-        reason,
-        bottom,
-        current,
-        next,
-        attempts: attempts + 1,
-      });
-
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      rerender();
     } finally {
       running = false;
     }
@@ -375,11 +268,12 @@ export function installFinalLayoutGuard(options = {}) {
     schedule,
     validate: () => validateRenderedPages(getPagesContainer(), { tolerance }),
     resetSafety: () => {
-      writeIntStorage(AUTO_SAFETY_KEY, 0);
-      writeAttempts(0);
-      rerender();
+      try {
+        localStorage.removeItem(OLD_AUTO_SAFETY_KEY);
+        sessionStorage.removeItem(OLD_SESSION_ATTEMPTS_KEY);
+      } catch (_) {}
+      schedule("reset");
     },
-    getSafety: () => readIntStorage(AUTO_SAFETY_KEY, 0, 0, maxAutoSafety),
   };
 
   schedule("install");

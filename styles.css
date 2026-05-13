@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #0F172A;
   --panel: #15203A;
   --border: #1F2E54;
@@ -17,7 +17,7 @@
   --ravtext-page-font-family: "Frank Ruhl Libre", "David Libre", serif;
   --ravtext-page-width: 380px;
   --ravtext-page-height: 537px;
-  --ravtext-page-pack-safety: 50px;
+  --ravtext-page-pack-safety: 12px;
   --ravtext-features-header-reserved: 0px;
   --ravtext-features-footer-reserved: 0px;
   --ravtext-features-pagenumber-reserved: 0px;
@@ -5162,32 +5162,38 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) 
 }
 
 /* ============================================================
-   RAVTEXT FINAL RENDER MEASURE GUARD
+   RAVTEXT RESTORE STREAM BODY COLORS
 
-   לא מסתיר טקסט.
-   מאפשר עטיפה בטוחה לטקסטים שעברו inline-runs / spans / גופנים שונים.
+   צבעי הזרמים צריכים לחול על גוף הזרם כולו,
+   לא רק על נקודה/פס/כותרת.
    ============================================================ */
 
-.page-main,
-.page-main p,
-.stream,
-.note,
-.note-inline,
-.note-part {
-  overflow-wrap: anywhere;
-  word-break: normal;
+.page .stream-color-1 { --ravtext-stream-color: var(--rt-coral, #2563EB); }
+.page .stream-color-2 { --ravtext-stream-color: var(--rt-indigo, #1E2761); }
+.page .stream-color-3 { --ravtext-stream-color: var(--rt-gold, #B6862A); }
+.page .stream-color-4 { --ravtext-stream-color: var(--rt-emerald, #0F6B58); }
+.page .stream-color-5 { --ravtext-stream-color: var(--rt-plum, #1E4078); }
+.page .stream-color-6 { --ravtext-stream-color: var(--rt-rose-gold, #C9926A); }
+.page .stream-color-7 { --ravtext-stream-color: var(--rt-copper, #B57448); }
+.page .stream-color-8 { --ravtext-stream-color: var(--rt-rose, #185ABD); }
+
+.page .stream[class*="stream-color-"] {
+  color: var(--ravtext-stream-color);
 }
 
-.page-main span,
-.stream span,
-.note span,
-.note-inline span,
-.note-part span {
-  max-width: 100%;
+.page .stream[class*="stream-color-"] .stream-title {
+  color: var(--ravtext-stream-color);
+  border-bottom-color: var(--ravtext-stream-color) !important;
+}
+
+.page .stream[class*="stream-color-"] .note,
+.page .stream[class*="stream-color-"] .note-inline,
+.page .stream[class*="stream-color-"] .note-part,
+.page .stream[class*="stream-color-"] .note-lemma {
+  color: inherit;
 }
 
 .ravtext-final-overflow-detected {
   outline: 1px dashed rgba(220, 38, 38, 0.45);
   outline-offset: -1px;
 }
-

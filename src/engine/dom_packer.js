@@ -1,4 +1,4 @@
-﻿// Real-time DOM-measurement page packer with paragraph splitting.
+// Real-time DOM-measurement page packer with paragraph splitting.
 // Mimics word-processor pagination: each page is filled to the bottom margin,
 // paragraphs are split at word boundaries when needed, and each note
 // is placed on the same page as the spot in the body where it anchors.
@@ -7,7 +7,8 @@ import { streamColorIndex } from "./schema.js";
 import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layout.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
 import { applyStyleToElement } from "../style_registry.js";
-import { getEffectiveStreamSettings } from "../original_stream_columns.js";
+import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
+import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma } from "../original_stream_columns.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
@@ -106,19 +107,11 @@ function getRegularHeightSafety() {
   if (!Number.isFinite(n)) return cssDefault;
   return Math.max(0, Math.min(400, n));
 }
-function getAutoOverflowSafety() {
-  if (typeof localStorage === "undefined") return 0;
-  const raw = localStorage.getItem("ravtext.layout.autoOverflowSafety");
-  if (raw === null) return 0;
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(280, n));
-}
 
 export function getDomPageGeom() {
   const pageWidth = cssPxVar("--ravtext-page-width", DOM_PAGE_GEOM.pageWidth);
   const pageHeight = cssPxVar("--ravtext-page-height", DOM_PAGE_GEOM.pageHeight);
-  const safety = getRegularHeightSafety() + getAutoOverflowSafety();
+  const safety = getRegularHeightSafety();
   const topReserved = cssPxVar("--ravtext-features-header-reserved", 0);
   const bottomReserved = Math.max(
     cssPxVar("--ravtext-features-footer-reserved", 0),
@@ -273,6 +266,33 @@ function makeMeasureKey(mainSegments, streams) {
 // (estimateStreamLines הוסר 2026-05-06 — חישוב לפי תווים לא תאם את המציאות.
 //  הבחירה של עמודות נעשית כעת לפי הגדרת המשתמש בלבד.)
 
+
+function appendMeasureMainText(parent, seg, cursorByIdx) {
+  const text = String(seg?.text || "");
+  if (!text) return;
+
+  const idx = seg?.idx;
+  const meta = blockMetaFor(idx);
+  const runs = Array.isArray(meta.mainRuns) ? meta.mainRuns : [];
+  const full = typeof meta.fullMainText === "string" ? meta.fullMainText : "";
+
+  if (!runs.length || !full) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+
+  let cursor = cursorByIdx.get(idx) || 0;
+  let start = full.indexOf(text, cursor);
+  if (start < 0) start = full.indexOf(text);
+  if (start < 0) {
+    parent.appendChild(document.createTextNode(text));
+    return;
+  }
+
+  const end = start + text.length;
+  cursorByIdx.set(idx, end);
+  appendTextWithRuns(parent, text, sliceRuns(runs, start, end));
+}
 function buildMeasurePage(mainSegments, streams) {
   const page = document.createElement("div");
   page.className = "page measure-page";
@@ -285,16 +305,18 @@ function buildMeasurePage(mainSegments, streams) {
   applyMainTextStyleToElement(main);
   let lastIdx = null;
   let lastP = null;
+  const mainRunCursors = new Map();
   for (const seg of mainSegments) {
     if (seg.idx === lastIdx && lastP) {
-      lastP.textContent += " " + seg.text;
+      lastP.appendChild(document.createTextNode(" "));
+      appendMeasureMainText(lastP, seg, mainRunCursors);
     } else {
       const p = document.createElement(mainBlockTagFor(seg.idx));
       const meta = blockMetaFor(seg.idx);
       if (meta.blockType === "table") {
         appendTableRows(p, meta.tableRows || []);
       } else {
-        p.textContent = seg.text;
+        appendMeasureMainText(p, seg, mainRunCursors);
       }
       applyBlockStyleMeta(p, seg.idx);
       main.appendChild(p);
@@ -338,6 +360,7 @@ function buildMeasurePage(mainSegments, streams) {
       title.className = "stream-title";
       title.textContent = streamTitleForCode(code);
       applyStyleToElement(title, settings.titleStyleId);
+      applyBarStyleToElement(title, settings);
       s.appendChild(title);
 
       // Default = inline (continuous notes); user can toggle off per-stream.
@@ -347,25 +370,48 @@ function buildMeasurePage(mainSegments, streams) {
       const isCont = (tup) => tup[4] === 1 || tup[4] === true;
       function appendNoteContent(parent, tup, leadingSpace) {
         const text = tup[1] || "";
+        const runs = Array.isArray(tup[6]) ? tup[6] : [];
+
         if (isCont(tup)) {
-          parent.appendChild(document.createTextNode((leadingSpace ? " " : "") + text));
+          if (leadingSpace) parent.appendChild(document.createTextNode(" "));
+          appendTextWithRuns(parent, text, runs);
           return;
         }
+
         const prefix = (leadingSpace ? " " : "") + `[${displayNum(tup)}] `;
         parent.appendChild(document.createTextNode(prefix));
+
+        const leadingWs = text.length - text.replace(/^\s+/, "").length;
         const trimmed = text.replace(/^\s+/, "");
+        const trimmedRuns = sliceRuns(runs, leadingWs, leadingWs + trimmed.length);
         const spaceIdx = trimmed.indexOf(" ");
+        const boldLemma = shouldBoldStreamLemma(code);
+
         if (spaceIdx > 0) {
-          const lemma = document.createElement("strong");
-          lemma.className = "note-lemma";
-          lemma.textContent = trimmed.substring(0, spaceIdx);
-          parent.appendChild(lemma);
-          parent.appendChild(document.createTextNode(trimmed.substring(spaceIdx)));
+          const lemmaText = trimmed.substring(0, spaceIdx);
+          const restText = trimmed.substring(spaceIdx);
+          const lemmaRuns = sliceRuns(trimmedRuns, 0, spaceIdx);
+          const restRuns = sliceRuns(trimmedRuns, spaceIdx, trimmed.length);
+
+          if (boldLemma) {
+            const lemma = document.createElement("strong");
+            lemma.className = "note-lemma";
+            appendTextWithRuns(lemma, lemmaText, lemmaRuns);
+            parent.appendChild(lemma);
+          } else {
+            appendTextWithRuns(parent, lemmaText, lemmaRuns);
+          }
+
+          appendTextWithRuns(parent, restText, restRuns);
         } else if (trimmed.length > 0) {
-          const lemma = document.createElement("strong");
-          lemma.className = "note-lemma";
-          lemma.textContent = trimmed;
-          parent.appendChild(lemma);
+          if (boldLemma) {
+            const lemma = document.createElement("strong");
+            lemma.className = "note-lemma";
+            appendTextWithRuns(lemma, trimmed, trimmedRuns);
+            parent.appendChild(lemma);
+          } else {
+            appendTextWithRuns(parent, trimmed, trimmedRuns);
+          }
         }
       }
       if (notesInline) {
