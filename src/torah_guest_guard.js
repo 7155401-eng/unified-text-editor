@@ -62,16 +62,89 @@ function currentSelectedText() {
   return selectedTextFromBrowser() || selectedTextFromEditor();
 }
 
+// \u05de\u05e9\u05d4 2026-05-14: \u05d3\u05d9\u05d0\u05dc\u05d5\u05d2\u05d9\u05dd \u05de\u05d5\u05ea\u05d0\u05de\u05d9\u05dd \u05dc\u05e2\u05d9\u05e6\u05d5\u05d1 \u05d4\u05d0\u05ea\u05e8. \u05de\u05e9\u05ea\u05de\u05e9\u05d9\u05dd \u05d1-.modal-overlay /
+// .modal / .modal-desc / .modal-btns \u05d4\u05e7\u05d9\u05d9\u05de\u05d9\u05dd \u05d1-styles.css + theme-base-refresh.css.
+function buildThemedModal({ title, description, primaryLabel, primaryAction, secondaryLabel = "\u05d1\u05d9\u05d8\u05d5\u05dc" }) {
+  // \u05d4\u05e1\u05e8\u05ea \u05de\u05d5\u05d3\u05d0\u05dc \u05e7\u05d5\u05d3\u05dd \u05d0\u05dd \u05e4\u05ea\u05d5\u05d7
+  document.getElementById("torah-guest-themed-modal")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "torah-guest-themed-modal";
+  overlay.className = "modal-overlay active";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+
+  const modal = document.createElement("div");
+  modal.className = "modal";
+  modal.dir = "rtl";
+
+  const h = document.createElement("h2");
+  h.textContent = title;
+  modal.appendChild(h);
+
+  const desc = document.createElement("div");
+  desc.className = "modal-desc";
+  desc.style.whiteSpace = "pre-line";
+  desc.textContent = description;
+  modal.appendChild(desc);
+
+  const btns = document.createElement("div");
+  btns.className = "modal-btns";
+
+  const close = () => overlay.remove();
+
+  const primary = document.createElement("button");
+  primary.type = "button";
+  primary.textContent = primaryLabel;
+  primary.addEventListener("click", () => {
+    close();
+    if (typeof primaryAction === "function") primaryAction();
+  });
+
+  const secondary = document.createElement("button");
+  secondary.type = "button";
+  secondary.textContent = secondaryLabel;
+  secondary.addEventListener("click", close);
+
+  btns.appendChild(primary);
+  btns.appendChild(secondary);
+  modal.appendChild(btns);
+  overlay.appendChild(modal);
+
+  overlay.addEventListener("click", (ev) => {
+    if (ev.target === overlay) close();
+  });
+  document.addEventListener("keydown", function onEsc(ev) {
+    if (ev.key === "Escape") {
+      close();
+      document.removeEventListener("keydown", onEsc);
+    }
+  });
+
+  document.body.appendChild(overlay);
+  primary.focus();
+}
+
 function showLoginDialog() {
-  alert('\u05db\u05d3\u05d9 \u05dc\u05d4\u05e9\u05ea\u05de\u05e9 \u05d1\u05db\u05dc\u05d9\u05dd \u05e9\u05d1\u05d8\u05d0\u05d1 \u05ea\u05d5\u05e8\u05e0\u05d9 \u05d9\u05e9 \u05dc\u05d4\u05ea\u05d7\u05d1\u05e8 \u05dc\u05d7\u05e9\u05d1\u05d5\u05df.');
+  buildThemedModal({
+    title: "\u05e0\u05d3\u05e8\u05e9\u05ea \u05d4\u05ea\u05d7\u05d1\u05e8\u05d5\u05ea",
+    description: "\u05db\u05d3\u05d9 \u05dc\u05d4\u05e9\u05ea\u05de\u05e9 \u05d1\u05db\u05dc\u05d9\u05dd \u05e9\u05d1\u05d8\u05d0\u05d1 \u05d4\u05ea\u05d5\u05e8\u05e0\u05d9 \u05d9\u05e9 \u05dc\u05d4\u05ea\u05d7\u05d1\u05e8 \u05dc\u05d7\u05e9\u05d1\u05d5\u05df.",
+    primaryLabel: "\u05d4\u05ea\u05d7\u05d1\u05e8",
+    primaryAction: () => { window.location.href = "/api/auth/login"; },
+  });
 }
 
 function showFreeLimitDialog(length) {
-  alert(
-    '\u05dc\u05ea\u05d5\u05db\u05e0\u05d9\u05ea \u05d7\u05d9\u05e0\u05de\u05d9\u05ea \u05d0\u05e4\u05e9\u05e8 \u05dc\u05d4\u05e9\u05ea\u05de\u05e9 \u05d1"\u05ea\u05d5\u05e8\u05d4 \u05d0\u05d5\u05e8 \u05d4\u05e9\u05dc\u05dd" \u05e2\u05d3 500 \u05ea\u05d5\u05d5\u05d9\u05dd \u05d1\u05db\u05dc \u05e4\u05e2\u05dd.' +
-    '\n\n\u05e1\u05d5\u05de\u05e0\u05d5 \u05db\u05e2\u05ea ' + length + ' \u05ea\u05d5\u05d5\u05d9\u05dd.' +
-    '\n\n\u05d1\u05d7\u05e8 \u05e7\u05d8\u05e2 \u05e7\u05e6\u05e8 \u05d9\u05d5\u05ea\u05e8 \u05d0\u05d5 \u05e2\u05d1\u05d5\u05e8 \u05dc\u05de\u05e0\u05d5\u05d9 \u05de\u05dc\u05d0.'
-  );
+  buildThemedModal({
+    title: '\u05de\u05d2\u05d1\u05dc\u05ea "\u05ea\u05d5\u05e8\u05d4 \u05d0\u05d5\u05e8 \u05d4\u05e9\u05dc\u05dd"',
+    description:
+      '\u05dc\u05ea\u05d5\u05db\u05e0\u05d9\u05ea \u05d7\u05d9\u05e0\u05de\u05d9\u05ea \u05d0\u05e4\u05e9\u05e8 \u05dc\u05d4\u05e9\u05ea\u05de\u05e9 \u05d1"\u05ea\u05d5\u05e8\u05d4 \u05d0\u05d5\u05e8 \u05d4\u05e9\u05dc\u05dd" \u05e2\u05d3 500 \u05ea\u05d5\u05d5\u05d9\u05dd \u05d1\u05db\u05dc \u05e4\u05e2\u05dd.' +
+      '\n\n\u05e1\u05d5\u05de\u05e0\u05d5 \u05db\u05e2\u05ea ' + length + ' \u05ea\u05d5\u05d5\u05d9\u05dd.' +
+      '\n\n\u05d1\u05d7\u05e8 \u05e7\u05d8\u05e2 \u05e7\u05e6\u05e8 \u05d9\u05d5\u05ea\u05e8 \u05d0\u05d5 \u05e2\u05d1\u05d5\u05e8 \u05dc\u05de\u05e0\u05d5\u05d9 \u05de\u05dc\u05d0.',
+    primaryLabel: "\u05e2\u05d1\u05d5\u05e8 \u05dc\u05de\u05e0\u05d5\u05d9",
+    primaryAction: () => { window.location.href = "/api/auth/login"; },
+    secondaryLabel: "\u05e1\u05d2\u05d5\u05e8",
+  });
 }
 
 function blockEvent(event) {
