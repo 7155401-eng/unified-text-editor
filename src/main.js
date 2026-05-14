@@ -26,6 +26,8 @@
       }
     }
     sessionStorage.removeItem("ravtext.layout.autoOverflowAttempts.v1");
+    sessionStorage.removeItem("ravtext.layout.overflowReserve.v1");
+    sessionStorage.removeItem("ravtext.layout.overflowReserve.v1.iter");
   } catch (_) {}
 })();
 
@@ -37,6 +39,7 @@ import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { installFinalLayoutGuard } from "./engine/final_layout_guard.js";
+import { bootstrapLiveOverflowReserve, resetLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
@@ -238,6 +241,10 @@ loadInitialState(paneManager).then((res) => {
 const pagesContainer = document.querySelector("#pages-container");
 
 // Final render guard:
+// משה 2026-05-14: bootstrap ה-reserve הדינמי מ-session לפני הפעלת ה-engine,
+// כדי שה-pack הראשון כבר ייקח אותה בחשבון. גם משחזר מצב טוב בין רענונים.
+bootstrapLiveOverflowReserve();
+
 // מודד את הדף אחרי הרינדור הסופי. אם יש גלישה,
 // מגדיל כרית עימוד ומרנדר מחדש, בלי להסתיר טקסט.
 installFinalLayoutGuard({
@@ -1053,6 +1060,15 @@ function rerenderPages() {
   scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi);
 }
 
+// משה 2026-05-14: כשהמשתמש מקליד או משנה משהו, ה-reserve הדינמי שצברנו
+// כבר לא תקף — מאפסים אותו לפני ה-pack הבא כדי שלא נצמצם את הדף בלי סיבה.
+if (typeof paneManager !== "undefined" && paneManager?.on) {
+  let resetTimer;
+  paneManager.on("change", () => {
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(resetLiveOverflowReserve, 60);
+  });
+}
 // צוות האתר 2026-05-08: hook לרענון יזום מ-settings_pane (V8 toggle וכו').
 if (typeof window !== "undefined") {
   window.__ravtextRerender = rerenderPages;

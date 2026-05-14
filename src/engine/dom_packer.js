@@ -123,10 +123,13 @@ export function getDomPageGeom() {
     cssPxVar("--ravtext-features-footer-reserved", 0),
     cssPxVar("--ravtext-features-pagenumber-reserved", 0),
   );
+  // משה 2026-05-14: ה-corrector הדינמי יכול לדחוף "צמצום גובה" כדי להוציא
+  // תוכן שגלש לעמוד הבא. הערך מתאפס בכל פעם שהמשתמש מקליד/משנה הגדרות.
+  const overflowReserve = cssPxVar("--ravtext-features-overflow-reserve", 0);
   return {
     pageWidth,
     pageHeight,
-    maxPageHeight: Math.max(360, pageHeight - Math.max(0, safety) - topReserved - bottomReserved),
+    maxPageHeight: Math.max(360, pageHeight - Math.max(0, safety) - topReserved - bottomReserved - Math.max(0, overflowReserve)),
   };
 }
 
@@ -623,6 +626,23 @@ function noMidParagraphSoftEnabled() {
   }
 }
 
+// משה 2026-05-14: live_overflow_corrector מזהה זוגות פיצול שניתן לאחד וכותב
+// hints ל-window. כאן בודקים אם הזרם/anchor הספציפי שלפנינו מסומן כ"אל תפצל
+// הפעם" — אם כן, splitNote יעדיף להחזיר את כל ההערה לעמוד הבא במקום לחתוך.
+function hasRemergeHintFor(stream, anchor, num) {
+  if (typeof window === "undefined") return false;
+  const hints = window.__ravtextRemergeHints;
+  if (!Array.isArray(hints) || !hints.length) return false;
+  const a = String(anchor || "");
+  const n = String(num || "");
+  const s = String(stream || "");
+  return hints.some(h =>
+    String(h.streamCode || "") === s &&
+    (!h.anchor || String(h.anchor) === a) &&
+    (!h.num || String(h.num) === n)
+  );
+}
+
 function noSplitsAtAllEnabled() {
   return noMidLineSplitsEnabled();
 }
@@ -1015,6 +1035,11 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   // Adds "…" markers to indicate continuation.
   function splitNote(note, maxHeight) {
     if (noSplitsAtAllEnabled()) return [note, null];
+    // משה 2026-05-14: אם live_overflow_corrector זיהה שזו הערה שפוצלה
+    // בעבר ויכולה לחזור לעמוד אחד — לא לפצל הפעם.
+    if (hasRemergeHintFor(note.stream, note.anchor, note.num)) {
+      return [note, null];
+    }
     const charsThatFit = fitNoteCharPrefix(note.stream, note.anchor, note.text, maxHeight);
     if (charsThatFit <= 0) {
       // Can't fit even a single char — force the whole note (overflow).
