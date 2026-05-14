@@ -1069,18 +1069,20 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // upgrade existing .opening-word elements.
     logEvent("opening_word_stretch", { pageCount: pagesContainer.querySelectorAll(".page").length });
     applyOpeningWordStretchToPages(pagesContainer);
-    // משה 2026-05-06: זרם בודד מתחת לתלמוד שתופס גובה גדול > 50% מהעמוד —
-    // אילוץ multi-column אוטומטי. מונע חריגה ב-page-streams עם הערה ענקית.
+    // משה 2026-05-14: בעבר auto-2-columns הופעל אוטומטית על זרמים גדולים,
+    // אבל זה דרס בחירה מפורשת של המשתמש לטור-אחד. עכשיו: רק אם המשתמש לא
+    // קבע cols=1 מפורשות.
     pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
       const pageH = p.clientHeight || 537;
-      // כל זרם — בכל מקום (לא רק page-streams ישיר)
       p.querySelectorAll(".stream[data-stream]:not([data-stream-cols])").forEach(s => {
-        // לא נוגעים בכתרי תלמוד או בbody
         if (s.classList.contains("talmud-crown-portion") ||
             s.classList.contains("talmud-body-portion") ||
             s.classList.contains("talmud-body-expanded") ||
             s.classList.contains("talmud-no-crown-side") ||
             s.classList.contains("talmud-other-side")) return;
+        const code = s.getAttribute("data-stream");
+        const userCols = code ? (getEffectiveStreamSettings(code)?.cols || 1) : 1;
+        if (userCols === 1) return; // המשתמש בחר טור אחד — לא נוגעים
         const h = s.getBoundingClientRect().height;
         if (h > pageH * 0.5) {
           s.style.columnCount = "2";

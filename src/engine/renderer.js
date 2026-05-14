@@ -357,6 +357,20 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
   if (codes.length > 0) {
     const streamsWrap = document.createElement("div");
     streamsWrap.className = "page-streams";
+    // משה 2026-05-14: פס בין הראשי לכל המפרשים — שליטה גלובלית.
+    // קוראים מ-loadGlobalStreamOverrides דרך getEffectiveStreamSettings של זרם
+    // הראשון, כי הגלובלים זהים לכולם.
+    if (codes.length > 0 && pageHasMain) {
+      const firstSettings = getEffectiveStreamSettings(codes[0]);
+      if (firstSettings.mainSepShow) {
+        const px = Math.max(0, Math.min(6, Number(firstSettings.mainSepThickness) || 1));
+        const color = String(firstSettings.mainSepColor || "#888").trim() || "#888";
+        if (px > 0) {
+          streamsWrap.style.borderTop = `${px}px solid ${color}`;
+          streamsWrap.style.paddingTop = "4px";
+        }
+      }
+    }
     for (const code of codes) {
       const streamEl = createStreamElement(code, pageData.streams[code], streamNumLastPage, pageIndex, { pageHasMain });
       if (streamEl) streamsWrap.appendChild(streamEl);

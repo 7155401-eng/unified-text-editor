@@ -164,6 +164,10 @@ const GLOBAL_OVERRIDE_DEFS = {
   barPreset: { label: "סגנון פס", type: "select", value: "", options: [["", "ידני"], ["hairline", "חוט יחיד"], ["double-line", "כפול וילנא"], ["thick-thin", "עבה ודק"], ["antique-gold", "זהב עתיק"], ["manuscript", "כתב יד"], ["crown", "כתר"]] },
   barColor: { label: "צבע הפס", type: "text", value: "#888" },
   barThickness: { label: "עובי הפס (px)", type: "number", value: 1, min: 0, max: 6, step: 1 },
+  // משה 2026-05-14: פס מעל **כל המפרשים** (בין הראשי להערות) — שליטה גלובלית.
+  mainSepShow: { label: "פס בין הראשי לכל המפרשים", type: "boolean", value: false },
+  mainSepColor: { label: "צבע פס ראשי-מפרשים", type: "text", value: "#888" },
+  mainSepThickness: { label: "עובי פס ראשי-מפרשים (px)", type: "number", value: 1, min: 0, max: 6, step: 1 },
 
   // משה 2026-05-13: מיספור לזרמים (לתורה אור השלום, להערות וציונים).
   // ברירת מחדל = כיבוי mainRef (לא מופיע מספר בראשי) — שומר תאימות.
