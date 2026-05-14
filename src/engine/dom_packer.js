@@ -999,14 +999,17 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     const wordEnd = adjustToWordBoundary(note.text, charsThatFit);
     if (wordEnd <= 0) return [note, null];
     if (wordEnd >= note.text.length) return [note, null];
+    // משה 2026-05-14: סימן חיתוך נסתר (U+2060 Word-Joiner) בקצה כל חלק —
+    // לא נראה בטקסט, אבל מאפשר ל-corrector ולמדידה הבאה לדעת היכן בוצע
+    // חיתוך מאולץ. אם הפריסה משתנה והקטעים יכולים להתאחד, אפשר לזהות זאת.
+    const SPLIT_MARK = "⁠";
     const part1 = {
       stream: note.stream,
       anchor: note.anchor,
       num: note.num,
       isContinuation: !!note.isContinuation,
-      text: note.text.substring(0, wordEnd).trimEnd(),
-      // Children attach to the leading half only — when a parent splits
-      // across pages, its inner notes appear with the leading half.
+      text: note.text.substring(0, wordEnd).trimEnd() + SPLIT_MARK,
+      wasSplit: true,
       children: note.isContinuation ? [] : (note.children || []),
     };
     const part2 = {
@@ -1014,7 +1017,8 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       anchor: note.anchor,
       num: note.num,
       isContinuation: true,
-      text: note.text.substring(wordEnd).trimStart(),
+      text: SPLIT_MARK + note.text.substring(wordEnd).trimStart(),
+      wasSplit: true,
       children: [],
     };
     return [part1, part2];
@@ -1053,11 +1057,13 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       if (end <= 0 || end >= remainingNote.text.length) break;
       parts.push({
         ...remainingNote,
-        text: remainingNote.text.substring(0, end).trimEnd(),
+        text: remainingNote.text.substring(0, end).trimEnd() + "⁠",
+        wasSplit: true,
       });
       remainingNote = {
         ...remainingNote,
-        text: remainingNote.text.substring(end).trimStart(),
+        text: "⁠" + remainingNote.text.substring(end).trimStart(),
+        wasSplit: true,
         isContinuation: true,
         children: [],
       };
@@ -1171,14 +1177,16 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
               anchor: next.anchor,
               num: next.num,
               isContinuation: !!next.isContinuation,
-              text: next.text.substring(0, wordEnd).trimEnd(),
+              text: next.text.substring(0, wordEnd).trimEnd() + "⁠",
+              wasSplit: true,
             };
             const part2 = {
               stream: next.stream,
               anchor: next.anchor,
               num: next.num,
               isContinuation: true,
-              text: next.text.substring(wordEnd).trimStart(),
+              text: "⁠" + next.text.substring(wordEnd).trimStart(),
+              wasSplit: true,
             };
             pageStreams = addNotesToStreams({}, paraIdx, placed.concat([part1]));
             pageHeight = measureHeight([], pageStreams);
