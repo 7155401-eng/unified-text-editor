@@ -1606,6 +1606,32 @@ function renderPagePlan(plan, pageEl, cfg) {
     }
   }
 
+  // משה 2026-05-14: פס בין הראשי לכל המפרשים — גם ב-V9.
+  // מצייר קו אופקי בקצה התחתון של mainBox אם המשתמש הפעיל את ההגדרה.
+  if (plan.mainBox && plan.footerBoxes && plan.footerBoxes.length > 0) {
+    const firstFooterId = plan.footerBoxes[0].id;
+    const settings = (cfg.streamSettings || {})[firstFooterId] || {};
+    if (settings.mainSepShow) {
+      const px = Math.max(0, Math.min(6, Number(settings.mainSepThickness) || 1));
+      const color = String(settings.mainSepColor || "#888").trim() || "#888";
+      if (px > 0) {
+        const sep = document.createElement('div');
+        sep.className = 'v9-main-separator';
+        const mainBottom = plan.mainBox.y + (plan.mainBox.height || 0);
+        const firstFooterTop = plan.footerBoxes[0].titleY || mainBottom + 4;
+        const sepY = Math.round((mainBottom + firstFooterTop) / 2) - Math.ceil(px / 2);
+        sep.style.position = 'absolute';
+        sep.style.left = padding + 'px';
+        sep.style.top = sepY + 'px';
+        sep.style.width = plan.pageBox.innerWidth + 'px';
+        sep.style.height = px + 'px';
+        sep.style.background = color;
+        sep.style.pointerEvents = 'none';
+        pageEl.appendChild(sep);
+      }
+    }
+  }
+
   if (typeof queueMicrotask === "function") {
     queueMicrotask(() => autoResolveV9CrownMainOverlap(pageEl));
   } else {
