@@ -1044,48 +1044,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       function measureTotalOverflow() {
         let sum = 0;
         pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
-          let ov = p.scrollHeight - p.clientHeight;
-          const pageRect = p.getBoundingClientRect();
-
-          const streamsAndMain = Array.from(p.querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right, .v9-line'));
-          const rects = streamsAndMain.map(el => ({ el, rect: el.getBoundingClientRect() }));
-
-          rects.forEach(({ rect }) => {
-            if (rect.bottom > pageRect.bottom + 2) {
-              const visualOverflow = rect.bottom - pageRect.bottom;
-              if (visualOverflow > ov) {
-                ov = visualOverflow;
-              }
-            }
-          });
-
-          let maxOverlap = 0;
-          for (let i = 0; i < rects.length; i++) {
-            for (let j = i + 1; j < rects.length; j++) {
-               const { el: el1, rect: r1 } = rects[i];
-               const { el: el2, rect: r2 } = rects[j];
-               if (el1.contains(el2) || el2.contains(el1)) continue;
-
-               if (r1.width === 0 || r1.height === 0 || r2.width === 0 || r2.height === 0) continue;
-
-               const intersectX = r1.left < r2.right && r1.right > r2.left;
-               const intersectY = r1.top < r2.bottom && r1.bottom > r2.top;
-
-               if (intersectX && intersectY) {
-                 const overlapX = Math.min(r1.right, r2.right) - Math.max(r1.left, r2.left);
-                 const overlapY = Math.min(r1.bottom, r2.bottom) - Math.max(r1.top, r2.top);
-
-                 // Tolerate sub-pixel touching
-                 if (overlapX > 1 && overlapY > 1) {
-                   if (overlapY > maxOverlap) maxOverlap = overlapY;
-                 }
-               }
-            }
-          }
-          if (maxOverlap > ov) {
-              ov = maxOverlap;
-          }
-
+          const ov = p.scrollHeight - p.clientHeight;
           if (ov > 1) sum += ov;
         });
         return sum;
@@ -1095,47 +1054,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
           pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
         );
         for (let i = 0; i < pages.length; i++) {
-          let ov = pages[i].scrollHeight - pages[i].clientHeight;
-          const pageRect = pages[i].getBoundingClientRect();
-
-          const streamsAndMain = Array.from(pages[i].querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right, .v9-line'));
-          const rects = streamsAndMain.map(el => ({ el, rect: el.getBoundingClientRect() }));
-
-          rects.forEach(({ rect }) => {
-            if (rect.bottom > pageRect.bottom + 2) {
-              const visualOverflow = rect.bottom - pageRect.bottom;
-              if (visualOverflow > ov) {
-                ov = visualOverflow;
-              }
-            }
-          });
-
-          let maxOverlap = 0;
-          for (let k = 0; k < rects.length; k++) {
-            for (let j = k + 1; j < rects.length; j++) {
-               const { el: el1, rect: r1 } = rects[k];
-               const { el: el2, rect: r2 } = rects[j];
-               if (el1.contains(el2) || el2.contains(el1)) continue;
-
-               if (r1.width === 0 || r1.height === 0 || r2.width === 0 || r2.height === 0) continue;
-
-               const intersectX = r1.left < r2.right && r1.right > r2.left;
-               const intersectY = r1.top < r2.bottom && r1.bottom > r2.top;
-
-               if (intersectX && intersectY) {
-                 const overlapX = Math.min(r1.right, r2.right) - Math.max(r1.left, r2.left);
-                 const overlapY = Math.min(r1.bottom, r2.bottom) - Math.max(r1.top, r2.top);
-
-                 if (overlapX > 1 && overlapY > 1) {
-                   if (overlapY > maxOverlap) maxOverlap = overlapY;
-                 }
-               }
-            }
-          }
-          if (maxOverlap > ov) {
-              ov = maxOverlap;
-          }
-
+          const ov = pages[i].scrollHeight - pages[i].clientHeight;
           if (ov > 1) return i;
         }
         return -1;
