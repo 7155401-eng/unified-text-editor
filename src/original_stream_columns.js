@@ -175,10 +175,28 @@ const GLOBAL_OVERRIDE_DEFS = {
   mainRefPrefix: { label: "ראשי פתיחה", type: "text", value: "[" },
   mainRefSuffix: { label: "ראשי סגירה", type: "text", value: "]" },
   mainRefBold: { label: "ראשי מודגש", type: "boolean", value: false },
+  mainRefStyle: { label: "פורמט מספר בראשי", type: "select", value: "num", options: [
+    ["num", "מספרים 1 2 3"],
+    ["heb-geresh", "עברית א ב ג ... י י\"א"],
+    ["heb-double", "עברית א ב ג ... כ ל מ"],
+    ["alpha-lower", "אנגלית קטן a b c"],
+    ["alpha-upper", "אנגלית גדול A B C"],
+    ["roman-lower", "רומיות קטן i ii iii"],
+    ["roman-upper", "רומיות גדול I II III"],
+  ]},
   noteNumEnabled: { label: "מספר בהערה", type: "boolean", value: true },
   noteNumPrefix: { label: "הערה פתיחה", type: "text", value: "[" },
   noteNumSuffix: { label: "הערה סגירה", type: "text", value: "]" },
   noteNumBold: { label: "הערה מודגש", type: "boolean", value: false },
+  noteNumStyle: { label: "פורמט מספר בהערה", type: "select", value: "num", options: [
+    ["num", "מספרים 1 2 3"],
+    ["heb-geresh", "עברית א ב ג ... י י\"א"],
+    ["heb-double", "עברית א ב ג ... כ ל מ"],
+    ["alpha-lower", "אנגלית קטן a b c"],
+    ["alpha-upper", "אנגלית גדול A B C"],
+    ["roman-lower", "רומיות קטן i ii iii"],
+    ["roman-upper", "רומיות גדול I II III"],
+  ]},
   noteTextPrefix: { label: "סוגר גוף פתיחה", type: "text", value: "" },
   noteTextSuffix: { label: "סוגר גוף סגירה", type: "text", value: "" },
   lemmaBold: { label: "דיבור המתחיל מודגש", type: "boolean", value: true },
@@ -758,6 +776,26 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       cur.mainRefBold = checked;
       commitRender();
     }));
+    // משה 2026-05-14: פורמט מיספור בראשי — מספרים/עברית/רומיות/אנגלית
+    const numStyleOptions = [
+      ["num", "מספרים 1 2 3"],
+      ["heb-geresh", 'עברית א ב ג ... י י"א'],
+      ["heb-double", "עברית א ב ג ... כ ל מ"],
+      ["alpha-lower", "אנגלית קטן a b c"],
+      ["alpha-upper", "אנגלית גדול A B C"],
+      ["roman-lower", "רומיות קטן i ii iii"],
+      ["roman-upper", "רומיות גדול I II III"],
+    ];
+    const mainStyleLabel = document.createElement("label");
+    mainStyleLabel.className = "stream-col-input";
+    const mainStyleSpan = document.createElement("span");
+    mainStyleSpan.textContent = "פורמט ראשי:";
+    mainStyleLabel.appendChild(mainStyleSpan);
+    mainStyleLabel.appendChild(makeSelect(numStyleOptions, cur.mainRefStyle || "num", (val) => {
+      cur.mainRefStyle = val;
+      commitRender();
+    }));
+    block.appendChild(mainStyleLabel);
     block.appendChild(makeCheckbox("מספר בהערה", cur.noteNumEnabled !== false, (checked) => {
       cur.noteNumEnabled = checked;
       commitRender();
@@ -774,6 +812,17 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       cur.noteNumBold = checked;
       commitRender();
     }));
+    // משה 2026-05-14: פורמט מיספור בהערה — נפרד מהפורמט בראשי
+    const noteStyleLabel = document.createElement("label");
+    noteStyleLabel.className = "stream-col-input";
+    const noteStyleSpan = document.createElement("span");
+    noteStyleSpan.textContent = "פורמט הערה:";
+    noteStyleLabel.appendChild(noteStyleSpan);
+    noteStyleLabel.appendChild(makeSelect(numStyleOptions, cur.noteNumStyle || "num", (val) => {
+      cur.noteNumStyle = val;
+      commitRender();
+    }));
+    block.appendChild(noteStyleLabel);
     block.appendChild(makeLabeledInput("סוגר גוף פתיחה:", cur.noteTextPrefix ?? "", { type: "text" }, (input) => {
       cur.noteTextPrefix = input.value;
       commitRender();
