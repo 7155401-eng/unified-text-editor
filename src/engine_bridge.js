@@ -1948,10 +1948,16 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     console.log(`[engine] ${pages.length} pages | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
   } catch (err) {
     console.error("Engine render error:", err);
-    pagesContainer.innerHTML = `<div class="error-hint">שגיאת רינדור: ${escapeHtml(err.message)}</div>`;
+    // משה 2026-05-14: הצגת השגיאה גם בסטטוס. בלי זה ה-"מרענן..." נשאר על המסך
+    // אחרי שהרינדור נכשל, וזה נראה כאילו האפליקציה תקועה.
+    const errStatusEl = document.getElementById("status");
+    if (errStatusEl) {
+      errStatusEl.textContent = `שגיאת רינדור: ${err && err.message ? err.message : err}`;
+    }
+    pagesContainer.innerHTML = `<div class="error-hint">שגיאת רינדור: ${escapeHtml(err && err.message ? err.message : String(err))}</div>`;
     if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-      detail: { pages: [], content: [], error: err.message },
+      detail: { pages: [], content: [], error: err && err.message ? err.message : String(err) },
     }));
   }
 }
