@@ -5,31 +5,60 @@ import {
   getEffectiveStreamSettings,
   formatStreamNumber,
   shouldBoldStreamNumber,
-  shouldBoldStreamLemma,
   applyBarStyleToElement,
   _streamBoolSetting,
-  noteTextPrefixForStream,
-  noteTextSuffixForStream,
 } from "../original_stream_columns.js";
-import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
+import { appendTextWithRuns } from "./runs_dom.js";
+import { buildNoteContentNodes } from "./note_content_builder.js";
 
-// משה 2026-05-13: הוספת מספר זרם לפני טקסט הערה/תת-הערה.
-// ברירת המחדל של formatStreamNumber זהה לפלט הישן ("[N]" להערה, "[code-num]"
-// לתת-הערה) — אז ההחלפה לא משנה התנהגות עד שמשה ישנה הגדרה ב-UI.
-function appendNumberPrefix(parent, code, num, place, leadingSpace = false) {
-  const formatted = formatStreamNumber(code, num, place);
-  if (!formatted) {
-    if (leadingSpace) parent.appendChild(document.createTextNode(" "));
-    return;
-  }
-  const text = (leadingSpace ? " " : "") + formatted + " ";
-  if (shouldBoldStreamNumber(code, place)) {
-    const strong = document.createElement("strong");
-    strong.className = "note-number";
-    strong.textContent = text;
-    parent.appendChild(strong);
-  } else {
-    parent.appendChild(document.createTextNode(text));
+// משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
+// ב-note_content_builder.js. הפונקציה הזו ממירה את ה-nodes ל-DOM (עם
+// classes כמו .note-number / .note-lemma / .note-child) — V9 משטח את אותם
+// nodes לטקסט+runs. החלטות עיצוב (מספור, הבלטה, סוגרי גוף) ממקום יחיד.
+function appendNoteNodesToDom(parent, nodes, streamColorIndexFn) {
+  for (const n of nodes) {
+    if (n.kind === "space") {
+      parent.appendChild(document.createTextNode(" "));
+      continue;
+    }
+    if (n.kind === "number") {
+      if (n.bold) {
+        const strong = document.createElement("strong");
+        strong.className = "note-number";
+        strong.textContent = n.text;
+        parent.appendChild(strong);
+      } else {
+        parent.appendChild(document.createTextNode(n.text));
+      }
+      continue;
+    }
+    if (n.kind === "prefix" || n.kind === "suffix") {
+      parent.appendChild(document.createTextNode(n.text));
+      continue;
+    }
+    if (n.kind === "lemma" || n.kind === "body") {
+      if (n.bold) {
+        const lemma = document.createElement("strong");
+        lemma.className = "note-lemma";
+        appendTextWithRuns(lemma, n.text, n.runs);
+        parent.appendChild(lemma);
+      } else {
+        appendTextWithRuns(parent, n.text, n.runs);
+      }
+      continue;
+    }
+    if (n.kind === "rest" || n.kind === "cont") {
+      appendTextWithRuns(parent, n.text, n.runs);
+      continue;
+    }
+    if (n.kind === "child") {
+      const wrap = document.createElement("span");
+      wrap.className = `note-child note-stream-${streamColorIndexFn(n.stream)}`;
+      wrap.dataset.stream = n.stream;
+      if (typeof n.num === "number") wrap.dataset.noteNum = String(n.num);
+      appendNoteNodesToDom(wrap, n.nodes, streamColorIndexFn);
+      parent.appendChild(wrap);
+    }
   }
 }
 
@@ -215,103 +244,19 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
     typeof tup[3] === "number" && tup[3] > 0 ? tup[3] : tup[0];
   const isCont = (tup) => tup[4] === 1 || tup[4] === true;
 
-  // Build a note's DOM content: "[N] " prefix + lemma (first word, bolded
-  // via .note-lemma) + rest. For continuation halves, no prefix and no
-  // lemma — the lemma sits with the leading half.
-  //
-  // Nested children (tup[5] = array of {stream, text, num, children}) are
-  // inlined inside the parent's apparatus block at the end of the parent's
-  // text. Each child renders as `[stream-num] lemma rest`, in a span whose
-  // class identifies the child's stream so colors flow through.
+  // משה 2026-05-15: מנגנון יחיד — buildNoteContentNodes. ההחלטות (מספור,
+  // הבלטה, סוגרים, ילדים מקוננים) ממקום יחיד; כאן רק ממירים ל-DOM.
   function appendNoteContent(parent, tup, leadingSpace) {
     const text = tup[1] || "";
     const runs = Array.isArray(tup[6]) ? tup[6] : [];
-    if (isCont(tup)) {
-      if (leadingSpace) parent.appendChild(document.createTextNode(" "));
-      appendTextWithRuns(parent, text, runs);
-      return;
-    }
-    // משה 2026-05-13: מספר ההערה דרך formatStreamNumber. ברירת מחדל מחזירה
-    // "[N] " — אותו פלט כמו הקוד הישן; UI מאפשר לשנות סוגריים/הדגשה.
-    appendNumberPrefix(parent, streamCode, displayNum(tup), "note", leadingSpace);
-    // משה 2026-05-14: סוגר גוף פתיחה/סגירה (noteTextPrefix/noteTextSuffix).
-    const bodyPrefix = noteTextPrefixForStream(streamCode);
-    const bodySuffix = noteTextSuffixForStream(streamCode);
-    if (bodyPrefix) {
-      parent.appendChild(document.createTextNode(bodyPrefix));
-    }
-    // משה 2026-05-13: ה-runs מתייחסים לטקסט המקורי לפני trim של רווחים מובילים.
-    // נחשב כמה הוסר ונכוון את האופסטים.
-    const leadingWs = text.length - text.replace(/^\s+/, "").length;
-    const trimmed = text.replace(/^\s+/, "");
-    const trimmedRuns = sliceRuns(runs, leadingWs, leadingWs + trimmed.length);
-    const spaceIdx = trimmed.indexOf(" ");
-    const boldLemma = shouldBoldStreamLemma(streamCode);
-    if (spaceIdx > 0) {
-      const lemmaText = trimmed.substring(0, spaceIdx);
-      const restText = trimmed.substring(spaceIdx);
-      const lemmaRuns = sliceRuns(trimmedRuns, 0, spaceIdx);
-      const restRuns = sliceRuns(trimmedRuns, spaceIdx, trimmed.length);
-      if (boldLemma) {
-        const lemma = document.createElement("strong");
-        lemma.className = "note-lemma";
-        appendTextWithRuns(lemma, lemmaText, lemmaRuns);
-        parent.appendChild(lemma);
-      } else {
-        appendTextWithRuns(parent, lemmaText, lemmaRuns);
-      }
-      appendTextWithRuns(parent, restText, restRuns);
-    } else if (trimmed.length > 0) {
-      if (boldLemma) {
-        const lemma = document.createElement("strong");
-        lemma.className = "note-lemma";
-        appendTextWithRuns(lemma, trimmed, trimmedRuns);
-        parent.appendChild(lemma);
-      } else {
-        appendTextWithRuns(parent, trimmed, trimmedRuns);
-      }
-    }
-    if (bodySuffix) {
-      parent.appendChild(document.createTextNode(bodySuffix));
-    }
-    appendChildNotes(parent, Array.isArray(tup[5]) ? tup[5] : []);
-  }
-
-  function appendChildNotes(parent, children) {
-    for (const child of children) {
-      const wrap = document.createElement("span");
-      wrap.className = `note-child note-stream-${streamColorIndex(child.stream)}`;
-      wrap.dataset.stream = child.stream;
-      if (typeof child.num === "number") wrap.dataset.noteNum = String(child.num);
-      // משה 2026-05-13: ברירת מחדל = " [code-num] " (זהה לפלט הישן).
-      appendNumberPrefix(wrap, child.stream, child.num || 0, "child", true);
-      const childTrim = (child.text || "").replace(/^\s+/, "");
-      const sp = childTrim.indexOf(" ");
-      const boldChildLemma = shouldBoldStreamLemma(child.stream);
-      if (sp > 0) {
-        if (boldChildLemma) {
-          const lem = document.createElement("strong");
-          lem.className = "note-lemma";
-          lem.textContent = childTrim.substring(0, sp);
-          wrap.appendChild(lem);
-        } else {
-          wrap.appendChild(document.createTextNode(childTrim.substring(0, sp)));
-        }
-        wrap.appendChild(document.createTextNode(childTrim.substring(sp)));
-      } else if (childTrim.length > 0) {
-        if (boldChildLemma) {
-          const lem = document.createElement("strong");
-          lem.className = "note-lemma";
-          lem.textContent = childTrim;
-          wrap.appendChild(lem);
-        } else {
-          wrap.appendChild(document.createTextNode(childTrim));
-        }
-      }
-      const grand = Array.isArray(child.children) ? child.children : [];
-      if (grand.length > 0) appendChildNotes(wrap, grand);
-      parent.appendChild(wrap);
-    }
+    const children = Array.isArray(tup[5]) ? tup[5] : [];
+    const nodes = buildNoteContentNodes(streamCode, displayNum(tup), text, runs, {
+      isCont: isCont(tup),
+      place: "note",
+      leadingSpace,
+      children,
+    });
+    appendNoteNodesToDom(parent, nodes, streamColorIndex);
   }
   const artificialLastLine = options.pageHasMain && !mishnaWrapActive()
     ? "justify"

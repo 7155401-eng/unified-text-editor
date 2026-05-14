@@ -2,6 +2,7 @@
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
+import { buildNoteContentNodes, nodesToTextRuns } from "./engine/note_content_builder.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
@@ -2432,7 +2433,9 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     }
   }
 
-  // אחר כך — ההערות מהפסקאות החדשות
+  // משה 2026-05-15: ההערה עוברת דרך buildNoteContentNodes — אותו מנגנון של
+  // המנוע הרגיל. מקבלים מספר הערה ("[N] "), הבלטת דיבור המתחיל, סוגרי גוף
+  // וילדים מקוננים — כל ההגדרות מהזרם מכובדות ב-V9 בלי כפילות לוגיקה.
   for (const para of paragraphs) {
     for (const note of (para.notes || [])) {
       const sid = note.stream || note.streamId || note.streamCode;
@@ -2441,21 +2444,34 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
       if (!streamRunsMap.has(sid)) streamRunsMap.set(sid, []);
       const items = streamMap.get(sid);
       const runsList = streamRunsMap.get(sid);
+      const isCont = note.isContinuation === true || note.cont === 1 || note.cont === true;
+      const num = typeof note.num === "number" && note.num > 0 ? note.num : (items.length + 1);
+      const nodes = buildNoteContentNodes(
+        sid,
+        num,
+        note.text || "",
+        Array.isArray(note.runs) ? note.runs : [],
+        {
+          isCont,
+          place: "note",
+          leadingSpace: false,
+          children: Array.isArray(note.children) ? note.children : [],
+        }
+      );
+      const { text: formattedText, runs: formattedRuns } = nodesToTextRuns(nodes);
       // אופסט = סכום אורכי כל ה-items הקודמים + רווחים בין items
       let offset = 0;
       for (let i = 0; i < items.length; i++) {
         offset += items[i].length + 1; // +1 for the space separator in items.join(' ')
       }
-      items.push(note.text || '');
-      if (Array.isArray(note.runs)) {
-        for (const r of note.runs) {
-          if (r.end > r.start) {
-            runsList.push({
-              start: offset + r.start,
-              end: offset + r.end,
-              marks: r.marks,
-            });
-          }
+      items.push(formattedText);
+      for (const r of formattedRuns) {
+        if (r.end > r.start) {
+          runsList.push({
+            start: offset + r.start,
+            end: offset + r.end,
+            marks: r.marks,
+          });
         }
       }
     }
