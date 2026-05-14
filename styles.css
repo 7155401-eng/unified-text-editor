@@ -3611,6 +3611,16 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   white-space: nowrap;
 }
 
+/* === stream-ref — הפנייה למספר הערה בטקסט הראשי (בדפים מודפסים) === */
+.stream-ref {
+  font-size: 75%;
+  font-weight: 700;
+  vertical-align: super;
+  line-height: 1;
+  color: inherit;
+  unicode-bidi: embed;
+}
+
 /* === marker-bar — סרגל badges מתחת לכל header של חלונית === */
 .marker-bar {
   font-size: 12px;

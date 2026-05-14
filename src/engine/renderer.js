@@ -7,6 +7,9 @@ import {
   shouldBoldStreamNumber,
   shouldBoldStreamLemma,
   applyBarStyleToElement,
+  _streamBoolSetting,
+  noteTextPrefixForStream,
+  noteTextSuffixForStream,
 } from "../original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
 
@@ -33,6 +36,28 @@ function appendNumberPrefix(parent, code, num, place, leadingSpace = false) {
 function streamTitleForCode(code) {
   const labels = typeof window !== "undefined" ? window.__STREAM_LABELS__ : null;
   return (labels && labels[code]) || code;
+}
+
+// Builds a per-paragraph index of all notes across all streams, so
+// createMainBlockElement can insert reference numbers (mainRefEnabled) at the
+// correct anchor positions within each paragraph's text.
+function buildParaNotesIndex(pageData) {
+  const index = {};
+  const streams = pageData.streams || {};
+  for (const code of Object.keys(streams)) {
+    const notes = (streams[code].notes || []);
+    for (const tup of notes) {
+      const paraIdx = tup[0];
+      const anchor = typeof tup[2] === "number" ? tup[2] : 0;
+      const num = typeof tup[3] === "number" && tup[3] > 0 ? tup[3] : tup[0];
+      if (!index[paraIdx]) index[paraIdx] = [];
+      index[paraIdx].push({ code, anchor, num });
+    }
+  }
+  for (const key of Object.keys(index)) {
+    index[key].sort((a, b) => a.anchor - b.anchor);
+  }
+  return index;
 }
 
 function mainBlockTagFor(tup) {
@@ -64,7 +89,7 @@ function appendTableRows(table, rows = []) {
   table.appendChild(tbody);
 }
 
-function createMainBlockElement(tup) {
+function createMainBlockElement(tup, paraRefs = []) {
   const meta = (tup && tup[4]) || {};
   if (meta.blockType === "table") {
     const table = document.createElement("table");
@@ -72,13 +97,18 @@ function createMainBlockElement(tup) {
     return table;
   }
   const p = document.createElement(mainBlockTagFor(tup));
-  // משה 2026-05-13: רינדור inline runs לטקסט הראשי. tup[1] הוא הקטע של הפסקה
-  // בעמוד הזה (אחרי pagination split). tup[2]/tup[3] = start/end ביחס ל-fullMainText.
-  // ה-mainRuns שמורים ב-meta; חותכים אותם לטווח של הקטע הנוכחי.
   const segText = tup[1] || "";
   const segStart = typeof tup[2] === "number" ? tup[2] : 0;
   const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;
   const paragraphRuns = Array.isArray(meta.mainRuns) ? meta.mainRuns : [];
+
+  // Filter references that anchor within this segment and whose stream has mainRefEnabled
+  const segRefs = paraRefs.filter(ref => {
+    const s = getEffectiveStreamSettings(ref.code);
+    return _streamBoolSetting(s.mainRefEnabled, false) && ref.anchor >= segStart && ref.anchor < segEnd;
+  });
+
+  // If there are inline runs, use runs-only rendering (refs not supported with runs yet)
   if (paragraphRuns.length > 0) {
     const sliced = [];
     for (const r of paragraphRuns) {
@@ -90,8 +120,34 @@ function createMainBlockElement(tup) {
       });
     }
     appendTextWithRuns(p, segText, sliced);
-  } else {
+    return p;
+  }
+
+  // No runs and no refs — simple text
+  if (segRefs.length === 0) {
     p.textContent = segText;
+    return p;
+  }
+
+  // Insert inline reference markers at anchor positions
+  let lastPos = 0;
+  for (const ref of segRefs) {
+    const localPos = ref.anchor - segStart;
+    if (localPos < 0 || localPos > segText.length) continue;
+    if (localPos > lastPos) {
+      p.appendChild(document.createTextNode(segText.substring(lastPos, localPos)));
+    }
+    const formatted = formatStreamNumber(ref.code, ref.num, "main");
+    if (formatted) {
+      const el = document.createElement(shouldBoldStreamNumber(ref.code, "main") ? "strong" : "span");
+      el.className = "stream-ref";
+      el.textContent = formatted;
+      p.appendChild(el);
+    }
+    lastPos = localPos;
+  }
+  if (lastPos < segText.length) {
+    p.appendChild(document.createTextNode(segText.substring(lastPos)));
   }
   return p;
 }
@@ -179,6 +235,12 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
     // משה 2026-05-13: מספר ההערה דרך formatStreamNumber. ברירת מחדל מחזירה
     // "[N] " — אותו פלט כמו הקוד הישן; UI מאפשר לשנות סוגריים/הדגשה.
     appendNumberPrefix(parent, streamCode, displayNum(tup), "note", leadingSpace);
+    // משה 2026-05-14: סוגר גוף פתיחה/סגירה (noteTextPrefix/noteTextSuffix).
+    const bodyPrefix = noteTextPrefixForStream(streamCode);
+    const bodySuffix = noteTextSuffixForStream(streamCode);
+    if (bodyPrefix) {
+      parent.appendChild(document.createTextNode(bodyPrefix));
+    }
     // משה 2026-05-13: ה-runs מתייחסים לטקסט המקורי לפני trim של רווחים מובילים.
     // נחשב כמה הוסר ונכוון את האופסטים.
     const leadingWs = text.length - text.replace(/^\s+/, "").length;
@@ -209,6 +271,9 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
       } else {
         appendTextWithRuns(parent, trimmed, trimmedRuns);
       }
+    }
+    if (bodySuffix) {
+      parent.appendChild(document.createTextNode(bodySuffix));
     }
     appendChildNotes(parent, Array.isArray(tup[5]) ? tup[5] : []);
   }
@@ -311,6 +376,8 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
   page.setAttribute("dir", "rtl");
   const pageHasMain = (pageData.main || []).length > 0;
 
+  const paraRefsIndex = buildParaNotesIndex(pageData);
+
   const main = document.createElement("div");
   main.className = "page-main";
   applyMainTextStyleToElement(main);
@@ -322,7 +389,7 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     if (idx === lastIdx && lastP) {
       lastP.textContent += " " + text;
     } else {
-      const p = createMainBlockElement(tup);
+      const p = createMainBlockElement(tup, paraRefsIndex[idx] || []);
       applyBlockStyleMeta(p, (tup && tup[4]) || {});
       // v33: mark this paragraph as a continuation FROM a previous page
       // (its idx already appeared on an earlier page). opening_word.js skips

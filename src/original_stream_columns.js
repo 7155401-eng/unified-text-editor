@@ -303,11 +303,11 @@ export function saveGlobalStreamOverrides(overrides) {
 // הקוד הקודם הוחזר פעמיים — לכן עכשיו אני מציג רק את התשתית; ברירת המחדל
 // משמרת את הפלט הקיים בדיוק (childNum=[code-num] כמו בעבר, mainRef כבוי).
 // כשמשה יבחר להפעיל מיספור — הרינדור יתחיל לבנות לפי השדות האלה.
-function _streamTextSetting(value, fallback) {
+export function _streamTextSetting(value, fallback) {
   return value === undefined || value === null ? fallback : String(value);
 }
 
-function _streamBoolSetting(value, fallback) {
+export function _streamBoolSetting(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
 }
 
