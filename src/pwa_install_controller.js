@@ -80,6 +80,20 @@ export async function registerServiceWorker() {
   }
 }
 
+// משה 2026-05-14: אם ה-SW שלח לנו הודעת ravtext-sw-cleanup-reload (אחרי
+// שהוא ניקה את כל הקאשים וביטל את עצמו), טען מחדש את הדף כדי שייצא טרי
+// בלי SW דביק. מספיק לרשום פעם אחת ברמת המסמך.
+if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  try {
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      const data = event?.data;
+      if (data && data.type === "ravtext-sw-cleanup-reload") {
+        try { window.location.reload(); } catch (_) {}
+      }
+    });
+  } catch (_) {}
+}
+
 // fetch wrapper — בכל בקשה ב-PWA standalone נצרף כותרת
 // X-Ravtext-Display: standalone כדי שה-worker יוכל לזהות שזו
 // בקשה לגיטימית מהאפליקציה המותקנת ולא לדחות אותה ב-checkOrigin.
