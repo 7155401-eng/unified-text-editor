@@ -1017,6 +1017,8 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     if (content.length === 0) {
       pagesContainer.innerHTML = '<div class="empty-hint">אין תוכן לרינדור</div>';
       if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
+      const emptyStatusEl = document.getElementById("status");
+      if (emptyStatusEl) emptyStatusEl.textContent = "אין תוכן";
       window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
         detail: { pages: [], content: [] },
       }));
@@ -1033,12 +1035,19 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       logEvent("vilna_v9_pipeline_start");
       await applyVilnaV9FromPaneManager(content, pagesContainer);
       if (myToken !== _renderToken) return;
+      const v9PageCount = pagesContainer.querySelectorAll(".page").length;
       if (pdfToolbarApi) {
-        const pageCount = pagesContainer.querySelectorAll(".page").length;
-        pdfToolbarApi.setTotal(pageCount);
+        pdfToolbarApi.setTotal(v9PageCount);
+      }
+      // משה 2026-05-14: מסלול V9 יצא בלי לעדכן את ה-status, אז הטקסט "מרענן..."
+      // שנקבע ב-scheduleEngineRender נשאר על המסך גם אחרי שהרינדור הסתיים
+      // — נראה כאילו האפליקציה תקועה. עכשיו נעדכן לטקסט הסופי.
+      const v9StatusEl = document.getElementById("status");
+      if (v9StatusEl) {
+        v9StatusEl.textContent = `${v9PageCount} עמודים (גפ"ת)`;
       }
       logEvent("vilna_v9_pipeline_done", {
-        pageCount: pagesContainer.querySelectorAll(".page").length,
+        pageCount: v9PageCount,
       });
       window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
         detail: { pages: [], content, v9: true },
