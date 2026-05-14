@@ -89,47 +89,15 @@ function appendTableRows(table, rows = []) {
   table.appendChild(tbody);
 }
 
-function createMainBlockElement(tup, paraRefs = []) {
-  const meta = (tup && tup[4]) || {};
-  if (meta.blockType === "table") {
-    const table = document.createElement("table");
-    appendTableRows(table, meta.tableRows || []);
-    return table;
-  }
-  const p = document.createElement(mainBlockTagFor(tup));
-  const segText = tup[1] || "";
-  const segStart = typeof tup[2] === "number" ? tup[2] : 0;
-  const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;
-  const paragraphRuns = Array.isArray(meta.mainRuns) ? meta.mainRuns : [];
-
-  // Filter references that anchor within this segment and whose stream has mainRefEnabled
+function insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs) {
   const segRefs = paraRefs.filter(ref => {
     const s = getEffectiveStreamSettings(ref.code);
     return _streamBoolSetting(s.mainRefEnabled, false) && ref.anchor >= segStart && ref.anchor < segEnd;
   });
-
-  // If there are inline runs, use runs-only rendering (refs not supported with runs yet)
-  if (paragraphRuns.length > 0) {
-    const sliced = [];
-    for (const r of paragraphRuns) {
-      if (r.end <= segStart || r.start >= segEnd) continue;
-      sliced.push({
-        start: Math.max(0, r.start - segStart),
-        end: Math.min(segText.length, r.end - segStart),
-        marks: r.marks,
-      });
-    }
-    appendTextWithRuns(p, segText, sliced);
-    return p;
-  }
-
-  // No runs and no refs — simple text
   if (segRefs.length === 0) {
-    p.textContent = segText;
-    return p;
+    p.appendChild(document.createTextNode(segText));
+    return;
   }
-
-  // Insert inline reference markers at anchor positions
   let lastPos = 0;
   for (const ref of segRefs) {
     const localPos = ref.anchor - segStart;
@@ -149,6 +117,37 @@ function createMainBlockElement(tup, paraRefs = []) {
   if (lastPos < segText.length) {
     p.appendChild(document.createTextNode(segText.substring(lastPos)));
   }
+}
+
+function createMainBlockElement(tup, paraRefs = []) {
+  const meta = (tup && tup[4]) || {};
+  if (meta.blockType === "table") {
+    const table = document.createElement("table");
+    appendTableRows(table, meta.tableRows || []);
+    return table;
+  }
+  const p = document.createElement(mainBlockTagFor(tup));
+  const segText = tup[1] || "";
+  const segStart = typeof tup[2] === "number" ? tup[2] : 0;
+  const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;
+  const paragraphRuns = Array.isArray(meta.mainRuns) ? meta.mainRuns : [];
+
+  // If there are inline runs, use runs-only rendering (refs not supported with runs yet)
+  if (paragraphRuns.length > 0) {
+    const sliced = [];
+    for (const r of paragraphRuns) {
+      if (r.end <= segStart || r.start >= segEnd) continue;
+      sliced.push({
+        start: Math.max(0, r.start - segStart),
+        end: Math.min(segText.length, r.end - segStart),
+        marks: r.marks,
+      });
+    }
+    appendTextWithRuns(p, segText, sliced);
+    return p;
+  }
+
+  insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs);
   return p;
 }
 
@@ -387,7 +386,10 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
     const idx = tup[0];
     const text = tup[1];
     if (idx === lastIdx && lastP) {
-      lastP.textContent += " " + text;
+      const segStart = typeof tup[2] === "number" ? tup[2] : 0;
+      const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + text.length;
+      lastP.appendChild(document.createTextNode(" "));
+      insertMainSegmentRefs(lastP, text, segStart, segEnd, paraRefsIndex[idx] || []);
     } else {
       const p = createMainBlockElement(tup, paraRefsIndex[idx] || []);
       applyBlockStyleMeta(p, (tup && tup[4]) || {});
