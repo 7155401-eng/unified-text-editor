@@ -1,14 +1,14 @@
 /*
   final_layout_guard.js
 
-  Stable live-output guard.
+  Stable final-output validation.
 
-  Rules:
-  - Measure actual final rendered output.
+  Principle:
+  - Measure the real rendered page output.
+  - Force lazy pages to be realized before validation.
+  - Disable content-visibility:auto during validation.
   - Never write global page-height safety.
   - Never hide real overflow.
-  - Never delete layout DOM after rendering.
-  - Only mark/diagnose overflow and hide truly empty stream shells.
 */
 
 const OLD_AUTO_SAFETY_KEY = "ravtext.layout.autoOverflowSafety";
@@ -21,11 +21,6 @@ function installCss() {
   const style = document.createElement("style");
   style.id = STYLE_ID;
   style.textContent = `
-    /*
-      data-stream highlight backgrounds belong to editor/source markings.
-      In printed pages they become ugly blocks because .stream also has data-stream.
-      Keep stream text colors, remove only the printed-page background/underline spill.
-    */
     #pages-container .page .stream[data-stream],
     .pages-container .page .stream[data-stream],
     #pages-container .page .note-child[data-stream],
@@ -34,13 +29,21 @@ function installCss() {
       box-shadow: none !important;
     }
 
-    /*
-      Empty stream shells must not show orphan titles.
-      JS marks these shells; CSS hides them without deleting DOM/state.
-    */
     #pages-container .page .stream.ravtext-empty-stream,
     .pages-container .page .stream.ravtext-empty-stream {
       display: none !important;
+    }
+
+    /*
+      Critical:
+      content-visibility:auto can make off-screen pages report intrinsic size
+      instead of true content geometry. During validation all pages must be
+      real rendered boxes.
+    */
+    #pages-container.ravtext-live-measure-all > .page:not(.measure-page),
+    .pages-container.ravtext-live-measure-all > .page:not(.measure-page) {
+      content-visibility: visible !important;
+      contain-intrinsic-size: auto !important;
     }
 
     .ravtext-final-overflow-detected {
@@ -113,6 +116,24 @@ function markEmptyStreams(root) {
   return count;
 }
 
+function forceRenderAllPages(root) {
+  if (!root) return 0;
+
+  const before = root.querySelectorAll(".page-placeholder").length;
+
+  if (
+    typeof root.__pageCount === "number" &&
+    typeof root.__realizePage === "function"
+  ) {
+    for (let i = 0; i < root.__pageCount; i++) {
+      root.__realizePage(i);
+    }
+  }
+
+  root.classList.add("ravtext-live-measure-all");
+  return before;
+}
+
 function rectsFor(el) {
   const out = [];
 
@@ -147,6 +168,10 @@ function candidates(pageEl) {
     ".stream *",
     ".note",
     ".note *",
+    ".note-inline",
+    ".note-inline *",
+    ".note-part",
+    ".note-part *",
     ".stream-title",
     ".ravtext-table",
     ".ravtext-table *",
@@ -200,7 +225,7 @@ export function measureRenderedPageOverflow(pageEl, opts = {}) {
         offenders.push({
           tag: el.tagName,
           className: String(el.className || ""),
-          text: String(el.textContent || "").trim().slice(0, 80),
+          text: String(el.textContent || "").trim().slice(0, 100),
           bottom: Math.round(b * 100) / 100,
           top: Math.round(t * 100) / 100,
           left: Math.round(l * 100) / 100,
@@ -233,14 +258,23 @@ export function measureRenderedPageOverflow(pageEl, opts = {}) {
 export function validateRenderedPages(container, opts = {}) {
   const root = typeof container === "function" ? container() : container;
   if (!root || !root.querySelectorAll) {
-    return { ok: true, maxOverflow: 0, maxBottomOverflow: 0, pages: [], emptyStreams: 0 };
+    return {
+      ok: true,
+      maxOverflow: 0,
+      maxBottomOverflow: 0,
+      pages: [],
+      emptyStreams: 0,
+      forcedPlaceholders: 0,
+    };
   }
 
   installCss();
 
+  const forcedPlaceholders = opts.forceLive === false ? 0 : forceRenderAllPages(root);
   const emptyStreams = markEmptyStreams(root);
+
   const pages = Array.from(
-    root.querySelectorAll(".page:not(.page-placeholder), .v9-page")
+    root.querySelectorAll(".page:not(.page-placeholder):not(.ravtext-empty-page), .v9-page")
   ).filter((p) => p && !p.classList.contains("page-placeholder"));
 
   const bad = [];
@@ -269,6 +303,7 @@ export function validateRenderedPages(container, opts = {}) {
     maxBottomOverflow: maxBottom,
     pages: bad,
     emptyStreams,
+    forcedPlaceholders,
   };
 }
 
@@ -277,9 +312,15 @@ function frame() {
 }
 
 async function afterPaint() {
+  try {
+    if (document.fonts && document.fonts.ready) {
+      await document.fonts.ready;
+    }
+  } catch (_) {}
+
   await frame();
   await frame();
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  await new Promise((resolve) => setTimeout(resolve, 120));
 }
 
 export function installFinalLayoutGuard(options = {}) {
@@ -302,8 +343,11 @@ export function installFinalLayoutGuard(options = {}) {
     running = true;
 
     try {
+      const container = getPagesContainer();
+      forceRenderAllPages(container);
       await afterPaint();
-      const result = validateRenderedPages(getPagesContainer(), { tolerance });
+
+      const result = validateRenderedPages(container, { tolerance, forceLive: false });
       window.__RAVTEXT_LAST_FINAL_LAYOUT_REPORT__ = result;
 
       if (result.emptyStreams > 0) {
@@ -358,6 +402,7 @@ export function installFinalLayoutGuard(options = {}) {
   window.__RAVTEXT_FINAL_LAYOUT_GUARD__ = {
     run,
     schedule,
+    forceRenderAllPages: () => forceRenderAllPages(getPagesContainer()),
     validate: () => validateRenderedPages(getPagesContainer(), { tolerance }),
     resetSafety: () => {
       try {
