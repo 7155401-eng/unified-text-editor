@@ -688,6 +688,54 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       commitRender();
     }));
 
+    // משה 2026-05-14: הגדרות מיספור לכל זרם בנפרד — כפי שהיה בתוכנה הישנה.
+    // המשתמש יכול לקבוע סוגריים/הדגשה לכל זרם בנפרד או דרך "כל זרמי ההערות"
+    // (גלובלי). ההגדרה הפרטית גוברת אם קיימת.
+    block.appendChild(makeCheckbox("מספר בראשי", cur.mainRefEnabled !== undefined ? cur.mainRefEnabled : false, (checked) => {
+      cur.mainRefEnabled = checked;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("פתיחה ראשי:", cur.mainRefPrefix ?? "[", { type: "text" }, (input) => {
+      cur.mainRefPrefix = input.value;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("סגירה ראשי:", cur.mainRefSuffix ?? "]", { type: "text" }, (input) => {
+      cur.mainRefSuffix = input.value;
+      commitRender();
+    }));
+    block.appendChild(makeCheckbox("ראשי מודגש", !!cur.mainRefBold, (checked) => {
+      cur.mainRefBold = checked;
+      commitRender();
+    }));
+    block.appendChild(makeCheckbox("מספר בהערה", cur.noteNumEnabled !== false, (checked) => {
+      cur.noteNumEnabled = checked;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("פתיחה הערה:", cur.noteNumPrefix ?? "[", { type: "text" }, (input) => {
+      cur.noteNumPrefix = input.value;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("סגירה הערה:", cur.noteNumSuffix ?? "]", { type: "text" }, (input) => {
+      cur.noteNumSuffix = input.value;
+      commitRender();
+    }));
+    block.appendChild(makeCheckbox("הערה מודגש", !!cur.noteNumBold, (checked) => {
+      cur.noteNumBold = checked;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("סוגר גוף פתיחה:", cur.noteTextPrefix ?? "", { type: "text" }, (input) => {
+      cur.noteTextPrefix = input.value;
+      commitRender();
+    }));
+    block.appendChild(makeLabeledInput("סוגר גוף סגירה:", cur.noteTextSuffix ?? "", { type: "text" }, (input) => {
+      cur.noteTextSuffix = input.value;
+      commitRender();
+    }));
+    block.appendChild(makeCheckbox('"דיבור המתחיל" מודגש', cur.lemmaBold !== false, (checked) => {
+      cur.lemmaBold = checked;
+      commitRender();
+    }));
+
     const opwLabel = document.createElement("label");
     opwLabel.className = "toolbar-checkbox";
     const opwInput = document.createElement("input");

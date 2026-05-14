@@ -536,6 +536,110 @@ body.light-theme .pdf-tb-action-secondary:hover {
   background: var(--rt-surface-2);
   color: var(--rt-ink) !important;
 }
+
+/* משה 2026-05-14: כפתור "רקע ביצוא" — היה לבן על לבן.
+   רקע אפור-בהיר + טקסט כהה + אייקון נראה לעין. */
+body.light-theme .pdf-output-background-toggle {
+  background: var(--rt-surface-3);
+  color: var(--rt-ink) !important;
+  border: 1px solid var(--rt-line-strong) !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 32px;
+  border-radius: 8px;
+  font-weight: 500;
+}
+body.light-theme .pdf-output-background-toggle:hover {
+  background: var(--rt-surface-2);
+  color: var(--rt-ink) !important;
+  border-color: var(--rt-line-strong) !important;
+}
+body.light-theme .pdf-output-background-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+/* משה 2026-05-14: עיצוב טאב "תורני" — כל הכפתורים שמוזרקים דינמית
+   (סדרא, נקדן, ת"א השלום, ראייה, באג, הורד מספריא וכו') יקבלו פני אטון
+   אחידים שתואמים את שאר הריבון, במקום שקופים-בלי-שייכות. */
+body.light-theme .torah-toolbar button,
+body.light-theme .torah-toolbar .sef-tool-btn {
+  background: var(--rt-grad-warm);
+  color: #ffffff !important;
+  border: 0;
+  font-family: var(--ravtext-ui-font-family);
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 0 14px;
+  height: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.3) inset,
+    0 4px 10px -4px rgba(var(--rt-accent-2-rgb), 0.4);
+  transition: transform 120ms, box-shadow 120ms, filter 120ms;
+}
+body.light-theme .torah-toolbar button:hover,
+body.light-theme .torah-toolbar .sef-tool-btn:hover {
+  filter: brightness(1.05);
+  transform: translateY(-0.5px);
+  background: var(--rt-grad-warm);
+  color: #ffffff !important;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.3) inset,
+    0 6px 14px -4px rgba(var(--rt-accent-2-rgb), 0.5);
+}
+body.light-theme .torah-toolbar button:active,
+body.light-theme .torah-toolbar .sef-tool-btn:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
+}
+body.light-theme .torah-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+/* כפתור שניוני בטאב תורני (לדוגמה: "פעולה משנית" / כלים פחות בולטים) */
+body.light-theme .torah-toolbar button.secondary {
+  background: var(--rt-surface-3);
+  color: var(--rt-ink) !important;
+  border: 1px solid var(--rt-line-strong);
+  box-shadow: none;
+}
+body.light-theme .torah-toolbar button.secondary:hover {
+  background: var(--rt-surface-2);
+  color: var(--rt-ink) !important;
+  border-color: var(--rt-line-strong);
+}
+body.light-theme .torah-toolbar .tb-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+body.light-theme .torah-toolbar .tb-group[data-title]::before {
+  content: attr(data-title);
+  font-family: "Frank Ruhl Libre", "David Libre", serif;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--rt-ink-3);
+  margin-inline-end: 4px;
+  letter-spacing: 0.02em;
+}
+body.light-theme .torah-toolbar .sep {
+  width: 1px;
+  height: 22px;
+  background: var(--rt-line);
+  margin: 0 6px;
+  display: inline-block;
+}
 body.light-theme .pdf-scroll-progress-fill {
   background: var(--rt-grad-warm);
 }

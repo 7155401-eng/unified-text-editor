@@ -5234,3 +5234,22 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) 
   content-visibility: visible !important;
   contain-intrinsic-size: auto !important;
 }
+/* ============================================================
+   RAVTEXT UNIFIED PAGINATION CONVERGENCE
+   משה 2026-05-14: גיבוי ל-live measurement ולרקעים שבורים.
+   החלטות עימוד שייכות ל-dom_packer, לא ל-CSS.
+   ============================================================ */
+
+#pages-container.ravtext-live-measure-all > .page:not(.measure-page),
+.pages-container.ravtext-live-measure-all > .page:not(.measure-page) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+}
+
+#pages-container .page .stream[data-stream],
+.pages-container .page .stream[data-stream],
+#pages-container .page .note-child[data-stream],
+.pages-container .page .note-child[data-stream] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
