@@ -6,6 +6,7 @@ import {
   formatStreamNumber,
   shouldBoldStreamNumber,
   applyBarStyleToElement,
+  styleIdForStreamNumber,
   _streamBoolSetting,
 } from "../original_stream_columns.js";
 import { appendTextWithRuns } from "./runs_dom.js";
@@ -22,11 +23,14 @@ function appendNoteNodesToDom(parent, nodes, streamColorIndexFn) {
       continue;
     }
     if (n.kind === "number") {
-      if (n.bold) {
-        const strong = document.createElement("strong");
-        strong.className = "note-number";
-        strong.textContent = n.text;
-        parent.appendChild(strong);
+      // משה 2026-05-15: אם נבחר סגנון מותאם (n.styleId), עוטפים תמיד ב-span/strong
+      // עם applyStyleToElement כדי שהצבע/פונט יחולו, גם כשהמשתמש לא ביקש בולד.
+      if (n.bold || n.styleId) {
+        const el = document.createElement(n.bold ? "strong" : "span");
+        el.className = "note-number";
+        el.textContent = n.text;
+        if (n.styleId) applyStyleToElement(el, n.styleId);
+        parent.appendChild(el);
       } else {
         parent.appendChild(document.createTextNode(n.text));
       }
@@ -139,6 +143,9 @@ function insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs) {
       const el = document.createElement(shouldBoldStreamNumber(ref.code, "main") ? "strong" : "span");
       el.className = "stream-ref";
       el.textContent = formatted;
+      // משה 2026-05-15: סגנון נבחר מתוך רשימת סגנונות המסמך עבור "[N]" בראשי.
+      const refStyleId = styleIdForStreamNumber(ref.code, "main");
+      if (refStyleId) applyStyleToElement(el, refStyleId);
       p.appendChild(el);
     }
     lastPos = localPos;

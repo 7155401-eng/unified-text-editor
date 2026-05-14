@@ -184,6 +184,9 @@ const GLOBAL_OVERRIDE_DEFS = {
     ["roman-lower", "רומיות קטן i ii iii"],
     ["roman-upper", "רומיות גדול I II III"],
   ]},
+  // משה 2026-05-15: סגנון טקסט שיוחל על "[N]" בראשי — נבחר מתוך רשימת
+  // הסגנונות של המסמך (style_registry). ערך ריק = ללא סגנון.
+  mainRefStyleId: { label: "סגנון מספר בראשי", type: "style", value: "" },
   noteNumEnabled: { label: "מספר בהערה", type: "boolean", value: true },
   noteNumPrefix: { label: "הערה פתיחה", type: "text", value: "[" },
   noteNumSuffix: { label: "הערה סגירה", type: "text", value: "]" },
@@ -197,6 +200,9 @@ const GLOBAL_OVERRIDE_DEFS = {
     ["roman-lower", "רומיות קטן i ii iii"],
     ["roman-upper", "רומיות גדול I II III"],
   ]},
+  // משה 2026-05-15: סגנון טקסט שיוחל על "[N]" בהערה — נבחר מתוך רשימת
+  // הסגנונות של המסמך. ערך ריק = ללא סגנון.
+  noteNumStyleId: { label: "סגנון מספר בהערה", type: "style", value: "" },
   noteTextPrefix: { label: "סוגר גוף פתיחה", type: "text", value: "" },
   noteTextSuffix: { label: "סוגר גוף סגירה", type: "text", value: "" },
   lemmaBold: { label: "דיבור המתחיל מודגש", type: "boolean", value: true },
@@ -393,6 +399,14 @@ export function noteTextPrefixForStream(code) {
 
 export function noteTextSuffixForStream(code) {
   return _streamTextSetting(getEffectiveStreamSettings(code).noteTextSuffix, "");
+}
+
+// משה 2026-05-15: מזהה הסגנון להחלת עיצוב על "[N]". "main" = בראשי, אחר = בהערה.
+// הערך הוא id מתוך רשימת הסגנונות של המסמך (style_registry), או "" אם לא נבחר.
+export function styleIdForStreamNumber(code, place = "note") {
+  const s = getEffectiveStreamSettings(code);
+  const raw = place === "main" ? s.mainRefStyleId : s.noteNumStyleId;
+  return _streamTextSetting(raw, "");
 }
 
 export function getEffectiveStreamSettings(code) {
@@ -796,6 +810,11 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       commitRender();
     }));
     block.appendChild(mainStyleLabel);
+    // משה 2026-05-15: בחירת סגנון טקסט (מתוך רשימת סגנונות המסמך) ל-"[N]" בראשי.
+    block.appendChild(makeStyleSelect("סגנון מספר בראשי:", cur.mainRefStyleId || "", (value) => {
+      cur.mainRefStyleId = value;
+      commitRender();
+    }));
     block.appendChild(makeCheckbox("מספר בהערה", cur.noteNumEnabled !== false, (checked) => {
       cur.noteNumEnabled = checked;
       commitRender();
@@ -823,6 +842,11 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       commitRender();
     }));
     block.appendChild(noteStyleLabel);
+    // משה 2026-05-15: בחירת סגנון טקסט (מתוך רשימת סגנונות המסמך) ל-"[N]" בהערה.
+    block.appendChild(makeStyleSelect("סגנון מספר בהערה:", cur.noteNumStyleId || "", (value) => {
+      cur.noteNumStyleId = value;
+      commitRender();
+    }));
     block.appendChild(makeLabeledInput("סוגר גוף פתיחה:", cur.noteTextPrefix ?? "", { type: "text" }, (input) => {
       cur.noteTextPrefix = input.value;
       commitRender();

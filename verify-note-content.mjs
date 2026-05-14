@@ -13,6 +13,13 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http:
 globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.localStorage = dom.window.localStorage;
+// jsdom חוסם dispatchEvent עם אובייקט CustomEvent שנוצר ב-Module אחר. עוקפים
+// כי אנחנו לא בודקים האזנות אירוע ב-smoke test הזה.
+globalThis.window.CustomEvent = dom.window.CustomEvent;
+const origDispatch = globalThis.window.dispatchEvent.bind(globalThis.window);
+globalThis.window.dispatchEvent = function (...args) {
+  try { return origDispatch(...args); } catch { return true; }
+};
 
 const { buildNoteContentNodes, nodesToTextRuns, injectMainRefs } = await import("./src/engine/note_content_builder.js");
 const streamColumns = await import("./src/original_stream_columns.js");
@@ -112,6 +119,44 @@ function assert(cond, label) {
   assert(mapPositionAfterNormalize(oldT, newT, 0) === 0, "8) anchor before trim clamps to 0");
   assert(mapPositionAfterNormalize(oldT, newT, 1) === 0, "8) anchor on first real char maps to 0");
   assert(mapPositionAfterNormalize(oldT, newT, 6) === 5, "8) middle anchor shifts by trim amount");
+}
+
+// 9) mainRefStyleId — סגנון שנבחר מתורגם ל-marks ב-mainRuns.
+{
+  const styleReg = await import("./src/style_registry.js");
+  // יצירת סגנון "אדום" במאגר הסגנונות המקומי.
+  styleReg.saveTextStyles([
+    { id: "test-red", name: "אדום", color: "#dc2626", bold: true },
+  ]);
+  if (!globalThis.window.__STREAM_SETTINGS__) globalThis.window.__STREAM_SETTINGS__ = {};
+  globalThis.window.__STREAM_SETTINGS__["08"] = {
+    mainRefEnabled: true,
+    mainRefStyleId: "test-red",
+  };
+  const out = injectMainRefs("מילה אחרת", [], [{ stream: "08", num: 1, anchor: 5 }]);
+  assert(out.mainText.includes("[1]"), "9) main ref [1] still appears");
+  const redRun = out.mainRuns.find((r) => r.marks && r.marks.color === "#dc2626");
+  assert(!!redRun, "9) main ref carries chosen color via marks");
+  delete globalThis.window.__STREAM_SETTINGS__["08"];
+  styleReg.saveTextStyles([]);
+}
+
+// 10) noteNumStyleId — סגנון של מספר ההערה מתורגם ל-marks ב-V9-flatten.
+{
+  const styleReg = await import("./src/style_registry.js");
+  styleReg.saveTextStyles([
+    { id: "test-blue", name: "כחול", color: "#1d4ed8", italic: true },
+  ]);
+  if (!globalThis.window.__STREAM_SETTINGS__) globalThis.window.__STREAM_SETTINGS__ = {};
+  globalThis.window.__STREAM_SETTINGS__["09"] = { noteNumStyleId: "test-blue" };
+  const nodes = buildNoteContentNodes("09", 1, "פרשה כל מקום", [], {});
+  const { runs } = nodesToTextRuns(nodes);
+  const blueRun = runs.find((r) => r.marks && r.marks.color === "#1d4ed8");
+  assert(!!blueRun, "10) note ref carries chosen color via marks");
+  const italicRun = runs.find((r) => r.marks && r.marks.italic);
+  assert(!!italicRun, "10) note ref carries italic via marks");
+  delete globalThis.window.__STREAM_SETTINGS__["09"];
+  styleReg.saveTextStyles([]);
 }
 
 console.log(`\n=== ${pass} pass, ${fail} fail ===`);
