@@ -74,7 +74,11 @@ function collectCssText() {
 
   css.push(`:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}`);
   css.push("html,body{margin:0;padding:0;background:#fff;}");
-  css.push(".page,.page *{font-family:var(--ravtext-page-font-family)!important;background-image:none!important;}");
+  // משה 2026-05-14: ה-PDF החזיר font-family !important על כל צאצא,
+  // וזה דרס span-ים עם font-family מפורש מ-runs (בולד/הדגשה/פונט שונה).
+  // עכשיו ה-page מקבל את הפונט וצאצאים יורשים, אבל הם יכולים לדרוס דרך style.
+  css.push(".page{font-family:var(--ravtext-page-font-family);background-image:none!important;}");
+  css.push(".page *{background-image:none!important;}");
   css.push(".page{margin:0!important;box-shadow:none!important;zoom:1!important;content-visibility:visible!important;contain-intrinsic-size:auto!important;padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;}");
   css.push(".pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}");
   css.push("body.ravtext-export-clean .page,body.ravtext-export-clean .page *:not(.ravtext-demo-print-mark){background:transparent!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important;}");
