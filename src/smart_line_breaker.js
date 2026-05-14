@@ -201,14 +201,60 @@ function balanceParagraph(p) {
   p.dataset.lnBalanced = "1";
 }
 
+// משה 2026-05-15: שורת V9 = יחידה אבסולוטית אחת. כשמופעלת text-align: justify
+// + text-align-last: justify, ושורה צרה עם מעט מילים — הרווחים מתפוצצים
+// והמילים נראות מרוסקות אחת על השנייה. כאן מודדים את הצורך האמיתי במתיחה,
+// ואם הוא קיצוני מבטלים את ה-class "justify" על השורה הזאת בלבד.
+function measureNaturalLineTextWidth(line) {
+  const probe = document.createElement("span");
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;white-space:nowrap;top:0;inset-inline-start:-10000px;pointer-events:none;";
+  probe.style.font = getComputedStyle(line).font;
+  probe.textContent = (line.textContent || "").replace(/\s+/g, " ").trim();
+  document.body.appendChild(probe);
+  const w = probe.getBoundingClientRect().width;
+  probe.remove();
+  return w;
+}
+
+function balanceV9Line(line) {
+  if (line.dataset.lnV9Fixed === "1") return false;
+  if (!line.classList.contains("justify")) return false;
+  const rect = line.getBoundingClientRect();
+  if (rect.width < 20) return false;
+  const text = (line.textContent || "").trim();
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return false;
+  const natTextW = measureNaturalLineTextWidth(line);
+  if (natTextW <= 0) return false;
+  const naturalSpace = measureNaturalSpaceWidth(line);
+  const numSpaces = words.length - 1;
+  // המילים עצמן כוללות רווחים טבעיים בתוך natTextW. רוחב נטו של המילים בלי רווחים:
+  const wordsOnlyW = natTextW - naturalSpace * numSpaces;
+  const requiredSpace = (rect.width - wordsOnlyW) / numSpaces;
+  const ratio = naturalSpace > 0 ? requiredSpace / naturalSpace : 0;
+  if (ratio > STRETCH_RATIO_LIMIT) {
+    line.classList.remove("justify");
+    line.style.textAlign = "right";
+    line.style.textAlignLast = "right";
+    line.dataset.lnV9Fixed = "1";
+    line.dataset.lnV9Ratio = ratio.toFixed(2);
+    return true;
+  }
+  return false;
+}
+
 function balanceContainer(root) {
   if (!root) return;
-  // כל פסקת ראשי
+  // כל פסקת ראשי (מנוע קלאסי)
   const paragraphs = root.querySelectorAll(".page-main p, .page-main h1, .page-main h2, .page-main h3, .page-main h4, .page-main h5, .page-main h6");
   for (const p of paragraphs) balanceParagraph(p);
   // הערות בזרמים — לפעמים מיושרות
   const noteEls = root.querySelectorAll(".stream .note, .stream .note-inline, .stream .note-part");
   for (const note of noteEls) balanceParagraph(note);
+  // שורות V9 — כל יחידה היא שורה אחת, מטפלים בנפרד
+  const v9Lines = root.querySelectorAll(".v9-line.justify");
+  for (const line of v9Lines) balanceV9Line(line);
 }
 
 export function applyLineBalanceToPage(pageEl) {
