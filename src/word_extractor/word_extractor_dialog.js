@@ -403,7 +403,51 @@ function renderStreamsTable() {
       sel.appendChild(opt);
     }
     sel.addEventListener('change', () => { st.series = sel.value; });
-    td4.appendChild(sel); tr.appendChild(td4);
+    td4.appendChild(sel);
+    // משה 2026-05-14: קלט יד לקוד זרם — המשתמש מציין @01/@02/וכו' אם רוצה
+    // לדרוס את הברירת מחדל ש-series נותן. ריק = ברירת מחדל לפי series.
+    const codeInput = document.createElement("input");
+    codeInput.type = "text";
+    codeInput.placeholder = "@01";
+    codeInput.value = st.streamCodeOverride || "";
+    codeInput.title = "דריסת קוד זרם — הכנס @NN (למשל @03). השאר ריק לברירת מחדל.";
+    codeInput.style.cssText = "width:48px;margin-right:4px;font-size:12px;padding:2px 4px;";
+    codeInput.addEventListener("input", () => {
+      st.streamCodeOverride = codeInput.value.trim();
+    });
+    td4.appendChild(codeInput);
+    tr.appendChild(td4);
+
+    // משה 2026-05-14: חצי סדר ↑/↓ — המשתמש קובע מי ראשון/שני/וכו' בייבוא.
+    const tdOrder = document.createElement("td");
+    tdOrder.style.cssText = "white-space:nowrap;";
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.textContent = "▲";
+    upBtn.title = "הזז למעלה";
+    upBtn.style.cssText = "padding:1px 6px;font-size:11px;";
+    upBtn.disabled = i === 0;
+    upBtn.addEventListener("click", () => {
+      if (i === 0) return;
+      const arr = _state.streams;
+      [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+      renderStreamsTable();
+    });
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.textContent = "▼";
+    downBtn.title = "הזז למטה";
+    downBtn.style.cssText = "padding:1px 6px;font-size:11px;margin-right:2px;";
+    downBtn.disabled = i === _state.streams.length - 1;
+    downBtn.addEventListener("click", () => {
+      const arr = _state.streams;
+      if (i >= arr.length - 1) return;
+      [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]];
+      renderStreamsTable();
+    });
+    tdOrder.appendChild(upBtn);
+    tdOrder.appendChild(downBtn);
+    tr.appendChild(tdOrder);
 
     // position (only meaningful for sidenote)
     const td5 = document.createElement('td');
@@ -725,12 +769,36 @@ function distributeToPanes(full, sd) {
   const text = full.get_text();
   const seriesToCode = {};
   const seriesToSymbol = {};
+  // משה 2026-05-14: עקוב אחרי קודים שכבר נתפסו ע"י דריסה ידנית של המשתמש
+  // כדי שמיפוי אוטומטי לא ישכפל אותם.
+  const claimedCodes = new Set();
+  // קודם — מעבר ראשון: דריסות ידניות (streamCodeOverride) מקבלים עדיפות.
+  for (const sid of Object.keys(sd)) {
+    const s = sd[sid];
+    if (!s.series) continue;
+    const ov = String(s.streamCodeOverride || "").trim();
+    if (!ov) continue;
+    const codeMatch = ov.match(/^@?(\d{1,3})$/);
+    if (!codeMatch) continue;
+    const code = String(parseInt(codeMatch[1], 10)).padStart(2, '0');
+    if (!seriesToCode[s.series]) {
+      seriesToCode[s.series] = code;
+      seriesToSymbol[s.series] = `@${code}`;
+      claimedCodes.add(code);
+    }
+  }
   let nextCode = 1;
+  const nextFreeCode = () => {
+    while (claimedCodes.has(String(nextCode).padStart(2, '0'))) nextCode++;
+    const c = String(nextCode++).padStart(2, '0');
+    claimedCodes.add(c);
+    return c;
+  };
   for (const sid of Object.keys(sd)) {
     const s = sd[sid];
     if (!s.series) continue;
     if (!seriesToCode[s.series]) {
-      const code = String(nextCode++).padStart(2, '0');
+      const code = nextFreeCode();
       seriesToCode[s.series] = code;
       // משה 2026-05-08: תמיד @<code> (01, 02...) — ה-marker הוא תיוג פנימי
       // של רב-טקסט בתוך ה-content, לא סמל שצריך להופיע ב-text הראשי.
