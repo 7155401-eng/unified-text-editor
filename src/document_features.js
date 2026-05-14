@@ -88,7 +88,7 @@ function getOrCreateMeasurePage() {
   if (page) return page;
   page = document.createElement("div");
   page.className = "page";
-  page.style.cssText = "position:relative;width:380px;height:537px;visibility:hidden;overflow:hidden;box-sizing:border-box;flex:none;";
+  page.style.cssText = "position:absolute;left:-99999px;top:0;width:380px;height:537px;visibility:hidden;overflow:hidden;box-sizing:border-box;flex:none;pointer-events:none;";
   const rootStyle = getComputedStyle(document.documentElement);
   page.style.paddingTop = rootStyle.getPropertyValue("--ravtext-page-margin-top") || "22px";
   page.style.paddingBottom = rootStyle.getPropertyValue("--ravtext-page-margin-bottom") || "18px";
