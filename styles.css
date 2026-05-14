@@ -5222,3 +5222,15 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) 
 .pages-container .page.ravtext-empty-page {
   display: none !important;
 }
+/* ============================================================
+   RAVTEXT FORCE REAL PAGE VALIDATION
+
+   During final validation/debug/export, pages must be measured as real
+   rendered boxes, not as content-visibility intrinsic placeholders.
+   ============================================================ */
+
+#pages-container.ravtext-live-measure-all > .page:not(.measure-page),
+.pages-container.ravtext-live-measure-all > .page:not(.measure-page) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+}
