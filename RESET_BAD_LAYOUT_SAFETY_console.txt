@@ -1,0 +1,6 @@
+﻿להדבקה בקונסול של הדפדפן באתר:
+
+localStorage.removeItem("ravtext.layout.autoOverflowSafety");
+sessionStorage.removeItem("ravtext.layout.autoOverflowAttempts.v1");
+location.reload();
+

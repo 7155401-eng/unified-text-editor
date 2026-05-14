@@ -1,4 +1,4 @@
-﻿// vilna_v9_apply.js — מחיל את V9 עם פגינציה עצמית.
+// vilna_v9_apply.js — מחיל את V9 עם פגינציה עצמית.
 //
 // admin-only ב-runtime. כש-V9 דלוק, engine_bridge מדלג על כל הצינור
 // הסטנדרטי (domPack, renderPages, talmud_layout, mishna_wrap, וכו')
@@ -166,7 +166,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     pageWidth: geom.pageWidth,
     pageHeight: geom.pageHeight,
     reservedTop: geom.reservedTop,
-    reservedBottom: geom.reservedBottom + readIntSetting("ravtext.layout.autoOverflowSafety", 0, 0, 280),
+    reservedBottom: geom.reservedBottom,
     mainFontSize: geom.mainSize,
     sideFontSize: geom.sideSize,
     mainFontFamily: geom.fontFamily,
