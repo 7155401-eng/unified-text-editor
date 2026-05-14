@@ -407,7 +407,35 @@ function computeLastPageByStreamNum(pages) {
   return last;
 }
 
+function textContentOfMainSeg(seg) {
+  if (!seg) return "";
+  return String(seg[1] || "").trim();
+}
+
+function noteTupleHasRealContent(tup) {
+  if (!tup) return false;
+  const text = String(tup[1] || "").trim();
+  if (text.length > 0) return true;
+
+  const children = Array.isArray(tup[5]) ? tup[5] : [];
+  return children.some((child) => String((child && child.text) || "").trim().length > 0);
+}
+
+function pageDataHasRealContent(pageData) {
+  if (!pageData) return false;
+
+  if (Array.isArray(pageData.main) && pageData.main.some((seg) => textContentOfMainSeg(seg).length > 0)) {
+    return true;
+  }
+
+  const streams = pageData.streams || {};
+  return Object.keys(streams).some((code) => {
+    const notes = streams[code] && streams[code].notes;
+    return Array.isArray(notes) && notes.some(noteTupleHasRealContent);
+  });
+}
 export function renderPages(packerOutput, container) {
+  packerOutput = (packerOutput || []).filter(pageDataHasRealContent);
   if (container.__pageObserver && typeof container.__pageObserver.disconnect === "function") {
     container.__pageObserver.disconnect();
   }
