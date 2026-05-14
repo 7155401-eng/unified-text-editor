@@ -14,7 +14,8 @@ globalThis.window = dom.window;
 globalThis.document = dom.window.document;
 globalThis.localStorage = dom.window.localStorage;
 
-const { buildNoteContentNodes, nodesToTextRuns } = await import("./src/engine/note_content_builder.js");
+const { buildNoteContentNodes, nodesToTextRuns, injectMainRefs } = await import("./src/engine/note_content_builder.js");
+const streamColumns = await import("./src/original_stream_columns.js");
 
 let pass = 0;
 let fail = 0;
@@ -64,6 +65,28 @@ function assert(cond, label) {
   const { text } = nodesToTextRuns(nodes);
   assert(text.includes("ילד אחד"), "4) first child text appears");
   assert(text.includes("ילד שני"), "4) second child text appears");
+}
+
+// 5) injectMainRefs — מצב כבוי (ברירת מחדל) — שום שינוי לא קורה.
+{
+  const out = injectMainRefs("שלום עולם", [], [{ stream: "06", num: 1, anchor: 5 }]);
+  assert(out.mainText === "שלום עולם", "5) main ref off → text unchanged");
+  assert(out.notes[0].anchor === 5, "5) main ref off → anchor unchanged");
+}
+
+// 6) injectMainRefs — מצב דלוק לזרם 07 → [1] מוזרק במיקום העוגן.
+{
+  // הפעלת mainRefEnabled לזרם 07 דרך __STREAM_SETTINGS__ (merged עם defaults
+  // בתוך getEffectiveStreamSettings).
+  if (!globalThis.window.__STREAM_SETTINGS__) globalThis.window.__STREAM_SETTINGS__ = {};
+  globalThis.window.__STREAM_SETTINGS__["07"] = { mainRefEnabled: true };
+  const out = injectMainRefs("שלום עולם", [], [{ stream: "07", num: 1, anchor: 5 }]);
+  assert(out.mainText.includes("[1]"), "6) main ref on → [1] appears in text");
+  // השם "שלום " (5 תווים) קודם, אחריו "[1]", אחריו "עולם"
+  assert(out.mainText === "שלום [1]עולם", "6) ref inserted exactly at anchor 5");
+  // העוגן של ההערה זז קדימה כדי להיצמד למספר ולא לפצל אותו
+  assert(out.notes[0].anchor === 5 + 3, "6) note anchor shifted past its ref");
+  delete globalThis.window.__STREAM_SETTINGS__["07"];
 }
 
 console.log(`\n=== ${pass} pass, ${fail} fail ===`);

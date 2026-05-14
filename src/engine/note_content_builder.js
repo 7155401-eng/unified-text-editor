@@ -27,6 +27,8 @@ import {
   shouldBoldStreamLemma,
   noteTextPrefixForStream,
   noteTextSuffixForStream,
+  getEffectiveStreamSettings,
+  _streamBoolSetting,
 } from "../original_stream_columns.js";
 import { sliceRuns } from "./runs_dom.js";
 
@@ -136,4 +138,83 @@ export function nodesToTextRuns(nodes) {
   };
   appendNodes(nodes);
   return { text, runs };
+}
+
+// מזריק סימני־ייחוס ("[N]") לטקסט הראשי של פסקה — במקומות העגנים של ההערות,
+// אך ורק לזרמים שהפעילו "מספר בראשי" (mainRefEnabled). מחזיר אובייקט עם
+// mainText חדש, mainRuns מותאמים, ו-notes עם anchor מוזז כך שכל הערה נשארת
+// סמוכה לסימן־הייחוס שלה. שימוש: גם המנוע הרגיל וגם V9 קוראים לאותה פונקציה
+// כדי לקבל החלטה אחידה אם להציג מספר בראשי ובאיזה סגנון.
+//
+// pieces:
+//   mainText  — טקסט הפסקה בלי סימוני זרם (כפי שהוא ב-paneManagerToPackerContent)
+//   mainRuns  — runs (בולד/הדגשה) מותאמים ל-mainText המקורי
+//   notes     — [{ stream, num, anchor, text, runs, ... }]
+export function injectMainRefs(mainText, mainRuns, notes) {
+  const text = String(mainText || "");
+  const origRuns = Array.isArray(mainRuns) ? mainRuns : [];
+  const origNotes = Array.isArray(notes) ? notes : [];
+
+  const refs = [];
+  for (let i = 0; i < origNotes.length; i++) {
+    const n = origNotes[i];
+    if (!n || typeof n.anchor !== "number") continue;
+    const s = getEffectiveStreamSettings(n.stream);
+    if (!_streamBoolSetting(s.mainRefEnabled, false)) continue;
+    const formatted = formatStreamNumber(n.stream, n.num || 0, "main");
+    if (!formatted) continue;
+    refs.push({
+      noteIndex: i,
+      anchor: Math.max(0, Math.min(text.length, n.anchor)),
+      text: formatted,
+      bold: shouldBoldStreamNumber(n.stream, "main"),
+    });
+  }
+  if (refs.length === 0) {
+    return { mainText: text, mainRuns: origRuns, notes: origNotes };
+  }
+  refs.sort((a, b) => (a.anchor - b.anchor) || (a.noteIndex - b.noteIndex));
+
+  // shiftAt(p): מחזיר את האופסט החדש של המיקום המקורי p אחרי שכל ה-refs
+  // עם anchor <= p הוזרקו. מתחשב גם בסדר הזרקה — refs באותו anchor
+  // מצטרפים לפי noteIndex (כדי שלכל הערה יהיה מקום ברור ביחס לאחרות).
+  function shiftAt(p) {
+    let shift = 0;
+    for (const r of refs) {
+      if (r.anchor < p) shift += r.text.length;
+      else if (r.anchor === p) shift += r.text.length;
+    }
+    return p + shift;
+  }
+
+  let outText = "";
+  const outRuns = [];
+  let cursor = 0;
+  for (const ref of refs) {
+    const anchor = ref.anchor;
+    if (anchor > cursor) outText += text.substring(cursor, anchor);
+    const refStart = outText.length;
+    outText += ref.text;
+    if (ref.bold) outRuns.push({ start: refStart, end: outText.length, marks: { bold: true } });
+    cursor = anchor;
+  }
+  if (cursor < text.length) outText += text.substring(cursor);
+
+  for (const r of origRuns) {
+    const newStart = shiftAt(r.start);
+    let newEnd = r.end + 0;
+    let endShift = 0;
+    for (const rr of refs) {
+      if (rr.anchor < r.end) endShift += rr.text.length;
+    }
+    newEnd = r.end + endShift;
+    if (newEnd > newStart) outRuns.push({ start: newStart, end: newEnd, marks: r.marks });
+  }
+
+  const newNotes = origNotes.map((n, i) => {
+    if (!n || typeof n.anchor !== "number") return n;
+    return { ...n, anchor: shiftAt(n.anchor) };
+  });
+
+  return { mainText: outText, mainRuns: outRuns, notes: newNotes };
 }
