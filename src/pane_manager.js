@@ -1,4 +1,4 @@
-// pane_manager.js
+﻿// pane_manager.js
 // מנהל חלוניות עורך — כל חלונית = עורך TipTap עם קוד זרם משלה.
 // תומך עד 99 חלוניות, הוספה/מחיקה דינמית, בחירת זרם, תפריט קליק‑ימני,
 // שמירת מצב ב‑localStorage.
@@ -573,7 +573,10 @@ export class PaneManager {
     });
   }
 
-  on(event, fn) { this._listeners[event].push(fn); }
+  on(event, fn) {
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(fn);
+  }
   _emit(event) {
     if (event === "change" && this._batchDepth > 0) {
       this._pendingChange = true;
@@ -868,3 +871,4 @@ export class PaneManager {
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
 }
+

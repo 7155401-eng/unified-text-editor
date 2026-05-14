@@ -1036,7 +1036,7 @@ function rerenderPages() {
 // כבר לא תקף — מאפסים אותו לפני ה-pack הבא כדי שלא נצמצם את הדף בלי סיבה.
 if (typeof paneManager !== "undefined" && paneManager?.on) {
   let resetTimer;
-  paneManager.on("contentChanged", () => {
+  paneManager.on("change", () => {
     clearTimeout(resetTimer);
     resetTimer = setTimeout(resetLiveOverflowReserve, 60);
   });
@@ -2182,4 +2182,5 @@ window.__streamMarkOnDetected = function (detected) {
 };
 
 scheduleDiagnosticsRefresh({ force: true });
+
 
