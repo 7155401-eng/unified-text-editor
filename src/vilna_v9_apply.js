@@ -17,6 +17,7 @@ import { buildPages } from "./vilna_v9.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
+import { injectMainRefs } from "./engine/note_content_builder.js";
 
 // משה 2026-05-08: קריאת קודי הזרמים שהוגדרו לגפ"ת ע"י המשתמש.
 // פורמט: "01,02" → ["01","02"]. אלה הזרמים שיהיו בצדדים בעימוד גפ"ת.
@@ -162,7 +163,17 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   const mainStyleId = loadDocumentStyleSettings().mainStyleId || "";
   const mainInlineStyle = getMainTextStyle() || null;
 
-  await buildPages(container, paragraphs, {
+  // משה 2026-05-15: סימני־ייחוס בראשי ("[N]") — אותה החלטה כמו המנוע הרגיל.
+  // injectMainRefs ב-note_content_builder.js בודק mainRefEnabled לכל זרם
+  // ומזריק לטקסט הראשי + מזיז mainRuns ועוגני הערות. אם אף זרם לא הפעיל
+  // את האפשרות, הפונקציה מחזירה את הקלט ללא שינוי.
+  const transformedParagraphs = paragraphs.map((p) => {
+    if (!p) return p;
+    const injected = injectMainRefs(p.mainText, p.mainRuns, p.notes);
+    return { ...p, mainText: injected.mainText, mainRuns: injected.mainRuns, notes: injected.notes };
+  });
+
+  await buildPages(container, transformedParagraphs, {
     pageWidth: geom.pageWidth,
     pageHeight: geom.pageHeight,
     reservedTop: geom.reservedTop,
