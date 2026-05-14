@@ -120,16 +120,52 @@ function measureOverlayReserved(className, isTop) {
   return Math.max(0, Math.round(offset + height - padding));
 }
 
-function syncReservedSpace() {
+function pxVar(name) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
+  const n = parseFloat(raw || "");
+  return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+function setPxVarIfChanged(name, value) {
+  const next = Math.max(0, Math.round(value || 0));
+  const prev = pxVar(name);
+  if (prev === next) return false;
+  document.documentElement.style.setProperty(name, next + "px");
+  return true;
+}
+
+let _reservedRerenderTimer = null;
+
+function scheduleReservedRerender(reason) {
+  clearTimeout(_reservedRerenderTimer);
+  _reservedRerenderTimer = setTimeout(() => {
+    window.dispatchEvent(new CustomEvent("ravtext:features-reserved-space-changed", {
+      detail: { reason },
+    }));
+    rerender();
+  }, 40);
+}
+
+function syncReservedSpace(options = {}) {
   const hasHeader = !!localStorage.getItem(HEADER_KEY);
   const hasFooter = !!localStorage.getItem(FOOTER_KEY);
   const hasPageNum = localStorage.getItem(PAGE_NUM_KEY) === "1";
+
   const headPx = hasHeader ? measureOverlayReserved("ravtext-page-header", true) : 0;
   const footPx = hasFooter ? measureOverlayReserved("ravtext-page-footer", false) : 0;
   const numPx = hasPageNum ? measureOverlayReserved("ravtext-page-number-overlay", false) : 0;
-  document.documentElement.style.setProperty("--ravtext-features-header-reserved", headPx + "px");
-  document.documentElement.style.setProperty("--ravtext-features-footer-reserved", footPx + "px");
-  document.documentElement.style.setProperty("--ravtext-features-pagenumber-reserved", numPx + "px");
+
+  const changed = [
+    setPxVarIfChanged("--ravtext-features-header-reserved", headPx),
+    setPxVarIfChanged("--ravtext-features-footer-reserved", footPx),
+    setPxVarIfChanged("--ravtext-features-pagenumber-reserved", numPx),
+  ].some(Boolean);
+
+  if (changed && options.rerenderOnChange) {
+    scheduleReservedRerender(options.reason || "reserved-space-changed");
+  }
+
+  return changed;
 }
 
 function rerender() {
@@ -164,7 +200,7 @@ export function wireDocumentFeatures() {
     pageNumCb.checked = localStorage.getItem(PAGE_NUM_KEY) === "1";
     pageNumCb.addEventListener("change", () => {
       localStorage.setItem(PAGE_NUM_KEY, pageNumCb.checked ? "1" : "0");
-      syncReservedSpace();
+      syncReservedSpace({ rerenderOnChange: false, reason: "control-change" });
       rerender();
     });
   }
@@ -173,7 +209,7 @@ export function wireDocumentFeatures() {
     headerInput.value = localStorage.getItem(HEADER_KEY) || "";
     headerInput.addEventListener("input", () => {
       localStorage.setItem(HEADER_KEY, headerInput.value);
-      syncReservedSpace();
+      syncReservedSpace({ rerenderOnChange: false, reason: "control-change" });
       clearTimeout(headerTimer);
       headerTimer = setTimeout(rerender, 300);
     });
@@ -182,7 +218,7 @@ export function wireDocumentFeatures() {
     footerInput.value = localStorage.getItem(FOOTER_KEY) || "";
     footerInput.addEventListener("input", () => {
       localStorage.setItem(FOOTER_KEY, footerInput.value);
-      syncReservedSpace();
+      syncReservedSpace({ rerenderOnChange: false, reason: "control-change" });
       clearTimeout(footerTimer);
       footerTimer = setTimeout(rerender, 300);
     });
@@ -205,11 +241,20 @@ export function wireDocumentFeatures() {
   window.addEventListener("ravtext:engine-rendered", () => {
     installRealizedPageHook();
     applyAll();
-    syncReservedSpace();
+
+    /*
+      Live output rule:
+      overlays are first painted, then measured.
+      If real reserved space changed, rerender once so pagination uses reality.
+    */
+    syncReservedSpace({ rerenderOnChange: true, reason: "engine-rendered" });
   });
-  syncReservedSpace();
+
+  syncReservedSpace({ rerenderOnChange: false, reason: "initial" });
+
   setTimeout(() => {
     installRealizedPageHook();
     applyAll();
+    syncReservedSpace({ rerenderOnChange: true, reason: "initial-after-paint" });
   }, 500);
 }

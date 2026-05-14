@@ -5197,3 +5197,18 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) 
   outline: 1px dashed rgba(220, 38, 38, 0.45);
   outline-offset: -1px;
 }
+
+/* ============================================================
+   RAVTEXT PRINTED STREAM BACKGROUND RESET
+
+   Prevent source/editor [data-stream] highlight backgrounds from spilling
+   into printed page streams. Text colors may remain.
+   ============================================================ */
+
+#pages-container .page .stream[data-stream],
+.pages-container .page .stream[data-stream],
+#pages-container .page .note-child[data-stream],
+.pages-container .page .note-child[data-stream] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
