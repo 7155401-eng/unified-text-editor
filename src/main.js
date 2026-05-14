@@ -666,7 +666,7 @@ function setupRibbonTabs() {
     ["streams", "זרמים"],
     ["insert", "הוספה"],
     ["layout", "פריסה"],
-    ...(canSeeTorahTab ? [["torah", "תורני"]] : []),
+    ["torah", "תורני"],
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
