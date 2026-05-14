@@ -17,6 +17,9 @@ const DEFAULTS = {
   v9LineHeight: 1.55,
   v9MainGap: 8,
   noMidLineSplits: false,
+  // משה 2026-05-14: מצב נוסף "לא לפצל פיסקאות (גמיש)" — לא מפצל פיסקה
+  // אבל מנסה למלא רווחים בעמוד ע"י שאיבת פיסקה הבאה מהעמוד הבא אם נכנסת.
+  noMidParagraphSoft: false,
 };
 
 const FIELDS = [
@@ -33,7 +36,8 @@ const FIELDS = [
   ["streamTitleGap", "כותרת-תוכן", "number", 0, 40, 1],
   ["v9LineHeight", "V9: גובה שורה", "number", 0.8, 3, 0.05],
   ["v9MainGap", "V9: ראשי-צד", "number", 0, 60, 1],
-  ["noMidLineSplits", "לא לפצל באמצע שורות כלל", "checkbox", 0, 1, 1],
+  ["noMidLineSplits", "לא לפצל באמצע פיסקאות (קשיח)", "checkbox", 0, 1, 1],
+  ["noMidParagraphSoft", "לא לפצל פיסקאות (גמיש, ימלא רווחים)", "checkbox", 0, 1, 1],
 ];
 
 export function loadSpacingSettings() {

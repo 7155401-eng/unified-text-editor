@@ -428,14 +428,19 @@ function unwrapColorAndSizePlaceholders(html) {
         if (size) decl.push(`font-size: ${size}pt;`);
         if (font) decl.push(`font-family: "${font.replace(/"/g, "")}";`);
         // תמיד מחזיר את התוכן — עם span אם יש סגנון, בלי אם ריק
-        return decl.length 
+        return decl.length
           ? `<span style="${decl.join(" ")}">${inner}</span>`
           : inner;
       }
     )
-    // ניקוי סימנים שנשארו (במקרה של חיתוך ע"י mammoth)
-    .replace(/‹‹CST:[^‹]*‹‹/g, '')
-    .replace(/‹‹\/CST‹‹/g, '');
+    // משה 2026-05-14: ניקוי אגרסיבי של leftovers — לפעמים ‹‹ הופך ל-> או נחתך,
+    // ולכן נשארים בפלט סימנים כמו ">CST:ff0000|16|David‹‹" או "CST:..."
+    // בלי הסימנים הפותחים. מסירים כל וריאציה אפשרית.
+    .replace(/‹‹CST:[^‹<>"']*?(?:‹‹|$)/g, '')
+    .replace(/‹‹\/CST‹‹/g, '')
+    .replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}‹‹/g, '')
+    .replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}(?=\s|<|$)/g, '')
+    .replace(/\/CST‹‹/g, '');
 }
 
 // =====================================================================

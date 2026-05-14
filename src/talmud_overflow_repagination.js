@@ -858,12 +858,15 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       const pageH = p.clientHeight || 537;
       // כל זרם — בכל מקום (לא רק page-streams ישיר)
       p.querySelectorAll(".stream[data-stream]:not([data-stream-cols])").forEach(s => {
-        // לא נוגעים בכתרי תלמוד או בbody
+        // משה 2026-05-14: לא דורסים בחירה מפורשת של המשתמש לטור-אחד.
         if (s.classList.contains("talmud-crown-portion") ||
             s.classList.contains("talmud-body-portion") ||
             s.classList.contains("talmud-body-expanded") ||
             s.classList.contains("talmud-no-crown-side") ||
             s.classList.contains("talmud-other-side")) return;
+        const code = s.getAttribute("data-stream");
+        const userCols = code ? (getEffectiveStreamSettings(code)?.cols || 1) : 1;
+        if (userCols === 1) return;
         const h = s.getBoundingClientRect().height;
         if (h > pageH * 0.5) {
           s.style.columnCount = "2";
