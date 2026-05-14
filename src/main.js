@@ -5,29 +5,13 @@
 // משה 2026-05-08: V9 הוא המנוע היחיד למצב גפ"ת. הוא רץ אוטומטית כשהצ'קבוקס
 // "גפ"ת: צורת הדף" דלוק. אין צורך בטוקן URL או הרשאת admin.
 
-// משה 2026-05-14: ניקוי מוקדם של כל המפתחות שמקטינים את גובה הדף.
-// הסיבה: PR #233 הכניס מפתח שמקטין את גובה הדף. כיבינו את הכתיבה, אבל
-// השרת המשיך לסנכרן ערכים ישנים אחורה לכל login → הבאג חזר אצל מחוברים.
-// כאן מוחקים אותם מ-localStorage לפני שמשהו אחר ינסה לקרוא אותם, ובמקביל
-// server_persistence.js שם אותם ב-blacklist כדי שלא יחזרו מהשרת.
+// משה 2026-05-14: ניקוי מוקדם של מפתחות שאריות מ-PRs ישנים (PR #233 וכו')
+// שהצטברו אצל משתמשים מחוברים והשפיעו על גובה העמוד באופן לא צפוי.
 // רץ ברגע שה-script נטען, לפני כל שאר הקוד.
 (() => {
   try {
-    // מפתחות בטיחות־גובה מקומיים בלבד (smart-packer / overflow corrector).
     localStorage.removeItem("ravtext.layout.autoOverflowSafety");
-    localStorage.removeItem("ravtext.layout.heightSafetyRegular");
-    localStorage.removeItem("ravtext.talmudLayout.heightSafety");
-    localStorage.removeItem("ravtext.talmudLayout.heightSafetyPerPage");
-    // smart-packer cache לכל מסמך — נמדד אצל המשתמש, לא אצל השרת.
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith("ravtext.talmudLayout.smartCache.")) {
-        localStorage.removeItem(k);
-      }
-    }
     sessionStorage.removeItem("ravtext.layout.autoOverflowAttempts.v1");
-    sessionStorage.removeItem("ravtext.layout.overflowReserve.v1");
-    sessionStorage.removeItem("ravtext.layout.overflowReserve.v1.iter");
   } catch (_) {}
 })();
 
