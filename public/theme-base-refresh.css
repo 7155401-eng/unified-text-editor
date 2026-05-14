@@ -501,11 +501,22 @@ body.light-theme .pdf-tb-action-btn {
   border: 0;
   font-weight: 600;
   border-radius: 8px;
-  padding: 0 14px;
-  height: 30px;
+  /* משה 2026-05-13: padding ו-min-width מספיקים לכפתור עם אייקון + טקסט
+     ("PDF"/"HTML") בלי שהטקסט יחרוג. flex+gap לסידור נכון. */
+  padding: 0 16px;
+  height: 32px;
+  min-width: 70px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
   box-shadow:
     0 1px 0 rgba(255,255,255,0.3) inset,
     0 4px 10px -4px rgba(var(--rt-accent-2-rgb), 0.4);
+}
+body.light-theme .pdf-tb-action-btn svg {
+  flex: 0 0 auto;
 }
 body.light-theme .pdf-tb-action-btn:hover {
   filter: brightness(1.05);
@@ -513,15 +524,17 @@ body.light-theme .pdf-tb-action-btn:hover {
   color: #fff;
 }
 body.light-theme .pdf-tb-action-secondary {
-  background: var(--rt-surface);
-  color: var(--rt-ink-2);
-  border: 1px solid var(--rt-line);
+  /* משה 2026-05-13: היה לבן-על-לבן. רקע אפור-בהיר + טקסט כהה לקריאות.
+     padding/min-width זהים לכפתור הראשי כדי שגם "HTML" וגם האייקון ייכנסו. */
+  background: var(--rt-surface-3);
+  color: var(--rt-ink) !important;
+  border: 1px solid var(--rt-line-strong);
   box-shadow: none;
 }
 body.light-theme .pdf-tb-action-secondary:hover {
   border-color: var(--rt-line-strong);
-  background: var(--rt-surface-3);
-  color: var(--rt-ink);
+  background: var(--rt-surface-2);
+  color: var(--rt-ink) !important;
 }
 body.light-theme .pdf-scroll-progress-fill {
   background: var(--rt-grad-warm);
