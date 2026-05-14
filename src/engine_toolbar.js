@@ -440,9 +440,9 @@ export function setupPdfToolbar(pagesContainer) {
   // CRITICAL: do NOT call realizeAllPages — that would re-run the layout
   // pipeline and change what we're trying to capture. Snapshot the page
   // exactly as the user is seeing it right now.
-  document.getElementById("pdf-download-html")?.addEventListener("click", () => {
+  document.getElementById("pdf-download-html")?.addEventListener("click", async () => {
     try {
-      downloadPagesAsHtml(pagesContainer);
+      await downloadPagesAsHtml(pagesContainer);
     } catch (err) {
       console.error("HTML export failed:", err);
       alert(`שגיאת הורדת HTML: ${err.message}`);

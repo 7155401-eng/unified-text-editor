@@ -1756,6 +1756,30 @@ body.light-theme .pdf-scroll-progress-fill {
   /* RTL anchored at end so the visual right edge aligns with the line. */
 }
 
+/* משה 2026-05-15: מחלק שורות חכם (smart_line_breaker.js).
+   המודול עוטף מילים ב-.ln-word, ולכל שורה שזיהה כבעייתית בונה
+   container flex עם בקרה על מתיחה ועל מילה יתומה. */
+.ln-word {
+  /* ברירת מחדל: לא לשנות כלום — רק tag למדידה. */
+}
+.ln-orphan-overflow {
+  /* מילה אחת שרחבה יותר מהטור — אסור לתת לה לחרוג. */
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.ln-line {
+  /* קונטיינר flex לכל שורה שטופלה. row-reverse כי RTL. */
+  unicode-bidi: isolate;
+}
+.ln-line-balanced {
+  /* מתיחה מבוקרת: רווחים שווים אבל לא יותר מקצה לקצה. */
+}
+.ln-line-no-stretch {
+  /* בלי מתיחה בכלל — שורה צמודה ימינה. */
+}
+
 /* ============================================================
    TALMUD LAYOUT — CSS patch
    Replace the entire existing .talmud-* block in styles.css
