@@ -5,6 +5,16 @@
 // משה 2026-05-08: V9 הוא המנוע היחיד למצב גפ"ת. הוא רץ אוטומטית כשהצ'קבוקס
 // "גפ"ת: צורת הדף" דלוק. אין צורך בטוקן URL או הרשאת admin.
 
+// משה 2026-05-14: ניקוי מוקדם של מפתחות שאריות מ-PRs ישנים (PR #233 וכו')
+// שהצטברו אצל משתמשים מחוברים והשפיעו על גובה העמוד באופן לא צפוי.
+// רץ ברגע שה-script נטען, לפני כל שאר הקוד.
+(() => {
+  try {
+    localStorage.removeItem("ravtext.layout.autoOverflowSafety");
+    sessionStorage.removeItem("ravtext.layout.autoOverflowAttempts.v1");
+  } catch (_) {}
+})();
+
 import { PaneManager } from "./pane_manager.js";
 import { findAllStreamMarks, countByStream, jumpToNextMarker, colorForStream } from "./stream_mark.js";
 import { parseRawTextToHTML } from "./stream_parser.js";
