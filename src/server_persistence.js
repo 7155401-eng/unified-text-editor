@@ -14,27 +14,19 @@ const SETTINGS_BLACKLIST = new Set([
   'ravtext.ai.apiKey',                 // legacy
   'ravtext.demo.blockedUntil',
   'ravtext.demoMode',
-  // משה 2026-05-14: כל מפתחות גובה־בטיחות הם תוצאת מדידה מקומית של המנוע
-  // החכם. אסור לסנכרן אותם בין מכשירים: מסך/גופן/דפדפן שונים → ערך אחר,
-  // ואם השרת מחזיר ערך זר הוא חותך את גובה הדף ויוצר את הבאג שחוזר אצל
-  // משתמשים מחוברים. נשארים מקומיים בלבד.
+  // משה 2026-05-14: PR #233 הכניס מפתח שמקטין את גובה הדף; PR #234 הסיר את
+  // הכתיבה, אבל המפתח עדיין מסונכרן מהשרת למשתמשים מחוברים — וגרם לבאג
+  // לחזור אצל מחוברים לאחר שכבר תיקנו אותו אצל אורחים. לא לסנכרן ולא לשחזר.
   'ravtext.layout.autoOverflowSafety',
   'ravtext.layout.autoOverflowAttempts.v1',
-  'ravtext.layout.heightSafetyRegular',
-  'ravtext.talmudLayout.heightSafety',
-  'ravtext.talmudLayout.heightSafetyPerPage',
   // מפתחות מצב זמני של live overflow corrector — לא רוצים שיגיעו לשרת
   'ravtext.layout.overflowReserve.v1',
   'ravtext.layout.overflowReserve.v1.iter',
 ]);
 // משה 2026-05-09: אסור לסנכרן מפתחות API של ספקי AI לשרת — הם פרטיים למשתמש.
 // הוספתי תחילית כך שכל ravtext.ai.apiKey.<provider> נחסם.
-// משה 2026-05-14: smart-packer cache לכל מסמך הוא תוצאת מדידה מקומית; אם
-// יסונכרן בין מכשירים יגרום לקיטוע גובה לאחר login (הבאג של PR #233 חזר
-// דרך הסנכרון). נשאר local-only.
 const SETTINGS_BLACKLIST_PREFIXES = [
   'ravtext.ai.apiKey.',
-  'ravtext.talmudLayout.smartCache.',
 ];
 
 function isBlacklisted(key) {
