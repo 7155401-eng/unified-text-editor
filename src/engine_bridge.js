@@ -264,6 +264,40 @@ export function stripMarkersAndAlignRuns(paragraphText, runs, markers) {
   return { text: newText, runs: newRuns };
 }
 
+// משה 2026-05-15: מיפוי משותף — איזה אופסט בטקסט המנורמל מתאים לאופסט
+// בטקסט המקורי. גם alignRunsAfterTextNormalize וגם paneManagerToPackerContent
+// קוראים לזה כדי לא לחפף בלוגיקה.
+function buildNormalizeMap(oldText) {
+  const map = new Array(oldText.length + 1).fill(0);
+  let result = "";
+  let lastWasSpace = false;
+  for (let i = 0; i < oldText.length; i++) {
+    const ch = oldText[i];
+    const isSpace = ch === ' ' || ch === '\t';
+    if (isSpace && lastWasSpace) {
+      map[i] = result.length;
+      continue;
+    }
+    map[i] = result.length;
+    result += ch;
+    lastWasSpace = isSpace;
+  }
+  map[oldText.length] = result.length;
+  const trimmed = result.trim();
+  const trimStart = result.indexOf(trimmed);
+  return { map, trimStart, normalized: trimmed };
+}
+
+// שיוך מיקום בודד מאופסט ישן (לפני normalize) לאופסט חדש (אחרי normalize+trim).
+// אם הטקסט החדש שונה מהמנורמל המצופה — מחזיר את האופסט ללא שינוי (safety).
+export function mapPositionAfterNormalize(oldText, newText, pos) {
+  if (oldText === newText) return pos;
+  const info = buildNormalizeMap(oldText);
+  if (info.normalized !== newText) return pos;
+  const clamped = Math.max(0, Math.min(oldText.length, pos));
+  return Math.max(0, Math.min(newText.length, info.map[clamped] - info.trimStart));
+}
+
 // אחרי normalize של רווחים, מתאים את ה-runs לטקסט החדש (best-effort).
 export function alignRunsAfterTextNormalize(oldText, newText, runs) {
   if (!Array.isArray(runs) || runs.length === 0) return [];
@@ -669,6 +703,17 @@ export function paneManagerToPackerContent(paneManager) {
     mainTextNet += para.paragraphText.substring(prevEnd);
     const beforeNormalize = mainTextNet;
     mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
+
+    // משה 2026-05-15: באג ידוע — האופסטים של mainConsumers נשמרו לפני
+    // הקריאה ל-normalize ו-trim. כשהיו רווחים כפולים סביב סימן זרם (כפי
+    // שקורה אחרי `text-pre-marker  text-post-marker`) או רווחים בקצה של
+    // הפסקה, הטקסט התקצר אבל האופסט נשאר על המספרים הישנים — אז [N] בראשי
+    // נדחק לתוך מילה במקום להופיע במיקום הסימן. מתקנים דרך mapPositionAfterNormalize.
+    if (beforeNormalize !== mainTextNet) {
+      for (const c of mainConsumers) {
+        c.anchor = mapPositionAfterNormalize(beforeNormalize, mainTextNet, c.anchor);
+      }
+    }
 
     // משה 2026-05-13: חישוב mainRuns שמתאים ל-mainTextNet אחרי הסרת markers ו-normalize.
     let mainRuns = [];

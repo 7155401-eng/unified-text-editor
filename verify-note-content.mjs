@@ -89,5 +89,30 @@ function assert(cond, label) {
   delete globalThis.window.__STREAM_SETTINGS__["07"];
 }
 
+// 7) mapPositionAfterNormalize — אופסטים נשמרים אחרי כיווץ רווחים כפולים.
+//    זה הבאג שגרם ל-[N] בראשי ליפול באמצע מילה.
+{
+  const { mapPositionAfterNormalize } = await import("./src/engine_bridge.js");
+  // "א ב   ג" → normalize → "א ב ג". האופסט המקורי 5 (הרווח השלישי) צריך
+  // להפוך לאופסט 4 (לפני 'ג') בטקסט המנורמל — אז [N] יופיע בדיוק שם.
+  const oldT = "א ב   ג";
+  const newT = "א ב ג";
+  assert(mapPositionAfterNormalize(oldT, newT, 5) === 4, "7) collapsed-space anchor maps to ג position");
+  assert(mapPositionAfterNormalize(oldT, newT, 0) === 0, "7) anchor at start stays at 0");
+  assert(mapPositionAfterNormalize(oldT, newT, 2) === 2, "7) ב position unchanged");
+}
+
+// 8) trim — אופסט שלפני trim מתעדכן לאחרי trim.
+{
+  const { mapPositionAfterNormalize } = await import("./src/engine_bridge.js");
+  // " שלום עולם" → trim → "שלום עולם". אופסט 0 (לפני trim) צריך להפוך ל-0
+  // בטקסט החתוך (clamped).
+  const oldT = " שלום עולם";
+  const newT = "שלום עולם";
+  assert(mapPositionAfterNormalize(oldT, newT, 0) === 0, "8) anchor before trim clamps to 0");
+  assert(mapPositionAfterNormalize(oldT, newT, 1) === 0, "8) anchor on first real char maps to 0");
+  assert(mapPositionAfterNormalize(oldT, newT, 6) === 5, "8) middle anchor shifts by trim amount");
+}
+
 console.log(`\n=== ${pass} pass, ${fail} fail ===`);
 process.exit(fail === 0 ? 0 : 1);
