@@ -123,10 +123,13 @@ export function getDomPageGeom() {
     cssPxVar("--ravtext-features-footer-reserved", 0),
     cssPxVar("--ravtext-features-pagenumber-reserved", 0),
   );
+  // משה 2026-05-14: ה-corrector הדינמי יכול לדחוף "צמצום גובה" כדי להוציא
+  // תוכן שגלש לעמוד הבא. הערך מתאפס בכל פעם שהמשתמש מקליד/משנה הגדרות.
+  const overflowReserve = cssPxVar("--ravtext-features-overflow-reserve", 0);
   return {
     pageWidth,
     pageHeight,
-    maxPageHeight: Math.max(360, pageHeight - Math.max(0, safety) - topReserved - bottomReserved),
+    maxPageHeight: Math.max(360, pageHeight - Math.max(0, safety) - topReserved - bottomReserved - Math.max(0, overflowReserve)),
   };
 }
 

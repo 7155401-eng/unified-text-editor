@@ -64,6 +64,7 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
+import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
@@ -1888,6 +1889,17 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       requestAnimationFrame(() => {
         pdfToolbarApi.rememberBaseSize();
         pdfToolbarApi.applyZoom();
+      });
+    }
+
+    // משה 2026-05-14: תיקון-עצמי דינמי לחריגות שנותרו אחרי כל הצנרת.
+    // מודדים בקופסה האמיתית של הטקסט (Range.getBoundingClientRect, כולל
+    // descender), ואם יש חריגה ל-bottom של עמוד — מעלים את ה-reserve הדינמי
+    // ב-CSS var ומבקשים rerender. מוגבל ל-4 iterations בכל session כדי לא
+    // ליצור לולאות. בלי MutationObserver, רק קריאה מפורשת מסוף הצנרת.
+    if (!skipSmartTune) {
+      requestAnimationFrame(() => {
+        correctLiveOverflowOnce(pagesContainer);
       });
     }
 
