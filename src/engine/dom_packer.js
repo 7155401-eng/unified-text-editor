@@ -9,6 +9,7 @@ import { applyMainTextStyleToElement } from "../document_style_settings.js";
 import { applyStyleToElement } from "../style_registry.js";
 import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
 import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma } from "../original_stream_columns.js";
+import { createLayoutContext, publishLayoutContextToCssVars, currentLayoutMeasureSignature } from "./layout_context.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
@@ -109,6 +110,11 @@ function getRegularHeightSafety() {
 }
 
 export function getDomPageGeom() {
+  // משה 2026-05-14 (Unified Pagination Convergence):
+  // מודדים את ה-overlays (header/footer/page-numbers) חי לפני pagination.
+  // מפרסמים ל-CSS vars כדי שכל המדידות הבאות יראו את הערכים האמיתיים.
+  const layoutContext = createLayoutContext();
+  publishLayoutContextToCssVars(layoutContext);
   const pageWidth = cssPxVar("--ravtext-page-width", DOM_PAGE_GEOM.pageWidth);
   const pageHeight = cssPxVar("--ravtext-page-height", DOM_PAGE_GEOM.pageHeight);
   const safety = getRegularHeightSafety();
@@ -237,6 +243,9 @@ function makeMeasureKey(mainSegments, streams) {
   }
 
   let hash = 2166136261;
+  // משה 2026-05-14: signature של layout-context מבטיח שמדידות לא ממוחזרות
+  // כשהגדרות הדף/header/footer/page-number השתנו.
+  hash = hashAppend(hash, currentLayoutMeasureSignature());
   hash = hashAppend(hash, shouldMeasureTalmudLayout() ? "talmud:1" : "talmud:0");
   hash = hashAppend(hash, shouldMeasureMishnaWrap() ? "mishna:1" : "mishna:0");
   for (const seg of mainSegments || []) {
@@ -293,6 +302,18 @@ function appendMeasureMainText(parent, seg, cursorByIdx) {
   cursorByIdx.set(idx, end);
   appendTextWithRuns(parent, text, sliceRuns(runs, start, end));
 }
+
+// משה 2026-05-14: בודק שזרם הערות מכיל באמת תוכן (לא רק רשומות ריקות).
+// בלי זה, מנוע המדידה היה יוצר זרמים ריקים שתופסים גובה במדידה ופוגעים
+// בעימוד. נקרא ב-buildMeasurePage לסינון.
+function hasRealNoteTupleContent(tup) {
+  if (!tup) return false;
+  const text = String(tup[1] || "").trim();
+  if (text.length > 0) return true;
+  const children = Array.isArray(tup[5]) ? tup[5] : [];
+  return children.some((child) => String((child && child.text) || "").trim().length > 0);
+}
+
 function buildMeasurePage(mainSegments, streams) {
   const page = document.createElement("div");
   page.className = "page measure-page";
@@ -327,7 +348,7 @@ function buildMeasurePage(mainSegments, streams) {
   page.appendChild(main);
 
   const codes = Object.keys(streams)
-    .filter((c) => streams[c].length > 0)
+    .filter((c) => Array.isArray(streams[c]) && streams[c].some(hasRealNoteTupleContent))
     .sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
 
   if (codes.length > 0) {
@@ -511,6 +532,11 @@ function measureHeight(mainSegments, streams, opts = {}) {
   root.replaceChildren();
   const dom = buildMeasurePage(mainSegments, streams);
   root.appendChild(dom);
+  // משה 2026-05-14: מבטל lazy geometry על ה-DOM של המדידה. בלי זה,
+  // content-visibility:auto עלול לדחות חישוב גובה ולחזיר scrollHeight 0.
+  dom.style.contentVisibility = "visible";
+  dom.style.containIntrinsicSize = "auto";
+  void dom.offsetHeight;
   // Use scrollHeight to capture the FULL natural content height, including
   // any sub-pixel rounding or margin collapse that getBoundingClientRect may
   // truncate when the page has overflow:hidden.

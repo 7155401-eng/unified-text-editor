@@ -167,6 +167,13 @@ export function wireOutputBackgroundControl() {
   input.id = "pdf-output-background";
   input.checked = isOutputBackgroundEnabled();
   input.addEventListener("change", () => setOutputBackgroundEnabled(input.checked));
+  // משה 2026-05-14: אייקון של "טפט/רקע" + טקסט קריא בכל ערכת נושא.
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 18 18");
+  icon.setAttribute("aria-hidden", "true");
+  icon.classList.add("pdf-output-background-icon");
+  icon.innerHTML = '<rect x="2.5" y="2.5" width="13" height="13" rx="1.6" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 11 L7 6.5 L11 10.5 L13.5 8 L15.5 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="6" r="1" fill="currentColor"/>';
+  label.appendChild(icon);
   label.appendChild(input);
   label.appendChild(document.createTextNode("רקע ביצוא"));
   toolbar.appendChild(label);

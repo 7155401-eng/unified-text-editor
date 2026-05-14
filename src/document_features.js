@@ -149,7 +149,11 @@ function scheduleReservedRerender(reason) {
   }, 40);
 }
 
-function syncReservedSpace(options = {}) {
+export function prepareDocumentFeatureReserves() {
+  return syncReservedSpace({ rerenderOnChange: false, reason: "pre-pack" });
+}
+
+export function syncReservedSpace(options = {}) {
   const hasHeader = !!localStorage.getItem(HEADER_KEY);
   const hasFooter = !!localStorage.getItem(FOOTER_KEY);
   const hasPageNum = localStorage.getItem(PAGE_NUM_KEY) === "1";
@@ -250,7 +254,7 @@ export function wireDocumentFeatures() {
       overlays are first painted, then measured.
       If real reserved space changed, rerender once so pagination uses reality.
     */
-    syncReservedSpace({ rerenderOnChange: true, reason: "engine-rendered" });
+    syncReservedSpace({ rerenderOnChange: false, reason: "engine-rendered" });
   });
 
   syncReservedSpace({ rerenderOnChange: false, reason: "initial" });
@@ -258,6 +262,6 @@ export function wireDocumentFeatures() {
   setTimeout(() => {
     installRealizedPageHook();
     applyAll();
-    syncReservedSpace({ rerenderOnChange: true, reason: "initial-after-paint" });
+    syncReservedSpace({ rerenderOnChange: false, reason: "initial-after-paint" });
   }, 500);
 }

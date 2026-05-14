@@ -1,22 +1,21 @@
 /*
   final_layout_guard.js
 
-  Stable final-output validation.
+  Manual diagnostic validator only.
 
-  Principle:
-  - Measure the real rendered page output.
-  - Force lazy pages to be realized before validation.
-  - Disable content-visibility:auto during validation.
-  - Never write global page-height safety.
-  - Never hide real overflow.
+  Important architecture rule:
+  pagination is decided inside dom_packer, not here.
+  This file does not listen to mutation events, does not rerender, and does
+  not write page-height safety values. It can be called from the console or
+  debug snapshot tools to verify the final output.
 */
 
 const OLD_AUTO_SAFETY_KEY = "ravtext.layout.autoOverflowSafety";
 const OLD_SESSION_ATTEMPTS_KEY = "ravtext.layout.autoOverflowAttempts.v1";
-const STYLE_ID = "ravtext-live-output-stability-css";
+const STYLE_ID = "ravtext-final-layout-diagnostic-css";
 
 function installCss() {
-  if (document.getElementById(STYLE_ID)) return;
+  if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
@@ -34,12 +33,6 @@ function installCss() {
       display: none !important;
     }
 
-    /*
-      Critical:
-      content-visibility:auto can make off-screen pages report intrinsic size
-      instead of true content geometry. During validation all pages must be
-      real rendered boxes.
-    */
     #pages-container.ravtext-live-measure-all > .page:not(.measure-page),
     .pages-container.ravtext-live-measure-all > .page:not(.measure-page) {
       content-visibility: visible !important;
@@ -71,7 +64,8 @@ function ignorable(el) {
     el.closest(".modal") ||
     el.closest(".ctx-menu") ||
     el.closest(".toast") ||
-    el.closest("#__measure_root")
+    el.closest("#__measure_root") ||
+    el.closest("#ravtext-layout-context-measure-page")
   );
 }
 
@@ -255,24 +249,32 @@ export function measureRenderedPageOverflow(pageEl, opts = {}) {
   };
 }
 
-export function validateRenderedPages(container, opts = {}) {
+function frame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
+}
+
+async function afterPaint() {
+  try {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  } catch (_) {}
+
+  await frame();
+  await frame();
+  await new Promise((resolve) => setTimeout(resolve, 80));
+}
+
+export async function validateRenderedPages(container, opts = {}) {
   const root = typeof container === "function" ? container() : container;
   if (!root || !root.querySelectorAll) {
-    return {
-      ok: true,
-      maxOverflow: 0,
-      maxBottomOverflow: 0,
-      pages: [],
-      emptyStreams: 0,
-      forcedPlaceholders: 0,
-    };
+    return { ok: true, maxOverflow: 0, maxBottomOverflow: 0, pages: [], emptyStreams: 0, forcedPlaceholders: 0 };
   }
 
   installCss();
 
   const forcedPlaceholders = opts.forceLive === false ? 0 : forceRenderAllPages(root);
-  const emptyStreams = markEmptyStreams(root);
+  await afterPaint();
 
+  const emptyStreams = markEmptyStreams(root);
   const pages = Array.from(
     root.querySelectorAll(".page:not(.page-placeholder):not(.ravtext-empty-page), .v9-page")
   ).filter((p) => p && !p.classList.contains("page-placeholder"));
@@ -307,26 +309,8 @@ export function validateRenderedPages(container, opts = {}) {
   };
 }
 
-function frame() {
-  return new Promise((resolve) => requestAnimationFrame(resolve));
-}
-
-async function afterPaint() {
-  try {
-    if (document.fonts && document.fonts.ready) {
-      await document.fonts.ready;
-    }
-  } catch (_) {}
-
-  await frame();
-  await frame();
-  await new Promise((resolve) => setTimeout(resolve, 120));
-}
-
 export function installFinalLayoutGuard(options = {}) {
   const getPagesContainer = options.getPagesContainer || (() => document.querySelector("#pages-container"));
-  const tolerance = Number.isFinite(options.tolerance) ? options.tolerance : 1.5;
-  const debounceMs = Number.isFinite(options.debounceMs) ? options.debounceMs : 260;
 
   installCss();
 
@@ -335,83 +319,14 @@ export function installFinalLayoutGuard(options = {}) {
     sessionStorage.removeItem(OLD_SESSION_ATTEMPTS_KEY);
   } catch (_) {}
 
-  let timer = null;
-  let running = false;
-
-  async function run(reason = "unknown") {
-    if (running) return;
-    running = true;
-
-    try {
-      const container = getPagesContainer();
-      forceRenderAllPages(container);
-      await afterPaint();
-
-      const result = validateRenderedPages(container, { tolerance, forceLive: false });
-      window.__RAVTEXT_LAST_FINAL_LAYOUT_REPORT__ = result;
-
-      if (result.emptyStreams > 0) {
-        console.warn("[final-layout-guard] empty stream shells hidden", {
-          reason,
-          emptyStreams: result.emptyStreams,
-        });
-      }
-
-      if (!result.ok) {
-        console.warn("[final-layout-guard] final overflow detected", {
-          reason,
-          maxOverflow: Math.round(result.maxOverflow * 100) / 100,
-          maxBottomOverflow: Math.round(result.maxBottomOverflow * 100) / 100,
-          pages: result.pages.length,
-          result,
-        });
-
-        window.dispatchEvent(new CustomEvent("ravtext:final-overflow-detected", {
-          detail: result,
-        }));
-      }
-    } finally {
-      running = false;
-    }
-  }
-
-  function schedule(reason = "mutation") {
-    clearTimeout(timer);
-    timer = setTimeout(() => run(reason), debounceMs);
-  }
-
-  const container = getPagesContainer();
-  if (container && typeof MutationObserver !== "undefined") {
-    const obs = new MutationObserver(() => schedule("pages-mutated"));
-    obs.observe(container, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "data-stream", "data-page-index"],
-    });
-    container.__ravtextFinalLayoutGuardObserver = obs;
-  }
-
-  window.addEventListener("resize", () => schedule("resize"));
-  window.addEventListener("ravtext:styles-changed", () => schedule("styles-changed"));
-  window.addEventListener("ravtext:stream-order-changed", () => schedule("stream-order-changed"));
-  window.addEventListener("ravtext:engine-rendered", () => schedule("engine-rendered"));
-  window.addEventListener("ravtext:features-reserved-space-changed", () => schedule("reserved-space-changed"));
-
   window.__RAVTEXT_FINAL_LAYOUT_GUARD__ = {
-    run,
-    schedule,
     forceRenderAllPages: () => forceRenderAllPages(getPagesContainer()),
-    validate: () => validateRenderedPages(getPagesContainer(), { tolerance }),
+    validate: () => validateRenderedPages(getPagesContainer()),
     resetSafety: () => {
       try {
         localStorage.removeItem(OLD_AUTO_SAFETY_KEY);
         sessionStorage.removeItem(OLD_SESSION_ATTEMPTS_KEY);
       } catch (_) {}
-      schedule("reset");
     },
   };
-
-  schedule("install");
 }
