@@ -164,7 +164,7 @@ export function wireDocumentFeatures() {
     pageNumCb.checked = localStorage.getItem(PAGE_NUM_KEY) === "1";
     pageNumCb.addEventListener("change", () => {
       localStorage.setItem(PAGE_NUM_KEY, pageNumCb.checked ? "1" : "0");
-      syncReservedSpace();
+      syncReservedSpace({ rerenderOnChange: false, reason: "control-change" });
       rerender();
     });
   }
@@ -173,7 +173,7 @@ export function wireDocumentFeatures() {
     headerInput.value = localStorage.getItem(HEADER_KEY) || "";
     headerInput.addEventListener("input", () => {
       localStorage.setItem(HEADER_KEY, headerInput.value);
-      syncReservedSpace();
+      syncReservedSpace({ rerenderOnChange: false, reason: "control-change" });
       clearTimeout(headerTimer);
       headerTimer = setTimeout(rerender, 300);
     });
@@ -182,7 +182,7 @@ export function wireDocumentFeatures() {
     footerInput.value = localStorage.getItem(FOOTER_KEY) || "";
     footerInput.addEventListener("input", () => {
       localStorage.setItem(FOOTER_KEY, footerInput.value);
-      syncReservedSpace();
+      syncReservedSpace({ rerenderOnChange: false, reason: "control-change" });
       clearTimeout(footerTimer);
       footerTimer = setTimeout(rerender, 300);
     });

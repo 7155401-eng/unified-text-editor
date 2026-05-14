@@ -1,20 +1,59 @@
 /*
   final_layout_guard.js
 
-  תפקיד נכון:
-  לבדוק אחרי הרינדור הסופי אם יש גלישה אמיתית.
+  עיקרון:
+  יציבות לפי הפלט החי בפועל, לא לפי כרית מתמטית גלובלית.
 
-  מה אסור:
-  לא להוסיף כרית גלובלית.
-  לא לכתוב ravtext.layout.autoOverflowSafety.
-  לא להפוך דף אחד בעייתי לרווחים בכל המסמך.
+  מותר:
+  - למדוד overflow אמיתי אחרי הרינדור.
+  - לנקות DOM שגוי שאין לו תוכן, כגון stream עם כותרת בלבד.
+  - לנטרל רקעים שנשפכו מ-data-stream לתוך הדף המודפס.
 
-  העימוד הדינמי צריך להיות בתוך מנוע העימוד עצמו:
-  המדידה ב-dom_packer/V9 צריכה למדוד את הפלט הסופי.
+  אסור:
+  - לא לכתוב ravtext.layout.autoOverflowSafety.
+  - לא להוסיף רווח גלובלי לכל הדפים.
+  - לא להסתיר טקסט כדי להעמיד פנים שאין overflow.
 */
 
 const OLD_AUTO_SAFETY_KEY = "ravtext.layout.autoOverflowSafety";
 const OLD_SESSION_ATTEMPTS_KEY = "ravtext.layout.autoOverflowAttempts.v1";
+const STYLE_ID = "ravtext-live-output-stability-css";
+
+function injectLiveStabilityCss() {
+  if (document.getElementById(STYLE_ID)) return;
+
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = `
+    /*
+      רקעים של [data-stream] נועדו לסימון בעורך/מקור.
+      בתוך הדף המודפס הם יוצרים כתמי רקע מכוערים, במיוחד אחרי שהזרמים
+      כבר מקבלים צבע טקסט משלהם.
+    */
+    #pages-container .page .stream[data-stream],
+    .pages-container .page .stream[data-stream],
+    #pages-container .page .note-child[data-stream],
+    .pages-container .page .note-child[data-stream] {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    /*
+      אין להציג כותרת זרם יתומה.
+      JS מסיר את האלמנט; CSS הוא רשת ביטחון בלבד.
+    */
+    #pages-container .page .stream.ravtext-empty-stream,
+    .pages-container .page .stream.ravtext-empty-stream {
+      display: none !important;
+    }
+
+    .ravtext-final-overflow-detected {
+      outline: 1px dashed rgba(220, 38, 38, 0.45);
+      outline-offset: -1px;
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 function isVisibleElement(el) {
   if (!el || el.nodeType !== 1) return false;
@@ -59,6 +98,56 @@ function textAwareRects(el) {
   }
 
   return rects;
+}
+
+function textWithoutOwnTitle(streamEl) {
+  const clone = streamEl.cloneNode(true);
+  clone.querySelectorAll(".stream-title, .v9-stream-title").forEach((el) => el.remove());
+  return (clone.textContent || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\[\]()[\]{}־–—:;,.]/g, "")
+    .trim();
+}
+
+function hasRealStreamBody(streamEl) {
+  if (!streamEl) return false;
+
+  const noteEls = Array.from(
+    streamEl.querySelectorAll(".note, .note-inline, .note-part, .note-child")
+  );
+
+  for (const note of noteEls) {
+    const txt = (note.textContent || "")
+      .replace(/\s+/g, " ")
+      .replace(/[\[\]()[\]{}־–—:;,.]/g, "")
+      .trim();
+    if (txt.length > 0) return true;
+  }
+
+  return textWithoutOwnTitle(streamEl).length > 0;
+}
+
+function pruneEmptyStreams(root) {
+  if (!root || !root.querySelectorAll) return 0;
+
+  let removed = 0;
+
+  for (const stream of Array.from(root.querySelectorAll(".page .stream[data-stream]"))) {
+    if (hasRealStreamBody(stream)) {
+      stream.classList.remove("ravtext-empty-stream");
+      continue;
+    }
+
+    stream.classList.add("ravtext-empty-stream");
+    stream.remove();
+    removed++;
+  }
+
+  for (const wrap of Array.from(root.querySelectorAll(".page .page-streams"))) {
+    if (!wrap.querySelector(".stream")) wrap.remove();
+  }
+
+  return removed;
 }
 
 function collectPrintableCandidates(pageEl) {
@@ -160,8 +249,11 @@ export function measureRenderedPageOverflow(pageEl, opts = {}) {
 export function validateRenderedPages(container, opts = {}) {
   const root = typeof container === "function" ? container() : container;
   if (!root || !root.querySelectorAll) {
-    return { ok: true, maxOverflow: 0, pages: [] };
+    return { ok: true, maxOverflow: 0, pages: [], removedEmptyStreams: 0 };
   }
+
+  injectLiveStabilityCss();
+  const removedEmptyStreams = pruneEmptyStreams(root);
 
   const pages = Array.from(
     root.querySelectorAll(".page:not(.page-placeholder), .v9-page")
@@ -192,6 +284,7 @@ export function validateRenderedPages(container, opts = {}) {
     maxOverflow: maxAny,
     maxBottomOverflow: maxBottom,
     pages: report,
+    removedEmptyStreams,
   };
 }
 
@@ -210,7 +303,8 @@ export function installFinalLayoutGuard(options = {}) {
   const tolerance = Number.isFinite(options.tolerance) ? options.tolerance : 1.5;
   const debounceMs = Number.isFinite(options.debounceMs) ? options.debounceMs : 260;
 
-  // ניקוי הנזק הישן: לא נותנים ל-280px להמשיך לחיות ב-localStorage.
+  injectLiveStabilityCss();
+
   try {
     localStorage.removeItem(OLD_AUTO_SAFETY_KEY);
     sessionStorage.removeItem(OLD_SESSION_ATTEMPTS_KEY);
@@ -226,8 +320,14 @@ export function installFinalLayoutGuard(options = {}) {
     try {
       await afterPaint();
       const result = validateRenderedPages(getPagesContainer(), { tolerance });
-
       window.__RAVTEXT_LAST_FINAL_LAYOUT_REPORT__ = result;
+
+      if (result.removedEmptyStreams > 0) {
+        console.warn("[final-layout-guard] removed empty stream headings", {
+          reason,
+          removedEmptyStreams: result.removedEmptyStreams,
+        });
+      }
 
       if (!result.ok) {
         console.warn("[final-layout-guard] final overflow detected; diagnostic only", {
@@ -255,13 +355,15 @@ export function installFinalLayoutGuard(options = {}) {
   const container = getPagesContainer();
   if (container && typeof MutationObserver !== "undefined") {
     const obs = new MutationObserver(() => schedule("pages-mutated"));
-    obs.observe(container, { childList: true, subtree: true, characterData: true });
+    obs.observe(container, { childList: true, subtree: true, characterData: true, attributes: true });
     container.__ravtextFinalLayoutGuardObserver = obs;
   }
 
   window.addEventListener("resize", () => schedule("resize"));
   window.addEventListener("ravtext:styles-changed", () => schedule("styles-changed"));
   window.addEventListener("ravtext:stream-order-changed", () => schedule("stream-order-changed"));
+  window.addEventListener("ravtext:engine-rendered", () => schedule("engine-rendered"));
+  window.addEventListener("ravtext:features-reserved-space-changed", () => schedule("reserved-space-changed"));
 
   window.__RAVTEXT_FINAL_LAYOUT_GUARD__ = {
     run,
