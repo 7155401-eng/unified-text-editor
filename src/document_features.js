@@ -194,6 +194,16 @@ function installRealizedPageHook() {
     applyAll();
   };
   container.__documentFeaturesHooked = true;
+  // משה 2026-05-14: אחרי כל סבב רנדור — מסנכרנים את מספרי העמודים/header/footer.
+  // בלי זה, כיבוי checkbox השאיר את התוויות כי applyAll רץ רק על page-realize
+  // ועמודים קיימים לא נכנסים שוב לאותו hook.
+  if (!container.__documentFeaturesEngineHooked) {
+    window.addEventListener("ravtext:engine-rendered", () => {
+      // אחרי שה-DOM התעדכן (engine סיים)
+      requestAnimationFrame(() => applyAll());
+    });
+    container.__documentFeaturesEngineHooked = true;
+  }
 }
 
 export function wireDocumentFeatures() {
@@ -207,6 +217,10 @@ export function wireDocumentFeatures() {
     pageNumCb.checked = localStorage.getItem(PAGE_NUM_KEY) === "1";
     pageNumCb.addEventListener("change", () => {
       localStorage.setItem(PAGE_NUM_KEY, pageNumCb.checked ? "1" : "0");
+      // משה 2026-05-14: ניקוי מיידי של תוויות קיימות לפני ה-rerender, כדי
+      // שאם ה-rerender לא ייגרום לרינדור מחדש של עמוד מסוים, התוויות הישנות
+      // עדיין יוסרו.
+      applyPageNumbers();
       syncReservedSpace({ rerenderOnChange: false, reason: "control-change" });
       rerender();
     });
