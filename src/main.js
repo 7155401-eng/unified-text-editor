@@ -241,9 +241,10 @@ loadInitialState(paneManager).then((res) => {
 const pagesContainer = document.querySelector("#pages-container");
 
 // Final render guard:
-// משה 2026-05-14: bootstrap ה-reserve הדינמי מ-session לפני הפעלת ה-engine,
-// כדי שה-pack הראשון כבר ייקח אותה בחשבון. גם משחזר מצב טוב בין רענונים.
-bootstrapLiveOverflowReserve();
+// משה 2026-05-14: ה-corrector הדינמי נוטרל (ראה engine_bridge.js). במקום
+// לטעון את ה-reserve מ-session, מאפסים אותו לערך 0 כדי שלא ישפיע על pack
+// הראשון. אם נחזיר את ה-corrector בעתיד, נחזיר גם את ה-bootstrap.
+try { resetLiveOverflowReserve(); } catch (_) {}
 
 // מודד את הדף אחרי הרינדור הסופי. אם יש גלישה,
 // מגדיל כרית עימוד ומרנדר מחדש, בלי להסתיר טקסט.
