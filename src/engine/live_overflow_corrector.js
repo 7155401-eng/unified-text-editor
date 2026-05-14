@@ -197,6 +197,110 @@ export function correctLiveOverflowOnce(container, { onScheduleRerender } = {}) 
   return true;
 }
 
+// משה 2026-05-14: סורק זוגות סימני פיצול U+2060 ובודק עם getBoundingClientRect
+// האם שני החצאים יכולים להתאחד באותו עמוד כעת. אם כן — שומר hint
+// ל-window.__ravtextRemergeHints ו-rerender. עוזר במצב שהפריסה השתנתה
+// (גופן/מרווחים/הסרת תוכן) ופיצול ישן כבר לא נחוץ.
+let _remergeIters = 0;
+const REMERGE_MAX_ITERS = 2;
+
+function findSplitMarkPairs(container) {
+  if (!container || !container.querySelectorAll) return [];
+  // סלקטור רחב — כולל הערות, V9, וטקסט ראשי. כולל גם stream columns
+  // (childrren של .stream-balanced-columns שיש להן .note*).
+  const SCAN = [
+    ".note",
+    ".note-inline",
+    ".note-part",
+    ".note-child",
+    ".v9-line",
+    ".page-main p",
+    ".page-main h1, .page-main h2, .page-main h3",
+  ].join(",");
+  const nodes = Array.from(container.querySelectorAll(SCAN));
+  const pairs = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    const at = a.textContent || "";
+    if (!at.length) continue;
+    if (at.charCodeAt(at.length - 1) !== 0x2060) continue;
+    // בדיקה: האם יש אלמנט הבא בסדר המסמך שמתחיל ב-U+2060?
+    for (let j = i + 1; j < nodes.length; j++) {
+      const bt = nodes[j].textContent || "";
+      if (!bt.trim()) continue;
+      if (bt.charCodeAt(0) === 0x2060) {
+        pairs.push({ first: a, second: nodes[j] });
+      }
+      break;
+    }
+  }
+  return pairs;
+}
+
+function getPageOf(el) {
+  return el?.closest?.(".page:not(.page-placeholder), .v9-page") || null;
+}
+
+function couldFitMerged(pair) {
+  // האם שני החצאים יכולים לשבת באותו עמוד? נמדוד את הגובה של החלק השני
+  // (b) ונבדוק אם יש מספיק מקום בעמוד של החלק הראשון (a). שמרני: מוסיף
+  // 2px ביטחון.
+  const a = pair.first;
+  const b = pair.second;
+  const aPage = getPageOf(a);
+  if (!aPage) return false;
+  const aPR = aPage.getBoundingClientRect();
+  const bR = b.getBoundingClientRect();
+  const bottomLimit = aPR.bottom;
+  // המקום הפנוי בעמוד = bottomLimit - actual content bottom of aPage
+  let contentBottom = aPR.top;
+  for (const el of aPage.querySelectorAll(".v9-line, .note, .note-inline, .note-part, .stream, .page-main p")) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom > contentBottom) contentBottom = r.bottom;
+  }
+  const free = bottomLimit - contentBottom - 2;
+  return bR.height > 0 && bR.height < free;
+}
+
+export function tryRemergeSplitMarks(container, { onScheduleRerender } = {}) {
+  if (typeof window === "undefined") return false;
+  if (_remergeIters >= REMERGE_MAX_ITERS) return false;
+  const pairs = findSplitMarkPairs(container);
+  if (!pairs.length) {
+    _remergeIters = 0;
+    return false;
+  }
+  // נאסוף hints — לכל זוג שמסוגל להתמזג, נשמור את הקוד/anchor של החלק הראשון
+  // כדי שהפק הבא ידע להעדיף לא לפצל.
+  const hints = [];
+  for (const p of pairs) {
+    if (!couldFitMerged(p)) continue;
+    const code = p.first.closest?.("[data-stream]")?.getAttribute("data-stream") || "main";
+    hints.push({
+      streamCode: code,
+      // anchor שמור על dataset של ה-note (אם קיים)
+      anchor: p.first.dataset?.anchor || "",
+      num: p.first.dataset?.noteNum || "",
+    });
+  }
+  if (!hints.length) return false;
+  window.__ravtextRemergeHints = hints;
+  _remergeIters++;
+  if (typeof onScheduleRerender === "function") {
+    onScheduleRerender();
+  } else if (typeof window.__ravtextRerender === "function") {
+    window.__ravtextRerender();
+  }
+  return true;
+}
+
+export function resetRemergeIterations() {
+  _remergeIters = 0;
+  if (typeof window !== "undefined") {
+    delete window.__ravtextRemergeHints;
+  }
+}
+
 /**
  * Read the current reserve from session storage and apply it to the CSS
  * var so the very first pack pass already takes it into account.

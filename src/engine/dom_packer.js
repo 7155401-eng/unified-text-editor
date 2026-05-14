@@ -613,20 +613,64 @@ function noMidLineSplitsEnabled() {
   }
 }
 
+// משה 2026-05-14: מצב גמיש — לא מפצל פיסקאות, אבל מנסה למלא רווחים ע"י
+// look-ahead: אם פיסקה לא נכנסת אבל הבאה כן — נשבץ את הבאה במקומה. רק
+// כשההפרש בטעם משמעותי (האלטרנטיבה היא לעמוד עם רווח גדול).
+function noMidParagraphSoftEnabled() {
+  try {
+    const raw = localStorage.getItem("ravtext.spacing.v1");
+    const settings = raw ? JSON.parse(raw) : null;
+    return !!settings?.noMidParagraphSoft;
+  } catch {
+    return false;
+  }
+}
+
+// משה 2026-05-14: live_overflow_corrector מזהה זוגות פיצול שניתן לאחד וכותב
+// hints ל-window. כאן בודקים אם הזרם/anchor הספציפי שלפנינו מסומן כ"אל תפצל
+// הפעם" — אם כן, splitNote יעדיף להחזיר את כל ההערה לעמוד הבא במקום לחתוך.
+function hasRemergeHintFor(stream, anchor, num) {
+  if (typeof window === "undefined") return false;
+  const hints = window.__ravtextRemergeHints;
+  if (!Array.isArray(hints) || !hints.length) return false;
+  const a = String(anchor || "");
+  const n = String(num || "");
+  const s = String(stream || "");
+  return hints.some(h =>
+    String(h.streamCode || "") === s &&
+    (!h.anchor || String(h.anchor) === a) &&
+    (!h.num || String(h.num) === n)
+  );
+}
+
 function noSplitsAtAllEnabled() {
   return noMidLineSplitsEnabled();
 }
 
+// משה 2026-05-14: בסקאלת fill — strict = 0.95 (כמעט אסור פיצול),
+// soft = 0.72 (פיצול מותר רק כשהמילוי טוב; widow לא יוצרים), רגיל = ברירת
+// המחדל ההיסטורית. מודד דינמית את היחס בין הטקסט בשורה לרוחב הזמין.
+function _softFillFloor() {
+  // יותר גבוה מ-MIN_FORWARD_LAST_LINE_FILL — מבטיח שלא ניצור widow קצר.
+  return 0.72;
+}
+
 function minMainSplitLineFill() {
-  return noMidLineSplitsEnabled() ? MIN_UNBROKEN_LINE_FILL : MIN_FORWARD_LAST_LINE_FILL;
+  if (noMidLineSplitsEnabled()) return MIN_UNBROKEN_LINE_FILL;
+  if (noMidParagraphSoftEnabled()) return Math.max(MIN_FORWARD_LAST_LINE_FILL, _softFillFloor());
+  return MIN_FORWARD_LAST_LINE_FILL;
 }
 
 function minNoteSplitLineFill() {
-  return noMidLineSplitsEnabled() ? MIN_UNBROKEN_LINE_FILL : MIN_NOTE_SPLIT_LINE_FILL;
+  if (noMidLineSplitsEnabled()) return MIN_UNBROKEN_LINE_FILL;
+  if (noMidParagraphSoftEnabled()) return Math.max(MIN_NOTE_SPLIT_LINE_FILL, _softFillFloor());
+  return MIN_NOTE_SPLIT_LINE_FILL;
 }
 
 function minBackwardMainSplitLineFill() {
-  return noMidLineSplitsEnabled() ? MIN_UNBROKEN_LINE_FILL : MIN_LAST_LINE_FILL;
+  if (noMidLineSplitsEnabled()) return MIN_UNBROKEN_LINE_FILL;
+  if (noMidParagraphSoftEnabled()) return Math.max(MIN_LAST_LINE_FILL, _softFillFloor());
+  return MIN_LAST_LINE_FILL;
 }
 
 function cloneStreams(streams) {
@@ -991,6 +1035,11 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   // Adds "…" markers to indicate continuation.
   function splitNote(note, maxHeight) {
     if (noSplitsAtAllEnabled()) return [note, null];
+    // משה 2026-05-14: אם live_overflow_corrector זיהה שזו הערה שפוצלה
+    // בעבר ויכולה לחזור לעמוד אחד — לא לפצל הפעם.
+    if (hasRemergeHintFor(note.stream, note.anchor, note.num)) {
+      return [note, null];
+    }
     const charsThatFit = fitNoteCharPrefix(note.stream, note.anchor, note.text, maxHeight);
     if (charsThatFit <= 0) {
       // Can't fit even a single char — force the whole note (overflow).
