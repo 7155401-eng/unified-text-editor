@@ -28,9 +28,31 @@ import {
   noteTextPrefixForStream,
   noteTextSuffixForStream,
   getEffectiveStreamSettings,
+  styleIdForStreamNumber,
   _streamBoolSetting,
 } from "../original_stream_columns.js";
 import { sliceRuns } from "./runs_dom.js";
+import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
+
+// משה 2026-05-15: ממיר styleId לאובייקט "marks" שמתאים ל-runs (אותו מבנה
+// ש-runs_dom.js מצפה לו). שימוש: גם V9 (שורות + runs) וגם המנוע הרגיל (אם
+// יבחר להחיל סגנון על "[N]" דרך runs במקום DOM-styling) ייפול לאותו ערך.
+function styleIdToMarks(styleId) {
+  if (!styleId) return null;
+  const raw = resolveTextStyle(styleId);
+  if (!raw) return null;
+  const s = normalizeTextStyle(raw);
+  if (!s) return null;
+  const marks = {};
+  if (s.bold) marks.bold = true;
+  if (s.italic) marks.italic = true;
+  if (s.underline) marks.underline = true;
+  if (s.color) marks.color = s.color;
+  if (s.bgColor || s.backgroundColor) marks.backgroundColor = s.bgColor || s.backgroundColor;
+  if (s.fontFamily) marks.fontFamily = s.fontFamily;
+  if (s.fontSize) marks.fontSize = s.fontSize;
+  return Object.keys(marks).length > 0 ? marks : null;
+}
 
 export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
   const {
@@ -58,6 +80,9 @@ export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
       text: formatted + " ",
       bold: shouldBoldStreamNumber(streamCode, place),
       place,
+      // משה 2026-05-15: סגנון שיוחל על "[N]" מתוך רשימת סגנונות המסמך.
+      // העברה ל-DOM walker (renderer.js) ול-V9 flattener (nodesToTextRuns).
+      styleId: styleIdForStreamNumber(streamCode, place),
     });
   }
 
@@ -134,6 +159,12 @@ export function nodesToTextRuns(nodes) {
       if (n.bold && end > start) {
         runs.push({ start, end, marks: { bold: true } });
       }
+      // משה 2026-05-15: סגנון מותאם של המספר (mainRefStyleId / noteNumStyleId)
+      // מתורגם ל-marks אינליין. ב-V9 זה גורם ל-span בצבע/פונט/גודל הנכונים.
+      if (n.kind === "number" && n.styleId && end > start) {
+        const marks = styleIdToMarks(n.styleId);
+        if (marks) runs.push({ start, end, marks });
+      }
     }
   };
   appendNodes(nodes);
@@ -168,6 +199,9 @@ export function injectMainRefs(mainText, mainRuns, notes) {
       anchor: Math.max(0, Math.min(text.length, n.anchor)),
       text: formatted,
       bold: shouldBoldStreamNumber(n.stream, "main"),
+      // משה 2026-05-15: סגנון בחירה מתוך רשימת הסגנונות — מותרגם ל-marks
+      // ומצטרף ל-mainRuns כך ש-V9 והמנוע הרגיל יציירו את "[N]" בצבע/פונט/גודל הנכון.
+      styleId: styleIdForStreamNumber(n.stream, "main"),
     });
   }
   if (refs.length === 0) {
@@ -195,7 +229,12 @@ export function injectMainRefs(mainText, mainRuns, notes) {
     if (anchor > cursor) outText += text.substring(cursor, anchor);
     const refStart = outText.length;
     outText += ref.text;
-    if (ref.bold) outRuns.push({ start: refStart, end: outText.length, marks: { bold: true } });
+    const refEnd = outText.length;
+    if (ref.bold) outRuns.push({ start: refStart, end: refEnd, marks: { bold: true } });
+    if (ref.styleId) {
+      const marks = styleIdToMarks(ref.styleId);
+      if (marks) outRuns.push({ start: refStart, end: refEnd, marks });
+    }
     cursor = anchor;
   }
   if (cursor < text.length) outText += text.substring(cursor);
