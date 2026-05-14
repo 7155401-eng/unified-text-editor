@@ -358,6 +358,7 @@ export function installFinalLayoutGuard(options = {}) {
   window.__RAVTEXT_FINAL_LAYOUT_GUARD__ = {
     run,
     schedule,
+    forceRenderAllPages: () => forceRenderAllPages(getPagesContainer()),
     validate: () => validateRenderedPages(getPagesContainer(), { tolerance }),
     resetSafety: () => {
       try {

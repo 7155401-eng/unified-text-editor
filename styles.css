@@ -5222,3 +5222,16 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) 
 .pages-container .page.ravtext-empty-page {
   display: none !important;
 }
+/* ============================================================
+   RAVTEXT FORCE LIVE MEASUREMENT
+
+   Used only when final layout validation/debug/export needs truth.
+   It disables content-visibility:auto so off-screen pages are measured
+   from real rendered content, not intrinsic placeholder size.
+   ============================================================ */
+
+#pages-container.ravtext-live-measure-all > .page:not(.measure-page),
+.pages-container.ravtext-live-measure-all > .page:not(.measure-page) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: auto !important;
+}
