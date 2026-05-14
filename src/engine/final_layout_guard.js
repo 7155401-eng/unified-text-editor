@@ -1,68 +1,144 @@
 /*
   final_layout_guard.js
 
-  תפקיד נכון:
-  לבדוק אחרי הרינדור הסופי אם יש גלישה אמיתית.
+  Stable live-output guard.
 
-  מה אסור:
-  לא להוסיף כרית גלובלית.
-  לא לכתוב ravtext.layout.autoOverflowSafety.
-  לא להפוך דף אחד בעייתי לרווחים בכל המסמך.
-
-  העימוד הדינמי צריך להיות בתוך מנוע העימוד עצמו:
-  המדידה ב-dom_packer/V9 צריכה למדוד את הפלט הסופי.
+  Rules:
+  - Measure actual final rendered output.
+  - Never write global page-height safety.
+  - Never hide real overflow.
+  - Never delete layout DOM after rendering.
+  - Only mark/diagnose overflow and hide truly empty stream shells.
 */
 
 const OLD_AUTO_SAFETY_KEY = "ravtext.layout.autoOverflowSafety";
 const OLD_SESSION_ATTEMPTS_KEY = "ravtext.layout.autoOverflowAttempts.v1";
+const STYLE_ID = "ravtext-live-output-stability-css";
 
-function isVisibleElement(el) {
+function installCss() {
+  if (document.getElementById(STYLE_ID)) return;
+
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = `
+    /*
+      data-stream highlight backgrounds belong to editor/source markings.
+      In printed pages they become ugly blocks because .stream also has data-stream.
+      Keep stream text colors, remove only the printed-page background/underline spill.
+    */
+    #pages-container .page .stream[data-stream],
+    .pages-container .page .stream[data-stream],
+    #pages-container .page .note-child[data-stream],
+    .pages-container .page .note-child[data-stream] {
+      background: transparent !important;
+      box-shadow: none !important;
+    }
+
+    /*
+      Empty stream shells must not show orphan titles.
+      JS marks these shells; CSS hides them without deleting DOM/state.
+    */
+    #pages-container .page .stream.ravtext-empty-stream,
+    .pages-container .page .stream.ravtext-empty-stream {
+      display: none !important;
+    }
+
+    .ravtext-final-overflow-detected {
+      outline: 1px dashed rgba(220, 38, 38, 0.45);
+      outline-offset: -1px;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function visible(el) {
   if (!el || el.nodeType !== 1) return false;
   const st = getComputedStyle(el);
-  if (st.display === "none" || st.visibility === "hidden" || st.opacity === "0") return false;
-  return true;
+  return st.display !== "none" && st.visibility !== "hidden" && st.opacity !== "0";
 }
 
-function isIgnorable(el) {
+function ignorable(el) {
   if (!el || !el.classList) return true;
-  if (el.classList.contains("page-placeholder")) return true;
-  if (el.closest(".page-placeholder")) return true;
-  if (el.closest(".pdf-toolbar")) return true;
-  if (el.closest(".toolbar")) return true;
-  if (el.closest(".app-header")) return true;
-  if (el.closest(".modal")) return true;
-  if (el.closest(".ctx-menu")) return true;
-  if (el.closest(".toast")) return true;
-  if (el.closest("#__measure_root")) return true;
-  return false;
+  return !!(
+    el.classList.contains("page-placeholder") ||
+    el.closest(".page-placeholder") ||
+    el.closest(".pdf-toolbar") ||
+    el.closest(".toolbar") ||
+    el.closest(".app-header") ||
+    el.closest(".modal") ||
+    el.closest(".ctx-menu") ||
+    el.closest(".toast") ||
+    el.closest("#__measure_root")
+  );
 }
 
-function textAwareRects(el) {
-  const rects = [];
+function cleanText(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .replace(/[\[\]()[\]{}־–—:;,.]/g, "")
+    .trim();
+}
+
+function streamHasRealBody(streamEl) {
+  if (!streamEl) return false;
+
+  const notes = Array.from(
+    streamEl.querySelectorAll(".note, .note-inline, .note-part, .note-child, .v9-line")
+  );
+
+  for (const note of notes) {
+    if (cleanText(note.textContent).length > 0) return true;
+  }
+
+  const clone = streamEl.cloneNode(true);
+  clone.querySelectorAll(".stream-title, .v9-stream-title").forEach((el) => el.remove());
+  return cleanText(clone.textContent).length > 0;
+}
+
+function markEmptyStreams(root) {
+  if (!root || !root.querySelectorAll) return 0;
+
+  let count = 0;
+  const streams = root.querySelectorAll(".page .stream[data-stream], .v9-page .stream[data-stream]");
+
+  for (const stream of streams) {
+    if (streamHasRealBody(stream)) {
+      stream.classList.remove("ravtext-empty-stream");
+    } else {
+      stream.classList.add("ravtext-empty-stream");
+      count++;
+    }
+  }
+
+  return count;
+}
+
+function rectsFor(el) {
+  const out = [];
 
   try {
-    if (el.childNodes && el.textContent && el.textContent.trim()) {
+    if (el.textContent && el.textContent.trim()) {
       const range = document.createRange();
       range.selectNodeContents(el);
       for (const r of Array.from(range.getClientRects())) {
-        if (r && r.width > 0.5 && r.height > 0.5) rects.push(r);
+        if (r.width > 0.5 && r.height > 0.5) out.push(r);
       }
       range.detach && range.detach();
     }
   } catch (_) {}
 
-  if (!rects.length) {
+  if (!out.length) {
     try {
       const r = el.getBoundingClientRect();
-      if (r && r.width > 0.5 && r.height > 0.5) rects.push(r);
+      if (r.width > 0.5 && r.height > 0.5) out.push(r);
     } catch (_) {}
   }
 
-  return rects;
+  return out;
 }
 
-function collectPrintableCandidates(pageEl) {
-  const selector = [
+function candidates(pageEl) {
+  return Array.from(pageEl.querySelectorAll([
     ".page-main",
     ".page-main *",
     ".page-streams",
@@ -84,46 +160,43 @@ function collectPrintableCandidates(pageEl) {
     ".ravtext-page-footer *",
     ".ravtext-page-number-overlay",
     ".ravtext-page-number-overlay *"
-  ].join(",");
-
-  return Array.from(pageEl.querySelectorAll(selector))
-    .filter((el) => isVisibleElement(el) && !isIgnorable(el));
+  ].join(","))).filter((el) => visible(el) && !ignorable(el));
 }
 
 export function measureRenderedPageOverflow(pageEl, opts = {}) {
-  if (!pageEl || !isVisibleElement(pageEl)) {
+  if (!pageEl || !visible(pageEl)) {
     return { bottom: 0, top: 0, left: 0, right: 0, max: 0, offenders: [] };
   }
 
   const tolerance = Number.isFinite(opts.tolerance) ? opts.tolerance : 1.5;
-  const pageRect = pageEl.getBoundingClientRect();
+  const pr = pageEl.getBoundingClientRect();
 
-  if (!pageRect || !pageRect.width || !pageRect.height) {
+  if (!pr || !pr.width || !pr.height) {
     return { bottom: 0, top: 0, left: 0, right: 0, max: 0, offenders: [] };
   }
 
   const allowed = {
-    top: pageRect.top - tolerance,
-    bottom: pageRect.bottom + tolerance,
-    left: pageRect.left - tolerance,
-    right: pageRect.right + tolerance,
+    top: pr.top - tolerance,
+    bottom: pr.bottom + tolerance,
+    left: pr.left - tolerance,
+    right: pr.right + tolerance,
   };
 
-  let overflowBottom = 0;
-  let overflowTop = 0;
-  let overflowLeft = 0;
-  let overflowRight = 0;
+  let bottom = 0;
+  let top = 0;
+  let left = 0;
+  let right = 0;
   const offenders = [];
 
-  for (const el of collectPrintableCandidates(pageEl)) {
-    for (const r of textAwareRects(el)) {
+  for (const el of candidates(pageEl)) {
+    for (const r of rectsFor(el)) {
       const b = r.bottom - allowed.bottom;
       const t = allowed.top - r.top;
       const l = allowed.left - r.left;
       const rr = r.right - allowed.right;
-      const localMax = Math.max(b, t, l, rr);
+      const m = Math.max(b, t, l, rr);
 
-      if (localMax > tolerance) {
+      if (m > tolerance) {
         offenders.push({
           tag: el.tagName,
           className: String(el.className || ""),
@@ -135,24 +208,24 @@ export function measureRenderedPageOverflow(pageEl, opts = {}) {
         });
       }
 
-      overflowBottom = Math.max(overflowBottom, b);
-      overflowTop = Math.max(overflowTop, t);
-      overflowLeft = Math.max(overflowLeft, l);
-      overflowRight = Math.max(overflowRight, rr);
+      bottom = Math.max(bottom, b);
+      top = Math.max(top, t);
+      left = Math.max(left, l);
+      right = Math.max(right, rr);
     }
   }
 
-  overflowBottom = Math.max(0, overflowBottom);
-  overflowTop = Math.max(0, overflowTop);
-  overflowLeft = Math.max(0, overflowLeft);
-  overflowRight = Math.max(0, overflowRight);
+  bottom = Math.max(0, bottom);
+  top = Math.max(0, top);
+  left = Math.max(0, left);
+  right = Math.max(0, right);
 
   return {
-    bottom: overflowBottom,
-    top: overflowTop,
-    left: overflowLeft,
-    right: overflowRight,
-    max: Math.max(overflowBottom, overflowTop, overflowLeft, overflowRight),
+    bottom,
+    top,
+    left,
+    right,
+    max: Math.max(bottom, top, left, right),
     offenders,
   };
 }
@@ -160,48 +233,52 @@ export function measureRenderedPageOverflow(pageEl, opts = {}) {
 export function validateRenderedPages(container, opts = {}) {
   const root = typeof container === "function" ? container() : container;
   if (!root || !root.querySelectorAll) {
-    return { ok: true, maxOverflow: 0, pages: [] };
+    return { ok: true, maxOverflow: 0, maxBottomOverflow: 0, pages: [], emptyStreams: 0 };
   }
 
+  installCss();
+
+  const emptyStreams = markEmptyStreams(root);
   const pages = Array.from(
     root.querySelectorAll(".page:not(.page-placeholder), .v9-page")
   ).filter((p) => p && !p.classList.contains("page-placeholder"));
 
-  const report = [];
-  let maxBottom = 0;
+  const bad = [];
   let maxAny = 0;
+  let maxBottom = 0;
 
   for (const page of pages) {
     const overflow = measureRenderedPageOverflow(page, opts);
-    maxBottom = Math.max(maxBottom, overflow.bottom);
     maxAny = Math.max(maxAny, overflow.max);
+    maxBottom = Math.max(maxBottom, overflow.bottom);
 
     page.dataset.finalOverflowBottom = String(Math.round(overflow.bottom * 100) / 100);
     page.dataset.finalOverflowMax = String(Math.round(overflow.max * 100) / 100);
 
     if (overflow.max > (opts.tolerance || 1.5)) {
       page.classList.add("ravtext-final-overflow-detected");
-      report.push({ page, overflow });
+      bad.push({ page, overflow });
     } else {
       page.classList.remove("ravtext-final-overflow-detected");
     }
   }
 
   return {
-    ok: report.length === 0,
+    ok: bad.length === 0,
     maxOverflow: maxAny,
     maxBottomOverflow: maxBottom,
-    pages: report,
+    pages: bad,
+    emptyStreams,
   };
 }
 
-function nextAnimationFrame() {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+function frame() {
+  return new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 async function afterPaint() {
-  await nextAnimationFrame();
-  await nextAnimationFrame();
+  await frame();
+  await frame();
   await new Promise((resolve) => setTimeout(resolve, 80));
 }
 
@@ -210,7 +287,8 @@ export function installFinalLayoutGuard(options = {}) {
   const tolerance = Number.isFinite(options.tolerance) ? options.tolerance : 1.5;
   const debounceMs = Number.isFinite(options.debounceMs) ? options.debounceMs : 260;
 
-  // ניקוי הנזק הישן: לא נותנים ל-280px להמשיך לחיות ב-localStorage.
+  installCss();
+
   try {
     localStorage.removeItem(OLD_AUTO_SAFETY_KEY);
     sessionStorage.removeItem(OLD_SESSION_ATTEMPTS_KEY);
@@ -226,11 +304,17 @@ export function installFinalLayoutGuard(options = {}) {
     try {
       await afterPaint();
       const result = validateRenderedPages(getPagesContainer(), { tolerance });
-
       window.__RAVTEXT_LAST_FINAL_LAYOUT_REPORT__ = result;
 
+      if (result.emptyStreams > 0) {
+        console.warn("[final-layout-guard] empty stream shells hidden", {
+          reason,
+          emptyStreams: result.emptyStreams,
+        });
+      }
+
       if (!result.ok) {
-        console.warn("[final-layout-guard] final overflow detected; diagnostic only", {
+        console.warn("[final-layout-guard] final overflow detected", {
           reason,
           maxOverflow: Math.round(result.maxOverflow * 100) / 100,
           maxBottomOverflow: Math.round(result.maxBottomOverflow * 100) / 100,
@@ -255,13 +339,21 @@ export function installFinalLayoutGuard(options = {}) {
   const container = getPagesContainer();
   if (container && typeof MutationObserver !== "undefined") {
     const obs = new MutationObserver(() => schedule("pages-mutated"));
-    obs.observe(container, { childList: true, subtree: true, characterData: true });
+    obs.observe(container, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class", "style", "data-stream", "data-page-index"],
+    });
     container.__ravtextFinalLayoutGuardObserver = obs;
   }
 
   window.addEventListener("resize", () => schedule("resize"));
   window.addEventListener("ravtext:styles-changed", () => schedule("styles-changed"));
   window.addEventListener("ravtext:stream-order-changed", () => schedule("stream-order-changed"));
+  window.addEventListener("ravtext:engine-rendered", () => schedule("engine-rendered"));
+  window.addEventListener("ravtext:features-reserved-space-changed", () => schedule("reserved-space-changed"));
 
   window.__RAVTEXT_FINAL_LAYOUT_GUARD__ = {
     run,
