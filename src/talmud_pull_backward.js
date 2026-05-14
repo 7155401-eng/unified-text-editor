@@ -103,6 +103,27 @@ function streamSortValue(streamEl) {
 }
 
 function insertStreamByCode(streamsWrap, streamEl) {
+  // משה 2026-05-14: אם כבר קיים stream עם אותו code בעמוד היעד, ממזגים אליו
+  // את ההערות במקום ליצור בלוק שני (מנע "כפתית כותרות" כמו כף החיים פעמיים).
+  const code = streamEl.getAttribute("data-stream") || "";
+  if (code) {
+    const existing = streamsWrap.querySelector(
+      `:scope > .stream[data-stream="${code.replace(/"/g, '\\"')}"]`
+    );
+    if (existing && existing !== streamEl) {
+      // מעבירים את כל הילדים של streamEl (חוץ מ-stream-title) ל-existing
+      const incomingChildren = Array.from(streamEl.children);
+      for (const child of incomingChildren) {
+        if (child.classList && child.classList.contains("stream-title")) {
+          continue;
+        }
+        existing.appendChild(child);
+      }
+      // אם streamEl עדיין מחובר ל-DOM (בעמוד שממנו הגיע), מסירים אותו
+      if (streamEl.parentNode) streamEl.parentNode.removeChild(streamEl);
+      return;
+    }
+  }
   const val = streamSortValue(streamEl);
   const before = Array.from(streamsWrap.querySelectorAll(":scope > .stream[data-stream]"))
     .find(s => streamSortValue(s) > val);
