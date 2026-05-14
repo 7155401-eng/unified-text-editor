@@ -1901,14 +1901,17 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       });
     }
 
-    // משה 2026-05-14: ה-corrector הדינמי נוטרל כי מדידה בטעינה ראשונה (לפני
-    // שגופנים נטענו) דחפה את ה-reserve לערך גדול בטעות וגרמה לדפים להתקצר
-    // בצורה חמורה ("גובה עמוד חתוך"). הקוד עדיין קיים ב-live_overflow_corrector.js
-    // וניתן להפעיל מחדש דרך window.__ravtextEnableLiveOverflowCorrector = true
-    // לצורך debug, אבל ברירת המחדל היא מנוטרל.
-    if (!skipSmartTune && typeof window !== "undefined" && window.__ravtextEnableLiveOverflowCorrector === true) {
+    // משה 2026-05-14: תיקון-עצמי דינמי לחריגות שנותרו אחרי כל הצנרת.
+    // מודדים בקופסה האמיתית של הטקסט (Range.getBoundingClientRect, כולל
+    // descender), ואם יש חריגה ל-bottom של עמוד — מעלים את ה-reserve הדינמי
+    // ב-CSS var ומבקשים rerender. מוגבל ל-4 iterations בכל session כדי לא
+    // ליצור לולאות. בלי MutationObserver, רק קריאה מפורשת מסוף הצנרת.
+    if (!skipSmartTune) {
       requestAnimationFrame(() => {
         const overflowFix = correctLiveOverflowOnce(pagesContainer);
+        // משה 2026-05-14: אחרי שאין יותר חריגות, בודקים אם יש זוגות סימני
+        // פיצול U+2060 שיכולים להתמזג חזרה בעמוד אחד. אם כן — rerender שאחד
+        // יבטל את הפיצול. הקריאה לא תרוץ אם overflowFix כבר בקש rerender.
         if (!overflowFix) {
           tryRemergeSplitMarks(pagesContainer);
         }
