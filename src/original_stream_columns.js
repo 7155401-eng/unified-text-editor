@@ -293,13 +293,58 @@ function _streamBoolSetting(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+// משה 2026-05-14: פורמטי מיספור — עברי/אנגלי/רומיות/מספרים.
+// "heb-geresh": א ב ג ... י י"א י"ב (כמו ספרות תורנית מסורתית)
+// "heb-double": א ב ג ... כ ל מ נ ק ר ש ת (אותיות מורחבות, בלי גרשיים)
+// "num": 1 2 3 4 (ערבי)
+// "alpha-lower": a b c
+// "alpha-upper": A B C
+// "roman-lower": i ii iii
+// "roman-upper": I II III
+const HEB_LETTERS = ["א","ב","ג","ד","ה","ו","ז","ח","ט","י","יא","יב","יג","יד","טו","טז","יז","יח","יט","כ","כא","כב","כג","כד","כה","כו","כז","כח","כט","ל","לא","לב","לג","לד","לה","לו","לז","לח","לט","מ","מא","מב","מג","מד","מה","מו","מז","מח","מט","נ"];
+const HEB_DOUBLE = ["א","ב","ג","ד","ה","ו","ז","ח","ט","י","כ","ל","מ","נ","ס","ע","פ","צ","ק","ר","ש","ת"];
+
+function toRoman(n) {
+  if (!Number.isInteger(n) || n < 1 || n > 3999) return String(n);
+  const map = [["M",1000],["CM",900],["D",500],["CD",400],["C",100],["XC",90],["L",50],["XL",40],["X",10],["IX",9],["V",5],["IV",4],["I",1]];
+  let out = "";
+  for (const [s, v] of map) {
+    while (n >= v) { out += s; n -= v; }
+  }
+  return out;
+}
+
+function toAlphaLower(n) {
+  if (n < 1) return "";
+  let s = "";
+  while (n > 0) { n--; s = String.fromCharCode(97 + (n % 26)) + s; n = Math.floor(n / 26); }
+  return s;
+}
+
+export function formatNumberByStyle(num, style) {
+  const n = parseInt(num, 10);
+  if (!Number.isFinite(n) || n < 1) return String(num);
+  switch (style) {
+    case "heb-geresh": return HEB_LETTERS[n - 1] || String(n);
+    case "heb-double": return HEB_DOUBLE[n - 1] || String(n);
+    case "alpha-lower": return toAlphaLower(n);
+    case "alpha-upper": return toAlphaLower(n).toUpperCase();
+    case "roman-lower": return toRoman(n).toLowerCase();
+    case "roman-upper": return toRoman(n);
+    case "num":
+    default: return String(n);
+  }
+}
+
 export function formatStreamNumber(code, num, place = "note") {
   const n = num === undefined || num === null ? "" : String(num);
   const s = getEffectiveStreamSettings(code);
 
   if (place === "main") {
     if (!_streamBoolSetting(s.mainRefEnabled, false)) return "";
-    return _streamTextSetting(s.mainRefPrefix, "[") + n + _streamTextSetting(s.mainRefSuffix, "]");
+    const style = _streamTextSetting(s.mainRefStyle, "num");
+    const formatted = formatNumberByStyle(n, style);
+    return _streamTextSetting(s.mainRefPrefix, "[") + formatted + _streamTextSetting(s.mainRefSuffix, "]");
   }
 
   if (place === "child") {
@@ -308,7 +353,9 @@ export function formatStreamNumber(code, num, place = "note") {
   }
 
   if (!_streamBoolSetting(s.noteNumEnabled, true)) return "";
-  return _streamTextSetting(s.noteNumPrefix, "[") + n + _streamTextSetting(s.noteNumSuffix, "]");
+  const style = _streamTextSetting(s.noteNumStyle, "num");
+  const formatted = formatNumberByStyle(n, style);
+  return _streamTextSetting(s.noteNumPrefix, "[") + formatted + _streamTextSetting(s.noteNumSuffix, "]");
 }
 
 export function shouldBoldStreamNumber(code, place = "note") {
