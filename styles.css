@@ -5212,3 +5212,13 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) 
   background: transparent !important;
   box-shadow: none !important;
 }
+/* ============================================================
+   RAVTEXT EMPTY PAGE RESET
+
+   Safety only. The renderer should filter empty pages before DOM creation.
+   ============================================================ */
+
+#pages-container .page.ravtext-empty-page,
+.pages-container .page.ravtext-empty-page {
+  display: none !important;
+}

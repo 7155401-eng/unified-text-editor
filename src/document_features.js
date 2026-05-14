@@ -9,7 +9,10 @@ const WATERMARK_KEY = "ravtext.watermark";
 const WATERMARK_OPACITY_KEY = "ravtext.watermarkOpacity";
 
 function pageElements() {
-  return document.querySelectorAll("#pages-container .page, .pages-container .page");
+  return document.querySelectorAll(
+    "#pages-container .page:not(.page-placeholder):not(.ravtext-empty-page), " +
+    ".pages-container .page:not(.page-placeholder):not(.ravtext-empty-page)"
+  );
 }
 
 function applyPageNumbers() {

@@ -437,6 +437,62 @@ function buildMeasurePage(mainSegments, streams) {
   return page;
 }
 
+function measureRenderedContentHeight(pageEl) {
+  const pageRect = pageEl.getBoundingClientRect();
+  let maxBottom = pageRect.top + Math.max(pageEl.scrollHeight || 0, pageRect.height || 0);
+
+  const selector = [
+    ".page-main",
+    ".page-main *",
+    ".page-streams",
+    ".page-streams *",
+    ".mishna-level",
+    ".mishna-level *",
+    ".stream",
+    ".stream *",
+    ".note",
+    ".note *",
+    ".note-inline",
+    ".note-inline *",
+    ".note-part",
+    ".note-part *",
+    ".stream-title",
+    ".ravtext-table",
+    ".ravtext-table *"
+  ].join(",");
+
+  const elements = Array.from(pageEl.querySelectorAll(selector));
+
+  for (const el of elements) {
+    const rects = [];
+
+    try {
+      if (el.textContent && el.textContent.trim()) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        rects.push(...Array.from(range.getClientRects()).filter((r) => r.width > 0.5 && r.height > 0.5));
+        range.detach && range.detach();
+      }
+    } catch (_) {}
+
+    if (!rects.length) {
+      try {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0.5 && r.height > 0.5) rects.push(r);
+      } catch (_) {}
+    }
+
+    for (const r of rects) {
+      if (r.bottom > maxBottom) maxBottom = r.bottom;
+    }
+  }
+
+  return Math.ceil(Math.max(
+    pageEl.scrollHeight || 0,
+    pageRect.height || 0,
+    maxBottom - pageRect.top
+  ));
+}
 function measureHeight(mainSegments, streams, opts = {}) {
   let cacheKey = null;
   if (_measureCache) {
@@ -458,7 +514,7 @@ function measureHeight(mainSegments, streams, opts = {}) {
   // Use scrollHeight to capture the FULL natural content height, including
   // any sub-pixel rounding or margin collapse that getBoundingClientRect may
   // truncate when the page has overflow:hidden.
-  const height = Math.max(dom.scrollHeight, dom.getBoundingClientRect().height);
+  const height = measureRenderedContentHeight(dom);
   if (
     _measureCache &&
     cacheKey &&
