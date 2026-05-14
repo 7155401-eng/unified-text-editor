@@ -64,7 +64,6 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
-import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve, tryRemergeSplitMarks } from "./engine/live_overflow_corrector.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
@@ -1898,20 +1897,6 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       requestAnimationFrame(() => {
         pdfToolbarApi.rememberBaseSize();
         pdfToolbarApi.applyZoom();
-      });
-    }
-
-    // משה 2026-05-14: ה-corrector הדינמי נוטרל כי מדידה בטעינה ראשונה (לפני
-    // שגופנים נטענו) דחפה את ה-reserve לערך גדול בטעות וגרמה לדפים להתקצר
-    // בצורה חמורה ("גובה עמוד חתוך"). הקוד עדיין קיים ב-live_overflow_corrector.js
-    // וניתן להפעיל מחדש דרך window.__ravtextEnableLiveOverflowCorrector = true
-    // לצורך debug, אבל ברירת המחדל היא מנוטרל.
-    if (!skipSmartTune && typeof window !== "undefined" && window.__ravtextEnableLiveOverflowCorrector === true) {
-      requestAnimationFrame(() => {
-        const overflowFix = correctLiveOverflowOnce(pagesContainer);
-        if (!overflowFix) {
-          tryRemergeSplitMarks(pagesContainer);
-        }
       });
     }
 

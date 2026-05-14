@@ -23,9 +23,6 @@ const SETTINGS_BLACKLIST = new Set([
   'ravtext.layout.heightSafetyRegular',
   'ravtext.talmudLayout.heightSafety',
   'ravtext.talmudLayout.heightSafetyPerPage',
-  // מפתחות מצב זמני של live overflow corrector — לא רוצים שיגיעו לשרת
-  'ravtext.layout.overflowReserve.v1',
-  'ravtext.layout.overflowReserve.v1.iter',
 ]);
 // משה 2026-05-09: אסור לסנכרן מפתחות API של ספקי AI לשרת — הם פרטיים למשתמש.
 // הוספתי תחילית כך שכל ravtext.ai.apiKey.<provider> נחסם.
