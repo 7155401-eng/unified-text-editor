@@ -64,6 +64,7 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
+import { applyLineBalanceToPages } from "./smart_line_breaker.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
@@ -852,6 +853,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // upgrade existing .opening-word elements.
     logEvent("opening_word_stretch", { pageCount: pagesContainer.querySelectorAll(".page").length });
     applyOpeningWordStretchToPages(pagesContainer);
+    // משה 2026-05-15: smart line breaker — חישוב נקודות חיתוך אמיתי
+    // כדי למנוע מתיחת רווחים קיצונית וחפיפת מילים.
+    logEvent("smart_line_breaker");
+    applyLineBalanceToPages(pagesContainer);
     // משה 2026-05-06: זרם בודד מתחת לתלמוד שתופס גובה גדול > 50% מהעמוד —
     // אילוץ multi-column אוטומטי. מונע חריגה ב-page-streams עם הערה ענקית.
     pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {

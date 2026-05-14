@@ -64,6 +64,7 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
+import { applyLineBalanceToPages } from "./smart_line_breaker.js";
 import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve, tryRemergeSplitMarks } from "./engine/live_overflow_corrector.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
@@ -1039,6 +1040,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       if (pdfToolbarApi) {
         pdfToolbarApi.setTotal(v9PageCount);
       }
+      // משה 2026-05-15: גם ב-V9 שורות עם class "justify" סובלות ממתיחה
+      // קיצונית כשהרוחב צר ויש מעט מילים. smart_line_breaker מטפל גם בזה.
+      logEvent("smart_line_breaker_v9");
+      applyLineBalanceToPages(pagesContainer);
       // משה 2026-05-14: מסלול V9 יצא בלי לעדכן את ה-status, אז הטקסט "מרענן..."
       // שנקבע ב-scheduleEngineRender נשאר על המסך גם אחרי שהרינדור הסתיים
       // — נראה כאילו האפליקציה תקועה. עכשיו נעדכן לטקסט הסופי.
@@ -1079,6 +1084,11 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // upgrade existing .opening-word elements.
     logEvent("opening_word_stretch", { pageCount: pagesContainer.querySelectorAll(".page").length });
     applyOpeningWordStretchToPages(pagesContainer);
+    // משה 2026-05-15: smart line breaker — חישוב נקודות חיתוך אמיתי
+    // כדי למנוע מתיחת רווחים קיצונית וחפיפת מילים. רץ אחרי opening word
+    // (כדי שה-SVG כבר במקום ולא נספר בטעות כמילה רגילה).
+    logEvent("smart_line_breaker");
+    applyLineBalanceToPages(pagesContainer);
     // משה 2026-05-14: בעבר auto-2-columns הופעל אוטומטית על זרמים גדולים,
     // אבל זה דרס בחירה מפורשת של המשתמש לטור-אחד. עכשיו: רק אם המשתמש לא
     // קבע cols=1 מפורשות.
