@@ -642,13 +642,31 @@ body.theme-light .sef-netfree,
 }
 
 /* Tool entry buttons in editor toolbar (added by sefaria.js) */
-.torah-toolbar .sef-tool-btn {
+.torah-toolbar .sef-tool-btn,
+/* משה 2026-05-14: כל הכפתורים בטאב תורני יקבלו את הסגנון העקבי של ספריא
+   (נכון לכל הכלים — torah-nikud, transcription, nikud-merger וכו'). זה
+   מחזיר את העיצוב האחיד שהיה לפני שתוספות קוסמטיות שונות עיוותו אותו. */
+.torah-toolbar > button,
+.torah-toolbar > span > button {
   background: var(--sef-accent, #1F2E54);
   color: white;
   border: 1px solid var(--sef-gold, #D4A857);
   border-radius: 6px;
   padding: 5px 12px;
-  font: bold 12px "Segoe UI", sans-serif;
+  font: bold 12px "Segoe UI", "Heebo", sans-serif;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.torah-toolbar .sef-tool-btn:hover { background: var(--sef-accent-hover, #2A3D6E); }
+.torah-toolbar .sef-tool-btn:hover,
+.torah-toolbar > button:hover,
+.torah-toolbar > span > button:hover {
+  background: var(--sef-accent-hover, #2A3D6E);
+  color: white;
+}
+.torah-toolbar > button:disabled,
+.torah-toolbar > span > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

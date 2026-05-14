@@ -984,28 +984,30 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
 revealToolButtons();
+// משה 2026-05-14: גם אורחים צריכים לראות את כלי הטאב התורני (משה דיווח שזה ריק).
+// הכלים עצמם משתמשים ב-torah_guest_guard לחסום פעולות שדורשות חשבון, אבל
+// הכפתורים צריכים להופיע.
 setTimeout(() => {
-  if (window.__RAVTEXT_AUTH__?.loggedIn) {
-    wireTorahTools(paneManager);
-    wireSefariaTools(paneManager);
-  }
+  wireTorahTools(paneManager);
+  wireSefariaTools(paneManager);
   revealToolButtons();
 }, 200);
 
-if (window.__RAVTEXT_AUTH__?.loggedIn) {
-  if (isToolPreviewAllowed("nikud-merger")) {
-    setTimeout(() => wireNikudMergerButton(paneManager), 220);
-  }
-  // משה 2026-05-10: 3 כלי AI שחזרו ל-main
-  if (isToolPreviewAllowed("torah-transcription")) {
-    setTimeout(() => wireTorahTranscription(paneManager), 222);
-  }
-  if (isToolPreviewAllowed("torah-nikud")) {
-    setTimeout(() => wireTorahNikud(paneManager), 224);
-  }
-  if (isToolPreviewAllowed("haredi-caricature")) {
-    setTimeout(() => wireCaricatureBot(paneManager), 226);
-  }
+// משה 2026-05-14: ביטול loggedIn gate שגולס+PR #208 הוסיפו. הכפתורים שהוזרקו
+// ע"י wire* פעולות עצמן מטופלות ע"י torah_guest_guard לחסום פעולות שדורשות
+// חשבון. בלי הסרת ה-gate, אורחים ראו טאב תורני ריק.
+if (isToolPreviewAllowed("nikud-merger")) {
+  setTimeout(() => wireNikudMergerButton(paneManager), 220);
+}
+// משה 2026-05-10: 3 כלי AI שחזרו ל-main
+if (isToolPreviewAllowed("torah-transcription")) {
+  setTimeout(() => wireTorahTranscription(paneManager), 222);
+}
+if (isToolPreviewAllowed("torah-nikud")) {
+  setTimeout(() => wireTorahNikud(paneManager), 224);
+}
+if (isToolPreviewAllowed("haredi-caricature")) {
+  setTimeout(() => wireCaricatureBot(paneManager), 226);
 }
 
 setTimeout(() => wireWordLikeTools(paneManager), 250);

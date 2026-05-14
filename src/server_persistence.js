@@ -14,6 +14,14 @@ const SETTINGS_BLACKLIST = new Set([
   'ravtext.ai.apiKey',                 // legacy
   'ravtext.demo.blockedUntil',
   'ravtext.demoMode',
+  // משה 2026-05-14: PR #233 הכניס מפתח שמקטין את גובה הדף; PR #234 הסיר את
+  // הכתיבה, אבל המפתח עדיין מסונכרן מהשרת למשתמשים מחוברים — וגרם לבאג
+  // לחזור אצל מחוברים לאחר שכבר תיקנו אותו אצל אורחים. לא לסנכרן ולא לשחזר.
+  'ravtext.layout.autoOverflowSafety',
+  'ravtext.layout.autoOverflowAttempts.v1',
+  // מפתחות מצב זמני של live overflow corrector — לא רוצים שיגיעו לשרת
+  'ravtext.layout.overflowReserve.v1',
+  'ravtext.layout.overflowReserve.v1.iter',
 ]);
 // משה 2026-05-09: אסור לסנכרן מפתחות API של ספקי AI לשרת — הם פרטיים למשתמש.
 // הוספתי תחילית כך שכל ravtext.ai.apiKey.<provider> נחסם.
