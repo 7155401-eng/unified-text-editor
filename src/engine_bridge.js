@@ -64,7 +64,7 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
-import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
+import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve, tryRemergeSplitMarks } from "./engine/live_overflow_corrector.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
@@ -1899,7 +1899,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // ליצור לולאות. בלי MutationObserver, רק קריאה מפורשת מסוף הצנרת.
     if (!skipSmartTune) {
       requestAnimationFrame(() => {
-        correctLiveOverflowOnce(pagesContainer);
+        const overflowFix = correctLiveOverflowOnce(pagesContainer);
+        // משה 2026-05-14: אחרי שאין יותר חריגות, בודקים אם יש זוגות סימני
+        // פיצול U+2060 שיכולים להתמזג חזרה בעמוד אחד. אם כן — rerender שאחד
+        // יבטל את הפיצול. הקריאה לא תרוץ אם overflowFix כבר בקש rerender.
+        if (!overflowFix) {
+          tryRemergeSplitMarks(pagesContainer);
+        }
       });
     }
 
