@@ -311,18 +311,46 @@ function chooseCrownScenario(streams, opts) {
     return m.countLines(text, width) >= minLines;
   }
 
+  // משה 2026-05-15: השוואת ניצול חלל. החזרה: עד כמה השורות מתמלאות בממוצע
+  // ברוחב נתון (0 = מלא לחלוטין, 1 = כולן ריקות). מדידה דינמית — מסתמכת על
+  // layoutLines של V9 (שמשתמש במקדם הבטיחות הדינמי שלנו).
+  function avgSlackRatio(text, width) {
+    const lines = m.layoutLines(text, width);
+    if (!lines.length) return 1;
+    let totalSlack = 0;
+    let nonLast = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (i === lines.length - 1) continue; // השורה האחרונה לעולם קצרה — לא מודדים
+      totalSlack += Math.max(0, width - lines[i].width);
+      nonLast++;
+    }
+    if (nonLast === 0) return 0;
+    return (totalSlack / nonLast) / width;
+  }
+
+  // משה 2026-05-15: כשיש זרם יחיד שמתאים לחצי-כתר, בודקים שני תרחישי
+  // עימוד דינמית: 2 טורים צרים מול 1 טור רחב. בוחרים את התרחיש עם פחות
+  // slack ממוצע — כלומר השורות יותר מלאות. לפי משה: "שורה חייבת להגיע לקצה
+  // השמאלי" עדיף על "כתר 2-טורים מהודר עם שורות חצי-ריקות".
+  function chooseForSingleStream(text, side) {
+    if (!hasMinLines(text, halfW)) {
+      return { name: 'one_short_no_crown', streamSide: side };
+    }
+    // יחס מילוי בכל תרחיש
+    const halfSlack = avgSlackRatio(text, halfW);
+    const fullSlack = avgSlackRatio(text, fullW);
+    // עדיפות לפיצול רק כשהוא ממלא יותר טוב או שווה
+    if (halfSlack <= fullSlack) {
+      return { name: 'one_long_split', streamSide: side };
+    }
+    // אחרת — נופלים ל"בלי כתר": הזרם ירד לצד הראשי בלי לפצל
+    return { name: 'one_short_no_crown', streamSide: side };
+  }
+
   if (!r && !l) return { name: 'no_streams' };
 
-  if (r && !l) {
-    return hasMinLines(r, halfW)
-      ? { name: 'one_long_split', streamSide: 'right' }
-      : { name: 'one_short_no_crown', streamSide: 'right' };
-  }
-  if (l && !r) {
-    return hasMinLines(l, halfW)
-      ? { name: 'one_long_split', streamSide: 'left' }
-      : { name: 'one_short_no_crown', streamSide: 'left' };
-  }
+  if (r && !l) return chooseForSingleStream(r, 'right');
+  if (l && !r) return chooseForSingleStream(l, 'left');
 
   const rLong = hasMinLines(r, halfW);
   const lLong = hasMinLines(l, halfW);
