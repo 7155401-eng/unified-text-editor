@@ -388,8 +388,16 @@ function tryPullFirstWord(lineA, lineB) {
 }
 
 function pullAdjacentV9Words(root) {
-  const allLines = Array.from(root.querySelectorAll(".v9-line"));
-  // קיבוץ לפי data-v9-box-id (פסקה/זרם), כי משיכה רק בין שורות באותו box
+  // משה 2026-05-15: משיכה רק בין שתי שורות "justify" סמוכות באותה פסקה.
+  // V9 מסמן שורת סוף־פסקה / orphan ב-class "center" (לא "justify"). משיכה
+  // מעבר לגבול פסקה גרמה ל-2 באגים שמשה דיווח עליהם:
+  //   1. כשמושכים את כל התוכן של שורת ה-center, היא נשארת ריקה במיקום
+  //      האבסולוטי שלה → "רווח מיותר בין שורות" שנגרם מהשורה הריקה.
+  //   2. במקרה קיצוני שורת ה-center נמחקת/נחבאת → "איבוד שבירה בין פיסקאות".
+  // הפתרון: בלולאה רק על שורות שיש להן class "justify" (מילים בתוך פסקה).
+  // שורת ה-center של סוף הפסקה מהווה גבול ולא משתתפת.
+  const allLines = Array.from(root.querySelectorAll(".v9-line.justify"));
+  // קיבוץ לפי data-v9-box-id (זרם/עמודה)
   const byBox = new Map();
   for (const line of allLines) {
     const boxId = line.dataset.v9BoxId || "__default__";
@@ -406,11 +414,13 @@ function pullAdjacentV9Words(root) {
       return ta - tb;
     });
     for (let i = 0; i < group.length - 1; i++) {
-      // לא מושכים אל שורה שכבר טופלה כ-hard (אבד יישור) — לא רוצים לדחוס בה
-      // אם המשתמש בחר להוותר.
       const a = group[i];
       const b = group[i + 1];
-      // מקס' 8 משיכות בין כל זוג שורות, להגנה
+      // הגנה נוספת: אם בין a ל-b יש שורת center (פסקה מסתיימת באמצע),
+      // אל תמשוך. נבדק לפי הפרש מקום אנכי גדול מהרגיל או לפי האם יש
+      // שורת v9-line center אחרת ביניהן ב-DOM.
+      if (hasParagraphBoundaryBetween(a, b)) continue;
+      // מקס' 8 משיכות בין כל זוג שורות, להגנה מלולאה אינסופית
       for (let k = 0; k < 8; k++) {
         if (!tryPullFirstWord(a, b)) break;
         total++;
@@ -418,6 +428,22 @@ function pullAdjacentV9Words(root) {
     }
   }
   return total;
+}
+
+function hasParagraphBoundaryBetween(lineA, lineB) {
+  // אם אחת מהשורות שלא justify (כלומר center) מופיעה ביניהן ב-DOM,
+  // יש גבול פסקה. עוברים על האחים הבאים של A עד שמגיעים ל-B.
+  let cur = lineA.nextElementSibling;
+  while (cur && cur !== lineB) {
+    if (cur.classList && cur.classList.contains("v9-line")) {
+      if (!cur.classList.contains("justify")) {
+        // שורת v9-line שאינה justify (center / paragraph-end) — גבול פסקה
+        return true;
+      }
+    }
+    cur = cur.nextElementSibling;
+  }
+  return false;
 }
 
 function measureNaturalLineTextWidth(line) {
