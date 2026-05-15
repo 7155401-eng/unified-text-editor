@@ -2149,6 +2149,7 @@ function trySplitFirstAnchoredNoteOntoCur(cur, nxt, paraIdx, geom) {
   const tupNum = typeof tup[3] === "number" ? tup[3] : 0;
   const tupCont = tup[4] === 1 || tup[4] === true ? 1 : 0;
   const tupChildren = Array.isArray(tup[5]) ? tup[5] : [];
+  const tupRuns = Array.isArray(tup[6]) ? tup[6] : [];
   if (!text || text.length < 4) return false;
 
   let lo = 1;
@@ -2168,12 +2169,14 @@ function trySplitFirstAnchoredNoteOntoCur(cur, nxt, paraIdx, geom) {
     }
     const part1 = prefixText;
     const part2 = text.substring(wordEnd).trimStart();
+    const part1Runs = sliceRuns(tupRuns, 0, part1.length);
+    const part2Runs = sliceRuns(tupRuns, text.length - part2.length, text.length);
 
     const trialCur = clonePageData(cur);
     const trialNxt = clonePageData(nxt);
     if (!trialCur.streams[target.code]) trialCur.streams[target.code] = { h: 0, notes: [] };
-    trialCur.streams[target.code].notes.push([paraIdx, part1, target.anchor, tupNum, tupCont, tupCont ? [] : tupChildren]);
-    trialNxt.streams[target.code].notes[target.idx] = [paraIdx, part2, target.anchor, tupNum, 1, []];
+    trialCur.streams[target.code].notes.push([paraIdx, part1, target.anchor, tupNum, tupCont, tupCont ? [] : tupChildren, part1Runs]);
+    trialNxt.streams[target.code].notes[target.idx] = [paraIdx, part2, target.anchor, tupNum, 1, [], part2Runs];
 
     const h = measurePageData(trialCur, { forceRender: true });
     if (
@@ -2276,7 +2279,8 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
         const num = typeof tup[3] === "number" ? tup[3] : 0;
         const cont = tup[4] === 1 || tup[4] === true ? 1 : 0;
         const children = Array.isArray(tup[5]) ? tup[5] : [];
-        earliest = { code, idx: i, paraIdx, text, anchor, num, cont, children };
+        const runs = Array.isArray(tup[6]) ? tup[6] : [];
+        earliest = { code, idx: i, paraIdx, text, anchor, num, cont, children, runs };
       }
     }
   }
@@ -2287,7 +2291,7 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
     const trialCur = clonePageData(cur);
     const trialNxt = clonePageData(nxt);
     if (!trialCur.streams[earliest.code]) trialCur.streams[earliest.code] = { h: 0, notes: [] };
-    trialCur.streams[earliest.code].notes.push([earliest.paraIdx, earliest.text, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children]);
+    trialCur.streams[earliest.code].notes.push([earliest.paraIdx, earliest.text, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children, earliest.runs]);
     trialNxt.streams[earliest.code].notes.splice(earliest.idx, 1);
     if (trialNxt.streams[earliest.code].notes.length === 0) delete trialNxt.streams[earliest.code];
     const h = measurePageData(trialCur);
@@ -2325,11 +2329,13 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
     }
     const part1 = prefixText;
     const part2 = earliest.text.substring(wordEnd).trimStart();
+    const part1Runs = sliceRuns(earliest.runs, 0, part1.length);
+    const part2Runs = sliceRuns(earliest.runs, earliest.text.length - part2.length, earliest.text.length);
     const trialCur = clonePageData(cur);
     const trialNxt = clonePageData(nxt);
     if (!trialCur.streams[earliest.code]) trialCur.streams[earliest.code] = { h: 0, notes: [] };
-    trialCur.streams[earliest.code].notes.push([earliest.paraIdx, part1, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children]);
-    trialNxt.streams[earliest.code].notes[earliest.idx] = [earliest.paraIdx, part2, earliest.anchor, earliest.num, 1, []];
+    trialCur.streams[earliest.code].notes.push([earliest.paraIdx, part1, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children, part1Runs]);
+    trialNxt.streams[earliest.code].notes[earliest.idx] = [earliest.paraIdx, part2, earliest.anchor, earliest.num, 1, [], part2Runs];
     const h = measurePageData(trialCur, { forceRender: true });
     if (
       h <= geom.maxPageHeight &&
@@ -2383,7 +2389,8 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
         const num = typeof tup[3] === "number" ? tup[3] : 0;
         const cont = tup[4] === 1 || tup[4] === true ? 1 : 0;
         const children = Array.isArray(tup[5]) ? tup[5] : [];
-        target = { code, idx: i, paraIdx, text, anchor, num, cont, children };
+        const runs = Array.isArray(tup[6]) ? tup[6] : [];
+        target = { code, idx: i, paraIdx, text, anchor, num, cont, children, runs };
       }
     }
   }
@@ -2456,7 +2463,7 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
 
     // Now try fitting target note on trialCur (whole, then split).
     if (!trialCur.streams[target.code]) trialCur.streams[target.code] = { h: 0, notes: [] };
-    trialCur.streams[target.code].notes.push([target.paraIdx, target.text, target.anchor, target.num, target.cont, target.cont ? [] : target.children]);
+    trialCur.streams[target.code].notes.push([target.paraIdx, target.text, target.anchor, target.num, target.cont, target.cont ? [] : target.children, target.runs]);
     let curH = measurePageData(trialCur);
     if (curH > geom.maxPageHeight) {
       // Try split.
@@ -2475,8 +2482,9 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
           s_lo = s_mid + 1;
           continue;
         }
+        const ptRuns = sliceRuns(target.runs, 0, pt.length);
         const t2 = clonePageData(trialCur);
-        t2.streams[target.code].notes.push([target.paraIdx, pt, target.anchor, target.num, target.cont, target.cont ? [] : target.children]);
+        t2.streams[target.code].notes.push([target.paraIdx, pt, target.anchor, target.num, target.cont, target.cont ? [] : target.children, ptRuns]);
         const h2 = measurePageData(t2, { forceRender: true });
         if (
           h2 <= geom.maxPageHeight &&
@@ -2491,7 +2499,8 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
       if (!s_best) return null;
       // Replace the split target's nxt-side text.
       const part2 = target.text.substring(s_best.we).trimStart();
-      trialNxt.streams[target.code].notes[targetIdxAdjusted] = [target.paraIdx, part2, target.anchor, target.num, 1, []];
+      const part2Runs = sliceRuns(target.runs, target.text.length - part2.length, target.text.length);
+      trialNxt.streams[target.code].notes[targetIdxAdjusted] = [target.paraIdx, part2, target.anchor, target.num, 1, [], part2Runs];
       Object.assign(trialCur, s_best.tc);
       curH = measurePageData(trialCur);
     } else {

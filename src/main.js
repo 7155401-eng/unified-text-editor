@@ -427,8 +427,10 @@ initialLoadPromise.then(() => {
 populateFontGallery(["David Libre", "Frank Ruhl Libre", "Segoe UI", "Arial", "Times New Roman", "Tahoma"]);
 
 document.getElementById("local-font-select")?.addEventListener("change", (ev) => {
+  // משה 2026-05-15: בעבר השורה הזו דרסה את פונט-העמוד הגלובלי, מה שגרם
+  // לפונט של זרם אחד "לדלוף" לכל הזרמים האחרים. הסירה — פונט נבחר חל רק
+  // על הטקסט המסומן בעורך הפעיל.
   activeChain()?.setFontFamily(ev.target.value).run();
-  setGlobalFontFamily(ev.target.value, { rerender: true });
 });
 
 document.getElementById("local-font-load")?.addEventListener("click", () => {
@@ -458,7 +460,6 @@ document.getElementById("local-font-upload-input")?.addEventListener("change", a
       select.appendChild(opt);
     }
     activeChain()?.setFontFamily(fontName).run();
-    setGlobalFontFamily(fontName, { rerender: true });
     alert(`הפונט "${fontName}" נטען בהצלחה.`);
   } catch (err) {
     alert(`שגיאה בטעינת פונט: ${err.message}`);
@@ -1657,15 +1658,12 @@ document.addEventListener("click", async (ev) => {
     }
     case "font-david":
       ed && ed.setFontFamily("David Libre").run();
-      setGlobalFontFamily("David Libre", { rerender: true });
       break;
     case "font-frank":
       ed && ed.setFontFamily("Frank Ruhl Libre").run();
-      setGlobalFontFamily("Frank Ruhl Libre", { rerender: true });
       break;
     case "font-segoe":
       ed && ed.setFontFamily("Segoe UI").run();
-      setGlobalFontFamily("Segoe UI", { rerender: true });
       break;
     case "size-12":        ed && ed.setFontSize("12px").run(); break;
     case "size-15":        ed && ed.setFontSize("15px").run(); break;
