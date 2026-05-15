@@ -29,6 +29,7 @@ import {
   noteTextSuffixForStream,
   getEffectiveStreamSettings,
   styleIdForStreamNumber,
+  boldOverrideStyleIdForStream,
   _streamBoolSetting,
 } from "../original_stream_columns.js";
 import { sliceRuns } from "./runs_dom.js";
@@ -54,6 +55,25 @@ function styleIdToMarks(styleId) {
   return Object.keys(marks).length > 0 ? marks : null;
 }
 
+// משה 2026-05-15: כאשר זרם הוגדר עם "סגנון מותאם לבולד", כל סימן bold:true
+// ב-runs מוחלף ב-marks של הסגנון הנבחר. בעלי-marks נוספים בריצה (כמו color
+// שצויר ידנית) נשמרים — רק "bold" מתחלף בסגנון. מחזיר עותק; לא מזיק לקלט.
+function applyBoldOverrideToRuns(runs, overrideMarks) {
+  if (!Array.isArray(runs) || !overrideMarks) return runs;
+  let touched = false;
+  const out = runs.map((r) => {
+    if (!r || !r.marks || !r.marks.bold) return r;
+    touched = true;
+    const newMarks = { ...r.marks };
+    delete newMarks.bold;
+    for (const k of Object.keys(overrideMarks)) {
+      if (newMarks[k] == null) newMarks[k] = overrideMarks[k];
+    }
+    return { start: r.start, end: r.end, marks: newMarks };
+  });
+  return touched ? out : runs;
+}
+
 export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
   const {
     isCont = false,
@@ -63,7 +83,10 @@ export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
   } = opts;
 
   const nodes = [];
-  const origRuns = Array.isArray(runs) ? runs : [];
+  // משה 2026-05-15: דריסת בולד (אופציונלית, פר-זרם) — אם המשתמש סימן
+  // boldOverrideEnabled ובחר סגנון, כל הופעת בולד תוחלף ב-marks של הסגנון.
+  const boldOverrideMarks = styleIdToMarks(boldOverrideStyleIdForStream(streamCode));
+  const origRuns = applyBoldOverrideToRuns(Array.isArray(runs) ? runs : [], boldOverrideMarks);
   const raw = String(text || "");
 
   if (leadingSpace) nodes.push({ kind: "space" });
@@ -75,10 +98,14 @@ export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
 
   const formatted = formatStreamNumber(streamCode, num, place);
   if (formatted) {
+    const numBold = shouldBoldStreamNumber(streamCode, place);
     nodes.push({
       kind: "number",
       text: formatted + " ",
-      bold: shouldBoldStreamNumber(streamCode, place),
+      // כשיש סגנון מותאם לבולד, ה"בולד" של [N] מתבטא דרך המארקים האלה
+      // במקום font-weight:700, כדי שהמספר יקבל גם הוא את הסגנון המוגדר.
+      bold: numBold && !boldOverrideMarks,
+      boldOverrideMarks: numBold && boldOverrideMarks ? boldOverrideMarks : null,
       place,
       // משה 2026-05-15: סגנון שיוחל על "[N]" מתוך רשימת סגנונות המסמך.
       // העברה ל-DOM walker (renderer.js) ול-V9 flattener (nodesToTextRuns).
@@ -95,17 +122,19 @@ export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
   const trimmed = raw.replace(/^\s+/, "");
   const trimmedRuns = sliceRuns(origRuns, leadingWs, leadingWs + trimmed.length);
   const spaceIdx = trimmed.indexOf(" ");
-  const boldLemma = shouldBoldStreamLemma(streamCode);
+  const boldLemmaRaw = shouldBoldStreamLemma(streamCode);
+  const boldLemma = boldLemmaRaw && !boldOverrideMarks;
+  const lemmaOverride = boldLemmaRaw && boldOverrideMarks ? boldOverrideMarks : null;
 
   if (spaceIdx > 0) {
     const lemmaText = trimmed.substring(0, spaceIdx);
     const restText = trimmed.substring(spaceIdx);
     const lemmaRuns = sliceRuns(trimmedRuns, 0, spaceIdx);
     const restRuns = sliceRuns(trimmedRuns, spaceIdx, trimmed.length);
-    nodes.push({ kind: "lemma", text: lemmaText, runs: lemmaRuns, bold: boldLemma });
+    nodes.push({ kind: "lemma", text: lemmaText, runs: lemmaRuns, bold: boldLemma, boldOverrideMarks: lemmaOverride });
     nodes.push({ kind: "rest", text: restText, runs: restRuns });
   } else if (trimmed.length > 0) {
-    nodes.push({ kind: "body", text: trimmed, runs: trimmedRuns, bold: boldLemma });
+    nodes.push({ kind: "body", text: trimmed, runs: trimmedRuns, bold: boldLemma, boldOverrideMarks: lemmaOverride });
   }
 
   if (place === "note") {
@@ -159,6 +188,11 @@ export function nodesToTextRuns(nodes) {
       if (n.bold && end > start) {
         runs.push({ start, end, marks: { bold: true } });
       }
+      // משה 2026-05-15: אם הזרם הגדיר "סגנון מותאם לבולד", הצומת נושא marks
+      // מוכנים — מזריקים אותם כריצה ב-V9 (במקום bold:true).
+      if (n.boldOverrideMarks && end > start) {
+        runs.push({ start, end, marks: n.boldOverrideMarks });
+      }
       // משה 2026-05-15: סגנון מותאם של המספר (mainRefStyleId / noteNumStyleId)
       // מתורגם ל-marks אינליין. ב-V9 זה גורם ל-span בצבע/פונט/גודל הנכונים.
       if (n.kind === "number" && n.styleId && end > start) {
@@ -194,11 +228,16 @@ export function injectMainRefs(mainText, mainRuns, notes) {
     if (!_streamBoolSetting(s.mainRefEnabled, false)) continue;
     const formatted = formatStreamNumber(n.stream, n.num || 0, "main");
     if (!formatted) continue;
+    const rawBold = shouldBoldStreamNumber(n.stream, "main");
+    const overrideMarks = styleIdToMarks(boldOverrideStyleIdForStream(n.stream));
     refs.push({
       noteIndex: i,
       anchor: Math.max(0, Math.min(text.length, n.anchor)),
       text: formatted,
-      bold: shouldBoldStreamNumber(n.stream, "main"),
+      // משה 2026-05-15: כשבזרם הוגדר "סגנון מותאם לבולד", גם ה-[N] בראשי
+      // מאמץ את הסגנון במקום font-weight:700.
+      bold: rawBold && !overrideMarks,
+      boldOverrideMarks: rawBold && overrideMarks ? overrideMarks : null,
       // משה 2026-05-15: סגנון בחירה מתוך רשימת הסגנונות — מותרגם ל-marks
       // ומצטרף ל-mainRuns כך ש-V9 והמנוע הרגיל יציירו את "[N]" בצבע/פונט/גודל הנכון.
       styleId: styleIdForStreamNumber(n.stream, "main"),
@@ -231,6 +270,9 @@ export function injectMainRefs(mainText, mainRuns, notes) {
     outText += ref.text;
     const refEnd = outText.length;
     if (ref.bold) outRuns.push({ start: refStart, end: refEnd, marks: { bold: true } });
+    if (ref.boldOverrideMarks) {
+      outRuns.push({ start: refStart, end: refEnd, marks: ref.boldOverrideMarks });
+    }
     if (ref.styleId) {
       const marks = styleIdToMarks(ref.styleId);
       if (marks) outRuns.push({ start: refStart, end: refEnd, marks });

@@ -1,5 +1,5 @@
 import { streamColorIndex } from "./schema.js";
-import { applyStyleToElement } from "../style_registry.js";
+import { applyStyleToElement, applyTextStyleObjectToElement } from "../style_registry.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
 import {
   getEffectiveStreamSettings,
@@ -7,9 +7,11 @@ import {
   shouldBoldStreamNumber,
   applyBarStyleToElement,
   styleIdForStreamNumber,
+  boldOverrideStyleIdForStream,
   _streamBoolSetting,
 } from "../original_stream_columns.js";
-import { appendTextWithRuns } from "./runs_dom.js";
+import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
+import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
 
 // משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
@@ -25,11 +27,14 @@ function appendNoteNodesToDom(parent, nodes, streamColorIndexFn) {
     if (n.kind === "number") {
       // משה 2026-05-15: אם נבחר סגנון מותאם (n.styleId), עוטפים תמיד ב-span/strong
       // עם applyStyleToElement כדי שהצבע/פונט יחולו, גם כשהמשתמש לא ביקש בולד.
-      if (n.bold || n.styleId) {
+      // boldOverrideMarks: סגנון פר-זרם שמחליף font-weight:700 — כשהוא קיים,
+      // המספר נכנס ל-span עם המארקים האלה (לא ב-<strong>).
+      if (n.bold || n.styleId || n.boldOverrideMarks) {
         const el = document.createElement(n.bold ? "strong" : "span");
         el.className = "note-number";
         el.textContent = n.text;
         if (n.styleId) applyStyleToElement(el, n.styleId);
+        if (n.boldOverrideMarks) applyMarksToSpan(el, n.boldOverrideMarks);
         parent.appendChild(el);
       } else {
         parent.appendChild(document.createTextNode(n.text));
@@ -44,6 +49,14 @@ function appendNoteNodesToDom(parent, nodes, streamColorIndexFn) {
       if (n.bold) {
         const lemma = document.createElement("strong");
         lemma.className = "note-lemma";
+        appendTextWithRuns(lemma, n.text, n.runs);
+        parent.appendChild(lemma);
+      } else if (n.boldOverrideMarks) {
+        // משה 2026-05-15: דריסת בולד — דיבור-המתחיל מקבל את הסגנון הנבחר
+        // במקום font-weight:700, ועדיין שומר על marks פר-ריצה ב-n.runs.
+        const lemma = document.createElement("span");
+        lemma.className = "note-lemma";
+        applyMarksToSpan(lemma, n.boldOverrideMarks);
         appendTextWithRuns(lemma, n.text, n.runs);
         parent.appendChild(lemma);
       } else {
@@ -140,9 +153,15 @@ function insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs) {
     }
     const formatted = formatStreamNumber(ref.code, ref.num, "main");
     if (formatted) {
-      const el = document.createElement(shouldBoldStreamNumber(ref.code, "main") ? "strong" : "span");
+      const rawBold = shouldBoldStreamNumber(ref.code, "main");
+      // משה 2026-05-15: דריסת בולד פר-זרם — אם מסומן, ה-[N] בראשי מקבל את
+      // הסגנון הנבחר במקום font-weight:700 (אותו מנגנון כמו בהערה).
+      const overrideStyleId = rawBold ? boldOverrideStyleIdForStream(ref.code) : "";
+      const useStrong = rawBold && !overrideStyleId;
+      const el = document.createElement(useStrong ? "strong" : "span");
       el.className = "stream-ref";
       el.textContent = formatted;
+      if (overrideStyleId) applyStyleToElement(el, overrideStyleId);
       // משה 2026-05-15: סגנון נבחר מתוך רשימת סגנונות המסמך עבור "[N]" בראשי.
       const refStyleId = styleIdForStreamNumber(ref.code, "main");
       if (refStyleId) applyStyleToElement(el, refStyleId);
@@ -219,6 +238,13 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
 
   const settings = getEffectiveStreamSettings(streamCode);
   applyStyleToElement(wrap, settings.styleId);
+  // משה 2026-05-15: inlineStyle מ-styleMetaForPane (engine_bridge.js) — סגנון
+  // שמשתמש החיל בעורך באופן אחיד על כל הזרם (פונט/גודל/צבע). V9 כבר השתמש
+  // בו (composeStreamTextStyle); ה-renderer הרגיל פספס אותו ולכן פונט שהוגדר
+  // בעורך לא הופיע בפלט אם הזרם לא הוגדר ידנית עם styleId.
+  if (settings.inlineStyle && typeof settings.inlineStyle === "object") {
+    applyTextStyleObjectToElement(wrap, settings.inlineStyle);
+  }
   const userCols = settings.cols || 1;
   // משה 2026-05-06: בחירת עמודות לפי הגדרת המשתמש בלבד, ללא הערכת שורות
   // לפי תווים (החישוב של 52 תווים/שורה לא תאם את המציאות).

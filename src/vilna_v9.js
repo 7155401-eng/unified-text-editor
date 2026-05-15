@@ -914,8 +914,18 @@ function buildPagePlan(pageContent, config) {
       if (!parts) {
         parts = splitWordsAtVisualLine(allText, splitMetricsForStream, sideHalfWidth);
       }
-      pageContent.rightStream = { id: single.id, items: [parts.first] };
-      pageContent.leftStream  = { id: single.id, items: [parts.second] };
+      // משה 2026-05-15: בעבר השורות האלה דרסו את single.runs (סימני פונט/בולד
+      // פר-מילה) — וכך הפלט הציג פונט ברירת-מחדל גם כשהמשתמש סימן פונט אחר
+      // בעורך. עכשיו ה-runs נחתכים ל-2 חצאים לפי אופסטים ב-allText (כולל
+      // leading-trim) ועוברים יחד עם ה-items החדשים.
+      const rawText = single.items.join(' ');
+      const leadingWs = rawText.length - rawText.replace(/^\s+/, "").length;
+      const allRuns = Array.isArray(single.runs) ? single.runs : [];
+      const firstLen = parts.first.length;
+      const firstRuns = sliceRuns(allRuns, leadingWs, leadingWs + firstLen);
+      const secondRuns = sliceRuns(allRuns, leadingWs + firstLen + 1, leadingWs + allText.length);
+      pageContent.rightStream = { id: single.id, items: [parts.first], runs: firstRuns };
+      pageContent.leftStream  = { id: single.id, items: [parts.second], runs: secondRuns };
     }
   }
 
@@ -1841,6 +1851,14 @@ export async function buildPages(container, paragraphs, config) {
     maxPages: 100,
   }, config || {});
 
+  // משה 2026-05-15: ה-while-loop של buildPages רץ באופן סינכרוני וכבד —
+  // ללא הפסקות הוא חוסם את ה-main thread לכל זמן הרינדור, כך שהמשתמש
+  // לא יכול לשנות הגדרות תוך כדי. הפתרון: בין עמוד לעמוד מוסרים שליטה
+  // ל-event loop (setTimeout 0) כדי שאירועי-קלט יטופלו, ובודקים isCurrent
+  // — אם התחיל רינדור חדש (עם token גבוה יותר), קוטעים את הנוכחי.
+  const isCurrent = typeof cfg.isCurrent === "function" ? cfg.isCurrent : () => true;
+  const yieldToBrowser = () => new Promise((r) => setTimeout(r, 0));
+
   const pages = [];
   let cursor = 0;
   let pageIdx = 0;
@@ -2455,6 +2473,15 @@ export async function buildPages(container, paragraphs, config) {
     carryOver = nextCarry;
 
     pageIdx++;
+
+    // משה 2026-05-15: בין עמוד לעמוד — שחרור ה-main thread כדי שהמשתמש
+    // יוכל ללחוץ/להקליד/לשנות הגדרות גם תוך כדי רינדור. אם התחיל בינתיים
+    // רינדור חדש (token חדש), עוצרים כאן ומחזירים את העמודים שכבר נבנו
+    // (הם נשארים על המסך עד שהרינדור החדש יחליף אותם).
+    if (pageIdx < cfg.maxPages && (cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph)) {
+      await yieldToBrowser();
+      if (!isCurrent()) return { pages, aborted: true };
+    }
   }
 
   return { pages };
