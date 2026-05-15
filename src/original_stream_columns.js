@@ -787,6 +787,59 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       commitRender();
     }));
 
+    // משה 2026-05-15: בחירת פריסה פר-זרם. ארבע אפשרויות:
+    //   ברירת מחדל (עוקב אחר המצב הגלובלי), גמרא (כתר), משנה ברורה (צד),
+    //   תרגום אונקלוס, הערות צד.
+    // הגבלה: gemara ו-onkelos לא יכולים להתקיים יחד בעמוד אחד.
+    const layoutRoleLabel = document.createElement("label");
+    layoutRoleLabel.className = "stream-col-input";
+    const layoutRoleSpan = document.createElement("span");
+    layoutRoleSpan.textContent = "פריסה:";
+    layoutRoleLabel.appendChild(layoutRoleSpan);
+    const layoutRoleSelect = makeSelect(
+      [
+        ["", "ברירת מחדל"],
+        ["gemara", "גמרא (כתר)"],
+        ["mishna", "משנה ברורה"],
+        ["onkelos", "תרגום אונקלוס"],
+        ["side_notes", "הערות צד"],
+      ],
+      cur.layoutRole || "",
+      (value) => {
+        cur.layoutRole = value;
+        // נקה layoutPosition אם הפריסה החדשה לא צריכה אותה
+        if (value !== "onkelos" && value !== "side_notes") {
+          cur.layoutPosition = "";
+        }
+        commitRender();
+      }
+    );
+    layoutRoleLabel.appendChild(layoutRoleSelect);
+    block.appendChild(layoutRoleLabel);
+
+    // מיקום הזרם — רלוונטי רק לאונקלוס והערות צד.
+    const layoutPosLabel = document.createElement("label");
+    layoutPosLabel.className = "stream-col-input";
+    const layoutPosSpan = document.createElement("span");
+    layoutPosSpan.textContent = "מיקום:";
+    layoutPosLabel.appendChild(layoutPosSpan);
+    const layoutPosSelect = makeSelect(
+      [
+        ["", "ללא"],
+        ["inner", "פנימי"],
+        ["outer", "חיצוני"],
+        ["right", "ימין"],
+        ["left", "שמאל"],
+      ],
+      cur.layoutPosition || "",
+      (value) => {
+        cur.layoutPosition = value;
+        commitRender();
+      }
+    );
+    layoutPosLabel.appendChild(layoutPosSelect);
+    block.appendChild(layoutPosLabel);
+
     // משה 2026-05-14: הגדרות מיספור לכל זרם בנפרד — כפי שהיה בתוכנה הישנה.
     // המשתמש יכול לקבוע סוגריים/הדגשה לכל זרם בנפרד או דרך "כל זרמי ההערות"
     // (גלובלי). ההגדרה הפרטית גוברת אם קיימת.
