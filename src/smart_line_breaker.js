@@ -230,22 +230,22 @@ function balanceParagraph(p) {
 // המפתח לעבודה תקינה: V9 חייב למדוד מילים נכון (עם שולי בטיחות נגד runs
 // מעוצבים) כדי ש-justify של הדפדפן לא יקבל קלט מוטעה.
 
-const STRETCH_RATIO_HARD_LIMIT_DEFAULT = 10.0; // ברירת מחדל; משתמש יכול להגדיר אחר
-
-// משה 2026-05-15: סף "ויתור על מתיחה" קונפיגורבילי. שורות עם יחס מתיחה מעל הסף
-// מאבדות יישור משני הצדדים ועוברות ליישור ימינה. ערך נמוך = יותר מחמיר (יותר
-// שורות יוותרו על יישור); ערך גבוה = יותר סובלני (יישור גם בקצוניות).
-//   localStorage.setItem("ravtext.v9.stretchGiveUp", "8") — דוגמה לסף 8x
+// משה 2026-05-15 (גרסה 2): ברירת מחדל = ללא ויתור — תמיד למתוח. המשתמש יכול
+// להפעיל ויתור דרך צ'קבוקס בלוח גפ"ת. רק כשהוא דלוק הסף מהשדה מופעל.
+//   localStorage `ravtext.v9.stretchGiveUpEnabled` = "1" → ויתור פעיל
+//   localStorage `ravtext.v9.stretchGiveUp` = "8"   → סף 8 (רק כשפעיל)
 function getStretchGiveUpRatio() {
-  if (typeof window === "undefined" || !window.localStorage) return STRETCH_RATIO_HARD_LIMIT_DEFAULT;
+  if (typeof window === "undefined" || !window.localStorage) return Infinity;
   try {
+    const enabled = window.localStorage.getItem("ravtext.v9.stretchGiveUpEnabled");
+    if (enabled !== "1") return Infinity; // ברירת מחדל = אף פעם לא לוותר
     const raw = window.localStorage.getItem("ravtext.v9.stretchGiveUp");
     const n = parseFloat(raw);
     if (Number.isFinite(n) && n >= 1.5 && n <= 50) return n;
   } catch (_) {
     /* keep default */
   }
-  return STRETCH_RATIO_HARD_LIMIT_DEFAULT;
+  return Infinity;
 }
 
 // משה 2026-05-15: משיכת מילים אחורה (ALWAYS, לא תלוי משתמש).
@@ -388,56 +388,55 @@ function tryPullFirstWord(lineA, lineB) {
 }
 
 function pullAdjacentV9Words(root) {
-  // משה 2026-05-15: משיכה רק בין שתי שורות "justify" סמוכות באותה פסקה.
-  // V9 מסמן שורת סוף־פסקה / orphan ב-class "center" (לא "justify"). משיכה
-  // מעבר לגבול פסקה גרמה ל-2 באגים שמשה דיווח עליהם:
-  //   1. כשמושכים את כל התוכן של שורת ה-center, היא נשארת ריקה במיקום
-  //      האבסולוטי שלה → "רווח מיותר בין שורות" שנגרם מהשורה הריקה.
-  //   2. במקרה קיצוני שורת ה-center נמחקת/נחבאת → "איבוד שבירה בין פיסקאות".
-  // הפתרון: בלולאה רק על שורות שיש להן class "justify" (מילים בתוך פסקה).
-  // שורת ה-center של סוף הפסקה מהווה גבול ולא משתתפת.
-  const allLines = Array.from(root.querySelectorAll(".v9-line.justify"));
-  // קיבוץ לפי data-v9-box-id (זרם/עמודה)
-  const byBox = new Map();
-  for (const line of allLines) {
-    const boxId = line.dataset.v9BoxId || "__default__";
-    if (!byBox.has(boxId)) byBox.set(boxId, []);
-    byBox.get(boxId).push(line);
-  }
+  // משה 2026-05-15 (גרסה 3): משיכה תקפה תמיד כשהשורה המקבלת (A) היא justify
+  // והשורה הנותנת (B) היא ה-v9-line הסמוכה הבאה ב-DOM, **באותה פסקה**.
+  //
+  // הסבר על מבנה V9:
+  //   - שורות פסקה (לא אחרונה) → class "justify"
+  //   - שורה אחרונה של פסקה / orphan → class "center" (לא "justify")
+  //   - בין פסקאות אין שורות מפרידות — רק class על השורה האחרונה
+  //
+  // לכן רצף תקין הוא: justify, justify, ..., center, justify, justify, ..., center
+  //
+  // הכלל:
+  //   - A (מקבל) חייב להיות justify (בתוך פסקה)
+  //   - B (נותן) יכול להיות justify (השורה הבאה באותה פסקה) **או** center
+  //     (השורה האחרונה של אותה פסקה — תיקון יתומה)
+  //   - אסור לחצות גבול פסקה: אם בין A ל-B יש v9-line שאינה justify,
+  //     זה אומר ש-A היא הסוף של פסקה קודמת שאסור לדחוס בה תוכן של פסקה חדשה
+  //   - בפועל זה נדיר כי A היא justify, אבל ההגנה נשארת מקרי קצה
+  const justifyLines = Array.from(root.querySelectorAll(".v9-line.justify"));
   let total = 0;
-  for (const group of byBox.values()) {
-    if (group.length < 2) continue;
-    // מיון לפי top — סדר טבעי בעמוד
-    group.sort((a, b) => {
-      const ta = parseFloat(a.style.top || "0");
-      const tb = parseFloat(b.style.top || "0");
-      return ta - tb;
-    });
-    for (let i = 0; i < group.length - 1; i++) {
-      const a = group[i];
-      const b = group[i + 1];
-      // הגנה נוספת: אם בין a ל-b יש שורת center (פסקה מסתיימת באמצע),
-      // אל תמשוך. נבדק לפי הפרש מקום אנכי גדול מהרגיל או לפי האם יש
-      // שורת v9-line center אחרת ביניהן ב-DOM.
-      if (hasParagraphBoundaryBetween(a, b)) continue;
-      // מקס' 8 משיכות בין כל זוג שורות, להגנה מלולאה אינסופית
-      for (let k = 0; k < 8; k++) {
-        if (!tryPullFirstWord(a, b)) break;
-        total++;
-      }
+  for (const a of justifyLines) {
+    const b = findNextV9LineInDom(a);
+    if (!b) continue;
+    if (hasOtherParagraphBoundaryBetween(a, b)) continue;
+    // מקס' 8 משיכות בין זוג שורות
+    for (let k = 0; k < 8; k++) {
+      if (!tryPullFirstWord(a, b)) break;
+      total++;
     }
   }
   return total;
 }
 
-function hasParagraphBoundaryBetween(lineA, lineB) {
-  // אם אחת מהשורות שלא justify (כלומר center) מופיעה ביניהן ב-DOM,
-  // יש גבול פסקה. עוברים על האחים הבאים של A עד שמגיעים ל-B.
+function findNextV9LineInDom(line) {
+  let cur = line.nextElementSibling;
+  while (cur) {
+    if (cur.classList && cur.classList.contains("v9-line")) return cur;
+    cur = cur.nextElementSibling;
+  }
+  return null;
+}
+
+function hasOtherParagraphBoundaryBetween(lineA, lineB) {
+  // עוברים על האחים בין A ל-B. אם בדרך פוגשים v9-line שאינה justify
+  // (כלומר center) ש**לא** הוא לינה ה-B עצמה, זה גבול של פסקה אחרת
+  // ואסור למשוך. כשה-B הוא center, זה הסוף של אותה פסקה — נכלל ב-orphan-fix.
   let cur = lineA.nextElementSibling;
   while (cur && cur !== lineB) {
     if (cur.classList && cur.classList.contains("v9-line")) {
       if (!cur.classList.contains("justify")) {
-        // שורת v9-line שאינה justify (center / paragraph-end) — גבול פסקה
         return true;
       }
     }
