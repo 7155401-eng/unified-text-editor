@@ -21,9 +21,12 @@ const HEIGHT_SAFETY_PER_PAGE_KEY = "ravtext.talmudLayout.heightSafetyPerPage";
 const GAP_FILL_MIN_KEY = "ravtext.talmudLayout.gapFillMin";
 const GAP_FILL_MAX_MAIN_LINES_KEY = "ravtext.talmudLayout.gapFillMaxMainLines";
 const CARRY_ONLY_MIN_KEY = "ravtext.talmudLayout.carryOnlyMin";
+const STRETCH_GIVE_UP_KEY = "ravtext.v9.stretchGiveUp";
+const STRETCH_GIVE_UP_ENABLED_KEY = "ravtext.v9.stretchGiveUpEnabled";
 const DEFAULT_SIDE_GAP  = 12;
 const DEFAULT_HEIGHT_SAFETY = 160;
 const DEFAULT_HEIGHT_SAFETY_REGULAR = 6;
+const DEFAULT_STRETCH_GIVE_UP = 8;
 
 export function isTalmudLayoutEnabled() {
   // משה 2026-05-08: גפ"ת פתוח לכולם (גם דמו/אורחים). סימני המים שלrender
@@ -182,6 +185,29 @@ export function setTalmudCarryOnlyMin(value) {
   localStorage.setItem(CARRY_ONLY_MIN_KEY, String(n));
 }
 
+// משה 2026-05-15: ויתור על יישור. ברירת מחדל: לא פעיל (תמיד מתיחה).
+// המשתמש בוחר להפעיל דרך הצ'קבוקס בלוח גפ"ת.
+export function isStretchGiveUpEnabled() {
+  return localStorage.getItem(STRETCH_GIVE_UP_ENABLED_KEY) === "1";
+}
+export function setStretchGiveUpEnabled(enabled) {
+  localStorage.setItem(STRETCH_GIVE_UP_ENABLED_KEY, enabled ? "1" : "0");
+}
+export function getStretchGiveUp() {
+  const raw = localStorage.getItem(STRETCH_GIVE_UP_KEY);
+  const n = parseFloat(raw);
+  if (Number.isFinite(n) && n >= 1.5 && n <= 50) return n;
+  return DEFAULT_STRETCH_GIVE_UP;
+}
+export function setStretchGiveUp(value) {
+  const n = parseFloat(value);
+  if (!Number.isFinite(n) || n < 1.5 || n > 50) {
+    localStorage.removeItem(STRETCH_GIVE_UP_KEY);
+    return;
+  }
+  localStorage.setItem(STRETCH_GIVE_UP_KEY, String(n));
+}
+
 export function wireTalmudLayoutControls(onChange) {
   const toggle       = document.getElementById("talmud-layout-toggle");
   const streamsInput = document.getElementById("talmud-streams-input");
@@ -199,6 +225,8 @@ export function wireTalmudLayoutControls(onChange) {
   const gapFillInput = document.getElementById("talmud-gap-fill-min-input");
   const maxMainInput = document.getElementById("talmud-gap-fill-max-main-lines-input");
   const carryOnlyInput = document.getElementById("talmud-carry-only-min-input");
+  const stretchGiveUpToggle = document.getElementById("v9-stretch-giveup-toggle");
+  const stretchGiveUpInput = document.getElementById("v9-stretch-giveup-input");
   if (!toggle) return;
 
   // משה 2026-05-08: גפ"ת פתוח לדמו/אורחים (עם סימני מים בטקסט). לא חוסמים את ה-toggle.
@@ -216,6 +244,11 @@ export function wireTalmudLayoutControls(onChange) {
   if (gapFillInput) gapFillInput.value = getTalmudGapFillMin();
   if (maxMainInput) maxMainInput.value = getTalmudGapFillMaxMainLines();
   if (carryOnlyInput) carryOnlyInput.value = getTalmudCarryOnlyMin();
+  if (stretchGiveUpToggle) stretchGiveUpToggle.checked = isStretchGiveUpEnabled();
+  if (stretchGiveUpInput) {
+    stretchGiveUpInput.value = getStretchGiveUp();
+    stretchGiveUpInput.disabled = !isStretchGiveUpEnabled();
+  }
   const commit = () => onChange?.();
 
   toggle.addEventListener("change", () => {
@@ -296,6 +329,16 @@ export function wireTalmudLayoutControls(onChange) {
   carryOnlyInput?.addEventListener("change", () => {
     setTalmudCarryOnlyMin(carryOnlyInput.value);
     carryOnlyInput.value = getTalmudCarryOnlyMin();
+    commit();
+  });
+  stretchGiveUpToggle?.addEventListener("change", () => {
+    setStretchGiveUpEnabled(stretchGiveUpToggle.checked);
+    if (stretchGiveUpInput) stretchGiveUpInput.disabled = !stretchGiveUpToggle.checked;
+    commit();
+  });
+  stretchGiveUpInput?.addEventListener("change", () => {
+    setStretchGiveUp(stretchGiveUpInput.value);
+    stretchGiveUpInput.value = getStretchGiveUp();
     commit();
   });
 }

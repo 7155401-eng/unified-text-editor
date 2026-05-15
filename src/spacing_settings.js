@@ -20,6 +20,11 @@ const DEFAULTS = {
   // משה 2026-05-14: מצב נוסף "לא לפצל פיסקאות (גמיש)" — לא מפצל פיסקה
   // אבל מנסה למלא רווחים בעמוד ע"י שאיבת פיסקה הבאה מהעמוד הבא אם נכנסת.
   noMidParagraphSoft: false,
+  // משה 2026-05-15: הגדרה חדשה ונפרדת — "לא לפצל באמצע שורה". ברירת מחדל
+  // מסומן. בניגוד ל-noMidLineSplits שמטפל ברמת פסקה, זה מטפל אך ורק ברמת
+  // שורה: כשמופעל, חיתוכי טקסט יתבצעו רק על גבול שורה שלמה (line-end),
+  // ולא באמצע שורה (word-end תוך כדי שורה).
+  preventMidLineSplit: true,
 };
 
 const FIELDS = [
@@ -38,6 +43,7 @@ const FIELDS = [
   ["v9MainGap", "V9: ראשי-צד", "number", 0, 60, 1],
   ["noMidLineSplits", "לא לפצל באמצע פיסקאות (קשיח)", "checkbox", 0, 1, 1],
   ["noMidParagraphSoft", "לא לפצל פיסקאות (גמיש, ימלא רווחים)", "checkbox", 0, 1, 1],
+  ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
 export function loadSpacingSettings() {

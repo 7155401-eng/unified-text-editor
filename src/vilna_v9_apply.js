@@ -220,6 +220,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     levels,
     talmudStreams,
     noMidLineSplits: readSpacingBool("noMidLineSplits", false),
+    preventMidLineSplit: readSpacingBool("preventMidLineSplit", true),
   });
 }
 

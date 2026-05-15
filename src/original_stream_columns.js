@@ -88,6 +88,22 @@ const DEFAULT_STREAM_SETTINGS = {
   // מספר [N] מודגש). ערך ריק/לא מסומן = התנהגות רגילה של בולד.
   boldOverrideEnabled: false,
   boldOverrideStyleId: "",
+  // משה 2026-05-15: שדה פריסה פר-זרם (4 אפשרויות):
+  //   "gemara"     — כתר 2 טורים מעל הראשי (התנהגות גפ"ת קלאסית)
+  //   "mishna"     — צד הראשי (פריסת משנה ברורה — התנהגות ברירת מחדל ברגיל)
+  //   "onkelos"    — צמוד לראשי, בלי כתר, בלי פיצול (פריסת תרגום אונקלוס)
+  //   "side_notes" — בשוליים, פונט קטן (הערות צד)
+  //   ""           — ברירת מחדל: עוקב אחר המצב הגלובלי של הדף (תאימות לאחור)
+  // הגבלות: gemara ו-onkelos סותרים זה את זה (לא יכולים להיות באותו עמוד).
+  // mishna ו-side_notes אינם סותרים אף פריסה אחרת.
+  layoutRole: "",
+  // משה 2026-05-15: מיקום הזרם לפריסות onkelos/side_notes:
+  //   "inner"  — צד פנימי (לקראת הכריכה)
+  //   "outer"  — צד חיצוני (הרחק מהכריכה)
+  //   "right"  — ימין (תמיד, ללא תלות בפנימי/חיצוני)
+  //   "left"   — שמאל (תמיד)
+  //   ""       — לא רלוונטי (gemara/mishna)
+  layoutPosition: "",
 };
 
 // משה 2026-05-13: סגנונות מוכנים לפס מעל המפרש — נבחרו במיוחד לעיצוב
@@ -800,6 +816,59 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       input.value = cur.barThickness;
       commitRender();
     }));
+
+    // משה 2026-05-15: בחירת פריסה פר-זרם. ארבע אפשרויות:
+    //   ברירת מחדל (עוקב אחר המצב הגלובלי), גמרא (כתר), משנה ברורה (צד),
+    //   תרגום אונקלוס, הערות צד.
+    // הגבלה: gemara ו-onkelos לא יכולים להתקיים יחד בעמוד אחד.
+    const layoutRoleLabel = document.createElement("label");
+    layoutRoleLabel.className = "stream-col-input";
+    const layoutRoleSpan = document.createElement("span");
+    layoutRoleSpan.textContent = "פריסה:";
+    layoutRoleLabel.appendChild(layoutRoleSpan);
+    const layoutRoleSelect = makeSelect(
+      [
+        ["", "ברירת מחדל"],
+        ["gemara", "גמרא (כתר)"],
+        ["mishna", "משנה ברורה"],
+        ["onkelos", "תרגום אונקלוס"],
+        ["side_notes", "הערות צד"],
+      ],
+      cur.layoutRole || "",
+      (value) => {
+        cur.layoutRole = value;
+        // נקה layoutPosition אם הפריסה החדשה לא צריכה אותה
+        if (value !== "onkelos" && value !== "side_notes") {
+          cur.layoutPosition = "";
+        }
+        commitRender();
+      }
+    );
+    layoutRoleLabel.appendChild(layoutRoleSelect);
+    block.appendChild(layoutRoleLabel);
+
+    // מיקום הזרם — רלוונטי רק לאונקלוס והערות צד.
+    const layoutPosLabel = document.createElement("label");
+    layoutPosLabel.className = "stream-col-input";
+    const layoutPosSpan = document.createElement("span");
+    layoutPosSpan.textContent = "מיקום:";
+    layoutPosLabel.appendChild(layoutPosSpan);
+    const layoutPosSelect = makeSelect(
+      [
+        ["", "ללא"],
+        ["inner", "פנימי"],
+        ["outer", "חיצוני"],
+        ["right", "ימין"],
+        ["left", "שמאל"],
+      ],
+      cur.layoutPosition || "",
+      (value) => {
+        cur.layoutPosition = value;
+        commitRender();
+      }
+    );
+    layoutPosLabel.appendChild(layoutPosSelect);
+    block.appendChild(layoutPosLabel);
 
     // משה 2026-05-14: הגדרות מיספור לכל זרם בנפרד — כפי שהיה בתוכנה הישנה.
     // המשתמש יכול לקבוע סוגריים/הדגשה לכל זרם בנפרד או דרך "כל זרמי ההערות"

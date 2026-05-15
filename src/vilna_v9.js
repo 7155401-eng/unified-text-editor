@@ -151,132 +151,27 @@ class VilnaMetrics {
     return w;
   }
 
-  // משה 2026-05-15: לוגיקת בחירת חיתוכים גלובלית בסגנון Knuth-Plass.
-  // המנוע הישן (first-fit) הוסר; הוא קיבל החלטות מקומיות שגרמו לשורות
-  // לשבור מוקדם מדי כשהמילה הבאה לא נכנסה — בלי לשקול שאם נשבור צעד
-  // אחורה, הפסקה כולה תיראה טוב יותר. Word עושה דיוק כזה.
-  //
-  // החוזה (input/output) זהה למנוע הישן:
-  //   layoutLines(text, widthPx) → [{words, width, isLast}, ...]
-  //
-  // אילוצים שנשמרים:
-  //   - שורות לא חורגות מ-widthPx (מלבד שורת מילה־אחת ארוכה מהרוחב,
-  //     שאין ברירה אלא לאפשר אותה).
-  //   - השורה האחרונה מקבלת isLast=true; שאר השורות isLast=false.
-  //
-  // האלגוריתם:
-  //   1. מודדים את כל המילים מראש (Canvas, עם שולי בטיחות V9_MEASURE_SAFETY).
-  //   2. בונים מערך prefix sums כדי לחשב רוחב שורה בין שתי אינדקסים ב-O(1).
-  //   3. דינמית פרוגרמינג: dp[j] = (עלות מינימלית, נקודת השבירה הקודמת)
-  //      עבור הפסקה שמסתיימת אחרי המילה ה-j-ית.
-  //   4. עלות שורה = יחס מתיחה בקובייה (יחס³). יחס = (רוחב פנוי / מס' רווחים)
-  //      חלקי רוחב רווח טבעי. גישה זו מעדיפה שורות "מעט מתוחות" על שורות
-  //      "מאוד מתוחות" — בדיוק כמו ב-Knuth-Plass.
-  //   5. השורה האחרונה לא נענשת על קוצר (last-line slack חינם), בדיוק כמו
-  //      ב-Word שמרשה לשורת סיום־פסקה להיות קצרה.
-  //   6. backtrack מהסוף כדי לבנות את רשימת השורות.
   layoutLines(text, widthPx) {
     if (!text) return [];
     const words = text.split(/\s+/).filter(Boolean);
     if (words.length === 0) return [];
-    if (words.length === 1) {
-      return [{ words: [words[0]], width: this.measureWord(words[0]), isLast: true }];
-    }
 
-    const N = words.length;
-    const wordW = new Array(N);
-    for (let i = 0; i < N; i++) wordW[i] = this.measureWord(words[i]);
-    const spaceW = this.spaceWidth;
-
-    // prefix[i] = sum(wordW[0..i-1])
-    const prefix = new Array(N + 1);
-    prefix[0] = 0;
-    for (let i = 0; i < N; i++) prefix[i + 1] = prefix[i] + wordW[i];
-
-    // רוחב שורה ממילה i עד j (j בלעדי): סכום מילים + (k-1) רווחים
-    const lineWidth = (i, j) => (prefix[j] - prefix[i]) + (j - i - 1) * spaceW;
-
-    // עלות שורה לפי יחס מתיחה
-    //
-    // עקרונות:
-    //   - שורה אחרונה של פסקה: עלות 0 תמיד. כמו Word — שורה אחרונה לא נמתחת
-    //     ומותר לה להיות קצרה. זה נחוץ כדי לא להעדיף "כל מילה בשורה משלה".
-    //   - שורה רגילה עם k>1 מילים: ratio³ (מתיחה ³ × רווח טבעי). cubed
-    //     כי מתיחה גבוהה צריכה להיות יקרה משמעותית.
-    //   - שורה רגילה עם k=1 מילה (יתומה באמצע): slack/spaceW נחשב כמו רווחים.
-    //     מילה־אחת עם מקום פנוי גדול = שורה רעה. בקובייה.
-    //   - שורה k=1 שחורגת מהרוחב (מילה אחת ארוכה מדי): מותר אבל בלי עלות
-    //     (אין ברירה אחרת — חייבים לקבל אותה).
-    const lineCost = (i, j, isLast) => {
-      const lw = lineWidth(i, j);
-      const k = j - i;
-      if (k === 1 && lw > widthPx) return 0; // forced single-word overflow
-      if (lw > widthPx) return Infinity; // multi-word overflow — לא חוקי
-      if (isLast) return 0; // שורה אחרונה — חופשי (Word-style)
-      const slack = widthPx - lw;
-      if (k === 1) {
-        // מילה־אחת באמצע פסקה — slack/spaceW כאילו זה רווח אחד
-        const looseness = spaceW > 0 ? slack / spaceW : 0;
-        return looseness * looseness * looseness;
-      }
-      const stretchPerSpace = slack / (k - 1);
-      const ratio = spaceW > 0 ? stretchPerSpace / spaceW : 0;
-      return ratio * ratio * ratio;
-    };
-
-    // dp[j] = { cost, prev } עבור פסקה שמסתיימת אחרי המילה ה-j-ית
-    const dp = new Array(N + 1);
-    dp[0] = { cost: 0, prev: -1 };
-    for (let j = 1; j <= N; j++) {
-      let best = null;
-      for (let i = 0; i < j; i++) {
-        if (!dp[i]) continue;
-        const c = lineCost(i, j, j === N);
-        if (!Number.isFinite(c)) continue;
-        const total = dp[i].cost + c;
-        if (best === null || total < best.cost) {
-          best = { cost: total, prev: i };
-        }
-      }
-      dp[j] = best;
-    }
-
-    // fallback: אם משום מה dp[N] ריק (לא אמור לקרות), חוזרים ל-greedy
-    if (!dp[N]) return this._layoutLinesGreedyFallback(words, wordW, spaceW, widthPx);
-
-    // backtrack: לבנות את רשימת השורות
-    const breaks = [];
-    let cur = N;
-    while (cur > 0) {
-      const prev = dp[cur].prev;
-      breaks.unshift({ start: prev, end: cur });
-      cur = prev;
-    }
-
-    return breaks.map((b, idx) => ({
-      words: words.slice(b.start, b.end),
-      width: lineWidth(b.start, b.end),
-      isLast: idx === breaks.length - 1,
-    }));
-  }
-
-  // משה 2026-05-15: גריידי מקורי כ-fallback ביטחון. אמור לעולם לא להירץ
-  // (האלגוריתם הגלובלי תמיד מוצא פתרון), אבל אם משהו לא צפוי קורה,
-  // נחזור להתנהגות הישנה במקום לקרוס.
-  _layoutLinesGreedyFallback(words, wordW, spaceW, widthPx) {
     const lines = [];
     let currentLine = [];
     let currentWidth = 0;
-    for (let i = 0; i < words.length; i++) {
-      const w = wordW[i];
-      const addW = currentLine.length === 0 ? w : currentWidth + spaceW + w;
+    const spaceW = this.spaceWidth;
+
+    for (const word of words) {
+      const wordW = this.measureWord(word);
+      const addW = currentLine.length === 0 ? wordW : currentWidth + spaceW + wordW;
+
       if (addW <= widthPx || currentLine.length === 0) {
-        currentLine.push(words[i]);
+        currentLine.push(word);
         currentWidth = addW;
       } else {
         lines.push({ words: currentLine, width: currentWidth, isLast: false });
-        currentLine = [words[i]];
-        currentWidth = w;
+        currentLine = [word];
+        currentWidth = wordW;
       }
     }
     if (currentLine.length > 0) {
@@ -311,46 +206,18 @@ function chooseCrownScenario(streams, opts) {
     return m.countLines(text, width) >= minLines;
   }
 
-  // משה 2026-05-15: השוואת ניצול חלל. החזרה: עד כמה השורות מתמלאות בממוצע
-  // ברוחב נתון (0 = מלא לחלוטין, 1 = כולן ריקות). מדידה דינמית — מסתמכת על
-  // layoutLines של V9 (שמשתמש במקדם הבטיחות הדינמי שלנו).
-  function avgSlackRatio(text, width) {
-    const lines = m.layoutLines(text, width);
-    if (!lines.length) return 1;
-    let totalSlack = 0;
-    let nonLast = 0;
-    for (let i = 0; i < lines.length; i++) {
-      if (i === lines.length - 1) continue; // השורה האחרונה לעולם קצרה — לא מודדים
-      totalSlack += Math.max(0, width - lines[i].width);
-      nonLast++;
-    }
-    if (nonLast === 0) return 0;
-    return (totalSlack / nonLast) / width;
-  }
-
-  // משה 2026-05-15: כשיש זרם יחיד שמתאים לחצי-כתר, בודקים שני תרחישי
-  // עימוד דינמית: 2 טורים צרים מול 1 טור רחב. בוחרים את התרחיש עם פחות
-  // slack ממוצע — כלומר השורות יותר מלאות. לפי משה: "שורה חייבת להגיע לקצה
-  // השמאלי" עדיף על "כתר 2-טורים מהודר עם שורות חצי-ריקות".
-  function chooseForSingleStream(text, side) {
-    if (!hasMinLines(text, halfW)) {
-      return { name: 'one_short_no_crown', streamSide: side };
-    }
-    // יחס מילוי בכל תרחיש
-    const halfSlack = avgSlackRatio(text, halfW);
-    const fullSlack = avgSlackRatio(text, fullW);
-    // עדיפות לפיצול רק כשהוא ממלא יותר טוב או שווה
-    if (halfSlack <= fullSlack) {
-      return { name: 'one_long_split', streamSide: side };
-    }
-    // אחרת — נופלים ל"בלי כתר": הזרם ירד לצד הראשי בלי לפצל
-    return { name: 'one_short_no_crown', streamSide: side };
-  }
-
   if (!r && !l) return { name: 'no_streams' };
 
-  if (r && !l) return chooseForSingleStream(r, 'right');
-  if (l && !r) return chooseForSingleStream(l, 'left');
+  if (r && !l) {
+    return hasMinLines(r, halfW)
+      ? { name: 'one_long_split', streamSide: 'right' }
+      : { name: 'one_short_no_crown', streamSide: 'right' };
+  }
+  if (l && !r) {
+    return hasMinLines(l, halfW)
+      ? { name: 'one_long_split', streamSide: 'left' }
+      : { name: 'one_short_no_crown', streamSide: 'left' };
+  }
 
   const rLong = hasMinLines(r, halfW);
   const lLong = hasMinLines(l, halfW);
@@ -574,16 +441,20 @@ function splitWordsAtVisualLine(text, metrics, widthPx) {
   };
 }
 
-// משה 2026-05-13: חיתוך טקסט לפי מבנה רצועות אמיתי (תרחיש 1).
-// המטרה: לחתוך את הטקסט כך ששני הטורים (ימני ושמאלי, בעלי מבנה רצועות זהה)
-// יסיימו באותה גובה אנכית — איזון ויזואלי קלאסי של דפוס וילנא.
+// משה 2026-05-15: חיתוך טקסט בין טור ימני לשמאלי (תרחיש 1 — one_long_split).
+// הגישה: הטור הימני מתמלא במלואו (עד שהשורה האחרונה שלו תופסת מקום שלם),
+// והשארית כולה הולכת לטור השמאלי. **אסור** לחתוך באמצע שורה.
 //
-// אסטרטגיה: חיפוש בינארי בנקודת החיתוך N, כך ש:
-//   X(words[0..N]) ≈ X(words[N..])
-// כאשר X(text) = מספר השורות שייקח לטקסט לזרום דרך הרצועות (strip1+strip2+strip3a).
+// היקף הטיפול הנוכחי: בין הטורים בלבד.
 //
-// מבנה הטור: רצועה 1 רחבה (sideHalfWidth) → רצועה 2 צרה (ליד הראשי) → רצועה 3a רחבה
-// שורות ברצועה צרה צורכות פחות מילים → צריך יותר שורות לאותו טקסט.
+// TODO (משה 2026-05-15) — שלב 4 שלא נעשה כאן: היררכיית פתרונות מלאה
+// לכל סוג של חיתוך (עמוד/טור/זרם). הסולם מהזול ליקר:
+//   1. שורה מגיעה לקצה — חינם (מצב טבעי)
+//   2. שורה שלמה נדחפת לעמוד הבא, אם לא יוצרת חלל בעמוד הנוכחי — זול
+//   3. שורות הראשי של הפסקה/העמוד מתפזרות אחרת (re-layout) — בינוני
+//   4. רווחים בין מילים מצומצמים — יותר יקר
+//   5. חיתוך באמצע שורה — היקר ביותר, רק כשהכל נכשל
+// הוספה זו דורשת רפקטור מקיף ב-V9 ובדיקות זהירות, ולכן יוטל ב-PR נפרד.
 //
 // אם המידע על הרצועות לא זמין/לא תקין — מחזיר null (אות לקרוא ל-fallback).
 function splitWordsByStrips(text, metrics, rightStrips) {
@@ -637,40 +508,36 @@ function splitWordsByStrips(text, metrics, rightStrips) {
     return total;
   }
   
-  // חיפוש בינארי על N: נקודת החיתוך
-  // המטרה: מינימום של |linesForWordSlice(left) - linesForWordSlice(right)|
-  let lo = 1;
-  let hi = words.length - 1;
-  
-  // ערך ראשוני: ניחוש = חצי המילים
-  let bestN = Math.floor(words.length / 2);
-  let bestDiff = Infinity;
-  
-  // 30 איטרציות זה מספיק בשביל log2(words.length) רוב המקרים
-  for (let iter = 0; iter < 30 && lo <= hi; iter++) {
-    const mid = Math.floor((lo + hi) / 2);
-    const linesRight = linesForWordSlice(words.slice(0, mid));
-    const linesLeft  = linesForWordSlice(words.slice(mid));
-    const diff = linesRight - linesLeft;
-    const absDiff = Math.abs(diff);
-    
-    if (absDiff < bestDiff) {
-      bestDiff = absDiff;
-      bestN = mid;
+  // משה 2026-05-15: שינוי גישת החיתוך — במקום איזון בין שני הטורים, הטור
+  // הימני מתמלא עד סופו ורק אז הטור השמאלי מתחיל. החיתוך תמיד על גבול
+  // מילה שלמה בסוף שורה שלמה (לעולם לא באמצע שורה).
+  //
+  // הלוגיקה: מזרימים את המילים דרך רצועות הימני אחת אחרי השנייה. עוצרים
+  // כשהרצועה האחרונה התמלאה (או הטקסט אזל). נקודת החיתוך = מספר המילים
+  // שנכנסו לטור הימני.
+  let cursor = 0;
+  for (let i = 0; i < strips.length; i++) {
+    const strip = strips[i];
+    if (cursor >= words.length) break;
+    const maxLines = Math.floor(strip.height / lineH);
+    if (maxLines <= 0) continue;
+    const remaining = words.slice(cursor).join(' ');
+    const lines = metrics.layoutLines(remaining, strip.width);
+    if (!lines || lines.length === 0) break;
+    // כמה שורות נכנסות ברצועה הזאת? עד ה-max המוצהר.
+    const linesUsed = Math.min(maxLines, lines.length);
+    for (let j = 0; j < linesUsed; j++) {
+      if (lines[j] && lines[j].words) cursor += lines[j].words.length;
     }
-    
-    if (diff === 0) break; // מצב מאוזן מושלם
-    if (diff < 0) {
-      // הימני קצר מדי, צריך להעביר עוד מילים אליו
-      lo = mid + 1;
-    } else {
-      // הימני ארוך מדי, צריך להפחית
-      hi = mid - 1;
+    // אם הטקסט נכנס לחלוטין ברצועה הזאת — לא צריך לחתוך, הכל בטור הימני
+    if (lines.length <= maxLines) {
+      // הכל נכנס. אין מה לשלוח לטור השמאלי. (לא אמור לקרות אם נכנסנו ל-split.)
+      cursor = words.length;
+      break;
     }
   }
-  
-  // הגנה: לפחות מילה אחת בכל צד
-  const splitIdx = Math.min(words.length - 1, Math.max(1, bestN));
+  // הגנה: לפחות מילה אחת בכל צד (אחרת אין טעם בפיצול)
+  const splitIdx = Math.min(words.length - 1, Math.max(1, cursor));
   
   return {
     first: words.slice(0, splitIdx).join(' '),
@@ -899,9 +766,65 @@ function buildPagePlan(pageContent, config) {
     { right: rText, left: lText },
     { metrics: sideMetrics, halfWidth, fullWidth: innerWidth, crownLines: cfg.crownLines }
   );
-  if (cfg.noMidLineSplits && scenario.name === 'one_long_split') {
-    scenario = { name: 'one_short_no_crown', streamSide: scenario.streamSide };
+
+  // משה 2026-05-15: הכרעה פר-זרם — אם המשתמש בחר במפורש פריסה לזרם
+  // (layoutRole), הבחירה דורסת את ה-scenario ההיסטורי שהמערכת בחרה
+  // אוטומטית. הקונברסיה האוטומטית של one_long_split → one_short_no_crown
+  // הוסרה (ממצא 2). אם משתמש לא בחר ב-UI — נשאר התנהגות אוטומטית.
+  //
+  // מיפוי תפקידים → תרחישים:
+  //   "gemara"     → one_long_split (כתר 2 טורים — קיים)
+  //   "mishna"     → one_short_no_crown (צד הראשי — קיים)
+  //   "onkelos"    → one_short_no_crown (כרגע כמו mishna; מיקום ופונט יוטמע)
+  //   "side_notes" → one_short_no_crown (כרגע כמו mishna; פונט קטן בעתיד)
+  //
+  // הגבלת תקפות: gemara ⊥ onkelos. אם שניהם מופיעים — gemara גובר וכן
+  // נרשם בקונסול הערה.
+  const rStream = pageContent.rightStream;
+  const lStream = pageContent.leftStream;
+  const cfgStreamSettings = cfg.streamSettings || {};
+  const rRole = rStream && cfgStreamSettings[rStream.id]
+    ? cfgStreamSettings[rStream.id].layoutRole
+    : "";
+  const lRole = lStream && cfgStreamSettings[lStream.id]
+    ? cfgStreamSettings[lStream.id].layoutRole
+    : "";
+  if (rRole || lRole) {
+    // ולידציה: gemara + onkelos בו-זמנית — gemara גובר
+    const roles = [rRole, lRole].filter(Boolean);
+    const hasGemara = roles.includes("gemara");
+    const hasOnkelos = roles.includes("onkelos");
+    if (hasGemara && hasOnkelos && typeof console !== "undefined") {
+      console.warn(
+        "[v9] gemara ו-onkelos לא יכולים להופיע יחד. gemara גובר. " +
+          "שנה את הבחירה לאחד מהם."
+      );
+    }
+    const dominantRole = hasGemara ? "gemara" : (roles[0] || "");
+    if (dominantRole === "gemara") {
+      // ודא שנשאר one_long_split אם יש מספיק חומר, אחרת no_crown
+      if (scenario.name !== "one_long_split" && scenario.name !== "two_long_parallel") {
+        // כפיית כתר (אם יש זרם יחיד שמתאים)
+        if ((rStream && !lStream) || (lStream && !rStream)) {
+          scenario = { name: "one_long_split", streamSide: rStream ? "right" : "left" };
+        }
+      }
+    } else if (dominantRole === "mishna" || dominantRole === "onkelos" || dominantRole === "side_notes") {
+      // צד הראשי בלי כתר. כל ה-3 משתמשים ב-one_short_no_crown לעת עתה.
+      // TODO (משה ביקש): onkelos ו-side_notes צריכים את המיקום הספציפי
+      // (פנימי/חיצוני/ימין/שמאל) שהמשתמש בחר ב-layoutPosition, ופונט
+      // ברירת מחדל קטן יותר ל-side_notes. כרגע משתמשים בפריסת no_crown
+      // הקיימת כסקפולדינג.
+      if ((rStream && !lStream) || (lStream && !rStream)) {
+        scenario = {
+          name: "one_short_no_crown",
+          streamSide: rStream ? "right" : "left",
+          v9LayoutRole: dominantRole, // לזיהוי עתידי
+        };
+      }
+    }
   }
+
   result.crownScenario = scenario;
 
   // 2. מיקום ראשי
@@ -1898,130 +1821,6 @@ function wordEndCandidates(text) {
 //   - config: הגדרות
 //   החזרה: { pages: [pageEl, ...] }
 
-// משה 2026-05-15: מנגנון "אימות DOM ותיקון" — אחרי ש-V9 שם את כל השורות,
-// הדפדפן מודיע בפועל כמה רחב כל שורה (scrollWidth). אם רוחב התוכן גדול
-// מרוחב השורה שהוקצב (clientWidth), זה אומר שהמילים גלשו מהשורה. במקרה
-// כזה, דוחפים את המילה האחרונה לשורה הבאה (אם היא באותה פסקה). זאת
-// מדידה דינמית חיה אמיתית — לא תחזית, ממש מה שהדפדפן מצייר.
-//
-// extractLastWordWithFormat — מחלץ את המילה האחרונה משורת A כיחידת DOM
-// שלמה, כולל מעטפת `<span>` עם עיצוב (bold/italic/צבע) אם קיים. מחזיר
-// { word, node } או null. מסיר את המילה מ-A (כולל רווח שלפניה).
-function extractLastWordWithFormat(line) {
-  let node = line.lastChild;
-  while (node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.nodeValue || "";
-      const m = text.match(/^([\s\S]*?)(\s*)(\S+)(\s*)$/);
-      if (!m) {
-        node = node.previousSibling;
-        continue;
-      }
-      const word = m[3];
-      const before = m[1];
-      if (before) {
-        node.nodeValue = before;
-      } else {
-        const rm = node;
-        node = node.previousSibling;
-        rm.parentNode.removeChild(rm);
-      }
-      return { word, node: document.createTextNode(word) };
-    }
-    if (node.nodeType === Node.ELEMENT_NODE) {
-      const elText = node.textContent || "";
-      const trimmed = elText.replace(/\s+$/, "");
-      if (!trimmed) {
-        const rm = node;
-        node = node.previousSibling;
-        rm.parentNode.removeChild(rm);
-        continue;
-      }
-      const hasComplexChildren = Array.from(node.childNodes).some(
-        (c) => c.nodeType === Node.ELEMENT_NODE
-      );
-      if (hasComplexChildren) {
-        const inner = extractLastWordWithFormat(node);
-        if (!inner) {
-          node = node.previousSibling;
-          continue;
-        }
-        if (!(node.textContent || "").trim()) {
-          node.parentNode.removeChild(node);
-        }
-        const wrap = node.cloneNode(false);
-        wrap.appendChild(inner.node);
-        return { word: inner.word, node: wrap };
-      }
-      // ילדים פשוטים: רק טקסט בתוך ה-element
-      const lastSpace = trimmed.lastIndexOf(" ");
-      if (lastSpace === -1) {
-        // כל ה-element הוא מילה אחת
-        const moved = node;
-        node = node.previousSibling;
-        moved.parentNode.removeChild(moved);
-        return { word: trimmed, node: moved };
-      }
-      const lastWord = trimmed.slice(lastSpace + 1);
-      const beforeLast = trimmed.slice(0, lastSpace);
-      node.textContent = beforeLast;
-      const newEl = node.cloneNode(false);
-      newEl.textContent = lastWord;
-      return { word: lastWord, node: newEl };
-    }
-    node = node.previousSibling;
-  }
-  return null;
-}
-
-function pushLastWordToNext(lineA, lineB) {
-  // הגנה: לא לחצות פסקה. שני קווים חייבים להיות באותו box.
-  if (lineA.dataset.v9BoxId !== lineB.dataset.v9BoxId) return false;
-  // ה-source חייב להיות שורה עם יותר ממילה אחת, אחרת נריק אותה
-  const txtA = (lineA.textContent || "").trim();
-  const words = txtA.split(/\s+/).filter(Boolean);
-  if (words.length < 2) return false;
-  const extracted = extractLastWordWithFormat(lineA);
-  if (!extracted) return false;
-  // הכנסת מילה + רווח בתחילת שורת B
-  lineB.insertBefore(document.createTextNode(" "), lineB.firstChild);
-  lineB.insertBefore(extracted.node, lineB.firstChild);
-  // סימונים לאינספקציה
-  lineA.dataset.lnV9PushedFrom = String(parseInt(lineA.dataset.lnV9PushedFrom || "0", 10) + 1);
-  lineB.dataset.lnV9ReceivedHead = String(parseInt(lineB.dataset.lnV9ReceivedHead || "0", 10) + 1);
-  return true;
-}
-
-function correctV9LineOverflows(container, maxIter = 8) {
-  if (!container) return;
-  // force layout — מבטיח שה-scrollWidth מעודכן
-  // eslint-disable-next-line no-unused-expressions
-  container.offsetHeight;
-  for (let iter = 0; iter < maxIter; iter++) {
-    const lines = Array.from(container.querySelectorAll(".v9-line"));
-    let fixed = 0;
-    for (const line of lines) {
-      const cw = line.clientWidth;
-      const sw = line.scrollWidth;
-      if (sw <= cw + 1) continue; // אין overflow
-      // מוצאים את השורה הבאה ב-DOM, באותה פסקה (אותו box)
-      let next = line.nextElementSibling;
-      while (next && !(next.classList && next.classList.contains("v9-line"))) {
-        next = next.nextElementSibling;
-      }
-      if (!next) continue; // אין שורה הבאה — אין מה לעשות
-      if (next.dataset.v9BoxId !== line.dataset.v9BoxId) continue; // פסקה שונה
-      if (pushLastWordToNext(line, next)) {
-        fixed++;
-      }
-    }
-    if (fixed === 0) break;
-    // force layout בין איטרציות כדי לקבל מדידות מעודכנות
-    // eslint-disable-next-line no-unused-expressions
-    container.offsetHeight;
-  }
-}
-
 export async function buildPages(container, paragraphs, config) {
   if (!container || !Array.isArray(paragraphs) || paragraphs.length === 0) return { pages: [] };
 
@@ -2045,6 +1844,10 @@ export async function buildPages(container, paragraphs, config) {
     streamSettings: {},
     levels: [],
     noMidLineSplits: false,
+    // משה 2026-05-15: דגל חדש נפרד — מונע חיתוכי טקסט באמצע שורה. ברירת מחדל
+    // מסומן (true). מטפל רק ברמת השורה, לא ברמת פסקה (אחר ממוטעת בנפרד ע"י
+    // noMidLineSplits).
+    preventMidLineSplit: true,
     maxPages: 100,
   }, config || {});
 
@@ -2358,9 +2161,13 @@ export async function buildPages(container, paragraphs, config) {
           };
 
           const baseSlice = getSlice(baseN);
+          // משה 2026-05-15: word-end candidates (חיתוך באמצע שורה) מותרים
+          // רק כששני הדגלים כבויים — gold ה-noMidLineSplits הישן (פסקה),
+          // וגם preventMidLineSplit החדש (שורה).
+          const allowMidLine = !cfg.noMidLineSplits && !cfg.preventMidLineSplit;
           let rescueEnds = [...new Set([
             ...mainLineEndCandidates(fullText, splitMetrics, splitMainWidth),
-            ...(cfg.noMidLineSplits ? [] : wordEndCandidates(fullText)),
+            ...(allowMidLine ? wordEndCandidates(fullText) : []),
           ])]
             .filter(n => n >= 2 && n < fullText.length)
             .sort((a, b) => a - b);
@@ -2675,15 +2482,6 @@ export async function buildPages(container, paragraphs, config) {
       await yieldToBrowser();
       if (!isCurrent()) return { pages, aborted: true };
     }
-  }
-
-  // משה 2026-05-15: אימות DOM בסוף — מודדים בפועל אם השורות גלשו, אם כן
-  // דוחפים מילה אחורה. מדידה חיה אמיתית, לא תחזית.
-  try {
-    correctV9LineOverflows(container);
-  } catch (e) {
-    // לא לקרוס אם משהו מוזר קרה
-    if (typeof console !== "undefined") console.warn("[v9] correctV9LineOverflows failed:", e);
   }
 
   return { pages };
