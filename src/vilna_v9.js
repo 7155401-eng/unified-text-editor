@@ -504,40 +504,36 @@ function splitWordsByStrips(text, metrics, rightStrips) {
     return total;
   }
   
-  // חיפוש בינארי על N: נקודת החיתוך
-  // המטרה: מינימום של |linesForWordSlice(left) - linesForWordSlice(right)|
-  let lo = 1;
-  let hi = words.length - 1;
-  
-  // ערך ראשוני: ניחוש = חצי המילים
-  let bestN = Math.floor(words.length / 2);
-  let bestDiff = Infinity;
-  
-  // 30 איטרציות זה מספיק בשביל log2(words.length) רוב המקרים
-  for (let iter = 0; iter < 30 && lo <= hi; iter++) {
-    const mid = Math.floor((lo + hi) / 2);
-    const linesRight = linesForWordSlice(words.slice(0, mid));
-    const linesLeft  = linesForWordSlice(words.slice(mid));
-    const diff = linesRight - linesLeft;
-    const absDiff = Math.abs(diff);
-    
-    if (absDiff < bestDiff) {
-      bestDiff = absDiff;
-      bestN = mid;
+  // משה 2026-05-15: שינוי גישת החיתוך — במקום איזון בין שני הטורים, הטור
+  // הימני מתמלא עד סופו ורק אז הטור השמאלי מתחיל. החיתוך תמיד על גבול
+  // מילה שלמה בסוף שורה שלמה (לעולם לא באמצע שורה).
+  //
+  // הלוגיקה: מזרימים את המילים דרך רצועות הימני אחת אחרי השנייה. עוצרים
+  // כשהרצועה האחרונה התמלאה (או הטקסט אזל). נקודת החיתוך = מספר המילים
+  // שנכנסו לטור הימני.
+  let cursor = 0;
+  for (let i = 0; i < strips.length; i++) {
+    const strip = strips[i];
+    if (cursor >= words.length) break;
+    const maxLines = Math.floor(strip.height / lineH);
+    if (maxLines <= 0) continue;
+    const remaining = words.slice(cursor).join(' ');
+    const lines = metrics.layoutLines(remaining, strip.width);
+    if (!lines || lines.length === 0) break;
+    // כמה שורות נכנסות ברצועה הזאת? עד ה-max המוצהר.
+    const linesUsed = Math.min(maxLines, lines.length);
+    for (let j = 0; j < linesUsed; j++) {
+      if (lines[j] && lines[j].words) cursor += lines[j].words.length;
     }
-    
-    if (diff === 0) break; // מצב מאוזן מושלם
-    if (diff < 0) {
-      // הימני קצר מדי, צריך להעביר עוד מילים אליו
-      lo = mid + 1;
-    } else {
-      // הימני ארוך מדי, צריך להפחית
-      hi = mid - 1;
+    // אם הטקסט נכנס לחלוטין ברצועה הזאת — לא צריך לחתוך, הכל בטור הימני
+    if (lines.length <= maxLines) {
+      // הכל נכנס. אין מה לשלוח לטור השמאלי. (לא אמור לקרות אם נכנסנו ל-split.)
+      cursor = words.length;
+      break;
     }
   }
-  
-  // הגנה: לפחות מילה אחת בכל צד
-  const splitIdx = Math.min(words.length - 1, Math.max(1, bestN));
+  // הגנה: לפחות מילה אחת בכל צד (אחרת אין טעם בפיצול)
+  const splitIdx = Math.min(words.length - 1, Math.max(1, cursor));
   
   return {
     first: words.slice(0, splitIdx).join(' '),
