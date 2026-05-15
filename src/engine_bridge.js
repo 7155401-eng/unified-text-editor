@@ -1,4 +1,4 @@
-import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
+﻿import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 import { runPreflight } from "./render_preflight.js";
@@ -64,7 +64,6 @@ import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
-import { applyLineBalanceToPages } from "./smart_line_breaker.js";
 import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve, tryRemergeSplitMarks } from "./engine/live_overflow_corrector.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
@@ -1137,9 +1136,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // משה 2026-05-15: smart line breaker — חישוב נקודות חיתוך אמיתי
     // כדי למנוע מתיחת רווחים קיצונית וחפיפת מילים. רץ אחרי opening word
     // (כדי שה-SVG כבר במקום ולא נספר בטעות כמילה רגילה).
-    logEvent("smart_line_breaker");
-    applyLineBalanceToPages(pagesContainer);
-    // משה 2026-05-14: בעבר auto-2-columns הופעל אוטומטית על זרמים גדולים,
+// משה 2026-05-14: בעבר auto-2-columns הופעל אוטומטית על זרמים גדולים,
     // אבל זה דרס בחירה מפורשת של המשתמש לטור-אחד. עכשיו: רק אם המשתמש לא
     // קבע cols=1 מפורשות.
     pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
@@ -2021,3 +2018,4 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     }));
   }
 }
+
