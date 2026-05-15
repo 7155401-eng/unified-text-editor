@@ -14,9 +14,19 @@
 // שלא כמו opening_word_stretch.js — שמותח גליפים של מילת פתיח — כאן
 // אנחנו לא משנים את הגליפים, רק בוחרים נקודות חיתוך טובות יותר ומבטלים
 // מתיחה רק בשורות שבהן היא הופכת קיצונית.
+//
+// TODO (משה ביקש 2026-05-15): שילוב לוגיקת ה-cap בתוך layoutLines() של
+// vilna_v9.js. כיום V9 שובר שורות בגישת first-fit פשטנית בלי שיקול stretch ratio,
+// ואז smart_line_breaker מתקן בדיעבד. כשהשבירה הראשונית טובה — שורות לא יוצאות
+// קצרות מדי, ופחות צריך לקצץ אחר כך. רפקטור עמוק יותר ל-vilna_v9.js נדרש.
 
-const STRETCH_RATIO_LIMIT = 3.0;          // מעל זה — לבטל מתיחה על השורה
-const STRETCH_RATIO_REBALANCE = 2.0;      // מעל זה — לנסות לשבור מחדש
+// משה 2026-05-15: ערכי הסף הוקלפו אחרי בדיקה בייצור — 220 שורות עם יחס 2.0–2.5
+// היו נכנסות ל-soft mode בלי צורך; משה ביקש "למתן ולמתוח עד אחוזים גבוהים יותר".
+// REBALANCE 2.0 → 3.5: לא נוגעים בשורות עם מתיחה רגילה.
+// LIMIT 3.0 → 5.0: בתוך soft mode, מאפשרים רווח עד פי 5 מטבעי לפני שמתחילים לקצץ.
+// HARD_LIMIT 6.0 → 10.0: רק קיצוניות אמיתית מאבדת מראה מיושר.
+const STRETCH_RATIO_LIMIT = 5.0;          // תקרת רווח ב-soft mode (פי X רווח טבעי)
+const STRETCH_RATIO_REBALANCE = 3.5;      // מתחת לזה — לא מטפלים כלל
 const REBALANCE_MAX_ITERATIONS = 3;
 const ORPHAN_OVERFLOW_TOLERANCE = 1.005;
 
@@ -214,7 +224,7 @@ function balanceParagraph(p) {
 //     אותו טיפול אבל עם מקס' רווח קטן יותר; אם זה עדיין לא מספיק (יחס > LIM_HARD)
 //     מסירים את class "justify" לחלוטין ועוברים ליישור ימינה.
 
-const STRETCH_RATIO_HARD_LIMIT = 6.0; // מעל זה — אין דרך לשמור על נראות מיושרת
+const STRETCH_RATIO_HARD_LIMIT = 10.0; // מעל זה — אין דרך לשמור על נראות מיושרת
 
 function measureNaturalLineTextWidth(line) {
   const probe = document.createElement("span");
