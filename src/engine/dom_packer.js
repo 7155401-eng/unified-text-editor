@@ -1052,6 +1052,22 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     // לא נראה בטקסט, אבל מאפשר ל-corrector ולמדידה הבאה לדעת היכן בוצע
     // חיתוך מאולץ. אם הפריסה משתנה והקטעים יכולים להתאחד, אפשר לזהות זאת.
     const SPLIT_MARK = "⁠";
+    // משה 2026-05-15: שמירה על runs בפיצול הערה ארוכה. נחתוך את note.runs
+    // לפי גבול-המילה ונדאג לקזז את leading-trim בחצי השני וגם להזיז ב-+1
+    // בגלל SPLIT_MARK שמוסיף תו אחד בתחילת part2.text.
+    const tail = note.text.substring(wordEnd);
+    const leadingWsInTail = tail.length - tail.trimStart().length;
+    const part1RawLen = note.text.substring(0, wordEnd).trimEnd().length;
+    const part2InnerRuns = sliceRuns(
+      Array.isArray(note.runs) ? note.runs : [],
+      wordEnd + leadingWsInTail,
+      note.text.length
+    );
+    const part2RunsShifted = part2InnerRuns.map((r) => ({
+      start: r.start + 1,
+      end: r.end + 1,
+      marks: r.marks,
+    }));
     const part1 = {
       stream: note.stream,
       anchor: note.anchor,
@@ -1060,15 +1076,17 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       text: note.text.substring(0, wordEnd).trimEnd() + SPLIT_MARK,
       wasSplit: true,
       children: note.isContinuation ? [] : (note.children || []),
+      runs: sliceRuns(Array.isArray(note.runs) ? note.runs : [], 0, part1RawLen),
     };
     const part2 = {
       stream: note.stream,
       anchor: note.anchor,
       num: note.num,
       isContinuation: true,
-      text: SPLIT_MARK + note.text.substring(wordEnd).trimStart(),
+      text: SPLIT_MARK + tail.trimStart(),
       wasSplit: true,
       children: [],
+      runs: part2RunsShifted,
     };
     return [part1, part2];
   }
@@ -1090,7 +1108,16 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     const parts = [];
     // Only the very first part keeps the original children; every later part
     // (including the final tail) is a continuation half with empty children.
-    let remainingNote = { ...note, text, isContinuation: !!note.isContinuation, children: note.children || [] };
+    // משה 2026-05-15: גם runs צריך להישמר בפיצול ארוך — כל חלק מקבל את ה-runs
+    // שלו אחרי חיתוך לפי גבול-המילה, וההסטה ב-+1 בגלל SPLIT_MARK בתחילת
+    // החצי השני (אם הוא היה continuation, ה-SPLIT_MARK כבר חלק מהאופסט הקודם).
+    let remainingNote = {
+      ...note,
+      text,
+      isContinuation: !!note.isContinuation,
+      children: note.children || [],
+      runs: Array.isArray(note.runs) ? note.runs : [],
+    };
     let safety = 80;
     while (remainingNote.text.length > LONG_NOTE_CHUNK_CHARS && safety-- > 0) {
       const fit = fitNoteCharPrefix(
@@ -1104,17 +1131,33 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
         end = adjustToWordBoundary(remainingNote.text, LONG_NOTE_CHUNK_CHARS);
       }
       if (end <= 0 || end >= remainingNote.text.length) break;
+      const partLen = remainingNote.text.substring(0, end).trimEnd().length;
+      const tail = remainingNote.text.substring(end);
+      const leadingWsInTail = tail.length - tail.trimStart().length;
+      const partRuns = sliceRuns(remainingNote.runs, 0, partLen);
+      const remainingInnerRuns = sliceRuns(
+        remainingNote.runs,
+        end + leadingWsInTail,
+        remainingNote.text.length
+      );
+      const remainingShifted = remainingInnerRuns.map((r) => ({
+        start: r.start + 1,
+        end: r.end + 1,
+        marks: r.marks,
+      }));
       parts.push({
         ...remainingNote,
         text: remainingNote.text.substring(0, end).trimEnd() + "⁠",
         wasSplit: true,
+        runs: partRuns,
       });
       remainingNote = {
         ...remainingNote,
-        text: "⁠" + remainingNote.text.substring(end).trimStart(),
+        text: "⁠" + tail.trimStart(),
         wasSplit: true,
         isContinuation: true,
         children: [],
+        runs: remainingShifted,
       };
     }
     if (remainingNote.text) {
