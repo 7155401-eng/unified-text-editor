@@ -1079,8 +1079,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       window.localStorage?.getItem("ravtext.talmudLayout") === "1";
     if (talmudActive) {
       logEvent("vilna_v9_pipeline_start");
-      await applyVilnaV9FromPaneManager(content, pagesContainer);
+      // משה 2026-05-15: מעבירים isCurrent ל-V9 כדי שיוכל לעצור באמצע בלי
+      // לחסום את ה-main thread אם המשתמש שינה הגדרה תוך כדי רינדור.
+      const v9Result = await applyVilnaV9FromPaneManager(content, pagesContainer, {
+        isCurrent: () => myToken === _renderToken,
+      });
       if (myToken !== _renderToken) return;
+      if (v9Result?.aborted) return;
       const v9PageCount = pagesContainer.querySelectorAll(".page").length;
       if (pdfToolbarApi) {
         pdfToolbarApi.setTotal(v9PageCount);

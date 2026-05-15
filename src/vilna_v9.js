@@ -2038,6 +2038,14 @@ export async function buildPages(container, paragraphs, config) {
     maxPages: 100,
   }, config || {});
 
+  // משה 2026-05-15: ה-while-loop של buildPages רץ באופן סינכרוני וכבד —
+  // ללא הפסקות הוא חוסם את ה-main thread לכל זמן הרינדור, כך שהמשתמש
+  // לא יכול לשנות הגדרות תוך כדי. הפתרון: בין עמוד לעמוד מוסרים שליטה
+  // ל-event loop (setTimeout 0) כדי שאירועי-קלט יטופלו, ובודקים isCurrent
+  // — אם התחיל רינדור חדש (עם token גבוה יותר), קוטעים את הנוכחי.
+  const isCurrent = typeof cfg.isCurrent === "function" ? cfg.isCurrent : () => true;
+  const yieldToBrowser = () => new Promise((r) => setTimeout(r, 0));
+
   const pages = [];
   let cursor = 0;
   let pageIdx = 0;
@@ -2648,6 +2656,15 @@ export async function buildPages(container, paragraphs, config) {
     carryOver = nextCarry;
 
     pageIdx++;
+
+    // משה 2026-05-15: בין עמוד לעמוד — שחרור ה-main thread כדי שהמשתמש
+    // יוכל ללחוץ/להקליד/לשנות הגדרות גם תוך כדי רינדור. אם התחיל בינתיים
+    // רינדור חדש (token חדש), עוצרים כאן ומחזירים את העמודים שכבר נבנו
+    // (הם נשארים על המסך עד שהרינדור החדש יחליף אותם).
+    if (pageIdx < cfg.maxPages && (cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph)) {
+      await yieldToBrowser();
+      if (!isCurrent()) return { pages, aborted: true };
+    }
   }
 
   // משה 2026-05-15: אימות DOM בסוף — מודדים בפועל אם השורות גלשו, אם כן

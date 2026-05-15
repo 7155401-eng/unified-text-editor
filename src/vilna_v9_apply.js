@@ -137,8 +137,9 @@ function readSpacingBool(key, fallback = false) {
   }
 }
 
-export async function applyVilnaV9FromPaneManager(paragraphs, container) {
+export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = {}) {
   if (!container || !Array.isArray(paragraphs)) return;
+  const isCurrent = typeof opts.isCurrent === "function" ? opts.isCurrent : () => true;
 
   // משה 2026-05-15: V9 מודד רוחב מילים דרך Canvas.measureText (vilna_v9.js).
   // אם הפונט עוד לא טעון, המדידה משתמשת בפונט ברירת־מחדל צר יותר → V9 חושב
@@ -155,6 +156,10 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
       /* ממשיכים גם אם נכשל */
     }
   }
+
+  // משה 2026-05-15: אם בזמן המתנה לפונטים התחיל רינדור חדש, נצא בלי
+  // למחוק את העמודים הנוכחיים — אחרת המסך יישאר ריק עד הרינדור הבא.
+  if (!isCurrent()) return { aborted: true };
 
   // נקה את ה-container — V9 בונה מאפס
   container.innerHTML = "";
@@ -189,7 +194,8 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     return { ...p, mainText: injected.mainText, mainRuns: injected.mainRuns, notes: injected.notes };
   });
 
-  await buildPages(container, transformedParagraphs, {
+  return await buildPages(container, transformedParagraphs, {
+    isCurrent,
     pageWidth: geom.pageWidth,
     pageHeight: geom.pageHeight,
     reservedTop: geom.reservedTop,
