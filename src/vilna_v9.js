@@ -766,9 +766,11 @@ function buildPagePlan(pageContent, config) {
     { right: rText, left: lText },
     { metrics: sideMetrics, halfWidth, fullWidth: innerWidth, crownLines: cfg.crownLines }
   );
-  if (cfg.noMidLineSplits && scenario.name === 'one_long_split') {
-    scenario = { name: 'one_short_no_crown', streamSide: scenario.streamSide };
-  }
+  // משה 2026-05-15: הקונברסיה האוטומטית של one_long_split → one_short_no_crown
+  // (כשנדלק noMidLineSplits) הוסרה. זה היה מעבר פריסה אגרסיבי בלי להגיד למשתמש —
+  // משה ביקש שזה לא יקרה (ממצא 2). תרגום אונקלוס יהיה בחירת פריסה מפורשת
+  // פר-זרם דרך השדה layoutRole. הקוד שמטפל בחיתוך באמצע שורה עכשיו
+  // משתמש בדגל החדש preventMidLineSplit.
   result.crownScenario = scenario;
 
   // 2. מיקום ראשי
@@ -1778,6 +1780,10 @@ export async function buildPages(container, paragraphs, config) {
     streamSettings: {},
     levels: [],
     noMidLineSplits: false,
+    // משה 2026-05-15: דגל חדש נפרד — מונע חיתוכי טקסט באמצע שורה. ברירת מחדל
+    // מסומן (true). מטפל רק ברמת השורה, לא ברמת פסקה (אחר ממוטעת בנפרד ע"י
+    // noMidLineSplits).
+    preventMidLineSplit: true,
     maxPages: 100,
   }, config || {});
 
@@ -2083,9 +2089,13 @@ export async function buildPages(container, paragraphs, config) {
           };
 
           const baseSlice = getSlice(baseN);
+          // משה 2026-05-15: word-end candidates (חיתוך באמצע שורה) מותרים
+          // רק כששני הדגלים כבויים — gold ה-noMidLineSplits הישן (פסקה),
+          // וגם preventMidLineSplit החדש (שורה).
+          const allowMidLine = !cfg.noMidLineSplits && !cfg.preventMidLineSplit;
           let rescueEnds = [...new Set([
             ...mainLineEndCandidates(fullText, splitMetrics, splitMainWidth),
-            ...(cfg.noMidLineSplits ? [] : wordEndCandidates(fullText)),
+            ...(allowMidLine ? wordEndCandidates(fullText) : []),
           ])]
             .filter(n => n >= 2 && n < fullText.length)
             .sort((a, b) => a - b);

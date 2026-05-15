@@ -214,6 +214,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container) {
     levels,
     talmudStreams,
     noMidLineSplits: readSpacingBool("noMidLineSplits", false),
+    preventMidLineSplit: readSpacingBool("preventMidLineSplit", true),
   });
 }
 
