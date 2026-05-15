@@ -113,27 +113,132 @@ class VilnaMetrics {
     return w;
   }
 
+  // משה 2026-05-15: לוגיקת בחירת חיתוכים גלובלית בסגנון Knuth-Plass.
+  // המנוע הישן (first-fit) הוסר; הוא קיבל החלטות מקומיות שגרמו לשורות
+  // לשבור מוקדם מדי כשהמילה הבאה לא נכנסה — בלי לשקול שאם נשבור צעד
+  // אחורה, הפסקה כולה תיראה טוב יותר. Word עושה דיוק כזה.
+  //
+  // החוזה (input/output) זהה למנוע הישן:
+  //   layoutLines(text, widthPx) → [{words, width, isLast}, ...]
+  //
+  // אילוצים שנשמרים:
+  //   - שורות לא חורגות מ-widthPx (מלבד שורת מילה־אחת ארוכה מהרוחב,
+  //     שאין ברירה אלא לאפשר אותה).
+  //   - השורה האחרונה מקבלת isLast=true; שאר השורות isLast=false.
+  //
+  // האלגוריתם:
+  //   1. מודדים את כל המילים מראש (Canvas, עם שולי בטיחות V9_MEASURE_SAFETY).
+  //   2. בונים מערך prefix sums כדי לחשב רוחב שורה בין שתי אינדקסים ב-O(1).
+  //   3. דינמית פרוגרמינג: dp[j] = (עלות מינימלית, נקודת השבירה הקודמת)
+  //      עבור הפסקה שמסתיימת אחרי המילה ה-j-ית.
+  //   4. עלות שורה = יחס מתיחה בקובייה (יחס³). יחס = (רוחב פנוי / מס' רווחים)
+  //      חלקי רוחב רווח טבעי. גישה זו מעדיפה שורות "מעט מתוחות" על שורות
+  //      "מאוד מתוחות" — בדיוק כמו ב-Knuth-Plass.
+  //   5. השורה האחרונה לא נענשת על קוצר (last-line slack חינם), בדיוק כמו
+  //      ב-Word שמרשה לשורת סיום־פסקה להיות קצרה.
+  //   6. backtrack מהסוף כדי לבנות את רשימת השורות.
   layoutLines(text, widthPx) {
     if (!text) return [];
     const words = text.split(/\s+/).filter(Boolean);
     if (words.length === 0) return [];
+    if (words.length === 1) {
+      return [{ words: [words[0]], width: this.measureWord(words[0]), isLast: true }];
+    }
 
+    const N = words.length;
+    const wordW = new Array(N);
+    for (let i = 0; i < N; i++) wordW[i] = this.measureWord(words[i]);
+    const spaceW = this.spaceWidth;
+
+    // prefix[i] = sum(wordW[0..i-1])
+    const prefix = new Array(N + 1);
+    prefix[0] = 0;
+    for (let i = 0; i < N; i++) prefix[i + 1] = prefix[i] + wordW[i];
+
+    // רוחב שורה ממילה i עד j (j בלעדי): סכום מילים + (k-1) רווחים
+    const lineWidth = (i, j) => (prefix[j] - prefix[i]) + (j - i - 1) * spaceW;
+
+    // עלות שורה לפי יחס מתיחה
+    //
+    // עקרונות:
+    //   - שורה אחרונה של פסקה: עלות 0 תמיד. כמו Word — שורה אחרונה לא נמתחת
+    //     ומותר לה להיות קצרה. זה נחוץ כדי לא להעדיף "כל מילה בשורה משלה".
+    //   - שורה רגילה עם k>1 מילים: ratio³ (מתיחה ³ × רווח טבעי). cubed
+    //     כי מתיחה גבוהה צריכה להיות יקרה משמעותית.
+    //   - שורה רגילה עם k=1 מילה (יתומה באמצע): slack/spaceW נחשב כמו רווחים.
+    //     מילה־אחת עם מקום פנוי גדול = שורה רעה. בקובייה.
+    //   - שורה k=1 שחורגת מהרוחב (מילה אחת ארוכה מדי): מותר אבל בלי עלות
+    //     (אין ברירה אחרת — חייבים לקבל אותה).
+    const lineCost = (i, j, isLast) => {
+      const lw = lineWidth(i, j);
+      const k = j - i;
+      if (k === 1 && lw > widthPx) return 0; // forced single-word overflow
+      if (lw > widthPx) return Infinity; // multi-word overflow — לא חוקי
+      if (isLast) return 0; // שורה אחרונה — חופשי (Word-style)
+      const slack = widthPx - lw;
+      if (k === 1) {
+        // מילה־אחת באמצע פסקה — slack/spaceW כאילו זה רווח אחד
+        const looseness = spaceW > 0 ? slack / spaceW : 0;
+        return looseness * looseness * looseness;
+      }
+      const stretchPerSpace = slack / (k - 1);
+      const ratio = spaceW > 0 ? stretchPerSpace / spaceW : 0;
+      return ratio * ratio * ratio;
+    };
+
+    // dp[j] = { cost, prev } עבור פסקה שמסתיימת אחרי המילה ה-j-ית
+    const dp = new Array(N + 1);
+    dp[0] = { cost: 0, prev: -1 };
+    for (let j = 1; j <= N; j++) {
+      let best = null;
+      for (let i = 0; i < j; i++) {
+        if (!dp[i]) continue;
+        const c = lineCost(i, j, j === N);
+        if (!Number.isFinite(c)) continue;
+        const total = dp[i].cost + c;
+        if (best === null || total < best.cost) {
+          best = { cost: total, prev: i };
+        }
+      }
+      dp[j] = best;
+    }
+
+    // fallback: אם משום מה dp[N] ריק (לא אמור לקרות), חוזרים ל-greedy
+    if (!dp[N]) return this._layoutLinesGreedyFallback(words, wordW, spaceW, widthPx);
+
+    // backtrack: לבנות את רשימת השורות
+    const breaks = [];
+    let cur = N;
+    while (cur > 0) {
+      const prev = dp[cur].prev;
+      breaks.unshift({ start: prev, end: cur });
+      cur = prev;
+    }
+
+    return breaks.map((b, idx) => ({
+      words: words.slice(b.start, b.end),
+      width: lineWidth(b.start, b.end),
+      isLast: idx === breaks.length - 1,
+    }));
+  }
+
+  // משה 2026-05-15: גריידי מקורי כ-fallback ביטחון. אמור לעולם לא להירץ
+  // (האלגוריתם הגלובלי תמיד מוצא פתרון), אבל אם משהו לא צפוי קורה,
+  // נחזור להתנהגות הישנה במקום לקרוס.
+  _layoutLinesGreedyFallback(words, wordW, spaceW, widthPx) {
     const lines = [];
     let currentLine = [];
     let currentWidth = 0;
-    const spaceW = this.spaceWidth;
-
-    for (const word of words) {
-      const wordW = this.measureWord(word);
-      const addW = currentLine.length === 0 ? wordW : currentWidth + spaceW + wordW;
-
+    for (let i = 0; i < words.length; i++) {
+      const w = wordW[i];
+      const addW = currentLine.length === 0 ? w : currentWidth + spaceW + w;
       if (addW <= widthPx || currentLine.length === 0) {
-        currentLine.push(word);
+        currentLine.push(words[i]);
         currentWidth = addW;
       } else {
         lines.push({ words: currentLine, width: currentWidth, isLast: false });
-        currentLine = [word];
-        currentWidth = wordW;
+        currentLine = [words[i]];
+        currentWidth = w;
       }
     }
     if (currentLine.length > 0) {
