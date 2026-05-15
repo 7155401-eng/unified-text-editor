@@ -230,7 +230,129 @@ function balanceParagraph(p) {
 // המפתח לעבודה תקינה: V9 חייב למדוד מילים נכון (עם שולי בטיחות נגד runs
 // מעוצבים) כדי ש-justify של הדפדפן לא יקבל קלט מוטעה.
 
-const STRETCH_RATIO_HARD_LIMIT = 10.0; // מעל זה — אין דרך לשמור על נראות מיושרת
+const STRETCH_RATIO_HARD_LIMIT_DEFAULT = 10.0; // ברירת מחדל; משתמש יכול להגדיר אחר
+
+// משה 2026-05-15: סף "ויתור על מתיחה" קונפיגורבילי. שורות עם יחס מתיחה מעל הסף
+// מאבדות יישור משני הצדדים ועוברות ליישור ימינה. ערך נמוך = יותר מחמיר (יותר
+// שורות יוותרו על יישור); ערך גבוה = יותר סובלני (יישור גם בקצוניות).
+//   localStorage.setItem("ravtext.v9.stretchGiveUp", "8") — דוגמה לסף 8x
+function getStretchGiveUpRatio() {
+  if (typeof window === "undefined" || !window.localStorage) return STRETCH_RATIO_HARD_LIMIT_DEFAULT;
+  try {
+    const raw = window.localStorage.getItem("ravtext.v9.stretchGiveUp");
+    const n = parseFloat(raw);
+    if (Number.isFinite(n) && n >= 1.5 && n <= 50) return n;
+  } catch (_) {
+    /* keep default */
+  }
+  return STRETCH_RATIO_HARD_LIMIT_DEFAULT;
+}
+
+// משה 2026-05-15: משיכת מילים אחורה (ALWAYS, לא תלוי משתמש).
+// V9 שובר שורות בגישת first-fit עם שולי בטיחות 7% — תוצאה: לעיתים נשאר מקום
+// פנוי בסוף שורה למילה מהשורה הבאה, אבל V9 לא ניצל אותו (שמרני). פה אנחנו
+// מודדים DOM בפועל (בלי שולי הבטיחות), ואם מילת הפתיח של השורה הבאה
+// נכנסת בסוף השורה הנוכחית — מעבירים אותה לכאן. ממשיכים עד שאין יותר מקום.
+function probeLineNaturalWidth(refLine, text) {
+  const probe = document.createElement("span");
+  probe.style.cssText =
+    "position:absolute;visibility:hidden;white-space:nowrap;top:0;inset-inline-start:-10000px;pointer-events:none;";
+  const cs = getComputedStyle(refLine);
+  probe.style.fontFamily = cs.fontFamily;
+  probe.style.fontSize = cs.fontSize;
+  probe.style.fontWeight = cs.fontWeight;
+  probe.style.fontStyle = cs.fontStyle;
+  probe.style.letterSpacing = cs.letterSpacing;
+  probe.textContent = text;
+  document.body.appendChild(probe);
+  const w = probe.getBoundingClientRect().width;
+  probe.remove();
+  return w;
+}
+
+function tryPullFirstWord(lineA, lineB) {
+  // החזרה: true אם הצליח להעביר מילה, false אחרת
+  const textA = (lineA.textContent || "").trim();
+  const textB = (lineB.textContent || "").trim();
+  if (!textA || !textB) return false;
+  const m = textB.match(/^(\S+)/);
+  if (!m) return false;
+  const firstWord = m[1];
+  if (!firstWord) return false;
+
+  const lineAW = lineA.getBoundingClientRect().width;
+  if (lineAW < 20) return false;
+
+  const newAText = textA + " " + firstWord;
+  const newAWidth = probeLineNaturalWidth(lineA, newAText);
+  // טולרנס 1px לסאב-פיקסל
+  if (newAWidth > lineAW - 1) return false;
+
+  // העברת המילה: מוצאים את ה-text node הראשון של B עם תוכן לא-ריק,
+  // וחותכים ממנו את המילה הראשונה (כולל רווח שאחריה).
+  const walker = document.createTreeWalker(lineB, NodeFilter.SHOW_TEXT, null);
+  let bFirstNode = null;
+  let n;
+  while ((n = walker.nextNode())) {
+    if (n.nodeValue && /\S/.test(n.nodeValue)) {
+      bFirstNode = n;
+      break;
+    }
+  }
+  if (!bFirstNode) return false;
+
+  const oldText = bFirstNode.nodeValue || "";
+  const leadingMatch = oldText.match(/^\s*/);
+  const lead = leadingMatch ? leadingMatch[0] : "";
+  const trimmed = oldText.slice(lead.length);
+  const wordMatch = trimmed.match(/^(\S+)(\s*)/);
+  if (!wordMatch) return false;
+
+  const pulledWord = wordMatch[1];
+  const after = trimmed.slice(wordMatch[0].length);
+  bFirstNode.nodeValue = lead + after;
+
+  // הוספה לסוף A — text node חדש בסוף.
+  lineA.appendChild(document.createTextNode(" " + pulledWord));
+
+  // סימונים לאינספקציה
+  lineA.dataset.lnV9Pulled = String(parseInt(lineA.dataset.lnV9Pulled || "0", 10) + 1);
+  lineB.dataset.lnV9LostFirst = String(parseInt(lineB.dataset.lnV9LostFirst || "0", 10) + 1);
+  return true;
+}
+
+function pullAdjacentV9Words(root) {
+  const allLines = Array.from(root.querySelectorAll(".v9-line"));
+  // קיבוץ לפי data-v9-box-id (פסקה/זרם), כי משיכה רק בין שורות באותו box
+  const byBox = new Map();
+  for (const line of allLines) {
+    const boxId = line.dataset.v9BoxId || "__default__";
+    if (!byBox.has(boxId)) byBox.set(boxId, []);
+    byBox.get(boxId).push(line);
+  }
+  let total = 0;
+  for (const group of byBox.values()) {
+    if (group.length < 2) continue;
+    // מיון לפי top — סדר טבעי בעמוד
+    group.sort((a, b) => {
+      const ta = parseFloat(a.style.top || "0");
+      const tb = parseFloat(b.style.top || "0");
+      return ta - tb;
+    });
+    for (let i = 0; i < group.length - 1; i++) {
+      // לא מושכים אל שורה שכבר טופלה כ-hard (אבד יישור) — לא רוצים לדחוס בה
+      // אם המשתמש בחר להוותר.
+      const a = group[i];
+      const b = group[i + 1];
+      // מקס' 8 משיכות בין כל זוג שורות, להגנה
+      for (let k = 0; k < 8; k++) {
+        if (!tryPullFirstWord(a, b)) break;
+        total++;
+      }
+    }
+  }
+  return total;
+}
 
 function measureNaturalLineTextWidth(line) {
   const probe = document.createElement("span");
@@ -265,9 +387,10 @@ function balanceV9Line(line) {
   const requiredSpace = (rect.width - wordsOnlyW) / numSpaces;
   const ratio = naturalSpace > 0 ? requiredSpace / naturalSpace : 0;
 
-  // רק מקרה קיצוני (ratio > 10) — אין סיכוי להציל מראה מיושר משני הצדדים.
-  // כל יחס נמוך יותר נשאר ב-justify של הדפדפן (מתפלג שווה ב-RTL).
-  if (ratio > STRETCH_RATIO_HARD_LIMIT) {
+  // רק מקרה קיצוני (ratio > סף משתמש, ברירת מחדל 10) — אין סיכוי להציל מראה
+  // מיושר משני הצדדים. כל יחס נמוך יותר נשאר ב-justify של הדפדפן.
+  const giveUpRatio = getStretchGiveUpRatio();
+  if (ratio > giveUpRatio) {
     line.classList.remove("justify");
     line.style.textAlign = "right";
     line.style.textAlignLast = "right";
@@ -287,7 +410,9 @@ function balanceContainer(root) {
   // הערות בזרמים — לפעמים מיושרות
   const noteEls = root.querySelectorAll(".stream .note, .stream .note-inline, .stream .note-part");
   for (const note of noteEls) balanceParagraph(note);
-  // שורות V9 — כל יחידה היא שורה אחת, מטפלים בנפרד
+  // משה 2026-05-15: שלב 1 ב-V9 — משיכת מילים אחורה כשיש מקום (תמיד).
+  pullAdjacentV9Words(root);
+  // שלב 2 ב-V9 — שורות שעדיין מעל סף המשתמש: ויתור על יישור.
   const v9Lines = root.querySelectorAll(".v9-line.justify");
   for (const line of v9Lines) balanceV9Line(line);
 }
@@ -308,4 +433,22 @@ export function applyLineBalanceToPages(container) {
 if (typeof window !== "undefined") {
   window.__lnBalance = applyLineBalanceToPages;
   window.__lnBalancePage = applyLineBalanceToPage;
+  // משה 2026-05-15: כיוון סף ויתור על יישור דרך הקונסול עד שיוגדר UI.
+  // דוגמה: ravtextSetStretchGiveUp(8) — לוותר על יישור כשיחס מתיחה מעל 8.
+  // ravtextSetStretchGiveUp(15) — סובלני, ויתור רק במקרים קיצוניים.
+  // ravtextSetStretchGiveUp() — חזרה לברירת מחדל (10).
+  window.ravtextSetStretchGiveUp = function(ratio) {
+    if (ratio === undefined || ratio === null) {
+      window.localStorage.removeItem("ravtext.v9.stretchGiveUp");
+      console.log("[smart_line_breaker] reset to default", STRETCH_RATIO_HARD_LIMIT_DEFAULT);
+    } else {
+      const n = parseFloat(ratio);
+      if (!Number.isFinite(n) || n < 1.5 || n > 50) {
+        console.error("ratio must be between 1.5 and 50");
+        return;
+      }
+      window.localStorage.setItem("ravtext.v9.stretchGiveUp", String(n));
+      console.log("[smart_line_breaker] set to", n, "— refresh or re-render to apply");
+    }
+  };
 }
