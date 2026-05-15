@@ -215,14 +215,20 @@ function balanceParagraph(p) {
 // + text-align-last: justify, ושורה צרה עם מעט מילים — הרווחים מתפוצצים
 // והמילים נראות מרוסקות אחת על השנייה.
 //
-// גישה דו־שלבית:
-//   - יחס מתיחה בינוני (>STRETCH_RATIO_REBALANCE, ברירת מחדל 2.0):
-//     עוטפים את תוכן השורה ב-flex עם justify-content: space-between ומגבילים
-//     את ה-max-width של ה-flex לרוחב טבעי + מקס' רווח מותר × מספר רווחים.
-//     התוצאה: השורה נראית מיושרת משני הצדדים אבל הרווחים לא מתפוצצים.
-//   - יחס קיצוני (>STRETCH_RATIO_LIMIT, ברירת מחדל 3.0):
-//     אותו טיפול אבל עם מקס' רווח קטן יותר; אם זה עדיין לא מספיק (יחס > LIM_HARD)
-//     מסירים את class "justify" לחלוטין ועוברים ליישור ימינה.
+// משה 2026-05-15 (עדכון אחרי בדיקה בייצור): ה-flex wrap שניסיתי קודם עבד
+// לא נכון ב-RTL — flex-direction: row-reverse על dir=rtl כפול הופך כיוון,
+// וגם marginInlineStart: auto הציב את התוכן בצד הלא נכון. תוצאה: 523 שורות
+// עם חפיפת מילים. עכשיו: גישה פשוטה יותר.
+//
+// הגישה החדשה:
+//   - כשהיחס סביר (<= STRETCH_RATIO_HARD_LIMIT), משאירים את class "justify"
+//     ומאפשרים לדפדפן ליישר משני הצדדים באופן רגיל. גם אם הרווחים גדולים,
+//     הם מתפלגים שווה ב-RTL ולא יוצרים חפיפות.
+//   - רק כשהיחס קיצוני (> STRETCH_RATIO_HARD_LIMIT) — מסירים justify,
+//     מיישרים ימינה. בקיצוניות כזאת המראה ממילא נשבר ולא ניתן להציל יישור.
+//
+// המפתח לעבודה תקינה: V9 חייב למדוד מילים נכון (עם שולי בטיחות נגד runs
+// מעוצבים) כדי ש-justify של הדפדפן לא יקבל קלט מוטעה.
 
 const STRETCH_RATIO_HARD_LIMIT = 10.0; // מעל זה — אין דרך לשמור על נראות מיושרת
 
@@ -243,32 +249,6 @@ function measureNaturalLineTextWidth(line) {
   return w;
 }
 
-function rebuildV9LineAsFlex(line, words, capWidthPx, naturalSpace) {
-  // עוטפים את כל תוכן השורה ב-span flex עם רוחב מקסימלי קצוב.
-  // space-between פנימית מחלקת את הרווחים שווה — אבל בתוך width מוגבל,
-  // לכן הרווחים לא יכולים להתפוצץ.
-  const wrap = document.createElement("span");
-  wrap.className = "ln-line-cap";
-  wrap.style.display = "flex";
-  wrap.style.flexDirection = "row-reverse";
-  wrap.style.justifyContent = "space-between";
-  wrap.style.alignItems = "baseline";
-  wrap.style.maxWidth = "100%";
-  wrap.style.width = capWidthPx + "px";
-  wrap.style.marginInlineStart = "auto";
-  // העברת התוכן הקיים כפי שהוא, ואז פיצול ל-span לכל מילה.
-  // (V9 לפעמים מכניס run-spans פנימה — נשמרים).
-  // הדרך הפשוטה: לוקחים textContent ומפצלים. זה מוחק עיצוב run-level
-  // אבל V9 כרגע לא מתמכלל ב-runs בתוך שורה. אם בעתיד יתחיל — נשנה גישה.
-  for (const w of words) {
-    const span = document.createElement("span");
-    span.textContent = w;
-    wrap.appendChild(span);
-  }
-  line.textContent = "";
-  line.appendChild(wrap);
-}
-
 function balanceV9Line(line) {
   if (line.dataset.lnV9Fixed === "1") return false;
   if (!line.classList.contains("justify")) return false;
@@ -285,25 +265,15 @@ function balanceV9Line(line) {
   const requiredSpace = (rect.width - wordsOnlyW) / numSpaces;
   const ratio = naturalSpace > 0 ? requiredSpace / naturalSpace : 0;
 
+  // רק מקרה קיצוני (ratio > 10) — אין סיכוי להציל מראה מיושר משני הצדדים.
+  // כל יחס נמוך יותר נשאר ב-justify של הדפדפן (מתפלג שווה ב-RTL).
   if (ratio > STRETCH_RATIO_HARD_LIMIT) {
-    // קיצוני מאוד — אין דרך להחזיק יישור משני הצדדים, מיישרים ימינה.
     line.classList.remove("justify");
     line.style.textAlign = "right";
     line.style.textAlignLast = "right";
     line.dataset.lnV9Fixed = "1";
     line.dataset.lnV9Ratio = ratio.toFixed(2);
     line.dataset.lnV9Mode = "hard";
-    return true;
-  }
-  if (ratio > STRETCH_RATIO_REBALANCE) {
-    // בינוני־חזק — שומרים על מראה מיושר משני הצדדים, מקפיצים את הרווח.
-    // מקס' רווח מותר: STRETCH_RATIO_LIMIT × רווח טבעי.
-    const maxAllowedSpace = naturalSpace * STRETCH_RATIO_LIMIT;
-    const capW = Math.min(rect.width, wordsOnlyW + numSpaces * maxAllowedSpace);
-    rebuildV9LineAsFlex(line, words, capW, naturalSpace);
-    line.dataset.lnV9Fixed = "1";
-    line.dataset.lnV9Ratio = ratio.toFixed(2);
-    line.dataset.lnV9Mode = "soft";
     return true;
   }
   return false;

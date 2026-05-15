@@ -60,6 +60,14 @@ function attachRunsToLines(lines, originalText, originalRuns) {
 // =====================================================================
 // VilnaMetrics — מודד טקסט עברי באמצעות Canvas
 // =====================================================================
+
+// משה 2026-05-15: מקדם בטיחות למדידה. Canvas מודד בפונט אחד (normal), אבל
+// DOM מרנדר עם inline runs (bold/italic/צבע). מילים מודגשות רחבות 5-10%
+// מהמדידה. הכפלה במקדם הזה נותנת מרווח בטיחות גלובלי. נע בין 1.05-1.10:
+// יותר נמוך → לחיצה אגרסיבית יותר עם סיכון ל-overflow; יותר גבוה → לחיצה
+// רכה יותר אבל אולי שורות עם פחות תוכן מהצריך.
+const V9_MEASURE_SAFETY = 1.07;
+
 class VilnaMetrics {
   constructor(opts) {
     this.fontFamily = opts.fontFamily || 'serif';
@@ -83,10 +91,10 @@ class VilnaMetrics {
 
   get spaceWidth() {
     if (this._spaceWidth === undefined) {
-      // משה 2026-05-15: גם הרווח מקבל שולי בטיחות זהים — bold יכול להרחיב
-      // גם את הרווחים מעט. השמירה על אותו יחס שומרת על איזון בין מילים
-      // לרווחים. ראו measureWord על אותה סיבה.
-      this._spaceWidth = this._ctx.measureText(' ').width * 1.04;
+      // משה 2026-05-15: שולי בטיחות (V9_MEASURE_SAFETY) — bold/italic ב-runs
+      // מעצימים את רוחב הטקסט בפועל מעבר למה ש-Canvas מודד. השוליים נשמרים
+      // אחידים בין מילים לרווחים כדי לשמור איזון.
+      this._spaceWidth = this._ctx.measureText(' ').width * V9_MEASURE_SAFETY;
     }
     return this._spaceWidth;
   }
@@ -95,13 +103,12 @@ class VilnaMetrics {
     if (this._wordWidthCache.has(word)) {
       return this._wordWidthCache.get(word);
     }
-    // משה 2026-05-15: שולי בטיחות 4% — קנבס מודד תמיד בפונט במשקל normal, אבל
-    // בפועל DOM עלול לרנדר את המילה במשקל bold/italic (לפי runs). מילה
-    // מודגשת רחבה ~5-10% מהמדידה הקנבסית. בלי שולי בטיחות, V9 דוחס יותר
-    // מילים בשורה מאשר אמיתית — והן גולשות מקצה ה-v9-line. דיאגנוסטיקה
-    // בייצור הראתה 126 שורות עם overflow ויזואלי למרות מדידה תקינה במישור
-    // הטהור (canvasVsDom=0%). השוליים מקטינים מעט את התפוסה לטובת אי-חפיפה.
-    const w = this._ctx.measureText(word).width * 1.04;
+    // משה 2026-05-15: שולי בטיחות מוגדלים מ-1.04 ל-1.07. דיאגנוסטיקה בייצור
+    // (15.5 אחרי PR #275) הראתה 147 שורות עם overflow של 3-26px, רובן 5-7%
+    // מעל הרוחב. שולי 4% לא הספיקו. הסיבה: קנבס מודד במשקל פונט אחד (normal)
+    // אבל DOM מרנדר עם runs מעוצבים (bold/italic) שמרחיבים אותיות. שולי 7%
+    // אמורים לתפוס את רוב המקרים בלי לפגוע משמעותית בכמות מילים לשורה.
+    const w = this._ctx.measureText(word).width * V9_MEASURE_SAFETY;
     this._wordWidthCache.set(word, w);
     return w;
   }
