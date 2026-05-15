@@ -203,18 +203,60 @@ function balanceParagraph(p) {
 
 // משה 2026-05-15: שורת V9 = יחידה אבסולוטית אחת. כשמופעלת text-align: justify
 // + text-align-last: justify, ושורה צרה עם מעט מילים — הרווחים מתפוצצים
-// והמילים נראות מרוסקות אחת על השנייה. כאן מודדים את הצורך האמיתי במתיחה,
-// ואם הוא קיצוני מבטלים את ה-class "justify" על השורה הזאת בלבד.
+// והמילים נראות מרוסקות אחת על השנייה.
+//
+// גישה דו־שלבית:
+//   - יחס מתיחה בינוני (>STRETCH_RATIO_REBALANCE, ברירת מחדל 2.0):
+//     עוטפים את תוכן השורה ב-flex עם justify-content: space-between ומגבילים
+//     את ה-max-width של ה-flex לרוחב טבעי + מקס' רווח מותר × מספר רווחים.
+//     התוצאה: השורה נראית מיושרת משני הצדדים אבל הרווחים לא מתפוצצים.
+//   - יחס קיצוני (>STRETCH_RATIO_LIMIT, ברירת מחדל 3.0):
+//     אותו טיפול אבל עם מקס' רווח קטן יותר; אם זה עדיין לא מספיק (יחס > LIM_HARD)
+//     מסירים את class "justify" לחלוטין ועוברים ליישור ימינה.
+
+const STRETCH_RATIO_HARD_LIMIT = 6.0; // מעל זה — אין דרך לשמור על נראות מיושרת
+
 function measureNaturalLineTextWidth(line) {
   const probe = document.createElement("span");
   probe.style.cssText =
     "position:absolute;visibility:hidden;white-space:nowrap;top:0;inset-inline-start:-10000px;pointer-events:none;";
-  probe.style.font = getComputedStyle(line).font;
+  const cs = getComputedStyle(line);
+  probe.style.fontFamily = cs.fontFamily;
+  probe.style.fontSize = cs.fontSize;
+  probe.style.fontWeight = cs.fontWeight;
+  probe.style.fontStyle = cs.fontStyle;
+  probe.style.letterSpacing = cs.letterSpacing;
   probe.textContent = (line.textContent || "").replace(/\s+/g, " ").trim();
   document.body.appendChild(probe);
   const w = probe.getBoundingClientRect().width;
   probe.remove();
   return w;
+}
+
+function rebuildV9LineAsFlex(line, words, capWidthPx, naturalSpace) {
+  // עוטפים את כל תוכן השורה ב-span flex עם רוחב מקסימלי קצוב.
+  // space-between פנימית מחלקת את הרווחים שווה — אבל בתוך width מוגבל,
+  // לכן הרווחים לא יכולים להתפוצץ.
+  const wrap = document.createElement("span");
+  wrap.className = "ln-line-cap";
+  wrap.style.display = "flex";
+  wrap.style.flexDirection = "row-reverse";
+  wrap.style.justifyContent = "space-between";
+  wrap.style.alignItems = "baseline";
+  wrap.style.maxWidth = "100%";
+  wrap.style.width = capWidthPx + "px";
+  wrap.style.marginInlineStart = "auto";
+  // העברת התוכן הקיים כפי שהוא, ואז פיצול ל-span לכל מילה.
+  // (V9 לפעמים מכניס run-spans פנימה — נשמרים).
+  // הדרך הפשוטה: לוקחים textContent ומפצלים. זה מוחק עיצוב run-level
+  // אבל V9 כרגע לא מתמכלל ב-runs בתוך שורה. אם בעתיד יתחיל — נשנה גישה.
+  for (const w of words) {
+    const span = document.createElement("span");
+    span.textContent = w;
+    wrap.appendChild(span);
+  }
+  line.textContent = "";
+  line.appendChild(wrap);
 }
 
 function balanceV9Line(line) {
@@ -229,16 +271,29 @@ function balanceV9Line(line) {
   if (natTextW <= 0) return false;
   const naturalSpace = measureNaturalSpaceWidth(line);
   const numSpaces = words.length - 1;
-  // המילים עצמן כוללות רווחים טבעיים בתוך natTextW. רוחב נטו של המילים בלי רווחים:
   const wordsOnlyW = natTextW - naturalSpace * numSpaces;
   const requiredSpace = (rect.width - wordsOnlyW) / numSpaces;
   const ratio = naturalSpace > 0 ? requiredSpace / naturalSpace : 0;
-  if (ratio > STRETCH_RATIO_LIMIT) {
+
+  if (ratio > STRETCH_RATIO_HARD_LIMIT) {
+    // קיצוני מאוד — אין דרך להחזיק יישור משני הצדדים, מיישרים ימינה.
     line.classList.remove("justify");
     line.style.textAlign = "right";
     line.style.textAlignLast = "right";
     line.dataset.lnV9Fixed = "1";
     line.dataset.lnV9Ratio = ratio.toFixed(2);
+    line.dataset.lnV9Mode = "hard";
+    return true;
+  }
+  if (ratio > STRETCH_RATIO_REBALANCE) {
+    // בינוני־חזק — שומרים על מראה מיושר משני הצדדים, מקפיצים את הרווח.
+    // מקס' רווח מותר: STRETCH_RATIO_LIMIT × רווח טבעי.
+    const maxAllowedSpace = naturalSpace * STRETCH_RATIO_LIMIT;
+    const capW = Math.min(rect.width, wordsOnlyW + numSpaces * maxAllowedSpace);
+    rebuildV9LineAsFlex(line, words, capW, naturalSpace);
+    line.dataset.lnV9Fixed = "1";
+    line.dataset.lnV9Ratio = ratio.toFixed(2);
+    line.dataset.lnV9Mode = "soft";
     return true;
   }
   return false;

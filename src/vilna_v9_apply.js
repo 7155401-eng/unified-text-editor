@@ -140,6 +140,22 @@ function readSpacingBool(key, fallback = false) {
 export async function applyVilnaV9FromPaneManager(paragraphs, container) {
   if (!container || !Array.isArray(paragraphs)) return;
 
+  // משה 2026-05-15: V9 מודד רוחב מילים דרך Canvas.measureText (vilna_v9.js).
+  // אם הפונט עוד לא טעון, המדידה משתמשת בפונט ברירת־מחדל צר יותר → V9 חושב
+  // שנכנסות יותר מילים בשורה ממה שבאמת נכנסות. כשהפונט האמיתי נטען, המילים
+  // רחבות יותר → חפיפה ויזואלית. ממתינים ל-fonts.ready עם תקרה של 2 שניות
+  // כדי לא לתקוע את הרינדור לעד אם הפונט נכשל.
+  if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
+    try {
+      await Promise.race([
+        document.fonts.ready,
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch {
+      /* ממשיכים גם אם נכשל */
+    }
+  }
+
   // נקה את ה-container — V9 בונה מאפס
   container.innerHTML = "";
 
