@@ -1874,10 +1874,13 @@ export async function buildPages(container, paragraphs, config) {
     streamSettings: {},
     levels: [],
     noMidLineSplits: false,
-    // משה 2026-05-15: דגל חדש נפרד — מונע חיתוכי טקסט באמצע שורה. ברירת מחדל
-    // מסומן (true). מטפל רק ברמת השורה, לא ברמת פסקה (אחר ממוטעת בנפרד ע"י
-    // noMidLineSplits).
-    preventMidLineSplit: true,
+    // משה 2026-05-15: דגל — מונע חיתוכי טקסט באמצע שורה. מטפל רק ברמת
+    // השורה, לא ברמת פסקה (זה תפקיד noMidLineSplits).
+    //
+    // 2026-05-15 (v2): ברירת מחדל הפכה ל-false. דגל דלוק כברירת מחדל
+    // גרם לשורות חצי-ריקות באמצע פסקה — V9 נמנע מ-word-end candidates
+    // ודחק חיתוכים למקומות לא טבעיים. עם false, זרימת הדפדפן הטבעית.
+    preventMidLineSplit: false,
     maxPages: 100,
   }, config || {});
 
