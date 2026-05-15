@@ -83,7 +83,10 @@ class VilnaMetrics {
 
   get spaceWidth() {
     if (this._spaceWidth === undefined) {
-      this._spaceWidth = this._ctx.measureText(' ').width;
+      // משה 2026-05-15: גם הרווח מקבל שולי בטיחות זהים — bold יכול להרחיב
+      // גם את הרווחים מעט. השמירה על אותו יחס שומרת על איזון בין מילים
+      // לרווחים. ראו measureWord על אותה סיבה.
+      this._spaceWidth = this._ctx.measureText(' ').width * 1.04;
     }
     return this._spaceWidth;
   }
@@ -92,7 +95,13 @@ class VilnaMetrics {
     if (this._wordWidthCache.has(word)) {
       return this._wordWidthCache.get(word);
     }
-    const w = this._ctx.measureText(word).width;
+    // משה 2026-05-15: שולי בטיחות 4% — קנבס מודד תמיד בפונט במשקל normal, אבל
+    // בפועל DOM עלול לרנדר את המילה במשקל bold/italic (לפי runs). מילה
+    // מודגשת רחבה ~5-10% מהמדידה הקנבסית. בלי שולי בטיחות, V9 דוחס יותר
+    // מילים בשורה מאשר אמיתית — והן גולשות מקצה ה-v9-line. דיאגנוסטיקה
+    // בייצור הראתה 126 שורות עם overflow ויזואלי למרות מדידה תקינה במישור
+    // הטהור (canvasVsDom=0%). השוליים מקטינים מעט את התפוסה לטובת אי-חפיפה.
+    const w = this._ctx.measureText(word).width * 1.04;
     this._wordWidthCache.set(word, w);
     return w;
   }
