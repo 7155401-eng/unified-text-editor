@@ -2,7 +2,7 @@
 // Used by both the regular renderer and V9 so per-word bold/highlight/color
 // from the editor reaches the final preview at the exact character range.
 
-function applyMarksToSpan(span, marks) {
+export function applyMarksToSpan(span, marks) {
   if (!marks || typeof marks !== "object") return;
   if (marks.bold) span.style.fontWeight = "700";
   if (marks.italic) span.style.fontStyle = "italic";

@@ -159,5 +159,74 @@ function assert(cond, label) {
   styleReg.saveTextStyles([]);
 }
 
+// 11) boldOverride — בולד-לאמא (lemma) מקבל marks של הסגנון במקום bold:true
+{
+  const styleReg = await import("./src/style_registry.js");
+  styleReg.saveTextStyles([
+    { id: "test-italic", name: "אלכסון", italic: true, color: "#7c3aed" },
+  ]);
+  if (!globalThis.window.__STREAM_SETTINGS__) globalThis.window.__STREAM_SETTINGS__ = {};
+  globalThis.window.__STREAM_SETTINGS__["11"] = {
+    boldOverrideEnabled: true,
+    boldOverrideStyleId: "test-italic",
+  };
+  const nodes = buildNoteContentNodes("11", 1, "פרשה כל מקום", [], {});
+  const { runs } = nodesToTextRuns(nodes);
+  // בודקים שאין יותר marks.bold (כל הבולדים הוחלפו), ויש marks עם הצבע הסגול
+  const hasBold = runs.some((r) => r.marks && r.marks.bold);
+  const hasPurple = runs.some((r) => r.marks && r.marks.color === "#7c3aed");
+  const hasItalic = runs.some((r) => r.marks && r.marks.italic);
+  assert(!hasBold, "11) boldOverride: bold:true mark removed");
+  assert(hasPurple, "11) boldOverride: lemma gets override color");
+  assert(hasItalic, "11) boldOverride: lemma gets override italic");
+  delete globalThis.window.__STREAM_SETTINGS__["11"];
+  styleReg.saveTextStyles([]);
+}
+
+// 12) boldOverride — מארק bold ב-run של מילה בודדת מתחלף גם הוא
+{
+  const styleReg = await import("./src/style_registry.js");
+  styleReg.saveTextStyles([
+    { id: "test-orange", name: "כתום", color: "#ea580c" },
+  ]);
+  if (!globalThis.window.__STREAM_SETTINGS__) globalThis.window.__STREAM_SETTINGS__ = {};
+  globalThis.window.__STREAM_SETTINGS__["12"] = {
+    boldOverrideEnabled: true,
+    boldOverrideStyleId: "test-orange",
+    lemmaBold: false, // לוודא שלא lemma הוא מקור ה-bold
+  };
+  // מילה שלישית "עליה" מסומנת כבולד
+  const inputRuns = [{ start: 7, end: 11, marks: { bold: true } }];
+  const nodes = buildNoteContentNodes("12", 1, "מילה אחת עליה", inputRuns, {});
+  const { runs } = nodesToTextRuns(nodes);
+  const orangeRun = runs.find((r) => r.marks && r.marks.color === "#ea580c");
+  const stillBold = runs.some((r) => r.marks && r.marks.bold);
+  assert(!!orangeRun, "12) per-word bold replaced by override marks");
+  assert(!stillBold, "12) no leftover bold:true after override");
+  delete globalThis.window.__STREAM_SETTINGS__["12"];
+  styleReg.saveTextStyles([]);
+}
+
+// 13) boldOverride disabled — אם התיבה לא מסומנת, בולד נשאר כמו שהיה
+{
+  const styleReg = await import("./src/style_registry.js");
+  styleReg.saveTextStyles([
+    { id: "test-green", name: "ירוק", color: "#16a34a" },
+  ]);
+  if (!globalThis.window.__STREAM_SETTINGS__) globalThis.window.__STREAM_SETTINGS__ = {};
+  globalThis.window.__STREAM_SETTINGS__["13"] = {
+    boldOverrideEnabled: false,
+    boldOverrideStyleId: "test-green",
+  };
+  const nodes = buildNoteContentNodes("13", 1, "פרשה כל מקום", [], {});
+  const { runs } = nodesToTextRuns(nodes);
+  const hasBold = runs.some((r) => r.marks && r.marks.bold);
+  const hasGreen = runs.some((r) => r.marks && r.marks.color === "#16a34a");
+  assert(hasBold, "13) override disabled: bold:true preserved");
+  assert(!hasGreen, "13) override disabled: chosen style not applied");
+  delete globalThis.window.__STREAM_SETTINGS__["13"];
+  styleReg.saveTextStyles([]);
+}
+
 console.log(`\n=== ${pass} pass, ${fail} fail ===`);
 process.exit(fail === 0 ? 0 : 1);

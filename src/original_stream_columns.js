@@ -83,6 +83,11 @@ const DEFAULT_STREAM_SETTINGS = {
   // משה 2026-05-13: סגנונות מוכנים בעיצוב תורני (כתר, וילנא, כתב יד וכו').
   // ערך ריק = שימוש ב-barColor/barThickness ידני. ערך אחר דורס.
   barPreset: "",
+  // משה 2026-05-15: כשמסומן, סגנון מהרשימה מחליף את ההצגה של "בולד" בזרם
+  // הזה — בכל מקום שטקסט מגיע מודגש (לפי mark פר-מילה, דיבור-המתחיל, או
+  // מספר [N] מודגש). ערך ריק/לא מסומן = התנהגות רגילה של בולד.
+  boldOverrideEnabled: false,
+  boldOverrideStyleId: "",
 };
 
 // משה 2026-05-13: סגנונות מוכנים לפס מעל המפרש — נבחרו במיוחד לעיצוב
@@ -143,6 +148,10 @@ export function applyBarStyleToElement(el, settings) {
 const GLOBAL_OVERRIDE_DEFS = {
   styleId: { label: "סגנון זרם", type: "style", value: "" },
   titleStyleId: { label: "סגנון כותרת", type: "style", value: "" },
+  // משה 2026-05-15: דריסת בולד גלובלית — אם המשתמש סימן את התיבה ובחר סגנון,
+  // הסגנון מחליף את הצגת ה"בולד" בכל זרם.
+  boldOverrideEnabled: { label: "סגנון מותאם לבולד", type: "boolean", value: false },
+  boldOverrideStyleId: { label: "סגנון לבולד", type: "style", value: "" },
   cols: { label: "טורים", type: "number", value: 1, min: 1, max: 6, step: 1 },
   minLinesForCols: { label: "מינ' שורות לטור", type: "number", value: 3, min: 1, max: 20, step: 1 },
   inline: { label: "תצוגה רציפה", type: "boolean", value: true },
@@ -407,6 +416,16 @@ export function styleIdForStreamNumber(code, place = "note") {
   const s = getEffectiveStreamSettings(code);
   const raw = place === "main" ? s.mainRefStyleId : s.noteNumStyleId;
   return _streamTextSetting(raw, "");
+}
+
+// משה 2026-05-15: מחזיר את ה-styleId שמחליף את הצגת ה"בולד" בזרם הזה.
+// "" = ההגדרה כבויה (הבולד יישאר רגיל). כל צרכן (renderer רגיל / V9 /
+// note_content_builder) שמטפל בבולד מצופה לבדוק את הערך, ואם מלא — להחליף
+// את font-weight:700 ב-marks של הסגנון שנבחר.
+export function boldOverrideStyleIdForStream(code) {
+  const s = getEffectiveStreamSettings(code);
+  if (!_streamBoolSetting(s.boldOverrideEnabled, false)) return "";
+  return _streamTextSetting(s.boldOverrideStyleId, "");
 }
 
 export function getEffectiveStreamSettings(code) {
@@ -741,6 +760,17 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
 
     block.appendChild(makeStyleSelect("סגנון כותרת:", cur.titleStyleId || "", (value) => {
       cur.titleStyleId = value;
+      commitRender();
+    }));
+
+    // משה 2026-05-15: סגנון מותאם לבולד — מחליף את ההצגה הרגילה של בולד
+    // (font-weight:700) בסגנון מהרשימה. ברירת מחדל = לא מסומן.
+    block.appendChild(makeCheckbox("סגנון מותאם לבולד", !!cur.boldOverrideEnabled, (checked) => {
+      cur.boldOverrideEnabled = checked;
+      commitRender();
+    }));
+    block.appendChild(makeStyleSelect("סגנון לבולד:", cur.boldOverrideStyleId || "", (value) => {
+      cur.boldOverrideStyleId = value;
       commitRender();
     }));
 
