@@ -766,11 +766,65 @@ function buildPagePlan(pageContent, config) {
     { right: rText, left: lText },
     { metrics: sideMetrics, halfWidth, fullWidth: innerWidth, crownLines: cfg.crownLines }
   );
-  // משה 2026-05-15: הקונברסיה האוטומטית של one_long_split → one_short_no_crown
-  // (כשנדלק noMidLineSplits) הוסרה. זה היה מעבר פריסה אגרסיבי בלי להגיד למשתמש —
-  // משה ביקש שזה לא יקרה (ממצא 2). תרגום אונקלוס יהיה בחירת פריסה מפורשת
-  // פר-זרם דרך השדה layoutRole. הקוד שמטפל בחיתוך באמצע שורה עכשיו
-  // משתמש בדגל החדש preventMidLineSplit.
+
+  // משה 2026-05-15: הכרעה פר-זרם — אם המשתמש בחר במפורש פריסה לזרם
+  // (layoutRole), הבחירה דורסת את ה-scenario ההיסטורי שהמערכת בחרה
+  // אוטומטית. הקונברסיה האוטומטית של one_long_split → one_short_no_crown
+  // הוסרה (ממצא 2). אם משתמש לא בחר ב-UI — נשאר התנהגות אוטומטית.
+  //
+  // מיפוי תפקידים → תרחישים:
+  //   "gemara"     → one_long_split (כתר 2 טורים — קיים)
+  //   "mishna"     → one_short_no_crown (צד הראשי — קיים)
+  //   "onkelos"    → one_short_no_crown (כרגע כמו mishna; מיקום ופונט יוטמע)
+  //   "side_notes" → one_short_no_crown (כרגע כמו mishna; פונט קטן בעתיד)
+  //
+  // הגבלת תקפות: gemara ⊥ onkelos. אם שניהם מופיעים — gemara גובר וכן
+  // נרשם בקונסול הערה.
+  const rStream = pageContent.rightStream;
+  const lStream = pageContent.leftStream;
+  const cfgStreamSettings = cfg.streamSettings || {};
+  const rRole = rStream && cfgStreamSettings[rStream.id]
+    ? cfgStreamSettings[rStream.id].layoutRole
+    : "";
+  const lRole = lStream && cfgStreamSettings[lStream.id]
+    ? cfgStreamSettings[lStream.id].layoutRole
+    : "";
+  if (rRole || lRole) {
+    // ולידציה: gemara + onkelos בו-זמנית — gemara גובר
+    const roles = [rRole, lRole].filter(Boolean);
+    const hasGemara = roles.includes("gemara");
+    const hasOnkelos = roles.includes("onkelos");
+    if (hasGemara && hasOnkelos && typeof console !== "undefined") {
+      console.warn(
+        "[v9] gemara ו-onkelos לא יכולים להופיע יחד. gemara גובר. " +
+          "שנה את הבחירה לאחד מהם."
+      );
+    }
+    const dominantRole = hasGemara ? "gemara" : (roles[0] || "");
+    if (dominantRole === "gemara") {
+      // ודא שנשאר one_long_split אם יש מספיק חומר, אחרת no_crown
+      if (scenario.name !== "one_long_split" && scenario.name !== "two_long_parallel") {
+        // כפיית כתר (אם יש זרם יחיד שמתאים)
+        if ((rStream && !lStream) || (lStream && !rStream)) {
+          scenario = { name: "one_long_split", streamSide: rStream ? "right" : "left" };
+        }
+      }
+    } else if (dominantRole === "mishna" || dominantRole === "onkelos" || dominantRole === "side_notes") {
+      // צד הראשי בלי כתר. כל ה-3 משתמשים ב-one_short_no_crown לעת עתה.
+      // TODO (משה ביקש): onkelos ו-side_notes צריכים את המיקום הספציפי
+      // (פנימי/חיצוני/ימין/שמאל) שהמשתמש בחר ב-layoutPosition, ופונט
+      // ברירת מחדל קטן יותר ל-side_notes. כרגע משתמשים בפריסת no_crown
+      // הקיימת כסקפולדינג.
+      if ((rStream && !lStream) || (lStream && !rStream)) {
+        scenario = {
+          name: "one_short_no_crown",
+          streamSide: rStream ? "right" : "left",
+          v9LayoutRole: dominantRole, // לזיהוי עתידי
+        };
+      }
+    }
+  }
+
   result.crownScenario = scenario;
 
   // 2. מיקום ראשי
