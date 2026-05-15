@@ -1,5 +1,5 @@
 import { streamColorIndex } from "./schema.js";
-import { applyStyleToElement } from "../style_registry.js";
+import { applyStyleToElement, applyTextStyleObjectToElement } from "../style_registry.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
 import {
   getEffectiveStreamSettings,
@@ -238,6 +238,13 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
 
   const settings = getEffectiveStreamSettings(streamCode);
   applyStyleToElement(wrap, settings.styleId);
+  // משה 2026-05-15: inlineStyle מ-styleMetaForPane (engine_bridge.js) — סגנון
+  // שמשתמש החיל בעורך באופן אחיד על כל הזרם (פונט/גודל/צבע). V9 כבר השתמש
+  // בו (composeStreamTextStyle); ה-renderer הרגיל פספס אותו ולכן פונט שהוגדר
+  // בעורך לא הופיע בפלט אם הזרם לא הוגדר ידנית עם styleId.
+  if (settings.inlineStyle && typeof settings.inlineStyle === "object") {
+    applyTextStyleObjectToElement(wrap, settings.inlineStyle);
+  }
   const userCols = settings.cols || 1;
   // משה 2026-05-06: בחירת עמודות לפי הגדרת המשתמש בלבד, ללא הערכת שורות
   // לפי תווים (החישוב של 52 תווים/שורה לא תאם את המציאות).
