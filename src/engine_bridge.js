@@ -1085,10 +1085,10 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       if (pdfToolbarApi) {
         pdfToolbarApi.setTotal(v9PageCount);
       }
-      // משה 2026-05-15: גם ב-V9 שורות עם class "justify" סובלות ממתיחה
-      // קיצונית כשהרוחב צר ויש מעט מילים. smart_line_breaker מטפל גם בזה.
-      logEvent("smart_line_breaker_v9");
-      applyLineBalanceToPages(pagesContainer);
+      // משה 2026-05-15: smart_line_breaker הוסר ממסלול V9 — הוא דרס את החלטות
+      // K-P עם משיכה אגרסיבית והיה מנוע שני סותר. עם מדידה דינמית של פער
+      // Canvas/DOM (b-VilnaMetrics), K-P לבדו צריך להגיע לתוצאה נכונה. אם
+      // יישארו בעיות, נטפל בהן ב-V9 עצמו, לא ב-post-process.
       // משה 2026-05-14: מסלול V9 יצא בלי לעדכן את ה-status, אז הטקסט "מרענן..."
       // שנקבע ב-scheduleEngineRender נשאר על המסך גם אחרי שהרינדור הסתיים
       // — נראה כאילו האפליקציה תקועה. עכשיו נעדכן לטקסט הסופי.

@@ -61,12 +61,16 @@ function attachRunsToLines(lines, originalText, originalRuns) {
 // VilnaMetrics — מודד טקסט עברי באמצעות Canvas
 // =====================================================================
 
-// משה 2026-05-15: מקדם בטיחות למדידה. Canvas מודד בפונט אחד (normal), אבל
-// DOM מרנדר עם inline runs (bold/italic/צבע). מילים מודגשות רחבות 5-10%
-// מהמדידה. הכפלה במקדם הזה נותנת מרווח בטיחות גלובלי. נע בין 1.05-1.10:
-// יותר נמוך → לחיצה אגרסיבית יותר עם סיכון ל-overflow; יותר גבוה → לחיצה
-// רכה יותר אבל אולי שורות עם פחות תוכן מהצריך.
-const V9_MEASURE_SAFETY = 1.07;
+// משה 2026-05-15: הקבוע V9_MEASURE_SAFETY הוסר. במקום מקדם קבוע (1.07) שתוכנן
+// לכסות את ההבדל בין מדידת Canvas למימוש בפועל ב-DOM, כל מופע של VilnaMetrics
+// עכשיו מחשב את המקדם דינמית בעת יצירה — מודד דגימת טקסט עברית בקנבס ובDOM
+// (גם במשקל normal וגם bold) ולוקח את היחס הגרוע ביותר. כך השוליים מותאמים
+// בדיוק לפונט/גודל/משקל שמשתמשים בהם, ולא ניחוש קבוע.
+
+const V9_MEASURE_SAMPLE = "אבגדה הוזחט יכלמנ סעפצ קרשת";
+const V9_SAFETY_MIN = 1.0;
+const V9_SAFETY_MAX = 1.30;
+const V9_SAFETY_FALLBACK = 1.05;
 
 class VilnaMetrics {
   constructor(opts) {
@@ -83,6 +87,48 @@ class VilnaMetrics {
     this._ctx.direction = 'rtl';
 
     this._wordWidthCache = new Map();
+
+    // משה 2026-05-15: חישוב מקדם הבטיחות הדינמי. נמדד פעם אחת בעת יצירת
+    // המופע — Canvas מול DOM, גם רגיל וגם bold. המקדם הזה תופס את ההפרש
+    // האמיתי בין המדידה ה"וירטואלית" לרוחב שמופיע בפועל ברינדור הDOM,
+    // עבור הפונט/גודל הספציפי הזה. אם DOM צר יותר מ-Canvas (נדיר), המקדם
+    // יקלום ל-1.0 — לא נצמצם מתחת לזה.
+    this._safetyFactor = this._computeSafetyFactor();
+  }
+
+  _computeSafetyFactor() {
+    if (typeof document === "undefined" || !document.body) return V9_SAFETY_FALLBACK;
+    try {
+      // מדידת Canvas במשקל הנוכחי (כפי שהוקצב)
+      const canvasNow = this._ctx.measureText(V9_MEASURE_SAMPLE).width;
+      // מדידת DOM בהגדרות זהות (probe span בדיוק כמו ה-line)
+      const probe = document.createElement("span");
+      probe.style.cssText =
+        "position:absolute;visibility:hidden;white-space:nowrap;top:0;inset-inline-start:-10000px;pointer-events:none;";
+      probe.style.fontFamily = this.fontFamily;
+      probe.style.fontSize = this.fontSize + "px";
+      probe.style.fontWeight = String(this.fontWeight);
+      probe.style.fontStyle = this.fontStyle;
+      probe.textContent = V9_MEASURE_SAMPLE;
+      document.body.appendChild(probe);
+      const domNow = probe.getBoundingClientRect().width;
+      // גם bold (למקרה שיש inline-runs מודגשים בטקסט)
+      probe.style.fontWeight = "700";
+      const domBold = probe.getBoundingClientRect().width;
+      probe.remove();
+
+      if (canvasNow <= 0) return V9_SAFETY_FALLBACK;
+      // המקדם הדרוש = הרוחב הרחב ביותר ב-DOM (bold או רגיל), חלקי הCanvas
+      // ה"רגיל". זה מבטיח שגם אם תקועה מילה bold בטקסט שV9 מודד כ-normal,
+      // יש מספיק רוחב.
+      const widestDom = Math.max(domNow, domBold);
+      const factor = widestDom / canvasNow;
+      if (!Number.isFinite(factor) || factor <= 0) return V9_SAFETY_FALLBACK;
+      // קליפ לטווח סביר — מונע גרסאות פתולוגיות שגורמות ל-V9 להתנהג מוזר
+      return Math.max(V9_SAFETY_MIN, Math.min(V9_SAFETY_MAX, factor));
+    } catch (_) {
+      return V9_SAFETY_FALLBACK;
+    }
   }
 
   get lineHeight() {
@@ -91,10 +137,7 @@ class VilnaMetrics {
 
   get spaceWidth() {
     if (this._spaceWidth === undefined) {
-      // משה 2026-05-15: שולי בטיחות (V9_MEASURE_SAFETY) — bold/italic ב-runs
-      // מעצימים את רוחב הטקסט בפועל מעבר למה ש-Canvas מודד. השוליים נשמרים
-      // אחידים בין מילים לרווחים כדי לשמור איזון.
-      this._spaceWidth = this._ctx.measureText(' ').width * V9_MEASURE_SAFETY;
+      this._spaceWidth = this._ctx.measureText(' ').width * this._safetyFactor;
     }
     return this._spaceWidth;
   }
@@ -103,12 +146,7 @@ class VilnaMetrics {
     if (this._wordWidthCache.has(word)) {
       return this._wordWidthCache.get(word);
     }
-    // משה 2026-05-15: שולי בטיחות מוגדלים מ-1.04 ל-1.07. דיאגנוסטיקה בייצור
-    // (15.5 אחרי PR #275) הראתה 147 שורות עם overflow של 3-26px, רובן 5-7%
-    // מעל הרוחב. שולי 4% לא הספיקו. הסיבה: קנבס מודד במשקל פונט אחד (normal)
-    // אבל DOM מרנדר עם runs מעוצבים (bold/italic) שמרחיבים אותיות. שולי 7%
-    // אמורים לתפוס את רוב המקרים בלי לפגוע משמעותית בכמות מילים לשורה.
-    const w = this._ctx.measureText(word).width * V9_MEASURE_SAFETY;
+    const w = this._ctx.measureText(word).width * this._safetyFactor;
     this._wordWidthCache.set(word, w);
     return w;
   }
