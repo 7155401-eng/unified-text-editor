@@ -270,6 +270,91 @@ function probeLineNaturalWidth(refLine, text) {
   return w;
 }
 
+// משה 2026-05-15: extractFirstWordWithFormat — מחלץ את המילה הראשונה משורת B
+// כיחידת DOM שלמה, כולל מעטפת `<span>` עם עיצוב (bold/italic/צבע) אם קיים.
+// מחזיר { fragment, word } או null. מסיר את המילה מ-B (כולל הרווח שאחריה).
+//
+// מקרים מטופלים:
+//   1) המילה הראשונה ב-textNode ישיר של B: חותכים מ-textNode, מחזירים textNode חדש
+//   2) המילה הראשונה בתוך <span> שמכיל רק את המילה הזאת: מעבירים את כל ה-span
+//   3) המילה הראשונה היא חלק מ-<span> שמכיל יותר מילים: יוצרים <span> חדש
+//      עם אותם class/style למילה החדשה, ומשאירים את שאר התוכן ב-span המקורי
+function extractFirstWordWithFormat(lineB) {
+  let node = lineB.firstChild;
+  while (node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.nodeValue || "";
+      const m = text.match(/^(\s*)(\S+)(\s*)/);
+      if (!m) {
+        node = node.nextSibling;
+        continue;
+      }
+      const word = m[2];
+      const after = text.slice(m[0].length);
+      // השאר את מה שאחרי המילה (כולל רווח אחרון אם נשאר); אם ריק - הסר.
+      if (after) {
+        node.nodeValue = after;
+      } else {
+        const toRemove = node;
+        node = node.nextSibling;
+        toRemove.parentNode.removeChild(toRemove);
+      }
+      return { word, node: document.createTextNode(word) };
+    }
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const elText = node.textContent || "";
+      const trimmed = elText.replace(/^\s+/, "");
+      if (!trimmed) {
+        // span ריק / רק רווחים — דלג, אבל הסר את ה-span הריק כדי לא להישאר
+        const skip = node;
+        node = node.nextSibling;
+        skip.parentNode.removeChild(skip);
+        continue;
+      }
+      // האם זה span/element עם רק תווי טקסט פנימי (לא ילדים מורכבים)?
+      // אם יש ילדים מסוגים שונים (טקסט + ילדים) — נטפל ברקורסיה.
+      const hasComplexChildren = Array.from(node.childNodes).some(c =>
+        c.nodeType === Node.ELEMENT_NODE
+      );
+      if (hasComplexChildren) {
+        // לרדת לעומק
+        const inner = extractFirstWordWithFormat(node);
+        if (!inner) {
+          node = node.nextSibling;
+          continue;
+        }
+        // אם ה-span הפנימי התרוקן אחרי החילוץ, להסיר אותו
+        if (!(node.textContent || "").trim()) {
+          node.parentNode.removeChild(node);
+        }
+        // עוטפים את ה-inner בעותק של ה-span החיצוני (משמרים עיצוב חיצוני)
+        const wrap = node.cloneNode(false);
+        wrap.appendChild(inner.node);
+        return { word: inner.word, node: wrap };
+      }
+      // ילדים פשוטים — טקסט בלבד.
+      const wordEnd = trimmed.search(/\s/);
+      if (wordEnd === -1) {
+        // כל ה-span הוא מילה אחת — מעבירים את כולו
+        const moved = node;
+        node = node.nextSibling;
+        moved.parentNode.removeChild(moved);
+        return { word: trimmed, node: moved };
+      }
+      // span עם מספר מילים — מפצלים: יוצרים span חדש עם אותו עיצוב למילה אחת
+      const firstWord = trimmed.slice(0, wordEnd);
+      const remainder = trimmed.slice(wordEnd);
+      const leadingSpace = elText.slice(0, elText.length - trimmed.length);
+      node.textContent = leadingSpace + remainder;
+      const newEl = node.cloneNode(false); // אותו tag + attributes, ללא ילדים
+      newEl.textContent = firstWord;
+      return { word: firstWord, node: newEl };
+    }
+    node = node.nextSibling;
+  }
+  return null;
+}
+
 function tryPullFirstWord(lineA, lineB) {
   // החזרה: true אם הצליח להעביר מילה, false אחרת
   const textA = (lineA.textContent || "").trim();
@@ -288,32 +373,13 @@ function tryPullFirstWord(lineA, lineB) {
   // טולרנס 1px לסאב-פיקסל
   if (newAWidth > lineAW - 1) return false;
 
-  // העברת המילה: מוצאים את ה-text node הראשון של B עם תוכן לא-ריק,
-  // וחותכים ממנו את המילה הראשונה (כולל רווח שאחריה).
-  const walker = document.createTreeWalker(lineB, NodeFilter.SHOW_TEXT, null);
-  let bFirstNode = null;
-  let n;
-  while ((n = walker.nextNode())) {
-    if (n.nodeValue && /\S/.test(n.nodeValue)) {
-      bFirstNode = n;
-      break;
-    }
-  }
-  if (!bFirstNode) return false;
+  // חילוץ ה-DOM של המילה הראשונה משורת B, עם עיצוב משומר.
+  const extracted = extractFirstWordWithFormat(lineB);
+  if (!extracted) return false;
 
-  const oldText = bFirstNode.nodeValue || "";
-  const leadingMatch = oldText.match(/^\s*/);
-  const lead = leadingMatch ? leadingMatch[0] : "";
-  const trimmed = oldText.slice(lead.length);
-  const wordMatch = trimmed.match(/^(\S+)(\s*)/);
-  if (!wordMatch) return false;
-
-  const pulledWord = wordMatch[1];
-  const after = trimmed.slice(wordMatch[0].length);
-  bFirstNode.nodeValue = lead + after;
-
-  // הוספה לסוף A — text node חדש בסוף.
-  lineA.appendChild(document.createTextNode(" " + pulledWord));
+  // הוספה לסוף A: רווח (text node) + ה-node המחולץ (כולל מעטפת עיצוב אם יש)
+  lineA.appendChild(document.createTextNode(" "));
+  lineA.appendChild(extracted.node);
 
   // סימונים לאינספקציה
   lineA.dataset.lnV9Pulled = String(parseInt(lineA.dataset.lnV9Pulled || "0", 10) + 1);
@@ -429,26 +495,9 @@ export function applyLineBalanceToPages(container) {
   });
 }
 
-// משה: בדיקה ידנית מ-DevTools
+// משה 2026-05-15: כיוון הסף "ויתור על יישור" עבר ל-UI בלוח גפ"ת
+// (input id="v9-stretch-giveup-input"). אין יותר צורך בעוזר window.
 if (typeof window !== "undefined") {
   window.__lnBalance = applyLineBalanceToPages;
   window.__lnBalancePage = applyLineBalanceToPage;
-  // משה 2026-05-15: כיוון סף ויתור על יישור דרך הקונסול עד שיוגדר UI.
-  // דוגמה: ravtextSetStretchGiveUp(8) — לוותר על יישור כשיחס מתיחה מעל 8.
-  // ravtextSetStretchGiveUp(15) — סובלני, ויתור רק במקרים קיצוניים.
-  // ravtextSetStretchGiveUp() — חזרה לברירת מחדל (10).
-  window.ravtextSetStretchGiveUp = function(ratio) {
-    if (ratio === undefined || ratio === null) {
-      window.localStorage.removeItem("ravtext.v9.stretchGiveUp");
-      console.log("[smart_line_breaker] reset to default", STRETCH_RATIO_HARD_LIMIT_DEFAULT);
-    } else {
-      const n = parseFloat(ratio);
-      if (!Number.isFinite(n) || n < 1.5 || n > 50) {
-        console.error("ratio must be between 1.5 and 50");
-        return;
-      }
-      window.localStorage.setItem("ravtext.v9.stretchGiveUp", String(n));
-      console.log("[smart_line_breaker] set to", n, "— refresh or re-render to apply");
-    }
-  };
 }
