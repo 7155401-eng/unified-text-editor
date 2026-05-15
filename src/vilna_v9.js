@@ -991,8 +991,18 @@ function buildPagePlan(pageContent, config) {
       if (!parts) {
         parts = splitWordsAtVisualLine(allText, splitMetricsForStream, sideHalfWidth);
       }
-      pageContent.rightStream = { id: single.id, items: [parts.first] };
-      pageContent.leftStream  = { id: single.id, items: [parts.second] };
+      // משה 2026-05-15: בעבר השורות האלה דרסו את single.runs (סימני פונט/בולד
+      // פר-מילה) — וכך הפלט הציג פונט ברירת-מחדל גם כשהמשתמש סימן פונט אחר
+      // בעורך. עכשיו ה-runs נחתכים ל-2 חצאים לפי אופסטים ב-allText (כולל
+      // leading-trim) ועוברים יחד עם ה-items החדשים.
+      const rawText = single.items.join(' ');
+      const leadingWs = rawText.length - rawText.replace(/^\s+/, "").length;
+      const allRuns = Array.isArray(single.runs) ? single.runs : [];
+      const firstLen = parts.first.length;
+      const firstRuns = sliceRuns(allRuns, leadingWs, leadingWs + firstLen);
+      const secondRuns = sliceRuns(allRuns, leadingWs + firstLen + 1, leadingWs + allText.length);
+      pageContent.rightStream = { id: single.id, items: [parts.first], runs: firstRuns };
+      pageContent.leftStream  = { id: single.id, items: [parts.second], runs: secondRuns };
     }
   }
 
