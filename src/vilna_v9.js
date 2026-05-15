@@ -441,9 +441,23 @@ function splitWordsAtVisualLine(text, metrics, widthPx) {
   };
 }
 
-// משה 2026-05-15: חיתוך טקסט בין טור ימני לשמאלי (תרחיש 1 — one_long_split).
-// הגישה: הטור הימני מתמלא במלואו (עד שהשורה האחרונה שלו תופסת מקום שלם),
-// והשארית כולה הולכת לטור השמאלי. **אסור** לחתוך באמצע שורה.
+// משה 2026-05-15 (v3): חיתוך טקסט בין טור ימני לשמאלי (תרחיש 1 — one_long_split).
+// הגישה: שני טורים שווים בערך (איזון של מספר שורות, כמו בדפוס וילנא הקלאסי),
+// עם תיקון קטן שמבטיח שהחיתוך לא קורה באמצע שורה.
+//
+// "באמצע שורה" כאן לא במובן של חצי מילה — אלא במובן של חצי שורה: השורה
+// האחרונה של הטור הימני "חצי-מלאה" והמילה הראשונה של הטור השמאלי הייתה
+// נכנסת לתוכה אם רק היו מאפשרים. זה יוצר מראה של שורה קצרה לא טבעית
+// בסוף הטור הימני.
+//
+// אלגוריתם:
+//   1. binary search על N (נקודת החיתוך) כך ש-|שורות_ימין − שורות_שמאל|
+//      מינימלי. זו ההתנהגות המקורית של הפיצול.
+//   2. תיקון: אחרי שמצאנו את ה-N המאוזן, נבדוק האם הוספת המילה הבאה
+//      לטור הימני **לא מוסיפה שורה חדשה** (כלומר היא הייתה נכנסת
+//      בשורה האחרונה הקיימת). אם כן, נזיז את הגבול קדימה. נחזור על
+//      זה עד שהוספת המילה הבאה כן תוסיף שורה — אז אנחנו על גבול טבעי
+//      של סוף שורה.
 //
 // היקף הטיפול הנוכחי: בין הטורים בלבד.
 //
@@ -508,36 +522,52 @@ function splitWordsByStrips(text, metrics, rightStrips) {
     return total;
   }
   
-  // משה 2026-05-15: שינוי גישת החיתוך — במקום איזון בין שני הטורים, הטור
-  // הימני מתמלא עד סופו ורק אז הטור השמאלי מתחיל. החיתוך תמיד על גבול
-  // מילה שלמה בסוף שורה שלמה (לעולם לא באמצע שורה).
-  //
-  // הלוגיקה: מזרימים את המילים דרך רצועות הימני אחת אחרי השנייה. עוצרים
-  // כשהרצועה האחרונה התמלאה (או הטקסט אזל). נקודת החיתוך = מספר המילים
-  // שנכנסו לטור הימני.
-  let cursor = 0;
-  for (let i = 0; i < strips.length; i++) {
-    const strip = strips[i];
-    if (cursor >= words.length) break;
-    const maxLines = Math.floor(strip.height / lineH);
-    if (maxLines <= 0) continue;
-    const remaining = words.slice(cursor).join(' ');
-    const lines = metrics.layoutLines(remaining, strip.width);
-    if (!lines || lines.length === 0) break;
-    // כמה שורות נכנסות ברצועה הזאת? עד ה-max המוצהר.
-    const linesUsed = Math.min(maxLines, lines.length);
-    for (let j = 0; j < linesUsed; j++) {
-      if (lines[j] && lines[j].words) cursor += lines[j].words.length;
+  // שלב 1: binary search על נקודת החיתוך N.
+  // המטרה: מינימום של |linesForWordSlice(left) − linesForWordSlice(right)|
+  let lo = 1;
+  let hi = words.length - 1;
+  let bestN = Math.floor(words.length / 2);
+  let bestDiff = Infinity;
+
+  // 30 איטרציות מספיק עבור log2(words.length) ברוב המקרים
+  for (let iter = 0; iter < 30 && lo <= hi; iter++) {
+    const mid = Math.floor((lo + hi) / 2);
+    const linesRight = linesForWordSlice(words.slice(0, mid));
+    const linesLeft  = linesForWordSlice(words.slice(mid));
+    const diff = linesRight - linesLeft;
+    const absDiff = Math.abs(diff);
+
+    if (absDiff < bestDiff) {
+      bestDiff = absDiff;
+      bestN = mid;
     }
-    // אם הטקסט נכנס לחלוטין ברצועה הזאת — לא צריך לחתוך, הכל בטור הימני
-    if (lines.length <= maxLines) {
-      // הכל נכנס. אין מה לשלוח לטור השמאלי. (לא אמור לקרות אם נכנסנו ל-split.)
-      cursor = words.length;
-      break;
+
+    if (diff === 0) break; // מאוזן מושלם
+    if (diff < 0) {
+      // הימני קצר מדי, צריך להעביר אליו עוד מילים
+      lo = mid + 1;
+    } else {
+      // הימני ארוך מדי, צריך להפחית
+      hi = mid - 1;
     }
   }
+
+  // שלב 2: תיקון לגבול שורה שלמה.
+  // ה-binary search איזן בין שורות, אבל ייתכן שה-N שמצאנו נופל "באמצע
+  // שורה" — כלומר השורה האחרונה של הימני חצי-מלאה, והמילה הראשונה של
+  // השמאלי הייתה נכנסת לתוכה. נזיז את הגבול קדימה כל עוד הוספת מילה
+  // לא מוסיפה שורה חדשה לטור הימני (משמע: היא משתלבת בשורה הקיימת).
+  // עוצרים כשהמילה הבאה כן הייתה דורשת שורה חדשה — שם הגבול הטבעי.
+  let finalSplit = bestN;
+  let baselineLines = linesForWordSlice(words.slice(0, finalSplit));
+  for (let bump = 0; bump < 20 && finalSplit < words.length - 1; bump++) {
+    const tryLines = linesForWordSlice(words.slice(0, finalSplit + 1));
+    if (tryLines > baselineLines) break; // המילה הבאה תוסיף שורה — סוף שורה טבעי
+    finalSplit++;
+  }
+
   // הגנה: לפחות מילה אחת בכל צד (אחרת אין טעם בפיצול)
-  const splitIdx = Math.min(words.length - 1, Math.max(1, cursor));
+  const splitIdx = Math.min(words.length - 1, Math.max(1, finalSplit));
   
   return {
     first: words.slice(0, splitIdx).join(' '),
