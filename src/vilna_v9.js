@@ -2020,6 +2020,8 @@ export async function buildPages(container, paragraphs, config) {
   // noMidLineSplits = לא לפצל פיסקה באמצע במצב קשיח.
   // noMidParagraphSoft = לא לפצל פיסקה, אבל מותר למלא חורים עם פסקאות שלמות בלבד.
   // preventMidLineSplit = רלוונטי רק כשכבר מותר לפצל פיסקה; אז מונע חיתוך באמצע שורה.
+  // חריג מכוון: גם כש-noMidParagraph פעיל, מותר prefix split אם הוא נדרש
+  // כדי שהערות מעוגנות לתחילת הקטע יישארו עם הטקסט שלהן.
   const noMidParagraphHard = !!cfg.noMidLineSplits;
   const noMidParagraphSoft = !!cfg.noMidParagraphSoft;
   const noMidParagraph = noMidParagraphHard || noMidParagraphSoft;
@@ -2161,7 +2163,8 @@ export async function buildPages(container, paragraphs, config) {
     // כך כל עמוד מקבל רק את הפרשנים של השורות שעליו (כמו במנוע הרגיל).
     let splitInfo = null;
     const cleanFill = planFillRatio(bestCleanPlan);
-    const splitTargets = allowParagraphSplit
+    const splitTargets = (allowParagraphSplit || noMidParagraph)
+
       ? [
           ...(bestN_clean < totalAvail ? [bestN_clean] : []),
         ]
@@ -2216,6 +2219,15 @@ export async function buildPages(container, paragraphs, config) {
           const streamCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
           const footerCount = (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
           const commentaryCount = streamCount + footerCount;
+          const movedHasAnchoredNote = Array.isArray(movedNotes)
+            && movedNotes.some(n => typeof n.anchor === "number");
+
+          // משה 2026-05-17:
+          // noMidParagraph לא אמור להרוג split הכרחי שמטרתו להצמיד
+          // הערות לתחילת הקטע שלהן. לכן במצב noMidParagraph מותר split
+          // רק אם prefix החיתוך באמת מעביר הערה מעוגנת.
+          if (noMidParagraph && !movedHasAnchoredNote) return null;
+
           const ovs = tp.overflow.streams || {};
           const hasNoteOverflow = Object.keys(ovs).some(k => ovs[k]);
           if (hasNoteOverflow) {
@@ -2224,9 +2236,32 @@ export async function buildPages(container, paragraphs, config) {
           } else if (!fitsClean(tp)) {
             return null;
           }
-          if (bestN_clean > 0 && !hasNoteOverflow && commentaryCount === 0 && fillsPageEnough(bestCleanPlan, 0.72)) return null;
+          if (
+
+            !movedHasAnchoredNote &&
+
+            bestN_clean > 0 &&
+
+            !hasNoteOverflow &&
+
+            commentaryCount === 0 &&
+
+            fillsPageEnough(bestCleanPlan, 0.72)
+
+          ) return null;
+
+
           const fill = planFillRatio(tp);
-          if (bestN_clean > 0 && fill <= cleanFill + 0.03) return null;
+
+          if (
+
+            !movedHasAnchoredNote &&
+
+            bestN_clean > 0 &&
+
+            fill <= cleanFill + 0.03
+
+          ) return null;
           const belowTargetPenalty = hasNoteOverflow && fill < cfg.gapFillMinRatio
             ? (cfg.gapFillMinRatio - fill) * 0.25
             : 0;
@@ -2284,10 +2319,21 @@ export async function buildPages(container, paragraphs, config) {
             ? wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length)
             : null);
           if (fallbackLen) {
+
             const movedNotes = notesBeforeAnchor(fallbackLen);
-            const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: movedNotes, _continues: true };
-            const secondHalf = { ...target, mainText: fullText.substring(fallbackLen).trimStart(), notes: notesFromAnchor(fallbackLen, movedNotes) };
-            splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
+
+            const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
+
+            if (allowParagraphSplit || movedHasAnchoredNote) {
+
+              const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: movedNotes, _continues: true };
+
+              const secondHalf = { ...target, mainText: fullText.substring(fallbackLen).trimStart(), notes: notesFromAnchor(fallbackLen, movedNotes) };
+
+              splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
+
+            }
+
           }
         }
       }
