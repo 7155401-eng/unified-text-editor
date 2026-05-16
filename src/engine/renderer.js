@@ -155,18 +155,19 @@ function localMainRefPos(ref, segText, segStart, segEnd) {
   const anchor = typeof ref.anchor === "number" ? ref.anchor : 0;
   const textLen = String(segText || "").length;
 
+  // dom_packer stores split-paragraph refs as local offsets in many pages.
+  // Prefer the local interpretation whenever this page segment is a continuation
+  // and the anchor fits inside the current segment. The previous absolute-first
+  // order misread local anchors as absolute whenever the numbers overlapped,
+  // causing refs to appear too early in the segment.
+  if (segStart > 0 && anchor >= 0 && anchor <= textLen) {
+    return anchor;
+  }
+
   // Normal/full-paragraph path: anchors are absolute offsets in the original
   // paragraph, while segStart/segEnd describe the piece shown on this page.
   if (anchor >= segStart && anchor <= segEnd) {
     return Math.max(0, Math.min(textLen, anchor - segStart));
-  }
-
-  // dom_packer subtracts `prefix` from note anchors when a paragraph is split
-  // across pages. In that case the renderer receives an anchor that is already
-  // local to the current segment. The old renderer still treated it as absolute,
-  // so refs drifted, disappeared, or collected as a separate line.
-  if (segStart > 0 && anchor >= 0 && anchor <= textLen) {
-    return anchor;
   }
 
   return null;
