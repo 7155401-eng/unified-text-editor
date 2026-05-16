@@ -181,3 +181,48 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Full-height import dialog: no internal scrollbars; the overlay/page scrolls instead. */
+.we-modal-overlay {
+  align-items: flex-start !important;
+  justify-content: center !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 12px !important;
+}
+.we-modal {
+  max-width: min(1180px, 96vw) !important;
+  width: 96vw !important;
+  min-height: calc(100vh - 24px) !important;
+  max-height: none !important;
+  height: auto !important;
+  display: block !important;
+  overflow: visible !important;
+}
+.we-modal > .we-meta,
+.we-modal > .we-streams-wrap,
+.we-modal > .we-preview,
+.we-modal > .we-brackets-wrap,
+.we-modal > .we-external-wrap,
+.we-table-wrap,
+.we-preview ol {
+  overflow: visible !important;
+  max-height: none !important;
+}
+.we-modal > .we-btns {
+  position: static !important;
+  bottom: auto !important;
+}
+.we-streams thead th {
+  position: static !important;
+  top: auto !important;
+}
+.we-streams .we-original-series-select { display: none !important; }
+.we-streams .we-stream-code-input {
+  direction: ltr;
+  text-align: center;
+  width: 60px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.we-streams .we-stream-style-select { max-width: 180px; }
+.we-preview li.we-empty-note-hidden { display: none; }
