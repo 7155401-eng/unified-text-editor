@@ -219,6 +219,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     streamSettings,
     levels,
     talmudStreams,
+    noMidParagraphSoft: readSpacingBool("noMidParagraphSoft", false),
     noMidLineSplits: readSpacingBool("noMidLineSplits", false),
     preventMidLineSplit: readSpacingBool("preventMidLineSplit", false),
   });

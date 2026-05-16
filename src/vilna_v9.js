@@ -1874,6 +1874,7 @@ export async function buildPages(container, paragraphs, config) {
     streamSettings: {},
     levels: [],
     noMidLineSplits: false,
+    noMidParagraphSoft: false,
     // משה 2026-05-15: דגל — מונע חיתוכי טקסט באמצע שורה. מטפל רק ברמת
     // השורה, לא ברמת פסקה (זה תפקיד noMidLineSplits).
     //
@@ -1883,6 +1884,17 @@ export async function buildPages(container, paragraphs, config) {
     preventMidLineSplit: false,
     maxPages: 100,
   }, config || {});
+  // משה 2026-05-16: מדיניות פיצול פסקאות/שורות.
+  // noMidLineSplits = לא לפצל פיסקה באמצע במצב קשיח.
+  // noMidParagraphSoft = לא לפצל פיסקה, אבל מותר למלא חורים עם פסקאות שלמות בלבד.
+  // preventMidLineSplit = רלוונטי רק כשכבר מותר לפצל פיסקה; אז מונע חיתוך באמצע שורה.
+  const noMidParagraphHard = !!cfg.noMidLineSplits;
+  const noMidParagraphSoft = !!cfg.noMidParagraphSoft;
+  const noMidParagraph = noMidParagraphHard || noMidParagraphSoft;
+
+  const allowParagraphSplit = !noMidParagraph;
+  const allowMidLineSplit = allowParagraphSplit && !cfg.preventMidLineSplit;
+
 
   // משה 2026-05-15: ה-while-loop של buildPages רץ באופן סינכרוני וכבד —
   // ללא הפסקות הוא חוסם את ה-main thread לכל זמן הרינדור, כך שהמשתמש
@@ -2017,11 +2029,11 @@ export async function buildPages(container, paragraphs, config) {
     // כך כל עמוד מקבל רק את הפרשנים של השורות שעליו (כמו במנוע הרגיל).
     let splitInfo = null;
     const cleanFill = planFillRatio(bestCleanPlan);
-    const splitTargets = cfg.noMidLineSplits
-      ? []
-      : [
+    const splitTargets = allowParagraphSplit
+      ? [
           ...(bestN_clean < totalAvail ? [bestN_clean] : []),
-        ];
+        ]
+      : [];
     for (const targetSliceIdx of splitTargets) {
       if (splitInfo) break;
       const sliceIdx = targetSliceIdx;
@@ -2129,14 +2141,14 @@ export async function buildPages(container, paragraphs, config) {
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
         splitInfo = chooseStepwiseSplit(lineEnds);
-        if (!splitInfo && !cfg.noMidLineSplits) {
+        if (!splitInfo && allowParagraphSplit) {
           const candidates = wordEndCandidates(fullText)
             .filter(n => n >= MIN_SPLIT && n < fullText.length)
             .sort((a, b) => a - b);
           splitInfo = chooseStepwiseSplit(candidates);
         }
         if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
-          const fallbackLen = lineEnds[0] || (!cfg.noMidLineSplits
+          const fallbackLen = lineEnds[0] || (allowParagraphSplit
             ? wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length)
             : null);
           if (fallbackLen) {
@@ -2151,7 +2163,7 @@ export async function buildPages(container, paragraphs, config) {
 
     // Gap rescue: only after the clean/anchored policy has a weak page, try a
     // line-first split that carries real notes and materially improves fill.
-    if (!cfg.noMidLineSplits) {
+    if (allowParagraphSplit) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
@@ -2197,7 +2209,7 @@ export async function buildPages(container, paragraphs, config) {
           // משה 2026-05-15: word-end candidates (חיתוך באמצע שורה) מותרים
           // רק כששני הדגלים כבויים — gold ה-noMidLineSplits הישן (פסקה),
           // וגם preventMidLineSplit החדש (שורה).
-          const allowMidLine = !cfg.noMidLineSplits && !cfg.preventMidLineSplit;
+          const allowMidLine = allowMidLineSplit;
           let rescueEnds = [...new Set([
             ...mainLineEndCandidates(fullText, splitMetrics, splitMainWidth),
             ...(allowMidLine ? wordEndCandidates(fullText) : []),
@@ -2241,7 +2253,7 @@ export async function buildPages(container, paragraphs, config) {
       }
     }
 
-    if (splitInfo && !cfg.noMidLineSplits) {
+    if (splitInfo && allowParagraphSplit) {
       const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
       const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
@@ -2319,8 +2331,90 @@ export async function buildPages(container, paragraphs, config) {
       }
     }
 
+
+    // משה 2026-05-16: מסלול חירום בלבד.
+    // אם המשתמש ביקש לא לפצל פיסקאות, אנחנו מכבדים זאת במצב רגיל.
+    // אבל אם אפילו פיסקה ראשונה לא נכנסת לעמוד שלם, אין ברירה פיזית:
+    // קודם מנסים לחתוך בסוף שורה טבעית; רק אם preventMidLineSplit כבוי
+    // ואין סוף שורה מתאים, מותר fallback לסוף מילה.
+    if (!splitInfo && noMidParagraph && bestN_clean === 0 && totalAvail > 0) {
+      const sliceIdx = 0;
+      const baseN = 0;
+      const target = pendingParagraph || paragraphs[cursor];
+      const fullText = (target?.mainText || '').trim();
+      const MIN_EMERGENCY_SPLIT = 8;
+
+      const allNotes = target?.notes || [];
+      const anchored = allNotes.filter(n => typeof n.anchor === 'number');
+      const anchorless = allNotes.filter(n => typeof n.anchor !== 'number');
+
+      const notesBeforeAnchor = (len) => {
+        const ratio = fullText.length > 0 ? len / fullText.length : 0;
+        const anchorlessShare = Math.round(anchorless.length * ratio);
+        const anchoredBefore = anchored.filter(n => n.anchor < len);
+        return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
+          .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
+      };
+
+      const notesFromAnchor = (len, movedNotes) => {
+        const moved = new Set(movedNotes || []);
+        const ratio = fullText.length > 0 ? len / fullText.length : 0;
+        const anchorlessShare = Math.round(anchorless.length * ratio);
+        const anchorlessFrom = anchorless.slice(anchorlessShare).filter(n => !moved.has(n));
+        const anchoredFrom = anchored
+          .filter(n => !moved.has(n))
+          .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
+        return [...anchorlessFrom, ...anchoredFrom];
+      };
+
+      if (fullText.length >= MIN_EMERGENCY_SPLIT) {
+        const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
+          .filter(n => n >= MIN_EMERGENCY_SPLIT && n < fullText.length)
+          .sort((a, b) => a - b);
+
+        const wordEnds = !cfg.preventMidLineSplit
+          ? wordEndCandidates(fullText)
+              .filter(n => n >= MIN_EMERGENCY_SPLIT && n < fullText.length)
+              .sort((a, b) => a - b)
+          : [];
+
+        const fallbackLen = lineEnds[0] || wordEnds[0] || null;
+
+        if (fallbackLen) {
+          const movedNotes = notesBeforeAnchor(fallbackLen);
+          if (typeof console !== "undefined") {
+            console.warn(
+              "[v9] emergency paragraph split: paragraph is larger than one page; " +
+              (lineEnds[0] ? "using natural line-end split." : "using word-end split fallback.")
+            );
+          }
+
+          splitInfo = {
+            firstHalf: {
+              ...target,
+              mainText: fullText.substring(0, fallbackLen).trimEnd(),
+              notes: movedNotes,
+              _continues: true,
+              _emergencySplit: true,
+            },
+            secondHalf: {
+              ...target,
+              mainText: fullText.substring(fallbackLen).trimStart(),
+              notes: notesFromAnchor(fallbackLen, movedNotes),
+            },
+            sliceIdx,
+            baseN,
+          };
+        } else if (typeof console !== "undefined") {
+          console.warn(
+            "[v9] no-mid-paragraph: first paragraph does not fit, but no legal emergency split point was found."
+          );
+        }
+      }
+    }
+
     let overflowTakeN = 0;
-    if (!carryActive && bestN_clean < totalAvail) {
+    if (!carryActive && !noMidParagraph && bestN_clean < totalAvail) {
       const candidateN = bestN_clean + 1;
       const tp = trialAtN(candidateN);
       const ovs = (tp && tp.overflow && tp.overflow.streams) || {};
@@ -2373,6 +2467,15 @@ export async function buildPages(container, paragraphs, config) {
       bestN = overflowTakeN;
     } else if (bestN_clean > 0) {
       bestN = bestN_clean;
+    } else if (noMidParagraph) {
+      // לא עוקפים את "לא לפצל פיסקאות" ע"י הכנסת פיסקה בכוח.
+      // אם היה צורך פיזי אמיתי, emergency split כבר היה אמור ליצור splitInfo.
+      // אם לא נוצר — נשתמש בפיסקה אחת רק כמוצא אחרון כדי לא להיתקע בלולאה,
+      // עם אזהרה ברורה.
+      if (typeof console !== "undefined") {
+        console.warn("[v9] no-mid-paragraph fallback: forcing one paragraph to avoid pagination stall.");
+      }
+      bestN = totalAvail > 0 ? 1 : 0;
     } else if (bestN_clean < totalAvail) {
       bestN = 1;
     } else {
