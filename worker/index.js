@@ -140,7 +140,7 @@ export default {
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
     } else if (url.pathname.startsWith('/api/account/')) {
-      response = await handleAccount(request, env);
+      response = await handleAccount(request, env, url);
     } else if (
       url.pathname.startsWith('/api/documents') ||
       url.pathname === '/api/settings'
