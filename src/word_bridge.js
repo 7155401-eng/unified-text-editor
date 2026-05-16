@@ -1,10 +1,12 @@
 import { applyDemoWatermarkToHtml, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { defaultLabelForCode } from "./engine_bridge.js";
+import { mergeDocxStylesIntoRegistry } from "./style_registry.js";
 
 const DEFAULT_MARKERS = Array.from({ length: 99 }, (_, i) => `@${String(i + 1).padStart(2, "0")}`);
 
 let importPath = "";
 let importStreams = [];
+let importStylesPayload = null;
 let paneManagerRef = null;
 let onLoadedRef = null;
 let lastUserActivity = Date.now();
@@ -115,6 +117,49 @@ export function closeWordImportModal() {
   document.getElementById("word-import-modal")?.classList.remove("active");
 }
 
+function shouldOverwriteImportedStyles() {
+  const checkbox = document.getElementById("word-import-overwrite-styles");
+  return checkbox ? !!checkbox.checked : true;
+}
+
+function normalizeImportedStylesCatalog(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const candidates = [
+    payload.stylesCatalog,
+    payload.styles_catalog,
+    payload.styleCatalog,
+    payload.style_catalog,
+    payload.docxStyles,
+    payload.docx_styles,
+    payload.styles,
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (Array.isArray(candidate)) {
+      const mapped = {};
+      for (const item of candidate) {
+        const name = item?.name || item?.styleName || item?.style_name || item?.id;
+        if (name) mapped[String(name)] = item;
+      }
+      if (Object.keys(mapped).length) return mapped;
+      continue;
+    }
+    if (typeof candidate === "object") return candidate;
+  }
+  return null;
+}
+
+function importDocxStylesFromPayload(...payloads) {
+  for (const payload of payloads) {
+    const catalog = normalizeImportedStylesCatalog(payload);
+    if (!catalog) continue;
+    return mergeDocxStylesIntoRegistry(catalog, {
+      overwriteExisting: shouldOverwriteImportedStyles(),
+    });
+  }
+  return [];
+}
+
 function renderImportStreams() {
   const list = document.getElementById("word-stream-list");
   if (!list) return;
@@ -160,9 +205,10 @@ function renderImportStreams() {
   });
 }
 
-function setImportStreams(path, streams) {
+function setImportStreams(path, streams, stylesPayload = null) {
   importPath = path || "";
   importStreams = streams || [];
+  importStylesPayload = stylesPayload || null;
   renderImportStreams();
   if (importStreams.length) openImportModal();
 }
@@ -176,6 +222,7 @@ async function loadInitialFileFromBridge() {
     const streams = data.streams || [];
     importPath = data.path;
     importStreams = streams;
+    importStylesPayload = data;
     if (!streams.length) return;
     renderImportStreams();
     openImportModal();
@@ -212,7 +259,7 @@ async function pollSyncHub() {
       if (imported.error) {
         alert("שגיאה: " + imported.error);
       } else if (imported.streams) {
-        setImportStreams(imported.path, imported.streams);
+        setImportStreams(imported.path, imported.streams, imported);
         if (!importStreams.length) alert("הקובץ נטען (אין זרמי הערות)");
       }
     }
@@ -251,10 +298,12 @@ export async function importWord(paneManager, onLoaded) {
 
   importPath = result.path;
   importStreams = result.streams || [];
+  importStylesPayload = result;
 
   if (!importStreams.length) {
     const extracted = JSON.parse(await extractWordCall(importPath, "[]"));
     if (extracted.error) return;
+    importDocxStylesFromPayload(extracted, result);
     const main = resetMainPane(paneManager);
     loadWordContent(main?.editor, extracted.main);
     onLoaded?.();
@@ -290,6 +339,7 @@ export async function confirmWordImport() {
   const extractWordCall = getBridgeMethod(["extract_word", "editor_extract_word"]);
   const extracted = JSON.parse(await extractWordCall(importPath, JSON.stringify(selected)));
   if (extracted.error) return;
+  importDocxStylesFromPayload(extracted, importStylesPayload);
 
   const main = resetMainPane(paneManagerRef);
   loadWordContent(main?.editor, extracted.main);
