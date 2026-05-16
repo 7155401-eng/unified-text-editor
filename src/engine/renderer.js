@@ -135,46 +135,123 @@ function appendTableRows(table, rows = []) {
   table.appendChild(tbody);
 }
 
-function insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs) {
-  const segRefs = paraRefs.filter(ref => {
+function sliceLocalRuns(runs, start, end) {
+  if (!Array.isArray(runs) || start >= end) return [];
+  const out = [];
+  for (const r of runs) {
+    if (!r || r.end <= start || r.start >= end) continue;
+    const ls = Math.max(0, r.start - start);
+    const le = Math.min(end - start, r.end - start);
+    if (ls < le) out.push({ start: ls, end: le, marks: r.marks || {} });
+  }
+  return out;
+}
+
+function mainRefKey(ref) {
+  return `${ref.code || ""}:${ref.num || ""}:${ref.anchor || 0}`;
+}
+
+function localMainRefPos(ref, segText, segStart, segEnd) {
+  const anchor = typeof ref.anchor === "number" ? ref.anchor : 0;
+  const textLen = String(segText || "").length;
+
+  // Normal/full-paragraph path: anchors are absolute offsets in the original
+  // paragraph, while segStart/segEnd describe the piece shown on this page.
+  if (anchor >= segStart && anchor <= segEnd) {
+    return Math.max(0, Math.min(textLen, anchor - segStart));
+  }
+
+  // dom_packer subtracts `prefix` from note anchors when a paragraph is split
+  // across pages. In that case the renderer receives an anchor that is already
+  // local to the current segment. The old renderer still treated it as absolute,
+  // so refs drifted, disappeared, or collected as a separate line.
+  if (segStart > 0 && anchor >= 0 && anchor <= textLen) {
+    return anchor;
+  }
+
+  return null;
+}
+
+function refsForMainSegment(segText, segStart, segEnd, paraRefs, usedRefs = null) {
+  const refs = [];
+  for (const ref of paraRefs || []) {
     const s = getEffectiveStreamSettings(ref.code);
-    return _streamBoolSetting(s.mainRefEnabled, false) && ref.anchor >= segStart && ref.anchor < segEnd;
-  });
+    if (!_streamBoolSetting(s.mainRefEnabled, false)) continue;
+    const localPos = localMainRefPos(ref, segText, segStart, segEnd);
+    if (localPos === null) continue;
+    const key = mainRefKey(ref);
+    if (usedRefs && usedRefs.has(key)) continue;
+    refs.push({ ...ref, localPos, key });
+  }
+  refs.sort((a, b) =>
+    (a.localPos - b.localPos) ||
+    (String(a.code).localeCompare(String(b.code))) ||
+    ((a.num || 0) - (b.num || 0))
+  );
+  return refs;
+}
+
+function appendMainRefElement(parent, ref) {
+  const formatted = formatStreamNumber(ref.code, ref.num, "main");
+  if (!formatted) return false;
+  const rawBold = shouldBoldStreamNumber(ref.code, "main");
+  // משה 2026-05-15: דריסת בולד פר-זרם — אם מסומן, ה-[N] בראשי מקבל את
+  // הסגנון הנבחר במקום font-weight:700 (אותו מנגנון כמו בהערה).
+  const overrideStyleId = rawBold ? boldOverrideStyleIdForStream(ref.code) : "";
+  const useStrong = rawBold && !overrideStyleId;
+  const el = document.createElement(useStrong ? "strong" : "span");
+  el.className = "stream-ref";
+  el.textContent = formatted;
+  el.setAttribute("dir", "ltr");
+  if (overrideStyleId) applyStyleToElement(el, overrideStyleId);
+  // משה 2026-05-15: סגנון נבחר מתוך רשימת סגנונות המסמך עבור "[N]" בראשי.
+  const refStyleId = styleIdForStreamNumber(ref.code, "main");
+  if (refStyleId) applyStyleToElement(el, refStyleId);
+  parent.appendChild(el);
+  return true;
+}
+
+function appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, paragraphRuns, usedRefs = null) {
+  const text = String(segText || "");
+  const slicedRuns = [];
+  for (const r of Array.isArray(paragraphRuns) ? paragraphRuns : []) {
+    if (r.end <= segStart || r.start >= segEnd) continue;
+    slicedRuns.push({
+      start: Math.max(0, r.start - segStart),
+      end: Math.min(text.length, r.end - segStart),
+      marks: r.marks || {},
+    });
+  }
+
+  const segRefs = refsForMainSegment(text, segStart, segEnd, paraRefs, usedRefs);
   if (segRefs.length === 0) {
-    p.appendChild(document.createTextNode(segText));
+    appendTextWithRuns(p, text, slicedRuns);
     return;
   }
+
   let lastPos = 0;
   for (const ref of segRefs) {
-    const localPos = ref.anchor - segStart;
-    if (localPos < 0 || localPos > segText.length) continue;
+    const localPos = Math.max(0, Math.min(text.length, ref.localPos));
     if (localPos > lastPos) {
-      p.appendChild(document.createTextNode(segText.substring(lastPos, localPos)));
+      const sliceText = text.substring(lastPos, localPos);
+      appendTextWithRuns(p, sliceText, sliceLocalRuns(slicedRuns, lastPos, localPos));
     }
-    const formatted = formatStreamNumber(ref.code, ref.num, "main");
-    if (formatted) {
-      const rawBold = shouldBoldStreamNumber(ref.code, "main");
-      // משה 2026-05-15: דריסת בולד פר-זרם — אם מסומן, ה-[N] בראשי מקבל את
-      // הסגנון הנבחר במקום font-weight:700 (אותו מנגנון כמו בהערה).
-      const overrideStyleId = rawBold ? boldOverrideStyleIdForStream(ref.code) : "";
-      const useStrong = rawBold && !overrideStyleId;
-      const el = document.createElement(useStrong ? "strong" : "span");
-      el.className = "stream-ref";
-      el.textContent = formatted;
-      if (overrideStyleId) applyStyleToElement(el, overrideStyleId);
-      // משה 2026-05-15: סגנון נבחר מתוך רשימת סגנונות המסמך עבור "[N]" בראשי.
-      const refStyleId = styleIdForStreamNumber(ref.code, "main");
-      if (refStyleId) applyStyleToElement(el, refStyleId);
-      p.appendChild(el);
+    if (appendMainRefElement(p, ref) && usedRefs) {
+      usedRefs.add(ref.key);
     }
-    lastPos = localPos;
+    lastPos = Math.max(lastPos, localPos);
   }
-  if (lastPos < segText.length) {
-    p.appendChild(document.createTextNode(segText.substring(lastPos)));
+  if (lastPos < text.length) {
+    const sliceText = text.substring(lastPos);
+    appendTextWithRuns(p, sliceText, sliceLocalRuns(slicedRuns, lastPos, text.length));
   }
 }
 
-function createMainBlockElement(tup, paraRefs = []) {
+function insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs, usedRefs = null) {
+  appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, [], usedRefs);
+}
+
+function createMainBlockElement(tup, paraRefs = [], usedRefs = null) {
   const meta = (tup && tup[4]) || {};
   if (meta.blockType === "table") {
     const table = document.createElement("table");
@@ -187,22 +264,10 @@ function createMainBlockElement(tup, paraRefs = []) {
   const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;
   const paragraphRuns = Array.isArray(meta.mainRuns) ? meta.mainRuns : [];
 
-  // If there are inline runs, use runs-only rendering (refs not supported with runs yet)
-  if (paragraphRuns.length > 0) {
-    const sliced = [];
-    for (const r of paragraphRuns) {
-      if (r.end <= segStart || r.start >= segEnd) continue;
-      sliced.push({
-        start: Math.max(0, r.start - segStart),
-        end: Math.min(segText.length, r.end - segStart),
-        marks: r.marks,
-      });
-    }
-    appendTextWithRuns(p, segText, sliced);
-    return p;
-  }
-
-  insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs);
+  // Render inline styling and main reference markers in a single ordered pass.
+  // The old path returned early when `mainRuns` existed, so formatted text
+  // silently lost or misplaced its main refs.
+  appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, paragraphRuns, usedRefs);
   return p;
 }
 
@@ -354,6 +419,11 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
   const pageHasMain = (pageData.main || []).length > 0;
 
   const paraRefsIndex = buildParaNotesIndex(pageData);
+  const usedMainRefsByPara = {};
+  const usedRefsForPara = (idx) => {
+    if (!usedMainRefsByPara[idx]) usedMainRefsByPara[idx] = new Set();
+    return usedMainRefsByPara[idx];
+  };
 
   const main = document.createElement("div");
   main.className = "page-main";
@@ -367,9 +437,9 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
       const segStart = typeof tup[2] === "number" ? tup[2] : 0;
       const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + text.length;
       lastP.appendChild(document.createTextNode(" "));
-      insertMainSegmentRefs(lastP, text, segStart, segEnd, paraRefsIndex[idx] || []);
+      insertMainSegmentRefs(lastP, text, segStart, segEnd, paraRefsIndex[idx] || [], usedRefsForPara(idx));
     } else {
-      const p = createMainBlockElement(tup, paraRefsIndex[idx] || []);
+      const p = createMainBlockElement(tup, paraRefsIndex[idx] || [], usedRefsForPara(idx));
       applyBlockStyleMeta(p, (tup && tup[4]) || {});
       // v33: mark this paragraph as a continuation FROM a previous page
       // (its idx already appeared on an earlier page). opening_word.js skips
