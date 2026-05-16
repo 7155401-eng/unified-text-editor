@@ -3,7 +3,6 @@
 
 const ENDPOINT = '/api/render/preflight';
 
-// Helper: figure out which layout type is currently active.
 function detectLayoutType() {
   if (typeof localStorage === 'undefined') return 'regular';
   if (localStorage.getItem('ravtext.talmudLayout') === '1') return 'talmud';
@@ -15,36 +14,28 @@ function detectLayoutType() {
 let _lastPlan = null;
 let _lastPlanAt = 0;
 
-export function getLastPlan() {
-  return _lastPlan;
-}
+export function getLastPlan() { return _lastPlan; }
 
-// צוות האתר 2026-05-07: בכל קריאה לנתיב מנוע אחר (talmud/balance/mishna),
-// יש לכלול את הטוקן בכותרת x-ravtext-nonce. הטוקן תקף 120 שניות; preflight חדש מנפיק חדש.
 export function getNonceHeader() {
   if (_lastPlan?.token) return { 'x-ravtext-nonce': _lastPlan.token };
   return {};
 }
 
-// משה 2026-05-14: timeout קשיח של 8 שניות. ראינו מקרים שבהם fetch תקוע
-// (Cloudflare cold start / connection issue) וה-await ל-runPreflight לא חוזר
-// לעולם, אז ה-"מרענן..." נשאר נצח על המסך. עם AbortController + timeout,
-// אם השרת לא מגיב — fetch יזרוק וההודעה המתאימה תוצג.
 const PREFLIGHT_TIMEOUT_MS = 8000;
 
-export async function runPreflight({ contentSignature, smart, talmud } = {}) {
-  const body = {
-    layoutType: detectLayoutType(),
-    contentSignature: contentSignature || null,
-    timestamp: Date.now(),
-  };
+export async function runPreflight({ contentSignature, smart, talmud, signal } = {}) {
+  const body = { layoutType: detectLayoutType(), contentSignature: contentSignature || null, timestamp: Date.now() };
   if (smart) body.smart = smart;
   if (talmud) body.talmud = talmud;
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = controller
-    ? setTimeout(() => controller.abort(), PREFLIGHT_TIMEOUT_MS)
-    : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), PREFLIGHT_TIMEOUT_MS) : null;
+  const abortFromOutside = () => { try { controller?.abort(); } catch (_) {} };
+
+  if (signal && controller) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', abortFromOutside, { once: true });
+  }
 
   try {
     const res = await fetch(ENDPOINT, {
@@ -53,19 +44,23 @@ export async function runPreflight({ contentSignature, smart, talmud } = {}) {
       body: JSON.stringify(body),
       signal: controller ? controller.signal : undefined,
     });
-    if (!res.ok) {
-      throw new Error(`Render preflight failed: HTTP ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Render preflight failed: HTTP ${res.status}`);
     const plan = await res.json();
     _lastPlan = plan;
     _lastPlanAt = Date.now();
     return plan;
   } catch (err) {
     if (err && err.name === 'AbortError') {
+      if (signal?.aborted) {
+        const e = new Error('Render preflight aborted by user');
+        e.name = 'AbortError';
+        throw e;
+      }
       throw new Error(`Render preflight timeout after ${PREFLIGHT_TIMEOUT_MS}ms`);
     }
     throw err;
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
+    if (signal && controller) signal.removeEventListener('abort', abortFromOutside);
   }
 }

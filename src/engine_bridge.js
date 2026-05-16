@@ -1,2021 +1,229 @@
-﻿import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
-import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
-import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
-import { runPreflight } from "./render_preflight.js";
-import { isNestedNotesEnabled } from "./nested_notes_gate.js";
-
-function injectDemoWatermarksIfNeeded(content) {
-  if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
-  // Inject watermark text into mainText of REGULAR paragraphs only — never
-  // headings, never opening-word, never stream titles, never heading 1/2/...
-  // משה 2026-05-06: צפיפות גבוהה — כמה פעמים בכל עמוד.
-  // אסטרטגיה: בכל פסקה רגילה, הזרקה אחת פר ~80 מילים (לפחות אחת אם > 40 תווים).
-  const out = content.map((para) => ({
-    ...para,
-    notes: para.notes ? para.notes.map(n => ({ ...n })) : [],
-  }));
-  let phraseIdx = 0;
-  function inject(text) {
-    // דלג על טקסט קצר (פחות מ-120 תווים) כדי לא להעמיס.
-    if (!text || text.length < 120) return text;
-    const words = text.split(/(\s+)/);
-    const wordTokenCount = words.filter(w => /\S/.test(w)).length;
-    if (wordTokenCount < 30) return text;
-    // הזרקה אחת לכל ~60 מילים (פחות צפוף — לא יוצר חריגות עמוד).
-    const insertions = Math.max(1, Math.floor(wordTokenCount / 60));
-    for (let k = 0; k < insertions; k++) {
-      const phrase = DEMO_WATERMARK_POOL[phraseIdx++ % DEMO_WATERMARK_POOL.length];
-      const wm = ` ⟦${phrase}⟧ `;
-      // ודא שהמיקום הוא BETWEEN words (אינדקס זוגי+1 כי הזוגיים הם מילים).
-      // Words array: [w0, space0, w1, space1, ...]. Insert AFTER a space.
-      const minIdx = Math.min(20, Math.max(10, Math.floor(words.length / 4)));
-      let target = Math.max(minIdx, Math.floor(words.length * (k + 1) / (insertions + 1)));
-      if (target % 2 === 1) target++; // align to "after space" position
-      target = Math.min(words.length - 1, target);
-      words.splice(target, 0, wm);
-    }
-    return words.join("");
-  }
-  for (let i = 0; i < out.length; i++) {
-    const para = out[i];
-    if (!para) continue;
-    // Main text (skip headings).
-    if (para.blockType !== "heading" && !para.headingLevel) {
-      para.mainText = inject(para.mainText || "");
-    }
-    // Stream notes (every stream gets watermarks too).
-    if (para.notes && para.notes.length > 0) {
-      for (const note of para.notes) {
-        if (note && typeof note.text === "string") {
-          note.text = inject(note.text);
-        }
-      }
-    }
-  }
-  if (typeof console !== "undefined" && console.debug) {
-    console.debug("[demo-watermark] injected into source", { paraCount: out.length, totalInjections: phraseIdx });
-  }
-  return out;
-}
-import { renderPages } from "./engine/renderer.js";
-import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
-// משה 2026-05-08: V1 (talmud_layout.js) ו-V2 (talmud_engine_v2.js) ו-V8
-// (vilna_v8.js) הוסרו. V9 הוא המנוע היחיד למצב גפ"ת.
-import { applyBalancedColumnsToPages } from "./balanced_columns.js";
-import { applyOpeningWordsToPages } from "./opening_word.js";
-import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
-import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve, tryRemergeSplitMarks } from "./engine/live_overflow_corrector.js";
-import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
-import { firePackerHook } from "./engine/packer_hooks.js";
-import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
-import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
-import { repaginateCatastrophicPages } from "./talmud_repagination.js";
-import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
-
-import { applyYSegmentsToAllPages } from "./talmud_y_segments.js";
-import { logEvent, logMove } from "./settings_pane.js";
-import { applyVilnaV9FromPaneManager } from "./vilna_v9_apply.js";
-
-// v33: expose helpers for diagnostic tools to call directly.
-if (typeof window !== "undefined") {
-  window.__talmudPullBackward = pullBackwardAcrossAllPages;
-}
-
-// Expose for debug + audit harness.
-if (typeof window !== "undefined") {
-  window.__talmudCorrectOverflow = correctTalmudOverflow;
-  window.__talmudCorrectOverflowOnPage = correctTalmudOverflowOnPage;
-}
-
-// Install spec-compliant window.__talmudDebug as soon as bridge loads.
-installTalmudDebugV2();
-
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function stripDisplayNum(s) {
-  return s.trim().replace(/^\[\d+\]\s*/, "");
-}
-
-function styleMetaForNode(node) {
-  const style = {};
-  const attrs = node?.attrs || {};
-  if (attrs.textAlign) style.textAlign = attrs.textAlign;
-  if (attrs.lineHeight) style.lineHeight = attrs.lineHeight;
-  if (attrs.indent) style.indent = attrs.indent;
-  if (attrs.textIndent != null) style.textIndent = attrs.textIndent;
-  if (attrs.marginTop != null) style.marginTop = attrs.marginTop;
-  if (attrs.marginBottom != null) style.marginBottom = attrs.marginBottom;
-
-  // משה 2026-05-13: באג קודם — הלולאה ראתה מילה אחת מודגשת/צבועה והעלתה את
-  // הסגנון לכל הפסקה. תוצאה: שורה שלמה צבועה כשרק מילה הייתה אמורה להיות.
-  // עכשיו: אוספים marks של כל ילד-טקסט בנפרד; סגנון ברמת פסקה חל רק כשכל
-  // הטקסט הלא-ריק חולק אותו mark (אחיד לחלוטין). אם יש marks חלקיים — לא
-  // מעלים אותם לפסקה (יישמרו לפי-ריצה ב-future enhancement; כרגע פשוט לא
-  // מעוותים את הפלט).
-  const runMarks = [];
-  node?.descendants?.((child) => {
-    if (!child.isText) return false;
-    if (!child.text || !child.text.trim()) return false;
-    const m = {};
-    for (const mark of child.marks || []) {
-      const mAttrs = mark.attrs || {};
-      const name = mark.type?.name;
-      if (name === "textStyle") {
-        if (mAttrs.fontFamily) m.fontFamily = mAttrs.fontFamily;
-        if (mAttrs.fontSize) m.fontSize = mAttrs.fontSize;
-        if (mAttrs.color) m.color = mAttrs.color;
-        if (mAttrs.backgroundColor || mAttrs.bgColor) m.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
-      } else if (name === "bold") m.bold = true;
-      else if (name === "italic") m.italic = true;
-      else if (name === "underline") m.underline = true;
-      else if (name === "highlight") m.backgroundColor = mAttrs.color;
-    }
-    runMarks.push(m);
-    return false;
-  });
-
-  if (runMarks.length === 0) return style;
-
-  // לכל מאפיין: נבדוק אם הוא קיים זהה בכל הריצות. רק אז נעלה אותו לרמת פסקה.
-  const allHave = (key) => runMarks.every(m => m[key] !== undefined && m[key] !== null && m[key] !== false);
-  const sameValueAcross = (key) => {
-    const first = runMarks[0][key];
-    return runMarks.every(m => m[key] === first);
-  };
-
-  if (allHave("bold") && sameValueAcross("bold")) style.bold = true;
-  if (allHave("italic") && sameValueAcross("italic")) style.italic = true;
-  if (allHave("underline") && sameValueAcross("underline")) style.underline = true;
-  if (allHave("fontFamily") && sameValueAcross("fontFamily")) style.fontFamily = runMarks[0].fontFamily;
-  if (allHave("fontSize") && sameValueAcross("fontSize")) style.fontSize = runMarks[0].fontSize;
-  if (allHave("color") && sameValueAcross("color")) style.color = runMarks[0].color;
-  if (allHave("backgroundColor") && sameValueAcross("backgroundColor")) style.backgroundColor = runMarks[0].backgroundColor;
-
-  return style;
-}
-
-function styleMetaForPane(pane) {
-  const doc = pane?.editor?.state?.doc;
-  if (!doc) return {};
-  return styleMetaForNode(doc) || {};
-}
-
-function hasUsefulInlineStyle(style) {
-  if (!style || typeof style !== "object") return false;
-  return !!(
-    style.fontFamily ||
-    style.fontSize ||
-    style.color ||
-    style.backgroundColor ||
-    style.bgColor ||
-    style.bold ||
-    style.italic ||
-    style.underline ||
-    style.lineHeight ||
-    style.align ||
-    style.indent ||
-    style.marginTop != null ||
-    style.marginBottom != null
-  );
-}
-
-
-function textFromNode(node) {
-  let text = "";
-  node?.descendants?.((child) => {
-    if (child.isText) text += child.text;
-    return false;
-  });
-  return text;
-}
-
-// משה 2026-05-13: בונה רשימת ריצות-טקסט עם marks ברמת הפסקה. כל ריצה היא
-// { start, end, marks } כאשר start/end הם אופסט תווים ב-textFromNode(node).
-// marks תומך ב: bold, italic, underline, color, backgroundColor, fontFamily,
-// fontSize. כך אפשר לרנדר כל מילה/אות בסגנון משלה בלי לקרוס את כל הפסקה.
-export function runsFromNode(node) {
-  const runs = [];
-  let offset = 0;
-  node?.descendants?.((child) => {
-    if (!child.isText) return false;
-    const text = child.text || "";
-    if (!text.length) return false;
-    const marks = {};
-    for (const mark of child.marks || []) {
-      const mAttrs = mark.attrs || {};
-      const name = mark.type?.name;
-      if (name === "textStyle") {
-        if (mAttrs.fontFamily) marks.fontFamily = mAttrs.fontFamily;
-        if (mAttrs.fontSize) marks.fontSize = mAttrs.fontSize;
-        if (mAttrs.color) marks.color = mAttrs.color;
-        if (mAttrs.backgroundColor || mAttrs.bgColor) marks.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
-      } else if (name === "bold") marks.bold = true;
-      else if (name === "italic") marks.italic = true;
-      else if (name === "underline") marks.underline = true;
-      else if (name === "strike") marks.strike = true;
-      else if (name === "highlight") marks.backgroundColor = mAttrs.color || marks.backgroundColor;
-    }
-    runs.push({ start: offset, end: offset + text.length, marks });
-    offset += text.length;
-    return false;
-  });
-  return runs;
-}
-
-function hasAnyRunMark(runs) {
-  return Array.isArray(runs) && runs.some(r => r.marks && Object.keys(r.marks).length > 0);
-}
-
-// משה 2026-05-13: מסיר טווחי תווים (markers) מטקסט והתאמת runs לפלט החדש.
-// markers: [{ atInPara, sym }]. מחזיר { text, runs }.
-export function stripMarkersAndAlignRuns(paragraphText, runs, markers) {
-  if (!Array.isArray(markers) || markers.length === 0) {
-    return { text: paragraphText, runs: Array.isArray(runs) ? runs.slice() : [] };
-  }
-  const keep = new Array(paragraphText.length).fill(true);
-  for (const m of markers) {
-    const len = (m.sym || "").length;
-    for (let i = m.atInPara; i < m.atInPara + len; i++) {
-      if (i >= 0 && i < paragraphText.length) keep[i] = false;
-    }
-  }
-  let newText = "";
-  const map = new Array(paragraphText.length + 1).fill(0);
-  for (let i = 0; i < paragraphText.length; i++) {
-    map[i] = newText.length;
-    if (keep[i]) newText += paragraphText[i];
-  }
-  map[paragraphText.length] = newText.length;
-  const newRuns = [];
-  if (Array.isArray(runs)) {
-    for (const r of runs) {
-      const ls = map[Math.max(0, Math.min(paragraphText.length, r.start))];
-      const le = map[Math.max(0, Math.min(paragraphText.length, r.end))];
-      if (ls < le) newRuns.push({ start: ls, end: le, marks: r.marks });
-    }
-  }
-  return { text: newText, runs: newRuns };
-}
-
-// משה 2026-05-15: מיפוי משותף — איזה אופסט בטקסט המנורמל מתאים לאופסט
-// בטקסט המקורי. גם alignRunsAfterTextNormalize וגם paneManagerToPackerContent
-// קוראים לזה כדי לא לחפף בלוגיקה.
-function buildNormalizeMap(oldText) {
-  const map = new Array(oldText.length + 1).fill(0);
-  let result = "";
-  let lastWasSpace = false;
-  for (let i = 0; i < oldText.length; i++) {
-    const ch = oldText[i];
-    const isSpace = ch === ' ' || ch === '\t';
-    if (isSpace && lastWasSpace) {
-      map[i] = result.length;
-      continue;
-    }
-    map[i] = result.length;
-    result += ch;
-    lastWasSpace = isSpace;
-  }
-  map[oldText.length] = result.length;
-  const trimmed = result.trim();
-  const trimStart = result.indexOf(trimmed);
-  return { map, trimStart, normalized: trimmed };
-}
-
-// שיוך מיקום בודד מאופסט ישן (לפני normalize) לאופסט חדש (אחרי normalize+trim).
-// אם הטקסט החדש שונה מהמנורמל המצופה — מחזיר את האופסט ללא שינוי (safety).
-export function mapPositionAfterNormalize(oldText, newText, pos) {
-  if (oldText === newText) return pos;
-  const info = buildNormalizeMap(oldText);
-  if (info.normalized !== newText) return pos;
-  const clamped = Math.max(0, Math.min(oldText.length, pos));
-  return Math.max(0, Math.min(newText.length, info.map[clamped] - info.trimStart));
-}
-
-// אחרי normalize של רווחים, מתאים את ה-runs לטקסט החדש (best-effort).
-export function alignRunsAfterTextNormalize(oldText, newText, runs) {
-  if (!Array.isArray(runs) || runs.length === 0) return [];
-  if (oldText === newText) return runs.slice();
-  // נבנה map מתווי-old → תווי-new. רווחים כפולים בעיקר בתחילה/סוף/באמצע ייעלמו.
-  const map = new Array(oldText.length + 1).fill(0);
-  let oi = 0, ni = 0;
-  // טריאלים שמדמים את הפעולה: replace /  +/g ',' '+trim
-  // במקום להעתיק את הלוגיקה, נבנה new בעצמנו ונסמן.
-  let result = "";
-  // copy oldText to result with normalization, marking source positions
-  let lastWasSpace = false;
-  for (let i = 0; i < oldText.length; i++) {
-    const ch = oldText[i];
-    const isSpace = ch === ' ' || ch === '\t';
-    if (isSpace && lastWasSpace) {
-      map[i] = result.length; // ייבלע — אופסט אחרי הוא היכן שיהיה
-      continue;
-    }
-    map[i] = result.length;
-    result += ch;
-    lastWasSpace = isSpace;
-  }
-  map[oldText.length] = result.length;
-  // trim — מסיר רווחים בהתחלה/סוף של result. נחזיר מהראשון ל-trim.
-  const trimmed = result.trim();
-  const trimStart = result.indexOf(trimmed);
-  if (trimmed !== newText) {
-    // אם הנורמליזציה לא תואמת לחלוטין, נחזיר runs ריקים — אבטחה מפני misalignment.
-    return runs.map(r => ({ ...r }));
-  }
-  const out = [];
-  for (const r of runs) {
-    let ls = map[Math.max(0, Math.min(oldText.length, r.start))] - trimStart;
-    let le = map[Math.max(0, Math.min(oldText.length, r.end))] - trimStart;
-    ls = Math.max(0, Math.min(newText.length, ls));
-    le = Math.max(0, Math.min(newText.length, le));
-    if (ls < le) out.push({ start: ls, end: le, marks: r.marks });
-  }
-  return out;
-}
-
-function tableRowsFromNode(node) {
-  const rows = [];
-  node?.forEach?.((rowNode) => {
-    const row = [];
-    rowNode.forEach((cellNode) => {
-      row.push(textFromNode(cellNode).trim());
-    });
-    rows.push(row);
-  });
-  return rows;
-}
-
-let _docKeyCounter = 0;
-const _docKeys = new WeakMap();
-let _packerContentCache = { sig: "", value: null };
-
-function docKey(doc) {
-  if (!doc || typeof doc !== "object") return "0";
-  let key = _docKeys.get(doc);
-  if (!key) {
-    _docKeyCounter++;
-    key = String(_docKeyCounter);
-    _docKeys.set(doc, key);
-  }
-  return key;
-}
-
-function paneManagerContentSignature(paneManager) {
-  const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
-  // Include the nested-notes gate flag so toggling the feature on/off
-  // invalidates the cache even when the underlying content is unchanged.
-  const nestedFlag = (typeof window !== "undefined" && window.localStorage?.getItem("ravtext.nestedNotes") === "1") ? "n1" : "n0";
-  const demoFlag = (typeof window !== "undefined" && isDemoMode()) ? "demo1" : "demo0";
-  const globalStreamOverridesSig = (typeof window !== "undefined" && window.localStorage)
-    ? window.localStorage.getItem("ravtext.globalStreamOverrides.v1") || ""
-    : "";
-  const sigParts = paneManager.panes
-    .map((p) => [
-      p.id,
-      p.streamCode || "",
-      p.symbol || "",
-      p.label || "",
-      p.streamCode && settings[p.streamCode]?.title ? settings[p.streamCode].title : "",
-      p.streamCode && settings[p.streamCode]?.firstNoteAsTitle ? "title1" : "",
-      p.editor ? docKey(p.editor.state.doc) : "0",
-    ].join(":"))
-    .join("|");
-  return sigParts + "##" + nestedFlag + "##" + demoFlag + "##" + globalStreamOverridesSig;
-}
-
-function extractMainParagraphs(mainPane, paneManager) {
-  if (!mainPane || !mainPane.editor) return [];
-
-  const symbols = [];
-  const symbolToCode = {};
-  for (const p of paneManager.panes) {
-    if (!p.streamCode) continue;
-    const sym = p.symbol || `@${p.streamCode}`;
-    symbols.push(sym);
-    symbolToCode[sym] = p.streamCode;
-  }
-
-  if (symbols.length === 0) {
-    const paragraphs = [];
-    mainPane.editor.state.doc.descendants((node) => {
-      const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
-      if (!allowed.includes(node.type.name)) return;
-      const isTable = node.type.name === "table";
-      const paragraphText = isTable ? textFromNode(node) : textFromNode(node);
-      paragraphs.push({
-        paragraphText,
-        runs: isTable ? [] : runsFromNode(node),
-        markers: [],
-        blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
-        headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
-        style: styleMetaForNode(node),
-        tableRows: isTable ? tableRowsFromNode(node) : null,
-      });
-      return false;
-    });
-    return paragraphs;
-  }
-
-  symbols.sort((a, b) => b.length - a.length);
-  const escaped = symbols.map(escapeRegex);
-  const re = new RegExp(`(${escaped.join('|')})`, 'g');
-
-  const paragraphs = [];
-  mainPane.editor.state.doc.descendants((node) => {
-    const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
-    if (!allowed.includes(node.type.name)) return;
-    const isTable = node.type.name === "table";
-    const paragraphText = textFromNode(node);
-    const markers = [];
-    re.lastIndex = 0;
-    let m;
-    while ((m = re.exec(paragraphText)) !== null) {
-      markers.push({
-        sym: m[0],
-        code: symbolToCode[m[0]],
-        atInPara: m.index,
-      });
-    }
-    paragraphs.push({
-      paragraphText,
-      runs: isTable ? [] : runsFromNode(node),
-      markers,
-      blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
-      headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
-      style: styleMetaForNode(node),
-      tableRows: isTable ? tableRowsFromNode(node) : null,
-    });
-    return false;
-  });
-
-  return paragraphs;
-}
-
-function extractStreamNotes(streamPane) {
-  if (!streamPane || !streamPane.editor) return [];
-  const sym = streamPane.symbol || `@${streamPane.streamCode}`;
-  if (!sym) return [];
-  const fullText = streamPane.editor.state.doc.textContent;
-  const parts = fullText.split(sym);
-  if (parts.length <= 1) return [stripDisplayNum(fullText)].filter(Boolean);
-  parts.shift();
-  return parts.map(stripDisplayNum).filter(Boolean);
-}
-
-// משה 2026-05-13: גרסה משופרת המחזירה גם runs לכל הערה — לעיצוב אינליין
-// (בולד/הדגשה/צבע פר-מילה) בתצוגה. מבנה החזרה: { notes: string[], runsPerNote: Run[][] }.
-function extractStreamNotesWithRuns(streamPane) {
-  if (!streamPane || !streamPane.editor) return { notes: [], runsPerNote: [] };
-  const sym = streamPane.symbol || `@${streamPane.streamCode}`;
-  if (!sym) return { notes: [], runsPerNote: [] };
-
-  const doc = streamPane.editor.state.doc;
-  const fullText = doc.textContent;
-  const allRuns = runsFromNode(doc);
-
-  const findAll = (haystack, needle) => {
-    const out = [];
-    if (!needle) return out;
-    let i = haystack.indexOf(needle);
-    while (i !== -1) {
-      out.push({ start: i, end: i + needle.length });
-      i = haystack.indexOf(needle, i + needle.length);
-    }
-    return out;
-  };
-
-  const sliceRuns = (runs, sliceStart, sliceEnd, dropLeading = 0) => {
-    const out = [];
-    const baseStart = sliceStart + dropLeading;
-    for (const r of runs) {
-      if (r.end <= baseStart || r.start >= sliceEnd) continue;
-      const ls = Math.max(0, r.start - baseStart);
-      const le = Math.min(sliceEnd - baseStart, r.end - baseStart);
-      if (ls >= le) continue;
-      out.push({ start: ls, end: le, marks: r.marks });
-    }
-    return out;
-  };
-
-  const markerPositions = findAll(fullText, sym);
-  if (markerPositions.length === 0) {
-    const noteText = stripDisplayNum(fullText);
-    if (!noteText) return { notes: [], runsPerNote: [] };
-    // החלת stripDisplayNum מסירה רווחים מובילים + [N]; חישוב dropLeading עליו
-    const m = fullText.match(/^\s*\[\d+\]\s*/);
-    const dropLeading = m ? m[0].length : 0;
-    return {
-      notes: [noteText],
-      runsPerNote: [sliceRuns(allRuns, 0, fullText.length, dropLeading)],
-    };
-  }
-
-  const notes = [];
-  const runsPerNote = [];
-  for (let i = 0; i < markerPositions.length; i++) {
-    const start = markerPositions[i].end;
-    const end = i + 1 < markerPositions.length ? markerPositions[i + 1].start : fullText.length;
-    const rawNote = fullText.substring(start, end);
-    const stripped = stripDisplayNum(rawNote);
-    if (!stripped) continue;
-    const m = rawNote.match(/^\s*\[\d+\]\s*/);
-    const dropLeading = m ? m[0].length : 0;
-    notes.push(stripped);
-    runsPerNote.push(sliceRuns(allRuns, start, end, dropLeading));
-  }
-  return { notes, runsPerNote };
-}
-
-const DEFAULT_STREAM_LABELS = {
-  "01": "מגן אברהם",
-  "02": "משנה ברורה",
-  "03": "ביאור הלכה",
-  "04": "טורי זהב",
-  "05": "כף החיים",
-};
-
-export function defaultLabelForCode(code) {
-  return DEFAULT_STREAM_LABELS[code] || `זרם ${code}`;
-}
-
-// Recursively scans a note's text for embedded stream markers and pulls the
-// matching child notes from streamNotes, advancing the same shared
-// noteCounters used by the main-body marker loop. Returns the
-// marker-stripped text and a `children` array of {stream, text, anchor,
-// children}. Markers identical to the note's own stream are left as
-// literal text to avoid eating self-references.
-export function expandNestedInNote(noteText, streamNotes, noteCounters, ownCode, paneSymbols, paneSymToCode) {
-  const txt = noteText || "";
-  if (!txt || !paneSymbols || paneSymbols.length === 0) {
-    return { strippedText: txt, children: [] };
-  }
-  // Use a fresh regex on every call so internal lastIndex state is not shared.
-  const symsSorted = [...paneSymbols].sort((a, b) => b.length - a.length);
-  const re = new RegExp(`(${symsSorted.map(escapeRegex).join('|')})`, 'g');
-  let strippedText = "";
-  let prevEnd = 0;
-  const children = [];
-  let m;
-  while ((m = re.exec(txt)) !== null) {
-    const sym = m[0];
-    const code = paneSymToCode[sym];
-    if (!code || code === ownCode) {
-      // self-reference or unknown — keep literal
-      continue;
-    }
-    strippedText += txt.substring(prevEnd, m.index);
-    const anchor = strippedText.length;
-    const idx = noteCounters[code] || 0;
-    const childText = streamNotes[code] && streamNotes[code][idx];
-    if (childText !== undefined) {
-      noteCounters[code] = idx + 1;
-      const inner = expandNestedInNote(childText, streamNotes, noteCounters, code, paneSymbols, paneSymToCode);
-      children.push({ stream: code, text: inner.strippedText, anchor, children: inner.children });
-    } else {
-      // Child stream out of notes — leave the marker as literal text in parent.
-      strippedText += sym;
-    }
-    prevEnd = m.index + sym.length;
-  }
-  strippedText += txt.substring(prevEnd);
-  return { strippedText, children };
-}
-
-// Walks a tree of notes (parent → children → ...) and assigns sequential
-// per-stream display numbers in document order — matches extractor.js so
-// nested numbering is consistent whether the doc came from the engine
-// schema or from the stream-pane bridge.
-function numberNotesTree(notesArr, counters) {
-  for (const n of notesArr) {
-    counters[n.stream] = (counters[n.stream] || 0) + 1;
-    n.num = counters[n.stream];
-    if (n.children && n.children.length) numberNotesTree(n.children, counters);
-  }
-}
-
-// Flattens an inner.children tree into the same `collected` list used for
-// the parent's siblings, so each pulled inner note ends up in its NATIVE
-// stream's apparatus block (anchored at the parent's main-body position)
-// rather than rendered inline inside the parent's apparatus. Recursive so
-// grandchildren are also surfaced. priority=1 = secondary, ranked after
-// any direct main-body ref at the same anchor.
-function collectChildrenAsSiblings(children, parentAnchor, out) {
-  for (const child of children) {
-    out.push({ stream: child.stream, text: child.text, anchor: parentAnchor, priority: 1 });
-    if (child.children && child.children.length) {
-      collectChildrenAsSiblings(child.children, parentAnchor, out);
-    }
-  }
-}
-
-function applyFirstNoteAsTitle(code, notes) {
-  const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
-  const streamSettings = getEffectiveStreamSettings(code);
-  const manualTitle = String(streamSettings.title || "").trim();
-  if (manualTitle) {
-    labels[code] = manualTitle;
-    return notes;
-  }
-  if (!streamSettings.firstNoteAsTitle || !notes.length) return notes;
-  const title = stripDisplayNum(notes[0] || "");
-  if (title) labels[code] = title;
-  return notes.slice(1);
-}
-
-function ensureEngineStreamSettings(paneManager) {
-  getStreamSettings();
-  if (!window.__STREAM_LABELS__) window.__STREAM_LABELS__ = {};
-
-  for (const p of paneManager.panes) {
-    if (!p.streamCode) continue;
-
-    const prev = window.__STREAM_SETTINGS__[p.streamCode] || {};
-    const inlineStyle = styleMetaForPane(p);
-    const keepInline = hasUsefulInlineStyle(inlineStyle) ? inlineStyle : (prev.inlineStyle || {});
-
-    window.__STREAM_SETTINGS__[p.streamCode] = {
-      title: "",
-      cols: 1,
-      minLinesForCols: 3,
-      inline: true,
-      lastLineCenter: true,
-      firstNoteAsTitle: false,
-      ...prev,
-      inlineStyle: keepInline,
-    };
-
-    const manualTitle = String(window.__STREAM_SETTINGS__[p.streamCode].title || "").trim();
-    window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || defaultLabelForCode(p.streamCode);
-  }
-}
-
-export function paneManagerToPackerContent(paneManager) {
-  const sig = paneManagerContentSignature(paneManager);
-  if (_packerContentCache.sig === sig && _packerContentCache.value) {
-    return _packerContentCache.value;
-  }
-
-  const mainPane = paneManager.getMainPane();
-  if (!mainPane) return [];
-
-  const mainParagraphs = extractMainParagraphs(mainPane, paneManager);
-  const streamNotes = {};
-  const streamNotesRuns = {}; // משה 2026-05-13: runs לכל הערה — לעיצוב אינליין
-  // Build a shared symbol → code map so expandNestedInNote can detect
-  // markers embedded in note bodies without re-scanning paneManager each call.
-  const paneSymbols = [];
-  const paneSymToCode = {};
-  for (const p of paneManager.panes) {
-    if (!p.streamCode) continue;
-    const withRuns = extractStreamNotesWithRuns(p);
-    const titled = applyFirstNoteAsTitle(p.streamCode, withRuns.notes);
-    streamNotes[p.streamCode] = titled;
-    // אם applyFirstNoteAsTitle הסיר את ההערה הראשונה, גם נסיר את ה-runs המתאימים
-    const skipped = withRuns.notes.length - titled.length;
-    streamNotesRuns[p.streamCode] = withRuns.runsPerNote.slice(skipped);
-    const sym = p.symbol || `@${p.streamCode}`;
-    paneSymbols.push(sym);
-    paneSymToCode[sym] = p.streamCode;
-  }
-
-  // === Phase A — for each paragraph, walk main-body markers and record
-  // each as a "consumer" of its stream's pane pool. We don't pull pane
-  // content yet; that happens after we also know the nested consumers. ===
-  const paragraphsInfo = []; // { paraIdx, mainTextNet, mainRuns, mainConsumers[], blockType, headingLevel }
-  for (let pi = 0; pi < mainParagraphs.length; pi++) {
-    const para = mainParagraphs[pi];
-    let mainTextNet = "";
-    let prevEnd = 0;
-    const mainConsumers = [];
-    for (const marker of para.markers) {
-      mainTextNet += para.paragraphText.substring(prevEnd, marker.atInPara);
-      const anchor = mainTextNet.length;
-      mainConsumers.push({ stream: marker.code, anchor, sym: marker.sym });
-      prevEnd = marker.atInPara + marker.sym.length;
-    }
-    mainTextNet += para.paragraphText.substring(prevEnd);
-    const beforeNormalize = mainTextNet;
-    mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
-
-    // משה 2026-05-15: באג ידוע — האופסטים של mainConsumers נשמרו לפני
-    // הקריאה ל-normalize ו-trim. כשהיו רווחים כפולים סביב סימן זרם (כפי
-    // שקורה אחרי `text-pre-marker  text-post-marker`) או רווחים בקצה של
-    // הפסקה, הטקסט התקצר אבל האופסט נשאר על המספרים הישנים — אז [N] בראשי
-    // נדחק לתוך מילה במקום להופיע במיקום הסימן. מתקנים דרך mapPositionAfterNormalize.
-    if (beforeNormalize !== mainTextNet) {
-      for (const c of mainConsumers) {
-        c.anchor = mapPositionAfterNormalize(beforeNormalize, mainTextNet, c.anchor);
-      }
-    }
-
-    // משה 2026-05-13: חישוב mainRuns שמתאים ל-mainTextNet אחרי הסרת markers ו-normalize.
-    let mainRuns = [];
-    if (Array.isArray(para.runs) && para.runs.length) {
-      const stripped = stripMarkersAndAlignRuns(para.paragraphText, para.runs, para.markers);
-      mainRuns = alignRunsAfterTextNormalize(stripped.text, mainTextNet, stripped.runs);
-    }
-
-    paragraphsInfo.push({
-      paraIdx: pi,
-      mainTextNet,
-      mainRuns,
-      mainConsumers,
-      blockType: para.blockType,
-      headingLevel: para.headingLevel,
-      style: para.style || {},
-      tableRows: para.tableRows || null,
-    });
-  }
-
-  // === Phase B — gather per-stream consumer lists. Each main-body marker is
-  // a primary consumer (priority 0). Nested @YY found inside a primary
-  // consumer's pane note is a secondary consumer of stream Y at the
-  // PARENT's main-body anchor (priority 1) — per Moshe's spec:
-  //   "הערה הבאה של זרם 02 תקושר לטקסט הראשי היכן שההערה הנוכחית בזרם 01
-  //    מקושרת" — the next stream-Y note from the pane is anchored at the
-  // outer's position, with secondary priority after any direct main-body
-  // ref at the same anchor.
-  // Pane consumption assigns pane[0], pane[1], ... in sorted (paraIdx,
-  // anchor, priority) order across all consumers of that stream. ===
-  const consumersByStream = {};
-  for (const info of paragraphsInfo) {
-    for (const c of info.mainConsumers) {
-      if (!consumersByStream[c.stream]) consumersByStream[c.stream] = [];
-      consumersByStream[c.stream].push({ paraIdx: info.paraIdx, anchor: c.anchor, priority: 0 });
-    }
-  }
-  // Sort once before nested expansion so each main consumer's pane index
-  // for the OUTER lookup matches document order.
-  for (const code of Object.keys(consumersByStream)) {
-    consumersByStream[code].sort((a, b) =>
-      (a.paraIdx - b.paraIdx) || (a.anchor - b.anchor) || (a.priority - b.priority)
-    );
-  }
-
-  if (isNestedNotesEnabled() && paneSymbols.length > 0) {
-    const symsSorted = [...paneSymbols].sort((a, b) => b.length - a.length);
-    const findRe = new RegExp(`(${symsSorted.map(escapeRegex).join('|')})`, 'g');
-    // Snapshot main-only consumers so adding secondaries doesn't change
-    // the OUTER pane indices we look up against.
-    const mainOnly = {};
-    for (const code of Object.keys(consumersByStream)) {
-      mainOnly[code] = consumersByStream[code].slice();
-    }
-    for (const code of Object.keys(mainOnly)) {
-      for (let i = 0; i < mainOnly[code].length; i++) {
-        const c = mainOnly[code][i];
-        const noteText = streamNotes[code] && streamNotes[code][i];
-        if (noteText === undefined) continue;
-        findRe.lastIndex = 0;
-        let m;
-        while ((m = findRe.exec(noteText)) !== null) {
-          const ycode = paneSymToCode[m[0]];
-          if (!ycode || ycode === code) continue;
-          if (!consumersByStream[ycode]) consumersByStream[ycode] = [];
-          consumersByStream[ycode].push({ paraIdx: c.paraIdx, anchor: c.anchor, priority: 1 });
-        }
-      }
-    }
-    // Re-sort each stream after secondary consumers are added.
-    for (const code of Object.keys(consumersByStream)) {
-      consumersByStream[code].sort((a, b) =>
-        (a.paraIdx - b.paraIdx) || (a.anchor - b.anchor) || (a.priority - b.priority)
-      );
-    }
-  }
-
-  // === Phase C — assign pane content to each consumer in sorted order.
-  // Consumer i of stream X gets streamNotes[X][i]. If the pane runs out,
-  // the consumer is dropped (its anchor produces no apparatus note). ===
-  for (const code of Object.keys(consumersByStream)) {
-    let assigned = 0;
-    for (const c of consumersByStream[code]) {
-      const text = streamNotes[code] && streamNotes[code][assigned];
-      if (text !== undefined) {
-        c.text = text;
-        c.runs = (streamNotesRuns[code] && streamNotesRuns[code][assigned]) || [];
-        c.num = assigned + 1;
-      } else {
-        c.text = null;
-        c.runs = [];
-      }
-      assigned++;
-    }
-  }
-
-  // === Phase D — strip cross-stream `@YY` markers from each consumer's
-  // displayed text (matches the main-body convention where reference
-  // markers don't appear in the rendered output). Self-stream markers are
-  // left literal. ===
-  if (isNestedNotesEnabled() && paneSymbols.length > 0) {
-    const symsSorted = [...paneSymbols].sort((a, b) => b.length - a.length);
-    const stripRe = new RegExp(`(${symsSorted.map(escapeRegex).join('|')})`, 'g');
-    for (const code of Object.keys(consumersByStream)) {
-      for (const c of consumersByStream[code]) {
-        if (!c.text) continue;
-        // משה 2026-05-13: בנייה משותפת של טקסט + רשימת markers להסרה (כדי
-        // ש-runs יישארו מסונכרנים אחרי ההסרה).
-        const localMarkers = [];
-        let m;
-        stripRe.lastIndex = 0;
-        while ((m = stripRe.exec(c.text)) !== null) {
-          const ycode = paneSymToCode[m[0]];
-          if (ycode && ycode !== code) {
-            localMarkers.push({ atInPara: m.index, sym: m[0] });
-          }
-        }
-        if (localMarkers.length) {
-          const stripped = stripMarkersAndAlignRuns(c.text, c.runs || [], localMarkers);
-          const beforeNormalize = stripped.text;
-          const normalized = beforeNormalize.replace(/  +/g, ' ').trim();
-          c.text = normalized;
-          c.runs = alignRunsAfterTextNormalize(beforeNormalize, normalized, stripped.runs);
-        }
-      }
-    }
-  }
-
-  // === Phase E — emit one paragraph object per source paragraph, with all
-  // its consumers (across streams) merged and sorted by anchor + priority. ===
-  const result = [];
-  for (const info of paragraphsInfo) {
-    const paraNotes = [];
-    for (const code of Object.keys(consumersByStream)) {
-      for (const c of consumersByStream[code]) {
-        if (c.paraIdx !== info.paraIdx || c.text === null) continue;
-        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, num: c.num, priority: c.priority });
-      }
-    }
-    paraNotes.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
-    const cleanNotes = paraNotes.map((n) => ({ stream: n.stream, text: n.text, runs: n.runs || [], anchor: n.anchor, num: n.num }));
-    if (info.mainTextNet || cleanNotes.length) {
-      result.push({
-        mainText: info.mainTextNet,
-        mainRuns: info.mainRuns || [],
-        notes: cleanNotes,
-        blockType: info.blockType === "heading" ? "heading" : "paragraph",
-        ...(info.blockType === "table" ? { blockType: "table", tableRows: info.tableRows || [] } : {}),
-        headingLevel: info.blockType === "heading" ? Math.max(1, Math.min(6, info.headingLevel || 1)) : null,
-        style: info.style || {},
-      });
-    }
-  }
-
-  _packerContentCache = { sig, value: result };
-  return result;
-}
-
-export function configureStreamsForClick(paneManager) {
-  ensureEngineStreamSettings(paneManager);
-}
-
-export function setupPageClickHandler(paneManager, pagesContainer) {
-  pagesContainer.addEventListener("click", (ev) => {
-    const noteEl = ev.target.closest(".note");
-    if (!noteEl) return;
-
-    const streamEl = noteEl.closest(".stream[data-stream]");
-    if (!streamEl) return;
-    const code = streamEl.getAttribute("data-stream");
-    const targetPane = paneManager.panes.find(p => p.streamCode === code);
-    if (!targetPane) return;
-
-    const text = noteEl.textContent;
-    const match = text.match(/^\s*\[(\d+)\]/);
-    if (!match) return;
-
-    const num = parseInt(match[1], 10);
-    const sym = targetPane.symbol || `@${code}`;
-    targetPane.jumpToNth(sym, num);
-  });
-}
-
-function schedulePaneMarkerRescan(paneManager) {
-  const run = () => {
-    for (const pane of paneManager.panes || []) {
-      const editor = pane.editor;
-      if (!editor) continue;
-      const docSize = editor.state.doc.content.size;
-      if (docSize > 120000) continue;
-      editor.view.dispatch(editor.state.tr.setMeta("forceStreamMarkScan", true));
-      pane.scheduleMarkerBarUpdate?.({ immediate: true });
-    }
-  };
-  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-    window.requestIdleCallback(run, { timeout: 1200 });
-  } else {
-    setTimeout(run, 0);
-  }
-}
-
-export function paneManagerFromEngineDoc(paneManager, engineDoc) {
-  const paragraphs = [];
-  const allStreamCodes = new Set();
-
-  engineDoc.forEach((paragraphNode) => {
-    const mainParts = [];
-    const notes = [];
-    let pending = null;
-
-    function flushPending() {
-      if (!pending) return;
-      const sym = `@${pending.stream}`;
-      mainParts.push(sym);
-      notes.push({ stream: pending.stream, text: pending.text });
-      allStreamCodes.add(pending.stream);
-      pending = null;
-    }
-
-    paragraphNode.forEach((child) => {
-      if (!child.isText) return;
-      const fnMark = child.marks.find((m) => m.type.name === "footnote");
-      if (fnMark) {
-        const { stream, uid } = fnMark.attrs;
-        if (pending && pending.stream === stream && pending.uid === uid) {
-          pending.text += child.text;
-        } else {
-          flushPending();
-          pending = { stream, uid, text: child.text };
-        }
-      } else {
-        flushPending();
-        mainParts.push(child.text);
-      }
-    });
-    flushPending();
-    paragraphs.push({ main: mainParts.join(""), notes });
-  });
-
-  function paragraphNodeFromText(text) {
-    const value = String(text || "");
-    return value
-      ? { type: "paragraph", content: [{ type: "text", text: value }] }
-      : { type: "paragraph" };
-  }
-
-  function docFromParagraphTexts(items) {
-    return {
-      type: "doc",
-      content: items.length ? items.map(paragraphNodeFromText) : [{ type: "paragraph" }],
-    };
-  }
-
-  if (typeof paneManager._beginBatch === "function") paneManager._beginBatch();
-  const prevScanDisabled = typeof window !== "undefined" ? window.__STREAM_MARK_SCAN_DISABLED__ : false;
-  if (typeof window !== "undefined") window.__STREAM_MARK_SCAN_DISABLED__ = true;
-  try {
-  const mainDoc = docFromParagraphTexts(paragraphs.map((p) => p.main));
-  const mainPane = paneManager.getMainPane();
-  if (mainPane && mainPane.editor) {
-    mainPane.load(mainDoc);
-  }
-
-  const notesByStream = {};
-  for (const para of paragraphs) {
-    for (const note of para.notes) {
-      if (!notesByStream[note.stream]) notesByStream[note.stream] = [];
-      notesByStream[note.stream].push(note.text);
-    }
-  }
-
-  const sortedCodes = [...allStreamCodes].sort((a, b) => parseInt(a) - parseInt(b));
-  for (const code of sortedCodes) {
-    const sym = `@${code}`;
-    const noteDoc = docFromParagraphTexts(
-      (notesByStream[code] || []).map((text, idx) => `${sym} [${idx + 1}] ${text}`)
-    );
-    let pane = paneManager.panes.find(p => p.streamCode === code);
-    if (!pane) {
-      pane = paneManager.addPane({
-        streamCode: code,
-        symbol: sym,
-        content: noteDoc,
-        label: defaultLabelForCode(code),
-      });
-    }
-    else if (pane) {
-      pane.load(noteDoc);
-    }
-  }
-
-    paneManager._pendingChange = true;
-    paneManager._pendingMarkerRefresh = true;
-    paneManager._savePending = true;
-  } finally {
-    if (typeof window !== "undefined") window.__STREAM_MARK_SCAN_DISABLED__ = prevScanDisabled;
-    if (!prevScanDisabled) schedulePaneMarkerRescan(paneManager);
-    if (typeof paneManager._endBatch === "function") paneManager._endBatch();
-  }
-
-  return true;
-}
+import * as core from "./engine_bridge_core.js";
+export * from "./engine_bridge_core.js";
 
 let _renderToken = 0;
 let _debounceTimer = null;
+let _renderPaused = false;
+let _renderRunning = false;
+let _renderScheduled = false;
+let _pendingWhilePaused = false;
+let _lastRenderArgs = null;
+let _lastPagesContainer = null;
+let _lastStableHtml = null;
+let _lastStableScrollTop = 0;
+let _cancelledToken = 0;
+
 const LIVE_RENDER_DELAY_MS = 650;
 
-export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi = null) {
-  if (_debounceTimer) clearTimeout(_debounceTimer);
-  const statusEl = document.getElementById("status");
-  if (statusEl) statusEl.textContent = "מרענן...";
-  _debounceTimer = setTimeout(() => {
-    _renderToken++;
-    const myToken = _renderToken;
-    _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, /*skipSmartTune*/false);
-  }, LIVE_RENDER_DELAY_MS);
+function emitRenderState(reason = "") {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("ravtext:render-state", {
+    detail: getEngineRenderState(reason),
+  }));
 }
 
-// Smart-tune state: prevent re-entry while a tune cycle is active.
-let _smartTuneActive = false;
+export function getEngineRenderState(reason = "") {
+  return {
+    paused: _renderPaused,
+    running: _renderRunning,
+    scheduled: _renderScheduled,
+    pendingWhilePaused: _pendingWhilePaused,
+    reason,
+  };
+}
 
-async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, skipSmartTune = false) {
-  try {
-    ensureEngineStreamSettings(paneManager);
-    const t0 = performance.now();
-    let content = paneManagerToPackerContent(paneManager);
+function setStatus(text) {
+  const el = typeof document !== "undefined" ? document.getElementById("status") : null;
+  if (el) el.textContent = text;
+}
 
-    // משה 2026-05-07: every render must pass through the server before pagination.
-    // Without a successful preflight, the render is aborted. Universal — applies
-    // to all layouts (talmud / mishna-wrap / balanced / regular).
-    try {
-      await runPreflight({
-        contentSignature: hashContent(content),
-      });
-    } catch (e) {
-      console.warn("[engine_bridge] preflight failed, aborting render:", e);
-      const statusEl = document.getElementById("status");
-      if (statusEl) statusEl.textContent = "תקלה זמנית בחיבור לשרת — נסה שוב בעוד רגע.";
-      return;
-    }
+function snapshotPages(pagesContainer) {
+  if (!pagesContainer) return;
+  _lastPagesContainer = pagesContainer;
+  _lastStableHtml = pagesContainer.innerHTML;
+  _lastStableScrollTop = pagesContainer.scrollTop || 0;
+}
 
-    // v33: inject demo watermarks INTO source content BEFORE pagination —
-    // engine then measures heights including marks, so pages don't overflow.
-    content = injectDemoWatermarksIfNeeded(content);
-    const t1 = performance.now();
+function restoreSnapshot() {
+  const el = _lastPagesContainer;
+  if (!el || _lastStableHtml == null) return;
+  el.innerHTML = _lastStableHtml;
+  el.scrollTop = _lastStableScrollTop || 0;
+}
 
-    if (content.length === 0) {
-      pagesContainer.innerHTML = '<div class="empty-hint">אין תוכן לרינדור</div>';
-      if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
-      const emptyStatusEl = document.getElementById("status");
-      if (emptyStatusEl) emptyStatusEl.textContent = "אין תוכן";
-      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-        detail: { pages: [], content: [] },
-      }));
-      return;
-    }
+export function setEngineRenderPaused(paused, options = {}) {
+  const flush = options.flush !== false;
+  _renderPaused = !!paused;
 
-    // משה 2026-05-08: V9 הוא המנוע היחיד למצב גפ"ת. רץ אוטומטית כשהצ'קבוקס
-    // "גפ"ת: צורת הדף" דלוק (localStorage.ravtext.talmudLayout === "1").
-    // V9 בונה את כל העמודים אנליטית — מדלג על domPack, renderPages,
-    // talmud_layout, mishna_wrap, balanced_columns, opening_word, וכו'.
-    const talmudActive = typeof window !== "undefined" &&
-      window.localStorage?.getItem("ravtext.talmudLayout") === "1";
-    if (talmudActive) {
-      logEvent("vilna_v9_pipeline_start");
-      // משה 2026-05-15: מעבירים isCurrent ל-V9 כדי שיוכל לעצור באמצע בלי
-      // לחסום את ה-main thread אם המשתמש שינה הגדרה תוך כדי רינדור.
-      const v9Result = await applyVilnaV9FromPaneManager(content, pagesContainer, {
-        isCurrent: () => myToken === _renderToken,
-      });
-      if (myToken !== _renderToken) return;
-      if (v9Result?.aborted) return;
-      const v9PageCount = pagesContainer.querySelectorAll(".page").length;
-      if (pdfToolbarApi) {
-        pdfToolbarApi.setTotal(v9PageCount);
-      }
-      // משה 2026-05-15: smart_line_breaker הוסר ממסלול V9 — הוא דרס את החלטות
-      // K-P עם משיכה אגרסיבית והיה מנוע שני סותר. עם מדידה דינמית של פער
-      // Canvas/DOM (b-VilnaMetrics), K-P לבדו צריך להגיע לתוצאה נכונה. אם
-      // יישארו בעיות, נטפל בהן ב-V9 עצמו, לא ב-post-process.
-      // משה 2026-05-14: מסלול V9 יצא בלי לעדכן את ה-status, אז הטקסט "מרענן..."
-      // שנקבע ב-scheduleEngineRender נשאר על המסך גם אחרי שהרינדור הסתיים
-      // — נראה כאילו האפליקציה תקועה. עכשיו נעדכן לטקסט הסופי.
-      const v9StatusEl = document.getElementById("status");
-      if (v9StatusEl) {
-        v9StatusEl.textContent = `${v9PageCount} עמודים (גפ"ת)`;
-      }
-      logEvent("vilna_v9_pipeline_done", {
-        pageCount: v9PageCount,
-      });
-      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-        detail: { pages: [], content, v9: true },
-      }));
-      return;
-    }
+  if (_renderPaused) {
+    if (_debounceTimer) clearTimeout(_debounceTimer);
+    _debounceTimer = null;
+    _renderScheduled = false;
+    setStatus("Render paused. Changes will be collected until resume.");
+    emitRenderState("paused");
+    return;
+  }
 
-    const pageGeom = getDomPageGeom();
-    const pages = await domPack(content, pageGeom, {
-      isCurrent: () => myToken === _renderToken,
-    });
-    if (myToken !== _renderToken) return;
+  const shouldFlush = flush && _pendingWhilePaused && _lastRenderArgs;
+  _pendingWhilePaused = false;
+  setStatus(shouldFlush ? "Resuming render..." : "Render active.");
+  emitRenderState("resumed");
 
-    const t2 = performance.now();
-    renderPages(pages, pagesContainer);
-    // Spec-compliant phase order: hooks fire around the layout passes so
-    // any future module can hook in without surgery on the packer.
-    await firePackerHook("beforeBuild", { container: pagesContainer, pages });
-    // משה 2026-05-08: שלב talmud_layout הוסר — V1/V2/V8 נמחקו. מצב לא־גפ"ת
-    // ממשיך ישר ל-mishna_wrap ויתר הפאסים.
-    logEvent("mishna_wrap");
-    await applyMishnaWrapToPages(pagesContainer);
-    logEvent("balanced_columns");
-    await applyBalancedColumnsToPages(pagesContainer);
-    logEvent("opening_word");
-    applyOpeningWordsToPages(pagesContainer);
-    // Bug 17 + 18: cap stretch at 250% and switch to SVG textLength
-    // for visually-correct kerning. Runs AFTER opening_word so it can
-    // upgrade existing .opening-word elements.
-    logEvent("opening_word_stretch", { pageCount: pagesContainer.querySelectorAll(".page").length });
-    applyOpeningWordStretchToPages(pagesContainer);
-    // משה 2026-05-15: smart line breaker — חישוב נקודות חיתוך אמיתי
-    // כדי למנוע מתיחת רווחים קיצונית וחפיפת מילים. רץ אחרי opening word
-    // (כדי שה-SVG כבר במקום ולא נספר בטעות כמילה רגילה).
-// משה 2026-05-14: בעבר auto-2-columns הופעל אוטומטית על זרמים גדולים,
-    // אבל זה דרס בחירה מפורשת של המשתמש לטור-אחד. עכשיו: רק אם המשתמש לא
-    // קבע cols=1 מפורשות.
-    pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
-      const pageH = p.clientHeight || 537;
-      p.querySelectorAll(".stream[data-stream]:not([data-stream-cols])").forEach(s => {
-        if (s.classList.contains("talmud-crown-portion") ||
-            s.classList.contains("talmud-body-portion") ||
-            s.classList.contains("talmud-body-expanded") ||
-            s.classList.contains("talmud-no-crown-side") ||
-            s.classList.contains("talmud-other-side")) return;
-        const code = s.getAttribute("data-stream");
-        const userCols = code ? (getEffectiveStreamSettings(code)?.cols || 1) : 1;
-        if (userCols === 1) return; // המשתמש בחר טור אחד — לא נוגעים
-        const h = s.getBoundingClientRect().height;
-        if (h > pageH * 0.5) {
-          s.style.columnCount = "2";
-          s.style.columnGap = "var(--ravtext-stream-horizontal-gap, 8px)";
-          s.dataset.streamCols = "auto-2";
-        }
-      });
-    });
-    // v33: post-process pipeline for "0 overflows + 0 gaps" goal.
-    //  1. Cap any catastrophic overflows first (lossless visual cap).
-    //  2. Pull content backward to fill gaps from next page (lossless DOM move).
-    //  3. Shrink page sizes to fit actual content (with overflow guard).
-    //  4. Final cap pass for any new overflows.
-    logEvent("overflow_cap_pass1");
-    correctTalmudOverflow(pagesContainer);
-    repaginateCatastrophicPages(pagesContainer); // no-op kept for compat
-    logEvent("pull_backward_+_shrink_+_move_orphans");
-    pullBackwardAcrossAllPages(pagesContainer);
-    // v33: repaginateMainOverflow disabled — caused regression in NO-LARGE-GAP.
-    // Need more careful integration before re-enabling.
-    // logEvent("repaginate_main_overflow_start");
-    // repaginateMainOverflow(pagesContainer);
-    // logEvent("repaginate_main_overflow_done");
-    logEvent("overflow_cap_pass2");
-    correctTalmudOverflow(pagesContainer);
-
-    // משה 2026-05-06: בדיקה איטרטיבית — מעמוד לעמוד, אם חורג — דוחפים
-    // את הילד האחרון (ראשי או הערה) לעמוד הבא, חוזרים ובודקים.
-    // מקסימום 10 איטרציות. עדיפות: דוחפים קודם הערות זרם, אח"כ ראשי.
-    // משה 2026-05-06 (חירום): מנגנון זה גורם קטסטרופה ב-talmud mode כי
-    // מזיז הערות בלי לעדכן את מבנה הכתר/body. מוגבל למקרה NON-talmud בלבד.
-    const isTalmudActive = typeof window !== "undefined" &&
-      window.localStorage?.getItem("ravtext.talmudLayout") === "1";
-    logEvent("strict_overflow_pushdown_loop_start", { talmudMode: isTalmudActive });
-    // משה 2026-05-06: 5 איטרציות, סף 5px. אנטי-פינג-פונג: זוכר אילו פסקאות
-    // הוזזו כדי שלא להזיז שוב חזרה.
-    const ITERS = isTalmudActive ? 0 : 5;
-    const PUSH_THRESHOLD_PX = 5;
-    const _movedThisRender = new WeakSet();
-
-    // Talmud-safe push-down: דוחפים הערה אחרונה של זרם NON-talmud (משנ"ב/רגיל)
-    // לעמוד הבא כשיש חריגה — לא נוגעים בכתר, body, body-expanded, main.
-    if (isTalmudActive) {
-      const TALMUD_PUSH_THRESHOLD_PX = 5;
-      // Cloud-Chrome 2026-05-06: page-streams pagination אמיתית.
-      // לעבור על כל עמוד; אם page-streams גולש מעבר לדף, להעביר ילדי-זרם
-      // האחרונים לעמוד הבא עד שהמכל מתאים. עובד כפעולה ראשונה לפני loops אחרים.
-      function splitPageStreamsBetweenPages(startIdx = 0) {
-        const pages = Array.from(
-          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
-        );
-        for (let i = startIdx; i < pages.length; i++) {
-          const cur = pages[i];
-          const ps = cur.querySelector(":scope > .page-streams");
-          if (!ps) continue;
-          void cur.offsetHeight;
-          let pageOv = cur.scrollHeight - cur.clientHeight;
-          if (pageOv <= TALMUD_PUSH_THRESHOLD_PX) continue;
-          // מצא או צור עמוד הבא
-          let next = pages[i + 1];
-          if (!next) {
-            next = document.createElement("div");
-            next.className = "page talmud-layout-page";
-            next.dir = "rtl";
-            // pass 150: למנוע duplication של pageIndex עם placeholders שיוצרו
-            // ע"י ה-engine. במקום להשתמש ב-pages.length שעלול להתנגש, מחפשים
-            // את ה-max page-index קיים בdom ומקצים +1.
-            const allWithIdx = pagesContainer.querySelectorAll("[data-page-index]");
-            let maxIdx = -1;
-            allWithIdx.forEach(p => {
-              const n = parseInt(p.dataset.pageIndex, 10);
-              if (Number.isFinite(n) && n > maxIdx) maxIdx = n;
-            });
-            next.dataset.pageIndex = String(maxIdx + 1);
-            const newPS = document.createElement("div");
-            newPS.className = "page-streams";
-            next.appendChild(newPS);
-            // pass 149: להכניס מיד אחרי cur, לא בסוף — אחרת ייכנס אחרי
-            // page-placeholder slots וייעלם מהתצוגה.
-            if (cur.nextSibling) cur.parentNode.insertBefore(next, cur.nextSibling);
-            else cur.parentNode.appendChild(next);
-            pages.push(next);
-          }
-          let nextPS = next.querySelector(":scope > .page-streams");
-          if (!nextPS) {
-            nextPS = document.createElement("div");
-            nextPS.className = "page-streams";
-            next.appendChild(nextPS);
-          }
-          // לולאה: בכל איטרציה, מוצאים את הזרם הכי-נמוך-Y בpage-streams,
-          // ומעבירים את הילד האחרון שלו (או ילד-בודד עם spans פנימיים) לnext.
-          let safety = 50;
-          while (pageOv > TALMUD_PUSH_THRESHOLD_PX && safety-- > 0) {
-            const streams = Array.from(ps.querySelectorAll(":scope > .stream[data-stream]"));
-            if (streams.length === 0) break;
-            // לוקחים את הזרם האחרון (גיאוגרפית/DOM)
-            const lastStream = streams[streams.length - 1];
-            const code = lastStream.getAttribute("data-stream");
-            // ירידה בעוטפים בודדים
-            let pushSrc = lastStream;
-            for (let depth = 0; depth < 4; depth++) {
-              const realCh = Array.from(pushSrc.children).filter(
-                c => !c.classList?.contains("stream-title")
-              );
-              if (realCh.length === 1 && /^(DIV|SPAN)$/i.test(realCh[0].tagName) &&
-                  realCh[0].children.length > 1) {
-                pushSrc = realCh[0];
-              } else break;
-            }
-            const childrenLeft = Array.from(pushSrc.children).filter(
-              c => !c.classList?.contains("stream-title")
-            );
-            if (childrenLeft.length === 0) break; // נשארה רק כותרת — אי אפשר להוריד עוד
-            const lastChild = childrenLeft[childrenLeft.length - 1];
-            // יעד ב-next: חיפוש או יצירה
-            let target = code
-              ? nextPS.querySelector(`:scope > .stream[data-stream="${code}"]`)
-              : null;
-            if (!target) {
-              target = document.createElement("div");
-              target.className = lastStream.className;
-              if (code) target.setAttribute("data-stream", code);
-              const oldTitle = lastStream.querySelector(":scope > .stream-title");
-              if (oldTitle) {
-                const t = oldTitle.cloneNode(true);
-                target.appendChild(t);
-              }
-              nextPS.insertBefore(target, nextPS.firstChild);
-            }
-            // יעד פנימי (אם יש wrapper)
-            let dest = target;
-            if (pushSrc !== lastStream) {
-              // נניח לפשטות: dest = target (ה-wrappers ייווצרו אם צריך)
-              const wrapClass = pushSrc.className;
-              const sel = `:scope > ${pushSrc.tagName.toLowerCase()}` +
-                (wrapClass ? "." + wrapClass.trim().split(/\s+/).join(".") : "");
-              let existing = target.querySelector(sel);
-              if (!existing) {
-                existing = pushSrc.cloneNode(false);
-                target.appendChild(existing);
-              }
-              dest = existing;
-            }
-            const nextTitle = dest.querySelector(":scope > .stream-title");
-            if (nextTitle) dest.insertBefore(lastChild, nextTitle.nextSibling);
-            else dest.insertBefore(lastChild, dest.firstChild);
-            logMove("split_page_streams", {
-              el: lastChild,
-              fromPage: i, toPage: i + 1,
-              trigger: "page-streams-overflow",
-              reason: `pageOv=${Math.round(pageOv)}px stream=${code || "?"}`,
-            });
-            void cur.offsetHeight;
-            pageOv = cur.scrollHeight - cur.clientHeight;
-          }
-          // pass 150: עדכון ה-attribute אחרי הפיצול. ה-attr הישן (1049) משאיר
-          // את ה-validator (INV-8) חושב שיש failure גם אחרי שהtkov ירד. גם
-          // לסמן/להסיר את ה-class talmud-page-overflow לפי המצב הנוכחי.
-          void cur.offsetHeight;
-          const finalOv = cur.scrollHeight - cur.clientHeight;
-          if (finalOv > 1) {
-            cur.setAttribute("data-talmud-overflow-px", String(Math.round(finalOv)));
-            cur.classList.add("talmud-page-overflow");
-          } else {
-            cur.removeAttribute("data-talmud-overflow-px");
-            cur.classList.remove("talmud-page-overflow");
-          }
-        }
-      }
-      splitPageStreamsBetweenPages();
-      // משה 2026-05-06 (pass 153): לולאת מתקנים רציפה — לא רק 200ms+1500ms.
-      // רץ עד שאין שינוי במצב ה-overflow ב-3 איטרציות רצופות, או עד 30
-      // איטרציות (cap בטיחותי). כל איטרציה: split + measure + repeat אם
-      // משהו השתנה.
-      function measureTotalOverflow() {
-        let sum = 0;
-        pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
-          let ov = p.scrollHeight - p.clientHeight;
-          const pageRect = p.getBoundingClientRect();
-
-          const streamsAndMain = Array.from(p.querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right, .v9-line'));
-          const rects = streamsAndMain.map(el => ({ el, rect: el.getBoundingClientRect() }));
-
-          rects.forEach(({ rect }) => {
-            if (rect.bottom > pageRect.bottom + 2) {
-              const visualOverflow = rect.bottom - pageRect.bottom;
-              if (visualOverflow > ov) {
-                ov = visualOverflow;
-              }
-            }
-          });
-
-          let maxOverlap = 0;
-          for (let i = 0; i < rects.length; i++) {
-            for (let j = i + 1; j < rects.length; j++) {
-               const { el: el1, rect: r1 } = rects[i];
-               const { el: el2, rect: r2 } = rects[j];
-               if (el1.contains(el2) || el2.contains(el1)) continue;
-
-               if (r1.width === 0 || r1.height === 0 || r2.width === 0 || r2.height === 0) continue;
-
-               const intersectX = r1.left < r2.right && r1.right > r2.left;
-               const intersectY = r1.top < r2.bottom && r1.bottom > r2.top;
-
-               if (intersectX && intersectY) {
-                 const overlapX = Math.min(r1.right, r2.right) - Math.max(r1.left, r2.left);
-                 const overlapY = Math.min(r1.bottom, r2.bottom) - Math.max(r1.top, r2.top);
-
-                 // Tolerate sub-pixel touching
-                 if (overlapX > 1 && overlapY > 1) {
-                   if (overlapY > maxOverlap) maxOverlap = overlapY;
-                 }
-               }
-            }
-          }
-          if (maxOverlap > ov) {
-              ov = maxOverlap;
-          }
-
-          if (ov > 1) sum += ov;
-        });
-        return sum;
-      }
-      function findFirstOverflowIdx() {
-        const pages = Array.from(
-          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
-        );
-        for (let i = 0; i < pages.length; i++) {
-          let ov = pages[i].scrollHeight - pages[i].clientHeight;
-          const pageRect = pages[i].getBoundingClientRect();
-
-          const streamsAndMain = Array.from(pages[i].querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right, .v9-line'));
-          const rects = streamsAndMain.map(el => ({ el, rect: el.getBoundingClientRect() }));
-
-          rects.forEach(({ rect }) => {
-            if (rect.bottom > pageRect.bottom + 2) {
-              const visualOverflow = rect.bottom - pageRect.bottom;
-              if (visualOverflow > ov) {
-                ov = visualOverflow;
-              }
-            }
-          });
-
-          let maxOverlap = 0;
-          for (let k = 0; k < rects.length; k++) {
-            for (let j = k + 1; j < rects.length; j++) {
-               const { el: el1, rect: r1 } = rects[k];
-               const { el: el2, rect: r2 } = rects[j];
-               if (el1.contains(el2) || el2.contains(el1)) continue;
-
-               if (r1.width === 0 || r1.height === 0 || r2.width === 0 || r2.height === 0) continue;
-
-               const intersectX = r1.left < r2.right && r1.right > r2.left;
-               const intersectY = r1.top < r2.bottom && r1.bottom > r2.top;
-
-               if (intersectX && intersectY) {
-                 const overlapX = Math.min(r1.right, r2.right) - Math.max(r1.left, r2.left);
-                 const overlapY = Math.min(r1.bottom, r2.bottom) - Math.max(r1.top, r2.top);
-
-                 if (overlapX > 1 && overlapY > 1) {
-                   if (overlapY > maxOverlap) maxOverlap = overlapY;
-                 }
-               }
-            }
-          }
-          if (maxOverlap > ov) {
-              ov = maxOverlap;
-          }
-
-          if (ov > 1) return i;
-        }
-        return -1;
-      }
-      // Cloud-Chrome כללים #9/#12: זרם שיש לו רק כותרת בלי תוכן (יכול להיווצר
-      // כשה-splitter יוצר container ביעד ואז התוכן מוחזר חזרה, או כשהמשתמש
-      // הגדיר זרם ב-localStorage שאין לו הערות בעמוד הזה). ניקוי בסוף כל
-      // pass מסיר אותם כדי שלא ייראו כותרות יתומות.
-      function streamHasRealContent(streamEl) {
-        const children = streamEl.children;
-        for (let i = 0; i < children.length; i++) {
-          const c = children[i];
-          if (c.classList && c.classList.contains("stream-title")) continue;
-          const t = (c.textContent || "").trim();
-          if (t.length > 0) return true;
-        }
-        return false;
-      }
-      function removeEmptyStreams() {
-        const streams = pagesContainer.querySelectorAll(".stream[data-stream]");
-        streams.forEach((s) => {
-          if (!streamHasRealContent(s)) s.remove();
-        });
-        // מכלי page-streams שנשארו ריקים אחרי הניקוי — להסיר גם אותם
-        const wraps = pagesContainer.querySelectorAll(".page-streams");
-        wraps.forEach((w) => {
-          if (w.querySelector(":scope > .stream[data-stream]") === null) {
-            w.remove();
-          }
-        });
-      }
-      // משה כלל #15: סיבובי תיקון לא חוזרים אחורה. כל pass מתחיל מהדף
-      // הראשון שיש בו חריגה. דפים תקינים שלפניו לא נוגעים בהם.
-      function runFullSplitterPass() {
-        try {
-          const startIdx = findFirstOverflowIdx();
-          if (startIdx < 0) {
-            removeEmptyStreams();
-            // משה כלל 3: גם כשאין חריגה, להחיל Y-segments כדי לסגור פערים אופקיים
-            try { applyYSegmentsToAllPages(pagesContainer); } catch (e) { console.warn("[y-seg] error:", e); }
-            // משה כלל 2 + שלב 5: למלא פערי-אמצע בכל סבב, לא רק בסוף
-            try { pullBackwardAcrossAllPages(pagesContainer); } catch (e) { console.warn("[pull-back] error:", e); }
-            return;
-          }
-          splitPageStreamsBetweenPages(startIdx);
-          if (typeof splitBodyExpandedBetweenPages === "function") {
-            splitBodyExpandedBetweenPages(startIdx);
-          }
-          removeEmptyStreams();
-          try { applyYSegmentsToAllPages(pagesContainer); } catch (e) { console.warn("[y-seg] error:", e); }
-          try { pullBackwardAcrossAllPages(pagesContainer); } catch (e) { console.warn("[pull-back] error:", e); }
-        } catch (e) { console.warn("[splitter] error:", e); }
-      }
-      // Bug 9 fix: כלל 10 — בעמוד האחרון, ה-page-streams חייב להיפגש עם
-      // ה-main בלי פער (אין מאיפה למשוך תוכן). מודדים את הפער הויזואלי
-      // האמיתי וקובעים margin-top שלילי בדיוק לגודלו (לא 29px קבוע).
-      function raiseLastPageFootnotes() {
-        const pages = Array.from(
-          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
-        );
-        if (pages.length === 0) return;
-        const lastReal = pages[pages.length - 1];
-        const ps = lastReal.querySelector(":scope > .page-streams");
-        if (!ps) return;
-        const block = lastReal.querySelector(":scope > .talmud-layout");
-        const main = lastReal.querySelector(":scope > .page-main");
-        const above = block || main;
-        if (!above) return;
-        const aboveBottom = above.getBoundingClientRect().bottom;
-        const psTop = ps.getBoundingClientRect().top;
-        const gap = psTop - aboveBottom;
-        if (gap > 5) {
-          ps.style.marginTop = `${-gap}px`;
-        } else {
-          // אם אין פער, לוודא שלא נשאר margin שלילי משאריות.
-          if (ps.style.marginTop && ps.style.marginTop.startsWith("-")) {
-            ps.style.marginTop = "";
-          }
-        }
-      }
-      function loopUntilStable() {
-        // משה 2026-05-07: התיקון לדליפת מצב-גמרא.
-        // ה-MutationObserver וה-setTimeouts מתוזמנים בעת רינדור-גפ"ת ושומרים
-        // הפניה לפונקציה הזו. אם המשתמש מכבה את הגפ"ת בלי לרענן את העמוד,
-        // ההפניות עדיין חיות ויורות מאוחר יותר (או כל עוד הצופה מותקן).
-        // הן מבצעות פעולות גפ"ת על דפים שכבר *לא* גפ"ת, וגורמות ל"באגים
-        // קשים ומרים" עליהם דיווח המשתמש. הגנה: בדיקת מצב חיה בכל קריאה.
-        const talmudActiveNow = (typeof window !== "undefined") &&
-          window.localStorage?.getItem("ravtext.talmudLayout") === "1";
-        if (!talmudActiveNow) return;
-        let prevOverflow = measureTotalOverflow();
-        let stableHits = 0;
-        const MAX_ITERS = 30;
-        for (let i = 0; i < MAX_ITERS; i++) {
-          runFullSplitterPass();
-          const curOverflow = measureTotalOverflow();
-          if (curOverflow === 0) break; // ניצחון מלא
-          if (curOverflow === prevOverflow) {
-            stableHits++;
-            if (stableHits >= 3) break; // לא משתנה — עוצרים
-          } else {
-            stableHits = 0;
-          }
-          prevOverflow = curOverflow;
-        }
-        try { raiseLastPageFootnotes(); } catch (e) { console.warn("[raiseLastPage] error:", e); }
-        // משה שלב 5: hard-gate לדיווח על חריגות שנותרו (לא חוסם render).
-        try {
-          const remaining = [];
-          pagesContainer.querySelectorAll(".page:not(.page-placeholder)").forEach((p, i) => {
-            const ov = p.scrollHeight - p.clientHeight;
-            if (ov > 5) remaining.push(`p${i + 1}=+${Math.round(ov)}px`);
-          });
-          if (remaining.length > 0) {
-            console.error(`[talmud] OVERFLOW REMAINING after loop: ${remaining.join(", ")}`);
-          }
-        } catch (e) { /* ignore gate errors */ }
-      }
-      // הרצה ראשונה מיד; שתי הרצות מאוחרות (200ms + 1500ms) לתפוס
-      // late-layout/font-loading מיידית, ובנוסף Mutation/Resize observers
-      // עם debounce של 50ms כדי לתפוס גם שינויים מאוחרים יותר (משה כלל 15).
-      setTimeout(loopUntilStable, 200);
-      setTimeout(loopUntilStable, 1500);
-      // משה כלל 15: לולאה אינה חוזרת אחורה אבל כן עוקבת אחרי שינויים.
-      // observer מצמיד את עצמו פעם אחת לכל pagesContainer.
-      if (!pagesContainer.__talmudObserverInstalled) {
-        pagesContainer.__talmudObserverInstalled = true;
-        let debounceTimer = null;
-        let suppressUntil = 0;
-        const debouncedLoop = () => {
-          if (Date.now() < suppressUntil) return;
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            // suppress observer during loop's own DOM mutations
-            suppressUntil = Date.now() + 200;
-            try { loopUntilStable(); } catch (e) {
-              console.warn("[talmud-observer] loop error:", e);
-            }
-            suppressUntil = Date.now() + 200;
-          }, 50);
-        };
-        try {
-          const mo = new MutationObserver((mutations) => {
-            // ignore mutations caused by our own loop (size attr changes)
-            const meaningful = mutations.some(m =>
-              m.type === "childList" ||
-              (m.type === "attributes" && m.attributeName !== "data-talmud-overflow-px"
-                && m.attributeName !== "class")
-            );
-            if (meaningful) debouncedLoop();
-          });
-          mo.observe(pagesContainer, {
-            childList: true, subtree: true, attributes: true,
-            attributeFilter: ["data-page-index", "style"]
-          });
-          pagesContainer.__talmudMutationObserver = mo;
-          // Resize observer for late font-load that changes line heights
-          if (typeof ResizeObserver !== "undefined") {
-            const ro = new ResizeObserver(() => debouncedLoop());
-            pagesContainer.querySelectorAll(".page").forEach(p => ro.observe(p));
-            pagesContainer.__talmudResizeObserver = ro;
-            // also watch new pages added later
-            const pageAddObserver = new MutationObserver(() => {
-              pagesContainer.querySelectorAll(".page:not([data-talmud-ro-attached])").forEach(p => {
-                ro.observe(p);
-                p.dataset.talmudRoAttached = "1";
-              });
-            });
-            pageAddObserver.observe(pagesContainer, { childList: true });
-            pagesContainer.__talmudPageAddObserver = pageAddObserver;
-          }
-          // Document fonts ready: trigger one final loop
-          if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(() => debouncedLoop()).catch(() => {});
-          }
-        } catch (e) {
-          console.warn("[talmud-observer] install failed:", e);
-        }
-      }
-      // pass 146: גם body-expanded בתוך talmud-layout יכול לגלוש (P5 case).
-      // אם ה-body-expanded ארוך מדי, מעבירים note-parts (spans) האחרונים לעמוד הבא.
-      function splitBodyExpandedBetweenPages(startIdx = 0) {
-        const pages = Array.from(
-          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
-        );
-        window.__SPLIT_BE_DEBUG__ = window.__SPLIT_BE_DEBUG__ || [];
-        for (let i = startIdx; i < pages.length; i++) {
-          const cur = pages[i];
-          void cur.offsetHeight;
-          let pageOv = cur.scrollHeight - cur.clientHeight;
-          if (pageOv <= TALMUD_PUSH_THRESHOLD_PX) continue;
-          const expandedList = cur.querySelectorAll(".talmud-body-expanded, [data-talmud-role*='expanded']");
-          window.__SPLIT_BE_DEBUG__.push({ page: i, ov: pageOv, expCount: expandedList.length });
-          if (expandedList.length === 0) continue;
-          // צור/מצא next page
-          let next = pages[i + 1];
-          if (!next) {
-            next = document.createElement("div");
-            next.className = "page talmud-layout-page";
-            next.dir = "rtl";
-            // pass 150: למנוע duplication של pageIndex עם placeholders שיוצרו
-            // ע"י ה-engine. במקום להשתמש ב-pages.length שעלול להתנגש, מחפשים
-            // את ה-max page-index קיים בdom ומקצים +1.
-            const allWithIdx = pagesContainer.querySelectorAll("[data-page-index]");
-            let maxIdx = -1;
-            allWithIdx.forEach(p => {
-              const n = parseInt(p.dataset.pageIndex, 10);
-              if (Number.isFinite(n) && n > maxIdx) maxIdx = n;
-            });
-            next.dataset.pageIndex = String(maxIdx + 1);
-            const newPS = document.createElement("div");
-            newPS.className = "page-streams";
-            next.appendChild(newPS);
-            // pass 149: להכניס מיד אחרי cur, לא בסוף — אחרת ייכנס אחרי
-            // page-placeholder slots וייעלם מהתצוגה.
-            if (cur.nextSibling) cur.parentNode.insertBefore(next, cur.nextSibling);
-            else cur.parentNode.appendChild(next);
-            pages.push(next);
-          }
-          let safety = 50;
-          while (pageOv > TALMUD_PUSH_THRESHOLD_PX && safety-- > 0) {
-            // מוצאים את ה-body-expanded האחרון בעמוד; יורדים בעוטפים בודדים;
-            // מעבירים את הילד האחרון לעמוד הבא (יוצרים stream חדש בpage-streams)
-            const exps = Array.from(cur.querySelectorAll(".talmud-body-expanded"));
-            if (exps.length === 0) break;
-            const exp = exps[exps.length - 1];
-            let pushSrc = exp;
-            for (let depth = 0; depth < 5; depth++) {
-              const realCh = Array.from(pushSrc.children).filter(
-                c => !c.classList?.contains("stream-title")
-              );
-              if (realCh.length === 1 && realCh[0].children.length > 1) {
-                pushSrc = realCh[0];
-              } else break;
-            }
-            const childrenLeft = Array.from(pushSrc.children).filter(
-              c => !c.classList?.contains("stream-title")
-            );
-            if (childrenLeft.length <= 1) break;
-            const lastChild = childrenLeft[childrenLeft.length - 1];
-            // יעד בעמוד הבא: stream חדש בpage-streams עם code זהה
-            const code = exp.dataset.talmudBodyOf || exp.getAttribute("data-stream") || "";
-            const nextPS = next.querySelector(":scope > .page-streams");
-            if (!nextPS) break;
-            let target = code
-              ? nextPS.querySelector(`:scope > .stream[data-stream="${code}"]`)
-              : null;
-            if (!target) {
-              target = document.createElement("div");
-              target.className = `stream stream-color-${(parseInt(code, 10) - 1) % 6 + 1} talmud-body-expanded-continued`;
-              if (code) target.setAttribute("data-stream", code);
-              const title = document.createElement("div");
-              title.className = "stream-title";
-              title.textContent = `${defaultLabelForCode(code)} (המשך)`;
-              target.appendChild(title);
-              nextPS.insertBefore(target, nextPS.firstChild);
-            }
-            const nextTitle = target.querySelector(":scope > .stream-title");
-            if (nextTitle) target.insertBefore(lastChild, nextTitle.nextSibling);
-            else target.insertBefore(lastChild, target.firstChild);
-            logMove("split_body_expanded", {
-              el: lastChild,
-              fromPage: i, toPage: i + 1,
-              trigger: "body-expanded-overflow",
-              reason: `pageOv=${Math.round(pageOv)}px`,
-            });
-            void cur.offsetHeight;
-            pageOv = cur.scrollHeight - cur.clientHeight;
-          }
-          // pass 150: עדכון attribute + class גם כאן (סינכרון אחרי body-expanded split).
-          void cur.offsetHeight;
-          const finalOv = cur.scrollHeight - cur.clientHeight;
-          if (finalOv > 1) {
-            cur.setAttribute("data-talmud-overflow-px", String(Math.round(finalOv)));
-            cur.classList.add("talmud-page-overflow");
-          } else {
-            cur.removeAttribute("data-talmud-overflow-px");
-            cur.classList.remove("talmud-page-overflow");
-          }
-        }
-      }
-      splitBodyExpandedBetweenPages();
-      // אם העמוד האחרון חורג — צור עמוד חדש בסוף לקבל את העודף
-      function ensureNextPage(allPages) {
-        const last = allPages[allPages.length - 1];
-        if (!last) return allPages;
-        const ov = last.scrollHeight - last.clientHeight;
-        if (ov <= TALMUD_PUSH_THRESHOLD_PX) return allPages;
-        const newPage = document.createElement("div");
-        newPage.className = "page talmud-layout-page";
-        newPage.dir = "rtl";
-        newPage.dataset.pageIndex = String(allPages.length);
-        newPage.dataset.realized = "1";
-        const ms = last.querySelector(":scope > .page-main");
-        const ss = last.querySelector(":scope > .page-streams");
-        if (ms) {
-          const np = document.createElement("div");
-          np.className = "page-main talmud-main";
-          newPage.appendChild(np);
-        }
-        if (ss) {
-          const np = document.createElement("div");
-          np.className = "page-streams";
-          newPage.appendChild(np);
-        }
-        // pass 149: להכניס מיד אחרי last, לא בסוף — אחרת ייכנס אחרי
-        // page-placeholder slots וייעלם מהתצוגה.
-        if (last.nextSibling) last.parentNode.insertBefore(newPage, last.nextSibling);
-        else last.parentNode.appendChild(newPage);
-        return Array.from(
-          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
-        );
-      }
-      for (let it = 0; it < 20; it++) {
-        let pushed = false;
-        let allPages = Array.from(
-          pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
-        );
-        // אם העמוד האחרון חורג — הוסף עמוד חדש קודם
-        if (allPages.length > 0) {
-          const lastP = allPages[allPages.length - 1];
-          const lov = lastP.scrollHeight - lastP.clientHeight;
-          if (lov > TALMUD_PUSH_THRESHOLD_PX) {
-            allPages = ensureNextPage(allPages);
-          }
-        }
-        for (let i = 0; i < allPages.length - 1; i++) {
-          const cur = allPages[i];
-          const next = allPages[i + 1];
-          void cur.offsetHeight;
-          const ov = cur.scrollHeight - cur.clientHeight;
-          if (ov <= TALMUD_PUSH_THRESHOLD_PX) continue;
-          // רק זרמים ב-page-streams (לא בתוך talmud-layout)
-          const curStreams = Array.from(
-            cur.querySelectorAll(":scope > .page-streams > .stream[data-stream]")
-          );
-          let movedThis = false;
-          for (const s of curStreams) {
-            // Cloud-Claude 2026-05-06: ירידה בעוטפים גם לזרמים רגילים בpage-streams.
-            // הערה ארוכה אחת מפוצלת ל-spans של data-cont — צריך לדחוף span בודד.
-            let pushSrc = s;
-            for (let depth = 0; depth < 4; depth++) {
-              const realChildren = Array.from(pushSrc.children).filter(c =>
-                !c.classList?.contains("stream-title")
-              );
-              if (realChildren.length === 1 && /^(DIV|SPAN)$/i.test(realChildren[0].tagName) &&
-                  realChildren[0].children.length > 1) {
-                pushSrc = realChildren[0];
-              } else {
-                break;
-              }
-            }
-            const lastNote = Array.from(pushSrc.children).filter(c =>
-              !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
-            ).pop();
-            if (!lastNote) continue;
-            const code = s.getAttribute("data-stream");
-            if (!code) continue;
-            let nextS = next.querySelector(
-              `:scope > .page-streams > .stream[data-stream="${code}"]`
-            );
-            if (!nextS) {
-              const nextPS = next.querySelector(":scope > .page-streams");
-              if (!nextPS) continue;
-              nextS = document.createElement("div");
-              nextS.className = s.className;
-              nextS.setAttribute("data-stream", code);
-              const oldTitle = s.querySelector(":scope > .stream-title");
-              if (oldTitle) nextS.appendChild(oldTitle.cloneNode(true));
-              nextPS.insertBefore(nextS, nextPS.firstChild);
-            }
-            const nextTitle = nextS.querySelector(":scope > .stream-title");
-            if (nextTitle) nextS.insertBefore(lastNote, nextTitle.nextSibling);
-            else nextS.insertBefore(lastNote, nextS.firstChild);
-            _movedThisRender.add(lastNote);
-            movedThis = true;
-            pushed = true;
-            break;
-          }
-          if (movedThis) break;
-          // אם לא הזזנו זרם רגיל ויש חריגה גדולה — הזז גם הערה אחרונה מ-body-expanded
-          if (!movedThis && ov > 50) {
-            const expanded = cur.querySelectorAll(".talmud-body-expanded, [data-talmud-role='commentary-expanded'], [data-talmud-role='commentary-expanded-lower']");
-            for (const exp of Array.from(expanded).reverse()) {
-              // Cloud-Claude 2026-05-06: לרדת ב-DIV/note wrappers בודדים עד
-              // שמוצאים אוסף ילדים שאפשר לפצל. המקרה הטיפוסי בתלמוד-mode:
-              // <div class="note note-inline"><span data-cont="0">part1</span><span data-cont="1">part2</span>…</div>
-              let pushSrc = exp;
-              for (let depth = 0; depth < 4; depth++) {
-                const realChildren = Array.from(pushSrc.children).filter(c =>
-                  !c.classList?.contains("stream-title")
-                );
-                if (realChildren.length === 1 && /^(DIV|SPAN)$/i.test(realChildren[0].tagName) &&
-                    realChildren[0].children.length > 1) {
-                  pushSrc = realChildren[0];
-                } else {
-                  break;
-                }
-              }
-              const lastNote = Array.from(pushSrc.children).filter(c =>
-                !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
-              ).pop();
-              if (!lastNote) continue;
-              const code = exp.dataset.talmudBodyOf || "";
-              // נסה למצוא יעד תואם בעמוד הבא; אם אין, צור stream חדש ב-page-streams
-              let target = code ? next.querySelector(
-                `.talmud-body-expanded[data-talmud-body-of="${code}"], .stream[data-stream="${code}"]`
-              ) : null;
-              if (!target) {
-                const nextPS = next.querySelector(":scope > .page-streams");
-                if (!nextPS) continue;
-                target = document.createElement("div");
-                target.className = `stream stream-color-${(parseInt(code, 10) - 1) % 6 + 1}`;
-                if (code) target.setAttribute("data-stream", code);
-                const title = document.createElement("div");
-                title.className = "stream-title";
-                title.textContent = defaultLabelForCode(code);
-                target.appendChild(title);
-                nextPS.insertBefore(target, nextPS.firstChild);
-              }
-              // Cloud-Claude 2026-05-06: אם pushSrc אינו exp עצמו (יש wrapper),
-              // משחזרים את ה-wrapper הזה ב-target כדי לא לאבד עיצוב/data-cont.
-              let dest = target;
-              if (pushSrc !== exp) {
-                const ancestors = [];
-                let p = pushSrc;
-                while (p && p !== exp) { ancestors.unshift(p); p = p.parentElement; }
-                for (const anc of ancestors) {
-                  // נחפש wrapper מקביל ב-target; אם אין — ניצור clone ריק
-                  const sel = anc.tagName.toLowerCase() +
-                    (anc.className ? "." + anc.className.trim().split(/\s+/).join(".") : "");
-                  let existing = dest.querySelector(":scope > " + sel);
-                  if (!existing) {
-                    existing = anc.cloneNode(false); // shallow clone — no children
-                    dest.appendChild(existing);
-                  }
-                  dest = existing;
-                }
-              }
-              const nextTitle = dest.querySelector(":scope > .stream-title");
-              if (nextTitle) dest.insertBefore(lastNote, nextTitle.nextSibling);
-              else dest.insertBefore(lastNote, dest.firstChild);
-              _movedThisRender.add(lastNote);
-              movedThis = true; pushed = true; break;
-            }
-            if (movedThis) break;
-          }
-        }
-        if (!pushed) break;
-      }
-    }
-    // (פאס 70 הוסר זמנית — גרם להרס במצב תלמוד. צריך עיצוב מחדש שלא
-    //  מפרק את מבנה הכתר/body. נבנה בנפרד כשאהיה בטוח שאי-אפשר לשבור.)
-    for (let it = 0; it < ITERS; it++) {
-      let pushedAny = false;
-      const allPages = Array.from(
-        pagesContainer.querySelectorAll(".page:not(.page-placeholder)")
-      );
-      for (let i = 0; i < allPages.length - 1; i++) {
-        const cur = allPages[i];
-        const next = allPages[i + 1];
-        void cur.offsetHeight;
-        const ov = cur.scrollHeight - cur.clientHeight;
-        if (ov <= PUSH_THRESHOLD_PX) continue;
-        // STRATEGY 1: דחוף הערה אחרונה של איזה זרם בעמוד הנוכחי לעמוד הבא
-        const curStreams = Array.from(
-          cur.querySelectorAll(".talmud-layout .stream[data-stream], .page-streams > .stream[data-stream]")
-        );
-        let pushedStream = false;
-        for (const s of curStreams) {
-          const code = s.getAttribute("data-stream");
-          if (!code) continue;
-          // מצא את הילד האחרון של הזרם (לא כותרת, לא הוזז כבר ב-render הזה)
-          const lastNote = Array.from(s.children).filter(c =>
-            !c.classList?.contains("stream-title") && !_movedThisRender.has(c)
-          ).pop();
-          if (!lastNote) continue;
-          // מצא זרם מקביל בעמוד הבא, או צור חדש
-          let nextS = next.querySelector(
-            `.talmud-layout .stream[data-stream="${code}"], .page-streams > .stream[data-stream="${code}"]`
-          );
-          if (nextS) {
-            // הוסף את ההערה ראשונה שם (אחרי הכותרת אם קיימת)
-            const nextTitle = nextS.querySelector(":scope > .stream-title");
-            if (nextTitle) nextS.insertBefore(lastNote, nextTitle.nextSibling);
-            else nextS.insertBefore(lastNote, nextS.firstChild);
-            _movedThisRender.add(lastNote);
-            pushedStream = true;
-            pushedAny = true;
-            break;
-          }
-        }
-        if (pushedStream) continue;
-        // STRATEGY 2: דחוף ילד ראשי אחרון
-        const curMain = cur.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
-        const nextMain = next.querySelector(":scope > .page-main, :scope .page-main.talmud-main");
-        if (!curMain || !nextMain) continue;
-        const lastMainChild = Array.from(curMain.children).filter(c =>
-          !c.classList?.contains("talmud-body-portion") &&
-          !c.classList?.contains("talmud-body-expanded") &&
-          !c.classList?.contains("stream") &&
-          /^(P|H[1-6]|DIV|BLOCKQUOTE|PRE)$/i.test(c.tagName)
-        ).pop();
-        if (!lastMainChild) continue;
-        nextMain.insertBefore(lastMainChild, nextMain.firstChild);
-        pushedAny = true;
-      }
-      if (!pushedAny) break;
-      logEvent(`strict_overflow_pushdown_iter_${it + 1}`);
-    }
-    logEvent("strict_overflow_pushdown_loop_end");
-    logEvent("render_pipeline_complete", {
-      durationMs: Math.round(performance.now() - t2),
-      pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,
-    });
-    await firePackerHook("afterBuild", { container: pagesContainer, pages });
-    const t3 = performance.now();
-    const statusEl = document.getElementById("status");
-    if (statusEl) {
-      const utils = pages.map((p) => Math.min(100, (p.total / pageGeom.maxPageHeight) * 100));
-      const avg = utils.length ? utils.reduce((a, b) => a + b, 0) / utils.length : 0;
-      const allStreams = new Set();
-      for (const p of pages) for (const c of Object.keys(p.streams || {})) allStreams.add(c);
-      const streams = Array.from(allStreams).sort((a, b) => parseInt(a) - parseInt(b)).join(", ") || "אין";
-      statusEl.textContent =
-        `${pages.length} עמודים, ניצול ממוצע ${avg.toFixed(1)}% — זרמים: ${streams}`;
-    }
-    window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-      detail: { pages, content },
-    }));
-
-    if (pdfToolbarApi) {
-      pdfToolbarApi.setTotal(pages.length);
-      requestAnimationFrame(() => {
-        pdfToolbarApi.rememberBaseSize();
-        pdfToolbarApi.applyZoom();
-      });
-    }
-
-    // משה 2026-05-14: תיקון-עצמי דינמי לחריגות שנותרו אחרי כל הצנרת.
-    // מודדים בקופסה האמיתית של הטקסט (Range.getBoundingClientRect, כולל
-    // descender), ואם יש חריגה ל-bottom של עמוד — מעלים את ה-reserve הדינמי
-    // ב-CSS var ומבקשים rerender. מוגבל ל-4 iterations בכל session כדי לא
-    // ליצור לולאות. בלי MutationObserver, רק קריאה מפורשת מסוף הצנרת.
-    if (!skipSmartTune) {
-      requestAnimationFrame(() => {
-        const overflowFix = correctLiveOverflowOnce(pagesContainer);
-        // משה 2026-05-14: אחרי שאין יותר חריגות, בודקים אם יש זוגות סימני
-        // פיצול U+2060 שיכולים להתמזג חזרה בעמוד אחד. אם כן — rerender שאחד
-        // יבטל את הפיצול. הקריאה לא תרוץ אם overflowFix כבר בקש rerender.
-        if (!overflowFix) {
-          tryRemergeSplitMarks(pagesContainer);
-        }
-      });
-    }
-
-    // משה 2026-05-07: מנוע חכם — אחרי שהדף התייצב (post-process loops סיימו),
-    // מודדים את המצב ומחליטים אם הכרית הנוכחית אופטימלית. אם לא — מעדכנים
-    // את הכרית ומריצים שוב. עוצר אחרי MAX_ITERATIONS או כשמגיעים ליציבות.
-    // ה-flag _smartTuneActive מונע re-entry בעת re-render.
-    if (!skipSmartTune && isSmartEngineEnabled() && !_smartTuneActive) {
-      _smartTuneActive = true;
-      // המתן ל-loopUntilStable (1500ms) + מרווח קטן לוודא יציבות.
-      setTimeout(async () => {
-        try {
-          const contentHash = hashContent(content);
-          await runSmartTune(contentHash, pagesContainer, async (newSafety) => {
-            // rerender callback — re-runs the full render with the new safety.
-            // Skips smart tune internally to avoid re-entry.
-            _renderToken++;
-            const innerToken = _renderToken;
-            await _runRender(paneManager, pagesContainer, pdfToolbarApi, innerToken, /*skipSmartTune*/true);
-            // Wait for late post-process to settle before measuring again.
-            await new Promise(r => setTimeout(r, 1700));
-          });
-        } catch (e) {
-          console.warn("[smart-engine] tune failed:", e);
-        } finally {
-          _smartTuneActive = false;
-        }
-      }, 1700);
-    }
-
-    console.log(`[engine] ${pages.length} pages | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
-  } catch (err) {
-    console.error("Engine render error:", err);
-    // משה 2026-05-14: הצגת השגיאה גם בסטטוס. בלי זה ה-"מרענן..." נשאר על המסך
-    // אחרי שהרינדור נכשל, וזה נראה כאילו האפליקציה תקועה.
-    const errStatusEl = document.getElementById("status");
-    if (errStatusEl) {
-      errStatusEl.textContent = `שגיאת רינדור: ${err && err.message ? err.message : err}`;
-    }
-    pagesContainer.innerHTML = `<div class="error-hint">שגיאת רינדור: ${escapeHtml(err && err.message ? err.message : String(err))}</div>`;
-    if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
-    window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-      detail: { pages: [], content: [], error: err && err.message ? err.message : String(err) },
-    }));
+  if (shouldFlush) {
+    scheduleEngineRender(_lastRenderArgs.paneManager, _lastRenderArgs.pagesContainer, _lastRenderArgs.pdfToolbarApi, { force: true });
   }
 }
 
+export function cancelEngineRender(reason = "user") {
+  if (_debounceTimer) clearTimeout(_debounceTimer);
+  _debounceTimer = null;
+  _renderToken++;
+  _cancelledToken = _renderToken;
+  _renderRunning = false;
+  _renderScheduled = false;
+  restoreSnapshot();
+  setStatus(reason === "user" ? "Render stopped. Previous preview was kept." : "Render cancelled.");
+  emitRenderState("cancelled");
+}
+
+export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi = null, options = {}) {
+  const force = !!options.force;
+  _lastRenderArgs = { paneManager, pagesContainer, pdfToolbarApi };
+
+  if (_debounceTimer) clearTimeout(_debounceTimer);
+  _debounceTimer = null;
+
+  if (_renderPaused && !force) {
+    _pendingWhilePaused = true;
+    _renderToken++;
+    _renderScheduled = false;
+    _renderRunning = false;
+    setStatus("Render paused. Pending changes were not rendered yet.");
+    emitRenderState("pending-paused");
+    return;
+  }
+
+  snapshotPages(pagesContainer);
+  _renderScheduled = true;
+  setStatus("Rendering...");
+  emitRenderState("scheduled");
+
+  _debounceTimer = setTimeout(() => {
+    _debounceTimer = null;
+    _renderScheduled = false;
+    _renderRunning = true;
+    _renderToken++;
+    emitRenderState("running");
+
+    try {
+      core.scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi);
+    } catch (err) {
+      _renderRunning = false;
+      emitRenderState("error");
+      throw err;
+    }
+  }, force ? 0 : LIVE_RENDER_DELAY_MS);
+}
+
+function ensureRenderControlStyle() {
+  if (typeof document === "undefined" || document.getElementById("ravtext-render-controller-style")) return;
+  const style = document.createElement("style");
+  style.id = "ravtext-render-controller-style";
+  style.textContent = `
+    #btn-render.render-running { background: #b91c1c !important; color: #fff !important; border-color: #991b1b !important; animation: ravtext-render-pulse 0.8s ease-in-out infinite; }
+    @keyframes ravtext-render-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .72; transform: scale(1.03); } }
+    .btn-render-pause { margin-inline-start: 6px; white-space: nowrap; }
+    .btn-render-pause.active { background: #f59e0b !important; color: #111827 !important; border-color: #d97706 !important; font-weight: 700; }
+    body.render-paused #status { color: #92400e; }
+    body.render-running #status { color: #991b1b; }
+  `;
+  document.head.appendChild(style);
+}
+
+function ensurePauseButton() {
+  const renderBtn = document.getElementById("btn-render");
+  if (!renderBtn || document.getElementById("btn-render-pause")) return;
+  const pauseBtn = document.createElement("button");
+  pauseBtn.id = "btn-render-pause";
+  pauseBtn.type = "button";
+  pauseBtn.className = "btn-render-pause";
+  pauseBtn.textContent = "Pause render";
+  pauseBtn.title = "Pause automatic rendering while editing several things";
+  renderBtn.insertAdjacentElement("afterend", pauseBtn);
+}
+
+function syncRenderButtons() {
+  if (typeof document === "undefined") return;
+  const state = getEngineRenderState();
+  const renderBtn = document.getElementById("btn-render");
+  const pauseBtn = document.getElementById("btn-render-pause");
+
+  if (renderBtn) {
+    const busy = state.running || state.scheduled;
+    renderBtn.classList.toggle("render-running", busy);
+    renderBtn.setAttribute("aria-busy", busy ? "true" : "false");
+    renderBtn.textContent = busy ? "Stop render" : "Render";
+    renderBtn.title = busy ? "Stop the current render" : "Render now";
+  }
+
+  if (pauseBtn) {
+    pauseBtn.classList.toggle("active", state.paused);
+    pauseBtn.setAttribute("aria-pressed", state.paused ? "true" : "false");
+    pauseBtn.textContent = state.paused ? (state.pendingWhilePaused ? "Resume and render" : "Resume render") : "Pause render";
+  }
+
+  document.body.classList.toggle("render-paused", state.paused);
+  document.body.classList.toggle("render-running", state.running || state.scheduled);
+}
+
+function installRenderControlUi() {
+  if (typeof document === "undefined") return;
+  ensureRenderControlStyle();
+  ensurePauseButton();
+  syncRenderButtons();
+
+  const renderBtn = document.getElementById("btn-render");
+  if (renderBtn && renderBtn.dataset.renderControllerStop !== "1") {
+    renderBtn.dataset.renderControllerStop = "1";
+    renderBtn.addEventListener("click", (ev) => {
+      const state = getEngineRenderState();
+      if (state.running || state.scheduled) {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        cancelEngineRender("user");
+      }
+    }, true);
+  }
+
+  const pauseBtn = document.getElementById("btn-render-pause");
+  if (pauseBtn && pauseBtn.dataset.renderControllerPause !== "1") {
+    pauseBtn.dataset.renderControllerPause = "1";
+    pauseBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const state = getEngineRenderState();
+      setEngineRenderPaused(!state.paused, { flush: true });
+    });
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("ravtext:render-state", syncRenderButtons);
+  window.addEventListener("ravtext:engine-rendered", () => {
+    if (_cancelledToken && _cancelledToken >= _renderToken) {
+      restoreSnapshot();
+      setStatus("Render stopped. Previous preview was kept.");
+      _cancelledToken = 0;
+    }
+    _renderRunning = false;
+    _renderScheduled = false;
+    emitRenderState("finished");
+  });
+  const installSoon = () => {
+    let tries = 0;
+    const tick = () => { installRenderControlUi(); if (++tries < 30) setTimeout(tick, 250); };
+    tick();
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", installSoon, { once: true });
+  else setTimeout(installSoon, 0);
+}
