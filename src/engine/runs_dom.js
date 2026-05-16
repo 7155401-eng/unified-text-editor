@@ -28,32 +28,82 @@ function hasMarks(marks) {
   return false;
 }
 
-// מנקה רשימת runs: מיון לפי start, חיתוך לטווח הטקסט, מילוי "פערים" עם marks ריקים.
-// מחזיר מערך רציף שמכסה את כל [0, text.length).
+function sameMarks(a, b) {
+  const ak = Object.keys(a || {}).sort();
+  const bk = Object.keys(b || {}).sort();
+  if (ak.length !== bk.length) return false;
+  for (let i = 0; i < ak.length; i++) {
+    if (ak[i] !== bk[i]) return false;
+    if (a[ak[i]] !== b[bk[i]]) return false;
+  }
+  return true;
+}
+
+function mergeAdjacentRuns(runs) {
+  const out = [];
+  for (const r of runs || []) {
+    if (!r || r.end <= r.start) continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.end === r.start && sameMarks(prev.marks, r.marks)) {
+      prev.end = r.end;
+    } else {
+      out.push({ start: r.start, end: r.end, marks: r.marks || {} });
+    }
+  }
+  return out;
+}
+
+function cleanRun(r, len) {
+  const start = Math.max(0, Math.min(len, Number(r?.start) || 0));
+  const end = Math.max(0, Math.min(len, Number(r?.end) || 0));
+  if (end <= start) return null;
+  return { start, end, marks: r?.marks || {} };
+}
+
+// מנקה רשימת runs בצורה יציבה: במקום לתת ל-run אחד לדרוס run חופף לפי סדר
+// מקרי, חותכים את הטקסט לפי כל נקודות הגבול וממזגים את כל ה-marks החופפים.
+// זה מונע קפיצות של bold/color באמצע מילה כאשר קיימים כמה marks באותו טווח.
 function normalizeRuns(text, runs) {
   const len = text ? text.length : 0;
   if (!len) return [];
   const list = Array.isArray(runs)
-    ? runs
-        .map(r => ({
-          start: Math.max(0, Math.min(len, Number(r.start) || 0)),
-          end: Math.max(0, Math.min(len, Number(r.end) || 0)),
-          marks: r.marks || {},
-        }))
-        .filter(r => r.end > r.start)
-        .sort((a, b) => a.start - b.start)
+    ? runs.map((r) => cleanRun(r, len)).filter(Boolean)
     : [];
-  const out = [];
-  let cursor = 0;
+  if (list.length === 0) return [{ start: 0, end: len, marks: {} }];
+
+  const points = new Set([0, len]);
   for (const r of list) {
-    if (r.start > cursor) out.push({ start: cursor, end: r.start, marks: {} });
-    if (r.start < cursor) r.start = cursor;
-    if (r.start >= r.end) continue;
-    out.push({ start: r.start, end: r.end, marks: r.marks });
-    cursor = r.end;
+    points.add(r.start);
+    points.add(r.end);
   }
-  if (cursor < len) out.push({ start: cursor, end: len, marks: {} });
-  return out;
+  const sorted = Array.from(points).sort((a, b) => a - b);
+  const out = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const start = sorted[i];
+    const end = sorted[i + 1];
+    if (end <= start) continue;
+    const marks = {};
+    for (const r of list) {
+      if (r.start <= start && r.end >= end) {
+        Object.assign(marks, r.marks || {});
+      }
+    }
+    out.push({ start, end, marks });
+  }
+  return mergeAdjacentRuns(out);
+}
+
+function isV9MainLine(parent) {
+  if (!parent || !parent.classList) return false;
+  return parent.dataset?.v9Role === "main" || parent.classList.contains("v9-role-main");
+}
+
+// V9 מפצל פסקאות ושורות אנליטית. כאשר mainRuns מאבדים סנכרון אחרי פיצול,
+// color/fontSize/bold נקודתיים יכולים ליפול על אותיות לא קשורות. כדי לשמור
+// על פלט יציב כמו בגרסאות הראשונות, הטקסט הראשי ב-V9 מצויר בלי inline runs;
+// סגנון כללי של הטקסט הראשי עדיין מגיע דרך lineEl עצמו.
+function shouldSuppressInlineRuns(parent) {
+  return isV9MainLine(parent);
 }
 
 // מוסיף לתוך parent את הטקסט הנתון, מחולק ל-spans לפי runs. שומר על marks
@@ -61,6 +111,10 @@ function normalizeRuns(text, runs) {
 export function appendTextWithRuns(parent, text, runs) {
   const str = String(text || "");
   if (!str) return;
+  if (shouldSuppressInlineRuns(parent)) {
+    parent.appendChild(document.createTextNode(str));
+    return;
+  }
   const normalized = normalizeRuns(str, runs);
   if (normalized.length === 0 || !normalized.some(r => hasMarks(r.marks))) {
     parent.appendChild(document.createTextNode(str));
@@ -88,11 +142,12 @@ export function sliceRuns(runs, start, end) {
   const out = [];
   for (const r of runs) {
     if (r.end <= start || r.start >= end) continue;
-    out.push({
+    const sliced = {
       start: Math.max(0, r.start - start),
       end: Math.min(end - start, r.end - start),
       marks: r.marks,
-    });
+    };
+    if (sliced.end > sliced.start) out.push(sliced);
   }
-  return out;
+  return mergeAdjacentRuns(out);
 }
