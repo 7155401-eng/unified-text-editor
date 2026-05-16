@@ -933,6 +933,7 @@ function refineNoteSplitPrefix(mainSegments, baseStreams, paraIdx, note, maxHeig
     const tryNote = {
       ...note,
       text: prefixText,
+      runs: sliceRuns(Array.isArray(note.runs) ? note.runs : [], 0, prefixText.length),
     };
     const tryStreams = addNotesToStreams(baseStreams, paraIdx, [tryNote]);
     const h = measureHeight(mainSegments, tryStreams, { forceRender: true });
@@ -994,6 +995,55 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   const LONG_NOTE_CHUNK_CHARS = 900;
   const longNoteSplitCache = new Map();
 
+  // 2026-05-16: helper מרכזי לפיצול הערה בלי להפיל inline-runs.
+  // כל מקום שמייצר part1/part2 חייב להעביר גם runs חתוכים.
+  function splitNotePreservingRuns(note, splitEnd, opts = {}) {
+    const sourceText = String(note?.text || "");
+    const end = Math.max(0, Math.min(sourceText.length, Number(splitEnd) || 0));
+    const addSplitMark = opts.addSplitMark === true;
+    const splitMark = "\u2060";
+
+    const headRaw = sourceText.substring(0, end);
+    const tailRaw = sourceText.substring(end);
+    const headText = headRaw.trimEnd() + (addSplitMark ? splitMark : "");
+    const tailTrimmed = tailRaw.trimStart();
+    const leadingWsInTail = tailRaw.length - tailTrimmed.length;
+
+    const originalRuns = Array.isArray(note?.runs) ? note.runs : [];
+    const headRunEnd = headRaw.trimEnd().length;
+
+    const part1Runs = sliceRuns(originalRuns, 0, headRunEnd);
+    let part2Runs = sliceRuns(originalRuns, end + leadingWsInTail, sourceText.length);
+
+    if (addSplitMark) {
+      part2Runs = part2Runs.map((r) => ({
+        start: r.start + 1,
+        end: r.end + 1,
+        marks: r.marks,
+      }));
+    }
+
+    const part1 = {
+      ...note,
+      text: headText,
+      isContinuation: !!note?.isContinuation,
+      wasSplit: true,
+      children: note?.isContinuation ? [] : (note?.children || []),
+      runs: part1Runs,
+    };
+
+    const part2 = {
+      ...note,
+      text: (addSplitMark ? splitMark : "") + tailTrimmed,
+      isContinuation: true,
+      wasSplit: true,
+      children: [],
+      runs: part2Runs,
+    };
+
+    return [part1, part2];
+  }
+
   // משה 2026-05-07: לפני התחלת אריזת עמוד חדש, מעדכן את הכרית לפי
   // האינדקס של העמוד הבא (אם המשתמש קבע ערך נפרד פר עמוד).
   function refreshSafetyForCurrentPage() {
@@ -1016,18 +1066,25 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   }
 
   // Find max number of CHARS of a single note's text that fit on a fresh page.
-  function fitNoteCharPrefix(stream, anchor, text, maxHeight) {
+  function fitNoteCharPrefix(stream, anchor, text, maxHeight, runs = []) {
     let lo = 0;
     let hi = text.length;
+    const safeRuns = Array.isArray(runs) ? runs : [];
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
-      const tryNote = { stream, anchor, text: text.substring(0, mid) };
+      const prefixText = text.substring(0, mid);
+      const tryNote = {
+        stream,
+        anchor,
+        text: prefixText,
+        runs: sliceRuns(safeRuns, 0, prefixText.length),
+      };
       const ts = addNotesToStreams({}, 0, [tryNote]);
       const h = measureHeight([], ts);
       if (h <= maxHeight) lo = mid;
       else hi = mid - 1;
     }
-    return refineNoteSplitPrefix([], {}, 0, { stream, anchor, text }, maxHeight, lo);
+    return refineNoteSplitPrefix([], {}, 0, { stream, anchor, text, runs: safeRuns }, maxHeight, lo);
   }
 
   // Split a note's text at a word boundary so it can flow across pages.
@@ -1040,7 +1097,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     if (hasRemergeHintFor(note.stream, note.anchor, note.num)) {
       return [note, null];
     }
-    const charsThatFit = fitNoteCharPrefix(note.stream, note.anchor, note.text, maxHeight);
+    const charsThatFit = fitNoteCharPrefix(note.stream, note.anchor, note.text, maxHeight, note.runs);
     if (charsThatFit <= 0) {
       // Can't fit even a single char — force the whole note (overflow).
       return [note, null];
@@ -1124,7 +1181,8 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
         remainingNote.stream,
         remainingNote.anchor,
         remainingNote.text,
-        packGeom.maxPageHeight
+        packGeom.maxPageHeight,
+        remainingNote.runs
       );
       let end = adjustToWordBoundary(remainingNote.text, fit);
       if (end <= 0 || end >= remainingNote.text.length) {
@@ -1182,10 +1240,12 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     let hi = candidate.text.length;
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
+      const prefixText = candidate.text.substring(0, mid);
       const tryNote = {
         stream: candidate.stream,
         anchor: candidate.anchor,
-        text: candidate.text.substring(0, mid),
+        text: prefixText,
+        runs: sliceRuns(Array.isArray(candidate.runs) ? candidate.runs : [], 0, prefixText.length),
       };
       const ts = addNotesToStreams(existingStreams, paraIdx, [tryNote]);
       const h = measureHeight(mainSegments, ts);
@@ -1264,22 +1324,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
         if (fitChars > 0) {
           const wordEnd = adjustToWordBoundary(next.text, fitChars);
           if (wordEnd > 0 && wordEnd < next.text.length) {
-            const part1 = {
-              stream: next.stream,
-              anchor: next.anchor,
-              num: next.num,
-              isContinuation: !!next.isContinuation,
-              text: next.text.substring(0, wordEnd).trimEnd() + "⁠",
-              wasSplit: true,
-            };
-            const part2 = {
-              stream: next.stream,
-              anchor: next.anchor,
-              num: next.num,
-              isContinuation: true,
-              text: "⁠" + next.text.substring(wordEnd).trimStart(),
-              wasSplit: true,
-            };
+            const [part1, part2] = splitNotePreservingRuns(next, wordEnd, { addSplitMark: true });
             pageStreams = addNotesToStreams({}, paraIdx, placed.concat([part1]));
             pageHeight = measureHeight([], pageStreams);
             toPlace = [part2, ...toPlace.slice(lo + 1)];
@@ -1432,22 +1477,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
               if (fitC > 0) {
                 const splitEnd = adjustToWordBoundary(note.text, fitC);
                 if (splitEnd > 0 && splitEnd < note.text.length) {
-                  const part1 = {
-                    stream: note.stream,
-                    anchor: note.anchor,
-                    num: note.num,
-                    isContinuation: !!note.isContinuation,
-                    text: note.text.substring(0, splitEnd).trimEnd(),
-                    children: note.isContinuation ? [] : (note.children || []),
-                  };
-                  const part2 = {
-                    stream: note.stream,
-                    anchor: note.anchor,
-                    num: note.num,
-                    isContinuation: true,
-                    text: note.text.substring(splitEnd).trimStart(),
-                    children: [],
-                  };
+                  const [part1, part2] = splitNotePreservingRuns(note, splitEnd, { addSplitMark: false });
                   const tryStreams2 = addNotesToStreams(pageStreams, i, [part1]);
                   const h2 = measureHeight(pageMain, tryStreams2);
                   if (h2 <= geom.maxPageHeight) {
@@ -1620,20 +1650,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
             if (fitC > 0) {
               const splitEnd = adjustToWordBoundary(next.text, fitC);
               if (splitEnd > 0 && splitEnd < next.text.length) {
-                const part1 = {
-                  stream: next.stream,
-                  anchor: next.anchor,
-                  num: next.num,
-                  isContinuation: !!next.isContinuation,
-                  text: next.text.substring(0, splitEnd).trimEnd(),
-                };
-                const part2 = {
-                  stream: next.stream,
-                  anchor: next.anchor,
-                  num: next.num,
-                  isContinuation: true,
-                  text: next.text.substring(splitEnd).trimStart(),
-                };
+                const [part1, part2] = splitNotePreservingRuns(next, splitEnd, { addSplitMark: false });
                 const tryStreams2 = addNotesToStreams(pageStreams, i, [part1]);
                 const h2 = measureHeight(newMain, tryStreams2);
                 if (h2 <= geom.maxPageHeight) {
