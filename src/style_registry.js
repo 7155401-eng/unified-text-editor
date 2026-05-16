@@ -112,9 +112,20 @@ export function applyStyleToElement(el, styleIdOrName) {
   return applyTextStyleObjectToElement(el, style);
 }
 
+function readDocxOverwriteStylesDefault() {
+  if (typeof document === "undefined") return true;
+  const checkbox = document.querySelector(".we-overwrite-styles");
+  return checkbox ? checkbox.checked !== false : true;
+}
+
 export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
   if (!stylesCatalog || typeof stylesCatalog !== "object") return [];
-  const overwriteExisting = !(options?.overwriteExisting === false || options?.overwrite === false);
+  const overwriteExisting =
+    options?.overwriteExisting === false || options?.overwrite === false
+      ? false
+      : options?.overwriteExisting === true || options?.overwrite === true
+        ? true
+        : readDocxOverwriteStylesDefault();
   const existing = loadTextStyles();
   const byId = new Map(existing.map(s => [s.id, s]));
   const imported = [];
