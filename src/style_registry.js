@@ -148,6 +148,27 @@ function readDocxOverwriteStylesDefault() {
   return checkbox ? checkbox.checked !== false : true;
 }
 
+function isHebrewStyleName(name) {
+  return /[\u0590-\u05FF]/.test(String(name || ""));
+}
+
+function linkedHebrewCharacterStyleInfo(name, stylesCatalog) {
+  if (!isHebrewStyleName(name) || String(name).endsWith(" תו")) return null;
+  return stylesCatalog?.[`${name} תו`] || stylesCatalog?.[`${name} Char`] || null;
+}
+
+function chooseDocxFontSizePt(name, info, stylesCatalog) {
+  const ownSizePt = roundTwo(info?.size_pt);
+  const linkedInfo = linkedHebrewCharacterStyleInfo(name, stylesCatalog);
+  const linkedSizePt = roundTwo(linkedInfo?.size_pt);
+
+  // Hebrew Word styles often have a linked character style named "<style> תו".
+  // In Hebrew documents this linked style can carry the complex-script size
+  // that Word shows for Hebrew text, while the paragraph style carries a
+  // different Latin/ascii size. Prefer the linked Hebrew size when it exists.
+  return linkedSizePt != null ? linkedSizePt : ownSizePt;
+}
+
 export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
   if (!stylesCatalog || typeof stylesCatalog !== "object") return [];
   const overwriteExisting =
@@ -162,7 +183,7 @@ export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
   for (const [name, info] of Object.entries(stylesCatalog)) {
     if (!name) continue;
     const id = `docx-${hashStyleName(name)}`;
-    const sizePt = roundTwo(info?.size_pt);
+    const sizePt = chooseDocxFontSizePt(name, info, stylesCatalog);
     const style = {
       id,
       source: IMPORT_SOURCE,
