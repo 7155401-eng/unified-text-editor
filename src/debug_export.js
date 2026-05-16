@@ -5,6 +5,8 @@
 //   downloadDebugSnapshot(container)     — JSON snapshot of all pages with metrics
 //   toggleProblemHighlight(container)    — overlays colored borders on problems
 
+import { buildSelfContainedCssSnapshot } from "./export_snapshot_css.js";
+
 function timestamp() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
@@ -28,101 +30,8 @@ function triggerDownload(filename, content, mime = "text/plain") {
 
 // משה 2026-05-15: צילום מלא = CSS אמיתי + פונטים מוטבעים base64. בלי זה
 // הצילום נפתח עם פונט ברירת־מחדל ורוחב האותיות שונה → באגי מתיחה נעלמים.
-
-const FONT_EXT_RE = /\.(woff2|woff|ttf|otf|eot)(\?[^"')]*)?$/i;
-const FONT_URL_IN_CSS_RE = /url\((['"]?)([^"')]+\.(?:woff2|woff|ttf|otf|eot)(?:\?[^"')]*)?)\1\)/gi;
-
-function fontMimeFromUrl(url) {
-  const lower = String(url).toLowerCase().split("?")[0];
-  if (lower.endsWith(".woff2")) return "font/woff2";
-  if (lower.endsWith(".woff")) return "font/woff";
-  if (lower.endsWith(".ttf")) return "font/ttf";
-  if (lower.endsWith(".otf")) return "font/otf";
-  if (lower.endsWith(".eot")) return "application/vnd.ms-fontobject";
-  return "application/octet-stream";
-}
-
-async function fetchCssText(href) {
-  const res = await fetch(href, { mode: "cors", credentials: "omit" });
-  if (!res.ok) throw new Error(`fetch ${href} → ${res.status}`);
-  return await res.text();
-}
-
-async function fetchAsBase64(href) {
-  const res = await fetch(href, { mode: "cors", credentials: "omit" });
-  if (!res.ok) throw new Error(`fetch ${href} → ${res.status}`);
-  const blob = await res.blob();
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error || new Error("read failed"));
-    reader.onload = () => {
-      const s = String(reader.result || "");
-      const comma = s.indexOf(",");
-      resolve(comma >= 0 ? s.slice(comma + 1) : "");
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function collectCssText() {
-  const parts = [];
-  for (const sheet of document.styleSheets) {
-    try {
-      const rules = sheet.cssRules;
-      if (!rules) continue;
-      for (const r of rules) parts.push(r.cssText);
-    } catch (_corsErr) {
-      const href = sheet.href;
-      if (!href) {
-        parts.push(`/* (inline sheet blocked: ${_corsErr.message}) */`);
-        continue;
-      }
-      try {
-        const text = await fetchCssText(href);
-        parts.push(`/* === fetched: ${href} === */`);
-        parts.push(text);
-      } catch (fetchErr) {
-        parts.push(`/* (CSS sheet ${href} unavailable: ${fetchErr.message}) */`);
-      }
-    }
-  }
-  return parts.join("\n");
-}
-
-async function inlineFontsInCss(cssText, baseHref) {
-  const urls = new Set();
-  let m;
-  FONT_URL_IN_CSS_RE.lastIndex = 0;
-  while ((m = FONT_URL_IN_CSS_RE.exec(cssText)) !== null) {
-    urls.add(m[2]);
-  }
-  if (urls.size === 0) return cssText;
-
-  const replacements = new Map();
-  await Promise.all(
-    Array.from(urls).map(async (rawUrl) => {
-      try {
-        const abs = new URL(rawUrl, baseHref || window.location.href).toString();
-        const b64 = await fetchAsBase64(abs);
-        if (b64) {
-          replacements.set(rawUrl, `data:${fontMimeFromUrl(rawUrl)};base64,${b64}`);
-        }
-      } catch (_err) {
-        // משה: אם פונט יחיד נכשל — להמשיך, רק לרשום פתק.
-      }
-    })
-  );
-
-  return cssText.replace(FONT_URL_IN_CSS_RE, (full, quote, url) => {
-    const dataUrl = replacements.get(url);
-    return dataUrl ? `url(${quote}${dataUrl}${quote})` : full;
-  });
-}
-
-async function buildSelfContainedSnapshot(container) {
-  let cssBlob = await collectCssText();
-  cssBlob = await inlineFontsInCss(cssBlob, window.location.href);
-  return cssBlob;
+async function buildSelfContainedSnapshot() {
+  return await buildSelfContainedCssSnapshot();
 }
 
 /**
@@ -135,7 +44,7 @@ export async function downloadPagesAsHtml(container) {
     alert("אין pagesContainer לייצוא");
     return;
   }
-  const cssBlob = await buildSelfContainedSnapshot(container);
+  const cssBlob = await buildSelfContainedSnapshot();
   const containerHTML = container.outerHTML;
   const meta = {
     timestamp: new Date().toISOString(),
