@@ -13,7 +13,7 @@ import * as engine from "./word_extractor_engine.js";
 import * as streams from "./word_extractor_streams.js";
 import * as i18n from "./word_extractor_i18n.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
-import { loadTextStyles } from "../style_registry.js";
+import { loadTextStyles, fontSizeCssValue } from "../style_registry.js";
 
 let _paneManagerRef = null;
 let _onLoadedRef = null;
@@ -462,7 +462,8 @@ function applyStyleToWholeEditor(editor, style) {
       }
     }
     if (style.fontFamily && chain.setFontFamily) chain = chain.setFontFamily(style.fontFamily);
-    if (style.fontSize && chain.setFontSize) chain = chain.setFontSize(`${style.fontSize}px`);
+    const fontSizeCss = fontSizeCssValue(style);
+    if (fontSizeCss && chain.setFontSize) chain = chain.setFontSize(fontSizeCss);
     if (style.color && chain.setColor) chain = chain.setColor(style.color);
     if (style.bgColor && chain.setBackgroundColor) chain = chain.setBackgroundColor(style.bgColor);
     if (style.bold && chain.setBold) chain = chain.setBold();

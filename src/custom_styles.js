@@ -2,7 +2,7 @@
 // dropdown ("+ הוסף סגנון משלך"), persists user-defined styles, and applies
 // them to the active selection via TipTap chain commands.
 
-import { loadTextStyles, saveTextStyles, escapeHtml, escapeAttr } from "./style_registry.js";
+import { loadTextStyles, saveTextStyles, escapeHtml, escapeAttr, fontSizeCssValue } from "./style_registry.js";
 const ID_PREFIX = "user-";
 
 export function loadStyles() {
@@ -48,7 +48,8 @@ export function applyCustomStyleToActiveEditor(style, paneManager) {
     case "blockquote": chain = chain.setBlockquote?.() || chain; break;
   }
   if (style.fontFamily) chain = chain.setFontFamily(style.fontFamily);
-  if (style.fontSize) chain = chain.setFontSize(`${style.fontSize}px`);
+  const fontSizeCss = fontSizeCssValue(style);
+  if (fontSizeCss) chain = chain.setFontSize(fontSizeCss);
   if (style.color) chain = chain.setColor(style.color);
   if (style.bgColor) chain = chain.setBackgroundColor?.(style.bgColor) || chain;
   if (style.bold) chain = chain.setBold?.() || chain;
@@ -114,7 +115,7 @@ function buildDialog() {
           </datalist>
         </label>
         <label class="csd-row">
-          <span>גודל גופן (px):</span>
+          <span>גודל גופן:</span>
           <input type="number" id="csd-font-size" min="6" max="200" placeholder="16" />
         </label>
         <div class="csd-row">
@@ -184,6 +185,7 @@ function readForm() {
     block: v("csd-block"),
     fontFamily: v("csd-font-family").trim(),
     fontSize: v("csd-font-size") ? Number(v("csd-font-size")) : null,
+    fontSizeUnit: "px",
     bold: ch("csd-bold"),
     italic: ch("csd-italic"),
     underline: ch("csd-underline"),
