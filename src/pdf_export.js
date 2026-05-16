@@ -1,37 +1,14 @@
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
-import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
 
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
 const PDF_PAGE_WIDTH = 595.28;
 const PDF_PAGE_HEIGHT = 841.89;
+const EXPORT_FONT_STACK = '"David", "Times New Roman", "Arial", serif';
 const PDF_EXPORT_DPI = 240;
 const PDF_JPEG_QUALITY = 0.985;
 const A4_WIDTH_INCHES = 210 / 25.4;
 const PDF_EXPORT_SCALE = (PDF_EXPORT_DPI * A4_WIDTH_INCHES) / PAGE_CSS_WIDTH;
-
-const EXPORT_CSS_VARS = [
-  "--ravtext-page-font-family",
-  "--ravtext-page-width",
-  "--ravtext-page-height",
-  "--ravtext-page-pack-safety",
-  "--ravtext-page-main-size",
-  "--ravtext-page-main-line-height",
-  "--ravtext-page-main-paragraph-gap",
-  "--ravtext-page-main-stream-gap",
-  "--ravtext-page-stream-size",
-  "--ravtext-page-stream-line-height",
-  "--ravtext-page-stream-note-gap",
-  "--ravtext-page-stream-title-gap",
-  "--ravtext-stream-vertical-gap",
-  "--ravtext-stream-horizontal-gap",
-  "--ravtext-editor-stream-vertical-gap",
-  "--ravtext-editor-stream-horizontal-gap",
-  "--ravtext-page-margin-top",
-  "--ravtext-page-margin-right",
-  "--ravtext-page-margin-bottom",
-  "--ravtext-page-margin-left",
-];
 
 function stringBytes(str) {
   const out = new Uint8Array(str.length);
@@ -50,26 +27,62 @@ function concatBytes(chunks) {
   return out;
 }
 
-async function collectCssTextForPdf() {
-  const vars = collectComputedCssVariables(EXPORT_CSS_VARS);
-  const exportOverrides = `
-:root{${vars}}
-html,body{margin:0;padding:0;background:#fff;}
-.page{
-  font-family:var(--ravtext-page-font-family, "David Libre", "Frank Ruhl Libre", serif);
-  margin:0!important;
-  box-shadow:none!important;
-  zoom:1!important;
-  content-visibility:visible!important;
-  contain-intrinsic-size:auto!important;
-  padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;
-}
-.page *{content-visibility:visible!important;contain-intrinsic-size:auto!important;}
-.pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}
-/* Clean only page chrome. Do not wipe child background-color: it removes user highlights and stream styling. */
-body.ravtext-export-clean .page{background-image:none!important;box-shadow:none!important;}
-`;
-  return await buildSelfContainedCssSnapshot({ extraCss: exportOverrides });
+function collectCssText() {
+  const css = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      for (const rule of Array.from(sheet.cssRules || [])) {
+        if (
+          rule.cssText &&
+          !/@font-face/i.test(rule.cssText) &&
+          !/@import/i.test(rule.cssText) &&
+          !/url\(/i.test(rule.cssText)
+        ) {
+          css.push(rule.cssText);
+        }
+      }
+    } catch {
+      // Cross-origin font stylesheets are not readable; the page still renders with fallback fonts.
+    }
+  }
+
+  const root = getComputedStyle(document.documentElement);
+  const vars = [
+    "--ravtext-page-font-family",
+    "--ravtext-page-width",
+    "--ravtext-page-height",
+    "--ravtext-page-pack-safety",
+    "--ravtext-page-main-size",
+    "--ravtext-page-main-line-height",
+    "--ravtext-page-main-paragraph-gap",
+    "--ravtext-page-main-stream-gap",
+    "--ravtext-page-stream-size",
+    "--ravtext-page-stream-line-height",
+    "--ravtext-page-stream-note-gap",
+    "--ravtext-page-stream-title-gap",
+    "--ravtext-stream-vertical-gap",
+    "--ravtext-stream-horizontal-gap",
+    "--ravtext-editor-stream-vertical-gap",
+    "--ravtext-editor-stream-horizontal-gap",
+    "--ravtext-page-margin-top",
+    "--ravtext-page-margin-right",
+    "--ravtext-page-margin-bottom",
+    "--ravtext-page-margin-left",
+  ]
+    .map((name) => `${name}: ${root.getPropertyValue(name).trim()};`)
+    .join("");
+
+  css.push(`:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}`);
+  css.push("html,body{margin:0;padding:0;background:#fff;}");
+  // משה 2026-05-14: ה-PDF החזיר font-family !important על כל צאצא,
+  // וזה דרס span-ים עם font-family מפורש מ-runs (בולד/הדגשה/פונט שונה).
+  // עכשיו ה-page מקבל את הפונט וצאצאים יורשים, אבל הם יכולים לדרוס דרך style.
+  css.push(".page{font-family:var(--ravtext-page-font-family);background-image:none!important;}");
+  css.push(".page *{background-image:none!important;}");
+  css.push(".page{margin:0!important;box-shadow:none!important;zoom:1!important;content-visibility:visible!important;contain-intrinsic-size:auto!important;padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;}");
+  css.push(".pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}");
+  css.push("body.ravtext-export-clean .page,body.ravtext-export-clean .page *:not(.ravtext-demo-print-mark){background:transparent!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important;}");
+  return css.join("\n");
 }
 
 function replaceWithPlaceholder(el, label = "") {
@@ -324,7 +337,7 @@ export async function downloadPagesAsPdf(
   const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder)"));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
-  const cssText = await collectCssTextForPdf();
+  const cssText = collectCssText();
   const images = [];
   try {
     for (let i = 0; i < pages.length; i++) {

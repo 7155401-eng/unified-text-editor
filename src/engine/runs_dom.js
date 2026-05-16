@@ -93,28 +93,11 @@ function normalizeRuns(text, runs) {
   return mergeAdjacentRuns(out);
 }
 
-function isV9MainLine(parent) {
-  if (!parent || !parent.classList) return false;
-  return parent.dataset?.v9Role === "main" || parent.classList.contains("v9-role-main");
-}
-
-// V9 מפצל פסקאות ושורות אנליטית. כאשר mainRuns מאבדים סנכרון אחרי פיצול,
-// color/fontSize/bold נקודתיים יכולים ליפול על אותיות לא קשורות. כדי לשמור
-// על פלט יציב כמו בגרסאות הראשונות, הטקסט הראשי ב-V9 מצויר בלי inline runs;
-// סגנון כללי של הטקסט הראשי עדיין מגיע דרך lineEl עצמו.
-function shouldSuppressInlineRuns(parent) {
-  return isV9MainLine(parent);
-}
-
 // מוסיף לתוך parent את הטקסט הנתון, מחולק ל-spans לפי runs. שומר על marks
 // כפי שהם בעורך. אם אין runs בכלל — מוסיף טקסט אחד.
 export function appendTextWithRuns(parent, text, runs) {
   const str = String(text || "");
   if (!str) return;
-  if (shouldSuppressInlineRuns(parent)) {
-    parent.appendChild(document.createTextNode(str));
-    return;
-  }
   const normalized = normalizeRuns(str, runs);
   if (normalized.length === 0 || !normalized.some(r => hasMarks(r.marks))) {
     parent.appendChild(document.createTextNode(str));
