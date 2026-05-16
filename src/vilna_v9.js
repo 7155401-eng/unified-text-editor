@@ -1293,11 +1293,14 @@ function buildPagePlan(pageContent, config) {
         runs: line.runs || [],
       });
     }
-
-    // משה 2026-05-13: חיווט inline runs לראשי גם — כל שורה מקבלת runs שיופיעו
-    // ב-drawBox כ-spans (בולד/הדגשה/צבע פר-מילה).
-    attachRunsToLines(mainLines, pageContent.mainText, pageContent.mainRuns || []);
-
+    // 2026-05-17:
+    // mainFlow כבר מחשב line.runs לפי wordTokens ו-offsets מקוריים.
+    // אסור להריץ כאן attachRunsToLines, כי הוא משחזר לפי indexOf ויכול
+    // להזיז bold/color למילים חוזרות או אחרי פיצולים. משאירים את line.runs
+    // כפי שחושבו ב-flowStreamThroughStrips.
+    for (const line of mainLines) {
+      if (!Array.isArray(line.runs)) line.runs = [];
+    }
     const actualMainHeight = mainFlow.endY - mainTopY;
 
     result.mainBox = {
