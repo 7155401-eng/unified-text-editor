@@ -112,8 +112,9 @@ export function applyStyleToElement(el, styleIdOrName) {
   return applyTextStyleObjectToElement(el, style);
 }
 
-export function mergeDocxStylesIntoRegistry(stylesCatalog) {
+export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
   if (!stylesCatalog || typeof stylesCatalog !== "object") return [];
+  const overwriteExisting = !(options?.overwriteExisting === false || options?.overwrite === false);
   const existing = loadTextStyles();
   const byId = new Map(existing.map(s => [s.id, s]));
   const imported = [];
@@ -138,6 +139,9 @@ export function mergeDocxStylesIntoRegistry(stylesCatalog) {
       marginTop: info?.space_before_pt != null ? Math.round(Number(info.space_before_pt) * 96 / 72) : null,
       marginBottom: info?.space_after_pt != null ? Math.round(Number(info.space_after_pt) * 96 / 72) : null,
     };
+    if (byId.has(id) && !overwriteExisting) {
+      continue;
+    }
     byId.set(id, { ...(byId.get(id) || {}), ...style });
     imported.push(style);
   }
