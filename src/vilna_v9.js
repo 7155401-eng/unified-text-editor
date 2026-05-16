@@ -2,6 +2,13 @@
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
+import {
+  makeRichText,
+  normalizeRichTextEntry,
+  trimRichText,
+  concatRichTextParts,
+  appendRichTextPart,
+} from "./engine/rich_text_runs.js";
 import { buildNoteContentNodes, nodesToTextRuns } from "./engine/note_content_builder.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
@@ -241,20 +248,102 @@ function chooseCrownScenario(streams, opts) {
 // =====================================================================
 // מזרים טקסט בפסים אנכיים בעלי רוחבים שונים
 // =====================================================================
-function flowStreamThroughStrips(text, strips, metrics, maxY) {
+function tokenizeRichTextForV9(entry) {
+  const rt = normalizeRichTextEntry(entry);
+  const tokens = [];
+  const re = /\n|[^\s]+/g;
+  let m;
+
+  while ((m = re.exec(rt.text)) !== null) {
+    const value = m[0];
+    tokens.push({
+      type: value === "\n" ? "break" : "word",
+      text: value,
+      start: m.index,
+      end: m.index + value.length,
+    });
+  }
+
+  return tokens;
+}
+
+function runsForLineFromWordTokens(wordTokens, sourceRuns) {
+  const lineRuns = [];
+  let lineCursor = 0;
+
+  for (let i = 0; i < wordTokens.length; i++) {
+    const tok = wordTokens[i];
+    if (i > 0) lineCursor += 1;
+
+    const wordRuns = sliceRuns(sourceRuns || [], tok.start, tok.end);
+    for (const r of wordRuns) {
+      if (!r || r.end <= r.start) continue;
+      lineRuns.push({
+        start: lineCursor + r.start,
+        end: lineCursor + r.end,
+        marks: r.marks || {},
+      });
+    }
+
+    lineCursor += tok.text.length;
+  }
+
+  return lineRuns;
+}
+
+function richTextFromRemainingTokens(tokens, startIdx, sourceRuns) {
+  let text = "";
+  const runs = [];
+
+  for (let i = startIdx; i < tokens.length; i++) {
+    const tok = tokens[i];
+
+    if (tok.type === "break") {
+      if (!text.endsWith("\n")) text += "\n";
+      continue;
+    }
+
+    if (text && !text.endsWith("\n")) text += " ";
+
+    const offset = text.length;
+    text += tok.text;
+
+    const wordRuns = sliceRuns(sourceRuns || [], tok.start, tok.end);
+    for (const r of wordRuns) {
+      if (!r || r.end <= r.start) continue;
+      runs.push({
+        start: offset + r.start,
+        end: offset + r.end,
+        marks: r.marks || {},
+      });
+    }
+  }
+
+  return trimRichText({ text, runs });
+}
+
+// =====================================================================
+// מזרים טקסט בפסים אנכיים בעלי רוחבים שונים
+// =====================================================================
+function flowStreamThroughStrips(input, strips, metrics, maxY) {
+  const rich = normalizeRichTextEntry(input);
   const lineH = metrics.lineHeight;
   const allLines = [];
-  let curY = strips[0].y_start;
 
-  // משה 2026-05-10: tokenize — מילים רגילות + מרקרים של שבירת שורה ('\n').
-  // כש-buildOneLine נתקל ב-'\n', הוא עוצר השורה הנוכחית והמרקר נצרך בלי טקסט.
-  const tokens = [];
-  const lines = text.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const ws = lines[i].split(/[\t ]+/).filter(Boolean);
-    for (const w of ws) tokens.push(w);
-    if (i < lines.length - 1) tokens.push('\n');
+  if (!Array.isArray(strips) || strips.length === 0 || !rich.text) {
+    return {
+      lines: [],
+      overflowText: rich.text,
+      overflowRuns: rich.runs,
+      overflowRich: rich,
+      consumedWords: 0,
+      totalWords: 0,
+      endY: 0,
+    };
   }
+
+  let curY = strips[0].y_start;
+  const tokens = tokenizeRichTextForV9(rich);
   let tokenIdx = 0;
 
   for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
@@ -265,6 +354,7 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
 
     const availableHeight = nextStripY - curY;
     const availableLines = Math.floor(availableHeight / lineH);
+
     if (availableLines <= 0) {
       if (
         tokenIdx < tokens.length &&
@@ -281,7 +371,9 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
               y: curY,
               width: strip.width,
               words: bridgeLine.words,
-              text: bridgeLine.words.join(' '),
+              wordTokens: bridgeLine.wordTokens,
+              text: bridgeLine.words.join(" "),
+              runs: runsForLineFromWordTokens(bridgeLine.wordTokens, rich.runs),
               naturalWidth: bridgeLine.width,
               isLast: tokenIdx + bridgeLine.tokensConsumed >= tokens.length,
               forcedBreak: bridgeLine.forcedBreak,
@@ -300,12 +392,12 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     while (linesInStrip < availableLines && tokenIdx < tokens.length) {
       const line = buildOneLine(tokens, tokenIdx, strip.width, metrics);
       if (line.tokensConsumed === 0) break;
-      // משה 2026-05-10: \n בודד בלי מילים = שורה ריקה. צרכים את הטוקן אבל
-      // לא מציירים שורה — אחרת רואים פער ויזואלי בלי תוכן.
+
       if (line.words.length === 0 && line.forcedBreak) {
         tokenIdx += line.tokensConsumed;
         continue;
       }
+
       linesConsumed.push(line);
       tokenIdx += line.tokensConsumed;
       linesInStrip++;
@@ -314,11 +406,14 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     for (let i = 0; i < linesConsumed.length; i++) {
       const line = linesConsumed[i];
       const isLastLine = (i === linesConsumed.length - 1) && (tokenIdx >= tokens.length);
+
       allLines.push({
         y: curY + i * lineH,
         width: strip.width,
         words: line.words,
-        text: line.words.join(' '),
+        wordTokens: line.wordTokens,
+        text: line.words.join(" "),
+        runs: runsForLineFromWordTokens(line.wordTokens, rich.runs),
         naturalWidth: line.width,
         isLast: isLastLine,
         forcedBreak: line.forcedBreak,
@@ -326,6 +421,7 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     }
 
     curY += linesConsumed.length * lineH;
+
     if (
       stripIdx + 1 < strips.length &&
       tokenIdx < tokens.length &&
@@ -335,26 +431,27 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
       strips[stripIdx + 1].y_start = curY;
     }
 
-    // משה 2026-05-10: לולאת מילוי-פערים — אחרי הלולאה הראשית, אם יש פער
-    // ויזואלי (אפילו קטן) לפני ה-strip הבא, מוסיפים שורה אחת ברוחב ה-strip
-    // הנוכחי. השורה עלולה להיכנס מעט לאזור ה-strip הבא (חפיפה של פיקסלים
-    // בודדים) — זה עדיף על פער ריק נראה לעין.
     if (tokenIdx < tokens.length && curY < nextStripY && stripIdx < strips.length - 1) {
       const fillLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
+
       if (fillLine.tokensConsumed > 0) {
         if (fillLine.words.length === 0 && fillLine.forcedBreak) {
           tokenIdx += fillLine.tokensConsumed;
         } else {
-          const isLastFillLine = (tokenIdx + fillLine.tokensConsumed >= tokens.length);
+          const isLastFillLine = tokenIdx + fillLine.tokensConsumed >= tokens.length;
+
           allLines.push({
             y: curY,
             width: strip.width,
             words: fillLine.words,
-            text: fillLine.words.join(' '),
+            wordTokens: fillLine.wordTokens,
+            text: fillLine.words.join(" "),
+            runs: runsForLineFromWordTokens(fillLine.wordTokens, rich.runs),
             naturalWidth: fillLine.width,
             isLast: isLastFillLine,
             forcedBreak: fillLine.forcedBreak,
           });
+
           tokenIdx += fillLine.tokensConsumed;
           curY += lineH;
         }
@@ -364,17 +461,13 @@ function flowStreamThroughStrips(text, strips, metrics, maxY) {
     if (tokenIdx >= tokens.length) break;
   }
 
-  // overflowText — שחזור הטקסט שנשאר עם \n בנקודות הנכונות
-  const remainingTokens = tokens.slice(tokenIdx);
-  let overflowText = '';
-  for (const t of remainingTokens) {
-    if (t === '\n') overflowText += '\n';
-    else overflowText += (overflowText && !overflowText.endsWith('\n') ? ' ' : '') + t;
-  }
+  const overflowRich = richTextFromRemainingTokens(tokens, tokenIdx, rich.runs);
 
   return {
     lines: allLines,
-    overflowText: overflowText.trim(),
+    overflowText: overflowRich.text,
+    overflowRuns: overflowRich.runs,
+    overflowRich,
     consumedWords: tokenIdx,
     totalWords: tokens.length,
     endY: curY,
@@ -385,30 +478,40 @@ function buildOneLine(tokens, startIdx, widthPx, metrics) {
   const spaceW = metrics.spaceWidth;
   let curWidth = 0;
   const lineWords = [];
+  const lineWordTokens = [];
   let forcedBreak = false;
   let tokensConsumed = 0;
 
   for (let i = startIdx; i < tokens.length; i++) {
     const tok = tokens[i];
-    if (tok === '\n') {
-      // שבירת שורה מאולצת — נצרך גם אם לא הוסיף תוכן, ועוצרים השורה.
+
+    if (tok.type === "break") {
       tokensConsumed++;
       forcedBreak = true;
-      // משה 2026-05-10: שורה לפני שבירה נחשבת "אחרונה לוגית" — לא תיושר.
       break;
     }
-    const wordW = metrics.measureWord(tok);
+
+    const wordW = metrics.measureWord(tok.text);
     const addW = lineWords.length === 0 ? wordW : curWidth + spaceW + wordW;
 
     if (addW <= widthPx || lineWords.length === 0) {
-      lineWords.push(tok);
+      lineWords.push(tok.text);
+      lineWordTokens.push(tok);
       curWidth = addW;
       tokensConsumed++;
     } else {
       break;
     }
   }
-  return { words: lineWords, wordCount: lineWords.length, tokensConsumed, width: curWidth, forcedBreak };
+
+  return {
+    words: lineWords,
+    wordTokens: lineWordTokens,
+    wordCount: lineWords.length,
+    tokensConsumed,
+    width: curWidth,
+    forcedBreak,
+  };
 }
 
 function splitWordsAtVisualLine(text, metrics, widthPx) {
@@ -640,6 +743,18 @@ function buildMainStrips(opts) {
   strips.push({ y_start: secondEnd, y_end: pageBottom, width: innerWidth, x: 0 });
 
   return strips;
+}
+
+function appendOverflowStream(overflow, sid, entry) {
+  if (!overflow || !sid) return;
+
+  const incoming = normalizeRichTextEntry(entry);
+  if (!incoming.text) return;
+
+  const prev = normalizeRichTextEntry((overflow.streams || {})[sid]);
+  overflow.streams[sid] = prev.text
+    ? appendRichTextPart(prev, incoming, " ")
+    : incoming;
 }
 
 // =====================================================================
@@ -971,7 +1086,10 @@ function buildPagePlan(pageContent, config) {
   const pageBottomY = effectivePageBottom;
   function buildSideStream(streamData, side, opts) {
     if (!streamData) return null;
-    const text = streamData.items.join(' ');
+    const streamRich = streamData.rich
+      ? normalizeRichTextEntry(streamData.rich)
+      : makeRichText(streamData.items.join(' '), Array.isArray(streamData.runs) ? streamData.runs : []);
+    const text = streamRich.text;
     if (!text) return null;
     const o = opts || {};
     const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
@@ -1069,7 +1187,7 @@ function buildPagePlan(pageContent, config) {
     const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
 
     const flowResult = flowStreamThroughStrips(
-      text,
+      streamRich,
       strips.map(s => ({ y_start: s.y_start, width: s.width })),
       streamMetrics,
       pageBottomY
@@ -1090,14 +1208,15 @@ function buildPagePlan(pageContent, config) {
         naturalWidth: line.naturalWidth,
         fontSize: streamFontSize,
         lineHeightPx: streamLineH,
+        runs: line.runs || [],
       });
     }
 
-    // משה 2026-05-13: חיווט inline runs — לכל שורה מחושב אילו marks חלים
-    // על כל מילה בה. השורה ב-drawBox תרונדר עם spans מסוגננים בהתאם.
-    const streamSourceText = streamData.items.join(' ');
-    const streamSourceRuns = Array.isArray(streamData.runs) ? streamData.runs : [];
-    attachRunsToLines(lines, streamSourceText, streamSourceRuns);
+    // 2026-05-17: ה-flow החדש כבר מחשב line.runs לפי offsets מקוריים.
+    // לא מריצים attachRunsToLines כאן כדי לא לשחזר לפי indexOf ולאבד כפילויות/overflow.
+    for (const line of lines) {
+      if (!Array.isArray(line.runs)) line.runs = [];
+    }
 
     return {
       id: streamData.id,
@@ -1110,6 +1229,8 @@ function buildPagePlan(pageContent, config) {
       lines: lines,
       endY: flowResult.endY,
       overflowText: flowResult.overflowText,
+      overflowRuns: flowResult.overflowRuns || [],
+      overflowRich: flowResult.overflowRich || makeRichText(flowResult.overflowText || "", flowResult.overflowRuns || []),
       continues: !!flowResult.overflowText,
     };
   }
@@ -1147,7 +1268,7 @@ function buildPagePlan(pageContent, config) {
     });
 
     const mainFlow = flowStreamThroughStrips(
-      pageContent.mainText,
+      makeRichText(pageContent.mainText, pageContent.mainRuns || []),
       mainStrips,
       mainMetrics,
       effectivePageBottom
@@ -1169,6 +1290,7 @@ function buildPagePlan(pageContent, config) {
         naturalWidth: line.naturalWidth,
         fontSize: cfg.mainFontSize,
         lineHeightPx: mainMetrics.lineHeight,
+        runs: line.runs || [],
       });
     }
 
@@ -1267,8 +1389,10 @@ function buildPagePlan(pageContent, config) {
     // משה 2026-05-10: בתרחיש 1, שני הצדדים = אותו זרם, אותו id. אם נכתוב שניהם
     // לאותו מפתח באוברפלאו — השני ידרוס את הראשון ותוכן ייאבד. במקום, נצרף.
     if (pass2Right.overflowText) {
-      const prev = result.overflow.streams[pass2Right.id] || '';
-      result.overflow.streams[pass2Right.id] = prev ? (prev + ' ' + pass2Right.overflowText) : pass2Right.overflowText;
+      appendOverflowStream(result.overflow, pass2Right.id, pass2Right.overflowRich || {
+        text: pass2Right.overflowText,
+        runs: pass2Right.overflowRuns || [],
+      });
     }
   }
   if (pass2Left) {
@@ -1277,8 +1401,10 @@ function buildPagePlan(pageContent, config) {
     if (scenario.name === 'one_long_split') pass2Left.isScenario1Split = true;
     result.streamBoxes.push(pass2Left);
     if (pass2Left.overflowText) {
-      const prev = result.overflow.streams[pass2Left.id] || '';
-      result.overflow.streams[pass2Left.id] = prev ? (prev + ' ' + pass2Left.overflowText) : pass2Left.overflowText;
+      appendOverflowStream(result.overflow, pass2Left.id, pass2Left.overflowRich || {
+        text: pass2Left.overflowText,
+        runs: pass2Left.overflowRuns || [],
+      });
     }
   }
 
@@ -1314,7 +1440,7 @@ function buildPagePlan(pageContent, config) {
 
       // אם אין מקום אפילו לכותרת + שורה אחת, כל ה-footer הזה ל-overflow.
       if (footerY + titleHeight + fsLineH > pageBottom) {
-        result.overflow.streams[fs.id] = text;
+        result.overflow.streams[fs.id] = makeRichText(text, Array.isArray(fs.runs) ? fs.runs : []);
         anyFooterTrimmed = true;
         continue;
       }
@@ -1337,7 +1463,13 @@ function buildPagePlan(pageContent, config) {
 
       if (overflowLines.length > 0) {
         const overflowWords = overflowLines.flatMap(l => l.words);
-        result.overflow.streams[fs.id] = overflowWords.join(' ');
+        const overflowText = overflowWords.join(' ');
+        const sourceRuns = Array.isArray(fs.runs) ? fs.runs : [];
+        const overflowStart = text.indexOf(overflowText);
+        const overflowRuns = overflowStart >= 0
+          ? sliceRuns(sourceRuns, overflowStart, overflowStart + overflowText.length)
+          : [];
+        result.overflow.streams[fs.id] = makeRichText(overflowText, overflowRuns);
         anyFooterTrimmed = true;
       }
 
@@ -2500,7 +2632,8 @@ export async function buildPages(container, paragraphs, config) {
       for (const fs of (agg.footerStreams || [])) {
         const totalText = (fs.items || []).join(' ').trim();
         if (!totalText) continue;
-        const overflowText = ((tp.overflow && tp.overflow.streams && tp.overflow.streams[fs.id]) || '').trim();
+        const overflowEntry = (tp.overflow && tp.overflow.streams && tp.overflow.streams[fs.id]) || "";
+        const overflowText = normalizeRichTextEntry(overflowEntry).text.trim();
         if (overflowText && overflowText.length >= totalText.length * 0.95) dropped.push(fs.id);
       }
       return dropped;
@@ -2546,11 +2679,13 @@ export async function buildPages(container, paragraphs, config) {
     const plan = buildSinglePage(pageEl, finalContent, cfg);
     pages.push(pageEl);
 
-    // עדכון carryOver — טקסטים שנחתכו בעמוד הזה יעברו לעמוד הבא
+    // עדכון carryOver — טקסטים שנחתכו בעמוד הזה יעברו לעמוד הבא.
+    // 2026-05-17: שומרים גם runs, לא רק string.
     const nextCarry = {};
     if (plan && plan.overflow && plan.overflow.streams) {
-      for (const [sid, text] of Object.entries(plan.overflow.streams)) {
-        if (text && typeof text === 'string') nextCarry[sid] = text;
+      for (const [sid, entry] of Object.entries(plan.overflow.streams)) {
+        const rich = normalizeRichTextEntry(entry);
+        if (rich.text) nextCarry[sid] = rich;
       }
     }
 
@@ -2625,14 +2760,18 @@ export async function buildPages(container, paragraphs, config) {
 
 function hasCarryOver(co) {
   if (!co) return false;
-  for (const k in co) if (co[k]) return true;
+  for (const k in co) {
+    if (normalizeRichTextEntry(co[k]).text) return true;
+  }
   return false;
 }
 
 function totalCarrySize(co) {
   if (!co) return 0;
   let total = 0;
-  for (const k in co) total += (co[k] ? co[k].length : 0);
+  for (const k in co) {
+    total += normalizeRichTextEntry(co[k]).text.length;
+  }
   return total;
 }
 
@@ -2701,16 +2840,21 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   const mainRuns = mainRunsAccum;
   const mainContinues = paragraphs.some(p => p && p._continues);
 
-  const streamMap = new Map();
-  const streamRunsMap = new Map(); // sid → array of runs aligned to items.join(' ')
+  const streamMap = new Map(); // sid → rich parts
 
-  // קודם — carryOver מהעמוד הקודם
+  function pushStreamRich(map, sid, entry) {
+    if (!sid) return;
+    const rich = normalizeRichTextEntry(entry);
+    if (!rich.text) return;
+    if (!map.has(sid)) map.set(sid, []);
+    map.get(sid).push(rich);
+  }
+
+  // קודם — carryOver מהעמוד הקודם.
+  // 2026-05-17: תומך גם בפורמט ישן string וגם בפורמט חדש { text, runs }.
   if (carryOver) {
     for (const sid in carryOver) {
-      const text = carryOver[sid];
-      if (!text) continue;
-      if (!streamMap.has(sid)) streamMap.set(sid, []);
-      streamMap.get(sid).push(text);
+      pushStreamRich(streamMap, sid, carryOver[sid]);
     }
   }
 
@@ -2722,11 +2866,9 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
       const sid = note.stream || note.streamId || note.streamCode;
       if (!sid) continue;
       if (!streamMap.has(sid)) streamMap.set(sid, []);
-      if (!streamRunsMap.has(sid)) streamRunsMap.set(sid, []);
-      const items = streamMap.get(sid);
-      const runsList = streamRunsMap.get(sid);
+      const parts = streamMap.get(sid);
       const isCont = note.isContinuation === true || note.cont === 1 || note.cont === true;
-      const num = typeof note.num === "number" && note.num > 0 ? note.num : (items.length + 1);
+      const num = typeof note.num === "number" && note.num > 0 ? note.num : (parts.length + 1);
       const nodes = buildNoteContentNodes(
         sid,
         num,
@@ -2740,21 +2882,10 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
         }
       );
       const { text: formattedText, runs: formattedRuns } = nodesToTextRuns(nodes);
-      // אופסט = סכום אורכי כל ה-items הקודמים + רווחים בין items
-      let offset = 0;
-      for (let i = 0; i < items.length; i++) {
-        offset += items[i].length + 1; // +1 for the space separator in items.join(' ')
-      }
-      items.push(formattedText);
-      for (const r of formattedRuns) {
-        if (r.end > r.start) {
-          runsList.push({
-            start: offset + r.start,
-            end: offset + r.end,
-            marks: r.marks,
-          });
-        }
-      }
+      pushStreamRich(streamMap, sid, {
+        text: formattedText,
+        runs: formattedRuns,
+      });
     }
   }
 
@@ -2769,11 +2900,15 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   const orderRank = new Map();
   savedOrder.forEach((c, i) => orderRank.set(String(c), i));
 
-  const rawAllStreams = Array.from(streamMap.entries()).map(([id, items]) => ({
-    id,
-    items,
-    runs: streamRunsMap.get(id) || [],
-  }));
+  const rawAllStreams = Array.from(streamMap.entries()).map(([id, parts]) => {
+    const rich = concatRichTextParts(parts, " ");
+    return {
+      id,
+      items: parts.map(p => normalizeRichTextEntry(p).text).filter(Boolean),
+      runs: rich.runs,
+      rich,
+    };
+  });
   const allStreams = rawAllStreams.sort((a, b) => {
     const ra = orderRank.has(a.id) ? orderRank.get(a.id) : Infinity;
     const rb = orderRank.has(b.id) ? orderRank.get(b.id) : Infinity;
