@@ -2341,7 +2341,11 @@ export async function buildPages(container, paragraphs, config) {
 
     // Gap rescue: only after the clean/anchored policy has a weak page, try a
     // line-first split that carries real notes and materially improves fill.
-    if (allowParagraphSplit) {
+    // משה 2026-05-17:
+    // anchored rescue/extension גם כש-noMidParagraph פעיל, כדי להחזיר את
+    // מנגנון האיזון: מורידים עוד שורות מהראשי כדי לפנות מקום להערות שלהן,
+    // אבל לא מפצלים סתם בלי הערה מעוגנת.
+    if (allowParagraphSplit || noMidParagraph) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
@@ -2403,6 +2407,8 @@ export async function buildPages(container, paragraphs, config) {
           for (const len of rescueEnds) {
             const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
+            const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
+            if (noMidParagraph && !movedHasAnchoredNote) continue;
             const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes, _continues: true };
             const slice = [...baseSlice, firstHalf];
             const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
@@ -2431,7 +2437,7 @@ export async function buildPages(container, paragraphs, config) {
       }
     }
 
-    if (splitInfo && allowParagraphSplit) {
+    if (splitInfo && (allowParagraphSplit || noMidParagraph)) {
       const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
       const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
@@ -2475,6 +2481,8 @@ export async function buildPages(container, paragraphs, config) {
         let bestExtendedScore = currentFill;
         for (const len of extendEnds) {
           const movedNotes = notesBeforeAnchor(len);
+          const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
+          if (noMidParagraph && !movedHasAnchoredNote) continue;
           const prefix = secondText.substring(0, len).trim();
           const rest = secondText.substring(len).trim();
           if (!prefix) continue;
