@@ -60,9 +60,21 @@ function cleanRun(r, len) {
   return { start, end, marks: r?.marks || {} };
 }
 
-// מנקה רשימת runs בצורה יציבה: במקום לתת ל-run אחד לדרוס run חופף לפי סדר
-// מקרי, חותכים את הטקסט לפי כל נקודות הגבול וממזגים את כל ה-marks החופפים.
-// זה מונע קפיצות של bold/color באמצע מילה כאשר קיימים כמה marks באותו טווח.
+function isV9AnalyticLine(parent) {
+  if (!parent || !parent.classList) return false;
+  return parent.classList.contains("v9-line") ||
+    parent.classList.contains("v9-role-main") ||
+    parent.dataset?.v9Role === "main";
+}
+
+function stabilizeMarksForV9Line(parent, marks) {
+  if (!isV9AnalyticLine(parent) || !marks || typeof marks !== "object") return marks;
+  const out = { ...marks };
+  delete out.fontSize;
+  delete out.fontFamily;
+  return out;
+}
+
 function normalizeRuns(text, runs) {
   const len = text ? text.length : 0;
   if (!len) return [];
@@ -93,12 +105,13 @@ function normalizeRuns(text, runs) {
   return mergeAdjacentRuns(out);
 }
 
-// מוסיף לתוך parent את הטקסט הנתון, מחולק ל-spans לפי runs. שומר על marks
-// כפי שהם בעורך. אם אין runs בכלל — מוסיף טקסט אחד.
 export function appendTextWithRuns(parent, text, runs) {
   const str = String(text || "");
   if (!str) return;
-  const normalized = normalizeRuns(str, runs);
+  const normalized = normalizeRuns(str, runs).map((r) => ({
+    ...r,
+    marks: stabilizeMarksForV9Line(parent, r.marks),
+  }));
   if (normalized.length === 0 || !normalized.some(r => hasMarks(r.marks))) {
     parent.appendChild(document.createTextNode(str));
     return;
@@ -117,9 +130,6 @@ export function appendTextWithRuns(parent, text, runs) {
   }
 }
 
-// חותך runs ל-slice [start, end) ומחזיר runs עם אופסטים יחסיים לטווח החדש.
-// שימושי כשמחלקים טקסט-מקור לחלקים (e.g., prefix/segment/suffix במילת פתיח,
-// או שורה ב-V9).
 export function sliceRuns(runs, start, end) {
   if (!Array.isArray(runs)) return [];
   const out = [];
