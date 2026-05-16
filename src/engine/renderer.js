@@ -172,13 +172,52 @@ function localMainRefPos(ref, segText, segStart, segEnd) {
   return null;
 }
 
+function isCombiningMark(ch) {
+  return !!ch && /[\u0591-\u05C7\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED\u0300-\u036F\u1AB0-\u1AFF\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F]/u.test(ch);
+}
+
+function isMainRefWordChar(ch) {
+  if (!ch) return false;
+  if (isCombiningMark(ch)) return true;
+  return /[\p{L}\p{N}\u05F3\u05F4]/u.test(ch);
+}
+
+function snapMainRefLocalPos(text, rawPos) {
+  const value = String(text || "");
+  const len = value.length;
+  let pos = Math.max(0, Math.min(len, Number(rawPos) || 0));
+
+  // Hebrew niqqud/te'amim are separate Unicode code points. If an anchor lands
+  // between a base letter and its marks, inserting the ref there visually cuts
+  // the letter in half, e.g. ב[271]ָּארי. First move out of that grapheme.
+  while (pos < len && isCombiningMark(value[pos])) pos++;
+
+  const before = pos > 0 ? value[pos - 1] : "";
+  const after = pos < len ? value[pos] : "";
+  if (!isMainRefWordChar(before) || !isMainRefWordChar(after)) return pos;
+
+  // If the remaining computed anchor is still inside a word, snap to the
+  // nearest real word boundary. This preserves the original attachment point
+  // much better than allowing refs to split Hebrew words with niqqud.
+  let start = pos;
+  while (start > 0 && isMainRefWordChar(value[start - 1])) start--;
+  let end = pos;
+  while (end < len && isMainRefWordChar(value[end])) end++;
+  if (start >= end) return pos;
+
+  const toStart = pos - start;
+  const toEnd = end - pos;
+  return toStart <= toEnd ? start : end;
+}
+
 function refsForMainSegment(segText, segStart, segEnd, paraRefs, usedRefs = null) {
   const refs = [];
   for (const ref of paraRefs || []) {
     const s = getEffectiveStreamSettings(ref.code);
     if (!_streamBoolSetting(s.mainRefEnabled, false)) continue;
-    const localPos = localMainRefPos(ref, segText, segStart, segEnd);
-    if (localPos === null) continue;
+    const rawLocalPos = localMainRefPos(ref, segText, segStart, segEnd);
+    if (rawLocalPos === null) continue;
+    const localPos = snapMainRefLocalPos(segText, rawLocalPos);
     const key = mainRefKey(ref);
     if (usedRefs && usedRefs.has(key)) continue;
     refs.push({ ...ref, localPos, key });
