@@ -60,6 +60,27 @@ function cleanRun(r, len) {
   return { start, end, marks: r?.marks || {} };
 }
 
+function isV9AnalyticLine(parent) {
+  if (!parent || !parent.classList) return false;
+  return parent.classList.contains("v9-line") ||
+    parent.classList.contains("v9-role-main") ||
+    parent.dataset?.v9Role === "main";
+}
+
+function stabilizeMarksForV9Line(parent, marks) {
+  if (!isV9AnalyticLine(parent) || !marks || typeof marks !== "object") return marks;
+  // V9 is an analytic layout engine: line width/height are calculated before
+  // spans are written to the DOM. Inline color/background/bold are safe enough
+  // visually, but inline font-size/font-family change real glyph metrics after
+  // layout and can push text outside the calculated stream/line boundaries.
+  // Keep the real red/bold marks, but do not let per-word font metrics override
+  // the already-measured V9 line metrics.
+  const out = { ...marks };
+  delete out.fontSize;
+  delete out.fontFamily;
+  return out;
+}
+
 // מנקה רשימת runs בצורה יציבה: במקום לתת ל-run אחד לדרוס run חופף לפי סדר
 // מקרי, חותכים את הטקסט לפי כל נקודות הגבול וממזגים את כל ה-marks החופפים.
 // זה מונע קפיצות של bold/color באמצע מילה כאשר קיימים כמה marks באותו טווח.
@@ -98,7 +119,10 @@ function normalizeRuns(text, runs) {
 export function appendTextWithRuns(parent, text, runs) {
   const str = String(text || "");
   if (!str) return;
-  const normalized = normalizeRuns(str, runs);
+  const normalized = normalizeRuns(str, runs).map((r) => ({
+    ...r,
+    marks: stabilizeMarksForV9Line(parent, r.marks),
+  }));
   if (normalized.length === 0 || !normalized.some(r => hasMarks(r.marks))) {
     parent.appendChild(document.createTextNode(str));
     return;
