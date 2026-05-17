@@ -1,4 +1,4 @@
-﻿import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
+import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 import { runPreflight } from "./render_preflight.js";
