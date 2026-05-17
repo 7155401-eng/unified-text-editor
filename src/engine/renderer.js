@@ -430,7 +430,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   const isArtificialEnd = (tup) => {
     if (!streamNumLastPage || pageIndex === undefined) return false;
     const num = tup[3];
-    if (typeof num !== "number" || num <= 0) continue;
+    if (typeof num !== "number" || num <= 0) return false;
     const key = streamCode + ":" + num;
     return typeof streamNumLastPage[key] === "number" && streamNumLastPage[key] > pageIndex;
   };
