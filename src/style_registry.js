@@ -100,6 +100,12 @@ export function normalizeTextStyle(rawStyle) {
     style.fontWeight = "700";
   }
 
+  // משה 2026-05-17: סגנון מותאם יכול להיות גם כתב עילי או כתב תחתי.
+  // שמות ישנים/חלופיים נשמרים כדי לא לשבור נתונים שכבר נשמרו מקומית.
+  if (style.superScript === true || style.sup === true) style.superscript = true;
+  if (style.subScript === true || style.sub === true) style.subscript = true;
+  if (style.superscript && style.subscript) style.subscript = false;
+
   return style;
 }
 
@@ -131,6 +137,13 @@ export function applyTextStyleObjectToElement(el, rawStyle) {
   if (style.indent) el.style.textIndent = `${style.indent}em`;
   if (style.marginTop != null) el.style.marginTop = `${style.marginTop}px`;
   if (style.marginBottom != null) el.style.marginBottom = `${style.marginBottom}px`;
+  if (style.superscript) {
+    el.style.verticalAlign = "super";
+    if (!fontSizeCss) el.style.fontSize = "0.75em";
+  } else if (style.subscript) {
+    el.style.verticalAlign = "sub";
+    if (!fontSizeCss) el.style.fontSize = "0.75em";
+  }
 
   return true;
 }
@@ -198,6 +211,8 @@ export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
       bold: !!info?.bold,
       italic: !!info?.italic,
       underline: false,
+      superscript: false,
+      subscript: false,
       color: "",
       bgColor: "",
       align: "",
