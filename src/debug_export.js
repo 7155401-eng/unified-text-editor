@@ -34,6 +34,110 @@ async function buildSelfContainedSnapshot() {
   return await buildSelfContainedCssSnapshot();
 }
 
+const PRINT_SAFE_SNAPSHOT_CSS = `
+/* RavText standalone HTML print isolation: print the rendered pages only. */
+@page { size: a4; margin: 0; }
+@media print {
+  html,
+  body.ravtext-debug-snapshot {
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #fff !important;
+  }
+
+  body.ravtext-debug-snapshot > *:not(#pages-container) {
+    display: none !important;
+  }
+
+  body.ravtext-debug-snapshot .debug-meta,
+  body.ravtext-debug-snapshot .empty-hint,
+  body.ravtext-debug-snapshot .error-hint,
+  body.ravtext-debug-snapshot .page-placeholder,
+  body.ravtext-debug-snapshot .ravtext-empty-page {
+    display: none !important;
+  }
+
+  body.ravtext-debug-snapshot #pages-container,
+  body.ravtext-debug-snapshot #pages-container.pages-container {
+    display: block !important;
+    position: static !important;
+    width: 210mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    gap: 0 !important;
+    transform: none !important;
+    transform-origin: left top !important;
+    scrollbar-gutter: auto !important;
+    direction: ltr !important;
+  }
+
+  body.ravtext-debug-snapshot #pages-container > .page,
+  body.ravtext-debug-snapshot #pages-container > .page:not(.measure-page) {
+    display: flex !important;
+    position: relative !important;
+    direction: rtl !important;
+    width: var(--ravtext-page-width, 380px) !important;
+    height: var(--ravtext-page-height, 537px) !important;
+    min-height: 0 !important;
+    max-height: var(--ravtext-page-height, 537px) !important;
+    flex: none !important;
+    margin: 0 !important;
+    padding:
+      var(--ravtext-page-margin-top)
+      var(--ravtext-page-margin-right)
+      var(--ravtext-page-margin-bottom)
+      var(--ravtext-page-margin-left) !important;
+    overflow: hidden !important;
+    background-color: #fff !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    outline: none !important;
+    zoom: 2.0887 !important;
+    transform: none !important;
+    transform-origin: left top !important;
+    content-visibility: visible !important;
+    contain-intrinsic-size: auto !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  body.ravtext-debug-snapshot #pages-container > .page:first-of-type {
+    margin-top: 0 !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
+
+  body.ravtext-debug-snapshot #pages-container > .page:last-of-type {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  body.ravtext-debug-snapshot:not(.print-with-background) #pages-container > .page,
+  body.ravtext-debug-snapshot:not(.print-with-background) #pages-container > .page :not(.ravtext-demo-print-mark) {
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+}
+`;
+
 /**
  * Build a self-contained HTML document containing ALL pages, with all CSS
  * AND all font files inlined as base64 data: URLs. The result renders with
@@ -64,9 +168,10 @@ body { font-family: "David Libre", Frank Ruhl Libre, serif; margin: 20px; backgr
 .debug-meta { background: #fff; padding: 12px; margin-bottom: 20px; border: 1px solid #999; font-size: 13px; font-family: monospace; }
 .debug-meta dt { font-weight: bold; }
 ${cssBlob}
+${PRINT_SAFE_SNAPSHOT_CSS}
 </style>
 </head>
-<body>
+<body class="ravtext-debug-snapshot">
 <div class="debug-meta">
 <dl>
 ${Object.entries(meta).map(([k, v]) => `<dt>${k}</dt><dd>${String(v).slice(0, 200)}</dd>`).join("\n")}
