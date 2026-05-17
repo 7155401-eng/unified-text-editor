@@ -14,6 +14,7 @@ const WATERMARK_TEXTS = [
 ];
 
 const MAX_HTML_BYTES = 8 * 1024 * 1024;
+const DEMO_BLOCK_MS = 5 * 60 * 1000;
 
 function randomToken() {
   try {
@@ -33,38 +34,6 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function parseCookie(header = "") {
-  const out = new Map();
-  for (const part of String(header || "").split(";")) {
-    const index = part.indexOf("=");
-    if (index < 0) continue;
-    const key = part.slice(0, index).trim();
-    const value = part.slice(index + 1).trim();
-    if (key) out.set(key, decodeURIComponent(value));
-  }
-  return out;
-}
-
-function getHeader(request, name) {
-  if (!request) return "";
-  if (typeof request.headers?.get === "function") return request.headers.get(name) || "";
-  return request.headers?.[name.toLowerCase()] || request.headers?.[name] || "";
-}
-
-function getEnv(env, key) {
-  return env?.[key] || (typeof process !== "undefined" ? process.env?.[key] : undefined) || "";
-}
-
-function isPaidRequest(request, env = {}) {
-  // Secure default: not paid unless the server can validate a server-issued token.
-  // Set RAVTEXT_PAID_EXPORT_TOKEN in the hosting platform and issue it as an HttpOnly cookie named ravtext_paid_export.
-  const expected = getEnv(env, "RAVTEXT_PAID_EXPORT_TOKEN");
-  if (!expected) return false;
-  const cookies = parseCookie(getHeader(request, "cookie"));
-  const token = cookies.get("ravtext_paid_export") || "";
-  return token.length > 0 && token === expected;
-}
-
 function requestTriesToDisableWatermark(payload) {
   const checks = [
     payload?.removeWatermark === true,
@@ -76,6 +45,17 @@ function requestTriesToDisableWatermark(payload) {
     payload?.watermarkOpacity === "0",
   ];
   return checks.some(Boolean);
+}
+
+async function resolveUserFromExistingAuth(request, env, options) {
+  const resolver = options?.getUserFromRequest;
+  if (typeof resolver !== "function") return null;
+  try {
+    return await resolver(request, env);
+  } catch (err) {
+    console.warn("[secure-export] user resolution failed", err);
+    return null;
+  }
 }
 
 function watermarkStyle(className) {
@@ -139,7 +119,7 @@ function jsonResponse(body, status = 200, extraHeaders = {}) {
   });
 }
 
-export async function handleSecureExportHtmlRequest(request, env = {}) {
+export async function handleSecureExportHtmlRequest(request, env = {}, options = {}) {
   if (request.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
   const raw = await request.text();
   if (raw.length > MAX_HTML_BYTES) return jsonResponse({ error: "payload_too_large" }, 413);
@@ -151,10 +131,12 @@ export async function handleSecureExportHtmlRequest(request, env = {}) {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
 
-  const paid = isPaidRequest(request, env);
+  const user = await resolveUserFromExistingAuth(request, env, options);
+  const paid = !!user?.paid;
+
   if (!paid && requestTriesToDisableWatermark(payload)) {
     return jsonResponse({ error: "watermark_tampering", blocked: true }, 403, {
-      "set-cookie": `ravtext_demo_blocked_until=${Date.now() + 5 * 60 * 1000}; Path=/; SameSite=Lax`,
+      "set-cookie": `ravtext_demo_blocked_until=${Date.now() + DEMO_BLOCK_MS}; Path=/; SameSite=Lax`,
     });
   }
 
@@ -167,6 +149,8 @@ export async function handleSecureExportHtmlRequest(request, env = {}) {
     headers: {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
+      "x-ravtext-auth-source": options?.getUserFromRequest ? "ravtext_session" : "none",
+      "x-ravtext-user-paid": paid ? "1" : "0",
       "x-ravtext-watermark-forced": paid ? "0" : "1",
     },
   });
