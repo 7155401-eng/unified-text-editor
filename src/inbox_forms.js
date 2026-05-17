@@ -1,10 +1,47 @@
-// משה 2026-05-09: טפסי דיווח באג + יצירת קשר. מחליפים את ה-mailto הישן.
-// הנתונים נשלחים ל-Worker (worker/inbox.js) ונשמרים ב-D1, נראים בפאנל המנהל.
-// trackUsage נקרא גם מנקודות אחרות באפליקציה ללוג שימושים.
+// טפסי דיווח באג + יצירת קשר + עדכוני פיתוח + פתרון בעיות.
+// הנתונים של דיווחים/פניות נשלחים ל-Worker ונשמרים ב-D1.
+// פתרון בעיות מציג ברירת מחדל קבועה, ויכול להציג רשומות מנהל עם סטטוס troubleshooting.
 
 const TOAST_TIMEOUT = 2800;
+const TROUBLESHOOTING_STATUS_VALUES = new Set([
+  'troubleshooting',
+  'פתרון בעיות',
+  'פתרון-בעיות',
+  'solutions',
+]);
+
+const DEFAULT_TROUBLESHOOTING_INTRO = 'להלן כמה דברים שאנו יודעים עליהם שיש בהם מגבלות מערכת והפתרון שלהם הוא ידני. יתכן שבהמשך נטפל בבעיות דלהלן שלא יצטרכו עבודה ידנית, לאחר שנסיים את הפיתוחים והתיקונים הדחופים יותר.';
+
+const DEFAULT_TROUBLESHOOTING_ITEMS = [
+  {
+    title: 'טקסטים עולים על טקסטים',
+    body: 'נסו לבצע רענון (רנדור) חוזר.',
+  },
+  {
+    title: 'שינויים באמצע רענון',
+    body: 'שינויים עשויים להיות לא תקפים/ לא חלים אם התוכנה באמצע רענון, נסו שוב לאחר רענון (נכון לעכשיו אין מעקף רשמי למגבלה זו).',
+  },
+  {
+    title: 'הדגשות לזרם',
+    body: 'אם ברצונכם להדגיש זרם שלם במצב גפ"ת, נכון לעכשיו הפתרון הוא דרך הדגשת כל הזרם, אין כרגע פתרון רשמי להדגשת זרם דרך סגנונות.',
+  },
+  {
+    title: 'באג ידוע בהחלת סגנון',
+    body: 'אם עוברים על המקלדת על הסגנונות בחצים למעלה ולמטה כרגע זה נתקע בגלל שהוא מתעכב בכל אחד מהם בהחלת הסגנון, הפתרון להשתמש בסימון הגלילה בצד בלבד.',
+  },
+  {
+    title: 'חיתוך דינמי',
+    body: 'אין כרגע דרך מובטחת לחיתוך דינמי של הזרמים ב100% הצלחה לכל סוג מסמך (שלא יהיו שום עמודים עם רווחים ועם חריגה), ניתן לנסות באמצעות מנוע רינדור חכם (לנסות עם המנוע ובלי המנוע) וכן לשנות את גובה כרית העמוד, ובמידת הצורך לפנות אלינו ונעדכן את הקוד של האתר שיתאים גם למסמך שלכם.',
+  },
+  {
+    title: 'הערה ראשונה ככותרת',
+    body: 'כשמכניסים הערה ראשונה בזרם מסויים ככותרת הזרם של ההערות (שיכנס אוטומטית למסמך ככותרת הזרם, צריך להגדיר זאת בממשק), אין להכניס את ההערה הראשונה  בתחילת המסמך אלא במיקום ההערה הראשונה האמיתית, על מנת לפתור קונפליקט שקיים במערכת כרגע (שהוא מזיז את ההערה הראשונה ה"אמיתית" למיקום ההערה הראשונה המשמשת לכותרת.',
+  },
+];
 
 let toastEl = null;
+let activeBackdrop = null;
+
 function ensureToast() {
   if (toastEl) return toastEl;
   toastEl = document.createElement('div');
@@ -35,46 +72,54 @@ function showToast(msg, isError = false) {
   }, TOAST_TIMEOUT);
 }
 
-function buildEnvMeta(extra = null) {
-  const meta = {
+function escapeText(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDateShort(unixSec) {
+  if (!unixSec) return '';
+  const d = new Date(unixSec * 1000);
+  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function buildEnvMeta() {
+  return {
     ua: (typeof navigator !== 'undefined' && navigator.userAgent) || '',
     lang: (typeof navigator !== 'undefined' && navigator.language) || '',
     screen: (typeof window !== 'undefined' && window.innerWidth)
-      ? `${window.innerWidth}x${window.innerHeight}` : '',
+      ? `${window.innerWidth}x${window.innerHeight}`
+      : '',
     url: (typeof location !== 'undefined' && location.href) || '',
   };
-  if (extra && typeof extra === 'object') {
-    Object.assign(meta, extra);
-  }
-  return meta;
 }
 
-function buildLoginPrompt() {
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'padding: 8px 0;';
-  wrap.innerHTML = `
-    <div style="margin-bottom: 14px; font-size: 14px; color: #475569;">
-      כדי לשלוח דיווח או פנייה צריך להיות מחובר. ההתחברות מאפשרת לנו לחזור אליך.
-    </div>
-    <div style="display: flex; gap: 8px;">
-      <a href="/api/auth/login" class="btn-primary" style="flex: 1;
-         padding: 10px 14px; background: #1e3a8a; color: white;
-         text-align: center; text-decoration: none; border-radius: 6px;
-         font-weight: 600;">התחבר עם גוגל</a>
-    </div>`;
-  return wrap;
+function isLoggedIn() {
+  const auth = window.__RAVTEXT_AUTH__;
+  return !!(auth && auth.loggedIn);
 }
 
-let activeBackdrop = null;
+function isTroubleshootingStatus(status) {
+  return TROUBLESHOOTING_STATUS_VALUES.has(String(status || '').trim());
+}
 
 function closeActiveModal() {
   if (activeBackdrop) {
     activeBackdrop.remove();
     activeBackdrop = null;
   }
+  document.removeEventListener('keydown', escHandler);
 }
 
-function openModal({ title, body, footer }) {
+function escHandler(ev) {
+  if (ev.key === 'Escape') closeActiveModal();
+}
+
+function openModal({ title, body, footer, width = 540 }) {
   closeActiveModal();
   const backdrop = document.createElement('div');
   backdrop.className = 'inbox-modal-backdrop';
@@ -82,18 +127,20 @@ function openModal({ title, body, footer }) {
     position: fixed; inset: 0; background: rgba(15,23,42,0.55);
     z-index: 9998; display: flex; align-items: center; justify-content: center;
   `;
+
   const modal = document.createElement('div');
   modal.className = 'inbox-modal';
   modal.dir = 'rtl';
   modal.style.cssText = `
     background: white; padding: 22px 24px; border-radius: 12px;
-    width: 540px; max-width: 92vw; max-height: 88vh;
+    width: ${width}px; max-width: 92vw; max-height: 88vh;
     box-shadow: 0 8px 28px rgba(0,0,0,0.22);
     display: flex; flex-direction: column; gap: 14px;
     font-family: 'Segoe UI', system-ui, sans-serif;
   `;
+
   const titleRow = document.createElement('div');
-  titleRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center;';
+  titleRow.style.cssText = 'display: flex; justify-content: space-between; align-items: center; gap: 12px;';
   const titleEl = document.createElement('h2');
   titleEl.textContent = title;
   titleEl.style.cssText = 'margin: 0; font-size: 18px; color: #0f172a;';
@@ -127,112 +174,57 @@ function openModal({ title, body, footer }) {
   return { backdrop, modal };
 }
 
-function escHandler(ev) {
-  if (ev.key === 'Escape') {
-    closeActiveModal();
-    document.removeEventListener('keydown', escHandler);
-  }
+function buildLoginPrompt() {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'padding: 8px 0;';
+  wrap.innerHTML = `
+    <div style="margin-bottom: 14px; font-size: 14px; color: #475569;">
+      כדי לשלוח דיווח או פנייה צריך להיות מחובר. ההתחברות מאפשרת לנו לחזור אליך.
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <a href="/api/auth/login" class="btn-primary" style="flex: 1;
+         padding: 10px 14px; background: #1e3a8a; color: white;
+         text-align: center; text-decoration: none; border-radius: 6px;
+         font-weight: 600;">התחבר עם גוגל</a>
+    </div>`;
+  return wrap;
 }
 
-function isLoggedIn() {
-  const auth = window.__RAVTEXT_AUTH__;
-  return !!(auth && auth.loggedIn);
-}
+function makeFooter({ submitText, submitColor, onSubmit }) {
+  const footer = document.createElement('div');
+  footer.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
 
-function loggedInEmail() {
-  const auth = window.__RAVTEXT_AUTH__ || {};
-  return auth.email || '';
-}
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'ביטול';
+  cancel.style.cssText = `
+    padding: 9px 16px; border: 1px solid #cbd5e1; background: white;
+    color: #334155; border-radius: 6px; cursor: pointer; font-size: 14px;
+  `;
+  cancel.addEventListener('click', closeActiveModal);
 
-function postJsonFireAndForget(url, body) {
-  try {
-    return fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'same-origin',
-      keepalive: true,
-      body: JSON.stringify(body || {}),
-    }).catch(() => {});
-  } catch (_) {
-    return Promise.resolve();
-  }
-}
+  const submit = document.createElement('button');
+  submit.type = 'button';
+  submit.textContent = submitText;
+  submit.style.cssText = `
+    padding: 9px 18px; border: none; background: ${submitColor};
+    color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
+    font-weight: 600;
+  `;
+  submit.addEventListener('click', () => onSubmit(submit));
 
-function looksLikeTypesetBookInquiryTrigger(node) {
-  if (!node || !node.closest) return null;
-  const trigger = node.closest('button[data-action="typeset-book-inquiry"], a[href^="mailto:"]');
-  if (!trigger) return null;
-  const text = (trigger.textContent || '').replace(/\s+/g, ' ').trim();
-  const href = trigger.getAttribute?.('href') || '';
-  let decodedHref = href;
-  try { decodedHref = decodeURIComponent(href); } catch (_) {}
-  const explicitButton = trigger.matches?.('button[data-action="typeset-book-inquiry"]');
-  const textMentionsTypeset = text.includes('עימוד הספר') || text.includes('תעמדו לי את הספר');
-  const mailMentionsTypeset = href.startsWith('mailto:') && decodedHref.includes('עימוד');
-  return (explicitButton || textMentionsTypeset || mailMentionsTypeset) ? { trigger, text, href: decodedHref } : null;
-}
-
-let lastTypesetClickAt = 0;
-function notifyAdminAboutTypesetInquiryClick(info) {
-  if (!isLoggedIn()) return;
-  const nowMs = Date.now();
-  // הגנה מכפילות של דאבל-קליק/ bubbling חריג: עדיין רושם כל לחיצה אמיתית אחרי 2 שניות.
-  if (nowMs - lastTypesetClickAt < 2000) return;
-  lastTypesetClickAt = nowMs;
-
-  const email = loggedInEmail();
-  const meta = buildEnvMeta({
-    source: 'premium_payment_menu',
-    kind: 'typeset_book_inquiry_click',
-    service: 'תעמדו לי את הספר',
-    buttonText: info?.text || '',
-    href: info?.href || '',
-  });
-
-  postJsonFireAndForget('/api/usage/track', {
-    event: 'typeset_book_inquiry_click',
-    detail: {
-      service: 'תעמדו לי את הספר',
-      source: 'premium_payment_menu',
-      buttonText: info?.text || '',
-      href: info?.href || '',
-      url: meta.url,
-    },
-  });
-
-  const msg = [
-    '🔔 התראת מערכת: לחיצה על כפתור בקשת עימוד',
-    '',
-    'משתמש מחובר לחץ על הכפתור: תעמדו לי את הספר.',
-    email ? `המייל המחובר: ${email}` : 'המייל המחובר: לא זוהה',
-    `זמן: ${new Date(nowMs).toLocaleString('he-IL')}`,
-    '',
-    'הערה: זו התראת לחיצה בלבד. אם המשתמש השלים את הטופס, תופיע פנייה נוספת עם הפרטים שהוא מילא.',
-  ].join('\n');
-
-  postJsonFireAndForget('/api/contact', {
-    body: msg,
-    meta,
-  });
-}
-
-function installTypesetInquiryClickTracker() {
-  if (typeof document === 'undefined') return;
-  if (document.__ravtextTypesetInquiryClickTrackerInstalled) return;
-  document.__ravtextTypesetInquiryClickTrackerInstalled = true;
-  document.addEventListener('click', (ev) => {
-    const info = looksLikeTypesetBookInquiryTrigger(ev.target);
-    if (!info) return;
-    notifyAdminAboutTypesetInquiryClick(info);
-  }, true);
+  footer.appendChild(cancel);
+  footer.appendChild(submit);
+  return footer;
 }
 
 export function openBugReportModal() {
-  const body = document.createElement('div');
   if (!isLoggedIn()) {
     openModal({ title: '🐞 דיווח באג', body: buildLoginPrompt() });
     return;
   }
+
+  const body = document.createElement('div');
   body.innerHTML = `
     <p style="margin: 0 0 12px; font-size: 13px; color: #475569;">
       תאר את הבאג בקצרה. הדיווח נשמר בלוח הניהול ואנחנו רואים אותו ישר.
@@ -255,55 +247,34 @@ export function openBugReportModal() {
       פרטי דפדפן ומסך נשלחים אוטומטית כדי שנוכל לשחזר את הבעיה.
     </p>`;
 
-  const footer = document.createElement('div');
-  footer.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.textContent = 'ביטול';
-  cancel.style.cssText = `
-    padding: 9px 16px; border: 1px solid #cbd5e1; background: white;
-    color: #334155; border-radius: 6px; cursor: pointer; font-size: 14px;
-  `;
-  cancel.addEventListener('click', closeActiveModal);
-
-  const submit = document.createElement('button');
-  submit.type = 'button';
-  submit.textContent = '📤 שלח דיווח';
-  submit.style.cssText = `
-    padding: 9px 18px; border: none; background: #1e3a8a;
-    color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
-    font-weight: 600;
-  `;
-
-  footer.appendChild(cancel);
-  footer.appendChild(submit);
-
-  openModal({ title: '🐞 דיווח באג', body, footer });
-
-  submit.addEventListener('click', async () => {
-    const title = document.getElementById('bug-title').value.trim();
-    const text = document.getElementById('bug-body').value.trim();
-    if (!title) { showToast('יש להזין כותרת', true); return; }
-    if (!text) { showToast('יש לפרט את הבאג', true); return; }
-    submit.disabled = true; submit.textContent = 'שולח...';
-    try {
-      const res = await fetch('/api/bug-reports', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ title, body: text, meta: buildEnvMeta() }),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || `HTTP ${res.status}`);
+  const footer = makeFooter({
+    submitText: '📤 שלח דיווח',
+    submitColor: '#1e3a8a',
+    onSubmit: async (submit) => {
+      const title = document.getElementById('bug-title').value.trim();
+      const text = document.getElementById('bug-body').value.trim();
+      if (!title) { showToast('יש להזין כותרת', true); return; }
+      if (!text) { showToast('יש לפרט את הבאג', true); return; }
+      submit.disabled = true;
+      submit.textContent = 'שולח...';
+      try {
+        const res = await fetch('/api/bug-reports', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, body: text, meta: buildEnvMeta() }),
+        });
+        if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+        closeActiveModal();
+        showToast('הדיווח נשלח. תודה!');
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = '📤 שלח דיווח';
+        showToast('שליחה נכשלה: ' + (err.message || err), true);
       }
-      closeActiveModal();
-      showToast('הדיווח נשלח. תודה!');
-    } catch (err) {
-      submit.disabled = false; submit.textContent = '📤 שלח דיווח';
-      showToast('שליחה נכשלה: ' + (err.message || err), true);
-    }
+    },
   });
 
+  openModal({ title: '🐞 דיווח באג', body, footer });
   setTimeout(() => document.getElementById('bug-title')?.focus(), 50);
 }
 
@@ -312,6 +283,7 @@ export function openContactModal() {
     openModal({ title: '✉️ צור קשר', body: buildLoginPrompt() });
     return;
   }
+
   const body = document.createElement('div');
   body.innerHTML = `
     <p style="margin: 0 0 12px; font-size: 13px; color: #475569;">
@@ -330,56 +302,34 @@ export function openContactModal() {
       </div>
     </details>`;
 
-  const footer = document.createElement('div');
-  footer.style.cssText = 'display: flex; gap: 8px; justify-content: flex-end;';
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.textContent = 'ביטול';
-  cancel.style.cssText = `
-    padding: 9px 16px; border: 1px solid #cbd5e1; background: white;
-    color: #334155; border-radius: 6px; cursor: pointer; font-size: 14px;
-  `;
-  cancel.addEventListener('click', closeActiveModal);
-
-  const submit = document.createElement('button');
-  submit.type = 'button';
-  submit.textContent = '📨 שלח';
-  submit.style.cssText = `
-    padding: 9px 18px; border: none; background: #047857;
-    color: white; border-radius: 6px; cursor: pointer; font-size: 14px;
-    font-weight: 600;
-  `;
-
-  footer.appendChild(cancel);
-  footer.appendChild(submit);
-
-  openModal({ title: '✉️ צור קשר', body, footer });
-
-  submit.addEventListener('click', async () => {
-    const text = document.getElementById('contact-body').value.trim();
-    if (!text) { showToast('הפתק ריק', true); return; }
-    submit.disabled = true; submit.textContent = 'שולח...';
-    try {
-      const res = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ body: text, meta: buildEnvMeta() }),
-      });
-      if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || `HTTP ${res.status}`);
+  const footer = makeFooter({
+    submitText: '📨 שלח',
+    submitColor: '#047857',
+    onSubmit: async (submit) => {
+      const text = document.getElementById('contact-body').value.trim();
+      if (!text) { showToast('הפתק ריק', true); return; }
+      submit.disabled = true;
+      submit.textContent = 'שולח...';
+      try {
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ body: text, meta: buildEnvMeta() }),
+        });
+        if (!res.ok) throw new Error(await res.text() || `HTTP ${res.status}`);
+        closeActiveModal();
+        showToast('הפתק נשלח. תודה!');
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = '📨 שלח';
+        showToast('שליחה נכשלה: ' + (err.message || err), true);
       }
-      closeActiveModal();
-      showToast('הפתק נשלח. תודה!');
-    } catch (err) {
-      submit.disabled = false; submit.textContent = '📨 שלח';
-      showToast('שליחה נכשלה: ' + (err.message || err), true);
-    }
+    },
   });
 
+  openModal({ title: '✉️ צור קשר', body, footer });
   setTimeout(() => document.getElementById('contact-body')?.focus(), 50);
 
-  // משה 2026-05-10: כשפותחים את האקורדיון, טוענים פעם אחת את הפניות הקודמות.
   const details = document.getElementById('my-contacts-section');
   let loadedOnce = false;
   details?.addEventListener('toggle', async () => {
@@ -444,11 +394,6 @@ export function trackUsage(event, detail = null) {
   flushTrackQueue();
 }
 
-// משה 2026-05-10: חלון "עדכוני פיתוח" — מציג למשתמש רק רשומות שהמנהל
-// פרסם (תכנון/בפיתוח/הסתיים), מקובצות לפי סטטוס. דיווחי משתמשים אינם
-// מוצגים כאן אוטומטית — הם נשלחים לתיבת המנהל ומופיעים רק אם המנהל
-// יוצר רשומה משלו על בסיסם. ה-admin_note (הערה פרטית) לא מגיע מהשרת בכלל.
-
 const STATUS_LABELS = {
   new: 'חדש',
   planning: 'בתכנון',
@@ -469,23 +414,12 @@ function statusBadgeStyle(s) {
   return `background:${c.bg};color:${c.fg};padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600;`;
 }
 
-function escapeText(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function formatDateShort(unixSec) {
-  if (!unixSec) return '';
-  const d = new Date(unixSec * 1000);
-  return d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
-
 function buildDevUpdatesList(items) {
-  if (!items || items.length === 0) {
+  items = (items || []).filter(item => !isTroubleshootingStatus(item.status));
+  if (items.length === 0) {
     return '<div style="text-align:center;color:#64748b;padding:30px 10px;font-size:14px;">עוד אין עדכונים — חזרו בהמשך.</div>';
   }
-  // קיבוץ לפי סטטוס. סדר הצגה: בפיתוח → בתכנון → הסתיים → חדש → תיוגים מותאמים.
+
   const groups = new Map();
   for (const item of items) {
     const key = item.status || 'new';
@@ -496,10 +430,10 @@ function buildDevUpdatesList(items) {
     ...STATUS_ORDER.filter(k => groups.has(k)),
     ...[...groups.keys()].filter(k => !STATUS_ORDER.includes(k)),
   ];
-  const html = orderedKeys.map(key => {
+
+  return orderedKeys.map(key => {
     const list = groups.get(key);
-    const label = statusLabel(key);
-    const badge = `<span style="${statusBadgeStyle(key)}">${escapeText(label)}</span>`;
+    const badge = `<span style="${statusBadgeStyle(key)}">${escapeText(statusLabel(key))}</span>`;
     const cards = list.map(it => `
       <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;margin-bottom:8px;background:white;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">
@@ -518,7 +452,6 @@ function buildDevUpdatesList(items) {
         ${cards}
       </section>`;
   }).join('');
-  return html;
 }
 
 export async function openDevUpdatesModal() {
@@ -547,8 +480,77 @@ export async function openDevUpdatesModal() {
   }
 }
 
+function buildTroubleshootingItems(items) {
+  const managed = (items || [])
+    .filter(item => isTroubleshootingStatus(item.status))
+    .map(item => ({ title: item.title, body: item.body }))
+    .filter(item => String(item.title || '').trim() && String(item.body || '').trim());
+  return managed.length ? managed : DEFAULT_TROUBLESHOOTING_ITEMS;
+}
+
+function renderTroubleshootingItems(items) {
+  return items.map(item => `
+    <div style="border:1px solid #dbeafe;border-radius:10px;padding:12px 14px;background:#f8fafc;margin-bottom:10px;line-height:1.65;color:#1f2937;font-size:14px;">
+      <strong style="color:#0f172a;">${escapeText(item.title)}:</strong>
+      <span>${escapeText(item.body)}</span>
+    </div>`).join('');
+}
+
+export async function openTroubleshootingModal() {
+  const body = document.createElement('div');
+  body.innerHTML = `
+    <div style="margin:0 0 14px;font-size:14px;color:#334155;line-height:1.7;white-space:pre-wrap;">${escapeText(DEFAULT_TROUBLESHOOTING_INTRO)}</div>
+    <div id="troubleshooting-list">
+      ${renderTroubleshootingItems(DEFAULT_TROUBLESHOOTING_ITEMS)}
+    </div>`;
+
+  openModal({ title: '🛠️ פתרון בעיות', body, width: 700 });
+
+  try {
+    const res = await fetch('/api/bug-reports/public?limit=500');
+    if (!res.ok) return;
+    const data = await res.json();
+    const items = buildTroubleshootingItems(data.items || []);
+    const target = document.getElementById('troubleshooting-list');
+    if (target) target.innerHTML = renderTroubleshootingItems(items);
+  } catch (_) {
+    // ברירת המחדל כבר מוצגת, ולכן אין צורך להפריע למשתמש.
+  }
+}
+
+function ensureTroubleshootingHeaderButton() {
+  const actions = document.querySelector('.app-header-actions');
+  if (!actions) return document.getElementById('btn-troubleshooting');
+
+  let btn = document.getElementById('btn-troubleshooting');
+  if (btn) return btn;
+
+  btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'btn-troubleshooting';
+  btn.className = 'header-action-btn header-action-btn-icon';
+  btn.title = 'פתרון בעיות ומגבלות ידועות';
+  btn.setAttribute('aria-label', 'פתרון בעיות ומגבלות ידועות');
+  btn.innerHTML = '<span class="header-action-icon">🛠️</span><span class="header-action-text">פתרון בעיות</span>';
+
+  const afterDevUpdates = document.getElementById('btn-dev-updates');
+  if (afterDevUpdates && afterDevUpdates.parentNode === actions) {
+    afterDevUpdates.after(btn);
+  } else {
+    actions.insertBefore(btn, actions.firstElementChild || null);
+  }
+  return btn;
+}
+
 export function wireInboxButtons() {
-  installTypesetInquiryClickTracker();
+  const troubleshootingBtn = ensureTroubleshootingHeaderButton();
+  if (troubleshootingBtn) {
+    troubleshootingBtn.addEventListener('click', (ev) => {
+      ev.preventDefault();
+      openTroubleshootingModal();
+    });
+  }
+
   const bugBtn = document.getElementById('btn-report-bug');
   if (bugBtn) {
     bugBtn.addEventListener('click', (ev) => {
@@ -556,6 +558,7 @@ export function wireInboxButtons() {
       openBugReportModal();
     });
   }
+
   const contactBtn = document.getElementById('btn-contact');
   if (contactBtn) {
     contactBtn.addEventListener('click', (ev) => {
@@ -563,6 +566,7 @@ export function wireInboxButtons() {
       openContactModal();
     });
   }
+
   const devUpdatesBtn = document.getElementById('btn-dev-updates');
   if (devUpdatesBtn) {
     devUpdatesBtn.addEventListener('click', (ev) => {
