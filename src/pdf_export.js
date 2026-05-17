@@ -1,5 +1,5 @@
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
-import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
+import { buildSelfContainedCssSnapshot } from "./export_snapshot_css.js";
 
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
@@ -51,13 +51,76 @@ function concatBytes(chunks) {
   return out;
 }
 
-async function collectSnapshotCssText() {
-  const vars = collectComputedCssVariables(EXPORT_CSS_VARS);
-  const exportOverrides = `
-:root{${vars}}
+function collectSafeDocumentCssText() {
+  const css = [];
+  for (const sheet of Array.from(document.styleSheets || [])) {
+    try {
+      for (const rule of Array.from(sheet.cssRules || [])) {
+        const text = rule?.cssText || "";
+        // PDF uses an SVG <foreignObject> and then draws that SVG into canvas.
+        // Any external URL can either taint the canvas or make the SVG fail to
+        // decode. Keep normal layout/style rules; font faces are handled below
+        // after their URLs are converted to data: URLs.
+        if (
+          text &&
+          !/@font-face/i.test(text) &&
+          !/@import/i.test(text) &&
+          !/url\(/i.test(text)
+        ) {
+          css.push(text);
+        }
+      }
+    } catch {
+      // Cross-origin sheets are handled by buildSelfContainedCssSnapshot when
+      // extracting only the embedded @font-face rules below.
+    }
+  }
+  return css.join("\n");
+}
+
+function extractEmbeddedFontFaces(cssText) {
+  const text = String(cssText || "");
+  const out = [];
+  const re = /@font-face\s*{[^{}]*}/gi;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    const block = match[0];
+    if (!/url\(\s*(['"]?)data:/i.test(block)) continue;
+    // Keep only fully self-contained font-face blocks. If a block still has an
+    // external fallback URL, that single URL is enough to taint the canvas.
+    if (/url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/i.test(block)) continue;
+    out.push(block);
+  }
+  return out.join("\n");
+}
+
+async function collectEmbeddedFontCssText() {
+  try {
+    const snapshotCss = await buildSelfContainedCssSnapshot();
+    return extractEmbeddedFontFaces(snapshotCss);
+  } catch (err) {
+    console.warn("PDF embedded font CSS collection failed:", err);
+    return "";
+  }
+}
+
+async function collectPdfCssText() {
+  const root = getComputedStyle(document.documentElement);
+  const vars = EXPORT_CSS_VARS
+    .map((name) => {
+      const value = root.getPropertyValue(name).trim();
+      return value ? `${name}: ${value};` : "";
+    })
+    .join("");
+
+  const embeddedFonts = await collectEmbeddedFontCssText();
+  const safeDocumentCss = collectSafeDocumentCssText();
+
+  const exportCss = `
+:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}
 html,body{margin:0;padding:0;background:#fff;}
 .page{
-  font-family:var(--ravtext-page-font-family, "David Libre", "Frank Ruhl Libre", ${EXPORT_FONT_STACK});
+  font-family:var(--ravtext-page-font-family, ${EXPORT_FONT_STACK});
   margin:0!important;
   box-shadow:none!important;
   zoom:1!important;
@@ -65,19 +128,15 @@ html,body{margin:0;padding:0;background:#fff;}
   contain-intrinsic-size:auto!important;
   padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;
 }
-.page *{content-visibility:visible!important;contain-intrinsic-size:auto!important;}
+.page *{content-visibility:visible!important;contain-intrinsic-size:auto!important;background-image:none!important;}
 .pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}
-/* מנקים רק כרום של העמוד. לא מוחקים background-color מילדים כדי לא למחוק הדגשות ועיצובי זרמים. */
 body.ravtext-export-clean .page{background-image:none!important;box-shadow:none!important;}
 `;
-  const cssText = await buildSelfContainedCssSnapshot({ extraCss: exportOverrides });
-  return stripCanvasUnsafeCss(cssText);
-}
 
-function stripCanvasUnsafeCss(cssText) {
-  return String(cssText || "")
-    .replace(/@import[^;]+;/gi, "")
-    .replace(/url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/gi, "url(\"\")");
+  // Order matters: embedded fonts first, then app CSS, then export overrides.
+  // This keeps the PDF small enough to decode, while still giving the SVG the
+  // real font files instead of the old fallback-only export path.
+  return [embeddedFonts, safeDocumentCss, exportCss].filter(Boolean).join("\n");
 }
 
 function safeStyleText(cssText) {
@@ -348,7 +407,7 @@ export async function downloadPagesAsPdf(
   const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder)"));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
-  const cssText = await collectSnapshotCssText();
+  const cssText = await collectPdfCssText();
   const images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
 
   const pdfBlob = buildPdf(images);
