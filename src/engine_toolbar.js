@@ -295,6 +295,140 @@ export function setupPdfToolbar(pagesContainer) {
     realizePageBatch(0, toolbar.total);
   }
 
+  function ensureNativePrintStyle() {
+    let style = document.getElementById("ravtext-native-print-style");
+    if (style) return style;
+    style = document.createElement("style");
+    style.id = "ravtext-native-print-style";
+    style.textContent = `
+#ravtext-print-root {
+  display: none;
+}
+
+@media print {
+  html,
+  body.ravtext-native-print {
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #fff !important;
+  }
+
+  body.ravtext-native-print > *:not(#ravtext-print-root) {
+    display: none !important;
+  }
+
+  #ravtext-print-root {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+    direction: rtl !important;
+  }
+
+  #ravtext-print-root > .page,
+  #ravtext-print-root > .page:not(.measure-page) {
+    display: flex !important;
+    position: relative !important;
+    width: var(--ravtext-page-width, 380px) !important;
+    height: var(--ravtext-page-height, 537px) !important;
+    min-height: 0 !important;
+    max-height: var(--ravtext-page-height, 537px) !important;
+    flex: none !important;
+    margin: 0 auto !important;
+    padding:
+      var(--ravtext-page-margin-top)
+      var(--ravtext-page-margin-right)
+      var(--ravtext-page-margin-bottom)
+      var(--ravtext-page-margin-left) !important;
+    overflow: hidden !important;
+    box-shadow: none !important;
+    outline: none !important;
+    zoom: 1 !important;
+    transform: none !important;
+    content-visibility: visible !important;
+    contain-intrinsic-size: auto !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  #ravtext-print-root > .page:first-child {
+    margin-top: 0 !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
+
+  #ravtext-print-root > .page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  #ravtext-print-root > .page-placeholder,
+  #ravtext-print-root > .ravtext-empty-page {
+    display: none !important;
+  }
+
+  body.ravtext-native-print:not(.print-with-background) #ravtext-print-root > .page {
+    background: #fff !important;
+    background-image: none !important;
+  }
+
+  body.ravtext-native-print:not(.print-with-background) #ravtext-print-root > .page *:not(.ravtext-demo-print-mark) {
+    background-image: none !important;
+  }
+}
+`;
+    document.head.appendChild(style);
+    return style;
+  }
+
+  function removeNativePrintRoot() {
+    document.getElementById("ravtext-print-root")?.remove();
+  }
+
+  function buildNativePrintRoot() {
+    removeNativePrintRoot();
+    const root = document.createElement("div");
+    root.id = "ravtext-print-root";
+    root.setAttribute("dir", "rtl");
+
+    const pages = Array.from(
+      pagesContainer.querySelectorAll(".page:not(.page-placeholder):not(.ravtext-empty-page)")
+    );
+
+    for (const page of pages) {
+      const clone = page.cloneNode(true);
+      clone.classList.remove("measure-page", "page-placeholder");
+      clone.style.zoom = "1";
+      clone.style.transform = "none";
+      clone.style.transformOrigin = "";
+      clone.style.margin = "0 auto";
+      clone.style.boxShadow = "none";
+      clone.style.contentVisibility = "visible";
+      clone.style.containIntrinsicSize = "auto";
+      root.appendChild(clone);
+    }
+
+    document.body.appendChild(root);
+    return root;
+  }
+
   document.getElementById("pdf-first")?.addEventListener("click", () => goToPage(1));
   document.getElementById("pdf-prev")?.addEventListener("click", () => {
     const n = parseInt(toolbar.pageInput?.value || "1", 10) || 1;
@@ -389,17 +523,29 @@ export function setupPdfToolbar(pagesContainer) {
   });
 
   document.getElementById("pdf-print")?.addEventListener("click", () => {
+    let cleanupDemoPrint = null;
     try {
       ensureDemoAccess();
       realizeAllPages();
       const includeBackgrounds = isOutputBackgroundEnabled();
       document.body.classList.toggle("print-with-background", includeBackgrounds);
-      const cleanup = prepareDemoPrintWatermark(pagesContainer);
+      cleanupDemoPrint = prepareDemoPrintWatermark(pagesContainer);
+      const printRoot = buildNativePrintRoot();
+      ensureNativePrintStyle();
+      document.body.classList.add("ravtext-native-print");
+
+      if (!printRoot.children.length) {
+        throw new Error("אין עמודים מוכנים להדפסה");
+      }
+
       let cleaned = false;
       const cleanupOnce = () => {
         if (cleaned) return;
         cleaned = true;
-        cleanup();
+        cleanupDemoPrint?.();
+        cleanupDemoPrint = null;
+        removeNativePrintRoot();
+        document.body.classList.remove("ravtext-native-print");
         document.body.classList.remove("print-with-background");
         window.removeEventListener("afterprint", cleanupOnce);
       };
@@ -409,6 +555,10 @@ export function setupPdfToolbar(pagesContainer) {
         setTimeout(cleanupOnce, 2500);
       }, 50);
     } catch (err) {
+      try { cleanupDemoPrint?.(); } catch (_) {}
+      removeNativePrintRoot();
+      document.body.classList.remove("ravtext-native-print");
+      document.body.classList.remove("print-with-background");
       console.error("PDF print failed:", err);
       alert(err.message);
     }
