@@ -2,6 +2,11 @@ import { loadTextStyles, saveTextStyles, styleOptionsHtml } from "./style_regist
 
 const STORAGE_KEY = "ravtext.spacing.v1";
 
+// Hebrew niqqud and te'amim sit above/below the base glyph as combining marks.
+// Values below this can visually clip the marks in the editor/PDF preview even
+// though the underlying text is still intact. Keep spacing dense, but safe.
+const HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN = 1.25;
+
 const DEFAULTS = {
   editorLineHeight: 1.55,
   editorParagraphGap: 6,
@@ -33,18 +38,18 @@ const DEFAULTS = {
 };
 
 const FIELDS = [
-  ["editorLineHeight", "עורך: גובה שורה", "number", 0.8, 3, 0.05],
+  ["editorLineHeight", "עורך: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
   ["editorParagraphGap", "עורך: רווח פסקה", "number", 0, 80, 1],
-  ["pageMainLineHeight", "PDF ראשי: גובה שורה", "number", 0.8, 3, 0.05],
+  ["pageMainLineHeight", "PDF ראשי: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
   ["pageMainParagraphGap", "PDF ראשי: רווח פסקה", "number", 0, 80, 1],
   ["mainStreamGap", "PDF: ראשי-הערות", "number", 0, 80, 1],
-  ["streamLineHeight", "זרמים: גובה שורה", "number", 0.8, 3, 0.05],
+  ["streamLineHeight", "זרמים: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
   ["streamGap", "בין זרמים", "number", 0, 80, 1],
   ["ravtextStreamVerticalGap", "רב טקסט: בין זרמים אנכית", "number", 0, 80, 1],
   ["ravtextStreamHorizontalGap", "רב טקסט: בין זרמים אופקית", "number", 0, 80, 1],
   ["streamNoteGap", "בין הערות", "number", 0, 40, 1],
   ["streamTitleGap", "כותרת-תוכן", "number", 0, 40, 1],
-  ["v9LineHeight", "V9: גובה שורה", "number", 0.8, 3, 0.05],
+  ["v9LineHeight", "V9: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
   ["v9MainGap", "V9: ראשי-צד", "number", 0, 60, 1],
   ["noMidLineSplits", "לא לפצל באמצע פיסקאות (קשיח)", "checkbox", 0, 1, 1],
   ["noMidParagraphSoft", "לא לפצל פיסקאות (גמיש, ימלא רווחים)", "checkbox", 0, 1, 1],
@@ -53,9 +58,10 @@ const FIELDS = [
 
 export function loadSpacingSettings() {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
+    return normalizeSpacing({ ...DEFAULTS, ...saved });
   } catch {
-    return { ...DEFAULTS };
+    return normalizeSpacing(DEFAULTS);
   }
 }
 
