@@ -133,6 +133,8 @@ function buildParaNotesIndex(pageData) {
     const refs = Array.isArray(meta.mainRefs) ? meta.mainRefs : null;
     if (!refs) continue;
     hasSourceMainRefs = true;
+    const fullLen = typeof meta.fullMainText === "string" ? meta.fullMainText.length : null;
+    const isFinalSegment = typeof fullLen === "number" && segEnd >= fullLen;
     for (const ref of refs) {
       const anchor = typeof ref?.absoluteAnchor === "number"
         ? ref.absoluteAnchor
@@ -140,7 +142,10 @@ function buildParaNotesIndex(pageData) {
           ? ref.anchor
           : null;
       if (typeof anchor !== "number") continue;
-      if (anchor < segStart || anchor > segEnd) continue;
+      // Use half-open page segments [start,end) to avoid duplicating a ref
+      // exactly at a split boundary on both pages. The very last segment keeps
+      // an inclusive end so a ref at paragraph end is not lost.
+      if (anchor < segStart || (isFinalSegment ? anchor > segEnd : anchor >= segEnd)) continue;
       addMainRefToIndex(index, seen, paraIdx, ref, "", segStart);
     }
   }
