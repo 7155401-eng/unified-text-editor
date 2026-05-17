@@ -1156,10 +1156,26 @@ function buildPagePlan(pageContent, config) {
     //                                                     לוקח את כל הרוחב
     // אם otherEndY <= effectiveMainBottomY: רק 3b (הצד השני נגמר ב-strips 1+2)
     // אם otherEndY >= pageBottomY: רק 3a (הצד השני מגיע עד תחתית הדף)
-    if (effectiveMainBottomY < otherEndY) {
+    //
+    // משה 2026-05-17: connector strip — לפני המעבר ל-3b ברוחב מלא, חייבת
+    // להישאר לפחות שורה צדדית אחת ברוחב הצדדי. אחרת הזרם קופץ ישר לרוחב
+    // מלא ויוצר מראה של "ניתוק" בין הסוף הצדדי לבין ההמשך הרחב.
+    // אם 3a קצר משורה אחת או לא קיים, אנחנו דוחים את 3b בגובה שורה אחת.
+    const connectorLineH = Math.max(
+      Number(sideMetrics?.lineHeight) || 0,
+      Number(streamData?.fontSize) > 0 ? Number(streamData.fontSize) * 1.35 : 0,
+      14
+    );
+    const existing3aHeight = Math.max(0, otherEndY - effectiveMainBottomY);
+    const need3aExtension = existing3aHeight < connectorLineH - 0.5;
+    const adjustedOtherEndY = need3aExtension
+      ? Math.min(pageBottomY, effectiveMainBottomY + connectorLineH)
+      : otherEndY;
+
+    if (effectiveMainBottomY < adjustedOtherEndY) {
       strips.push({
         y_start: effectiveMainBottomY,
-        y_end: otherEndY,
+        y_end: adjustedOtherEndY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
       });
@@ -1168,9 +1184,9 @@ function buildPagePlan(pageContent, config) {
     // יש strip 3 ברוחב מלא. אחרת שני הצדדים יציירו על אותו אזור (חפיפה).
     // הימני (החצי הראשון) — אם יש לו עודף, הוא ייכנס ל-carry-over.
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    if (otherEndY < pageBottomY && !suppressFullStrip3) {
+    if (adjustedOtherEndY < pageBottomY && !suppressFullStrip3) {
       strips.push({
-        y_start: otherEndY,
+        y_start: adjustedOtherEndY,
         y_end: pageBottomY,
         width: innerWidth,
         x: 0,
@@ -2528,23 +2544,24 @@ export async function buildPages(container, paragraphs, config) {
             if (!currentHasNoteOverflow && fill < currentFill - 0.04) continue;
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
 
-            // אם כבר יש גלישת הערות קיימת, מועמד שלא פותר אותה אינו rescue.
+            // משה 2026-05-17: noteOverflow = פסילה מוחלטת.
+            // הערות חייבות להישאר באותו עמוד של ההפניה אליהן. מועמד שיוצר
+            // note overflow גורש את ההערות לעמוד הבא — זה ההפך מהמטרה.
+            // (אם currentHasNoteOverflow קיים, rescue מנסה לפתור אותו — לא
+            // להחליפו ב-overflow אחר.) קנס קטן של 0.25 לא הספיק כי fill+0.3
+            // יכל לנצח אותו. עכשיו זה פסילה.
 
-            // זה מונע מצב שבו הערות של העמוד הנוכחי נדחפות לעמוד הבא.
+            if (noteOverflow) continue;
 
-            if (currentHasNoteOverflow && noteOverflow) continue;
-
-            if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
+            // משה 2026-05-17: noteOverflow כבר נפסל למעלה. לא בודקים שוב כאן.
 
             const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
 
-            const carryMainPenalty = carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0;
-
             const score =
 
-              (currentHasNoteOverflow && !noteOverflow ? 1 : 0) +
+              (currentHasNoteOverflow ? 1 : 0) +
 
-              fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.25 : 0);
+              fill + mainProgressBonus;
 
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
@@ -2623,7 +2640,15 @@ export async function buildPages(container, paragraphs, config) {
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
           const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
-          if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
+
+          // משה 2026-05-17: כאן Extension מנסה לסחוב שורה מהעמוד הבא לעמוד
+          // הנוכחי כדי לסתום רווח. אסור שזה ידחוף את ההערות הקיימות לעמוד
+          // הבא — ההערות חייבות להישאר עם הטקסט שאליו הן שייכות. אם משיכת
+          // השורה גורמת ל-note overflow → פסילה מוחלטת, לא קנס. ככה
+          // מודדים שורה-שורה ועוצרים ברגע שהמשיכה הבאה תפגע בהערות.
+
+          if (noteOverflow) continue;
+
           const fill = planFillRatio(tp);
 
           if (fill < currentFill - 0.04) continue;
@@ -2638,11 +2663,7 @@ export async function buildPages(container, paragraphs, config) {
 
             partialNextNoteFillBonus +
 
-            (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08)) -
-
-            (noteOverflow ? 0.12 : 0) -
-
-            (carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0);
+            (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08));
 
           if (score < bestExtendedScore) continue;
           bestExtendedScore = score;
