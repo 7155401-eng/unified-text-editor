@@ -18,6 +18,10 @@ import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
+import {
+  startVilnaRenderProgress,
+  hideVilnaRenderProgressImmediately,
+} from "./render_progress_ui.js";
 
 // משה 2026-05-08: קריאת קודי הזרמים שהוגדרו לגפ"ת ע"י המשתמש.
 // פורמט: "01,02" → ["01","02"]. אלה הזרמים שיהיו בצדדים בעימוד גפ"ת.
@@ -137,6 +141,18 @@ function readSpacingBool(key, fallback = false) {
   }
 }
 
+function estimateV9PageCount(paragraphs) {
+  if (!Array.isArray(paragraphs) || paragraphs.length === 0) return 1;
+  let chars = 0;
+  let notes = 0;
+  for (const p of paragraphs) {
+    chars += String(p?.mainText || "").length;
+    notes += Array.isArray(p?.notes) ? p.notes.length : 0;
+  }
+  // הערכה רכה בלבד עבור פס התקדמות. ה-MutationObserver יעדכן לפי עמודים אמיתיים.
+  return Math.max(1, Math.ceil(chars / 1800 + notes / 18));
+}
+
 export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = {}) {
   if (!container || !Array.isArray(paragraphs)) return;
   const isCurrent = typeof opts.isCurrent === "function" ? opts.isCurrent : () => true;
@@ -161,67 +177,92 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
   // למחוק את העמודים הנוכחיים — אחרת המסך יישאר ריק עד הרינדור הבא.
   if (!isCurrent()) return { aborted: true };
 
-  // נקה את ה-container — V9 בונה מאפס
-  container.innerHTML = "";
+  hideVilnaRenderProgressImmediately();
+  const progress = startVilnaRenderProgress({
+    container,
+    estimatedTotalPages: estimateV9PageCount(paragraphs),
+    title: "מרנדר עמודים",
+    subtitle: "מודד שורות, מפרשים וריווח דף",
+  });
 
-  if (paragraphs.length === 0) return;
+  try {
+    // נקה את ה-container — V9 בונה מאפס
+    container.innerHTML = "";
 
-  const geom = readPageGeomFromContainer(container);
+    if (paragraphs.length === 0) {
+      progress.finish({ totalPages: 0 });
+      return;
+    }
 
-  const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
-  const titles = Object.assign({}, DEFAULT_TITLES, labels);
+    const geom = readPageGeomFromContainer(container);
 
-  const rawStreamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
-  const streamSettings = {};
-  for (const code of Object.keys(rawStreamSettings)) {
-    streamSettings[code] = getEffectiveStreamSettings(code);
+    const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
+    const titles = Object.assign({}, DEFAULT_TITLES, labels);
+
+    const rawStreamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+    const streamSettings = {};
+    for (const code of Object.keys(rawStreamSettings)) {
+      streamSettings[code] = getEffectiveStreamSettings(code);
+    }
+    const levels = readLevelsFromLocalStorage();
+    const talmudStreams = readTalmudStreamCodes();
+
+    // משה 2026-05-13: סגנון של "טקסט ראשי" — הזרמת ה-id והאובייקט הגולמי למנוע
+    // כדי שהבולד/האיטליק וכל שאר התכונות יחולו על שורות הראשי ב-V9.
+    const mainStyleId = loadDocumentStyleSettings().mainStyleId || "";
+    const mainInlineStyle = getMainTextStyle() || null;
+
+    // משה 2026-05-15: סימני־ייחוס בראשי ("[N]") — אותה החלטה כמו המנוע הרגיל.
+    // injectMainRefs ב-note_content_builder.js בודק mainRefEnabled לכל זרם
+    // ומזריק לטקסט הראשי + מזיז mainRuns ועוגני הערות. אם אף זרם לא הפעיל
+    // את האפשרות, הפונקציה מחזירה את הקלט ללא שינוי.
+    const transformedParagraphs = paragraphs.map((p) => {
+      if (!p) return p;
+      const injected = injectMainRefs(p.mainText, p.mainRuns, p.notes);
+      return { ...p, mainText: injected.mainText, mainRuns: injected.mainRuns, notes: injected.notes };
+    });
+
+    const result = await buildPages(container, transformedParagraphs, {
+      isCurrent,
+      pageWidth: geom.pageWidth,
+      pageHeight: geom.pageHeight,
+      reservedTop: geom.reservedTop,
+      reservedBottom: geom.reservedBottom,
+      mainFontSize: geom.mainSize,
+      sideFontSize: geom.sideSize,
+      mainFontFamily: geom.fontFamily,
+      sideFontFamily: geom.fontFamily,
+      lineHeightRatio: geom.lineHeightRatio,
+      padding: 12,
+      mainGap: geom.mainGap,
+      streamHorizontalGap: geom.streamHorizontalGap,
+      mainStyleId,
+      mainInlineStyle,
+      mainWidthRatio: readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
+      crownLines: readIntSetting("ravtext.talmudLayout.crownLines", 4, 0, 12),
+      gapFillMinRatio: readPercentSetting("ravtext.talmudLayout.gapFillMin", 82, 50, 98),
+      gapFillMaxMainLines: readIntSetting("ravtext.talmudLayout.gapFillMaxMainLines", null, 1, 30),
+      carryOnlyMinRatio: readPercentSetting("ravtext.talmudLayout.carryOnlyMin", 78, 50, 98),
+      titles,
+      streamSettings,
+      levels,
+      talmudStreams,
+      noMidParagraphSoft: readSpacingBool("noMidParagraphSoft", false),
+      noMidLineSplits: readSpacingBool("noMidLineSplits", false),
+      preventMidLineSplit: readSpacingBool("preventMidLineSplit", false),
+    });
+
+    if (result?.aborted || !isCurrent()) {
+      progress.abort();
+      return result;
+    }
+
+    progress.finish({
+      totalPages: container.querySelectorAll(".page").length || result?.pages?.length || 0,
+    });
+    return result;
+  } catch (e) {
+    progress.fail(e);
+    throw e;
   }
-  const levels = readLevelsFromLocalStorage();
-  const talmudStreams = readTalmudStreamCodes();
-
-  // משה 2026-05-13: סגנון של "טקסט ראשי" — הזרמת ה-id והאובייקט הגולמי למנוע
-  // כדי שהבולד/האיטליק וכל שאר התכונות יחולו על שורות הראשי ב-V9.
-  const mainStyleId = loadDocumentStyleSettings().mainStyleId || "";
-  const mainInlineStyle = getMainTextStyle() || null;
-
-  // משה 2026-05-15: סימני־ייחוס בראשי ("[N]") — אותה החלטה כמו המנוע הרגיל.
-  // injectMainRefs ב-note_content_builder.js בודק mainRefEnabled לכל זרם
-  // ומזריק לטקסט הראשי + מזיז mainRuns ועוגני הערות. אם אף זרם לא הפעיל
-  // את האפשרות, הפונקציה מחזירה את הקלט ללא שינוי.
-  const transformedParagraphs = paragraphs.map((p) => {
-    if (!p) return p;
-    const injected = injectMainRefs(p.mainText, p.mainRuns, p.notes);
-    return { ...p, mainText: injected.mainText, mainRuns: injected.mainRuns, notes: injected.notes };
-  });
-
-  return await buildPages(container, transformedParagraphs, {
-    isCurrent,
-    pageWidth: geom.pageWidth,
-    pageHeight: geom.pageHeight,
-    reservedTop: geom.reservedTop,
-    reservedBottom: geom.reservedBottom,
-    mainFontSize: geom.mainSize,
-    sideFontSize: geom.sideSize,
-    mainFontFamily: geom.fontFamily,
-    sideFontFamily: geom.fontFamily,
-    lineHeightRatio: geom.lineHeightRatio,
-    padding: 12,
-    mainGap: geom.mainGap,
-    streamHorizontalGap: geom.streamHorizontalGap,
-    mainStyleId,
-    mainInlineStyle,
-    mainWidthRatio: readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
-    crownLines: readIntSetting("ravtext.talmudLayout.crownLines", 4, 0, 12),
-    gapFillMinRatio: readPercentSetting("ravtext.talmudLayout.gapFillMin", 82, 50, 98),
-    gapFillMaxMainLines: readIntSetting("ravtext.talmudLayout.gapFillMaxMainLines", null, 1, 30),
-    carryOnlyMinRatio: readPercentSetting("ravtext.talmudLayout.carryOnlyMin", 78, 50, 98),
-    titles,
-    streamSettings,
-    levels,
-    talmudStreams,
-    noMidParagraphSoft: readSpacingBool("noMidParagraphSoft", false),
-    noMidLineSplits: readSpacingBool("noMidLineSplits", false),
-    preventMidLineSplit: readSpacingBool("preventMidLineSplit", false),
-  });
 }
-
