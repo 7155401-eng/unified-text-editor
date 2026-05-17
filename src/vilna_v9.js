@@ -1156,82 +1156,26 @@ function buildPagePlan(pageContent, config) {
     //                                                     לוקח את כל הרוחב
     // אם otherEndY <= effectiveMainBottomY: רק 3b (הצד השני נגמר ב-strips 1+2)
     // אם otherEndY >= pageBottomY: רק 3a (הצד השני מגיע עד תחתית הדף)
-    //
-    // משה 2026-05-17 (v3): connector strip עם two-pass fallback.
-    //
-    // הרעיון של ה-connector: לפני המעבר ל-3b ברוחב מלא, להשאיר לפחות שורה
-    // צדדית אחת ברוחב הצר של strip 2 (ליד הראשי), כדי שהמעבר ייראה טבעי
-    // (צר → רוחב מלא במעבר אחד, לא צר → חצי דף → רוחב מלא).
-    //
-    // אבל יש סיכון: השורה הצרה מחזיקה פחות מילים. אם הזרם בקושי נכנס בעמוד,
-    // השורה הצרה דוחפת תוכן ל-overflow שלא היה לפני. זה משבש עימוד ספרים שעבדו.
-    //
-    // הפתרון: לבנות **שתי גרסאות** של strip 3 — אחת בלי connector (כמו במקור),
-    // ואחת עם connector — ולבחור אוטומטית. אם גרסת ה-connector לא מוסיפה
-    // overflow חדש, להשתמש בה (יפה יותר). אם היא כן מוסיפה — להשתמש במקורית
-    // (לשמור על עימוד תקין).
-    //
-    // הבחירה נעשית אחרי שמריצים flow עם כל גרסה ומשווים את ה-overflowText.
-    const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    const connectorLineH = Math.max(
-      Number(sideMetrics?.lineHeight) || 0,
-      Number(streamData?.fontSize) > 0 ? Number(streamData.fontSize) * 1.35 : 0,
-      14
-    );
-    const narrowSideWidth = side === 'right'
-      ? Math.max(0, innerWidth - (mainX + mainWidth) - mainGap)
-      : Math.max(0, mainX - mainGap);
-    const narrowSideX = side === 'right'
-      ? mainX + mainWidth + mainGap
-      : 0;
-    const existing3aHeight = Math.max(0, otherEndY - effectiveMainBottomY);
-
-    // strip 3 גרסה א — בלי connector (התנהגות מקורית)
-    const strip3Base = [];
     if (effectiveMainBottomY < otherEndY) {
-      strip3Base.push({
+      strips.push({
         y_start: effectiveMainBottomY,
         y_end: otherEndY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
       });
     }
+    // משה 2026-05-10: בתרחיש 1, רק לצד אחד (השמאלי = החצי השני בסדר הקריאה)
+    // יש strip 3 ברוחב מלא. אחרת שני הצדדים יציירו על אותו אזור (חפיפה).
+    // הימני (החצי הראשון) — אם יש לו עודף, הוא ייכנס ל-carry-over.
+    const suppressFullStrip3 = o.suppressFullStrip3 === true;
     if (otherEndY < pageBottomY && !suppressFullStrip3) {
-      strip3Base.push({
+      strips.push({
         y_start: otherEndY,
         y_end: pageBottomY,
         width: innerWidth,
         x: 0,
       });
     }
-
-    // strip 3 גרסה ב — עם connector strip ברוחב הצר של strip 2
-    // (רלוונטי רק כשאין 3a במקור או שהוא קצר משורה. אחרת זהה לגרסה א.)
-    let strip3WithConnector = strip3Base;
-    const needConnectorVariant = existing3aHeight < connectorLineH - 0.5 && narrowSideWidth > 0;
-    if (needConnectorVariant) {
-      strip3WithConnector = [];
-      const connectorEnd = Math.min(pageBottomY, effectiveMainBottomY + connectorLineH);
-      if (effectiveMainBottomY < connectorEnd) {
-        strip3WithConnector.push({
-          y_start: effectiveMainBottomY,
-          y_end: connectorEnd,
-          width: narrowSideWidth,
-          x: narrowSideX,
-        });
-      }
-      if (connectorEnd < pageBottomY && !suppressFullStrip3) {
-        strip3WithConnector.push({
-          y_start: connectorEnd,
-          y_end: pageBottomY,
-          width: innerWidth,
-          x: 0,
-        });
-      }
-    }
-    // הבחירה הסופית בין שתי הגרסאות נעשית אחרי flow (ראה למטה).
-    // עכשיו דוחפים גרסת base כברירת מחדל בטוחה.
-    for (const s of strip3Base) strips.push(s);
 
     // משה 2026-05-13: בחירת ה-metrics המתאים לסגנון של הזרם הזה.
     // אם המשתמש החיל סגנון אישי עם פונט/גודל שונה — המדידה חייבת להתאים,
@@ -1242,44 +1186,16 @@ function buildPagePlan(pageContent, config) {
     const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0 ? Number(streamResolvedStyle.fontSize) : streamMetrics.fontSize;
     const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
 
-    // משה 2026-05-17 (v3): two-pass flow.
-    // מריצים flow עם strips הבסיסיים (בלי connector). אם connector זמין
-    // וגם הוא לא מוסיף overflow חדש — מחליפים לגרסה עם connector.
-    // אחרת — נשארים עם הבסיסיים. ככה ה-connector "מתפרסם" רק כשהוא בטוח.
-    let flowResult = flowStreamThroughStrips(
+    const flowResult = flowStreamThroughStrips(
       streamRich,
       strips.map(s => ({ y_start: s.y_start, width: s.width })),
       streamMetrics,
       pageBottomY
     );
-    let activeStrips = strips;
-
-    if (needConnectorVariant) {
-      // strips ב-active עכשיו = strip 1 + strip 2 + strip3Base.
-      // נחליף את strip3Base ב-strip3WithConnector ונרוץ שוב.
-      const stripsWithConnectorFull = strips
-        .slice(0, strips.length - strip3Base.length)
-        .concat(strip3WithConnector);
-      const connectorFlow = flowStreamThroughStrips(
-        streamRich,
-        stripsWithConnectorFull.map(s => ({ y_start: s.y_start, width: s.width })),
-        streamMetrics,
-        pageBottomY
-      );
-
-      const baseOverflowLen = (flowResult.overflowText || "").length;
-      const connectorOverflowLen = (connectorFlow.overflowText || "").length;
-      // קריטריון בחירה: אם connector לא מוסיף overflow (קטן או שווה לבסיסי)
-      // — להעדיף את ה-connector. אחרת — להשאיר את הבסיסי.
-      if (connectorOverflowLen <= baseOverflowLen) {
-        flowResult = connectorFlow;
-        activeStrips = stripsWithConnectorFull;
-      }
-    }
 
     const lines = [];
     for (const line of flowResult.lines) {
-      const strip = activeStrips.find(s => line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
+      const strip = strips.find(s => line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
       if (!strip) continue;
       lines.push({
         x: strip.x,
@@ -1309,7 +1225,7 @@ function buildPagePlan(pageContent, config) {
       styleId: streamStyleId,
       inlineStyle: streamResolvedStyle || {},
       titleStyleId: streamSettings[streamData.id]?.titleStyleId || "",
-      strips: activeStrips,
+      strips: strips,
       lines: lines,
       endY: flowResult.endY,
       overflowText: flowResult.overflowText,
@@ -2116,59 +2032,6 @@ function classifyV9SafeBreakOffset(text, offset, visualLineEnds) {
   return "mid-word-or-bad";
 }
 
-// משה 2026-05-17: היררכיית ציונים לחיתוכים — לפי המסמך המלא של ההיררכיה.
-// סדר מהזול (גבוה) ליקר (נמוך). ככה כל החלטת חיתוך (ראשי או זרם הערה)
-// תוכל לבחור לפי קריטריון אחיד במקום בסדר רשימות נפרד.
-//
-//   paragraph-end (1000) — סוף פיסקה. תמיד מועדף.
-//   visual-line-end (900) — סוף שורה טבעי של הדפדפן/קנבס.
-//   visual-line-end-spread (820) — סוף שורה תקין אחרי פיזור רווחים קל.
-//   visual-line-end-shrink (780) — סוף שורה תקין אחרי צמצום רווחים קל.
-//   visual-line-end-letter (700) — אחרי שינוי letter-spacing קל.
-//   sentence-end (600) — סוף משפט.
-//   punctuation-end (580) — סימן פיסוק.
-//   word-gap (100) — סוף מילה באמצע שורה. רק חירום.
-//   mid-word-or-bad (-1000) — באמצע מילה. לעולם לא.
-//   invalid (-1000) — מחוץ לטווח.
-//
-// adjusted-spacing variants (820/780/700) לא מוזרקים ב-PR זה — דחויים ל-PR
-// נפרד שיוסיף את ה-renderer side של פיזור/צמצום על השורה האחרונה.
-const BREAK_PRIORITY = {
-  "paragraph-end": 1000,
-  "visual-line-end": 900,
-  "visual-line-end-spread": 820,
-  "visual-line-end-shrink": 780,
-  "visual-line-end-letter": 700,
-  "sentence-end": 600,
-  "punctuation-end": 580,
-  "word-gap": 100,
-  "mid-word-or-bad": -1000,
-  "invalid": -1000,
-};
-
-function priorityForBreakKind(kind) {
-  const v = BREAK_PRIORITY[kind];
-  return Number.isFinite(v) ? v : -1000;
-}
-
-// משה 2026-05-17: סיווג מועמדים עם ציון — נוח לכל קוד שצריך לדרג חיתוכים.
-// מחזיר [{ offset, kind, priority }] ממוין מהציון הגבוה ביותר.
-// בין שווי-עדיפות — offset גדול קודם (יותר תוכן בעמוד הנוכחי, פחות בזבוז).
-function classifiedBreakCandidates(text, offsets, visualLineEnds) {
-  const seen = new Set();
-  const list = [];
-  for (const offset of offsets || []) {
-    if (!Number.isFinite(offset) || seen.has(offset)) continue;
-    seen.add(offset);
-    const kind = classifyV9SafeBreakOffset(text, offset, visualLineEnds || []);
-    const priority = priorityForBreakKind(kind);
-    if (priority <= 0) continue;
-    list.push({ offset, kind, priority });
-  }
-  list.sort((a, b) => b.priority - a.priority || b.offset - a.offset);
-  return list;
-}
-
 function safeBreakCandidates(text, visualLineEnds, opts = {}) {
   const min = opts.min || 1;
   const max = opts.max || (text ? text.length : Infinity);
@@ -2494,43 +2357,31 @@ export async function buildPages(container, paragraphs, config) {
           sliceIdx,
           baseN,
         });
-        // משה 2026-05-17 (v3): chooseStepwiseSplit עובד על מועמדים עם priority.
-        // ההיררכיה: עדיפות גבוהה תמיד מנצחת — visual-line-end (900) קודם
-        // sentence-end (600) קודם punctuation-end (580). בתוך אותה עדיפות,
-        // meta.score (fill) משמש tie-break. אם בעדיפות גבוהה אין candidate נקי,
-        // יורדים לעדיפות הבאה. noteOverflow הוא fallback סופי לאחרון בלבד —
-        // עדיף על "כלום" אבל גרוע מכל candidate נקי בכל עדיפות.
-        const chooseStepwiseSplit = (prioritizedCandidates) => {
-          if (!prioritizedCandidates || !prioritizedCandidates.length) return null;
-          // מפוי priority → { score, split } של המועמד הטוב ביותר בעדיפות זו
-          const bestCleanByPriority = new Map();
-          // מפוי priority → split (הראשון שנפגש) — fallback של noteOverflow
-          const firstOverflowByPriority = new Map();
-          for (const cand of prioritizedCandidates) {
-            const movedNotes = notesBeforeAnchor(cand.offset);
-            const meta = splitPlanMeta(tryPrefix(cand.offset), movedNotes);
+        const chooseStepwiseSplit = (ends) => {
+          let lastClean = null;
+          let lastCleanScore = -Infinity;
+          let lastCleanMeta = null;
+          let lastCleanMovedNotes = [];
+          for (const len of ends) {
+            const movedNotes = notesBeforeAnchor(len);
+            const meta = splitPlanMeta(tryPrefix(len), movedNotes);
             if (!meta) continue;
             if (meta.hasNoteOverflow) {
-              if (!firstOverflowByPriority.has(cand.priority)) {
-                firstOverflowByPriority.set(cand.priority, makeSplit(cand.offset, movedNotes));
-              }
-              continue;
+              // משה 2026-05-17:
+              // הצמדת הערות קודמת ל-fill. אם כבר מצאנו candidate נקי
+              // בלי גלישת הערות, לא נבחר אחריו candidate שמגליש הערות
+              // רק מפני שהוא ממלא יותר את העמוד.
+              if (lastClean) return lastClean;
+              return makeSplit(len, movedNotes);
             }
-            const entry = bestCleanByPriority.get(cand.priority);
-            if (!entry || meta.score > entry.score) {
-              bestCleanByPriority.set(cand.priority, {
-                score: meta.score,
-                split: makeSplit(cand.offset, movedNotes),
-              });
+            if (meta.score >= lastCleanScore) {
+              lastCleanScore = meta.score;
+              lastClean = makeSplit(len, movedNotes);
+              lastCleanMeta = meta;
+              lastCleanMovedNotes = movedNotes;
             }
           }
-          // נסה תחילה את העדיפויות הגבוהות עם candidate נקי
-          const cleanPriorities = [...bestCleanByPriority.keys()].sort((a, b) => b - a);
-          if (cleanPriorities.length) return bestCleanByPriority.get(cleanPriorities[0]).split;
-          // אין נקי באף עדיפות — נופלים ל-overflow fallback בעדיפות הגבוהה ביותר שיש בה
-          const overflowPriorities = [...firstOverflowByPriority.keys()].sort((a, b) => b - a);
-          if (overflowPriorities.length) return firstOverflowByPriority.get(overflowPriorities[0]);
-          return null;
+          return lastClean;
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
@@ -2542,14 +2393,11 @@ export async function buildPages(container, paragraphs, config) {
           includePunctuation: true,
           includeWordGap: false,
         });
-        // משה 2026-05-17: רשימה מאוחדת עם priority. visual-line-end (900) קודם,
-        // semantic ends (sentence/punctuation 600/580) שני. בלי לערבב סדר ידני.
-        const unifiedCandidates = classifiedBreakCandidates(
-          fullText,
-          allowParagraphSplit ? [...lineEnds, ...semanticEnds] : lineEnds,
-          lineEnds
-        );
-        splitInfo = chooseStepwiseSplit(unifiedCandidates);
+        splitInfo = chooseStepwiseSplit(lineEnds);
+        if (!splitInfo && allowParagraphSplit && semanticEnds.length) {
+          // regular split uses safe semantic fallbacks
+          splitInfo = chooseStepwiseSplit(semanticEnds);
+        }
         if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
           const semanticFallbackEnds = allowParagraphSplit
             ? safeBreakCandidates(fullText, lineEnds, {
@@ -2680,24 +2528,23 @@ export async function buildPages(container, paragraphs, config) {
             if (!currentHasNoteOverflow && fill < currentFill - 0.04) continue;
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
 
-            // משה 2026-05-17: noteOverflow = פסילה מוחלטת.
-            // הערות חייבות להישאר באותו עמוד של ההפניה אליהן. מועמד שיוצר
-            // note overflow גורש את ההערות לעמוד הבא — זה ההפך מהמטרה.
-            // (אם currentHasNoteOverflow קיים, rescue מנסה לפתור אותו — לא
-            // להחליפו ב-overflow אחר.) קנס קטן של 0.25 לא הספיק כי fill+0.3
-            // יכל לנצח אותו. עכשיו זה פסילה.
+            // אם כבר יש גלישת הערות קיימת, מועמד שלא פותר אותה אינו rescue.
 
-            if (noteOverflow) continue;
+            // זה מונע מצב שבו הערות של העמוד הנוכחי נדחפות לעמוד הבא.
 
-            // משה 2026-05-17: noteOverflow כבר נפסל למעלה. לא בודקים שוב כאן.
+            if (currentHasNoteOverflow && noteOverflow) continue;
+
+            if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
 
             const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
 
+            const carryMainPenalty = carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0;
+
             const score =
 
-              (currentHasNoteOverflow ? 1 : 0) +
+              (currentHasNoteOverflow && !noteOverflow ? 1 : 0) +
 
-              fill + mainProgressBonus;
+              fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.25 : 0);
 
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
@@ -2776,15 +2623,7 @@ export async function buildPages(container, paragraphs, config) {
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
           const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
-
-          // משה 2026-05-17: כאן Extension מנסה לסחוב שורה מהעמוד הבא לעמוד
-          // הנוכחי כדי לסתום רווח. אסור שזה ידחוף את ההערות הקיימות לעמוד
-          // הבא — ההערות חייבות להישאר עם הטקסט שאליו הן שייכות. אם משיכת
-          // השורה גורמת ל-note overflow → פסילה מוחלטת, לא קנס. ככה
-          // מודדים שורה-שורה ועוצרים ברגע שהמשיכה הבאה תפגע בהערות.
-
-          if (noteOverflow) continue;
-
+          if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
           const fill = planFillRatio(tp);
 
           if (fill < currentFill - 0.04) continue;
@@ -2799,7 +2638,11 @@ export async function buildPages(container, paragraphs, config) {
 
             partialNextNoteFillBonus +
 
-            (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08));
+            (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08)) -
+
+            (noteOverflow ? 0.12 : 0) -
+
+            (carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0);
 
           if (score < bestExtendedScore) continue;
           bestExtendedScore = score;
