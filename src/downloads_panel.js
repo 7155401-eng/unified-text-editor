@@ -10,11 +10,13 @@ import {
   registerServiceWorker,
 } from "./pwa_install_controller.js";
 import { showInstallDialogManually } from "./pwa_install_prompt.js";
+import { isDemoMode } from "./demo_mode.js";
 
 const HANDLE_DB = "ravtext-downloads";
 const HANDLE_STORE = "handles";
 const HANDLE_KEY = "syncFolder";
 const AUTO_SYNC_KEY = "ravtext.downloads.autoSync";
+const SECURE_EXPORT_HTML_ENDPOINT = "/api/secure-export-html";
 
 let cachedHandle = null;
 
@@ -139,6 +141,26 @@ function setLastSave(text) {
   if (el) el.textContent = text;
 }
 
+async function secureExportHtmlBlob(html) {
+  const response = await fetch(SECURE_EXPORT_HTML_ENDPOINT, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ html, requestedAt: new Date().toISOString() }),
+  });
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const data = await response.json();
+      detail = data?.error ? ` (${data.error})` : "";
+    } catch (_) {}
+    throw new Error(`secure_export_failed${detail}`);
+  }
+
+  return await response.blob();
+}
+
 async function refreshFolderStatus() {
   try {
     cachedHandle = await loadHandle();
@@ -176,11 +198,18 @@ async function syncNow() {
     alert("הרשאת הכתיבה נשללה. בחר תיקייה מחדש.");
     return;
   }
-  const html = buildPagesSnapshotHTML();
-  const json = buildDocumentJSON();
-  await writeFile(cachedHandle, "ravtext-document.html", new Blob([html], { type: "text/html" }));
-  await writeFile(cachedHandle, "ravtext-document.json", new Blob([json], { type: "application/json" }));
-  setLastSave(`נשמר: ${new Date().toLocaleTimeString("he-IL")}`);
+
+  try {
+    const htmlBlob = await secureExportHtmlBlob(buildPagesSnapshotHTML());
+    await writeFile(cachedHandle, "ravtext-document.html", htmlBlob);
+    if (!isDemoMode()) {
+      await writeFile(cachedHandle, "ravtext-document.json", new Blob([buildDocumentJSON()], { type: "application/json" }));
+    }
+    setLastSave(`נשמר דרך השרת: ${new Date().toLocaleTimeString("he-IL")}`);
+  } catch (err) {
+    console.error("[downloads] secure sync failed:", err);
+    alert("הייצוא המאובטח דרך השרת נכשל. כדי למנוע עקיפת סימן מים, הקובץ לא נשמר מקומית.");
+  }
 }
 
 async function clearFolderChoice() {
@@ -189,22 +218,27 @@ async function clearFolderChoice() {
   setStatus("(טרם נבחרה תיקייה)");
 }
 
-function downloadDocumentHTML() {
-  downloadBlob("ravtext-document.html", new Blob([buildPagesSnapshotHTML()], { type: "text/html" }));
-  setLastSave(`הורד: ${new Date().toLocaleTimeString("he-IL")}`);
+async function downloadDocumentHTML() {
+  try {
+    const htmlBlob = await secureExportHtmlBlob(buildPagesSnapshotHTML());
+    downloadBlob("ravtext-document.html", htmlBlob);
+    setLastSave(`הורד דרך השרת: ${new Date().toLocaleTimeString("he-IL")}`);
+  } catch (err) {
+    console.error("[downloads] secure HTML export failed:", err);
+    alert("הייצוא המאובטח דרך השרת נכשל. כדי למנוע עקיפת סימן מים, ההורדה המקומית נחסמה.");
+  }
 }
 
 function downloadDocumentJSON() {
+  if (isDemoMode()) {
+    alert("במצב דמו אין הורדת JSON גולמי, כי הוא יכול לעקוף סימני מים. השתמש בהורדת HTML המאובטחת דרך השרת.");
+    return;
+  }
   downloadBlob("ravtext-document.json", new Blob([buildDocumentJSON()], { type: "application/json" }));
   setLastSave(`הורד: ${new Date().toLocaleTimeString("he-IL")}`);
 }
 
 // ─── PWA install (כרום עצמאי, נעול לאתר) ────────────────────────────────────
-//
-// הכפתור "📲 התקן כאפליקציה" פותח דיאלוג התקנה אלגנטי משותף עם
-// המודל שעולה אוטומטית בביקור השלישי. הזרימה ב-pwa_install_prompt.js;
-// כאן אנחנו רק מחברים את הכפתור ומציגים סטטוס/כיתוב מותאם למצב.
-
 function setInstallStatus(text) {
   const el = document.getElementById("dl-install-status");
   if (el) el.textContent = text;
@@ -227,8 +261,6 @@ function refreshInstallButtonUI() {
     return;
   }
 
-  // Always allow the button to open the elegant dialog — it shows
-  // either the install flow or a fallback explanation.
   btn.disabled = false;
   if (isInstallable()) {
     setInstallStatus("ההתקנה זמינה — לחץ לפתיחת אשף ההתקנה.");
