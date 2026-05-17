@@ -476,62 +476,137 @@ function extractStreamNotesWithRuns(streamPane) {
   if (!sym) return { notes: [], runsPerNote: [] };
 
   const doc = streamPane.editor.state.doc;
-  const fullText = doc.textContent;
-  const allRuns = runsFromNode(doc);
+
+  // 2026-05-17:
+  // שורש הבאג: runsFromNode(doc) אינו מתאים ל-doc מלא. הפונקציה הישנה
+  // מחזירה false על צומת שאינו טקסט, וב-ProseMirror זה עלול למנוע ירידה
+  // לתוך הפסקאות. לכן הערות הזרם קיבלו 0 runs למרות שהבולד קיים בעורך.
+  // כאן בונים fullText ו-runs באותו traversal, וממשיכים לרדת דרך non-text.
+  function textAndRunsFromWholeDoc(root) {
+    let text = "";
+    const runs = [];
+
+    root?.descendants?.((child) => {
+      if (!child.isText) return true;
+
+      const value = child.text || "";
+      if (!value.length) return true;
+
+      const marks = {};
+      for (const mark of child.marks || []) {
+        const mAttrs = mark.attrs || {};
+        const name = mark.type?.name;
+
+        if (name === "textStyle") {
+          if (mAttrs.fontFamily) marks.fontFamily = mAttrs.fontFamily;
+          if (mAttrs.fontSize) marks.fontSize = mAttrs.fontSize;
+          if (mAttrs.color) marks.color = mAttrs.color;
+          if (mAttrs.backgroundColor || mAttrs.bgColor) {
+            marks.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
+          }
+        } else if (name === "bold") marks.bold = true;
+        else if (name === "italic") marks.italic = true;
+        else if (name === "underline") marks.underline = true;
+        else if (name === "strike") marks.strike = true;
+        else if (name === "highlight") marks.backgroundColor = mAttrs.color || marks.backgroundColor;
+      }
+
+      const start = text.length;
+      text += value;
+      runs.push({ start, end: text.length, marks });
+      return true;
+    });
+
+    return { text, runs };
+  }
+
+  function cleanNoteInfo(raw) {
+    const s = String(raw || "");
+    const leadingWs = s.length - s.replace(/^\s+/, "").length;
+    const trailingWs = s.length - s.replace(/\s+$/, "").length;
+    const sliceEnd = s.length - trailingWs;
+    const afterLeading = s.slice(leadingWs, sliceEnd);
+    const m = afterLeading.match(/^\[\d+\]\s*/);
+    const displayLen = m ? m[0].length : 0;
+
+    return {
+      text: afterLeading.slice(displayLen),
+      dropLeading: leadingWs + displayLen,
+      sliceEnd,
+    };
+  }
 
   const findAll = (haystack, needle) => {
     const out = [];
     if (!needle) return out;
+
     let i = haystack.indexOf(needle);
     while (i !== -1) {
       out.push({ start: i, end: i + needle.length });
       i = haystack.indexOf(needle, i + needle.length);
     }
+
     return out;
   };
 
   const sliceRuns = (runs, sliceStart, sliceEnd, dropLeading = 0) => {
     const out = [];
     const baseStart = sliceStart + dropLeading;
-    for (const r of runs) {
+
+    for (const r of runs || []) {
       if (r.end <= baseStart || r.start >= sliceEnd) continue;
+
       const ls = Math.max(0, r.start - baseStart);
       const le = Math.min(sliceEnd - baseStart, r.end - baseStart);
       if (ls >= le) continue;
-      out.push({ start: ls, end: le, marks: r.marks });
+
+      out.push({
+        start: ls,
+        end: le,
+        marks: r.marks || {},
+      });
     }
+
     return out;
   };
 
+  const flattened = textAndRunsFromWholeDoc(doc);
+  const fullText = flattened.text;
+  const allRuns = flattened.runs;
+
   const markerPositions = findAll(fullText, sym);
+
   if (markerPositions.length === 0) {
-    const noteText = stripDisplayNum(fullText);
-    if (!noteText) return { notes: [], runsPerNote: [] };
-    // החלת stripDisplayNum מסירה רווחים מובילים + [N]; חישוב dropLeading עליו
-    const m = fullText.match(/^\s*\[\d+\]\s*/);
-    const dropLeading = m ? m[0].length : 0;
+    const clean = cleanNoteInfo(fullText);
+    if (!clean.text) return { notes: [], runsPerNote: [] };
+
     return {
-      notes: [noteText],
-      runsPerNote: [sliceRuns(allRuns, 0, fullText.length, dropLeading)],
+      notes: [clean.text],
+      runsPerNote: [sliceRuns(allRuns, 0, clean.sliceEnd, clean.dropLeading)],
     };
   }
 
   const notes = [];
   const runsPerNote = [];
+
   for (let i = 0; i < markerPositions.length; i++) {
     const start = markerPositions[i].end;
-    const end = i + 1 < markerPositions.length ? markerPositions[i + 1].start : fullText.length;
+    const end = i + 1 < markerPositions.length
+      ? markerPositions[i + 1].start
+      : fullText.length;
+
     const rawNote = fullText.substring(start, end);
-    const stripped = stripDisplayNum(rawNote);
-    if (!stripped) continue;
-    const m = rawNote.match(/^\s*\[\d+\]\s*/);
-    const dropLeading = m ? m[0].length : 0;
-    notes.push(stripped);
-    runsPerNote.push(sliceRuns(allRuns, start, end, dropLeading));
+    const clean = cleanNoteInfo(rawNote);
+    if (!clean.text) continue;
+
+    notes.push(clean.text);
+    runsPerNote.push(
+      sliceRuns(allRuns, start, start + clean.sliceEnd, clean.dropLeading)
+    );
   }
+
   return { notes, runsPerNote };
 }
-
 const DEFAULT_STREAM_LABELS = {
   "01": "מגן אברהם",
   "02": "משנה ברורה",
