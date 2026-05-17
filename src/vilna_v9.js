@@ -2528,23 +2528,22 @@ export async function buildPages(container, paragraphs, config) {
             if (!currentHasNoteOverflow && fill < currentFill - 0.04) continue;
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
 
-            // אם כבר יש גלישת הערות קיימת, מועמד שלא פותר אותה אינו rescue.
+            // משה 2026-05-17 (v4): noteOverflow = פסילה מוחלטת ב-Gap rescue.
+            // הערות חייבות להישאר באותו עמוד של ההפניה אליהן. מועמד שיוצר
+            // note overflow גורש את ההערות לעמוד הבא — זה ההפך מהמטרה.
+            // קנס קטן של 0.25 לא הספיק כי fill מספיק גבוה יכל לנצח אותו.
+            // עכשיו פסילה מוחלטת בכל המקרים (carryActive כלול), בלי קנסות
+            // נוספים בציון. ההגנה הזו לבד, בלי connector strip הקודם.
 
-            // זה מונע מצב שבו הערות של העמוד הנוכחי נדחפות לעמוד הבא.
-
-            if (currentHasNoteOverflow && noteOverflow) continue;
-
-            if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
+            if (noteOverflow) continue;
 
             const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
 
-            const carryMainPenalty = carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0;
-
             const score =
 
-              (currentHasNoteOverflow && !noteOverflow ? 1 : 0) +
+              (currentHasNoteOverflow ? 1 : 0) +
 
-              fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.25 : 0);
+              fill + mainProgressBonus;
 
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
@@ -2623,7 +2622,15 @@ export async function buildPages(container, paragraphs, config) {
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
           const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
-          if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
+
+          // משה 2026-05-17 (v4): כאן Extension מנסה לסחוב שורה מהעמוד הבא
+          // לעמוד הנוכחי כדי לסתום רווח. אסור שזה ידחוף את ההערות הקיימות
+          // לעמוד הבא — ההערות חייבות להישאר עם הטקסט שאליו הן שייכות.
+          // אם משיכת השורה גורמת ל-note overflow → פסילה מוחלטת, לא קנס.
+          // ככה מודדים שורה-שורה ועוצרים ברגע שהמשיכה הבאה תפגע בהערות.
+
+          if (noteOverflow) continue;
+
           const fill = planFillRatio(tp);
 
           if (fill < currentFill - 0.04) continue;
@@ -2638,11 +2645,7 @@ export async function buildPages(container, paragraphs, config) {
 
             partialNextNoteFillBonus +
 
-            (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08)) -
-
-            (noteOverflow ? 0.12 : 0) -
-
-            (carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0);
+            (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08));
 
           if (score < bestExtendedScore) continue;
           bestExtendedScore = score;
