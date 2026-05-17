@@ -1,6 +1,8 @@
 import { getUserFromRequest } from './session.js';
+import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
+const DEMO_BLOCK_MS = 5 * 60 * 1000;
 
 const PUBLIC_TOOLS = new Set([
   'nikud-merger',
@@ -36,6 +38,56 @@ async function signToolToken(payload, secret) {
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function requestTriesToDisableWatermark(body) {
+  return [
+    body?.removeWatermark === true,
+    body?.hideWatermark === true,
+    body?.watermark === false,
+    body?.forceWatermark === false,
+    body?.demoWatermark === false,
+    body?.watermarkOpacity === 0,
+    body?.watermarkOpacity === '0',
+  ].some(Boolean);
+}
+
+async function handleSecureExportHtmlAction(request, env, body) {
+  const user = await getUserFromRequest(request, env);
+  const paid = !!user?.paid;
+
+  if (!paid && requestTriesToDisableWatermark(body)) {
+    return Response.json(
+      { error: 'watermark_tampering', blocked: true },
+      {
+        status: 403,
+        headers: {
+          'cache-control': 'no-store',
+          'set-cookie': `ravtext_demo_blocked_until=${Date.now() + DEMO_BLOCK_MS}; Path=/; SameSite=Lax`,
+        },
+      }
+    );
+  }
+
+  const html = String(body?.html || '');
+  if (!html.trim()) {
+    return Response.json(
+      { error: 'empty_html' },
+      { status: 400, headers: { 'cache-control': 'no-store' } }
+    );
+  }
+
+  const finalHtml = paid ? html : addServerWatermarksToHtml(html);
+  return new Response(finalHtml, {
+    status: 200,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-ravtext-auth-source': 'ravtext_session',
+      'x-ravtext-user-paid': paid ? '1' : '0',
+      'x-ravtext-watermark-forced': paid ? '0' : '1',
+    },
+  });
 }
 
 async function consumeFreeUse(user, toolName, env) {
@@ -83,6 +135,10 @@ export async function handleToolPreflight(request, env) {
       { error: 'invalid_json', message: 'Invalid request body' },
       { status: 400, headers: { 'cache-control': 'no-store' } }
     );
+  }
+
+  if (body?.action === 'secure_export_html') {
+    return handleSecureExportHtmlAction(request, env, body);
   }
 
   const toolName = String(body?.toolName || '').trim();
