@@ -150,7 +150,7 @@ function buildTypesetBookInquiryCard() {
   card.appendChild(el("div", { cls: "rt-prem-plan-title", text: "תעמדו לי את הספר" }));
   card.appendChild(el("div", {
     cls: "rt-prem-renew",
-    text: "רוצה שנעשה עבורך את העימוד בפועל? שלח פניה ונחזור אליך עם בדיקת חומר והצעת מחיר.",
+    text: "רוצה שנעשה עבורך את העימוד בפועל? שלח פניה והיא תישמר במערכת הפניות באתר.",
   }));
 
   const ul = el("ul", { cls: "rt-prem-perks" });
@@ -314,17 +314,8 @@ function redirectToLoginForPremium() {
   window.location.href = "/api/auth/login?next=" + encodeURIComponent(next);
 }
 
-function openTypesetBookInquiry() {
-  if (!isLoggedIn()) {
-    const ok = confirm("כדי לשלוח פניה לעימוד ספר צריך קודם להתחבר עם גוגל. להעביר אותך עכשיו?");
-    if (ok) redirectToLoginForPremium();
-    return;
-  }
-
-  const auth = window.__RAVTEXT_AUTH__ || {};
-  const email = auth.email || "";
-  const subject = "פניה לעימוד ספר דרך רב טקסט";
-  const body = [
+function buildTypesetInquiryBody(email) {
+  return [
     "שלום,",
     "אני רוצה פניה לגבי השירות: תעמדו לי את הספר.",
     "",
@@ -334,7 +325,113 @@ function openTypesetBookInquiry() {
     "מה צריך בעימוד:",
     "טלפון לחזרה:",
   ].join("\n");
-  window.location.href = `mailto:yiddishebilder@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function buildTypesetInquiryMeta() {
+  return {
+    source: "premium_page",
+    kind: "typeset_book_inquiry",
+    service: "תעמדו לי את הספר",
+    ua: (typeof navigator !== "undefined" && navigator.userAgent) || "",
+    lang: (typeof navigator !== "undefined" && navigator.language) || "",
+    screen: (typeof window !== "undefined" && window.innerWidth)
+      ? `${window.innerWidth}x${window.innerHeight}` : "",
+    url: (typeof location !== "undefined" && location.href) || "",
+  };
+}
+
+function openTypesetBookInquiry() {
+  if (!isLoggedIn()) {
+    const ok = confirm("כדי לשלוח פניה לעימוד ספר צריך קודם להתחבר עם גוגל. להעביר אותך עכשיו?");
+    if (ok) redirectToLoginForPremium();
+    return;
+  }
+
+  const auth = window.__RAVTEXT_AUTH__ || {};
+  const email = auth.email || "";
+  const back = el("div", {
+    cls: "rt-prem-overlay rt-typeset-inquiry-overlay",
+    attrs: { dir: "rtl", role: "dialog", "aria-modal": "true" },
+    style: { zIndex: "100003" },
+  });
+  const sheet = el("div", {
+    cls: "rt-prem-sheet rt-typeset-inquiry-sheet",
+    style: { maxWidth: "560px" },
+  });
+  const closeBtn = el("button", { cls: "rt-prem-close", attrs: { type: "button", "aria-label": "סגור" }, html: "✕" });
+  sheet.appendChild(closeBtn);
+  sheet.appendChild(el("h2", { text: "פניה לעימוד ספר", style: { textAlign: "center", margin: "8px 0 8px" } }));
+  sheet.appendChild(el("p", {
+    text: "הפניה תישלח למערכת הפניות באתר ותופיע בפאנל הניהול. אפשר לערוך את הפרטים לפני השליחה.",
+    style: { textAlign: "center", color: "#475569", margin: "0 0 16px", lineHeight: "1.5" },
+  }));
+  const textarea = el("textarea", {
+    attrs: { rows: "9" },
+    style: {
+      width: "100%",
+      boxSizing: "border-box",
+      border: "1px solid #cbd5e1",
+      borderRadius: "10px",
+      padding: "12px 14px",
+      font: "inherit",
+      fontSize: "14px",
+      lineHeight: "1.55",
+      resize: "vertical",
+      direction: "rtl",
+    },
+  });
+  textarea.value = buildTypesetInquiryBody(email);
+  sheet.appendChild(textarea);
+
+  const status = el("div", { style: { minHeight: "20px", marginTop: "8px", fontSize: "13px", color: "#64748b", textAlign: "center" } });
+  sheet.appendChild(status);
+
+  const actions = el("div", { style: { marginTop: "14px", display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap" } });
+  const submit = el("button", { cls: "rt-prem-btn rt-prem-btn-yaad", attrs: { type: "button" }, style: { width: "auto", minWidth: "220px" }, text: "שלח פניה למערכת" });
+  const cancel = el("button", { attrs: { type: "button" }, style: { border: "1px solid #cbd5e1", background: "white", color: "#334155", borderRadius: "12px", padding: "12px 18px", cursor: "pointer", font: "inherit" }, text: "ביטול" });
+  actions.appendChild(cancel);
+  actions.appendChild(submit);
+  sheet.appendChild(actions);
+
+  function close() { back.remove(); }
+  closeBtn.addEventListener("click", close);
+  cancel.addEventListener("click", close);
+  back.addEventListener("click", (ev) => { if (ev.target === back) close(); });
+  submit.addEventListener("click", async () => {
+    const body = textarea.value.trim();
+    if (!body) {
+      status.textContent = "הפניה ריקה";
+      status.style.color = "#dc2626";
+      return;
+    }
+    submit.disabled = true;
+    submit.textContent = "שולח...";
+    status.textContent = "שולח למערכת הפניות...";
+    status.style.color = "#64748b";
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ body, meta: buildTypesetInquiryMeta() }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || `HTTP ${res.status}`);
+      }
+      close();
+      alert("הפניה נשלחה למערכת הפניות באתר. נחזור אליך בהקדם.");
+    } catch (err) {
+      submit.disabled = false;
+      submit.textContent = "שלח פניה למערכת";
+      status.textContent = "שליחה נכשלה: " + ((err && err.message) || err);
+      status.style.color = "#dc2626";
+    }
+  });
+
+  back.appendChild(sheet);
+  document.body.appendChild(back);
+  setTimeout(() => textarea.focus(), 30);
 }
 
 function wireButtons(overlay) {
