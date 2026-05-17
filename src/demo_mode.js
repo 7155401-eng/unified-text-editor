@@ -447,7 +447,8 @@ function blockConsoleAccess() {
   const until = Date.now() + CONSOLE_BLOCK_MS;
   storeSet(CONSOLE_BLOCK_KEY, String(until));
   showBlockedScreen(until);
-}\nexport function installConsoleGuard() {
+}
+export function installConsoleGuard() {
   try {
     if (window.__RAVTEXT_AUTH__ && window.__RAVTEXT_AUTH__.consoleGuardEnabled === false) {
       storeSet(CONSOLE_BLOCK_KEY, "0");
