@@ -140,6 +140,40 @@ function buildHourCard(pack) {
   return card;
 }
 
+function buildTypesetBookInquiryCard() {
+  const card = el("div", {
+    cls: "rt-prem-plan rt-prem-plan-typeset-inquiry",
+    attrs: { "data-service": "typeset-book-inquiry" },
+    style: { margin: "10px 0 34px" },
+  });
+  card.appendChild(el("div", { cls: "rt-prem-badge", text: "שירות אישי" }));
+  card.appendChild(el("div", { cls: "rt-prem-plan-title", text: "תעמדו לי את הספר" }));
+  card.appendChild(el("div", {
+    cls: "rt-prem-renew",
+    text: "רוצה שנעשה עבורך את העימוד בפועל? שלח פניה ונחזור אליך עם בדיקת חומר והצעת מחיר.",
+  }));
+
+  const ul = el("ul", { cls: "rt-prem-perks" });
+  for (const p of [
+    "מתאים לספרים, קונטרסים וחוברות שצריכים עימוד מקצועי",
+    "הפניה נפתחת רק לאחר התחברות, כדי שנדע למי לחזור",
+    "לא מחייב תשלום מידי — זו פניה לבדיקה ותיאום",
+  ]) {
+    ul.appendChild(el("li", { cls: "rt-prem-perk", html: `<span class="rt-prem-check">✓</span><span>${p}</span>` }));
+  }
+  card.appendChild(ul);
+
+  const buttons = el("div", { cls: "rt-prem-buttons" });
+  const inquiryBtn = el("button", {
+    cls: "rt-prem-btn rt-prem-btn-yaad",
+    attrs: { type: "button", "data-action": "typeset-book-inquiry" },
+  });
+  inquiryBtn.innerHTML = `<span class="rt-prem-btn-icon">✉️</span><span>לחץ לפניה על עימוד הספר</span>`;
+  buttons.appendChild(inquiryBtn);
+  card.appendChild(buttons);
+  return card;
+}
+
 // משה 2026-05-10: חבילת בדיקה פרטית — נטענת רק כש-URL מכיל ?pkg=<token>.
 // שאר המשתמשים לא רואים אותה. הפרטים נשלפים מהשרת לפי הטוקן.
 async function fetchCustomPackage(token) {
@@ -226,6 +260,7 @@ function buildOverlay(opts = {}) {
     const hourGrid = el("div", { cls: "rt-prem-hour-grid" });
     for (const p of HOUR_PACKS) hourGrid.appendChild(buildHourCard(p));
     sheet.appendChild(hourGrid);
+    sheet.appendChild(buildTypesetBookInquiryCard());
   }
 
   // Why section
@@ -268,8 +303,48 @@ function buildOverlay(opts = {}) {
   return { overlay, closeBtn };
 }
 
+function isLoggedIn() {
+  const auth = (typeof window !== "undefined") ? window.__RAVTEXT_AUTH__ : null;
+  return !!(auth && auth.loggedIn);
+}
+
+function redirectToLoginForPremium() {
+  if (typeof window === "undefined") return;
+  const next = `${window.location.pathname}?premium=1`;
+  window.location.href = "/api/auth/login?next=" + encodeURIComponent(next);
+}
+
+function openTypesetBookInquiry() {
+  if (!isLoggedIn()) {
+    const ok = confirm("כדי לשלוח פניה לעימוד ספר צריך קודם להתחבר עם גוגל. להעביר אותך עכשיו?");
+    if (ok) redirectToLoginForPremium();
+    return;
+  }
+
+  const auth = window.__RAVTEXT_AUTH__ || {};
+  const email = auth.email || "";
+  const subject = "פניה לעימוד ספר דרך רב טקסט";
+  const body = [
+    "שלום,",
+    "אני רוצה פניה לגבי השירות: תעמדו לי את הספר.",
+    "",
+    email ? `המייל המחובר שלי: ${email}` : "המייל המחובר שלי:",
+    "שם הספר:",
+    "מספר עמודים משוער:",
+    "מה צריך בעימוד:",
+    "טלפון לחזרה:",
+  ].join("\n");
+  window.location.href = `mailto:yiddishebilder@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 function wireButtons(overlay) {
   overlay.addEventListener("click", async (ev) => {
+    const inquiryBtn = ev.target.closest("button[data-action='typeset-book-inquiry']");
+    if (inquiryBtn) {
+      openTypesetBookInquiry();
+      return;
+    }
+
     const btn = ev.target.closest("button[data-pay]");
     if (!btn) return;
     const provider = btn.getAttribute("data-pay");
