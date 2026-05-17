@@ -2147,6 +2147,13 @@ body.light-theme .pdf-scroll-progress-fill {
     display: none !important;
   }
 
+  /* משה 2026-05-17: דיאלוג ההדפסה (fallbackToPrint כש-SVG taints) הציג
+     את כל ה-toolbar-ים והכפתורים של main, ודחף את עמוד התצוגה הראשון
+     להיות ריק. מסתירים את כל הילדים של main חוץ מאזור התצוגה. */
+  main.main > *:not(.preview-pane) {
+    display: none !important;
+  }
+
   .main {
     display: block !important;
     width: 210mm !important;
