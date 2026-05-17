@@ -1,3 +1,5 @@
+import "./render_pause_controls.js";
+
 // PWA install — shared singleton state.
 //
 // beforeinstallprompt נורה פעם אחת בלבד לטעינת דף. כדי שגם הכפתור
