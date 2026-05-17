@@ -9,11 +9,29 @@
 
 const DEBOUNCE_MS = 2000;
 const SETTINGS_PREFIX = 'ravtext.';
-// מפתחות שלא נסנכרן (סודיים / זמניים / מצביעי הגנה):
+// משה 2026-05-17: הגנת נפח לסנכרון הגדרות. /api/settings לא אמור לקבל את
+// תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
+// שוב ושוב ויוצרים לולאת 413.
+const MAX_SETTINGS_SYNC_BYTES = 200 * 1024;
+
+// מפתחות שלא נסנכרן (סודיים / זמניים / מצב מסמך שאינו הגדרה):
 const SETTINGS_BLACKLIST = new Set([
   'ravtext.ai.apiKey',                 // legacy
   'ravtext.demo.blockedUntil',
   'ravtext.demoMode',
+
+  // תוכן/מצב מסמך נשמר דרך /api/documents/current, לא דרך /api/settings.
+  // בלוג 2026-05-17 נמצא שהמפתח הזה לבד הגיע לכ-527KB וגרם ל-413.
+  'ravtext.panes.state.v1',
+
+  // autosave/תוכן עבודה זמני — לא הגדרות גלובליות.
+  'ravtext.nikud_merger.autosave',
+  'ravtext.cssInject.css',
+
+  // מפתחות/קונפיגורציות שעלולים להכיל API keys או מידע רגיש.
+  'ravtext.caricature.gemini_api_key',
+  'ravtext.torah_transcription.config',
+
   // משה 2026-05-14: PR #233 הכניס מפתח שמקטין את גובה הדף; PR #234 הסיר את
   // הכתיבה, אבל המפתח עדיין מסונכרן מהשרת למשתמשים מחוברים — וגרם לבאג
   // לחזור אצל מחוברים לאחר שכבר תיקנו אותו אצל אורחים. לא לסנכרן ולא לשחזר.
@@ -25,8 +43,12 @@ const SETTINGS_BLACKLIST = new Set([
 ]);
 // משה 2026-05-09: אסור לסנכרן מפתחות API של ספקי AI לשרת — הם פרטיים למשתמש.
 // הוספתי תחילית כך שכל ravtext.ai.apiKey.<provider> נחסם.
+// משה 2026-05-17: חסימת prefixes נוספים שמייצרים payload מיותר או רגיש.
 const SETTINGS_BLACKLIST_PREFIXES = [
   'ravtext.ai.apiKey.',
+  'ravtext.caricature.',
+  'ravtext.torah_transcription.',
+  'ravtext.talmudLayout.smartCache.',
 ];
 
 function isBlacklisted(key) {
@@ -41,10 +63,46 @@ let _docDebounceTimer = null;
 let _settingsDebounceTimer = null;
 let _lastDocSig = '';
 let _lastSettingsSig = '';
+let _lastFailedSettingsSig = '';
 
 function isLoggedIn() {
   const auth = (typeof window !== 'undefined' && window.__RAVTEXT_AUTH__) || null;
   return !!(auth && auth.loggedIn);
+}
+
+function byteSize(value) {
+  const text = String(value == null ? '' : value);
+  if (typeof Blob !== 'undefined') return new Blob([text]).size;
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text).length;
+  return text.length;
+}
+
+function summarizeSettings(settings, limit = 20) {
+  return Object.entries(settings || {})
+    .map(([key, value]) => ({
+      key,
+      bytes: byteSize(value),
+      chars: String(value == null ? '' : value).length,
+    }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, limit);
+}
+
+function shouldSkipSettingsPayload(sig, payload) {
+  if (sig === _lastSettingsSig) return true;
+  if (sig === _lastFailedSettingsSig) return true;
+
+  const bytes = byteSize(payload);
+  if (bytes > MAX_SETTINGS_SYNC_BYTES) {
+    _lastFailedSettingsSig = sig;
+    console.warn('[persistence] skip settings sync: payload too large', {
+      bytes,
+      maxBytes: MAX_SETTINGS_SYNC_BYTES,
+    });
+    return true;
+  }
+
+  return false;
 }
 
 function collectLocalSettings() {
@@ -136,16 +194,24 @@ async function saveSettingsNow() {
   try {
     const settings = collectLocalSettings();
     const sig = JSON.stringify(settings);
-    if (sig === _lastSettingsSig) return;
+    const body = JSON.stringify({ settings });
+
+    if (shouldSkipSettingsPayload(sig, body)) return;
+
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ settings }),
+      body,
     });
     if (res.ok) {
       _lastSettingsSig = sig;
+      _lastFailedSettingsSig = '';
     } else {
-      console.warn('[persistence] save settings failed:', res.status);
+      if (res.status === 413) _lastFailedSettingsSig = sig;
+      console.warn('[persistence] save settings failed:', res.status, {
+        bytes: byteSize(body),
+        largestKeys: summarizeSettings(settings),
+      });
     }
   } catch (e) {
     console.warn('[persistence] saveSettingsNow error:', e);
@@ -205,11 +271,18 @@ export function attachAutoSync(paneManager) {
           );
         }
         const settings = collectLocalSettings();
-        if (JSON.stringify(settings) !== _lastSettingsSig && navigator.sendBeacon) {
+        const sig = JSON.stringify(settings);
+        const body = JSON.stringify({ settings });
+        if (
+          sig !== _lastSettingsSig &&
+          sig !== _lastFailedSettingsSig &&
+          byteSize(body) <= MAX_SETTINGS_SYNC_BYTES &&
+          navigator.sendBeacon
+        ) {
           navigator.sendBeacon(
             '/api/settings',
             new Blob(
-              [JSON.stringify({ settings })],
+              [body],
               { type: 'application/json' }
             )
           );
