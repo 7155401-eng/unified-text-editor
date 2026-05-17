@@ -64,7 +64,7 @@ function noteLocalAnchor(note, fallbackAnchor = 0) {
 
 function noteUid(note, paraIdx, num, absoluteAnchor) {
   if (note?.uid) return String(note.uid);
-  return `${note?.stream || ""}:${num || 0}:${paraIdx}:${absoluteAnchor || 0}`;
+  return String(note?.stream || "") + ":" + String(num || 0) + ":" + String(paraIdx) + ":" + String(absoluteAnchor || 0);
 }
 
 function noteTupleMeta(note, paraIdx, num, anchor) {
