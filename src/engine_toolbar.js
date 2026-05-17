@@ -2,9 +2,15 @@
 // מבוסס על prosemirror-edition/src/main.js מהמקור האחרון.
 
 import { downloadPagesAsPdf } from "./pdf_export.js";
-import { ensureDemoAccess, prepareDemoPrintWatermark } from "./demo_mode.js";
+import { ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { isOutputBackgroundEnabled } from "./page_settings.js";
 import { downloadPagesAsHtml, downloadDebugSnapshot, toggleProblemHighlight } from "./debug_export.js";
+
+function blockClientSideExportInDemo(kind = "ייצוא") {
+  if (!isDemoMode()) return false;
+  alert(`${kind} חסום במצב דמו, כי פלט שנוצר ישירות בדפדפן ניתן לעקיפה. השתמש בהורדת HTML המאובטחת דרך השרת בלשונית ההורדות.`);
+  return true;
+}
 
 export function setupPdfToolbar(pagesContainer) {
   const toolbar = {
@@ -101,9 +107,6 @@ export function setupPdfToolbar(pagesContainer) {
 
     const clone = page.cloneNode(true);
     clone.classList.add("pdf-thumb-page");
-    // v33: clear all v33 inline-style modifications that might have been set
-    // on the source page (shrink/flex/overflow/dataset) so the thumbnail
-    // shows the canonical 380×537 page even if the source was shrunk.
     clone.style.zoom = "1";
     clone.style.width = "380px";
     clone.style.height = "537px";
@@ -112,7 +115,7 @@ export function setupPdfToolbar(pagesContainer) {
     clone.style.maxHeight = "537px";
     clone.style.overflow = "hidden";
     clone.style.transform = "scale(1)";
-    clone.style.transformOrigin = "top right"; // RTL anchor
+    clone.style.transformOrigin = "top right";
     delete clone.dataset.talmudPageShrunk;
     delete clone.dataset.talmudPageHidden;
 
@@ -137,13 +140,10 @@ export function setupPdfToolbar(pagesContainer) {
           if (!entry.isIntersecting) continue;
           const mini = entry.target;
           const idx = parseInt(mini.dataset.pageIndex || "0", 10);
-          // Task #9: don't unobserve until renderThumb actually succeeded —
-          // otherwise a placeholder/realize race kills the thumb forever.
           requestAnimationFrame(() => {
             if (renderThumb(mini, idx)) {
               thumbObserver.unobserve(mini);
             } else {
-              // schedule a retry shortly; the placeholder should resolve
               setTimeout(() => {
                 if (renderThumb(mini, idx)) thumbObserver.unobserve(mini);
               }, 250);
@@ -209,23 +209,15 @@ export function setupPdfToolbar(pagesContainer) {
     }
   }
 
-  const find = {
-    query: "",
-    hits: [],
-    current: -1,
-  };
+  const find = { query: "", hits: [], current: -1 };
 
   function escapeHTML(s) {
-    return s.replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
-    );
+    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   }
 
   function clearFindHighlights() {
     for (const h of find.hits) {
-      if (h.el && h.originalText !== undefined) {
-        h.el.textContent = h.originalText;
-      }
+      if (h.el && h.originalText !== undefined) h.el.textContent = h.originalText;
     }
     find.hits = [];
     find.current = -1;
@@ -236,9 +228,7 @@ export function setupPdfToolbar(pagesContainer) {
   function focusCurrentHit() {
     if (find.current < 0 || find.current >= find.hits.length) return;
     const hit = find.hits[find.current];
-    for (const m of pagesContainer.querySelectorAll("mark.pdf-find-hit-current")) {
-      m.classList.remove("pdf-find-hit-current");
-    }
+    for (const m of pagesContainer.querySelectorAll("mark.pdf-find-hit-current")) m.classList.remove("pdf-find-hit-current");
     const firstMark = hit.el.querySelector("mark.pdf-find-hit");
     if (firstMark) {
       firstMark.classList.add("pdf-find-hit-current");
@@ -259,9 +249,7 @@ export function setupPdfToolbar(pagesContainer) {
     const hitElements = [];
     for (const el of allEls) {
       const txt = el.textContent || "";
-      if (txt.toLowerCase().includes(lowerQ)) {
-        hitElements.push({ el, txt });
-      }
+      if (txt.toLowerCase().includes(lowerQ)) hitElements.push({ el, txt });
     }
     for (const { el, txt } of hitElements) {
       const original = txt;
@@ -282,18 +270,14 @@ export function setupPdfToolbar(pagesContainer) {
       find.hits.push({ el, originalText: original });
     }
     const status = document.getElementById("pdf-find-status");
-    if (status) {
-      status.textContent = find.hits.length === 0 ? "אין תוצאות" : `${find.hits.length} התאמות`;
-    }
+    if (status) status.textContent = find.hits.length === 0 ? "אין תוצאות" : `${find.hits.length} התאמות`;
     if (find.hits.length > 0) {
       find.current = 0;
       focusCurrentHit();
     }
   }
 
-  function realizeAllPages() {
-    realizePageBatch(0, toolbar.total);
-  }
+  function realizeAllPages() { realizePageBatch(0, toolbar.total); }
 
   function ensureNativePrintStyle() {
     let style = document.getElementById("ravtext-native-print-style");
@@ -301,117 +285,48 @@ export function setupPdfToolbar(pagesContainer) {
     style = document.createElement("style");
     style.id = "ravtext-native-print-style";
     style.textContent = `
-#ravtext-print-root {
-  display: none;
-}
-
+#ravtext-print-root { display: none; }
 @media print {
   html,
   body.ravtext-native-print {
-    width: auto !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    display: block !important;
-    background: #fff !important;
+    width: auto !important; height: auto !important; min-height: 0 !important; max-height: none !important;
+    margin: 0 !important; padding: 0 !important; overflow: visible !important; display: block !important; background: #fff !important;
   }
-
-  body.ravtext-native-print > *:not(#ravtext-print-root) {
-    display: none !important;
-  }
-
+  body.ravtext-native-print > *:not(#ravtext-print-root) { display: none !important; }
   #ravtext-print-root {
-    display: block !important;
-    position: static !important;
-    inset: auto !important;
-    width: auto !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-    background: #fff !important;
-    direction: rtl !important;
+    display: block !important; position: static !important; inset: auto !important; width: auto !important; height: auto !important;
+    min-height: 0 !important; max-height: none !important; margin: 0 !important; padding: 0 !important; overflow: visible !important;
+    background: #fff !important; direction: rtl !important;
   }
-
   #ravtext-print-root > .page,
   #ravtext-print-root > .page:not(.measure-page) {
-    display: flex !important;
-    position: relative !important;
-    width: var(--ravtext-page-width, 380px) !important;
-    height: var(--ravtext-page-height, 537px) !important;
-    min-height: 0 !important;
-    max-height: var(--ravtext-page-height, 537px) !important;
-    flex: none !important;
-    margin: 0 auto !important;
-    padding:
-      var(--ravtext-page-margin-top)
-      var(--ravtext-page-margin-right)
-      var(--ravtext-page-margin-bottom)
-      var(--ravtext-page-margin-left) !important;
-    overflow: hidden !important;
-    box-shadow: none !important;
-    outline: none !important;
-    zoom: 1 !important;
-    transform: none !important;
-    content-visibility: visible !important;
-    contain-intrinsic-size: auto !important;
-    break-before: auto !important;
-    page-break-before: auto !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-    break-after: page !important;
-    page-break-after: always !important;
+    display: flex !important; position: relative !important; width: var(--ravtext-page-width, 380px) !important;
+    height: var(--ravtext-page-height, 537px) !important; min-height: 0 !important; max-height: var(--ravtext-page-height, 537px) !important;
+    flex: none !important; margin: 0 auto !important;
+    padding: var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left) !important;
+    overflow: hidden !important; box-shadow: none !important; outline: none !important; zoom: 1 !important; transform: none !important;
+    content-visibility: visible !important; contain-intrinsic-size: auto !important; break-before: auto !important; page-break-before: auto !important;
+    break-inside: avoid !important; page-break-inside: avoid !important; break-after: page !important; page-break-after: always !important;
   }
-
-  #ravtext-print-root > .page:first-child {
-    margin-top: 0 !important;
-    break-before: auto !important;
-    page-break-before: auto !important;
-  }
-
-  #ravtext-print-root > .page:last-child {
-    break-after: auto !important;
-    page-break-after: auto !important;
-  }
-
-  #ravtext-print-root > .page-placeholder,
-  #ravtext-print-root > .ravtext-empty-page {
-    display: none !important;
-  }
-
-  body.ravtext-native-print:not(.print-with-background) #ravtext-print-root > .page {
-    background: #fff !important;
-    background-image: none !important;
-  }
-
-  body.ravtext-native-print:not(.print-with-background) #ravtext-print-root > .page *:not(.ravtext-demo-print-mark) {
-    background-image: none !important;
-  }
+  #ravtext-print-root > .page:first-child { margin-top: 0 !important; break-before: auto !important; page-break-before: auto !important; }
+  #ravtext-print-root > .page:last-child { break-after: auto !important; page-break-after: auto !important; }
+  #ravtext-print-root > .page-placeholder, #ravtext-print-root > .ravtext-empty-page { display: none !important; }
+  body.ravtext-native-print:not(.print-with-background) #ravtext-print-root > .page { background: #fff !important; background-image: none !important; }
+  body.ravtext-native-print:not(.print-with-background) #ravtext-print-root > .page *:not(.ravtext-demo-print-mark) { background-image: none !important; }
 }
 `;
     document.head.appendChild(style);
     return style;
   }
 
-  function removeNativePrintRoot() {
-    document.getElementById("ravtext-print-root")?.remove();
-  }
+  function removeNativePrintRoot() { document.getElementById("ravtext-print-root")?.remove(); }
 
   function buildNativePrintRoot() {
     removeNativePrintRoot();
     const root = document.createElement("div");
     root.id = "ravtext-print-root";
     root.setAttribute("dir", "rtl");
-
-    const pages = Array.from(
-      pagesContainer.querySelectorAll(".page:not(.page-placeholder):not(.ravtext-empty-page)")
-    );
-
+    const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder):not(.ravtext-empty-page)"));
     for (const page of pages) {
       const clone = page.cloneNode(true);
       clone.classList.remove("measure-page", "page-placeholder");
@@ -424,44 +339,26 @@ export function setupPdfToolbar(pagesContainer) {
       clone.style.containIntrinsicSize = "auto";
       root.appendChild(clone);
     }
-
     document.body.appendChild(root);
     return root;
   }
 
   document.getElementById("pdf-first")?.addEventListener("click", () => goToPage(1));
-  document.getElementById("pdf-prev")?.addEventListener("click", () => {
-    const n = parseInt(toolbar.pageInput?.value || "1", 10) || 1;
-    goToPage(n - 1);
-  });
-  document.getElementById("pdf-next")?.addEventListener("click", () => {
-    const n = parseInt(toolbar.pageInput?.value || "1", 10) || 1;
-    goToPage(n + 1);
-  });
+  document.getElementById("pdf-prev")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) - 1));
+  document.getElementById("pdf-next")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) + 1));
   document.getElementById("pdf-last")?.addEventListener("click", () => goToPage(toolbar.total));
   toolbar.pageInput?.addEventListener("change", () => {
     const n = parseInt(toolbar.pageInput.value, 10);
     if (Number.isFinite(n)) goToPage(n);
   });
 
-  // משה 2026-05-07: כפתורי גלילה במציג. כל לחיצה גוללת ~80% מגובה החלון
-  // הנראה — מספיק לחפיפה קלה כדי שהמשתמש יוכל לעקוב אחרי הטקסט. גלילה
-  // חלקה מובטחת ע"י scroll-behavior:smooth ב-CSS. גלילת מסך מגע ומגלגל
-  // עכבר ממשיכה לעבוד דרך overflow:auto הטבעי של המכל.
   function scrollViewerBy(deltaPx) {
     if (!pagesContainer) return;
     pagesContainer.scrollBy({ top: deltaPx, left: 0, behavior: "smooth" });
   }
-  document.getElementById("pdf-scroll-up")?.addEventListener("click", () => {
-    const step = Math.max(120, Math.round((pagesContainer?.clientHeight || 600) * 0.8));
-    scrollViewerBy(-step);
-  });
-  document.getElementById("pdf-scroll-down")?.addEventListener("click", () => {
-    const step = Math.max(120, Math.round((pagesContainer?.clientHeight || 600) * 0.8));
-    scrollViewerBy(step);
-  });
+  document.getElementById("pdf-scroll-up")?.addEventListener("click", () => scrollViewerBy(-Math.max(120, Math.round((pagesContainer?.clientHeight || 600) * 0.8))));
+  document.getElementById("pdf-scroll-down")?.addEventListener("click", () => scrollViewerBy(Math.max(120, Math.round((pagesContainer?.clientHeight || 600) * 0.8))));
 
-  // אינדיקטור-גלילה דק בראש המציג — נמלא לפי מיקום הגלילה.
   const progressFill = document.querySelector("#pdf-scroll-progress .pdf-scroll-progress-fill");
   if (progressFill && pagesContainer) {
     let progressRaf = 0;
@@ -475,11 +372,8 @@ export function setupPdfToolbar(pagesContainer) {
       if (progressRaf) return;
       progressRaf = requestAnimationFrame(updateProgress);
     }, { passive: true });
-    // עדכון ראשוני + אחרי שינוי-תוכן (renderer אירוע).
     updateProgress();
-    window.addEventListener("ravtext:engine-rendered", () => {
-      requestAnimationFrame(updateProgress);
-    });
+    window.addEventListener("ravtext:engine-rendered", () => requestAnimationFrame(updateProgress));
   }
 
   const zoomSelect = document.getElementById("pdf-zoom-select");
@@ -505,9 +399,7 @@ export function setupPdfToolbar(pagesContainer) {
     findInput.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || find.hits.length === 0) return;
       e.preventDefault();
-      find.current = e.shiftKey
-        ? (find.current - 1 + find.hits.length) % find.hits.length
-        : (find.current + 1) % find.hits.length;
+      find.current = e.shiftKey ? (find.current - 1 + find.hits.length) % find.hits.length : (find.current + 1) % find.hits.length;
       focusCurrentHit();
     });
   }
@@ -523,21 +415,18 @@ export function setupPdfToolbar(pagesContainer) {
   });
 
   document.getElementById("pdf-print")?.addEventListener("click", () => {
+    if (blockClientSideExportInDemo("הדפסה ישירה")) return;
     let cleanupDemoPrint = null;
     try {
       ensureDemoAccess();
       realizeAllPages();
       const includeBackgrounds = isOutputBackgroundEnabled();
       document.body.classList.toggle("print-with-background", includeBackgrounds);
-      cleanupDemoPrint = prepareDemoPrintWatermark(pagesContainer);
+      cleanupDemoPrint = null;
       const printRoot = buildNativePrintRoot();
       ensureNativePrintStyle();
       document.body.classList.add("ravtext-native-print");
-
-      if (!printRoot.children.length) {
-        throw new Error("אין עמודים מוכנים להדפסה");
-      }
-
+      if (!printRoot.children.length) throw new Error("אין עמודים מוכנים להדפסה");
       let cleaned = false;
       const cleanupOnce = () => {
         if (cleaned) return;
@@ -563,7 +452,9 @@ export function setupPdfToolbar(pagesContainer) {
       alert(err.message);
     }
   });
+
   document.getElementById("pdf-download")?.addEventListener("click", async (ev) => {
+    if (blockClientSideExportInDemo("הורדת PDF מקומית")) return;
     realizeAllPages();
     const btn = ev.currentTarget;
     const originalText = btn.textContent;
@@ -574,9 +465,7 @@ export function setupPdfToolbar(pagesContainer) {
         filename: "ravtext-preview.pdf",
         includeBackgrounds: isOutputBackgroundEnabled(),
         fallbackToPrint: true,
-        onProgress(page, total) {
-          btn.textContent = `PDF ${page}/${total}`;
-        },
+        onProgress(page, total) { btn.textContent = `PDF ${page}/${total}`; },
       });
     } catch (err) {
       console.error("PDF export failed:", err);
@@ -587,98 +476,43 @@ export function setupPdfToolbar(pagesContainer) {
     }
   });
 
-  // v33: HTML download — self-contained snapshot for offline debugging.
-  // CRITICAL: do NOT call realizeAllPages — that would re-run the layout
-  // pipeline and change what we're trying to capture. Snapshot the page
-  // exactly as the user is seeing it right now.
   document.getElementById("pdf-download-html")?.addEventListener("click", async () => {
-    try {
-      await downloadPagesAsHtml(pagesContainer);
-    } catch (err) {
-      console.error("HTML export failed:", err);
-      alert(`שגיאת הורדת HTML: ${err.message}`);
-    }
+    if (blockClientSideExportInDemo("הורדת HTML Debug מקומית")) return;
+    try { await downloadPagesAsHtml(pagesContainer); }
+    catch (err) { console.error("HTML export failed:", err); alert(`שגיאת הורדת HTML: ${err.message}`); }
   });
 
-  // v33: JSON snapshot — every page's metrics/state for diff'ing.
-  // Same rule: NO realize. Capture as-is.
   document.getElementById("pdf-debug-snapshot")?.addEventListener("click", () => {
-    try {
-      downloadDebugSnapshot(pagesContainer);
-    } catch (err) {
-      console.error("Snapshot failed:", err);
-      alert(`שגיאת צילום מצב: ${err.message}`);
-    }
+    if (blockClientSideExportInDemo("הורדת JSON Debug מקומית")) return;
+    try { downloadDebugSnapshot(pagesContainer); }
+    catch (err) { console.error("Snapshot failed:", err); alert(`שגיאת צילום מצב: ${err.message}`); }
   });
 
-  // v33: visual highlight — toggle colored outlines on problematic pages.
-  // Same rule: NO realize. Highlight currently rendered pages only.
   document.getElementById("pdf-debug-highlight")?.addEventListener("click", (ev) => {
     try {
       toggleProblemHighlight(pagesContainer);
       ev.currentTarget.classList.toggle("active");
     } catch (err) {
       console.error("Highlight failed:", err);
-      alert(`שגיאת הדגשה: ${err.message}`);
+      alert(`שגיאת סימון בעיות: ${err.message}`);
     }
   });
 
-  const sidebar = document.getElementById("pdf-sidebar");
-  document.getElementById("pdf-sidebar-toggle")?.addEventListener("click", () => {
-    if (!sidebar) return;
-    sidebar.hidden = !sidebar.hidden;
-    if (!sidebar.hidden) rebuildSidebar();
-    // משה 2026-05-07: שינוי מצב ה-sidebar משנה את הרוחב הזמין לעמודים.
-    // נריץ מחדש את חישוב ה-zoom האוטומטי מיד.
-    requestAnimationFrame(reapplyAutoZoom);
-  });
+  document.getElementById("pdf-zoom-actual")?.addEventListener("click", () => setZoomFromSelect("actual"));
+  document.getElementById("pdf-zoom-fit")?.addEventListener("click", () => setZoomFromSelect("fit"));
+  document.getElementById("pdf-zoom-auto")?.addEventListener("click", () => setZoomFromSelect("auto"));
 
   pagesContainer.addEventListener("scroll", scheduleScrollUpdate, { passive: true });
 
-  // משה 2026-05-07: zoom אוטומטי שמתחשב ברוחב המכל בפועל.
-  // מצב התחלתי: "אוטומטי" — העמוד תמיד מוצג במלואו ללא חיתוך, גם כש-
-  // sidebar פתוח, גם כשהמשתמש גורר את ה-resize-handle, גם בצפייה במסך צר.
-  // אם המשתמש בוחר ערך מספרי (50%/100%/...) — מכבדים את בחירתו.
-  function reapplyAutoZoom() {
-    if (!zoomSelect) return;
-    const v = zoomSelect.value;
-    if (v === "auto" || v === "fit") setZoomFromSelect(v);
-  }
-  // הפעלה ראשונה — אחרי שמסגרת ה-DOM יציבה.
-  requestAnimationFrame(() => requestAnimationFrame(reapplyAutoZoom));
-  // עדכון בכל שינוי גודל של pagesContainer (פתיחת sidebar, גרירת
-  // resize-handle, שינוי גודל חלון).
-  if (typeof ResizeObserver !== "undefined") {
-    const ro = new ResizeObserver(() => reapplyAutoZoom());
-    ro.observe(pagesContainer);
-  }
-  // עדכון אחרי כל רינדור של המנוע — במקרה שהיה רינדור מאסיבי שגרר עמודים חדשים.
-  window.addEventListener("ravtext:engine-rendered", () => {
-    requestAnimationFrame(reapplyAutoZoom);
-  });
-
   return {
-    setTotal(total) {
+    refresh(total) {
       toolbar.total = total;
-      if (toolbar.pageTotal) toolbar.pageTotal.textContent = `/ ${total}`;
-      activeThumbIndex = -1;
-      if (toolbar.pageInput) {
-        toolbar.pageInput.max = String(Math.max(1, total));
-        if (total === 0) toolbar.pageInput.value = "1";
-        else if (parseInt(toolbar.pageInput.value, 10) > total) toolbar.pageInput.value = "1";
-      }
-      if (sidebar && sidebar.hidden) {
-        if (thumbObserver) {
-          thumbObserver.disconnect();
-          thumbObserver = null;
-        }
-        sidebar.innerHTML = "";
-      } else if (sidebar) {
-        rebuildSidebar();
-      }
+      if (toolbar.pageTotal) toolbar.pageTotal.textContent = String(total || 0);
+      if (toolbar.pageInput) toolbar.pageInput.value = total ? "1" : "0";
+      rememberBaseSize();
+      rebuildSidebar();
+      updateCurrentPageFromScroll();
     },
-    rememberBaseSize,
     applyZoom,
-    goToPage,
   };
 }
