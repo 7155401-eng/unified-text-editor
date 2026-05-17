@@ -17,6 +17,16 @@
     stopped: '\u05d4\u05e8\u05d9\u05e0\u05d3\u05d5\u05e8 \u05e0\u05e2\u05e6\u05e8. \u05d4\u05ea\u05e6\u05d5\u05d2\u05d4 \u05d4\u05e7\u05d5\u05d3\u05de\u05ea \u05e0\u05e9\u05d0\u05e8\u05d4 \u05db\u05e4\u05d9 \u05e9\u05d4\u05d9\u05d0.'
   };
 
+  const TROUBLESHOOTING_INTRO = 'להלן כמה דברים שאנו יודעים עליהם שיש בהם מגבלות מערכת והפתרון שלהם הוא ידני. יתכן שבהמשך נטפל בבעיות דלהלן שלא יצטרכו עבודה ידנית, לאחר שנסיים את הפיתוחים והתיקונים הדחופים יותר.';
+  const TROUBLESHOOTING_ITEMS = [
+    ['טקסטים עולים על טקסטים', 'נסו לבצע רענון (רנדור) חוזר.'],
+    ['שינויים באמצע רענון', 'שינויים עשויים להיות לא תקפים/ לא חלים אם התוכנה באמצע רענון, נסו שוב לאחר רענון (נכון לעכשיו אין מעקף רשמי למגבלה זו).'],
+    ['הדגשות לזרם', 'אם ברצונכם להדגיש זרם שלם במצב גפ"ת, נכון לעכשיו הפתרון הוא דרך הדגשת כל הזרם, אין כרגע פתרון רשמי להדגשת זרם דרך סגנונות.'],
+    ['באג ידוע בהחלת סגנון', 'אם עוברים על המקלדת על הסגנונות בחצים למעלה ולמטה כרגע זה נתקע בגלל שהוא מתעכב בכל אחד מהם בהחלת הסגנון, הפתרון להשתמש בסימון הגלילה בצד בלבד.'],
+    ['חיתוך דינמי', 'אין כרגע דרך מובטחת לחיתוך דינמי של הזרמים ב100% הצלחה לכל סוג מסמך (שלא יהיו שום עמודים עם רווחים ועם חריגה), ניתן לנסות באמצעות מנוע רינדור חכם (לנסות עם המנוע ובלי המנוע) וכן לשנות את גובה כרית העמוד, ובמידת הצורך לפנות אלינו ונעדכן את הקוד של האתר שיתאים גם למסמך שלכם.'],
+    ['הערה ראשונה ככותרת', 'כשמכניסים הערה ראשונה בזרם מסויים ככותרת הזרם של ההערות (שיכנס אוטומטית למסמך ככותרת הזרם, צריך להגדיר זאת בממשק), אין להכניס את ההערה הראשונה  בתחילת המסמך אלא במיקום ההערה הראשונה האמיתית, על מנת לפתור קונפליקט שקיים במערכת כרגע (שהוא מזיז את ההערה הראשונה ה"אמיתית" למיקום ההערה הראשונה המשמשת לכותרת.']
+  ];
+
   const state = {
     installed: false,
     paused: false,
@@ -31,6 +41,115 @@
   const pages = () => byId('pages-container') || document.querySelector('.pages-container');
   const renderButton = () => byId('btn-render');
   const pauseButton = () => byId('btn-render-pause');
+
+  function escapeText(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function addTroubleshootingStyle() {
+    if (byId('ravtext-troubleshooting-style')) return;
+    const style = document.createElement('style');
+    style.id = 'ravtext-troubleshooting-style';
+    style.textContent = `
+      #btn-troubleshooting .header-action-icon { filter: drop-shadow(0 1px 1px rgba(15,23,42,.18)); }
+      .ravtext-troubleshooting-backdrop {
+        position: fixed; inset: 0; z-index: 9998;
+        background: rgba(15,23,42,.55);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .ravtext-troubleshooting-modal {
+        direction: rtl; width: 700px; max-width: 92vw; max-height: 88vh;
+        overflow: auto; background: #fff; border-radius: 14px;
+        box-shadow: 0 12px 34px rgba(15,23,42,.24);
+        padding: 22px 24px; font-family: 'Segoe UI', system-ui, sans-serif;
+      }
+      .ravtext-troubleshooting-head {
+        display: flex; align-items: center; justify-content: space-between; gap: 12px;
+        margin-bottom: 14px;
+      }
+      .ravtext-troubleshooting-head h2 { margin: 0; font-size: 19px; color: #0f172a; }
+      .ravtext-troubleshooting-close {
+        border: 0; background: transparent; color: #64748b; cursor: pointer;
+        font-size: 24px; line-height: 1; padding: 0 6px;
+      }
+      .ravtext-troubleshooting-intro {
+        margin: 0 0 14px; color: #334155; line-height: 1.7; font-size: 14px;
+      }
+      .ravtext-troubleshooting-item {
+        border: 1px solid #dbeafe; border-radius: 10px; padding: 12px 14px;
+        background: #f8fafc; margin-bottom: 10px; line-height: 1.65;
+        color: #1f2937; font-size: 14px;
+      }
+      .ravtext-troubleshooting-item strong { color: #0f172a; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function closeTroubleshootingModal() {
+    byId('ravtext-troubleshooting-modal')?.remove();
+    document.removeEventListener('keydown', troubleshootingEscHandler);
+  }
+
+  function troubleshootingEscHandler(ev) {
+    if (ev.key === 'Escape') closeTroubleshootingModal();
+  }
+
+  function openTroubleshootingModal() {
+    closeTroubleshootingModal();
+    addTroubleshootingStyle();
+    const backdrop = document.createElement('div');
+    backdrop.id = 'ravtext-troubleshooting-modal';
+    backdrop.className = 'ravtext-troubleshooting-backdrop';
+    const itemsHtml = TROUBLESHOOTING_ITEMS.map(([title, body]) => `
+      <div class="ravtext-troubleshooting-item"><strong>${escapeText(title)}:</strong> ${escapeText(body)}</div>
+    `).join('');
+    backdrop.innerHTML = `
+      <div class="ravtext-troubleshooting-modal" role="dialog" aria-modal="true" aria-labelledby="ravtext-troubleshooting-title">
+        <div class="ravtext-troubleshooting-head">
+          <h2 id="ravtext-troubleshooting-title">🛠️ פתרון בעיות</h2>
+          <button type="button" class="ravtext-troubleshooting-close" aria-label="סגור">×</button>
+        </div>
+        <div class="ravtext-troubleshooting-intro">${escapeText(TROUBLESHOOTING_INTRO)}</div>
+        ${itemsHtml}
+      </div>
+    `;
+    backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) closeTroubleshootingModal(); });
+    backdrop.querySelector('.ravtext-troubleshooting-close')?.addEventListener('click', closeTroubleshootingModal);
+    document.addEventListener('keydown', troubleshootingEscHandler);
+    document.body.appendChild(backdrop);
+  }
+
+  function ensureTroubleshootingHeaderButton() {
+    const actions = document.querySelector('.app-header .app-header-actions') || document.querySelector('.app-header-actions');
+    if (!actions) return;
+    addTroubleshootingStyle();
+    let btn = byId('btn-troubleshooting');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = 'btn-troubleshooting';
+      btn.className = 'header-action-btn header-action-btn-icon';
+      btn.title = 'פתרון בעיות ומגבלות ידועות';
+      btn.setAttribute('aria-label', 'פתרון בעיות ומגבלות ידועות');
+      btn.innerHTML = '<span class="header-action-icon">🛠️</span><span class="header-action-text">פתרון בעיות</span>';
+      const devUpdates = byId('btn-dev-updates');
+      if (devUpdates && devUpdates.parentNode === actions) devUpdates.after(btn);
+      else actions.insertBefore(btn, actions.firstElementChild || null);
+    }
+    if (btn.dataset.troubleshootingBootstrap !== '1') {
+      btn.dataset.troubleshootingBootstrap = '1';
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        openTroubleshootingModal();
+      });
+    }
+  }
 
   function setStatus(text) {
     const el = byId('status');
@@ -176,6 +295,7 @@
 
   function wireButtons() {
     ensurePauseButton();
+    ensureTroubleshootingHeaderButton();
     const render = renderButton();
     const pause = pauseButton();
 
@@ -228,7 +348,7 @@
     let count = 0;
     const retry = () => {
       wireButtons();
-      if (++count < 24) setTimeout(retry, 250);
+      if (++count < 36) setTimeout(retry, 250);
     };
     setTimeout(retry, 250);
   }
