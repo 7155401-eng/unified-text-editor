@@ -21,6 +21,7 @@ let _streamsObserver = null;
 let _previewObserver = null;
 let _captureInstalled = false;
 let _pendingEnhancement = null;
+let _hiddenRowsRefreshSeq = 0;
 
 function escapeHtml(value) {
   return String(value == null ? "" : value)
@@ -90,7 +91,10 @@ function ensureHideEmptyNotesUiCheckboxVisible() {
     skipLabel.insertAdjacentElement("afterend", label);
 
     skipEmpty.addEventListener("change", syncHideEmptyNotesUiCheckbox);
-    label.querySelector(".we-hide-empty-notes-ui")?.addEventListener("change", applyPreviewHiddenEmptyNotes);
+    label.querySelector(".we-hide-empty-notes-ui")?.addEventListener("change", () => {
+      applyPreviewHiddenEmptyNotes();
+      refreshHiddenEmptyStreamRows();
+    });
   }
   syncHideEmptyNotesUiCheckbox();
 }
@@ -104,6 +108,7 @@ function syncHideEmptyNotesUiCheckbox() {
   hideUi.disabled = !enabled;
   if (!enabled) hideUi.checked = false;
   applyPreviewHiddenEmptyNotes();
+  refreshHiddenEmptyStreamRows();
 }
 
 function stylesOptionsHtml() {
@@ -132,11 +137,35 @@ function getRowCodeInput(row) {
     || row.querySelector('input[type="text"][placeholder^="@"]');
 }
 
+function replaceAuxSeriesLettersWithNumericLabels() {
+  const modal = getExtractorModal();
+  if (!modal) return;
+
+  modal.querySelectorAll(".we-bracket-row label, .we-external-row label").forEach((label) => {
+    label.childNodes.forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE && /אות\s+זרם/.test(node.nodeValue || "")) {
+        node.nodeValue = String(node.nodeValue).replace(/אות\s+זרם/g, "קוד זרם");
+      }
+    });
+  });
+
+  const letters = "ABCDEFGHIJKL".split("");
+  modal.querySelectorAll(".we-br-series, .we-ext-series").forEach((select) => {
+    Array.from(select.options || []).forEach((opt, index) => {
+      const letterIndex = letters.indexOf(opt.value);
+      const n = letterIndex >= 0 ? letterIndex + 1 : index + 1;
+      opt.textContent = `@${String(n).padStart(2, "0")}`;
+    });
+    select.title = "קוד זרם. הערך הפנימי נשאר יציב, אך למשתמש מוצג מספר @01/@02.";
+  });
+}
+
 function ensureStreamMappingControlsVisible() {
   const modal = getExtractorModal();
   if (!modal) return;
   ensureOverwriteStylesCheckboxVisible();
   ensureHideEmptyNotesUiCheckboxVisible();
+  replaceAuxSeriesLettersWithNumericLabels();
 
   const codeHeader = modal.querySelector(".we-streams thead th:nth-child(5)");
   if (codeHeader) codeHeader.textContent = "קוד זרם";
@@ -193,6 +222,7 @@ function ensureStreamMappingControlsVisible() {
       seriesCell.appendChild(wrap);
     }
   });
+  refreshHiddenEmptyStreamRows();
 }
 
 function installStreamsObserver() {
@@ -243,19 +273,15 @@ function applyPreviewHiddenEmptyNotes() {
   });
 }
 
-function readIncludedRowsAndMappings() {
+function allRowsWithMappings() {
   const rows = getRowsInCurrentOrder();
-  const includedRows = rows.filter((row) => {
-    const include = row.querySelector('td input[type="checkbox"]');
-    return include ? include.checked !== false : true;
-  });
-
-  return includedRows.map((row, orderIndex) => {
+  return rows.map((row, orderIndex) => {
     const autoSym = `@${String(orderIndex + 1).padStart(2, "0")}`;
     const codeInput = getRowCodeInput(row);
     const targetSym = normalizeStreamSymbol(codeInput?.value, autoSym);
     const styleId = row.querySelector(".we-stream-style-select")?.value || "";
     return {
+      row,
       rowIndex: Number(row.dataset.idx || orderIndex),
       orderIndex,
       autoSym,
@@ -263,6 +289,80 @@ function readIncludedRowsAndMappings() {
       styleId,
     };
   });
+}
+
+async function refreshHiddenEmptyStreamRows() {
+  const modal = getExtractorModal();
+  const hideUi = modal?.querySelector(".we-hide-empty-notes-ui");
+  const shouldHide = !!hideUi && !hideUi.disabled && hideUi.checked === true;
+  const rows = getRowsInCurrentOrder();
+  if (!rows.length) return;
+  if (!shouldHide) {
+    rows.forEach((row) => {
+      row.classList.remove("we-empty-stream-hidden");
+      row.style.display = "";
+    });
+    return;
+  }
+
+  const file = modal?.querySelector(".we-file-input")?.files?.[0] || null;
+  if (!file) return;
+  const seq = ++_hiddenRowsRefreshSeq;
+
+  try {
+    const buf = await file.arrayBuffer();
+    const sources = await engine.find_all_note_sources(buf.slice(0));
+    const defaultStreams = streams.buildDefaultStreamMapping(sources || []);
+    const rowMappings = allRowsWithMappings();
+
+    const notesCache = {};
+    const getNotes = async (sourceType) => {
+      if (notesCache[sourceType]) return notesCache[sourceType];
+      if (sourceType === "footnote") notesCache[sourceType] = await engine.read_footnotes(buf.slice(0)).catch(() => ({}));
+      else if (sourceType === "endnote") notesCache[sourceType] = await engine.read_endnotes(buf.slice(0)).catch(() => ({}));
+      else if (sourceType === "comment") notesCache[sourceType] = await engine.read_comments(buf.slice(0)).catch(() => ({}));
+      else notesCache[sourceType] = {};
+      return notesCache[sourceType];
+    };
+
+    for (const mapping of rowMappings) {
+      if (seq !== _hiddenRowsRefreshSeq) return;
+      const src = defaultStreams[mapping.rowIndex] || {};
+      const sourceType = src.source_type || src.sourceType || src.source;
+      const marker = src.marker || null;
+      const notes = await getNotes(sourceType);
+      let total = 0;
+      let nonEmpty = 0;
+      for (const note of Object.values(notes || {})) {
+        const text = typeof note?.get_text === "function" ? note.get_text() : String(note || "");
+        if (!noteMatchesSourceMarker(text, marker)) continue;
+        total++;
+        if (!isEmptyImportedNoteText(stripRoutingMarker(text, marker, "contains"))) nonEmpty++;
+      }
+      const hideRow = total > 0 && nonEmpty === 0;
+      mapping.row.classList.toggle("we-empty-stream-hidden", hideRow);
+      mapping.row.style.display = hideRow ? "none" : "";
+    }
+  } catch (err) {
+    console.warn("[word_extractor] hide-empty stream scan failed:", err);
+  }
+}
+
+function noteMatchesSourceMarker(text, marker) {
+  const source = String(text || "");
+  if (marker) {
+    return new RegExp(`@${escapeRegExp(marker)}(?!\\d)`).test(source);
+  }
+  return !/@\d+/.test(source);
+}
+
+function readIncludedRowsAndMappings() {
+  const includedRows = allRowsWithMappings().filter((mapping) => {
+    const include = mapping.row.querySelector('td input[type="checkbox"]');
+    return include ? include.checked !== false : true;
+  });
+
+  return includedRows.map(({ row, ...mapping }) => mapping);
 }
 
 function installConfirmCapture() {
@@ -296,19 +396,24 @@ function captureImportEnhancementState(modal) {
   };
 }
 
-async function buildEmptyReferencePlan(file, mappings, markerMatchMode) {
+async function buildSelectedFromMappings(file, mappings) {
+  if (!file) return [];
   const buf = await file.arrayBuffer();
   const sources = await engine.find_all_note_sources(buf.slice(0));
   const defaultStreams = streams.buildDefaultStreamMapping(sources || []);
-
-  const selected = mappings.map((mapping) => {
+  return (mappings || []).map((mapping) => {
     const src = defaultStreams[mapping.rowIndex] || {};
     return {
       ...mapping,
       sourceType: src.source_type || src.sourceType || src.source,
       marker: src.marker || null,
     };
-  });
+  }).filter((item) => item.sourceType);
+}
+
+async function buildEmptyReferencePlan(file, mappings, markerMatchMode) {
+  const buf = await file.arrayBuffer();
+  const selected = await buildSelectedFromMappings(file, mappings);
 
   const routing = {
     footnote: { markerToSymbol: {}, noneSymbol: null },
@@ -427,12 +532,59 @@ function isEmptyImportedNoteText(text) {
     .length === 0;
 }
 
+function plainToHtmlForFallback(s) {
+  if (!s) return "<p></p>";
+  const lines = String(s).split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return "<p></p>";
+  return lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+}
+
+function countLiteral(text, needle) {
+  if (!needle) return 0;
+  return (String(text || "").match(new RegExp(escapeRegExp(needle), "g")) || []).length;
+}
+
+async function fallbackMainToStablePlainIfHtmlLostLinks(pending, mainPane) {
+  if (!pending?.file || !mainPane?.editor || !pending.mappings?.length) return;
+  try {
+    const selected = await buildSelectedFromMappings(pending.file, pending.mappings);
+    if (!selected.length) return;
+    const simpleSelected = selected.map((item) => ({
+      source: item.sourceType,
+      marker: item.marker || null,
+      symbol: item.autoSym,
+    }));
+    const buf = await pending.file.arrayBuffer();
+    const stable = await engine.docx_extract_simple(buf.slice(0), simpleSelected, {
+      skipEmptyNotes: pending.skipEmptyNotes,
+      markerMatchMode: pending.markerMatchMode,
+    });
+    if (!stable?.main) return;
+
+    const currentText = mainPane.editor.getText ? mainPane.editor.getText() : mainPane.editor.getHTML();
+    const lost = simpleSelected.some((item) => {
+      const expected = countLiteral(stable.main, item.symbol);
+      const actual = countLiteral(currentText, item.symbol);
+      return expected > 0 && actual < expected;
+    });
+    const suspiciousPlaceholderLeak = /CST:|TCI:|TCD:|‹‹|\/CST|&quot;;|";/.test(mainPane.editor.getHTML?.() || "");
+
+    if (lost || suspiciousPlaceholderLeak) {
+      console.warn("[word_extractor] styled body HTML failed validation; using stable plain main body", { lost, suspiciousPlaceholderLeak });
+      mainPane.editor.commands.setContent(plainToHtmlForFallback(stable.main));
+    }
+  } catch (err) {
+    console.warn("[word_extractor] stable main fallback failed:", err);
+  }
+}
+
 async function applyPendingImportEnhancements() {
   const pending = _pendingEnhancement;
   _pendingEnhancement = null;
   if (!pending || !_paneManagerRef) return;
 
   const mainPane = _paneManagerRef.getMainPane?.();
+  await fallbackMainToStablePlainIfHtmlLostLinks(pending, mainPane);
   const emptyPlan = await pending.emptyReferencePlan;
 
   if (pending.skipEmptyNotes && emptyPlan?.length && mainPane?.editor) {
@@ -585,12 +737,14 @@ function openWordExtractorDialogWithOverwriteStyles(paneManager, onLoaded) {
   ensureStreamMappingControlsVisible();
   installStreamsObserver();
   installPreviewObserver();
+  replaceAuxSeriesLettersWithNumericLabels();
   setTimeout(() => {
     ensureOverwriteStylesCheckboxVisible();
     ensureHideEmptyNotesUiCheckboxVisible();
     ensureStreamMappingControlsVisible();
     installStreamsObserver();
     installPreviewObserver();
+    replaceAuxSeriesLettersWithNumericLabels();
   }, 0);
   return result;
 }
