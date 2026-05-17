@@ -3,8 +3,8 @@
 // V9 positions every visible line absolutely. Therefore a CSS padding/margin
 // below the main text is unsafe: the pagination algorithm will not know about it.
 // This pass runs inside the V9 render pipeline after the page is built, measures
-// the actual main/footer positions, and shifts only the footer apparatus down —
-// only when there is real free space left inside the page.
+// the actual main/next-apparatus positions, and shifts only apparatus that starts
+// after the main text — only when there is real free space left inside the page.
 
 const DEFAULT_GAP_PX = 16;
 const MAX_GAP_PX = 60;
@@ -58,6 +58,16 @@ function isMainLine(el) {
   return el?.dataset?.v9Role === "main" || el?.classList?.contains("v9-role-main");
 }
 
+function isSeparator(el) {
+  return el?.classList?.contains("v9-main-separator");
+}
+
+function positionedElements(pageEl) {
+  return Array.from(pageEl.querySelectorAll(
+    ".v9-line, .v9-stream-title, .v9-main-separator"
+  ));
+}
+
 function applyGapToPage(pageEl, desiredGapPx) {
   if (!pageEl || desiredGapPx <= 0) return null;
 
@@ -66,15 +76,27 @@ function applyGapToPage(pageEl, desiredGapPx) {
   if (!mainLines.length) return null;
 
   const mainBottom = Math.max(...mainLines.map(el => topOf(el) + heightOf(el)));
+  const allPositioned = positionedElements(pageEl);
 
-  // Footer titles are the stream titles that start after the main text ends.
-  // Side-stream titles are above/around the main area and are intentionally left untouched.
-  const footerTitles = Array.from(pageEl.querySelectorAll(".v9-stream-title"))
-    .filter(el => topOf(el) >= mainBottom - EPS);
-  if (!footerTitles.length) return null;
+  // Find the first non-main positioned element that really starts after the
+  // main text. This covers both classic footer apparatus titles and pages where
+  // the side streams continue below the last main line without a footer title.
+  const afterMain = allPositioned.filter(el => {
+    if (isMainLine(el)) return false;
+    if (isSeparator(el)) return false;
+    return topOf(el) >= mainBottom - EPS;
+  });
+  if (!afterMain.length) {
+    pageEl.dataset.v9MainBottomGap = JSON.stringify({
+      desired: desiredGapPx,
+      applied: 0,
+      reason: "no-following-apparatus",
+    });
+    return null;
+  }
 
-  const firstFooterTop = Math.min(...footerTitles.map(topOf));
-  const currentGap = firstFooterTop - mainBottom;
+  const firstAfterMainTop = Math.min(...afterMain.map(topOf));
+  const currentGap = firstAfterMainTop - mainBottom;
   const requestedShift = desiredGapPx - currentGap;
   if (requestedShift <= EPS) {
     pageEl.dataset.v9MainBottomGap = JSON.stringify({
@@ -86,14 +108,10 @@ function applyGapToPage(pageEl, desiredGapPx) {
     return null;
   }
 
-  const allPositioned = Array.from(pageEl.querySelectorAll(
-    ".v9-line, .v9-stream-title, .v9-main-separator"
-  ));
-
   const movable = allPositioned.filter(el => {
     if (isMainLine(el)) return false;
-    if (el.classList?.contains("v9-main-separator")) return false;
-    return topOf(el) >= firstFooterTop - EPS;
+    if (isSeparator(el)) return false;
+    return topOf(el) >= firstAfterMainTop - EPS;
   });
   if (!movable.length) return null;
 
@@ -118,12 +136,13 @@ function applyGapToPage(pageEl, desiredGapPx) {
     setTop(el, topOf(el) + appliedShift);
   }
 
-  // If there is a main/footer separator, keep it centered between the main and the shifted footer.
+  // If there is a main/footer separator, keep it centered between the main and
+  // the shifted apparatus below it.
   const sep = pageEl.querySelector(".v9-main-separator");
   if (sep) {
     const sepH = heightOf(sep);
-    const shiftedFooterTop = firstFooterTop + appliedShift;
-    setTop(sep, Math.round((mainBottom + shiftedFooterTop) / 2 - sepH / 2));
+    const shiftedFirstTop = firstAfterMainTop + appliedShift;
+    setTop(sep, Math.round((mainBottom + shiftedFirstTop) / 2 - sepH / 2));
   }
 
   const result = {
