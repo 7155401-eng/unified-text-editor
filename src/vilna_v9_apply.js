@@ -14,6 +14,7 @@
 // אין float, אין shape-outside.
 
 import { buildPages } from "./vilna_v9.js";
+import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
@@ -287,6 +288,11 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       progress.abort();
       return result;
     }
+
+    // 2026-05-17: רווח מתחת הזרם הראשי חייב להימדד בתוך מסלול V9, לא דרך CSS.
+    // הפאס הזה מזיז רק זרמי תחתית, ורק אם יש מקום אמיתי בדף — כך הוא לא
+    // משנה את חישוב הפגינציה ולא יוצר גלישה נסתרת.
+    applyV9MainBottomGap(container);
 
     progress.finish({
       totalPages: container.querySelectorAll(".page").length || result?.pages?.length || 0,
