@@ -1,4 +1,5 @@
 import { handleSecureExportHtmlRequest } from "../server/secure_export_html.js";
+import { getUserFromRequest } from "../worker/session.js";
 
 function toWebRequest(req) {
   const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -33,7 +34,7 @@ async function sendWebResponse(res, response) {
 export default async function handler(req, res) {
   try {
     const request = await toWebRequest(req);
-    const response = await handleSecureExportHtmlRequest(request, process.env || {});
+    const response = await handleSecureExportHtmlRequest(request, process.env || {}, { getUserFromRequest });
     await sendWebResponse(res, response);
   } catch (err) {
     res.statusCode = 500;
