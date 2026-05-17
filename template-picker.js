@@ -17,6 +17,7 @@
     stopped: '\u05d4\u05e8\u05d9\u05e0\u05d3\u05d5\u05e8 \u05e0\u05e2\u05e6\u05e8. \u05d4\u05ea\u05e6\u05d5\u05d2\u05d4 \u05d4\u05e7\u05d5\u05d3\u05de\u05ea \u05e0\u05e9\u05d0\u05e8\u05d4 \u05db\u05e4\u05d9 \u05e9\u05d4\u05d9\u05d0.'
   };
 
+  const TROUBLESHOOTING_STATUS_VALUES = new Set(['troubleshooting', 'פתרון בעיות', 'פתרון-בעיות', 'solutions']);
   const TROUBLESHOOTING_INTRO = 'להלן כמה דברים שאנו יודעים עליהם שיש בהם מגבלות מערכת והפתרון שלהם הוא ידני. יתכן שבהמשך נטפל בבעיות דלהלן שלא יצטרכו עבודה ידנית, לאחר שנסיים את הפיתוחים והתיקונים הדחופים יותר.';
   const TROUBLESHOOTING_ITEMS = [
     ['טקסטים עולים על טקסטים', 'נסו לבצע רענון (רנדור) חוזר.'],
@@ -49,6 +50,41 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function isTroubleshootingStatus(status) {
+    return TROUBLESHOOTING_STATUS_VALUES.has(String(status || '').trim());
+  }
+
+  function normalizeTroubleshootingItems(items) {
+    const managed = (items || [])
+      .filter((item) => isTroubleshootingStatus(item?.status))
+      .map((item) => [String(item?.title || '').trim(), String(item?.body || '').trim()])
+      .filter(([title, body]) => title && body);
+    return managed.length ? managed : TROUBLESHOOTING_ITEMS;
+  }
+
+  function troubleshootingItemsHtml(items) {
+    return items.map(([title, body]) => `
+      <div class="ravtext-troubleshooting-item"><strong>${escapeText(title)}:</strong> ${escapeText(body)}</div>
+    `).join('');
+  }
+
+  async function refreshTroubleshootingFromAdmin() {
+    try {
+      const list = byId('ravtext-troubleshooting-list');
+      if (!list) return;
+      const res = await fetch('/api/bug-reports/public?limit=500', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      list.innerHTML = troubleshootingItemsHtml(normalizeTroubleshootingItems(data?.items || []));
+    } catch (_) {
+      // אם טעינת הרשומות מהמנהל נכשלת — נשארת ברירת המחדל הקבועה.
+    }
   }
 
   function addTroubleshootingStyle() {
@@ -105,9 +141,6 @@
     const backdrop = document.createElement('div');
     backdrop.id = 'ravtext-troubleshooting-modal';
     backdrop.className = 'ravtext-troubleshooting-backdrop';
-    const itemsHtml = TROUBLESHOOTING_ITEMS.map(([title, body]) => `
-      <div class="ravtext-troubleshooting-item"><strong>${escapeText(title)}:</strong> ${escapeText(body)}</div>
-    `).join('');
     backdrop.innerHTML = `
       <div class="ravtext-troubleshooting-modal" role="dialog" aria-modal="true" aria-labelledby="ravtext-troubleshooting-title">
         <div class="ravtext-troubleshooting-head">
@@ -115,13 +148,14 @@
           <button type="button" class="ravtext-troubleshooting-close" aria-label="סגור">×</button>
         </div>
         <div class="ravtext-troubleshooting-intro">${escapeText(TROUBLESHOOTING_INTRO)}</div>
-        ${itemsHtml}
+        <div id="ravtext-troubleshooting-list">${troubleshootingItemsHtml(TROUBLESHOOTING_ITEMS)}</div>
       </div>
     `;
     backdrop.addEventListener('click', (ev) => { if (ev.target === backdrop) closeTroubleshootingModal(); });
     backdrop.querySelector('.ravtext-troubleshooting-close')?.addEventListener('click', closeTroubleshootingModal);
     document.addEventListener('keydown', troubleshootingEscHandler);
     document.body.appendChild(backdrop);
+    refreshTroubleshootingFromAdmin();
   }
 
   function ensureTroubleshootingHeaderButton() {
