@@ -679,6 +679,39 @@ function cloneStreams(streams) {
   return out;
 }
 
+function noteAbsoluteAnchor(note) {
+  if (typeof note?.absoluteAnchor === "number") return note.absoluteAnchor;
+  if (typeof note?.anchor === "number") return note.anchor;
+  return 0;
+}
+
+function noteLocalAnchor(note, fallbackAnchor = 0) {
+  if (typeof note?.localAnchor === "number") return note.localAnchor;
+  if (typeof note?.anchor === "number") return note.anchor;
+  return fallbackAnchor;
+}
+
+function noteUid(note, paraIdx, num, absoluteAnchor) {
+  if (note?.uid) return String(note.uid);
+  return String(note?.stream || "") + ":" + String(num || 0) + ":" + String(paraIdx) + ":" + String(absoluteAnchor || 0);
+}
+
+function noteTupleMeta(note, paraIdx, num, anchor) {
+  const absoluteAnchor = noteAbsoluteAnchor(note);
+  const localAnchor = noteLocalAnchor(note, anchor);
+  return {
+    stream: note?.stream || "",
+    num,
+    uid: noteUid(note, paraIdx, num, absoluteAnchor),
+    // Keep the current tuple anchor as-is for backward compatibility.
+    anchor,
+    // Preserve the original paragraph coordinate for exact identity/debugging.
+    absoluteAnchor,
+    // Preserve the current split-segment coordinate for future cleanup.
+    localAnchor,
+  };
+}
+
 function addNotesToStreams(streams, paraIdx, notes) {
   const out = cloneStreams(streams);
   for (const note of notes) {
@@ -691,7 +724,11 @@ function addNotesToStreams(streams, paraIdx, notes) {
     const children = Array.isArray(note.children) ? note.children : [];
     // משה 2026-05-13: tup[6] = runs (inline marks) — בולד/הדגשה/צבע פר-מילה.
     const runs = Array.isArray(note.runs) ? note.runs : [];
-    out[note.stream].push([paraIdx, note.text, anchor, num, cont, children, runs]);
+    // tup[7] = identity metadata. Stage C1 intentionally leaves tup[2]
+    // unchanged so pagination behavior stays identical, while renderer/debug
+    // can still read absoluteAnchor/localAnchor without guessing from [N].
+    const meta = noteTupleMeta(note, paraIdx, num, anchor);
+    out[note.stream].push([paraIdx, note.text, anchor, num, cont, children, runs, meta]);
   }
   return out;
 }
@@ -1126,6 +1163,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       marks: r.marks,
     }));
     const part1 = {
+      ...note,
       stream: note.stream,
       anchor: note.anchor,
       num: note.num,
@@ -1136,6 +1174,7 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
       runs: sliceRuns(Array.isArray(note.runs) ? note.runs : [], 0, part1RawLen),
     };
     const part2 = {
+      ...note,
       stream: note.stream,
       anchor: note.anchor,
       num: note.num,
@@ -1348,8 +1387,19 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
     while (true) {
       const remaining = para.mainText.substring(prefix);
       const remainingNotes = para.notes
-        .filter((n) => n.anchor >= prefix)
-        .map((n) => ({ ...n, anchor: n.anchor - prefix }))
+        .filter((n) => noteAbsoluteAnchor(n) >= prefix)
+        .map((n) => {
+          const absoluteAnchor = noteAbsoluteAnchor(n);
+          const localAnchor = absoluteAnchor - prefix;
+          return {
+            ...n,
+            absoluteAnchor,
+            localAnchor,
+            // Keep existing forward-packer semantics: downstream fit/clamp
+            // code still reads note.anchor as a local offset for this segment.
+            anchor: localAnchor,
+          };
+        })
         .flatMap(preSplitLongNote);
 
       if (remaining.length === 0 && remainingNotes.length === 0) break;
@@ -1887,6 +1937,21 @@ function clonePageData(p) {
   };
 }
 
+function makeNoteTuple(paraIdx, text, anchor, num, cont, children, runs, sourceMeta = {}, streamCode = "") {
+  const meta = sourceMeta && typeof sourceMeta === "object" ? { ...sourceMeta } : {};
+  if (streamCode) meta.stream = streamCode;
+  if (typeof num === "number") meta.num = num;
+  if (typeof anchor === "number") {
+    meta.anchor = anchor;
+    if (typeof meta.localAnchor !== "number") meta.localAnchor = anchor;
+    if (typeof meta.absoluteAnchor !== "number") meta.absoluteAnchor = anchor;
+  }
+  if (!meta.uid) {
+    meta.uid = String(meta.stream || streamCode || "") + ":" + String(num || 0) + ":" + String(paraIdx) + ":" + String(meta.absoluteAnchor || anchor || 0);
+  }
+  return [paraIdx, text, anchor, num, cont, children, runs, meta];
+}
+
 // Find indices of complete (non-continuation) notes in nxt that match a
 // given paraIdx and have anchor in [charStart, charEnd).
 function findMovableNoteIndices(nxt, paraIdx, charStart, charEnd) {
@@ -2210,6 +2275,7 @@ function trySplitFirstAnchoredNoteOntoCur(cur, nxt, paraIdx, geom) {
   const tupCont = tup[4] === 1 || tup[4] === true ? 1 : 0;
   const tupChildren = Array.isArray(tup[5]) ? tup[5] : [];
   const tupRuns = Array.isArray(tup[6]) ? tup[6] : [];
+  const tupMeta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
   if (!text || text.length < 4) return false;
 
   let lo = 1;
@@ -2235,8 +2301,8 @@ function trySplitFirstAnchoredNoteOntoCur(cur, nxt, paraIdx, geom) {
     const trialCur = clonePageData(cur);
     const trialNxt = clonePageData(nxt);
     if (!trialCur.streams[target.code]) trialCur.streams[target.code] = { h: 0, notes: [] };
-    trialCur.streams[target.code].notes.push([paraIdx, part1, target.anchor, tupNum, tupCont, tupCont ? [] : tupChildren, part1Runs]);
-    trialNxt.streams[target.code].notes[target.idx] = [paraIdx, part2, target.anchor, tupNum, 1, [], part2Runs];
+    trialCur.streams[target.code].notes.push(makeNoteTuple(paraIdx, part1, target.anchor, tupNum, tupCont, tupCont ? [] : tupChildren, part1Runs, tupMeta, target.code));
+    trialNxt.streams[target.code].notes[target.idx] = makeNoteTuple(paraIdx, part2, target.anchor, tupNum, 1, [], part2Runs, tupMeta, target.code);
 
     const h = measurePageData(trialCur, { forceRender: true });
     if (
@@ -2340,7 +2406,8 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
         const cont = tup[4] === 1 || tup[4] === true ? 1 : 0;
         const children = Array.isArray(tup[5]) ? tup[5] : [];
         const runs = Array.isArray(tup[6]) ? tup[6] : [];
-        earliest = { code, idx: i, paraIdx, text, anchor, num, cont, children, runs };
+        const meta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+        earliest = { code, idx: i, paraIdx, text, anchor, num, cont, children, runs, meta };
       }
     }
   }
@@ -2351,7 +2418,7 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
     const trialCur = clonePageData(cur);
     const trialNxt = clonePageData(nxt);
     if (!trialCur.streams[earliest.code]) trialCur.streams[earliest.code] = { h: 0, notes: [] };
-    trialCur.streams[earliest.code].notes.push([earliest.paraIdx, earliest.text, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children, earliest.runs]);
+    trialCur.streams[earliest.code].notes.push(makeNoteTuple(earliest.paraIdx, earliest.text, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children, earliest.runs, earliest.meta, earliest.code));
     trialNxt.streams[earliest.code].notes.splice(earliest.idx, 1);
     if (trialNxt.streams[earliest.code].notes.length === 0) delete trialNxt.streams[earliest.code];
     const h = measurePageData(trialCur);
@@ -2394,8 +2461,8 @@ function pullOneAnchoredNote(cur, nxt, geom, allPages, curIndex) {
     const trialCur = clonePageData(cur);
     const trialNxt = clonePageData(nxt);
     if (!trialCur.streams[earliest.code]) trialCur.streams[earliest.code] = { h: 0, notes: [] };
-    trialCur.streams[earliest.code].notes.push([earliest.paraIdx, part1, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children, part1Runs]);
-    trialNxt.streams[earliest.code].notes[earliest.idx] = [earliest.paraIdx, part2, earliest.anchor, earliest.num, 1, [], part2Runs];
+    trialCur.streams[earliest.code].notes.push(makeNoteTuple(earliest.paraIdx, part1, earliest.anchor, earliest.num, earliest.cont, earliest.cont ? [] : earliest.children, part1Runs, earliest.meta, earliest.code));
+    trialNxt.streams[earliest.code].notes[earliest.idx] = makeNoteTuple(earliest.paraIdx, part2, earliest.anchor, earliest.num, 1, [], part2Runs, earliest.meta, earliest.code);
     const h = measurePageData(trialCur, { forceRender: true });
     if (
       h <= geom.maxPageHeight &&
@@ -2450,7 +2517,8 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
         const cont = tup[4] === 1 || tup[4] === true ? 1 : 0;
         const children = Array.isArray(tup[5]) ? tup[5] : [];
         const runs = Array.isArray(tup[6]) ? tup[6] : [];
-        target = { code, idx: i, paraIdx, text, anchor, num, cont, children, runs };
+        const meta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+        target = { code, idx: i, paraIdx, text, anchor, num, cont, children, runs, meta };
       }
     }
   }
@@ -2523,7 +2591,7 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
 
     // Now try fitting target note on trialCur (whole, then split).
     if (!trialCur.streams[target.code]) trialCur.streams[target.code] = { h: 0, notes: [] };
-    trialCur.streams[target.code].notes.push([target.paraIdx, target.text, target.anchor, target.num, target.cont, target.cont ? [] : target.children, target.runs]);
+    trialCur.streams[target.code].notes.push(makeNoteTuple(target.paraIdx, target.text, target.anchor, target.num, target.cont, target.cont ? [] : target.children, target.runs, target.meta, target.code));
     let curH = measurePageData(trialCur);
     if (curH > geom.maxPageHeight) {
       // Try split.
@@ -2544,7 +2612,7 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
         }
         const ptRuns = sliceRuns(target.runs, 0, pt.length);
         const t2 = clonePageData(trialCur);
-        t2.streams[target.code].notes.push([target.paraIdx, pt, target.anchor, target.num, target.cont, target.cont ? [] : target.children, ptRuns]);
+        t2.streams[target.code].notes.push(makeNoteTuple(target.paraIdx, pt, target.anchor, target.num, target.cont, target.cont ? [] : target.children, ptRuns, target.meta, target.code));
         const h2 = measurePageData(t2, { forceRender: true });
         if (
           h2 <= geom.maxPageHeight &&
@@ -2560,7 +2628,7 @@ function tryPushTailToFitAnchoredNote(cur, nxt, geom, allPages, curIndex) {
       // Replace the split target's nxt-side text.
       const part2 = target.text.substring(s_best.we).trimStart();
       const part2Runs = sliceRuns(target.runs, target.text.length - part2.length, target.text.length);
-      trialNxt.streams[target.code].notes[targetIdxAdjusted] = [target.paraIdx, part2, target.anchor, target.num, 1, [], part2Runs];
+      trialNxt.streams[target.code].notes[targetIdxAdjusted] = makeNoteTuple(target.paraIdx, part2, target.anchor, target.num, 1, [], part2Runs, target.meta, target.code);
       Object.assign(trialCur, s_best.tc);
       curH = measurePageData(trialCur);
     } else {

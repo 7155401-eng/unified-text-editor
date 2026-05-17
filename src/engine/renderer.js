@@ -94,10 +94,29 @@ function buildParaNotesIndex(pageData) {
     const notes = (streams[code].notes || []);
     for (const tup of notes) {
       const paraIdx = tup[0];
-      const anchor = typeof tup[2] === "number" ? tup[2] : 0;
+      const hasIdentityMeta = tup && tup[7] && typeof tup[7] === "object";
+      const tupleMeta = hasIdentityMeta ? tup[7] : {};
+      const tupleAnchor = typeof tup[2] === "number" ? tup[2] : 0;
       const num = typeof tup[3] === "number" && tup[3] > 0 ? tup[3] : tup[0];
+      const absoluteAnchor = typeof tupleMeta.absoluteAnchor === "number"
+        ? tupleMeta.absoluteAnchor
+        : typeof tupleMeta.anchor === "number"
+          ? tupleMeta.anchor
+          : tupleAnchor;
+      const anchor = absoluteAnchor;
+      const localAnchor = typeof tupleMeta.localAnchor === "number" ? tupleMeta.localAnchor : null;
+      const uid = tupleMeta.uid || `${code}:${num}:${paraIdx}:${anchor}`;
       if (!index[paraIdx]) index[paraIdx] = [];
-      index[paraIdx].push({ code, anchor, num });
+      index[paraIdx].push({
+        code,
+        anchor,
+        num,
+        uid,
+        absoluteAnchor,
+        localAnchor,
+        sourceAnchor: tupleAnchor,
+        hasIdentityMeta,
+      });
     }
   }
   for (const key of Object.keys(index)) {
@@ -148,24 +167,34 @@ function sliceLocalRuns(runs, start, end) {
 }
 
 function mainRefKey(ref) {
+  if (ref && ref.uid) return String(ref.uid);
   return `${ref.code || ""}:${ref.num || ""}:${ref.anchor || 0}`;
 }
 
 function localMainRefPos(ref, segText, segStart, segEnd) {
-  const anchor = typeof ref.anchor === "number" ? ref.anchor : 0;
   const textLen = String(segText || "").length;
 
-  // dom_packer stores split-paragraph refs as local offsets in many pages.
-  // Prefer the local interpretation whenever this page segment is a continuation
-  // and the anchor fits inside the current segment. The previous absolute-first
-  // order misread local anchors as absolute whenever the numbers overlapped,
-  // causing refs to appear too early in the segment.
+  // When tup[7] exists, anchor identity is explicit: absoluteAnchor is the
+  // original paragraph coordinate. Do not run the legacy "maybe local" fallback
+  // on it, otherwise an absolute anchor whose numeric value happens to fit in
+  // a continuation segment can be inserted at the wrong local position.
+  if (ref?.hasIdentityMeta && typeof ref.absoluteAnchor === "number") {
+    const anchor = ref.absoluteAnchor;
+    if (anchor >= segStart && anchor <= segEnd) {
+      return Math.max(0, Math.min(textLen, anchor - segStart));
+    }
+    return null;
+  }
+
+  const anchor = typeof ref.anchor === "number" ? ref.anchor : 0;
+
+  // Legacy fallback for old packer tuples without tup[7]. Some split-paragraph
+  // refs were serialized as local offsets in tup[2], so keep the previous
+  // behavior only for those legacy tuples.
   if (segStart > 0 && anchor >= 0 && anchor <= textLen) {
     return anchor;
   }
 
-  // Normal/full-paragraph path: anchors are absolute offsets in the original
-  // paragraph, while segStart/segEnd describe the piece shown on this page.
   if (anchor >= segStart && anchor <= segEnd) {
     return Math.max(0, Math.min(textLen, anchor - segStart));
   }
@@ -243,6 +272,12 @@ function appendMainRefElement(parent, ref) {
   el.className = "stream-ref";
   el.textContent = formatted;
   el.setAttribute("dir", "ltr");
+  el.dataset.stream = String(ref.code || "");
+  if (ref.num !== undefined && ref.num !== null) el.dataset.num = String(ref.num);
+  if (ref.uid) el.dataset.uid = String(ref.uid);
+  const refAnchor = typeof ref.absoluteAnchor === "number" ? ref.absoluteAnchor : ref.anchor;
+  if (typeof refAnchor === "number") el.dataset.anchor = String(refAnchor);
+  if (typeof ref.localAnchor === "number") el.dataset.localAnchor = String(ref.localAnchor);
   if (overrideStyleId) applyStyleToElement(el, overrideStyleId);
   // משה 2026-05-15: סגנון נבחר מתוך רשימת סגנונות המסמך עבור "[N]" בראשי.
   const refStyleId = styleIdForStreamNumber(ref.code, "main");
@@ -417,9 +452,21 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
     notes.forEach((tup, i) => {
       const part = document.createElement("span");
       part.className = "note-part";
+      part.dataset.stream = streamCode;
       part.dataset.cont = isCont(tup) ? "1" : "0";
       const num = displayNum(tup);
       if (num !== undefined && num !== null) part.dataset.noteNum = String(num);
+      const meta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+      if (meta.uid) part.dataset.uid = String(meta.uid);
+      const anchor = typeof meta.absoluteAnchor === "number"
+        ? meta.absoluteAnchor
+        : typeof meta.anchor === "number"
+          ? meta.anchor
+          : typeof tup[2] === "number"
+            ? tup[2]
+            : null;
+      if (typeof anchor === "number") part.dataset.anchor = String(anchor);
+      if (typeof meta.localAnchor === "number") part.dataset.localAnchor = String(meta.localAnchor);
       appendNoteContent(part, tup, i > 0);
       noteAll.appendChild(part);
     });
@@ -431,6 +478,20 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
     for (const tup of notes) {
       const note = document.createElement("div");
       note.className = "note";
+      note.dataset.stream = streamCode;
+      const num = displayNum(tup);
+      if (num !== undefined && num !== null) note.dataset.noteNum = String(num);
+      const meta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+      if (meta.uid) note.dataset.uid = String(meta.uid);
+      const anchor = typeof meta.absoluteAnchor === "number"
+        ? meta.absoluteAnchor
+        : typeof meta.anchor === "number"
+          ? meta.anchor
+          : typeof tup[2] === "number"
+            ? tup[2]
+            : null;
+      if (typeof anchor === "number") note.dataset.anchor = String(anchor);
+      if (typeof meta.localAnchor === "number") note.dataset.localAnchor = String(meta.localAnchor);
       appendNoteContent(note, tup, false);
       if (isArtificialEnd(tup)) {
         note.style.textAlignLast = artificialLastLine;
