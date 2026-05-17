@@ -94,7 +94,8 @@ function buildParaNotesIndex(pageData) {
     const notes = (streams[code].notes || []);
     for (const tup of notes) {
       const paraIdx = tup[0];
-      const tupleMeta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+      const hasIdentityMeta = tup && tup[7] && typeof tup[7] === "object";
+      const tupleMeta = hasIdentityMeta ? tup[7] : {};
       const tupleAnchor = typeof tup[2] === "number" ? tup[2] : 0;
       const num = typeof tup[3] === "number" && tup[3] > 0 ? tup[3] : tup[0];
       const absoluteAnchor = typeof tupleMeta.absoluteAnchor === "number"
@@ -114,6 +115,7 @@ function buildParaNotesIndex(pageData) {
         absoluteAnchor,
         localAnchor,
         sourceAnchor: tupleAnchor,
+        hasIdentityMeta,
       });
     }
   }
@@ -170,20 +172,29 @@ function mainRefKey(ref) {
 }
 
 function localMainRefPos(ref, segText, segStart, segEnd) {
-  const anchor = typeof ref.anchor === "number" ? ref.anchor : 0;
   const textLen = String(segText || "").length;
 
-  // dom_packer stores split-paragraph refs as local offsets in many pages.
-  // Prefer the local interpretation whenever this page segment is a continuation
-  // and the anchor fits inside the current segment. The previous absolute-first
-  // order misread local anchors as absolute whenever the numbers overlapped,
-  // causing refs to appear too early in the segment.
+  // When tup[7] exists, anchor identity is explicit: absoluteAnchor is the
+  // original paragraph coordinate. Do not run the legacy "maybe local" fallback
+  // on it, otherwise an absolute anchor whose numeric value happens to fit in
+  // a continuation segment can be inserted at the wrong local position.
+  if (ref?.hasIdentityMeta && typeof ref.absoluteAnchor === "number") {
+    const anchor = ref.absoluteAnchor;
+    if (anchor >= segStart && anchor <= segEnd) {
+      return Math.max(0, Math.min(textLen, anchor - segStart));
+    }
+    return null;
+  }
+
+  const anchor = typeof ref.anchor === "number" ? ref.anchor : 0;
+
+  // Legacy fallback for old packer tuples without tup[7]. Some split-paragraph
+  // refs were serialized as local offsets in tup[2], so keep the previous
+  // behavior only for those legacy tuples.
   if (segStart > 0 && anchor >= 0 && anchor <= textLen) {
     return anchor;
   }
 
-  // Normal/full-paragraph path: anchors are absolute offsets in the original
-  // paragraph, while segStart/segEnd describe the piece shown on this page.
   if (anchor >= segStart && anchor <= segEnd) {
     return Math.max(0, Math.min(textLen, anchor - segStart));
   }
