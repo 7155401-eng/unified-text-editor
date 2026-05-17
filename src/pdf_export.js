@@ -1,4 +1,5 @@
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
+import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
 
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
@@ -9,6 +10,29 @@ const PDF_EXPORT_DPI = 240;
 const PDF_JPEG_QUALITY = 0.985;
 const A4_WIDTH_INCHES = 210 / 25.4;
 const PDF_EXPORT_SCALE = (PDF_EXPORT_DPI * A4_WIDTH_INCHES) / PAGE_CSS_WIDTH;
+
+const EXPORT_CSS_VARS = [
+  "--ravtext-page-font-family",
+  "--ravtext-page-width",
+  "--ravtext-page-height",
+  "--ravtext-page-pack-safety",
+  "--ravtext-page-main-size",
+  "--ravtext-page-main-line-height",
+  "--ravtext-page-main-paragraph-gap",
+  "--ravtext-page-main-stream-gap",
+  "--ravtext-page-stream-size",
+  "--ravtext-page-stream-line-height",
+  "--ravtext-page-stream-note-gap",
+  "--ravtext-page-stream-title-gap",
+  "--ravtext-stream-vertical-gap",
+  "--ravtext-stream-horizontal-gap",
+  "--ravtext-editor-stream-vertical-gap",
+  "--ravtext-editor-stream-horizontal-gap",
+  "--ravtext-page-margin-top",
+  "--ravtext-page-margin-right",
+  "--ravtext-page-margin-bottom",
+  "--ravtext-page-margin-left",
+];
 
 function stringBytes(str) {
   const out = new Uint8Array(str.length);
@@ -27,7 +51,8 @@ function concatBytes(chunks) {
   return out;
 }
 
-function collectCssText() {
+// נתיב fallback ישן ויציב: לא נאמן לכל הפונטים, אבל לא אמור להפיל PDF.
+function collectLegacyCssText() {
   const css = [];
   for (const sheet of Array.from(document.styleSheets)) {
     try {
@@ -47,42 +72,44 @@ function collectCssText() {
   }
 
   const root = getComputedStyle(document.documentElement);
-  const vars = [
-    "--ravtext-page-font-family",
-    "--ravtext-page-width",
-    "--ravtext-page-height",
-    "--ravtext-page-pack-safety",
-    "--ravtext-page-main-size",
-    "--ravtext-page-main-line-height",
-    "--ravtext-page-main-paragraph-gap",
-    "--ravtext-page-main-stream-gap",
-    "--ravtext-page-stream-size",
-    "--ravtext-page-stream-line-height",
-    "--ravtext-page-stream-note-gap",
-    "--ravtext-page-stream-title-gap",
-    "--ravtext-stream-vertical-gap",
-    "--ravtext-stream-horizontal-gap",
-    "--ravtext-editor-stream-vertical-gap",
-    "--ravtext-editor-stream-horizontal-gap",
-    "--ravtext-page-margin-top",
-    "--ravtext-page-margin-right",
-    "--ravtext-page-margin-bottom",
-    "--ravtext-page-margin-left",
-  ]
+  const vars = EXPORT_CSS_VARS
     .map((name) => `${name}: ${root.getPropertyValue(name).trim()};`)
     .join("");
 
   css.push(`:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}`);
   css.push("html,body{margin:0;padding:0;background:#fff;}");
-  // משה 2026-05-14: ה-PDF החזיר font-family !important על כל צאצא,
-  // וזה דרס span-ים עם font-family מפורש מ-runs (בולד/הדגשה/פונט שונה).
-  // עכשיו ה-page מקבל את הפונט וצאצאים יורשים, אבל הם יכולים לדרוס דרך style.
   css.push(".page{font-family:var(--ravtext-page-font-family);background-image:none!important;}");
   css.push(".page *{background-image:none!important;}");
   css.push(".page{margin:0!important;box-shadow:none!important;zoom:1!important;content-visibility:visible!important;contain-intrinsic-size:auto!important;padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;}");
   css.push(".pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}");
   css.push("body.ravtext-export-clean .page,body.ravtext-export-clean .page *:not(.ravtext-demo-print-mark){background:transparent!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important;}");
   return css.join("\n");
+}
+
+async function collectSnapshotCssText() {
+  const vars = collectComputedCssVariables(EXPORT_CSS_VARS);
+  const exportOverrides = `
+:root{${vars}}
+html,body{margin:0;padding:0;background:#fff;}
+.page{
+  font-family:var(--ravtext-page-font-family, "David Libre", "Frank Ruhl Libre", ${EXPORT_FONT_STACK});
+  margin:0!important;
+  box-shadow:none!important;
+  zoom:1!important;
+  content-visibility:visible!important;
+  contain-intrinsic-size:auto!important;
+  padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;
+}
+.page *{content-visibility:visible!important;contain-intrinsic-size:auto!important;}
+.pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}
+/* מנקים רק כרום של העמוד. לא מוחקים background-color מילדים כדי לא למחוק הדגשות ועיצובי זרמים. */
+body.ravtext-export-clean .page{background-image:none!important;box-shadow:none!important;}
+`;
+  return await buildSelfContainedCssSnapshot({ extraCss: exportOverrides });
+}
+
+function safeStyleText(cssText) {
+  return String(cssText || "").replace(/<\/style/gi, "<\\/style");
 }
 
 function replaceWithPlaceholder(el, label = "") {
@@ -114,8 +141,9 @@ function imageLoaded(img) {
   });
 }
 
-function svgImageUrl(svg) {
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+function createSvgObjectUrl(svg) {
+  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  return URL.createObjectURL(blob);
 }
 
 function canvasToJpegBytes(canvas, quality = PDF_JPEG_QUALITY) {
@@ -203,7 +231,7 @@ async function renderPageToPdfImage(pageEl, cssText, scale = PDF_EXPORT_SCALE, {
   ].filter(Boolean).join(" ");
   const html =
     `<html xmlns="http://www.w3.org/1999/xhtml" dir="rtl">` +
-    `<head><style>${cssText}</style></head>` +
+    `<head><style>${safeStyleText(cssText)}</style></head>` +
     `<body class="${bodyClass}">${clone.outerHTML}</body></html>`;
   const targetWidth = Math.round(PAGE_CSS_WIDTH * scale);
   const targetHeight = Math.round(PAGE_CSS_HEIGHT * scale);
@@ -215,25 +243,30 @@ async function renderPageToPdfImage(pageEl, cssText, scale = PDF_EXPORT_SCALE, {
 
   const img = new Image();
   img.decoding = "sync";
-  img.src = svgImageUrl(svg);
-  await imageLoaded(img);
+  const url = createSvgObjectUrl(svg);
+  try {
+    img.src = url;
+    await imageLoaded(img);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = targetWidth;
-  canvas.height = targetHeight;
-  const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  const pdfImage = await canvasToPdfImage(canvas, ctx);
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const pdfImage = await canvasToPdfImage(canvas, ctx);
 
-  return {
-    width: canvas.width,
-    height: canvas.height,
-    ...pdfImage,
-  };
+    return {
+      width: canvas.width,
+      height: canvas.height,
+      ...pdfImage,
+    };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 function buildPdf(images) {
@@ -329,6 +362,21 @@ function isCanvasSecurityError(err) {
   return /tainted|toDataURL|canvas/i.test(err?.message || "");
 }
 
+function isImageDecodeError(err) {
+  const msg = String(err?.message || err || "");
+  return /decode|source image|img/i.test(msg) || err?.name === "EncodingError";
+}
+
+async function renderAllPages(pages, cssText, { onProgress = null, includeBackgrounds = false } = {}) {
+  const images = [];
+  for (let i = 0; i < pages.length; i++) {
+    onProgress && onProgress(i + 1, pages.length);
+    await nextFrame();
+    images.push(await renderPageToPdfImage(pages[i], cssText, PDF_EXPORT_SCALE, { includeBackgrounds }));
+  }
+  return images;
+}
+
 export async function downloadPagesAsPdf(
   pagesContainer,
   { filename = "ravtext-preview.pdf", onProgress = null, fallbackToPrint = false, includeBackgrounds = false } = {}
@@ -337,21 +385,28 @@ export async function downloadPagesAsPdf(
   const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder)"));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
-  const cssText = collectCssText();
-  const images = [];
+  const legacyCssText = collectLegacyCssText();
+  let cssText = legacyCssText;
   try {
-    for (let i = 0; i < pages.length; i++) {
-      onProgress && onProgress(i + 1, pages.length);
-      await nextFrame();
-      images.push(await renderPageToPdfImage(pages[i], cssText, PDF_EXPORT_SCALE, { includeBackgrounds }));
-    }
+    cssText = await collectSnapshotCssText();
   } catch (err) {
-    if (fallbackToPrint && isCanvasSecurityError(err)) {
+    console.warn("PDF self-contained CSS snapshot failed, using legacy CSS:", err);
+  }
+
+  let images;
+  try {
+    images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
+  } catch (err) {
+    if (cssText !== legacyCssText && isImageDecodeError(err)) {
+      console.warn("PDF snapshot SVG decode failed, retrying with legacy CSS:", err);
+      images = await renderAllPages(pages, legacyCssText, { onProgress, includeBackgrounds });
+    } else if (fallbackToPrint && isCanvasSecurityError(err)) {
       await nextFrame();
       window.print();
       return { fallback: "print" };
+    } else {
+      throw err;
     }
-    throw err;
   }
 
   const pdfBlob = buildPdf(images);
