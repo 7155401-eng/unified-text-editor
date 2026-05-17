@@ -423,6 +423,7 @@ export function setupPdfToolbar(pagesContainer) {
       await downloadPagesAsPdf(pagesContainer, {
         filename: "ravtext-preview.pdf",
         includeBackgrounds: isOutputBackgroundEnabled(),
+        fallbackToPrint: true,
         onProgress(page, total) {
           btn.textContent = `PDF ${page}/${total}`;
         },
