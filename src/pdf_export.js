@@ -105,7 +105,14 @@ html,body{margin:0;padding:0;background:#fff;}
 /* מנקים רק כרום של העמוד. לא מוחקים background-color מילדים כדי לא למחוק הדגשות ועיצובי זרמים. */
 body.ravtext-export-clean .page{background-image:none!important;box-shadow:none!important;}
 `;
-  return await buildSelfContainedCssSnapshot({ extraCss: exportOverrides });
+  const cssText = await buildSelfContainedCssSnapshot({ extraCss: exportOverrides });
+  return stripCanvasUnsafeCss(cssText);
+}
+
+function stripCanvasUnsafeCss(cssText) {
+  return String(cssText || "")
+    .replace(/@import[^;]+;/gi, "")
+    .replace(/url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/gi, "url(\"\")");
 }
 
 function safeStyleText(cssText) {
@@ -359,12 +366,16 @@ async function waitForExportFonts(timeoutMs = 2500) {
 }
 
 function isCanvasSecurityError(err) {
-  return /tainted|toDataURL|canvas/i.test(err?.message || "");
+  return /tainted|toDataURL|canvas|SecurityError/i.test(err?.message || err?.name || "");
 }
 
 function isImageDecodeError(err) {
   const msg = String(err?.message || err || "");
   return /decode|source image|img/i.test(msg) || err?.name === "EncodingError";
+}
+
+function shouldRetryWithLegacyCss(err) {
+  return isImageDecodeError(err) || isCanvasSecurityError(err);
 }
 
 async function renderAllPages(pages, cssText, { onProgress = null, includeBackgrounds = false } = {}) {
@@ -397,9 +408,18 @@ export async function downloadPagesAsPdf(
   try {
     images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
   } catch (err) {
-    if (cssText !== legacyCssText && isImageDecodeError(err)) {
-      console.warn("PDF snapshot SVG decode failed, retrying with legacy CSS:", err);
-      images = await renderAllPages(pages, legacyCssText, { onProgress, includeBackgrounds });
+    if (cssText !== legacyCssText && shouldRetryWithLegacyCss(err)) {
+      console.warn("PDF snapshot render failed, retrying with legacy CSS:", err);
+      try {
+        images = await renderAllPages(pages, legacyCssText, { onProgress, includeBackgrounds });
+      } catch (legacyErr) {
+        if (fallbackToPrint && isCanvasSecurityError(legacyErr)) {
+          await nextFrame();
+          window.print();
+          return { fallback: "print" };
+        }
+        throw legacyErr;
+      }
     } else if (fallbackToPrint && isCanvasSecurityError(err)) {
       await nextFrame();
       window.print();
