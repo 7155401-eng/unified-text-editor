@@ -94,10 +94,27 @@ function buildParaNotesIndex(pageData) {
     const notes = (streams[code].notes || []);
     for (const tup of notes) {
       const paraIdx = tup[0];
-      const anchor = typeof tup[2] === "number" ? tup[2] : 0;
+      const tupleMeta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+      const tupleAnchor = typeof tup[2] === "number" ? tup[2] : 0;
       const num = typeof tup[3] === "number" && tup[3] > 0 ? tup[3] : tup[0];
+      const absoluteAnchor = typeof tupleMeta.absoluteAnchor === "number"
+        ? tupleMeta.absoluteAnchor
+        : typeof tupleMeta.anchor === "number"
+          ? tupleMeta.anchor
+          : tupleAnchor;
+      const anchor = absoluteAnchor;
+      const localAnchor = typeof tupleMeta.localAnchor === "number" ? tupleMeta.localAnchor : null;
+      const uid = tupleMeta.uid || `${code}:${num}:${paraIdx}:${anchor}`;
       if (!index[paraIdx]) index[paraIdx] = [];
-      index[paraIdx].push({ code, anchor, num });
+      index[paraIdx].push({
+        code,
+        anchor,
+        num,
+        uid,
+        absoluteAnchor,
+        localAnchor,
+        sourceAnchor: tupleAnchor,
+      });
     }
   }
   for (const key of Object.keys(index)) {
@@ -148,6 +165,7 @@ function sliceLocalRuns(runs, start, end) {
 }
 
 function mainRefKey(ref) {
+  if (ref && ref.uid) return String(ref.uid);
   return `${ref.code || ""}:${ref.num || ""}:${ref.anchor || 0}`;
 }
 
@@ -243,6 +261,12 @@ function appendMainRefElement(parent, ref) {
   el.className = "stream-ref";
   el.textContent = formatted;
   el.setAttribute("dir", "ltr");
+  el.dataset.stream = String(ref.code || "");
+  if (ref.num !== undefined && ref.num !== null) el.dataset.num = String(ref.num);
+  if (ref.uid) el.dataset.uid = String(ref.uid);
+  const refAnchor = typeof ref.absoluteAnchor === "number" ? ref.absoluteAnchor : ref.anchor;
+  if (typeof refAnchor === "number") el.dataset.anchor = String(refAnchor);
+  if (typeof ref.localAnchor === "number") el.dataset.localAnchor = String(ref.localAnchor);
   if (overrideStyleId) applyStyleToElement(el, overrideStyleId);
   // משה 2026-05-15: סגנון נבחר מתוך רשימת סגנונות המסמך עבור "[N]" בראשי.
   const refStyleId = styleIdForStreamNumber(ref.code, "main");
@@ -406,7 +430,7 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   const isArtificialEnd = (tup) => {
     if (!streamNumLastPage || pageIndex === undefined) return false;
     const num = tup[3];
-    if (typeof num !== "number" || num <= 0) return false;
+    if (typeof num !== "number" || num <= 0) continue;
     const key = streamCode + ":" + num;
     return typeof streamNumLastPage[key] === "number" && streamNumLastPage[key] > pageIndex;
   };
@@ -417,9 +441,21 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
     notes.forEach((tup, i) => {
       const part = document.createElement("span");
       part.className = "note-part";
+      part.dataset.stream = streamCode;
       part.dataset.cont = isCont(tup) ? "1" : "0";
       const num = displayNum(tup);
       if (num !== undefined && num !== null) part.dataset.noteNum = String(num);
+      const meta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+      if (meta.uid) part.dataset.uid = String(meta.uid);
+      const anchor = typeof meta.absoluteAnchor === "number"
+        ? meta.absoluteAnchor
+        : typeof meta.anchor === "number"
+          ? meta.anchor
+          : typeof tup[2] === "number"
+            ? tup[2]
+            : null;
+      if (typeof anchor === "number") part.dataset.anchor = String(anchor);
+      if (typeof meta.localAnchor === "number") part.dataset.localAnchor = String(meta.localAnchor);
       appendNoteContent(part, tup, i > 0);
       noteAll.appendChild(part);
     });
@@ -431,6 +467,20 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
     for (const tup of notes) {
       const note = document.createElement("div");
       note.className = "note";
+      note.dataset.stream = streamCode;
+      const num = displayNum(tup);
+      if (num !== undefined && num !== null) note.dataset.noteNum = String(num);
+      const meta = tup && tup[7] && typeof tup[7] === "object" ? tup[7] : {};
+      if (meta.uid) note.dataset.uid = String(meta.uid);
+      const anchor = typeof meta.absoluteAnchor === "number"
+        ? meta.absoluteAnchor
+        : typeof meta.anchor === "number"
+          ? meta.anchor
+          : typeof tup[2] === "number"
+            ? tup[2]
+            : null;
+      if (typeof anchor === "number") note.dataset.anchor = String(anchor);
+      if (typeof meta.localAnchor === "number") note.dataset.localAnchor = String(meta.localAnchor);
       appendNoteContent(note, tup, false);
       if (isArtificialEnd(tup)) {
         note.style.textAlignLast = artificialLastLine;
