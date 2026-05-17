@@ -2348,6 +2348,9 @@ export async function buildPages(container, paragraphs, config) {
     // הערות ששייכות לעמוד קודמות ל-fill. אם יש גלישת הערות, rescue חייב
     // לנסות להוריד שורות מהראשי כדי להכניס את ההערות, ולא לפסול candidate
     // רק בגלל ירידה קטנה במילוי העמוד.
+    // V9 partial note fill:
+    // אם לא כל ההערות נכנסות, עדיין מותר למשוך שורה מהעמוד הבא ואת תחילת
+    // ההערות שלה, כדי למנוע רווחים ולהתקדם בהצמדת הערות לטקסט.
     // משה 2026-05-17:
     // anchored rescue/extension גם כש-noMidParagraph פעיל, כדי להחזיר את
     // מנגנון האיזון: מורידים עוד שורות מהראשי כדי לפנות מקום להערות שלהן,
@@ -2426,13 +2429,33 @@ export async function buildPages(container, paragraphs, config) {
             const fill = planFillRatio(tp);
             if (!currentHasNoteOverflow && fill < currentFill - 0.04) continue;
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
-            if (currentHasNoteOverflow && noteOverflow) continue;
+            // משה 2026-05-17:
+
+            // אם כבר יש גלישת הערות, לא דורשים שמועמד יציל את כל ההערות.
+
+            // גם הכנסת שורה + תחילת הערות היא התקדמות טובה ומונעת רווחים.
+
             if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
+
             const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
+
+            const movedAnchoredCount = movedNotes.filter(n => typeof n.anchor === "number").length;
+
+            const partialNoteProgressBonus = currentHasNoteOverflow
+
+              ? Math.min(0.45, movedAnchoredCount * 0.10 + movedNotes.length * 0.04)
+
+              : 0;
+
             const carryMainPenalty = carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0;
+
             const score =
+
               (currentHasNoteOverflow && !noteOverflow ? 1 : 0) +
-              fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.25 : 0);
+
+              partialNoteProgressBonus +
+
+              fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.08 : 0);
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
             rescueBest = {
@@ -2454,7 +2477,7 @@ export async function buildPages(container, paragraphs, config) {
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
-      if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
+      if ((currentHasNoteOverflow || currentFill < rescueMinFillRatio) && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
@@ -2488,7 +2511,7 @@ export async function buildPages(container, paragraphs, config) {
           .filter(n => n && n >= 2 && n <= secondText.length)
           .sort((a, b) => a - b);
         let bestExtended = null;
-        let bestExtendedScore = currentFill;
+        let bestExtendedScore = currentHasNoteOverflow ? -Infinity : currentFill;
         for (const len of extendEnds) {
           const movedNotes = notesBeforeAnchor(len);
           const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
@@ -2513,10 +2536,31 @@ export async function buildPages(container, paragraphs, config) {
           const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
           if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
           const fill = planFillRatio(tp);
-          if (fill < currentFill - 0.04) continue;
-          const score = fill
+
+          if (!currentHasNoteOverflow && fill < currentFill - 0.04) continue;
+
+          const movedAnchoredCount = movedNotes.filter(n => typeof n.anchor === "number").length;
+
+          const extensionPartialNoteProgressBonus = currentHasNoteOverflow
+
+            ? Math.min(0.45, movedAnchoredCount * 0.10 + movedNotes.length * 0.04)
+
+            : 0;
+
+          const score =
+
+            (currentHasNoteOverflow && !noteOverflow ? 1 : 0) +
+
+            extensionPartialNoteProgressBonus +
+
+            fill
+
             + (carryActive ? 0 : Math.min(0.12, (len / Math.max(1, secondText.length)) * 0.12))
+
+            - (noteOverflow ? 0.08 : 0)
+
             - (carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0);
+
           if (score < bestExtendedScore) continue;
           bestExtendedScore = score;
           bestExtended = { firstHalf, secondHalf };
