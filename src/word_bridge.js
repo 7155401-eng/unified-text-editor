@@ -38,6 +38,12 @@ function wordUnavailable() {
   alert("ייבוא/ייצוא Word המקורי דורש את bridge של התוכנה הישנה. בדפדפן רגיל אין גישה ל-window.pywebview.api.");
 }
 
+function blockLocalWordExportInDemo() {
+  if (!isDemoMode()) return false;
+  alert("ייצוא Word מקומי חסום במצב דמו, כי פלט שנוצר דרך bridge מקומי ניתן לעקיפה. השתמש בהורדת HTML המאובטחת דרך השרת בלשונית ההורדות.");
+  return true;
+}
+
 function emptyDoc() {
   return { type: "doc", content: [{ type: "paragraph" }] };
 }
@@ -377,10 +383,6 @@ function escapeAttr(text) {
   return escapeHtml(text).replace(/`/g, "&#96;");
 }
 
-function escapeRegex(text) {
-  return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function inlineNodeHtml(node) {
   if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.nodeValue || "");
   if (node.nodeType !== Node.ELEMENT_NODE) return "";
@@ -450,6 +452,7 @@ function notePartsFromPane(pane) {
 }
 
 export async function exportWord(paneManager) {
+  if (blockLocalWordExportInDemo()) return;
   if (!hasWordBridge()) {
     wordUnavailable();
     return;
@@ -470,7 +473,6 @@ export async function exportWord(paneManager) {
     mainContent = mainContent.replace(regex, (match) => {
       const cfg = configs.find(c => c.symbol === match);
       if (!cfg || cfg.counter >= cfg.parts.length) return match;
-
       const note = cfg.parts[cfg.counter].trim().replace(/<br>/g, " ");
       cfg.counter++;
       const id = nextId++;
