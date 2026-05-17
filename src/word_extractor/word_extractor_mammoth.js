@@ -34,58 +34,24 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
   }
 
   function resolve(noteText, m2s, nsym) {
-    const m = noteText.match(/@(\d+)/);
+    const m = String(noteText || "").match(/@(\d+)/);
     if (m && m[1] in m2s) return m2s[m[1]];
     if (nsym && !m) return nsym;
     return null;
   }
 
-  // 3) קריאת document.xml והחלפת footnoteReference/endnoteReference/commentReference בסמלים
+  // 3) קריאת document.xml והחלפת footnoteReference/endnoteReference/commentReference בסמלים.
+  // בעבר זה נעשה ב-regex על <w:r> שלם. זה פספס הפניות שנמצאות במבנה Word מעט שונה.
+  // לכן כאן עובדים על XML DOM: כל תגית reference מוחלפת ישירות ב-<w:t>@NN</w:t>,
+  // בלי תלות במבנה ה-run, תוך שמירת rPr והעיצוב סביב ההפניה.
   const docFile = zip.file("word/document.xml");
   if (!docFile) throw new Error("document.xml not found in DOCX");
   let docXml = await docFile.async("string");
-
-  // משה 2026-05-14: תיקון - שמירת rPr של run המכיל הפניה כדי לשמר עיצוב
-  docXml = docXml.replace(
-    /<w:r(\s[^>]*)?>([\ s\S]*?)<w:footnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>([\ s\S]*?)<\/w:r>/g,
-    (m, rAttrs, before, id, after) => {
-      const txt = fn_d[id];
-      if (txt === undefined) return "";
-      const sym = resolve(txt, fn_m, fn_n);
-      if (!sym) return "";
-      // שמירת rPr אם קיים, והחלפת footnoteReference ב-w:t עם הסמל
-      const rPrMatch = before.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/);
-      const rPr = rPrMatch ? rPrMatch[0] : "";
-      const cleanBefore = before.replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, "");
-      return `<w:r${rAttrs || ""}>${rPr}${cleanBefore}<w:t xml:space="preserve">${escapeXml(sym)}</w:t>${after}</w:r>`;
-    }
-  );
-  docXml = docXml.replace(
-    /<w:r(\s[^>]*)?>([\ s\S]*?)<w:endnoteReference\b[^/]*\bw:id="(\d+)"[^/]*\/>([\ s\S]*?)<\/w:r>/g,
-    (m, rAttrs, before, id, after) => {
-      const txt = en_d[id];
-      if (txt === undefined) return "";
-      const sym = resolve(txt, en_m, en_n);
-      if (!sym) return "";
-      const rPrMatch = before.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/);
-      const rPr = rPrMatch ? rPrMatch[0] : "";
-      const cleanBefore = before.replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, "");
-      return `<w:r${rAttrs || ""}>${rPr}${cleanBefore}<w:t xml:space="preserve">${escapeXml(sym)}</w:t>${after}</w:r>`;
-    }
-  );
-  docXml = docXml.replace(
-    /<w:r(\s[^>]*)?>([\ s\S]*?)<w:commentReference\b[^/]*\bw:id="(\d+)"[^/]*\/>([\ s\S]*?)<\/w:r>/g,
-    (m, rAttrs, before, id, after) => {
-      const txt = cm_d[id];
-      if (txt === undefined) return "";
-      const sym = resolve(txt, cm_m, cm_n);
-      if (!sym) return "";
-      const rPrMatch = before.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/);
-      const rPr = rPrMatch ? rPrMatch[0] : "";
-      const cleanBefore = before.replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, "");
-      return `<w:r${rAttrs || ""}>${rPr}${cleanBefore}<w:t xml:space="preserve">${escapeXml(sym)}</w:t>${after}</w:r>`;
-    }
-  );
+  docXml = replaceReferencesInDocumentXml(docXml, [
+    { localName: "footnoteReference", notes: fn_d, markerToSymbol: fn_m, noneSymbol: fn_n, resolve },
+    { localName: "endnoteReference", notes: en_d, markerToSymbol: en_m, noneSymbol: en_n, resolve },
+    { localName: "commentReference", notes: cm_d, markerToSymbol: cm_m, noneSymbol: cm_n, resolve },
+  ]);
 
   // משה 2026-05-09: שלב 5 — צבעים וגדלים מ-document.xml.
   // לפני שmammoth מעבד, אנחנו מקיפים runs עם w:color/w:sz/w:rFonts בסימני placeholder
@@ -319,6 +285,60 @@ function sliceBuffer(input) {
   if (input instanceof ArrayBuffer) return input.slice(0);
   if (input && typeof input.slice === "function") return input.slice(0);
   return input;
+}
+
+function replaceReferencesInDocumentXml(docXml, specs) {
+  let parser;
+  try {
+    parser = new DOMParser();
+  } catch (_) {
+    return replaceReferencesInDocumentXmlFallback(docXml, specs);
+  }
+
+  const ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const doc = parser.parseFromString(docXml, "application/xml");
+  if (!doc || doc.getElementsByTagName("parsererror").length) {
+    return replaceReferencesInDocumentXmlFallback(docXml, specs);
+  }
+
+  for (const spec of specs) {
+    const refs = Array.from(doc.getElementsByTagNameNS(ns, spec.localName));
+    for (const ref of refs) {
+      const id = ref.getAttributeNS(ns, "id") || ref.getAttribute("w:id") || ref.getAttribute("id");
+      const txt = id != null ? spec.notes[id] : undefined;
+      const sym = txt !== undefined ? spec.resolve(txt, spec.markerToSymbol, spec.noneSymbol) : null;
+      const parent = ref.parentNode;
+      if (!parent) continue;
+      if (!sym) {
+        parent.removeChild(ref);
+        continue;
+      }
+      const t = doc.createElementNS(ns, "w:t");
+      t.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+      t.textContent = sym;
+      parent.replaceChild(t, ref);
+    }
+  }
+
+  return new XMLSerializer().serializeToString(doc);
+}
+
+function replaceReferencesInDocumentXmlFallback(docXml, specs) {
+  let out = docXml;
+  for (const spec of specs) {
+    const tag = spec.localName;
+    const re = new RegExp(`<w:r(\\s[^>]*)?>([\\s\\S]*?)<w:${tag}\\b[^>]*\\bw:id="(\\d+)"[^/]*\\/>([\\s\\S]*?)<\\/w:r>`, "g");
+    out = out.replace(re, (m, rAttrs, before, id, after) => {
+      const txt = spec.notes[id];
+      const sym = txt !== undefined ? spec.resolve(txt, spec.markerToSymbol, spec.noneSymbol) : null;
+      if (!sym) return `<w:r${rAttrs || ""}>${before}${after}</w:r>`;
+      const rPrMatch = before.match(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/);
+      const rPr = rPrMatch ? rPrMatch[0] : "";
+      const cleanBefore = before.replace(/<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>/g, "");
+      return `<w:r${rAttrs || ""}>${rPr}${cleanBefore}<w:t xml:space="preserve">${escapeXml(sym)}</w:t>${after}</w:r>`;
+    });
+  }
+  return out;
 }
 
 async function readNotesPlain(zip, path, tag) {

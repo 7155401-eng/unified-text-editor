@@ -18,6 +18,7 @@ import { loadTextStyles, fontSizeCssValue } from "../style_registry.js";
 let _paneManagerRef = null;
 let _onLoadedRef = null;
 let _streamsObserver = null;
+let _previewObserver = null;
 let _captureInstalled = false;
 let _pendingEnhancement = null;
 
@@ -71,6 +72,40 @@ function ensureOverwriteStylesCheckboxVisible() {
   importStylesLabel.insertAdjacentElement("afterend", label);
 }
 
+function ensureHideEmptyNotesUiCheckboxVisible() {
+  const modal = getExtractorModal();
+  if (!modal) return;
+  if (!modal.querySelector(".we-hide-empty-notes-ui")) {
+    const skipEmpty = modal.querySelector(".we-skip-empty-notes");
+    if (!skipEmpty) return;
+    const skipLabel = skipEmpty.closest("label");
+    if (!skipLabel || !skipLabel.parentElement) return;
+
+    const label = document.createElement("label");
+    label.style.cssText = "display:block; padding:3px 0;";
+    label.innerHTML = `
+          <input type="checkbox" class="we-hide-empty-notes-ui" disabled>
+          הסתר הערות ריקות במסך הייבוא
+        `;
+    skipLabel.insertAdjacentElement("afterend", label);
+
+    skipEmpty.addEventListener("change", syncHideEmptyNotesUiCheckbox);
+    label.querySelector(".we-hide-empty-notes-ui")?.addEventListener("change", applyPreviewHiddenEmptyNotes);
+  }
+  syncHideEmptyNotesUiCheckbox();
+}
+
+function syncHideEmptyNotesUiCheckbox() {
+  const modal = getExtractorModal();
+  const skipEmpty = modal?.querySelector(".we-skip-empty-notes");
+  const hideUi = modal?.querySelector(".we-hide-empty-notes-ui");
+  if (!skipEmpty || !hideUi) return;
+  const enabled = skipEmpty.checked === true;
+  hideUi.disabled = !enabled;
+  if (!enabled) hideUi.checked = false;
+  applyPreviewHiddenEmptyNotes();
+}
+
 function stylesOptionsHtml() {
   let styles = [];
   try {
@@ -101,6 +136,10 @@ function ensureStreamMappingControlsVisible() {
   const modal = getExtractorModal();
   if (!modal) return;
   ensureOverwriteStylesCheckboxVisible();
+  ensureHideEmptyNotesUiCheckboxVisible();
+
+  const codeHeader = modal.querySelector(".we-streams thead th:nth-child(5)");
+  if (codeHeader) codeHeader.textContent = "קוד זרם";
 
   const rows = getRowsInCurrentOrder();
   if (!rows.length) return;
@@ -111,21 +150,40 @@ function ensureStreamMappingControlsVisible() {
     const seriesCell = cells[4];
     if (!seriesCell) return;
 
+    const originalSeriesSelect = seriesCell.querySelector("select:not(.we-stream-style-select)");
+    if (originalSeriesSelect) {
+      originalSeriesSelect.classList.add("we-original-series-select");
+      originalSeriesSelect.setAttribute("aria-hidden", "true");
+      originalSeriesSelect.tabIndex = -1;
+    }
+
     let codeInput = getRowCodeInput(row);
     if (!codeInput) {
       codeInput = document.createElement("input");
       codeInput.type = "text";
       codeInput.style.cssText = "width:54px;margin-right:4px;font-size:12px;padding:2px 4px;";
-      seriesCell.appendChild(codeInput);
+      seriesCell.insertBefore(codeInput, seriesCell.firstChild);
     }
     codeInput.classList.add("we-stream-code-input");
     codeInput.placeholder = defaultSym;
-    codeInput.title = "קוד מזהה לזרם — למשל @01, @02. ריק = ברירת מחדל לפי הסדר.";
+    codeInput.title = "קוד מזהה לזרם — למשל @01, @02. ברירת המחדל היא לפי הסדר.";
+    const prevAuto = codeInput.dataset.autoValue || "";
+    const userTouched = codeInput.dataset.userTouched === "1";
+    if (!userTouched || !codeInput.value.trim() || codeInput.value.trim() === prevAuto) {
+      codeInput.value = defaultSym;
+      codeInput.dataset.autoValue = defaultSym;
+    }
+    if (codeInput.dataset.listenerInstalled !== "1") {
+      codeInput.dataset.listenerInstalled = "1";
+      codeInput.addEventListener("input", () => {
+        codeInput.dataset.userTouched = "1";
+      });
+    }
 
     if (!row.querySelector(".we-stream-style-select")) {
       const wrap = document.createElement("div");
       wrap.className = "we-stream-style-wrap";
-      wrap.style.cssText = "margin-top:4px;display:flex;align-items:center;gap:4px;white-space:nowrap;";
+      wrap.style.cssText = "margin-top:4px;display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap;";
       wrap.innerHTML = `
         <span style="font-size:11px;color:#64748b;">סגנון:</span>
         <select class="we-stream-style-select" title="סגנון שיוחל על כל הזרם אחרי הייבוא" style="max-width:150px;font-size:12px;padding:2px 4px;">
@@ -150,6 +208,39 @@ function installStreamsObserver() {
   });
   _streamsObserver.observe(body, { childList: true, subtree: true });
   ensureStreamMappingControlsVisible();
+}
+
+function installPreviewObserver() {
+  const modal = getExtractorModal();
+  const list = modal?.querySelector(".we-preview-list");
+  if (!modal || !list) return;
+  if (_previewObserver) {
+    try { _previewObserver.disconnect(); } catch (_) {}
+  }
+  _previewObserver = new MutationObserver(applyPreviewHiddenEmptyNotes);
+  _previewObserver.observe(list, { childList: true, subtree: true });
+  applyPreviewHiddenEmptyNotes();
+}
+
+function previewTextWithoutMarker(text) {
+  return String(text || "")
+    .replace(/^\s*@\d+\s*:?\s*/, "")
+    .replace(/\u00a0/g, " ")
+    .replace(/[\u200e\u200f]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function applyPreviewHiddenEmptyNotes() {
+  const modal = getExtractorModal();
+  const hideUi = modal?.querySelector(".we-hide-empty-notes-ui");
+  const list = modal?.querySelector(".we-preview-list");
+  const shouldHide = !!hideUi && !hideUi.disabled && hideUi.checked === true;
+  if (!list) return;
+  list.querySelectorAll("li").forEach((li) => {
+    const isEmpty = previewTextWithoutMarker(li.textContent).length === 0;
+    li.classList.toggle("we-empty-note-hidden", shouldHide && isEmpty);
+  });
 }
 
 function readIncludedRowsAndMappings() {
@@ -490,12 +581,16 @@ function openWordExtractorDialogWithOverwriteStyles(paneManager, onLoaded) {
   const result = openWordExtractorDialog(paneManager, wrappedOnLoaded);
   // הדיאלוג נבנה סינכרונית, אבל חלק מה-UI נטען אחרי בחירת קובץ.
   ensureOverwriteStylesCheckboxVisible();
+  ensureHideEmptyNotesUiCheckboxVisible();
   ensureStreamMappingControlsVisible();
   installStreamsObserver();
+  installPreviewObserver();
   setTimeout(() => {
     ensureOverwriteStylesCheckboxVisible();
+    ensureHideEmptyNotesUiCheckboxVisible();
     ensureStreamMappingControlsVisible();
     installStreamsObserver();
+    installPreviewObserver();
   }, 0);
   return result;
 }
