@@ -38,7 +38,18 @@ async function serveAdminPage(request, env) {
   const adminUrl = new URL(request.url);
   adminUrl.pathname = '/admin.html';
   const adminReq = new Request(adminUrl.toString(), request);
-  return env.ASSETS.fetch(adminReq);
+  const assetResponse = await env.ASSETS.fetch(adminReq);
+  const contentType = assetResponse.headers.get('content-type') || '';
+  if (!contentType.includes('text/html') && assetResponse.status >= 400) return assetResponse;
+  const html = await assetResponse.text();
+  const script = '<script src="/admin_troubleshooting_tab.js?v=20260518a" defer></script>';
+  const injected = html.includes('</body>')
+    ? html.replace('</body>', `${script}</body>`)
+    : html + script;
+  const headers = new Headers(assetResponse.headers);
+  headers.delete('content-length');
+  headers.set('cache-control', 'no-store');
+  return new Response(injected, { status: assetResponse.status, headers });
 }
 
 export default {
