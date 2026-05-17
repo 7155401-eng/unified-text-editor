@@ -2292,11 +2292,11 @@ export async function buildPages(container, paragraphs, config) {
             const meta = splitPlanMeta(tryPrefix(len), movedNotes);
             if (!meta) continue;
             if (meta.hasNoteOverflow) {
-              const introducesNewNote = movedNotes.some(n => !lastCleanMovedNotes.includes(n));
-              const stepBackMinFill = Math.max(0.66, Math.min(0.74, rescueMinFillRatio - 0.08));
-              if (introducesNewNote && lastClean && lastCleanMeta && lastCleanMeta.fill >= stepBackMinFill) {
-                return lastClean;
-              }
+              // משה 2026-05-17:
+              // הצמדת הערות קודמת ל-fill. אם כבר מצאנו candidate נקי
+              // בלי גלישת הערות, לא נבחר אחריו candidate שמגליש הערות
+              // רק מפני שהוא ממלא יותר את העמוד.
+              if (lastClean) return lastClean;
               return makeSplit(len, movedNotes);
             }
             if (meta.score >= lastCleanScore) {
@@ -2344,6 +2344,10 @@ export async function buildPages(container, paragraphs, config) {
 
     // Gap rescue: only after the clean/anchored policy has a weak page, try a
     // line-first split that carries real notes and materially improves fill.
+    // V9 note fit priority:
+    // הערות ששייכות לעמוד קודמות ל-fill. אם יש גלישת הערות, rescue חייב
+    // לנסות להוריד שורות מהראשי כדי להכניס את ההערות, ולא לפסול candidate
+    // רק בגלל ירידה קטנה במילוי העמוד.
     // משה 2026-05-17:
     // anchored rescue/extension גם כש-noMidParagraph פעיל, כדי להחזיר את
     // מנגנון האיזון: מורידים עוד שורות מהראשי כדי לפנות מקום להערות שלהן,
@@ -2356,9 +2360,9 @@ export async function buildPages(container, paragraphs, config) {
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
-      if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && totalAvail > 0) {
+      if ((currentHasNoteOverflow || currentFill < rescueMinFillRatio) && totalAvail > 0) {
         let rescueBest = null;
-        let rescueBestScore = currentFill;
+        let rescueBestScore = currentHasNoteOverflow ? -Infinity : currentFill;
         for (let sliceIdx = 0; sliceIdx < Math.min(totalAvail, 3); sliceIdx++) {
           const baseN = Math.max(0, sliceIdx);
           const fromArrayOffset = pendingParagraph ? sliceIdx - 1 : sliceIdx;
@@ -2420,12 +2424,15 @@ export async function buildPages(container, paragraphs, config) {
               + (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
             if (commentaryCount === 0) continue;
             const fill = planFillRatio(tp);
-            if (fill < currentFill - 0.04) continue;
+            if (!currentHasNoteOverflow && fill < currentFill - 0.04) continue;
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
+            if (currentHasNoteOverflow && noteOverflow) continue;
             if (carryActive && noteOverflow && planMainLineCount(tp) > carryGapMaxMainLines()) continue;
             const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
             const carryMainPenalty = carryActive && noteOverflow ? Math.max(0, planMainLineCount(tp) - 2) * 0.04 : 0;
-            const score = fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.01 : 0);
+            const score =
+              (currentHasNoteOverflow && !noteOverflow ? 1 : 0) +
+              fill + mainProgressBonus - carryMainPenalty - (noteOverflow ? 0.25 : 0);
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
             rescueBest = {
