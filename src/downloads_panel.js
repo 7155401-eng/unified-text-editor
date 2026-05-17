@@ -16,7 +16,7 @@ const HANDLE_DB = "ravtext-downloads";
 const HANDLE_STORE = "handles";
 const HANDLE_KEY = "syncFolder";
 const AUTO_SYNC_KEY = "ravtext.downloads.autoSync";
-const SECURE_EXPORT_HTML_ENDPOINT = "/api/secure-export-html";
+const SECURE_EXPORT_HTML_ENDPOINT = "/api/tools/preflight";
 
 let cachedHandle = null;
 
@@ -146,7 +146,11 @@ async function secureExportHtmlBlob(html) {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ html, requestedAt: new Date().toISOString() }),
+    body: JSON.stringify({
+      action: "secure_export_html",
+      html,
+      requestedAt: new Date().toISOString(),
+    }),
   });
 
   if (!response.ok) {
