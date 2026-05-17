@@ -1157,21 +1157,15 @@ function buildPagePlan(pageContent, config) {
     // אם otherEndY <= effectiveMainBottomY: רק 3b (הצד השני נגמר ב-strips 1+2)
     // אם otherEndY >= pageBottomY: רק 3a (הצד השני מגיע עד תחתית הדף)
     //
-    // משה 2026-05-17 (v3): connector strip עם two-pass fallback.
+    // משה 2026-05-17 (v2): connector strip — לפני המעבר ל-3b ברוחב מלא, חייבת
+    // להישאר לפחות שורה צדדית אחת. הרוחב של שורת החיבור = הרוחב **הצר**
+    // של strip 2 (ליד הראשי), לא חצי דף. ככה הזרם הצדדי ממשיך טבעית
+    // מהרוחב הצר ליד הראשי, ורק אז מתפשט לרוחב מלא. רוחב חצי דף באמצע
+    // נראה כמראה של "מדרגה" שבורה.
     //
-    // הרעיון של ה-connector: לפני המעבר ל-3b ברוחב מלא, להשאיר לפחות שורה
-    // צדדית אחת ברוחב הצר של strip 2 (ליד הראשי), כדי שהמעבר ייראה טבעי
-    // (צר → רוחב מלא במעבר אחד, לא צר → חצי דף → רוחב מלא).
-    //
-    // אבל יש סיכון: השורה הצרה מחזיקה פחות מילים. אם הזרם בקושי נכנס בעמוד,
-    // השורה הצרה דוחפת תוכן ל-overflow שלא היה לפני. זה משבש עימוד ספרים שעבדו.
-    //
-    // הפתרון: לבנות **שתי גרסאות** של strip 3 — אחת בלי connector (כמו במקור),
-    // ואחת עם connector — ולבחור אוטומטית. אם גרסת ה-connector לא מוסיפה
-    // overflow חדש, להשתמש בה (יפה יותר). אם היא כן מוסיפה — להשתמש במקורית
-    // (לשמור על עימוד תקין).
-    //
-    // הבחירה נעשית אחרי שמריצים flow עם כל גרסה ומשווים את ה-overflowText.
+    // שני מקרים:
+    //   - יש 3a במקור (השני עוד פעיל, halfWidth שני חצאים) → להשאיר כמו שהיה
+    //   - אין 3a או הוא קצר משורה (השני נגמר) → להחליף בשורה ברוחב strip 2
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
     const connectorLineH = Math.max(
       Number(sideMetrics?.lineHeight) || 0,
@@ -1186,34 +1180,27 @@ function buildPagePlan(pageContent, config) {
       : 0;
     const existing3aHeight = Math.max(0, otherEndY - effectiveMainBottomY);
 
-    // strip 3 גרסה א — בלי connector (התנהגות מקורית)
-    const strip3Base = [];
-    if (effectiveMainBottomY < otherEndY) {
-      strip3Base.push({
+    if (existing3aHeight >= connectorLineH - 0.5) {
+      // ה-3a במקור מכיל לפחות שורה — להשאיר את התנהגות חצי-דף הרגילה
+      strips.push({
         y_start: effectiveMainBottomY,
         y_end: otherEndY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
       });
-    }
-    if (otherEndY < pageBottomY && !suppressFullStrip3) {
-      strip3Base.push({
-        y_start: otherEndY,
-        y_end: pageBottomY,
-        width: innerWidth,
-        x: 0,
-      });
-    }
-
-    // strip 3 גרסה ב — עם connector strip ברוחב הצר של strip 2
-    // (רלוונטי רק כשאין 3a במקור או שהוא קצר משורה. אחרת זהה לגרסה א.)
-    let strip3WithConnector = strip3Base;
-    const needConnectorVariant = existing3aHeight < connectorLineH - 0.5 && narrowSideWidth > 0;
-    if (needConnectorVariant) {
-      strip3WithConnector = [];
+      if (otherEndY < pageBottomY && !suppressFullStrip3) {
+        strips.push({
+          y_start: otherEndY,
+          y_end: pageBottomY,
+          width: innerWidth,
+          x: 0,
+        });
+      }
+    } else {
+      // אין 3a או קצר משורה — שורת חיבור ברוחב הצר של strip 2
       const connectorEnd = Math.min(pageBottomY, effectiveMainBottomY + connectorLineH);
-      if (effectiveMainBottomY < connectorEnd) {
-        strip3WithConnector.push({
+      if (effectiveMainBottomY < connectorEnd && narrowSideWidth > 0) {
+        strips.push({
           y_start: effectiveMainBottomY,
           y_end: connectorEnd,
           width: narrowSideWidth,
@@ -1221,7 +1208,7 @@ function buildPagePlan(pageContent, config) {
         });
       }
       if (connectorEnd < pageBottomY && !suppressFullStrip3) {
-        strip3WithConnector.push({
+        strips.push({
           y_start: connectorEnd,
           y_end: pageBottomY,
           width: innerWidth,
@@ -1229,9 +1216,6 @@ function buildPagePlan(pageContent, config) {
         });
       }
     }
-    // הבחירה הסופית בין שתי הגרסאות נעשית אחרי flow (ראה למטה).
-    // עכשיו דוחפים גרסת base כברירת מחדל בטוחה.
-    for (const s of strip3Base) strips.push(s);
 
     // משה 2026-05-13: בחירת ה-metrics המתאים לסגנון של הזרם הזה.
     // אם המשתמש החיל סגנון אישי עם פונט/גודל שונה — המדידה חייבת להתאים,
@@ -1242,44 +1226,16 @@ function buildPagePlan(pageContent, config) {
     const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0 ? Number(streamResolvedStyle.fontSize) : streamMetrics.fontSize;
     const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
 
-    // משה 2026-05-17 (v3): two-pass flow.
-    // מריצים flow עם strips הבסיסיים (בלי connector). אם connector זמין
-    // וגם הוא לא מוסיף overflow חדש — מחליפים לגרסה עם connector.
-    // אחרת — נשארים עם הבסיסיים. ככה ה-connector "מתפרסם" רק כשהוא בטוח.
-    let flowResult = flowStreamThroughStrips(
+    const flowResult = flowStreamThroughStrips(
       streamRich,
       strips.map(s => ({ y_start: s.y_start, width: s.width })),
       streamMetrics,
       pageBottomY
     );
-    let activeStrips = strips;
-
-    if (needConnectorVariant) {
-      // strips ב-active עכשיו = strip 1 + strip 2 + strip3Base.
-      // נחליף את strip3Base ב-strip3WithConnector ונרוץ שוב.
-      const stripsWithConnectorFull = strips
-        .slice(0, strips.length - strip3Base.length)
-        .concat(strip3WithConnector);
-      const connectorFlow = flowStreamThroughStrips(
-        streamRich,
-        stripsWithConnectorFull.map(s => ({ y_start: s.y_start, width: s.width })),
-        streamMetrics,
-        pageBottomY
-      );
-
-      const baseOverflowLen = (flowResult.overflowText || "").length;
-      const connectorOverflowLen = (connectorFlow.overflowText || "").length;
-      // קריטריון בחירה: אם connector לא מוסיף overflow (קטן או שווה לבסיסי)
-      // — להעדיף את ה-connector. אחרת — להשאיר את הבסיסי.
-      if (connectorOverflowLen <= baseOverflowLen) {
-        flowResult = connectorFlow;
-        activeStrips = stripsWithConnectorFull;
-      }
-    }
 
     const lines = [];
     for (const line of flowResult.lines) {
-      const strip = activeStrips.find(s => line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
+      const strip = strips.find(s => line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
       if (!strip) continue;
       lines.push({
         x: strip.x,
@@ -1309,7 +1265,7 @@ function buildPagePlan(pageContent, config) {
       styleId: streamStyleId,
       inlineStyle: streamResolvedStyle || {},
       titleStyleId: streamSettings[streamData.id]?.titleStyleId || "",
-      strips: activeStrips,
+      strips: strips,
       lines: lines,
       endY: flowResult.endY,
       overflowText: flowResult.overflowText,
