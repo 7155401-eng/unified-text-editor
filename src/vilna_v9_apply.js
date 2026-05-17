@@ -40,6 +40,37 @@ function readTalmudStreamCodes() {
 
 const STORAGE_KEY = "ravtext.vilnaV9Beta";
 
+// 2026-05-17: V9 מצייר שורות ב-position:absolute. לכן גובה השורה אינו רק
+// עיצוב — הוא גם ה-step האנכי בין top של שורה אחת לשורה הבאה. אם סגנון אישי
+// או פונט עברי מנוקד מגדיל את ה-line-height בפועל רק בזמן הציור, השורה הבאה
+// עלולה לעלות על הניקוד/טעמים של השורה הקודמת. כאן מחילים את המינימום לפני
+// הפגינציה, כדי שכל החישוב האנליטי ישתמש באותו גובה בטוח.
+const V9_SAFE_LINE_HEIGHT_RATIO_MIN = 1.55;
+
+function safeV9LineHeightRatio(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0
+    ? Math.max(n, V9_SAFE_LINE_HEIGHT_RATIO_MIN)
+    : V9_SAFE_LINE_HEIGHT_RATIO_MIN;
+}
+
+function withSafeV9LineHeight(style) {
+  if (!style || typeof style !== "object") return style;
+  return {
+    ...style,
+    lineHeight: safeV9LineHeightRatio(style.lineHeight),
+  };
+}
+
+function withSafeV9StreamSettings(settings) {
+  if (!settings || typeof settings !== "object") return settings;
+  return {
+    ...settings,
+    inlineStyle: withSafeV9LineHeight(settings.inlineStyle),
+    manualStyle: withSafeV9LineHeight(settings.manualStyle),
+  };
+}
+
 const DEFAULT_TITLES = {
   "01": "מגן אברהם",
   "02": "משנה ברורה",
@@ -87,15 +118,15 @@ function readPageGeomFromContainer(container) {
   };
   const pageWidth  = pickPx(cs?.getPropertyValue("--ravtext-page-width"), 559);
   const pageHeight = pickPx(cs?.getPropertyValue("--ravtext-page-height"), 794);
-  const mainStyle = getMainTextStyle();
+  const mainStyle = withSafeV9LineHeight(getMainTextStyle());
   const mainSize   = Number(mainStyle?.fontSize) > 0
     ? Number(mainStyle.fontSize)
     : pickPx(cs?.getPropertyValue("--ravtext-page-main-size"), 13);
   const sideSize   = pickPx(cs?.getPropertyValue("--ravtext-page-stream-size"), 11);
-  const lineHeightRatio = (() => {
+  const lineHeightRatio = safeV9LineHeightRatio((() => {
     const n = parseFloat(cs?.getPropertyValue("--ravtext-v9-line-height") || "");
     return Number(mainStyle?.lineHeight) > 0 ? Number(mainStyle.lineHeight) : (Number.isFinite(n) && n > 0 ? n : 1.55);
-  })();
+  })());
   const mainGap = pickPx(cs?.getPropertyValue("--ravtext-v9-main-gap"), 8);
   const streamHorizontalGap = pickPx(cs?.getPropertyValue("--ravtext-stream-horizontal-gap"), 8);
   // קריאת font-family מהcontainer
@@ -202,7 +233,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     const rawStreamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
     const streamSettings = {};
     for (const code of Object.keys(rawStreamSettings)) {
-      streamSettings[code] = getEffectiveStreamSettings(code);
+      streamSettings[code] = withSafeV9StreamSettings(getEffectiveStreamSettings(code));
     }
     const levels = readLevelsFromLocalStorage();
     const talmudStreams = readTalmudStreamCodes();
@@ -210,7 +241,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // משה 2026-05-13: סגנון של "טקסט ראשי" — הזרמת ה-id והאובייקט הגולמי למנוע
     // כדי שהבולד/האיטליק וכל שאר התכונות יחולו על שורות הראשי ב-V9.
     const mainStyleId = loadDocumentStyleSettings().mainStyleId || "";
-    const mainInlineStyle = getMainTextStyle() || null;
+    const mainInlineStyle = withSafeV9LineHeight(getMainTextStyle() || null);
 
     // משה 2026-05-15: סימני־ייחוס בראשי ("[N]") — אותה החלטה כמו המנוע הרגיל.
     // injectMainRefs ב-note_content_builder.js בודק mainRefEnabled לכל זרם
