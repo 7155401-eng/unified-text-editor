@@ -1,5 +1,5 @@
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
-import { buildSelfContainedCssSnapshot } from "./export_snapshot_css.js";
+import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
 
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
@@ -51,76 +51,48 @@ function concatBytes(chunks) {
   return out;
 }
 
-function collectSafeDocumentCssText() {
+// נתיב fallback ישן ויציב: לא נאמן לכל הפונטים, אבל לא אמור להפיל PDF.
+function collectLegacyCssText() {
   const css = [];
-  for (const sheet of Array.from(document.styleSheets || [])) {
+  for (const sheet of Array.from(document.styleSheets)) {
     try {
       for (const rule of Array.from(sheet.cssRules || [])) {
-        const text = rule?.cssText || "";
-        // PDF uses an SVG <foreignObject> and then draws that SVG into canvas.
-        // Any external URL can either taint the canvas or make the SVG fail to
-        // decode. Keep normal layout/style rules; font faces are handled below
-        // after their URLs are converted to data: URLs.
         if (
-          text &&
-          !/@font-face/i.test(text) &&
-          !/@import/i.test(text) &&
-          !/url\(/i.test(text)
+          rule.cssText &&
+          !/@font-face/i.test(rule.cssText) &&
+          !/@import/i.test(rule.cssText) &&
+          !/url\(/i.test(rule.cssText)
         ) {
-          css.push(text);
+          css.push(rule.cssText);
         }
       }
     } catch {
-      // Cross-origin sheets are handled by buildSelfContainedCssSnapshot when
-      // extracting only the embedded @font-face rules below.
+      // Cross-origin font stylesheets are not readable; the page still renders with fallback fonts.
     }
   }
+
+  const root = getComputedStyle(document.documentElement);
+  const vars = EXPORT_CSS_VARS
+    .map((name) => `${name}: ${root.getPropertyValue(name).trim()};`)
+    .join("");
+
+  css.push(`:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}`);
+  css.push("html,body{margin:0;padding:0;background:#fff;}");
+  css.push(".page{font-family:var(--ravtext-page-font-family);background-image:none!important;}");
+  css.push(".page *{background-image:none!important;}");
+  css.push(".page{margin:0!important;box-shadow:none!important;zoom:1!important;content-visibility:visible!important;contain-intrinsic-size:auto!important;padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;}");
+  css.push(".pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}");
+  css.push("body.ravtext-export-clean .page,body.ravtext-export-clean .page *:not(.ravtext-demo-print-mark){background:transparent!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important;}");
   return css.join("\n");
 }
 
-function extractEmbeddedFontFaces(cssText) {
-  const text = String(cssText || "");
-  const out = [];
-  const re = /@font-face\s*{[^{}]*}/gi;
-  let match;
-  while ((match = re.exec(text)) !== null) {
-    const block = match[0];
-    if (!/url\(\s*(['"]?)data:/i.test(block)) continue;
-    // Keep only fully self-contained font-face blocks. If a block still has an
-    // external fallback URL, that single URL is enough to taint the canvas.
-    if (/url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/i.test(block)) continue;
-    out.push(block);
-  }
-  return out.join("\n");
-}
-
-async function collectEmbeddedFontCssText() {
-  try {
-    const snapshotCss = await buildSelfContainedCssSnapshot();
-    return extractEmbeddedFontFaces(snapshotCss);
-  } catch (err) {
-    console.warn("PDF embedded font CSS collection failed:", err);
-    return "";
-  }
-}
-
-async function collectPdfCssText() {
-  const root = getComputedStyle(document.documentElement);
-  const vars = EXPORT_CSS_VARS
-    .map((name) => {
-      const value = root.getPropertyValue(name).trim();
-      return value ? `${name}: ${value};` : "";
-    })
-    .join("");
-
-  const embeddedFonts = await collectEmbeddedFontCssText();
-  const safeDocumentCss = collectSafeDocumentCssText();
-
-  const exportCss = `
-:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}
+async function collectSnapshotCssText() {
+  const vars = collectComputedCssVariables(EXPORT_CSS_VARS);
+  const exportOverrides = `
+:root{${vars}}
 html,body{margin:0;padding:0;background:#fff;}
 .page{
-  font-family:var(--ravtext-page-font-family, ${EXPORT_FONT_STACK});
+  font-family:var(--ravtext-page-font-family, "David Libre", "Frank Ruhl Libre", ${EXPORT_FONT_STACK});
   margin:0!important;
   box-shadow:none!important;
   zoom:1!important;
@@ -128,15 +100,19 @@ html,body{margin:0;padding:0;background:#fff;}
   contain-intrinsic-size:auto!important;
   padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;
 }
-.page *{content-visibility:visible!important;contain-intrinsic-size:auto!important;background-image:none!important;}
+.page *{content-visibility:visible!important;contain-intrinsic-size:auto!important;}
 .pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}
+/* מנקים רק כרום של העמוד. לא מוחקים background-color מילדים כדי לא למחוק הדגשות ועיצובי זרמים. */
 body.ravtext-export-clean .page{background-image:none!important;box-shadow:none!important;}
 `;
+  const cssText = await buildSelfContainedCssSnapshot({ extraCss: exportOverrides });
+  return stripCanvasUnsafeCss(cssText);
+}
 
-  // Order matters: embedded fonts first, then app CSS, then export overrides.
-  // This keeps the PDF small enough to decode, while still giving the SVG the
-  // real font files instead of the old fallback-only export path.
-  return [embeddedFonts, safeDocumentCss, exportCss].filter(Boolean).join("\n");
+function stripCanvasUnsafeCss(cssText) {
+  return String(cssText || "")
+    .replace(/@import[^;]+;/gi, "")
+    .replace(/url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/gi, "url(\"\")");
 }
 
 function safeStyleText(cssText) {
@@ -389,6 +365,19 @@ async function waitForExportFonts(timeoutMs = 2500) {
   ]);
 }
 
+function isCanvasSecurityError(err) {
+  return /tainted|toDataURL|canvas|SecurityError/i.test(err?.message || err?.name || "");
+}
+
+function isImageDecodeError(err) {
+  const msg = String(err?.message || err || "");
+  return /decode|source image|img/i.test(msg) || err?.name === "EncodingError";
+}
+
+function shouldRetryWithLegacyCss(err) {
+  return isImageDecodeError(err) || isCanvasSecurityError(err);
+}
+
 async function renderAllPages(pages, cssText, { onProgress = null, includeBackgrounds = false } = {}) {
   const images = [];
   for (let i = 0; i < pages.length; i++) {
@@ -401,14 +390,44 @@ async function renderAllPages(pages, cssText, { onProgress = null, includeBackgr
 
 export async function downloadPagesAsPdf(
   pagesContainer,
-  { filename = "ravtext-preview.pdf", onProgress = null, includeBackgrounds = false } = {}
+  { filename = "ravtext-preview.pdf", onProgress = null, fallbackToPrint = false, includeBackgrounds = false } = {}
 ) {
   await waitForExportFonts();
   const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder)"));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
-  const cssText = await collectPdfCssText();
-  const images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
+  const legacyCssText = collectLegacyCssText();
+  let cssText = legacyCssText;
+  try {
+    cssText = await collectSnapshotCssText();
+  } catch (err) {
+    console.warn("PDF self-contained CSS snapshot failed, using legacy CSS:", err);
+  }
+
+  let images;
+  try {
+    images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
+  } catch (err) {
+    if (cssText !== legacyCssText && shouldRetryWithLegacyCss(err)) {
+      console.warn("PDF snapshot render failed, retrying with legacy CSS:", err);
+      try {
+        images = await renderAllPages(pages, legacyCssText, { onProgress, includeBackgrounds });
+      } catch (legacyErr) {
+        if (fallbackToPrint && isCanvasSecurityError(legacyErr)) {
+          await nextFrame();
+          window.print();
+          return { fallback: "print" };
+        }
+        throw legacyErr;
+      }
+    } else if (fallbackToPrint && isCanvasSecurityError(err)) {
+      await nextFrame();
+      window.print();
+      return { fallback: "print" };
+    } else {
+      throw err;
+    }
+  }
 
   const pdfBlob = buildPdf(images);
   const url = URL.createObjectURL(pdfBlob);
