@@ -1157,40 +1157,64 @@ function buildPagePlan(pageContent, config) {
     // אם otherEndY <= effectiveMainBottomY: רק 3b (הצד השני נגמר ב-strips 1+2)
     // אם otherEndY >= pageBottomY: רק 3a (הצד השני מגיע עד תחתית הדף)
     //
-    // משה 2026-05-17: connector strip — לפני המעבר ל-3b ברוחב מלא, חייבת
-    // להישאר לפחות שורה צדדית אחת ברוחב הצדדי. אחרת הזרם קופץ ישר לרוחב
-    // מלא ויוצר מראה של "ניתוק" בין הסוף הצדדי לבין ההמשך הרחב.
-    // אם 3a קצר משורה אחת או לא קיים, אנחנו דוחים את 3b בגובה שורה אחת.
+    // משה 2026-05-17 (v2): connector strip — לפני המעבר ל-3b ברוחב מלא, חייבת
+    // להישאר לפחות שורה צדדית אחת. הרוחב של שורת החיבור = הרוחב **הצר**
+    // של strip 2 (ליד הראשי), לא חצי דף. ככה הזרם הצדדי ממשיך טבעית
+    // מהרוחב הצר ליד הראשי, ורק אז מתפשט לרוחב מלא. רוחב חצי דף באמצע
+    // נראה כמראה של "מדרגה" שבורה.
+    //
+    // שני מקרים:
+    //   - יש 3a במקור (השני עוד פעיל, halfWidth שני חצאים) → להשאיר כמו שהיה
+    //   - אין 3a או הוא קצר משורה (השני נגמר) → להחליף בשורה ברוחב strip 2
+    const suppressFullStrip3 = o.suppressFullStrip3 === true;
     const connectorLineH = Math.max(
       Number(sideMetrics?.lineHeight) || 0,
       Number(streamData?.fontSize) > 0 ? Number(streamData.fontSize) * 1.35 : 0,
       14
     );
+    const narrowSideWidth = side === 'right'
+      ? Math.max(0, innerWidth - (mainX + mainWidth) - mainGap)
+      : Math.max(0, mainX - mainGap);
+    const narrowSideX = side === 'right'
+      ? mainX + mainWidth + mainGap
+      : 0;
     const existing3aHeight = Math.max(0, otherEndY - effectiveMainBottomY);
-    const need3aExtension = existing3aHeight < connectorLineH - 0.5;
-    const adjustedOtherEndY = need3aExtension
-      ? Math.min(pageBottomY, effectiveMainBottomY + connectorLineH)
-      : otherEndY;
 
-    if (effectiveMainBottomY < adjustedOtherEndY) {
+    if (existing3aHeight >= connectorLineH - 0.5) {
+      // ה-3a במקור מכיל לפחות שורה — להשאיר את התנהגות חצי-דף הרגילה
       strips.push({
         y_start: effectiveMainBottomY,
-        y_end: adjustedOtherEndY,
+        y_end: otherEndY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
       });
-    }
-    // משה 2026-05-10: בתרחיש 1, רק לצד אחד (השמאלי = החצי השני בסדר הקריאה)
-    // יש strip 3 ברוחב מלא. אחרת שני הצדדים יציירו על אותו אזור (חפיפה).
-    // הימני (החצי הראשון) — אם יש לו עודף, הוא ייכנס ל-carry-over.
-    const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    if (adjustedOtherEndY < pageBottomY && !suppressFullStrip3) {
-      strips.push({
-        y_start: adjustedOtherEndY,
-        y_end: pageBottomY,
-        width: innerWidth,
-        x: 0,
-      });
+      if (otherEndY < pageBottomY && !suppressFullStrip3) {
+        strips.push({
+          y_start: otherEndY,
+          y_end: pageBottomY,
+          width: innerWidth,
+          x: 0,
+        });
+      }
+    } else {
+      // אין 3a או קצר משורה — שורת חיבור ברוחב הצר של strip 2
+      const connectorEnd = Math.min(pageBottomY, effectiveMainBottomY + connectorLineH);
+      if (effectiveMainBottomY < connectorEnd && narrowSideWidth > 0) {
+        strips.push({
+          y_start: effectiveMainBottomY,
+          y_end: connectorEnd,
+          width: narrowSideWidth,
+          x: narrowSideX,
+        });
+      }
+      if (connectorEnd < pageBottomY && !suppressFullStrip3) {
+        strips.push({
+          y_start: connectorEnd,
+          y_end: pageBottomY,
+          width: innerWidth,
+          x: 0,
+        });
+      }
     }
 
     // משה 2026-05-13: בחירת ה-metrics המתאים לסגנון של הזרם הזה.
