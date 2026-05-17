@@ -93,6 +93,7 @@ function setHeader(pane, title) {
   pane.label = title;
   const el = pane.element?.querySelector?.(".pane-label");
   if (el) el.textContent = title;
+  try { pane._save?.(); } catch (_) {}
 }
 
 function materialize(code, checkbox) {
@@ -100,7 +101,7 @@ function materialize(code, checkbox) {
   const mp = mainPane();
   if (!sp?.editor || !mp?.editor) {
     if (checkbox) checkbox.checked = false;
-    return;
+    return false;
   }
   const all = loadSettings();
   const cur = all[code] || {};
@@ -109,7 +110,7 @@ function materialize(code, checkbox) {
     all[code] = cur;
     saveSettings(all);
     if (checkbox) checkbox.checked = false;
-    return;
+    return false;
   }
   const symbol = sp.symbol || `@${code}`;
   const title = takeFirstNote(sp.editor, symbol);
@@ -118,7 +119,7 @@ function materialize(code, checkbox) {
     all[code] = cur;
     saveSettings(all);
     if (checkbox) checkbox.checked = false;
-    return;
+    return false;
   }
   clearFirstRef(mp.editor, symbol);
   cur.title = title;
@@ -128,6 +129,7 @@ function materialize(code, checkbox) {
   if (checkbox) checkbox.checked = false;
   setHeader(sp, title);
   window.dispatchEvent(new CustomEvent("ravtext:first-note-title-materialized", { detail: { code, title } }));
+  return true;
 }
 
 function isFirstNoteCheckbox(input) {
@@ -144,8 +146,13 @@ export function installFirstNoteTitleHelper() {
     const block = input.closest?.(".stream-settings-block");
     const code = block?.dataset?.streamCode;
     if (!code) return;
-    setTimeout(() => materialize(code, input), 0);
-  });
+
+    // Run before the original checkbox handler. Otherwise the old handler stores
+    // firstNoteAsTitle=true and triggers a render before the real browser edit.
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    materialize(code, input);
+  }, true);
 }
 
 installFirstNoteTitleHelper();
