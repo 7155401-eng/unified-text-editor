@@ -112,11 +112,61 @@ body.ravtext-export-clean .page{background-image:none!important;box-shadow:none!
 function stripCanvasUnsafeCss(cssText) {
   return String(cssText || "")
     .replace(/@import[^;]+;/gi, "")
-    .replace(/url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/gi, "url(\"\")");
+    .replace(/url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/gi, "none");
 }
 
 function safeStyleText(cssText) {
   return String(cssText || "").replace(/<\/style/gi, "<\\/style");
+}
+
+function isExternalResourceValue(value) {
+  const s = String(value || "").trim();
+  if (!s || s === "none") return false;
+  if (/^(data:|#|about:blank)/i.test(s)) return false;
+  return /^(https?:|\/\/|blob:|filesystem:|file:|\/)/i.test(s);
+}
+
+function stripExternalUrlsFromStyleText(styleText) {
+  return String(styleText || "").replace(
+    /url\(\s*(['"]?)(?!data:)([^"')]+)\1\s*\)/gi,
+    "none"
+  );
+}
+
+function neutralizeExternalUrlAttr(el, attr) {
+  if (!el.hasAttribute(attr)) return;
+  const value = el.getAttribute(attr) || "";
+  if (isExternalResourceValue(value)) el.removeAttribute(attr);
+}
+
+function neutralizeStyleUrlProps(el) {
+  const styleText = el.getAttribute("style") || "";
+  if (/url\(/i.test(styleText)) {
+    el.setAttribute("style", stripExternalUrlsFromStyleText(styleText));
+  }
+
+  const props = [
+    "background",
+    "backgroundImage",
+    "borderImage",
+    "borderImageSource",
+    "clipPath",
+    "cursor",
+    "filter",
+    "listStyleImage",
+    "mask",
+    "maskImage",
+    "webkitMask",
+    "webkitMaskImage",
+  ];
+  for (const prop of props) {
+    try {
+      const value = el.style?.[prop];
+      if (value && /url\(/i.test(value)) el.style[prop] = "none";
+    } catch (_) {
+      // Ignore read-only or unsupported style properties.
+    }
+  }
 }
 
 function replaceWithPlaceholder(el, label = "") {
@@ -131,12 +181,24 @@ function replaceWithPlaceholder(el, label = "") {
 }
 
 function sanitizeCloneForPdf(clone) {
-  clone.querySelectorAll("img").forEach((img) => replaceWithPlaceholder(img, img.alt || ""));
-  clone.querySelectorAll("video, iframe, canvas").forEach((el) => replaceWithPlaceholder(el, ""));
-  clone.querySelectorAll("[style]").forEach((el) => {
-    if (/url\(/i.test(el.style.backgroundImage || "")) {
-      el.style.backgroundImage = "none";
-    }
+  clone.querySelectorAll("img, picture, source").forEach((img) => replaceWithPlaceholder(img, img.alt || ""));
+  clone.querySelectorAll("video, iframe, canvas, object, embed").forEach((el) => replaceWithPlaceholder(el, ""));
+
+  clone.querySelectorAll("*").forEach((el) => {
+    neutralizeStyleUrlProps(el);
+    [
+      "src",
+      "srcset",
+      "href",
+      "xlink:href",
+      "poster",
+      "data",
+      "formaction",
+    ].forEach((attr) => neutralizeExternalUrlAttr(el, attr));
+  });
+
+  clone.querySelectorAll("svg image, svg use, use, image").forEach((el) => {
+    ["href", "xlink:href"].forEach((attr) => neutralizeExternalUrlAttr(el, attr));
   });
 }
 
