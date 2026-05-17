@@ -1,0 +1,6 @@
+{
+  "purpose": "deployment check",
+  "triggeredAt": "2026-05-17T08:12:00+03:00",
+  "includesFixCommit": "45a9f24fed9a90c60ab204630dfc8be2e2c99a75",
+  "fix": "Clamp line height to prevent Hebrew niqqud clipping"
+}
