@@ -87,8 +87,73 @@ function streamTitleForCode(code) {
 // Builds a per-paragraph index of all notes across all streams, so
 // createMainBlockElement can insert reference numbers (mainRefEnabled) at the
 // correct anchor positions within each paragraph's text.
+function addMainRefToIndex(index, seen, paraIdx, ref, fallbackCode = "", segStart = 0) {
+  if (!ref || typeof ref !== "object") return;
+  const code = String(ref.stream || ref.code || fallbackCode || "");
+  if (!code) return;
+  const num = typeof ref.num === "number" && ref.num > 0 ? ref.num : 0;
+  if (!num) return;
+  const absoluteAnchor = typeof ref.absoluteAnchor === "number"
+    ? ref.absoluteAnchor
+    : typeof ref.anchor === "number"
+      ? ref.anchor
+      : 0;
+  const uid = ref.uid || (code + ":" + String(num) + ":" + String(paraIdx) + ":" + String(absoluteAnchor));
+  const key = String(uid);
+  if (seen.has(key)) return;
+  seen.add(key);
+  const localAnchor = typeof ref.localAnchor === "number" ? ref.localAnchor : absoluteAnchor - segStart;
+  if (!index[paraIdx]) index[paraIdx] = [];
+  index[paraIdx].push({
+    code,
+    anchor: absoluteAnchor,
+    num,
+    uid: key,
+    absoluteAnchor,
+    localAnchor,
+    sourceAnchor: typeof ref.anchor === "number" ? ref.anchor : absoluteAnchor,
+    hasIdentityMeta: true,
+  });
+}
+
+// Builds a per-paragraph index of all source main refs. Prefer meta.mainRefs
+// from the original main-body markers. Only fall back to page streams for old
+// pageData that predates source mainRefs.
 function buildParaNotesIndex(pageData) {
   const index = {};
+  const seen = new Set();
+  let hasSourceMainRefs = false;
+
+  for (const tup of pageData.main || []) {
+    const paraIdx = tup[0];
+    const segStart = typeof tup[2] === "number" ? tup[2] : 0;
+    const segText = String(tup[1] || "");
+    const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;
+    const meta = (tup && tup[4]) || {};
+    const refs = Array.isArray(meta.mainRefs) ? meta.mainRefs : null;
+    if (!refs) continue;
+    hasSourceMainRefs = true;
+    for (const ref of refs) {
+      const anchor = typeof ref?.absoluteAnchor === "number"
+        ? ref.absoluteAnchor
+        : typeof ref?.anchor === "number"
+          ? ref.anchor
+          : null;
+      if (typeof anchor !== "number") continue;
+      if (anchor < segStart || anchor > segEnd) continue;
+      addMainRefToIndex(index, seen, paraIdx, ref, "", segStart);
+    }
+  }
+
+  if (hasSourceMainRefs) {
+    for (const key of Object.keys(index)) {
+      index[key].sort((a, b) => a.anchor - b.anchor);
+    }
+    return index;
+  }
+
+  // Legacy fallback: old packer output has no meta.mainRefs, so derive refs
+  // from apparatus notes as before.
   const streams = pageData.streams || {};
   for (const code of Object.keys(streams)) {
     const notes = (streams[code].notes || []);
@@ -103,20 +168,19 @@ function buildParaNotesIndex(pageData) {
         : typeof tupleMeta.anchor === "number"
           ? tupleMeta.anchor
           : tupleAnchor;
-      const anchor = absoluteAnchor;
-      const localAnchor = typeof tupleMeta.localAnchor === "number" ? tupleMeta.localAnchor : null;
-      const uid = tupleMeta.uid || `${code}:${num}:${paraIdx}:${anchor}`;
-      if (!index[paraIdx]) index[paraIdx] = [];
-      index[paraIdx].push({
-        code,
-        anchor,
+      addMainRefToIndex(index, seen, paraIdx, {
+        stream: code,
         num,
-        uid,
+        uid: tupleMeta.uid || (code + ":" + String(num) + ":" + String(paraIdx) + ":" + String(absoluteAnchor)),
+        anchor: absoluteAnchor,
         absoluteAnchor,
-        localAnchor,
-        sourceAnchor: tupleAnchor,
-        hasIdentityMeta,
-      });
+        localAnchor: typeof tupleMeta.localAnchor === "number" ? tupleMeta.localAnchor : undefined,
+      }, code, 0);
+      const row = index[paraIdx] && index[paraIdx][index[paraIdx].length - 1];
+      if (row) {
+        row.hasIdentityMeta = hasIdentityMeta;
+        row.sourceAnchor = tupleAnchor;
+      }
     }
   }
   for (const key of Object.keys(index)) {

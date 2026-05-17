@@ -1764,6 +1764,12 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
     tableRows: Array.isArray(item?.tableRows) ? item.tableRows : null,
     // משה 2026-05-13: mainRuns מועבר ל-blockMeta כדי לאפשר רינדור inline פר-מילה.
     mainRuns: Array.isArray(item?.mainRuns) ? item.mainRuns : [],
+    // Source-of-truth main refs: copied from engine_bridge mainConsumers.
+    // Renderer filters these by the actual page segment start/end. This avoids
+    // deriving main refs from apparatus tuples after note split/rebalance.
+    mainRefs: Array.isArray(item?.mainRefs)
+      ? item.mainRefs.map((ref) => ({ ...ref }))
+      : [],
     fullMainText: typeof item?.mainText === "string" ? item.mainText : "",
   }));
   if (typeof window !== "undefined") window.__MAIN_BLOCK_META__ = _activeContentMeta;

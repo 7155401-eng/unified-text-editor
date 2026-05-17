@@ -918,6 +918,9 @@ export function paneManagerToPackerContent(paneManager) {
 
   // === Phase E — emit one paragraph object per source paragraph, with all
   // its consumers (across streams) merged and sorted by anchor + priority. ===
+  // 2026-05-17: keep source main refs separate from apparatus notes.
+  // Apparatus notes are later split/rebalanced between pages; main refs must
+  // remain tied to the original main-body marker positions only.
   const result = [];
   for (const info of paragraphsInfo) {
     const paraNotes = [];
@@ -928,12 +931,39 @@ export function paneManagerToPackerContent(paneManager) {
       }
     }
     paraNotes.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
-    const cleanNotes = paraNotes.map((n) => ({ stream: n.stream, text: n.text, runs: n.runs || [], anchor: n.anchor, num: n.num }));
+    const cleanNotes = paraNotes.map((n) => {
+      const uid = String(n.stream || "") + ":" + String(n.num || 0) + ":" + String(info.paraIdx) + ":" + String(n.anchor || 0);
+      return {
+        stream: n.stream,
+        text: n.text,
+        runs: n.runs || [],
+        anchor: n.anchor,
+        absoluteAnchor: n.anchor,
+        localAnchor: n.anchor,
+        num: n.num,
+        uid,
+        priority: n.priority || 0,
+      };
+    });
+    const cleanMainRefs = paraNotes.map((n) => {
+      const uid = String(n.stream || "") + ":" + String(n.num || 0) + ":" + String(info.paraIdx) + ":" + String(n.anchor || 0);
+      return {
+        stream: n.stream,
+        code: n.stream,
+        num: n.num,
+        uid,
+        anchor: n.anchor,
+        absoluteAnchor: n.anchor,
+        localAnchor: n.anchor,
+        priority: n.priority || 0,
+      };
+    });
     if (info.mainTextNet || cleanNotes.length) {
       result.push({
         mainText: info.mainTextNet,
         mainRuns: info.mainRuns || [],
         notes: cleanNotes,
+        mainRefs: cleanMainRefs,
         blockType: info.blockType === "heading" ? "heading" : "paragraph",
         ...(info.blockType === "table" ? { blockType: "table", tableRows: info.tableRows || [] } : {}),
         headingLevel: info.blockType === "heading" ? Math.max(1, Math.min(6, info.headingLevel || 1)) : null,
