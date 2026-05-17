@@ -2655,18 +2655,11 @@ export async function buildPages(container, paragraphs, config) {
             includePunctuation: true,
             includeWordGap: false,
           });
-          // משה 2026-05-17: רשימה מאוחדת עם priority. visual-line-end (900)
-          // קודם semantic ends (600/580). priority מתווסף לציון כקבוע גדול
-          // (× 0.01) כך שעדיפות תמיד מנצחת fill בתוך אותו tournament.
-          const rescueClassified = classifiedBreakCandidates(
-            fullText,
-            [...visualRescueEnds, ...semanticRescueEnds],
-            visualRescueEnds
-          );
-          const rescuePriorityByOffset = new Map(rescueClassified.map(c => [c.offset, c.priority]));
-          let rescueEnds = rescueClassified.map(c => c.offset);
+          let rescueEnds = uniqueSortedBreakOffsets([
+            ...visualRescueEnds,
+            ...semanticRescueEnds,
+          ], 2, fullText.length);
           if (carryActive) {
-            // carryActive שומר על visual-only אם זמין, אחרת חותך את המאוחד
             rescueEnds = visualRescueEnds.length
               ? visualRescueEnds.slice(0, carryGapMaxMainLines())
               : rescueEnds.slice(0, carryGapMaxMainLines() + 1);
@@ -2688,14 +2681,23 @@ export async function buildPages(container, paragraphs, config) {
             const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
 
             // משה 2026-05-17: noteOverflow = פסילה מוחלטת.
+            // הערות חייבות להישאר באותו עמוד של ההפניה אליהן. מועמד שיוצר
+            // note overflow גורש את ההערות לעמוד הבא — זה ההפך מהמטרה.
+            // (אם currentHasNoteOverflow קיים, rescue מנסה לפתור אותו — לא
+            // להחליפו ב-overflow אחר.) קנס קטן של 0.25 לא הספיק כי fill+0.3
+            // יכל לנצח אותו. עכשיו זה פסילה.
+
             if (noteOverflow) continue;
 
+            // משה 2026-05-17: noteOverflow כבר נפסל למעלה. לא בודקים שוב כאן.
+
             const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
-            const priorityBonus = (rescuePriorityByOffset.get(len) || 0) * 0.01;
 
             const score =
+
               (currentHasNoteOverflow ? 1 : 0) +
-              fill + mainProgressBonus + priorityBonus;
+
+              fill + mainProgressBonus;
 
             if (score < rescueBestScore) continue;
             rescueBestScore = score;
