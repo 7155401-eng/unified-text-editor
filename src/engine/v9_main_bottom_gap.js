@@ -6,6 +6,8 @@
 // the actual main/footer positions, and shifts only the footer apparatus down —
 // only when there is real free space left inside the page.
 
+import { applyV9OpeningWordsFromMetadata } from "./v9_opening_words_from_metadata.js";
+
 const DEFAULT_GAP_PX = 16;
 const MAX_GAP_PX = 60;
 const EPS = 0.5;
@@ -147,8 +149,10 @@ export function applyV9MainBottomGap(container, options = {}) {
     if (result) results.push({ pageIndex: pageEl.dataset.pageIndex || "", ...result });
   }
 
+  const openingWords = applyV9OpeningWordsFromMetadata(container);
+
   if (typeof console !== "undefined" && console.debug) {
-    console.debug("[v9-main-bottom-gap]", { desiredGapPx, changedPages: results.length, results });
+    console.debug("[v9-main-bottom-gap]", { desiredGapPx, changedPages: results.length, results, openingWords });
   }
   return results;
 }
