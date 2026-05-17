@@ -2032,6 +2032,57 @@ function classifyV9SafeBreakOffset(text, offset, visualLineEnds) {
   return "mid-word-or-bad";
 }
 
+// משה 2026-05-17: היררכיית ציונים לחיתוכים — לפי המסמך המלא של ההיררכיה.
+// סדר מהזול (גבוה) ליקר (נמוך). ההיררכיה משמשת לבחירת candidates ב-priority
+// class — בתוך כל class בוחרים לפי meta.score (fill), אבל class גבוה תמיד
+// מנצח class נמוך, ללא תלות ב-fill.
+//
+//   paragraph-end (1000) — סוף פיסקה. תמיד מועדף.
+//   visual-line-end (900) — סוף שורה טבעי של הדפדפן/קנבס.
+//   visual-line-end-spread (820) — אחרי פיזור רווחים קל. *לא נפלט עדיין*
+//   visual-line-end-shrink (780) — אחרי צמצום רווחים קל.   *לא נפלט עדיין*
+//   visual-line-end-letter (700) — אחרי שינוי letter-spacing קל. *לא נפלט עדיין*
+//   sentence-end (600) — סוף משפט.
+//   punctuation-end (580) — סימן פיסוק.
+//   word-gap (100) — סוף מילה באמצע שורה. רק חירום.
+//   mid-word-or-bad (-1000) — באמצע מילה. לעולם לא.
+//
+// PR זה לא מוסיף priority bonus לציון (PR #350 ניסה את זה ושיבר sense של
+// rescue thresholds). במקום, ה-priority משמש bucket — chooseStepwiseSplit
+// בוחר את ה-bucket הגבוה ביותר שיש בו clean candidate.
+const BREAK_PRIORITY = {
+  "paragraph-end": 1000,
+  "visual-line-end": 900,
+  "visual-line-end-spread": 820,
+  "visual-line-end-shrink": 780,
+  "visual-line-end-letter": 700,
+  "sentence-end": 600,
+  "punctuation-end": 580,
+  "word-gap": 100,
+  "mid-word-or-bad": -1000,
+  "invalid": -1000,
+};
+
+function priorityForBreakKind(kind) {
+  const v = BREAK_PRIORITY[kind];
+  return Number.isFinite(v) ? v : -1000;
+}
+
+function classifiedBreakCandidates(text, offsets, visualLineEnds) {
+  const seen = new Set();
+  const list = [];
+  for (const offset of offsets || []) {
+    if (!Number.isFinite(offset) || seen.has(offset)) continue;
+    seen.add(offset);
+    const kind = classifyV9SafeBreakOffset(text, offset, visualLineEnds || []);
+    const priority = priorityForBreakKind(kind);
+    if (priority <= 0) continue;
+    list.push({ offset, kind, priority });
+  }
+  list.sort((a, b) => b.priority - a.priority || b.offset - a.offset);
+  return list;
+}
+
 function safeBreakCandidates(text, visualLineEnds, opts = {}) {
   const min = opts.min || 1;
   const max = opts.max || (text ? text.length : Infinity);
@@ -2357,31 +2408,40 @@ export async function buildPages(container, paragraphs, config) {
           sliceIdx,
           baseN,
         });
-        const chooseStepwiseSplit = (ends) => {
-          let lastClean = null;
-          let lastCleanScore = -Infinity;
-          let lastCleanMeta = null;
-          let lastCleanMovedNotes = [];
-          for (const len of ends) {
-            const movedNotes = notesBeforeAnchor(len);
-            const meta = splitPlanMeta(tryPrefix(len), movedNotes);
+        // משה 2026-05-17 (v4): chooseStepwiseSplit עובד על מועמדים עם priority.
+        // ההיררכיה: visual-line-end (900) תמיד מנצח sentence-end (600) אם
+        // יש לו clean candidate. בתוך אותו priority class, meta.score (fill)
+        // משמש tie-break. אין bonus משולב לציון — priority הוא bucket, לא
+        // תוסף. ככה הסיפים של rescue/extension לא נשברים.
+        // noteOverflow הוא fallback אחרון — מועדף על "כלום" אבל גרוע מכל
+        // candidate נקי, לא משנה באיזה priority.
+        const chooseStepwiseSplit = (prioritizedCandidates) => {
+          if (!prioritizedCandidates || !prioritizedCandidates.length) return null;
+          const bestCleanByPriority = new Map();
+          const firstOverflowByPriority = new Map();
+          for (const cand of prioritizedCandidates) {
+            const movedNotes = notesBeforeAnchor(cand.offset);
+            const meta = splitPlanMeta(tryPrefix(cand.offset), movedNotes);
             if (!meta) continue;
             if (meta.hasNoteOverflow) {
-              // משה 2026-05-17:
-              // הצמדת הערות קודמת ל-fill. אם כבר מצאנו candidate נקי
-              // בלי גלישת הערות, לא נבחר אחריו candidate שמגליש הערות
-              // רק מפני שהוא ממלא יותר את העמוד.
-              if (lastClean) return lastClean;
-              return makeSplit(len, movedNotes);
+              if (!firstOverflowByPriority.has(cand.priority)) {
+                firstOverflowByPriority.set(cand.priority, makeSplit(cand.offset, movedNotes));
+              }
+              continue;
             }
-            if (meta.score >= lastCleanScore) {
-              lastCleanScore = meta.score;
-              lastClean = makeSplit(len, movedNotes);
-              lastCleanMeta = meta;
-              lastCleanMovedNotes = movedNotes;
+            const entry = bestCleanByPriority.get(cand.priority);
+            if (!entry || meta.score > entry.score) {
+              bestCleanByPriority.set(cand.priority, {
+                score: meta.score,
+                split: makeSplit(cand.offset, movedNotes),
+              });
             }
           }
-          return lastClean;
+          const cleanPriorities = [...bestCleanByPriority.keys()].sort((a, b) => b - a);
+          if (cleanPriorities.length) return bestCleanByPriority.get(cleanPriorities[0]).split;
+          const overflowPriorities = [...firstOverflowByPriority.keys()].sort((a, b) => b - a);
+          if (overflowPriorities.length) return firstOverflowByPriority.get(overflowPriorities[0]);
+          return null;
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
@@ -2393,11 +2453,13 @@ export async function buildPages(container, paragraphs, config) {
           includePunctuation: true,
           includeWordGap: false,
         });
-        splitInfo = chooseStepwiseSplit(lineEnds);
-        if (!splitInfo && allowParagraphSplit && semanticEnds.length) {
-          // regular split uses safe semantic fallbacks
-          splitInfo = chooseStepwiseSplit(semanticEnds);
-        }
+        // משה 2026-05-17: רשימה מאוחדת עם priority — visual-line-end קודם semantic
+        const unifiedCandidates = classifiedBreakCandidates(
+          fullText,
+          allowParagraphSplit ? [...lineEnds, ...semanticEnds] : lineEnds,
+          lineEnds
+        );
+        splitInfo = chooseStepwiseSplit(unifiedCandidates);
         if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
           const semanticFallbackEnds = allowParagraphSplit
             ? safeBreakCandidates(fullText, lineEnds, {
