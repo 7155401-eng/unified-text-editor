@@ -1,4 +1,4 @@
-name: Apply ref-anchor C1 codemod
+name: Apply ref-anchor C1/C2 codemods
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  apply-c1:
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip c1]') }}
+  apply-codemods:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[skip ref-codemods]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -23,17 +23,20 @@ jobs:
       - name: Run C1 codemod
         run: node scripts/apply-ref-anchor-c1.mjs
 
-      - name: Show diff
-        run: git diff -- src/engine/dom_packer.js
+      - name: Run C2 codemod
+        run: node scripts/apply-ref-anchor-c2.mjs
 
-      - name: Commit C1 result if changed
+      - name: Show diff
+        run: git diff -- src/engine/dom_packer.js src/engine/renderer.js
+
+      - name: Commit codemod result if changed
         run: |
-          if git diff --quiet -- src/engine/dom_packer.js; then
-            echo "No dom_packer.js changes to commit."
+          if git diff --quiet -- src/engine/dom_packer.js src/engine/renderer.js; then
+            echo "No source changes to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/engine/dom_packer.js
-          git commit -m "Apply C1 ref anchor metadata preservation [skip c1]"
+          git add src/engine/dom_packer.js src/engine/renderer.js
+          git commit -m "Apply C2 ref anchor metadata preservation [skip ref-codemods]"
           git push origin HEAD:fix-full-ref-anchor-identity-20260517
