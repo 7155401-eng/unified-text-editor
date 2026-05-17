@@ -35,14 +35,18 @@ function showToast(msg, isError = false) {
   }, TOAST_TIMEOUT);
 }
 
-function buildEnvMeta() {
-  return {
+function buildEnvMeta(extra = null) {
+  const meta = {
     ua: (typeof navigator !== 'undefined' && navigator.userAgent) || '',
     lang: (typeof navigator !== 'undefined' && navigator.language) || '',
     screen: (typeof window !== 'undefined' && window.innerWidth)
       ? `${window.innerWidth}x${window.innerHeight}` : '',
     url: (typeof location !== 'undefined' && location.href) || '',
   };
+  if (extra && typeof extra === 'object') {
+    Object.assign(meta, extra);
+  }
+  return meta;
 }
 
 function buildLoginPrompt() {
@@ -133,6 +137,94 @@ function escHandler(ev) {
 function isLoggedIn() {
   const auth = window.__RAVTEXT_AUTH__;
   return !!(auth && auth.loggedIn);
+}
+
+function loggedInEmail() {
+  const auth = window.__RAVTEXT_AUTH__ || {};
+  return auth.email || '';
+}
+
+function postJsonFireAndForget(url, body) {
+  try {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      keepalive: true,
+      body: JSON.stringify(body || {}),
+    }).catch(() => {});
+  } catch (_) {
+    return Promise.resolve();
+  }
+}
+
+function looksLikeTypesetBookInquiryTrigger(node) {
+  if (!node || !node.closest) return null;
+  const trigger = node.closest('button[data-action="typeset-book-inquiry"], a[href^="mailto:"]');
+  if (!trigger) return null;
+  const text = (trigger.textContent || '').replace(/\s+/g, ' ').trim();
+  const href = trigger.getAttribute?.('href') || '';
+  let decodedHref = href;
+  try { decodedHref = decodeURIComponent(href); } catch (_) {}
+  const explicitButton = trigger.matches?.('button[data-action="typeset-book-inquiry"]');
+  const textMentionsTypeset = text.includes('עימוד הספר') || text.includes('תעמדו לי את הספר');
+  const mailMentionsTypeset = href.startsWith('mailto:') && decodedHref.includes('עימוד');
+  return (explicitButton || textMentionsTypeset || mailMentionsTypeset) ? { trigger, text, href: decodedHref } : null;
+}
+
+let lastTypesetClickAt = 0;
+function notifyAdminAboutTypesetInquiryClick(info) {
+  if (!isLoggedIn()) return;
+  const nowMs = Date.now();
+  // הגנה מכפילות של דאבל-קליק/ bubbling חריג: עדיין רושם כל לחיצה אמיתית אחרי 2 שניות.
+  if (nowMs - lastTypesetClickAt < 2000) return;
+  lastTypesetClickAt = nowMs;
+
+  const email = loggedInEmail();
+  const meta = buildEnvMeta({
+    source: 'premium_payment_menu',
+    kind: 'typeset_book_inquiry_click',
+    service: 'תעמדו לי את הספר',
+    buttonText: info?.text || '',
+    href: info?.href || '',
+  });
+
+  postJsonFireAndForget('/api/usage/track', {
+    event: 'typeset_book_inquiry_click',
+    detail: {
+      service: 'תעמדו לי את הספר',
+      source: 'premium_payment_menu',
+      buttonText: info?.text || '',
+      href: info?.href || '',
+      url: meta.url,
+    },
+  });
+
+  const msg = [
+    '🔔 התראת מערכת: לחיצה על כפתור בקשת עימוד',
+    '',
+    'משתמש מחובר לחץ על הכפתור: תעמדו לי את הספר.',
+    email ? `המייל המחובר: ${email}` : 'המייל המחובר: לא זוהה',
+    `זמן: ${new Date(nowMs).toLocaleString('he-IL')}`,
+    '',
+    'הערה: זו התראת לחיצה בלבד. אם המשתמש השלים את הטופס, תופיע פנייה נוספת עם הפרטים שהוא מילא.',
+  ].join('\n');
+
+  postJsonFireAndForget('/api/contact', {
+    body: msg,
+    meta,
+  });
+}
+
+function installTypesetInquiryClickTracker() {
+  if (typeof document === 'undefined') return;
+  if (document.__ravtextTypesetInquiryClickTrackerInstalled) return;
+  document.__ravtextTypesetInquiryClickTrackerInstalled = true;
+  document.addEventListener('click', (ev) => {
+    const info = looksLikeTypesetBookInquiryTrigger(ev.target);
+    if (!info) return;
+    notifyAdminAboutTypesetInquiryClick(info);
+  }, true);
 }
 
 export function openBugReportModal() {
@@ -456,6 +548,7 @@ export async function openDevUpdatesModal() {
 }
 
 export function wireInboxButtons() {
+  installTypesetInquiryClickTracker();
   const bugBtn = document.getElementById('btn-report-bug');
   if (bugBtn) {
     bugBtn.addEventListener('click', (ev) => {
