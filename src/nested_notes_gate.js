@@ -1,3 +1,5 @@
+import "./first_note_title_cache_guard.js";
+
 // Feature gate for nested footnotes ("הערה על הערה").
 //
 // Activated by:
