@@ -186,6 +186,102 @@ function estimateV9PageCount(paragraphs) {
   return Math.max(1, Math.ceil(chars / 1800 + notes / 18));
 }
 
+function normalizeV9SourceText(text) {
+  return String(text || "")
+    .replace(/\{@\d+[^}]*\}/g, " ")
+    .replace(/@\d+/g, " ")
+    .replace(/[\t\n\r ]+/g, " ")
+    .trim();
+}
+
+function lineSortKey(el) {
+  const page = el.closest(".page");
+  const pageIdx = Number(page?.dataset.pageIndex || 0) || 0;
+  const top = Number.parseFloat(el.style.top || "0") || 0;
+  return pageIdx * 100000 + top;
+}
+
+function findMatchingParagraphSource(sources, currentIdx, lineText) {
+  if (!lineText) return currentIdx;
+  const probe = lineText.slice(0, Math.min(28, lineText.length));
+  for (let i = Math.max(0, currentIdx); i < sources.length; i++) {
+    const rest = sources[i].text.slice(sources[i].offset).trimStart();
+    if (!rest) continue;
+    if (rest.startsWith(lineText) || lineText.startsWith(rest) || rest.includes(probe)) return i;
+  }
+  return currentIdx;
+}
+
+// 2026-05-18: שלב אבחוני-אדריכלי ל-V9.
+// V9 מצייר שורות אבסולוטיות, ולכן אסור להסיק "תחילת פסקה" לפי תחילת עמוד.
+// כאן אנחנו מצמידים לשורות הראשי metadata ממקור הפסקאות החי שהועבר ל-buildPages:
+// data-v9-paragraph-id / data-v9-paragraph-start / data-v9-continuation.
+// זה עדיין לא משנה את אלגוריתם העימוד; הוא נותן בסיס בדיקתי בטוח לשלב הבא
+// שבו V9 עצמו ימדוד מילת פתיח ושבירות לפי תחילת פסקה אמיתית.
+function annotateV9RenderedSourceMetadata(container, paragraphs) {
+  if (!container || !Array.isArray(paragraphs)) return;
+
+  const sources = paragraphs
+    .map((p, index) => ({
+      id: `main-${index + 1}`,
+      index: index + 1,
+      text: normalizeV9SourceText(p?.mainText),
+      offset: 0,
+      continues: !!p?._continues,
+      emergencySplit: !!p?._emergencySplit,
+    }))
+    .filter(p => p.text);
+
+  let srcIdx = 0;
+  const mainLines = Array.from(container.querySelectorAll('.v9-page .v9-line[data-v9-role]'))
+    .filter(el => String(el.dataset.v9Role || "").toLowerCase().includes("main"))
+    .sort((a, b) => lineSortKey(a) - lineSortKey(b));
+
+  for (const line of mainLines) {
+    const lineText = normalizeV9SourceText(line.textContent);
+    if (!lineText) continue;
+    srcIdx = findMatchingParagraphSource(sources, srcIdx, lineText);
+    const src = sources[srcIdx];
+    if (!src) break;
+
+    const isTrueStart = src.offset === 0 && !src.continues;
+    line.dataset.v9SourceStream = "main";
+    line.dataset.v9ParagraphId = src.id;
+    line.dataset.v9ParagraphIndex = String(src.index);
+    line.dataset.v9ParagraphStart = isTrueStart ? "1" : "0";
+    line.dataset.v9Continuation = isTrueStart ? "0" : "1";
+    line.dataset.v9SourceOffset = String(src.offset);
+    if (src.continues) line.dataset.v9ContinuedFromPrev = "1";
+    if (src.emergencySplit) line.dataset.v9EmergencySplit = "1";
+
+    const rest = src.text.slice(src.offset).trimStart();
+    if (rest.startsWith(lineText)) {
+      src.offset += rest.indexOf(lineText) + lineText.length;
+    } else {
+      src.offset += lineText.length;
+    }
+    while (srcIdx < sources.length && src.offset >= sources[srcIdx].text.length - 1) srcIdx++;
+  }
+
+  for (const line of container.querySelectorAll('.v9-page .v9-line[data-v9-box-id]')) {
+    const boxId = line.dataset.v9BoxId;
+    if (!boxId || boxId === "main") continue;
+    line.dataset.v9SourceStream = boxId;
+    line.dataset.v9ParagraphStart ||= "unknown";
+    line.dataset.v9Continuation ||= "unknown";
+  }
+
+  container.dataset.v9SourceMetadata = "1";
+  container.dataset.v9SourceParagraphs = String(sources.length);
+  if (typeof window !== "undefined") {
+    window.__ravtextLastV9SourceMetadata = {
+      paragraphCount: sources.length,
+      mainLineCount: mainLines.length,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+}
+
 export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = {}) {
   if (!container || !Array.isArray(paragraphs)) return;
   const isCurrent = typeof opts.isCurrent === "function" ? opts.isCurrent : () => true;
@@ -289,6 +385,8 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       progress.abort();
       return result;
     }
+
+    annotateV9RenderedSourceMetadata(container, transformedParagraphs);
 
     // 2026-05-17: רווח מתחת הזרם הראשי חייב להימדד בתוך מסלול V9, לא דרך CSS.
     // הפאס הזה מזיז רק זרמי תחתית, ורק אם יש מקום אמיתי בדף — כך הוא לא
