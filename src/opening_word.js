@@ -533,8 +533,6 @@ function applyToTextElement(el, settings, options = {}) {
     skipLeadingControls: !!options.skipLeadingControls,
   });
   if (!parts) return false;
-  // משה 2026-05-06: גם אם הסיומת קצרה מדי לחלון מדויק, להשאיר מילת פתיח
-  // (במצב raised — בלי float-window). לא לבטל לגמרי.
   const tooShortSuffix =
     plainLength(parts.suffix) < MIN_OPENING_SUFFIX_CHARS ||
     plainWordCount(parts.suffix) < MIN_OPENING_SUFFIX_WORDS;
@@ -546,17 +544,11 @@ function applyToTextElement(el, settings, options = {}) {
 }
 
 function applyMainOpeningWords(pageEl, settings) {
-  // v33-engine fix: only consider DIRECT paragraphs of .page-main, not
-  // nested ones (e.g. inside body-portion that we moved INTO mainEl).
-  // Without this filter, opening-word lands on a body's first note instead
-  // of the actual main paragraph (talmud mode opening-word bug).
   const allParas = Array.from(pageEl.querySelectorAll(".page-main p, .page-main h1, .page-main h2, .page-main h3, .page-main h4, .page-main h5, .page-main h6"));
   const paragraphs = allParas.filter(p => {
-    // Exclude paragraphs nested inside a stream/body container.
     return !p.closest(".stream, .talmud-body-portion, .talmud-body-expanded, .talmud-crown-portion") ||
            p.closest(".page-main") === p.parentElement?.closest(".page-main");
   }).filter(p => {
-    // Final stricter check: parent must be the .page-main itself, not a nested float.
     let cur = p.parentElement;
     while (cur && cur !== pageEl) {
       if (cur.classList?.contains("page-main")) return true;
@@ -568,11 +560,7 @@ function applyMainOpeningWords(pageEl, settings) {
     }
     return true;
   });
-  // v33: skip paragraphs that are continuations from a previous page
-  // (renderer marks these with data-continued-from-prev="1"). Applying
-  // opening-word to them causes visual displacement.
   const eligible = paragraphs.filter(p => p.dataset.continuedFromPrev !== "1");
-  // Diagnostic console log for debugging.
   if (typeof console !== "undefined" && console.debug) {
     console.debug(`[opening_word] page${pageEl.dataset.pageIndex || "?"}: ${paragraphs.length} paragraphs, ${eligible.length} eligible after continuation-filter`);
   }
@@ -613,33 +601,21 @@ function applyStreamOpeningWords(pageEl, streamSettings) {
 }
 
 function applyMainOpeningWordsV9(pageEl, settings) {
-  // משה 2026-05-13: V9 לא מייצר .page-main p — הוא יוצר .v9-line עם data-v9-role.
-  // מילת פתיח על המנוע החדש: לוקחים את שורת הראשי הראשונה, חולצים את הקטע
-  // ופוצלים ל-span מסוגנן + שאר השורה כטקסט.
   const mainLines = Array.from(pageEl.querySelectorAll('.v9-line[data-v9-role]'))
     .filter(el => String(el.dataset.v9Role || "").toLowerCase().includes("main"));
   if (!mainLines.length) return;
-
-  // ממיינים לפי top — השורה הראשונה היא הגבוהה ביותר.
   mainLines.sort((a, b) => parseFloat(a.style.top || 0) - parseFloat(b.style.top || 0));
   const firstLine = mainLines[0];
   if (!firstLine || firstLine.dataset.opwApplied === "1") return;
-
   const text = firstLine.textContent || "";
   if (!text.trim()) return;
-
   const parts = extractOpeningSegment(text, settings, { skipLeadingControls: true });
   if (!parts) return;
-
-  // ב-V9 השורות בפועל absolute-positioned עם גובה קבוע — מצב "dropped" לא נתמך
-  // לוגית (אין float). נאלץ raised כדי לא לשבור גיאומטריה.
   const forceRaised = { ...settings, position: "raised" };
   setWrappedText(firstLine, parts, forceRaised, { _forceRaised: true });
 }
 
 function applyStreamOpeningWordsV9(pageEl, streamSettings) {
-  // כל שורה ראשונה של זרם (data-v9-role לא-main) מקבלת טיפול מילת-פתיח
-  // אם הוגדר opwEnabled לזרם הזה. כמו ב-main: רק raised.
   const byStream = new Map();
   pageEl.querySelectorAll('.v9-line[data-v9-box-id]').forEach((el) => {
     const id = el.dataset.v9BoxId;
@@ -669,11 +645,16 @@ export function applyOpeningWordsToPage(pageEl, mainSettings, streamSettings) {
   const globalSettings = mainSettings || getOpeningWordSettings();
   const streams = streamSettings || (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
 
-  // משה 2026-05-13: זיהוי מנוע V9 לפי ה-class על העמוד. אם זה V9 — נתיב שונה
-  // (השורות ב-position:absolute, לא DOM נחשב); אחרת — נתיב קלאסי של .page-main.
   if (pageEl.classList.contains("v9-page")) {
-    if (globalSettings.enabled) applyMainOpeningWordsV9(pageEl, globalSettings);
-    applyStreamOpeningWordsV9(pageEl, streams);
+    // V9 currently renders absolute line boxes without a reliable marker that
+    // says "this line is the start of an original paragraph". Applying opening
+    // word to the first visual line of each page is wrong: it turns every page
+    // continuation into a new opening word and desynchronizes measurements.
+    // Until V9 emits paragraph-start metadata and measures it inside buildPages,
+    // V9 opening words are deliberately skipped instead of guessed by page top.
+    if (typeof console !== "undefined" && console.debug) {
+      console.debug(`[opening_word] skip V9 page ${pageEl.dataset.pageIndex || "?"}: no paragraph-start metadata`);
+    }
     return;
   }
 
