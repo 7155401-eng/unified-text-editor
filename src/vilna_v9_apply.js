@@ -19,6 +19,7 @@ import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
+import { applyOpeningWordsToPages } from "./opening_word.js";
 import {
   startVilnaRenderProgress,
   hideVilnaRenderProgressImmediately,
@@ -293,6 +294,11 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // הפאס הזה מזיז רק זרמי תחתית, ורק אם יש מקום אמיתי בדף — כך הוא לא
     // משנה את חישוב הפגינציה ולא יוצר גלישה נסתרת.
     applyV9MainBottomGap(container);
+
+    // 2026-05-17: engine_bridge מדלג במסלול גפ"ת/V9 על הפאסים הרגילים,
+    // ולכן מילת פתיח לא הופעלה כלל במצב גפ"ת. כאן מפעילים אותה ישירות
+    // אחרי בניית דפי V9, בזמן ש-opening_word.js כבר יודע לטפל ב-.v9-line.
+    applyOpeningWordsToPages(container);
 
     progress.finish({
       totalPages: container.querySelectorAll(".page").length || result?.pages?.length || 0,
