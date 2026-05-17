@@ -1980,6 +1980,81 @@ function wordEndCandidates(text) {
   return out;
 }
 
+// V9 safe break policy:
+// סוף מילה באמצע שורה אינו fallback רגיל.
+// במסלולים רגילים: סוף שורה טבעי, סוף משפט, סוף פיסוק.
+// סוף מילה רגיל נשאר רק למסלול emergency.
+function uniqueSortedBreakOffsets(candidates, min = 1, max = Infinity) {
+  return [...new Set((candidates || []).filter(n =>
+    Number.isFinite(n) && n >= min && n < max
+  ))].sort((a, b) => a - b);
+}
+
+function sentenceEndCandidates(text) {
+  if (!text) return [];
+  const out = [];
+  const re = /[.!?…׃:;][\s\u00A0]*/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const n = re.lastIndex;
+    if (n > 0 && n < text.length) out.push(n);
+  }
+  return out;
+}
+
+function punctuationEndCandidates(text) {
+  if (!text) return [];
+  const out = [];
+  const re = /[,،؛][\s\u00A0]*/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const n = re.lastIndex;
+    if (n > 0 && n < text.length) out.push(n);
+  }
+  return out;
+}
+
+function wordGapCandidates(text) {
+  return wordEndCandidates(text);
+}
+
+function classifyV9SafeBreakOffset(text, offset, visualLineEnds) {
+  if (!text || offset <= 0 || offset >= text.length) return "invalid";
+  if ((visualLineEnds || []).includes(offset)) return "visual-line-end";
+
+  const before = text.slice(0, offset);
+  const after = text.slice(offset);
+
+  if (/[.!?…׃:;][\s\u00A0]*$/.test(before)) return "sentence-end";
+  if (/[,،؛][\s\u00A0]*$/.test(before)) return "punctuation-end";
+  if (/\s$/.test(before) || /^\s/.test(after)) return "word-gap";
+
+  return "mid-word-or-bad";
+}
+
+function safeBreakCandidates(text, visualLineEnds, opts = {}) {
+  const min = opts.min || 1;
+  const max = opts.max || (text ? text.length : Infinity);
+  const includeVisual = opts.includeVisual !== false;
+  const includeSentence = opts.includeSentence !== false;
+  const includePunctuation = opts.includePunctuation !== false;
+  const includeWordGap = opts.includeWordGap === true;
+
+  const out = [];
+  if (includeVisual) out.push(...(visualLineEnds || []));
+  if (includeSentence) out.push(...sentenceEndCandidates(text));
+  if (includePunctuation) out.push(...punctuationEndCandidates(text));
+  if (includeWordGap) out.push(...wordGapCandidates(text));
+
+  return uniqueSortedBreakOffsets(out, min, max)
+    .filter(n => {
+      const kind = classifyV9SafeBreakOffset(text, n, visualLineEnds || []);
+      if (kind === "invalid" || kind === "mid-word-or-bad") return false;
+      if (!includeWordGap && kind === "word-gap") return false;
+      return true;
+    });
+}
+
 // buildPages: בונה דפים מרובים מרצף פסקאות (כמו V8)
 //   - container: האלמנט שאליו יוסיפו דפים
 //   - paragraphs: רשימת פסקאות (mainText + notes)
@@ -2310,17 +2385,34 @@ export async function buildPages(container, paragraphs, config) {
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
           .filter(n => n >= MIN_SPLIT && n < fullText.length);
+        const semanticEnds = safeBreakCandidates(fullText, lineEnds, {
+          min: MIN_SPLIT,
+          max: fullText.length,
+          includeVisual: false,
+          includeSentence: true,
+          includePunctuation: true,
+          includeWordGap: false,
+        });
         splitInfo = chooseStepwiseSplit(lineEnds);
-        if (!splitInfo && allowParagraphSplit) {
-          const candidates = wordEndCandidates(fullText)
-            .filter(n => n >= MIN_SPLIT && n < fullText.length)
-            .sort((a, b) => a - b);
-          splitInfo = chooseStepwiseSplit(candidates);
+        if (!splitInfo && allowParagraphSplit && semanticEnds.length) {
+          // regular split uses safe semantic fallbacks
+          splitInfo = chooseStepwiseSplit(semanticEnds);
         }
         if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
-          const fallbackLen = lineEnds[0] || (allowParagraphSplit
-            ? wordEndCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length)
-            : null);
+          const semanticFallbackEnds = allowParagraphSplit
+            ? safeBreakCandidates(fullText, lineEnds, {
+                min: MIN_SPLIT,
+                max: fullText.length,
+                includeVisual: false,
+                includeSentence: true,
+                includePunctuation: true,
+                includeWordGap: false,
+              })
+            : [];
+          const emergencyWordFallback = allowParagraphSplit && !cfg.preventMidLineSplit
+            ? wordGapCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length)
+            : null;
+          const fallbackLen = lineEnds[0] || semanticFallbackEnds[0] || emergencyWordFallback || null;
           if (fallbackLen) {
 
             const movedNotes = notesBeforeAnchor(fallbackLen);
@@ -2399,21 +2491,26 @@ export async function buildPages(container, paragraphs, config) {
           };
 
           const baseSlice = getSlice(baseN);
-          // משה 2026-05-15: word-end candidates (חיתוך באמצע שורה) מותרים
-          // רק כששני הדגלים כבויים — gold ה-noMidLineSplits הישן (פסקה),
-          // וגם preventMidLineSplit החדש (שורה).
-          const allowMidLine = allowMidLineSplit;
-          let rescueEnds = [...new Set([
-            ...mainLineEndCandidates(fullText, splitMetrics, splitMainWidth),
-            ...(allowMidLine ? wordEndCandidates(fullText) : []),
-          ])]
+          // gap rescue uses safe break candidates only
+          const visualRescueEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
             .filter(n => n >= 2 && n < fullText.length)
             .sort((a, b) => a - b);
+          const semanticRescueEnds = safeBreakCandidates(fullText, visualRescueEnds, {
+            min: 2,
+            max: fullText.length,
+            includeVisual: false,
+            includeSentence: true,
+            includePunctuation: true,
+            includeWordGap: false,
+          });
+          let rescueEnds = uniqueSortedBreakOffsets([
+            ...visualRescueEnds,
+            ...semanticRescueEnds,
+          ], 2, fullText.length);
           if (carryActive) {
-            const visualEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
-              .filter(n => n >= 2 && n < fullText.length)
-              .sort((a, b) => a - b);
-            rescueEnds = visualEnds.length ? visualEnds.slice(0, carryGapMaxMainLines()) : rescueEnds.slice(0, carryGapMaxMainLines() + 1);
+            rescueEnds = visualRescueEnds.length
+              ? visualRescueEnds.slice(0, carryGapMaxMainLines())
+              : rescueEnds.slice(0, carryGapMaxMainLines() + 1);
           }
           for (const len of rescueEnds) {
             const movedNotes = notesBeforeAnchor(len);
@@ -2598,20 +2695,33 @@ export async function buildPages(container, paragraphs, config) {
           .filter(n => n >= MIN_EMERGENCY_SPLIT && n < fullText.length)
           .sort((a, b) => a - b);
 
+        const semanticEnds = safeBreakCandidates(fullText, lineEnds, {
+          min: MIN_EMERGENCY_SPLIT,
+          max: fullText.length,
+          includeVisual: false,
+          includeSentence: true,
+          includePunctuation: true,
+          includeWordGap: false,
+        });
+
         const wordEnds = !cfg.preventMidLineSplit
-          ? wordEndCandidates(fullText)
+          ? wordGapCandidates(fullText)
               .filter(n => n >= MIN_EMERGENCY_SPLIT && n < fullText.length)
               .sort((a, b) => a - b)
           : [];
 
-        const fallbackLen = lineEnds[0] || wordEnds[0] || null;
+        const fallbackLen = lineEnds[0] || semanticEnds[0] || wordEnds[0] || null;
 
         if (fallbackLen) {
           const movedNotes = notesBeforeAnchor(fallbackLen);
           if (typeof console !== "undefined") {
             console.warn(
               "[v9] emergency paragraph split: paragraph is larger than one page; " +
-              (lineEnds[0] ? "using natural line-end split." : "using word-end split fallback.")
+              (lineEnds[0]
+                ? "using natural line-end split."
+                : semanticEnds[0]
+                  ? "using semantic safe split."
+                  : "using word-end split emergency fallback.")
             );
           }
 
