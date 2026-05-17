@@ -51,41 +51,6 @@ function concatBytes(chunks) {
   return out;
 }
 
-// נתיב fallback ישן ויציב: לא נאמן לכל הפונטים, אבל לא אמור להפיל PDF.
-function collectLegacyCssText() {
-  const css = [];
-  for (const sheet of Array.from(document.styleSheets)) {
-    try {
-      for (const rule of Array.from(sheet.cssRules || [])) {
-        if (
-          rule.cssText &&
-          !/@font-face/i.test(rule.cssText) &&
-          !/@import/i.test(rule.cssText) &&
-          !/url\(/i.test(rule.cssText)
-        ) {
-          css.push(rule.cssText);
-        }
-      }
-    } catch {
-      // Cross-origin font stylesheets are not readable; the page still renders with fallback fonts.
-    }
-  }
-
-  const root = getComputedStyle(document.documentElement);
-  const vars = EXPORT_CSS_VARS
-    .map((name) => `${name}: ${root.getPropertyValue(name).trim()};`)
-    .join("");
-
-  css.push(`:root{--ravtext-page-font-family:${EXPORT_FONT_STACK};${vars}}`);
-  css.push("html,body{margin:0;padding:0;background:#fff;}");
-  css.push(".page{font-family:var(--ravtext-page-font-family);background-image:none!important;}");
-  css.push(".page *{background-image:none!important;}");
-  css.push(".page{margin:0!important;box-shadow:none!important;zoom:1!important;content-visibility:visible!important;contain-intrinsic-size:auto!important;padding:var(--ravtext-page-margin-top) var(--ravtext-page-margin-right) var(--ravtext-page-margin-bottom) var(--ravtext-page-margin-left)!important;}");
-  css.push(".pdf-export-media-placeholder{display:flex;align-items:center;justify-content:center;border:1px solid #bbb;background:#f5f5f5;color:#666;font:12px Arial,sans-serif;box-sizing:border-box;}");
-  css.push("body.ravtext-export-clean .page,body.ravtext-export-clean .page *:not(.ravtext-demo-print-mark){background:transparent!important;background-color:transparent!important;background-image:none!important;box-shadow:none!important;}");
-  return css.join("\n");
-}
-
 async function collectSnapshotCssText() {
   const vars = collectComputedCssVariables(EXPORT_CSS_VARS);
   const exportOverrides = `
@@ -365,19 +330,6 @@ async function waitForExportFonts(timeoutMs = 2500) {
   ]);
 }
 
-function isCanvasSecurityError(err) {
-  return /tainted|toDataURL|canvas|SecurityError/i.test(err?.message || err?.name || "");
-}
-
-function isImageDecodeError(err) {
-  const msg = String(err?.message || err || "");
-  return /decode|source image|img/i.test(msg) || err?.name === "EncodingError";
-}
-
-function shouldRetryWithLegacyCss(err) {
-  return isImageDecodeError(err) || isCanvasSecurityError(err);
-}
-
 async function renderAllPages(pages, cssText, { onProgress = null, includeBackgrounds = false } = {}) {
   const images = [];
   for (let i = 0; i < pages.length; i++) {
@@ -390,44 +342,14 @@ async function renderAllPages(pages, cssText, { onProgress = null, includeBackgr
 
 export async function downloadPagesAsPdf(
   pagesContainer,
-  { filename = "ravtext-preview.pdf", onProgress = null, fallbackToPrint = false, includeBackgrounds = false } = {}
+  { filename = "ravtext-preview.pdf", onProgress = null, includeBackgrounds = false } = {}
 ) {
   await waitForExportFonts();
   const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder)"));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
-  const legacyCssText = collectLegacyCssText();
-  let cssText = legacyCssText;
-  try {
-    cssText = await collectSnapshotCssText();
-  } catch (err) {
-    console.warn("PDF self-contained CSS snapshot failed, using legacy CSS:", err);
-  }
-
-  let images;
-  try {
-    images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
-  } catch (err) {
-    if (cssText !== legacyCssText && shouldRetryWithLegacyCss(err)) {
-      console.warn("PDF snapshot render failed, retrying with legacy CSS:", err);
-      try {
-        images = await renderAllPages(pages, legacyCssText, { onProgress, includeBackgrounds });
-      } catch (legacyErr) {
-        if (fallbackToPrint && isCanvasSecurityError(legacyErr)) {
-          await nextFrame();
-          window.print();
-          return { fallback: "print" };
-        }
-        throw legacyErr;
-      }
-    } else if (fallbackToPrint && isCanvasSecurityError(err)) {
-      await nextFrame();
-      window.print();
-      return { fallback: "print" };
-    } else {
-      throw err;
-    }
-  }
+  const cssText = await collectSnapshotCssText();
+  const images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
 
   const pdfBlob = buildPdf(images);
   const url = URL.createObjectURL(pdfBlob);
