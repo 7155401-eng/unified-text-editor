@@ -78,9 +78,15 @@ function measureOpeningTextWidthPx(text, fontSizePx, style) {
 
 export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const settings = normalizeSettingsForV9(rawSettings);
+  const continuesFromPrevious = !!(
+    options.continuesFromPrevious ||
+    options.isPageSplitContinuation
+  );
+
   if (!settings.enabled) return null;
   if (options.isParagraphStart === false) return null;
-  if (options.continuesFromPrevious) return null;
+  if (options.isOriginalParagraphStart === false) return null;
+  if (continuesFromPrevious) return null;
 
   const parts = extractOpeningSegmentForTest(String(text || ""), settings);
   if (!parts || !parts.segment?.trim() || !parts.suffix?.trim()) return null;
@@ -114,7 +120,10 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
     settings,
     position,
     paragraphStart: true,
-    continuesFromPrevious: false,
+    isOriginalParagraphStart: options.isOriginalParagraphStart !== false,
+    sourceParagraphId: options.sourceParagraphId || options.paragraphSourceId || null,
+    continuesFromPrevious,
+    isPageSplitContinuation: false,
     metrics: {
       openingFontSizePx: fontSizePx,
       openingLineHeightPx: openingWordHeightPx,
