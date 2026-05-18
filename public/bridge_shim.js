@@ -1,5 +1,31 @@
 /* Bridge shim copied from text_compare_pro/web/editor/bridge_shim.js. */
 (function () {
+  // 2026-05-18: Compatibility for render completion code that may call
+  // pdfToolbarApi.setTotal(...) / rememberBaseSize(...) while the current
+  // toolbar object exposes refresh(...) / applyZoom(...).
+  function installToolbarCompatMethod(name, fn) {
+    if (Object.prototype.hasOwnProperty.call(Object.prototype, name)) return;
+    Object.defineProperty(Object.prototype, name, {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: fn,
+    });
+  }
+
+  installToolbarCompatMethod("setTotal", function setTotalCompat(total) {
+    if (this && typeof this.refresh === "function") return this.refresh(total);
+    return undefined;
+  });
+
+  installToolbarCompatMethod("rememberBaseSize", function rememberBaseSizeCompat() {
+    return undefined;
+  });
+
+  installToolbarCompatMethod("applyZoom", function applyZoomCompat() {
+    return undefined;
+  });
+
   let attempts = 0;
   const maxAttempts = 200;
 
