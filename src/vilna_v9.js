@@ -18,6 +18,10 @@ import {
   splitNotesByAnchor,
   debugV9SplitDecision,
 } from "./engine/v9_split_policy.js";
+import {
+  buildV9OpeningWordLayoutModel,
+  applyV9OpeningWordModelToLineElement,
+} from "./engine/v9_opening_word_layout_model.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
@@ -765,6 +769,164 @@ function appendOverflowStream(overflow, sid, entry) {
     : incoming;
 }
 
+
+function debugV9OpeningWord(info) {
+  if (typeof window === "undefined") return;
+  window.__ravtextLastV9OpeningWord = {
+    paragraphIndex: info.paragraphIndex ?? null,
+    paragraphId: info.paragraphId ?? null,
+    applied: !!info.applied,
+    skippedReason: info.skippedReason || "",
+    position: info.position || "",
+    segment: info.segment || "",
+    openingWordWidthPx: info.openingWordWidthPx || 0,
+    reserveWidthPx: info.reserveWidthPx || 0,
+    dropLines: info.dropLines || 0,
+    windowApplied: !!info.windowApplied,
+    continuedFromPrev: !!info.continuedFromPrev,
+  };
+}
+
+function cloneV9StripsFromY(strips, startY) {
+  const out = [];
+  for (const strip of strips || []) {
+    if (!strip || strip.y_end <= startY) continue;
+    out.push({ ...strip, y_start: Math.max(strip.y_start, startY) });
+  }
+  return out;
+}
+
+function applyV9OpeningWindowToStrips(strips, model, metrics, pageBottom) {
+  if (!model || !Array.isArray(strips) || strips.length === 0) {
+    return { strips: strips || [], skippedReason: model ? "no-main-strips" : "disabled" };
+  }
+  const first = strips[0];
+  const reserve = Math.max(0, Math.min(
+    Number(model.metrics?.reserveWidthPx) || 0,
+    Math.max(0, (first.width || 0) - 24)
+  ));
+  if (reserve <= 0) return { strips, skippedReason: "no-reserve-width" };
+
+  const lineH = metrics.lineHeight;
+  const windowLineCount = Math.max(1, Number(model.flow?.windowLineCount) || 1);
+  const windowTop = first.y_start;
+  const windowBottom = windowTop + windowLineCount * lineH;
+  if (model.position === "dropped" && windowBottom > pageBottom + 0.5) {
+    return { strips: [], skippedReason: "not-enough-page-space" };
+  }
+
+  const out = [];
+  const push = (strip) => {
+    if (!strip || strip.y_end <= strip.y_start || strip.width <= 0) return;
+    out.push(strip);
+  };
+
+  for (const strip of strips) {
+    const overlapStart = Math.max(strip.y_start, windowTop);
+    const overlapEnd = Math.min(strip.y_end, windowBottom);
+    if (overlapEnd <= overlapStart) {
+      push({ ...strip });
+      continue;
+    }
+    if (strip.y_start < overlapStart) push({ ...strip, y_end: overlapStart });
+    push({
+      ...strip,
+      y_start: overlapStart,
+      y_end: overlapEnd,
+      width: Math.max(24, strip.width - reserve),
+      openingWindow: true,
+      openingHostFullWidth: strip.width,
+    });
+    if (overlapEnd < strip.y_end) push({ ...strip, y_start: overlapEnd });
+  }
+  out.sort((a, b) => a.y_start - b.y_start || a.x - b.x || a.width - b.width);
+  return { strips: out, skippedReason: "" };
+}
+
+function markV9ContinuationParagraph(p) {
+  if (!p) return p;
+  return {
+    ...p,
+    _continues: true,
+    _v9ContinuesFromSplit: true,
+    _v9OpeningWordAllowed: false,
+  };
+}
+
+function concatV9OverflowParagraphs(entries, startIdx, firstOverflowRich) {
+  const parts = [];
+  const first = normalizeRichTextEntry(firstOverflowRich);
+  if (first.text) parts.push(first);
+  for (let i = startIdx + 1; i < entries.length; i++) {
+    const entry = normalizeRichTextEntry(entries[i]?.rich || entries[i]);
+    if (entry.text) parts.push(entry);
+  }
+  return concatRichTextParts(parts, "\n");
+}
+
+function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, cfg, pageBottom) {
+  const entries = Array.isArray(pageContent.mainParagraphs) && pageContent.mainParagraphs.length
+    ? pageContent.mainParagraphs
+    : [{ text: pageContent.mainText || "", runs: pageContent.mainRuns || [], continues: !!pageContent.mainStartsContinued }];
+  const allLines = [];
+  let curY = mainStrips && mainStrips[0] ? mainStrips[0].y_start : 0;
+  let lastDebug = null;
+
+  for (let idx = 0; idx < entries.length; idx++) {
+    const entry = entries[idx];
+    const rich = normalizeRichTextEntry(entry.rich || { text: entry.text || "", runs: entry.runs || [] });
+    if (!rich.text) continue;
+
+    const continued = !!(entry.continues || entry._continues || entry._v9ContinuesFromSplit || entry._v9OpeningWordAllowed === false);
+    const model = !continued && entry._v9OpeningWordAllowed !== false
+      ? buildV9OpeningWordLayoutModel(rich.text, cfg.openingWordSettings || null, {
+          isParagraphStart: true,
+          continuesFromPrevious: false,
+          baseFontSize: cfg.mainFontSize,
+          baseLineHeight: mainMetrics.lineHeight,
+        })
+      : null;
+
+    let paragraphStrips = cloneV9StripsFromY(mainStrips, curY);
+    let flowInput = rich;
+    let skippedReason = continued ? "continued-from-prev" : "disabled-or-no-segment";
+
+    if (model) {
+      const prepared = applyV9OpeningWindowToStrips(paragraphStrips, model, mainMetrics, pageBottom);
+      skippedReason = prepared.skippedReason || "";
+      if (skippedReason) {
+        const overflow = concatV9OverflowParagraphs(entries, idx, rich);
+        lastDebug = { entry, model, skippedReason, applied: false, continued };
+        return { lines: allLines, overflowText: overflow.text, overflowRuns: overflow.runs, overflowRich: overflow, endY: curY, debug: lastDebug };
+      }
+      paragraphStrips = prepared.strips;
+      flowInput = makeRichText(model.flow?.remainingText || "", []);
+    }
+
+    const flow = flowStreamThroughStrips(flowInput, paragraphStrips, mainMetrics, pageBottom);
+    const lines = flow.lines || [];
+    if (model && lines.length) {
+      const first = lines[0];
+      first.openingWord = { model, position: model.position, segment: model.parts?.segment || "" };
+      first.openingHostFullWidth = first.openingHostFullWidth || first.width + (model.metrics?.reserveWidthPx || 0);
+      first.width = first.openingHostFullWidth;
+      first.naturalWidth = (first.naturalWidth || 0) + (model.metrics?.reserveWidthPx || 0);
+      first.runs = [];
+    }
+    allLines.push(...lines);
+    lastDebug = { entry, model, skippedReason, applied: !!(model && lines.length), continued };
+
+    if (flow.overflowText) {
+      const overflow = concatV9OverflowParagraphs(entries, idx, flow.overflowRich || { text: flow.overflowText, runs: flow.overflowRuns || [] });
+      return { lines: allLines, overflowText: overflow.text, overflowRuns: overflow.runs, overflowRich: overflow, endY: flow.endY || curY, debug: lastDebug };
+    }
+    curY = flow.endY || curY;
+  }
+
+  const empty = makeRichText("", []);
+  return { lines: allLines, overflowText: "", overflowRuns: [], overflowRich: empty, endY: curY, debug: lastDebug };
+}
+
 // =====================================================================
 // בונה תוכנית עמוד
 // =====================================================================
@@ -1275,10 +1437,11 @@ function buildPagePlan(pageContent, config) {
       pageBottom: effectivePageBottom,
     });
 
-    const mainFlow = flowStreamThroughStrips(
-      makeRichText(pageContent.mainText, pageContent.mainRuns || []),
+    const mainFlow = flowMainParagraphsThroughStrips(
+      pageContent,
       mainStrips,
       mainMetrics,
+      cfg,
       effectivePageBottom
     );
 
@@ -1298,9 +1461,27 @@ function buildPagePlan(pageContent, config) {
         naturalWidth: line.naturalWidth,
         fontSize: cfg.mainFontSize,
         lineHeightPx: mainMetrics.lineHeight,
+        openingWord: line.openingWord || null,
+        openingHostFullWidth: line.openingHostFullWidth || null,
+        openingWindow: !!line.openingWindow,
         runs: line.runs || [],
       });
     }
+    const opwDebug = mainFlow.debug || null;
+    debugV9OpeningWord({
+      paragraphIndex: opwDebug?.entry?.index || null,
+      paragraphId: opwDebug?.entry?.id || null,
+      applied: !!opwDebug?.applied,
+      skippedReason: opwDebug?.skippedReason || "",
+      position: opwDebug?.model?.position || "",
+      segment: opwDebug?.model?.parts?.segment || "",
+      openingWordWidthPx: opwDebug?.model?.metrics?.openingWordWidthPx || 0,
+      reserveWidthPx: opwDebug?.model?.metrics?.reserveWidthPx || 0,
+      dropLines: opwDebug?.model?.metrics?.dropLines || 0,
+      windowApplied: !!opwDebug?.applied,
+      continuedFromPrev: !!opwDebug?.continued,
+    });
+
     // 2026-05-17:
     // mainFlow כבר מחשב line.runs לפי wordTokens ו-offsets מקוריים.
     // אסור להריץ כאן attachRunsToLines, כי הוא משחזר לפי indexOf ויכול
@@ -1840,7 +2021,11 @@ function renderPagePlan(plan, pageEl, cfg) {
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
       // משה 2026-05-13: רינדור עם inline runs — בולד/הדגשה/צבע פר-מילה.
       // אם line.runs ריק, appendTextWithRuns ייצור textNode רגיל (זהה ל-textContent).
-      appendTextWithRuns(lineEl, line.text, line.runs);
+      if (line.openingWord && line.openingWord.model) {
+        applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
+      } else {
+        appendTextWithRuns(lineEl, line.text, line.runs);
+      }
       pageEl.appendChild(lineEl);
     }
   }
@@ -3147,14 +3332,14 @@ export async function buildPages(container, paragraphs, config) {
       const sliceIdx = splitInfo.sliceIdx;
       if (hadPending && sliceIdx === 0) {
         // הפיצול על pending עצמו — pending מתחלף, cursor לא זז
-        pendingParagraph = splitInfo.secondHalf;
+        pendingParagraph = markV9ContinuationParagraph(splitInfo.secondHalf);
       } else if (hadPending) {
         // pending נצרך במלואו (slice[0]) + sliceIdx-1 פסקאות מהמערך + 1 פסקה מפוצלת
-        pendingParagraph = splitInfo.secondHalf;
+        pendingParagraph = markV9ContinuationParagraph(splitInfo.secondHalf);
         cursor += sliceIdx;
       } else {
         // אין pending — sliceIdx פסקאות מהמערך נצרכו במלואן + 1 מפוצלת
-        pendingParagraph = splitInfo.secondHalf;
+        pendingParagraph = markV9ContinuationParagraph(splitInfo.secondHalf);
         cursor += sliceIdx + 1;
       }
     } else {
@@ -3261,10 +3446,25 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   // עם '\n' בין פסקאות; ה-runs שלה ממופים לאופסט המתאים בתוך mainText.
   const mainPieces = [];
   const mainRunsAccum = [];
+  const mainParagraphs = [];
   let mainOffset = 0;
+  let mainParagraphIndex = 0;
   for (const p of paragraphs) {
     const piece = blockToText(p);
     if (!piece) continue;
+    const cleanPiece = stripStreamMarkers(piece);
+    const localRuns = Array.isArray(p.mainRuns) ? p.mainRuns : [];
+    mainParagraphIndex += 1;
+    mainParagraphs.push({
+      id: p.id || `main-${mainParagraphIndex}`,
+      index: mainParagraphIndex,
+      text: cleanPiece,
+      runs: localRuns,
+      rich: makeRichText(cleanPiece, localRuns),
+      continues: !!(p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),
+      _v9ContinuesFromSplit: !!p._v9ContinuesFromSplit,
+      _v9OpeningWordAllowed: p._v9OpeningWordAllowed,
+    });
     if (mainPieces.length > 0) mainOffset += 1; // for the '\n' separator
     mainPieces.push(piece);
     if (Array.isArray(p.mainRuns) && p.mainRuns.length) {
@@ -3285,6 +3485,9 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   const mainText = stripStreamMarkers(mainPieces.join('\n'));
   const mainRuns = mainRunsAccum;
   const mainContinues = paragraphs.some(p => p && p._continues);
+  const firstMainParagraph = mainParagraphs.find(p => p.text);
+  const mainStartsContinued = !!firstMainParagraph?.continues;
+  const mainOpeningWordAllowed = !!firstMainParagraph && !mainStartsContinued;
 
   const streamMap = new Map(); // sid → rich parts
 
@@ -3382,7 +3585,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
         footerStreams.push(s);
       }
     }
-    return { mainText, mainRuns, mainContinues, rightStream, leftStream, footerStreams, titles };
+    return { mainText, mainRuns, mainParagraphs, mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
   }
 
   // Fallback ישן: levels של משנ"ב + mishnaSide. נשאר לתאימות עם מצבי
@@ -3424,5 +3627,5 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     if (footerStreams.length >= 1) leftStream = footerStreams.shift();
   }
 
-  return { mainText, mainRuns, mainContinues, rightStream, leftStream, footerStreams, titles };
+  return { mainText, mainRuns, mainParagraphs, mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
 }

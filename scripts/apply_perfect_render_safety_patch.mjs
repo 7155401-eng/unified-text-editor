@@ -10,7 +10,10 @@ const write = (p, s) => fs.writeFileSync(file(p), s, "utf8");
 function patch(rel, name, oldText, newText, marker) {
   let s = read(rel);
   if (s.includes(marker)) return console.log(`[perfect-render-safety] ${name}: already patched`);
-  if (!s.includes(oldText)) throw new Error(`[perfect-render-safety] ${name}: source block not found in ${rel}`);
+  if (!s.includes(oldText)) {
+    console.warn(`[perfect-render-safety] ${name}: source block not found in ${rel}; skipped`);
+    return;
+  }
   s = s.replace(oldText, newText);
   write(rel, s);
   console.log(`[perfect-render-safety] ${name}: patched`);

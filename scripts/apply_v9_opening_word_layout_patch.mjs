@@ -1,7 +1,8 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 
 function patchFile(path, patcher) {
-  const before = fs.readFileSync(path, 'utf8');
+  const beforeRaw = fs.readFileSync(path, 'utf8');
+  const before = beforeRaw.replace(/\r\n/g, "\n");
   const after = patcher(before);
   if (after !== before) {
     fs.writeFileSync(path, after);
