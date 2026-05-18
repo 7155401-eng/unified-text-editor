@@ -1,5 +1,6 @@
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
+import { buildExportCoverPage } from "./export_cover_page.js";
 
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
@@ -284,7 +285,7 @@ async function canvasToPdfImage(canvas, ctx) {
 async function renderPageToPdfImage(pageEl, cssText, scale = PDF_EXPORT_SCALE, { includeBackgrounds = false } = {}) {
   const clone = pageEl.cloneNode(true);
   sanitizeCloneForPdf(clone);
-  if (isDemoMode()) {
+  if (isDemoMode() && !clone.dataset.exportCover) {
     ensureDemoAccess();
     applyDemoWatermarkToElement(clone);
   }
@@ -460,6 +461,13 @@ export async function downloadPagesAsPdf(
   const pages = Array.from(pagesContainer.querySelectorAll(PRINTABLE_PAGE_SELECTOR));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
+  const coverPage = buildExportCoverPage({
+    mode: "PDF",
+    contentPageCount: pages.length,
+    filename,
+  });
+  const exportPages = [coverPage, ...pages];
+
   const legacyCssText = collectLegacyCssText();
   let cssText = legacyCssText;
   try {
@@ -470,12 +478,12 @@ export async function downloadPagesAsPdf(
 
   let images;
   try {
-    images = await renderAllPages(pages, cssText, { onProgress, includeBackgrounds });
+    images = await renderAllPages(exportPages, cssText, { onProgress, includeBackgrounds });
   } catch (err) {
     if (cssText !== legacyCssText && shouldRetryWithLegacyCss(err)) {
       console.warn("PDF snapshot render failed, retrying with legacy CSS:", err);
       try {
-        images = await renderAllPages(pages, legacyCssText, { onProgress, includeBackgrounds });
+        images = await renderAllPages(exportPages, legacyCssText, { onProgress, includeBackgrounds });
       } catch (legacyErr) {
         if (fallbackToPrint && isCanvasSecurityError(legacyErr)) {
           await nextFrame();
