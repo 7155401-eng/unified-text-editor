@@ -225,4 +225,3 @@ function patchVilnaV9Apply(source) {
 
 patchFile('src/vilna_v9.js', patchVilnaV9);
 patchFile('src/vilna_v9_apply.js', patchVilnaV9Apply);
-
