@@ -10,6 +10,14 @@ import {
   appendRichTextPart,
 } from "./engine/rich_text_runs.js";
 import { buildNoteContentNodes, nodesToTextRuns } from "./engine/note_content_builder.js";
+import {
+  buildV9SplitPolicy,
+  buildParagraphBreakCandidates,
+  scoreV9PageCandidate,
+  splitMainTextAtOffset,
+  splitNotesByAnchor,
+  debugV9SplitDecision,
+} from "./engine/v9_split_policy.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
@@ -2151,6 +2159,8 @@ export async function buildPages(container, paragraphs, config) {
   // preventMidLineSplit = רלוונטי רק כשכבר מותר לפצל פיסקה; אז מונע חיתוך באמצע שורה.
   // חריג מכוון: גם כש-noMidParagraph פעיל, מותר prefix split אם הוא נדרש
   // כדי שהערות מעוגנות לתחילת הקטע יישארו עם הטקסט שלהן.
+  const v9SplitPolicy = buildV9SplitPolicy(cfg);
+
   const noMidParagraphHard = !!cfg.noMidLineSplits;
   const noMidParagraphSoft = !!cfg.noMidParagraphSoft;
   const noMidParagraph = noMidParagraphHard || noMidParagraphSoft;
@@ -2402,12 +2412,21 @@ export async function buildPages(container, paragraphs, config) {
           const score = fill - overflowPenalty - belowTargetPenalty - extraMainPenalty - carryMainPenalty;
           return { score, hasNoteOverflow, fill, lineCount, commentaryCount };
         };
-        const makeSplit = (len, movedNotes) => ({
-          firstHalf: { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes, _continues: true },
-          secondHalf: { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) },
-          sliceIdx,
-          baseN,
-        });
+        const makeSplit = (len, movedNotes) => {
+          const splitText = splitMainTextAtOffset(fullText, len);
+          const splitNotes = splitNotesByAnchor(
+            target?.notes || [],
+            splitText.splitOffset,
+            fullText.length,
+            splitText.suffixBaseOffset
+          );
+          return {
+            firstHalf: { ...target, mainText: splitText.prefixText, notes: movedNotes || splitNotes.before, _continues: true },
+            secondHalf: { ...target, mainText: splitText.suffixText, notes: splitNotes.after },
+            sliceIdx,
+            baseN,
+          };
+        };
         // משה 2026-05-17 (v4): chooseStepwiseSplit עובד על מועמדים עם priority.
         // ההיררכיה: visual-line-end (900) תמיד מנצח sentence-end (600) אם
         // יש לו clean candidate. בתוך אותו priority class, meta.score (fill)
@@ -2416,13 +2435,38 @@ export async function buildPages(container, paragraphs, config) {
         // noteOverflow הוא fallback אחרון — מועדף על "כלום" אבל גרוע מכל
         // candidate נקי, לא משנה באיזה priority.
         const chooseStepwiseSplit = (prioritizedCandidates) => {
-          if (!prioritizedCandidates || !prioritizedCandidates.length) return null;
+          const v9PolicyDebug = {
+            pageIdx,
+            targetSliceIdx: sliceIdx,
+            bestN_clean,
+            fullTextLength: fullText.length,
+            candidates: [],
+            selected: null,
+          };
+          if (!prioritizedCandidates || !prioritizedCandidates.length) {
+            debugV9SplitDecision({ ...v9PolicyDebug, reason: "no-candidates" });
+            return null;
+          }
           const bestCleanByPriority = new Map();
           const firstOverflowByPriority = new Map();
           for (const cand of prioritizedCandidates) {
             const movedNotes = notesBeforeAnchor(cand.offset);
-            const meta = splitPlanMeta(tryPrefix(cand.offset), movedNotes);
-            if (!meta) continue;
+            const tp = tryPrefix(cand.offset);
+            const meta = splitPlanMeta(tp, movedNotes);
+            const policyScore = scoreV9PageCandidate(tp, cand, v9SplitPolicy, {
+              cfg,
+              movedNotes,
+              pageIdx,
+              targetSliceIdx: sliceIdx,
+            });
+            v9PolicyDebug.candidates.push({
+              offset: cand.offset,
+              kind: cand.kind,
+              priority: cand.priority,
+              meta,
+              policyScore,
+            });
+            if (!meta || policyScore.accept === false) continue;
             if (meta.hasNoteOverflow) {
               if (!firstOverflowByPriority.has(cand.priority)) {
                 firstOverflowByPriority.set(cand.priority, makeSplit(cand.offset, movedNotes));
@@ -2438,9 +2482,18 @@ export async function buildPages(container, paragraphs, config) {
             }
           }
           const cleanPriorities = [...bestCleanByPriority.keys()].sort((a, b) => b - a);
-          if (cleanPriorities.length) return bestCleanByPriority.get(cleanPriorities[0]).split;
+          if (cleanPriorities.length) {
+            const selected = bestCleanByPriority.get(cleanPriorities[0]).split;
+            debugV9SplitDecision({ ...v9PolicyDebug, selected, selectedPriority: cleanPriorities[0], selectedMode: "clean" });
+            return selected;
+          }
           const overflowPriorities = [...firstOverflowByPriority.keys()].sort((a, b) => b - a);
-          if (overflowPriorities.length) return firstOverflowByPriority.get(overflowPriorities[0]);
+          if (overflowPriorities.length) {
+            const selected = firstOverflowByPriority.get(overflowPriorities[0]);
+            debugV9SplitDecision({ ...v9PolicyDebug, selected, selectedPriority: overflowPriorities[0], selectedMode: "overflow-fallback" });
+            return selected;
+          }
+          debugV9SplitDecision({ ...v9PolicyDebug, reason: "no-accepted-candidate" });
           return null;
         };
         const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
@@ -2453,11 +2506,18 @@ export async function buildPages(container, paragraphs, config) {
           includePunctuation: true,
           includeWordGap: false,
         });
-        // משה 2026-05-17: רשימה מאוחדת עם priority — visual-line-end קודם semantic
-        const unifiedCandidates = classifiedBreakCandidates(
+        // PR #374 wiring: generate candidates through centralized V9 split policy.
+        // The old lineEnds/semanticEnds variables remain above for fallback/debug parity.
+        const policyCandidates = buildParagraphBreakCandidates(
           fullText,
-          allowParagraphSplit ? [...lineEnds, ...semanticEnds] : lineEnds,
-          lineEnds
+          splitMetrics,
+          splitMainWidth,
+          v9SplitPolicy,
+          { source: "primary" }
+        );
+        const unifiedCandidates = (allowParagraphSplit
+          ? policyCandidates
+          : policyCandidates.filter(c => c.kind === "visual-line-end" || c.kind === "adjusted-line-end")
         );
         splitInfo = chooseStepwiseSplit(unifiedCandidates);
         if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
