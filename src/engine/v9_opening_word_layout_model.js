@@ -48,6 +48,13 @@ function normalizePosition(settings, parts) {
   return "dropped";
 }
 
+function estimateTextWidthPx(text, fontSizePx) {
+  const sample = String(text || "").replace(/\s+/g, " ").trim();
+  if (!sample) return 0;
+  const size = Number(fontSizePx) > 0 ? Number(fontSizePx) : 16;
+  return Math.ceil(sample.length * Math.max(7, size * 0.56));
+}
+
 export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const settings = normalizeSettingsForV9(rawSettings);
   if (!settings.enabled) return null;
@@ -59,7 +66,18 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
 
   const position = normalizePosition(settings, parts);
   const baseFontSize = Number(options.baseFontSize) || 0;
+  const baseLineHeight = Number(options.baseLineHeight) || (baseFontSize > 0 ? baseFontSize * 1.55 : 0);
   const fontSizePx = baseFontSize > 0 ? (baseFontSize * settings.size) / 100 : null;
+  const effectiveOpeningFontSize = fontSizePx || baseFontSize || 16;
+  const openingWordWidthPx = estimateTextWidthPx(parts.segment, effectiveOpeningFontSize);
+  const spaceAfterPx = Math.max(0, effectiveOpeningFontSize * settings.spaceAfter * 0.5);
+  const dropLines = Math.max(1, settings.dropLines);
+  const windowLineCount = position === "dropped" ? dropLines : 1;
+  const openingWordHeightPx = position === "dropped"
+    ? Math.max(baseLineHeight * dropLines, effectiveOpeningFontSize * 1.05)
+    : Math.max(baseLineHeight, effectiveOpeningFontSize * 1.05);
+  const reserveWidthPx = Math.ceil(openingWordWidthPx + spaceAfterPx);
+  const remainingText = String(parts.suffix || "").replace(/^\s+/, "");
 
   return {
     source: "opening_word.js",
@@ -68,18 +86,34 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
     position,
     paragraphStart: true,
     continuesFromPrevious: false,
+    metrics: {
+      openingFontSizePx: fontSizePx,
+      openingLineHeightPx: openingWordHeightPx,
+      openingWordWidthPx,
+      openingWordHeightPx,
+      reserveWidthPx,
+      dropLines,
+      spaceAfterPx,
+    },
+    flow: {
+      firstLineText: remainingText,
+      remainingText,
+      firstLineWidthReductionPx: reserveWidthPx,
+      windowLineCount,
+      windowWidthPx: reserveWidthPx,
+    },
     style: {
       fontFamily: fontFamily(settings.font),
       fontSizePx,
       fontSizePercent: settings.size,
       fontWeight: normalizeWeight(settings.weight),
-      dropLines: settings.dropLines,
+      dropLines,
       spaceAfterEm: settings.spaceAfter,
     },
   };
 }
 
-export function applyV9OpeningWordModelToLineElement(lineEl, model) {
+export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineText = "") {
   if (!lineEl || !model || lineEl.dataset.opwApplied === "1") return false;
   const { parts, style, position } = model;
   lineEl.textContent = "";
@@ -94,7 +128,8 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model) {
   span.style.setProperty("--opw-space-after", `${style.spaceAfterEm}em`);
   span.textContent = parts.segment;
   lineEl.appendChild(span);
-  lineEl.appendChild(document.createTextNode(parts.suffix));
+  const suffix = firstLineText || model.flow?.firstLineText || parts.suffix || "";
+  if (suffix) lineEl.appendChild(document.createTextNode(suffix));
   lineEl.classList.add("opw-host");
   lineEl.dataset.opwApplied = "1";
   lineEl.dataset.v9OpeningWordSource = "opening_word.js";
