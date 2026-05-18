@@ -2520,36 +2520,44 @@ export async function buildPages(container, paragraphs, config) {
           : policyCandidates.filter(c => c.kind === "visual-line-end" || c.kind === "adjusted-line-end")
         );
         splitInfo = chooseStepwiseSplit(unifiedCandidates);
-        if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
-          const semanticFallbackEnds = allowParagraphSplit
-            ? safeBreakCandidates(fullText, lineEnds, {
-                min: MIN_SPLIT,
-                max: fullText.length,
-                includeVisual: false,
-                includeSentence: true,
-                includePunctuation: true,
-                includeWordGap: false,
-              })
-            : [];
-          const emergencyWordFallback = allowParagraphSplit && !cfg.preventMidLineSplit
-            ? wordGapCandidates(fullText).find(n => n >= MIN_SPLIT && n < fullText.length)
-            : null;
-          const fallbackLen = lineEnds[0] || semanticFallbackEnds[0] || emergencyWordFallback || null;
-          if (fallbackLen) {
+        if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {          const fallbackCandidate = buildParagraphBreakCandidates(
+            fullText,
+            splitMetrics,
+            splitMainWidth,
+            v9SplitPolicy,
+            { source: "fallback" }
+          ).find(c => c.offset >= MIN_SPLIT && c.offset < fullText.length);
+
+          const fallbackLen = fallbackCandidate?.offset || null;
+if (fallbackLen) {
 
             const movedNotes = notesBeforeAnchor(fallbackLen);
 
             const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
 
-            if (allowParagraphSplit || movedHasAnchoredNote) {
+            if (allowParagraphSplit || movedHasAnchoredNote) {              const splitText = splitMainTextAtOffset(fullText, fallbackLen);
+              const splitNotes = splitNotesByAnchor(
+                target?.notes || [],
+                splitText.splitOffset,
+                fullText.length,
+                splitText.suffixBaseOffset
+              );
 
-              const firstHalf = { ...target, mainText: fullText.substring(0, fallbackLen).trimEnd(), notes: movedNotes, _continues: true };
+              const firstHalf = {
+                ...target,
+                mainText: splitText.prefixText,
+                notes: splitNotes.before,
+                _continues: true,
+              };
 
-              const secondHalf = { ...target, mainText: fullText.substring(fallbackLen).trimStart(), notes: notesFromAnchor(fallbackLen, movedNotes) };
+              const secondHalf = {
+                ...target,
+                mainText: splitText.suffixText,
+                notes: splitNotes.after,
+              };
 
               splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
-
-            }
+}
 
           }
         }
@@ -2612,36 +2620,40 @@ export async function buildPages(container, paragraphs, config) {
             return [...anchorlessFrom, ...anchoredFrom];
           };
 
-          const baseSlice = getSlice(baseN);
-          // gap rescue uses safe break candidates only
-          const visualRescueEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
-            .filter(n => n >= 2 && n < fullText.length)
-            .sort((a, b) => a - b);
-          const semanticRescueEnds = safeBreakCandidates(fullText, visualRescueEnds, {
-            min: 2,
-            max: fullText.length,
-            includeVisual: false,
-            includeSentence: true,
-            includePunctuation: true,
-            includeWordGap: false,
-          });
-          let rescueEnds = uniqueSortedBreakOffsets([
-            ...visualRescueEnds,
-            ...semanticRescueEnds,
-          ], 2, fullText.length);
-          if (carryActive) {
-            rescueEnds = visualRescueEnds.length
-              ? visualRescueEnds.slice(0, carryGapMaxMainLines())
-              : rescueEnds.slice(0, carryGapMaxMainLines() + 1);
-          }
-          for (const len of rescueEnds) {
-            const movedNotes = notesBeforeAnchor(len);
+          const baseSlice = getSlice(baseN);          const rescueCandidates = buildParagraphBreakCandidates(
+            fullText,
+            splitMetrics,
+            splitMainWidth,
+            v9SplitPolicy,
+            { source: "gap-rescue" }
+          ).filter(c => c.offset >= 2 && c.offset < fullText.length);
+
+          const limitedRescueCandidates = carryActive
+            ? rescueCandidates.slice(0, carryGapMaxMainLines() + 1)
+            : rescueCandidates;
+
+          for (const rescueCandidate of limitedRescueCandidates) {
+            const len = rescueCandidate.offset;
+const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
             const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-            if (noMidParagraph && !movedHasAnchoredNote) continue;
-            const firstHalf = { ...target, mainText: fullText.substring(0, len).trimEnd(), notes: movedNotes, _continues: true };
+            if (noMidParagraph && !movedHasAnchoredNote) continue;            const splitText = splitMainTextAtOffset(fullText, len);
+            const splitNotes = splitNotesByAnchor(
+              target?.notes || [],
+              splitText.splitOffset,
+              fullText.length,
+              splitText.suffixBaseOffset
+            );
+
+            const firstHalf = {
+              ...target,
+              mainText: splitText.prefixText,
+              notes: splitNotes.before,
+              _continues: true,
+            };
+
             const slice = [...baseSlice, firstHalf];
-            const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
             if (!tp || !tp.overflow || tp.overflow.mainText) continue;
             const commentaryCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0)
               + (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
@@ -2671,7 +2683,11 @@ export async function buildPages(container, paragraphs, config) {
             rescueBestScore = score;
             rescueBest = {
               firstHalf,
-              secondHalf: { ...target, mainText: fullText.substring(len).trimStart(), notes: notesFromAnchor(len, movedNotes) },
+              secondHalf: {
+                ...target,
+                mainText: splitText.suffixText,
+                notes: splitNotes.after,
+              },
               sliceIdx,
               baseN,
             };
@@ -2708,39 +2724,46 @@ export async function buildPages(container, paragraphs, config) {
             .filter(n => !moved.has(n))
             .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
           return [...anchorlessFrom, ...anchoredFrom];
-        };
-        const visualLineEnds = mainLineEndCandidates(secondText, splitMetrics, splitMainWidth)
-          .filter(n => n >= 2 && n <= secondText.length)
-          .sort((a, b) => a - b);
-        const firstVisualEnd = visualLineEnds[0];
-        const secondVisualEnd = visualLineEnds[1];
-        const extendEnds = [...new Set([
-          firstVisualEnd,
-          secondVisualEnd && secondVisualEnd <= Math.max(firstVisualEnd || 0, 1) * 2 ? secondVisualEnd : null,
-])]
-          .filter(n => n && n >= 2 && n <= secondText.length)
+        };        const extendEnds = buildParagraphBreakCandidates(
+          secondText,
+          splitMetrics,
+          splitMainWidth,
+          v9SplitPolicy,
+          { source: "extension-rescue" }
+        )
+          .filter(c => c.offset >= 2 && c.offset <= secondText.length)
+          .slice(0, 2)
+          .map(c => c.offset)
           .sort((a, b) => a - b);
         let bestExtended = null;
         let bestExtendedScore = currentFill;
         for (const len of extendEnds) {
           const movedNotes = notesBeforeAnchor(len);
           const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-          if (noMidParagraph && !movedHasAnchoredNote) continue;
-          const prefix = secondText.substring(0, len).trim();
-          const rest = secondText.substring(len).trim();
+          if (noMidParagraph && !movedHasAnchoredNote) continue;          const splitText = splitMainTextAtOffset(secondText, len);
+          const splitNotes = splitNotesByAnchor(
+            secondNotes,
+            splitText.splitOffset,
+            secondText.length,
+            splitText.suffixBaseOffset
+          );
+
+          const prefix = splitText.prefixText;
           if (!prefix) continue;
+
           const firstHalf = {
             ...splitInfo.firstHalf,
-            mainText: `${(splitInfo.firstHalf.mainText || '').trim()} ${prefix}`.trim(),
-            notes: [...(splitInfo.firstHalf.notes || []), ...movedNotes],
+            mainText: ((splitInfo.firstHalf.mainText || '').trim() + " " + prefix).trim(),
+            notes: [...(splitInfo.firstHalf.notes || []), ...splitNotes.before],
             _continues: true,
           };
+
           const secondHalf = {
             ...splitInfo.secondHalf,
-            mainText: rest,
-            notes: notesFromAnchor(len, movedNotes),
+            mainText: splitText.suffixText,
+            notes: splitNotes.after,
           };
-          const slice = [...getSlice(splitInfo.baseN), firstHalf];
+const slice = [...getSlice(splitInfo.baseN), firstHalf];
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
           const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
@@ -2816,52 +2839,44 @@ export async function buildPages(container, paragraphs, config) {
       };
 
       if (fullText.length >= MIN_EMERGENCY_SPLIT) {
-        const lineEnds = mainLineEndCandidates(fullText, splitMetrics, splitMainWidth)
-          .filter(n => n >= MIN_EMERGENCY_SPLIT && n < fullText.length)
-          .sort((a, b) => a - b);
+        const emergencyCandidate = buildParagraphBreakCandidates(
+          fullText,
+          splitMetrics,
+          splitMainWidth,
+          v9SplitPolicy,
+          { source: "emergency", emergency: true }
+        ).find(c => c.offset >= MIN_EMERGENCY_SPLIT && c.offset < fullText.length);
 
-        const semanticEnds = safeBreakCandidates(fullText, lineEnds, {
-          min: MIN_EMERGENCY_SPLIT,
-          max: fullText.length,
-          includeVisual: false,
-          includeSentence: true,
-          includePunctuation: true,
-          includeWordGap: false,
-        });
-
-        const wordEnds = !cfg.preventMidLineSplit
-          ? wordGapCandidates(fullText)
-              .filter(n => n >= MIN_EMERGENCY_SPLIT && n < fullText.length)
-              .sort((a, b) => a - b)
-          : [];
-
-        const fallbackLen = lineEnds[0] || semanticEnds[0] || wordEnds[0] || null;
-
-        if (fallbackLen) {
+        const fallbackLen = emergencyCandidate?.offset || null;
+if (fallbackLen) {
           const movedNotes = notesBeforeAnchor(fallbackLen);
           if (typeof console !== "undefined") {
             console.warn(
               "[v9] emergency paragraph split: paragraph is larger than one page; " +
-              (lineEnds[0]
-                ? "using natural line-end split."
-                : semanticEnds[0]
-                  ? "using semantic safe split."
-                  : "using word-end split emergency fallback.")
+              (emergencyCandidate
+                ? ("using " + emergencyCandidate.kind + " split.")
+                : "no legal emergency split point.")
             );
-          }
+          }          const splitText = splitMainTextAtOffset(fullText, fallbackLen);
+          const splitNotes = splitNotesByAnchor(
+            target?.notes || [],
+            splitText.splitOffset,
+            fullText.length,
+            splitText.suffixBaseOffset
+          );
 
           splitInfo = {
             firstHalf: {
               ...target,
-              mainText: fullText.substring(0, fallbackLen).trimEnd(),
-              notes: movedNotes,
+              mainText: splitText.prefixText,
+              notes: splitNotes.before,
               _continues: true,
               _emergencySplit: true,
             },
             secondHalf: {
               ...target,
-              mainText: fullText.substring(fallbackLen).trimStart(),
-              notes: notesFromAnchor(fallbackLen, movedNotes),
+              mainText: splitText.suffixText,
+              notes: splitNotes.after,
             },
             sliceIdx,
             baseN,
