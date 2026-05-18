@@ -1,6 +1,5 @@
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
-import { buildExportCoverPage } from "./export_cover_page.js";
 
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
@@ -183,6 +182,7 @@ function replaceWithPlaceholder(el, label = "") {
 }
 
 function sanitizeCloneForPdf(clone) {
+  clone.querySelectorAll("style,link,script,noscript,template").forEach((el) => el.remove());
   clone.querySelectorAll("img, picture, source").forEach((img) => replaceWithPlaceholder(img, img.alt || ""));
   clone.querySelectorAll("video, iframe, canvas, object, embed").forEach((el) => replaceWithPlaceholder(el, ""));
 
@@ -279,6 +279,161 @@ async function canvasToPdfImage(canvas, ctx) {
   return {
     bytes: await canvasToJpegBytes(canvas),
     filter: "DCTDecode",
+  };
+}
+
+function readStorage(key) {
+  try {
+    return localStorage.getItem(key) || "";
+  } catch (_) {
+    return "";
+  }
+}
+
+function shortMeta(value, fallback = "—", max = 90) {
+  const s = String(value ?? "").trim();
+  if (!s) return fallback;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+function formatExportTime(date = new Date()) {
+  try {
+    return new Intl.DateTimeFormat("he-IL", {
+      timeZone: "Asia/Jerusalem",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).format(date);
+  } catch (_) {
+    return date.toISOString();
+  }
+}
+
+function drawRtlText(ctx, text, x, y, maxWidth, lineHeight, options = {}) {
+  const words = String(text || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return y;
+  let line = "";
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, y, maxWidth);
+      y += lineHeight;
+      line = word;
+      if (options.maxY && y > options.maxY) return y;
+    } else {
+      line = test;
+    }
+  }
+  if (line) {
+    ctx.fillText(line, x, y, maxWidth);
+    y += lineHeight;
+  }
+  return y;
+}
+
+async function renderPdfCoverImage({ contentPageCount, filename }) {
+  const scale = PDF_EXPORT_SCALE;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(PAGE_CSS_WIDTH * scale);
+  canvas.height = Math.round(PAGE_CSS_HEIGHT * scale);
+  const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(scale, scale);
+  ctx.direction = "rtl";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+
+  const right = 348;
+  const left = 32;
+  const width = right - left;
+  let y = 34;
+
+  ctx.fillStyle = "#111827";
+  ctx.font = "800 24px 'David Libre', 'Times New Roman', serif";
+  ctx.fillText("רב טקסט", right, y, width);
+  y += 33;
+
+  ctx.font = "700 14px 'David Libre', 'Times New Roman', serif";
+  ctx.fillStyle = "#374151";
+  ctx.fillText("דף מידע טכני לייצוא", right, y, width);
+  y += 29;
+
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(left, y);
+  ctx.lineTo(right, y);
+  ctx.stroke();
+  y += 18;
+
+  ctx.font = "400 11.5px 'David Libre', 'Times New Roman', serif";
+  ctx.fillStyle = "#374151";
+  y = drawRtlText(ctx, "דף זה נוצר אוטומטית בתחילת הייצוא כדי למנוע פתיחה בעמוד ריק ולתעד את פרטי הייצוא.", right, y, width, 16);
+  y += 8;
+
+  const rows = [
+    ["מערכת", "רב טקסט — Unified Text Editor"],
+    ["סוג יצוא", "PDF"],
+    ["שעת יצוא", formatExportTime()],
+    ["מספר עמודי תוכן", String(contentPageCount || 0)],
+    ["שם קובץ", shortMeta(filename || "ravtext-preview.pdf")],
+    ["כתובת מקור", shortMeta(location?.href || "")],
+    ["דפדפן", shortMeta(navigator?.userAgent || "", "—", 120)],
+    ["מצב גפ״ת", readStorage("ravtext.talmudLayout") === "1" ? "פעיל" : "כבוי"],
+    ["זרמי גפ״ת", shortMeta(readStorage("ravtext.talmudLayout.streams"))],
+    ["רוחב ראשי", shortMeta(readStorage("ravtext.talmudLayout.mainWidth"))],
+    ["רווח צד", shortMeta(readStorage("ravtext.talmudLayout.sideGap"))],
+  ];
+
+  const boxX = left;
+  const boxY = y;
+  const boxW = width;
+  const rowH = 24;
+  const boxH = rowH * rows.length + 12;
+  ctx.fillStyle = "#fafafa";
+  ctx.fillRect(boxX, boxY, boxW, boxH);
+  ctx.strokeStyle = "#d1d5db";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+  y = boxY + 9;
+  for (const [label, value] of rows) {
+    ctx.fillStyle = "#6b7280";
+    ctx.font = "700 10.5px 'David Libre', 'Times New Roman', serif";
+    ctx.fillText(label, right - 8, y, 88);
+
+    ctx.fillStyle = "#111827";
+    ctx.font = "400 10.5px 'David Libre', 'Times New Roman', serif";
+    ctx.fillText(String(value || "—"), right - 108, y, 210);
+
+    ctx.strokeStyle = "#e5e7eb";
+    ctx.beginPath();
+    ctx.moveTo(boxX + 8, y + rowH - 7);
+    ctx.lineTo(boxX + boxW - 8, y + rowH - 7);
+    ctx.stroke();
+    y += rowH;
+  }
+
+  ctx.strokeStyle = "#e5e7eb";
+  ctx.beginPath();
+  ctx.moveTo(left, 499);
+  ctx.lineTo(right, 499);
+  ctx.stroke();
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "400 9.5px 'David Libre', 'Times New Roman', serif";
+  drawRtlText(ctx, "נוצר אוטומטית על ידי RavText. דף זה אינו חלק מתוכן המסמך המקורי.", right, 508, width, 13);
+
+  const pdfImage = await canvasToPdfImage(canvas, ctx);
+  return {
+    width: canvas.width,
+    height: canvas.height,
+    ...pdfImage,
   };
 }
 
@@ -443,10 +598,11 @@ function shouldRetryWithLegacyCss(err) {
   return isImageDecodeError(err) || isCanvasSecurityError(err);
 }
 
-async function renderAllPages(pages, cssText, { onProgress = null, includeBackgrounds = false } = {}) {
+async function renderAllPages(pages, cssText, { onProgress = null, includeBackgrounds = false, progressOffset = 0, progressTotal = null } = {}) {
   const images = [];
+  const total = progressTotal || pages.length;
   for (let i = 0; i < pages.length; i++) {
-    onProgress && onProgress(i + 1, pages.length);
+    onProgress && onProgress(progressOffset + i + 1, total);
     await nextFrame();
     images.push(await renderPageToPdfImage(pages[i], cssText, PDF_EXPORT_SCALE, { includeBackgrounds }));
   }
@@ -461,12 +617,12 @@ export async function downloadPagesAsPdf(
   const pages = Array.from(pagesContainer.querySelectorAll(PRINTABLE_PAGE_SELECTOR));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
-  const coverPage = buildExportCoverPage({
-    mode: "PDF",
+  const totalPages = pages.length + 1;
+  onProgress && onProgress(1, totalPages);
+  const coverImage = await renderPdfCoverImage({
     contentPageCount: pages.length,
     filename,
   });
-  const exportPages = [coverPage, ...pages];
 
   const legacyCssText = collectLegacyCssText();
   let cssText = legacyCssText;
@@ -476,14 +632,24 @@ export async function downloadPagesAsPdf(
     console.warn("PDF self-contained CSS snapshot failed, using legacy CSS:", err);
   }
 
-  let images;
+  let pageImages;
   try {
-    images = await renderAllPages(exportPages, cssText, { onProgress, includeBackgrounds });
+    pageImages = await renderAllPages(pages, cssText, {
+      onProgress,
+      includeBackgrounds,
+      progressOffset: 1,
+      progressTotal: totalPages,
+    });
   } catch (err) {
     if (cssText !== legacyCssText && shouldRetryWithLegacyCss(err)) {
       console.warn("PDF snapshot render failed, retrying with legacy CSS:", err);
       try {
-        images = await renderAllPages(exportPages, legacyCssText, { onProgress, includeBackgrounds });
+        pageImages = await renderAllPages(pages, legacyCssText, {
+          onProgress,
+          includeBackgrounds,
+          progressOffset: 1,
+          progressTotal: totalPages,
+        });
       } catch (legacyErr) {
         if (fallbackToPrint && isCanvasSecurityError(legacyErr)) {
           await nextFrame();
@@ -501,7 +667,7 @@ export async function downloadPagesAsPdf(
     }
   }
 
-  const pdfBlob = buildPdf(images);
+  const pdfBlob = buildPdf([coverImage, ...pageImages]);
   const url = URL.createObjectURL(pdfBlob);
   const a = document.createElement("a");
   a.href = url;
