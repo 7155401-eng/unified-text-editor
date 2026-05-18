@@ -55,17 +55,29 @@ function estimateTextWidthPx(text, fontSizePx) {
   return Math.ceil(sample.length * Math.max(7, size * 0.56));
 }
 
+function measureOpeningTextWidthPx(text, fontSizePx, style) {
+  const sample = String(text || "").replace(/\s+/g, " ").trim();
+  if (!sample) return 0;
+  const size = Number(fontSizePx) > 0 ? Number(fontSizePx) : 16;
+  if (typeof document !== "undefined") {
+    try {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.direction = "rtl";
+        ctx.font = `${style?.fontWeight || "700"} ${size}px ${style?.fontFamily || "serif"}`;
+        const width = ctx.measureText(sample).width;
+        if (Number.isFinite(width) && width > 0) return Math.ceil(width * 1.08);
+      }
+    } catch (_) {
+      // fallback below
+    }
+  }
+  return estimateTextWidthPx(sample, size);
+}
+
 export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const settings = normalizeSettingsForV9(rawSettings);
-
-  // V9 opening words are intentionally disabled until they are measured as
-  // part of line construction. The previous V9 layer removed the opening
-  // segment, narrowed strips, and then rendered a larger DOM segment after
-  // pagination. That can move words after V9 already measured the page and can
-  // also apply an opening word to continuation text. Re-enable only from a
-  // future flow-time implementation by passing an explicit internal flag.
-  if (rawSettings?.v9MeasuredOpeningWordEnabled !== true) return null;
-
   if (!settings.enabled) return null;
   if (options.isParagraphStart === false) return null;
   if (options.continuesFromPrevious) return null;
@@ -78,7 +90,15 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const baseLineHeight = Number(options.baseLineHeight) || (baseFontSize > 0 ? baseFontSize * 1.55 : 0);
   const fontSizePx = baseFontSize > 0 ? (baseFontSize * settings.size) / 100 : null;
   const effectiveOpeningFontSize = fontSizePx || baseFontSize || 16;
-  const openingWordWidthPx = estimateTextWidthPx(parts.segment, effectiveOpeningFontSize);
+  const style = {
+    fontFamily: fontFamily(settings.font),
+    fontSizePx,
+    fontSizePercent: settings.size,
+    fontWeight: normalizeWeight(settings.weight),
+    dropLines: settings.dropLines,
+    spaceAfterEm: settings.spaceAfter,
+  };
+  const openingWordWidthPx = measureOpeningTextWidthPx(parts.segment, effectiveOpeningFontSize, style);
   const spaceAfterPx = Math.max(0, effectiveOpeningFontSize * settings.spaceAfter * 0.5);
   const dropLines = Math.max(1, settings.dropLines);
   const windowLineCount = position === "dropped" ? dropLines : 1;
@@ -89,7 +109,7 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const remainingText = String(parts.suffix || "").replace(/^\s+/, "");
 
   return {
-    source: "opening_word.js",
+    source: "opening_word.js:v9-measured",
     parts,
     settings,
     position,
@@ -111,14 +131,7 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
       windowLineCount,
       windowWidthPx: reserveWidthPx,
     },
-    style: {
-      fontFamily: fontFamily(settings.font),
-      fontSizePx,
-      fontSizePercent: settings.size,
-      fontWeight: normalizeWeight(settings.weight),
-      dropLines,
-      spaceAfterEm: settings.spaceAfter,
-    },
+    style,
   };
 }
 
@@ -132,7 +145,9 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   span.style.fontFamily = style.fontFamily;
   span.style.fontSize = `${style.fontSizePercent}%`;
   span.style.fontWeight = style.fontWeight;
-  if (position === "raised") span.style.marginLeft = `${style.spaceAfterEm}em`;
+  span.style.display = "inline-block";
+  span.style.verticalAlign = position === "dropped" ? "top" : "baseline";
+  span.style.marginLeft = `${style.spaceAfterEm}em`;
   span.style.setProperty("--opw-drop-lines", String(style.dropLines));
   span.style.setProperty("--opw-space-after", `${style.spaceAfterEm}em`);
   span.textContent = parts.segment;
@@ -141,7 +156,9 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   if (suffix) lineEl.appendChild(document.createTextNode(suffix));
   lineEl.classList.add("opw-host");
   lineEl.dataset.opwApplied = "1";
-  lineEl.dataset.v9OpeningWordSource = "opening_word.js";
+  lineEl.dataset.v9OpeningWordSource = "opening_word.js:v9-measured";
   lineEl.dataset.v9OpeningWordPosition = position;
+  lineEl.dataset.v9OpeningWordWidthPx = String(Math.round(Number(model.metrics?.openingWordWidthPx) || 0));
+  lineEl.dataset.v9OpeningWordReservePx = String(Math.round(Number(model.metrics?.reserveWidthPx) || 0));
   return true;
 }
