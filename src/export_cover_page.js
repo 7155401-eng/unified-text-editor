@@ -69,8 +69,9 @@ const PRINT_MARGIN_SAFE_STYLE = `
     Chrome may ignore zero @page margin or print with default device margins.
     A full A4 zoom (2.0887) can then become slightly taller than the printable
     area, and break-inside:avoid may open a blank sheet before the first page.
-    This late body-level style is embedded in the first export page so it wins
-    over the snapshot CSS that was already written into <head>.
+    This late body-level style is embedded only in HTML debug exports. It must
+    not be included in PDF cover rendering, because the PDF path turns every
+    page into an SVG image and embedded body <style> can break image decoding.
   */
   body.ravtext-debug-snapshot #pages-container,
   body.ravtext-debug-snapshot #pages-container.pages-container {
@@ -113,6 +114,7 @@ export function buildExportCoverPage(options = {}) {
     contentPageCount = 0,
     filename = "ravtext-preview.pdf",
     generatedAt = new Date(),
+    includePrintPatch = false,
     note = "דף זה נוצר אוטומטית בתחילת הייצוא כדי למנוע פתיחה בעמוד ריק ולתעד את פרטי הייצוא.",
   } = options;
 
@@ -147,7 +149,7 @@ export function buildExportCoverPage(options = {}) {
     .join("");
 
   page.innerHTML = `
-    ${PRINT_MARGIN_SAFE_STYLE}
+    ${includePrintPatch ? PRINT_MARGIN_SAFE_STYLE : ""}
     <div>
       <div style="border-bottom:2px solid #111827;padding-bottom:10px;margin-bottom:18px;">
         <div style="font-size:22px;font-weight:800;letter-spacing:.02em;line-height:1.2;">רב טקסט</div>
