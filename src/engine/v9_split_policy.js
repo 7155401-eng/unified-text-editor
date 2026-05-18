@@ -20,13 +20,9 @@ export function buildV9SplitPolicy(cfg = {}) {
     preventMidLineSplit: cfg.preventMidLineSplit !== false,
     allowAnchoredNotePrefixSplit: true,
     allowEmergencyLongParagraphSplit: true,
-
-    // 2026-05-18: page-break safety tightening.
-    // A page break must not end on an arbitrary word gap. Even emergency splits
-    // should prefer a visual/adjusted line boundary. Set cfg.allowEmergencyWordGap
-    // explicitly to true only for a deliberate last-resort diagnostic mode.
     allowWordGapOnlyInEmergency: cfg.allowEmergencyWordGap === true,
-
+    minLineEdgeFill: Math.max(Number(cfg.minLineEdgeFill) || 0.82, 0.82),
+    maxAdjustedLineEdgeFill: Number(cfg.maxAdjustedLineEdgeFill) > 0 ? Number(cfg.maxAdjustedLineEdgeFill) : 1.06,
     minGoodPageFill: Math.max(Number(cfg.gapFillMinRatio) || 0.82, 0.82),
     minAcceptablePageFill: 0.68,
     rejectSparsePages: true,
@@ -57,7 +53,15 @@ export function uniqueCandidatesByOffset(candidates = []) {
   return [...best.values()].sort((a, b) => b.priority - a.priority || b.offset - a.offset);
 }
 
-export function mainLineEndCandidatesForV9(text, metrics, widthPx) {
+export function acceptableV9LineEdge({ lineWidth, widthPx, wordsInLine }, policy = {}) {
+  if (!widthPx || !Number.isFinite(lineWidth) || lineWidth <= 0) return false;
+  const fill = lineWidth / widthPx;
+  const minFill = Number(policy.minLineEdgeFill) || 0.82;
+  if (wordsInLine < 2) return fill >= Math.max(0.96, minFill);
+  return fill >= minFill;
+}
+
+export function mainLineEndCandidatesForV9(text, metrics, widthPx, policy = {}) {
   if (!text || !metrics || !widthPx) return [];
   const out = [];
   const re = /\S+/g;
@@ -71,13 +75,13 @@ export function mainLineEndCandidatesForV9(text, metrics, widthPx) {
       wordsInLine += 1;
       lastEnd = m.index + m[0].length;
     } else {
-      if (lastEnd > 0) out.push(lastEnd);
+      if (lastEnd > 0 && acceptableV9LineEdge({ lineWidth, widthPx, wordsInLine }, policy)) out.push(lastEnd);
       lineWidth = wordW;
       wordsInLine = 1;
       lastEnd = m.index + m[0].length;
     }
   }
-  if (lastEnd > 0) out.push(lastEnd);
+  if (lastEnd > 0 && acceptableV9LineEdge({ lineWidth, widthPx, wordsInLine }, policy)) out.push(lastEnd);
   return out;
 }
 
@@ -109,13 +113,15 @@ export function wordEndCandidatesForV9(text) {
   return out;
 }
 
-export function acceptableV9AdjustedBreakTail({ lineWidth, widthPx, wordsInLine }) {
+export function acceptableV9AdjustedBreakTail({ lineWidth, widthPx, wordsInLine }, policy = {}) {
   if (!widthPx || wordsInLine < 2) return false;
   const fill = lineWidth / widthPx;
-  return fill >= 0.72 && fill <= 1.06;
+  const minFill = Number(policy.minLineEdgeFill) || 0.82;
+  const maxFill = Number(policy.maxAdjustedLineEdgeFill) || 1.06;
+  return fill >= minFill && fill <= maxFill;
 }
 
-export function adjustableSafeBreakCandidates(text, metrics, widthPx, visualLineEnds = []) {
+export function adjustableSafeBreakCandidates(text, metrics, widthPx, visualLineEnds = [], policy = {}) {
   if (!text || !metrics || !widthPx) return [];
   const visualSet = new Set(visualLineEnds || []);
   const out = [];
@@ -135,7 +141,7 @@ export function adjustableSafeBreakCandidates(text, metrics, widthPx, visualLine
       continue;
     }
     const last = lineWords[lineWords.length - 1];
-    if (last && acceptableV9AdjustedBreakTail({ lineWidth, widthPx, wordsInLine: lineWords.length })) out.push(last.end);
+    if (last && acceptableV9AdjustedBreakTail({ lineWidth, widthPx, wordsInLine: lineWords.length }, policy)) out.push(last.end);
     lineWords = [w];
     lineWidth = wordW;
   }
@@ -144,64 +150,28 @@ export function adjustableSafeBreakCandidates(text, metrics, widthPx, visualLine
 
 export function buildParagraphBreakCandidates(text, metrics, widthPx, policy = {}, opts = {}) {
   const source = opts.source || "normal";
-  const visual = mainLineEndCandidatesForV9(text, metrics, widthPx);
-  const adjusted = adjustableSafeBreakCandidates(text, metrics, widthPx, visual);
+  const visual = mainLineEndCandidatesForV9(text, metrics, widthPx, policy);
+  const adjusted = adjustableSafeBreakCandidates(text, metrics, widthPx, visual, policy);
   const lineSafeOffsets = new Set([...visual, ...adjusted]);
   const candidates = [];
 
-  for (const offset of visual) {
-    candidates.push(makeBreakCandidate({
-      kind: "visual-line-end",
-      offset,
-      source,
-      reason: "natural visual line end",
-    }));
-  }
+  for (const offset of visual) candidates.push(makeBreakCandidate({ kind: "visual-line-end", offset, source, reason: "filled visual line edge" }));
+  for (const offset of adjusted) candidates.push(makeBreakCandidate({ kind: "adjusted-line-end", offset, source, reason: "justifiable line edge" }));
 
-  for (const offset of adjusted) {
-    candidates.push(makeBreakCandidate({
-      kind: "adjusted-line-end",
-      offset,
-      source,
-      reason: "adjusted safe line end",
-    }));
-  }
-
-  // 2026-05-18: semantic punctuation is not an independent page-break.
-  // Sentence/punctuation ends are allowed only when the same offset is already
-  // line-safe. This prevents page breaks at the end of a word in the middle of
-  // a visual line. Because the visual/adjusted candidate has higher priority,
-  // the semantic hit acts as documentation/diagnostic parity rather than a
-  // separate lower-quality break path.
   for (const offset of sentenceEndCandidatesForV9(text)) {
     if (!lineSafeOffsets.has(offset)) continue;
-    candidates.push(makeBreakCandidate({
-      kind: "sentence-end",
-      offset,
-      source,
-      reason: "sentence end on line-safe boundary",
-    }));
+    candidates.push(makeBreakCandidate({ kind: "sentence-end", offset, source, reason: "sentence end on line-safe boundary" }));
   }
 
   for (const offset of punctuationEndCandidatesForV9(text)) {
     if (!lineSafeOffsets.has(offset)) continue;
-    candidates.push(makeBreakCandidate({
-      kind: "punctuation-end",
-      offset,
-      source,
-      reason: "punctuation end on line-safe boundary",
-    }));
+    candidates.push(makeBreakCandidate({ kind: "punctuation-end", offset, source, reason: "punctuation end on line-safe boundary" }));
   }
 
   if (opts.emergency && policy.allowWordGapOnlyInEmergency === true) {
     for (const offset of wordEndCandidatesForV9(text)) {
       if (lineSafeOffsets.has(offset)) continue;
-      candidates.push(makeBreakCandidate({
-        kind: "word-gap",
-        offset,
-        source: "emergency",
-        reason: "explicitly enabled emergency word gap",
-      }));
+      candidates.push(makeBreakCandidate({ kind: "word-gap", offset, source: "emergency", reason: "explicitly enabled emergency word gap" }));
     }
   }
 
