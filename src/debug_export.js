@@ -45,6 +45,7 @@ function buildContainerHtmlWithCover(container, filename) {
     mode: "HTML Debug / Print",
     contentPageCount,
     filename,
+    includePrintPatch: true,
   });
   clone.insertBefore(cover, clone.firstChild);
   return { html: clone.outerHTML, contentPageCount };
