@@ -1,7 +1,8 @@
-import fs from 'node:fs';
+﻿import fs from 'node:fs';
 
 function patchFile(path, patcher) {
-  const before = fs.readFileSync(path, 'utf8');
+  const beforeRaw = fs.readFileSync(path, 'utf8');
+  const before = beforeRaw.replace(/\r\n/g, "\n");
   const after = patcher(before);
   if (after !== before) {
     fs.writeFileSync(path, after);
@@ -224,3 +225,4 @@ function patchVilnaV9Apply(source) {
 
 patchFile('src/vilna_v9.js', patchVilnaV9);
 patchFile('src/vilna_v9_apply.js', patchVilnaV9Apply);
+
