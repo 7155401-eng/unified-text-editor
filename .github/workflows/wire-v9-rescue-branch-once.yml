@@ -1,0 +1,37 @@
+name: Wire V9 Rescue Branch Once
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  wire-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout rescue branch
+        uses: actions/checkout@v4
+        with:
+          ref: v9-rescue-split-policy-20260518
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run rescue wiring codemod
+        run: node tools/wire_v9_rescue_policy.mjs
+      - name: Remove codemod after use
+        run: rm -f tools/wire_v9_rescue_policy.mjs
+      - name: Commit rescue wiring to branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/vilna_v9.js tools/wire_v9_rescue_policy.mjs
+          if git diff --cached --quiet; then
+            echo "No branch changes to commit"
+          else
+            git commit -m "Route V9 rescue splits through split policy"
+            git push origin HEAD:v9-rescue-split-policy-20260518
+          fi
