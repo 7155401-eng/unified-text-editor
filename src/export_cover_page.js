@@ -62,6 +62,51 @@ function metadataRows({ mode, contentPageCount, filename, generatedAt }) {
   return rows;
 }
 
+const PRINT_MARGIN_SAFE_STYLE = `
+<style>
+@media print {
+  /*
+    Chrome may ignore zero @page margin or print with default device margins.
+    A full A4 zoom (2.0887) can then become slightly taller than the printable
+    area, and break-inside:avoid may open a blank sheet before the first page.
+    This late body-level style is embedded in the first export page so it wins
+    over the snapshot CSS that was already written into <head>.
+  */
+  body.ravtext-debug-snapshot #pages-container,
+  body.ravtext-debug-snapshot #pages-container.pages-container {
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.ravtext-debug-snapshot #pages-container > .page,
+  body.ravtext-debug-snapshot #pages-container > .page:not(.measure-page) {
+    zoom: 1.86 !important;
+    margin: 0 auto !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  body.ravtext-debug-snapshot #pages-container > .page:first-of-type,
+  body.ravtext-debug-snapshot #pages-container > .ravtext-export-cover-page {
+    margin-top: 0 !important;
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
+
+  body.ravtext-debug-snapshot #pages-container > .page:last-of-type {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+}
+</style>`;
+
 export function buildExportCoverPage(options = {}) {
   const {
     mode = "PDF",
@@ -102,6 +147,7 @@ export function buildExportCoverPage(options = {}) {
     .join("");
 
   page.innerHTML = `
+    ${PRINT_MARGIN_SAFE_STYLE}
     <div>
       <div style="border-bottom:2px solid #111827;padding-bottom:10px;margin-bottom:18px;">
         <div style="font-size:22px;font-weight:800;letter-spacing:.02em;line-height:1.2;">רב טקסט</div>
