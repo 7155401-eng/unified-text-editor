@@ -76,6 +76,56 @@ function measureOpeningTextWidthPx(text, fontSizePx, style) {
   return estimateTextWidthPx(sample, size);
 }
 
+function toPx(value) {
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function scheduleOpeningWindowIndent(lineEl, model) {
+  if (!lineEl || !model || model.position !== "dropped") return;
+  const reserveWidthPx = Math.round(Number(model.metrics?.reserveWidthPx) || 0);
+  const windowLineCount = Math.max(1, Math.round(Number(model.flow?.windowLineCount) || Number(model.metrics?.dropLines) || 1));
+  if (reserveWidthPx <= 0 || windowLineCount <= 1) return;
+
+  const apply = () => {
+    const pageEl = lineEl.parentElement;
+    if (!pageEl || !pageEl.querySelectorAll) return;
+
+    const hostTop = toPx(lineEl.style.top);
+    const hostWidth = toPx(lineEl.style.width);
+    const lineHeight = toPx(lineEl.style.lineHeight) || toPx(lineEl.style.height);
+    if (hostWidth <= reserveWidthPx + 24 || lineHeight <= 0) return;
+
+    const hostRole = lineEl.dataset.v9Role || "";
+    const hostBoxId = lineEl.dataset.v9BoxId || "";
+    const windowBottom = hostTop + lineHeight * windowLineCount + 0.5;
+    let adjusted = 0;
+
+    for (const el of Array.from(pageEl.querySelectorAll(".v9-line"))) {
+      if (el === lineEl || el.dataset.v9OpeningWindowAdjusted === "1") continue;
+      if (hostRole && el.dataset.v9Role !== hostRole) continue;
+      if (hostBoxId && el.dataset.v9BoxId !== hostBoxId) continue;
+
+      const top = toPx(el.style.top);
+      if (top <= hostTop + 0.5 || top >= windowBottom) continue;
+
+      const currentWidth = toPx(el.style.width);
+      const targetWidth = Math.max(24, currentWidth - reserveWidthPx);
+      if (currentWidth <= targetWidth + 1 || currentWidth <= hostWidth - reserveWidthPx + 2) continue;
+
+      el.style.width = `${targetWidth}px`;
+      el.dataset.v9OpeningWindowAdjusted = "1";
+      el.dataset.v9OpeningWindowReservePx = String(reserveWidthPx);
+      adjusted += 1;
+    }
+
+    lineEl.dataset.v9OpeningWindowAdjustedLines = String(adjusted);
+  };
+
+  if (typeof queueMicrotask === "function") queueMicrotask(apply);
+  else setTimeout(apply, 0);
+}
+
 export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const settings = normalizeSettingsForV9(rawSettings);
   const continuesFromPrevious = !!(
@@ -169,5 +219,6 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   lineEl.dataset.v9OpeningWordPosition = position;
   lineEl.dataset.v9OpeningWordWidthPx = String(Math.round(Number(model.metrics?.openingWordWidthPx) || 0));
   lineEl.dataset.v9OpeningWordReservePx = String(Math.round(Number(model.metrics?.reserveWidthPx) || 0));
+  scheduleOpeningWindowIndent(lineEl, model);
   return true;
 }
