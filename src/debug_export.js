@@ -6,6 +6,9 @@
 //   toggleProblemHighlight(container)    — overlays colored borders on problems
 
 import { buildSelfContainedCssSnapshot } from "./export_snapshot_css.js";
+import { buildExportCoverPage } from "./export_cover_page.js";
+
+const PRINTABLE_PAGE_SELECTOR = ".page:not(.page-placeholder):not(.ravtext-empty-page)";
 
 function timestamp() {
   const d = new Date();
@@ -32,6 +35,19 @@ function triggerDownload(filename, content, mime = "text/plain") {
 // הצילום נפתח עם פונט ברירת־מחדל ורוחב האותיות שונה → באגי מתיחה נעלמים.
 async function buildSelfContainedSnapshot() {
   return await buildSelfContainedCssSnapshot();
+}
+
+function buildContainerHtmlWithCover(container, filename) {
+  const clone = container.cloneNode(true);
+  clone.querySelectorAll(".page-placeholder,.ravtext-empty-page").forEach((el) => el.remove());
+  const contentPageCount = clone.querySelectorAll(PRINTABLE_PAGE_SELECTOR).length;
+  const cover = buildExportCoverPage({
+    mode: "HTML Debug / Print",
+    contentPageCount,
+    filename,
+  });
+  clone.insertBefore(cover, clone.firstChild);
+  return { html: clone.outerHTML, contentPageCount };
 }
 
 const PRINT_SAFE_SNAPSHOT_CSS = `
@@ -119,7 +135,8 @@ const PRINT_SAFE_SNAPSHOT_CSS = `
     page-break-after: always !important;
   }
 
-  body.ravtext-debug-snapshot #pages-container > .page:first-of-type {
+  body.ravtext-debug-snapshot #pages-container > .page:first-of-type,
+  body.ravtext-debug-snapshot #pages-container > .ravtext-export-cover-page {
     margin-top: 0 !important;
     break-before: auto !important;
     page-break-before: auto !important;
@@ -149,12 +166,14 @@ export async function downloadPagesAsHtml(container) {
     return;
   }
   const cssBlob = await buildSelfContainedSnapshot();
-  const containerHTML = container.outerHTML;
+  const outputFilename = `ravtext-debug-${timestamp()}.html`;
+  const { html: containerHTML, contentPageCount } = buildContainerHtmlWithCover(container, outputFilename);
   const meta = {
     timestamp: new Date().toISOString(),
     url: window.location.href,
     userAgent: navigator.userAgent,
-    pageCount: container.querySelectorAll(".page:not(.page-placeholder)").length,
+    pageCount: contentPageCount,
+    includesTechnicalCover: true,
     talmudEnabled: localStorage.getItem("ravtext.talmudLayout") === "1",
   };
 
@@ -180,7 +199,7 @@ ${Object.entries(meta).map(([k, v]) => `<dt>${k}</dt><dd>${String(v).slice(0, 20
 ${containerHTML}
 </body>
 </html>`;
-  triggerDownload(`ravtext-debug-${timestamp()}.html`, html, "text/html");
+  triggerDownload(outputFilename, html, "text/html");
 }
 
 /**
@@ -190,7 +209,7 @@ ${containerHTML}
 export function downloadDebugSnapshot(container) {
   if (!container) return;
   const pages = Array.from(
-    container.querySelectorAll(".page:not(.page-placeholder)")
+    container.querySelectorAll(PRINTABLE_PAGE_SELECTOR)
   );
   const snapshot = {
     timestamp: new Date().toISOString(),
@@ -292,7 +311,7 @@ export function toggleProblemHighlight(container) {
     style.textContent = HIGHLIGHT_CSS;
     document.head.appendChild(style);
   }
-  const pages = container.querySelectorAll(".page:not(.page-placeholder)");
+  const pages = container.querySelectorAll(PRINTABLE_PAGE_SELECTOR);
   pages.forEach((p, i) => {
     const block = p.querySelector(":scope > .talmud-layout");
     const issues = [];
