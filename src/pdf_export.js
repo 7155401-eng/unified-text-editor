@@ -10,6 +10,7 @@ const PDF_EXPORT_DPI = 240;
 const PDF_JPEG_QUALITY = 0.985;
 const A4_WIDTH_INCHES = 210 / 25.4;
 const PDF_EXPORT_SCALE = (PDF_EXPORT_DPI * A4_WIDTH_INCHES) / PAGE_CSS_WIDTH;
+const PRINTABLE_PAGE_SELECTOR = ".page:not(.page-placeholder):not(.ravtext-empty-page)";
 
 const EXPORT_CSS_VARS = [
   "--ravtext-page-font-family",
@@ -287,6 +288,7 @@ async function renderPageToPdfImage(pageEl, cssText, scale = PDF_EXPORT_SCALE, {
     ensureDemoAccess();
     applyDemoWatermarkToElement(clone);
   }
+  clone.classList.remove("ravtext-empty-page", "page-placeholder", "measure-page");
   clone.style.zoom = "1";
   clone.style.width = `${PAGE_CSS_WIDTH}px`;
   clone.style.height = `${PAGE_CSS_HEIGHT}px`;
@@ -455,7 +457,7 @@ export async function downloadPagesAsPdf(
   { filename = "ravtext-preview.pdf", onProgress = null, fallbackToPrint = false, includeBackgrounds = false } = {}
 ) {
   await waitForExportFonts();
-  const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder)"));
+  const pages = Array.from(pagesContainer.querySelectorAll(PRINTABLE_PAGE_SELECTOR));
   if (pages.length === 0) throw new Error("אין עמודים מוכנים להורדה");
 
   const legacyCssText = collectLegacyCssText();
