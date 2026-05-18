@@ -1,3 +1,4 @@
+import "./apply_v9_opening_word_layout_patch.mjs";
 import fs from "node:fs";
 import path from "node:path";
 
