@@ -57,6 +57,15 @@ function estimateTextWidthPx(text, fontSizePx) {
 
 export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const settings = normalizeSettingsForV9(rawSettings);
+
+  // V9 opening words are intentionally disabled until they are measured as
+  // part of line construction. The previous V9 layer removed the opening
+  // segment, narrowed strips, and then rendered a larger DOM segment after
+  // pagination. That can move words after V9 already measured the page and can
+  // also apply an opening word to continuation text. Re-enable only from a
+  // future flow-time implementation by passing an explicit internal flag.
+  if (rawSettings?.v9MeasuredOpeningWordEnabled !== true) return null;
+
   if (!settings.enabled) return null;
   if (options.isParagraphStart === false) return null;
   if (options.continuesFromPrevious) return null;
