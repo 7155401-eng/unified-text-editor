@@ -905,6 +905,20 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
 
     const flow = flowStreamThroughStrips(flowInput, paragraphStrips, mainMetrics, pageBottom);
     const lines = flow.lines || [];
+    for (let li = 0; li < lines.length; li++) {
+      const line = lines[li];
+      const firstToken = Array.isArray(line.wordTokens) && line.wordTokens.length
+        ? line.wordTokens[0]
+        : null;
+
+      line.v9ParagraphId = entry.id || "";
+      line.v9ParagraphIndex = entry.index || idx + 1;
+      line.v9ParagraphStart = li === 0 && !continued;
+      line.v9Continuation = !!continued;
+      line.v9SourceOffset = firstToken && Number.isFinite(firstToken.start)
+        ? firstToken.start
+        : 0;
+    }
     if (model && lines.length) {
       const first = lines[0];
       first.openingWord = { model, position: model.position, segment: model.parts?.segment || "" };
@@ -1464,6 +1478,11 @@ function buildPagePlan(pageContent, config) {
         openingWord: line.openingWord || null,
         openingHostFullWidth: line.openingHostFullWidth || null,
         openingWindow: !!line.openingWindow,
+        v9ParagraphId: line.v9ParagraphId || "",
+        v9ParagraphIndex: line.v9ParagraphIndex || null,
+        v9ParagraphStart: !!line.v9ParagraphStart,
+        v9Continuation: !!line.v9Continuation,
+        v9SourceOffset: Number.isFinite(line.v9SourceOffset) ? line.v9SourceOffset : 0,
         runs: line.runs || [],
       });
     }
@@ -2019,11 +2038,42 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (line.v9ParagraphId) lineEl.dataset.v9ParagraphId = String(line.v9ParagraphId);
+      if (line.v9ParagraphIndex !== null && line.v9ParagraphIndex !== undefined) {
+        lineEl.dataset.v9ParagraphIndex = String(line.v9ParagraphIndex);
+      }
+      if (typeof line.v9ParagraphStart === "boolean") {
+        lineEl.dataset.v9ParagraphStart = line.v9ParagraphStart ? "1" : "0";
+      }
+      if (typeof line.v9Continuation === "boolean") {
+        lineEl.dataset.v9Continuation = line.v9Continuation ? "1" : "0";
+      }
+      if (Number.isFinite(line.v9SourceOffset)) {
+        lineEl.dataset.v9SourceOffset = String(line.v9SourceOffset);
+      }
       // משה 2026-05-13: רינדור עם inline runs — בולד/הדגשה/צבע פר-מילה.
       // אם line.runs ריק, appendTextWithRuns ייצור textNode רגיל (זהה ל-textContent).
-      if (line.openingWord && line.openingWord.model) {
+      const canApplyV9OpeningWord =
+        line.openingWord &&
+        line.openingWord.model &&
+        line.v9ParagraphStart === true &&
+        line.v9Continuation !== true &&
+        (!Number.isFinite(line.v9SourceOffset) || line.v9SourceOffset === 0);
+
+      if (canApplyV9OpeningWord) {
         applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
       } else {
+        if (line.openingWord && line.openingWord.model && typeof window !== "undefined") {
+          window.__ravtextLastV9OpeningWordGuard = {
+            rejected: true,
+            reason: "not-original-paragraph-start",
+            paragraphId: line.v9ParagraphId || "",
+            paragraphStart: !!line.v9ParagraphStart,
+            continuation: !!line.v9Continuation,
+            sourceOffset: Number.isFinite(line.v9SourceOffset) ? line.v9SourceOffset : null,
+            text: String(line.text || "").slice(0, 80),
+          };
+        }
         appendTextWithRuns(lineEl, line.text, line.runs);
       }
       pageEl.appendChild(lineEl);
