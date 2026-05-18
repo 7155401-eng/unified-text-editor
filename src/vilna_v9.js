@@ -2520,7 +2520,8 @@ export async function buildPages(container, paragraphs, config) {
           : policyCandidates.filter(c => c.kind === "visual-line-end" || c.kind === "adjusted-line-end")
         );
         splitInfo = chooseStepwiseSplit(unifiedCandidates);
-        if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {          const fallbackCandidate = buildParagraphBreakCandidates(
+        if (!splitInfo && bestN_clean === 0 && sliceIdx === 0) {
+          const fallbackCandidate = buildParagraphBreakCandidates(
             fullText,
             splitMetrics,
             splitMainWidth,
@@ -2529,13 +2530,14 @@ export async function buildPages(container, paragraphs, config) {
           ).find(c => c.offset >= MIN_SPLIT && c.offset < fullText.length);
 
           const fallbackLen = fallbackCandidate?.offset || null;
-if (fallbackLen) {
+          if (fallbackLen) {
 
             const movedNotes = notesBeforeAnchor(fallbackLen);
 
             const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
 
-            if (allowParagraphSplit || movedHasAnchoredNote) {              const splitText = splitMainTextAtOffset(fullText, fallbackLen);
+            if (allowParagraphSplit || movedHasAnchoredNote) {
+              const splitText = splitMainTextAtOffset(fullText, fallbackLen);
               const splitNotes = splitNotesByAnchor(
                 target?.notes || [],
                 splitText.splitOffset,
@@ -2556,7 +2558,20 @@ if (fallbackLen) {
                 notes: splitNotes.after,
               };
 
-              splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
+              const fallbackPlan = buildPagePlan(
+                aggregateForV9([...getSlice(baseN), firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+                cfg
+              );
+              const fallbackScore = scoreV9PageCandidate(
+                fallbackPlan,
+                fallbackCandidate,
+                v9SplitPolicy,
+                { cfg, movedNotes: splitNotes.before, pageIdx, source: "fallback" }
+              );
+
+              if (fallbackScore.accept) {
+                splitInfo = { firstHalf, secondHalf, sliceIdx, baseN };
+              }
 }
 
           }
@@ -2620,7 +2635,8 @@ if (fallbackLen) {
             return [...anchorlessFrom, ...anchoredFrom];
           };
 
-          const baseSlice = getSlice(baseN);          const rescueCandidates = buildParagraphBreakCandidates(
+          const baseSlice = getSlice(baseN);
+          const rescueCandidates = buildParagraphBreakCandidates(
             fullText,
             splitMetrics,
             splitMainWidth,
@@ -2634,10 +2650,11 @@ if (fallbackLen) {
 
           for (const rescueCandidate of limitedRescueCandidates) {
             const len = rescueCandidate.offset;
-const movedNotes = notesBeforeAnchor(len);
+            const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
             const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-            if (noMidParagraph && !movedHasAnchoredNote) continue;            const splitText = splitMainTextAtOffset(fullText, len);
+            if (noMidParagraph && !movedHasAnchoredNote) continue;
+          const splitText = splitMainTextAtOffset(fullText, len);
             const splitNotes = splitNotesByAnchor(
               target?.notes || [],
               splitText.splitOffset,
@@ -2653,8 +2670,17 @@ const movedNotes = notesBeforeAnchor(len);
             };
 
             const slice = [...baseSlice, firstHalf];
-const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+            const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
             if (!tp || !tp.overflow || tp.overflow.mainText) continue;
+
+            const rescueScore = scoreV9PageCandidate(
+              tp,
+              rescueCandidate,
+              v9SplitPolicy,
+              { cfg, movedNotes: splitNotes.before, pageIdx, source: "gap-rescue" }
+            );
+            if (!rescueScore.accept) continue;
+
             const commentaryCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0)
               + (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
             if (commentaryCount === 0) continue;
@@ -2724,7 +2750,8 @@ const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, c
             .filter(n => !moved.has(n))
             .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
           return [...anchorlessFrom, ...anchoredFrom];
-        };        const extendEnds = buildParagraphBreakCandidates(
+        };
+        const extendCandidates = buildParagraphBreakCandidates(
           secondText,
           splitMetrics,
           splitMainWidth,
@@ -2733,14 +2760,15 @@ const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, c
         )
           .filter(c => c.offset >= 2 && c.offset <= secondText.length)
           .slice(0, 2)
-          .map(c => c.offset)
-          .sort((a, b) => a - b);
+          .sort((a, b) => a.offset - b.offset);
         let bestExtended = null;
         let bestExtendedScore = currentFill;
-        for (const len of extendEnds) {
+        for (const extendCandidate of extendCandidates) {
+          const len = extendCandidate.offset;
           const movedNotes = notesBeforeAnchor(len);
           const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-          if (noMidParagraph && !movedHasAnchoredNote) continue;          const splitText = splitMainTextAtOffset(secondText, len);
+          if (noMidParagraph && !movedHasAnchoredNote) continue;
+          const splitText = splitMainTextAtOffset(secondText, len);
           const splitNotes = splitNotesByAnchor(
             secondNotes,
             splitText.splitOffset,
@@ -2763,9 +2791,18 @@ const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, c
             mainText: splitText.suffixText,
             notes: splitNotes.after,
           };
-const slice = [...getSlice(splitInfo.baseN), firstHalf];
+          const slice = [...getSlice(splitInfo.baseN), firstHalf];
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
+
+          const extensionScore = scoreV9PageCandidate(
+            tp,
+            extendCandidate,
+            v9SplitPolicy,
+            { cfg, movedNotes: splitNotes.before, pageIdx, source: "extension-rescue" }
+          );
+          if (!extensionScore.accept) continue;
+
           const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
 
           // משה 2026-05-17 (v4): כאן Extension מנסה לסחוב שורה מהעמוד הבא
@@ -2848,7 +2885,7 @@ const slice = [...getSlice(splitInfo.baseN), firstHalf];
         ).find(c => c.offset >= MIN_EMERGENCY_SPLIT && c.offset < fullText.length);
 
         const fallbackLen = emergencyCandidate?.offset || null;
-if (fallbackLen) {
+        if (fallbackLen) {
           const movedNotes = notesBeforeAnchor(fallbackLen);
           if (typeof console !== "undefined") {
             console.warn(
@@ -2857,7 +2894,8 @@ if (fallbackLen) {
                 ? ("using " + emergencyCandidate.kind + " split.")
                 : "no legal emergency split point.")
             );
-          }          const splitText = splitMainTextAtOffset(fullText, fallbackLen);
+          }
+          const splitText = splitMainTextAtOffset(fullText, fallbackLen);
           const splitNotes = splitNotesByAnchor(
             target?.notes || [],
             splitText.splitOffset,
@@ -2865,22 +2903,43 @@ if (fallbackLen) {
             splitText.suffixBaseOffset
           );
 
-          splitInfo = {
-            firstHalf: {
-              ...target,
-              mainText: splitText.prefixText,
-              notes: splitNotes.before,
-              _continues: true,
-              _emergencySplit: true,
-            },
-            secondHalf: {
-              ...target,
-              mainText: splitText.suffixText,
-              notes: splitNotes.after,
-            },
-            sliceIdx,
-            baseN,
+          const firstHalf = {
+            ...target,
+            mainText: splitText.prefixText,
+            notes: splitNotes.before,
+            _continues: true,
+            _emergencySplit: true,
           };
+          const secondHalf = {
+            ...target,
+            mainText: splitText.suffixText,
+            notes: splitNotes.after,
+          };
+          const emergencyPlan = buildPagePlan(
+            aggregateForV9([firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+            cfg
+          );
+          const emergencyScore = scoreV9PageCandidate(
+            emergencyPlan,
+            emergencyCandidate,
+            v9SplitPolicy,
+            {
+              cfg,
+              movedNotes: splitNotes.before,
+              pageIdx,
+              source: "emergency",
+              isPhysicallyUnavoidable: true,
+            }
+          );
+
+          if (emergencyScore.accept) {
+            splitInfo = {
+              firstHalf,
+              secondHalf,
+              sliceIdx,
+              baseN,
+            };
+          }
         } else if (typeof console !== "undefined") {
           console.warn(
             "[v9] no-mid-paragraph: first paragraph does not fit, but no legal emergency split point was found."
@@ -2999,12 +3058,55 @@ if (fallbackLen) {
       safetyTries++;
     }
 
-    // רינדור סופי לעמוד
-    // אם drainAloneMode — slice ריק (רק carry-over)
-    const finalSlice = drainAloneMode
+    // Guard סופי לפני סגירת עמוד:
+    // לא מספיק לסנן candidates. אם final pagePlan עדיין יוצר mainText overflow,
+    // זה אומר שהעמוד נסגר באמצע שורת ראשי דרך דלת צדדית. במקרה כזה דוחים
+    // את ה-pagePlan ומנסים עמוד קטן/נקי יותר לפני שמציירים DOM.
+    const mainOverflowTextOf = (plan) => {
+      const entry = plan?.overflow?.mainText;
+      if (!entry) return "";
+      if (typeof entry === "string") return entry.trim();
+      return normalizeRichTextEntry(entry).text.trim();
+    };
+
+    const buildFinalSlice = () => drainAloneMode
       ? []
       : (splitInfo ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf] : getSlice(bestN));
-    const finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+
+    let finalSlice = buildFinalSlice();
+    let finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+    let finalProbe = buildPagePlan(finalContent, cfg);
+    let finalGuardTries = 0;
+
+    while (
+      !drainAloneMode &&
+      finalGuardTries < 4 &&
+      mainOverflowTextOf(finalProbe)
+    ) {
+      if (typeof console !== "undefined") {
+        console.warn("[v9] final page commit guard rejected pagePlan with mainText overflow", {
+          pageIdx,
+          bestN,
+          hadSplit: !!splitInfo,
+          overflowLength: mainOverflowTextOf(finalProbe).length,
+        });
+      }
+
+      if (splitInfo) {
+        bestN = Math.max(0, splitInfo.baseN || 0);
+        splitInfo = null;
+      } else if (bestN > 1) {
+        bestN -= 1;
+      } else {
+        break;
+      }
+
+      finalSlice = buildFinalSlice();
+      finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+      finalProbe = buildPagePlan(finalContent, cfg);
+      finalGuardTries++;
+    }
+
     const finalHasText = !!(
       (finalContent.mainText || '').trim() ||
       (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
