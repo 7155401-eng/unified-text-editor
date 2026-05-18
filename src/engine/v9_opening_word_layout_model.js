@@ -81,6 +81,18 @@ function toPx(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function keepOpeningLineUnjustified(el) {
+  if (!el) return;
+  if (el.classList) {
+    el.classList.remove("justify");
+    el.classList.remove("center");
+  }
+  el.style.textAlign = "start";
+  el.style.textAlignLast = "auto";
+  el.style.whiteSpace = "nowrap";
+  el.dataset.v9OpeningWordUnjustified = "1";
+}
+
 function scheduleOpeningWindowIndent(lineEl, model) {
   if (!lineEl || !model || model.position !== "dropped") return;
   const reserveWidthPx = Math.round(Number(model.metrics?.reserveWidthPx) || 0);
@@ -114,6 +126,7 @@ function scheduleOpeningWindowIndent(lineEl, model) {
       if (currentWidth <= targetWidth + 1 || currentWidth <= hostWidth - reserveWidthPx + 2) continue;
 
       el.style.width = `${targetWidth}px`;
+      keepOpeningLineUnjustified(el);
       el.dataset.v9OpeningWindowAdjusted = "1";
       el.dataset.v9OpeningWindowReservePx = String(reserveWidthPx);
       adjusted += 1;
@@ -214,6 +227,7 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   const suffix = firstLineText || model.flow?.firstLineText || parts.suffix || "";
   if (suffix) lineEl.appendChild(document.createTextNode(suffix));
   lineEl.classList.add("opw-host");
+  keepOpeningLineUnjustified(lineEl);
   lineEl.dataset.opwApplied = "1";
   lineEl.dataset.v9OpeningWordSource = "opening_word.js:v9-measured";
   lineEl.dataset.v9OpeningWordPosition = position;
