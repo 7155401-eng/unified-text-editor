@@ -253,6 +253,95 @@ export function planCommentaryLineCount(plan) {
   return streamCount + footerCount;
 }
 
+export function getLastMainLineInfo(plan, policy = {}) {
+  const lines = plan?.mainBox?.lines || [];
+  const last = lines[lines.length - 1];
+
+  if (!last) {
+    return {
+      ok: true,
+      reason: "no-main-lines",
+    };
+  }
+
+  const width = Number(last.width) || 0;
+  const naturalWidth = Number(last.naturalWidth) || 0;
+  const fillRatio = width > 0 ? naturalWidth / width : 1;
+  const continues = plan?.mainBox?.continues === true;
+
+  const isParagraphEnd =
+    (!continues && last.isLast === true) ||
+    last.forcedBreak === true ||
+    last._v9ParagraphEnd === true;
+
+  const isFilledLineEdge =
+    fillRatio >= (Number(policy.minLineEdgeFill) || 0.82);
+
+  const isAdjustedLineEdge =
+    last._v9AdjustedLineEnd === true ||
+    last._v9AdjustedLineEdge === true;
+
+  const ok = isParagraphEnd || isFilledLineEdge || isAdjustedLineEdge;
+
+  return {
+    ok,
+    reason: ok ? "ok" : "last-main-line-not-filled",
+    lastMainLineText: last.text || "",
+    lastMainLineFillRatio: fillRatio,
+    isParagraphEnd,
+    isFilledLineEdge,
+    isAdjustedLineEdge,
+    rejectedBecause: ok ? "" : "last-main-line-not-filled",
+  };
+}
+
+export function finalMainLineGuard(plan, policy = {}, meta = {}) {
+  const info = getLastMainLineInfo(plan, policy);
+  const fill = planFillRatio(plan, meta.cfg || {});
+  const mainLines = planMainLineCount(plan);
+  const commentaryLines = planCommentaryLineCount(plan);
+  const debug = {
+    page: meta.pageIdx,
+    selectedSource: meta.selectedSource || meta.source || meta.candidateSource || "",
+    breakKind: meta.breakKind || meta.kind || meta.candidateKind || "",
+    finalMainLine: {
+      text: info.lastMainLineText || "",
+      fillRatio: info.lastMainLineFillRatio,
+      isParagraphEnd: info.isParagraphEnd,
+      isLineEdge: info.isFilledLineEdge || info.isAdjustedLineEdge,
+      rejectedBecause: info.rejectedBecause || "",
+    },
+    sparse: {
+      fill,
+      mainLines,
+      commentaryLines,
+      rejectedBecause: "",
+    },
+    streams: [],
+  };
+
+  if (typeof window !== "undefined") {
+    window.__ravtextLastV9PageGuard = debug;
+  }
+
+  if (!info.ok) {
+    if (typeof console !== "undefined") {
+      console.warn("[v9] rejected page: last main line not filled", debug);
+    }
+    return {
+      accept: false,
+      reason: "last-main-line-not-filled",
+      debug,
+    };
+  }
+
+  return {
+    accept: true,
+    reason: "ok",
+    debug,
+  };
+}
+
 export function isSparseV9Page(plan, policy = {}, meta = {}) {
   if (meta.isPhysicallyUnavoidable) return false;
   const fill = Number.isFinite(meta.fill) ? meta.fill : planFillRatio(plan, meta.cfg || {});
@@ -266,6 +355,14 @@ export function scoreV9PageCandidate(plan, candidate, policy = {}, meta = {}) {
   if (!plan?.overflow) return { accept: false, score: -Infinity, reason: "no-plan" };
   if (plan.overflow.exceedsPage) return { accept: false, score: -Infinity, reason: "exceeds-page" };
   if (overflowText(plan.overflow.mainText).trim()) return { accept: false, score: -Infinity, reason: "main-overflow" };
+  const lineEdgeGuard = finalMainLineGuard(plan, policy, {
+    ...meta,
+    selectedSource: meta.selectedSource || meta.source || candidate?.source || "",
+    breakKind: meta.breakKind || candidate?.kind || "",
+  });
+  if (!lineEdgeGuard.accept) {
+    return { accept: false, score: -Infinity, reason: lineEdgeGuard.reason, debug: lineEdgeGuard.debug };
+  }
   const streamOverflow = hasV9StreamOverflow(plan);
   if (streamOverflow && Array.isArray(meta.movedNotes) && meta.movedNotes.length) return { accept: false, score: -Infinity, reason: "moved-notes-overflow" };
   const fill = planFillRatio(plan, meta.cfg || {});
