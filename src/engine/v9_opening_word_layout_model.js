@@ -81,7 +81,26 @@ function toPx(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function keepOpeningLineUnjustified(el) {
+function openingLineIsBlockedByParagraphMetadata(el) {
+  if (!el || !el.dataset) return false;
+  return el.dataset.v9Continuation === "1" ||
+    el.dataset.v9ParagraphStart === "0" ||
+    el.dataset.continuedFromPrev === "1" ||
+    el.dataset.cont === "1" ||
+    el.dataset.v9OpeningWordAllowed === "false";
+}
+
+function sameSourceParagraph(a, b) {
+  const aId = a?.dataset?.v9ParagraphId || "";
+  const bId = b?.dataset?.v9ParagraphId || "";
+  if (aId && bId && aId !== bId) return false;
+  const aIndex = a?.dataset?.v9ParagraphIndex || "";
+  const bIndex = b?.dataset?.v9ParagraphIndex || "";
+  if (aIndex && bIndex && aIndex !== bIndex) return false;
+  return true;
+}
+
+function keepOpeningLineStable(el, lineHeightPx = 0) {
   if (!el) return;
   if (el.classList) {
     el.classList.remove("justify");
@@ -90,7 +109,75 @@ function keepOpeningLineUnjustified(el) {
   el.style.textAlign = "start";
   el.style.textAlignLast = "auto";
   el.style.whiteSpace = "nowrap";
+  el.style.marginTop = "0px";
+  el.style.marginBottom = "0px";
+  if (lineHeightPx > 0) {
+    el.style.lineHeight = `${lineHeightPx}px`;
+    el.style.height = `${lineHeightPx}px`;
+  }
   el.dataset.v9OpeningWordUnjustified = "1";
+}
+
+function rememberOpeningWindowOriginals(el) {
+  if (!el || el.dataset.v9OpeningWindowOriginalWidthPx) return;
+  el.dataset.v9OpeningWindowOriginalWidthPx = String(toPx(el.style.width));
+  el.dataset.v9OpeningWindowOriginalClassName = String(el.className || "");
+  el.dataset.v9OpeningWindowOriginalTextAlign = el.style.textAlign || "";
+  el.dataset.v9OpeningWindowOriginalTextAlignLast = el.style.textAlignLast || "";
+  el.dataset.v9OpeningWindowOriginalWhiteSpace = el.style.whiteSpace || "";
+  el.dataset.v9OpeningWindowOriginalMarginTop = el.style.marginTop || "";
+  el.dataset.v9OpeningWindowOriginalMarginBottom = el.style.marginBottom || "";
+  el.dataset.v9OpeningWindowOriginalLineHeight = el.style.lineHeight || "";
+  el.dataset.v9OpeningWindowOriginalHeight = el.style.height || "";
+}
+
+function restoreOpeningWindowOriginals(el) {
+  if (!el || el.dataset.v9OpeningWindowAdjusted !== "1") return;
+  const originalWidth = toPx(el.dataset.v9OpeningWindowOriginalWidthPx);
+  if (originalWidth > 0) el.style.width = `${originalWidth}px`;
+  if (el.dataset.v9OpeningWindowOriginalClassName !== undefined) {
+    el.className = el.dataset.v9OpeningWindowOriginalClassName;
+  }
+  el.style.textAlign = el.dataset.v9OpeningWindowOriginalTextAlign || "";
+  el.style.textAlignLast = el.dataset.v9OpeningWindowOriginalTextAlignLast || "";
+  el.style.whiteSpace = el.dataset.v9OpeningWindowOriginalWhiteSpace || "";
+  el.style.marginTop = el.dataset.v9OpeningWindowOriginalMarginTop || "";
+  el.style.marginBottom = el.dataset.v9OpeningWindowOriginalMarginBottom || "";
+  el.style.lineHeight = el.dataset.v9OpeningWindowOriginalLineHeight || "";
+  el.style.height = el.dataset.v9OpeningWindowOriginalHeight || "";
+  delete el.dataset.v9OpeningWindowAdjusted;
+  delete el.dataset.v9OpeningWindowReservePx;
+  delete el.dataset.v9OpeningWordUnjustified;
+  delete el.dataset.v9OpeningWindowOriginalWidthPx;
+  delete el.dataset.v9OpeningWindowOriginalClassName;
+  delete el.dataset.v9OpeningWindowOriginalTextAlign;
+  delete el.dataset.v9OpeningWindowOriginalTextAlignLast;
+  delete el.dataset.v9OpeningWindowOriginalWhiteSpace;
+  delete el.dataset.v9OpeningWindowOriginalMarginTop;
+  delete el.dataset.v9OpeningWindowOriginalMarginBottom;
+  delete el.dataset.v9OpeningWindowOriginalLineHeight;
+  delete el.dataset.v9OpeningWindowOriginalHeight;
+}
+
+function textWouldOverflow(el, targetWidth) {
+  if (!el || targetWidth <= 0) return true;
+  try {
+    const measured = Math.ceil(Math.max(el.scrollWidth || 0, el.getBoundingClientRect?.().width || 0));
+    return measured > targetWidth + 2;
+  } catch (_) {
+    return false;
+  }
+}
+
+function renderOriginalLineWithoutOpeningWord(lineEl, model, firstLineText = "") {
+  if (!lineEl || !model) return false;
+  const parts = model.parts || {};
+  const suffix = firstLineText || model.flow?.firstLineText || parts.suffix || "";
+  lineEl.textContent = `${parts.prefix || ""}${parts.segment || ""}${suffix || ""}`;
+  lineEl.classList?.remove("opw-host");
+  delete lineEl.dataset.opwApplied;
+  lineEl.dataset.v9OpeningWordBlocked = "paragraph-continuation";
+  return false;
 }
 
 function scheduleOpeningWindowIndent(lineEl, model) {
@@ -100,6 +187,11 @@ function scheduleOpeningWindowIndent(lineEl, model) {
   if (reserveWidthPx <= 0 || windowLineCount <= 1) return;
 
   const apply = () => {
+    if (openingLineIsBlockedByParagraphMetadata(lineEl)) {
+      renderOriginalLineWithoutOpeningWord(lineEl, model, model.flow?.firstLineText || "");
+      return;
+    }
+
     const pageEl = lineEl.parentElement;
     if (!pageEl || !pageEl.querySelectorAll) return;
 
@@ -114,19 +206,32 @@ function scheduleOpeningWindowIndent(lineEl, model) {
     let adjusted = 0;
 
     for (const el of Array.from(pageEl.querySelectorAll(".v9-line"))) {
-      if (el === lineEl || el.dataset.v9OpeningWindowAdjusted === "1") continue;
+      if (el === lineEl) continue;
       if (hostRole && el.dataset.v9Role !== hostRole) continue;
       if (hostBoxId && el.dataset.v9BoxId !== hostBoxId) continue;
+      if (!sameSourceParagraph(lineEl, el)) {
+        restoreOpeningWindowOriginals(el);
+        continue;
+      }
 
       const top = toPx(el.style.top);
-      if (top <= hostTop + 0.5 || top >= windowBottom) continue;
+      const insideOpeningWindow = top > hostTop + 0.5 && top < windowBottom;
+      if (!insideOpeningWindow) {
+        restoreOpeningWindowOriginals(el);
+        continue;
+      }
 
-      const currentWidth = toPx(el.style.width);
-      const targetWidth = Math.max(24, currentWidth - reserveWidthPx);
-      if (currentWidth <= targetWidth + 1 || currentWidth <= hostWidth - reserveWidthPx + 2) continue;
+      rememberOpeningWindowOriginals(el);
+      const originalWidth = toPx(el.dataset.v9OpeningWindowOriginalWidthPx || el.style.width);
+      const targetWidth = Math.max(24, originalWidth - reserveWidthPx);
+      if (originalWidth <= targetWidth + 1 || originalWidth <= hostWidth - reserveWidthPx + 2) continue;
+      if (textWouldOverflow(el, targetWidth)) {
+        restoreOpeningWindowOriginals(el);
+        continue;
+      }
 
       el.style.width = `${targetWidth}px`;
-      keepOpeningLineUnjustified(el);
+      keepOpeningLineStable(el, lineHeight);
       el.dataset.v9OpeningWindowAdjusted = "1";
       el.dataset.v9OpeningWindowReservePx = String(reserveWidthPx);
       adjusted += 1;
@@ -137,6 +242,9 @@ function scheduleOpeningWindowIndent(lineEl, model) {
 
   if (typeof queueMicrotask === "function") queueMicrotask(apply);
   else setTimeout(apply, 0);
+
+  setTimeout(apply, 0);
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(apply);
 }
 
 export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
@@ -209,6 +317,9 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
 
 export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineText = "") {
   if (!lineEl || !model || lineEl.dataset.opwApplied === "1") return false;
+  if (openingLineIsBlockedByParagraphMetadata(lineEl)) {
+    return renderOriginalLineWithoutOpeningWord(lineEl, model, firstLineText);
+  }
   const { parts, style, position } = model;
   lineEl.textContent = "";
   if (parts.prefix) lineEl.appendChild(document.createTextNode(parts.prefix));
@@ -227,7 +338,7 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   const suffix = firstLineText || model.flow?.firstLineText || parts.suffix || "";
   if (suffix) lineEl.appendChild(document.createTextNode(suffix));
   lineEl.classList.add("opw-host");
-  keepOpeningLineUnjustified(lineEl);
+  keepOpeningLineStable(lineEl);
   lineEl.dataset.opwApplied = "1";
   lineEl.dataset.v9OpeningWordSource = "opening_word.js:v9-measured";
   lineEl.dataset.v9OpeningWordPosition = position;
