@@ -3292,6 +3292,252 @@ export async function buildPages(container, paragraphs, config) {
       finalGuardTries++;
     }
 
+    const writeFinalGapFillDebug = (info = {}) => {
+      if (typeof window === "undefined") return;
+      window.__ravtextLastV9GapFill = {
+        pageIdx,
+        beforeFill: Number.isFinite(info.beforeFill) ? info.beforeFill : null,
+        afterFill: Number.isFinite(info.afterFill) ? info.afterFill : null,
+        remainingPxBefore: Number.isFinite(info.remainingPxBefore) ? info.remainingPxBefore : null,
+        accepted: !!info.accepted,
+        rejectedReasons: Array.isArray(info.rejectedReasons) ? info.rejectedReasons : [],
+        candidateCount: Number.isFinite(info.candidateCount) ? info.candidateCount : 0,
+        selectedOffset: Number.isFinite(info.selectedOffset) ? info.selectedOffset : null,
+        selectedKind: info.selectedKind || "",
+        pulledTextPreview: info.pulledTextPreview || "",
+        pulledNotesCount: Number.isFinite(info.pulledNotesCount) ? info.pulledNotesCount : 0,
+      };
+    };
+
+    const tryFinalGapFillRescue = () => {
+      const beforeFill = planFillRatio(finalProbe);
+      const bottom = planBottomY(finalProbe);
+      const remainingPxBefore = pageBottomForFill - bottom;
+      const rejectedReasons = [];
+
+      const finish = (debug, result = null) => {
+        writeFinalGapFillDebug({
+          beforeFill,
+          afterFill: beforeFill,
+          remainingPxBefore,
+          accepted: false,
+          rejectedReasons,
+          candidateCount: 0,
+          ...debug,
+        });
+        return result;
+      };
+
+      const reject = (reason, extra = {}) => {
+        rejectedReasons.push({ reason, ...extra });
+        return finish(extra);
+      };
+
+      const rejectCandidate = (candidate, reason, extra = {}) => {
+        rejectedReasons.push({
+          offset: candidate?.offset ?? null,
+          kind: candidate?.kind || "",
+          reason,
+          ...extra,
+        });
+      };
+
+      if (cfg.finalGapFillEnabled === false) return reject("disabled");
+      if (drainAloneMode) return reject("drain-alone");
+      if (hasCarryOver(carryOver)) return reject("carry-over");
+      if (pendingParagraph) return reject("pending-active");
+      if (splitInfo) return reject("split-already-active");
+      if (!allowParagraphSplit) return reject("split-disabled");
+      if (bestN >= totalAvail) return reject("no-next-paragraph");
+      if (!finalProbe || !finalProbe.overflow) return reject("missing-final-probe");
+      if (finalProbe.overflow.exceedsPage) return reject("page-overflow");
+      if (mainOverflowTextOf(finalProbe)) return reject("main-overflow");
+
+      const triggerRatio = Number.isFinite(Number(cfg.finalGapFillTriggerRatio)) ? Number(cfg.finalGapFillTriggerRatio) : 0.84;
+      const minRemainingLines = Number.isFinite(Number(cfg.finalGapFillMinRemainingLines)) ? Number(cfg.finalGapFillMinRemainingLines) : 2.5;
+      const minGain = Number.isFinite(Number(cfg.finalGapFillMinGain)) ? Number(cfg.finalGapFillMinGain) : 0.04;
+      const maxCandidates = Math.max(1, parseInt(cfg.finalGapFillMaxCandidates, 10) || 3);
+      const lineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+
+      if (beforeFill >= triggerRatio || remainingPxBefore < lineH * minRemainingLines) {
+        return reject("not-enough-gap");
+      }
+
+      const target = paragraphs[cursor + bestN];
+      const fullText = (target?.mainText || "").trim();
+      if (!target || fullText.length < 2) return reject("no-next-paragraph");
+
+      const candidates = buildParagraphBreakCandidates(
+        fullText,
+        splitMetrics,
+        splitMainWidth,
+        v9SplitPolicy,
+        { source: "final-gap-fill" }
+      )
+        .filter(c => c.offset >= 2 && c.offset < fullText.length)
+        .slice(0, maxCandidates);
+
+      if (!candidates.length) {
+        return reject("no-candidates", { candidateCount: 0 });
+      }
+
+      const baseSlice = getSlice(bestN);
+      let best = null;
+
+      for (const candidate of candidates) {
+        const splitText = splitMainTextAtOffset(fullText, candidate.offset);
+        if (!splitText.prefixText || !splitText.suffixText) {
+          rejectCandidate(candidate, "empty-split");
+          continue;
+        }
+
+        const splitNotes = splitNotesByAnchor(
+          target?.notes || [],
+          splitText.splitOffset,
+          fullText.length,
+          splitText.suffixBaseOffset
+        );
+
+        const firstHalf = {
+          ...target,
+          mainText: splitText.prefixText,
+          notes: splitNotes.before,
+          _continues: true,
+        };
+
+        const secondHalf = markV9ContinuationParagraph({
+          ...target,
+          mainText: splitText.suffixText,
+          notes: splitNotes.after,
+        });
+
+        const testSlice = [...baseSlice, firstHalf];
+        const testContent = aggregateForV9(
+          testSlice,
+          cfg.titles,
+          cfg.streamSettings,
+          cfg.levels,
+          cfg.talmudStreams,
+          carryOver
+        );
+        const testPlan = buildPagePlan(testContent, cfg);
+
+        if (!testPlan || !testPlan.overflow) {
+          rejectCandidate(candidate, "missing-plan");
+          continue;
+        }
+        if (testPlan.overflow.exceedsPage) {
+          rejectCandidate(candidate, "page-overflow");
+          continue;
+        }
+        if (mainOverflowTextOf(testPlan)) {
+          rejectCandidate(candidate, "main-overflow");
+          continue;
+        }
+
+        const noteOverflow = Object.keys(testPlan.overflow.streams || {})
+          .some(k => normalizeRichTextEntry(testPlan.overflow.streams[k]).text.trim());
+
+        if (noteOverflow) {
+          rejectCandidate(candidate, "note-overflow");
+          continue;
+        }
+
+        const dropped = droppedFootersOf(testSlice);
+        if (dropped.length) {
+          rejectCandidate(candidate, "dropped-footer", { dropped });
+          continue;
+        }
+
+        const candidateScore = scoreV9PageCandidate(
+          testPlan,
+          candidate,
+          v9SplitPolicy,
+          {
+            cfg,
+            movedNotes: splitNotes.before,
+            pageIdx,
+            source: "final-gap-fill",
+          }
+        );
+
+        if (!candidateScore.accept) {
+          rejectCandidate(candidate, "line-guard-rejected", {
+            policyReason: candidateScore.reason || "",
+          });
+          continue;
+        }
+
+        const afterFill = planFillRatio(testPlan);
+        if (afterFill < beforeFill + minGain) {
+          rejectCandidate(candidate, "too-small-fill-improvement", { afterFill });
+          continue;
+        }
+
+        const score =
+          afterFill +
+          Math.min(0.08, (candidate.offset / Math.max(1, fullText.length)) * 0.08) +
+          Math.min(0.08, splitNotes.before.length * 0.02);
+
+        if (!best || score > best.score) {
+          best = {
+            score,
+            afterFill,
+            firstHalf,
+            secondHalf,
+            testContent,
+            testPlan,
+            candidate,
+            pulledNotesCount: splitNotes.before.length,
+          };
+        }
+      }
+
+      if (!best) {
+        return finish({
+          candidateCount: candidates.length,
+          rejectedReasons,
+        });
+      }
+
+      rejectedReasons.push({
+        offset: best.candidate.offset,
+        kind: best.candidate.kind,
+        reason: "accepted",
+      });
+
+      return finish({
+        afterFill: best.afterFill,
+        accepted: true,
+        rejectedReasons,
+        candidateCount: candidates.length,
+        selectedOffset: best.candidate.offset,
+        selectedKind: best.candidate.kind,
+        pulledTextPreview: (best.firstHalf.mainText || "").trim().slice(0, 80),
+        pulledNotesCount: best.pulledNotesCount,
+      }, {
+        finalSlice: [...getSlice(bestN), best.firstHalf],
+        finalContent: best.testContent,
+        finalProbe: best.testPlan,
+        splitInfo: {
+          firstHalf: best.firstHalf,
+          secondHalf: best.secondHalf,
+          sliceIdx: bestN,
+          baseN: bestN,
+          _finalGapFill: true,
+        },
+        bestN: bestN + 1,
+      });
+    };
+
+    const finalGapFill = tryFinalGapFillRescue();
+    if (finalGapFill) {
+      finalSlice = finalGapFill.finalSlice;
+      finalContent = finalGapFill.finalContent;
+      finalProbe = finalGapFill.finalProbe;
+      splitInfo = finalGapFill.splitInfo;
+      bestN = finalGapFill.bestN;
+    }
     const finalHasText = !!(
       (finalContent.mainText || '').trim() ||
       (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
@@ -3629,3 +3875,4 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
 
   return { mainText, mainRuns, mainParagraphs, mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
 }
+
