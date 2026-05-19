@@ -70,9 +70,21 @@
     });
   }
 
+  function loadRenderSafetyAddons() {
+    const src = "/render-safety-addons.js?v=20260519-render-menu-public";
+    if (document.querySelector('script[data-render-safety-addons="1"]')) return;
+    const script = document.createElement("script");
+    script.src = src;
+    script.defer = true;
+    script.dataset.renderSafetyAddons = "1";
+    document.head.appendChild(script);
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
+    document.addEventListener("DOMContentLoaded", loadRenderSafetyAddons, { once: true });
   } else {
     init();
+    loadRenderSafetyAddons();
   }
 })();
