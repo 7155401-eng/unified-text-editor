@@ -6,27 +6,32 @@ function patchFile(path) {
   const beforeRaw = fs.readFileSync(path, 'utf8');
   const before = beforeRaw.replace(/\r\n/g, "\n");
 
-  // V9 has two continuation markers:
-  // 1. _v9ContinuesFromSplit / _v9OpeningWordAllowed=false — created by the V9 split guard.
-  // 2. _continues — created by generic page/paragraph continuation flow.
+  // Important:
+  // `_continues` is a generic pagination/layout marker. V9 uses it in several flows,
+  // including first halves pulled into the current page by gap/rescue logic. Those
+  // halves can still be real logical paragraph starts and must be allowed to receive
+  // an opening word.
   //
-  // Opening words must be blocked for both. If _continues is not copied into mainParagraphs.continues,
-  // the opening-word model may treat a mid-paragraph cut as a new paragraph.
-  const from = 'continues: !!(p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),';
-  const to = 'continues: !!(p._continues || p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),';
+  // Opening words should be blocked only by explicit V9 split-continuation markers:
+  // `_v9ContinuesFromSplit` or `_v9OpeningWordAllowed === false`.
+  //
+  // This script also repairs a working tree where the older broad guard was already
+  // applied, by reverting it back to the explicit V9-only condition.
+  const broadGuard = 'continues: !!(p._continues || p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),';
+  const explicitGuard = 'continues: !!(p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),';
 
-  if (before.includes(to)) {
-    console.log(`[v9-continuation-opw-guard] no changes needed for ${path}`);
+  if (before.includes(explicitGuard) && !before.includes(broadGuard)) {
+    console.log(`[v9-continuation-opw-guard] explicit V9 guard already present in ${path}`);
     return;
   }
 
-  if (!before.includes(from)) {
-    throw new Error(`[v9-continuation-opw-guard] anchor not found in ${path}`);
+  if (!before.includes(broadGuard)) {
+    throw new Error(`[v9-continuation-opw-guard] broad guard anchor not found in ${path}`);
   }
 
-  const after = before.replace(from, to);
+  const after = before.replace(broadGuard, explicitGuard);
   fs.writeFileSync(path, after);
-  console.log(`[v9-continuation-opw-guard] patched ${path}`);
+  console.log(`[v9-continuation-opw-guard] restored explicit V9 guard in ${path}`);
 }
 
 patchFile(TARGET);
