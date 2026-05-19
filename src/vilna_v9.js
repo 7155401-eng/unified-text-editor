@@ -1652,6 +1652,7 @@ function buildPagePlan(pageContent, config) {
       const maxLinesFit = rowsPerCol * footerCols;
       const linesToRender = allLines.slice(0, maxLinesFit);
       const overflowLines = allLines.slice(maxLinesFit);
+      const footerContinues = overflowLines.length > 0;
 
       if (overflowLines.length > 0) {
         const overflowWords = overflowLines.flatMap(l => l.words);
@@ -1689,12 +1690,14 @@ function buildPagePlan(pageContent, config) {
 
       result.footerBoxes.push({
         id: fs.id,
+        role: "stream",
         styleId: settings.styleId || "",
         inlineStyle: fsResolvedStyle || {},
         titleStyleId: settings.titleStyleId || "",
         lines: linesData,
         titleY: titleY,
         titleHeight: titleHeight,
+        continues: footerContinues,
       });
       const renderedRows = footerCols > 1
         ? Math.min(rowsPerCol, linesToRender.length)
@@ -1974,7 +1977,7 @@ function renderPagePlan(plan, pageEl, cfg) {
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
-      const isContinuationCut = box.continues && line.isLast && !line.forcedBreak
+      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 1
         && line.naturalWidth >= line.width * 0.65
         && line.naturalWidth < line.width - 2;
