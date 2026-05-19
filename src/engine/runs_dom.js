@@ -2,23 +2,55 @@
 // Used by both the regular renderer and V9 so per-word bold/highlight/color
 // from the editor reaches the final preview at the exact character range.
 
+function fontSizeToCss(value, unit = "px") {
+  if (value === undefined || value === null || value === "") return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  if (/^-?\d+(?:\.\d+)?(?:px|pt|em|rem|%)$/i.test(raw)) return raw;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return raw;
+  const u = String(unit || "px").trim().toLowerCase();
+  return `${n}${u === "pt" ? "pt" : "px"}`;
+}
+
+function appendTextDecoration(span, value) {
+  const v = String(value || "").trim();
+  if (!v) return;
+  const existing = span.style.textDecoration || "";
+  span.style.textDecoration = existing ? `${existing} ${v}` : v;
+}
+
+function hasExplicitFontSize(marks) {
+  return marks && marks.fontSize !== undefined && marks.fontSize !== null && marks.fontSize !== "";
+}
+
 export function applyMarksToSpan(span, marks) {
   if (!marks || typeof marks !== "object") return;
   if (marks.bold) span.style.fontWeight = "700";
+  if (marks.fontWeight) span.style.fontWeight = String(marks.fontWeight);
   if (marks.italic) span.style.fontStyle = "italic";
-  if (marks.underline) span.style.textDecoration = "underline";
-  if (marks.strike) {
-    const existing = span.style.textDecoration || "";
-    span.style.textDecoration = existing
-      ? existing + " line-through"
-      : "line-through";
-  }
+  if (marks.fontStyle) span.style.fontStyle = String(marks.fontStyle);
+  if (marks.underline) appendTextDecoration(span, "underline");
+  if (marks.strike) appendTextDecoration(span, "line-through");
+  if (marks.textDecoration) appendTextDecoration(span, marks.textDecoration);
   if (marks.color) span.style.color = marks.color;
-  if (marks.backgroundColor) span.style.backgroundColor = marks.backgroundColor;
+  if (marks.backgroundColor || marks.bgColor) span.style.backgroundColor = marks.backgroundColor || marks.bgColor;
   if (marks.fontFamily) span.style.fontFamily = marks.fontFamily;
-  if (marks.fontSize) {
-    const n = Number(marks.fontSize);
-    span.style.fontSize = Number.isFinite(n) ? `${n}px` : String(marks.fontSize);
+  if (hasExplicitFontSize(marks)) {
+    const css = fontSizeToCss(marks.fontSize, marks.fontSizeUnit);
+    if (css) span.style.fontSize = css;
+  }
+  if (marks.lineHeight !== undefined && marks.lineHeight !== null && marks.lineHeight !== "") {
+    span.style.lineHeight = String(marks.lineHeight);
+  }
+
+  const verticalAlign = marks.verticalAlign || (marks.superscript ? "super" : (marks.subscript ? "sub" : ""));
+  if (verticalAlign) {
+    span.style.verticalAlign = verticalAlign;
+    // Word/TipTap superscript and subscript are character-level styles. If the
+    // user did not specify a size in the selected style, render them like normal
+    // typographic super/subscript instead of keeping full-size glyphs floating.
+    if (!hasExplicitFontSize(marks)) span.style.fontSize = "0.75em";
   }
 }
 
