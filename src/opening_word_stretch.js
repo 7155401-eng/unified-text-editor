@@ -1,16 +1,81 @@
-// opening_word_stretch.js — enforces the 250% stretch cap (bugs 17 & 18).
-//
-// Per v3 spec part 12 + GPT-13. Runs AFTER applyOpeningWordsToPages.
-// It walks every .opening-word inside .talmud-main, decides whether the word
-// needs stretching, and replaces it with an SVG that uses textLength +
-// lengthAdjust='spacingAndGlyphs' so the glyphs themselves stretch
-// proportionally — capped at 250% of the word's natural width.
+// opening_word_stretch.js — post-processes opening words after opening_word.js.
+// It now also stabilizes the RTL dropped-word "window": the large opening word
+// floats on the right, reserves exactly N normal line-heights, and does not
+// change the line-height of either the opening line or the following line.
 
 const STRETCH_CAP = 2.5;
 const MIN_REMAINING_CHAR_RATIO = 2; // if at least 2 average char-widths fit, don't stretch
 
+function numberOrZero(value) {
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function computedLineHeightPx(el) {
+  if (!el || typeof getComputedStyle !== "function") return 0;
+  const cs = getComputedStyle(el);
+  const explicit = numberOrZero(cs.lineHeight);
+  if (explicit > 0) return explicit;
+  const fontSize = numberOrZero(cs.fontSize);
+  return fontSize > 0 ? fontSize * 1.4 : 0;
+}
+
+function openingHostFor(opw, root) {
+  return (
+    opw.closest?.(".opw-host, p, .note-part, .note, .v9-line, .page-main, .stream, .talmud-main") ||
+    opw.parentElement ||
+    root ||
+    opw
+  );
+}
+
+function dropLineCount(opw) {
+  const cssValue = opw.style?.getPropertyValue("--opw-drop-lines");
+  const value = numberOrZero(cssValue || opw.dataset?.opwDropLines || 0);
+  return Math.max(1, Math.round(value || 1));
+}
+
+function spaceAfterValue(opw) {
+  const cssValue = opw.style?.getPropertyValue("--opw-space-after");
+  return cssValue && cssValue.trim() ? cssValue.trim() : "0.3em";
+}
+
+function stabilizeDroppedOpeningWord(opw, root) {
+  if (!opw || !opw.classList?.contains("opw-dropped")) return;
+
+  const host = openingHostFor(opw, root);
+  const lineHeight = computedLineHeightPx(host);
+  const lines = dropLineCount(opw);
+  const windowHeight = lineHeight > 0 ? lineHeight * lines : 0;
+  const spaceAfter = spaceAfterValue(opw);
+
+  opw.style.float = "right";
+  opw.style.marginRight = "0";
+  opw.style.marginLeft = spaceAfter;
+  opw.style.shapeMargin = spaceAfter;
+  opw.style.verticalAlign = "top";
+  opw.style.overflow = "visible";
+  opw.style.contain = "layout paint";
+
+  // The key fix: the dropped word reserves a window of normal text lines,
+  // while its own glyph size remains controlled by the user's opening-word style.
+  if (lineHeight > 0) {
+    opw.style.setProperty("--opw-base-line-height", `${lineHeight}px`);
+    opw.style.lineHeight = `${lineHeight}px`;
+    opw.style.height = `${windowHeight}px`;
+    opw.style.minHeight = `${windowHeight}px`;
+  }
+
+  // Do not let margins on the host change paragraph rhythm.
+  if (host?.style) {
+    host.style.marginTop = host.style.marginTop || "0px";
+    host.style.marginBottom = host.style.marginBottom || "0px";
+  }
+
+  opw.dataset.opwWindowStable = "1";
+}
+
 function getNaturalWidth(originalEl) {
-  // Clone into an off-screen span to measure unstretched.
   const probe = document.createElement("span");
   probe.style.cssText = `
     position: fixed;
@@ -31,11 +96,9 @@ function getNaturalWidth(originalEl) {
 function buildStretchedSvg(word, naturalWidth, targetWidth, refEl) {
   const cappedWidth = Math.min(targetWidth, naturalWidth * STRETCH_CAP);
   const cs = getComputedStyle(refEl);
-  const fontSize = parseFloat(cs.fontSize) || 16;
-  // משה 2026-05-06: גובה SVG לפי מדידה אמיתית של הטקסט המקורי, לא לפי הערכת
-  // fontSize × 1.3. המדידה דרך getBoundingClientRect של refEl.
+  const fontSize = numberOrZero(cs.fontSize) || 16;
   const refRect = refEl.getBoundingClientRect();
-  const heightPx = (refRect && refRect.height > 0)
+  const heightPx = refRect && refRect.height > 0
     ? refRect.height
     : Math.max(fontSize * 1.3, fontSize + 4);
 
@@ -47,6 +110,7 @@ function buildStretchedSvg(word, naturalWidth, targetWidth, refEl) {
   svg.dataset.opwAppliedWidth = String(cappedWidth);
   svg.style.display = "inline-block";
   svg.style.verticalAlign = "baseline";
+  svg.style.overflow = "visible";
 
   const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
   text.setAttribute("x", String(cappedWidth));
@@ -65,88 +129,95 @@ function buildStretchedSvg(word, naturalWidth, targetWidth, refEl) {
   return { svg, cappedWidth };
 }
 
-function lineEndsAtRight(opwEl, parentEl) {
-  // For RTL, the line "ends" at the left edge. We need to know how much
-  // space is left on the line after this opw, on the *trailing* side.
-  const opwRect = opwEl.getBoundingClientRect();
-  const parentRect = parentEl.getBoundingClientRect();
-  // Distance from this word's leading edge to the line's leading edge.
-  const remaining = opwRect.left - parentRect.left;
-  // For RTL: the word starts at the right; remaining = parent.left to word.left
-  return remaining;
+function firstVisualLineRects(line) {
+  const range = document.createRange();
+  range.selectNodeContents(line);
+  const rects = Array.from(range.getClientRects()).filter(r => r.width || r.height);
+  range.detach?.();
+  if (!rects.length) return [];
+  const firstLineY = Math.round(rects[0].top);
+  return rects.filter(r => Math.abs(r.top - firstLineY) < 2);
 }
 
-/**
- * @param {HTMLElement} root  — the .talmud-main element
- */
-function processMain(root) {
-  const opws = Array.from(root.querySelectorAll(".opening-word, .opw"));
-  for (const opw of opws) {
-    if (opw.dataset.opwStretchProcessed === "1") continue;
-    if (opw.tagName.toLowerCase() === "svg") continue; // already an svg
-    const word = (opw.textContent || "").trim();
-    if (!word) continue;
+function shouldStretch(opw, naturalWidth, line) {
+  const lineRect = line.getBoundingClientRect();
+  if (!lineRect.width || !naturalWidth) return false;
 
-    const wordRect = opw.getBoundingClientRect();
-    const naturalWidth = wordRect.width || getNaturalWidth(opw);
-    if (!naturalWidth) continue;
+  const firstLine = firstVisualLineRects(line);
+  if (!firstLine.length) return false;
 
-    // Find the line container — usually the immediate paragraph
-    const line = opw.closest("p, div, .opening-word-line, .talmud-main") || root;
-    const lineRect = line.getBoundingClientRect();
-    if (!lineRect.width) continue;
+  const usedW = Math.max(...firstLine.map(r => r.right)) - Math.min(...firstLine.map(r => r.left));
+  const remaining = lineRect.width - usedW;
+  const avgCharW = naturalWidth / Math.max(1, (opw.textContent || "").trim().length);
+  return remaining <= avgCharW * MIN_REMAINING_CHAR_RATIO;
+}
 
-    // How much trailing space is empty on this line?
-    // Heuristic: compute via Range to the *end* of the parent-line's first
-    // visual line.
-    const range = document.createRange();
-    range.selectNodeContents(line);
-    const lineRects = Array.from(range.getClientRects()).filter(
-      r => r.width || r.height
-    );
-    if (!lineRects.length) continue;
-    const firstLineY = Math.round(lineRects[0].top);
-    const firstLine = lineRects.filter(r => Math.abs(r.top - firstLineY) < 2);
-    const usedW = Math.max(...firstLine.map(r => r.right)) -
-      Math.min(...firstLine.map(r => r.left));
-    const remaining = lineRect.width - usedW;
-    const avgCharW = naturalWidth / Math.max(1, word.length);
-
-    if (remaining > avgCharW * MIN_REMAINING_CHAR_RATIO) {
-      // There's room for more text — don't stretch.
-      opw.dataset.opwStretchProcessed = "1";
-      continue;
-    }
-
-    // Stretch is justified.
-    const targetWidth = lineRect.width;
-    const { svg, cappedWidth } = buildStretchedSvg(
-      word,
-      naturalWidth,
-      targetWidth,
-      opw
-    );
-    svg.dataset.opwStretchProcessed = "1";
-    // Preserve any inline classes from the source so styles cascade.
-    if (opw.classList.length) {
-      svg.classList.add(...Array.from(opw.classList));
-    }
-    opw.replaceWith(svg);
+function copyOpeningMetadata(fromEl, toEl) {
+  if (fromEl.classList?.length) {
+    toEl.classList.add(...Array.from(fromEl.classList));
   }
+  for (const name of ["--opw-drop-lines", "--opw-space-after", "--opw-base-line-height"]) {
+    const value = fromEl.style?.getPropertyValue(name);
+    if (value) toEl.style.setProperty(name, value);
+  }
+  if (fromEl.dataset?.opwDropLines) toEl.dataset.opwDropLines = fromEl.dataset.opwDropLines;
 }
 
-/**
- * Apply the stretch logic to every .talmud-main on the page.
- */
+function processOpeningWord(opw, root) {
+  if (!opw || opw.dataset.opwStretchProcessed === "1") return;
+  if (opw.tagName?.toLowerCase() === "svg") {
+    stabilizeDroppedOpeningWord(opw, root);
+    opw.dataset.opwStretchProcessed = "1";
+    return;
+  }
+
+  stabilizeDroppedOpeningWord(opw, root);
+
+  const word = (opw.textContent || "").trim();
+  if (!word) {
+    opw.dataset.opwStretchProcessed = "1";
+    return;
+  }
+
+  const naturalWidth = opw.getBoundingClientRect().width || getNaturalWidth(opw);
+  if (!naturalWidth) {
+    opw.dataset.opwStretchProcessed = "1";
+    return;
+  }
+
+  const line = opw.closest("p, div, .opening-word-line, .talmud-main, .page-main, .stream") || root;
+  if (!line || !shouldStretch(opw, naturalWidth, line)) {
+    opw.dataset.opwStretchProcessed = "1";
+    return;
+  }
+
+  const targetWidth = line.getBoundingClientRect().width || naturalWidth;
+  const { svg } = buildStretchedSvg(word, naturalWidth, targetWidth, opw);
+  copyOpeningMetadata(opw, svg);
+  svg.dataset.opwStretchProcessed = "1";
+  opw.replaceWith(svg);
+  stabilizeDroppedOpeningWord(svg, root);
+}
+
+function processRoot(root) {
+  if (!root) return;
+  const opws = Array.from(root.querySelectorAll(".opening-word, .opw, .opw-segment"));
+  for (const opw of opws) processOpeningWord(opw, root);
+}
+
 export function applyOpeningWordStretchToPage(pageEl) {
   if (!pageEl) return;
-  const mains = pageEl.querySelectorAll(".talmud-main");
-  for (const main of mains) processMain(main);
+  const roots = Array.from(pageEl.querySelectorAll(".talmud-main, .page-main, .stream, .v9-page"));
+  if (!roots.length) {
+    processRoot(pageEl);
+    return;
+  }
+  for (const root of roots) processRoot(root);
 }
 
 export function applyOpeningWordStretchToPages(container) {
   if (!container) return;
-  container.querySelectorAll(".page:not(.page-placeholder)").forEach(p => {
-    applyOpeningWordStretchToPage(p);
+  container.querySelectorAll(".page:not(.page-placeholder)").forEach(page => {
+    applyOpeningWordStretchToPage(page);
   });
 }
