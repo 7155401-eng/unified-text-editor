@@ -1,3 +1,7 @@
 ## 2026-05-13 - [style_registry.js Cache Optimization]
 **Learning:** The style registry was repeatedly calling synchronous I/O (`localStorage.getItem`) and expensive parsing (`JSON.parse`) on every element style application, creating a severe bottleneck during dense page renders. Memory caching for static/rarely-changing global configurations is highly effective, but cross-tab synchronization must be handled manually via the `storage` event to prevent stale states in multi-window environments.
 **Action:** When implementing global configuration managers, always use an in-memory cache variable backed by `localStorage` rather than querying `localStorage` continuously. Ensure cache invalidation logic is robust (both local updates and cross-tab `storage` events).
+
+## 2026-05-19 - [Spacing Settings Cache Optimization]
+**Learning:** Layout calculations in `dom_packer.js` and `vilna_v9_apply.js` frequently queried `localStorage` for spacing settings, causing severe synchronous I/O performance bottlenecks during tight pagination loops, as `localStorage.getItem` and `JSON.parse` were invoked on nearly every paragraph and line break check.
+**Action:** When working with frequently accessed global UI settings like spacing, encapsulate reading behind an in-memory cache variable that gets updated via the `storage` event or upon local saves. Return copies from the cache if the calling code modifies the settings object.
