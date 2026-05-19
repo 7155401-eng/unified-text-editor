@@ -59,6 +59,7 @@ function measureOpeningTextWidthPx(text, fontSizePx, style) {
   const sample = String(text || "").replace(/\s+/g, " ").trim();
   if (!sample) return 0;
   const size = Number(fontSizePx) > 0 ? Number(fontSizePx) : 16;
+
   if (typeof document !== "undefined") {
     try {
       const canvas = document.createElement("canvas");
@@ -73,6 +74,7 @@ function measureOpeningTextWidthPx(text, fontSizePx, style) {
       // Fallback below.
     }
   }
+
   return estimateTextWidthPx(sample, size);
 }
 
@@ -88,15 +90,16 @@ function openingLineIsBlockedByParagraphMetadata(el) {
 function keepOpeningLineStable(el, lineHeightPx = 0) {
   if (!el) return;
 
-  // The first line hosts the large opening word only.
-  // Do not add any CSS/DOM indentation here: V9 creates the RTL opening window
-  // while it lays out the same source paragraph into geometry strips.
+  // The first line hosts the large opening word only; it must not introduce
+  // extra paragraph margins or a different line gap.
   el.style.marginTop = "0px";
   el.style.marginBottom = "0px";
+
   if (lineHeightPx > 0) {
     el.style.lineHeight = `${lineHeightPx}px`;
     el.style.height = `${lineHeightPx}px`;
   }
+
   el.dataset.v9OpeningWordLineStable = "1";
 }
 
@@ -109,6 +112,37 @@ function renderOriginalLineWithoutOpeningWord(lineEl, model, firstLineText = "")
   delete lineEl.dataset.opwApplied;
   lineEl.dataset.v9OpeningWordBlocked = "paragraph-continuation";
   return false;
+}
+
+function stabilizeDroppedSpan(span, model) {
+  if (!span || !model || model.position !== "dropped") return;
+
+  const style = model.style || {};
+  const baseLineHeightPx =
+    Number(style.baseLineHeightPx) ||
+    Number(model.metrics?.baseLineHeightPx) ||
+    Number.parseFloat(span.parentElement?.style?.lineHeight || "0") ||
+    0;
+  const dropLines = Math.max(1, Math.round(Number(style.dropLines) || Number(model.metrics?.dropLines) || 1));
+  const windowHeightPx = baseLineHeightPx > 0 ? baseLineHeightPx * dropLines : 0;
+  const spaceAfter = `${style.spaceAfterEm ?? 0.3}em`;
+
+  span.style.float = "right";
+  span.style.marginRight = "0";
+  span.style.marginLeft = spaceAfter;
+  span.style.shapeMargin = spaceAfter;
+  span.style.verticalAlign = "top";
+  span.style.overflow = "visible";
+  span.style.contain = "layout paint";
+
+  if (baseLineHeightPx > 0) {
+    span.style.setProperty("--opw-base-line-height", `${baseLineHeightPx}px`);
+    span.style.lineHeight = `${baseLineHeightPx}px`;
+    span.style.height = `${windowHeightPx}px`;
+    span.style.minHeight = `${windowHeightPx}px`;
+  }
+
+  span.dataset.opwWindowStable = "1";
 }
 
 export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
@@ -131,17 +165,20 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const baseLineHeight = Number(options.baseLineHeight) || (baseFontSize > 0 ? baseFontSize * 1.55 : 0);
   const fontSizePx = baseFontSize > 0 ? (baseFontSize * settings.size) / 100 : null;
   const effectiveOpeningFontSize = fontSizePx || baseFontSize || 16;
+  const dropLines = Math.max(1, settings.dropLines);
+
   const style = {
     fontFamily: fontFamily(settings.font),
     fontSizePx,
     fontSizePercent: settings.size,
     fontWeight: normalizeWeight(settings.weight),
-    dropLines: settings.dropLines,
+    dropLines,
     spaceAfterEm: settings.spaceAfter,
+    baseLineHeightPx: baseLineHeight,
   };
+
   const openingWordWidthPx = measureOpeningTextWidthPx(parts.segment, effectiveOpeningFontSize, style);
   const spaceAfterPx = Math.max(0, effectiveOpeningFontSize * settings.spaceAfter * 0.5);
-  const dropLines = Math.max(1, settings.dropLines);
   const windowLineCount = position === "dropped" ? dropLines : 1;
   const openingWordHeightPx = position === "dropped"
     ? Math.max(baseLineHeight * dropLines, effectiveOpeningFontSize * 1.05)
@@ -161,6 +198,7 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
     isPageSplitContinuation: false,
     metrics: {
       openingFontSizePx: fontSizePx,
+      baseLineHeightPx: baseLineHeight,
       openingLineHeightPx: openingWordHeightPx,
       openingWordWidthPx,
       openingWordHeightPx,
@@ -187,7 +225,10 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
 
   const { parts, style, position } = model;
   lineEl.textContent = "";
-  if (parts.prefix) lineEl.appendChild(document.createTextNode(parts.prefix));
+
+  if (parts.prefix) {
+    lineEl.appendChild(document.createTextNode(parts.prefix));
+  }
 
   const span = document.createElement("span");
   span.className = `opw-segment opw-${position}`;
@@ -195,6 +236,7 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   span.style.fontSize = `${style.fontSizePercent}%`;
   span.style.fontWeight = style.fontWeight;
   span.style.display = "inline-block";
+  span.style.direction = "rtl";
   span.style.verticalAlign = position === "dropped" ? "top" : "baseline";
   span.style.marginLeft = `${style.spaceAfterEm}em`;
   span.style.setProperty("--opw-drop-lines", String(style.dropLines));
@@ -202,11 +244,15 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   span.textContent = parts.segment;
   lineEl.appendChild(span);
 
+  stabilizeDroppedSpan(span, model);
+
   const suffix = firstLineText || model.flow?.firstLineText || parts.suffix || "";
-  if (suffix) lineEl.appendChild(document.createTextNode(suffix));
+  if (suffix) {
+    lineEl.appendChild(document.createTextNode(suffix));
+  }
 
   lineEl.classList.add("opw-host");
-  keepOpeningLineStable(lineEl);
+  keepOpeningLineStable(lineEl, Number.parseFloat(lineEl.style.lineHeight || "0"));
   lineEl.dataset.opwApplied = "1";
   lineEl.dataset.v9OpeningWordSource = "opening_word.js:v9-measured";
   lineEl.dataset.v9OpeningWordPosition = position;
