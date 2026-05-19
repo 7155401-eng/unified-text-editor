@@ -203,9 +203,20 @@ export function applyV9OpeningWordsFromMetadata(container) {
   if (!settings?.enabled) return { applied: 0, reason: "disabled" };
 
   const blocked = blockContinuationOpeningWords(container);
+
+  // The metadata pass is intentionally no longer allowed to create new V9
+  // opening words by default. It runs after absolute line geometry already
+  // exists, so creating an opening word here can style the wrong first word and
+  // cannot participate in the measured dropped-window layout. The measured V9
+  // layout model is the only path that should create opening words. This pass
+  // only removes continuation mistakes and tightens windows that were already
+  // measured during layout.
   const lines = Array.from(container.querySelectorAll('.v9-page .v9-line[data-v9-source-stream="main"][data-v9-paragraph-start="1"]'));
+  const allowLateMetadataOpeningWords = settings?.allowLateMetadataOpeningWords === true;
   let applied = 0;
-  for (const line of lines) if (wrapLine(line, settings)) applied += 1;
+  if (allowLateMetadataOpeningWords) {
+    for (const line of lines) if (wrapLine(line, settings)) applied += 1;
+  }
 
   const windowAdjusted = applyDroppedOpeningWindowIndents(container);
   const result = {
@@ -214,7 +225,8 @@ export function applyV9OpeningWordsFromMetadata(container) {
     blockedContinuations: blocked,
     windowAdjusted,
     extractor: "opening_word.js",
-    position: "raised-until-measured",
+    position: allowLateMetadataOpeningWords ? "raised-until-measured" : "metadata-adjust-only",
+    lateMetadataCreation: allowLateMetadataOpeningWords ? "enabled" : "disabled",
   };
   container.dataset.v9OpeningWords = JSON.stringify(result);
   if (typeof window !== "undefined") window.__ravtextLastV9OpeningWords = result;
