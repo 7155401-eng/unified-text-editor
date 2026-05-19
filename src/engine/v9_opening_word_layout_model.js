@@ -90,14 +90,21 @@ function openingLineIsBlockedByParagraphMetadata(el) {
 function keepOpeningLineStable(el, lineHeightPx = 0) {
   if (!el) return;
 
-  // The first line hosts the large opening word only; it must not introduce
-  // extra paragraph margins or a different line gap.
+  // The opening word may use a different font and size, but it must never
+  // change the row pitch of the Talmud/V9 stream. The analytical layout already
+  // placed every line by base line-height, so the DOM host is locked back to
+  // that same row box after the opening word is inserted.
   el.style.marginTop = "0px";
   el.style.marginBottom = "0px";
+  el.style.boxSizing = "border-box";
+  el.style.overflow = "visible";
 
   if (lineHeightPx > 0) {
-    el.style.lineHeight = `${lineHeightPx}px`;
-    el.style.height = `${lineHeightPx}px`;
+    const px = `${lineHeightPx}px`;
+    el.style.lineHeight = px;
+    el.style.height = px;
+    el.style.minHeight = px;
+    el.style.maxHeight = px;
   }
 
   el.dataset.v9OpeningWordLineStable = "1";
@@ -114,32 +121,80 @@ function renderOriginalLineWithoutOpeningWord(lineEl, model, firstLineText = "")
   return false;
 }
 
+function getBaseLineHeightForOpeningSpan(span, model) {
+  const style = model?.style || {};
+  return Number(style.baseLineHeightPx) ||
+    Number(model?.metrics?.baseLineHeightPx) ||
+    Number.parseFloat(span?.parentElement?.style?.lineHeight || "0") ||
+    0;
+}
+
+function getOpeningGlyphLineHeightPx(model, windowHeightPx, baseLineHeightPx) {
+  const style = model?.style || {};
+  const openingFontSizePx = Number(style.fontSizePx) || Number(model?.metrics?.openingFontSizePx) || 0;
+  if (openingFontSizePx <= 0) return baseLineHeightPx;
+  if (windowHeightPx > 0) {
+    return Math.min(windowHeightPx, Math.max(openingFontSizePx, baseLineHeightPx));
+  }
+  return Math.max(openingFontSizePx, baseLineHeightPx);
+}
+
+function stabilizeRaisedSpan(span, model) {
+  if (!span || !model || model.position === "dropped") return;
+  const baseLineHeightPx = getBaseLineHeightForOpeningSpan(span, model);
+  if (baseLineHeightPx <= 0) return;
+
+  // Raised opening words stay inline, but their larger font must not enlarge the
+  // parent row. Let the glyph overflow visually while the row keeps the stream
+  // line-height.
+  const px = `${baseLineHeightPx}px`;
+  span.style.lineHeight = px;
+  span.style.height = px;
+  span.style.maxHeight = px;
+  span.style.overflow = "visible";
+  span.style.contain = "paint";
+  span.dataset.opwInlineMetricsStable = "1";
+}
+
 function stabilizeDroppedSpan(span, model) {
   if (!span || !model || model.position !== "dropped") return;
 
   const style = model.style || {};
-  const baseLineHeightPx =
-    Number(style.baseLineHeightPx) ||
-    Number(model.metrics?.baseLineHeightPx) ||
-    Number.parseFloat(span.parentElement?.style?.lineHeight || "0") ||
-    0;
+  const baseLineHeightPx = getBaseLineHeightForOpeningSpan(span, model);
   const dropLines = Math.max(1, Math.round(Number(style.dropLines) || Number(model.metrics?.dropLines) || 1));
   const windowHeightPx = baseLineHeightPx > 0 ? baseLineHeightPx * dropLines : 0;
+  const glyphLineHeightPx = getOpeningGlyphLineHeightPx(model, windowHeightPx, baseLineHeightPx);
+  const openingWidthPx = Math.ceil(Number(model.metrics?.openingWordWidthPx) || 0);
   const spaceAfter = `${style.spaceAfterEm ?? 0.3}em`;
 
   span.style.float = "right";
+  span.style.display = "block";
   span.style.marginRight = "0";
   span.style.marginLeft = spaceAfter;
+  span.style.marginBottom = "0";
+  span.style.padding = "0";
   span.style.shapeMargin = spaceAfter;
   span.style.verticalAlign = "top";
+  span.style.whiteSpace = "nowrap";
   span.style.overflow = "visible";
-  span.style.contain = "layout paint";
+  span.style.boxSizing = "border-box";
+  span.style.contain = "paint";
+
+  if (openingWidthPx > 0) {
+    span.style.width = `${openingWidthPx}px`;
+  }
 
   if (baseLineHeightPx > 0) {
     span.style.setProperty("--opw-base-line-height", `${baseLineHeightPx}px`);
-    span.style.lineHeight = `${baseLineHeightPx}px`;
-    span.style.height = `${windowHeightPx}px`;
-    span.style.minHeight = `${windowHeightPx}px`;
+  }
+  if (glyphLineHeightPx > 0) {
+    span.style.lineHeight = `${glyphLineHeightPx}px`;
+  }
+  if (windowHeightPx > 0) {
+    const px = `${windowHeightPx}px`;
+    span.style.height = px;
+    span.style.minHeight = px;
+    span.style.maxHeight = px;
   }
 
   span.dataset.opwWindowStable = "1";
@@ -223,6 +278,11 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
     return renderOriginalLineWithoutOpeningWord(lineEl, model, firstLineText);
   }
 
+  const stableLineHeightPx = Number.parseFloat(lineEl.style.lineHeight || "0") ||
+    Number(model.metrics?.baseLineHeightPx) ||
+    0;
+  keepOpeningLineStable(lineEl, stableLineHeightPx);
+
   const { parts, style, position } = model;
   lineEl.textContent = "";
 
@@ -245,6 +305,7 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   lineEl.appendChild(span);
 
   stabilizeDroppedSpan(span, model);
+  stabilizeRaisedSpan(span, model);
 
   const suffix = firstLineText || model.flow?.firstLineText || parts.suffix || "";
   if (suffix) {
@@ -252,7 +313,7 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   }
 
   lineEl.classList.add("opw-host");
-  keepOpeningLineStable(lineEl, Number.parseFloat(lineEl.style.lineHeight || "0"));
+  keepOpeningLineStable(lineEl, stableLineHeightPx);
   lineEl.dataset.opwApplied = "1";
   lineEl.dataset.v9OpeningWordSource = "opening_word.js:v9-measured";
   lineEl.dataset.v9OpeningWordPosition = position;
