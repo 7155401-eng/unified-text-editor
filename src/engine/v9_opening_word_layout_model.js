@@ -106,20 +106,17 @@ function sameSourceParagraph(a, b) {
 
 function keepOpeningLineStable(el, lineHeightPx = 0) {
   if (!el) return;
-  if (el.classList) {
-    el.classList.remove("justify");
-    el.classList.remove("center");
-  }
-  el.style.textAlign = "start";
-  el.style.textAlignLast = "auto";
-  el.style.whiteSpace = "nowrap";
+  // Do not remove justify/center and do not force text-align/nowrap here.
+  // In RTL, the opening window is created by geometry: same left edge + shorter width
+  // leaves the visual gap on the right. Forcing nowrap/start prevents normal V9
+  // justification and can leave an unwanted gap on the visual left of the first line.
   el.style.marginTop = "0px";
   el.style.marginBottom = "0px";
   if (lineHeightPx > 0) {
     el.style.lineHeight = `${lineHeightPx}px`;
     el.style.height = `${lineHeightPx}px`;
   }
-  el.dataset.v9OpeningWordUnjustified = "1";
+  el.dataset.v9OpeningWordLineStable = "1";
 }
 
 function rememberOpeningWindowOriginals(el) {
@@ -152,6 +149,7 @@ function restoreOpeningWindowOriginals(el) {
   delete el.dataset.v9OpeningWindowAdjusted;
   delete el.dataset.v9OpeningWindowReservePx;
   delete el.dataset.v9OpeningWordUnjustified;
+  delete el.dataset.v9OpeningWordLineStable;
   delete el.dataset.v9OpeningWindowOriginalWidthPx;
   delete el.dataset.v9OpeningWindowOriginalClassName;
   delete el.dataset.v9OpeningWindowOriginalTextAlign;
