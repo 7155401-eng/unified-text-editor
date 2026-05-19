@@ -60,6 +60,117 @@ function isMainLine(el) {
   return el?.dataset?.v9Role === "main" || el?.classList?.contains("v9-role-main");
 }
 
+function cloneLineNodes(el) {
+  return Array.from(el?.childNodes || []).map(node => node.cloneNode(true));
+}
+
+function replaceLineNodes(el, nodes) {
+  if (!el) return;
+  const clones = (nodes || []).map(node => node.cloneNode(true));
+  if (typeof el.replaceChildren === "function") {
+    el.replaceChildren(...clones);
+    return;
+  }
+  while (el.firstChild) el.removeChild(el.firstChild);
+  for (const node of clones) el.appendChild(node);
+}
+
+function sortLinesTopDown(lines) {
+  return [...(lines || [])].sort((a, b) => {
+    const byTop = topOf(a) - topOf(b);
+    if (Math.abs(byTop) > EPS) return byTop;
+    return px(b.style.left) - px(a.style.left);
+  });
+}
+
+function pageInnerWidth(pageEl) {
+  const padding = px(pageEl.style.padding, 12);
+  const styleWidth = px(pageEl.style.width, pageEl.clientWidth || 0);
+  return Math.max(0, styleWidth - padding * 2);
+}
+
+function normalizeV9Scenario1SplitOrphans(pages) {
+  const fixes = [];
+
+  for (const pageEl of pages || []) {
+    if (!pageEl?.querySelectorAll) continue;
+
+    const groups = new Map();
+    const sideLines = Array.from(pageEl.querySelectorAll(".v9-line[data-v9-role][data-v9-box-id]"))
+      .filter(el => {
+        const role = String(el.dataset.v9Role || "").toLowerCase();
+        return role === "right" || role === "left";
+      });
+
+    for (const line of sideLines) {
+      const id = String(line.dataset.v9BoxId || "");
+      if (!id || id === "main") continue;
+      const role = String(line.dataset.v9Role || "").toLowerCase();
+      if (!groups.has(id)) groups.set(id, { right: [], left: [] });
+      groups.get(id)[role].push(line);
+    }
+
+    for (const [streamId, group] of groups) {
+      const right = sortLinesTopDown(group.right);
+      const left = sortLinesTopDown(group.left);
+
+      if (right.length < 2 || left.length < 1) continue;
+      if (right.length !== left.length + 1) continue;
+
+      const orphanLine = right[right.length - 1];
+      if (orphanLine.dataset.v9Scenario1OrphanFix === "1") continue;
+
+      const innerW = pageInnerWidth(pageEl);
+      if (innerW <= 0) continue;
+
+      const orphanWidth = px(orphanLine.style.width, orphanLine.getBoundingClientRect?.().width || 0);
+      if (orphanWidth >= innerW - 5) continue;
+
+      const padding = px(pageEl.style.padding, 12);
+      const lineHeight = Math.max(
+        heightOf(orphanLine),
+        heightOf(left[left.length - 1]),
+        heightOf(right[right.length - 2]),
+        1,
+      );
+      const targetTop = Math.max(topOf(right[right.length - 2]), topOf(left[left.length - 1])) + lineHeight;
+      const pageHeight = px(pageEl.style.height, pageEl.clientHeight || 0);
+      if (pageHeight > 0 && targetTop + lineHeight > pageHeight - padding + EPS) continue;
+
+      let carry = cloneLineNodes(orphanLine);
+      for (const leftLine of left) {
+        const nextCarry = cloneLineNodes(leftLine);
+        replaceLineNodes(leftLine, carry);
+        carry = nextCarry;
+      }
+      replaceLineNodes(orphanLine, carry);
+
+      orphanLine.style.left = `${padding}px`;
+      orphanLine.style.width = `${innerW}px`;
+      setTop(orphanLine, targetTop);
+      orphanLine.classList?.remove("justify");
+      orphanLine.classList?.add("center");
+      orphanLine.dataset.v9Role = "left";
+      orphanLine.classList?.remove("v9-role-right");
+      orphanLine.classList?.add("v9-role-left");
+      orphanLine.dataset.v9Scenario1OrphanFix = "1";
+
+      const detail = {
+        streamId,
+        rightLines: right.length,
+        leftLines: left.length,
+        targetTop: Math.round(targetTop * 100) / 100,
+        width: Math.round(innerW * 100) / 100,
+      };
+      pageEl.dataset.v9Scenario1OrphanFix = JSON.stringify(detail);
+      fixes.push({ pageIndex: pageEl.dataset.pageIndex || "", ...detail });
+    }
+  }
+
+  return fixes;
+}
+
+
 function applyGapToPage(pageEl, desiredGapPx) {
   if (!pageEl || desiredGapPx <= 0) return null;
 
@@ -142,6 +253,7 @@ export function applyV9MainBottomGap(container, options = {}) {
   if (!container || !container.querySelectorAll) return [];
   const desiredGapPx = readGapPx(container, options.gapPx);
   const pages = Array.from(container.querySelectorAll(".page.v9-page, .v9-page"));
+  const scenario1OrphanFixes = normalizeV9Scenario1SplitOrphans(pages);
   const results = [];
 
   for (const pageEl of pages) {
@@ -152,7 +264,7 @@ export function applyV9MainBottomGap(container, options = {}) {
   const openingWords = applyV9OpeningWordsFromMetadata(container);
 
   if (typeof console !== "undefined" && console.debug) {
-    console.debug("[v9-main-bottom-gap]", { desiredGapPx, changedPages: results.length, results, openingWords });
+    console.debug("[v9-main-bottom-gap]", { desiredGapPx, changedPages: results.length, results, openingWords, scenario1OrphanFixes });
   }
   return results;
 }
