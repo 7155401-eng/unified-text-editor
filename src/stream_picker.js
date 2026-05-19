@@ -9,6 +9,63 @@ const PICKER_ID = "talmud-stream-picker";
 const ADD_BTN_ID = "talmud-add-stream-btn";
 const TALMUD_MAX_STREAMS = 2;
 
+function installSelectCommitFallback() {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (window.__ravtextStreamSelectCommitFallbackInstalled) return;
+  window.__ravtextStreamSelectCommitFallbackInstalled = true;
+
+  // Some browser/native select UIs can update a select value before the app's
+  // "change" listener runs. The stream-settings panel stores values only from
+  // change handlers, so convert early input notifications into a coalesced
+  // synthetic change for the stream settings selects.
+  const selector = [
+    "#stream-columns-panel select",
+    ".stream-settings-block select",
+    ".global-stream-overrides select",
+    "#stream-auto-rules-dialog select",
+    ".stream-auto-rules-dialog select",
+  ].join(", ");
+
+  const pending = new WeakMap();
+
+  const matchesStreamSettingsSelect = (target) => {
+    const select = target?.closest?.("select");
+    return select && select.matches(selector) ? select : null;
+  };
+
+  const clearPending = (event) => {
+    const select = matchesStreamSettingsSelect(event.target);
+    if (select) pending.delete(select);
+  };
+
+  const dispatchSyntheticChange = (select, value) => {
+    if (!select.isConnected) return;
+    if (pending.get(select) !== value) return;
+    pending.delete(select);
+    if (select.dataset.ravtextSyntheticSelectChange === "1") return;
+
+    select.dataset.ravtextSyntheticSelectChange = "1";
+    try {
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      delete select.dataset.ravtextSyntheticSelectChange;
+    }
+  };
+
+  document.addEventListener("input", (event) => {
+    const select = matchesStreamSettingsSelect(event.target);
+    if (!select || select.dataset.ravtextSyntheticSelectChange === "1") return;
+
+    const value = select.value;
+    pending.set(select, value);
+    setTimeout(() => dispatchSyntheticChange(select, value), 0);
+  }, true);
+
+  document.addEventListener("change", clearPending, true);
+}
+
+installSelectCommitFallback();
+
 function getAvailableStreamCodes() {
   // Try to find streams in the editor or rendered output.
   const codes = new Set();
@@ -31,7 +88,7 @@ function setSelected(codes) {
   const input = document.getElementById(HIDDEN_INPUT_ID);
   if (!input) return;
   // Hard cap at TALMUD_MAX_STREAMS (2). Any extras are truncated.
-  // משה 2026-05-10: מיון עולה — קוד נמוך = ימני, גבוה = שמאלי (סדר וילנא קלאסי).
+  // משנה 2026-05-10: מיון עולה — קטן נמטה = ימין, גדול = שמאל (סדר ויזואלי קלאסי).
   const capped = codes.slice(0, TALMUD_MAX_STREAMS).slice().sort();
   input.value = capped.join(",");
   // Trigger change event so existing listeners pick up.
@@ -42,8 +99,8 @@ function setSelected(codes) {
 function renderPicker() {
   const picker = document.getElementById(PICKER_ID);
   if (!picker) return;
-  // משה 2026-05-10: עדכון מצב הכפתור בכל renderPicker — ערך הקלט נטען מ-localStorage
-  // אחרי setupStreamPicker (talmud_controls מאוחר יותר), בלי dispatch של change.
+  // משנה 2026-05-10: עדכון מצב הכפתור בכל renderPicker — ערך הכלי נטען מ-localStorage
+  // אחרי setupStreamPicker (talmud_controls מאוחר יותר), לכן dispatch של change.
   // כל קריאה ל-renderPicker עכשיו תעדכן גם את הכפתור.
   updateAddButtonState();
   const selected = getCurrentSelected();
@@ -107,8 +164,8 @@ function updateAddButtonState() {
   const btn = document.getElementById(ADD_BTN_ID);
   if (!btn) return;
   const selected = getCurrentSelected();
-  // משה 2026-05-10: בגפ"ת תמיד בדיוק 2 זרמים, אז הכפתור "+" מיותר. מסתירים
-  // אותו לחלוטין כשיש 2. אם פחות מ-2 (ברירת מחדל ממילא ממלאת ל-2), הוא נראה.
+  // משנה 2026-05-10: בגפ"ת תמיד בדיוק 2 זרמים, אז הכפתור "+" מיותר. מסתירים
+  // אותו לחלוטין כאשר יש 2. אם פחות מ-2 (ברירת מחדל ממילא ממלאת ל-2), הוא נראה.
   if (selected.length >= TALMUD_MAX_STREAMS) {
     btn.style.display = "none";
   } else {
@@ -120,8 +177,8 @@ function updateAddButtonState() {
 }
 
 function defaultsIfEmpty() {
-  // משה 2026-05-13: בדיקה כפולה — גם getCurrentSelected (שדה ה-input) וגם localStorage.
-  // אם talmud_controls עדיין לא טען את הערך לשדה, ה-localStorage כבר יכיל אותו,
+  // משנה 2026-05-13: בדיקה כפולה — גם getCurrentSelected (שדה ה-input) וגם localStorage.
+  // אם talmud_controls עדיין לא טען את הערך לשדה, ה-localStorage כבר יכול להיות קיים,
   // ואנחנו לא רוצים לדרוס. זה פותר את הבאג של בחירה שחוזרת לברירת מחדל אחרי רענון.
   const selected = getCurrentSelected();
   if (selected.length > 0) return;
@@ -137,13 +194,15 @@ function defaultsIfEmpty() {
 }
 
 export function setupStreamPicker() {
+  installSelectCommitFallback();
+
   const picker = document.getElementById(PICKER_ID);
   const addBtn = document.getElementById(ADD_BTN_ID);
   if (!picker || !addBtn) return;
   // Initial render
   renderPicker();
   updateAddButtonState();
-  // משה 2026-05-10: רנדור נוסף אחרי 100ms לתפוס מצב שערך הקלט נטען מ-localStorage
+  // משנה 2026-05-10: רנדר נוסף אחרי 100ms לתפוס מצב שערך הקלט נטען מ-localStorage
   // ע"י talmud_controls שרץ אחרי setupStreamPicker.
   setTimeout(() => { renderPicker(); updateAddButtonState(); }, 100);
   setTimeout(() => { renderPicker(); updateAddButtonState(); }, 500);
