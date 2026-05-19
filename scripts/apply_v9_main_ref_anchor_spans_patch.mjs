@@ -105,7 +105,7 @@ function v9MainRefsFromParagraph(p, textLen) {
       stream,
       code: stream,
       num,
-      uid: raw?.uid || `${stream}:${num}:${clamped}`,
+      uid: raw?.uid || (String(stream) + ":" + String(num) + ":" + String(clamped)),
       anchor: clamped,
       absoluteAnchor: clamped,
       localAnchor: clamped,
@@ -154,7 +154,7 @@ function v9RefsForWordTokens(mainRefs, wordTokens) {
     }
     return { ...ref, localPos: pos };
   }).filter((ref) => {
-    const key = ref.uid || `${ref.stream}:${ref.num}:${ref.anchor}`;
+    const key = ref.uid || (String(ref.stream) + ":" + String(ref.num) + ":" + String(ref.anchor));
     if (usedKeys.has(key)) return false;
     usedKeys.add(key);
     return true;
