@@ -1,4 +1,4 @@
-// vilna_v9.js — מנוע פריסת דף וילנא, V9.
+﻿// vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
@@ -3875,4 +3875,5 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
 
   return { mainText, mainRuns, mainParagraphs, mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
 }
+
 
