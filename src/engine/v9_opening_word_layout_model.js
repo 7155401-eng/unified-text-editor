@@ -93,10 +93,14 @@ function openingLineIsBlockedByParagraphMetadata(el) {
 function sameSourceParagraph(a, b) {
   const aId = a?.dataset?.v9ParagraphId || "";
   const bId = b?.dataset?.v9ParagraphId || "";
-  if (aId && bId && aId !== bId) return false;
+  if (aId || bId) return !!aId && aId === bId;
+
   const aIndex = a?.dataset?.v9ParagraphIndex || "";
   const bIndex = b?.dataset?.v9ParagraphIndex || "";
-  if (aIndex && bIndex && aIndex !== bIndex) return false;
+  if (aIndex || bIndex) return !!aIndex && aIndex === bIndex;
+
+  if (b?.dataset?.v9ParagraphStart === "1") return false;
+  if (b?.dataset?.v9OpeningWordAllowed === "true") return false;
   return true;
 }
 
@@ -159,14 +163,29 @@ function restoreOpeningWindowOriginals(el) {
   delete el.dataset.v9OpeningWindowOriginalHeight;
 }
 
+function measureElementTextWidthPx(el) {
+  if (!el) return 0;
+  try {
+    if (typeof document !== "undefined" && el.firstChild) {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const rect = range.getBoundingClientRect();
+      range.detach && range.detach();
+      if (rect && Number.isFinite(rect.width) && rect.width > 0) {
+        return Math.ceil(rect.width);
+      }
+    }
+  } catch (_) {
+    // fallback below
+  }
+  const fontSize = toPx(el.style?.fontSize) || 16;
+  return estimateTextWidthPx(el.textContent || "", fontSize);
+}
+
 function textWouldOverflow(el, targetWidth) {
   if (!el || targetWidth <= 0) return true;
-  try {
-    const measured = Math.ceil(Math.max(el.scrollWidth || 0, el.getBoundingClientRect?.().width || 0));
-    return measured > targetWidth + 2;
-  } catch (_) {
-    return false;
-  }
+  const measured = measureElementTextWidthPx(el);
+  return measured > targetWidth + 2;
 }
 
 function renderOriginalLineWithoutOpeningWord(lineEl, model, firstLineText = "") {
@@ -227,6 +246,7 @@ function scheduleOpeningWindowIndent(lineEl, model) {
       if (originalWidth <= targetWidth + 1 || originalWidth <= hostWidth - reserveWidthPx + 2) continue;
       if (textWouldOverflow(el, targetWidth)) {
         restoreOpeningWindowOriginals(el);
+        el.dataset.v9OpeningWindowSkipped = "text-overflow";
         continue;
       }
 
