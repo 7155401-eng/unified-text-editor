@@ -91,11 +91,10 @@ function keepOpeningLineStable(el, lineHeightPx = 0) {
   if (!el) return;
 
   // The opening word may use a different font and size, but it must never
-  // change the row pitch of the Talmud/V9 stream. The analytical layout already
-  // placed every line by base line-height, so the DOM host is locked back to
-  // that same row box after the opening word is inserted.
-  el.style.marginTop = "0px";
-  el.style.marginBottom = "0px";
+  // change the row pitch of the Talmud/V9 stream. Do not touch margins here:
+  // V9 line elements may inherit stream spacing margins, and changing them only
+  // on the opening-word host creates a visible gap difference even when
+  // line-height is numerically identical.
   el.style.boxSizing = "border-box";
   el.style.overflow = "visible";
 
