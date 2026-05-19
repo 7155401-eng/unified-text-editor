@@ -784,6 +784,107 @@ function splitWordsByStrips(text, metrics, rightStrips) {
 // strip 2: צד אחד נגמר → הראשי מתפשט (רוחב = mainWidth + gap + שטח הצד הנגמר).
 // strip 3: שני הצדדים נגמרו → הראשי לרוחב מלא (innerWidth).
 
+function v9WordsWidth(words, metrics) {
+  if (!Array.isArray(words) || words.length === 0 || !metrics) return 0;
+  let w = 0;
+  for (let i = 0; i < words.length; i++) {
+    if (i > 0) w += metrics.spaceWidth;
+    w += metrics.measureWord(words[i]);
+  }
+  return w;
+}
+
+function v9LineFromWords(words, metrics) {
+  const ws = Array.isArray(words) ? words.filter(Boolean) : [];
+  return {
+    words: ws,
+    width: v9WordsWidth(ws, metrics),
+    isLast: false,
+  };
+}
+
+// משה 2026-05-19: איזון חיתוך footer/הערות.
+// לא חותכים slice עיוור אם השורה האחרונה קצרה מדי.
+// מנסים לבנות מחדש את חלון השורות האחרון מהסוף, ולמשוך מילים מה-overflow
+// כל עוד אותו מספר שורות עדיין נכנס.
+function rebalanceFooterContinuationCut(allLines, maxLinesFit, metrics, widthPx) {
+  const baseLines = Array.isArray(allLines) ? allLines.slice(0, maxLinesFit) : [];
+  const rawOverflowWords = Array.isArray(allLines)
+    ? allLines.slice(maxLinesFit).flatMap(l => (l && Array.isArray(l.words)) ? l.words : [])
+    : [];
+
+  if (!baseLines.length || !rawOverflowWords.length || !metrics || !widthPx) {
+    return { linesToRender: baseLines, overflowWords: rawOverflowWords, balanced: false };
+  }
+
+  const last = baseLines[baseLines.length - 1];
+  const lastFill = last && widthPx > 0 ? (Number(last.width) || 0) / widthPx : 1;
+  if (lastFill >= 0.72 && (last?.words?.length || 0) > 1) {
+    return { linesToRender: baseLines, overflowWords: rawOverflowWords, balanced: false };
+  }
+
+  const windowLineCount = Math.min(4, baseLines.length);
+  const stableLines = baseLines.slice(0, baseLines.length - windowLineCount);
+  const windowWords = baseLines.slice(baseLines.length - windowLineCount)
+    .flatMap(l => (l && Array.isArray(l.words)) ? l.words : []);
+
+  function breakWordsFromEnd(words, lineCount) {
+    const result = [];
+    let end = words.length;
+
+    for (let lineNo = lineCount - 1; lineNo >= 0 && end > 0; lineNo--) {
+      let start = end - 1;
+
+      while (start > 0) {
+        const candidate = words.slice(start - 1, end);
+        const candidateWidth = v9WordsWidth(candidate, metrics);
+        if (candidateWidth <= widthPx) start--;
+        else break;
+      }
+
+      result.unshift(v9LineFromWords(words.slice(start, end), metrics));
+      end = start;
+    }
+
+    if (end > 0) return null;
+    if (result.length !== lineCount) return null;
+    return result;
+  }
+
+  let best = null;
+  const maxPull = Math.min(24, rawOverflowWords.length);
+
+  for (let pull = 0; pull <= maxPull; pull++) {
+    const candidateWords = windowWords.concat(rawOverflowWords.slice(0, pull));
+    const candidateLines = breakWordsFromEnd(candidateWords, windowLineCount);
+    if (!candidateLines) continue;
+
+    const candidateLast = candidateLines[candidateLines.length - 1];
+    const fill = widthPx > 0 ? (Number(candidateLast.width) || 0) / widthPx : 1;
+    const wordsInLast = candidateLast.words?.length || 0;
+
+    const reachesTarget = fill >= 0.72 && wordsInLast > 1;
+    const score = (reachesTarget ? 10000 : 0) + fill * 100 + pull * 0.75;
+
+    if (!best || score > best.score) {
+      best = { pull, lines: candidateLines, score, fill };
+    }
+  }
+
+  if (!best) {
+    return { linesToRender: baseLines, overflowWords: rawOverflowWords, balanced: false };
+  }
+
+  return {
+    linesToRender: stableLines.concat(best.lines),
+    overflowWords: rawOverflowWords.slice(best.pull),
+    balanced: best.pull > 0 || best.fill > lastFill + 0.05,
+  };
+}
+
+// =====================================================================
+// בונה strips לראשי לפי בר־מצרא: כשפרשן נגמר, הראשי מתפשט לתוך שטחו.
+// =====================================================================
 function buildMainStrips(opts) {
   const { mainTopY, mainX, mainWidth, mainGap, innerWidth,
           rightEndY, leftEndY, pageBottom } = opts;
@@ -1728,15 +1829,16 @@ function buildPagePlan(pageContent, config) {
       const remainingY = pageBottom - footerY;
       const rowsPerCol = Math.max(1, Math.floor(remainingY / fsLineH));
       const maxLinesFit = rowsPerCol * footerCols;
-      const linesToRender = allLines.slice(0, maxLinesFit);
-      const overflowLines = allLines.slice(maxLinesFit);
-      const footerContinues = overflowLines.length > 0;
+      const footerCut = rebalanceFooterContinuationCut(allLines, maxLinesFit, fsMetrics, colWidth);
+      const linesToRender = footerCut.linesToRender;
+      const overflowWords = footerCut.overflowWords;
+      const footerContinues = overflowWords.length > 0;
 
-      if (overflowLines.length > 0) {
-        const overflowWords = overflowLines.flatMap(l => l.words);
+      if (overflowWords.length > 0) {
         const overflowText = overflowWords.join(' ');
         const sourceRuns = Array.isArray(fs.runs) ? fs.runs : [];
-        const overflowStart = text.indexOf(overflowText);
+        const renderedText = linesToRender.flatMap(l => l.words || []).join(' ');
+        const overflowStart = renderedText ? renderedText.length + 1 : 0;
         const overflowRuns = overflowStart >= 0
           ? sliceRuns(sourceRuns, overflowStart, overflowStart + overflowText.length)
           : [];
