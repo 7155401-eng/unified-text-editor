@@ -28,7 +28,7 @@ function readGapPx(container, explicitGap) {
   try {
     const cssValue = window.getComputedStyle?.(container)
       ?.getPropertyValue("--ravtext-v9-main-bottom-gap");
-    const n = Number.parseFloat(cssValue || "");
+    const n = Number.parseFloat(cssValue  || "");
     if (Number.isFinite(n)) return clamp(n, 0, MAX_GAP_PX);
   } catch (_) {}
 
@@ -98,6 +98,7 @@ function setRole(el, role) {
   el.dataset.v9Role = role;
   el.classList?.remove("v9-role-right");
   el.classList?.remove("v9-role-left");
+  el.classList?.remove("v9-role-stream");
   el.classList?.add(`v9-role-${role}`);
 }
 
@@ -118,7 +119,7 @@ function columnFallback(pageEl, role, oppositeLines) {
 
 function moveLineIntoColumn(line, refs, role, pageEl, oppositeLines = []) {
   const ordered = sortLines(refs);
-  const lineH = Math.max(heightOf(line), ordered.length ? heightOf(ordered.at(-1)) : 1, 1);
+  const opposite = sortLines(oppositeLines);
 
   let left;
   let width;
@@ -131,9 +132,10 @@ function moveLineIntoColumn(line, refs, role, pageEl, oppositeLines = []) {
     top = bottomOf(ref);
   } else {
     const fallback = columnFallback(pageEl, role, oppositeLines);
+    const oppositeBottom = opposite.length ? bottomOf(opposite.at(-1)) : px(pageEl.style.padding, 12);
     left = fallback.left;
     width = fallback.width;
-    top = px(pageEl.style.padding, 12);
+    top = oppositeBottom;
   }
 
   line.style.left = `${Math.round(left * 100) / 100}px`;
@@ -145,9 +147,23 @@ function moveLineIntoColumn(line, refs, role, pageEl, oppositeLines = []) {
   return true;
 }
 
+function safePush(arr, line) {
+  if (line && !arr.includes(line)) arr.push(line);
+}
+
+function normalizedRole(line) {
+  return String(line?.dataset?.v9Role || "").toLowerCase();
+}
+
 // V9 RTL split rule:
-// At most one full-width bridge row may exist for a split stream.
-// It must be the last row from the left column, never a right-column row.
+//
+// 1. A split stream may have at most one full-width bridge row.
+// 2. The bridge may only be the final row of the left/last RTL column.
+// 3. A full-width right row is never a legal bridge.
+// 4. In split context, full-width "stream" rows are counted too; otherwise they bypass
+//    the guard and produce the repeated bridge rows seen in debug snapshots.
+// 5. If the single bridge candidate is detached or overlaps main text, it is returned
+//    to the left column.
 function normalizeV9Scenario1BridgeRules(pages) {
   const fixes = [];
 
@@ -163,8 +179,8 @@ function normalizeV9Scenario1BridgeRules(pages) {
     const groups = new Map();
 
     for (const line of Array.from(pageEl.querySelectorAll(".v9-line[data-v9-role][data-v9-box-id]"))) {
-      const role = String(line.dataset.v9Role || "").toLowerCase();
-      if (role !== "right" && role !== "left") continue;
+      const role = normalizedRole(line);
+      if (role !== "right" && role !== "left" && role !== "stream") continue;
 
       const streamId = String(line.dataset.v9BoxId || "");
       if (!streamId || streamId === "main") continue;
@@ -174,23 +190,28 @@ function normalizeV9Scenario1BridgeRules(pages) {
     }
 
     for (const [streamId, lines] of groups) {
-      const byRole = role => sortLines(lines.filter(line =>
-        String(line.dataset.v9Role || "").toLowerCase() === role
-      ));
+      const byRole = role => sortLines(lines.filter(line => normalizedRole(line) === role));
 
       const right = byRole("right");
       const left = byRole("left");
-      if (!right.length || !left.length) continue;
+      const stream = byRole("stream");
+
+      // Leave ordinary full-width footer streams alone.  This guard is only for a
+      // stream that actually participates in a V9 split.
+      if (!right.length && !left.length) continue;
 
       const isFullWidth = line => widthOf(line) >= innerW - 5 && leftOf(line) <= padding + 5;
-      const rightFull = right.filter(isFullWidth);
-      const leftFull = sortLines(left.filter(isFullWidth));
+
       const rightNarrow = right.filter(line => !isFullWidth(line));
       const leftNarrow = left.filter(line => !isFullWidth(line));
+      const streamNarrow = stream.filter(line => !isFullWidth(line));
+      const oppositeForRight = [...leftNarrow, ...streamNarrow];
 
-      for (const line of rightFull) {
-        moveLineIntoColumn(line, rightNarrow, "right", pageEl, leftNarrow);
-        rightNarrow.push(line);
+      // Right-side full-width rows are illegal in RTL. Return them before picking
+      // the single left bridge candidate, so they can participate as normal right rows.
+      for (const line of right.filter(isFullWidth)) {
+        moveLineIntoColumn(line, rightNarrow, "right", pageEl, oppositeForRight);
+        safePush(rightNarrow, line);
         fixes.push({
           pageIndex: pageEl.dataset.pageIndex || "",
           streamId,
@@ -198,32 +219,40 @@ function normalizeV9Scenario1BridgeRules(pages) {
         });
       }
 
-      if (!leftFull.length) continue;
+      // A full-width row labelled "stream" in a split context is not allowed to
+      // bypass the one-bridge rule. Treat it as a left-side continuation candidate.
+      const leftFullCandidates = sortLines([
+        ...left.filter(isFullWidth),
+        ...stream.filter(isFullWidth),
+      ]);
 
-      // The critical rule: never two bridge rows.
-      // If several full-width left rows exist, only the bottommost can remain a bridge.
-      // Every earlier full-width row is put back into the left column first, and then
-      // becomes part of the left column stack for the one remaining candidate.
-      const bridge = leftFull.at(-1);
-      for (const extra of leftFull.slice(0, -1)) {
+      if (!leftFullCandidates.length) continue;
+
+      const bridge = leftFullCandidates.at(-1);
+
+      // The critical rule: never two bridge rows. Only the bottommost full-width
+      // left/stream row can remain a bridge candidate.
+      for (const extra of leftFullCandidates.slice(0, -1)) {
         moveLineIntoColumn(extra, leftNarrow, "left", pageEl, rightNarrow);
-        leftNarrow.push(extra);
+        safePush(leftNarrow, extra);
         fixes.push({
           pageIndex: pageEl.dataset.pageIndex || "",
           streamId,
-          action: "extra-left-bridge-returned",
+          action: "extra-full-width-row-returned-to-left",
         });
       }
 
-      const priorRight = rightNarrow.filter(line => bottomOf(line) <= topOf(bridge) + heightOf(bridge) + EPS);
-      const priorLeft = leftNarrow.filter(line => bottomOf(line) <= topOf(bridge) + heightOf(bridge) + EPS);
+      const bridgeTop = topOf(bridge);
+      const bridgeH = Math.max(heightOf(bridge), 1);
+      const priorRight = rightNarrow.filter(line => bottomOf(line) <= bridgeTop + bridgeH + EPS);
+      const priorLeft = leftNarrow.filter(line => bottomOf(line) <= bridgeTop + bridgeH + EPS);
 
       if (!priorRight.length || !priorLeft.length) {
         moveLineIntoColumn(bridge, leftNarrow, "left", pageEl, rightNarrow);
         fixes.push({
           pageIndex: pageEl.dataset.pageIndex || "",
           streamId,
-          action: "left-bridge-no-pair-returned",
+          action: "bridge-without-two-columns-returned-to-left",
         });
         continue;
       }
@@ -240,7 +269,7 @@ function normalizeV9Scenario1BridgeRules(pages) {
         fixes.push({
           pageIndex: pageEl.dataset.pageIndex || "",
           streamId,
-          action: attached ? "left-bridge-over-main-returned" : "left-bridge-detached-returned",
+          action: attached ? "bridge-over-main-returned-to-left" : "bridge-detached-returned-to-left",
         });
         continue;
       }
@@ -252,6 +281,7 @@ function normalizeV9Scenario1BridgeRules(pages) {
       setRole(bridge, "left");
       centerLine(bridge);
       bridge.dataset.v9Scenario1BridgeRule = "single-valid-left-bridge";
+
       fixes.push({
         pageIndex: pageEl.dataset.pageIndex || "",
         streamId,
