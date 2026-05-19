@@ -1,189 +1,43 @@
-const DEFAULT_MARKER_RE = "^(?:#{1,6}\\s+|פרק\\s+|סימן\\s+|סעיף\\s+).+";
-
-function escapeHtml(text) {
-  return String(text || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function slugName(name, index) {
-  const cleaned = String(name || "")
-    .replace(/[\\/:*?"<>|]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
-  return `${String(index + 1).padStart(3, "0")}-${cleaned || "chapter"}.txt`;
-}
-
-function readEditorText(paneManager) {
-  try {
-    const ed = paneManager?.getActiveEditor?.();
-    if (!ed) return "";
-    if (ed.getText) return String(ed.getText() || "");
-    return String(ed.state?.doc?.textBetween?.(0, ed.state.doc.content.size, "\n", "\n") || "");
-  } catch {
-    return "";
-  }
-}
-
-async function readInputFile(file) {
-  const name = String(file?.name || "").toLowerCase();
-  if (name.endsWith(".docx")) {
-    const mammoth = await import("mammoth/mammoth.browser");
-    const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
-    return result.value || "";
-  }
-  return await file.text();
-}
-
-function splitChapters(text, pattern, flags = "mu") {
-  const source = String(text || "").replace(/\r\n/g, "\n");
-  const re = new RegExp(pattern || DEFAULT_MARKER_RE, flags.includes("m") ? flags : flags + "m");
-  const lines = source.split("\n");
-  const chapters = [];
-  let current = null;
-  let preface = [];
-  for (const line of lines) {
-    if (re.test(line.trim())) {
-      if (current) chapters.push(current);
-      else if (preface.join("\n").trim()) {
-        chapters.push({ title: "פתיחה", text: preface.join("\n").trim() });
-      }
-      current = { title: line.trim().replace(/^#+\s*/, ""), lines: [line] };
-      re.lastIndex = 0;
-      continue;
-    }
-    re.lastIndex = 0;
-    if (current) current.lines.push(line);
-    else preface.push(line);
-  }
-  if (current) chapters.push(current);
-  else if (preface.join("\n").trim()) chapters.push({ title: "מסמך מלא", text: preface.join("\n").trim() });
-  return chapters.map((chapter) => ({
-    title: chapter.title || "פרק",
-    text: chapter.text || (chapter.lines || []).join("\n").trim(),
-  })).filter((chapter) => chapter.text.trim());
-}
-
-function openChapterSplitter(paneManager) {
-  if (document.getElementById("chapter-splitter-overlay")) return;
-
-  const overlay = document.createElement("div");
-  overlay.id = "chapter-splitter-overlay";
-  overlay.className = "chapter-splitter-overlay";
-  overlay.dir = "rtl";
-  overlay.innerHTML = `
-    <div class="chapter-splitter-modal">
-      <header class="chapter-splitter-header">
-        <div>
-          <h2>פיצול עומס מסמך לפרקים</h2>
-          <p>ייבוא עצלן לעימוד: פצל לפי כותרות או סימונים מותאמים אישית.</p>
-        </div>
-        <button type="button" class="chapter-splitter-close" aria-label="סגור">x</button>
-      </header>
-      <div class="chapter-splitter-body">
-        <section class="chapter-splitter-controls">
-          <div class="chapter-splitter-row">
-            <button type="button" class="chapter-splitter-from-editor">טען מהעורך הפעיל</button>
-            <label class="chapter-splitter-file">
-              <span>ייבא קובץ TXT / MD / DOCX</span>
-              <input type="file" accept=".txt,.md,.markdown,.docx" />
-            </label>
-          </div>
-          <label>
-            <span>סימון תחילת פרק / Regex</span>
-            <input class="chapter-splitter-pattern" type="text" dir="ltr" value="${escapeHtml(DEFAULT_MARKER_RE)}" />
-          </label>
-          <textarea class="chapter-splitter-source" placeholder="טקסט המסמך לפיצול..."></textarea>
-          <div class="chapter-splitter-actions">
-            <button type="button" class="chapter-splitter-preview">חשב פרקים</button>
-            <button type="button" class="chapter-splitter-zip">ייצא ZIP</button>
-          </div>
-        </section>
-        <section class="chapter-splitter-preview-pane">
-          <div class="chapter-splitter-count">אין עדיין פיצול.</div>
-          <div class="chapter-splitter-list"></div>
-        </section>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(overlay);
-
-  const source = overlay.querySelector(".chapter-splitter-source");
-  const pattern = overlay.querySelector(".chapter-splitter-pattern");
-  const list = overlay.querySelector(".chapter-splitter-list");
-  const count = overlay.querySelector(".chapter-splitter-count");
-  let chapters = [];
-
-  function close() {
-    overlay.remove();
-    document.removeEventListener("keydown", esc);
-  }
-  function esc(ev) {
-    if (ev.key === "Escape") close();
-  }
-  function render() {
-    chapters = splitChapters(source.value, pattern.value);
-    count.textContent = chapters.length
-      ? `נמצאו ${chapters.length} פרקים.`
-      : "לא נמצאו פרקים לפי הסימון הנוכחי.";
-    list.innerHTML = chapters.map((chapter, index) => `
-      <article class="chapter-splitter-item">
-        <strong>${escapeHtml(chapter.title || `פרק ${index + 1}`)}</strong>
-        <span>${chapter.text.length.toLocaleString("he-IL")} תווים</span>
-        <p>${escapeHtml(chapter.text.slice(0, 220))}${chapter.text.length > 220 ? "..." : ""}</p>
-      </article>
-    `).join("");
-  }
-
-  overlay.querySelector(".chapter-splitter-close").addEventListener("click", close);
-  overlay.addEventListener("click", (ev) => { if (ev.target === overlay) close(); });
-  document.addEventListener("keydown", esc);
-  overlay.querySelector(".chapter-splitter-from-editor").addEventListener("click", () => {
-    source.value = readEditorText(paneManager);
-    render();
-  });
-  overlay.querySelector(".chapter-splitter-preview").addEventListener("click", render);
-  overlay.querySelector(".chapter-splitter-file input").addEventListener("change", async (ev) => {
-    const file = ev.target.files?.[0];
-    if (!file) return;
-    source.value = await readInputFile(file);
-    render();
-  });
-  overlay.querySelector(".chapter-splitter-zip").addEventListener("click", async () => {
-    render();
-    if (!chapters.length) return;
-    const { default: JSZip } = await import("jszip");
-    const zip = new JSZip();
-    chapters.forEach((chapter, index) => {
-      zip.file(slugName(chapter.title, index), chapter.text);
-    });
-    const blob = await zip.generateAsync({ type: "blob" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `ravtext-chapters-${new Date().toISOString().slice(0, 10)}.zip`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  });
-
-  source.value = readEditorText(paneManager);
-  render();
-}
-
-export function wireChapterSplitter(paneManager) {
-  const toolbar = document.querySelector(".layout-extra-toolbar") || document.querySelector(".insert-toolbar");
-  if (!toolbar || toolbar.querySelector("#chapter-splitter-btn")) return;
-  const group = document.createElement("span");
-  group.className = "tb-group";
-  group.dataset.title = "פיצול מסמך";
-  group.dataset.ribbonTab = "layout";
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.id = "chapter-splitter-btn";
-  btn.textContent = "פיצול פרקים";
-  btn.title = "ייבא או פצל את המסמך לפרקים לפי כותרות או סימונים מותאמים אישית";
-  btn.addEventListener("click", () => openChapterSplitter(paneManager));
-  group.appendChild(btn);
-  toolbar.appendChild(group);
-}
+const DEFAULT_MARKER_RE="^(?:#{1,6}\\s+|פרק\\s+|סימן\\s+|שער\\s+).+";
+const qs=(r,s)=>r.querySelector(s);
+const esc=s=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const level=v=>Number(v)===2?2:1;
+const looksHtml=s=>/<\/?(?:html|body|div|section|article|h[1-6]|p|br|ul|ol|li|table)\b/i.test(String(s||""));
+function sanitizeHtml(html){try{const d=new DOMParser().parseFromString(String(html||""),"text/html");d.querySelectorAll("script,style,iframe,object,embed,link,meta").forEach(n=>n.remove());return d.body.innerHTML||""}catch{return String(html||"")}}
+function htmlText(html){try{return new DOMParser().parseFromString(String(html||""),"text/html").body.textContent||""}catch{return String(html||"").replace(/<[^>]*>/g," ")}}
+function textHtml(text){const out=[];let p=[];const flush=()=>{if(p.length){out.push(`<p>${p.map(esc).join("<br>")}</p>`);p=[]}};String(text||"").replace(/\r\n/g,"\n").split("\n").forEach(line=>{const t=line.trim(),h=/^(#{1,6})\s+(.+?)\s*#*$/.exec(t);if(h){flush();out.push(`<h${h[1].length}>${esc(h[2])}</h${h[1].length}>`)}else if(!t)flush();else p.push(line)});flush();return out.join("\n")||"<p></p>"}
+function readEditorText(pm){try{const e=pm?.getActiveEditor?.()||pm?.getMainPane?.()?.editor;if(!e)return"";if(e.getHTML)return String(e.getHTML()||"");if(e.getText)return String(e.getText()||"");return String(e.state?.doc?.textBetween?.(0,e.state.doc.content.size,"\n","\n")||"")}catch{return""}}
+async function readInputFile(file){const name=String(file?.name||"").toLowerCase();if(name.endsWith(".docx")){const mammoth=await import("mammoth/mammoth.browser"),arrayBuffer=await file.arrayBuffer();try{const r=await mammoth.convertToHtml({arrayBuffer});return{html:sanitizeHtml(r.value||""),text:htmlText(r.value||"")}}catch{const r=await mammoth.extractRawText({arrayBuffer});return{text:r.value||""}}}const value=await file.text();return name.endsWith(".html")||name.endsWith(".htm")||looksHtml(value)?{html:sanitizeHtml(value),text:htmlText(value)}:{text:value}}
+function rangeHtml(a,b,body){const d=a.ownerDocument||document,r=d.createRange(),w=d.createElement("div");r.setStartBefore(a);b?r.setEndBefore(b):r.setEndAfter(body.lastChild||a);w.appendChild(r.cloneContents());return w.innerHTML.trim()}
+function splitHtml(html,lvl){const source=sanitizeHtml(html);if(!source.trim())return[];const d=new DOMParser().parseFromString(source,"text/html"),body=d.body,heads=Array.from(body.querySelectorAll(`h${level(lvl)}`)),chapters=[];if(!heads.length)return[];if(body.firstChild&&heads[0]!==body.firstChild){const r=d.createRange(),w=d.createElement("div");r.setStartBefore(body.firstChild);r.setEndBefore(heads[0]);w.appendChild(r.cloneContents());const html=w.innerHTML.trim(),text=htmlText(html).trim();if(text)chapters.push({title:"פתיחה",html,text})}heads.forEach((h,i)=>{const html=rangeHtml(h,heads[i+1]||null,body),text=htmlText(html).trim();if(text)chapters.push({title:h.textContent.trim()||`פרק ${i+1}`,html,text})});return chapters}
+function titleOf(line,lvl){const m=new RegExp(`^\\s*#{${level(lvl)}}\\s+(.+?)\\s*#*\\s*$`).exec(line);return(m?m[1]:line.replace(/^#{1,6}\s*/,"").replace(/^(?:פרק|סימן|שער)\s+/,"")).trim()}
+function splitText(text,lvl,pat=DEFAULT_MARKER_RE){const lines=String(text||"").replace(/\r\n/g,"\n").split("\n"),l=level(lvl),md=new RegExp(`^\\s*#{${l}}\\s+.+`,"u"),fb=new RegExp(pat||DEFAULT_MARKER_RE,"u"),hasMd=lines.some(x=>md.test(x.trim())),chapters=[];let cur=null,pre=[];for(const line of lines){const t=line.trim(),isHead=hasMd?md.test(t):fb.test(t);if(isHead){if(cur)chapters.push(cur);else if(pre.join("\n").trim())chapters.push({title:"פתיחה",text:pre.join("\n").trim()});cur={title:titleOf(t,l),lines:[line]}}else cur?cur.lines.push(line):pre.push(line)}if(cur)chapters.push(cur);else if(pre.join("\n").trim())chapters.push({title:"מסמך מלא",text:pre.join("\n").trim()});return chapters.map(c=>{const text=c.text||(c.lines||[]).join("\n").trim();return{title:c.title||"פרק",text,html:textHtml(text)}}).filter(c=>c.text.trim())}
+function splitBook(payload,lvl,pat){payload=typeof payload==="string"?{text:payload}:payload||{};const html=payload.html||(looksHtml(payload.text)?payload.text:"");if(html){const a=splitHtml(html,lvl);if(a.length)return a;const b=splitText(htmlText(html),lvl,pat);if(b.length)return b}return splitText(payload.text||"",lvl,pat)}
+function activeEditor(pm){return pm?.getActiveEditor?.()||pm?.getActivePane?.()?.editor||pm?.getMainPane?.()?.editor||null}
+function importChapter(pm,ch){const ed=activeEditor(pm);if(!ed?.commands?.setContent)throw new Error("לא נמצא עורך פעיל לייבוא הפרק.");ed.commands.setContent(ch.html?.trim()?sanitizeHtml(ch.html):textHtml(ch.text||""));ed.commands.focus?.();try{window.dispatchEvent(new CustomEvent("book-chapter-imported",{detail:{title:ch.title,length:ch.text?.length||0}}))}catch{}}
+function openChapterSplitter(paneManager){if(document.getElementById("chapter-splitter-overlay"))return;const overlay=document.createElement("div");overlay.id="chapter-splitter-overlay";overlay.className="chapter-splitter-overlay";overlay.dir="rtl";overlay.innerHTML=`
+<div class="chapter-splitter-modal">
+<header class="chapter-splitter-header"><div><h2>ייבוא ספר לפי פרקים</h2><p>ייבא ספר שלם לזיכרון, בחר H1 או H2, והכנס לעורך רק פרק אחד בכל פעם.</p></div><button type="button" class="chapter-splitter-close" aria-label="סגור">×</button></header>
+<div class="chapter-splitter-body">
+<section class="chapter-splitter-controls">
+<div class="chapter-splitter-row"><button type="button" class="chapter-splitter-from-editor">טען מהעורך הפעיל</button><label class="chapter-splitter-file"><span>ייבוא ספר TXT / MD / HTML / DOCX</span><input type="file" accept=".txt,.md,.markdown,.html,.htm,.docx" /></label></div>
+<label><span>חלק לפי כותרות</span><select class="chapter-splitter-heading-level"><option value="1">H1 / #</option><option value="2">H2 / ##</option></select></label>
+<label><span>סימון חלופי אם אין H1/H2</span><input class="chapter-splitter-pattern" type="text" dir="ltr" value="${esc(DEFAULT_MARKER_RE)}" /></label>
+<textarea class="chapter-splitter-source" placeholder="אפשר גם להדביק כאן ספר שלם..."></textarea>
+<div class="chapter-splitter-actions"><button type="button" class="chapter-splitter-preview">פצל לזיכרון פרקים</button><button type="button" class="chapter-splitter-first">ייבא פרק ראשון</button></div>
+</section>
+<section class="chapter-splitter-preview-pane"><div class="chapter-splitter-count">אין עדיין פרקים בזיכרון.</div><div class="chapter-splitter-list" aria-live="polite"></div></section>
+</div></div>`;document.body.appendChild(overlay);
+const source=qs(overlay,".chapter-splitter-source"),pattern=qs(overlay,".chapter-splitter-pattern"),levelSelect=qs(overlay,".chapter-splitter-heading-level"),list=qs(overlay,".chapter-splitter-list"),count=qs(overlay,".chapter-splitter-count");let payload={text:""},chapters=[],imported=-1;
+const close=()=>{overlay.remove();document.removeEventListener("keydown",escKey)},escKey=e=>{if(e.key==="Escape")close()};
+function render(){payload={text:source.value};imported=-1;chapters=splitBook(payload,levelSelect.value,pattern.value);count.textContent=chapters.length?`בזיכרון נמצאו ${chapters.length.toLocaleString("he-IL")} פרקים. לחץ “ייבא” על הפרק הרצוי.`:"לא נמצאו פרקים לפי הכותרת שנבחרה.";list.innerHTML=chapters.map((ch,i)=>`<article class="chapter-splitter-item" data-index="${i}"><strong>${esc(ch.title||`פרק ${i+1}`)}</strong><span>${(ch.text||"").length.toLocaleString("he-IL")} תווים</span><p>${esc((ch.text||"").slice(0,220))}${(ch.text||"").length>220?"...":""}</p><button type="button" class="chapter-splitter-import-one" data-index="${i}">ייבא פרק זה</button></article>`).join("")}
+function mark(i){imported=i;list.querySelectorAll(".chapter-splitter-item").forEach(item=>{const on=Number(item.dataset.index)===imported;item.classList.toggle("chapter-splitter-item-active",on);const b=qs(item,".chapter-splitter-import-one");if(b)b.textContent=on?"יובא לעורך":"ייבא פרק זה"})}
+function take(i){if(!chapters.length)render();const ch=chapters[i];if(!ch)return;importChapter(paneManager,ch);mark(i)}
+qs(overlay,".chapter-splitter-close").addEventListener("click",close);overlay.addEventListener("click",e=>{if(e.target===overlay)close()});document.addEventListener("keydown",escKey);
+qs(overlay,".chapter-splitter-from-editor").addEventListener("click",()=>{const v=readEditorText(paneManager);payload=looksHtml(v)?{html:sanitizeHtml(v),text:htmlText(v)}:{text:v};source.value=payload.html||payload.text||"";render()});
+qs(overlay,".chapter-splitter-preview").addEventListener("click",render);levelSelect.addEventListener("change",render);pattern.addEventListener("change",render);source.addEventListener("input",()=>{payload={text:source.value}});
+qs(overlay,".chapter-splitter-file input").addEventListener("change",async e=>{const file=e.target.files?.[0];if(!file)return;count.textContent="קורא את הספר ומכין זיכרון פרקים...";payload=await readInputFile(file);source.value=payload.html||payload.text||"";render()});
+qs(overlay,".chapter-splitter-first").addEventListener("click",()=>{if(!chapters.length)render();if(chapters.length)take(0)});
+list.addEventListener("click",e=>{const b=e.target.closest?.(".chapter-splitter-import-one");if(b)take(Number(b.dataset.index))});
+payload=(()=>{const v=readEditorText(paneManager);return looksHtml(v)?{html:sanitizeHtml(v),text:htmlText(v)}:{text:v}})();source.value=payload.html||payload.text||"";render()}
+export function wireChapterSplitter(paneManager){const toolbar=document.querySelector(".layout-extra-toolbar")||document.querySelector(".insert-toolbar");if(!toolbar||toolbar.querySelector("#chapter-splitter-btn"))return;const group=document.createElement("span");group.className="tb-group";group.dataset.title="ייבוא ספר";group.dataset.ribbonTab="layout";const btn=document.createElement("button");btn.type="button";btn.id="chapter-splitter-btn";btn.textContent="ייבוא ספר";btn.title="ייבוא ספר שלם לזיכרון פרקים לפי H1 או H2, ואז הכנסת פרק בודד לעורך";btn.addEventListener("click",()=>openChapterSplitter(paneManager));group.appendChild(btn);toolbar.appendChild(group)}
