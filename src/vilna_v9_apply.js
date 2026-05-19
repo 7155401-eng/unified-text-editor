@@ -19,6 +19,7 @@ import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
+import { loadSpacingSettings } from "./spacing_settings.js";
 import { getOpeningWordSettings } from "./opening_word.js";
 import {
   startVilnaRenderProgress,
@@ -165,13 +166,8 @@ function readIntSetting(key, fallback, min, max) {
 }
 
 function readSpacingBool(key, fallback = false) {
-  try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
-    return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
-  } catch {
-    return fallback;
-  }
+  const settings = loadSpacingSettings();
+  return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
 }
 
 function estimateV9PageCount(paragraphs) {
