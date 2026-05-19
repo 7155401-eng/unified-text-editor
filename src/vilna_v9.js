@@ -636,6 +636,63 @@ function splitWordsByStrips(text, metrics, rightStrips) {
     
     return total;
   }
+
+  // משה 2026-05-19: סטטיסטיקת מילוי לשורת חיתוך מלאכותית.
+  // זה מאפשר למשוך עוד מילים מהחצי הבא כששורת החיתוך קצרה מדי,
+  // במקום להציג אותה כסוף פסקה או למתוח אותה ברווחים עצומים.
+  function splitSliceStats(wordSlice) {
+    const empty = { fits: true, totalLines: 0, capacity: 0, lastFill: 1, lastWords: 0 };
+    if (!wordSlice || wordSlice.length === 0) return empty;
+
+    let cursor = 0;
+    let totalLines = 0;
+    let capacity = 0;
+    let fits = true;
+    let lastLine = null;
+
+    for (let i = 0; i < strips.length; i++) {
+      const strip = strips[i];
+      const maxLines = Math.max(0, Math.floor(strip.height / lineH));
+      capacity += maxLines;
+      if (cursor >= wordSlice.length || maxLines <= 0) continue;
+
+      const remaining = wordSlice.slice(cursor).join(' ');
+      const lines = metrics.layoutLines(remaining, strip.width);
+      if (!lines || lines.length === 0) break;
+
+      const linesUsed = Math.min(maxLines, lines.length);
+      for (let j = 0; j < linesUsed; j++) {
+        const line = lines[j];
+        if (line && line.words) cursor += line.words.length;
+        lastLine = {
+          width: strip.width,
+          naturalWidth: line?.width || 0,
+          words: line?.words || [],
+        };
+      }
+      totalLines += linesUsed;
+
+      if (lines.length <= maxLines) break;
+      if (i === strips.length - 1) {
+        fits = false;
+        break;
+      }
+    }
+
+    if (cursor < wordSlice.length) fits = false;
+
+    const lastFill = lastLine && lastLine.width > 0
+      ? Math.min(1, Math.max(0, lastLine.naturalWidth / lastLine.width))
+      : 1;
+
+    return {
+      fits,
+      totalLines,
+      capacity,
+      lastFill,
+      lastWords: lastLine?.words?.length || 0,
+    };
+  }
   
   // שלב 1: binary search על נקודת החיתוך N.
   // המטרה: מינימום של |linesForWordSlice(left) − linesForWordSlice(right)|
@@ -678,6 +735,24 @@ function splitWordsByStrips(text, metrics, rightStrips) {
   for (let bump = 0; bump < 20 && finalSplit < words.length - 1; bump++) {
     const tryLines = linesForWordSlice(words.slice(0, finalSplit + 1));
     if (tryLines > baselineLines) break; // המילה הבאה תוסיף שורה — סוף שורה טבעי
+    finalSplit++;
+  }
+
+  // משה 2026-05-19: אם גבול החיתוך הוא סוף שורה "טכני" אבל השורה עדיין
+  // קצרה מדי, מושכים עוד מילים מהחצי הבא עד שהשורה האחרונה נראית טבעית.
+  // מותר להוסיף גם שורה אחת נוספת, בתנאי שהחצי הראשון עדיין נכנס ברצועות.
+  const minContinuationFill = 0.72;
+  for (let pull = 0; pull < 30 && finalSplit < words.length - 1; pull++) {
+    const currentStats = splitSliceStats(words.slice(0, finalSplit));
+    if (!currentStats.fits) break;
+    if (currentStats.lastFill >= minContinuationFill && currentStats.lastWords > 1) break;
+
+    // השאר לפחות שתי מילים בחצי הבא, כדי לא להפוך את הבעיה לצד השני.
+    if (words.length - (finalSplit + 1) < 2) break;
+
+    const nextStats = splitSliceStats(words.slice(0, finalSplit + 1));
+    if (!nextStats.fits || nextStats.totalLines > nextStats.capacity) break;
+
     finalSplit++;
   }
 
@@ -1576,7 +1651,10 @@ function buildPagePlan(pageContent, config) {
     // מדלג על הכותרת בראש (יקבל אותה מתחת לכתר, מעל התוכן שלו).
     if (fullCrownSide === 'right') pass2Right.fullWidthTitle = true;
     if (fullCrownSide && fullCrownSide !== 'right') pass2Right.skipTopTitle = true;
-    if (scenario.name === 'one_long_split') pass2Right.isScenario1Split = true;
+    if (scenario.name === 'one_long_split') {
+      pass2Right.isScenario1Split = true;
+      pass2Right.continues = true;
+    }
     result.streamBoxes.push(pass2Right);
     // משה 2026-05-10: בתרחיש 1, שני הצדדים = אותו זרם, אותו id. אם נכתוב שניהם
     // לאותו מפתח באוברפלאו — השני ידרוס את הראשון ותוכן ייאבד. במקום, נצרף.
@@ -1977,11 +2055,18 @@ function renderPagePlan(plan, pageEl, cfg) {
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
+      // משה 2026-05-19: חיתוך מלאכותי של המנוע אינו סוף פסקה.
+      // לכן גם אם השורה קצרה יחסית, לא מסמנים center. אם מתיחת word-gap
+      // רגילה נראית מוגזמת, נשתמש במתיחה מאוזנת יותר בהמשך.
+      const continuationFillRatio = line.width > 0
+        ? Math.max(0, Math.min(1, (line.naturalWidth || 0) / line.width))
+        : 1;
       const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 1
-        && line.naturalWidth >= line.width * 0.65
         && line.naturalWidth < line.width - 2;
+      const useManualContinuationStretch = isContinuationCut && continuationFillRatio < 0.65;
       const shouldJustify = ((!line.isLast && !line.forcedBreak) || isContinuationCut)
+                             && !useManualContinuationStretch
                              && line.words && line.words.length > 1
                              && (line.naturalWidth < line.width - 2);
       // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת (לפי כללי ספרי קודש).
@@ -1989,7 +2074,8 @@ function renderPagePlan(plan, pageEl, cfg) {
       const isParagraphEnd = (line.isLast || line.forcedBreak)
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;
-      if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
+      if (useManualContinuationStretch) lineEl.className += ' v9-continuation-manual-stretch';
+      else if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
       else if (shouldJustify) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
@@ -2014,6 +2100,45 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.style.lineHeight = safeLineHeight + 'px';
         lineEl.style.height = safeLineHeight + 'px';
       }
+
+      // משה 2026-05-19: מתיחה מאוזנת לשורת חיתוך קצרה מדי.
+      // קודם רווחי מילים, אחר כך ריווח אותיות קטן, ובסוף scaleX עדין.
+      // כך נמנעים מרווחים מצחיקים בין מילים בודדות.
+      if (useManualContinuationStretch) {
+        const extra = Math.max(0, (Number(line.width) || 0) - (Number(line.naturalWidth) || 0));
+        const wordsCount = Array.isArray(line.words) ? line.words.length : 0;
+        const spaces = Math.max(0, wordsCount - 1);
+        const glyphs = String(line.text || '').replace(/\s+/g, '').length;
+
+        const maxWordExtra = Math.max(1, actualFontSize * 0.45);
+        const maxLetterExtra = Math.max(0.12, actualFontSize * 0.075);
+
+        let used = 0;
+        if (spaces > 0) {
+          const wordExtra = Math.min(extra / spaces, maxWordExtra);
+          if (wordExtra > 0) {
+            lineEl.style.wordSpacing = wordExtra.toFixed(2) + 'px';
+            used += wordExtra * spaces;
+          }
+        }
+
+        if (glyphs > 1 && extra > used) {
+          const letterExtra = Math.min((extra - used) / (glyphs - 1), maxLetterExtra);
+          if (letterExtra > 0) {
+            lineEl.style.letterSpacing = letterExtra.toFixed(2) + 'px';
+            used += letterExtra * (glyphs - 1);
+          }
+        }
+
+        if (extra > used + 1 && line.naturalWidth > 0) {
+          const scale = Math.min(1.12, (line.naturalWidth + (extra - used)) / line.naturalWidth);
+          if (scale > 1.001) {
+            lineEl.style.transformOrigin = 'right top';
+            lineEl.style.transform = 'scaleX(' + scale.toFixed(4) + ')';
+          }
+        }
+      }
+
       lineEl.style.overflow = 'visible';
 
       const v9Role = String(box.role || box.type || box.kind || (box.id === "main" ? "main" : (box.id ? "stream" : "")) || "");
