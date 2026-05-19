@@ -66,7 +66,7 @@ function __ravtextV9NoSideVisualSafetyShift(pageEl) {
   }
 
   function setTop(el, top) {
-    el.style.top = `${Math.round(top * 100) / 100}px`;
+    el.style.top = (Math.round(top * 100) / 100) + "px";
   }
 
   const lines = Array.from(pageEl.querySelectorAll(".v9-line")).filter(isSideLine);
