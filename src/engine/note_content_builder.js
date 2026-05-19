@@ -35,9 +35,10 @@ import {
 import { sliceRuns } from "./runs_dom.js";
 import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 
-// משה 2026-05-15: ממיר styleId לאובייקט "marks" שמתאים ל-runs (אותו מבנה
-// ש-runs_dom.js מצפה לו). שימוש: גם V9 (שורות + runs) וגם המנוע הרגיל (אם
-// יבחר להחיל סגנון על "[N]" דרך runs במקום DOM-styling) ייפול לאותו ערך.
+// משה 2026-05-19: ממיר styleId ל-marks מלאים ככל האפשר עבור inline-runs.
+// הסיבה: V9 אינו יוצר DOM element עצמאי למספרי ההפניה בראשי; הוא מזריק אותם
+// לתוך mainRuns. לכן אסור לצמצם את הסגנון רק לצבע/פונט/בולד, אחרת כתב
+// עילי/תחתי, יחידות pt ו-line-height נעלמים לפני PDF.JS.
 function styleIdToMarks(styleId) {
   if (!styleId) return null;
   const raw = resolveTextStyle(styleId);
@@ -45,13 +46,32 @@ function styleIdToMarks(styleId) {
   const s = normalizeTextStyle(raw);
   if (!s) return null;
   const marks = {};
+
   if (s.bold) marks.bold = true;
+  if (s.fontWeight) marks.fontWeight = s.fontWeight;
   if (s.italic) marks.italic = true;
+  if (s.fontStyle) marks.fontStyle = s.fontStyle;
   if (s.underline) marks.underline = true;
+  if (s.strike) marks.strike = true;
+  if (s.textDecoration) marks.textDecoration = s.textDecoration;
+
   if (s.color) marks.color = s.color;
   if (s.bgColor || s.backgroundColor) marks.backgroundColor = s.bgColor || s.backgroundColor;
   if (s.fontFamily) marks.fontFamily = s.fontFamily;
   if (s.fontSize) marks.fontSize = s.fontSize;
+  if (s.fontSizeUnit) marks.fontSizeUnit = s.fontSizeUnit;
+  if (s.lineHeight) marks.lineHeight = s.lineHeight;
+
+  if (s.superscript || s.superScript || s.sup) {
+    marks.superscript = true;
+    marks.verticalAlign = "super";
+  } else if (s.subscript || s.subScript || s.sub) {
+    marks.subscript = true;
+    marks.verticalAlign = "sub";
+  } else if (s.verticalAlign) {
+    marks.verticalAlign = s.verticalAlign;
+  }
+
   return Object.keys(marks).length > 0 ? marks : null;
 }
 
