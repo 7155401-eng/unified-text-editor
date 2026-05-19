@@ -222,6 +222,57 @@ registerOpeningWordStretchPreRenderDecorator();
   return source;
 }
 
-patchFile('src/engine/render.js', patchRenderer);
+const V9_GUARD = `
+function allowV9OpeningWordsPreRenderMutation(root) {
+  if (typeof window === "undefined") return true;
+  if (window.__ravtextPreRenderPageDecoratorActive) return true;
+  if (!root?.isConnected) return true;
+  return false;
+}
+`;
+
+const V9_REGISTRY = `
+const V9_OPENING_WORDS_PRE_RENDER_DECORATOR_NAME = "v9_opening_words_from_metadata";
+
+function registerV9OpeningWordsPreRenderDecorator() {
+  if (typeof window === "undefined") return;
+  const registry = window.__ravtextPreRenderPageDecorators || (window.__ravtextPreRenderPageDecorators = []);
+  if (registry.some((fn) => fn && fn.__ravtextName === V9_OPENING_WORDS_PRE_RENDER_DECORATOR_NAME)) return;
+
+  const decorator = (page) => {
+    if (!page || page.classList?.contains("page-placeholder")) return;
+    applyV9OpeningWordsFromMetadata(page);
+  };
+  decorator.__ravtextName = V9_OPENING_WORDS_PRE_RENDER_DECORATOR_NAME;
+  decorator.__ravtextPreRenderOrder = 25;
+  registry.push(decorator);
+}
+`;
+
+function patchV9OpeningWords(source) {
+  source = mustInsert(
+    source,
+    '\nexport function applyV9OpeningWordsFromMetadata(container) {',
+    V9_GUARD + V9_REGISTRY,
+    'V9 opening words pre-render guard'
+  );
+
+  source = replaceOnce(
+    source,
+    /export function applyV9OpeningWordsFromMetadata\(container\) \{\n/,
+    'export function applyV9OpeningWordsFromMetadata(container) {\n  registerV9OpeningWordsPreRenderDecorator();\n  if (!allowV9OpeningWordsPreRenderMutation(container)) return { applied: 0, reason: "pre-render-registered" };\n',
+    'V9 opening words late mutation guard call',
+    'allowV9OpeningWordsPreRenderMutation(container)'
+  );
+
+  if (!source.includes('\nregisterV9OpeningWordsPreRenderDecorator();\n')) {
+    source += '\nregisterV9OpeningWordsPreRenderDecorator();\n';
+  }
+
+  return source;
+}
+
+patchFile('src/engine/renderer.js', patchRenderer);
 patchFile('src/opening_word.js', patchOpeningWord);
 patchFile('src/opening_word_stretch.js', patchOpeningWordStretch);
+patchFile('src/engine/v9_opening_words_from_metadata.js', patchV9OpeningWords);
