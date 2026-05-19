@@ -1,158 +1,23 @@
-// v9_main_bottom_gap.js — safe measured post-layout gap for Vilna V9.
-//
-// V9 positions every visible line absolutely. Therefore a CSS padding/margin
-// below the main text is unsafe: the pagination algorithm will not know about it.
-// This pass runs inside the V9 render pipeline after the page is built, measures
-// the actual main/footer positions, and shifts only the footer apparatus down —
-// only when there is real free space left inside the page.
-
-import { applyV9OpeningWordsFromMetadata } from "./v9_opening_words_from_metadata.js";
-
-const DEFAULT_GAP_PX = 16;
-const MAX_GAP_PX = 60;
-const EPS = 0.5;
-
-function px(value, fallback = 0) {
-  const n = Number.parseFloat(String(value || ""));
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
-function readGapPx(container, explicitGap) {
-  if (Number.isFinite(Number(explicitGap))) {
-    return clamp(Number(explicitGap), 0, MAX_GAP_PX);
-  }
-
-  try {
-    const raw = window.localStorage?.getItem("ravtext.talmudLayout.mainBottomGap");
-    if (raw !== null && raw !== "") {
-      const n = Number.parseFloat(raw);
-      if (Number.isFinite(n)) return clamp(n, 0, MAX_GAP_PX);
-    }
-  } catch (_) {}
-
-  try {
-    const cssValue = window.getComputedStyle?.(container)
-      ?.getPropertyValue("--ravtext-v9-main-bottom-gap");
-    const n = Number.parseFloat(cssValue || "");
-    if (Number.isFinite(n)) return clamp(n, 0, MAX_GAP_PX);
-  } catch (_) {}
-
-  return DEFAULT_GAP_PX;
-}
-
-function topOf(el) {
-  return px(el.style.top, el.offsetTop || 0);
-}
-
-function heightOf(el) {
-  return px(el.style.height, el.getBoundingClientRect?.().height || 0);
-}
-
-function setTop(el, top) {
-  el.style.top = `${Math.round(top * 100) / 100}px`;
-}
-
-function isMainLine(el) {
-  return el?.dataset?.v9Role === "main" || el?.classList?.contains("v9-role-main");
-}
-
-function applyGapToPage(pageEl, desiredGapPx) {
-  if (!pageEl || desiredGapPx <= 0) return null;
-
-  const mainLines = Array.from(pageEl.querySelectorAll(".v9-line"))
-    .filter(isMainLine);
-  if (!mainLines.length) return null;
-
-  const mainBottom = Math.max(...mainLines.map(el => topOf(el) + heightOf(el)));
-
-  // Footer titles are the stream titles that start after the main text ends.
-  // Side-stream titles are above/around the main area and are intentionally left untouched.
-  const footerTitles = Array.from(pageEl.querySelectorAll(".v9-stream-title"))
-    .filter(el => topOf(el) >= mainBottom - EPS);
-  if (!footerTitles.length) return null;
-
-  const firstFooterTop = Math.min(...footerTitles.map(topOf));
-  const currentGap = firstFooterTop - mainBottom;
-  const requestedShift = desiredGapPx - currentGap;
-  if (requestedShift <= EPS) {
-    pageEl.dataset.v9MainBottomGap = JSON.stringify({
-      desired: desiredGapPx,
-      current: Math.round(currentGap * 100) / 100,
-      applied: 0,
-      reason: "already-enough",
-    });
-    return null;
-  }
-
-  const allPositioned = Array.from(pageEl.querySelectorAll(
-    ".v9-line, .v9-stream-title, .v9-main-separator"
-  ));
-
-  const movable = allPositioned.filter(el => {
-    if (isMainLine(el)) return false;
-    if (el.classList?.contains("v9-main-separator")) return false;
-    return topOf(el) >= firstFooterTop - EPS;
-  });
-  if (!movable.length) return null;
-
-  const pageHeight = px(pageEl.style.height, pageEl.clientHeight || 0);
-  const pagePadding = px(pageEl.style.padding, 12);
-  const bottomLimit = pageHeight > 0 ? pageHeight - pagePadding : Infinity;
-  const movableBottom = Math.max(...movable.map(el => topOf(el) + heightOf(el)));
-  const availableShift = Math.max(0, bottomLimit - movableBottom);
-  const appliedShift = Math.min(requestedShift, availableShift);
-
-  if (appliedShift <= EPS) {
-    pageEl.dataset.v9MainBottomGap = JSON.stringify({
-      desired: desiredGapPx,
-      current: Math.round(currentGap * 100) / 100,
-      applied: 0,
-      reason: "no-room",
-    });
-    return null;
-  }
-
-  for (const el of movable) {
-    setTop(el, topOf(el) + appliedShift);
-  }
-
-  // If there is a main/footer separator, keep it centered between the main and the shifted footer.
-  const sep = pageEl.querySelector(".v9-main-separator");
-  if (sep) {
-    const sepH = heightOf(sep);
-    const shiftedFooterTop = firstFooterTop + appliedShift;
-    setTop(sep, Math.round((mainBottom + shiftedFooterTop) / 2 - sepH / 2));
-  }
-
-  const result = {
-    desired: desiredGapPx,
-    before: Math.round(currentGap * 100) / 100,
-    applied: Math.round(appliedShift * 100) / 100,
-    after: Math.round((currentGap + appliedShift) * 100) / 100,
-  };
-  pageEl.dataset.v9MainBottomGap = JSON.stringify(result);
-  return result;
-}
-
-export function applyV9MainBottomGap(container, options = {}) {
-  if (!container || !container.querySelectorAll) return [];
-  const desiredGapPx = readGapPx(container, options.gapPx);
-  const pages = Array.from(container.querySelectorAll(".page.v9-page, .v9-page"));
-  const results = [];
-
-  for (const pageEl of pages) {
-    const result = applyGapToPage(pageEl, desiredGapPx);
-    if (result) results.push({ pageIndex: pageEl.dataset.pageIndex || "", ...result });
-  }
-
-  const openingWords = applyV9OpeningWordsFromMetadata(container);
-
-  if (typeof console !== "undefined" && console.debug) {
-    console.debug("[v9-main-bottom-gap]", { desiredGapPx, changedPages: results.length, results, openingWords });
-  }
-  return results;
-}
+import{applyV9OpeningWordsFromMetadata}from"./v9_opening_words_from_metadata.js";
+const DEFAULT_GAP_PX=16,MAX_GAP_PX=60,EPS=.5;
+function px(v,f=0){const n=Number.parseFloat(String(v||""));return Number.isFinite(n)?n:f}
+function clamp(n,a,b){return Math.max(a,Math.min(b,n))}
+function readGapPx(c,g){if(Number.isFinite(Number(g)))return clamp(Number(g),0,MAX_GAP_PX);try{const r=window.localStorage?.getItem("ravtext.talmudLayout.mainBottomGap");if(r!==null&&r!==""){const n=Number.parseFloat(r);if(Number.isFinite(n))return clamp(n,0,MAX_GAP_PX)}}catch(_){}try{const n=Number.parseFloat(window.getComputedStyle?.(c)?.getPropertyValue("--ravtext-v9-main-bottom-gap")||"");if(Number.isFinite(n))return clamp(n,0,MAX_GAP_PX)}catch(_){}return DEFAULT_GAP_PX}
+function topOf(e){return px(e.style.top,e.offsetTop||0)}
+function leftOf(e){return px(e.style.left,e.offsetLeft||0)}
+function widthOf(e){return px(e.style.width,e.getBoundingClientRect?.().width||0)}
+function heightOf(e){return px(e.style.height,e.getBoundingClientRect?.().height||0)}
+function bottomOf(e){return topOf(e)+heightOf(e)}
+function setTop(e,t){e.style.top=`${Math.round(t*100)/100}px`}
+function isMainLine(e){return e?.dataset?.v9Role==="main"||e?.classList?.contains("v9-role-main")}
+function sortLines(a){return[...(a||[])].sort((x,y)=>{const t=topOf(x)-topOf(y);return Math.abs(t)>EPS?t:leftOf(y)-leftOf(x)})}
+function pageInnerWidth(p){const pad=px(p.style.padding,12),w=px(p.style.width,p.clientWidth||0);return Math.max(0,w-pad*2)}
+function wordCount(e){return String(e?.textContent||"").trim().split(/\s+/).filter(Boolean).length}
+function justify(e){if(!e)return;e.classList?.remove("center");if(wordCount(e)>1)e.classList?.add("justify")}
+function center(e){if(!e)return;e.classList?.remove("justify");e.classList?.add("center")}
+function role(e,r){if(!e)return;e.dataset.v9Role=r;e.classList?.remove("v9-role-right");e.classList?.remove("v9-role-left");e.classList?.add(`v9-role-${r}`)}
+function overlapsMain(p,t,h){const b=t+h;return Array.from(p.querySelectorAll(".v9-line")).filter(isMainLine).some(l=>t<bottomOf(l)-EPS&&b>topOf(l)+EPS)}
+function moveToColumn(line,refs,r){const a=sortLines(refs);if(!line||!a.length)return false;const ref=a.at(-1);line.style.left=`${leftOf(ref)}px`;line.style.width=`${widthOf(ref)}px`;setTop(line,bottomOf(ref));role(line,r);justify(line);line.dataset.v9Scenario1BridgeRule=`returned-to-${r}`;return true}
+function normalizeScenario1BridgeRules(pages){const fixes=[];for(const p of pages||[]){if(!p?.querySelectorAll)continue;const inner=pageInnerWidth(p);if(inner<=0)continue;const pad=px(p.style.padding,12),ph=px(p.style.height,p.clientHeight||0),limit=ph>0?ph-pad:Infinity;const groups=new Map();for(const l of Array.from(p.querySelectorAll(".v9-line[data-v9-role][data-v9-box-id]"))){const r=String(l.dataset.v9Role||"").toLowerCase();if(r!=="right"&&r!=="left")continue;const id=String(l.dataset.v9BoxId||"");if(!id||id==="main")continue;if(!groups.has(id))groups.set(id,[]);groups.get(id).push(l)}for(const[streamId,lines]of groups){const byRole=r=>sortLines(lines.filter(l=>String(l.dataset.v9Role||"").toLowerCase()===r));const right=byRole("right"),left=byRole("left");if(!right.length||!left.length)continue;const full=l=>widthOf(l)>=inner-5&&leftOf(l)<=pad+5;const rFull=right.filter(full),lFull=left.filter(full),rN=right.filter(l=>!full(l)),lN=left.filter(l=>!full(l));for(const bad of rFull)if(moveToColumn(bad,rN,"right"))fixes.push({pageIndex:p.dataset.pageIndex||"",streamId,action:"right-full-width-returned"});if(!lFull.length)continue;const bridges=sortLines(lFull);for(let i=0;i<bridges.length;i++){const br=bridges[i];const pr=rN.filter(l=>bottomOf(l)<=topOf(br)+heightOf(br)+EPS),pl=lN.filter(l=>bottomOf(l)<=topOf(br)+heightOf(br)+EPS);if(!pr.length||!pl.length){if(moveToColumn(br,lN,"left"))fixes.push({pageIndex:p.dataset.pageIndex||"",streamId,action:"left-bridge-no-pair-returned"});continue}const lastR=sortLines(pr).at(-1),lastL=sortLines(pl).at(-1),h=Math.max(heightOf(br),heightOf(lastR),heightOf(lastL),1),target=Math.max(bottomOf(lastR),bottomOf(lastL)),attached=topOf(br)<=target+h*.75,safe=target+h<=limit+EPS&&!overlapsMain(p,target,h);if(!attached||!safe){if(moveToColumn(br,lN,"left"))fixes.push({pageIndex:p.dataset.pageIndex||"",streamId,action:attached?"left-bridge-over-main-returned":"left-bridge-detached-returned"});continue}justify(lastL);br.style.left=`${pad}px`;br.style.width=`${inner}px`;setTop(br,target);role(br,"left");if(i===bridges.length-1)center(br);else justify(br);br.dataset.v9Scenario1BridgeRule="valid-left-bridge";fixes.push({pageIndex:p.dataset.pageIndex||"",streamId,action:"left-bridge-valid",targetTop:Math.round(target*100)/100})}}}return fixes}
+function applyGapToPage(p,g){if(!p||g<=0)return null;const main=Array.from(p.querySelectorAll(".v9-line")).filter(isMainLine);if(!main.length)return null;const mainBottom=Math.max(...main.map(bottomOf));const footers=Array.from(p.querySelectorAll(".v9-stream-title")).filter(e=>topOf(e)>=mainBottom-EPS);if(!footers.length)return null;const firstTop=Math.min(...footers.map(topOf)),cur=firstTop-mainBottom,need=g-cur;if(need<=EPS){p.dataset.v9MainBottomGap=JSON.stringify({desired:g,current:Math.round(cur*100)/100,applied:0,reason:"already-enough"});return null}const all=Array.from(p.querySelectorAll(".v9-line, .v9-stream-title, .v9-main-separator"));const mov=all.filter(e=>!isMainLine(e)&&!e.classList?.contains("v9-main-separator")&&topOf(e)>=firstTop-EPS);if(!mov.length)return null;const ph=px(p.style.height,p.clientHeight||0),pad=px(p.style.padding,12),limit=ph>0?ph-pad:Infinity,bottom=Math.max(...mov.map(bottomOf)),shift=Math.min(need,Math.max(0,limit-bottom));if(shift<=EPS){p.dataset.v9MainBottomGap=JSON.stringify({desired:g,current:Math.round(cur*100)/100,applied:0,reason:"no-room"});return null}for(const e of mov)setTop(e,topOf(e)+shift);const sep=p.querySelector(".v9-main-separator");if(sep){const h=heightOf(sep);setTop(sep,Math.round((mainBottom+firstTop+shift)/2-h/2))}const res={desired:g,before:Math.round(cur*100)/100,applied:Math.round(shift*100)/100,after:Math.round((cur+shift)*100)/100};p.dataset.v9MainBottomGap=JSON.stringify(res);return res}
+export function applyV9MainBottomGap(container,options={}){if(!container||!container.querySelectorAll)return[];const desiredGapPx=readGapPx(container,options.gapPx),pages=Array.from(container.querySelectorAll(".page.v9-page, .v9-page")),scenario1BridgeRuleFixes=normalizeScenario1BridgeRules(pages),results=[];for(const p of pages){const r=applyGapToPage(p,desiredGapPx);if(r)results.push({pageIndex:p.dataset.pageIndex||"",...r})}const openingWords=applyV9OpeningWordsFromMetadata(container);if(typeof console!=="undefined"&&console.debug)console.debug("[v9-main-bottom-gap]",{desiredGapPx,changedPages:results.length,results,openingWords,scenario1BridgeRuleFixes});return results}
