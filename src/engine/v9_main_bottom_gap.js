@@ -48,14 +48,6 @@ function topOf(el) {
   return px(el.style.top, el.offsetTop || 0);
 }
 
-function leftOf(el) {
-  return px(el.style.left, el.offsetLeft || 0);
-}
-
-function widthOf(el) {
-  return px(el.style.width, el.getBoundingClientRect?.().width || 0);
-}
-
 function heightOf(el) {
   return px(el.style.height, el.getBoundingClientRect?.().height || 0);
 }
@@ -66,169 +58,6 @@ function setTop(el, top) {
 
 function isMainLine(el) {
   return el?.dataset?.v9Role === "main" || el?.classList?.contains("v9-role-main");
-}
-
-function cloneLineNodes(el) {
-  return Array.from(el?.childNodes || []).map(node => node.cloneNode(true));
-}
-
-function replaceLineNodes(el, nodes) {
-  if (!el) return;
-  const clones = (nodes || []).map(node => node.cloneNode(true));
-  if (typeof el.replaceChildren === "function") {
-    el.replaceChildren(...clones);
-    return;
-  }
-  while (el.firstChild) el.removeChild(el.firstChild);
-  for (const node of clones) el.appendChild(node);
-}
-
-function sortLinesTopDown(lines) {
-  return [...(lines || [])].sort((a, b) => {
-    const byTop = topOf(a) - topOf(b);
-    if (Math.abs(byTop) > EPS) return byTop;
-    return leftOf(b) - leftOf(a);
-  });
-}
-
-function pageInnerWidth(pageEl) {
-  const padding = px(pageEl.style.padding, 12);
-  const styleWidth = px(pageEl.style.width, pageEl.clientWidth || 0);
-  return Math.max(0, styleWidth - padding * 2);
-}
-
-function overlapsMainVertically(pageEl, top, height) {
-  const bottom = top + height;
-  const mainLines = Array.from(pageEl.querySelectorAll(".v9-line"))
-    .filter(isMainLine);
-
-  return mainLines.some(line => {
-    const lineTop = topOf(line);
-    const lineBottom = lineTop + heightOf(line);
-    return top < lineBottom - EPS && bottom > lineTop + EPS;
-  });
-}
-
-function moveLineToRightColumn(line, rightLines) {
-  const right = sortLinesTopDown(rightLines);
-  if (!line || right.length === 0) return false;
-
-  const ref = right[right.length - 1];
-  const lineH = Math.max(heightOf(line), heightOf(ref), 1);
-  line.style.left = `${leftOf(ref)}px`;
-  line.style.width = `${widthOf(ref)}px`;
-  setTop(line, topOf(ref) + lineH);
-  line.classList?.remove("center");
-  line.classList?.add("justify");
-  line.dataset.v9Role = "right";
-  line.classList?.remove("v9-role-left");
-  line.classList?.add("v9-role-right");
-  return true;
-}
-
-// V9 scenario 1 has one long side stream split into a right and a left column.
-//
-// The previous implementation here was too aggressive: it created a full-width
-// "middle" line merely because the right side had one extra line. That is wrong.
-// In RTL layout one extra right-side line may be perfectly legal. A full-width
-// bottom line is only valid when the engine already produced such a bridge line.
-// This pass only repairs an existing bridge line, and it never leaves it on top
-// of the main text. If the bridge cannot safely sit under both columns, it is
-// returned to the right column.
-function normalizeV9Scenario1SplitBridgeLines(pages) {
-  const fixes = [];
-
-  for (const pageEl of pages || []) {
-    if (!pageEl?.querySelectorAll) continue;
-
-    const innerW = pageInnerWidth(pageEl);
-    if (innerW <= 0) continue;
-
-    const padding = px(pageEl.style.padding, 12);
-    const groups = new Map();
-    const sideLines = Array.from(pageEl.querySelectorAll(".v9-line[data-v9-role][data-v9-box-id]"))
-      .filter(el => {
-        const role = String(el.dataset.v9Role || "").toLowerCase();
-        return role === "right" || role === "left";
-      });
-
-    for (const line of sideLines) {
-      const id = String(line.dataset.v9BoxId || "");
-      if (!id || id === "main") continue;
-      if (!groups.has(id)) groups.set(id, []);
-      groups.get(id).push(line);
-    }
-
-    for (const [streamId, lines] of groups) {
-      const fullWidth = sortLinesTopDown(lines)
-        .filter(line => widthOf(line) >= innerW - 5 && leftOf(line) <= padding + 5);
-      if (fullWidth.length !== 1) continue;
-
-      const bridge = fullWidth[0];
-      const narrow = lines.filter(line => line !== bridge);
-      const right = sortLinesTopDown(narrow.filter(line => String(line.dataset.v9Role || "").toLowerCase() === "right"));
-      const left = sortLinesTopDown(narrow.filter(line => String(line.dataset.v9Role || "").toLowerCase() === "left"));
-
-      if (right.length === 0 || left.length === 0) {
-        if (moveLineToRightColumn(bridge, right)) {
-          fixes.push({ pageIndex: pageEl.dataset.pageIndex || "", streamId, action: "returned-to-right-no-pair" });
-        }
-        continue;
-      }
-
-      const lineHeight = Math.max(
-        heightOf(bridge),
-        heightOf(right[right.length - 1]),
-        heightOf(left[left.length - 1]),
-        1,
-      );
-      const targetTop = Math.max(
-        topOf(right[right.length - 1]) + heightOf(right[right.length - 1]),
-        topOf(left[left.length - 1]) + heightOf(left[left.length - 1]),
-      );
-
-      const pageHeight = px(pageEl.style.height, pageEl.clientHeight || 0);
-      const fitsPage = pageHeight <= 0 || targetTop + lineHeight <= pageHeight - padding + EPS;
-      const safeUnderMain = fitsPage && !overlapsMainVertically(pageEl, targetTop, lineHeight);
-
-      if (!safeUnderMain) {
-        if (moveLineToRightColumn(bridge, right)) {
-          fixes.push({ pageIndex: pageEl.dataset.pageIndex || "", streamId, action: "returned-to-right-main-overlap" });
-        }
-        continue;
-      }
-
-      // Correct the text order only for the existing bridge line:
-      // bridge text belongs at the start of the left continuation; the last left
-      // text belongs in the bridge line under both columns.
-      let carry = cloneLineNodes(bridge);
-      for (const leftLine of left) {
-        const nextCarry = cloneLineNodes(leftLine);
-        replaceLineNodes(leftLine, carry);
-        carry = nextCarry;
-      }
-      replaceLineNodes(bridge, carry);
-
-      bridge.style.left = `${padding}px`;
-      bridge.style.width = `${innerW}px`;
-      setTop(bridge, targetTop);
-      bridge.classList?.remove("justify");
-      bridge.classList?.add("center");
-      bridge.dataset.v9Role = "left";
-      bridge.classList?.remove("v9-role-right");
-      bridge.classList?.add("v9-role-left");
-      bridge.dataset.v9Scenario1BridgeFix = "1";
-
-      fixes.push({
-        pageIndex: pageEl.dataset.pageIndex || "",
-        streamId,
-        action: "bridge-reordered",
-        targetTop: Math.round(targetTop * 100) / 100,
-      });
-    }
-  }
-
-  return fixes;
 }
 
 function applyGapToPage(pageEl, desiredGapPx) {
@@ -265,7 +94,7 @@ function applyGapToPage(pageEl, desiredGapPx) {
 
   const movable = allPositioned.filter(el => {
     if (isMainLine(el)) return false;
-    if (el.classList?.contains("v9-main-separator"))) return false;
+    if (el.classList?.contains("v9-main-separator")) return false;
     return topOf(el) >= firstFooterTop - EPS;
   });
   if (!movable.length) return null;
@@ -313,7 +142,6 @@ export function applyV9MainBottomGap(container, options = {}) {
   if (!container || !container.querySelectorAll) return [];
   const desiredGapPx = readGapPx(container, options.gapPx);
   const pages = Array.from(container.querySelectorAll(".page.v9-page, .v9-page"));
-  const scenario1BridgeFixes = normalizeV9Scenario1SplitBridgeLines(pages);
   const results = [];
 
   for (const pageEl of pages) {
@@ -324,7 +152,7 @@ export function applyV9MainBottomGap(container, options = {}) {
   const openingWords = applyV9OpeningWordsFromMetadata(container);
 
   if (typeof console !== "undefined" && console.debug) {
-    console.debug("[v9-main-bottom-gap]", { desiredGapPx, changedPages: results.length, results, openingWords, scenario1BridgeFixes });
+    console.debug("[v9-main-bottom-gap]", { desiredGapPx, changedPages: results.length, results, openingWords });
   }
   return results;
 }
