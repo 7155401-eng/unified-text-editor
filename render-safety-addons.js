@@ -26,7 +26,14 @@
     const s = document.createElement('style');
     s.id = 'render-safety-addons-style';
     s.textContent = `
-      .render-safety-addon-btn{margin-inline-start:6px;white-space:nowrap}
+      .render-safety-addon-btn{white-space:nowrap;text-align:right;width:100%;justify-content:flex-start}
+      .render-safety-menu-wrap{display:inline-block;position:relative;margin-inline-start:4px;vertical-align:middle}
+      #btn-render-options-toggle{min-width:32px;padding-inline:8px;font-weight:800;line-height:1;white-space:nowrap}
+      #btn-render-options-toggle[aria-expanded="true"]{background:#e0ecff;border-color:#93b4e8;color:#173b72}
+      .render-safety-menu{position:absolute;top:calc(100% + 6px);inset-inline-start:0;z-index:2147483045;min-width:210px;padding:7px;background:#fff;border:1px solid rgba(44,90,160,.22);border-radius:12px;box-shadow:0 12px 30px rgba(15,23,42,.18);direction:rtl;display:none}
+      .render-safety-menu.open{display:flex;flex-direction:column;gap:5px}
+      .render-safety-menu .btn-render-pause,.render-safety-menu button{display:block;width:100%;margin:0;text-align:right;white-space:nowrap;border-radius:8px}
+      .render-safety-menu-separator{height:1px;background:rgba(148,163,184,.35);margin:3px 2px}
       .render-safety-toast{position:fixed;left:18px;bottom:18px;z-index:2147483100;background:#111827;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 8px 22px rgba(0,0,0,.24);direction:rtl;max-width:460px}
       .render-safety-modal-backdrop{position:fixed;inset:0;z-index:2147483050;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px}
       .render-safety-modal{direction:rtl;width:min(780px,94vw);max-height:88vh;overflow:auto;background:#fff;color:#111827;border-radius:14px;box-shadow:0 12px 34px rgba(15,23,42,.24);padding:20px 22px;font-family:Segoe UI,system-ui,sans-serif;line-height:1.55}
@@ -51,18 +58,87 @@
     b.querySelector('.render-safety-close')?.addEventListener('click', closeModal);
     document.body.appendChild(b);
   }
-  function ensureButton(id, text, title, after, onClick) {
+  function closeRenderMenu() {
+    const menu = byId('render-options-menu');
+    const toggle = byId('btn-render-options-toggle');
+    if (menu) menu.classList.remove('open');
+    if (toggle) toggle.setAttribute('aria-expanded','false');
+  }
+  function ensureRenderMenu() {
+    const render = byId('btn-render');
+    if (!render) return null;
+    let wrap = byId('render-options-menu-wrap');
+    if (!wrap) {
+      wrap = document.createElement('span');
+      wrap.id = 'render-options-menu-wrap';
+      wrap.className = 'render-safety-menu-wrap';
+      wrap.innerHTML = `<button type="button" id="btn-render-options-toggle" title="אפשרויות רינדור" aria-haspopup="menu" aria-expanded="false">▾</button><div id="render-options-menu" class="render-safety-menu" role="menu"></div>`;
+      render.insertAdjacentElement('afterend', wrap);
+      const toggle = byId('btn-render-options-toggle');
+      const menu = byId('render-options-menu');
+      toggle?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const open = !menu.classList.contains('open');
+        menu.classList.toggle('open', open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      document.addEventListener('click', (ev) => {
+        if (!wrap.contains(ev.target)) closeRenderMenu();
+      }, true);
+      document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeRenderMenu(); });
+    }
+    const menu = byId('render-options-menu');
+    const pause = byId('btn-render-pause');
+    if (menu && pause && pause.parentElement !== menu) {
+      pause.classList.add('render-safety-addon-btn');
+      menu.appendChild(pause);
+    }
+    return menu;
+  }
+  function ensureMenuSeparator(menu, id) {
+    if (!menu || byId(id)) return;
+    const sep = document.createElement('div');
+    sep.id = id;
+    sep.className = 'render-safety-menu-separator';
+    menu.appendChild(sep);
+  }
+  function ensureButton(id, text, title, menu, onClick) {
     let btn = byId(id);
-    if (!btn && after) { btn = document.createElement('button'); btn.type = 'button'; btn.id = id; btn.className = 'render-safety-addon-btn'; btn.textContent = text; btn.title = title; after.insertAdjacentElement('afterend', btn); }
-    if (btn && btn.dataset.renderSafetyHook !== '1' && btn.dataset.perfectHook !== '1') { btn.dataset.renderSafetyHook = '1'; btn.addEventListener('click', (ev) => { ev.preventDefault(); onClick(); }); }
+    if (!btn && menu) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = id;
+      btn.className = 'render-safety-addon-btn';
+      btn.textContent = text;
+      btn.title = title;
+      menu.appendChild(btn);
+    } else if (btn && menu && btn.parentElement !== menu) {
+      btn.classList.add('render-safety-addon-btn');
+      menu.appendChild(btn);
+    }
+    if (btn && btn.dataset.renderSafetyHook !== '1' && btn.dataset.perfectHook !== '1') {
+      btn.dataset.renderSafetyHook = '1';
+      btn.addEventListener('click', (ev) => { ev.preventDefault(); closeRenderMenu(); onClick(); });
+    }
     return btn;
   }
+  function stopRenderFromMenu() {
+    try { window.__ravtextRenderCancelRequested = true; } catch (_) {}
+    try { window.__ravtextCancelRender?.('render-menu'); } catch (_) {}
+    const render = byId('btn-render');
+    if (render && /עצור|stop/i.test(render.textContent || '')) render.click();
+    const status = byId('status');
+    if (status) status.textContent = 'נשלחה בקשת עצירת רינדור.';
+  }
   function installButtons() {
-    const render = byId('btn-render'); if (!render) return;
-    let anchor = byId('btn-render-pause') || render;
-    anchor = ensureButton('btn-render-diagnostics','🔎 בדיקת רינדור','בדיקת מצב רינדור, פונטים, הגדרות ועמודים',anchor,diagnostics) || anchor;
-    anchor = ensureButton('btn-ravtext-snapshots','⏪ שחזור','שחזור מגיבויים אוטומטיים',anchor,snapshotManager) || anchor;
-    ensureButton('btn-reset-display-only','🧹 אפס תצוגה','איפוס הגדרות תצוגה ורינדור בלבד — בלי למחוק טקסט',anchor,resetDisplayOnly);
+    const menu = ensureRenderMenu();
+    if (!menu) return;
+    ensureButton('btn-render-stop-menu','■ עצור רינדור','עצור את הרינדור הנוכחי',menu,stopRenderFromMenu);
+    ensureMenuSeparator(menu, 'render-options-separator-1');
+    ensureButton('btn-render-diagnostics','🔎 בדיקת רינדור','בדיקת מצב רינדור, פונטים, הגדרות ועמודים',menu,diagnostics);
+    ensureButton('btn-ravtext-snapshots','⏪ שחזור','שחזור מגיבויים אוטומטיים',menu,snapshotManager);
+    ensureButton('btn-reset-display-only','🧹 אפס תצוגה','איפוס הגדרות תצוגה ורינדור בלבד — בלי למחוק טקסט',menu,resetDisplayOnly);
   }
   function snaps(){ const v=parseJson(localStorage.getItem(SNAP_KEY)||'[]',[]); return Array.isArray(v)?v:[]; }
   function saveSnaps(v){ localStorage.setItem(SNAP_KEY,JSON.stringify(v.slice(0,6))); }
