@@ -1,40 +1,138 @@
-const $=(r,s)=>r?.querySelector?.(s)||null;
-const $$=(r,s)=>Array.from(r?.querySelectorAll?.(s)||[]);
-const MARKS=/[\u0591-\u05C7]/g;
-let pm=null,lastImport=null,state=null,patched=false,timer=null;
+const $ = (root, selector) => root?.querySelector?.(selector) || null;
+const $$ = (root, selector) => Array.from(root?.querySelectorAll?.(selector) || []);
+const MARKS = /[\u0591-\u05C7]/g;
 
-const esc=s=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-const strip=s=>String(s||"").normalize("NFD").replace(MARKS,"");
-const htmlText=h=>{try{return new DOMParser().parseFromString(String(h||""),"text/html").body.textContent||""}catch{return String(h||"").replace(/<[^>]*>/g," ")}};
-const textHtml=t=>String(t||"").replace(/\r\n/g,"\n").split(/\n{2,}/).map(x=>x.trim()).filter(Boolean).map(x=>`<p>${esc(x).replace(/\n/g,"<br>")}</p>`).join("\n")||"<p></p>";
-function clean(h){try{const d=new DOMParser().parseFromString(String(h||""),"text/html");d.querySelectorAll("script,style,iframe,object,embed,link,meta").forEach(n=>n.remove());d.body.querySelectorAll("*").forEach(n=>[...n.attributes].forEach(a=>{if(/^on/i.test(a.name)||/^javascript:/i.test(a.value||""))n.removeAttribute(a.name)}));return d.body.innerHTML||""}catch{return String(h||"")}}
-function editor(){return pm?.getActiveEditor?.()||pm?.getActivePane?.()?.editor||pm?.getMainPane?.()?.editor||null}
-function put(ch){const e=editor();if(!e?.commands?.setContent)throw Error("לא נמצא עורך פעיל.");e.commands.setContent(clean(ch.html||textHtml(ch.text||""))||"<p></p>");e.commands.focus?.()}
-function rangeHtml(d,b,a,z){const r=d.createRange(),w=d.createElement("div");r.setStartBefore(a);z?r.setEndBefore(z):b.lastChild?r.setEndAfter(b.lastChild):r.setEndAfter(a);w.appendChild(r.cloneContents());return w.innerHTML.trim()}
-function splitHtml(src,L){const d=new DOMParser().parseFromString(clean(src),"text/html"),b=d.body,hs=$$(b,`h${L}`);if(!hs.length)return[];return hs.map((h,i)=>{const html=rangeHtml(d,b,h,hs[i+1]||null),text=htmlText(html).trim();return{title:h.textContent.trim()||`פרק ${i+1}`,html,text,preview:text.slice(0,220),level:L}}).filter(c=>c.text)}
-function isH1(l){return /^(?:#\s+\S|פרק\s+\S|שער\s+\S|פרשה\s+\S)/u.test(strip(l).trim())}
-function isH2(l){return /^(?:##\s+\S|סימן\s+\S|משנה\s+\S|הלכה\s+\S|סעיף\s+\S)/u.test(strip(l).trim())}
-function title(l){return strip(l).replace(/^#{1,6}\s*/,"").replace(/^(?:פרק|שער|פרשה|סימן|משנה|הלכה|סעיף)\s+/u,"").trim()||l.trim()||"פרק"}
-function splitText(src,L){const lines=String(src||"").replace(/\r\n/g,"\n").split("\n"),out=[];let cur=null;const is=L===2?isH2:isH1;const close=()=>{if(!cur)return;const raw=cur.lines.join("\n").trim();if(raw)out.push({...cur,text:raw,html:textHtml(raw),preview:raw.slice(0,220)});cur=null};for(const line of lines){const t=line.trim();if(t&&is(t)){close();cur={title:title(t),lines:[line],level:L}}else if(cur)cur.lines.push(line)}close();return out}
-function split(src,L){const s=String(src||"");const h=/<h[12]\b/i.test(s)?splitHtml(s,L):[];return h.length?h:splitText(/<[^>]+>/.test(s)?htmlText(s):s,L)}
-function api(names){const a=window.pywebview?.api;if(!a)return null;for(const n of names)if(typeof a[n]==="function")return a[n].bind(a);return null}
-function json(x){if(!x)return null;if(typeof x==="object")return x;try{return JSON.parse(String(x))}catch{return null}}
-function mainOf(p){return p?.main||p?.html||p?.content||p?.document||p?.body||""}
-function schedule(){clearTimeout(timer);timer=setTimeout(render,0)}
-async function scan(){if(!lastImport?.path){state={status:"empty",by:{1:[],2:[]}};schedule();return}state={status:"loading",by:{1:[],2:[]}};schedule();try{const ex=api(["extract_word","editor_extract_word"]);if(!ex)throw Error("אין גישה למחלץ Word.");const raw=await ex(lastImport.path,"[]"),p=json(raw);if(!p||p.error)throw Error(p?.error||"לא ניתן לקרוא את המסמך.");const main=mainOf(p);state={status:"ready",by:{1:split(main,1),2:split(main,2)}}}catch(e){state={status:"error",by:{1:[],2:[]},error:e?.message||"שגיאה בזיהוי כותרות."}}schedule()}
-function styles(){if($("#word-heading-map-style",document))return;const s=document.createElement("style");s.id="word-heading-map-style";s.textContent=`
-.word-heading-map{margin:14px 0 0;padding:14px;border-radius:18px;background:linear-gradient(135deg,#0f172a,#4338ca,#7e22ce);color:#fff;direction:rtl;box-shadow:0 14px 36px #0003}
-.word-heading-map-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.word-heading-map-title{font-weight:900}.word-heading-map small{opacity:.82}
-.word-heading-map select{border:0;border-radius:999px;padding:7px 10px;font-weight:800;background:#ffffff26;color:#fff}.word-heading-map option{color:#111827}
-.word-heading-map-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.word-heading-map-stat{background:#ffffff20;border:1px solid #ffffff2b;border-radius:14px;padding:8px;text-align:center}.word-heading-map-stat b{display:block;font-size:20px}
-.word-heading-map-list{display:grid;gap:8px;max-height:260px;overflow:auto}.word-heading-map-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;background:#ffffff1c;border:1px solid #ffffff2b;border-radius:14px;padding:9px}
-.word-heading-map-row strong{display:block;font-size:13px}.word-heading-map-row p{margin:3px 0 0;font-size:12px;opacity:.82;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:390px}
-.word-heading-map button{border:0;border-radius:999px;padding:8px 11px;cursor:pointer;font-weight:900;color:#111827;background:linear-gradient(90deg,#22d3ee,#a78bfa,#facc15);white-space:nowrap}
-.word-heading-map-empty{padding:10px;border-radius:12px;background:#ffffff1c;font-size:13px}`;document.head.appendChild(s)}
-function insert(modal,panel){const list=$("#word-stream-list",modal);if(list?.parentElement){list.parentElement.insertBefore(panel,list.nextSibling);return}($(".modal-body",modal)||modal).appendChild(panel)}
-function render(){const modal=$("#word-import-modal",document);if(!modal||!modal.classList.contains("active"))return;styles();$("#word-heading-map",modal)?.remove();const st=state||{status:"empty",by:{1:[],2:[]}},h1=st.by?.[1]?.length||0,h2=st.by?.[2]?.length||0,level=h1?1:2,panel=document.createElement("section");panel.id="word-heading-map";panel.className="word-heading-map";panel.innerHTML=`<div class="word-heading-map-head"><div><div class="word-heading-map-title">כותרות / פרקים במסמך</div><small>לצד מיפוי הזרמים — אפשר לטעון לעורך פרק בודד לפי כותרת.</small></div><select><option value="1" ${level===1?"selected":""}>H1 / כותרות ראשיות</option><option value="2" ${level===2?"selected":""}>H2 / כותרות משניות</option></select></div><div class="word-heading-map-stats"><div class="word-heading-map-stat"><b>${h1+h2}</b>כותרות</div><div class="word-heading-map-stat"><b>${h1}</b>H1</div><div class="word-heading-map-stat"><b>${h2}</b>H2</div></div><div class="word-heading-map-list"></div>`;const sel=$("select",panel),list=$(".word-heading-map-list",panel);function draw(){const L=Number(sel.value)===2?2:1,chs=st.by?.[L]||[];if(st.status==="loading"){list.innerHTML=`<div class="word-heading-map-empty">סורק כותרות במסמך…</div>`;return}if(st.status==="error"){list.innerHTML=`<div class="word-heading-map-empty">לא ניתן למפות כותרות: ${esc(st.error)}</div>`;return}if(!chs.length){list.innerHTML=`<div class="word-heading-map-empty">לא נמצאו כותרות ברמה הזו. נסה H1/H2.</div>`;return}list.innerHTML=chs.map((c,i)=>`<article class="word-heading-map-row"><div><strong>${esc(c.title||`פרק ${i+1}`)}</strong><p>${esc(c.preview||"").replace(/\n/g," ")}${c.preview?.length>=220?"…":""}</p></div><button type="button" data-i="${i}" data-l="${L}">ייבא פרק זה</button></article>`).join("")}sel.addEventListener("change",draw);list.addEventListener("click",e=>{const b=e.target.closest?.("button[data-i]");if(!b)return;const c=st.by?.[Number(b.dataset.l)]?.[Number(b.dataset.i)];if(!c)return;try{put(c);b.textContent="נטען לעורך"}catch(err){alert(err?.message||"לא ניתן לטעון את הפרק.")}});draw();insert(modal,panel)}
-function handle(raw){const r=json(raw);if(!r||r.error||(!r.path&&!r.streams))return;lastImport=r;scan()}
-function wrap(a,n){if(!a||typeof a[n]!=="function"||a[`__headingMap_${n}`])return;const orig=a[n].bind(a);a[n]=async(...args)=>{const res=await orig(...args);try{handle(res)}catch(e){console.warn("[heading-map]",e)}return res};a[`__headingMap_${n}`]=true}
-function patch(){const a=window.pywebview?.api;if(!a)return;wrap(a,"import_word");wrap(a,"editor_import_word")}
-function observe(){if(patched)return;patched=true;const run=()=>{patch();schedule()};[0,300,1000,2200,4500].forEach(t=>setTimeout(run,t));window.addEventListener("pywebviewready",run,{once:false});new MutationObserver(()=>{run();if($("#word-import-modal.active",document))schedule()}).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["class"]})}
-export function wireChapterSplitter(paneManager){pm=paneManager;if(typeof document==="undefined")return;observe();window.ravtextRefreshWordHeadingMap=()=>{scan();schedule()}}
+let paneManagerRef = null;
+let lastImport = null;
+let headingState = { status: "idle", by: { 1: [], 2: [] } };
+let apiPatched = false;
+let renderTimer = null;
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function stripHebrewMarks(value) {
+  return String(value || "").normalize("NFD").replace(MARKS, "");
+}
+
+function cleanHtml(html) {
+  try {
+    const doc = new DOMParser().parseFromString(String(html || ""), "text/html");
+    doc.querySelectorAll("script,style,iframe,object,embed,link,meta").forEach(node => node.remove());
+    doc.body.querySelectorAll("*").forEach(node => {
+      [...node.attributes].forEach(attr => {
+        if (/^on/i.test(attr.name) || /^javascript:/i.test(attr.value || "")) {
+          node.removeAttribute(attr.name);
+        }
+      });
+    });
+    return doc.body.innerHTML || "";
+  } catch {
+    return String(html || "");
+  }
+}
+
+function htmlToText(html) {
+  try {
+    return new DOMParser().parseFromString(String(html || ""), "text/html").body.textContent || "";
+  } catch {
+    return String(html || "").replace(/<[^>]*>/g, " ");
+  }
+}
+
+function textToHtml(text) {
+  const blocks = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map(block => block.trim())
+    .filter(Boolean);
+
+  return blocks.length
+    ? blocks.map(block => `<p>${escapeHtml(block).replace(/\n/g, "<br>")}</p>`).join("\n")
+    : "<p></p>";
+}
+
+function emptyDoc() {
+  return { type: "doc", content: [{ type: "paragraph" }] };
+}
+
+function getMainEditor() {
+  return paneManagerRef?.getMainPane?.()?.editor
+    || paneManagerRef?.getActiveEditor?.()
+    || paneManagerRef?.getActivePane?.()?.editor
+    || null;
+}
+
+function loadChapterToEditor(chapter) {
+  const mainPane = paneManagerRef?.getMainPane?.();
+  const editor = mainPane?.editor || getMainEditor();
+  if (!editor?.commands?.setContent) throw new Error("לא נמזא עורך פעיל.");
+
+  if (paneManagerRef?.load) {
+    paneManagerRef.load({
+      version: 1,
+      activeId: "chapter-main",
+      panes: [{
+        id: "chapter-main",
+        streamCode: null,
+        symbol: "",
+        label: "ראשי",
+        content: emptyDoc(),
+      }],
+    });
+  }
+
+  const targetEditor = paneManagerRef?.getMainPane?.()?.editor || editor;
+  targetEditor.commands.setContent(cleanHtml(chapter.html || textToHtml(chapter.text || "")) || "<p></p>");
+  targetEditor.commands.focus?.();
+  window.__ravtextRerender/.();
+  document.getElementById("word-import-modal")?.classList.remove("active");
+}
+
+function rangeHtml(doc, body, start, next) {
+  const range = doc.createRange();
+  const wrapper = doc.createElement("div");
+  range.setStartBefore(start);
+  if (next) range.setEndBefore(next);
+  else if (body.lastChild) range.setEndAfter(body.lastChild);
+  else range.setEndAfter(start);
+  wrapper.appendChild(range.cloneContents());
+  return wrapper.innerHTML.trim();
+}
+
+function splitHtmlByHeading(source, level) {
+  const html = String(source || "");
+  if (!?<[a-z][\s\S]*>/i.test(html)) return [];
+
+  const doc = new DOMParser().parseFromString(cleanHtml(html), "text/html");
+  const body = doc.body;
+  const exact = $$(body, `h${level}`);
+  const candidates = exact.length
+    ? exact
+    : $$(body, "p,div").filter(node => {
+        const marker = stripHebrewMarks(`${node.getAttribute("class") || ""} ${node.getAttribute("style") || ""} ${node.getAttribute("data-style-name") || ""}`);
+        return level === 1
+          ? /(heading\s*1|�^�ת��ת\s*1|outline-level:\s*0)/i.test(marker)
+          : /(heading\s*2|כותרת\s*2|outline-level:\s*1)/i.test(marker);
+      });
+
+  return candidates.map((heading, index) => {
+    const htmlPart = rangeHtml(doc, body, heading, candidates[index + 1] || null);
+    const text = htmlToText(htmlPart).trim();
+    return {
+      title: heading.textContent.trim() || `נפרק ${index + 1}`,
+      html: htmlPart,
+      text,
+      preview: text.slice(0, 220),
+      level,
+    };
+  }).filter(chapter => chapter.text);
+}
+
+function isPrimaryHeading(line) {
+  const normalized = stripHebrewMarks(orderedLine(line)).trim();
+  return /^(?:c\s+\S|פרק\s+\S|שער\s+\S|פרשה\s+\S)
