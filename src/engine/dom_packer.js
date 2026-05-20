@@ -14,6 +14,7 @@ import { createLayoutContext, publishLayoutContextToCssVars, currentLayoutMeasur
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
 import { isTalmudLayoutEnabled } from "../talmud_controls.js";
+import { loadSpacingSettings } from "../spacing_settings.js";
 
 // Pack to ~15px below the rendered page height to leave a safety buffer for
 // sub-pixel rounding / margin-collapse / font-metric drift between the
@@ -604,26 +605,16 @@ function lastStreamLineFillRatio(streamCode = null) {
 }
 
 function noMidLineSplitsEnabled() {
-  try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
-    return !!settings?.noMidLineSplits;
-  } catch {
-    return false;
-  }
+  const settings = loadSpacingSettings();
+  return !!settings.noMidLineSplits;
 }
 
 // משה 2026-05-14: מצב גמיש — לא מפצל פיסקאות, אבל מנסה למלא רווחים ע"י
 // look-ahead: אם פיסקה לא נכנסת אבל הבאה כן — נשבץ את הבאה במקומה. רק
 // כשההפרש בטעם משמעותי (האלטרנטיבה היא לעמוד עם רווח גדול).
 function noMidParagraphSoftEnabled() {
-  try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
-    return !!settings?.noMidParagraphSoft;
-  } catch {
-    return false;
-  }
+  const settings = loadSpacingSettings();
+  return !!settings.noMidParagraphSoft;
 }
 
 // משה 2026-05-14: live_overflow_corrector מזהה זוגות פיצול שניתן לאחד וכותב
