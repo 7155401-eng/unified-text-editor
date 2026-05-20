@@ -1,184 +1,32 @@
-const CARD_ID="we-static-connection-probe";
-const MODAL_ID="word-extractor-modal";
-const MARKS=/[\u0591-\u05C7]/g;
-let wired=false,lastFile=null,token=0,lastStats=null;
-
-const $=(r,s)=>r?.querySelector?.(s)||null;
-const $$=(r,s)=>Array.from(r?.querySelectorAll?.(s)||[]);
-const fmt=n=>Number(n||0).toLocaleString("he-IL");
+const ID="we-static-connection-probe",MID="word-extractor-modal",MARKS=/[\u0591-\u05C7]/g;
+let pm=null,wired=false,tok=0,file=null,data=null,sel=1,show=false;
+const $=(r,s)=>r?.querySelector?.(s)||null,$$=(r,s)=>Array.from(r?.querySelectorAll?.(s)||[]);
+const m=()=>document.getElementById(MID),fmt=n=>Number(n||0).toLocaleString("he-IL");
 const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 const norm=s=>String(s||"").normalize("NFD").replace(MARKS,"").trim().toLowerCase();
-const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const frame=()=>new Promise(r=>requestAnimationFrame(()=>r()));
-const modal=()=>document.getElementById(MODAL_ID);
-
-function removeCard(){document.getElementById(CARD_ID)?.remove()}
-
-function ensureCard(){
-  const m=modal();
-  if(!m?.classList.contains("active")||!lastFile){removeCard();return null}
-  let c=document.getElementById(CARD_ID);
-  if(c)return c;
-  c=document.createElement("section");
-  c.id=CARD_ID;c.dir="rtl";
-  c.style.cssText="margin:12px 0;padding:12px;border:1px solid #7c3aed;border-radius:10px;background:#faf5ff;color:#111827;box-sizing:border-box";
-  const sw=$(".we-streams-wrap",m), me=$(".we-meta",m);
-  if(sw?.parentElement)sw.parentElement.insertBefore(c,sw);
-  else if(me?.parentElement)me.parentElement.insertBefore(c,me.nextSibling);
-  else ($(".we-modal",m)||m).appendChild(c);
-  return c;
-}
-
-function loading(msg){
-  const c=ensureCard(); if(!c)return;
-  c.innerHTML=`<b style="color:#312e81">כותרות / פרקים במסמך</b>
-  <div style="font-size:12px;color:#64748b">מצב קל: מציג מונה תווים, מילים וכמות כותרות בלבד. רשימת פרקים לא נבנית אוטומטית.</div>
-  <div style="margin-top:8px;color:#475569">${esc(msg)}</div>`;
-}
-
-function stat(v,label){return `<div style="background:#eff6ff;border:1px solid #dbeafe;border-radius:8px;padding:8px;text-align:center"><b style="display:block;font-size:18px">${fmt(v)}</b><span>${label}</span></div>`}
-
-function render(){
-  const c=ensureCard(); if(!c||!lastStats)return;
-  const s=lastStats;
-  c.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center">
-    <div><b style="color:#312e81">כותרות / פרקים במסמך</b>
-    <div style="font-size:12px;color:#64748b">החישוב הקל הושלם. מונה התווים והמילים נשמר, והפרקים לא נטענים כדי לא להכביד.</div></div>
-    <button type="button" data-r style="border:1px solid #cbd5e1;border-radius:8px;background:white;padding:6px 10px;cursor:pointer">רענן</button>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0">
-    ${stat(s.chars,"תווים")}
-    ${stat(s.words,"מילים")}
-    ${stat(s.total,"כותרות")}
-    ${stat(s.h[1]||0,"H1")}
-    ${stat(s.h[2]||0,"H2")}
-  </div>
-  <div style="font-size:12px;color:#475569">
-    זוהו כותרות H1/H2 בלי לבנות רשימת פרקים מלאה. השלב הבא יהיה כפתור “הצג פרקים” שיבנה רשימה רק לפי בקשה.
-  </div>`;
-  $$(c,"[data-r]").forEach(b=>b.onclick=()=>lastFile&&scan(lastFile,++token));
-}
-
-function error(msg){
-  const c=ensureCard(); if(!c)return;
-  c.innerHTML=`<b style="color:#312e81">כותרות / פרקים במסמך</b>
-  <button type="button" data-r style="float:left;border:1px solid #cbd5e1;border-radius:8px;background:white;padding:5px 9px">רענן</button>
-  <div style="clear:both;margin-top:8px;color:#b91c1c">לא הצלחתי לסרוק: ${esc(msg)}</div>`;
-  $$(c,"[data-r]").forEach(b=>b.onclick=()=>lastFile&&scan(lastFile,++token));
-}
-
-function kids(n,l){
-  if(!n)return [];
-  const a=Array.from(n.getElementsByTagNameNS?.("*",l)||[]);
-  const b=Array.from(n.getElementsByTagName?.(`w:${l}`)||[]);
-  return a.concat(b).filter((x,i,arr)=>arr.indexOf(x)===i);
-}
+function rm(){document.getElementById(ID)?.remove()}
+function card(){const md=m();if(!md?.classList.contains("active")||!file){rm();return null}let c=document.getElementById(ID);if(c)return c;c=document.createElement("section");c.id=ID;c.dir="rtl";c.style.cssText="margin:12px 0;padding:12px;border:1px solid #7c3aed;border-radius:10px;background:#faf5ff;color:#111827;box-sizing:border-box";const sw=$(".we-streams-wrap",md),me=$(".we-meta",md);if(sw?.parentElement)sw.parentElement.insertBefore(c,sw);else if(me?.parentElement)me.parentElement.insertBefore(c,me.nextSibling);else ($(".we-modal",md)||md).appendChild(c);return c}
+function loading(t){const c=card();if(c)c.innerHTML=`<b style="color:#312e81">כותרות / פרקים במסמך</b><div style="font-size:12px;color:#64748b">מצב קל. פרק נבנה רק בלחיצה.</div><div style="margin-top:8px;color:#475569">${esc(t)}</div>`}
+function box(n,l){return `<div style="background:#eff6ff;border:1px solid #dbeafe;border-radius:8px;padding:8px;text-align:center"><b style="display:block;font-size:18px">${fmt(n)}</b><span>${l}</span></div>`}
+function err(e){const c=card();if(!c)return;c.innerHTML=`<b style="color:#312e81">כותרות / פרקים במסמך</b><button type="button" data-r style="float:left;border:1px solid #cbd5e1;border-radius:8px;background:white;padding:5px 9px">רענן</button><div style="clear:both;margin-top:8px;color:#b91c1c">לא הצלחתי לסרוק: ${esc(e)}</div>`;wire(c)}
+function render(){const c=card();if(!c||!data)return;const hs=data.heads[sel]||[],h=data.h,rows=show?list(hs):`<div style="font-size:12px;color:#475569;margin-top:8px">הרשימה לא נבנית אוטומטית. לחץ “הצג פרקים”. תוכן הפרק ייבנה רק בלחיצה על “ייבא פרק זה”.</div>`;c.innerHTML=`<div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><b style="color:#312e81">כותרות / פרקים במסמך</b><div style="font-size:12px;color:#64748b">מונה קל + אינדקס כותרות. כל פרק נבנה בנפרד.</div></div><button type="button" data-r style="border:1px solid #cbd5e1;border-radius:8px;background:white;padding:6px 10px">רענן</button></div><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:10px 0">${box(data.chars,"תווים")}${box(data.words,"מילים")}${box(data.total,"כותרות")}${box(h[1]||0,"H1")}${box(h[2]||0,"H2")}</div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px"><label style="font-size:12px;color:#475569">חלוקה לפי:</label><select data-level style="border:1px solid #cbd5e1;border-radius:8px;background:white;padding:6px 8px"><option value="1"${sel===1?" selected":""}>H1</option><option value="2"${sel===2?" selected":""}>H2</option></select><button type="button" data-list style="border:1px solid #cbd5e1;border-radius:8px;background:white;padding:6px 10px;font-weight:700">${show?"הסתר פרקים":"הצג פרקים"}</button><span style="font-size:12px;color:#475569">${fmt(hs.length)} פרקים לפי H${sel}</span></div>${rows}`;wire(c)}
+function list(hs){if(!hs.length)return `<div style="border:1px dashed #cbd5e1;border-radius:8px;background:white;color:#64748b;padding:10px;margin-top:8px">אין פרקים לפי H${sel}.</div>`;return `<div style="font-size:12px;color:#475569;margin-top:8px">אינדקס כותרות בלבד. תוכן הפרק נבנה רק בלחיצה.</div><div style="max-height:260px;overflow:auto;margin-top:6px">${hs.map((x,i)=>`<div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:9px;background:white;padding:8px;margin-top:7px"><div><b style="font-size:13px">${esc(x.title||`פרק ${i+1}`)}</b><div style="font-size:12px;color:#64748b">מתחיל בפסקה ${fmt(x.start+1)}</div></div><button type="button" data-load="${i}" style="border:1px solid #cbd5e1;border-radius:8px;background:white;padding:7px 10px;font-weight:700">ייבא פרק זה</button></div>`).join("")}</div>`}
+function wire(c){$$ (c,"[data-r]").forEach(b=>b.onclick=()=>file&&scan(file,++tok));const s=$("[data-level]",c);if(s)s.onchange=()=>{sel=Number(s.value)===2?2:1;show=false;render()};const t=$("[data-list]",c);if(t)t.onclick=()=>{show=!show;render()};$$ (c,"[data-load]").forEach(b=>b.onclick=()=>load(Number(b.dataset.load)))}
+function kids(n,l){if(!n)return[];return Array.from(n.getElementsByTagNameNS?.("*",l)||[]).concat(Array.from(n.getElementsByTagName?.(`w:${l}`)||[])).filter((x,i,a)=>a.indexOf(x)===i)}
 const first=(n,l)=>kids(n,l)[0]||null;
 function attr(n,a){return n?(n.getAttribute(`w:${a}`)||n.getAttribute(a)||n.getAttributeNS?.("http://schemas.openxmlformats.org/wordprocessingml/2006/main",a)||""):""}
 const ptext=p=>kids(p,"t").map(t=>t.textContent||"").join("");
-
-function parseStyles(xml){
-  const out={}; if(!xml)return out;
-  const d=new DOMParser().parseFromString(xml,"application/xml");
-  for(const s of kids(d,"style")){
-    const id=attr(s,"styleId"); if(!id)continue;
-    out[id]={name:attr(first(s,"name"),"val"),outline:attr(first(s,"outlineLvl"),"val")};
-  }
-  return out;
-}
-
-function levelOf(p,styles){
-  const pr=first(p,"pPr"), ps=first(pr,"pStyle"), ol=first(pr,"outlineLvl");
-  let v=attr(ol,"val");
-  if(v!==""&&Number.isFinite(+v))return +v+1;
-  const id=attr(ps,"val"), st=styles[id]||{};
-  v=st.outline;
-  if(v!==""&&v!=null&&Number.isFinite(+v))return +v+1;
-  const m=`${norm(id)} ${norm(st.name)}`;
-  for(let i=1;i<=6;i++)if(norm(id)===String(i)||m.includes(`heading ${i}`)||m.includes(`heading${i}`)||m.includes(`כותרת ${i}`)||m.includes(`כותרת${i}`))return i;
-  return 0;
-}
-
-function countWords(t){
-  const x=String(t||"").trim();if(!x)return 0;
-  try{return (x.match(/[\p{L}\p{N}]+(?:['׳״”\-][\p{L}\p{N}]+)*/gu)||[]).length}
-  catch{return x.split(/\s+/).filter(Boolean).length}
-}
-
-async function waitNative(T){
-  const start=Date.now();
-  while(T===token&&Date.now()-start<15000){
-    const m=modal(), meta=$(".we-meta",m), streams=$(".we-streams-wrap",m), st=$(".we-status",m);
-    const ok=(meta&&meta.hidden===false)||(streams&&streams.hidden===false);
-    const scanning=st&&st.hidden===false&&/סורק|Scanning|scan/i.test(st.textContent||"");
-    if(ok&&!scanning)return;
-    await wait(300);
-  }
-}
-
-async function loadZip(){
-  if(window.JSZip)return window.JSZip;
-  const mod=await import("jszip");
-  return mod.default||mod;
-}
-
-async function scan(file,T){
-  if(!file||T!==token)return;
-  loading("הקובץ נקלט. ממתין לסיום הסריקה הרגילה...");
-  await waitNative(T); await frame();
-  if(T!==token)return;
-  loading("סופר תווים, מילים וכותרות במצב קל...");
-  try{
-    const JSZip=await loadZip(); await frame();
-    const zip=await JSZip.loadAsync(await file.arrayBuffer());
-    const df=zip.file("word/document.xml");
-    if(!df)throw new Error("לא נמצא word/document.xml");
-    const [dx,sx]=await Promise.all([df.async("text"),zip.file("word/styles.xml")?.async("text")||Promise.resolve("")]);
-    if(T!==token)return;
-    const styles=parseStyles(sx||"");
-    const doc=new DOMParser().parseFromString(dx,"application/xml");
-    const ps=kids(doc,"p");
-    const h={1:0,2:0,3:0,4:0,5:0,6:0};
-    const parts=[];
-    for(let i=0;i<ps.length;i++){
-      const text=ptext(ps[i]);
-      const L=levelOf(ps[i],styles);
-      if(L>=1&&L<=6&&text.trim())h[L]++;
-      parts.push(text);
-      if(i%700===0)await frame();
-      if(T!==token)return;
-    }
-    const full=parts.join("\n");
-    lastStats={chars:full.length,words:countWords(full),h,total:Object.values(h).reduce((a,b)=>a+b,0)};
-    render();
-  }catch(e){error(e?.message||String(e))}
-}
-
-function onFile(e){
-  const input=e.target?.closest?.(`#${MODAL_ID} .we-file-input`);
-  if(!input)return;
-  const file=input.files?.[0];
-  if(!file){lastFile=null;lastStats=null;removeCard();return}
-  lastFile=file; lastStats=null;
-  const T=++token;
-  loading("הקובץ נקלט. הספירה תתחיל אחרי הסריקה הרגילה...");
-  setTimeout(()=>scan(file,T),800);
-}
-
-export function wireChapterSplitter(paneManager){
-  void paneManager;
-  if(typeof window==="undefined||typeof document==="undefined"||wired)return;
-  wired=true;
-  const run=()=>{
-    const m=modal();
-    if(!m?.classList.contains("active"))return;
-    if(!lastFile)removeCard();
-    else if(lastStats&&!document.getElementById(CARD_ID))render();
-    else if(!lastStats)ensureCard();
-  };
-  document.addEventListener("change",onFile,false);
-  [0,100,300,800,1500].forEach(ms=>setTimeout(run,ms));
-  new MutationObserver(run).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["class","hidden"]});
-  window.ravtextRefreshWordDocumentDiagnostics=()=>{if(lastFile)scan(lastFile,++token)};
-  window.ravtextRefreshWordHeadingMap=window.ravtextRefreshWordDocumentDiagnostics;
-}
+function styles(xml){const out={};if(!xml)return out;const d=new DOMParser().parseFromString(xml,"application/xml");for(const s of kids(d,"style")){const id=attr(s,"styleId");if(id)out[id]={name:attr(first(s,"name"),"val"),outline:attr(first(s,"outlineLvl"),"val")}}return out}
+function levelOf(p,st){const pr=first(p,"pPr"),ps=first(pr,"pStyle"),ol=first(pr,"outlineLvl");let v=attr(ol,"val");if(v!==""&&Number.isFinite(+v))return +v+1;const id=attr(ps,"val"),s=st[id]||{};v=s.outline;if(v!==""&&v!=null&&Number.isFinite(+v))return +v+1;const mark=`${norm(id)} ${norm(s.name)}`;for(let i=1;i<=6;i++)if(norm(id)===String(i)||mark.includes(`heading ${i}`)||mark.includes(`heading${i}`)||mark.includes(`כותרת ${i}`)||mark.includes(`כותרת${i}`))return i;return 0}
+function countWords(t){const v=String(t||"").trim();if(!v)return 0;try{return(v.match(/[\p{L}\p{N}]+(?:['\u05F3\u05F4״\-][\p{L}\p{N}]+)*/gu)||[]).length}catch{return v.split(/\s+/).filter(Boolean).length}}
+async function waitNative(T){const start=Date.now();while(T===tok&&Date.now()-start<15000){const md=m(),me=$(".we-meta",md),sw=$(".we-streams-wrap",md),st=$(".we-status",md),ok=(me&&me.hidden===false)||(sw&&sw.hidden===false),busy=st&&st.hidden===false&&/סורק|Scanning|scan/i.test(st.textContent||"");if(ok&&!busy)return;await sleep(300)}}
+async function jszip(){if(window.JSZip)return window.JSZip;const mod=await import("jszip");return mod.default||mod}
+async function scan(f,T){if(!f||T!==tok)return;loading("הקובץ נקלט. ממתין לסיום הסריקה הרגילה...");await waitNative(T);await frame();if(T!==tok)return;loading("סופר תווים, מילים וכותרות בצורה קלה...");try{const JSZip=await jszip();await frame();const z=await JSZip.loadAsync(await f.arrayBuffer()),df=z.file("word/document.xml");if(!df)throw new Error("לא נמצא word/document.xml");const [dx,sx]=await Promise.all([df.async("text"),z.file("word/styles.xml")?.async("text")||Promise.resolve("")]);if(T!==tok)return;const st=styles(sx||""),d=new DOMParser().parseFromString(dx,"application/xml"),nodes=kids(d,"p"),h={1:0,2:0,3:0,4:0,5:0,6:0},pars=[],heads={1:[],2:[]},text=[];for(let i=0;i<nodes.length;i++){const tx=ptext(nodes[i]),lv=levelOf(nodes[i],st);pars.push({text:tx,level:lv});text.push(tx);if(tx.trim()&&lv>=1&&lv<=6){h[lv]++;if(lv===1||lv===2)heads[lv].push({title:tx.trim(),start:i})}if(i%700===0)await frame();if(T!==tok)return}const full=text.join("\n");data={chars:full.length,words:countWords(full),h,total:Object.values(h).reduce((a,b)=>a+b,0),pars,heads};sel=!heads[1].length&&heads[2].length?2:1;show=false;render()}catch(e){err(e?.message||String(e))}}
+function pHtml(p){const h=esc(p.text).replace(/\n/g,"<br>");return p.level>=1&&p.level<=6?`<h${p.level}>${h}</h${p.level}>`:`<p>${h}</p>`}
+function build(i){if(!data)return null;const hs=data.heads[sel]||[],x=hs[i];if(!x)return null;const next=hs[i+1],parts=data.pars.slice(x.start,next?next.start:data.pars.length);return{title:x.title,html:parts.map(pHtml).join("\n")||"<p></p>"}}
+function editor(){return pm?.getMainPane?.()?.editor||pm?.getActiveEditor?.()||pm?.getActivePane?.()?.editor||null}
+function load(i){const ch=build(i);if(!ch)return;try{if(pm?.load)pm.load({version:1,activeId:"word-chapter-main",panes:[{id:"word-chapter-main",streamCode:null,symbol:"",label:ch.title||"פרק",content:{type:"doc",content:[{type:"paragraph"}]}}]});const ed=editor();if(!ed?.commands?.setContent)throw new Error("לא נמצא עורך פעיל.");ed.commands.setContent(ch.html);ed.commands.focus?.();window.__ravtextRerender?.();m()?.classList.remove("active")}catch(e){alert(e?.message||"לא ניתן לטעון את הפרק.")}}
+function onFile(e){const input=e.target?.closest?.(`#${MID} .we-file-input`);if(!input)return;const f=input.files?.[0];if(!f){file=null;data=null;rm();return}file=f;data=null;sel=1;show=false;const T=++tok;loading("הקובץ נקלט. הספירה תתחיל אחרי הסריקה הרגילה...");setTimeout(()=>scan(f,T),800)}
+export function wireChapterSplitter(paneManager){pm=paneManager;if(typeof window==="undefined"||typeof document==="undefined"||wired)return;wired=true;const run=()=>{const md=m();if(!md?.classList.contains("active"))return;if(!file)rm();else if(data&&!document.getElementById(ID))render();else if(!data)card()};document.addEventListener("change",onFile,false);[0,100,300,800,1500].forEach(ms=>setTimeout(run,ms));new MutationObserver(run).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:["class","hidden"]});window.ravtextRefreshWordDocumentDiagnostics=()=>{if(file)scan(file,++tok)};window.ravtextRefreshWordHeadingMap=window.ravtextRefreshWordDocumentDiagnostics}
