@@ -10,7 +10,7 @@ function readFile(path) {
 function writeIfChanged(path, before, after) {
   if (after !== before) {
     fs.writeFileSync(path, after);
-    console.log(`[${MARKER}] patched ${path}: unified y_end + lockYStart + one-line bridge invariant`);
+    console.log(`[${MARKER}] patched ${path}: y_end + lockYStart, with one-line cap only for same-stream split`);
   } else {
     console.log(`[${MARKER}] patch noop for ${path}`);
   }
@@ -20,7 +20,7 @@ function fail(label) {
   throw new Error(`[${MARKER}] required V9 invariant was not applied: ${label}`);
 }
 
-function replaceOrKeep(source, before, after, label) {
+function replaceOrKeep(source, before, after) {
   if (source.includes(after)) return source;
   if (!source.includes(before)) return source;
   return source.replace(before, after);
@@ -51,7 +51,7 @@ function patchLockedWideStripStart(source) {
       curY < strips[stripIdx + 1].y_start &&
       strips[stripIdx + 1].lockYStart !== true &&
       strips[stripIdx + 1].width > strip.width`;
-  source = replaceOrKeep(source, pullBefore, pullAfter, "wide strip pull lock");
+  source = replaceOrKeep(source, pullBefore, pullAfter);
 
   const bridgeBefore = `availableHeight > 0 &&
         stripIdx + 1 < strips.length &&
@@ -60,7 +60,7 @@ function patchLockedWideStripStart(source) {
         stripIdx + 1 < strips.length &&
         strips[stripIdx + 1].lockYStart !== true &&
         strips[stripIdx + 1].width > strip.width`;
-  source = replaceOrKeep(source, bridgeBefore, bridgeAfter, "partial bridge lock");
+  source = replaceOrKeep(source, bridgeBefore, bridgeAfter);
 
   return source;
 }
@@ -111,17 +111,18 @@ function patchSideStreamFullStrip(source) {
         x: side === 'right' ? sideRightX : 0,
       });
     }
-    // ${MARKER}: when two side columns are active, the full-width bridge
-    // under them is a one-line remainder only. Extra lines must remain inside
-    // the side column or overflow to the next page.
+    // ${MARKER}: full-width continuation is still legal after the other side
+    // really ends. The one-line cap is reserved only for same-stream split
+    // bridge/orphan cases; distinct streams keep the full lower area.
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
+    const lockFullStrip3Start = maxFullStrip3Lines > 0 || o.lockFullStrip3Start === true;
     if (fullStrip3StartY < pageBottomY && !suppressFullStrip3) {
       strips.push({
         y_start: fullStrip3StartY,
         y_end: pageBottomY,
         width: innerWidth,
         x: 0,
-        lockYStart: maxFullStrip3Lines > 0,
+        lockYStart: lockFullStrip3Start,
       });
     }`;
 
@@ -150,74 +151,127 @@ function patchSideStreamFullStrip(source) {
 
   if (source.includes(original)) return source.replace(original, replacement);
 
-  const existingPatched = /const maxFullStrip3Lines = Number\(o\.maxFullStrip3Lines\) > 0[\s\S]*?lockYStart: maxFullStrip3Lines > 0,\s*\}\);\s*\}/;
+  const existingPatched = /const maxFullStrip3Lines = Number\(o\.maxFullStrip3Lines\) > 0[\s\S]*?lockYStart: (?:maxFullStrip3Lines > 0|lockFullStrip3Start),\s*\}\);\s*\}/;
   if (existingPatched.test(source)) return source.replace(existingPatched, replacement);
 
-  fail("strip3 one-line bridge replacement");
+  fail("strip3 full-width continuation replacement");
+}
+
+function patchSameStreamSplitFlag(source) {
+  const after = `const isScenario1 = (scenario.name === 'one_long_split');
+  const isSameStreamSideSplit = isScenario1 || (
+    !!pageContent.rightStream &&
+    !!pageContent.leftStream &&
+    pageContent.rightStream.id === pageContent.leftStream.id
+  );`;
+  if (source.includes(after)) return source;
+
+  const before = `const isScenario1 = (scenario.name === 'one_long_split');`;
+  if (!source.includes(before)) fail("same-stream split flag anchor");
+  return source.replace(before, after);
 }
 
 function patchTwoColumnLimits(source) {
-  source = replaceOrKeep(
-    source,
-    `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+  const replacements = [
+    [
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
       suppressFullStrip3: isScenario1,
     });`,
-    `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+      mainBottomY,
+      otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
+      suppressFullStrip3: isScenario1,
+      maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0,
+      lockFullStrip3Start: !!pass1Left,
+    });`,
+    ],
+    [
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: pass1Left ? 1 : 0,
     });`,
-    "initial right pass2"
-  );
-
-  source = replaceOrKeep(
-    source,
-    `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+      mainBottomY,
+      otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
+      suppressFullStrip3: isScenario1,
+      maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0,
+      lockFullStrip3Start: !!pass1Left,
+    });`,
+    ],
+    [
+      `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      mainBottomY,
+      otherSideEndY: otherEnd,
+    });`,
+      `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      mainBottomY,
+      otherSideEndY: otherEnd,
+      maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0,
+      lockFullStrip3Start: !!(pass2Right || pass1Right),
+    });`,
+    ],
+    [
+      `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
       maxFullStrip3Lines: isScenario1 ? 1 : 0,
     });`,
-    `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      mainBottomY,
+      otherSideEndY: otherEnd,
+      maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0,
+      lockFullStrip3Start: !!(pass2Right || pass1Right),
+    });`,
+    ],
+    [
+      `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
       maxFullStrip3Lines: (pass2Right || pass1Right || isScenario1) ? 1 : 0,
     });`,
-    "left pass2 upgrade"
-  );
-
-  source = replaceOrKeep(
-    source,
-    `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
+      maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0,
+      lockFullStrip3Start: !!(pass2Right || pass1Right),
     });`,
-    `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
-      mainBottomY,
-      otherSideEndY: otherEnd,
-      maxFullStrip3Lines: (pass2Right || pass1Right || isScenario1) ? 1 : 0,
-    });`,
-    "left pass2"
-  );
-
-  source = replaceOrKeep(
-    source,
-    `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+    ],
+    [
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: cap(pass2Left.endY),
       suppressFullStrip3: isScenario1,
     });`,
-    `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+      mainBottomY,
+      otherSideEndY: cap(pass2Left.endY),
+      suppressFullStrip3: isScenario1,
+      maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
+      lockFullStrip3Start: !!pass2Left,
+    });`,
+    ],
+    [
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: cap(pass2Left.endY),
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: pass2Left ? 1 : 0,
     });`,
-    "final right pass2"
-  );
+      `pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+      mainBottomY,
+      otherSideEndY: cap(pass2Left.endY),
+      suppressFullStrip3: isScenario1,
+      maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
+      lockFullStrip3Start: !!pass2Left,
+    });`,
+    ],
+  ];
 
+  for (const [before, after] of replacements) source = replaceOrKeep(source, before, after);
   return source;
 }
 
@@ -243,13 +297,20 @@ function verifyInvariant(source) {
   assertIncludes(source, "y_end: s.y_end", "side strips pass y_end to flow");
   assertIncludes(source, "lockYStart: s.lockYStart === true", "side strips pass lockYStart to flow");
   assertIncludes(source, "const maxFullStrip3Lines = Number(o.maxFullStrip3Lines) > 0", "strip3 line cap exists");
-  assertIncludes(source, "lockYStart: maxFullStrip3Lines > 0", "full-width bridge strip is locked");
-  assertIncludes(source, "maxFullStrip3Lines: pass1Left ? 1 : 0", "right pass2 capped when left exists");
-  assertIncludes(source, "maxFullStrip3Lines: (pass2Right || pass1Right || isScenario1) ? 1 : 0", "left pass2 capped when right exists");
-  assertIncludes(source, "maxFullStrip3Lines: pass2Left ? 1 : 0", "final right pass2 capped when left exists");
+  assertIncludes(source, "const lockFullStrip3Start = maxFullStrip3Lines > 0 || o.lockFullStrip3Start === true", "full-width start lock is decoupled from one-line cap");
+  assertIncludes(source, "const isSameStreamSideSplit = isScenario1 ||", "same-stream split flag exists");
+  assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0", "right pass2 cap is same-stream only");
+  assertIncludes(source, "lockFullStrip3Start: !!pass1Left", "right pass2 still locks full-width start when left exists");
+  assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0", "left pass2 cap is same-stream only");
+  assertIncludes(source, "lockFullStrip3Start: !!(pass2Right || pass1Right)", "left pass2 still locks full-width start when right exists");
+  assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0", "final right pass2 cap is same-stream only");
+  assertIncludes(source, "lockFullStrip3Start: !!pass2Left", "final right pass2 still locks full-width start when left exists");
   assertIncludes(source, "maxPages: Number.MAX_SAFE_INTEGER,", "default page cap removed");
   assertMissing(source, "strips.map(s => ({ y_start: s.y_start, width: s.width })),", "old side strip metadata without y_end/lock");
   assertMissing(source, "strips.map(s => ({ y_start: s.y_start, y_end: s.y_end, width: s.width })),", "side strip metadata with y_end but without lock");
+  assertMissing(source, "maxFullStrip3Lines: pass1Left ? 1 : 0", "distinct-stream right pass2 must not be capped");
+  assertMissing(source, "maxFullStrip3Lines: (pass2Right || pass1Right || isScenario1) ? 1 : 0", "distinct-stream left pass2 must not be capped");
+  assertMissing(source, "maxFullStrip3Lines: pass2Left ? 1 : 0", "distinct-stream final right pass2 must not be capped");
 }
 
 const before = readFile(TARGET);
@@ -258,6 +319,7 @@ after = patchExplicitStripEnd(after);
 after = patchLockedWideStripStart(after);
 after = patchSideStreamFlowMetadata(after);
 after = patchSideStreamFullStrip(after);
+after = patchSameStreamSplitFlag(after);
 after = patchTwoColumnLimits(after);
 after = removeDefaultMaxPagesCap(after);
 verifyInvariant(after);
