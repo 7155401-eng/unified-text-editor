@@ -70,14 +70,18 @@
     });
   }
 
-  function loadRenderSafetyAddons() {
-    const src = "/render-safety-addons.js?v=20260519-render-tab";
-    if (document.querySelector('script[data-render-safety-addons="1"]')) return;
+  function loadScript(src, marker) {
+    if (document.querySelector(`script[data-${marker}="1"]`)) return;
     const script = document.createElement("script");
     script.src = src;
     script.defer = true;
-    script.dataset.renderSafetyAddons = "1";
+    script.dataset[marker] = "1";
     document.head.appendChild(script);
+  }
+
+  function loadRenderSafetyAddons() {
+    loadScript("/render-safety-addons.js?v=20260519-render-tab", "renderSafetyAddons");
+    loadScript("/render-ribbon-tab-fix.js?v=20260519b", "renderRibbonTabFix");
   }
 
   if (document.readyState === "loading") {
