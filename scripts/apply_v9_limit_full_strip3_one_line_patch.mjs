@@ -10,9 +10,9 @@ function readFile(path) {
 function writeIfChanged(path, before, after) {
   if (after !== before) {
     fs.writeFileSync(path, after);
-    console.log(`[${MARKER}] restored ${path}: removed one-line full-strip limit`);
+    console.log(`[${MARKER}] patched ${path}: restored full-strip behavior and removed V9 maxPages cap`);
   } else {
-    console.log(`[${MARKER}] restore noop for ${path}`);
+    console.log(`[${MARKER}] patch noop for ${path}`);
   }
 }
 
@@ -39,6 +39,17 @@ function restoreFullStrip3OriginalBehavior(source) {
   return after;
 }
 
+function removeDefaultMaxPagesCap(source) {
+  source = source.replace(/\r\n/g, "\n");
+
+  const after = source.replace(/maxPages:\s*100,/, "maxPages: Number.MAX_SAFE_INTEGER,");
+  if (after === source && !source.includes("maxPages: Number.MAX_SAFE_INTEGER,")) {
+    console.warn(`[${MARKER}] maxPages cap anchor did not match; skipped`);
+  }
+  return after;
+}
+
 const before = readFile(TARGET);
-const after = restoreFullStrip3OriginalBehavior(before);
+let after = restoreFullStrip3OriginalBehavior(before);
+after = removeDefaultMaxPagesCap(after);
 writeIfChanged(TARGET, before, after);
