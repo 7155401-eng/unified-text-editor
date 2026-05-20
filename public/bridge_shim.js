@@ -71,7 +71,7 @@
   }
 
   function loadRenderSafetyAddons() {
-    const src = "/render-safety-addons.js?v=20260519-render-menu-public";
+    const src = "/render-safety-addons.js?v=20260519-render-tab";
     if (document.querySelector('script[data-render-safety-addons="1"]')) return;
     const script = document.createElement("script");
     script.src = src;
