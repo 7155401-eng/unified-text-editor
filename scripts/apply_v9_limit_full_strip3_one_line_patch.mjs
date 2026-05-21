@@ -10,7 +10,7 @@ function readFile(path) {
 function writeIfChanged(path, before, after) {
   if (after !== before) {
     fs.writeFileSync(path, after);
-    console.log(`[${MARKER}] patched ${path}: y_end + lockYStart, with one-line cap only for same-stream split`);
+    console.log(`[${MARKER}] patched ${path}: y_end + lockYStart, same-stream bridge cap, and column-continuation line rendering`);
   } else {
     console.log(`[${MARKER}] patch noop for ${path}`);
   }
@@ -275,6 +275,21 @@ function patchTwoColumnLimits(source) {
   return source;
 }
 
+function patchContinuationCutRendering(source) {
+  const before = `      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 1
+        && line.naturalWidth < line.width - 2;`;
+  const after = `      // v9-column-continuation-cut: a synthetic column/page cut is not a paragraph end.
+      // Even a one-word final line in column A must not be centered as a real last line.
+      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 0
+        && line.naturalWidth < line.width - 2;`;
+
+  if (source.includes(after)) return source;
+  if (!source.includes(before)) fail("column continuation rendering anchor");
+  return source.replace(before, after);
+}
+
 function removeDefaultMaxPagesCap(source) {
   const after = source.replace(/maxPages:\s*100,/, "maxPages: Number.MAX_SAFE_INTEGER,");
   if (after === source && !source.includes("maxPages: Number.MAX_SAFE_INTEGER,")) {
@@ -305,12 +320,15 @@ function verifyInvariant(source) {
   assertIncludes(source, "lockFullStrip3Start: !!(pass2Right || pass1Right)", "left pass2 still locks full-width start when right exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0", "final right pass2 cap is same-stream only");
   assertIncludes(source, "lockFullStrip3Start: !!pass2Left", "final right pass2 still locks full-width start when left exists");
+  assertIncludes(source, "v9-column-continuation-cut", "column continuation rendering guard exists");
+  assertIncludes(source, "line.words && line.words.length > 0", "single-word continuation lines are not paragraph endings");
   assertIncludes(source, "maxPages: Number.MAX_SAFE_INTEGER,", "default page cap removed");
   assertMissing(source, "strips.map(s => ({ y_start: s.y_start, width: s.width })),", "old side strip metadata without y_end/lock");
   assertMissing(source, "strips.map(s => ({ y_start: s.y_start, y_end: s.y_end, width: s.width })),", "side strip metadata with y_end but without lock");
   assertMissing(source, "maxFullStrip3Lines: pass1Left ? 1 : 0", "distinct-stream right pass2 must not be capped");
   assertMissing(source, "maxFullStrip3Lines: (pass2Right || pass1Right || isScenario1) ? 1 : 0", "distinct-stream left pass2 must not be capped");
   assertMissing(source, "maxFullStrip3Lines: pass2Left ? 1 : 0", "distinct-stream final right pass2 must not be capped");
+  assertMissing(source, "const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak\n        && line.words && line.words.length > 1", "column continuation cut must not require two words");
 }
 
 const before = readFile(TARGET);
@@ -321,6 +339,7 @@ after = patchSideStreamFlowMetadata(after);
 after = patchSideStreamFullStrip(after);
 after = patchSameStreamSplitFlag(after);
 after = patchTwoColumnLimits(after);
+after = patchContinuationCutRendering(after);
 after = removeDefaultMaxPagesCap(after);
 verifyInvariant(after);
 writeIfChanged(TARGET, before, after);
