@@ -163,6 +163,7 @@
               max="999"
               placeholder="מס׳"
               class="custom-stream-input"
+              aria-label="מספר זרם"
             />
             <button
               type="button"
@@ -244,6 +245,7 @@
               max="999"
               placeholder="מס׳"
               class="custom-stream-input"
+              aria-label="קפוץ לזרם מספר"
             />
             <button
               type="button"
@@ -382,12 +384,12 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="כותרות">
-            <button data-cmd="h1">H1</button>
-            <button data-cmd="h2">H2</button>
-            <button data-cmd="h3">H3</button>
-            <button data-cmd="h4">H4</button>
-            <button data-cmd="h5">H5</button>
-            <button data-cmd="h6">H6</button>
+            <button data-cmd="h1" title="כותרת 1" aria-label="כותרת 1">H1</button>
+            <button data-cmd="h2" title="כותרת 2" aria-label="כותרת 2">H2</button>
+            <button data-cmd="h3" title="כותרת 3" aria-label="כותרת 3">H3</button>
+            <button data-cmd="h4" title="כותרת 4" aria-label="כותרת 4">H4</button>
+            <button data-cmd="h5" title="כותרת 5" aria-label="כותרת 5">H5</button>
+            <button data-cmd="h6" title="כותרת 6" aria-label="כותרת 6">H6</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="רשימות">
@@ -495,16 +497,16 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="ציטוט/קוד" data-ribbon-tab="home">
-            <button data-cmd="blockquote" title="ציטוט">❝</button>
-            <button data-cmd="code-block" title="בלוק קוד">⟨/⟩</button>
-            <button data-cmd="code-inline" title="קוד בשורה">{ }</button>
+            <button data-cmd="blockquote" title="ציטוט" aria-label="הוסף ציטוט">❝</button>
+            <button data-cmd="code-block" title="בלוק קוד" aria-label="הוסף בלוק קוד">⟨/⟩</button>
+            <button data-cmd="code-inline" title="קוד בשורה" aria-label="הוסף קוד בשורה">{ }</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="קישור" data-ribbon-tab="home">
             <button data-cmd="link" title="קישור" aria-label="הוסף קישור">
               🔗
             </button>
-            <button data-cmd="unlink" title="הסר קישור">⛓⃠</button>
+            <button data-cmd="unlink" title="הסר קישור" aria-label="הסר קישור">⛓⃠</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="מדיה" data-ribbon-tab="home">
@@ -523,6 +525,7 @@
             <select
               id="styles-gallery-select"
               title="סגנון לטקסט נבחר"
+              aria-label="סגנון לטקסט נבחר"
               style="min-width: 120px; font-size: 12px; padding: 3px 6px"
             >
               <option value="">סגנון…</option>
@@ -546,6 +549,7 @@
               id="local-font-select"
               class="font-gallery-select"
               title="גופנים במחשב"
+              aria-label="גופנים במחשב"
             ></select>
             <button
               type="button"
@@ -618,6 +622,7 @@
             <select
               id="size-selected-select"
               title="בחר גודל לטקסט הנבחר"
+              aria-label="בחר גודל לטקסט הנבחר"
               style="font-size: 12px; padding: 3px 4px; min-width: 54px"
             >
               <option value="">גודל…</option>
