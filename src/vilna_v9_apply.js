@@ -14,6 +14,7 @@
 // אין float, אין shape-outside.
 
 import { buildPages } from "./vilna_v9.js";
+import { loadSpacingSettings } from "./spacing_settings.js";
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
@@ -165,13 +166,8 @@ function readIntSetting(key, fallback, min, max) {
 }
 
 function readSpacingBool(key, fallback = false) {
-  try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
-    return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
-  } catch {
-    return fallback;
-  }
+  const settings = loadSpacingSettings();
+  return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
 }
 
 function estimateV9PageCount(paragraphs) {
