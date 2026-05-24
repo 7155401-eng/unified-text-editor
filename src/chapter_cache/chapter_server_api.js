@@ -9,33 +9,25 @@ function canUseServerApi(file) {
 function normalizeOrigin(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  try {
-    return new URL(raw).origin;
-  } catch {
-    return "";
-  }
+  try { return new URL(raw).origin; } catch { return ""; }
 }
 
 function configuredApiBase() {
   const values = [];
-
   try {
     if (typeof window !== "undefined" && window.__DOCX_API_BASE__) values.push(window.__DOCX_API_BASE__);
   } catch {}
-
   try {
     if (typeof import.meta !== "undefined" && import.meta.env?.VITE_DOCX_API_BASE) {
       values.push(import.meta.env.VITE_DOCX_API_BASE);
     }
   } catch {}
-
   return values;
 }
 
 function apiOrigins() {
   const origins = [];
   const seen = new Set();
-
   for (const raw of [
     ...configuredApiBase(),
     typeof window !== "undefined" ? window.location?.origin : "",
@@ -45,7 +37,6 @@ function apiOrigins() {
     seen.add(origin);
     origins.push(origin);
   }
-
   return origins;
 }
 
@@ -53,7 +44,6 @@ function endpointUrls(endpoints) {
   const urls = [];
   const seen = new Set();
   const endpointList = Array.isArray(endpoints) ? endpoints : [endpoints];
-
   for (const origin of apiOrigins()) {
     for (const endpoint of endpointList) {
       try {
@@ -64,7 +54,6 @@ function endpointUrls(endpoints) {
       } catch {}
     }
   }
-
   return urls;
 }
 
@@ -76,18 +65,81 @@ function appendParams(urlString, params = {}) {
   return url.toString();
 }
 
-async function responseText(response) {
+function requestId() {
+  try { if (crypto?.randomUUID) return crypto.randomUUID(); } catch {}
+  return `docx-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function headersOf(response) {
+  const keys = ["content-type", "content-length", "allow", "server", "cf-ray", "cf-cache-status", "x-docx-api", "x-docx-version", "x-docx-request-id", "location"];
+  const out = {};
+  for (const key of keys) {
+    try {
+      const value = response.headers.get(key);
+      if (value) out[key] = value;
+    } catch {}
+  }
+  return out;
+}
+
+async function readText(response) {
+  try { return await response.text(); } catch (error) { return `[body read failed: ${error?.message || String(error)}]`; }
+}
+
+function snippet(text, max = 700) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max)}…` : clean;
+}
+
+function isHtml(headers, text) {
+  const ct = String(headers?.["content-type"] || "").toLowerCase();
+  const start = String(text || "").trim().slice(0, 120).toLowerCase();
+  return ct.includes("text/html") || start.startsWith("<!doctype") || start.startsWith("<html");
+}
+
+async function probeEndpoint(url, id) {
+  const probeUrl = appendParams(url, { __docx_api_probe: Date.now(), requestId: id });
+  const started = performance.now?.() || Date.now();
   try {
-    return await response.text();
-  } catch {
-    return "";
+    const response = await fetch(probeUrl, { method: "GET", cache: "no-store", mode: "cors" });
+    const text = await readText(response);
+    const headers = headersOf(response);
+    return {
+      url: probeUrl,
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      elapsedMs: Math.round((performance.now?.() || Date.now()) - started),
+      headers,
+      bodySnippet: snippet(text),
+      htmlLike: isHtml(headers, text),
+    };
+  } catch (error) {
+    return { url: probeUrl, ok: false, failedToFetch: true, error: error?.message || String(error) };
   }
 }
 
+function logDocxApi(level, payload) {
+  try {
+    const fn = level === "error" ? console.error : level === "warn" ? console.warn : console.info;
+    fn("[docx-api]", payload);
+  } catch {}
+}
+
+function formatFailure({ url, id, response, headers, text, elapsedMs, probe }) {
+  const parts = [
+    `Server DOCX API ${url} failed with ${response.status} ${response.statusText || ""}`.trim(),
+    `requestId=${id}`,
+    `elapsedMs=${elapsedMs}`,
+  ];
+  if (headers && Object.keys(headers).length) parts.push(`headers=${JSON.stringify(headers)}`);
+  const body = snippet(text);
+  if (body) parts.push(`body=${body}`);
+  if (probe) parts.push(`probe=${JSON.stringify(probe)}`);
+  return parts.join(" | ");
+}
+
 async function docxBody(file) {
-  // Keep the request simple for Cloudflare Pages Functions:
-  // raw ArrayBuffer, no custom headers, no DOCX content-type.
-  // This avoids CORS preflight when the API base is configured to a different origin.
   return file.arrayBuffer();
 }
 
@@ -98,11 +150,26 @@ async function postDocx(endpoints, file, params = {}) {
   const errors = [];
   const body = await docxBody(file);
 
-  if (!urls.length) {
-    throw new Error("DOCX API base is not configured.");
-  }
+  if (!urls.length) throw new Error("DOCX API base is not configured.");
 
   for (const url of urls) {
+    const id = requestId();
+    const started = performance.now?.() || Date.now();
+
+    logDocxApi("info", {
+      event: "docx_api_post_start",
+      requestId: id,
+      url,
+      currentOrigin: typeof window !== "undefined" ? window.location?.origin : null,
+      configuredApiBase: configuredApiBase(),
+      apiOrigins: apiOrigins(),
+      fileName: file?.name || null,
+      fileSize: file?.size || body?.byteLength || null,
+      bodyKind: "ArrayBuffer",
+      bodyBytes: body?.byteLength || null,
+      note: "No custom headers are sent. If status is 405 and response lacks x-docx-api, Cloudflare Function is probably not matched/deployed.",
+    });
+
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -111,21 +178,82 @@ async function postDocx(endpoints, file, params = {}) {
         mode: "cors",
       });
 
+      const elapsedMs = Math.round((performance.now?.() || Date.now()) - started);
+      const headers = headersOf(response);
+
       if (!response.ok) {
-        const text = await responseText(response);
-        errors.push(`Server DOCX API ${url} failed with ${response.status}${text ? ` ${text}` : ""}`);
+        const text = await readText(response);
+        let probe = null;
+        if (response.status === 405 || isHtml(headers, text)) probe = await probeEndpoint(url, id);
+
+        const failure = formatFailure({ url, id, response, headers, text, elapsedMs, probe });
+        errors.push(failure);
+
+        logDocxApi("warn", {
+          event: "docx_api_post_non_ok",
+          requestId: id,
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          elapsedMs,
+          headers,
+          bodySnippet: snippet(text),
+          htmlLike: isHtml(headers, text),
+          probe,
+          interpretation: probe?.htmlLike
+            ? "GET probe returned HTML. This route is being served by the SPA/static host, not by a Cloudflare Pages Function."
+            : headers["x-docx-api"]
+              ? "The request reached our DOCX function, but the function returned a non-OK status."
+              : "The response does not include x-docx-api. The request probably did not reach our Cloudflare Function.",
+        });
         continue;
       }
 
-      const json = await response.json();
-      if (!json?.ok) {
-        errors.push(json?.error || `Server DOCX API ${url} returned an error.`);
+      const text = await readText(response);
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (parseError) {
+        const probe = await probeEndpoint(url, id);
+        const message = [
+          `Server DOCX API ${url} returned non-JSON response`,
+          `requestId=${id}`,
+          `status=${response.status}`,
+          `headers=${JSON.stringify(headers)}`,
+          `body=${snippet(text)}`,
+          `probe=${JSON.stringify(probe)}`,
+        ].join(" | ");
+        errors.push(message);
+        logDocxApi("warn", { event: "docx_api_non_json", requestId: id, url, status: response.status, headers, bodySnippet: snippet(text), parseError: parseError?.message || String(parseError), probe });
         continue;
       }
+
+      if (!json?.ok) {
+        const message = [json?.error || `Server DOCX API ${url} returned an error.`, `requestId=${id}`, `status=${response.status}`, `headers=${JSON.stringify(headers)}`].join(" | ");
+        errors.push(message);
+        logDocxApi("warn", { event: "docx_api_json_error", requestId: id, url, status: response.status, headers, json });
+        continue;
+      }
+
+      logDocxApi("info", {
+        event: "docx_api_post_success",
+        requestId: id,
+        url,
+        status: response.status,
+        elapsedMs,
+        headers,
+        total: json?.total ?? null,
+        chars: json?.chars ?? null,
+        words: json?.words ?? null,
+      });
 
       return json;
     } catch (error) {
-      errors.push(`Server DOCX API ${url} failed: ${error?.message || String(error)}`);
+      const elapsedMs = Math.round((performance.now?.() || Date.now()) - started);
+      const probe = await probeEndpoint(url, id).catch((probeError) => ({ ok: false, probeError: probeError?.message || String(probeError) }));
+      const message = [`Server DOCX API ${url} failed: ${error?.message || String(error)}`, `requestId=${id}`, `elapsedMs=${elapsedMs}`, `probe=${JSON.stringify(probe)}`].join(" | ");
+      errors.push(message);
+      logDocxApi("error", { event: "docx_api_fetch_error", requestId: id, url, elapsedMs, error: error?.message || String(error), probe });
     }
   }
 
