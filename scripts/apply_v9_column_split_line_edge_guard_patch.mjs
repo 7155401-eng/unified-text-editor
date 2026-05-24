@@ -191,10 +191,15 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
 }
 
 function patchCallSite(source) {
+  // This script can run more than once. Later patches may expand the options
+  // object with halfWidth/fullWidth; any existing guarded call is valid.
+  if (source.includes("let parts = splitWordsByStripsWithLineEdgeGuard(allText, splitMetricsForStream, rightStrips")) {
+    return source;
+  }
+
   const after = `let parts = splitWordsByStripsWithLineEdgeGuard(allText, splitMetricsForStream, rightStrips, {
         minLineEdgeFill: 0.82,
       });`;
-  if (source.includes(after)) return source;
 
   const before = `let parts = splitWordsByStrips(allText, splitMetricsForStream, rightStrips);`;
   if (!source.includes(before)) fail("missing splitWordsByStrips call site");
