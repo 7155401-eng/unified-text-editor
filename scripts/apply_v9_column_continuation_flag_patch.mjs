@@ -25,7 +25,11 @@ function patchColumnAFlag(source) {
 }
 
 function patchContinuationPredicate(source) {
+  // This script may run before or after the line-edge guard patch. If the
+  // richer predicate is already present, it already includes column A as one
+  // of the accepted synthetic continuation cases.
   if (source.includes("const isColumnAContinuation = !!box.isColumnAContinuation")) return source;
+
   const before = `      // v9-column-continuation-cut: a synthetic column/page cut is not a paragraph end.
       // Even a one-word final line in column A must not be centered as a real last line.
       const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
@@ -56,11 +60,20 @@ function verify(source) {
     "pass2Right.isColumnAContinuation = true",
     "pass2Right.continues = true",
     "const isColumnAContinuation = !!box.isColumnAContinuation",
-    "const isContinuationCut = (isColumnAContinuation || !!box.continues)",
     "lineEl.dataset.v9ColumnAContinuation = \"1\"",
   ];
   for (const needle of required) {
     if (!source.includes(needle)) fail(`missing ${needle}`);
+  }
+
+  const hasSimpleColumnPredicate = source.includes(
+    "const isContinuationCut = (isColumnAContinuation || !!box.continues)"
+  );
+  const hasComposedColumnPredicate = source.includes(
+    "const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)"
+  );
+  if (!hasSimpleColumnPredicate && !hasComposedColumnPredicate) {
+    fail("missing column-aware continuation predicate");
   }
 }
 
