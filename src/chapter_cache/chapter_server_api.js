@@ -87,23 +87,26 @@ async function responseText(response) {
   }
 }
 
+async function docxBody(file) {
+  // Do not send a DOCX content-type or custom headers here.
+  // A raw ArrayBuffer with no custom headers avoids browser CORS preflight,
+  // which is important when the frontend is served from app.ravtext.com
+  // and the DOCX backend is served from Vercel.
+  return file.arrayBuffer();
+}
+
 async function postDocx(endpoints, file, params = {}) {
-  if (!canUseServerApi(file)) return null;
+  if(!canUseServerApi(file)) return null;
 
   const errors = [];
   const urls = endpointUrls(endpoints).map((url) => appendParams(url, params));
+  const body = await docxBody(file);
 
   for (const url of urls) {
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: {
-          "content-type":
-            file.type ||
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "x-file-name": encodeURIComponent(file.name || "document.docx"),
-        },
-        body: file,
+        body,
         cache: "no-store",
         mode: "cors",
       });
@@ -160,7 +163,7 @@ export async function tryServerExtractWordChapter(file, { level, index }) {
 }
 
 export function normalizeServerScanState(serverScan, file) {
-  if (!serverScan?.serverSide) return null;
+  if(!serverScan?.serverSide) return null;
   return {
     serverSide: true,
     serverDocumentId: serverScan.serverDocumentId || serverScan.fileHash || null,
