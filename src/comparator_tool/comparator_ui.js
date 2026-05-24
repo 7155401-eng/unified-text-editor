@@ -412,7 +412,7 @@ export function mountComparatorUI(rootEl, options = {}) {
     syms.forEach((s, ci) => {
       const n = counts[s.sym] || 0;
       if (n === 0) return;
-      let html = '<span class="mc mc-' + ci + '"><span class="sym-label-bar">' + s.sym + '</span>';
+      let html = '<span class="mc mc-' + ci + '"><span class="sym-label-bar">' + escapeHtml(s.sym) + '</span>';
       for (let i = 1; i <= n; i++) {
         const safeSym = s.sym.replace(/'/g, "\\'").replace(/"/g, '&quot;');
         html += '<span class="badge" data-action="jumpToNth" data-edid="' + edId + '" data-sym="' + safeSym + '" data-nth="' + i + '" title="' + i + '">' + i + '</span>';
