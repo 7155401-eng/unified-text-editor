@@ -335,7 +335,11 @@ function verifyInvariant(source) {
   assertIncludes(source, "const isSameStreamSideSplit = isScenario1 ||", "same-stream split flag exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0", "right pass2 cap is same-stream only");
   assertIncludes(source, "lockFullStrip3Start: !!pass1Left", "right pass2 still locks full-width start when left exists");
-  assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0", "left pass2 cap is same-stream only");
+  const hasLeftSameStreamCap = source.includes("maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0");
+  const hasLeftExpansionMode = source.includes("Column B may expand after column A ends") && source.includes("maxFullStrip3Lines: 0");
+  if (!hasLeftSameStreamCap && !hasLeftExpansionMode) {
+    fail("left pass2 cap/expansion invariant");
+  }
   assertIncludes(source, "lockFullStrip3Start: !!(pass2Right || pass1Right)", "left pass2 still locks full-width start when right exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0", "final right pass2 cap is same-stream only");
   assertIncludes(source, "lockFullStrip3Start: !!pass2Left", "final right pass2 still locks full-width start when left exists");
