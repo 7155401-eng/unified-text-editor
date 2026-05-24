@@ -56,17 +56,36 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+// ⚡ Bolt Optimization:
+// Memory cache for spacing settings.
+// What: Caches the parsed result of localStorage to prevent expensive JSON.parse() calls.
+// Why: loadSpacingSettings is called in performance-critical areas like `dom_packer.js` which is used for document layout and pagination, executing thousands of times per page render.
+// Impact: Significantly reduces execution time of dom packing loops by eliminating synchronous I/O and JSON parsing overhead per paragraph/line split evaluation.
+let cachedSpacingSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      cachedSpacingSettings = null;
+    }
+  });
+}
+
 export function loadSpacingSettings() {
+  if (cachedSpacingSettings !== null) return { ...cachedSpacingSettings };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacingSettings = normalizeSpacing({ ...DEFAULTS, ...saved });
+    return { ...cachedSpacingSettings };
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    cachedSpacingSettings = normalizeSpacing(DEFAULTS);
+    return { ...cachedSpacingSettings };
   }
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
+  cachedSpacingSettings = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
