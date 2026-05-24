@@ -18,6 +18,7 @@ export default async function handler(req, res) {
     return sendJson(res, 200, {
       ok: true,
       serverSide: true,
+      importedAt: Date.now(),
       ...imported.manifest,
     });
   } catch (error) {
