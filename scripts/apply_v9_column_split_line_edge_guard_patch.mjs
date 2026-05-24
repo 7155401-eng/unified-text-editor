@@ -15,10 +15,6 @@ function patchHelper(source) {
   if (source.includes("function splitWordsByStripsWithLineEdgeGuard(")) return source;
 
   const helper = `
-// ${MARKER}: same-stream column split must use the same line-edge standard
-// as the main V9 page-break guard. The first/right column may end only on a
-// filled line edge, not on a short technical box ending that later gets centered
-// or leaves visible blank space.
 function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = {}) {
   const fallback = splitWordsByStrips(text, metrics, rightStrips);
   const words = (text || '').split(/\\s+/).filter(Boolean);
@@ -133,8 +129,6 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
   let best = null;
 
   for (const cand of candidates) {
-    // Leave meaningful content for column B. One trailing word usually creates
-    // the same problem on the other side.
     if (words.length - cand.count < 2) continue;
     const st = statsForPrefix(cand.count);
     if (!st.fits || !st.acceptable) continue;
@@ -156,8 +150,6 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
   const fallbackCount = (fallback.first || '').split(/\\s+/).filter(Boolean).length;
   const fallbackStats = statsForPrefix(fallbackCount);
 
-  // Keep the old split if it already satisfies the stronger main-line-edge
-  // guard and is not materially worse. Otherwise use the guarded split.
   if (fallbackStats.acceptable) {
     const fallbackSuffixLines = approxLinesForSuffix(fallbackCount);
     const fallbackBalance = Math.abs(fallbackStats.totalLines - fallbackSuffixLines);
@@ -191,8 +183,6 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
 }
 
 function patchCallSite(source) {
-  // This script can run more than once. Later patches may expand the options
-  // object with halfWidth/fullWidth; any existing guarded call is valid.
   if (source.includes("let parts = splitWordsByStripsWithLineEdgeGuard(allText, splitMetricsForStream, rightStrips")) {
     return source;
   }
@@ -246,30 +236,18 @@ function patchSideBoxMetadata(source) {
 function patchRenderPredicate(source) {
   if (source.includes("const isSourceContinuationEnd = !!box.syntheticContinuationAfter")) return source;
 
-  const replacement = `      // ${MARKER}: line.isLast can be only a technical end of column A.
-      // If the source continues into column B, render this as a mid-paragraph
-      // continuation cut and allow stretch/justify instead of centering.
-      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
+  const replacement = `      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
       const isSourceContinuationEnd = !!box.syntheticContinuationAfter && line.isLast && !line.forcedBreak;
       const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues) && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;`;
 
   const variants = [
-    `      // v9-column-a-continuation: the first column of a same-stream split
-      // is a synthetic transition into column B. Its last line is never a real
-      // paragraph/page ending, even if the generic box.continues flag is lost.
-      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
-      const isContinuationCut = (isColumnAContinuation || !!box.continues) && line.isLast && !line.forcedBreak
-        && line.words && line.words.length > 0
-        && line.naturalWidth < line.width - 2;`,
     `      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
       const isContinuationCut = (isColumnAContinuation || !!box.continues) && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;`,
-    `      // v9-column-continuation-cut: a synthetic column/page cut is not a paragraph end.
-      // Even a one-word final line in column A must not be centered as a real last line.
-      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
+    `      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;`,
     `      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
@@ -323,11 +301,22 @@ function verify(source) {
     "columnSplitLineEdgeGuard: parts._v9ColumnSplitLineEdgeGuard || null",
     "continues: !!flowResult.overflowText || !!streamData.syntheticContinuationAfter",
     "const isSourceContinuationEnd = !!box.syntheticContinuationAfter",
-    "const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)",
     "lineEl.dataset.v9SourceContinuationEnd = \"1\"",
   ];
   for (const needle of required) {
     if (!source.includes(needle)) fail(`missing ${needle}`);
+  }
+
+  const hasDirectContinuationCut = source.includes(
+    "const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)"
+  );
+  const hasCandidateContinuationCut = source.includes(
+    "const isContinuationCandidate = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)"
+  ) && source.includes(
+    "const isContinuationCut = isContinuationCandidate"
+  );
+  if (!hasDirectContinuationCut && !hasCandidateContinuationCut) {
+    fail("missing source/column-aware continuation predicate");
   }
 }
 
