@@ -1,3 +1,4 @@
+const SERVER_IMPORT_ENDPOINT = "/api/word-chapters/import";
 const SERVER_SCAN_ENDPOINT = "/api/word-chapters/scan";
 const SERVER_EXTRACT_ENDPOINT = "/api/word-chapters/extract";
 
@@ -20,6 +21,7 @@ async function postDocx(endpoint, file, params = {}) {
       "x-file-name": encodeURIComponent(file.name || "document.docx"),
     },
     body: file,
+    cache: "no-store",
   });
 
   if (!response.ok) {
@@ -32,9 +34,21 @@ async function postDocx(endpoint, file, params = {}) {
   return json;
 }
 
+export async function importWordChaptersOnServer(file) {
+  return postDocx(SERVER_IMPORT_ENDPOINT, file);
+}
+
+export async function scanWordChaptersOnServer(file) {
+  return postDocx(SERVER_SCAN_ENDPOINT, file);
+}
+
+export async function extractWordChapterOnServer(file, { level, index }) {
+  return postDocx(SERVER_EXTRACT_ENDPOINT, file, { level, index });
+}
+
 export async function tryServerScanWordChapters(file) {
   try {
-    return await postDocx(SERVER_SCAN_ENDPOINT, file);
+    return await scanWordChaptersOnServer(file);
   } catch (error) {
     console.warn("[chapter_server_api] server scan fallback to browser:", error);
     return null;
@@ -43,7 +57,7 @@ export async function tryServerScanWordChapters(file) {
 
 export async function tryServerExtractWordChapter(file, { level, index }) {
   try {
-    return await postDocx(SERVER_EXTRACT_ENDPOINT, file, { level, index });
+    return await extractWordChapterOnServer(file, { level, index });
   } catch (error) {
     console.warn("[chapter_server_api] server extract fallback to browser:", error);
     return null;
@@ -54,6 +68,8 @@ export function normalizeServerScanState(serverScan, file) {
   if (!serverScan?.serverSide) return null;
   return {
     serverSide: true,
+    serverDocumentId: serverScan.serverDocumentId || serverScan.fileHash || null,
+    fileHash: serverScan.fileHash || serverScan.serverDocumentId || null,
     fileName: file?.name || serverScan.fileName || "מסמך Word",
     heads: serverScan.heads || { 1: [], 2: [] },
     h: serverScan.h || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
