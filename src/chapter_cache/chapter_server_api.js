@@ -1,5 +1,3 @@
-const DEFAULT_DOCX_API_ORIGIN = "https://unified-text-editor.vercel.app";
-
 const SERVER_IMPORT_ENDPOINTS = ["/api/word-chapters-import", "/api/word-chapters/import"];
 const SERVER_SCAN_ENDPOINTS = ["/api/word-chapters-scan", "/api/word-chapters/scan"];
 const SERVER_EXTRACT_ENDPOINTS = ["/api/word-chapters-extract", "/api/word-chapters/extract"];
@@ -41,7 +39,6 @@ function apiOrigins() {
   for (const raw of [
     ...configuredApiBase(),
     typeof window !== "undefined" ? window.location?.origin : "",
-    DEFAULT_DOCX_API_ORIGIN,
   ]) {
     const origin = normalizeOrigin(raw);
     if (!origin || seen.has(origin)) continue;
@@ -88,19 +85,22 @@ async function responseText(response) {
 }
 
 async function docxBody(file) {
-  // Do not send a DOCX content-type or custom headers here.
-  // A raw ArrayBuffer with no custom headers avoids browser CORS preflight,
-  // which is important when the frontend is served from app.ravtext.com
-  // and the DOCX backend is served from Vercel.
+  // Keep the request simple for Cloudflare Pages Functions:
+  // raw ArrayBuffer, no custom headers, no DOCX content-type.
+  // This avoids CORS preflight when the API base is configured to a different origin.
   return file.arrayBuffer();
 }
 
 async function postDocx(endpoints, file, params = {}) {
-  if(!canUseServerApi(file)) return null;
+  if (!canUseServerApi(file)) return null;
 
-  const errors = [];
   const urls = endpointUrls(endpoints).map((url) => appendParams(url, params));
+  const errors = [];
   const body = await docxBody(file);
+
+  if (!urls.length) {
+    throw new Error("DOCX API base is not configured.");
+  }
 
   for (const url of urls) {
     try {
@@ -163,7 +163,7 @@ export async function tryServerExtractWordChapter(file, { level, index }) {
 }
 
 export function normalizeServerScanState(serverScan, file) {
-  if(!serverScan?.serverSide) return null;
+  if (!serverScan?.serverSide) return null;
   return {
     serverSide: true,
     serverDocumentId: serverScan.serverDocumentId || serverScan.fileHash || null,
