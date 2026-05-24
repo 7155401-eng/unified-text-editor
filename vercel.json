@@ -1,38 +1,25 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/*.js",
-      "use": "@vercel/node"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 60
     },
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+    "api/*.js": {
+      "maxDuration": 60
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
     },
     {
-      "src": "/assets/(.*)",
-      "dest": "/assets/$1"
+      "source": "/path:",
+      "destination": "/index.html"
     },
     {
-      "src": "/(.*\\.(.*))",
-      "dest": "/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/:path*",
+      "destination": "/index.html"
     }
   ]
 }
