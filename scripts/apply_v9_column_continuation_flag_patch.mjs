@@ -25,9 +25,6 @@ function patchColumnAFlag(source) {
 }
 
 function patchContinuationPredicate(source) {
-  // This script may run before or after the line-edge guard patch. If the
-  // richer predicate is already present, it already includes column A as one
-  // of the accepted synthetic continuation cases.
   if (source.includes("const isColumnAContinuation = !!box.isColumnAContinuation")) return source;
 
   const before = `      // v9-column-continuation-cut: a synthetic column/page cut is not a paragraph end.
@@ -35,10 +32,7 @@ function patchContinuationPredicate(source) {
       const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;`;
-  const after = `      // v9-column-a-continuation: the first column of a same-stream split
-      // is a synthetic transition into column B. Its last line is never a real
-      // paragraph/page ending, even if the generic box.continues flag is lost.
-      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
+  const after = `      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
       const isContinuationCut = (isColumnAContinuation || !!box.continues) && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;`;
@@ -66,13 +60,12 @@ function verify(source) {
     if (!source.includes(needle)) fail(`missing ${needle}`);
   }
 
-  const hasSimpleColumnPredicate = source.includes(
-    "const isContinuationCut = (isColumnAContinuation || !!box.continues)"
-  );
-  const hasComposedColumnPredicate = source.includes(
-    "const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)"
-  );
-  if (!hasSimpleColumnPredicate && !hasComposedColumnPredicate) {
+  const predicates = [
+    "const isContinuationCut = (isColumnAContinuation || !!box.continues)",
+    "const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)",
+    "const isContinuationCandidate = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)",
+  ];
+  if (!predicates.some(p => source.includes(p))) {
     fail("missing column-aware continuation predicate");
   }
 }
