@@ -276,18 +276,37 @@ function patchTwoColumnLimits(source) {
 }
 
 function patchContinuationCutRendering(source) {
-  const before = `      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
-        && line.words && line.words.length > 1
-        && line.naturalWidth < line.width - 2;`;
+  // Later V9 patches may already replace the simple continuation predicate with
+  // richer variants. In that case this invariant is already satisfied and this
+  // earlier bridge patch must not fail on a stale textual anchor.
+  if (
+    source.includes("const isSourceContinuationEnd = !!box.syntheticContinuationAfter") ||
+    source.includes("const isColumnAContinuation = !!box.isColumnAContinuation")
+  ) {
+    return source;
+  }
+
   const after = `      // v9-column-continuation-cut: a synthetic column/page cut is not a paragraph end.
       // Even a one-word final line in column A must not be centered as a real last line.
       const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;`;
-
   if (source.includes(after)) return source;
-  if (!source.includes(before)) fail("column continuation rendering anchor");
-  return source.replace(before, after);
+
+  const variants = [
+    `      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 1
+        && line.naturalWidth < line.width - 2;`,
+    `      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 0
+        && line.naturalWidth < line.width - 2;`,
+  ];
+
+  for (const before of variants) {
+    if (source.includes(before)) return source.replace(before, after);
+  }
+
+  fail("column continuation rendering anchor");
 }
 
 function removeDefaultMaxPagesCap(source) {
@@ -320,7 +339,9 @@ function verifyInvariant(source) {
   assertIncludes(source, "lockFullStrip3Start: !!(pass2Right || pass1Right)", "left pass2 still locks full-width start when right exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0", "final right pass2 cap is same-stream only");
   assertIncludes(source, "lockFullStrip3Start: !!pass2Left", "final right pass2 still locks full-width start when left exists");
-  assertIncludes(source, "v9-column-continuation-cut", "column continuation rendering guard exists");
+  if (!source.includes("v9-column-continuation-cut") && !source.includes("const isColumnAContinuation = !!box.isColumnAContinuation") && !source.includes("const isSourceContinuationEnd = !!box.syntheticContinuationAfter")) {
+    fail("column continuation rendering guard exists");
+  }
   assertIncludes(source, "line.words && line.words.length > 0", "single-word continuation lines are not paragraph endings");
   assertIncludes(source, "maxPages: Number.MAX_SAFE_INTEGER,", "default page cap removed");
   assertMissing(source, "strips.map(s => ({ y_start: s.y_start, width: s.width })),", "old side strip metadata without y_end/lock");
