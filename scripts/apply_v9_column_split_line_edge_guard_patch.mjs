@@ -241,7 +241,27 @@ function patchSideBoxMetadata(source) {
 function patchRenderPredicate(source) {
   if (source.includes("const isSourceContinuationEnd = !!box.syntheticContinuationAfter")) return source;
 
+  const replacement = `      // ${MARKER}: line.isLast can be only a technical end of column A.
+      // If the source continues into column B, render this as a mid-paragraph
+      // continuation cut and allow stretch/justify instead of centering.
+      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
+      const isSourceContinuationEnd = !!box.syntheticContinuationAfter && line.isLast && !line.forcedBreak;
+      const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues) && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 0
+        && line.naturalWidth < line.width - 2;`;
+
   const variants = [
+    `      // v9-column-a-continuation: the first column of a same-stream split
+      // is a synthetic transition into column B. Its last line is never a real
+      // paragraph/page ending, even if the generic box.continues flag is lost.
+      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
+      const isContinuationCut = (isColumnAContinuation || !!box.continues) && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 0
+        && line.naturalWidth < line.width - 2;`,
+    `      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
+      const isContinuationCut = (isColumnAContinuation || !!box.continues) && line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 0
+        && line.naturalWidth < line.width - 2;`,
     `      // v9-column-continuation-cut: a synthetic column/page cut is not a paragraph end.
       // Even a one-word final line in column A must not be centered as a real last line.
       const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
@@ -252,14 +272,6 @@ function patchRenderPredicate(source) {
         && line.naturalWidth < line.width - 2;`,
   ];
 
-  const replacement = `      // ${MARKER}: line.isLast can be only a technical end of column A.
-      // If the source continues into column B, render this as a mid-paragraph
-      // continuation cut and allow stretch/justify instead of centering.
-      const isSourceContinuationEnd = !!box.syntheticContinuationAfter && line.isLast && !line.forcedBreak;
-      const isContinuationCut = (isSourceContinuationEnd || !!box.continues) && line.isLast && !line.forcedBreak
-        && line.words && line.words.length > 0
-        && line.naturalWidth < line.width - 2;`;
-
   for (const before of variants) {
     if (source.includes(before)) return source.replace(before, replacement);
   }
@@ -267,7 +279,10 @@ function patchRenderPredicate(source) {
 }
 
 function patchDebugDataset(source) {
-  const after = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+  if (source.includes("lineEl.dataset.v9SourceContinuationEnd = \"1\"")) return source;
+
+  const afterWithColumnFlag = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isSourceContinuationEnd) {
         lineEl.dataset.v9SourceContinuationEnd = "1";
         if (box.columnSplitLineEdgeGuard) {
@@ -275,11 +290,22 @@ function patchDebugDataset(source) {
           lineEl.dataset.v9ColumnSplitLastWords = String(box.columnSplitLineEdgeGuard.lastWords || "");
         }
       }`;
-  if (source.includes(after)) return source;
 
-  const before = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);`;
-  if (!source.includes(before)) fail("missing dataset anchor");
-  return source.replace(before, after);
+  const existingColumnFlag = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";`;
+  if (source.includes(existingColumnFlag)) return source.replace(existingColumnFlag, afterWithColumnFlag);
+
+  const plainBoxId = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);`;
+  const afterPlain = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (isSourceContinuationEnd) {
+        lineEl.dataset.v9SourceContinuationEnd = "1";
+        if (box.columnSplitLineEdgeGuard) {
+          lineEl.dataset.v9ColumnSplitLastFill = String(box.columnSplitLineEdgeGuard.lastFill || "");
+          lineEl.dataset.v9ColumnSplitLastWords = String(box.columnSplitLineEdgeGuard.lastWords || "");
+        }
+      }`;
+  if (!source.includes(plainBoxId)) fail("missing dataset anchor");
+  return source.replace(plainBoxId, afterPlain);
 }
 
 function verify(source) {
@@ -292,6 +318,7 @@ function verify(source) {
     "columnSplitLineEdgeGuard: parts._v9ColumnSplitLineEdgeGuard || null",
     "continues: !!flowResult.overflowText || !!streamData.syntheticContinuationAfter",
     "const isSourceContinuationEnd = !!box.syntheticContinuationAfter",
+    "const isContinuationCut = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)",
     "lineEl.dataset.v9SourceContinuationEnd = \"1\"",
   ];
   for (const needle of required) {
