@@ -1,5 +1,13 @@
 import { defineConfig } from 'vite'
 
+// V9 critical source patches must run even when the host calls `vite build`
+// directly instead of `npm run build`. Several deployment providers allow the
+// build command to bypass package.json prebuild hooks; importing these scripts
+// here guarantees the generated bundle is built from the patched V9 source.
+import './scripts/apply_v9_limit_full_strip3_one_line_patch.mjs'
+import './scripts/apply_v9_column_continuation_flag_patch.mjs'
+import './scripts/apply_v9_column_split_line_edge_guard_patch.mjs'
+
 // משה 2026-05-07: base relative ('./') כדי שיעבוד גם ב-Vercel (root) וגם
 // ב-GitHub Pages (subpath). אין צורך במשתנה סביבה.
 const BASE = process.env.VITE_BASE || './'
