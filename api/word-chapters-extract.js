@@ -1,3 +1,4 @@
+import { handleCorsOptions } from "./_cors.js";
 import { extractChapterBuffer, readRequestBuffer, sendError, sendJson } from "./_word_chapter_server.js";
 
 export const config = {
@@ -12,8 +13,10 @@ function readNumber(value, fallback) {
 }
 
 export default async function handler(req, res) {
+  if (handleCorsOptions(req, res)) return;
+
   if (req.method !== "POST") {
-    res.setHeader("allow", "POST");
+    res.setHeader("allow", "POST, OPTIONS");
     return sendJson(res, 405, { ok: false, error: "Method not allowed" });
   }
 

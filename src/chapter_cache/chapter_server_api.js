@@ -1,3 +1,5 @@
+const DEFAULT_DOCX_API_ORIGIN = "https://unified-text-editor.vercel.app";
+
 const SERVER_IMPORT_ENDPOINTS = ["/api/word-chapters-import", "/api/word-chapters/import"];
 const SERVER_SCAN_ENDPOINTS = ["/api/word-chapters-scan", "/api/word-chapters/scan"];
 const SERVER_EXTRACT_ENDPOINTS = ["/api/word-chapters-extract", "/api/word-chapters/extract"];
@@ -6,45 +8,121 @@ function canUseServerApi(file) {
   return typeof fetch === "function" && !!file && typeof file.arrayBuffer === "function";
 }
 
+function normalizeOrigin(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return "";
+  }
+}
+
+function configuredApiBase() {
+  const values = [];
+
+  try {
+    if (typeof window !== "undefined" && window.__DOCX_API_BASE__) values.push(window.__DOCX_API_BASE__);
+  } catch {}
+
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.env?.VITE_DOCX_API_BASE) {
+      values.push(import.meta.env.VITE_DOCX_API_BASE);
+    }
+  } catch {}
+
+  return values;
+}
+
+function apiOrigins() {
+  const origins = [];
+  const seen = new Set();
+
+  for (const raw of [
+    ...configuredApiBase(),
+    typeof window !== "undefined" ? window.location?.origin : "",
+    DEFAULT_DOCX_API_ORIGIN,
+  ]) {
+    const origin = normalizeOrigin(raw);
+    if (!origin || seen.has(origin)) continue;
+    seen.add(origin);
+    origins.push(origin);
+  }
+
+  return origins;
+}
+
+function endpointUrls(endpoints) {
+  const urls = [];
+  const seen = new Set();
+  const endpointList = Array.isArray(endpoints) ? endpoints : [endpoints];
+
+  for (const origin of apiOrigins()) {
+    for (const endpoint of endpointList) {
+      try {
+        const url = new URL(endpoint, origin).toString();
+        if (seen.has(url)) continue;
+        seen.add(url);
+        urls.push(url);
+      } catch {}
+    }
+  }
+
+  return urls;
+}
+
+function appendParams(urlString, params = {}) {
+  const url = new URL(urlString);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+  }
+  return url.toString();
+}
+
+async function responseText(response) {
+  try {
+    return await response.text();
+  } catch {
+    return "";
+  }
+}
+
 async function postDocx(endpoints, file, params = {}) {
   if (!canUseServerApi(file)) return null;
 
-  const endpointList = Array.isArray(endpoints) ? endpoints : [endpoints];
   const errors = [];
+  const urls = endpointUrls(endpoints).map((url) => appendParams(url, params));
 
-  for (const endpoint of endpointList) {
-    const url = new URL(endpoint, window.location.origin);
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
-    }
-
+  for (const url of urls) {
     try {
-      const response = await fetch(url.toString(), {
+      const response = await fetch(url, {
         method: "POST",
         headers: {
-          "content-type": file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-type":
+            file.type ||
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           "x-file-name": encodeURIComponent(file.name || "document.docx"),
         },
         body: file,
         cache: "no-store",
+        mode: "cors",
       });
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        const message = text || `Server DOCX API ${endpoint} failed with ${response.status}`;
-        errors.push(message);
+        const text = await responseText(response);
+        errors.push(`Server DOCX API ${url} failed with ${response.status}${text ? ` ${text}` : ""}`);
         continue;
       }
 
       const json = await response.json();
       if (!json?.ok) {
-        errors.push(json?.error || `Server DOCX API ${endpoint} returned an error.`);
+        errors.push(json?.error || `Server DOCX API ${url} returned an error.`);
         continue;
       }
 
       return json;
     } catch (error) {
-      errors.push(error?.message || String(error));
+      errors.push(`Server DOCX API ${url} failed: ${error?.message || String(error)}`);
     }
   }
 

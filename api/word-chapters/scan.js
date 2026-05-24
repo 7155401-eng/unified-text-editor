@@ -1,3 +1,4 @@
+import { handleCorsOptions } from "../_cors.js";
 import { importDocxBuffer, readRequestBuffer, sendError, sendJson } from "../_word_chapter_import_server.js";
 
 export const config = {
@@ -7,8 +8,10 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  if (handleCorsOptions(req, res)) return;
+
   if (req.method !== "POST") {
-    res.setHeader("allow", "POST");
+    res.setHeader("allow", "POST, OPTIONS");
     return sendJson(res, 405, { ok: false, error: "Method not allowed" });
   }
 
