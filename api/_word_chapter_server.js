@@ -1,5 +1,9 @@
 import JSZip from "jszip";
-import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
+import { JSDOM } from "jsdom";
+
+const domWindow = new JSDOM("").window;
+const DOMParser = globalThis.DOMParser || domWindow.DOMParser;
+const XMLSerializer = globalThis.XMLSerializer || domWindow.XMLSerializer;
 
 globalThis.DOMParser = globalThis.DOMParser || DOMParser;
 globalThis.XMLSerializer = globalThis.XMLSerializer || XMLSerializer;
