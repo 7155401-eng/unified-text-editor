@@ -6,12 +6,12 @@ let src = fs.readFileSync(file, "utf8");
 const importNeedle = `import { buildDefaultStreamMapping } from "./word_extractor/word_extractor_streams.js";`;
 const importPatch = `${importNeedle}
 import {
+  extractWordChapterOnServer,
+  importWordChaptersOnServer,
   normalizeServerScanState,
-  tryServerExtractWordChapter,
-  tryServerScanWordChapters,
 } from "./chapter_cache/chapter_server_api.js";`;
 
-if (!src.includes("tryServerScanWordChapters")) {
+if (!src.includes("chapter_server_api.js")) {
   if (!src.includes(importNeedle)) {
     throw new Error("document_chapter_splitter: import anchor not found");
   }
@@ -19,23 +19,30 @@ if (!src.includes("tryServerScanWordChapters")) {
 }
 
 const scanNeedle = `  loading("הקובץ נקלט. ממתין לסיום הסריקה הרגילה...");`;
-const scanPatch = `  loading("הקובץ נקלט. מעבד את הפרקים בצד שרת...");
-  const serverScan = await tryServerScanWordChapters(fileObj);
-  if (serverScan && thisToken === token) {
-    const serverState = normalizeServerScanState(serverScan, fileObj);
-    if (serverState) {
-      state = serverState;
-      selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
-      chaptersOpen = false;
-      renderCard();
-      ensureLauncher();
-      return;
+const scanPatch = `  try {
+    loading("מעלה את קובץ Word לשרת לפני עיבוד...");
+    const serverImport = await importWordChaptersOnServer(fileObj);
+
+    if (thisToken !== token) return;
+
+    const serverState = normalizeServerScanState(serverImport, fileObj);
+    if (!serverState) {
+      throw new Error("השרת לא החזיר manifest תקין עבור מסמך Word.");
     }
-  }
 
-${scanNeedle}`;
+    state = serverState;
+    selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
+    chaptersOpen = false;
+    renderCard();
+    ensureLauncher();
+    return;
+  } catch (serverError) {
+    if (thisToken !== token) return;
+    errorCard(serverError?.message || String(serverError));
+    return;
+  }`;
 
-if (!src.includes("מעבד את הפרקים בצד שרת")) {
+if (!src.includes("מעלה את קובץ Word לשרת לפני עיבוד")) {
   if (!src.includes(scanNeedle)) {
     throw new Error("document_chapter_splitter: scan loading anchor not found");
   }
@@ -47,23 +54,27 @@ const importNeedle2 = `  try {
 const importPatch2 = `  try {
     if (state?.serverSide) {
       loading(\`מחלץ את הפרק בצד שרת: \${chapterIndex + 1}...\`);
-      const serverChapter = await tryServerExtractWordChapter(selectedFile, {
+      const serverChapter = await extractWordChapterOnServer(selectedFile, {
         level: selectedLevel,
         index: chapterIndex,
       });
-      if (serverChapter?.result) {
-        const title = serverChapter.title || currentHeads()[chapterIndex]?.title || \`פרק \${chapterIndex + 1}\`;
-        importedKeys.add(chapterKey(selectedLevel, chapterIndex));
-        lastImported = {
-          level: selectedLevel,
-          index: chapterIndex,
-          title,
-          at: Date.now(),
-        };
-        loadExtractedChapter(title, serverChapter.result);
-        ensureLauncher();
-        return;
+
+      if (!serverChapter?.result) {
+        throw new Error("השרת לא החזיר תוכן פרק תקין.");
       }
+
+      const title = serverChapter.title || currentHeads()[chapterIndex]?.title || \`פרק \${chapterIndex + 1}\`;
+      importedKeys.add(chapterKey(selectedLevel, chapterIndex));
+      lastImported = {
+        level: selectedLevel,
+        index: chapterIndex,
+        title,
+        at: Date.now(),
+      };
+
+      loadExtractedChapter(title, serverChapter.result);
+      ensureLauncher();
+      return;
     }
 
     const chapter = await buildChapterDocx(chapterIndex);`;
