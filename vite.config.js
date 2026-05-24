@@ -7,6 +7,8 @@ import { defineConfig } from 'vite'
 import './scripts/apply_v9_limit_full_strip3_one_line_patch.mjs'
 import './scripts/apply_v9_column_continuation_flag_patch.mjs'
 import './scripts/apply_v9_column_split_line_edge_guard_patch.mjs'
+import './scripts/apply_v9_column_split_balance_and_expansion_patch.mjs'
+import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
 
 // משה 2026-05-07: base relative ('./') כדי שיעבוד גם ב-Vercel (root) וגם
 // ב-GitHub Pages (subpath). אין צורך במשתנה סביבה.
