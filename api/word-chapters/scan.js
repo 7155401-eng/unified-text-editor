@@ -1,4 +1,4 @@
-import { readRequestBuffer, scanDocxBuffer, sendError, sendJson } from "../_word_chapter_server.js";
+import { importDocxBuffer, readRequestBuffer, sendError, sendJson } from "../_word_chapter_import_server.js";
 
 export const config = {
   api: {
@@ -14,11 +14,11 @@ export default async function handler(req, res) {
 
   try {
     const buffer = await readRequestBuffer(req);
-    const scan = await scanDocxBuffer(buffer);
+    const imported = await importDocxBuffer(buffer);
     return sendJson(res, 200, {
       ok: true,
       serverSide: true,
-      ...scan.manifest,
+      ...imported.manifest,
     });
   } catch (error) {
     return sendError(res, error);
