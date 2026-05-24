@@ -1,49 +1,66 @@
-const SERVER_IMPORT_ENDPOINT = "/api/word-chapters/import";
-const SERVER_SCAN_ENDPOINT = "/api/word-chapters/scan";
-const SERVER_EXTRACT_ENDPOINT = "/api/word-chapters/extract";
+const SERVER_IMPORT_ENDPOINTS = ["/api/word-chapters-import", "/api/word-chapters/import"];
+const SERVER_SCAN_ENDPOINTS = ["/api/word-chapters-scan", "/api/word-chapters/scan"];
+const SERVER_EXTRACT_ENDPOINTS = ["/api/word-chapters-extract", "/api/word-chapters/extract"];
 
 function canUseServerApi(file) {
   return typeof fetch === "function" && !!file && typeof file.arrayBuffer === "function";
 }
 
-async function postDocx(endpoint, file, params = {}) {
+async function postDocx(endpoints, file, params = {}) {
   if (!canUseServerApi(file)) return null;
 
-  const url = new URL(endpoint, window.location.origin);
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+  const endpointList = Array.isArray(endpoints) ? endpoints : [endpoints];
+  const errors = [];
+
+  for (const endpoint of endpointList) {
+    const url = new URL(endpoint, window.location.origin);
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+    }
+
+    try {
+      const response = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          "content-type": file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "x-file-name": encodeURIComponent(file.name || "document.docx"),
+        },
+        body: file,
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        const message = text || `Server DOCX API ${endpoint} failed with ${response.status}`;
+        errors.push(message);
+        continue;
+      }
+
+      const json = await response.json();
+      if (!json?.ok) {
+        errors.push(json?.error || `Server DOCX API ${endpoint} returned an error.`);
+        continue;
+      }
+
+      return json;
+    } catch (error) {
+      errors.push(error?.message || String(error));
+    }
   }
 
-  const response = await fetch(url.toString(), {
-    method: "POST",
-    headers: {
-      "content-type": file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "x-file-name": encodeURIComponent(file.name || "document.docx"),
-    },
-    body: file,
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `Server DOCX API failed with ${response.status}`);
-  }
-
-  const json = await response.json();
-  if (!json?.ok) throw new Error(json?.error || "Server DOCX API returned an error.");
-  return json;
+  throw new Error(errors.filter(Boolean).join("\n") || "Server DOCX API failed.");
 }
 
 export async function importWordChaptersOnServer(file) {
-  return postDocx(SERVER_IMPORT_ENDPOINT, file);
+  return postDocx(SERVER_IMPORT_ENDPOINTS, file);
 }
 
 export async function scanWordChaptersOnServer(file) {
-  return postDocx(SERVER_SCAN_ENDPOINT, file);
+  return postDocx(SERVER_SCAN_ENDPOINTS, file);
 }
 
 export async function extractWordChapterOnServer(file, { level, index }) {
-  return postDocx(SERVER_EXTRACT_ENDPOINT, file, { level, index });
+  return postDocx(SERVER_EXTRACT_ENDPOINTS, file, { level, index });
 }
 
 export async function tryServerScanWordChapters(file) {
