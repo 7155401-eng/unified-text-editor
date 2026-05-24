@@ -1,20 +1,34 @@
 {
   "version": 2,
-  "functions": {
-    "api/*.js": {
-      "maxDuration": 60
+  "builds": [
+    {
+      "src": "api/*.js",
+      "use": "@vercel/node"
     },
-    "api/**/*.js": {
-      "maxDuration": 60
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     }
-  },
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
       "dest": "/api/$1"
     },
     {
-      "handle": "filesystem"
+      "src": "/assets/(.*)",
+      "dest": "/assets/$1"
+    },
+    {
+      "src": "/(.*\\.(.*))",
+      "dest": "/$1"
     },
     {
       "src": "/(.*)",
