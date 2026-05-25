@@ -735,6 +735,53 @@ function pageDataHasRealContent(pageData) {
     return Array.isArray(notes) && notes.some(noteTupleHasRealContent);
   });
 }
+function __ravtextGetPreRenderPageDecorators() {
+  if (typeof window === "undefined") return [];
+  const registry = window.__ravtextPreRenderPageDecorators;
+  if (!Array.isArray(registry)) return [];
+  return registry
+    .filter((fn) => typeof fn === "function")
+    .sort((a, b) => (Number(a.__ravtextPreRenderOrder) || 0) - (Number(b.__ravtextPreRenderOrder) || 0));
+}
+
+function __ravtextRunPreRenderPageDecorators(page, pageIndex) {
+  if (!page || page.dataset?.ravtextPreRenderDecorated === "1") return;
+  const decorators = __ravtextGetPreRenderPageDecorators();
+  if (!decorators.length) return;
+
+  let stage = null;
+  const previousActive = typeof window !== "undefined" ? window.__ravtextPreRenderPageDecoratorActive : undefined;
+  try {
+    if (typeof window !== "undefined") window.__ravtextPreRenderPageDecoratorActive = true;
+
+    if (!page.isConnected && typeof document !== "undefined" && document.body) {
+      stage = document.createElement("div");
+      stage.className = "ravtext-pre-render-stage";
+      stage.setAttribute("aria-hidden", "true");
+      stage.style.cssText = [
+        "position:fixed",
+        "left:-100000px",
+        "top:0",
+        "visibility:hidden",
+        "pointer-events:none",
+        "z-index:-1",
+        "width:420px",
+      ].join(";");
+      document.body.appendChild(stage);
+      stage.appendChild(page);
+    }
+
+    for (const decorate of decorators) decorate(page, pageIndex);
+    page.dataset.ravtextPreRenderDecorated = "1";
+  } finally {
+    if (typeof window !== "undefined") window.__ravtextPreRenderPageDecoratorActive = previousActive;
+    if (stage) {
+      if (page.parentNode === stage) stage.removeChild(page);
+      stage.remove();
+    }
+  }
+}
+
 export function renderPages(packerOutput, container) {
   packerOutput = (packerOutput || []).filter(pageDataHasRealContent);
   if (container.__pageObserver && typeof container.__pageObserver.disconnect === "function") {
@@ -758,6 +805,7 @@ export function renderPages(packerOutput, container) {
       const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
       real.dataset.pageIndex = String(i);
       real.dataset.realized = "1";
+      __ravtextRunPreRenderPageDecorators(real, i);
       allFrag.appendChild(real);
       realPages.push(real);
     }
@@ -800,6 +848,7 @@ export function renderPages(packerOutput, container) {
     real.dataset.pageIndex = String(i);
     real.dataset.realized = "1";
     if (ph.style.zoom) real.style.zoom = ph.style.zoom;
+    __ravtextRunPreRenderPageDecorators(real, i);
     ph.parentNode.replaceChild(real, ph);
     placeholders[i] = real;
     if (typeof container.__processRealizedPage === "function") {
