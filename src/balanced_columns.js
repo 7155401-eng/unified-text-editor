@@ -94,6 +94,77 @@ async function fetchBalanceDecision(lineCount, settings) {
   return res.json();
 }
 
+// balanced-columns-integrity-guard: the server decision is only advisory.
+// If it skips/overlaps any visual line, fall back to a local contiguous split
+// so every measured line is rendered exactly once.
+function fallbackBalanceDecision(lineCount, settings = {}, forceBalance = false) {
+  const minLines = Math.max(1, parseInt(settings?.minLinesForCols || 3, 10) || 3);
+  if (!forceBalance && lineCount < minLines) return { balance: false };
+  if (!Number.isFinite(lineCount) || lineCount < 2) return { balance: false };
+
+  const centerLast = settings?.lastLineCenter !== false;
+  const hasOrphan = centerLast && lineCount % 2 === 1 && lineCount > 2;
+  const bodyLineCount = hasOrphan ? lineCount - 1 : lineCount;
+  if (bodyLineCount < 2) return { balance: false };
+
+  const rightEnd = Math.ceil(bodyLineCount / 2);
+  return {
+    balance: true,
+    rightStart: 0,
+    rightEnd,
+    leftStart: rightEnd,
+    leftEnd: bodyLineCount,
+    hasOrphan,
+    centerLast,
+  };
+}
+
+function normalizeBalanceDecision(rawDecision, lineCount, settings = {}) {
+  if (!rawDecision || rawDecision.balance === false) return { balance: false };
+
+  const toInt = (value) => {
+    const n = Number(value);
+    return Number.isInteger(n) ? n : NaN;
+  };
+
+  const d = {
+    ...rawDecision,
+    balance: rawDecision.balance === true,
+    rightStart: toInt(rawDecision.rightStart),
+    rightEnd: toInt(rawDecision.rightEnd),
+    leftStart: toInt(rawDecision.leftStart),
+    leftEnd: toInt(rawDecision.leftEnd),
+    hasOrphan: rawDecision.hasOrphan === true,
+    centerLast: rawDecision.centerLast !== false,
+  };
+
+  const orphanCount = d.hasOrphan ? 1 : 0;
+  const bodyEnd = lineCount - orphanCount;
+  const valid = d.balance === true &&
+    Number.isInteger(lineCount) &&
+    Number.isInteger(d.rightStart) &&
+    Number.isInteger(d.rightEnd) &&
+    Number.isInteger(d.leftStart) &&
+    Number.isInteger(d.leftEnd) &&
+    d.rightStart === 0 &&
+    d.rightEnd >= d.rightStart &&
+    d.leftStart === d.rightEnd &&
+    d.leftEnd === bodyEnd &&
+    d.leftEnd >= d.leftStart &&
+    d.leftEnd <= lineCount &&
+    bodyEnd >= 0;
+
+  if (valid) return d;
+
+  if (typeof console !== "undefined") {
+    console.warn("[balanced-columns] invalid balance decision; using contiguous fallback", {
+      lineCount,
+      rawDecision,
+    });
+  }
+  return fallbackBalanceDecision(lineCount, settings, true);
+}
+
 /**
  * Prepares the balancing decision for a single stream.
  * Returns an 'apply' function to be executed serially for DOM updates.
@@ -117,7 +188,19 @@ async function prepareTwoColumnBalance(streamEl, settings) {
   try {
     const lines = splitTextIntoLines(text, measure, lineHeight);
     // משה 2026-05-07: ההחלטה (האם לאזן, איפה לחתוך, איך לטפל ביתום) רצה בשרת.
-    const decision = await fetchBalanceDecision(lines.length, settings);
+    let decision;
+    try {
+      decision = normalizeBalanceDecision(
+        await fetchBalanceDecision(lines.length, settings),
+        lines.length,
+        settings
+      );
+    } catch (err) {
+      if (typeof console !== "undefined") {
+        console.warn("[balanced-columns] balance decision failed; using local fallback", err);
+      }
+      decision = fallbackBalanceDecision(lines.length, settings, true);
+    }
     if (!decision.balance) return null;
 
     return () => {

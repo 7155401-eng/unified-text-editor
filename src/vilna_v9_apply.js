@@ -282,6 +282,80 @@ function annotateV9RenderedSourceMetadata(container, paragraphs) {
   }
 }
 
+function __ravtextV9NextFrame() {
+  if (typeof requestAnimationFrame !== "function") return Promise.resolve();
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent }) {
+  const progress = startVilnaRenderProgress({
+    container,
+    estimatedTotalPages: Math.max(1, estimateV9PageCount(paragraphs)),
+    title: "מתארגן",
+    subtitle: "טוען פונטים והגדרות לפני עימוד",
+  });
+
+  try {
+    if (typeof document !== "undefined" && document.fonts) {
+      const fonts = document.fonts;
+      const waits = [];
+
+      if (fonts.ready) waits.push(fonts.ready);
+
+      try {
+        const geom = readPageGeomFromContainer(container);
+        const mainFont = String(geom?.fontFamily || "").trim();
+        if (mainFont && typeof fonts.load === "function") {
+          waits.push(fonts.load(String(geom.mainSize || 14) + "px " + mainFont, "אבגד"));
+        }
+
+        const opening = getOpeningWordSettings();
+        const openingFont = String(opening?.font || "").trim();
+        if (opening?.enabled && openingFont && typeof fonts.load === "function") {
+          waits.push(fonts.load(String(Math.max(12, Number(geom.mainSize || 14) * Number(opening.size || 200) / 100)) + "px " + openingFont, "אבגד"));
+        }
+      } catch {
+        // Non-fatal. fonts.ready is still the main readiness barrier.
+      }
+
+      if (waits.length) {
+        await Promise.race([
+          Promise.allSettled(waits),
+          new Promise((resolve) => setTimeout(resolve, 2500)),
+        ]);
+      }
+    }
+
+    await __ravtextV9NextFrame();
+    await __ravtextV9NextFrame();
+
+    if (!isCurrent()) {
+      progress.abort();
+      return { aborted: true };
+    }
+
+    const openingWordSettings = getOpeningWordSettings();
+
+    if (container?.dataset) {
+      container.dataset.v9PreflightReady = "1";
+      container.dataset.v9PreflightOpeningWord = openingWordSettings?.enabled ? "1" : "0";
+    }
+    if (typeof window !== "undefined") {
+      window.__ravtextLastV9Preflight = {
+        openingWordEnabled: !!openingWordSettings?.enabled,
+        paragraphCount: Array.isArray(paragraphs) ? paragraphs.length : 0,
+        generatedAt: new Date().toISOString(),
+      };
+    }
+
+    progress.finish({ totalPages: 0 });
+    return { openingWordSettings };
+  } catch (error) {
+    progress.fail(error);
+    throw error;
+  }
+}
+
 export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = {}) {
   if (!container || !Array.isArray(paragraphs)) return;
   const isCurrent = typeof opts.isCurrent === "function" ? opts.isCurrent : () => true;
@@ -291,21 +365,8 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
   // שנכנסות יותר מילים בשורה ממה שבאמת נכנסות. כשהפונט האמיתי נטען, המילים
   // רחבות יותר → חפיפה ויזואלית. ממתינים ל-fonts.ready עם תקרה של 2 שניות
   // כדי לא לתקוע את הרינדור לעד אם הפונט נכשל.
-  if (typeof document !== "undefined" && document.fonts && document.fonts.ready) {
-    try {
-      await Promise.race([
-        document.fonts.ready,
-        new Promise((resolve) => setTimeout(resolve, 2000)),
-      ]);
-    } catch {
-      /* ממשיכים גם אם נכשל */
-    }
-  }
-
-  // משה 2026-05-15: אם בזמן המתנה לפונטים התחיל רינדור חדש, נצא בלי
-  // למחוק את העמודים הנוכחיים — אחרת המסך יישאר ריק עד הרינדור הבא.
-  if (!isCurrent()) return { aborted: true };
-
+  const preflight = await __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent });
+  if (preflight?.aborted || !isCurrent()) return { aborted: true };
   hideVilnaRenderProgressImmediately();
   const progress = startVilnaRenderProgress({
     container,
@@ -347,8 +408,18 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // את האפשרות, הפונקציה מחזירה את הקלט ללא שינוי.
     const transformedParagraphs = paragraphs.map((p) => {
       if (!p) return p;
-      const injected = injectMainRefs(p.mainText, p.mainRuns, p.notes);
-      return { ...p, mainText: injected.mainText, mainRuns: injected.mainRuns, notes: injected.notes };
+      // 2026-05-19: V9 main refs must remain separate anchored entities.
+      // Do NOT inject [N] into mainText here; that destroys the original anchor
+      // identity and makes the ref indistinguishable from normal text after line
+      // breaking. vilna_v9.js now renders refs as span.v9-main-ref from note
+      // anchors while keeping mainText clean.
+      return {
+        ...p,
+        mainText: p.mainText,
+        mainRuns: p.mainRuns || [],
+        notes: p.notes || [],
+        mainRefs: Array.isArray(p.mainRefs) ? p.mainRefs : [],
+      };
     });
 
     const result = await buildPages(container, transformedParagraphs, {
@@ -379,7 +450,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       noMidParagraphSoft: readSpacingBool("noMidParagraphSoft", false),
       noMidLineSplits: readSpacingBool("noMidLineSplits", false),
       preventMidLineSplit: readSpacingBool("preventMidLineSplit", true),
-      openingWordSettings: getOpeningWordSettings(),
+      openingWordSettings: preflight.openingWordSettings,
     });
 
     if (result?.aborted || !isCurrent()) {

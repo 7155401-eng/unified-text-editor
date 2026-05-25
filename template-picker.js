@@ -310,6 +310,8 @@
   }
 
   function stopRender() {
+    try { window.__ravtextCancelRender?.('toolbar'); } catch (_) {}
+    try { window.__ravtextRenderCancelRequested = true; } catch (_) {}
     state.running = false;
     state.stoppedUntil = Date.now() + STOP_GUARD_MS;
     restorePreview();
