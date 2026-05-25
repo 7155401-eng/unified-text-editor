@@ -242,7 +242,8 @@ async function importDocx(arrayBuffer, id) {
 }
 
 function isDocxImportPath(path) {
-  return path === "/api/word-chapters-import" ||
+  return path === "/api/ravtext-docx-import" ||
+    path === "/api/word-chapters-import" ||
     path === "/api/word-chapters/import" ||
     path === "/api/word-chapters-scan" ||
     path === "/api/word-chapters/scan";
@@ -315,9 +316,16 @@ async function handleDocxApi(request) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const pathname = url.pathname;
 
-    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
+    // Intercept all DOCX API paths
+    if (isDocxImportPath(pathname) || isDocxExtractPath(pathname)) {
       return handleDocxApi(request);
+    }
+
+    // For any other /api/* path, return JSON (prevents SPA caching)
+    if (pathname.startsWith("/api/")) {
+      return jsonResponse({ ok: false, error: "Unknown API path", path: pathname }, 404);
     }
 
     if (env?.ASSETS?.fetch) {
@@ -327,3 +335,5 @@ export default {
     return new Response("Asset binding not available.", { status: 500 });
   },
 };
+
+export { handleDocxApi, isDocxImportPath, isDocxExtractPath };
