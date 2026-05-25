@@ -361,7 +361,8 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
   for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
     const strip = strips[stripIdx];
     // v9-strip-y-end-guard: respect explicit strip bottoms. Without this,
-    // a capped bridge strip can consume lines down to the next strip/pageBottom.
+    // a last/suppressed strip can consume lines down to pageBottom, while the
+    // render pass later drops those lines because they are outside every y_end.
     const explicitStripEndY = Number.isFinite(Number(strip.y_end)) ? Number(strip.y_end) : null;
     const nextStripY = explicitStripEndY !== null
       ? Math.min(explicitStripEndY, maxY)
@@ -2008,8 +2009,6 @@ function buildPagePlan(pageContent, config) {
         openingHostFullWidth: line.openingHostFullWidth || null,
         openingWindow: !!line.openingWindow,
         runs: line.runs || [],
-        wordTokens: line.wordTokens || [],
-        mainRefs: line.mainRefs || [],
       });
     }
     const opwDebug = mainFlow.debug || null;
@@ -2686,8 +2685,6 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
       if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
@@ -4394,7 +4391,6 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
       text: cleanPiece,
       runs: localRuns,
       rich: makeRichText(cleanPiece, localRuns),
-      mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),
       mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),
       continues: !!(p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),
       _v9ContinuesFromSplit: !!p._v9ContinuesFromSplit,

@@ -703,44 +703,12 @@ function isDuplicateStreamTitleNote(noteText, title) {
   return !!a && !!b && a === b;
 }
 
-function normalizeStreamTitleNoteText(value) {
-  return String(value || "")
-    .replace(/^\s*\[[^\]]+\]\s*/, "")
-    .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isDuplicateStreamTitleNote(noteText, title) {
-  const a = normalizeStreamTitleNoteText(noteText);
-  const b = normalizeStreamTitleNoteText(title);
-  return !!a && !!b && a === b;
-}
-
-function normalizeStreamTitleNoteText(value) {
-  return String(value || "")
-    .replace(/^\s*\[[^\]]+\]\s*/, "")
-    .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isDuplicateStreamTitleNote(noteText, title) {
-  const a = normalizeStreamTitleNoteText(noteText);
-  const b = normalizeStreamTitleNoteText(title);
-  return !!a && !!b && a === b;
-}
-
 function applyFirstNoteAsTitle(code, notes) {
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
   const streamSettings = getEffectiveStreamSettings(code);
   const manualTitle = String(streamSettings.title || "").trim();
   const first = notes && notes.length ? String(notes[0] || "") : "";
   const existingTitle = manualTitle || labels[code] || defaultLabelForCode(code);
-
-  // 2026-05-19: אם ההערה הראשונה היא טקסט זהה לכותרת הזרם, אל תספור אותה
-  // כהערה ואל תקשור אותה לעוגן הראשון בראשי. אחרת V9/regular משייכים את
-  // הכותרת למיקום ההפניה הראשון, וכל המספור שאחריה נראה מוזז.
   const duplicateTitleNote = isDuplicateStreamTitleNote(first, existingTitle);
 
   if (manualTitle) {
