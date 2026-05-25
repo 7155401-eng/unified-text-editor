@@ -661,20 +661,24 @@ async function importChapter(chapterIndex) {
 
   const chapKey = chapterKey(selectedLevel, chapterIndex);
 
-  try {
-    // Serve from IndexedDB cache when available
-    if (docId && cachedIds.has(chapKey)) {
-      const cached = await getChapterExtraction(docId, chapKey).catch(() => null);
+  // Serve from IndexedDB cache when available
+  if (docId && cachedIds.has(chapKey)) {
+    try {
+      const cached = await getChapterExtraction(docId, chapKey);
       if (cached) {
         const chapter = await buildChapterDocx(chapterIndex);
         importedKeys.add(chapKey);
         lastImported = { level: selectedLevel, index: chapterIndex, title: cached.title || chapter?.title || "", at: Date.now() };
         loadExtractedChapter(cached.title || chapter?.title || "", cached.result);
         ensureLauncher();
+        busyChapter = false;
+        renderCard();
         return;
       }
-    }
+    } catch (_) {}
+  }
 
+  try {
     const chapter = await buildChapterDocx(chapterIndex);
     if (!chapter) throw new Error("לא נמצא פרק לייבוא.");
 
