@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.jsonc",
   "name": "unified-text-editor",
-  "main": "./worker-dist/_worker.js",
+  "main": "./dist/_worker.js",
   "compatibility_date": "2026-05-25",
   "observability": {
     "enabled": true
@@ -15,3 +15,4 @@
     ]
   }
 }
+
