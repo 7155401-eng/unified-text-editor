@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 
 const SERVICE = "ravtext-cloudflare-docx-advanced-worker";
-const VERSION = "2026-05-25-advanced-worker";
+const VERSION = "2026-05-25-worker-syntax-fix";
 const MAX_DOCX_BYTES = 100 * 1024 * 1024;
 
 function requestId() {
@@ -14,7 +14,8 @@ function requestId() {
 function log(level, event, data = {}) {
   try {
     const payload = JSON.stringify({ service: SERVICE, version: VERSION, event, ...data });
-    (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(payload);
+    const fn = level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+    fn(payload);
   } catch {}
 }
 
@@ -32,7 +33,7 @@ function corsHeaders(id = "") {
   return headers;
 }
 
-function json(body, status = 200, id = "") {
+function jsonResponse(body, status = 200, id = "") {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -41,6 +42,10 @@ function json(body, status = 200, id = "") {
       "content-type": "application/json; charset=utf-8",
     },
   });
+}
+
+function optionsResponse(id = "") {
+  return new Response(null, { status: 204, headers: corsHeaders(id) });
 }
 
 const HEBREW_MARKS_RE = /[\u0591-\u05C7]/g;
@@ -76,7 +81,8 @@ function firstTag(xml, localName) {
 
 function parseStyles(stylesXml) {
   const styles = {};
-  for (const block of String(stylesXml || "").match(/<w:style\b[\s\S]*?<\/w:style>/g) || []) {
+  const blocks = String(stylesXml || "").match(/<w:style\b[\s\S]*?<\/w:style>/g) || [];
+  for (const block of blocks) {
     const id = attr(block, "styleId");
     if (!id) continue;
     styles[id] = {
@@ -91,7 +97,9 @@ function paragraphText(pXml) {
   const out = [];
   const re = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
   let match;
-  while ((match = re.exec(String(pXml || "")))) out.push(xmlDecode(match[1]));
+  while ((match = re.exec(String(pXml || "")))) {
+    out.push(xmlDecode(match[1]));
+  }
   return out.join("");
 }
 
@@ -112,19 +120,25 @@ function levelOfParagraph(pXml, styles) {
       marker.includes(`heading${i}`) ||
       marker.includes(`כותרת ${i}`) ||
       marker.includes(`כותרת${i}`)
-    ) return i;
+    ) {
+      return i;
+    }
   }
+
   return 0;
 }
 
 function countWords(text) {
   const value = String(text || "").trim();
   if (!value) return 0;
-  try { return (value.match(/[\p{L}\p{N}]+(?:['\u05F3\u05F4-][\p{L}\p{N}]+)*/gu) || []).length; }
-  catch { return value.split(/\s+/).filter(Boolean).length; }
+  try {
+    return (value.match(/[\p{L}\p{N}]+(?:['\u05F3\u05F4-][\p{L}\p{N}]+)*/gu) || []).length;
+  } catch {
+    return value.split(/\s+/).filter(Boolean).length;
+  }
 }
 
-function splitDocumentXml(xml) {
+function documentBodyXml(xml) {
   const open = String(xml || "").match(/<w:body\b[^>]*>/);
   const close = String(xml || "").lastIndexOf("</w:body>");
   if (!open || close < 0) throw new Error("לא נמצא גוף מסמך Word תקין.");
@@ -135,9 +149,9 @@ function bodyParts(bodyXml, styles) {
   const parts = [];
   const partsMeta = [];
   const allText = [];
-  const re = /<w:(p|tbl)\b[\s\S]*?<\/w:\1>|<w:sectPr\b[\s\S]*?<\/w:sectPr>/g;
+  const re = /<w:p\b[\s\S]*?<\/w:p>|<w:tbl\b[\s\S]*?<\/w:tbl>|<w:sectPr\b[\s\S]*?<\/w:sectPr>/g;
   let match;
-  while ((match = re.exec(String(bodyXml || ""))) {
+  while ((match = re.exec(String(bodyXml || "")))) {
     const xml = match[0];
     const isParagraph = /^<w:p\b/.test(xml);
     const text = isParagraph ? paragraphText(xml) : "";
@@ -151,7 +165,7 @@ function bodyParts(bodyXml, styles) {
 
 async function sha256Hex(arrayBuffer) {
   const digest = await crypto.subtle.digest("SHA-256", arrayBuffer.slice(0));
-  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 async function importDocx(arrayBuffer, id) {
@@ -164,6 +178,7 @@ async function importDocx(arrayBuffer, id) {
 
   const started = Date.now();
   log("log", "docx_zip_load_start", { requestId: id, bytes: arrayBuffer.byteLength });
+
   const zip = await JSZip.loadAsync(arrayBuffer);
   const docFile = zip.file("word/document.xml");
   if (!docFile) throw new Error("לא נמצא word/document.xml.");
@@ -174,8 +189,9 @@ async function importDocx(arrayBuffer, id) {
   ]);
 
   const styles = parseStyles(stylesXml || "");
-  const bodyXml = splitDocumentXml(docXml);
+  const bodyXml = documentBodyXml(docXml);
   const { parts, partsMeta, allText } = bodyParts(bodyXml, styles);
+
   const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   const heads = { 1: [], 2: [] };
 
@@ -183,12 +199,33 @@ async function importDocx(arrayBuffer, id) {
     const part = parts[index];
     if (!part.text?.trim() || part.level < 1 || part.level > 6) continue;
     h[part.level] += 1;
-    if (part.level === 1 || part.level === 2) heads[part.level].push({ title: part.text.trim(), start: index });
+    if (part.level === 1 || part.level === 2) {
+      heads[part.level].push({ title: part.text.trim(), start: index });
+    }
   }
 
   const full = allText.join("\n");
   const fileHash = await sha256Hex(arrayBuffer);
-  const out = {
+
+  const diagnostics = {
+    service: SERVICE,
+    version: VERSION,
+    bytes: arrayBuffer.byteLength,
+    partCount: parts.length,
+    elapsedMs: Date.now() - started,
+  };
+
+  log("log", "docx_import_success", {
+    requestId: id,
+    bytes: arrayBuffer.byteLength,
+    partCount: parts.length,
+    headingCounts: h,
+    chars: full.length,
+    words: countWords(full),
+    elapsedMs: diagnostics.elapsedMs,
+  });
+
+  return {
     ok: true,
     serverSide: true,
     requestId: id,
@@ -200,18 +237,15 @@ async function importDocx(arrayBuffer, id) {
     chars: full.length,
     words: countWords(full),
     partsMeta,
-    diagnostics: { service: SERVICE, version: VERSION, bytes: arrayBuffer.byteLength, partCount: parts.length, elapsedMs: Date.now() - started },
+    diagnostics,
   };
-
-  log("log", "docx_import_success", { requestId: id, ...out.diagnostics });
-  return out;
 }
 
-function isDocxApiPath(path) {
-  return path === "/api/word-chapters-import"
-    || path === "/api/word-chapters/import"
-    || path === "/api/word-chapters-scan"
-    || path === "/api/word-chapters/scan";
+function isDocxImportPath(path) {
+  return path === "/api/word-chapters-import" ||
+    path === "/api/word-chapters/import" ||
+    path === "/api/word-chapters-scan" ||
+    path === "/api/word-chapters/scan";
 }
 
 function isDocxExtractPath(path) {
@@ -222,32 +256,74 @@ async function handleDocxApi(request) {
   const id = request.headers.get("x-docx-request-id") || requestId();
   const url = new URL(request.url);
 
-  log("log", "request_received", { requestId: id, method: request.method, path: url.pathname, contentLength: request.headers.get("content-length") || "", contentType: request.headers.get("content-type") || "" });
+  log("log", "request_received", {
+    requestId: id,
+    method: request.method,
+    path: url.pathname,
+    contentLength: request.headers.get("content-length") || "",
+    contentType: request.headers.get("content-type") || "",
+  });
 
-  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(id) });
-  if (request.method === "GET") return json({ ok: true, serverSide: true, service: SERVICE, version: VERSION, requestId: id, path: url.pathname, message: "Cloudflare advanced _worker.js is handling this DOCX API route." }, 200, id);
-  if (request.method !== "POST") return json({ ok: false, serverSide: true, requestId: id, error: "Method not allowed" }, 405, id);
-  if (isDocxExtractPath(url.pathname)) return json({ ok: false, serverSide: true, requestId: id, error: "Cloudflare DOCX extract endpoint is reachable, but extract is not implemented in the advanced worker yet." }, 501, id);
+  if (request.method === "OPTIONS") return optionsResponse(id);
+
+  if (request.method === "GET") {
+    return jsonResponse({
+      ok: true,
+      serverSide: true,
+      service: SERVICE,
+      version: VERSION,
+      requestId: id,
+      path: url.pathname,
+      message: "Cloudflare advanced _worker.js is handling this DOCX API route.",
+    }, 200, id);
+  }
+
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, serverSide: true, requestId: id, error: "Method not allowed" }, 405, id);
+  }
+
+  if (isDocxExtractPath(url.pathname)) {
+    return jsonResponse({
+      ok: false,
+      serverSide: true,
+      requestId: id,
+      error: "Cloudflare DOCX extract endpoint is reachable, but extract is not implemented in the advanced worker yet.",
+    }, 501, id);
+  }
 
   try {
     const arrayBuffer = await request.arrayBuffer();
     log("log", "request_body_loaded", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
     const imported = await importDocx(arrayBuffer, id);
-    return json({ ...imported, importedAt: Date.now() }, 200, id);
+    return jsonResponse({ ...imported, importedAt: Date.now() }, 200, id);
   } catch (error) {
-    log("error", "request_failed", { requestId: id, path: url.pathname, error: error?.message || String(error), stack: error?.stack || "" });
-    return json({ ok: false, serverSide: true, requestId: id, error: error?.message || String(error || "Server error") }, error?.status || 500, id);
+    log("error", "request_failed", {
+      requestId: id,
+      path: url.pathname,
+      error: error?.message || String(error),
+      stack: error?.stack || "",
+    });
+    return jsonResponse({
+      ok: false,
+      serverSide: true,
+      requestId: id,
+      error: error?.message || String(error || "Server error"),
+    }, error?.status || 500, id);
   }
 }
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const url = new URL(request.url);
-    if (isDocxApiPath(url.pathname) || isDocxExtractPath(url.pathname)) {
+
+    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
       return handleDocxApi(request);
     }
 
-    if (env/.ASSETS?.fetch) return env.ASSETS.fetch(request);
+    if (env?.ASSETS?.fetch) {
+      return env.ASSETS.fetch(request);
+    }
+
     return new Response("Asset binding not available.", { status: 500 });
   },
 };
