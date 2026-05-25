@@ -1,6 +1,6 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
-import { applyBarStyleToElement } from "./original_stream_columns.js";
+import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
@@ -360,7 +360,13 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
 
   for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
     const strip = strips[stripIdx];
-    const nextStripY = (stripIdx + 1 < strips.length) ? strips[stripIdx + 1].y_start : maxY;
+    // v9-strip-y-end-guard: respect explicit strip bottoms. Without this,
+    // a last/suppressed strip can consume lines down to pageBottom, while the
+    // render pass later drops those lines because they are outside every y_end.
+    const explicitStripEndY = Number.isFinite(Number(strip.y_end)) ? Number(strip.y_end) : null;
+    const nextStripY = explicitStripEndY !== null
+      ? Math.min(explicitStripEndY, maxY)
+      : ((stripIdx + 1 < strips.length) ? strips[stripIdx + 1].y_start : maxY);
 
     if (curY < strip.y_start) curY = strip.y_start;
 
@@ -372,6 +378,7 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
         tokenIdx < tokens.length &&
         availableHeight > 0 &&
         stripIdx + 1 < strips.length &&
+        strips[stripIdx + 1].lockYStart !== true &&
         strips[stripIdx + 1].width > strip.width
       ) {
         const bridgeLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
@@ -438,6 +445,7 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
       stripIdx + 1 < strips.length &&
       tokenIdx < tokens.length &&
       curY < strips[stripIdx + 1].y_start &&
+      strips[stripIdx + 1].lockYStart !== true &&
       strips[stripIdx + 1].width > strip.width
     ) {
       strips[stripIdx + 1].y_start = curY;
@@ -765,6 +773,318 @@ function splitWordsByStrips(text, metrics, rightStrips) {
   };
 }
 
+function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = {}) {
+  const fallback = splitWordsByStrips(text, metrics, rightStrips);
+  const words = (text || '').split(/\s+/).filter(Boolean);
+  if (!fallback || words.length < 2 || !metrics || !Array.isArray(rightStrips) || rightStrips.length === 0) {
+    return fallback;
+  }
+
+  const lineH = Number(metrics.lineHeight) || 0;
+  if (!(lineH > 0)) return fallback;
+
+  const strips = rightStrips.filter(s =>
+    s && Number(s.width) > 0 && Number(s.height) > 0 && Math.floor(Number(s.height) / lineH) > 0
+  );
+  if (!strips.length) return fallback;
+
+  const minLineEdgeFill = Math.max(Number(opts.minLineEdgeFill) || 0.82, 0.82);
+  const oneWordFill = Math.max(0.96, minLineEdgeFill);
+
+  function statsForPrefix(count) {
+    const target = Math.max(0, Math.min(words.length, Number(count) || 0));
+    if (target <= 0) {
+      return { fits: true, totalLines: 0, capacity: 0, lastFill: 1, lastWords: 0, acceptable: false };
+    }
+
+    let cursor = 0;
+    let totalLines = 0;
+    let capacity = 0;
+    let fits = true;
+    let lastLine = null;
+
+    for (let i = 0; i < strips.length; i++) {
+      const strip = strips[i];
+      const maxLines = Math.max(0, Math.floor(Number(strip.height) / lineH));
+      capacity += maxLines;
+      if (cursor >= target || maxLines <= 0) continue;
+
+      const remaining = words.slice(cursor, target).join(' ');
+      const lines = metrics.layoutLines(remaining, Number(strip.width));
+      if (!lines || !lines.length) break;
+
+      const linesUsed = Math.min(maxLines, lines.length);
+      for (let j = 0; j < linesUsed; j++) {
+        const line = lines[j];
+        if (line && Array.isArray(line.words)) cursor += line.words.length;
+        lastLine = {
+          width: Number(strip.width) || 0,
+          naturalWidth: Number(line?.width) || 0,
+          words: Array.isArray(line?.words) ? line.words : [],
+        };
+      }
+      totalLines += linesUsed;
+
+      if (lines.length <= maxLines) break;
+      if (i === strips.length - 1) {
+        fits = false;
+        break;
+      }
+    }
+
+    if (cursor < target) fits = false;
+
+    const lastFill = lastLine && lastLine.width > 0
+      ? Math.min(1, Math.max(0, lastLine.naturalWidth / lastLine.width))
+      : 0;
+    const lastWords = lastLine?.words?.length || 0;
+    const acceptable = !!lastLine && fits && (
+      lastWords < 2 ? lastFill >= oneWordFill : lastFill >= minLineEdgeFill
+    );
+
+    return { fits, totalLines, capacity, lastFill, lastWords, acceptable };
+  }
+
+  function lineEndCandidates() {
+    const out = [];
+    let cursor = 0;
+    let totalLines = 0;
+
+    for (const strip of strips) {
+      const maxLines = Math.max(0, Math.floor(Number(strip.height) / lineH));
+      if (maxLines <= 0 || cursor >= words.length) continue;
+
+      const remaining = words.slice(cursor).join(' ');
+      const lines = metrics.layoutLines(remaining, Number(strip.width));
+      if (!lines || !lines.length) break;
+
+      const linesUsed = Math.min(maxLines, lines.length);
+      for (let j = 0; j < linesUsed && cursor < words.length; j++) {
+        const lineWords = Array.isArray(lines[j]?.words) ? lines[j].words.length : 0;
+        if (lineWords <= 0) continue;
+        cursor += lineWords;
+        totalLines++;
+        if (cursor > 0 && cursor < words.length) {
+          out.push({ count: cursor, totalLines });
+        }
+      }
+
+      if (lines.length <= maxLines || cursor >= words.length) break;
+    }
+
+    return out;
+  }
+
+  function approxLinesForSuffix(start, rightLineCount = 0) {
+    const suffixWords = words.slice(start);
+    if (!suffixWords.length) return 0;
+
+    const halfWidth = Number(opts.halfWidth) || Number(strips[0]?.width) || Number(rightStrips[0]?.width) || 1;
+    const fullWidth = Number(opts.fullWidth) || halfWidth;
+    const halfLimit = Math.max(0, Math.floor(Number(rightLineCount) || 0));
+
+    let cursor = 0;
+    let totalLines = 0;
+
+    // Column B first shares the page with column A. If it still has content
+    // after column A ends, it may expand to full width. Estimating the suffix
+    // this way prevents the split chooser from accepting a very short column A
+    // just because the suffix was measured as if it stayed narrow forever.
+    if (halfLimit > 0) {
+      const halfLines = metrics.layoutLines(suffixWords.join(' '), halfWidth) || [];
+      const useHalf = Math.min(halfLimit, halfLines.length);
+      for (let i = 0; i < useHalf; i++) {
+        const n = Array.isArray(halfLines[i]?.words) ? halfLines[i].words.length : 0;
+        if (n <= 0) break;
+        cursor += n;
+        totalLines++;
+      }
+      if (cursor >= suffixWords.length || halfLines.length <= halfLimit) return totalLines;
+    }
+
+    const remaining = suffixWords.slice(cursor).join(' ');
+    if (!remaining) return totalLines;
+    const fullLines = metrics.layoutLines(remaining, fullWidth) || [];
+    return totalLines + fullLines.length;
+  }
+
+  const candidates = lineEndCandidates();
+  let best = null;
+
+  for (const cand of candidates) {
+    if (words.length - cand.count < 2) continue;
+    const st = statsForPrefix(cand.count);
+    if (!st.fits || !st.acceptable) continue;
+
+    const suffixLines = approxLinesForSuffix(cand.count, st.totalLines);
+    const balancePenalty = Math.abs(st.totalLines - suffixLines);
+    const leftLongPenalty = Math.max(0, suffixLines - st.totalLines);
+    const fillScore = st.lastFill;
+    const wordScore = Math.min(3, st.lastWords) * 0.03;
+    const laterTieBreaker = cand.count / Math.max(1, words.length) * 0.12;
+    // Balance is now the primary criterion. A split that leaves column B much
+    // longer than column A is exactly the visual bug reported by the user.
+    const score = fillScore * 0.30 + wordScore + laterTieBreaker
+      - balancePenalty * 0.75
+      - leftLongPenalty * 0.85;
+
+    if (!best || score > best.score) {
+      best = { count: cand.count, score, stats: st, suffixLines, leftLongPenalty };
+    }
+  }
+
+  if (!best) return fallback;
+
+  const fallbackCount = (fallback.first || '').split(/\s+/).filter(Boolean).length;
+  const fallbackStats = statsForPrefix(fallbackCount);
+
+  if (fallbackStats.acceptable) {
+    const fallbackSuffixLines = approxLinesForSuffix(fallbackCount, fallbackStats.totalLines);
+    const fallbackBalance = Math.abs(fallbackStats.totalLines - fallbackSuffixLines);
+    const fallbackLeftLong = Math.max(0, fallbackSuffixLines - fallbackStats.totalLines);
+    const bestBalance = Math.abs(best.stats.totalLines - best.suffixLines);
+    const bestLeftLong = Math.max(0, best.suffixLines - best.stats.totalLines);
+    if (
+      fallbackLeftLong <= bestLeftLong + 1 &&
+      fallbackBalance <= bestBalance + 1 &&
+      fallbackStats.lastFill >= best.stats.lastFill - 0.04
+    ) {
+      return fallback;
+    }
+  }
+
+  return {
+    first: words.slice(0, best.count).join(' '),
+    second: words.slice(best.count).join(' '),
+    _v9ColumnSplitLineEdgeGuard: {
+      selectedWordCount: best.count,
+      lastFill: best.stats.lastFill,
+      lastWords: best.stats.lastWords,
+      totalLines: best.stats.totalLines,
+      suffixLines: best.suffixLines,
+      leftLongPenalty: best.leftLongPenalty || 0,
+    },
+  };
+}
+
+// =====================================================================
+// Main-reference anchors for V9
+// =====================================================================
+function v9MainRefsFromParagraph(p, textLen) {
+  const source = Array.isArray(p?.mainRefs) && p.mainRefs.length ? p.mainRefs : (Array.isArray(p?.notes) ? p.notes : []);
+  const out = [];
+  for (const raw of source || []) {
+    const stream = String(raw?.stream || raw?.code || raw?.streamId || raw?.streamCode || "");
+    if (!stream) continue;
+    const anchorRaw = raw?.absoluteAnchor ?? raw?.anchor ?? raw?.localAnchor;
+    const anchor = Number(anchorRaw);
+    if (!Number.isFinite(anchor)) continue;
+    const clamped = Math.max(0, Math.min(Number(textLen) || 0, anchor));
+    const num = typeof raw?.num === "number" && raw.num > 0 ? raw.num : 0;
+    if (!num) continue;
+    out.push({
+      stream,
+      code: stream,
+      num,
+      uid: raw?.uid || (String(stream) + ":" + String(num) + ":" + String(clamped)),
+      anchor: clamped,
+      absoluteAnchor: clamped,
+      localAnchor: clamped,
+      priority: Number(raw?.priority) || 0,
+    });
+  }
+  out.sort((a, b) =>
+    (a.anchor - b.anchor) ||
+    ((a.priority || 0) - (b.priority || 0)) ||
+    String(a.stream).localeCompare(String(b.stream)) ||
+    ((a.num || 0) - (b.num || 0))
+  );
+  return out;
+}
+
+function v9RefsForWordTokens(mainRefs, wordTokens) {
+  if (!Array.isArray(mainRefs) || !mainRefs.length || !Array.isArray(wordTokens) || !wordTokens.length) return [];
+  const first = wordTokens[0];
+  const last = wordTokens[wordTokens.length - 1];
+  const start = Number(first?.start) || 0;
+  const end = Number(last?.end) || start;
+  const refs = mainRefs.filter((ref) => {
+    const a = Number(ref?.absoluteAnchor ?? ref?.anchor);
+    return Number.isFinite(a) && a >= start && a <= end;
+  });
+  if (!refs.length) return [];
+
+  const usedKeys = new Set();
+  return refs.map((ref) => {
+    const anchor = Number(ref.absoluteAnchor ?? ref.anchor) || 0;
+    let pos = 0;
+    for (let i = 0; i < wordTokens.length; i++) {
+      const tok = wordTokens[i];
+      if (i > 0) pos += 1;
+      const ts = Number(tok.start) || 0;
+      const te = Number(tok.end) || ts;
+      const text = String(tok.text || "");
+      if (anchor <= ts) return { ...ref, localPos: pos };
+      if (anchor > ts && anchor <= te) {
+        const inside = anchor - ts;
+        const toStart = inside;
+        const toEnd = te - anchor;
+        return { ...ref, localPos: toStart <= toEnd ? pos : pos + text.length };
+      }
+      pos += text.length;
+    }
+    return { ...ref, localPos: pos };
+  }).filter((ref) => {
+    const key = ref.uid || (String(ref.stream) + ":" + String(ref.num) + ":" + String(ref.anchor));
+    if (usedKeys.has(key)) return false;
+    usedKeys.add(key);
+    return true;
+  }).sort((a, b) =>
+    (Number(a.localPos) - Number(b.localPos)) ||
+    String(a.stream).localeCompare(String(b.stream)) ||
+    ((a.num || 0) - (b.num || 0))
+  );
+}
+
+function appendV9MainRefSpan(parent, ref) {
+  const formatted = ref?.formatted || formatStreamNumber(ref.stream || ref.code, ref.num, "main");
+  if (!formatted) return false;
+  const span = document.createElement("span");
+  span.className = "stream-ref v9-main-ref";
+  span.textContent = formatted;
+  span.setAttribute("dir", "ltr");
+  span.style.unicodeBidi = "isolate";
+  span.style.display = "inline-block";
+  span.dataset.v9MainRef = "1";
+  span.dataset.stream = String(ref.stream || ref.code || "");
+  span.dataset.num = String(ref.num || "");
+  span.dataset.uid = String(ref.uid || "");
+  span.dataset.anchor = String(ref.absoluteAnchor ?? ref.anchor ?? "");
+  span.dataset.localPos = String(ref.localPos ?? "");
+  const styleId = styleIdForStreamNumber(ref.stream || ref.code, "main");
+  if (styleId) applyStyleToElement(span, styleId);
+  parent.appendChild(span);
+  return true;
+}
+
+function appendV9TextWithMainRefs(parent, line) {
+  const refs = Array.isArray(line?.mainRefs) ? line.mainRefs : [];
+  const text = String(line?.text || "");
+  const runs = Array.isArray(line?.runs) ? line.runs : [];
+  if (!refs.length) {
+    appendTextWithRuns(parent, text, runs);
+    return;
+  }
+  let cursor = 0;
+  for (const ref of refs) {
+    const pos = Math.max(0, Math.min(text.length, Number(ref.localPos) || 0));
+    if (pos > cursor) appendTextWithRuns(parent, text.slice(cursor, pos), sliceRuns(runs, cursor, pos));
+    appendV9MainRefSpan(parent, ref);
+    cursor = Math.max(cursor, pos);
+  }
+  if (cursor < text.length) appendTextWithRuns(parent, text.slice(cursor), sliceRuns(runs, cursor, text.length));
+}
+
 // =====================================================================
 // בונה strips לראשי לפי בר־מצרא: כשפרשן נגמר, הראשי מתפשט לתוך שטחו.
 // =====================================================================
@@ -1053,7 +1373,7 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
     const rich = normalizeRichTextEntry(entry.rich || { text: entry.text || "", runs: entry.runs || [] });
     if (!rich.text) continue;
 
-    const continued = !!(entry.continues || entry._continues || entry._v9ContinuesFromSplit || entry._v9OpeningWordAllowed === false);
+    const continued = !!(entry.continues || entry._v9ContinuesFromSplit || entry._v9OpeningWordAllowed === false);
     const model = !continued && entry._v9OpeningWordAllowed !== false
       ? buildV9OpeningWordLayoutModel(rich.text, cfg.openingWordSettings || null, {
           isParagraphStart: true,
@@ -1081,6 +1401,10 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
 
     const flow = flowStreamThroughStrips(flowInput, paragraphStrips, mainMetrics, pageBottom);
     const lines = flow.lines || [];
+    const entryRefs = Array.isArray(entry.mainRefs) ? entry.mainRefs : [];
+    for (const line of lines) {
+      line.mainRefs = v9RefsForWordTokens(entryRefs, line.wordTokens || []);
+    }
     if (model && lines.length) {
       const first = lines[0];
       first.openingWord = { model, position: model.position, segment: model.parts?.segment || "" };
@@ -1400,7 +1724,11 @@ function buildPagePlan(pageContent, config) {
       // כדי שהמדידה בקנבס תתאים לפונט/גודל שיוצגו בפועל ב-DOM.
       const splitMetricsForStream = getSideMetricsForStream(single.id);
       
-      let parts = splitWordsByStrips(allText, splitMetricsForStream, rightStrips);
+      let parts = splitWordsByStripsWithLineEdgeGuard(allText, splitMetricsForStream, rightStrips, {
+        minLineEdgeFill: 0.82,
+        halfWidth: sideHalfWidth,
+        fullWidth: innerWidth,
+      });
       // fallback אם הפונקציה החדשה לא הצליחה (רצועות לא תקינות וכו')
       if (!parts) {
         parts = splitWordsAtVisualLine(allText, splitMetricsForStream, sideHalfWidth);
@@ -1415,8 +1743,21 @@ function buildPagePlan(pageContent, config) {
       const firstLen = parts.first.length;
       const firstRuns = sliceRuns(allRuns, leadingWs, leadingWs + firstLen);
       const secondRuns = sliceRuns(allRuns, leadingWs + firstLen + 1, leadingWs + allText.length);
-      pageContent.rightStream = { id: single.id, items: [parts.first], runs: firstRuns };
-      pageContent.leftStream  = { id: single.id, items: [parts.second], runs: secondRuns };
+      pageContent.rightStream = {
+        id: single.id,
+        items: [parts.first],
+        runs: firstRuns,
+        syntheticContinuationAfter: true,
+        originalStreamWasSplit: true,
+        columnSplitLineEdgeGuard: parts._v9ColumnSplitLineEdgeGuard || null,
+      };
+      pageContent.leftStream  = {
+        id: single.id,
+        items: [parts.second],
+        runs: secondRuns,
+        syntheticContinuationFrom: 'right',
+        originalStreamWasSplit: true,
+      };
     }
   }
 
@@ -1502,24 +1843,34 @@ function buildPagePlan(pageContent, config) {
     //                                                     לוקח את כל הרוחב
     // אם otherEndY <= effectiveMainBottomY: רק 3b (הצד השני נגמר ב-strips 1+2)
     // אם otherEndY >= pageBottomY: רק 3a (הצד השני מגיע עד תחתית הדף)
-    if (effectiveMainBottomY < otherEndY) {
+    const maxFullStrip3Lines = Number(o.maxFullStrip3Lines) > 0
+      ? Math.max(1, Math.floor(Number(o.maxFullStrip3Lines)))
+      : 0;
+    const fullStrip3LineHeight = Math.max(0, getSideMetricsForStream(streamData.id)?.lineHeight || sideLineH);
+    const fullStrip3StartY = (maxFullStrip3Lines > 0 && fullStrip3LineHeight > 0)
+      ? Math.max(otherEndY, pageBottomY - fullStrip3LineHeight * maxFullStrip3Lines)
+      : otherEndY;
+
+    if (effectiveMainBottomY < fullStrip3StartY) {
       strips.push({
         y_start: effectiveMainBottomY,
-        y_end: otherEndY,
+        y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
       });
     }
-    // משה 2026-05-10: בתרחיש 1, רק לצד אחד (השמאלי = החצי השני בסדר הקריאה)
-    // יש strip 3 ברוחב מלא. אחרת שני הצדדים יציירו על אותו אזור (חפיפה).
-    // הימני (החצי הראשון) — אם יש לו עודף, הוא ייכנס ל-carry-over.
+    // v9-limit-full-strip3-one-line: full-width continuation is still legal after the other side
+    // really ends. The one-line cap is reserved only for same-stream split
+    // bridge/orphan cases; distinct streams keep the full lower area.
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    if (otherEndY < pageBottomY && !suppressFullStrip3) {
+    const lockFullStrip3Start = maxFullStrip3Lines > 0 || o.lockFullStrip3Start === true;
+    if (fullStrip3StartY < pageBottomY && !suppressFullStrip3) {
       strips.push({
-        y_start: otherEndY,
+        y_start: fullStrip3StartY,
         y_end: pageBottomY,
         width: innerWidth,
         x: 0,
+        lockYStart: lockFullStrip3Start,
       });
     }
 
@@ -1534,7 +1885,12 @@ function buildPagePlan(pageContent, config) {
 
     const flowResult = flowStreamThroughStrips(
       streamRich,
-      strips.map(s => ({ y_start: s.y_start, width: s.width })),
+      strips.map(s => ({
+        y_start: s.y_start,
+        y_end: s.y_end,
+        width: s.width,
+        lockYStart: s.lockYStart === true,
+      })),
       streamMetrics,
       pageBottomY
     );
@@ -1555,6 +1911,8 @@ function buildPagePlan(pageContent, config) {
         fontSize: streamFontSize,
         lineHeightPx: streamLineH,
         runs: line.runs || [],
+        wordTokens: line.wordTokens || [],
+        mainRefs: line.mainRefs || [],
       });
     }
 
@@ -1577,7 +1935,11 @@ function buildPagePlan(pageContent, config) {
       overflowText: flowResult.overflowText,
       overflowRuns: flowResult.overflowRuns || [],
       overflowRich: flowResult.overflowRich || makeRichText(flowResult.overflowText || "", flowResult.overflowRuns || []),
-      continues: !!flowResult.overflowText,
+      columnSplitLineEdgeGuard: streamData.columnSplitLineEdgeGuard || null,
+      syntheticContinuationAfter: !!streamData.syntheticContinuationAfter,
+      syntheticContinuationFrom: streamData.syntheticContinuationFrom || "",
+      originalStreamWasSplit: !!streamData.originalStreamWasSplit,
+      continues: !!flowResult.overflowText || !!streamData.syntheticContinuationAfter,
     };
   }
 
@@ -1626,10 +1988,16 @@ function buildPagePlan(pageContent, config) {
       const strip = mainStrips.find(s =>
         line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
       if (!strip) continue;
+      // Final V9 opening-word guard:
+      // flowMainParagraphsThroughStrips already carries the analytically measured
+      // line.width. Window lines have reduced width; the opening-word host line
+      // is restored to full width before this point. Using strip.width here erases
+      // the measured window during DOM render.
+      const renderWidth = Number(line.width) > 0 ? line.width : strip.width;
       mainLines.push({
         x: strip.x,
         y: line.y,
-        width: strip.width,
+        width: renderWidth,
         words: line.words,
         text: line.text,
         isLast: line.isLast,
@@ -1719,12 +2087,19 @@ function buildPagePlan(pageContent, config) {
   // ברוחב מלא — אחרת הוא יחפוף עם strip 3 של השמאלי. השמאלי (חצי שני)
   // לוקח את הרוחב המלא בתחתית כי הוא ההמשך הטבעי של הקריאה.
   const isScenario1 = (scenario.name === 'one_long_split');
+  const isSameStreamSideSplit = isScenario1 || (
+    !!pageContent.rightStream &&
+    !!pageContent.leftStream &&
+    pageContent.rightStream.id === pageContent.leftStream.id
+  );
   let pass2Right = null;
   if (pageContent.rightStream) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
       suppressFullStrip3: isScenario1,
+      maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0,
+      lockFullStrip3Start: !!pass1Left,
     });
   }
   // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
@@ -1736,6 +2111,11 @@ function buildPagePlan(pageContent, config) {
     pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
+      // Column B may expand after column A ends. The old one-line cap solved
+      // centered orphan rows, but after source-continuation rendering exists it
+      // incorrectly prevents the surviving second column from using full width.
+      maxFullStrip3Lines: 0,
+      lockFullStrip3Start: !!(pass2Right || pass1Right),
     });
   }
   // איטרציה 3: pass2 ימני עם pass2 שמאלי (סופי)
@@ -1744,7 +2124,14 @@ function buildPagePlan(pageContent, config) {
       mainBottomY,
       otherSideEndY: cap(pass2Left.endY),
       suppressFullStrip3: isScenario1,
+      maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
+      lockFullStrip3Start: !!pass2Left,
     });
+  }
+
+  if (pass2Right && pass2Left && pass2Right.id === pass2Left.id) {
+    pass2Right.isColumnAContinuation = true;
+    pass2Right.continues = true;
   }
 
   if (pass2Right) {
@@ -2151,6 +2538,46 @@ function renderPagePlan(plan, pageEl, cfg) {
     return ' stream-color-' + (((n - 1) % 6) + 1);
   }
 
+  function measureV9RenderedContentWidth(el) {
+    try {
+      if (!el || !el.firstChild) return 0;
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      const rect = r.getBoundingClientRect();
+      r.detach && r.detach();
+      return rect && Number.isFinite(rect.width) ? rect.width : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function applyV9MeasuredStreamStretchGuard(lineEl, info) {
+    if (!lineEl || !info || !info.isCandidate) return;
+    if (lineEl.classList.contains('center')) return;
+    if (lineEl.classList.contains('justify')) return;
+    if (lineEl.classList.contains('v9-continuation-manual-stretch')) return;
+
+    const targetWidth = Number(info.targetWidth) || Number.parseFloat(lineEl.style.width) || 0;
+    if (!(targetWidth > 0)) return;
+
+    const text = String(lineEl.textContent || '').trim();
+    const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+    if (wordCount < 2) return;
+
+    const renderedWidth = measureV9RenderedContentWidth(lineEl);
+    if (!(renderedWidth > 0)) return;
+
+    const deficit = targetWidth - renderedWidth;
+    const fill = renderedWidth / targetWidth;
+    lineEl.dataset.v9RenderedFill = String(Math.max(0, Math.min(1, fill)).toFixed(4));
+
+    if (deficit > 1.5) {
+      lineEl.classList.add('justify');
+      lineEl.dataset.v9MeasuredStreamStretch = '1';
+      lineEl.dataset.v9MeasuredStretchDeficitPx = String(Math.round(deficit * 100) / 100);
+    }
+  }
+
   function drawBox(box, fontSize, lineHeight, fontFamily, colorClass) {
     const innerW = plan.pageBox.innerWidth;
     for (const line of box.lines) {
@@ -2163,14 +2590,23 @@ function renderPagePlan(plan, pageEl, cfg) {
       const continuationFillRatio = line.width > 0
         ? Math.max(0, Math.min(1, (line.naturalWidth || 0) / line.width))
         : 1;
-      const isContinuationCut = !!box.continues && line.isLast && !line.forcedBreak
-        && line.words && line.words.length > 1
-        && line.naturalWidth < line.width - 2;
+      const isV9StreamLikeStretchBox = String(box.role || box.type || box.kind || (box.id === "main" ? "main" : (box.id ? "stream" : ""))).toLowerCase() !== "main";
+      const isColumnAContinuation = !!box.isColumnAContinuation && line.isLast && !line.forcedBreak;
+      const isSourceContinuationEnd = !!box.syntheticContinuationAfter && line.isLast && !line.forcedBreak;
+      const isContinuationCandidate = (isSourceContinuationEnd || isColumnAContinuation || !!box.continues)
+        && line.isLast && !line.forcedBreak;
+      const isMetricsShort = (Number(line.naturalWidth) || 0) < (Number(line.width) || 0) - 2;
+      const isContinuationCut = isContinuationCandidate
+        && line.words && line.words.length > 0
+        && (isMetricsShort || isV9StreamLikeStretchBox);
       const useManualContinuationStretch = isContinuationCut && continuationFillRatio < 0.65;
-      const shouldJustify = ((!line.isLast && !line.forcedBreak) || isContinuationCut)
+      const isRegularMidLine = !line.isLast && !line.forcedBreak
+        && line.words && line.words.length > 1;
+      const isV9ForcedStreamJustify = isV9StreamLikeStretchBox && isRegularMidLine && !isMetricsShort;
+      const shouldJustify = (isRegularMidLine || isContinuationCut)
                              && !useManualContinuationStretch
                              && line.words && line.words.length > 1
-                             && (line.naturalWidth < line.width - 2);
+                             && (isMetricsShort || isV9StreamLikeStretchBox);
       // משה 2026-05-10: שורה אחרונה ברוחב מלא ממורכזת (לפי כללי ספרי קודש).
       const isFullWidthOrphan = line.isLast && line.width >= innerW - 5;
       const isParagraphEnd = (line.isLast || line.forcedBreak)
@@ -2249,14 +2685,32 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
+      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
+      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
+      if (isSourceContinuationEnd) {
+        lineEl.dataset.v9SourceContinuationEnd = "1";
+        if (box.columnSplitLineEdgeGuard) {
+          lineEl.dataset.v9ColumnSplitLastFill = String(box.columnSplitLineEdgeGuard.lastFill || "");
+          lineEl.dataset.v9ColumnSplitLastWords = String(box.columnSplitLineEdgeGuard.lastWords || "");
+          lineEl.dataset.v9ColumnSplitLeftLongPenalty = String(box.columnSplitLineEdgeGuard.leftLongPenalty || "0");
+        }
+      }
       // משה 2026-05-13: רינדור עם inline runs — בולד/הדגשה/צבע פר-מילה.
       // אם line.runs ריק, appendTextWithRuns ייצור textNode רגיל (זהה ל-textContent).
       if (line.openingWord && line.openingWord.model) {
         applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
       } else {
-        appendTextWithRuns(lineEl, line.text, line.runs);
+        appendV9TextWithMainRefs(lineEl, line);
       }
       pageEl.appendChild(lineEl);
+      applyV9MeasuredStreamStretchGuard(lineEl, {
+        isCandidate: isV9StreamLikeStretchBox && (isRegularMidLine || isContinuationCandidate),
+        targetWidth: line.width,
+      });
     }
   }
 
@@ -2566,7 +3020,7 @@ export async function buildPages(container, paragraphs, config) {
     // טוב יותר — הוא רק חשף חיתוכים שונים. עם הדגל לפחות אין חיתוכים
     // הנראים לעין. מי שרוצה זרימה חופשית של הדפדפן יכבה את ה-checkbox.
     preventMidLineSplit: true,
-    maxPages: 100,
+    maxPages: Number.MAX_SAFE_INTEGER,
   }, config || {});
   // משה 2026-05-16: מדיניות פיצול פסקאות/שורות.
   // noMidLineSplits = לא לפצל פיסקה באמצע במצב קשיח.
@@ -3937,6 +4391,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
       text: cleanPiece,
       runs: localRuns,
       rich: makeRichText(cleanPiece, localRuns),
+      mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),
       continues: !!(p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),
       _v9ContinuesFromSplit: !!p._v9ContinuesFromSplit,
       _v9OpeningWordAllowed: p._v9OpeningWordAllowed,
@@ -4061,7 +4516,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
         footerStreams.push(s);
       }
     }
-    return { mainText, mainRuns, mainParagraphs, mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
+    return { mainText, mainRuns, mainParagraphs, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
   }
 
   // Fallback ישן: levels של משנ"ב + mishnaSide. נשאר לתאימות עם מצבי
@@ -4103,6 +4558,6 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     if (footerStreams.length >= 1) leftStream = footerStreams.shift();
   }
 
-  return { mainText, mainRuns, mainParagraphs, mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
+  return { mainText, mainRuns, mainParagraphs, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
 }
 
