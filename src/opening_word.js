@@ -483,6 +483,81 @@ function fontFamily(font) {
   return FONT_STACKS[font] || font || "inherit";
 }
 
+
+const CENTERED_OPENING_LINE_FILL_RATIO = 0.92;
+
+function numberOrZero(value) {
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function isCenterAlignedElement(el, options = {}) {
+  if (options.centerFull) return true;
+  if (!el || typeof getComputedStyle !== "function") return false;
+  const cs = getComputedStyle(el);
+  const textAlign = String(cs.textAlign || "").toLowerCase();
+  const textAlignLast = String(cs.textAlignLast || "").toLowerCase();
+  if (textAlign === "center" || textAlignLast === "center") return true;
+  const display = String(cs.display || "").toLowerCase();
+  const justifyContent = String(cs.justifyContent || "").toLowerCase();
+  return (display.includes("flex") || display.includes("grid")) && justifyContent.includes("center");
+}
+
+function firstVisualLineWidth(el) {
+  if (!el || typeof document === "undefined" || typeof document.createRange !== "function") return 0;
+  const range = document.createRange();
+  try {
+    range.selectNodeContents(el);
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.width || rect.height);
+    if (!rects.length) return 0;
+    const firstTop = Math.round(rects[0].top);
+    const firstLineRects = rects.filter((rect) => Math.abs(rect.top - firstTop) < 2);
+    if (!firstLineRects.length) return 0;
+    const left = Math.min(...firstLineRects.map((rect) => rect.left));
+    const right = Math.max(...firstLineRects.map((rect) => rect.right));
+    return Math.max(0, right - left);
+  } finally {
+    if (typeof range.detach === "function") range.detach();
+  }
+}
+
+function measureSingleLineTextWidth(text, refEl, cs) {
+  if (typeof document === "undefined" || !document.body || typeof getComputedStyle !== "function") return 0;
+  const style = cs || getComputedStyle(refEl);
+  const probe = document.createElement("span");
+  probe.style.cssText = `
+    position: fixed;
+    inset-inline-start: -10000px;
+    top: 0;
+    visibility: hidden;
+    white-space: nowrap;
+    pointer-events: none;
+    font: ${style.font};
+    letter-spacing: ${style.letterSpacing};
+    word-spacing: ${style.wordSpacing};
+  `;
+  probe.textContent = String(text || "");
+  document.body.appendChild(probe);
+  const width = probe.getBoundingClientRect().width || 0;
+  probe.remove();
+  return width;
+}
+
+function isCenteredPartialOpeningLine(el, text, options = {}) {
+  if (!isCenterAlignedElement(el, options)) return false;
+  if (!el || typeof getComputedStyle !== "function") return !!options.centerFull;
+
+  const cs = getComputedStyle(el);
+  const hostRect = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : null;
+  const hostWidth = (hostRect && hostRect.width) || numberOrZero(cs.width);
+  if (!hostWidth) return true;
+
+  const lineWidth = firstVisualLineWidth(el) || measureSingleLineTextWidth(text, el, cs);
+  if (!lineWidth) return true;
+
+  return lineWidth < hostWidth * CENTERED_OPENING_LINE_FILL_RATIO;
+}
+
 function applySpanStyle(span, settings, effectivePosition) {
   span.className = `opw-segment opw-${effectivePosition}`;
   span.style.fontFamily = fontFamily(settings.font);
@@ -499,7 +574,8 @@ function setWrappedText(el, parts, settings, options = {}) {
   const len = plainLength(fullText);
   if (options.skipOrphan && isOrphanText(fullText)) return false;
 
-  const shortFallback = (settings.skipHeadings && len < settings.headingMin) || options._forceRaised;
+  const centeredPartialLine = settings.position === "dropped" && isCenteredPartialOpeningLine(el, fullText, options);
+  const shortFallback = (settings.skipHeadings && len < settings.headingMin) || options._forceRaised || centeredPartialLine;
   const effectivePosition = settings.position === "dropped" && !shortFallback ? "dropped" : "raised";
 
   el.textContent = "";
@@ -509,8 +585,11 @@ function setWrappedText(el, parts, settings, options = {}) {
   span.textContent = parts.segment;
   el.appendChild(span);
   if (parts.suffix) el.appendChild(document.createTextNode(parts.suffix));
-  if (options.centerFull && effectivePosition === "raised") {
+  if ((options.centerFull || centeredPartialLine) && effectivePosition === "raised") {
     el.classList.add("opw-center-full");
+  }
+  if (centeredPartialLine) {
+    el.dataset.opwCenteredPartial = "1";
   }
   el.classList.add("opw-host");
   el.dataset.opwApplied = "1";
@@ -639,7 +718,15 @@ function applyStreamOpeningWordsV9(pageEl, streamSettings) {
   }
 }
 
+function allowOpeningWordPreRenderMutation(root) {
+  if (typeof window === "undefined") return true;
+  if (window.__ravtextPreRenderPageDecoratorActive) return true;
+  if (!root?.isConnected) return true;
+  return false;
+}
+
 export function applyOpeningWordsToPage(pageEl, mainSettings, streamSettings) {
+  if (!allowOpeningWordPreRenderMutation(pageEl)) return;
   if (!pageEl || pageEl.classList.contains("page-placeholder")) return;
 
   const globalSettings = mainSettings || getOpeningWordSettings();
@@ -662,40 +749,29 @@ export function applyOpeningWordsToPage(pageEl, mainSettings, streamSettings) {
   applyStreamOpeningWords(pageEl, streams);
 }
 
-export function applyOpeningWordsToPages(container) {
-  const mainSettings = getOpeningWordSettings();
-  const streamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
-  const hasStreamOpening = Object.values(streamSettings)
-    .some((settings) => applyOpeningWordGlobalOverrides(settings)?.opwEnabled);
-  if (!mainSettings.enabled && !hasStreamOpening) return;
 
-  container.querySelectorAll(".page:not(.page-placeholder)").forEach((page) => {
-    applyOpeningWordsToPage(page, mainSettings, streamSettings);
-  });
+const OPENING_WORD_PRE_RENDER_DECORATOR_NAME = "opening_word";
 
-  const prevProcessor = container.__processRealizedPage;
-  if (!prevProcessor || !prevProcessor.__openingWordWrapped) {
-    const processor = function (page, idx) {
-      if (typeof prevProcessor === "function") prevProcessor(page, idx);
-      applyOpeningWordsToPage(page, mainSettings, streamSettings);
-    };
-    processor.__openingWordWrapped = true;
-    container.__processRealizedPage = processor;
-  }
+function registerOpeningWordPreRenderDecorator() {
+  if (typeof window === "undefined") return;
+  const registry = window.__ravtextPreRenderPageDecorators || (window.__ravtextPreRenderPageDecorators = []);
+  if (registry.some((fn) => fn && fn.__ravtextName === OPENING_WORD_PRE_RENDER_DECORATOR_NAME)) return;
 
-  const baseRealize = container.__realizePage;
-  if (typeof baseRealize !== "function" || baseRealize.__openingWordWrapped) return;
-
-  const wrapped = function (idx) {
-    baseRealize(idx);
-    const page = typeof container.__getPageElement === "function"
-      ? container.__getPageElement(idx)
-      : container.querySelector(`.page[data-page-index="${idx}"]`);
-    if (page) applyOpeningWordsToPage(page, mainSettings, streamSettings);
+  const decorator = (page) => {
+    if (!page || page.classList?.contains("page-placeholder")) return;
+    applyOpeningWordsToPage(page);
   };
-  wrapped.__openingWordWrapped = true;
-  container.__realizePage = wrapped;
+  decorator.__ravtextName = OPENING_WORD_PRE_RENDER_DECORATOR_NAME;
+  decorator.__ravtextPreRenderOrder = 20;
+  registry.push(decorator);
 }
+
+export function applyOpeningWordsToPages(container) {
+  registerOpeningWordPreRenderDecorator();
+  if (container?.dataset) container.dataset.openingWordPreRenderRegistered = "1";
+}
+
+registerOpeningWordPreRenderDecorator();
 
 export function extractOpeningSegmentForTest(text, rawSettings = {}) {
   return extractOpeningSegment(text, normalizeSettings(rawSettings));

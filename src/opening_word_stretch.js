@@ -205,7 +205,15 @@ function processRoot(root) {
   for (const opw of opws) processOpeningWord(opw, root);
 }
 
+function allowOpeningWordStretchPreRenderMutation(root) {
+  if (typeof window === "undefined") return true;
+  if (window.__ravtextPreRenderPageDecoratorActive) return true;
+  if (!root?.isConnected) return true;
+  return false;
+}
+
 export function applyOpeningWordStretchToPage(pageEl) {
+  if (!allowOpeningWordStretchPreRenderMutation(pageEl)) return;
   if (!pageEl) return;
   const roots = Array.from(pageEl.querySelectorAll(".talmud-main, .page-main, .stream, .v9-page"));
   if (!roots.length) {
@@ -215,9 +223,26 @@ export function applyOpeningWordStretchToPage(pageEl) {
   for (const root of roots) processRoot(root);
 }
 
-export function applyOpeningWordStretchToPages(container) {
-  if (!container) return;
-  container.querySelectorAll(".page:not(.page-placeholder)").forEach(page => {
+
+const OPENING_WORD_STRETCH_PRE_RENDER_DECORATOR_NAME = "opening_word_stretch";
+
+function registerOpeningWordStretchPreRenderDecorator() {
+  if (typeof window === "undefined") return;
+  const registry = window.__ravtextPreRenderPageDecorators || (window.__ravtextPreRenderPageDecorators = []);
+  if (registry.some((fn) => fn && fn.__ravtextName === OPENING_WORD_STRETCH_PRE_RENDER_DECORATOR_NAME)) return;
+
+  const decorator = (page) => {
+    if (!page || page.classList?.contains("page-placeholder")) return;
     applyOpeningWordStretchToPage(page);
-  });
+  };
+  decorator.__ravtextName = OPENING_WORD_STRETCH_PRE_RENDER_DECORATOR_NAME;
+  decorator.__ravtextPreRenderOrder = 30;
+  registry.push(decorator);
 }
+
+export function applyOpeningWordStretchToPages(container) {
+  registerOpeningWordStretchPreRenderDecorator();
+  if (container?.dataset) container.dataset.openingWordStretchPreRenderRegistered = "1";
+}
+
+registerOpeningWordStretchPreRenderDecorator();

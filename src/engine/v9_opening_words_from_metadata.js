@@ -102,6 +102,41 @@ function blockContinuationOpeningWords(container) {
   return blocked;
 }
 
+
+function clearV9OpeningWindowStretch(line) {
+  if (!line?.style) return;
+  line.classList?.remove("v9-continuation-manual-stretch", "justify");
+  line.style.wordSpacing = "";
+  line.style.letterSpacing = "";
+  line.style.transform = "";
+  line.style.transformOrigin = "";
+  line.dataset.v9OpeningWindowStretchCleared = "1";
+}
+
+function isOpeningWindowGeometryFollower(host, line, hostTop, lineTop, windowBottom) {
+  if (!host || !line) return false;
+  if (!isMainLine(line)) return false;
+  if (pageSortIndex(line) !== pageSortIndex(host)) return false;
+
+  const top = Number(lineTop);
+  const startTop = Number(hostTop);
+  const bottom = Number(windowBottom);
+  if (!Number.isFinite(top) || !Number.isFinite(startTop) || !Number.isFinite(bottom)) return false;
+  if (top <= startTop + 0.5 || top >= bottom) return false;
+
+  const hostLeft = stylePx(host, "left");
+  const lineLeft = stylePx(line, "left");
+  const hostWidth = stylePx(host, "width");
+  const lineWidth = stylePx(line, "width");
+  if (hostWidth <= 0 || lineWidth <= 0) return true;
+
+  const hostRight = hostLeft + hostWidth;
+  const lineRight = lineLeft + lineWidth;
+  return Math.abs(hostLeft - lineLeft) < 4 ||
+    Math.abs(hostRight - lineRight) < 4 ||
+    lineWidth >= hostWidth - 0.5;
+}
+
 function applyDroppedOpeningWindowIndents(container) {
   const lines = Array.from(container.querySelectorAll(".v9-page .v9-line, .v9-line"))
     .filter(isMainLine)
@@ -131,9 +166,9 @@ function applyDroppedOpeningWindowIndents(container) {
     for (let i = startIndex + 1; i < lines.length && followers < dropLines - 1; i++) {
       const line = lines[i];
       if (pageSortIndex(line) !== hostPage) break;
-      if (!sameParagraph(host, line)) break;
-
       const top = stylePx(line, "top");
+      const geometryFollower = isOpeningWindowGeometryFollower(host, line, hostTop, top, windowBottom);
+      if (!sameParagraph(host, line) && !geometryFollower) break;
       if (top <= hostTop + 0.5) continue;
       if (top >= windowBottom) break;
 
@@ -157,6 +192,7 @@ function applyDroppedOpeningWindowIndents(container) {
       line.dataset.v9OpeningWindowFollow = "1";
       line.dataset.v9OpeningWindowReservePx = String(Math.round(reserve));
       line.dataset.v9OpeningWindowHost = host.dataset.v9ParagraphId || host.textContent?.slice(0, 16) || "unknown";
+      clearV9OpeningWindowStretch(line);
       followers += 1;
       adjusted += 1;
     }
@@ -198,9 +234,34 @@ function wrapLine(line, settings) {
   return true;
 }
 
+function allowV9OpeningWordsPreRenderMutation(root) {
+  if (typeof window === "undefined") return true;
+  if (window.__ravtextPreRenderPageDecoratorActive) return true;
+  if (!root?.isConnected) return true;
+  return false;
+}
+
+const V9_OPENING_WORDS_PRE_RENDER_DECORATOR_NAME = "v9_opening_words_from_metadata";
+
+function registerV9OpeningWordsPreRenderDecorator() {
+  if (typeof window === "undefined") return;
+  const registry = window.__ravtextPreRenderPageDecorators || (window.__ravtextPreRenderPageDecorators = []);
+  if (registry.some((fn) => fn && fn.__ravtextName === V9_OPENING_WORDS_PRE_RENDER_DECORATOR_NAME)) return;
+
+  const decorator = (page) => {
+    if (!page || page.classList?.contains("page-placeholder")) return;
+    applyV9OpeningWordsFromMetadata(page);
+  };
+  decorator.__ravtextName = V9_OPENING_WORDS_PRE_RENDER_DECORATOR_NAME;
+  decorator.__ravtextPreRenderOrder = 25;
+  registry.push(decorator);
+}
+
 export function applyV9OpeningWordsFromMetadata(container) {
+  registerV9OpeningWordsPreRenderDecorator();
+  if (!allowV9OpeningWordsPreRenderMutation(container)) return { applied: 0, reason: "pre-render-registered" };
   const settings = getOpeningWordSettings();
-  if (!settings?.enabled) return { applied: 0, reason: "disabled" };
+  const settingsEnabled = !!settings?.enabled;
 
   const blocked = blockContinuationOpeningWords(container);
 
@@ -212,7 +273,7 @@ export function applyV9OpeningWordsFromMetadata(container) {
   // only removes continuation mistakes and tightens windows that were already
   // measured during layout.
   const lines = Array.from(container.querySelectorAll('.v9-page .v9-line[data-v9-source-stream="main"][data-v9-paragraph-start="1"]'));
-  const allowLateMetadataOpeningWords = settings?.allowLateMetadataOpeningWords === true;
+  const allowLateMetadataOpeningWords = settingsEnabled && settings?.allowLateMetadataOpeningWords === true;
   let applied = 0;
   if (allowLateMetadataOpeningWords) {
     for (const line of lines) if (wrapLine(line, settings)) applied += 1;
@@ -232,3 +293,5 @@ export function applyV9OpeningWordsFromMetadata(container) {
   if (typeof window !== "undefined") window.__ravtextLastV9OpeningWords = result;
   return result;
 }
+
+registerV9OpeningWordsPreRenderDecorator();
