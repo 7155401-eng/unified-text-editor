@@ -8,6 +8,12 @@ import {
   buildDynamicStyleMap,
 } from "./word_extractor/word_extractor_mammoth.js";
 import { buildDefaultStreamMapping } from "./word_extractor/word_extractor_streams.js";
+import {
+  computeChapterDocId,
+  saveChapterExtraction,
+  getChapterExtraction,
+} from "./chapter_cache/chapter_cache_db.js";
+
 
 const CARD_ID = "we-static-connection-probe";
 const LAUNCHER_ID = "word-chapter-manager-launcher";
@@ -25,6 +31,10 @@ let chaptersOpen = false;
 let busyChapter = false;
 let lastImported = null;
 let importedKeys = new Set();
+let docId = null;
+let cachedIds = new Set();
+let importAllBusy = false;
+let importAllCancel = false;
 
 const $ = (root, selector) => root?.querySelector?.(selector) || null;
 const $$ = (root, selector) => Array.from(root?.querySelectorAll?.(selector) || []);
@@ -188,8 +198,13 @@ function renderCard() {
       <button type="button" data-wh-next ${nextIndex < 0 ? "disabled" : ""} style="border:1px solid #7c3aed;border-radius:8px;background:white;padding:6px 10px;font-weight:700;cursor:pointer">
         ייבא הפרק הבא
       </button>
+      <button type="button" data-wh-import-all ${importAllBusy || !heads.length ? "disabled" : ""} style="border:1px solid #16a34a;border-radius:8px;background:white;padding:6px 10px;font-weight:700;cursor:pointer;color:#15803d">
+        ${importAllBusy ? "שומר ל-cache..." : "שמור הכל ל-cache"}
+      </button>
+      ${importAllBusy ? `<button type="button" data-wh-cancel-import-all style="border:1px solid #dc2626;border-radius:8px;background:white;padding:6px 10px;cursor:pointer;color:#dc2626">ביטול</button>` : ""}
+      ${cachedIds.size > 0 ? `<button type="button" data-wh-clear-cache style="border:1px solid #94a3b8;border-radius:8px;background:white;padding:6px 8px;font-size:12px;cursor:pointer;color:#64748b">נקה cache (${cachedIds.size})</button>` : ""}
       <span style="font-size:12px;color:#475569">
-        ${fmt(heads.length)} פרקים לפי H${selectedLevel} · ${fmt(importedCount)} יובאו
+        ${fmt(heads.length)} פרקים לפי H${selectedLevel} · ${fmt(importedCount)} יובאו${cachedIds.size > 0 ? ` · ${cachedIds.size} ב-cache` : ""}
       </span>
     </div>
 
@@ -222,9 +237,12 @@ function renderChapterIndex(heads, nextIndex) {
                 מתחיל בפסקה ${fmt(head.start + 1)}${imported ? " · יובא" : ""}${isNext ? " · הבא בתור" : ""}
               </div>
             </div>
+            <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
             <button type="button" data-wh-load="${index}" style="border:1px solid #cbd5e1;border-radius:8px;background:white;padding:7px 10px;font-weight:700;cursor:pointer">
-              ${busyChapter ? "מכין..." : imported ? "ייבא שוב" : "ייבא פרק זה"}
+              ${busyChapter ? "מכין..." : cachedIds.has(chapterKey(selectedLevel, index)) ? "פתח מ-cache" : imported ? "ייבא שוב" : "ייבא פרק זה"}
             </button>
+              ${cachedIds.has(chapterKey(selectedLevel, index)) ? `<span style="font-size:10px;color:#15803d;background:#dcfce7;border-radius:4px;padding:1px 5px">cache ✓</span>` : ""}
+            </div>
           </div>
         `;
       }).join("")}
@@ -641,7 +659,22 @@ async function importChapter(chapterIndex) {
   busyChapter = true;
   renderCard();
 
+  const chapKey = chapterKey(selectedLevel, chapterIndex);
+
   try {
+    // Serve from IndexedDB cache when available
+    if (docId && cachedIds.has(chapKey)) {
+      const cached = await getChapterExtraction(docId, chapKey).catch(() => null);
+      if (cached) {
+        const chapter = await buildChapterDocx(chapterIndex);
+        importedKeys.add(chapKey);
+        lastImported = { level: selectedLevel, index: chapterIndex, title: cached.title || chapter?.title || "", at: Date.now() };
+        loadExtractedChapter(cached.title || chapter?.title || "", cached.result);
+        ensureLauncher();
+        return;
+      }
+    }
+
     const chapter = await buildChapterDocx(chapterIndex);
     if (!chapter) throw new Error("לא נמצא פרק לייבוא.");
 
@@ -664,7 +697,15 @@ async function importChapter(chapterIndex) {
       }
     );
 
-    importedKeys.add(chapterKey(selectedLevel, chapterIndex));
+    // Save to IndexedDB cache
+    if (docId) {
+      saveChapterExtraction(docId, chapKey, { title: chapter.title, result }).then(() => {
+        cachedIds.add(chapKey);
+        localStorage.setItem("ravtext-cc-" + docId, JSON.stringify([...cachedIds]));
+      }).catch(() => {});
+    }
+
+    importedKeys.add(chapKey);
     lastImported = {
       level: selectedLevel,
       index: chapterIndex,
@@ -680,6 +721,51 @@ async function importChapter(chapterIndex) {
     busyChapter = false;
     renderCard();
   }
+}
+
+async function importAllChapters() {
+  if (importAllBusy || busyChapter) return;
+  importAllBusy = true;
+  importAllCancel = false;
+  renderCard();
+
+  const heads = currentHeads();
+  for (let i = 0; i < heads.length; i++) {
+    if (importAllCancel) break;
+    const chapKey = chapterKey(selectedLevel, i);
+    if (cachedIds.has(chapKey)) continue;
+
+    try {
+      const chapter = await buildChapterDocx(i);
+      if (!chapter) continue;
+
+      loading(`שומר ל-cache: "${chapter.title}" (${i + 1}/${heads.length})...`);
+      const buffer = chapter.buffer.slice(0);
+
+      const [sources, notesHtmlMap] = await Promise.all([
+        find_all_note_sources(buffer.slice(0)),
+        buildNotesHtmlMapForChapter(buffer.slice(0)),
+      ]);
+
+      const selected = buildSelectedSources(sources);
+      const result = await docx_extract_simple(
+        buffer.slice(0),
+        selected,
+        { notesHtmlMap, skipEmptyNotes: true, markerMatchMode: "starts" }
+      );
+
+      if (docId) {
+        await saveChapterExtraction(docId, chapKey, { title: chapter.title, result });
+        cachedIds.add(chapKey);
+        localStorage.setItem("ravtext-cc-" + docId, JSON.stringify([...cachedIds]));
+      }
+      renderCard();
+      await nextFrame();
+    } catch (_) {}
+  }
+
+  importAllBusy = false;
+  renderCard();
 }
 
 function onFileChange(ev) {
@@ -703,6 +789,17 @@ function onFileChange(ev) {
   chaptersOpen = false;
   importedKeys = new Set();
   lastImported = null;
+  docId = null;
+  cachedIds = new Set();
+  importAllBusy = false;
+  importAllCancel = false;
+
+  computeChapterDocId(nextFile).then(id => {
+    docId = id;
+    const raw = id ? localStorage.getItem("ravtext-cc-" + id) : null;
+    cachedIds = raw ? new Set(JSON.parse(raw)) : new Set();
+    renderCard();
+  }).catch(() => {});
 
   const thisToken = ++token;
   loading("הקובץ נקלט. הספירה תתחיל אחרי הסריקה הרגילה...");
@@ -735,6 +832,30 @@ function onCardClick(ev) {
     ev.preventDefault();
     const index = nextChapterIndex();
     if (index >= 0) importChapter(index);
+    return;
+  }
+
+  const importAll = ev.target.closest("[data-wh-import-all]");
+  const cancelAll = ev.target.closest("[data-wh-cancel-import-all]");
+  const clearCache = ev.target.closest("[data-wh-clear-cache]");
+
+  if (importAll) {
+    ev.preventDefault();
+    importAllChapters();
+    return;
+  }
+
+  if (cancelAll) {
+    ev.preventDefault();
+    importAllCancel = true;
+    return;
+  }
+
+  if (clearCache) {
+    ev.preventDefault();
+    if (docId) localStorage.removeItem("ravtext-cc-" + docId);
+    cachedIds = new Set();
+    renderCard();
     return;
   }
 
