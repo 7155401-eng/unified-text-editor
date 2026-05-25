@@ -4,19 +4,19 @@ import { build, defineConfig } from 'vite'
 // directly instead of `npm run build`. Several deployment providers allow the
 // build command to bypass package.json prebuild hooks; importing these scripts
 // here guarantees the generated bundle is built from the patched V9 source.
-import './scripts/apply_v9_limit_full_strip3one_line_patch.mjs'
+import './scripts/apply_v9_limit_full_strip3_one_line_patch.mjs'
 import './scripts/apply_v9_column_continuation_flag_patch.mjs'
 import './scripts/apply_v9_column_split_line_edge_guard_patch.mjs'
 import './scripts/apply_v9_column_split_balance_and_expansion_patch.mjs'
 import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
 
 // משה 2026-05-07: base relative ('./') כדי שיעבוד גם ב-Vercel (root) וגם
-// ב-GitHub Pages (subpath). אין צורך במשתנה סביבה.
+// ב-GitHub Pages (subpath). אין צורך במשנה סביבתית.
 const BASE = process.env.VITE_BASE || './'
 
 // משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
-// עם slash בתחילת הנתיב. זה מונע מצב שבו דפדפן/Cloudflare ממשיכים להגיש
-// CSS ישן וקבצים ציבוריים לגרום "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
+// עם slash בתחילת הנתיב. זה מונע מצב שבו הדפדפן/Cloudflare ממשיכים להגיש
+// CSS ישן וגורמים ללאגים "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
 const PUBLIC_CACHE_BUST_FILES = [
   'styles.css',
   'theme-base-refresh.css',
