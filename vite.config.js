@@ -16,8 +16,8 @@ import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
 const BASE = process.env.VITE_BASE || './'
 
 // משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
-// עם slash בתחילת הנתיב. זה מונע מצב שבו דפדפן/Cloudflare ממשיכים להגיש
-// CSS ישן וגורמים ללחצים "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
+// עם slash בתחילת הנתיב. זה מונע מצב שדפדפן/Cloudflare ממשיכים להגיש
+// CSS ישן ומובילים לרגרים "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
 const PUBLIC_CACHE_BUST_FILES = [
   'styles.css',
   'theme-base-refresh.css',
@@ -73,10 +73,10 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
       },
     });
 
-    // Wrangler refuses to upload a generated Pages _worker.js inside the assets
-    // directory unless the asset directory explicitly contains .assetsignore.
-    // The file must be in dist, not only in the repository root.
-    writeFileSync('dist/.assetsignore', '', 'utf8');
+    // In Workers Static Assets mode the worker must be deployed as the Worker
+    // script (`main` in wrangler.jsonc), not uploaded as a public static asset.
+    // Wrangler requires the asset directory's .assetsignore to exclude it.
+    writeFileSync('dist/.assetsignore', '_worker.js\n', 'utf8');
   },
 };
 
