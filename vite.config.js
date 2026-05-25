@@ -1,4 +1,5 @@
 import { build, defineConfig } from 'vite'
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 
 // V9 critical source patches must run even when the host calls `vite build`
 // directly instead of `npm run build`. Several deployment providers allow the
@@ -10,13 +11,13 @@ import './scripts/apply_v9_column_split_line_edge_guard_patch.mjs'
 import './scripts/apply_v9_column_split_balance_and_expansion_patch.mjs'
 import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
 
-// משה 2026-05-07: base relative ('./') כדי שיעבוד גם ב-Vercel (root) וגם
-// ב-GitHub Pages (subpath). אין צורך במשתנה סביבה.
+// משה 2026-05-07: base relative ('./')כדי שיעבוד גם ב-Vercel (root) וגם
+// ב-GitHub Pages (subpath). אין צורך במשנה סביבתי.
 const BASE = process.env.VITE_BASE || './'
 
 // משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
 // עם slash בתחילת הנתיב. זה מונע מצב שבו דפדפן/Cloudflare ממשיכים להגיש
-// CSS ישן ומוביל לרגרסיות "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
+// CSS ישן ומוביום לרגרים "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
 const PUBLIC_CACHE_BUST_FILES = [
   'styles.css',
   'theme-base-refresh.css',
@@ -71,6 +72,19 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
         },
       },
     });
+
+    // Support both Cloudflare deployment modes:
+    //
+    // 1. Cloudflare Pages Git/Direct deployment expects Advanced Mode workers inside the
+    //    output directory as `dist/_worker.js`.
+    // 2. Wrangler Workers Static Assets can use `worker-dist/_worker.js` as `main` and
+    //    `dist` as the assets directory.
+    //
+    // Keep both files. Hide the Pages copy from Wrangler's static asset upload
+    // so it is not published as a public asset when `wrangler.jsonc` is used.
+    mkdirSync('dist', { recursive: true });
+    copyFileSync('worker-dist/_worker.js', 'dist/_worker.js');
+    writeFileSync('dist/.assetsignore', '_worker.js\n', 'utf8');
   },
 };
 
