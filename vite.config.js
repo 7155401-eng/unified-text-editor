@@ -1,5 +1,4 @@
 import { build, defineConfig } from 'vite'
-import { writeFileSync } from 'node:fs'
 
 // V9 critical source patches must run even when the host calls `vite build`
 // directly instead of `npm run build`. Several deployment providers allow the
@@ -12,12 +11,12 @@ import './scripts/apply_v9_column_split_balance_and_expansion_patch.mjs'
 import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
 
 // משה 2026-05-07: base relative ('./') כדי שיעבוד גם ב-Vercel (root) וגם
-// ב-GitHub Pages (subpath). אין צורך במשנה סביבתי.
+// ב-GitHub Pages (subpath). אין צורך במשתנה סביבה.
 const BASE = process.env.VITE_BASE || './'
 
 // משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
-// עם slash בתחילת הנתיב. זה מונע מצב שדפדפן/Cloudflare ממשיכים להגיש
-// CSS ישן ומובילים לרגרים "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
+// עם slash בתחילת הנתיב. זה מונע מצב שבו דפדפן/Cloudflare ממשיכים להגיש
+// CSS ישן ומוביל לרגרסיות "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
 const PUBLIC_CACHE_BUST_FILES = [
   'styles.css',
   'theme-base-refresh.css',
@@ -56,8 +55,8 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
       publicDir: false,
       build: {
         target: 'es2022',
-        outDir: 'dist',
-        emptyOutDir: false,
+        outDir: 'worker-dist',
+        emptyOutDir: true,
         minify: false,
         sourcemap: false,
         lib: {
@@ -72,11 +71,6 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
         },
       },
     });
-
-    // In Workers Static Assets mode the worker must be deployed as the Worker
-    // script (`main` in wrangler.jsonc), not uploaded as a public static asset.
-    // Wrangler requires the asset directory's .assetsignore to exclude it.
-    writeFileSync('dist/.assetsignore', '_worker.js\n', 'utf8');
   },
 };
 
