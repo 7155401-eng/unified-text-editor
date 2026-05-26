@@ -302,6 +302,5 @@ export function normalizeServerScanState(serverScan, file) {
     total: serverScan.total || 0,
     chars: serverScan.chars || 0,
     words: serverScan.words || 0,
-    partsMeta: serverScan.partsMeta || [],
   };
 }

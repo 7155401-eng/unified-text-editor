@@ -236,7 +236,6 @@ async function importDocx(arrayBuffer, id) {
     total: Object.values(h).reduce((a, b) => a + b, 0),
     chars: full.length,
     words: countWords(full),
-    partsMeta,
     diagnostics,
   };
 }
