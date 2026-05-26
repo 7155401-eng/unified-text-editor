@@ -351,6 +351,123 @@ async function extractChapterContent(arrayBuffer, level, index, id) {
   };
 }
 
+const ICON_MAP = {
+  footnote: '\u{1F4DD} שוליים',
+  endnote: '\u{1F4CB} סיום',
+  comment: '\u{1F4AC} בלון',
+};
+
+async function scanNoteSources(arrayBuffer, id) {
+  if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error("לא התקבל קובץ DOCX.");
+  if (arrayBuffer.byteLength > MAX_DOCX_BYTES) {
+    const err = new Error(`DOCX גדול מדי. מגבלה: ${MAX_DOCX_BYTES} bytes.`);
+    err.status = 413;
+    throw err;
+  }
+
+  const started = Date.now();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const sources = [];
+
+  function noteText(innerXml) {
+    const out = [];
+    const re = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    let m;
+    while ((m = re.exec(String(innerXml || "")))) out.push(xmlDecode(m[1]));
+    return out.join('');
+  }
+
+  async function scanNoteFile(xmlFileName, noteTag, srcType, heb, positiveOnly) {
+    const local = [];
+    try {
+      const zf = zip.file(xmlFileName);
+      if (!zf) return local;
+      const xml = await zf.async("string");
+      const markers = {};
+      let unmarked = 0;
+      const noteRe = new RegExp(`<w:${noteTag}\\b([^>]*)>([\\s\\S]*?)<\\/w:${noteTag}>`, 'g');
+      let match;
+      while ((match = noteRe.exec(xml)) !== null) {
+        const attrs = match[1];
+        const inner = match[2];
+        const idM = attrs.match(/\bw:id="([^"]*)"/);
+        if (!idM) continue;
+        const idVal = parseInt(idM[1], 10);
+        if (Number.isNaN(idVal)) continue;
+        if (positiveOnly ? idVal <= 0 : idVal < 0) continue;
+        if (/\bw:type="(?:separator|continuationSeparator)"/.test(attrs)) continue;
+        const text = noteText(inner);
+        const m2 = text.match(/@(\d+)/);
+        if (m2) markers[m2[1]] = (markers[m2[1]] || 0) + 1;
+        else unmarked++;
+      }
+      for (const m of Object.keys(markers).sort((a, b) => +a - +b)) {
+        local.push({ id: `${srcType}_@${m}`, source_type: srcType, marker: m, has_at: true, label: `${heb} @${m}`, count: markers[m], icon: ICON_MAP[srcType] || '' });
+      }
+      if (unmarked > 0) {
+        local.push({ id: `${srcType}_none`, source_type: srcType, marker: null, has_at: false, label: `${heb} ללא סימון (${unmarked})`, count: unmarked, icon: ICON_MAP[srcType] || '' });
+      }
+    } catch (e) { /* skip */ }
+    return local;
+  }
+
+  const [fnSrc, enSrc, cmSrc] = await Promise.all([
+    scanNoteFile('word/footnotes.xml', 'footnote', 'footnote', 'שוליים', true),
+    scanNoteFile('word/endnotes.xml', 'endnote', 'endnote', 'סיום', true),
+    scanNoteFile('word/comments.xml', 'comment', 'comment', 'בלון', false),
+  ]);
+  sources.push(...fnSrc, ...enSrc, ...cmSrc);
+
+  try {
+    const docFile = zip.file('word/document.xml');
+    if (docFile) {
+      const docXml = await docFile.async("string");
+      const docMarkers = new Set();
+      const reAll = /@(\d+)/g;
+      let mm;
+      while ((mm = reAll.exec(docXml)) !== null) docMarkers.add(mm[1]);
+      const exist = new Set(sources.filter(s => s.marker).map(s => s.marker));
+      for (const m of Array.from(docMarkers).filter(x => !exist.has(x)).sort((a, b) => +a - +b)) {
+        const c = (docXml.match(new RegExp('@' + m, 'g')) || []).length;
+        sources.push({ id: `inline_@${m}`, source_type: 'footnote', marker: m, has_at: true, label: `inline @${m}`, count: c, icon: ICON_MAP.footnote });
+      }
+    }
+  } catch (e) { /* */ }
+
+  log("log", "streams_scan_success", { requestId: id, bytes: arrayBuffer.byteLength, sources: sources.length, elapsedMs: Date.now() - started });
+  return { ok: true, serverSide: true, requestId: id, sources };
+}
+
+function isStreamsScanPath(path) {
+  return path === '/api/word-streams-scan';
+}
+
+async function handleStreamsScan(request) {
+  const id = request.headers.get("x-docx-request-id") || requestId();
+  if (request.method === "OPTIONS") return optionsResponse(id);
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "Method not allowed" }, 405, id);
+  try {
+    let arrayBuffer;
+    const ct = (request.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const json = await request.json();
+      if (!json?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
+      const raw = atob(json.docx);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      arrayBuffer = bytes.buffer;
+    } else {
+      arrayBuffer = await request.arrayBuffer();
+    }
+    log("log", "streams_scan_body_loaded", { requestId: id, bytes: arrayBuffer.byteLength });
+    const result = await scanNoteSources(arrayBuffer, id);
+    return jsonResponse({ ...result, scannedAt: Date.now() }, 200, id);
+  } catch (error) {
+    log("error", "streams_scan_failed", { requestId: id, error: error?.message || String(error) });
+    return jsonResponse({ ok: false, serverSide: true, requestId: id, error: error?.message || String(error || "Server error") }, error?.status || 500, id);
+  }
+}
+
 function isDocxImportPath(path) {
   return path === "/api/ravtext-docx-import" ||
     path === "/api/word-chapters-import" ||
@@ -458,6 +575,10 @@ export default {
       return handleClientLog(request);
     }
 
+    if (isStreamsScanPath(url.pathname)) {
+      return handleStreamsScan(request);
+    }
+
     if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
       return handleDocxApi(request);
     }
@@ -470,4 +591,4 @@ export default {
   },
 };
 
-export { handleDocxApi, isDocxImportPath, isDocxExtractPath };
+export { handleDocxApi, isDocxImportPath, isDocxExtractPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };

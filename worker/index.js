@@ -26,7 +26,7 @@ import { handleNikudMerger } from './nikud_merger.js';
 import { handleTextComparePro } from './text_compare_pro.js';
 import { handleSefariaProxy } from './sefaria_proxy.js';
 import { handleMainTextTools } from './main_text_tools.js';
-import { handleDocxApi, isDocxImportPath, isDocxExtractPath } from '../cloudflare/docx_worker_entry.js';
+import { handleDocxApi, isDocxImportPath, isDocxExtractPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath } from '../cloudflare/docx_worker_entry.js';
 
 async function serveAdminPage(request, env) {
   const user = await getUserFromRequest(request, env);
@@ -150,6 +150,10 @@ export default {
       response = await handleSefariaProxy(request, url);
     } else if (url.pathname === '/api/main-text-tools') {
       response = await handleMainTextTools(request);
+    } else if (isClientLogPath(url.pathname)) {
+      response = await handleClientLog(request);
+    } else if (isStreamsScanPath(url.pathname)) {
+      response = await handleStreamsScan(request);
     } else if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
       response = await handleDocxApi(request);
     } else if (url.pathname === '/admin' || url.pathname === '/admin/' || url.pathname === '/admin.html') {

@@ -25,6 +25,7 @@ import {
   SOURCE_SIDENOTE, SOURCE_PARALLEL, SOURCE_EXTERNAL, SOURCE_CUSTOM,
   t,
 } from "./word_extractor_i18n.js";
+import { tryServerScanNoteSources } from "../chapter_cache/chapter_server_api.js";
 import "./word_extractor.css";
 
 // משה 2026-05-08: סמני בקרה ייחודיים, כך ש-PARBREAK לא יבלבל אם מופיע בטקסט המשתמש
@@ -313,7 +314,11 @@ async function onFileChange(ev) {
       extract_headers_footers(_state.zipBuf.slice(0)),
       find_sections_in_docx(_state.zipBuf.slice(0)),
       find_all_styles_in_docx(_state.zipBuf.slice(0)),
-      find_all_note_sources(_state.zipBuf.slice(0)),
+      (async () => {
+        const serverResult = await tryServerScanNoteSources(file);
+        if (serverResult !== null) return serverResult;
+        return find_all_note_sources(_state.zipBuf.slice(0));
+      })(),
       engine.find_all_styles_full(_state.zipBuf.slice(0)),
     ]);
     _state.metadata = { titles, headerFooter, sections, styles };

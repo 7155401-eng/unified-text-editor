@@ -1,6 +1,7 @@
 const SERVER_IMPORT_ENDPOINTS = ["/api/ravtext-docx-import", "/api/word-chapters-import", "/api/word-chapters/import"];
 const SERVER_SCAN_ENDPOINTS = ["/api/word-chapters-scan", "/api/word-chapters/scan"];
 const SERVER_EXTRACT_ENDPOINTS = ["/api/word-chapters-extract", "/api/word-chapters/extract"];
+const SERVER_STREAMS_SCAN_ENDPOINTS = ["/api/word-streams-scan"];
 
 function canUseServerApi(file) {
   return typeof fetch === "function" && !!file && typeof file.arrayBuffer === "function";
@@ -340,6 +341,16 @@ export async function tryServerExtractWordChapter(file, { level, index }) {
     return await extractWordChapterOnServer(file, { level, index });
   } catch (error) {
     console.warn("[chapter_server_api] server extract fallback to browser:", error);
+    return null;
+  }
+}
+
+export async function tryServerScanNoteSources(file) {
+  try {
+    const result = await postDocx(SERVER_STREAMS_SCAN_ENDPOINTS, file);
+    if (result?.ok && Array.isArray(result.sources)) return result.sources;
+    return null;
+  } catch {
     return null;
   }
 }
