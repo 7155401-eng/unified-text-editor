@@ -63,6 +63,53 @@ function norm(value) {
     .toLowerCase();
 }
 
+// String-based XML helpers — no DOMParser, safe for large documents
+function sXmlDec(v) {
+  return String(v || "")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'").replace(/&amp;/g, "&")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
+}
+function sAttr(xml, name) {
+  const m = String(xml || "").match(new RegExp(`(?:\\bw:|\\b)${name}="([^"]*)"`));
+  return m ? sXmlDec(m[1]) : "";
+}
+function sTag(xml, ln) {
+  const m = String(xml || "").match(new RegExp(`<w:${ln}\\b[\\s\\S]*?(?:<\\/w:${ln}>|\\/>)`));
+  return m ? m[0] : "";
+}
+function sPText(pXml) {
+  const out = [];
+  const re = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+  let m;
+  while ((m = re.exec(String(pXml || "")))) out.push(sXmlDec(m[1]));
+  return out.join("");
+}
+function sParseStyles(xml) {
+  const styles = {};
+  for (const block of (String(xml || "").match(/<w:style\b[\s\S]*?<\/w:style>/g) || [])) {
+    const id = sAttr(block, "styleId");
+    if (!id) continue;
+    styles[id] = { name: sAttr(sTag(block, "name"), "val"), outline: sAttr(sTag(block, "outlineLvl"), "val") };
+  }
+  return styles;
+}
+function sLevelOf(pXml, styles) {
+  const pPr = sTag(pXml, "pPr");
+  const outline = sAttr(sTag(pPr, "outlineLvl"), "val");
+  if (outline !== "" && Number.isFinite(+outline)) return +outline + 1;
+  const styleId = sAttr(sTag(pPr, "pStyle"), "val");
+  const style = styles[styleId] || {};
+  if (style.outline !== "" && style.outline != null && Number.isFinite(+style.outline)) return +style.outline + 1;
+  const marker = `${norm(styleId)} ${norm(style.name)}`;
+  for (let i = 1; i <= 6; i++) {
+    if (norm(styleId) === String(i) || marker.includes(`heading ${i}`) || marker.includes(`heading${i}`) ||
+        marker.includes(`כותרת ${i}`) || marker.includes(`כותרת${i}`)) return i;
+  }
+  return 0;
+}
+
 function getModal() {
   return document.getElementById(MODAL_ID);
 }
@@ -528,75 +575,74 @@ async function scanFile(fileObj, thisToken) {
   await nextFrame();
   if (thisToken !== token) return;
 
-  loading("סופר תווים, מילים וכותרות בצורה קלה...");
+  loading("סורק כותרות בדפדפן (ללא שרת)...");
   try {
     const JSZip = await loadJsZip();
     await nextFrame();
+    if (thisToken !== token) return;
 
     const zip = await JSZip.loadAsync(await fileObj.arrayBuffer());
     const docFile = zip.file("word/document.xml");
     if (!docFile) throw new Error("לא נמצא word/document.xml");
 
-    const [docXml, stylesXml] = await Promise.all([
-      docFile.async("text"),
-      zip.file("word/styles.xml")?.async("text") || Promise.resolve(""),
-    ]);
+    await nextFrame();
     if (thisToken !== token) return;
 
-    const { prefix, suffix } = splitDocumentXml(docXml);
-    const doc = new DOMParser().parseFromString(docXml, "application/xml");
-    const body = firstByLocal(doc, "body");
-    if (!body) throw new Error("לא נמצא גוף מסמך Word.");
+    const [docXml, stylesXml] = await Promise.all([
+      docFile.async("string"),
+      zip.file("word/styles.xml")?.async("string") || Promise.resolve(""),
+    ]);
 
-    const serializer = new XMLSerializer();
-    const styles = parseStyles(stylesXml || "");
-    const h = { 1:0, 2:0, 3:0, 4:0, 5:0, 6:0 };
-    const heads = { 1:[], 2:[] };
-    const parts = [];
+    await nextFrame();
+    if (thisToken !== token) return;
+
+    const styles = sParseStyles(stylesXml);
+    const bodyOpen = docXml.match(/<w:body\b[^>]*>/);
+    const bodyClose = docXml.lastIndexOf("</w:body>");
+    if (!bodyOpen || bodyClose < 0) throw new Error("לא נמצא גוף מסמך Word.");
+    const bodyXml = docXml.slice(bodyOpen.index + bodyOpen[0].length, bodyClose);
+
+    const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+    const heads = { 1: [], 2: [] };
     const allText = [];
-    let sect = "";
+    let pos = 0;
+    let partIndex = 0;
+    let batch = 0;
 
-    const direct = Array.from(body.childNodes || []).filter(n => n.nodeType === 1);
-    for (let i = 0; i < direct.length; i += 1) {
-      const node = direct[i];
-      const name = localName(node);
+    while (pos < bodyXml.length) {
+      let start = -1;
+      let sp = pos;
+      while (sp < bodyXml.length) {
+        const idx = bodyXml.indexOf("<w:p", sp);
+        if (idx < 0) { sp = bodyXml.length; break; }
+        const ch = bodyXml.charCodeAt(idx + 4);
+        if (ch === 32 || ch === 62) { start = idx; break; }
+        sp = idx + 4;
+      }
+      if (start < 0) break;
 
-      if (name === "sectPr") {
-        sect = serializer.serializeToString(node);
-        continue;
+      const end = bodyXml.indexOf("</w:p>", start);
+      if (end < 0) break;
+
+      const pXml = bodyXml.slice(start, end + 6);
+      const text = sPText(pXml);
+      const level = sLevelOf(pXml, styles);
+
+      if (text) allText.push(text);
+      if (text.trim() && level >= 1 && level <= 6) {
+        h[level] = (h[level] || 0) + 1;
+        if (level === 1 || level === 2) heads[level].push({ title: text.trim(), start: partIndex });
       }
 
-      const index = parts.length;
-      let text = "";
-      let level = 0;
-
-      if (name === "p") {
-        text = paragraphText(node);
-        level = levelOf(node, styles);
-        allText.push(text);
-
-        if (text.trim() && level >= 1 && level <= 6) {
-          h[level] += 1;
-          if (level === 1 || level === 2) {
-            heads[level].push({ title: text.trim(), start: index });
-          }
-        }
-      }
-
-      parts.push({ xml: serializer.serializeToString(node), text, level });
-
-      if (i % 250 === 0) await nextFrame();
-      if (thisToken !== token) return;
+      partIndex++;
+      pos = end + 6;
+      if (++batch % 500 === 0) { await nextFrame(); if (thisToken !== token) return; }
     }
 
     const full = allText.join("\n");
     state = {
-      JSZip,
-      zip,
-      prefix,
-      suffix,
-      sect,
-      parts,
+      serverSide: true,
+      lightScan: true,
       heads,
       h,
       total: Object.values(h).reduce((a, b) => a + b, 0),

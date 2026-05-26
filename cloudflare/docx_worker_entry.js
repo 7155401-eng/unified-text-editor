@@ -147,20 +147,35 @@ function documentBodyXml(xml) {
 
 function bodyParts(bodyXml, styles) {
   const parts = [];
-  const partsMeta = [];
   const allText = [];
-  const re = /<w:p\b[\s\S]*?<\/w:p>|<w:tbl\b[\s\S]*?<\/w:tbl>|<w:sectPr\b[\s\S]*?<\/w:sectPr>/g;
-  let match;
-  while ((match = re.exec(String(bodyXml || "")))) {
-    const xml = match[0];
-    const isParagraph = /^<w:p\b/.test(xml);
-    const text = isParagraph ? paragraphText(xml) : "";
-    const level = isParagraph ? levelOfParagraph(xml, styles) : 0;
+  const xml = String(bodyXml || "");
+  let pos = 0;
+
+  while (pos < xml.length) {
+    // Find next <w:p> or <w:p  (not <w:pPr etc.)
+    let start = -1;
+    let sp = pos;
+    while (sp < xml.length) {
+      const idx = xml.indexOf("<w:p", sp);
+      if (idx < 0) { sp = xml.length; break; }
+      const ch = xml.charCodeAt(idx + 4);
+      if (ch === 32 || ch === 62) { start = idx; break; } // ' ' or '>'
+      sp = idx + 4;
+    }
+    if (start < 0) break;
+
+    const end = xml.indexOf("</w:p>", start);
+    if (end < 0) break;
+
+    const pXml = xml.slice(start, end + 6);
+    const text = paragraphText(pXml);
+    const level = levelOfParagraph(pXml, styles);
     if (text) allText.push(text);
     parts.push({ text, level });
-    partsMeta.push({ text, level });
+    pos = end + 6;
   }
-  return { parts, partsMeta, allText };
+
+  return { parts, partsMeta: parts, allText };
 }
 
 async function sha256Hex(arrayBuffer) {
