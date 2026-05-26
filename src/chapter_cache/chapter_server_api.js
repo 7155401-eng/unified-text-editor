@@ -139,14 +139,26 @@ function formatFailure({ url, id, response, headers, text, elapsedMs, probe }) {
   return parts.join(" | ");
 }
 
-async function docxBody(file) {
-  return file.arrayBuffer();
+function bufToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+  }
+  return btoa(binary);
 }
 
-function xhrPost(url, body, onProgress) {
+async function docxBody(file) {
+  const buf = await file.arrayBuffer();
+  return JSON.stringify({ docx: bufToBase64(buf) });
+}
+
+function xhrPost(url, jsonBody, onProgress) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
+    xhr.setRequestHeader("Content-Type", "application/json");
     if (xhr.upload && onProgress) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && e.total > 0) {
@@ -165,7 +177,7 @@ function xhrPost(url, body, onProgress) {
     });
     xhr.onerror = () => reject(new Error("שגיאת רשת בהעלאת הקובץ"));
     xhr.ontimeout = () => reject(new Error("השרת לא הגיב תוך 55 שניות (timeout)"));
-    xhr.send(body);
+    xhr.send(jsonBody);
   });
 }
 

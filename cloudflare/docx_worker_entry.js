@@ -192,8 +192,6 @@ async function importDocx(arrayBuffer, id) {
   }
 
   const started = Date.now();
-  log("log", "docx_zip_load_start", { requestId: id, bytes: arrayBuffer.byteLength });
-
   const zip = await JSZip.loadAsync(arrayBuffer);
   const docFile = zip.file("word/document.xml");
   if (!docFile) throw new Error("לא נמצא word/document.xml.");
@@ -205,39 +203,60 @@ async function importDocx(arrayBuffer, id) {
 
   const styles = parseStyles(stylesXml || "");
   const bodyXml = documentBodyXml(docXml);
-  const { parts, partsMeta, allText } = bodyParts(bodyXml, styles);
 
+  // Heading-only scan: skip full parsing for non-heading paragraphs
   const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   const heads = { 1: [], 2: [] };
+  let pos = 0;
+  let partIndex = 0;
 
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index];
-    if (!part.text?.trim() || part.level < 1 || part.level > 6) continue;
-    h[part.level] += 1;
-    if (part.level === 1 || part.level === 2) {
-      heads[part.level].push({ title: part.text.trim(), start: index });
+  while (pos < bodyXml.length) {
+    let start = -1, sp = pos;
+    while (sp < bodyXml.length) {
+      const idx = bodyXml.indexOf("<w:p", sp);
+      if (idx < 0) { sp = bodyXml.length; break; }
+      const ch = bodyXml.charCodeAt(idx + 4);
+      if (ch === 32 || ch === 62) { start = idx; break; }
+      sp = idx + 4;
     }
+    if (start < 0) break;
+
+    const end = bodyXml.indexOf("</w:p>", start);
+    if (end < 0) break;
+
+    // Only fully parse paragraphs that have a style or outline hint
+    const hasStyle = bodyXml.indexOf("<w:pStyle", start) >= start && bodyXml.indexOf("<w:pStyle", start) < end;
+    const hasOutline = bodyXml.indexOf("<w:outlineLvl", start) >= start && bodyXml.indexOf("<w:outlineLvl", start) < end;
+
+    if (hasStyle || hasOutline) {
+      const pXml = bodyXml.slice(start, end + 6);
+      const level = levelOfParagraph(pXml, styles);
+      if (level >= 1 && level <= 6) {
+        h[level] = (h[level] || 0) + 1;
+        if (level === 1 || level === 2) {
+          const text = paragraphText(pXml);
+          if (text.trim()) heads[level].push({ title: text.trim(), start: partIndex });
+        }
+      }
+    }
+
+    partIndex++;
+    pos = end + 6;
   }
 
-  const full = allText.join("\n");
-  const fileHash = await sha256Hex(arrayBuffer);
+  // Fast char count: single regex pass over all <w:t> text nodes
+  let chars = 0;
+  const textRe = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+  let m;
+  while ((m = textRe.exec(bodyXml))) chars += xmlDecode(m[1]).length;
 
-  const diagnostics = {
-    service: SERVICE,
-    version: VERSION,
-    bytes: arrayBuffer.byteLength,
-    partCount: parts.length,
-    elapsedMs: Date.now() - started,
-  };
+  const fileHash = await sha256Hex(arrayBuffer);
+  const elapsedMs = Date.now() - started;
 
   log("log", "docx_import_success", {
-    requestId: id,
-    bytes: arrayBuffer.byteLength,
-    partCount: parts.length,
-    headingCounts: h,
-    chars: full.length,
-    words: countWords(full),
-    elapsedMs: diagnostics.elapsedMs,
+    requestId: id, bytes: arrayBuffer.byteLength,
+    heads1: heads[1].length, heads2: heads[2].length,
+    chars, elapsedMs,
   });
 
   return {
@@ -249,9 +268,9 @@ async function importDocx(arrayBuffer, id) {
     h,
     heads,
     total: Object.values(h).reduce((a, b) => a + b, 0),
-    chars: full.length,
-    words: countWords(full),
-    diagnostics,
+    chars,
+    words: Math.round(chars / 5),
+    diagnostics: { service: SERVICE, version: VERSION, bytes: arrayBuffer.byteLength, elapsedMs },
   };
 }
 
@@ -375,7 +394,18 @@ async function handleDocxApi(request) {
   }
 
   try {
-    const arrayBuffer = await request.arrayBuffer();
+    let arrayBuffer;
+    const ct = (request.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const json = await request.json();
+      if (!json?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
+      const raw = atob(json.docx);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      arrayBuffer = bytes.buffer;
+    } else {
+      arrayBuffer = await request.arrayBuffer();
+    }
     log("log", "request_body_loaded", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
 
     if (isDocxExtractPath(url.pathname)) {
