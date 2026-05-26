@@ -117,13 +117,21 @@ function ensureCard() {
   return card;
 }
 
-function loading(message) {
+function loading(message, { pct = null, detail = "" } = {}) {
   const card = ensureCard();
   if (!card) return;
+  const bar = pct != null ? `
+    <div style="margin-top:8px;background:#e2e8f0;border-radius:4px;height:8px">
+      <div style="width:${pct}%;background:#7c3aed;border-radius:4px;height:8px;transition:width .4s"></div>
+    </div>
+    <div style="font-size:11px;color:#7c3aed;margin-top:3px;text-align:start">${pct}%</div>
+  ` : "";
+  const detailHtml = detail ? `<div style="font-size:11px;color:#64748b;margin-top:4px;white-space:pre-line">${esc(detail)}</div>` : "";
   card.innerHTML = `
     <b style="color:#312e81">פרקי הספר</b>
     <div style="font-size:12px;color:#64748b">מנהל פרקים בתוך חלון ייבוא Word.</div>
     <div style="margin-top:8px;color:#475569">${esc(message)}</div>
+    ${bar}${detailHtml}
   `;
 }
 
@@ -450,10 +458,50 @@ function splitDocumentXml(xml) {
 async function scanFile(fileObj, thisToken) {
   if (!fileObj || thisToken !== token) return;
 
-  try {
-    loading("מעלה את קובץ Word לשרת לפני עיבוד...");
-    const serverImport = await importWordChaptersOnServer(fileObj);
+  const sizeMB = ((fileObj.size || 0) / 1048576).toFixed(1);
+  const startedAt = Date.now();
+  let elapsedTimer = null;
+  let lastStage = "";
+  let lastPct = null;
+  let lastDetail = "";
 
+  function elapsed() {
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    return s < 60 ? `${s} שניות` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} דקות`;
+  }
+
+  function updateLoading(stage, pct, detail) {
+    if (thisToken !== token) return;
+    lastStage = stage || lastStage;
+    lastPct = pct != null ? pct : lastPct;
+    lastDetail = detail != null ? detail : lastDetail;
+    loading(lastStage, { pct: lastPct, detail: lastDetail });
+  }
+
+  function startElapsedTicker() {
+    elapsedTimer = setInterval(() => {
+      if (thisToken !== token) { clearInterval(elapsedTimer); return; }
+      updateLoading(null, null, `זמן שחלף: ${elapsed()} · ${sizeMB} MB`);
+    }, 2000);
+  }
+
+  function stopTicker() { clearInterval(elapsedTimer); elapsedTimer = null; }
+
+  try {
+    updateLoading("מכין קובץ להעלאה...", null, `${sizeMB} MB`);
+    startElapsedTicker();
+
+    const serverImport = await importWordChaptersOnServer(fileObj, (progress) => {
+      if (thisToken !== token) return;
+      if (progress.stage === "upload") {
+        const loadedMB = (progress.loaded / 1048576).toFixed(1);
+        updateLoading(`מעלה לשרת: ${progress.pct}%`, progress.pct, `${loadedMB} / ${sizeMB} MB · זמן שחלף: ${elapsed()}`);
+      } else if (progress.stage === "processing") {
+        updateLoading("השרת מעבד את המסמך...", 100, `הקובץ הגיע לשרת · זמן שחלף: ${elapsed()}`);
+      }
+    });
+
+    stopTicker();
     if (thisToken !== token) return;
 
     const serverState = normalizeServerScanState(serverImport, fileObj);
@@ -468,8 +516,9 @@ async function scanFile(fileObj, thisToken) {
     ensureLauncher();
     return;
   } catch (serverError) {
+    stopTicker();
     if (thisToken !== token) return;
-    errorCard(serverError?.message || String(serverError));
+    errorCard(`${serverError?.message || String(serverError)} (לאחר ${elapsed()})`);
     return;
   }
   await waitForNativeScan(thisToken);

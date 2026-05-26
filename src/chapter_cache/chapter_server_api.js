@@ -143,7 +143,31 @@ async function docxBody(file) {
   return file.arrayBuffer();
 }
 
-async function postDocx(endpoints, file, params = {}) {
+function xhrPost(url, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          onProgress({ stage: "upload", pct: Math.round(e.loaded / e.total * 100), loaded: e.loaded, total: e.total });
+        }
+      };
+      xhr.upload.onload = () => onProgress({ stage: "processing" });
+    }
+    xhr.onload = () => resolve({
+      ok: xhr.status >= 200 && xhr.status < 300,
+      status: xhr.status,
+      statusText: xhr.statusText,
+      headers: { get: (k) => xhr.getResponseHeader(k) },
+      text: () => Promise.resolve(xhr.responseText),
+    });
+    xhr.onerror = () => reject(new Error("שגיאת רשת בהעלאת הקובץ"));
+    xhr.send(body);
+  });
+}
+
+async function postDocx(endpoints, file, params = {}, onProgress) {
   if (!canUseServerApi(file)) return null;
 
   const urls = endpointUrls(endpoints).map((url) => appendParams(url, params));
@@ -171,12 +195,7 @@ async function postDocx(endpoints, file, params = {}) {
     });
 
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        body,
-        cache: "no-store",
-        mode: "cors",
-      });
+      const response = await xhrPost(url, body, onProgress);
 
       const elapsedMs = Math.round((performance.now?.() || Date.now()) - started);
       const headers = headersOf(response);
@@ -260,8 +279,8 @@ async function postDocx(endpoints, file, params = {}) {
   throw new Error(errors.filter(Boolean).join("\n") || "Server DOCX API failed.");
 }
 
-export async function importWordChaptersOnServer(file) {
-  return postDocx(SERVER_IMPORT_ENDPOINTS, file);
+export async function importWordChaptersOnServer(file, onProgress) {
+  return postDocx(SERVER_IMPORT_ENDPOINTS, file, {}, onProgress);
 }
 
 export async function scanWordChaptersOnServer(file) {
