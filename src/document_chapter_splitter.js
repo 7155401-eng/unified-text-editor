@@ -12,6 +12,7 @@ import {
   extractWordChapterOnServer,
   importWordChaptersOnServer,
   normalizeServerScanState,
+  serverLog,
 } from "./chapter_cache/chapter_server_api.js";
 import {
   computeChapterDocId,
@@ -537,12 +538,21 @@ async function scanFile(fileObj, thisToken) {
     });
     stopTicker();
     if (thisToken !== token) return;
+    serverLog("normalize_start", { fileName: fileObj?.name, size: fileObj?.size });
     const serverState = normalizeServerScanState(serverImport, fileObj);
+    serverLog("normalize_done", {
+      ok: !!serverState,
+      heads1: serverState?.heads?.[1]?.length ?? 0,
+      heads2: serverState?.heads?.[2]?.length ?? 0,
+      total: serverState?.total ?? 0,
+    });
     if (!serverState) throw new Error("השרת לא החזיר רשימת כותרות תקינה.");
     state = serverState;
     selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
     chaptersOpen = false;
+    serverLog("render_card_start", { selectedLevel, heads: serverState?.heads?.[selectedLevel]?.length ?? 0 });
     renderCard();
+    serverLog("render_card_done");
     ensureLauncher();
   } catch (e) {
     stopTicker();

@@ -126,6 +126,15 @@ function logDocxApi(level, payload) {
   } catch {}
 }
 
+export function serverLog(event, data = {}) {
+  try {
+    const payload = JSON.stringify({ event, ts: Date.now(), ...data });
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      navigator.sendBeacon("/api/client-log", new Blob([payload], { type: "application/json" }));
+    }
+  } catch {}
+}
+
 function formatFailure({ url, id, response, headers, text, elapsedMs, probe }) {
   const parts = [
     `Server DOCX API ${url} failed with ${response.status} ${response.statusText || ""}`.trim(),
@@ -278,6 +287,18 @@ async function postDocx(endpoints, file, params = {}, onProgress) {
         total: json?.total ?? null,
         chars: json?.chars ?? null,
         words: json?.words ?? null,
+      });
+
+      serverLog("browser_received_server_json", {
+        requestId: id,
+        url,
+        elapsedMs,
+        total: json?.total ?? null,
+        chars: json?.chars ?? null,
+        words: json?.words ?? null,
+        heads1: json?.heads?.[1]?.length ?? null,
+        heads2: json?.heads?.[2]?.length ?? null,
+        fileHash: json?.fileHash ?? null,
       });
 
       return json;

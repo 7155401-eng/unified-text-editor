@@ -363,6 +363,23 @@ function isDocxExtractPath(path) {
   return path === "/api/word-chapters-extract" || path === "/api/word-chapters/extract";
 }
 
+function isClientLogPath(path) {
+  return path === "/api/client-log";
+}
+
+async function handleClientLog(request) {
+  const id = request.headers.get("x-docx-request-id") || requestId();
+  if (request.method === "OPTIONS") return optionsResponse(id);
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "Method not allowed" }, 405, id);
+  }
+  try {
+    const body = await request.json().catch(() => ({}));
+    log("log", "client_log", { source: "browser", requestId: id, ...body });
+  } catch {}
+  return jsonResponse({ ok: true }, 200, id);
+}
+
 async function handleDocxApi(request) {
   const id = request.headers.get("x-docx-request-id") || requestId();
   const url = new URL(request.url);
@@ -436,6 +453,10 @@ async function handleDocxApi(request) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (isClientLogPath(url.pathname)) {
+      return handleClientLog(request);
+    }
 
     if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
       return handleDocxApi(request);
