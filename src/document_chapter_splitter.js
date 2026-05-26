@@ -9,6 +9,11 @@ import {
 } from "./word_extractor/word_extractor_mammoth.js";
 import { buildDefaultStreamMapping } from "./word_extractor/word_extractor_streams.js";
 import {
+  extractWordChapterOnServer,
+  importWordChaptersOnServer,
+  normalizeServerScanState,
+} from "./chapter_cache/chapter_server_api.js";
+import {
   computeChapterDocId,
   saveChapterExtraction,
   getChapterExtraction,
@@ -445,7 +450,28 @@ function splitDocumentXml(xml) {
 async function scanFile(fileObj, thisToken) {
   if (!fileObj || thisToken !== token) return;
 
-  loading("הקובץ נקלט. ממתין לסיום הסריקה הרגילה...");
+  try {
+    loading("מעלה את קובץ Word לשרת לפני עיבוד...");
+    const serverImport = await importWordChaptersOnServer(fileObj);
+
+    if (thisToken !== token) return;
+
+    const serverState = normalizeServerScanState(serverImport, fileObj);
+    if (!serverState) {
+      throw new Error("השרת לא החזיר manifest תקין עבור מסמך Word.");
+    }
+
+    state = serverState;
+    selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
+    chaptersOpen = false;
+    renderCard();
+    ensureLauncher();
+    return;
+  } catch (serverError) {
+    if (thisToken !== token) return;
+    errorCard(serverError?.message || String(serverError));
+    return;
+  }
   await waitForNativeScan(thisToken);
   await nextFrame();
   if (thisToken !== token) return;
@@ -666,10 +692,10 @@ async function importChapter(chapterIndex) {
     try {
       const cached = await getChapterExtraction(docId, chapKey);
       if (cached) {
-        const chapter = await buildChapterDocx(chapterIndex);
+        const title = cached.title || state?.heads?.[selectedLevel]?.[chapterIndex]?.title || `פרק ${chapterIndex + 1}`;
         importedKeys.add(chapKey);
-        lastImported = { level: selectedLevel, index: chapterIndex, title: cached.title || chapter?.title || "", at: Date.now() };
-        loadExtractedChapter(cached.title || chapter?.title || "", cached.result);
+        lastImported = { level: selectedLevel, index: chapterIndex, title, at: Date.now() };
+        loadExtractedChapter(title, cached.result);
         ensureLauncher();
         busyChapter = false;
         renderCard();
@@ -679,6 +705,31 @@ async function importChapter(chapterIndex) {
   }
 
   try {
+    if (state?.serverSide) {
+      loading(`מחלץ את הפרק בצד שרת: ${chapterIndex + 1}...`);
+      const serverChapter = await extractWordChapterOnServer(selectedFile, {
+        level: selectedLevel,
+        index: chapterIndex,
+      });
+
+      if (!serverChapter?.result) {
+        throw new Error("השרת לא החזיר תוכן פרק תקין.");
+      }
+
+      const title = serverChapter.title || currentHeads()[chapterIndex]?.title || `פרק ${chapterIndex + 1}`;
+      importedKeys.add(chapterKey(selectedLevel, chapterIndex));
+      lastImported = {
+        level: selectedLevel,
+        index: chapterIndex,
+        title,
+        at: Date.now(),
+      };
+
+      loadExtractedChapter(title, serverChapter.result);
+      ensureLauncher();
+      return;
+    }
+
     const chapter = await buildChapterDocx(chapterIndex);
     if (!chapter) throw new Error("לא נמצא פרק לייבוא.");
 

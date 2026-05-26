@@ -1,4 +1,4 @@
-const SERVER_IMPORT_ENDPOINTS = ["/api/word-chapters-import", "/api/word-chapters/import"];
+const SERVER_IMPORT_ENDPOINTS = ["/api/ravtext-docx-import", "/api/word-chapters-import", "/api/word-chapters/import"];
 const SERVER_SCAN_ENDPOINTS = ["/api/word-chapters-scan", "/api/word-chapters/scan"];
 const SERVER_EXTRACT_ENDPOINTS = ["/api/word-chapters-extract", "/api/word-chapters/extract"];
 
