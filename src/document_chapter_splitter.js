@@ -472,100 +472,6 @@ function countWords(text) {
   }
 }
 
-// Stage A: fast local heading scan — no server upload, no DOM parsing
-async function scanHeadingsOnlyBrowser(fileObj, thisToken) {
-  const sizeMB = ((fileObj.size || 0) / 1048576).toFixed(1);
-
-  loading(`טוען קובץ (${sizeMB} MB)...`);
-  const JSZip = await loadJsZip();
-  await nextFrame();
-  if (thisToken !== token) return null;
-
-  const zip = await JSZip.loadAsync(await fileObj.arrayBuffer());
-  const docFile = zip.file("word/document.xml");
-  if (!docFile) throw new Error("לא נמצא word/document.xml");
-
-  loading("קורא נתוני מסמך...");
-  await nextFrame();
-  if (thisToken !== token) return null;
-
-  const [docXml, stylesXml] = await Promise.all([
-    docFile.async("string"),
-    zip.file("word/styles.xml")?.async("string") || Promise.resolve(""),
-  ]);
-
-  loading("סורק כותרות...");
-  await nextFrame();
-  if (thisToken !== token) return null;
-
-  const styles = sParseStyles(stylesXml || "");
-  const bodyOpen = docXml.match(/<w:body\b[^>]*>/);
-  const bodyClose = docXml.lastIndexOf("</w:body>");
-  if (!bodyOpen || bodyClose < 0) throw new Error("לא נמצא גוף מסמך Word.");
-  const bodyXml = docXml.slice(bodyOpen.index + bodyOpen[0].length, bodyClose);
-
-  // Chars + words: single fast pass on all <w:t> nodes
-  const textRe = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
-  const textParts = [];
-  let tm;
-  while ((tm = textRe.exec(bodyXml))) textParts.push(sXmlDec(tm[1]));
-  const full = textParts.join("");
-
-  await nextFrame();
-  if (thisToken !== token) return null;
-
-  // Heading scan: only fully parse paragraphs that look like headings
-  const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
-  const heads = { 1: [], 2: [] };
-  let pos = 0;
-  let partIndex = 0;
-  let batch = 0;
-
-  while (pos < bodyXml.length) {
-    let start = -1;
-    let sp = pos;
-    while (sp < bodyXml.length) {
-      const idx = bodyXml.indexOf("<w:p", sp);
-      if (idx < 0) { sp = bodyXml.length; break; }
-      const ch = bodyXml.charCodeAt(idx + 4);
-      if (ch === 32 || ch === 62) { start = idx; break; }
-      sp = idx + 4;
-    }
-    if (start < 0) break;
-
-    const end = bodyXml.indexOf("</w:p>", start);
-    if (end < 0) break;
-
-    // Skip parsing unless paragraph contains a pStyle or outlineLvl hint
-    const hasStyle = bodyXml.indexOf("<w:pStyle", start) < end && bodyXml.indexOf("<w:pStyle", start) >= start;
-    const hasOutline = bodyXml.indexOf("<w:outlineLvl", start) < end && bodyXml.indexOf("<w:outlineLvl", start) >= start;
-
-    if (hasStyle || hasOutline) {
-      const pXml = bodyXml.slice(start, end + 6);
-      const level = sLevelOf(pXml, styles);
-      if (level >= 1 && level <= 6) {
-        h[level] = (h[level] || 0) + 1;
-        if (level === 1 || level === 2) {
-          const text = sPText(pXml);
-          if (text.trim()) heads[level].push({ title: text.trim(), start: partIndex });
-        }
-      }
-    }
-
-    partIndex++;
-    pos = end + 6;
-    if (++batch % 1000 === 0) { await nextFrame(); if (thisToken !== token) return null; }
-  }
-
-  return {
-    heads,
-    h,
-    total: Object.values(h).reduce((a, b) => a + b, 0),
-    chars: full.length,
-    words: countWords(full),
-    fileName: fileObj.name || "מסמך Word",
-  };
-}
 
 async function waitForNativeScan(thisToken) {
   const start = Date.now();
@@ -599,25 +505,49 @@ function splitDocumentXml(xml) {
 
 async function scanFile(fileObj, thisToken) {
   if (!fileObj || thisToken !== token) return;
+  const sizeMB = ((fileObj.size || 0) / 1048576).toFixed(1);
+  const startedAt = Date.now();
+  let elapsedTimer = null;
+  let lastPct = null;
+  function elapsed() {
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    return s < 60 ? `${s} שנ'` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+  function stopTicker() { clearInterval(elapsedTimer); elapsedTimer = null; }
   try {
-    const result = await scanHeadingsOnlyBrowser(fileObj, thisToken);
-    if (!result || thisToken !== token) return;
-    state = {
-      serverSide: true,
-      lightScan: true,
-      heads: result.heads,
-      h: result.h,
-      total: result.total,
-      chars: result.chars,
-      words: result.words,
-      fileName: result.fileName,
-    };
-    selectedLevel = !result.heads[1].length && result.heads[2].length ? 2 : 1;
+    loading(`מעלה קובץ לשרת (${sizeMB} MB)...`);
+    elapsedTimer = setInterval(() => {
+      if (thisToken !== token) { stopTicker(); return; }
+      loading(
+        lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
+        { pct: lastPct, detail: `זמן: ${elapsed()}` }
+      );
+    }, 1500);
+    const serverImport = await importWordChaptersOnServer(fileObj, (progress) => {
+      if (thisToken !== token) return;
+      if (progress.stage === "upload") {
+        lastPct = progress.pct;
+        const loadedMB = (progress.loaded / 1048576).toFixed(1);
+        const kbps = Math.round(progress.loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
+        loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
+      } else if (progress.stage === "processing") {
+        lastPct = 100;
+        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+      }
+    });
+    stopTicker();
+    if (thisToken !== token) return;
+    const serverState = normalizeServerScanState(serverImport, fileObj);
+    if (!serverState) throw new Error("השרת לא החזיר רשימת כותרות תקינה.");
+    state = serverState;
+    selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
     chaptersOpen = false;
     renderCard();
     ensureLauncher();
   } catch (e) {
-    errorCard(e?.message || String(e));
+    stopTicker();
+    if (thisToken !== token) return;
+    errorCard(`${e?.message || String(e)} · לאחר ${elapsed()}`);
   }
 }
 
