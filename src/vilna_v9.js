@@ -2784,6 +2784,12 @@ function renderPagePlan(plan, pageEl, cfg) {
       if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
       if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
+      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
+      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
+      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isSourceContinuationEnd) {
         lineEl.dataset.v9SourceContinuationEnd = "1";
         if (box.columnSplitLineEdgeGuard) {
@@ -4484,6 +4490,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
       text: cleanPiece,
       runs: localRuns,
       rich: makeRichText(cleanPiece, localRuns),
+      mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),
       mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),
       mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),
       mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),

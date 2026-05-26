@@ -151,11 +151,27 @@ export default {
     } else if (url.pathname === '/api/main-text-tools') {
       response = await handleMainTextTools(request);
     } else if (isClientLogPath(url.pathname)) {
-      response = await handleClientLog(request);
+      response = await handleClientLog(request, env, ctx);
     } else if (isStreamsScanPath(url.pathname)) {
-      response = await handleStreamsScan(request);
+      response = await handleStreamsScan(request, env, ctx);
     } else if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
-      response = await handleDocxApi(request);
+      response = await handleDocxApi(request, env, ctx);
+    } else if (url.pathname === '/api/admin/worker-logs') {
+      const user = await getUserFromRequest(request, env);
+      if (!user?.is_admin) {
+        response = new Response('Forbidden', { status: 403, headers: { 'cache-control': 'no-store' } });
+      } else {
+        try {
+          const limit = Math.min(parseInt(url.searchParams.get('limit') || '200', 10), 1000);
+          const since = url.searchParams.get('since') ? parseInt(url.searchParams.get('since'), 10) : 0;
+          const result = await env.DB.prepare(
+            'SELECT id, ts, level, event, data FROM worker_logs WHERE ts > ? ORDER BY ts DESC LIMIT ?'
+          ).bind(since, limit).all();
+          response = Response.json({ ok: true, logs: result.results }, { headers: { 'cache-control': 'no-store' } });
+        } catch (e) {
+          response = Response.json({ ok: false, error: e?.message || String(e) }, { status: 500, headers: { 'cache-control': 'no-store' } });
+        }
+      }
     } else if (url.pathname === '/admin' || url.pathname === '/admin/' || url.pathname === '/admin.html') {
       response = await serveAdminPage(request, env);
       isHtml = response.headers.get('content-type')?.includes('text/html') || response.status < 400;

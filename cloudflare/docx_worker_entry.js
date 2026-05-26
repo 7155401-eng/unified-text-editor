@@ -351,6 +351,33 @@ async function extractChapterContent(arrayBuffer, level, index, id) {
   };
 }
 
+const INIT_TABLE_SQL = `CREATE TABLE IF NOT EXISTS worker_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  level TEXT NOT NULL DEFAULT 'info',
+  event TEXT NOT NULL,
+  data TEXT
+)`;
+let _dbReady = false;
+
+async function dbLog(env, ctx, level, event, data) {
+  if (!env?.DB) return;
+  const run = async () => {
+    try {
+      if (!_dbReady) {
+        await env.DB.prepare(INIT_TABLE_SQL).run();
+        _dbReady = true;
+      }
+      const payload = JSON.stringify(data || {});
+      await env.DB.prepare(
+        'INSERT INTO worker_logs (ts, level, event, data) VALUES (?, ?, ?, ?)'
+      ).bind(Date.now(), level, event, payload).run();
+    } catch { _dbReady = false; }
+  };
+  if (ctx?.waitUntil) ctx.waitUntil(run());
+  else run().catch(() => {});
+}
+
 const ICON_MAP = {
   footnote: '\u{1F4DD} שוליים',
   endnote: '\u{1F4CB} סיום',
@@ -442,7 +469,7 @@ function isStreamsScanPath(path) {
   return path === '/api/word-streams-scan';
 }
 
-async function handleStreamsScan(request) {
+async function handleStreamsScan(request, env, ctx) {
   const id = request.headers.get("x-docx-request-id") || requestId();
   if (request.method === "OPTIONS") return optionsResponse(id);
   if (request.method !== "POST") return jsonResponse({ ok: false, error: "Method not allowed" }, 405, id);
@@ -460,10 +487,13 @@ async function handleStreamsScan(request) {
       arrayBuffer = await request.arrayBuffer();
     }
     log("log", "streams_scan_body_loaded", { requestId: id, bytes: arrayBuffer.byteLength });
+    dbLog(env, ctx, "info", "streams_scan_start", { requestId: id, bytes: arrayBuffer.byteLength });
     const result = await scanNoteSources(arrayBuffer, id);
+    dbLog(env, ctx, "info", "streams_scan_success", { requestId: id, sources: result.sources?.length ?? 0 });
     return jsonResponse({ ...result, scannedAt: Date.now() }, 200, id);
   } catch (error) {
     log("error", "streams_scan_failed", { requestId: id, error: error?.message || String(error) });
+    dbLog(env, ctx, "error", "streams_scan_failed", { requestId: id, error: error?.message || String(error) });
     return jsonResponse({ ok: false, serverSide: true, requestId: id, error: error?.message || String(error || "Server error") }, error?.status || 500, id);
   }
 }
@@ -484,7 +514,7 @@ function isClientLogPath(path) {
   return path === "/api/client-log";
 }
 
-async function handleClientLog(request) {
+async function handleClientLog(request, env, ctx) {
   const id = request.headers.get("x-docx-request-id") || requestId();
   if (request.method === "OPTIONS") return optionsResponse(id);
   if (request.method !== "POST") {
@@ -492,12 +522,14 @@ async function handleClientLog(request) {
   }
   try {
     const body = await request.json().catch(() => ({}));
-    log("log", "client_log", { source: "browser", requestId: id, ...body });
+    const payload = { source: "browser", requestId: id, ...body };
+    log("log", "client_log", payload);
+    dbLog(env, ctx, "info", body.event || "client_log", payload);
   } catch {}
   return jsonResponse({ ok: true }, 200, id);
 }
 
-async function handleDocxApi(request) {
+async function handleDocxApi(request, env, ctx) {
   const id = request.headers.get("x-docx-request-id") || requestId();
   const url = new URL(request.url);
 
@@ -541,15 +573,18 @@ async function handleDocxApi(request) {
       arrayBuffer = await request.arrayBuffer();
     }
     log("log", "request_body_loaded", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
+    dbLog(env, ctx, "info", "docx_request_start", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
 
     if (isDocxExtractPath(url.pathname)) {
       const level = url.searchParams.get("level");
       const index = url.searchParams.get("index");
       const extracted = await extractChapterContent(arrayBuffer, level, index, id);
+      dbLog(env, ctx, "info", "docx_extract_success", { requestId: id, title: extracted?.title });
       return jsonResponse({ ...extracted, extractedAt: Date.now() }, 200, id);
     }
 
     const imported = await importDocx(arrayBuffer, id);
+    dbLog(env, ctx, "info", "docx_import_success", { requestId: id, heads1: imported?.heads?.[1]?.length, heads2: imported?.heads?.[2]?.length, chars: imported?.chars });
     return jsonResponse({ ...imported, importedAt: Date.now() }, 200, id);
   } catch (error) {
     log("error", "request_failed", {
@@ -558,6 +593,7 @@ async function handleDocxApi(request) {
       error: error?.message || String(error),
       stack: error?.stack || "",
     });
+    dbLog(env, ctx, "error", "docx_request_failed", { requestId: id, path: url.pathname, error: error?.message || String(error) });
     return jsonResponse({
       ok: false,
       serverSide: true,
@@ -568,19 +604,19 @@ async function handleDocxApi(request) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     if (isClientLogPath(url.pathname)) {
-      return handleClientLog(request);
+      return handleClientLog(request, env, ctx);
     }
 
     if (isStreamsScanPath(url.pathname)) {
-      return handleStreamsScan(request);
+      return handleStreamsScan(request, env, ctx);
     }
 
     if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
-      return handleDocxApi(request);
+      return handleDocxApi(request, env, ctx);
     }
 
     if (env?.ASSETS?.fetch) {
