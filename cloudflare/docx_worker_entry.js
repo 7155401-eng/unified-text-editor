@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 
 const SERVICE = "ravtext-cloudflare-docx-advanced-worker";
-const VERSION = "2026-05-25-worker-syntax-fix";
+const VERSION = "2026-05-26-server-extract";
 const MAX_DOCX_BYTES = 100 * 1024 * 1024;
 
 function requestId() {
@@ -48,7 +48,7 @@ function optionsResponse(id = "") {
   return new Response(null, { status: 204, headers: corsHeaders(id) });
 }
 
-const HEBREW_MARKS_RE = /[\u0591-\u05C7]/g;
+const HEBREW_MARKS_RE = /[֑-ׇ]/g;
 
 function xmlDecode(value) {
   return String(value || "")
@@ -132,7 +132,7 @@ function countWords(text) {
   const value = String(text || "").trim();
   if (!value) return 0;
   try {
-    return (value.match(/[\p{L}\p{N}]+(?:['\u05F3\u05F4-][\p{L}\p{N}]+)*/gu) || []).length;
+    return (value.match(/[\p{L}\p{N}]+(?:['׳״-][\p{L}\p{N}]+)*/gu) || []).length;
   } catch {
     return value.split(/\s+/).filter(Boolean).length;
   }
@@ -241,6 +241,83 @@ async function importDocx(arrayBuffer, id) {
   };
 }
 
+function escHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function extractChapterContent(arrayBuffer, level, index, id) {
+  level = Number(level) || 1;
+  index = Number(index) || 0;
+
+  if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error("לא התקבל קובץ DOCX.");
+  if (arrayBuffer.byteLength > MAX_DOCX_BYTES) {
+    const err = new Error(`DOCX גדול מדי. מגבלה: ${MAX_DOCX_BYTES} bytes.`);
+    err.status = 413;
+    throw err;
+  }
+
+  const started = Date.now();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const docFile = zip.file("word/document.xml");
+  if (!docFile) throw new Error("לא נמצא word/document.xml.");
+
+  const [docXml, stylesXml] = await Promise.all([
+    docFile.async("string"),
+    zip.file("word/styles.xml")?.async("string") || Promise.resolve(""),
+  ]);
+
+  const styles = parseStyles(stylesXml || "");
+  const bodyXml = documentBodyXml(docXml);
+  const { partsMeta } = bodyParts(bodyXml, styles);
+
+  const levelHeads = [];
+  for (let i = 0; i < partsMeta.length; i++) {
+    const part = partsMeta[i];
+    if (part.text?.trim() && part.level === level) {
+      levelHeads.push({ title: part.text.trim(), start: i });
+    }
+  }
+
+  if (index < 0 || index >= levelHeads.length) {
+    const err = new Error(`לא נמצא פרק מספר ${index + 1} ברמה ${level}. סה"כ פרקים: ${levelHeads.length}.`);
+    err.status = 404;
+    throw err;
+  }
+
+  const head = levelHeads[index];
+  const nextHead = levelHeads[index + 1];
+  const end = nextHead ? nextHead.start : partsMeta.length;
+  const chapterParts = partsMeta.slice(head.start, end);
+
+  const mainHtml = chapterParts
+    .map(p => {
+      const text = String(p.text || "").trim();
+      if (!text) return "";
+      if (p.level >= 1 && p.level <= 6) return `<h${p.level}>${escHtml(text)}</h${p.level}>`;
+      return `<p>${escHtml(text)}</p>`;
+    })
+    .filter(Boolean)
+    .join("\n");
+
+  log("log", "chapter_extract_success", { requestId: id, level, index, title: head.title, parts: chapterParts.length, elapsedMs: Date.now() - started });
+
+  return {
+    ok: true,
+    serverSide: true,
+    requestId: id,
+    title: head.title,
+    result: {
+      mainHtml: mainHtml || "<p></p>",
+      streams: [],
+      streamsHtml: [],
+    },
+  };
+}
+
 function isDocxImportPath(path) {
   return path === "/api/ravtext-docx-import" ||
     path === "/api/word-chapters-import" ||
@@ -283,18 +360,17 @@ async function handleDocxApi(request) {
     return jsonResponse({ ok: false, serverSide: true, requestId: id, error: "Method not allowed" }, 405, id);
   }
 
-  if (isDocxExtractPath(url.pathname)) {
-    return jsonResponse({
-      ok: false,
-      serverSide: true,
-      requestId: id,
-      error: "Cloudflare DOCX extract endpoint is reachable, but extract is not implemented in the advanced worker yet.",
-    }, 501, id);
-  }
-
   try {
     const arrayBuffer = await request.arrayBuffer();
     log("log", "request_body_loaded", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
+
+    if (isDocxExtractPath(url.pathname)) {
+      const level = url.searchParams.get("level");
+      const index = url.searchParams.get("index");
+      const extracted = await extractChapterContent(arrayBuffer, level, index, id);
+      return jsonResponse({ ...extracted, extractedAt: Date.now() }, 200, id);
+    }
+
     const imported = await importDocx(arrayBuffer, id);
     return jsonResponse({ ...imported, importedAt: Date.now() }, 200, id);
   } catch (error) {
@@ -316,16 +392,9 @@ async function handleDocxApi(request) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const pathname = url.pathname;
 
-    // Intercept all DOCX API paths
-    if (isDocxImportPath(pathname) || isDocxExtractPath(pathname)) {
+    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
       return handleDocxApi(request);
-    }
-
-    // For any other /api/* path, return JSON (prevents SPA caching)
-    if (pathname.startsWith("/api/")) {
-      return jsonResponse({ ok: false, error: "Unknown API path", path: pathname }, 404);
     }
 
     if (env?.ASSETS?.fetch) {

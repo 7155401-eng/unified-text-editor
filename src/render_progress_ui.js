@@ -61,6 +61,7 @@ function injectStyles() {
         inset 0 1px 0 rgba(255,255,255,.8);
       backdrop-filter: blur(18px) saturate(1.18);
       -webkit-backdrop-filter: blur(18px) saturate(1.18);
+      pointer-events: auto;
     }
 
     #ravtext-render-progress-ui .rtp-card::before {
@@ -90,7 +91,7 @@ function injectStyles() {
 
     #ravtext-render-progress-ui .rtp-top {
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr auto auto;
       align-items: center;
       gap: 10px;
       margin-bottom: 10px;
@@ -159,6 +160,19 @@ function injectStyles() {
       font-variant-numeric: tabular-nums;
       text-shadow: 0 1px 0 rgba(255,255,255,.85);
     }
+
+    #ravtext-render-progress-ui .rtp-cancel {
+      border: 1px solid rgba(153, 27, 27, .24);
+      border-radius: 999px;
+      background: rgba(255,255,255,.75);
+      color: #991b1b;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 8px 10px;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+    #ravtext-render-progress-ui .rtp-cancel:hover { background: #fee2e2; }
 
     #ravtext-render-progress-ui .rtp-track {
       height: 9px;
@@ -270,6 +284,7 @@ function ensureHost() {
             <div class="rtp-subtitle" data-rtp="subtitle">מודד שורות, מפרשים וריווח דף</div>
           </div>
           <div class="rtp-percent" data-rtp="percent">0%</div>
+          <button type="button" class="rtp-cancel" data-rtp-action="cancel" title="עצור רינדור">עצור</button>
         </div>
         <div class="rtp-track"><div class="rtp-fill" data-rtp="fill"></div></div>
         <div class="rtp-meta">
@@ -283,6 +298,19 @@ function ensureHost() {
     </div>
   `;
   document.body.appendChild(host);
+  const cancelBtn = host.querySelector('[data-rtp-action="cancel"]');
+  if (cancelBtn && cancelBtn.dataset.bound !== "1") {
+    cancelBtn.dataset.bound = "1";
+    cancelBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      try { window.__ravtextRenderCancelRequested = true; } catch (_) {}
+      try { window.__ravtextCancelRender?.("progress-dialog"); } catch (_) {}
+      hideVilnaRenderProgressImmediately();
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.textContent = "הרינדור נעצר מתוך חלון ההתקדמות.";
+    });
+  }
   return host;
 }
 

@@ -689,16 +689,36 @@ function collectChildrenAsSiblings(children, parentAnchor, out) {
   }
 }
 
+function normalizeStreamTitleNoteText(value) {
+  return String(value || "")
+    .replace(/^\s*\[[^\]]+\]\s*/, "")
+    .replace(/[\u200e\u200f\u202a-\u202e]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isDuplicateStreamTitleNote(noteText, title) {
+  const a = normalizeStreamTitleNoteText(noteText);
+  const b = normalizeStreamTitleNoteText(title);
+  return !!a && !!b && a === b;
+}
+
 function applyFirstNoteAsTitle(code, notes) {
   const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
   const streamSettings = getEffectiveStreamSettings(code);
   const manualTitle = String(streamSettings.title || "").trim();
+  const first = notes && notes.length ? String(notes[0] || "") : "";
+  const existingTitle = manualTitle || labels[code] || defaultLabelForCode(code);
+  const duplicateTitleNote = isDuplicateStreamTitleNote(first, existingTitle);
+
   if (manualTitle) {
     labels[code] = manualTitle;
-    return notes;
+    return duplicateTitleNote ? notes.slice(1) : notes;
   }
-  if (!streamSettings.firstNoteAsTitle || !notes.length) return notes;
-  const title = stripDisplayNum(notes[0] || "");
+
+  if (!streamSettings.firstNoteAsTitle && !duplicateTitleNote) return notes;
+
+  const title = duplicateTitleNote ? existingTitle : stripDisplayNum(first || "");
   if (title) labels[code] = title;
   return notes.slice(1);
 }
@@ -1125,22 +1145,47 @@ let _renderToken = 0;
 let _debounceTimer = null;
 const LIVE_RENDER_DELAY_MS = 650;
 
+function isRenderCurrent(myToken) {
+  if (myToken !== _renderToken) return false;
+  if (typeof window !== "undefined" && window.__ravtextRenderCancelRequested) return false;
+  return true;
+}
+
 export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi = null) {
   if (_debounceTimer) clearTimeout(_debounceTimer);
   const statusEl = document.getElementById("status");
   if (statusEl) statusEl.textContent = "מרענן...";
   _debounceTimer = setTimeout(() => {
+    _debounceTimer = null;
     _renderToken++;
+    if (typeof window !== "undefined") window.__ravtextRenderCancelRequested = false;
     const myToken = _renderToken;
     _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, /*skipSmartTune*/false);
   }, LIVE_RENDER_DELAY_MS);
 }
+
+export function cancelEngineRender(reason = "user") {
+  if (typeof window !== "undefined") window.__ravtextRenderCancelRequested = true;
+  if (_debounceTimer) {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = null;
+  }
+  _renderToken++;
+  const statusEl = typeof document !== "undefined" ? document.getElementById("status") : null;
+  if (statusEl) statusEl.textContent = "הרינדור נעצר. התצוגה הקודמת נשמרה.";
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("ravtext:engine-render-cancelled", { detail: { reason, token: _renderToken } }));
+  }
+}
+
+if (typeof window !== "undefined") window.__ravtextCancelRender = cancelEngineRender;
 
 // Smart-tune state: prevent re-entry while a tune cycle is active.
 let _smartTuneActive = false;
 
 async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, skipSmartTune = false) {
   try {
+    if (typeof window !== "undefined") window.__ravtextRenderCancelRequested = false;
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
     let content = paneManagerToPackerContent(paneManager);
@@ -1158,6 +1203,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       if (statusEl) statusEl.textContent = "תקלה זמנית בחיבור לשרת — נסה שוב בעוד רגע.";
       return;
     }
+    if (!isRenderCurrent(myToken)) return;
 
     // v33: inject demo watermarks INTO source content BEFORE pagination —
     // engine then measures heights including marks, so pages don't overflow.
@@ -1186,9 +1232,9 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       // משה 2026-05-15: מעבירים isCurrent ל-V9 כדי שיוכל לעצור באמצע בלי
       // לחסום את ה-main thread אם המשתמש שינה הגדרה תוך כדי רינדור.
       const v9Result = await applyVilnaV9FromPaneManager(content, pagesContainer, {
-        isCurrent: () => myToken === _renderToken,
+        isCurrent: () => isRenderCurrent(myToken),
       });
-      if (myToken !== _renderToken) return;
+      if (!isRenderCurrent(myToken)) return;
       if (v9Result?.aborted) return;
       const v9PageCount = pagesContainer.querySelectorAll(".page").length;
       if (pdfToolbarApi) {
@@ -1216,21 +1262,24 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
 
     const pageGeom = getDomPageGeom();
     const pages = await domPack(content, pageGeom, {
-      isCurrent: () => myToken === _renderToken,
+      isCurrent: () => isRenderCurrent(myToken),
     });
-    if (myToken !== _renderToken) return;
+    if (!isRenderCurrent(myToken)) return;
 
     const t2 = performance.now();
     renderPages(pages, pagesContainer);
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
+    if (!isRenderCurrent(myToken)) return;
     // משה 2026-05-08: שלב talmud_layout הוסר — V1/V2/V8 נמחקו. מצב לא־גפ"ת
     // ממשיך ישר ל-mishna_wrap ויתר הפאסים.
     logEvent("mishna_wrap");
     await applyMishnaWrapToPages(pagesContainer);
+    if (!isRenderCurrent(myToken)) return;
     logEvent("balanced_columns");
     await applyBalancedColumnsToPages(pagesContainer);
+    if (!isRenderCurrent(myToken)) return;
     logEvent("opening_word");
     applyOpeningWordsToPages(pagesContainer);
     // Bug 17 + 18: cap stretch at 250% and switch to SVG textLength
@@ -1348,6 +1397,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
           // ומעבירים את הילד האחרון שלו (או ילד-בודד עם spans פנימיים) לnext.
           let safety = 50;
           while (pageOv > TALMUD_PUSH_THRESHOLD_PX && safety-- > 0) {
+            if (!isRenderCurrent(myToken)) return;
             const streams = Array.from(ps.querySelectorAll(":scope > .stream[data-stream]"));
             if (streams.length === 0) break;
             // לוקחים את הזרם האחרון (גיאוגרפית/DOM)
@@ -1559,6 +1609,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       // הראשון שיש בו חריגה. דפים תקינים שלפניו לא נוגעים בהם.
       function runFullSplitterPass() {
         try {
+          if (!isRenderCurrent(myToken)) return;
           const startIdx = findFirstOverflowIdx();
           if (startIdx < 0) {
             removeEmptyStreams();
@@ -1618,6 +1669,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
         let stableHits = 0;
         const MAX_ITERS = 30;
         for (let i = 0; i < MAX_ITERS; i++) {
+          if (!isRenderCurrent(myToken)) return;
           runFullSplitterPass();
           const curOverflow = measureTotalOverflow();
           if (curOverflow === 0) break; // ניצחון מלא
@@ -1657,6 +1709,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
           if (Date.now() < suppressUntil) return;
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
+            if (!isRenderCurrent(myToken)) return;
             // suppress observer during loop's own DOM mutations
             suppressUntil = Date.now() + 200;
             try { loopUntilStable(); } catch (e) {
