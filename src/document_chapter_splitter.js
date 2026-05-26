@@ -491,13 +491,17 @@ async function scanFile(fileObj, thisToken) {
     updateLoading("מכין קובץ להעלאה...", null, `${sizeMB} MB`);
     startElapsedTicker();
 
+    let uploadStarted = Date.now();
     const serverImport = await importWordChaptersOnServer(fileObj, (progress) => {
       if (thisToken !== token) return;
       if (progress.stage === "upload") {
         const loadedMB = (progress.loaded / 1048576).toFixed(1);
-        updateLoading(`מעלה לשרת: ${progress.pct}%`, progress.pct, `${loadedMB} / ${sizeMB} MB · זמן שחלף: ${elapsed()}`);
+        const secsSinceStart = Math.max(1, (Date.now() - uploadStarted) / 1000);
+        const kbps = Math.round(progress.loaded / 1024 / secsSinceStart);
+        updateLoading(`מעלה לשרת: ${progress.pct}%`, progress.pct,
+          `${loadedMB} / ${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}`);
       } else if (progress.stage === "processing") {
-        updateLoading("השרת מעבד את המסמך...", 100, `הקובץ הגיע לשרת · זמן שחלף: ${elapsed()}`);
+        updateLoading("השרת מעבד את המסמך...", 100, `הקובץ הגיע לשרת · זמן: ${elapsed()}`);
       }
     });
 
@@ -518,8 +522,7 @@ async function scanFile(fileObj, thisToken) {
   } catch (serverError) {
     stopTicker();
     if (thisToken !== token) return;
-    errorCard(`${serverError?.message || String(serverError)} (לאחר ${elapsed()})`);
-    return;
+    loading(`השרת לא הצליח (${elapsed()}). עובר לסריקה מהירה בדפדפן...`, { pct: null, detail: String(serverError?.message || "").slice(0, 120) });
   }
   await waitForNativeScan(thisToken);
   await nextFrame();

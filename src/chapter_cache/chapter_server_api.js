@@ -155,6 +155,7 @@ function xhrPost(url, body, onProgress) {
       };
       xhr.upload.onload = () => onProgress({ stage: "processing" });
     }
+    xhr.timeout = 55000;
     xhr.onload = () => resolve({
       ok: xhr.status >= 200 && xhr.status < 300,
       status: xhr.status,
@@ -163,6 +164,7 @@ function xhrPost(url, body, onProgress) {
       text: () => Promise.resolve(xhr.responseText),
     });
     xhr.onerror = () => reject(new Error("שגיאת רשת בהעלאת הקובץ"));
+    xhr.ontimeout = () => reject(new Error("השרת לא הגיב תוך 55 שניות (timeout)"));
     xhr.send(body);
   });
 }
