@@ -495,9 +495,9 @@
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="ציטוט/קוד" data-ribbon-tab="home">
-            <button data-cmd="blockquote" title="ציטוט">❝</button>
-            <button data-cmd="code-block" title="בלוק קוד">⟨/⟩</button>
-            <button data-cmd="code-inline" title="קוד בשורה">{ }</button>
+            <button data-cmd="blockquote" title="ציטוט" aria-label="ציטוט">❝</button>
+            <button data-cmd="code-block" title="בלוק קוד" aria-label="בלוק קוד">⟨/⟩</button>
+            <button data-cmd="code-inline" title="קוד בשורה" aria-label="קוד בשורה">{ }</button>
           </span>
           <span class="sep"></span>
           <span class="tb-group" data-title="קישור" data-ribbon-tab="home">
@@ -1331,7 +1331,7 @@
             >
               − עמודה
             </button>
-            <button type="button" data-cmd="table-del" title="מחק את כל הטבלה">
+            <button type="button" data-cmd="table-del" title="מחק את כל הטבלה" aria-label="מחק את כל הטבלה">
               🗑 טבלה
             </button>
           </span>
@@ -1586,7 +1586,7 @@
               style="font-size: 12px; min-width: 36px; text-align: center"
               >100%</span
             >
-            <button type="button" id="zoom-reset" title="איפוס לזום 100%">
+            <button type="button" id="zoom-reset" title="איפוס לזום 100%" aria-label="איפוס לזום 100%">
               100%
             </button>
           </span>
@@ -1596,6 +1596,7 @@
               type="button"
               id="btn-fullscreen"
               title="עבור למסך מלא (F11)"
+              aria-label="עבור למסך מלא"
             >
               ⛶ מסך מלא
             </button>
@@ -1616,6 +1617,7 @@
               type="button"
               id="dl-download-doc"
               title="הורד את העמודים המרונדרים כקובץ HTML עצמאי שמשקף את התצוגה האונליין"
+              aria-label="הורד עמודים (HTML)"
             >
               💾 הורד עמודים (HTML)
             </button>
@@ -1623,6 +1625,7 @@
               type="button"
               id="dl-download-json"
               title="הורד את נתוני המסמך כ-JSON להעברה/גיבוי"
+              aria-label="הורד נתונים (JSON)"
             >
               📦 הורד נתונים (JSON)
             </button>
@@ -1633,6 +1636,7 @@
               type="button"
               id="dl-pick-folder"
               title="בחר תיקייה במחשב — מבקש הרשאת קריאה/כתיבה פעם אחת ושומר אותה"
+              aria-label="בחר תיקיית יעד"
             >
               📁 בחר תיקיית יעד…
             </button>
