@@ -350,11 +350,9 @@ function ensureLauncher() {
   ensureFileTabButton();
 }
 
-function ensureFileTabButton() {
-  if (!state || !selectedFile) return;
+function _fileTabButtonBase() {
   const host = $(".source-bottom-toolbar", document);
-  if (!host) return;
-
+  if (!host) return null;
   let button = document.getElementById(FILE_BUTTON_ID);
   if (!button) {
     button = document.createElement("button");
@@ -371,14 +369,84 @@ function ensureFileTabButton() {
       "padding:7px 10px",
       "font-weight:800",
       "cursor:pointer",
+      "transition:border-color .3s,color .3s",
     ].join(";");
     host.appendChild(button);
   }
+  return button;
+}
 
+function updateFileTabButtonProgress(pct) {
+  const host = $(".source-bottom-toolbar", document);
+  if (!host) return;
+  let button = document.getElementById(FILE_BUTTON_ID);
+  if (!button) {
+    button = document.createElement("button");
+    button.id = FILE_BUTTON_ID;
+    button.type = "button";
+    button.dir = "rtl";
+    button.style.cssText = [
+      "margin-inline-start:6px",
+      "border:1px solid #7c3aed",
+      "border-radius:8px",
+      "background:#faf5ff",
+      "color:#312e81",
+      "padding:7px 10px",
+      "font-weight:800",
+      "cursor:default",
+    ].join(";");
+    host.appendChild(button);
+  }
+  button.textContent = pct != null ? `פרקי הספר · מעלה ${pct}%` : "פרקי הספר · מעלה...";
+}
+
+function updateFileTabButtonDone() {
+  const button = _fileTabButtonBase();
+  if (!button) return;
+  const heads = currentHeads();
+  button.dataset.wordChapterManager = "1";
+  button.style.borderColor = "#16a34a";
+  button.style.color = "#166534";
+  button.style.cursor = "pointer";
+  button.textContent = `פרקי הספר ✓ ${fmt(heads.length)} פרקים מוכנים`;
+}
+
+function ensureFileTabButton() {
+  if (!state || !selectedFile) return;
+  const button = _fileTabButtonBase();
+  if (!button) return;
+  button.dataset.wordChapterManager = "1";
   const nextIndex = nextChapterIndex();
   button.textContent = nextIndex >= 0
     ? `פרקי הספר · פרק ${fmt(nextIndex + 1)}`
     : "פרקי הספר";
+}
+
+function showSuccessNotice(headsCount) {
+  const NOTICE_ID = "wh-upload-success-notice";
+  document.getElementById(NOTICE_ID)?.remove();
+  const div = document.createElement("div");
+  div.id = NOTICE_ID;
+  div.dir = "rtl";
+  div.style.cssText = [
+    "position:fixed", "top:72px", "left:50%", "transform:translateX(-50%)",
+    "z-index:2147483600",
+    "background:#ecfdf5", "border:2px solid #16a34a", "border-radius:14px",
+    "padding:18px 24px", "max-width:400px", "width:90%",
+    "box-shadow:0 8px 32px rgba(0,0,0,.18)",
+    "text-align:center", "font-family:inherit",
+  ].join(";");
+  div.innerHTML = `
+    <div style="font-size:26px">✅</div>
+    <div style="font-weight:700;font-size:15px;margin:6px 0;color:#166534">ההעלאה הושלמה בהצלחה!</div>
+    <div style="font-size:13px;color:#166534">נמצאו <b>${fmt(headsCount)}</b> פרקים.</div>
+    <div style="font-size:12px;color:#374151;margin-top:10px;line-height:1.6">
+      חזור לכפתור <b>"פרקי הספר ✓"</b> בטאב ייבוא<br>כדי לבחור ולייבא פרקים.
+    </div>
+    <button onclick="this.parentElement.remove()" style="margin-top:12px;border:1px solid #16a34a;border-radius:8px;background:white;padding:6px 18px;cursor:pointer;color:#166534;font-weight:700">סגור</button>
+  `;
+  document.body.appendChild(div);
+  setTimeout(() => document.getElementById(NOTICE_ID)?.remove(), 9000);
 }
 
 function openChapterManager() {
@@ -517,6 +585,7 @@ async function scanFile(fileObj, thisToken) {
   function stopTicker() { clearInterval(elapsedTimer); elapsedTimer = null; }
   try {
     loading(`מעלה קובץ לשרת (${sizeMB} MB)...`);
+    updateFileTabButtonProgress(null);
     elapsedTimer = setInterval(() => {
       if (thisToken !== token) { stopTicker(); return; }
       loading(
@@ -531,9 +600,11 @@ async function scanFile(fileObj, thisToken) {
         const loadedMB = (progress.loaded / 1048576).toFixed(1);
         const kbps = Math.round(progress.loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
         loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
+        updateFileTabButtonProgress(progress.pct);
       } else if (progress.stage === "processing") {
         lastPct = 100;
         loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+        updateFileTabButtonProgress(100);
       }
     });
     stopTicker();
@@ -550,9 +621,10 @@ async function scanFile(fileObj, thisToken) {
     state = serverState;
     selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
     chaptersOpen = false;
-    serverLog("render_card_start", { selectedLevel, heads: serverState?.heads?.[selectedLevel]?.length ?? 0 });
-    renderCard();
     serverLog("render_card_done");
+    removeCard();
+    updateFileTabButtonDone();
+    showSuccessNotice(serverState?.heads?.[selectedLevel]?.length ?? serverState?.total ?? 0);
     ensureLauncher();
   } catch (e) {
     stopTicker();
