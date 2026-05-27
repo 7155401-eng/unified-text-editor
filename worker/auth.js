@@ -37,13 +37,16 @@ function startLogin(env, url) {
     prompt: 'select_account',
     state: safeNext,
   });
-  return Response.redirect(`${GOOGLE_AUTH_URL}?${params}`, 302);
+  return new Response(null, {
+    status: 302,
+    headers: { location: `${GOOGLE_AUTH_URL}?${params}`, 'cache-control': 'no-store' },
+  });
 }
 
 async function handleCallback(request, env, url) {
   const code = url.searchParams.get('code');
   if (!code) {
-    return Response.redirect(`${url.origin}/?login=cancelled`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=cancelled`, 'cache-control': 'no-store' } });
   }
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
     return new Response('Google OAuth not configured yet', { status: 503 });
@@ -61,23 +64,23 @@ async function handleCallback(request, env, url) {
     }),
   });
   if (!tokenRes.ok) {
-    return Response.redirect(`${url.origin}/?login=token_error`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=token_error`, 'cache-control': 'no-store' } });
   }
   const { access_token } = await tokenRes.json();
   if (!access_token) {
-    return Response.redirect(`${url.origin}/?login=no_token`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=no_token`, 'cache-control': 'no-store' } });
   }
 
   const infoRes = await fetch(GOOGLE_USERINFO_URL, {
     headers: { authorization: `Bearer ${access_token}` },
   });
   if (!infoRes.ok) {
-    return Response.redirect(`${url.origin}/?login=info_error`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=info_error`, 'cache-control': 'no-store' } });
   }
   const info = await infoRes.json();
   const email = (info.email || '').toLowerCase().trim();
   if (!email || info.email_verified === false) {
-    return Response.redirect(`${url.origin}/?login=no_email`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=no_email`, 'cache-control': 'no-store' } });
   }
   // משה 2026-05-10: שומרים שם פרטי + משפחה מ-Google userinfo כדי לשלוח אותם
   // ליעד שריג כ-ClientName/ClientLName. בלי זה יעד שריג דוחים עם שגיאה 401.
@@ -119,6 +122,7 @@ async function handleCallback(request, env, url) {
     headers: {
       'set-cookie': cookie,
       location: `${url.origin}${dest}`,
+      'cache-control': 'no-store',
     },
   });
 }
@@ -129,6 +133,7 @@ function logout(url) {
     headers: {
       'set-cookie': buildClearCookie(),
       location: `${url.origin}/`,
+      'cache-control': 'no-store',
     },
   });
 }

@@ -131,6 +131,10 @@ function buildMenu(auth) {
     const loginBtn = document.createElement("a");
     loginBtn.className = "profile-menu-login-btn";
     loginBtn.href = "/api/auth/login";
+    loginBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      window.location.href = "/api/auth/login?_=" + Date.now();
+    });
     loginBtn.setAttribute("role", "menuitem");
     // משה 2026-05-08: לוגו G ב-4 צבעים רשמיים, רקע לבן + מסגרת — בהתאם להנחיות
     // Sign in with Google של גוגל. קודם היה G לבן-מונוכרום על רקע כחול כהה,
