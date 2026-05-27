@@ -578,6 +578,7 @@ async function scanFile(fileObj, thisToken) {
   const startedAt = Date.now();
   let elapsedTimer = null;
   let lastPct = null;
+  let serverProcessing = false;
   function elapsed() {
     const s = Math.floor((Date.now() - startedAt) / 1000);
     return s < 60 ? `${s} שנ'` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -588,10 +589,14 @@ async function scanFile(fileObj, thisToken) {
     updateFileTabButtonProgress(null);
     elapsedTimer = setInterval(() => {
       if (thisToken !== token) { stopTicker(); return; }
-      loading(
-        lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
-        { pct: lastPct, detail: `זמן: ${elapsed()}` }
-      );
+      if (serverProcessing) {
+        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+      } else {
+        loading(
+          lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
+          { pct: lastPct, detail: `זמן: ${elapsed()}` }
+        );
+      }
     }, 1500);
     const serverImport = await importWordChaptersOnServer(fileObj, (progress) => {
       if (thisToken !== token) return;
@@ -602,7 +607,7 @@ async function scanFile(fileObj, thisToken) {
         loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
         updateFileTabButtonProgress(progress.pct);
       } else if (progress.stage === "processing") {
-        lastPct = 100;
+        serverProcessing = true;
         loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
         updateFileTabButtonProgress(100);
       }
