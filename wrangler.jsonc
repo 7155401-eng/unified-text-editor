@@ -1,11 +1,17 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.jsonc",
+  "$schema": "node_modules/wrangler/config-schema.json",
   "name": "unified-text-editor",
   "main": "./dist/_worker.js",
   "compatibility_date": "2026-05-25",
   "observability": {
     "enabled": true
   },
+  "r2_buckets": [
+    {
+      "binding": "DOCX_UPLOADS",
+      "bucket_name": "ravtext-docx-uploads"
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -15,4 +21,3 @@
     ]
   }
 }
-
