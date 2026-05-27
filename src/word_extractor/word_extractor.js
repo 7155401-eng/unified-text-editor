@@ -14,7 +14,6 @@ import * as streams from "./word_extractor_streams.js";
 import * as i18n from "./word_extractor_i18n.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
 import { loadTextStyles, fontSizeCssValue } from "../style_registry.js";
-import { tryServerScanNoteSources } from "../chapter_cache/chapter_server_api.js";
 
 let _paneManagerRef = null;
 let _onLoadedRef = null;
@@ -312,8 +311,7 @@ async function refreshHiddenEmptyStreamRows() {
 
   try {
     const buf = await file.arrayBuffer();
-    const serverSources = await tryServerScanNoteSources(file);
-    const sources = serverSources !== null ? serverSources : await engine.find_all_note_sources(buf.slice(0));
+    const sources = await engine.find_all_note_sources(buf.slice(0));
     const defaultStreams = streams.buildDefaultStreamMapping(sources || []);
     const rowMappings = allRowsWithMappings();
 
@@ -401,8 +399,7 @@ function captureImportEnhancementState(modal) {
 async function buildSelectedFromMappings(file, mappings) {
   if (!file) return [];
   const buf = await file.arrayBuffer();
-  const serverSources = await tryServerScanNoteSources(file);
-  const sources = serverSources !== null ? serverSources : await engine.find_all_note_sources(buf.slice(0));
+  const sources = await engine.find_all_note_sources(buf.slice(0));
   const defaultStreams = streams.buildDefaultStreamMapping(sources || []);
   return (mappings || []).map((mapping) => {
     const src = defaultStreams[mapping.rowIndex] || {};

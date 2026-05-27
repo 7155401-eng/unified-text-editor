@@ -90,5 +90,8 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
 
 export default defineConfig({
   base: BASE,
+  worker: {
+    format: 'es',
+  },
   plugins: [PUBLIC_CACHE_BUST, CLOUDFLARE_ADVANCED_WORKER_BUILD],
 })
