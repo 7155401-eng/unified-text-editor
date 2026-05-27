@@ -8,7 +8,7 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
 
 export async function handleAuth(request, env, url) {
-  if (url.pathname === '/api/auth/login') {
+  if (url.pathname === '/api/auth/login' || url.pathname === '/api/auth/go') {
     return startLogin(env, url);
   }
   if (url.pathname === '/api/auth/callback') {

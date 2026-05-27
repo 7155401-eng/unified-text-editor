@@ -130,10 +130,10 @@ function buildMenu(auth) {
 
     const loginBtn = document.createElement("a");
     loginBtn.className = "profile-menu-login-btn";
-    loginBtn.href = "/api/auth/login";
+    loginBtn.href = "/api/auth/go";
     loginBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      window.location.href = "/api/auth/login?_=" + Date.now();
+      window.location.href = "/api/auth/go?_=" + Date.now();
     });
     loginBtn.setAttribute("role", "menuitem");
     // משה 2026-05-08: לוגו G ב-4 צבעים רשמיים, רקע לבן + מסגרת — בהתאם להנחיות
