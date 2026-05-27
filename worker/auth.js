@@ -130,8 +130,8 @@ async function handleCallback(request, env, url) {
   const cookie = await buildSessionCookie(email, env);
   const isPaid = row.status === 'active' && (!row.expires_at || row.expires_at >= nowSec);
   const stateNext = url.searchParams.get('state');
-  const safeNext = stateNext && stateNext.startsWith('/') && !stateNext.startsWith('//') ? stateNext : null;
-  const dest = safeNext || (isPaid ? '/' : '/?login=demo');
+  const safeNext = stateNext && stateNext.startsWith('/') && !stateNext.startsWith('//') && stateNext !== '/' ? stateNext : null;
+  const dest = safeNext ? safeNext : (isPaid ? '/' : '/?login=demo');
   return new Response(null, {
     status: 302,
     headers: {

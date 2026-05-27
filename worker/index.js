@@ -243,6 +243,7 @@ export default {
 
         const newHeaders = new Headers(assetResponse.headers);
         newHeaders.delete('content-length');
+        newHeaders.set('cache-control', 'no-store');
 
         response = new Response(injected, {
           status: assetResponse.status,
