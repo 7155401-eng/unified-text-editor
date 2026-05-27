@@ -133,7 +133,21 @@ function buildMenu(auth) {
     loginBtn.href = "/api/auth/go";
     loginBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      window.location.href = "/api/auth/go?_=" + Date.now();
+      const clientId = window.__RAVTEXT_AUTH__?.googleClientId;
+      if (clientId) {
+        const params = new URLSearchParams({
+          client_id: clientId,
+          redirect_uri: `${window.location.origin}/api/auth/callback`,
+          response_type: "code",
+          scope: "openid email",
+          access_type: "online",
+          prompt: "select_account",
+          state: "/",
+        });
+        window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+      } else {
+        window.location.href = "/api/auth/go?_=" + Date.now();
+      }
     });
     loginBtn.setAttribute("role", "menuitem");
     // משה 2026-05-08: לוגו G ב-4 צבעים רשמיים, רקע לבן + מסגרת — בהתאם להנחיות

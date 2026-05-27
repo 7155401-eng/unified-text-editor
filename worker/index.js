@@ -226,6 +226,7 @@ export default {
           expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
           balanceSeconds: user?.balance_seconds || 0,
           consoleGuardEnabled,
+          googleClientId: env.GOOGLE_CLIENT_ID || null,
         };
         // צוות האתר 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
         // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י צוות האתר ב-DB).

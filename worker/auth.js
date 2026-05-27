@@ -11,6 +11,9 @@ export async function handleAuth(request, env, url) {
   if (url.pathname === '/api/auth/login' || url.pathname === '/api/auth/go') {
     return startLogin(env, url);
   }
+  if (url.pathname === '/api/auth/start-url' && request.method === 'POST') {
+    return startLoginJson(env, url);
+  }
   if (url.pathname === '/api/auth/callback') {
     return handleCallback(request, env, url);
   }
@@ -20,12 +23,7 @@ export async function handleAuth(request, env, url) {
   return new Response('Not found', { status: 404 });
 }
 
-function startLogin(env, url) {
-  if (!env.GOOGLE_CLIENT_ID) {
-    return new Response('Google OAuth not configured yet', { status: 503 });
-  }
-  // Preserve the post-login destination via the OAuth `state` parameter so the
-  // callback knows where to send the user (e.g., back to the premium overlay).
+function buildGoogleAuthUrl(env, url) {
   const next = url.searchParams.get('next') || '/';
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/';
   const params = new URLSearchParams({
@@ -37,10 +35,27 @@ function startLogin(env, url) {
     prompt: 'select_account',
     state: safeNext,
   });
+  return `${GOOGLE_AUTH_URL}?${params}`;
+}
+
+function startLogin(env, url) {
+  if (!env.GOOGLE_CLIENT_ID) {
+    return new Response('Google OAuth not configured yet', { status: 503 });
+  }
   return new Response(null, {
     status: 302,
-    headers: { location: `${GOOGLE_AUTH_URL}?${params}`, 'cache-control': 'no-store' },
+    headers: { location: buildGoogleAuthUrl(env, url), 'cache-control': 'no-store' },
   });
+}
+
+function startLoginJson(env, url) {
+  if (!env.GOOGLE_CLIENT_ID) {
+    return Response.json({ error: 'not_configured' }, { status: 503, headers: { 'cache-control': 'no-store' } });
+  }
+  return Response.json(
+    { url: buildGoogleAuthUrl(env, url) },
+    { headers: { 'cache-control': 'no-store, private', 'pragma': 'no-cache' } }
+  );
 }
 
 async function handleCallback(request, env, url) {
