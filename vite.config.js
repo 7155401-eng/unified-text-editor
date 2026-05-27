@@ -22,7 +22,7 @@ import './scripts/apply_docx_uploadid_splitter_menu_patch.mjs'
 const BASE = process.env.VITE_BASE || './'
 
 // משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
-// עם slash בתחילת הנתיב. זה מונע מצב שבו שבור בדפדפן/Cloudflare ממשיכים להגיש
+// עם slash בתחילת הנתיב. זה מונע מצב שבו בדפדפן/Cloudflare ממשיכים להגיש
 // CSS ישן ומובילים לרגרסיות "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
 const PUBLIC_CACHE_BUST_FILES = [
   'styles.css',
