@@ -16,6 +16,7 @@ import './scripts/apply_docx_uploadid_client_api_patch.mjs'
 import './scripts/apply_docx_uploadid_splitter_menu_patch.mjs'
 import './scripts/apply_docx_uploadid_runtime_guard_patch.mjs'
 import './scripts/apply_docx_upload_action_feedback_patch.mjs'
+import './scripts/apply_docx_post_upload_button_handler_fallback_patch.mjs'
 
 const BASE = process.env.VITE_BASE || './'
 
