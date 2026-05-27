@@ -77,8 +77,19 @@ function sAttr(xml, name) {
   return m ? sXmlDec(m[1]) : "";
 }
 function sTag(xml, ln) {
-  const m = String(xml || "").match(new RegExp(`<w:${ln}\\b[\\s\\S]*?(?:<\\/w:${ln}>|\\/>)`));
-  return m ? m[0] : "";
+  const str = xml || "";
+  const open = `<w:${ln}`;
+  const si = str.indexOf(open);
+  if (si < 0) return "";
+  const ch = str.charCodeAt(si + open.length);
+  if (ch !== 62 && ch !== 32 && ch !== 9 && ch !== 10 && ch !== 13 && ch !== 47) return "";
+  const tagEnd = str.indexOf(">", si + open.length);
+  if (tagEnd < 0) return "";
+  if (str.charCodeAt(tagEnd - 1) === 47) return str.slice(si, tagEnd + 1); // self-closing
+  const close = `</w:${ln}>`;
+  const ei = str.indexOf(close, tagEnd);
+  if (ei < 0) return "";
+  return str.slice(si, ei + close.length);
 }
 function sPText(pXml) {
   const out = [];
@@ -89,7 +100,17 @@ function sPText(pXml) {
 }
 function sParseStyles(xml) {
   const styles = {};
-  for (const block of (String(xml || "").match(/<w:style\b[\s\S]*?<\/w:style>/g) || [])) {
+  const str = xml || "";
+  const OPEN = "<w:style";
+  const CLOSE = "</w:style>";
+  let pos = 0;
+  while (pos < str.length) {
+    const si = str.indexOf(OPEN, pos);
+    if (si < 0) break;
+    const ei = str.indexOf(CLOSE, si);
+    if (ei < 0) break;
+    const block = str.slice(si, ei + CLOSE.length);
+    pos = ei + CLOSE.length;
     const id = sAttr(block, "styleId");
     if (!id) continue;
     styles[id] = { name: sAttr(sTag(block, "name"), "val"), outline: sAttr(sTag(block, "outlineLvl"), "val") };
@@ -562,6 +583,79 @@ async function loadJsZip() {
   return mod.default || mod;
 }
 
+// Extracts a single file from a ZIP ArrayBuffer using the browser's native
+// DecompressionStream (C++, fast) instead of JSZip (pure JS, blocks thread).
+// Returns the file content as a UTF-8 string, or null if not found / unsupported.
+async function _zipNativeExtract(arrayBuffer, targetFilename) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const view = new DataView(arrayBuffer);
+  let pos = 0;
+  while (pos < bytes.length - 30) {
+    if (bytes[pos] !== 0x50 || bytes[pos+1] !== 0x4B || bytes[pos+2] !== 0x03 || bytes[pos+3] !== 0x04) {
+      pos++;
+      continue;
+    }
+    const flags       = view.getUint16(pos + 6,  true);
+    const compression = view.getUint16(pos + 8,  true);
+    const compSize    = view.getUint32(pos + 18, true);
+    const fnLen       = view.getUint16(pos + 26, true);
+    const extraLen    = view.getUint16(pos + 28, true);
+    const dataStart   = pos + 30 + fnLen + extraLen;
+    const fn = new TextDecoder().decode(bytes.subarray(pos + 30, pos + 30 + fnLen));
+
+    if (fn === targetFilename) {
+      if (flags & 0x08) return null; // data-descriptor mode — unknown size
+      if (compression === 0) {
+        return new TextDecoder("utf-8").decode(bytes.subarray(dataStart, dataStart + compSize));
+      }
+      if (compression !== 8) return null; // not DEFLATE
+      const comp = bytes.subarray(dataStart, dataStart + compSize);
+      const ds = new DecompressionStream("deflate-raw");
+      const w = ds.writable.getWriter();
+      await w.write(comp);
+      await w.close();
+      const r = ds.readable.getReader();
+      const chunks = [];
+      while (true) {
+        const { done, value } = await r.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      const total = chunks.reduce((s, c) => s + c.length, 0);
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) { out.set(c, off); off += c.length; }
+      return new TextDecoder("utf-8").decode(out);
+    }
+
+    if (flags & 0x08 || compSize === 0) {
+      // Streaming entry — scan for next PK signature
+      pos = dataStart + 1;
+      while (pos < bytes.length - 4 &&
+        !(bytes[pos]===0x50 && bytes[pos+1]===0x4B &&
+          (bytes[pos+2]===0x03||bytes[pos+2]===0x01||bytes[pos+2]===0x05))) {
+        pos++;
+      }
+    } else {
+      pos = dataStart + compSize;
+    }
+  }
+  return null;
+}
+
+async function extractFromZip(arrayBuffer, filename) {
+  if (typeof DecompressionStream !== "undefined") {
+    try {
+      const r = await _zipNativeExtract(arrayBuffer, filename);
+      if (r !== null) return r;
+    } catch (_) {}
+  }
+  // Fallback: JSZip
+  const JSZip = await loadJsZip();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  return (await zip.file(filename)?.async("text")) ?? "";
+}
+
 function splitDocumentXml(xml) {
   const open = xml.match(/<w:body\b[^>]*>/);
   const closeIndex = xml.lastIndexOf("</w:body>");
@@ -573,14 +667,14 @@ function splitDocumentXml(xml) {
 }
 
 async function scanHeadingsLocally(fileObj, thisToken) {
-  const JSZip = await loadJsZip();
-  if (thisToken !== token) return null;
   const buf = await fileObj.arrayBuffer();
   if (thisToken !== token) return null;
-  const zip = await JSZip.loadAsync(buf);
+  // Extract both files concurrently using native DecompressionStream (fast, non-blocking)
+  const [docXml, stylesXml] = await Promise.all([
+    extractFromZip(buf, "word/document.xml"),
+    extractFromZip(buf, "word/styles.xml"),
+  ]);
   if (thisToken !== token) return null;
-  const docXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
-  const stylesXml = (await zip.file("word/styles.xml")?.async("text")) ?? "";
   const styles = sParseStyles(stylesXml);
   const heads = { 1: [], 2: [] };
   const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
