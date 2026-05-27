@@ -10,14 +10,15 @@ import './scripts/apply_v9_column_continuation_flag_patch.mjs'
 import './scripts/apply_v9_column_split_line_edge_guard_patch.mjs'
 import './scripts/apply_v9_column_split_balance_and_expansion_patch.mjs'
 import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
+import './scripts/apply_word_extractor_worker_freeze_patch.mjs'
 
-// משה 2026-05-07: base relative ('./')כדי שיעבוד גם ב-Vercel (root) וגם
-// ב-GitHub Pages (subpath). אין צורך במשנה סביבתי.
+// משה 2026-05-07: base relative ('./')כדי שמתאים גם ב-Vercel (root) וגם
+// ב-GitHub Pages (subpath). אם נרצה נשנה בפקודת הבנייה.
 const BASE = process.env.VITE_BASE || './'
 
 // משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
-// עם slash בתחילת הנתיב. זה מונע מצב שבו דפדפן/Cloudflare ממשיכים להגיש
-// CSS ישן ומוביום לרגרים "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
+// עם slash בתחילת הנתיב. זה מונע מצב שבו בדפדפן/Cloudflare ממשיכים להגיש
+// CSS ישן ומובילים לרגרסיות "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
 const PUBLIC_CACHE_BUST_FILES = [
   'styles.css',
   'theme-base-refresh.css',
@@ -90,5 +91,8 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
 
 export default defineConfig({
   base: BASE,
+  worker: {
+    format: 'es',
+  },
   plugins: [PUBLIC_CACHE_BUST, CLOUDFLARE_ADVANCED_WORKER_BUILD],
 })
