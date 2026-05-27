@@ -13,13 +13,16 @@ import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
 import './scripts/apply_word_extractor_worker_freeze_patch.mjs'
 import './scripts/apply_docx_upload_debug_patch.mjs'
 import './scripts/apply_docx_response_trim_patch.mjs'
+import './scripts/apply_docx_uploadid_worker_core_patch.mjs'
+import './scripts/apply_docx_uploadid_client_api_patch.mjs'
+import './scripts/apply_docx_uploadid_splitter_menu_patch.mjs'
 
 // משה 2026-05-07: base relative ('./')כדי שמתאים גם ב-Vercel (root) וגם
 // ב-GitHub Pages (subpath). אם נרצה נשנה בפקודת הבנייה.
 const BASE = process.env.VITE_BASE || './'
 
 // משה 2026-05-14: cache-busting גם ל-styles.css וגם לקבצי public שנקראים
-// עם slash בתחילת הנתיב. זה מונע מצב שבו בדפדפן/Cloudflare ממשיכים להגיש
+// עם slash בתחילת הנתיב. זה מונע מצב שבו שבור בדפדפן/Cloudflare ממשיכים להגיש
 // CSS ישן ומובילים לרגרסיות "חצי מסך נעלם" אחרי תיקון שכבר מוזג ל-main.
 const PUBLIC_CACHE_BUST_FILES = [
   'styles.css',
