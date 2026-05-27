@@ -59,7 +59,6 @@ function postDocxWithUploadProgress(url, body, file, callbacks = {}) {
     xhr.responseType = "text";
     xhr.timeout = callbacks.timeoutMs || 10 * 60 * 1000;
 
-    try { xhr.setRequestHeader("cache-control", "no-store"); } catch {}
     try { xhr.setRequestHeader("x-docx-request-id", xhrRequestId); } catch {}
     try { if (file?.name) xhr.setRequestHeader("x-file-name", encodeURIComponent(file.name)); } catch {}
 
@@ -133,7 +132,7 @@ function postDocxWithUploadProgress(url, body, file, callbacks = {}) {
         url,
         status: xhr.status,
         elapsedMs,
-        serverRequestId: json?.xhrRequestId || xhr.getResponseHeader("x-docx-request-id") || null,
+        serverRequestId: json?.requestId || xhr.getResponseHeader("x-docx-request-id") || null,
         diagnostics: json?.diagnostics || null,
       });
 
