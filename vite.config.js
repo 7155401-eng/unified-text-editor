@@ -61,7 +61,7 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
         minify: false,
         sourcemap: false,
         lib: {
-          entry: 'cloudflare/docx_worker_entry.js',
+          entry: 'worker/index.js',
           formats: ['es'],
           fileName: () => '_worker.js',
         },
