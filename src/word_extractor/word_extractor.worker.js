@@ -15,6 +15,7 @@ import {
 
 self.onmessage = async (ev) => {
   const { type, id, payload } = ev.data;
+  const t0 = Date.now();
   try {
     let result;
 
@@ -29,6 +30,8 @@ self.onmessage = async (ev) => {
         find_all_styles_full(buf.slice(0)),
       ]);
       result = { titles, headerFooter, sections, styles, sources, stylesFull };
+      // לוג פנימי — מוחזר עם התוצאה לחוט הראשי שישלח לשרת
+      result._workerMs = Date.now() - t0;
 
     } else if (type === 'extract') {
       result = await docx_extract_simple(
@@ -36,10 +39,11 @@ self.onmessage = async (ev) => {
         payload.simpleSelected,
         payload.options || {}
       );
+      result._workerMs = Date.now() - t0;
     }
 
     self.postMessage({ id, ok: true, result });
   } catch (e) {
-    self.postMessage({ id, ok: false, error: e?.message || String(e) });
+    self.postMessage({ id, ok: false, error: e?.message || String(e), workerMs: Date.now() - t0 });
   }
 };

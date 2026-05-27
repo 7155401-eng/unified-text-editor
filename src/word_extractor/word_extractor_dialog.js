@@ -25,6 +25,7 @@ import {
   SOURCE_SIDENOTE, SOURCE_PARALLEL, SOURCE_EXTERNAL, SOURCE_CUSTOM,
   t,
 } from "./word_extractor_i18n.js";
+import { serverLog } from "../chapter_cache/chapter_server_api.js";
 import "./word_extractor.css";
 
 // משה 2026-05-08: סמני בקרה ייחודיים, כך ש-PARBREAK לא יבלבל אם מופיע בטקסט המשתמש
@@ -63,9 +64,13 @@ function _getWorker() {
       if (!pending) return;
       _workerPending.delete(id);
       if (ok) pending.resolve(result);
-      else pending.reject(new Error(error || 'Worker error'));
+      else {
+        serverLog('we_worker_op_error', { id, error: error || 'Worker error' });
+        pending.reject(new Error(error || 'Worker error'));
+      }
     };
     _worker.onerror = (err) => {
+      serverLog('we_worker_crash', { error: err?.message || String(err) });
       for (const [, p] of _workerPending) p.reject(new Error('Worker crashed: ' + err.message));
       _workerPending.clear();
       _worker = null;
@@ -82,12 +87,41 @@ function _workerCall(type, payload) {
   });
 }
 
-function workerScan(buf) {
-  return _workerCall('scan', { buf });
+async function workerScan(buf) {
+  const t0 = Date.now();
+  serverLog('we_scan_worker_start', { bytes: buf.byteLength });
+  try {
+    const result = await _workerCall('scan', { buf });
+    serverLog('we_scan_worker_done', {
+      bytes: buf.byteLength,
+      sources: result.sources?.length ?? 0,
+      workerMs: result._workerMs,
+      elapsedMs: Date.now() - t0,
+    });
+    return result;
+  } catch (e) {
+    serverLog('we_scan_worker_error', { bytes: buf.byteLength, error: e?.message, elapsedMs: Date.now() - t0 });
+    throw e;
+  }
 }
 
-function workerExtract(buf, simpleSelected, options) {
-  return _workerCall('extract', { buf, simpleSelected, options });
+async function workerExtract(buf, simpleSelected, options) {
+  const t0 = Date.now();
+  serverLog('we_extract_worker_start', { bytes: buf.byteLength, streams: simpleSelected?.length ?? 0 });
+  try {
+    const result = await _workerCall('extract', { buf, simpleSelected, options });
+    serverLog('we_extract_worker_done', {
+      bytes: buf.byteLength,
+      streams: result.streams?.length ?? 0,
+      mainLen: result.main?.length ?? 0,
+      workerMs: result._workerMs,
+      elapsedMs: Date.now() - t0,
+    });
+    return result;
+  } catch (e) {
+    serverLog('we_extract_worker_error', { bytes: buf.byteLength, error: e?.message, elapsedMs: Date.now() - t0 });
+    throw e;
+  }
 }
 
 // =====================================================================
@@ -408,15 +442,22 @@ async function onFileChange(ev) {
     setStatus('סורק את המסמך... (הדפדפן לא קופא)');
 
     // בדיקת cache לפי hash של הקובץ — אם כבר עיבדנו את הקובץ הזה, נחזיר מיד
+    const t0Scan = Date.now();
     const hash = await fileHash(_state.zipBuf);
     _state.fileHash = hash;
     let scanResult = hash ? await idbGet(IDB_STORE_SCAN, hash) : null;
 
-    if (!scanResult) {
+    if (scanResult) {
+      serverLog('we_scan_cache_hit', { hash, sources: scanResult.sources?.length ?? 0, fileName: file.name });
+    } else {
       // עיבוד ב-Web Worker — הדפדפן ממשיך לעבוד בזמן הסריקה
       scanResult = await workerScan(_state.zipBuf.slice(0));
       if (hash) idbSet(IDB_STORE_SCAN, hash, scanResult);
     }
+    serverLog('we_scan_done', {
+      hash, fileName: file.name, bytes: _state.zipBuf.byteLength,
+      sources: scanResult.sources?.length ?? 0, elapsedMs: Date.now() - t0Scan,
+    });
 
     const { titles, headerFooter, sections, styles, sources, stylesFull } = scanResult;
     _state.metadata = { titles, headerFooter, sections, styles };
@@ -693,9 +734,15 @@ async function onConfirm() {
     const selKey = _state.fileHash
       ? _state.fileHash + '-' + JSON.stringify(simpleSelected) + (skipEmptyNotes ? '-s' : '') + '-' + markerMatchMode
       : null;
+    const t0Extract = Date.now();
     let result = selKey ? await idbGet(IDB_STORE_EXTRACT, selKey) : null;
 
-    if (!result) {
+    if (result) {
+      serverLog('we_extract_cache_hit', {
+        hash: _state.fileHash, streams: result.streams?.length ?? 0,
+        mainLen: result.main?.length ?? 0,
+      });
+    } else {
       setStatus('מחלץ הערות... (הדפדפן לא קופא)');
       // עיבוד ב-Web Worker — הדפדפן ממשיך לעבוד בזמן החילוץ
       result = await workerExtract(_state.zipBuf.slice(0), simpleSelected, {
@@ -705,6 +752,11 @@ async function onConfirm() {
       });
       if (selKey) idbSet(IDB_STORE_EXTRACT, selKey, result);
     }
+    serverLog('we_extract_done', {
+      hash: _state.fileHash, fileName: _state.fileName,
+      streams: result.streams?.length ?? 0, mainLen: result.main?.length ?? 0,
+      elapsedMs: Date.now() - t0Extract,
+    });
     // משה 2026-05-09: שלב 1+2 — mammoth מספק HTML מעוצב לגוף עם סמלי הזרמים שלנו.
     // הזרמים עצמם ממשיכים להגיע מ-docx_extract_simple. הגוף = mammoth, זרמים = result.streams.
     let bodyHtml = null;
