@@ -586,17 +586,39 @@ async function scanHeadingsLocally(fileObj, thisToken) {
   const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   let totalChars = 0;
   let partIndex = 0;
-  const paraRe = /<w:p[ >][\s\S]*?<\/w:p>/g;
-  let m;
-  while ((m = paraRe.exec(docXml))) {
-    const pXml = m[0];
+
+  // Fast indexOf-based paragraph scan — avoids catastrophic regex backtracking on large XML.
+  // Yields to the browser every 500 paragraphs so the UI stays responsive.
+  const END_TAG = "</w:p>";
+  let pos = 0;
+  while (pos < docXml.length) {
+    const pStart = docXml.indexOf("<w:p", pos);
+    if (pStart < 0) break;
+    const ch = docXml.charCodeAt(pStart + 4);
+    // Must be <w:p> or <w:p …>, not <w:pPr>, <w:pStyle>, etc.
+    if (ch !== 62 /* > */ && ch !== 32 /* space */ && ch !== 9 && ch !== 10 && ch !== 13) {
+      if (ch === 47 /* / — self-closing <w:p/> */) { partIndex++; pos = pStart + 6; continue; }
+      pos = pStart + 4;
+      continue;
+    }
+    const pEnd = docXml.indexOf(END_TAG, pStart);
+    if (pEnd < 0) break;
+    const pXml = docXml.slice(pStart, pEnd + 6);
+    pos = pEnd + 6;
+
     const level = sLevelOf(pXml, styles);
     const text = sPText(pXml).trim();
     totalChars += text.length;
     if (level >= 1 && level <= 6) h[level] = (h[level] || 0) + 1;
     if ((level === 1 || level === 2) && text) heads[level].push({ title: text, start: partIndex });
     partIndex++;
+
+    if (partIndex % 500 === 0) {
+      if (thisToken !== token) return null;
+      await nextFrame();
+    }
   }
+
   if (!heads[1].length && !heads[2].length) return null;
   return {
     ok: true,
