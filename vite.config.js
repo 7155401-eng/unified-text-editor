@@ -11,6 +11,7 @@ import './scripts/apply_v9_column_split_line_edge_guard_patch.mjs'
 import './scripts/apply_v9_column_split_balance_and_expansion_patch.mjs'
 import './scripts/apply_v9_stream_line_stretch_guard_patch.mjs'
 import './scripts/apply_word_extractor_worker_freeze_patch.mjs'
+import './scripts/apply_docx_upload_debug_patch.mjs'
 
 // משה 2026-05-07: base relative ('./')כדי שמתאים גם ב-Vercel (root) וגם
 // ב-GitHub Pages (subpath). אם נרצה נשנה בפקודת הבנייה.
