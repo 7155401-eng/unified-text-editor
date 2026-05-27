@@ -572,6 +572,45 @@ function splitDocumentXml(xml) {
   };
 }
 
+async function scanHeadingsLocally(fileObj, thisToken) {
+  const JSZip = await loadJsZip();
+  if (thisToken !== token) return null;
+  const buf = await fileObj.arrayBuffer();
+  if (thisToken !== token) return null;
+  const zip = await JSZip.loadAsync(buf);
+  if (thisToken !== token) return null;
+  const docXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+  const stylesXml = (await zip.file("word/styles.xml")?.async("text")) ?? "";
+  const styles = sParseStyles(stylesXml);
+  const heads = { 1: [], 2: [] };
+  const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+  let totalChars = 0;
+  let partIndex = 0;
+  const paraRe = /<w:p[ >][\s\S]*?<\/w:p>/g;
+  let m;
+  while ((m = paraRe.exec(docXml))) {
+    const pXml = m[0];
+    const level = sLevelOf(pXml, styles);
+    const text = sPText(pXml).trim();
+    totalChars += text.length;
+    if (level >= 1 && level <= 6) h[level] = (h[level] || 0) + 1;
+    if ((level === 1 || level === 2) && text) heads[level].push({ title: text, start: partIndex });
+    partIndex++;
+  }
+  if (!heads[1].length && !heads[2].length) return null;
+  return {
+    ok: true,
+    serverSide: true,
+    heads,
+    total: heads[1].length + heads[2].length,
+    h,
+    chars: totalChars,
+    words: Math.round(totalChars / 5),
+    fileHash: null,
+    fileName: fileObj.name,
+  };
+}
+
 async function scanFile(fileObj, thisToken) {
   if (!fileObj || thisToken !== token) return;
   const sizeMB = ((fileObj.size || 0) / 1048576).toFixed(1);
@@ -585,44 +624,60 @@ async function scanFile(fileObj, thisToken) {
   }
   function stopTicker() { clearInterval(elapsedTimer); elapsedTimer = null; }
   try {
-    loading(`מעלה קובץ לשרת (${sizeMB} MB)...`);
+    loading(`קורא קובץ (${sizeMB} MB)...`);
     updateFileTabButtonProgress(null);
-    elapsedTimer = setInterval(() => {
-      if (thisToken !== token) { stopTicker(); return; }
-      if (serverProcessing) {
-        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
-      } else {
-        loading(
-          lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
-          { pct: lastPct, detail: `זמן: ${elapsed()}` }
-        );
-      }
-    }, 1500);
-    const serverImport = await importWordChaptersOnServer(fileObj, (progress) => {
-      if (thisToken !== token) return;
-      if (progress.stage === "upload") {
-        lastPct = progress.pct;
-        const loadedMB = (progress.loaded / 1048576).toFixed(1);
-        const kbps = Math.round(progress.loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
-        loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
-        updateFileTabButtonProgress(progress.pct);
-      } else if (progress.stage === "processing") {
-        serverProcessing = true;
-        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
-        updateFileTabButtonProgress(100);
-      }
-    });
-    stopTicker();
+
+    // Try local heading extraction first — no network needed, instant
+    let scanResult = null;
+    try {
+      scanResult = await scanHeadingsLocally(fileObj, thisToken);
+      if (scanResult) serverLog("local_scan_ok", { heads1: scanResult.heads[1].length, heads2: scanResult.heads[2].length });
+    } catch (localErr) {
+      serverLog("local_scan_failed", { error: String(localErr?.message || localErr) });
+    }
     if (thisToken !== token) return;
+
+    if (!scanResult) {
+      // Fallback: upload full file to server
+      loading(`מעלה קובץ לשרת (${sizeMB} MB)...`);
+      elapsedTimer = setInterval(() => {
+        if (thisToken !== token) { stopTicker(); return; }
+        if (serverProcessing) {
+          loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+        } else {
+          loading(
+            lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
+            { pct: lastPct, detail: `זמן: ${elapsed()}` }
+          );
+        }
+      }, 1500);
+      scanResult = await importWordChaptersOnServer(fileObj, (progress) => {
+        if (thisToken !== token) return;
+        if (progress.stage === "upload") {
+          lastPct = progress.pct;
+          const loadedMB = (progress.loaded / 1048576).toFixed(1);
+          const kbps = Math.round(progress.loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
+          loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
+          updateFileTabButtonProgress(progress.pct);
+        } else if (progress.stage === "processing") {
+          serverProcessing = true;
+          loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+          updateFileTabButtonProgress(100);
+        }
+      });
+      stopTicker();
+      if (thisToken !== token) return;
+    }
+
     serverLog("normalize_start", { fileName: fileObj?.name, size: fileObj?.size });
-    const serverState = normalizeServerScanState(serverImport, fileObj);
+    const serverState = normalizeServerScanState(scanResult, fileObj);
     serverLog("normalize_done", {
       ok: !!serverState,
       heads1: serverState?.heads?.[1]?.length ?? 0,
       heads2: serverState?.heads?.[2]?.length ?? 0,
       total: serverState?.total ?? 0,
     });
-    if (!serverState) throw new Error("השרת לא החזיר רשימת כותרות תקינה.");
+    if (!serverState) throw new Error("לא נמצאו כותרות בקובץ.");
     state = serverState;
     selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
     chaptersOpen = false;
