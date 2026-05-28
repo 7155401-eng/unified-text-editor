@@ -586,10 +586,13 @@ async function loadJsZip() {
 // Extracts a single file from a ZIP ArrayBuffer using the browser's native
 // DecompressionStream (C++, fast) instead of JSZip (pure JS, blocks thread).
 // Returns the file content as a UTF-8 string, or null if not found / unsupported.
-async function _zipNativeExtract(arrayBuffer, targetFilename) {
+async function _zipNativeExtract(arrayBuffer, targetFilename, diagLabel) {
   const bytes = new Uint8Array(arrayBuffer);
   const view = new DataView(arrayBuffer);
   let pos = 0;
+
+  if (diagLabel) { loading(`${diagLabel} — 2א: סורק כותרות ZIP...`); await nextFrame(); }
+
   while (pos < bytes.length - 30) {
     if (bytes[pos] !== 0x50 || bytes[pos+1] !== 0x4B || bytes[pos+2] !== 0x03 || bytes[pos+3] !== 0x04) {
       pos++;
@@ -604,16 +607,23 @@ async function _zipNativeExtract(arrayBuffer, targetFilename) {
     const fn = new TextDecoder().decode(bytes.subarray(pos + 30, pos + 30 + fnLen));
 
     if (fn === targetFilename) {
-      if (flags & 0x08) return null; // data-descriptor mode — unknown size
+      if (flags & 0x08) return null;
       if (compression === 0) {
         return new TextDecoder("utf-8").decode(bytes.subarray(dataStart, dataStart + compSize));
       }
-      if (compression !== 8) return null; // not DEFLATE
+      if (compression !== 8) return null;
+
+      if (diagLabel) { loading(`${diagLabel} — 2ב: נמצא (${(compSize/1024).toFixed(0)} KB דחוס), מפחית...`); await nextFrame(); }
+
       const comp = bytes.subarray(dataStart, dataStart + compSize);
       const ds = new DecompressionStream("deflate-raw");
       const w = ds.writable.getWriter();
+
+      if (diagLabel) { loading(`${diagLabel} — 2ג: כותב לstream...`); await nextFrame(); }
       await w.write(comp);
       await w.close();
+
+      if (diagLabel) { loading(`${diagLabel} — 2ד: קורא מstream...`); await nextFrame(); }
       const r = ds.readable.getReader();
       const chunks = [];
       while (true) {
@@ -621,6 +631,8 @@ async function _zipNativeExtract(arrayBuffer, targetFilename) {
         if (done) break;
         chunks.push(value);
       }
+
+      if (diagLabel) { loading(`${diagLabel} — 2ה: מרכיב וממיר UTF-8...`); await nextFrame(); }
       const total = chunks.reduce((s, c) => s + c.length, 0);
       const out = new Uint8Array(total);
       let off = 0;
@@ -629,7 +641,6 @@ async function _zipNativeExtract(arrayBuffer, targetFilename) {
     }
 
     if (flags & 0x08) {
-      // Data-descriptor mode: size unknown — scan for next PK signature
       pos = dataStart;
       while (pos < bytes.length - 4 &&
         !(bytes[pos]===0x50 && bytes[pos+1]===0x4B &&
@@ -637,7 +648,6 @@ async function _zipNativeExtract(arrayBuffer, targetFilename) {
         pos++;
       }
     } else {
-      // Known size (compSize=0 means empty/directory entry — advance past zero bytes)
       pos = dataStart + compSize;
     }
   }
@@ -671,28 +681,27 @@ async function scanHeadingsLocally(fileObj, thisToken) {
   // Try native browser DecompressionStream (C++, non-blocking, no JSZip needed)
   if (hasNativeDecompress) {
     try {
-      [docXml, stylesXml] = await Promise.all([
-        _zipNativeExtract(buf, "word/document.xml").then(r => r ?? ""),
-        _zipNativeExtract(buf, "word/styles.xml").then(r => r ?? ""),
-      ]);
-    } catch (_) { docXml = ""; stylesXml = ""; }
+      docXml = await _zipNativeExtract(buf, "word/document.xml", "שלב 2 — document.xml") ?? "";
+      if (thisToken !== token) return null;
+      stylesXml = await _zipNativeExtract(buf, "word/styles.xml", "שלב 2 — styles.xml") ?? "";
+    } catch (e) { docXml = ""; stylesXml = ""; }
   }
 
   // Fallback: JSZip — load the ZIP ONCE and extract both files
   if (!docXml) {
-    loading(`קורא קובץ — שלב 2b: טוען JSZip...`);
+    loading(`שלב 2 JSZip — טוען ספרייה...`);
     await nextFrame();
     const JSZip = await loadJsZip();
-    loading(`קורא קובץ — שלב 2c: מפחית ZIP...`);
+    loading(`שלב 2 JSZip — מפחית ZIP (${(buf.byteLength/1048576).toFixed(1)} MB)...`);
     await nextFrame();
     const zip = await JSZip.loadAsync(buf);
     if (thisToken !== token) return null;
-    loading(`קורא קובץ — שלב 2d: מחלץ XML...`);
+    loading(`שלב 2 JSZip — מחלץ document.xml...`);
     await nextFrame();
-    [docXml, stylesXml] = await Promise.all([
-      (zip.file("word/document.xml")?.async("text") ?? Promise.resolve("")),
-      (zip.file("word/styles.xml")?.async("text") ?? Promise.resolve("")),
-    ]);
+    docXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+    loading(`שלב 2 JSZip — מחלץ styles.xml...`);
+    await nextFrame();
+    stylesXml = (await zip.file("word/styles.xml")?.async("text")) ?? "";
   }
   if (thisToken !== token) return null;
   loading(`קורא קובץ — שלב 3: מנתח סגנונות...`);
