@@ -64,73 +64,6 @@ function norm(value) {
     .toLowerCase();
 }
 
-// String-based XML helpers — no DOMParser, safe for large documents
-function sXmlDec(v) {
-  return String(v || "")
-    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'").replace(/&amp;/g, "&")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
-}
-function sAttr(xml, name) {
-  const m = String(xml || "").match(new RegExp(`(?:\\bw:|\\b)${name}="([^"]*)"`));
-  return m ? sXmlDec(m[1]) : "";
-}
-function sTag(xml, ln) {
-  const str = xml || "";
-  const open = `<w:${ln}`;
-  const si = str.indexOf(open);
-  if (si < 0) return "";
-  const ch = str.charCodeAt(si + open.length);
-  if (ch !== 62 && ch !== 32 && ch !== 9 && ch !== 10 && ch !== 13 && ch !== 47) return "";
-  const tagEnd = str.indexOf(">", si + open.length);
-  if (tagEnd < 0) return "";
-  if (str.charCodeAt(tagEnd - 1) === 47) return str.slice(si, tagEnd + 1); // self-closing
-  const close = `</w:${ln}>`;
-  const ei = str.indexOf(close, tagEnd);
-  if (ei < 0) return "";
-  return str.slice(si, ei + close.length);
-}
-function sPText(pXml) {
-  const out = [];
-  const re = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
-  let m;
-  while ((m = re.exec(String(pXml || "")))) out.push(sXmlDec(m[1]));
-  return out.join("");
-}
-function sParseStyles(xml) {
-  const styles = {};
-  const str = xml || "";
-  const OPEN = "<w:style";
-  const CLOSE = "</w:style>";
-  let pos = 0;
-  while (pos < str.length) {
-    const si = str.indexOf(OPEN, pos);
-    if (si < 0) break;
-    const ei = str.indexOf(CLOSE, si);
-    if (ei < 0) break;
-    const block = str.slice(si, ei + CLOSE.length);
-    pos = ei + CLOSE.length;
-    const id = sAttr(block, "styleId");
-    if (!id) continue;
-    styles[id] = { name: sAttr(sTag(block, "name"), "val"), outline: sAttr(sTag(block, "outlineLvl"), "val") };
-  }
-  return styles;
-}
-function sLevelOf(pXml, styles) {
-  const pPr = sTag(pXml, "pPr");
-  const outline = sAttr(sTag(pPr, "outlineLvl"), "val");
-  if (outline !== "" && Number.isFinite(+outline)) return +outline + 1;
-  const styleId = sAttr(sTag(pPr, "pStyle"), "val");
-  const style = styles[styleId] || {};
-  if (style.outline !== "" && style.outline != null && Number.isFinite(+style.outline)) return +style.outline + 1;
-  const marker = `${norm(styleId)} ${norm(style.name)}`;
-  for (let i = 1; i <= 6; i++) {
-    if (norm(styleId) === String(i) || marker.includes(`heading ${i}`) || marker.includes(`heading${i}`) ||
-        marker.includes(`כותרת ${i}`) || marker.includes(`כותרת${i}`)) return i;
-  }
-  return 0;
-}
 
 function getModal() {
   return document.getElementById(MODAL_ID);
@@ -586,179 +519,6 @@ async function loadJsZip() {
 // Extracts a single file from a ZIP ArrayBuffer using the browser's native
 // DecompressionStream (C++, fast) instead of JSZip (pure JS, blocks thread).
 // Returns the file content as a UTF-8 string, or null if not found / unsupported.
-async function _zipNativeExtract(arrayBuffer, targetFilename, diagLabel) {
-  const bytes = new Uint8Array(arrayBuffer);
-  const view = new DataView(arrayBuffer);
-  let pos = 0;
-
-  if (diagLabel) { loading(`${diagLabel} — 2א: סורק כותרות ZIP...`); await nextFrame(); }
-
-  while (pos < bytes.length - 30) {
-    if (bytes[pos] !== 0x50 || bytes[pos+1] !== 0x4B || bytes[pos+2] !== 0x03 || bytes[pos+3] !== 0x04) {
-      pos++;
-      continue;
-    }
-    const flags       = view.getUint16(pos + 6,  true);
-    const compression = view.getUint16(pos + 8,  true);
-    const compSize    = view.getUint32(pos + 18, true);
-    const fnLen       = view.getUint16(pos + 26, true);
-    const extraLen    = view.getUint16(pos + 28, true);
-    const dataStart   = pos + 30 + fnLen + extraLen;
-    const fn = new TextDecoder().decode(bytes.subarray(pos + 30, pos + 30 + fnLen));
-
-    if (fn === targetFilename) {
-      if (flags & 0x08) return null;
-      if (compression === 0) {
-        return new TextDecoder("utf-8").decode(bytes.subarray(dataStart, dataStart + compSize));
-      }
-      if (compression !== 8) return null;
-
-      if (diagLabel) { loading(`${diagLabel} — 2ב: נמצא (${(compSize/1024).toFixed(0)} KB דחוס), מפחית...`); await nextFrame(); }
-
-      // pipeThrough reads and writes concurrently — no deadlock
-      if (diagLabel) { loading(`${diagLabel} — 2ג: מפחית (pipeThrough)...`); await nextFrame(); }
-      const comp = bytes.slice(dataStart, dataStart + compSize);
-      const decompStream = new Blob([comp]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-      if (diagLabel) { loading(`${diagLabel} — 2ד: קורא תוצאה...`); await nextFrame(); }
-      const decompBuf = await new Response(decompStream).arrayBuffer();
-      if (diagLabel) { loading(`${diagLabel} — 2ה: ממיר UTF-8...`); await nextFrame(); }
-      return new TextDecoder("utf-8").decode(decompBuf);
-    }
-
-    if (flags & 0x08) {
-      pos = dataStart;
-      while (pos < bytes.length - 4 &&
-        !(bytes[pos]===0x50 && bytes[pos+1]===0x4B &&
-          (bytes[pos+2]===0x03||bytes[pos+2]===0x01||bytes[pos+2]===0x05))) {
-        pos++;
-      }
-    } else {
-      pos = dataStart + compSize;
-    }
-  }
-  return null;
-}
-
-function splitDocumentXml(xml) {
-  const open = xml.match(/<w:body\b[^>]*>/);
-  const closeIndex = xml.lastIndexOf("</w:body>");
-  if (!open || closeIndex < 0) throw new Error("לא נמצא גוף מסמך Word תקין.");
-  return {
-    prefix: xml.slice(0, open.index + open[0].length),
-    suffix: xml.slice(closeIndex),
-  };
-}
-
-async function scanHeadingsLocally(fileObj, thisToken) {
-  const sizeMB = (fileObj.size / 1048576).toFixed(1);
-  loading(`קורא קובץ — שלב 1: קורא נתונים (${sizeMB} MB)...`);
-  await nextFrame();
-  const buf = await fileObj.arrayBuffer();
-  if (thisToken !== token) return null;
-
-  let docXml = "";
-  let stylesXml = "";
-
-  const hasNativeDecompress = typeof DecompressionStream !== "undefined";
-  loading(`קורא קובץ — שלב 2: פותח ZIP${hasNativeDecompress ? " (נייטיב)" : " (JSZip)"}...`);
-  await nextFrame();
-
-  // Try native browser DecompressionStream (C++, non-blocking, no JSZip needed)
-  if (hasNativeDecompress) {
-    try {
-      docXml = await _zipNativeExtract(buf, "word/document.xml", "שלב 2 — document.xml") ?? "";
-      if (thisToken !== token) return null;
-      stylesXml = await _zipNativeExtract(buf, "word/styles.xml", "שלב 2 — styles.xml") ?? "";
-    } catch (e) { docXml = ""; stylesXml = ""; }
-  }
-
-  // Fallback: JSZip — load the ZIP ONCE and extract both files
-  if (!docXml) {
-    loading(`שלב 2 JSZip — טוען ספרייה...`);
-    await nextFrame();
-    const JSZip = await loadJsZip();
-    loading(`שלב 2 JSZip — מפחית ZIP (${(buf.byteLength/1048576).toFixed(1)} MB)...`);
-    await nextFrame();
-    const zip = await JSZip.loadAsync(buf);
-    if (thisToken !== token) return null;
-    loading(`שלב 2 JSZip — מחלץ document.xml...`);
-    await nextFrame();
-    docXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
-    loading(`שלב 2 JSZip — מחלץ styles.xml...`);
-    await nextFrame();
-    stylesXml = (await zip.file("word/styles.xml")?.async("text")) ?? "";
-  }
-  if (thisToken !== token) return null;
-  loading(`קורא קובץ — שלב 3: מנתח סגנונות...`);
-  await nextFrame();
-  const styles = sParseStyles(stylesXml);
-  const heads = { 1: [], 2: [] };
-  const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
-  let totalChars = 0;
-  let partIndex = 0;
-
-  // Fast indexOf-based paragraph scan.
-  // Key optimisation: sLevelOf uses regex internally — only call it for paragraphs that
-  // actually contain a pStyle or outlineLvl attribute.  Plain body paragraphs are skipped
-  // entirely with two cheap indexOf checks.  sPText is only called for heading paragraphs.
-  const END_TAG = "</w:p>";
-  let pos = 0;
-  while (pos < docXml.length) {
-    const pStart = docXml.indexOf("<w:p", pos);
-    if (pStart < 0) break;
-    const ch = docXml.charCodeAt(pStart + 4);
-    // Must be <w:p> or <w:p …>, not <w:pPr>, <w:pStyle>, etc.
-    if (ch !== 62 /* > */ && ch !== 32 /* space */ && ch !== 9 && ch !== 10 && ch !== 13) {
-      if (ch === 47 /* / — self-closing <w:p/> */) { partIndex++; pos = pStart + 6; continue; }
-      pos = pStart + 4;
-      continue;
-    }
-    const pEnd = docXml.indexOf(END_TAG, pStart);
-    if (pEnd < 0) break;
-    pos = pEnd + 6;
-
-    // Only do regex work for paragraphs that might be headings
-    const hasStyle = docXml.indexOf("<w:pStyle", pStart) < pEnd && docXml.indexOf("<w:pStyle", pStart) >= pStart;
-    const hasOutline = docXml.indexOf("<w:outlineLvl", pStart) < pEnd && docXml.indexOf("<w:outlineLvl", pStart) >= pStart;
-    if (hasStyle || hasOutline) {
-      const pXml = docXml.slice(pStart, pEnd + 6);
-      const level = sLevelOf(pXml, styles);
-      if (level >= 1 && level <= 6) {
-        h[level] = (h[level] || 0) + 1;
-        if (level <= 2) {
-          const text = sPText(pXml).trim();
-          if (text) heads[level].push({ title: text, start: partIndex });
-        }
-      }
-    }
-    partIndex++;
-
-    if (partIndex % 1000 === 0) {
-      if (thisToken !== token) return null;
-      loading(`קורא קובץ — שלב 4: סורק פסקה ${fmt(partIndex)}...`);
-      await nextFrame();
-    }
-  }
-
-  // Count chars with a single fast pass (avoids per-paragraph sPText overhead)
-  const tRe = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
-  let tm;
-  while ((tm = tRe.exec(docXml))) totalChars += tm[1].length;
-
-  if (!heads[1].length && !heads[2].length) return null;
-  return {
-    ok: true,
-    serverSide: true,
-    heads,
-    total: heads[1].length + heads[2].length,
-    h,
-    chars: totalChars,
-    words: Math.round(totalChars / 5),
-    fileHash: null,
-    fileName: fileObj.name,
-  };
-}
-
 async function scanFile(fileObj, thisToken) {
   if (!fileObj || thisToken !== token) return;
   const sizeMB = ((fileObj.size || 0) / 1048576).toFixed(1);
@@ -772,64 +532,40 @@ async function scanFile(fileObj, thisToken) {
   }
   function stopTicker() { clearInterval(elapsedTimer); elapsedTimer = null; }
   try {
-    loading(`קורא קובץ (${sizeMB} MB)...`);
+    loading(`מעלה קובץ לשרת (${sizeMB} MB)...`);
     updateFileTabButtonProgress(null);
-
-    // Try local heading extraction first — no network needed, instant
-    let scanResult = null;
-    try {
-      scanResult = await scanHeadingsLocally(fileObj, thisToken);
-      if (scanResult) serverLog("local_scan_ok", { heads1: scanResult.heads[1].length, heads2: scanResult.heads[2].length });
-    } catch (localErr) {
-      serverLog("local_scan_failed", { error: String(localErr?.message || localErr) });
-    }
-    if (thisToken !== token) return;
-
-    if (!scanResult) {
-      // Fallback: upload full file to server
-      loading(`מעלה קובץ לשרת (${sizeMB} MB)...`);
-      elapsedTimer = setInterval(() => {
-        if (thisToken !== token) { stopTicker(); return; }
-        if (serverProcessing) {
-          loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
-        } else {
-          loading(
-            lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
-            { pct: lastPct, detail: `זמן: ${elapsed()}` }
-          );
-        }
-      }, 1500);
-      scanResult = await importWordChaptersOnServer(fileObj, (progress) => {
-        if (thisToken !== token) return;
-        if (progress.stage === "upload") {
-          lastPct = progress.pct;
-          const loadedMB = (progress.loaded / 1048576).toFixed(1);
-          const kbps = Math.round(progress.loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
-          loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
-          updateFileTabButtonProgress(progress.pct);
-        } else if (progress.stage === "processing") {
-          serverProcessing = true;
-          loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
-          updateFileTabButtonProgress(100);
-        }
-      });
-      stopTicker();
+    elapsedTimer = setInterval(() => {
+      if (thisToken !== token) { stopTicker(); return; }
+      if (serverProcessing) {
+        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+      } else {
+        loading(
+          lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
+          { pct: lastPct, detail: `זמן: ${elapsed()}` }
+        );
+      }
+    }, 1500);
+    const scanResult = await importWordChaptersOnServer(fileObj, (progress) => {
       if (thisToken !== token) return;
-    }
-
-    serverLog("normalize_start", { fileName: fileObj?.name, size: fileObj?.size });
-    const serverState = normalizeServerScanState(scanResult, fileObj);
-    serverLog("normalize_done", {
-      ok: !!serverState,
-      heads1: serverState?.heads?.[1]?.length ?? 0,
-      heads2: serverState?.heads?.[2]?.length ?? 0,
-      total: serverState?.total ?? 0,
+      if (progress.stage === "upload") {
+        lastPct = progress.pct;
+        const loadedMB = (progress.loaded / 1048576).toFixed(1);
+        const kbps = Math.round(progress.loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
+        loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
+        updateFileTabButtonProgress(progress.pct);
+      } else if (progress.stage === "processing") {
+        serverProcessing = true;
+        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+        updateFileTabButtonProgress(100);
+      }
     });
+    stopTicker();
+    if (thisToken !== token) return;
+    const serverState = normalizeServerScanState(scanResult, fileObj);
     if (!serverState) throw new Error("לא נמצאו כותרות בקובץ.");
     state = serverState;
     selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
     chaptersOpen = false;
-    serverLog("render_card_done");
     removeCard();
     updateFileTabButtonDone();
     showSuccessNotice(serverState?.heads?.[selectedLevel]?.length ?? serverState?.total ?? 0);
@@ -840,6 +576,7 @@ async function scanFile(fileObj, thisToken) {
     errorCard(`${e?.message || String(e)} · לאחר ${elapsed()}`);
   }
 }
+
 
 function buildSelectedSources(sources) {
   const streams = buildDefaultStreamMapping(sources || []).filter(s => s.included !== false);
