@@ -628,32 +628,20 @@ async function _zipNativeExtract(arrayBuffer, targetFilename) {
       return new TextDecoder("utf-8").decode(out);
     }
 
-    if (flags & 0x08 || compSize === 0) {
-      // Streaming entry — scan for next PK signature
-      pos = dataStart + 1;
+    if (flags & 0x08) {
+      // Data-descriptor mode: size unknown — scan for next PK signature
+      pos = dataStart;
       while (pos < bytes.length - 4 &&
         !(bytes[pos]===0x50 && bytes[pos+1]===0x4B &&
           (bytes[pos+2]===0x03||bytes[pos+2]===0x01||bytes[pos+2]===0x05))) {
         pos++;
       }
     } else {
+      // Known size (compSize=0 means empty/directory entry — advance past zero bytes)
       pos = dataStart + compSize;
     }
   }
   return null;
-}
-
-async function extractFromZip(arrayBuffer, filename) {
-  if (typeof DecompressionStream !== "undefined") {
-    try {
-      const r = await _zipNativeExtract(arrayBuffer, filename);
-      if (r !== null) return r;
-    } catch (_) {}
-  }
-  // Fallback: JSZip
-  const JSZip = await loadJsZip();
-  const zip = await JSZip.loadAsync(arrayBuffer);
-  return (await zip.file(filename)?.async("text")) ?? "";
 }
 
 function splitDocumentXml(xml) {
@@ -669,11 +657,30 @@ function splitDocumentXml(xml) {
 async function scanHeadingsLocally(fileObj, thisToken) {
   const buf = await fileObj.arrayBuffer();
   if (thisToken !== token) return null;
-  // Extract both files concurrently using native DecompressionStream (fast, non-blocking)
-  const [docXml, stylesXml] = await Promise.all([
-    extractFromZip(buf, "word/document.xml"),
-    extractFromZip(buf, "word/styles.xml"),
-  ]);
+
+  let docXml = "";
+  let stylesXml = "";
+
+  // Try native browser DecompressionStream (C++, non-blocking, no JSZip needed)
+  if (typeof DecompressionStream !== "undefined") {
+    try {
+      [docXml, stylesXml] = await Promise.all([
+        _zipNativeExtract(buf, "word/document.xml").then(r => r ?? ""),
+        _zipNativeExtract(buf, "word/styles.xml").then(r => r ?? ""),
+      ]);
+    } catch (_) { docXml = ""; stylesXml = ""; }
+  }
+
+  // Fallback: JSZip — load the ZIP ONCE and extract both files
+  if (!docXml) {
+    const JSZip = await loadJsZip();
+    const zip = await JSZip.loadAsync(buf);
+    if (thisToken !== token) return null;
+    [docXml, stylesXml] = await Promise.all([
+      (zip.file("word/document.xml")?.async("text") ?? Promise.resolve("")),
+      (zip.file("word/styles.xml")?.async("text") ?? Promise.resolve("")),
+    ]);
+  }
   if (thisToken !== token) return null;
   const styles = sParseStyles(stylesXml);
   const heads = { 1: [], 2: [] };
