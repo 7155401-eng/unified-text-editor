@@ -655,14 +655,21 @@ function splitDocumentXml(xml) {
 }
 
 async function scanHeadingsLocally(fileObj, thisToken) {
+  const sizeMB = (fileObj.size / 1048576).toFixed(1);
+  loading(`קורא קובץ — שלב 1: קורא נתונים (${sizeMB} MB)...`);
+  await nextFrame();
   const buf = await fileObj.arrayBuffer();
   if (thisToken !== token) return null;
 
   let docXml = "";
   let stylesXml = "";
 
+  const hasNativeDecompress = typeof DecompressionStream !== "undefined";
+  loading(`קורא קובץ — שלב 2: פותח ZIP${hasNativeDecompress ? " (נייטיב)" : " (JSZip)"}...`);
+  await nextFrame();
+
   // Try native browser DecompressionStream (C++, non-blocking, no JSZip needed)
-  if (typeof DecompressionStream !== "undefined") {
+  if (hasNativeDecompress) {
     try {
       [docXml, stylesXml] = await Promise.all([
         _zipNativeExtract(buf, "word/document.xml").then(r => r ?? ""),
@@ -673,15 +680,23 @@ async function scanHeadingsLocally(fileObj, thisToken) {
 
   // Fallback: JSZip — load the ZIP ONCE and extract both files
   if (!docXml) {
+    loading(`קורא קובץ — שלב 2b: טוען JSZip...`);
+    await nextFrame();
     const JSZip = await loadJsZip();
+    loading(`קורא קובץ — שלב 2c: מפחית ZIP...`);
+    await nextFrame();
     const zip = await JSZip.loadAsync(buf);
     if (thisToken !== token) return null;
+    loading(`קורא קובץ — שלב 2d: מחלץ XML...`);
+    await nextFrame();
     [docXml, stylesXml] = await Promise.all([
       (zip.file("word/document.xml")?.async("text") ?? Promise.resolve("")),
       (zip.file("word/styles.xml")?.async("text") ?? Promise.resolve("")),
     ]);
   }
   if (thisToken !== token) return null;
+  loading(`קורא קובץ — שלב 3: מנתח סגנונות...`);
+  await nextFrame();
   const styles = sParseStyles(stylesXml);
   const heads = { 1: [], 2: [] };
   const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
@@ -716,6 +731,7 @@ async function scanHeadingsLocally(fileObj, thisToken) {
 
     if (partIndex % 500 === 0) {
       if (thisToken !== token) return null;
+      loading(`קורא קובץ — שלב 4: סורק פסקה ${fmt(partIndex)}...`);
       await nextFrame();
     }
   }
