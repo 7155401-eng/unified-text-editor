@@ -619,8 +619,17 @@ async function _zipNativeExtract(arrayBuffer, targetFilename, diagLabel) {
       const ds = new DecompressionStream("deflate-raw");
       const w = ds.writable.getWriter();
 
-      if (diagLabel) { loading(`${diagLabel} — 2ג: כותב לstream...`); await nextFrame(); }
-      await w.write(comp);
+      // Write in 64 KB chunks so the browser stays responsive
+      const CHUNK = 65536;
+      const totalChunks = Math.ceil(comp.length / CHUNK);
+      for (let ci = 0; ci < totalChunks; ci++) {
+        if (diagLabel) {
+          loading(`${diagLabel} — 2ג: כותב חתיכה ${ci + 1}/${totalChunks} (${Math.round((ci+1)/totalChunks*100)}%)...`);
+          await nextFrame();
+        }
+        await w.write(comp.subarray(ci * CHUNK, Math.min((ci + 1) * CHUNK, comp.length)));
+      }
+      if (diagLabel) { loading(`${diagLabel} — 2ג-סוף: סוגר stream...`); await nextFrame(); }
       await w.close();
 
       if (diagLabel) { loading(`${diagLabel} — 2ד: קורא מstream...`); await nextFrame(); }
