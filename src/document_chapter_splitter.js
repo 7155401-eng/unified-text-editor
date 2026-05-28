@@ -615,38 +615,14 @@ async function _zipNativeExtract(arrayBuffer, targetFilename, diagLabel) {
 
       if (diagLabel) { loading(`${diagLabel} — 2ב: נמצא (${(compSize/1024).toFixed(0)} KB דחוס), מפחית...`); await nextFrame(); }
 
-      const comp = bytes.subarray(dataStart, dataStart + compSize);
-      const ds = new DecompressionStream("deflate-raw");
-      const w = ds.writable.getWriter();
-
-      // Write in 64 KB chunks so the browser stays responsive
-      const CHUNK = 65536;
-      const totalChunks = Math.ceil(comp.length / CHUNK);
-      for (let ci = 0; ci < totalChunks; ci++) {
-        if (diagLabel) {
-          loading(`${diagLabel} — 2ג: כותב חתיכה ${ci + 1}/${totalChunks} (${Math.round((ci+1)/totalChunks*100)}%)...`);
-          await nextFrame();
-        }
-        await w.write(comp.subarray(ci * CHUNK, Math.min((ci + 1) * CHUNK, comp.length)));
-      }
-      if (diagLabel) { loading(`${diagLabel} — 2ג-סוף: סוגר stream...`); await nextFrame(); }
-      await w.close();
-
-      if (diagLabel) { loading(`${diagLabel} — 2ד: קורא מstream...`); await nextFrame(); }
-      const r = ds.readable.getReader();
-      const chunks = [];
-      while (true) {
-        const { done, value } = await r.read();
-        if (done) break;
-        chunks.push(value);
-      }
-
-      if (diagLabel) { loading(`${diagLabel} — 2ה: מרכיב וממיר UTF-8...`); await nextFrame(); }
-      const total = chunks.reduce((s, c) => s + c.length, 0);
-      const out = new Uint8Array(total);
-      let off = 0;
-      for (const c of chunks) { out.set(c, off); off += c.length; }
-      return new TextDecoder("utf-8").decode(out);
+      // pipeThrough reads and writes concurrently — no deadlock
+      if (diagLabel) { loading(`${diagLabel} — 2ג: מפחית (pipeThrough)...`); await nextFrame(); }
+      const comp = bytes.slice(dataStart, dataStart + compSize);
+      const decompStream = new Blob([comp]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+      if (diagLabel) { loading(`${diagLabel} — 2ד: קורא תוצאה...`); await nextFrame(); }
+      const decompBuf = await new Response(decompStream).arrayBuffer();
+      if (diagLabel) { loading(`${diagLabel} — 2ה: ממיר UTF-8...`); await nextFrame(); }
+      return new TextDecoder("utf-8").decode(decompBuf);
     }
 
     if (flags & 0x08) {

@@ -1,3 +1,5028 @@
+const COOKIE_NAME = "ravtext_session";
+const COOKIE_TTL_SEC = 7 * 24 * 60 * 60;
+function b64urlEncode(bytes) {
+  const bin = String.fromCharCode(...new Uint8Array(bytes));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(str) {
+  const padded = str.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - str.length % 4) % 4);
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+async function hmacKey(secret) {
+  return await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+async function sign(payloadObj, secret) {
+  const json2 = JSON.stringify(payloadObj);
+  const dataBytes = new TextEncoder().encode(json2);
+  const key = await hmacKey(secret);
+  const sig = await crypto.subtle.sign("HMAC", key, dataBytes);
+  return `${b64urlEncode(dataBytes)}.${b64urlEncode(sig)}`;
+}
+async function verify(token, secret) {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const dataBytes = b64urlDecode(parts[0]);
+  const sigBytes = b64urlDecode(parts[1]);
+  const key = await hmacKey(secret);
+  const ok = await crypto.subtle.verify("HMAC", key, sigBytes, dataBytes);
+  if (!ok) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(dataBytes));
+  } catch {
+    return null;
+  }
+}
+function parseCookieHeader(header, name) {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const k = part.slice(0, eq).trim();
+    if (k === name) return part.slice(eq + 1).trim();
+  }
+  return null;
+}
+async function getUserFromRequest(request, env) {
+  const token = parseCookieHeader(request.headers.get("cookie"), COOKIE_NAME);
+  if (!token) return null;
+  const payload = await verify(token, env.SESSION_SECRET);
+  if (!payload || !payload.email) return null;
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  if (payload.exp && payload.exp < nowSec2) return null;
+  const row = await env.DB.prepare(
+    "SELECT id, email, status, expires_at, is_admin, plan_type, balance_seconds FROM users WHERE email = ?"
+  ).bind(payload.email).first();
+  if (!row) return null;
+  const notExpired = !row.expires_at || row.expires_at >= nowSec2;
+  const isPaid = row.status === "active" && notExpired;
+  return {
+    id: row.id,
+    email: row.email,
+    status: row.status,
+    expires_at: row.expires_at,
+    is_admin: row.is_admin === 1,
+    paid: isPaid,
+    plan_type: row.plan_type || null,
+    balance_seconds: row.balance_seconds || 0
+  };
+}
+async function buildSessionCookie(email, env) {
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  const payload = { email, iat: nowSec2, exp: nowSec2 + COOKIE_TTL_SEC };
+  const token = await sign(payload, env.SESSION_SECRET);
+  return `${COOKIE_NAME}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${COOKIE_TTL_SEC}`;
+}
+function buildClearCookie() {
+  return `${COOKIE_NAME}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
+}
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
+async function handleAuth(request, env, url) {
+  if (url.pathname === "/api/auth/login" || url.pathname === "/api/auth/go") {
+    return startLogin(env, url);
+  }
+  if (url.pathname === "/api/auth/start-url" && request.method === "POST") {
+    return startLoginJson(env, url);
+  }
+  if (url.pathname === "/api/auth/callback") {
+    return handleCallback(request, env, url);
+  }
+  if (url.pathname === "/api/auth/logout") {
+    return logout(url);
+  }
+  return new Response("Not found", { status: 404 });
+}
+function buildGoogleAuthUrl(env, url) {
+  const next = url.searchParams.get("next") || "/";
+  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const params = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    redirect_uri: `${url.origin}/api/auth/callback`,
+    response_type: "code",
+    scope: "openid email",
+    access_type: "online",
+    prompt: "select_account",
+    state: safeNext
+  });
+  return `${GOOGLE_AUTH_URL}?${params}`;
+}
+function startLogin(env, url) {
+  if (!env.GOOGLE_CLIENT_ID) {
+    return new Response("Google OAuth not configured yet", { status: 503 });
+  }
+  return new Response(null, {
+    status: 302,
+    headers: { location: buildGoogleAuthUrl(env, url), "cache-control": "no-store" }
+  });
+}
+function startLoginJson(env, url) {
+  if (!env.GOOGLE_CLIENT_ID) {
+    return Response.json({ error: "not_configured" }, { status: 503, headers: { "cache-control": "no-store" } });
+  }
+  return Response.json(
+    { url: buildGoogleAuthUrl(env, url) },
+    { headers: { "cache-control": "no-store, private", "pragma": "no-cache" } }
+  );
+}
+async function handleCallback(request, env, url) {
+  const code = url.searchParams.get("code");
+  if (!code) {
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=cancelled`, "cache-control": "no-store" } });
+  }
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+    return new Response("Google OAuth not configured yet", { status: 503 });
+  }
+  const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      code,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: `${url.origin}/api/auth/callback`,
+      grant_type: "authorization_code"
+    })
+  });
+  if (!tokenRes.ok) {
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=token_error`, "cache-control": "no-store" } });
+  }
+  const { access_token } = await tokenRes.json();
+  if (!access_token) {
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=no_token`, "cache-control": "no-store" } });
+  }
+  const infoRes = await fetch(GOOGLE_USERINFO_URL, {
+    headers: { authorization: `Bearer ${access_token}` }
+  });
+  if (!infoRes.ok) {
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=info_error`, "cache-control": "no-store" } });
+  }
+  const info = await infoRes.json();
+  const email = (info.email || "").toLowerCase().trim();
+  if (!email || info.email_verified === false) {
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=no_email`, "cache-control": "no-store" } });
+  }
+  const firstName = String(info.given_name || "").trim().slice(0, 50);
+  const lastName = String(info.family_name || "").trim().slice(0, 50);
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  let row = await env.DB.prepare(
+    "SELECT id, email, status, expires_at FROM users WHERE email = ?"
+  ).bind(email).first();
+  if (!row) {
+    await env.DB.prepare(
+      "INSERT INTO users (email, status, expires_at, is_admin, first_name, last_name) VALUES (?, ?, 0, 0, ?, ?)"
+    ).bind(email, "unauthorized", firstName || null, lastName || null).run();
+    row = await env.DB.prepare(
+      "SELECT id, email, status, expires_at FROM users WHERE email = ?"
+    ).bind(email).first();
+  }
+  await env.DB.prepare(
+    "UPDATE users SET last_login_at = ?, first_name = COALESCE(NULLIF(?, ''), first_name), last_name = COALESCE(NULLIF(?, ''), last_name) WHERE id = ?"
+  ).bind(nowSec2, firstName, lastName, row.id).run();
+  const cookie = await buildSessionCookie(email, env);
+  const isPaid = row.status === "active" && (!row.expires_at || row.expires_at >= nowSec2);
+  const stateNext = url.searchParams.get("state");
+  const safeNext = stateNext && stateNext.startsWith("/") && !stateNext.startsWith("//") && stateNext !== "/" ? stateNext : null;
+  const dest = safeNext ? safeNext : isPaid ? "/" : "/?login=demo";
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "set-cookie": cookie,
+      location: `${url.origin}${dest}`,
+      "cache-control": "no-store"
+    }
+  });
+}
+function logout(url) {
+  return new Response(null, {
+    status: 302,
+    headers: {
+      "set-cookie": buildClearCookie(),
+      location: `${url.origin}/`,
+      "cache-control": "no-store"
+    }
+  });
+}
+const DEFAULT_HEADERS = {
+  "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+  "x-frame-options": "DENY",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  "cross-origin-opener-policy": "same-origin",
+  "cross-origin-resource-policy": "same-origin"
+};
+const CSP_HTML = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com",
+  "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self' https://accounts.google.com",
+  "object-src 'none'",
+  "upgrade-insecure-requests"
+].join("; ");
+const BAD_UA_PATTERNS = [
+  /\bcurl\b/i,
+  /\bwget\b/i,
+  /python-requests/i,
+  /go-http-client/i,
+  /java\//i,
+  /libwww/i,
+  /httrack/i,
+  /sitesucker/i,
+  /webcopy/i,
+  /webreaper/i,
+  /scrapy/i
+];
+function applySecurityHeaders(response, isHtml) {
+  const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(DEFAULT_HEADERS)) {
+    headers.set(k, v);
+  }
+  if (isHtml) {
+    headers.set("content-security-policy", CSP_HTML);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+function isBadBot(request) {
+  const ua = request.headers.get("user-agent") || "";
+  if (!ua) return true;
+  for (const re of BAD_UA_PATTERNS) {
+    if (re.test(ua)) return true;
+  }
+  return false;
+}
+const ALLOWED_ORIGINS = /* @__PURE__ */ new Set([
+  "https://app.ravtext.com",
+  "https://unified-text-editor.7155401.workers.dev",
+  "https://ravtext.com",
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+  "http://127.0.0.1:8787",
+  "http://localhost:8787"
+]);
+const ENGINE_API_PREFIXES = [
+  "/api/me",
+  "/api/admin/",
+  "/api/bug-reports",
+  "/api/contact",
+  "/api/usage/track",
+  "/api/video-gallery/",
+  "/api/payments/package/",
+  "/api/payments/yaad/start",
+  "/api/payments/paypal/start",
+  "/api/payments/status",
+  "/api/payments/cancel",
+  "/api/payments/gift/claim",
+  "/api/account/",
+  "/api/documents",
+  "/api/settings",
+  "/api/render/",
+  "/api/talmud/",
+  "/api/balance/",
+  "/api/mishna/",
+  "/api/streams/",
+  "/api/ai-tools/",
+  "/api/tools/",
+  "/api/nikud-merger",
+  "/api/text-compare-pro",
+  "/api/sefaria/",
+  "/api/main-text-tools",
+  "/api/caricature"
+];
+function isEngineApi(pathname) {
+  for (const p of ENGINE_API_PREFIXES) {
+    if (pathname.startsWith(p)) return true;
+  }
+  return false;
+}
+function checkOrigin(request, url) {
+  const origin = request.headers.get("origin");
+  const referer = request.headers.get("referer");
+  if (origin && ALLOWED_ORIGINS.has(origin)) return null;
+  if (referer) {
+    try {
+      const refUrl = new URL(referer);
+      const refOrigin = `${refUrl.protocol}//${refUrl.host}`;
+      if (ALLOWED_ORIGINS.has(refOrigin)) return null;
+    } catch {
+    }
+  }
+  const secSite = request.headers.get("sec-fetch-site");
+  const display = request.headers.get("x-ravtext-display");
+  if (secSite === "same-origin" && display === "standalone") return null;
+  return new Response("Forbidden: bad origin", { status: 403 });
+}
+const RATE_LIMITS = {
+  "/api/me": { window: 60, max: 60 },
+  "/api/auth/login": { window: 300, max: 10 },
+  "/api/auth/callback": { window: 300, max: 20 },
+  "/api/streams/parse": { window: 60, max: 30 },
+  "/api/render/preflight": { window: 60, max: 600 },
+  "/api/talmud/decide": { window: 60, max: 600 },
+  "/api/balance/decide": { window: 60, max: 600 },
+  "/api/mishna/decide": { window: 60, max: 600 },
+  "/api/caricature": { window: 60, max: 30 },
+  "/api/ai-tools/gas": { window: 60, max: 60 },
+  "/api/ai-tools/chat": { window: 60, max: 60 },
+  "/api/tools/preflight": { window: 60, max: 240 },
+  "/api/nikud-merger": { window: 60, max: 120 },
+  "/api/text-compare-pro": { window: 60, max: 120 },
+  "/api/sefaria": { window: 60, max: 180 },
+  "/api/main-text-tools": { window: 60, max: 180 },
+  "/api/video-gallery": { window: 60, max: 120 },
+  "/api/admin": { window: 60, max: 300 },
+  "/api/documents": { window: 60, max: 120 },
+  "/api/settings": { window: 60, max: 120 }
+};
+async function checkRateLimit(request, url) {
+  let cfg = null;
+  for (const [prefix, conf] of Object.entries(RATE_LIMITS)) {
+    if (url.pathname === prefix || url.pathname.startsWith(prefix + "/")) {
+      cfg = conf;
+      break;
+    }
+  }
+  if (!cfg) return null;
+  const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-real-ip") || "0";
+  const bucket = Math.floor(Date.now() / (cfg.window * 1e3));
+  const key = `rl:${url.pathname}:${ip}:${bucket}`;
+  const cacheUrl = `https://rl.invalid/${encodeURIComponent(key)}`;
+  const cache = caches.default;
+  let count = 0;
+  try {
+    const hit = await cache.match(cacheUrl);
+    if (hit) {
+      count = parseInt(await hit.text(), 10) || 0;
+    }
+  } catch {
+  }
+  count += 1;
+  try {
+    await cache.put(
+      cacheUrl,
+      new Response(String(count), {
+        headers: {
+          "cache-control": `public, max-age=${cfg.window}`,
+          "content-type": "text/plain"
+        }
+      })
+    );
+  } catch {
+  }
+  if (count > cfg.max) {
+    return new Response("Rate limit exceeded", {
+      status: 429,
+      headers: {
+        "retry-after": String(cfg.window),
+        "cache-control": "no-store"
+      }
+    });
+  }
+  return null;
+}
+const PALETTE$1 = [
+  { bg: "#FEE2E2", fg: "#7F1D1D" },
+  { bg: "#DBEAFE", fg: "#1E3A8A" },
+  { bg: "#DCFCE7", fg: "#14532D" },
+  { bg: "#FEF3C7", fg: "#78350F" },
+  { bg: "#F3E8FF", fg: "#581C87" },
+  { bg: "#CFFAFE", fg: "#164E63" },
+  { bg: "#FCE7F3", fg: "#831843" },
+  { bg: "#E5E7EB", fg: "#1F2937" }
+];
+const DEFAULT_STREAM_LABELS = {
+  "01": "מגן אברהם",
+  "02": "משנה ברורה",
+  "03": "ביאור הלכה",
+  "04": "טורי זהב",
+  "05": "כף החיים"
+};
+function defaultLabelForCode(code) {
+  return DEFAULT_STREAM_LABELS[code] || `זרם ${code}`;
+}
+function colorFor$1(streamCode) {
+  const n = parseInt(streamCode, 10);
+  if (Number.isFinite(n) && n >= 1) {
+    return PALETTE$1[(n - 1) % PALETTE$1.length];
+  }
+  let h = 0;
+  for (const ch of streamCode) h = h * 31 + ch.charCodeAt(0) >>> 0;
+  return PALETTE$1[h % PALETTE$1.length];
+}
+function escapeHtml$3(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+let _uidCounter = 0;
+function uid() {
+  _uidCounter++;
+  return `auto-${Date.now().toString(36)}-${_uidCounter}`;
+}
+function wrapMark(streamCode, symbol, body) {
+  const c = colorFor$1(streamCode);
+  const u = uid();
+  return `<span class="stream-marker stream-${escapeHtml$3(streamCode)}" data-stream="${escapeHtml$3(streamCode)}" data-uid="${u}" data-symbol="${escapeHtml$3(symbol)}" style="background-color:${c.bg};color:${c.fg};border-radius:3px;padding:0 3px;font-weight:600;" title="${escapeHtml$3(defaultLabelForCode(streamCode))}">` + body + "</span>";
+}
+const PATTERNS = [
+  {
+    name: "curly",
+    rx: /\{([^{}\n]{1,200})\}/g,
+    streamFor: () => "curly",
+    symbolFor: (m) => `{${m[1]}}`,
+    bodyFor: (m) => m[0]
+  },
+  {
+    name: "atNN",
+    rx: /@(\d{1,3})/g,
+    streamFor: (m) => String(parseInt(m[1], 10)).padStart(2, "0"),
+    symbolFor: (m) => `@${m[1]}`,
+    bodyFor: (m) => m[0]
+  },
+  {
+    name: "bracketN",
+    rx: /\[(\d{1,3})\]/g,
+    streamFor: (m) => `b${m[1]}`,
+    symbolFor: (m) => `[${m[1]}]`,
+    bodyFor: (m) => m[0]
+  },
+  {
+    name: "parenN",
+    rx: /\((\d{1,3})\)/g,
+    streamFor: (m) => `p${m[1]}`,
+    symbolFor: (m) => `(${m[1]})`,
+    bodyFor: (m) => m[0]
+  },
+  {
+    name: "asterisk",
+    rx: /(\*{1,5})(?!\*)/g,
+    streamFor: (m) => `asterisk-${m[1].length}`,
+    symbolFor: (m) => m[1],
+    bodyFor: (m) => m[0]
+  },
+  {
+    name: "dagger",
+    rx: /[†‡]/g,
+    streamFor: (m) => m[0] === "†" ? "dagger" : "double-dagger",
+    symbolFor: (m) => m[0],
+    bodyFor: (m) => m[0]
+  }
+];
+function parseStreamsToHtml(text) {
+  if (typeof text !== "string") {
+    return { html: "", stats: { total: 0, byStream: {}, byPattern: {} } };
+  }
+  const events = [];
+  for (const p of PATTERNS) {
+    let m;
+    p.rx.lastIndex = 0;
+    while ((m = p.rx.exec(text)) !== null) {
+      events.push({
+        start: m.index,
+        end: m.index + m[0].length,
+        streamCode: p.streamFor(m),
+        symbol: p.symbolFor(m),
+        body: p.bodyFor(m),
+        patternName: p.name
+      });
+    }
+  }
+  events.sort((a, b) => a.start - b.start || a.end - b.end);
+  const accepted = [];
+  let cursor = 0;
+  for (const e of events) {
+    if (e.start < cursor) continue;
+    accepted.push(e);
+    cursor = e.end;
+  }
+  let out = "";
+  let i = 0;
+  for (const e of accepted) {
+    if (i < e.start) out += escapeHtml$3(text.slice(i, e.start));
+    out += wrapMark(e.streamCode, e.symbol, escapeHtml$3(e.body));
+    i = e.end;
+  }
+  if (i < text.length) out += escapeHtml$3(text.slice(i));
+  const paragraphs = out.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
+  const html = paragraphs.length ? paragraphs.map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("\n") : `<p>${out.replace(/\n/g, "<br>")}</p>`;
+  const stats = { total: accepted.length, byStream: {}, byPattern: {} };
+  for (const e of accepted) {
+    stats.byStream[e.streamCode] = (stats.byStream[e.streamCode] || 0) + 1;
+    stats.byPattern[e.patternName] = (stats.byPattern[e.patternName] || 0) + 1;
+  }
+  return { html, stats };
+}
+const NONCE_TTL_SEC = 120;
+function b64url$1(bytes) {
+  const bin = String.fromCharCode(...new Uint8Array(bytes));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDec(str) {
+  const padded = str.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - str.length % 4) % 4);
+  const bin = atob(padded);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+async function signNonce(payload, secret) {
+  const data = new TextEncoder().encode(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, data);
+  return `${b64url$1(data)}.${b64url$1(sig)}`;
+}
+async function verifyNonce(token, secret) {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const data = b64urlDec(parts[0]);
+  const sig = b64urlDec(parts[1]);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"]
+  );
+  const ok = await crypto.subtle.verify("HMAC", key, sig, data);
+  if (!ok) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(data));
+  } catch {
+    return null;
+  }
+}
+async function issueNonce(env) {
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  return await signNonce({ iat: nowSec2, exp: nowSec2 + NONCE_TTL_SEC, jti: crypto.randomUUID() }, env.SESSION_SECRET);
+}
+async function checkNonce(request, env) {
+  const token = request.headers.get("x-ravtext-nonce") || "";
+  if (!token) return new Response("Missing nonce", { status: 403 });
+  const payload = await verifyNonce(token, env.SESSION_SECRET);
+  if (!payload) return new Response("Bad nonce", { status: 403 });
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  if (payload.exp && payload.exp < nowSec2) return new Response("Expired nonce", { status: 403 });
+  return null;
+}
+const SAFETY_MIN = 0;
+const SAFETY_MAX = 400;
+const SAFETY_DEFAULT = 160;
+const SAFETY_STEP_UP = 20;
+const SAFETY_STEP_DOWN = 20;
+const OVERFLOW_THRESHOLD = 5;
+const GAP_TOO_BIG = 60;
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+function decideAdjustment(currentSafety, state) {
+  if (state.maxOverflow > OVERFLOW_THRESHOLD) {
+    return {
+      newSafety: clamp(currentSafety + SAFETY_STEP_UP, SAFETY_MIN, SAFETY_MAX),
+      action: "up",
+      reason: `overflow ${state.maxOverflow}px > ${OVERFLOW_THRESHOLD}px`
+    };
+  }
+  if (Number.isFinite(state.awkwardSplits) && state.awkwardSplits > 0 && currentSafety < SAFETY_MAX) {
+    return {
+      newSafety: clamp(currentSafety + SAFETY_STEP_UP, SAFETY_MIN, SAFETY_MAX),
+      action: "up",
+      reason: `${state.awkwardSplits} awkward mid-line split(s)`
+    };
+  }
+  if (state.maxOverflow === 0 && state.avgGap > GAP_TOO_BIG && currentSafety > SAFETY_MIN) {
+    return {
+      newSafety: clamp(currentSafety - SAFETY_STEP_DOWN, SAFETY_MIN, SAFETY_MAX),
+      action: "down",
+      reason: `avg gap ${state.avgGap}px > ${GAP_TOO_BIG}px, no overflow`
+    };
+  }
+  return {
+    newSafety: currentSafety,
+    action: "stable",
+    reason: state.maxOverflow > 0 ? `overflow ${state.maxOverflow}px (within tolerance)` : state.awkwardSplits > 0 ? `${state.awkwardSplits} awkward split(s) but cap reached` : `gap ${state.avgGap}px (acceptable)`
+  };
+}
+function decideTalmudCrownMode(streams, hasMain, crownLines) {
+  if (!Array.isArray(streams) || streams.length === 0) return { mode: "no-talmud" };
+  if (streams.length === 1) {
+    const { linesAtFull, linesAtHalf } = streams[0] || {};
+    if (Number.isFinite(linesAtFull) && Number.isFinite(linesAtHalf) && linesAtFull >= crownLines && linesAtHalf >= crownLines * 2) {
+      return { mode: "single-split" };
+    }
+    return { mode: "single-inline" };
+  }
+  const a = streams[0] || {};
+  const b = streams[1] || {};
+  const aHalf = a.linesAtHalf || 0;
+  const bHalf = b.linesAtHalf || 0;
+  if (aHalf >= crownLines && bHalf >= crownLines) return { mode: "double-half" };
+  if (aHalf < crownLines && bHalf < crownLines) return { mode: "double-inline" };
+  const longIdx = aHalf >= crownLines ? 0 : 1;
+  const longFull = streams[longIdx]?.linesAtFull || 0;
+  if (longFull >= crownLines) return { mode: "double-full", longIdx };
+  return { mode: "double-inline" };
+}
+async function handlePreflight(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+  const user = await getUserFromRequest(request, env);
+  const layoutType = String(body?.layoutType || "regular");
+  const nonce = await issueNonce(env);
+  const plan = {
+    token: nonce,
+    issuedAt: Date.now(),
+    auth: {
+      paid: !!user,
+      email: user?.email || null
+    },
+    layoutType,
+    decisions: {}
+  };
+  if (layoutType === "talmud" || layoutType === "any") {
+    const crownLines = Number(body?.talmud?.crownLines) || 4;
+    const streams = Array.isArray(body?.talmud?.streams) ? body.talmud.streams : [];
+    const hasMain = !!body?.talmud?.hasMain;
+    plan.decisions.talmud = decideTalmudCrownMode(streams, hasMain, crownLines);
+  }
+  if (body?.smart?.currentSafety != null && body?.smart?.state) {
+    const cs = Number(body.smart.currentSafety);
+    plan.decisions.safety = decideAdjustment(
+      Number.isFinite(cs) ? cs : SAFETY_DEFAULT,
+      body.smart.state
+    );
+  } else {
+    plan.decisions.safety = { newSafety: SAFETY_DEFAULT, action: "default" };
+  }
+  return Response.json(plan, {
+    headers: { "cache-control": "no-store" }
+  });
+}
+function decideBalanceLayout(lineCount, settings) {
+  const minLines = Number.isFinite(Number(settings?.minLinesForCols)) ? Number(settings.minLinesForCols) : 3;
+  if (lineCount < minLines * 2) {
+    return { balance: false, reason: `lines ${lineCount} < ${minLines * 2}` };
+  }
+  const lastCenter = settings?.lastLineCenter !== false;
+  const hasOrphan = lineCount % 2 === 1 && lastCenter;
+  const balancedCount = hasOrphan ? lineCount - 1 : lineCount;
+  const half = Math.ceil(balancedCount / 2);
+  return {
+    balance: true,
+    rightStart: 0,
+    rightEnd: half,
+    leftStart: half,
+    leftEnd: balancedCount,
+    hasOrphan,
+    centerLast: lastCenter
+  };
+}
+function decideMishnaSide(preference, pageNumber, idx) {
+  if (preference === "right" || preference === "left") return preference;
+  if (preference === "outer") return pageNumber % 2 === 1 ? "left" : "right";
+  if (preference === "inner") return pageNumber % 2 === 1 ? "right" : "left";
+  return idx % 2 === 0 ? "right" : "left";
+}
+function widthForFlowFloat(levelCount) {
+  const count = Math.max(1, Number(levelCount) || 1);
+  const percent = 100 / count;
+  return `calc(${percent.toFixed(4)}% - 8px)`;
+}
+function decideMishnaWidth(explicitWidth, levelCount) {
+  const w = Number(explicitWidth);
+  if (Number.isFinite(w) && w > 0) {
+    return `${Math.max(10, Math.min(95, w))}%`;
+  }
+  return widthForFlowFloat(levelCount);
+}
+function decideMishnaLevels(rawLevelsText, streamCodes) {
+  const parsed = String(rawLevelsText || "").split(/[|\n;]+/).map(
+    (level) => (level.match(/\d{1,3}/g) || []).map((n) => {
+      const v = parseInt(n, 10);
+      return Number.isFinite(v) && v >= 1 ? String(v).padStart(2, "0") : null;
+    }).filter(Boolean)
+  ).map((level) => Array.from(new Set(level))).filter((level) => level.length >= 2);
+  if (parsed.length > 0) return parsed;
+  const codes = (streamCodes || []).filter(Boolean);
+  return codes.length >= 2 ? [Array.from(new Set(codes))] : [];
+}
+async function handleMishnaDecide(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+  const pageNumber = Number(body?.pageNumber) || 1;
+  const streams = Array.isArray(body?.streams) ? body.streams : [];
+  const rawLevels = body?.rawLevelsText || "";
+  const codes = streams.map((s) => s?.code).filter(Boolean);
+  const levels = decideMishnaLevels(rawLevels, codes);
+  const assignments = streams.map((s, idx) => ({
+    code: s?.code || null,
+    side: decideMishnaSide(s?.sidePreference || "auto", pageNumber, idx),
+    width: decideMishnaWidth(s?.explicitWidth, streams.length)
+  }));
+  return Response.json({ assignments, levels }, {
+    headers: { "cache-control": "no-store" }
+  });
+}
+async function handleBalanceDecide(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+  const lineCount = Number(body?.lineCount);
+  if (!Number.isFinite(lineCount) || lineCount < 0) {
+    return new Response("Bad lineCount", { status: 400 });
+  }
+  const decision = decideBalanceLayout(lineCount, body?.settings || {});
+  return Response.json(decision, {
+    headers: { "cache-control": "no-store" }
+  });
+}
+async function handleTalmudDecide(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user || !user.paid) {
+    return Response.json(
+      { mode: "denied", reason: "paid_only", message: 'גפ"ת זמין למנויים פעילים בלבד.' },
+      { status: 402, headers: { "cache-control": "no-store" } }
+    );
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+  const crownLines = Number(body?.crownLines) || 4;
+  const streams = Array.isArray(body?.streams) ? body.streams : [];
+  const hasMain = !!body?.hasMain;
+  const decision = decideTalmudCrownMode(streams, hasMain, crownLines);
+  return Response.json(decision, {
+    headers: { "cache-control": "no-store" }
+  });
+}
+const SETTING_KEYS = [
+  "YAAD_TERMINAL",
+  "YAAD_API_KEY",
+  "YAAD_BASE_URL",
+  "YAAD_PASSP",
+  "PAYPAL_CLIENT_ID",
+  "PAYPAL_SECRET",
+  "PAYPAL_BASE_URL"
+];
+function jsonResponse$9(obj, init = {}) {
+  return new Response(JSON.stringify(obj), {
+    status: init.status || 200,
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...init.headers || {} }
+  });
+}
+function jsonError$1(message, status = 400) {
+  return jsonResponse$9({ error: message }, { status });
+}
+function maskValue(value) {
+  if (!value) return null;
+  const str = String(value);
+  if (str.length <= 4) return "****";
+  return "****" + str.slice(-4);
+}
+async function readBody$1(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+async function requireAdmin$3(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return { error: "Not logged in", status: 401 };
+  if (!user.is_admin) return { error: "Forbidden", status: 403 };
+  return { user };
+}
+function randomToken$2(bytes = 12) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function getPaymentConfig(env) {
+  const result = {};
+  let rows = [];
+  try {
+    const stmt = env.DB.prepare("SELECT key, value FROM app_settings WHERE key IN (" + SETTING_KEYS.map(() => "?").join(",") + ")");
+    const r = await stmt.bind(...SETTING_KEYS).all();
+    rows = r?.results || [];
+  } catch {
+  }
+  for (const row of rows) {
+    if (row && row.key && row.value) result[row.key] = row.value;
+  }
+  for (const key of SETTING_KEYS) {
+    if (!result[key] && env[key]) result[key] = env[key];
+  }
+  return result;
+}
+async function getConfigStatus(request, env) {
+  const config = await getPaymentConfig(env);
+  const status = {};
+  for (const key of SETTING_KEYS) {
+    status[key] = {
+      configured: !!config[key],
+      masked: maskValue(config[key])
+    };
+  }
+  return jsonResponse$9({ status });
+}
+async function savePaymentConfig(request, env, userId) {
+  const body = await readBody$1(request);
+  const updates = {};
+  for (const key of SETTING_KEYS) {
+    if (typeof body[key] === "string" && body[key].trim()) {
+      updates[key] = body[key].trim();
+    }
+  }
+  if (updates.PAYPAL_CLIENT_ID || updates.PAYPAL_SECRET) {
+    const cfgNow = await getPaymentConfig(env);
+    const clientId = updates.PAYPAL_CLIENT_ID || cfgNow.PAYPAL_CLIENT_ID;
+    const secret = updates.PAYPAL_SECRET || cfgNow.PAYPAL_SECRET;
+    const base = updates.PAYPAL_BASE_URL || cfgNow.PAYPAL_BASE_URL || "https://api-m.paypal.com";
+    if (!clientId || !secret) {
+      return jsonError$1("צריך גם Client ID וגם Secret של PayPal");
+    }
+    try {
+      const r = await fetch(`${base.replace(/\/$/, "")}/v1/oauth2/token`, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${btoa(`${clientId}:${secret}`)}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: "grant_type=client_credentials"
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        return jsonError$1(`PayPal סירב לאמת — בדוק שהמפתחות נכונים. (${r.status}: ${txt.slice(0, 120)})`, 400);
+      }
+    } catch (e) {
+      return jsonError$1(`לא הצלחנו להגיע ל-PayPal לאימות. (${e && e.message || "שגיאה"})`, 502);
+    }
+  }
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  for (const [key, value] of Object.entries(updates)) {
+    await env.DB.prepare(
+      "INSERT INTO app_settings (key, value, updated_at, updated_by_user_id) VALUES (?, ?, ?, ?)\n       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by_user_id = excluded.updated_by_user_id"
+    ).bind(key, value, nowSec2, userId).run();
+  }
+  return jsonResponse$9({ ok: true, saved: Object.keys(updates) });
+}
+async function listPackages(request, env) {
+  const r = await env.DB.prepare(
+    "SELECT id, token, label, amount, hours, days, created_at, expires_at, used_count, max_uses, active FROM custom_packages ORDER BY id DESC LIMIT 200"
+  ).all();
+  return jsonResponse$9({ packages: r?.results || [] });
+}
+async function createPackage(request, env, userId) {
+  const body = await readBody$1(request);
+  const label = (body.label || "").trim();
+  const amount = Number(body.amount);
+  const hours = body.hours == null || body.hours === "" ? null : Number(body.hours);
+  const days = body.days == null || body.days === "" ? null : Number(body.days);
+  const maxUses = body.maxUses == null || body.maxUses === "" ? null : Number(body.maxUses);
+  const expiresAt = body.expiresAt == null || body.expiresAt === "" ? null : Number(body.expiresAt);
+  if (!label) return jsonError$1("חסר שם לחבילה");
+  if (!Number.isFinite(amount) || amount <= 0) return jsonError$1("סכום לא חוקי");
+  if (hours != null && (!Number.isFinite(hours) || hours <= 0)) return jsonError$1("שעות לא חוקיות");
+  if (days != null && (!Number.isFinite(days) || days <= 0)) return jsonError$1("ימים לא חוקיים");
+  if (hours == null && days == null) return jsonError$1("צריך לציין או שעות או ימים");
+  const token = randomToken$2(12);
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  const ins = await env.DB.prepare(
+    "INSERT INTO custom_packages (token, label, amount, hours, days, created_by_user_id, created_at, expires_at, max_uses, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)"
+  ).bind(token, label, amount, hours, days, userId, nowSec2, expiresAt, maxUses).run();
+  return jsonResponse$9({
+    id: ins.meta.last_row_id,
+    token,
+    label,
+    amount,
+    hours,
+    days,
+    expiresAt,
+    maxUses,
+    active: 1,
+    used_count: 0,
+    created_at: nowSec2
+  });
+}
+async function deletePackage(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return jsonError$1("id לא חוקי");
+  await env.DB.prepare("UPDATE custom_packages SET active = 0 WHERE id = ?").bind(id).run();
+  return jsonResponse$9({ ok: true });
+}
+async function getPackageByToken(env, token) {
+  if (!token) return null;
+  const row = await env.DB.prepare(
+    "SELECT id, token, label, amount, hours, days, expires_at, used_count, max_uses, active FROM custom_packages WHERE token = ? AND active = 1"
+  ).bind(token).first();
+  if (!row) return null;
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  if (row.expires_at && row.expires_at > 0 && row.expires_at < nowSec2) return null;
+  if (row.max_uses && row.used_count >= row.max_uses) return null;
+  return row;
+}
+async function handlePackageLookup(request, env, url) {
+  const m = url.pathname.match(/\/api\/payments\/package\/([A-Za-z0-9_-]+)$/);
+  if (!m) return new Response("Not found", { status: 404 });
+  const pkg = await getPackageByToken(env, m[1]);
+  if (!pkg) return jsonError$1("חבילה לא נמצאה או שפג תוקפה", 404);
+  return jsonResponse$9({
+    token: pkg.token,
+    label: pkg.label,
+    amount: pkg.amount,
+    hours: pkg.hours,
+    days: pkg.days
+  });
+}
+async function handlePaymentAdmin(request, env, url) {
+  const auth = await requireAdmin$3(request, env);
+  if (auth.error) return jsonError$1(auth.error, auth.status);
+  const path = url.pathname;
+  const method = request.method;
+  if (path === "/api/admin/payment-config" && method === "GET") return getConfigStatus(request, env);
+  if (path === "/api/admin/payment-config" && method === "POST") return savePaymentConfig(request, env, auth.user.id);
+  if (path === "/api/admin/test-packages" && method === "GET") return listPackages(request, env);
+  if (path === "/api/admin/test-packages" && method === "POST") return createPackage(request, env, auth.user.id);
+  if (path.startsWith("/api/admin/test-packages/") && method === "DELETE") {
+    const id = Number(path.split("/").pop());
+    return deletePackage(request, env, id);
+  }
+  return new Response("Not found", { status: 404 });
+}
+const PLAN_AMOUNT = { monthly: 50, yearly: 300 };
+const PLAN_DURATION_SEC = { monthly: 30 * 24 * 3600, yearly: 365 * 24 * 3600 };
+const RENEW_WINDOW_SEC = 24 * 3600;
+const MAX_FAILED = 3;
+async function runRecurringBilling(env) {
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  const cutoff = nowSec2 + RENEW_WINDOW_SEC;
+  const rows = await env.DB.prepare(
+    `SELECT id, email, plan_type, expires_at, balance_seconds,
+            subscription_active, last_payment_provider,
+            yaad_token, paypal_payer_id, failed_charge_count, id_number
+     FROM users
+     WHERE subscription_active = 1
+       AND plan_type = 'subscription'
+       AND expires_at IS NOT NULL
+       AND expires_at <= ?
+       AND COALESCE(failed_charge_count, 0) < ?`
+  ).bind(cutoff, MAX_FAILED).all();
+  const list = rows?.results || [];
+  const summary = { processed: 0, succeeded: 0, failed: 0, skipped: 0 };
+  for (const u of list) {
+    summary.processed += 1;
+    const planRow = await env.DB.prepare(
+      `SELECT plan_code FROM payments
+       WHERE user_id = ? AND plan_code IS NOT NULL
+       ORDER BY id DESC LIMIT 1`
+    ).bind(u.id).first();
+    const planCode = planRow?.plan_code === "yearly" ? "yearly" : "monthly";
+    const amount = PLAN_AMOUNT[planCode];
+    const durationSec = PLAN_DURATION_SEC[planCode];
+    let result = null;
+    if (u.last_payment_provider === "yaad" && u.yaad_token) {
+      result = await chargeYaadRecurring(env, u, amount, planCode);
+    } else if (u.last_payment_provider === "paypal" && u.paypal_payer_id) {
+      result = await chargePaypalRecurring(env, u, amount, planCode);
+    } else {
+      summary.skipped += 1;
+      await logCharge(env, u.id, u.last_payment_provider || "unknown", amount, "skipped", null, "no provider token");
+      continue;
+    }
+    if (result.ok) {
+      summary.succeeded += 1;
+      const newExpire = (u.expires_at && u.expires_at > nowSec2 ? u.expires_at : nowSec2) + durationSec;
+      await env.DB.prepare(
+        `UPDATE users SET expires_at = ?, plan_renew_at = ?, last_payment_at = ?,
+                          failed_charge_count = 0
+         WHERE id = ?`
+      ).bind(newExpire, newExpire, nowSec2, u.id).run();
+      await env.DB.prepare(
+        "INSERT INTO payments (user_id, provider, amount, plan_code, txn_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(u.id, u.last_payment_provider, amount, planCode, result.txnId || "", nowSec2).run();
+      await logCharge(env, u.id, u.last_payment_provider, amount, "succeeded", result.txnId, null);
+    } else {
+      summary.failed += 1;
+      await env.DB.prepare(
+        "UPDATE users SET failed_charge_count = COALESCE(failed_charge_count, 0) + 1 WHERE id = ?"
+      ).bind(u.id).run();
+      await logCharge(env, u.id, u.last_payment_provider, amount, "failed", null, result.error || "unknown");
+    }
+  }
+  return summary;
+}
+async function logCharge(env, userId, provider, amount, status, txnId, error) {
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "INSERT INTO recurring_charges (user_id, provider, amount, status, txn_id, error, attempted_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(userId, provider || "unknown", amount, status, txnId || null, error || null, nowSec2).run().catch(() => {
+  });
+}
+async function chargeYaadRecurring(env, user, amount, planCode) {
+  const config = await getPaymentConfig(env);
+  if (!config.YAAD_TERMINAL || !config.YAAD_API_KEY) {
+    return { ok: false, error: "yaad not configured" };
+  }
+  const base = (config.YAAD_BASE_URL || "https://icom.yaad.net/p/").replace(/\/?$/, "/");
+  const params = new URLSearchParams({
+    action: "APISign",
+    What: "VERIFY",
+    KEY: config.YAAD_API_KEY,
+    PassP: config.YAAD_PASSP || "",
+    Masof: config.YAAD_TERMINAL,
+    Amount: String(amount),
+    UserId: user.id_number || "0",
+    Order: `renew-${user.id}-${Date.now()}`,
+    Info: `חידוש מנוי ${planCode}`,
+    Coin: "1",
+    UTF8: "True",
+    UTF8out: "True",
+    Tash: "1",
+    FixTash: "True",
+    sendemail: "True",
+    PageLang: "HEB",
+    J5: "True",
+    AuthNum: user.yaad_token
+  });
+  try {
+    const r = await fetch(`${base}?${params.toString()}`, { method: "GET", redirect: "manual" });
+    const txt = await r.text();
+    const ok = /CCode=0|Status=0/.test(txt) || /<\s*Status\s*>0<\/Status>/.test(txt);
+    if (!ok) return { ok: false, error: txt.slice(0, 200) };
+    const idMatch = txt.match(/Id=(\d+)/) || txt.match(/<Id>(\d+)<\/Id>/);
+    return { ok: true, txnId: idMatch ? idMatch[1] : "" };
+  } catch (e) {
+    return { ok: false, error: e && e.message || "fetch failed" };
+  }
+}
+async function chargePaypalRecurring(env, user, amount, planCode) {
+  const config = await getPaymentConfig(env);
+  if (!config.PAYPAL_CLIENT_ID || !config.PAYPAL_SECRET) {
+    return { ok: false, error: "paypal not configured" };
+  }
+  const ppBase = (config.PAYPAL_BASE_URL || "https://api-m.paypal.com").replace(/\/$/, "");
+  let accessToken;
+  try {
+    const r = await fetch(`${ppBase}/v1/oauth2/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${btoa(`${config.PAYPAL_CLIENT_ID}:${config.PAYPAL_SECRET}`)}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: "grant_type=client_credentials"
+    });
+    if (!r.ok) return { ok: false, error: "paypal auth failed" };
+    accessToken = (await r.json()).access_token;
+  } catch (e) {
+    return { ok: false, error: e && e.message || "paypal auth fetch failed" };
+  }
+  try {
+    const r = await fetch(`${ppBase}/v2/checkout/orders`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        intent: "CAPTURE",
+        purchase_units: [{
+          reference_id: `renew-${user.id}-${Date.now()}`,
+          amount: { currency_code: "ILS", value: String(amount) },
+          description: `חידוש מנוי ${planCode}`
+        }],
+        payment_source: {
+          paypal: { vault_id: user.paypal_payer_id }
+        }
+      })
+    });
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      return { ok: false, error: `${r.status}: ${txt.slice(0, 200)}` };
+    }
+    const order = await r.json();
+    const captureId = order?.purchase_units?.[0]?.payments?.captures?.[0]?.id || order.id;
+    return { ok: true, txnId: captureId };
+  } catch (e) {
+    return { ok: false, error: e && e.message || "paypal charge failed" };
+  }
+}
+const CONSOLE_GUARD_KEY = "CONSOLE_GUARD_DISABLED";
+async function isConsoleGuardEnabled(env) {
+  try {
+    const r = await env.DB.prepare(
+      "SELECT value FROM app_settings WHERE key = ?"
+    ).bind(CONSOLE_GUARD_KEY).first();
+    if (r && String(r.value) === "1") return false;
+  } catch {
+  }
+  return true;
+}
+async function requireAdmin$2(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return { error: "Not logged in", status: 401 };
+  if (!user.is_admin) return { error: "Forbidden", status: 403 };
+  return { user };
+}
+async function handleAdmin(request, env, url) {
+  const auth = await requireAdmin$2(request, env);
+  if (auth.error) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" }
+    });
+  }
+  const path = url.pathname;
+  const method = request.method;
+  if (path === "/api/admin/users" && method === "GET") {
+    return listUsers(request, env, url);
+  }
+  if (path === "/api/admin/users" && method === "POST") {
+    return createUser(request, env);
+  }
+  if (path.startsWith("/api/admin/users/") && path.endsWith("/minutes") && method === "POST") {
+    const id = path.split("/").slice(-2)[0];
+    return adjustUserMinutes(request, env, Number(id));
+  }
+  if (path.startsWith("/api/admin/users/") && path.endsWith("/recharge") && method === "POST") {
+    const id = path.split("/").slice(-2)[0];
+    return rechargeUser(request, env, Number(id));
+  }
+  if (path.startsWith("/api/admin/users/") && method === "PATCH") {
+    const id = path.split("/").pop();
+    return updateUser(request, env, Number(id));
+  }
+  if (path.startsWith("/api/admin/users/") && method === "DELETE") {
+    const id = path.split("/").pop();
+    return deleteUser(request, env, Number(id), auth.user.id);
+  }
+  if (path === "/api/admin/stats" && method === "GET") {
+    return getStats(request, env);
+  }
+  if (path === "/api/admin/recurring/run" && method === "POST") {
+    const summary = await runRecurringBilling(env);
+    return Response.json(summary);
+  }
+  if (path.startsWith("/api/admin/users/") && path.endsWith("/cancel") && method === "POST") {
+    const id = path.split("/").slice(-2)[0];
+    return cancelUserSubscription(request, env, Number(id));
+  }
+  if (path === "/api/admin/console-guard" && method === "GET") {
+    const enabled = await isConsoleGuardEnabled(env);
+    return new Response(JSON.stringify({ enabled }), {
+      headers: { "content-type": "application/json", "cache-control": "no-store" }
+    });
+  }
+  if (path === "/api/admin/console-guard" && method === "POST") {
+    return setConsoleGuard(request, env, auth.user.id);
+  }
+  if (path === "/api/admin/payments-report" && method === "GET") {
+    return getPaymentsReport(request, env, url);
+  }
+  return new Response("Not found", { status: 404 });
+}
+async function getPaymentsReport(request, env, url) {
+  const params = url.searchParams;
+  const search = (params.get("search") || "").trim().toLowerCase();
+  const provider = params.get("provider");
+  const status = params.get("status");
+  const limit = Math.max(1, Math.min(500, Number(params.get("limit")) || 100));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const txnsQuery = `
+    SELECT p.id as record_id, p.user_id, p.provider, p.amount, p.plan_code, p.pack_code, p.txn_id, p.created_at, 'completed' as status, 'payment' as record_type
+    FROM payments p
+    UNION ALL
+    SELECT pi.id as record_id, pi.user_id, pi.provider, pi.amount, pi.plan_code, pi.pack_code, pi.txn_id, pi.created_at, pi.status, 'intent' as record_type
+    FROM payment_intents pi
+    WHERE pi.status != 'completed'
+  `;
+  const where = [];
+  const binds = [];
+  if (search) {
+    where.push("u.email LIKE ?");
+    binds.push(`%${search}%`);
+  }
+  if (provider) {
+    where.push("t.provider = ?");
+    binds.push(provider);
+  }
+  if (status) {
+    where.push("t.status = ?");
+    binds.push(status);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const countQ = await env.DB.prepare(
+    `WITH txns AS (${txnsQuery})
+     SELECT COUNT(*) as c FROM txns t LEFT JOIN users u ON t.user_id = u.id ${whereSql}`
+  ).bind(...binds).first();
+  const totalCount = countQ?.c || 0;
+  const rows = await env.DB.prepare(
+    `WITH txns AS (${txnsQuery})
+     SELECT t.*, u.email
+     FROM txns t
+     LEFT JOIN users u ON t.user_id = u.id
+     ${whereSql}
+     ORDER BY t.created_at DESC
+     LIMIT ? OFFSET ?`
+  ).bind(...binds, limit, offset).all();
+  return Response.json({
+    payments: rows.results,
+    totalCount,
+    limit,
+    offset
+  }, { headers: { "cache-control": "no-store" } });
+}
+async function cancelUserSubscription(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return new Response("Bad id", { status: 400 });
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+  }
+  const reason = String(body?.reason || "admin").slice(0, 500);
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?"
+  ).bind(nowSec2, reason, id).run();
+  return Response.json({ ok: true });
+}
+async function setConsoleGuard(request, env, userId) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+  const enabled = !!body.enabled;
+  const value = enabled ? "0" : "1";
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at, updated_by_user_id) VALUES (?, ?, ?, ?)\n     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by_user_id = excluded.updated_by_user_id"
+  ).bind(CONSOLE_GUARD_KEY, value, nowSec2, userId).run();
+  return new Response(JSON.stringify({ ok: true, enabled }), {
+    headers: { "content-type": "application/json", "cache-control": "no-store" }
+  });
+}
+async function listUsers(request, env, url) {
+  const params = url.searchParams;
+  const search = (params.get("search") || "").trim().toLowerCase();
+  const status = params.get("status");
+  const sort = params.get("sort") || "created_desc";
+  const limit = Math.max(1, Math.min(500, Number(params.get("limit")) || 100));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const where = [];
+  const binds = [];
+  if (search) {
+    where.push("email LIKE ?");
+    binds.push(`%${search}%`);
+  }
+  if (status) {
+    where.push("status = ?");
+    binds.push(status);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const orderMap = {
+    created_desc: "ORDER BY id DESC",
+    created_asc: "ORDER BY id ASC",
+    email_asc: "ORDER BY email ASC",
+    email_desc: "ORDER BY email DESC",
+    last_login_desc: "ORDER BY last_login_at DESC NULLS LAST",
+    expires_asc: "ORDER BY expires_at ASC"
+  };
+  const orderSql = orderMap[sort] || orderMap.created_desc;
+  const countQ = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM users ${whereSql}`
+  ).bind(...binds).first();
+  const totalCount = countQ?.c || 0;
+  const rows = await env.DB.prepare(
+    `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
+            balance_seconds, plan_type, plan_renew_at,
+            yaad_token, paypal_payer_id, last_payment_provider, last_payment_at, failed_charge_count,
+            subscription_active, cancelled_at, cancellation_reason, id_number
+     FROM users ${whereSql} ${orderSql} LIMIT ? OFFSET ?`
+  ).bind(...binds, limit, offset).all();
+  return Response.json({
+    users: rows.results,
+    totalCount,
+    limit,
+    offset
+  }, { headers: { "cache-control": "no-store" } });
+}
+async function createUser(request, env) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Bad JSON", { status: 400 });
+  }
+  const email = String(body?.email || "").trim().toLowerCase();
+  if (!email || !email.includes("@")) return new Response("Bad email", { status: 400 });
+  const status = String(body?.status || "active");
+  const expires_at = Number(body?.expires_at) || 0;
+  const is_admin = body?.is_admin ? 1 : 0;
+  const existing = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+  if (existing) {
+    return new Response(JSON.stringify({ error: "Already exists", id: existing.id }), {
+      status: 409,
+      headers: { "content-type": "application/json" }
+    });
+  }
+  const ins = await env.DB.prepare(
+    "INSERT INTO users (email, status, expires_at, is_admin) VALUES (?, ?, ?, ?)"
+  ).bind(email, status, expires_at, is_admin).run();
+  return Response.json({ id: ins.meta.last_row_id, email, status, expires_at, is_admin });
+}
+async function updateUser(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return new Response("Bad id", { status: 400 });
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Bad JSON", { status: 400 });
+  }
+  const sets = [];
+  const binds = [];
+  if (typeof body?.status === "string") {
+    sets.push("status = ?");
+    binds.push(body.status);
+  }
+  if (Number.isFinite(Number(body?.expires_at))) {
+    sets.push("expires_at = ?");
+    binds.push(Number(body.expires_at));
+  }
+  if (typeof body?.is_admin === "boolean" || typeof body?.is_admin === "number") {
+    sets.push("is_admin = ?");
+    binds.push(body.is_admin ? 1 : 0);
+  }
+  if (sets.length === 0) return new Response("No fields", { status: 400 });
+  binds.push(id);
+  await env.DB.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run();
+  const row = await env.DB.prepare(
+    `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
+            balance_seconds, plan_type, plan_renew_at FROM users WHERE id = ?`
+  ).bind(id).first();
+  return Response.json(row || { error: "Not found" });
+}
+async function adjustUserMinutes(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return new Response("Bad id", { status: 400 });
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Bad JSON", { status: 400 });
+  }
+  const deltaMinutes = Number(body?.deltaMinutes);
+  if (!Number.isFinite(deltaMinutes) || deltaMinutes === 0) return new Response("Bad deltaMinutes", { status: 400 });
+  const row = await env.DB.prepare(
+    "SELECT id, balance_seconds, expires_at, plan_type, status FROM users WHERE id = ?"
+  ).bind(id).first();
+  if (!row) return new Response("Not found", { status: 404 });
+  const deltaSec = Math.round(deltaMinutes * 60);
+  const newBalance = Math.max(0, (row.balance_seconds || 0) + deltaSec);
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  let newExpires = row.expires_at || 0;
+  if (row.plan_type !== "subscription") {
+    if (deltaSec > 0) {
+      const base = newExpires && newExpires > nowSec2 ? newExpires : nowSec2;
+      newExpires = base + deltaSec;
+    } else {
+      newExpires = Math.max(nowSec2, newExpires + deltaSec);
+    }
+  }
+  const newStatus = row.status === "unauthorized" && deltaSec > 0 ? "active" : row.status;
+  const newPlanType = row.plan_type || (deltaSec > 0 ? "hours" : row.plan_type);
+  await env.DB.prepare(
+    "UPDATE users SET balance_seconds = ?, expires_at = ?, status = ?, plan_type = ? WHERE id = ?"
+  ).bind(newBalance, newExpires, newStatus, newPlanType, id).run();
+  await env.DB.prepare(
+    "INSERT INTO payments (user_id, provider, amount, plan_code, pack_code, txn_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(id, "admin", 0, null, `adjust_${deltaMinutes > 0 ? "+" : ""}${deltaMinutes}min`, "", nowSec2).run().catch(() => {
+  });
+  const updated = await env.DB.prepare(
+    `SELECT id, email, status, expires_at, created_at, last_login_at, is_admin,
+            balance_seconds, plan_type, plan_renew_at FROM users WHERE id = ?`
+  ).bind(id).first();
+  return Response.json({ ok: true, user: updated, deltaMinutes });
+}
+async function rechargeUser(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return new Response("Bad id", { status: 400 });
+  const user = await env.DB.prepare(
+    "SELECT id, expires_at, subscription_active FROM users WHERE id = ?"
+  ).bind(id).first();
+  if (!user) return new Response("Not found", { status: 404 });
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "UPDATE users SET subscription_active = 1, expires_at = COALESCE(NULLIF(expires_at, 0), 0) WHERE id = ?"
+  ).bind(id).run();
+  await env.DB.prepare("UPDATE users SET expires_at = ? WHERE id = ? AND (expires_at IS NULL OR expires_at > ?)").bind(nowSec2, id, nowSec2 + 23 * 3600).run();
+  const summary = await runRecurringBilling(env);
+  const last = await env.DB.prepare(
+    "SELECT status, error, txn_id, attempted_at FROM recurring_charges WHERE user_id = ? ORDER BY id DESC LIMIT 1"
+  ).bind(id).first();
+  return Response.json({ ok: true, summary, last });
+}
+async function deleteUser(request, env, id, currentAdminId) {
+  if (!Number.isFinite(id) || id <= 0) return new Response("Bad id", { status: 400 });
+  if (id === currentAdminId) {
+    return new Response(JSON.stringify({ error: "Can't delete yourself" }), {
+      status: 400,
+      headers: { "content-type": "application/json" }
+    });
+  }
+  await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
+  return Response.json({ deleted: id });
+}
+async function getStats(request, env) {
+  const total = (await env.DB.prepare("SELECT COUNT(*) as c FROM users").first())?.c || 0;
+  const active = (await env.DB.prepare(`SELECT COUNT(*) as c FROM users WHERE status = 'active'`).first())?.c || 0;
+  const unauthorized = (await env.DB.prepare(`SELECT COUNT(*) as c FROM users WHERE status = 'unauthorized'`).first())?.c || 0;
+  const disabled = (await env.DB.prepare(`SELECT COUNT(*) as c FROM users WHERE status = 'disabled'`).first())?.c || 0;
+  const admins = (await env.DB.prepare(`SELECT COUNT(*) as c FROM users WHERE is_admin = 1`).first())?.c || 0;
+  const dayAgo = Math.floor(Date.now() / 1e3) - 86400;
+  const weekAgo = Math.floor(Date.now() / 1e3) - 86400 * 7;
+  const newToday = (await env.DB.prepare(`SELECT COUNT(*) as c FROM users WHERE created_at >= ?`).bind(dayAgo).first())?.c || 0;
+  const newThisWeek = (await env.DB.prepare(`SELECT COUNT(*) as c FROM users WHERE created_at >= ?`).bind(weekAgo).first())?.c || 0;
+  const activeThisWeek = (await env.DB.prepare(`SELECT COUNT(*) as c FROM users WHERE last_login_at >= ?`).bind(weekAgo).first())?.c || 0;
+  const expiringSoon = (await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM users WHERE status='active' AND expires_at > 0 AND expires_at < ?`
+  ).bind(Math.floor(Date.now() / 1e3) + 86400 * 30).first())?.c || 0;
+  return Response.json({
+    total,
+    active,
+    unauthorized,
+    disabled,
+    admins,
+    newToday,
+    newThisWeek,
+    activeThisWeek,
+    expiringSoon
+  }, { headers: { "cache-control": "no-store" } });
+}
+const PLAYLIST_ID_KEY = "VIDEO_GALLERY_PLAYLIST_ID";
+const PLAYLIST_NAME_KEY = "VIDEO_GALLERY_PLAYLIST_NAME";
+const DEFAULT_GALLERY_NAME = "סרטוני עזרה והדרכה";
+function json$1(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store"
+    }
+  });
+}
+function parsePlaylistId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    return url.searchParams.get("list") || raw;
+  } catch {
+    const match = raw.match(/[?&]list=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : raw.replace(/^list=/, "").trim();
+  }
+}
+function isValidPlaylistId(value) {
+  const id = parsePlaylistId(value);
+  return /^[A-Za-z0-9_-]{3,200}$/.test(id);
+}
+function decodeXml(value) {
+  return String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10))).trim();
+}
+function pick(text, regex) {
+  const m = String(text || "").match(regex);
+  return m ? decodeXml(m[1]) : "";
+}
+function parseYoutubeFeed(xml) {
+  const entries = String(xml || "").match(/<entry\b[\s\S]*?<\/entry>/g) || [];
+  return entries.map((entry) => {
+    const videoId = pick(entry, /<yt:videoId>([\s\S]*?)<\/yt:videoId>/) || pick(entry, /<id>yt:video:([\s\S]*?)<\/id>/);
+    const title = pick(entry, /<media:title>([\s\S]*?)<\/media:title>/) || pick(entry, /<title>([\s\S]*?)<\/title>/) || "סרטון";
+    const published = pick(entry, /<published>([\s\S]*?)<\/published>/);
+    const thumbnail = pick(entry, /<media:thumbnail[^>]*url="([^"]+)"/);
+    if (!videoId) return null;
+    return {
+      videoId,
+      title,
+      thumbnail: thumbnail || `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg`,
+      url: `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`,
+      published
+    };
+  }).filter(Boolean).slice(0, 80);
+}
+async function fetchPlaylistVideos(playlistId) {
+  if (!playlistId) return [];
+  const feedUrl = `https://www.youtube.com/feeds/videos.xml?playlist_id=${encodeURIComponent(playlistId)}`;
+  try {
+    const res = await fetch(feedUrl, {
+      headers: {
+        "accept": "application/atom+xml, application/xml, text/xml",
+        "user-agent": "RavText video gallery"
+      }
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    return parseYoutubeFeed(xml);
+  } catch {
+    return [];
+  }
+}
+async function readSetting(env, key) {
+  try {
+    const row = await env.DB.prepare(
+      "SELECT value FROM app_settings WHERE key = ?"
+    ).bind(key).first();
+    return row ? String(row.value || "") : "";
+  } catch {
+    return "";
+  }
+}
+async function writeSetting(env, key, value, userId) {
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "INSERT INTO app_settings (key, value, updated_at, updated_by_user_id) VALUES (?, ?, ?, ?)\nON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by_user_id = excluded.updated_by_user_id"
+  ).bind(key, String(value || ""), nowSec2, userId || null).run();
+}
+async function readServerPlaylist(env, includeItems = false) {
+  const playlistId = parsePlaylistId(await readSetting(env, PLAYLIST_ID_KEY)) || parsePlaylistId(env.VIDEO_GALLERY_PLAYLIST_ID || "");
+  const name = String(await readSetting(env, PLAYLIST_NAME_KEY) || env.VIDEO_GALLERY_PLAYLIST_NAME || DEFAULT_GALLERY_NAME).trim() || DEFAULT_GALLERY_NAME;
+  const data = {
+    configured: !!playlistId,
+    name,
+    playlistId
+  };
+  if (includeItems) {
+    data.items = await fetchPlaylistVideos(playlistId);
+  }
+  return data;
+}
+async function requireAdmin$1(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return { error: json$1({ error: "Not logged in" }, 401) };
+  if (!user.is_admin) return { error: json$1({ error: "Forbidden" }, 403) };
+  return { user };
+}
+async function handleVideoGallery(request, env, url) {
+  if (request.method !== "GET") {
+    return json$1({ error: "Method not allowed" }, 405);
+  }
+  const playlist = await readServerPlaylist(env, true);
+  return json$1(playlist);
+}
+async function handleAdminVideoGallery(request, env, url) {
+  const auth = await requireAdmin$1(request, env);
+  if (auth.error) return auth.error;
+  if (request.method === "GET") {
+    const playlist = await readServerPlaylist(env, true);
+    return json$1(playlist);
+  }
+  if (request.method !== "POST") {
+    return json$1({ error: "Method not allowed" }, 405);
+  }
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+    return json$1({ error: "Bad JSON" }, 400);
+  }
+  const playlistId = parsePlaylistId(
+    body.playlistId || body.playlist_id || body.playlist || body.list || body.url || ""
+  );
+  if (!playlistId || !isValidPlaylistId(playlistId)) {
+    return json$1({ error: "Invalid playlistId" }, 400);
+  }
+  const name = String(body.name || body.title || DEFAULT_GALLERY_NAME).trim() || DEFAULT_GALLERY_NAME;
+  await writeSetting(env, PLAYLIST_ID_KEY, playlistId, auth.user.id);
+  await writeSetting(env, PLAYLIST_NAME_KEY, name, auth.user.id);
+  const items = await fetchPlaylistVideos(playlistId);
+  return json$1({
+    ok: true,
+    configured: true,
+    name,
+    playlistId,
+    items
+  });
+}
+const ALLOWED_STATUSES_BUILTIN = /* @__PURE__ */ new Set(["new", "planning", "in_dev", "done"]);
+const MAX_TITLE = 200;
+const MAX_BODY = 5e3;
+const MAX_NOTE = 5e3;
+const MAX_DETAIL$1 = 1e3;
+const MAX_TAG = 60;
+function jsonRes(obj, init = {}) {
+  return new Response(JSON.stringify(obj), {
+    status: init.status || 200,
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...init.headers || {} }
+  });
+}
+function bad(msg, status = 400) {
+  return jsonRes({ error: msg }, { status });
+}
+function clip$2(s, n) {
+  s = String(s == null ? "" : s);
+  return s.length > n ? s.slice(0, n) : s;
+}
+function sanitizeStatus(s) {
+  s = String(s == null ? "new" : s).trim();
+  if (!s) return "new";
+  if (ALLOWED_STATUSES_BUILTIN.has(s)) return s;
+  return clip$2(s.replace(/[\u0000-\u001F\u007F]/g, ""), MAX_TAG);
+}
+async function requireLogin(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return { error: bad("Not logged in", 401) };
+  return { user };
+}
+async function requireAdmin(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return { error: bad("Not logged in", 401) };
+  if (!user.is_admin) return { error: bad("Forbidden", 403) };
+  return { user };
+}
+async function handlePublicInbox(request, env, url) {
+  const path = url.pathname;
+  const method = request.method;
+  if (path === "/api/bug-reports/public" && method === "GET") {
+    return listPublicBugReports(request, env, url);
+  }
+  const auth = await requireLogin(request, env);
+  if (auth.error) return auth.error;
+  const user = auth.user;
+  if (path === "/api/bug-reports" && method === "POST") return submitBugReport(request, env, user);
+  if (path === "/api/contact" && method === "POST") return submitContact(request, env, user);
+  if (path === "/api/contact/mine" && method === "GET") return listMyContactMessages(request, env, user);
+  if (path === "/api/usage/track" && method === "POST") return trackUsage(request, env, user);
+  return new Response("Not found", { status: 404 });
+}
+async function listMyContactMessages(request, env, user) {
+  const params = new URL(request.url).searchParams;
+  const limit = Math.max(1, Math.min(200, Number(params.get("limit")) || 50));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const rows = await env.DB.prepare(
+    `SELECT id, body, created_at, read_at
+     FROM contact_messages WHERE user_id = ?
+     ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(user.id, limit, offset).all();
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages WHERE user_id = ?`
+  ).bind(user.id).first();
+  return jsonRes({
+    items: rows.results || [],
+    totalCount: totalRow?.c || 0,
+    limit,
+    offset
+  });
+}
+async function listPublicBugReports(request, env, url) {
+  const params = url.searchParams;
+  const limit = Math.max(1, Math.min(500, Number(params.get("limit")) || 200));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const rows = await env.DB.prepare(
+    `SELECT id, source, title, body, status, created_at, updated_at
+     FROM bug_reports WHERE source = 'admin' ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+  ).bind(limit, offset).all();
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM bug_reports WHERE source = 'admin'`
+  ).first();
+  return jsonRes({
+    items: rows.results || [],
+    totalCount: totalRow?.c || 0,
+    limit,
+    offset
+  });
+}
+async function submitBugReport(request, env, user) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return bad("Bad JSON");
+  }
+  const title = clip$2(body?.title, MAX_TITLE).trim();
+  const text = clip$2(body?.body, MAX_BODY).trim();
+  if (!title || !text) return bad("כותרת ופירוט חובה");
+  const meta = body?.meta && typeof body.meta === "object" ? clip$2(JSON.stringify(body.meta), 2e3) : null;
+  const now = Math.floor(Date.now() / 1e3);
+  const ins = await env.DB.prepare(
+    `INSERT INTO bug_reports (user_id, user_email, source, title, body, status, meta, created_at, updated_at)
+     VALUES (?, ?, 'user', ?, ?, 'new', ?, ?, ?)`
+  ).bind(user.id, user.email, title, text, meta, now, now).run();
+  await env.DB.prepare(
+    `INSERT INTO usage_events (user_id, user_email, event, detail, created_at)
+     VALUES (?, ?, 'bug_submit', ?, ?)`
+  ).bind(user.id, user.email, JSON.stringify({ id: ins.meta.last_row_id, title }), now).run().catch(() => {
+  });
+  return jsonRes({ ok: true, id: ins.meta.last_row_id });
+}
+async function submitContact(request, env, user) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return bad("Bad JSON");
+  }
+  const text = clip$2(body?.body, MAX_BODY).trim();
+  if (!text) return bad("פתק ריק");
+  const meta = body?.meta && typeof body.meta === "object" ? clip$2(JSON.stringify(body.meta), 2e3) : null;
+  const now = Math.floor(Date.now() / 1e3);
+  const ins = await env.DB.prepare(
+    `INSERT INTO contact_messages (user_id, user_email, body, meta, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(user.id, user.email, text, meta, now).run();
+  await env.DB.prepare(
+    `INSERT INTO usage_events (user_id, user_email, event, detail, created_at)
+     VALUES (?, ?, 'contact_submit', ?, ?)`
+  ).bind(user.id, user.email, JSON.stringify({ id: ins.meta.last_row_id }), now).run().catch(() => {
+  });
+  return jsonRes({ ok: true, id: ins.meta.last_row_id });
+}
+async function trackUsage(request, env, user) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return bad("Bad JSON");
+  }
+  const event = clip$2(body?.event, 60).trim();
+  if (!event) return bad("event חובה");
+  const detail = body?.detail != null ? clip$2(typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail), MAX_DETAIL$1) : null;
+  const now = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    `INSERT INTO usage_events (user_id, user_email, event, detail, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(user.id, user.email, event, detail, now).run();
+  return jsonRes({ ok: true });
+}
+async function handleAdminInbox(request, env, url) {
+  const auth = await requireAdmin(request, env);
+  if (auth.error) return auth.error;
+  const path = url.pathname;
+  const method = request.method;
+  if (path === "/api/admin/bug-reports" && method === "GET") return listBugReports(request, env, url);
+  if (path === "/api/admin/bug-reports" && method === "POST") return adminCreateBugReport(request, env, auth.user);
+  if (path.startsWith("/api/admin/bug-reports/")) {
+    const id = Number(path.split("/").pop());
+    if (method === "PATCH") return updateBugReport(request, env, id);
+    if (method === "DELETE") return deleteBugReport(request, env, id);
+  }
+  if (path === "/api/admin/contact-messages" && method === "GET") return listContactMessages(request, env, url);
+  if (path.startsWith("/api/admin/contact-messages/")) {
+    const tail = path.slice("/api/admin/contact-messages/".length);
+    if (tail.endsWith("/read") && method === "POST") {
+      const id2 = Number(tail.slice(0, -"/read".length));
+      return markContactRead(request, env, id2);
+    }
+    const id = Number(tail);
+    if (method === "DELETE") return deleteContactMessage(request, env, id);
+  }
+  if (path === "/api/admin/usage" && method === "GET") return listUsage(request, env, url);
+  const userContactMatch = path.match(/^\/api\/admin\/users\/(\d+)\/contact-messages$/);
+  if (userContactMatch && method === "GET") {
+    return listContactMessagesForUser(request, env, Number(userContactMatch[1]));
+  }
+  return new Response("Not found", { status: 404 });
+}
+async function listContactMessagesForUser(request, env, userId) {
+  if (!Number.isFinite(userId) || userId <= 0) return bad("Bad user id");
+  const params = new URL(request.url).searchParams;
+  const limit = Math.max(1, Math.min(500, Number(params.get("limit")) || 200));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const rows = await env.DB.prepare(
+    `SELECT id, user_id, user_email, body, meta, created_at, read_at
+     FROM contact_messages WHERE user_id = ?
+     ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(userId, limit, offset).all();
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages WHERE user_id = ?`
+  ).bind(userId).first();
+  const unreadRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages WHERE user_id = ? AND read_at IS NULL`
+  ).bind(userId).first();
+  return jsonRes({
+    items: rows.results || [],
+    totalCount: totalRow?.c || 0,
+    unreadCount: unreadRow?.c || 0,
+    limit,
+    offset
+  });
+}
+async function listBugReports(request, env, url) {
+  const params = url.searchParams;
+  const search = (params.get("search") || "").trim().toLowerCase();
+  const status = (params.get("status") || "").trim();
+  const source = (params.get("source") || "").trim();
+  const limit = Math.max(1, Math.min(500, Number(params.get("limit")) || 100));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const where = [];
+  const binds = [];
+  if (search) {
+    where.push("(LOWER(title) LIKE ? OR LOWER(body) LIKE ? OR LOWER(IFNULL(user_email,'')) LIKE ? OR LOWER(IFNULL(admin_note,'')) LIKE ?)");
+    const q = `%${search}%`;
+    binds.push(q, q, q, q);
+  }
+  if (status) {
+    where.push("status = ?");
+    binds.push(status);
+  }
+  if (source) {
+    where.push("source = ?");
+    binds.push(source);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM bug_reports ${whereSql}`
+  ).bind(...binds).first();
+  const totalCount = totalRow?.c || 0;
+  const rows = await env.DB.prepare(
+    `SELECT id, user_id, user_email, source, title, body, status, admin_note,
+            meta, created_at, updated_at
+     FROM bug_reports ${whereSql} ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+  ).bind(...binds, limit, offset).all();
+  const counts = await env.DB.prepare(
+    `SELECT status, COUNT(*) as c FROM bug_reports GROUP BY status`
+  ).all();
+  return jsonRes({
+    items: rows.results,
+    totalCount,
+    limit,
+    offset,
+    counts: (counts.results || []).reduce((m, r) => {
+      m[r.status] = r.c;
+      return m;
+    }, {})
+  });
+}
+async function adminCreateBugReport(request, env, user) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return bad("Bad JSON");
+  }
+  const title = clip$2(body?.title, MAX_TITLE).trim();
+  const text = clip$2(body?.body, MAX_BODY).trim();
+  if (!title || !text) return bad("כותרת ופירוט חובה");
+  const status = sanitizeStatus(body?.status || "planning");
+  const adminNote = body?.admin_note ? clip$2(body.admin_note, MAX_NOTE) : null;
+  const now = Math.floor(Date.now() / 1e3);
+  const ins = await env.DB.prepare(
+    `INSERT INTO bug_reports (user_id, user_email, source, title, body, status, admin_note, created_at, updated_at)
+     VALUES (?, ?, 'admin', ?, ?, ?, ?, ?, ?)`
+  ).bind(user.id, user.email, title, text, status, adminNote, now, now).run();
+  return jsonRes({ ok: true, id: ins.meta.last_row_id });
+}
+async function updateBugReport(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return bad("Bad id");
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return bad("Bad JSON");
+  }
+  const sets = [];
+  const binds = [];
+  if (typeof body?.status === "string") {
+    sets.push("status = ?");
+    binds.push(sanitizeStatus(body.status));
+  }
+  if (typeof body?.title === "string") {
+    const t = clip$2(body.title, MAX_TITLE).trim();
+    if (!t) return bad("כותרת ריקה");
+    sets.push("title = ?");
+    binds.push(t);
+  }
+  if (typeof body?.body === "string") {
+    const t = clip$2(body.body, MAX_BODY).trim();
+    if (!t) return bad("פירוט ריק");
+    sets.push("body = ?");
+    binds.push(t);
+  }
+  if ("admin_note" in (body || {})) {
+    const note = body.admin_note == null ? null : clip$2(String(body.admin_note), MAX_NOTE);
+    sets.push("admin_note = ?");
+    binds.push(note);
+  }
+  if (sets.length === 0) return bad("No fields");
+  const now = Math.floor(Date.now() / 1e3);
+  sets.push("updated_at = ?");
+  binds.push(now);
+  binds.push(id);
+  await env.DB.prepare(`UPDATE bug_reports SET ${sets.join(", ")} WHERE id = ?`).bind(...binds).run();
+  const row = await env.DB.prepare(
+    `SELECT id, user_id, user_email, source, title, body, status, admin_note, meta, created_at, updated_at
+     FROM bug_reports WHERE id = ?`
+  ).bind(id).first();
+  return jsonRes(row || { error: "Not found" }, { status: row ? 200 : 404 });
+}
+async function deleteBugReport(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return bad("Bad id");
+  await env.DB.prepare("DELETE FROM bug_reports WHERE id = ?").bind(id).run();
+  return jsonRes({ deleted: id });
+}
+async function listContactMessages(request, env, url) {
+  const params = url.searchParams;
+  const search = (params.get("search") || "").trim().toLowerCase();
+  const unreadOnly = params.get("unread") === "1";
+  const limit = Math.max(1, Math.min(500, Number(params.get("limit")) || 100));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const where = [];
+  const binds = [];
+  if (search) {
+    where.push("(LOWER(body) LIKE ? OR LOWER(IFNULL(user_email,'')) LIKE ?)");
+    const q = `%${search}%`;
+    binds.push(q, q);
+  }
+  if (unreadOnly) where.push("(read_at IS NULL OR read_at = 0)");
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages ${whereSql}`
+  ).bind(...binds).first();
+  const totalCount = totalRow?.c || 0;
+  const unreadRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM contact_messages WHERE read_at IS NULL OR read_at = 0`
+  ).first();
+  const rows = await env.DB.prepare(
+    `SELECT id, user_id, user_email, body, read_at, meta, created_at
+     FROM contact_messages ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`
+  ).bind(...binds, limit, offset).all();
+  return jsonRes({
+    items: rows.results,
+    totalCount,
+    unreadCount: unreadRow?.c || 0,
+    limit,
+    offset
+  });
+}
+async function markContactRead(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return bad("Bad id");
+  const now = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare("UPDATE contact_messages SET read_at = ? WHERE id = ?").bind(now, id).run();
+  return jsonRes({ ok: true, id, read_at: now });
+}
+async function deleteContactMessage(request, env, id) {
+  if (!Number.isFinite(id) || id <= 0) return bad("Bad id");
+  await env.DB.prepare("DELETE FROM contact_messages WHERE id = ?").bind(id).run();
+  return jsonRes({ deleted: id });
+}
+async function listUsage(request, env, url) {
+  const params = url.searchParams;
+  const userId = Number(params.get("user_id")) || 0;
+  const event = (params.get("event") || "").trim();
+  const search = (params.get("search") || "").trim().toLowerCase();
+  const fromTs = Number(params.get("from")) || 0;
+  const toTs = Number(params.get("to")) || 0;
+  const limit = Math.max(1, Math.min(1e3, Number(params.get("limit")) || 200));
+  const offset = Math.max(0, Number(params.get("offset")) || 0);
+  const where = [];
+  const binds = [];
+  if (userId > 0) {
+    where.push("user_id = ?");
+    binds.push(userId);
+  }
+  if (event) {
+    where.push("event = ?");
+    binds.push(event);
+  }
+  if (search) {
+    where.push("(LOWER(IFNULL(user_email,'')) LIKE ? OR LOWER(IFNULL(detail,'')) LIKE ?)");
+    const q = `%${search}%`;
+    binds.push(q, q);
+  }
+  if (fromTs > 0) {
+    where.push("created_at >= ?");
+    binds.push(fromTs);
+  }
+  if (toTs > 0) {
+    where.push("created_at <= ?");
+    binds.push(toTs);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const totalRow = await env.DB.prepare(
+    `SELECT COUNT(*) as c FROM usage_events ${whereSql}`
+  ).bind(...binds).first();
+  const totalCount = totalRow?.c || 0;
+  const rows = await env.DB.prepare(
+    `SELECT id, user_id, user_email, event, detail, created_at
+     FROM usage_events ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`
+  ).bind(...binds, limit, offset).all();
+  const weekAgo = Math.floor(Date.now() / 1e3) - 86400 * 7;
+  const byEvent = await env.DB.prepare(
+    `SELECT event, COUNT(*) as c FROM usage_events WHERE created_at >= ? GROUP BY event ORDER BY c DESC`
+  ).bind(weekAgo).all();
+  const topUsers = await env.DB.prepare(
+    `SELECT user_email, COUNT(*) as c FROM usage_events
+     WHERE created_at >= ? AND user_email IS NOT NULL
+     GROUP BY user_email ORDER BY c DESC LIMIT 20`
+  ).bind(weekAgo).all();
+  return jsonRes({
+    items: rows.results,
+    totalCount,
+    limit,
+    offset,
+    summaryByEvent: byEvent.results || [],
+    topUsersWeek: topUsers.results || []
+  });
+}
+const MAX_DOC_BYTES = 1024 * 1024;
+const MAX_SETTINGS_BYTES = 100 * 1024;
+async function requireUser(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return { error: "Not logged in", status: 401 };
+  return { user };
+}
+async function handleStorage(request, env, url) {
+  const auth = await requireUser(request, env);
+  if (auth.error) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status,
+      headers: { "content-type": "application/json", "cache-control": "no-store" }
+    });
+  }
+  const path = url.pathname;
+  const method = request.method;
+  if (path === "/api/documents/current" && method === "GET") {
+    return getCurrent(env, auth.user);
+  }
+  if (path === "/api/documents/current" && method === "PUT") {
+    return putCurrent(request, env, auth.user);
+  }
+  if (path === "/api/settings" && method === "GET") {
+    return getSettings$1(env, auth.user);
+  }
+  if (path === "/api/settings" && method === "PUT") {
+    return putSettings(request, env, auth.user);
+  }
+  if (path === "/api/settings" && method === "PATCH") {
+    return patchSettings(request, env, auth.user);
+  }
+  return new Response("Not found", { status: 404 });
+}
+async function getCurrent(env, user) {
+  const row = await env.DB.prepare(
+    `SELECT id, title, content_json, size_bytes, updated_at
+     FROM documents WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`
+  ).bind(user.id).first();
+  if (!row) {
+    return Response.json({ document: null }, { headers: { "cache-control": "no-store" } });
+  }
+  return Response.json({
+    document: {
+      id: row.id,
+      title: row.title,
+      content: JSON.parse(row.content_json),
+      sizeBytes: row.size_bytes,
+      updatedAt: row.updated_at
+    }
+  }, { headers: { "cache-control": "no-store" } });
+}
+async function putCurrent(request, env, user) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Bad JSON", { status: 400 });
+  }
+  const content = body?.content;
+  if (content == null) return new Response("Missing content", { status: 400 });
+  const json2 = JSON.stringify(content);
+  const bytes = new TextEncoder().encode(json2).byteLength;
+  if (bytes > MAX_DOC_BYTES) {
+    return new Response(`Document too large: ${bytes} > ${MAX_DOC_BYTES}`, { status: 413 });
+  }
+  const title = String(body?.title || "").slice(0, 200);
+  const now = Math.floor(Date.now() / 1e3);
+  const existing = await env.DB.prepare(
+    `SELECT id FROM documents WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1`
+  ).bind(user.id).first();
+  if (existing) {
+    await env.DB.prepare(
+      `UPDATE documents SET title = ?, content_json = ?, size_bytes = ?, updated_at = ? WHERE id = ?`
+    ).bind(title, json2, bytes, now, existing.id).run();
+    return Response.json({ id: existing.id, sizeBytes: bytes, updatedAt: now });
+  } else {
+    const ins = await env.DB.prepare(
+      `INSERT INTO documents (user_id, title, content_json, size_bytes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).bind(user.id, title, json2, bytes, now, now).run();
+    return Response.json({ id: ins.meta.last_row_id, sizeBytes: bytes, updatedAt: now });
+  }
+}
+async function getSettings$1(env, user) {
+  const row = await env.DB.prepare(
+    `SELECT settings_json, size_bytes, updated_at FROM user_settings WHERE user_id = ?`
+  ).bind(user.id).first();
+  if (!row) {
+    return Response.json({ settings: {} }, { headers: { "cache-control": "no-store" } });
+  }
+  return Response.json({
+    settings: JSON.parse(row.settings_json),
+    sizeBytes: row.size_bytes,
+    updatedAt: row.updated_at
+  }, { headers: { "cache-control": "no-store" } });
+}
+async function putSettings(request, env, user) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Bad JSON", { status: 400 });
+  }
+  const settings = body?.settings;
+  if (settings == null || typeof settings !== "object") {
+    return new Response("Missing settings object", { status: 400 });
+  }
+  const json2 = JSON.stringify(settings);
+  const bytes = new TextEncoder().encode(json2).byteLength;
+  if (bytes > MAX_SETTINGS_BYTES) {
+    return new Response(`Settings too large: ${bytes} > ${MAX_SETTINGS_BYTES}`, { status: 413 });
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    `INSERT INTO user_settings (user_id, settings_json, size_bytes, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       settings_json = excluded.settings_json,
+       size_bytes = excluded.size_bytes,
+       updated_at = excluded.updated_at`
+  ).bind(user.id, json2, bytes, now).run();
+  return Response.json({ sizeBytes: bytes, updatedAt: now });
+}
+async function patchSettings(request, env, user) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response("Bad JSON", { status: 400 });
+  }
+  const patch = body?.settings;
+  if (patch == null || typeof patch !== "object") {
+    return new Response("Missing settings object", { status: 400 });
+  }
+  const row = await env.DB.prepare(
+    `SELECT settings_json FROM user_settings WHERE user_id = ?`
+  ).bind(user.id).first();
+  let settings = {};
+  if (row?.settings_json) {
+    try {
+      settings = JSON.parse(row.settings_json) || {};
+    } catch {
+      settings = {};
+    }
+  }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value == null) delete settings[key];
+    else settings[key] = String(value);
+  }
+  const json2 = JSON.stringify(settings);
+  const bytes = new TextEncoder().encode(json2).byteLength;
+  if (bytes > MAX_SETTINGS_BYTES) {
+    return new Response(`Settings too large: ${bytes} > ${MAX_SETTINGS_BYTES}`, { status: 413 });
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    `INSERT INTO user_settings (user_id, settings_json, size_bytes, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       settings_json = excluded.settings_json,
+       size_bytes = excluded.size_bytes,
+       updated_at = excluded.updated_at`
+  ).bind(user.id, json2, bytes, now).run();
+  return Response.json({ sizeBytes: bytes, updatedAt: now });
+}
+const PLAN_DEFS = {
+  monthly: { type: "subscription", amount: 50, durationSec: 30 * 24 * 60 * 60 },
+  yearly: { type: "subscription", amount: 300, durationSec: 365 * 24 * 60 * 60 }
+};
+const PACK_DEFS = {
+  h1: { type: "hours", amount: 5, hours: 1 },
+  h5: { type: "hours", amount: 22, hours: 5 },
+  h10: { type: "hours", amount: 40, hours: 10 },
+  h20: { type: "hours", amount: 70, hours: 20 }
+};
+const GIFT_MINUTES_PER_MONTH = 20;
+function jsonResponse$8(obj, init = {}) {
+  return new Response(JSON.stringify(obj), {
+    status: init.status || 200,
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...init.headers || {} }
+  });
+}
+function jsonError(message, status = 400) {
+  return jsonResponse$8({ error: message }, { status });
+}
+function randomToken$1(bytes = 18) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function thisMonthKey() {
+  const d = /* @__PURE__ */ new Date();
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+function resolvePlanOrPack(body) {
+  if (body.planCode && PLAN_DEFS[body.planCode]) return { kind: "plan", code: body.planCode, def: PLAN_DEFS[body.planCode] };
+  if (body.packCode && PACK_DEFS[body.packCode]) return { kind: "pack", code: body.packCode, def: PACK_DEFS[body.packCode] };
+  return null;
+}
+async function resolveCustomPackage(env, body) {
+  if (!body.pkgToken) return null;
+  const pkg = await getPackageByToken(env, body.pkgToken);
+  if (!pkg) return null;
+  const durationSec = pkg.days != null ? pkg.days * 24 * 60 * 60 : (pkg.hours || 0) * 60 * 60;
+  return {
+    kind: "custom",
+    code: `custom-${pkg.id}`,
+    customId: pkg.id,
+    customToken: pkg.token,
+    def: {
+      type: pkg.days != null ? "subscription" : "hours",
+      amount: pkg.amount,
+      hours: pkg.hours || 0,
+      days: pkg.days || 0,
+      durationSec,
+      label: pkg.label
+    }
+  };
+}
+async function readBody(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+async function buildYaadRedirect(env, intent, returnOrigin) {
+  const config = await getPaymentConfig(env);
+  const base = (config.YAAD_BASE_URL || "https://icom.yaad.net/p/").replace(/\/?$/, "/");
+  const callbackUrl = `${returnOrigin}/api/payments/yaad/callback`;
+  const apiSignParams = new URLSearchParams({
+    action: "APISign",
+    What: "SIGN",
+    KEY: config.YAAD_API_KEY || "",
+    PassP: config.YAAD_PASSP || "",
+    Masof: config.YAAD_TERMINAL || "",
+    Order: intent.token,
+    Info: intent.label,
+    Amount: String(intent.amount),
+    Coin: "1",
+    UTF8: "True",
+    UTF8out: "True",
+    UserId: intent.idNumber,
+    ClientName: intent.firstName || "",
+    ClientLName: intent.lastName || "",
+    Tash: "1",
+    FixTash: "True",
+    sendemail: "True",
+    SendHesh: "True",
+    MoreData: "True",
+    PageLang: "HEB",
+    tmp: "13",
+    UrlBack: callbackUrl
+  });
+  let signedQuery;
+  try {
+    const signRes = await fetch(`${base}?${apiSignParams.toString()}`, { method: "GET" });
+    signedQuery = (await signRes.text()).trim();
+  } catch (e) {
+    throw new Error(`Yaad APISign network failure: ${e && e.message || "unknown"}`);
+  }
+  const lower = signedQuery.toLowerCase();
+  if (!signedQuery.includes("signature=") || lower.includes("error") || lower.includes("errcode")) {
+    throw new Error(`Yaad APISign rejected: ${signedQuery.slice(0, 250)}`);
+  }
+  return `${base}?action=pay&${signedQuery}`;
+}
+async function startYaad(request, env, url) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonError("נדרש להתחבר תחילה", 401);
+  const body = await readBody(request);
+  const choice = await resolveCustomPackage(env, body) || resolvePlanOrPack(body);
+  if (!choice) return jsonError("בחירה לא חוקית");
+  if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) {
+    return jsonError("סכום לא תואם לתוכנית הנבחרת");
+  }
+  const userRow = await env.DB.prepare(
+    "SELECT phone_e164, id_number, first_name, last_name, email FROM users WHERE id = ?"
+  ).bind(user.id).first();
+  if (!userRow?.phone_e164) {
+    return jsonError("phone_required: יש להזין טלפון לפני התשלום", 412);
+  }
+  const token = randomToken$1();
+  const label = choice.kind === "plan" ? `מנוי-${choice.code}` : choice.kind === "pack" ? `שעות-${choice.code}` : `מותאם-${choice.def.label || choice.customId}`;
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "INSERT INTO payment_intents (user_id, provider, token, amount, plan_code, pack_code, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(
+    user.id,
+    "yaad",
+    token,
+    choice.def.amount,
+    choice.kind === "plan" ? choice.code : null,
+    choice.kind === "pack" ? choice.code : choice.kind === "custom" ? `custom:${choice.customToken}` : null,
+    "pending",
+    nowSec2
+  ).run();
+  const fallback = (userRow.email || "").split("@")[0] || "לקוח";
+  const firstName = (userRow.first_name || fallback).slice(0, 30);
+  const lastName = (userRow.last_name || fallback).slice(0, 30);
+  const intent = {
+    token,
+    amount: choice.def.amount,
+    label,
+    idNumber: userRow.id_number || "0",
+    firstName,
+    lastName
+  };
+  const redirectUrl = await buildYaadRedirect(env, intent, url.origin);
+  return jsonResponse$8({ redirectUrl, token });
+}
+async function yaadCallback(request, env, url) {
+  const params = url.searchParams;
+  const token = params.get("Order") || "";
+  const ccode = params.get("CCode");
+  const status = params.get("Status");
+  const errCode = params.get("ErrCode");
+  const ok = ccode === "0" || status === "0" || ccode === "000" || status === "000";
+  const rawParams = [...params.entries()].map(([k, v]) => `${k}=${v}`).join("&");
+  if (!token) {
+    return Response.redirect(`${url.origin}/?premium=failed&reason=no_order`, 302);
+  }
+  const intent = await env.DB.prepare(
+    "SELECT id, user_id, provider, token, amount, plan_code, pack_code, status FROM payment_intents WHERE token = ?"
+  ).bind(token).first();
+  if (!intent) return Response.redirect(`${url.origin}/?premium=failed&reason=unknown_token`, 302);
+  if (intent.status === "completed") {
+    return Response.redirect(`${url.origin}/?premium=success`, 302);
+  }
+  if (!ok) {
+    const errInfo = `FAIL CCode=${ccode || "-"} Status=${status || "-"} ErrCode=${errCode || "-"} | ${rawParams.slice(0, 400)}`;
+    await env.DB.prepare("UPDATE payment_intents SET status = 'failed', txn_id = ? WHERE id = ?").bind(errInfo, intent.id).run();
+    await env.DB.prepare("UPDATE users SET failed_charge_count = COALESCE(failed_charge_count,0) + 1 WHERE id = ?").bind(intent.user_id).run().catch(() => {
+    });
+    return Response.redirect(`${url.origin}/?premium=failed`, 302);
+  }
+  const yaadToken = params.get("Token") || params.get("J5Token") || "";
+  const txnId = params.get("Id") || "";
+  await applySuccessfulPayment(env, intent, txnId, { yaadToken });
+  return Response.redirect(`${url.origin}/?premium=success`, 302);
+}
+async function paypalToken(env) {
+  const config = await getPaymentConfig(env);
+  const base = (config.PAYPAL_BASE_URL || "https://api-m.paypal.com").replace(/\/$/, "");
+  const r = await fetch(`${base}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${config.PAYPAL_CLIENT_ID}:${config.PAYPAL_SECRET}`)}`,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+  if (!r.ok) throw new Error("PayPal auth failed");
+  const j = await r.json();
+  return j.access_token;
+}
+async function startPaypal(request, env, url) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonError("נדרש להתחבר תחילה", 401);
+  const body = await readBody(request);
+  const choice = await resolveCustomPackage(env, body) || resolvePlanOrPack(body);
+  if (!choice) return jsonError("בחירה לא חוקית");
+  if (choice.def.amount < 30) return jsonError('פייפאל זמין מ-30 ש"ח ומעלה');
+  if (!Number.isFinite(body.amount) || Number(body.amount) !== Number(choice.def.amount)) return jsonError("סכום לא תואם");
+  const userRow = await env.DB.prepare("SELECT phone_e164 FROM users WHERE id = ?").bind(user.id).first();
+  if (!userRow?.phone_e164) {
+    return jsonError("phone_required: יש להזין טלפון לפני התשלום", 412);
+  }
+  const config = await getPaymentConfig(env);
+  if (!config.PAYPAL_CLIENT_ID || !config.PAYPAL_SECRET) {
+    return jsonError("שירות פייפאל אינו מוגדר עדיין. אנא בחרו תשלום באשראי.", 503);
+  }
+  const paypalBase = (config.PAYPAL_BASE_URL || "https://api-m.paypal.com").replace(/\/$/, "");
+  const token = randomToken$1();
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "INSERT INTO payment_intents (user_id, provider, token, amount, plan_code, pack_code, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).bind(
+    user.id,
+    "paypal",
+    token,
+    choice.def.amount,
+    choice.kind === "plan" ? choice.code : null,
+    choice.kind === "pack" ? choice.code : choice.kind === "custom" ? `custom:${choice.customToken}` : null,
+    "pending",
+    nowSec2
+  ).run();
+  const accessToken = await paypalToken(env);
+  const orderRes = await fetch(`${paypalBase}/v2/checkout/orders`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      intent: "CAPTURE",
+      purchase_units: [{
+        reference_id: token,
+        amount: { currency_code: "ILS", value: String(choice.def.amount) },
+        description: choice.kind === "plan" ? `RavText subscription ${choice.code}` : `RavText hours ${choice.code}`
+      }],
+      application_context: {
+        brand_name: "רב טקסט לוורד AI",
+        return_url: `${url.origin}/api/payments/paypal/callback?token=${token}`,
+        cancel_url: `${url.origin}/?premium=cancelled`
+      }
+    })
+  });
+  if (!orderRes.ok) {
+    return jsonError("פייפאל סירב לפתוח עסקה — נסה שוב מאוחר יותר", 502);
+  }
+  const order = await orderRes.json();
+  const approve = order.links?.find((l) => l.rel === "approve");
+  if (!approve) return jsonError("פייפאל לא החזיר כתובת אישור", 502);
+  await env.DB.prepare("UPDATE payment_intents SET status = ?, txn_id = ? WHERE token = ?").bind("awaiting_paypal", order.id, token).run().catch(() => {
+  });
+  return jsonResponse$8({ redirectUrl: approve.href, token, paypalOrder: order.id });
+}
+async function paypalCallback(request, env, url) {
+  const token = url.searchParams.get("token");
+  if (!token) return new Response("Bad request", { status: 400 });
+  const intent = await env.DB.prepare(
+    "SELECT id, user_id, provider, token, txn_id, amount, plan_code, pack_code, status FROM payment_intents WHERE token = ?"
+  ).bind(token).first();
+  if (!intent) return new Response("Unknown token", { status: 404 });
+  if (intent.status === "completed") {
+    return Response.redirect(`${url.origin}/?premium=success`, 302);
+  }
+  const paypalOrderId = intent.txn_id;
+  if (!paypalOrderId) return Response.redirect(`${url.origin}/?premium=failed`, 302);
+  try {
+    const accessToken = await paypalToken(env);
+    const cfg = await getPaymentConfig(env);
+    const ppBase = (cfg.PAYPAL_BASE_URL || "https://api-m.paypal.com").replace(/\/$/, "");
+    const captureRes = await fetch(`${ppBase}/v2/checkout/orders/${paypalOrderId}/capture`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }
+    });
+    if (!captureRes.ok) {
+      await env.DB.prepare("UPDATE payment_intents SET status = 'failed' WHERE id = ?").bind(intent.id).run();
+      return Response.redirect(`${url.origin}/?premium=failed`, 302);
+    }
+    const cap = await captureRes.json();
+    const captureId = cap?.purchase_units?.[0]?.payments?.captures?.[0]?.id || "";
+    const payerId = cap?.payer?.payer_id || "";
+    await applySuccessfulPayment(env, intent, captureId, { payerId });
+    return Response.redirect(`${url.origin}/?premium=success`, 302);
+  } catch {
+    return Response.redirect(`${url.origin}/?premium=failed`, 302);
+  }
+}
+async function applySuccessfulPayment(env, intent, externalTxnId, tokens = {}) {
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  const user = await env.DB.prepare("SELECT id, status, expires_at, balance_seconds, plan_type FROM users WHERE id = ?").bind(intent.user_id).first();
+  if (!user) return;
+  if (tokens.yaadToken) {
+    await env.DB.prepare("UPDATE users SET yaad_token = ?, last_payment_provider = 'yaad' WHERE id = ?").bind(tokens.yaadToken, user.id).run().catch(() => {
+    });
+  }
+  if (tokens.payerId) {
+    await env.DB.prepare("UPDATE users SET paypal_payer_id = ?, last_payment_provider = 'paypal' WHERE id = ?").bind(tokens.payerId, user.id).run().catch(() => {
+    });
+  }
+  await env.DB.prepare("UPDATE users SET last_payment_at = ?, failed_charge_count = 0 WHERE id = ?").bind(nowSec2, user.id).run().catch(() => {
+  });
+  if (intent.plan_code) {
+    const plan = PLAN_DEFS[intent.plan_code];
+    if (!plan) return;
+    const baseExpire = user.expires_at && user.expires_at > nowSec2 ? user.expires_at : nowSec2;
+    const newExpire = baseExpire + plan.durationSec;
+    await env.DB.prepare(
+      "UPDATE users SET status = 'active', plan_type = ?, expires_at = ?, plan_renew_at = ? WHERE id = ?"
+    ).bind("subscription", newExpire, newExpire, user.id).run();
+  } else if (intent.pack_code && intent.pack_code.startsWith("custom:")) {
+    const customToken = intent.pack_code.slice("custom:".length);
+    const pkg = await env.DB.prepare(
+      "SELECT id, hours, days FROM custom_packages WHERE token = ?"
+    ).bind(customToken).first();
+    if (!pkg) return;
+    if (pkg.days != null && pkg.days > 0) {
+      const baseExpire = user.expires_at && user.expires_at > nowSec2 ? user.expires_at : nowSec2;
+      const newExpire = baseExpire + pkg.days * 24 * 60 * 60;
+      await env.DB.prepare(
+        "UPDATE users SET status = 'active', plan_type = COALESCE(plan_type,'subscription'), expires_at = ?, plan_renew_at = ? WHERE id = ?"
+      ).bind(newExpire, newExpire, user.id).run();
+    } else if (pkg.hours != null && pkg.hours > 0) {
+      const seconds = Math.round(pkg.hours * 3600);
+      const newBalance = (user.balance_seconds || 0) + seconds;
+      const expireMin = nowSec2 + newBalance;
+      await env.DB.prepare(
+        "UPDATE users SET status = 'active', plan_type = COALESCE(plan_type,'hours'), balance_seconds = ?, expires_at = ? WHERE id = ?"
+      ).bind(newBalance, expireMin, user.id).run();
+    }
+    await env.DB.prepare("UPDATE custom_packages SET used_count = used_count + 1 WHERE id = ?").bind(pkg.id).run().catch(() => {
+    });
+  } else if (intent.pack_code) {
+    const pack = PACK_DEFS[intent.pack_code];
+    if (!pack) return;
+    const seconds = pack.hours * 3600;
+    const newBalance = (user.balance_seconds || 0) + seconds;
+    const expireMin = nowSec2 + newBalance;
+    await env.DB.prepare(
+      "UPDATE users SET status = 'active', plan_type = COALESCE(plan_type,'hours'), balance_seconds = ?, expires_at = ? WHERE id = ?"
+    ).bind(newBalance, expireMin, user.id).run();
+  }
+  await env.DB.prepare(
+    "INSERT INTO payments (user_id, provider, amount, plan_code, pack_code, txn_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).bind(intent.user_id, intent.provider, intent.amount, intent.plan_code, intent.pack_code, externalTxnId || "", nowSec2).run();
+  await env.DB.prepare("UPDATE payment_intents SET status = 'completed' WHERE id = ?").bind(intent.id).run();
+}
+async function getStatus(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse$8({ paid: false, planType: null, expiresAt: null, balanceSeconds: 0 });
+  const row = await env.DB.prepare(
+    "SELECT plan_type, expires_at, balance_seconds FROM users WHERE id = ?"
+  ).bind(user.id).first();
+  const expiresAtMs = row?.expires_at ? row.expires_at * 1e3 : null;
+  return jsonResponse$8({
+    paid: !!user.paid,
+    planType: row?.plan_type || null,
+    expiresAt: expiresAtMs,
+    balanceSeconds: row?.balance_seconds || 0,
+    email: user.email
+  });
+}
+async function cancelSubscription(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonError("נדרש להתחבר תחילה", 401);
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+  }
+  const reason = String(body?.reason || "").slice(0, 500);
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?"
+  ).bind(nowSec2, reason || null, user.id).run();
+  return jsonResponse$8({ ok: true });
+}
+async function claimGift(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonError("נדרש להתחבר תחילה", 401);
+  const monthKey = thisMonthKey();
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  try {
+    await env.DB.prepare(
+      "INSERT INTO gift_claims (user_id, year_month, claimed_at) VALUES (?, ?, ?)"
+    ).bind(user.id, monthKey, nowSec2).run();
+  } catch {
+    return jsonResponse$8({ granted: false, reason: "already_claimed" });
+  }
+  const giftSeconds = GIFT_MINUTES_PER_MONTH * 60;
+  const row = await env.DB.prepare("SELECT balance_seconds, expires_at, status FROM users WHERE id = ?").bind(user.id).first();
+  const newBalance = (row?.balance_seconds || 0) + giftSeconds;
+  const newExpire = Math.max(row?.expires_at || nowSec2, nowSec2) + giftSeconds;
+  await env.DB.prepare(
+    "UPDATE users SET status = CASE WHEN status = 'unauthorized' THEN 'active' ELSE status END, plan_type = COALESCE(plan_type,'hours'), balance_seconds = ?, expires_at = ? WHERE id = ?"
+  ).bind(newBalance, newExpire, user.id).run();
+  return jsonResponse$8({ granted: true, addedSeconds: giftSeconds, newBalance });
+}
+async function handlePayments(request, env, url) {
+  const path = url.pathname;
+  const method = request.method;
+  if (path === "/api/payments/yaad/start" && method === "POST") return startYaad(request, env, url);
+  if (path === "/api/payments/yaad/callback") return yaadCallback(request, env, url);
+  if (path === "/api/payments/paypal/start" && method === "POST") return startPaypal(request, env, url);
+  if (path === "/api/payments/paypal/callback") return paypalCallback(request, env, url);
+  if (path === "/api/payments/status" && (method === "GET" || method === "POST")) return getStatus(request, env);
+  if (path === "/api/payments/cancel" && method === "POST") return cancelSubscription(request, env);
+  if (path === "/api/payments/gift/claim" && method === "POST") return claimGift(request, env);
+  return new Response("Not found", { status: 404 });
+}
+const COUNTRY_DIAL = {
+  IL: "972",
+  US: "1",
+  CA: "1",
+  GB: "44",
+  FR: "33",
+  BE: "32",
+  DE: "49",
+  CH: "41",
+  AT: "43",
+  NL: "31",
+  IT: "39",
+  ES: "34",
+  AU: "61",
+  NZ: "64",
+  AR: "54",
+  BR: "55",
+  MX: "52",
+  ZA: "27",
+  RU: "7",
+  UA: "380",
+  CZ: "420",
+  PL: "48",
+  HU: "36",
+  RO: "40",
+  TR: "90",
+  AE: "971",
+  JO: "962",
+  EG: "20"
+};
+function normalizeDigits(s) {
+  return String(s || "").replace(/\D+/g, "");
+}
+function toE164(country, raw) {
+  const dial = COUNTRY_DIAL[country];
+  if (!dial) return null;
+  let digits = normalizeDigits(raw);
+  if (!digits) return null;
+  if (digits.startsWith("0")) digits = digits.replace(/^0+/, "");
+  if (digits.startsWith(dial)) return digits;
+  return dial + digits;
+}
+function isValidPhone(country, raw) {
+  const e164 = toE164(country, raw);
+  if (!e164) return false;
+  return e164.length >= 7 && e164.length <= 15;
+}
+function jsonResponse$7(obj, init = {}) {
+  return new Response(JSON.stringify(obj), {
+    status: init.status || 200,
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...init.headers || {} }
+  });
+}
+async function getMe(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse$7({ error: "Not logged in" }, { status: 401 });
+  const row = await env.DB.prepare(
+    "SELECT phone, phone_country, phone_e164, id_number, subscription_active FROM users WHERE id = ?"
+  ).bind(user.id).first();
+  return jsonResponse$7({
+    email: user.email,
+    phone: row?.phone || "",
+    phoneCountry: row?.phone_country || "IL",
+    phoneE164: row?.phone_e164 || "",
+    hasPhone: !!row?.phone_e164,
+    idNumber: row?.id_number || "",
+    hasIdNumber: !!row?.id_number,
+    subscriptionActive: row?.subscription_active == null ? true : !!row.subscription_active
+  });
+}
+async function putIdNumber(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse$7({ error: "Not logged in" }, { status: 401 });
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse$7({ error: "Bad JSON" }, { status: 400 });
+  }
+  const raw = String(body?.idNumber || "").trim();
+  const digits = raw.replace(/\D+/g, "");
+  if (digits.length < 5 || digits.length > 12) {
+    return jsonResponse$7({ error: "מספר ת.ז. חייב להיות בין 5 ל-12 ספרות" }, { status: 400 });
+  }
+  await env.DB.prepare("UPDATE users SET id_number = ? WHERE id = ?").bind(digits, user.id).run();
+  return jsonResponse$7({ ok: true, idNumber: digits });
+}
+async function cancelByUser(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse$7({ error: "Not logged in" }, { status: 401 });
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+  }
+  const reason = String(body?.reason || "").slice(0, 500);
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  await env.DB.prepare(
+    "UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?"
+  ).bind(nowSec2, reason || null, user.id).run();
+  return jsonResponse$7({ ok: true });
+}
+async function reactivate(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse$7({ error: "Not logged in" }, { status: 401 });
+  const row = await env.DB.prepare("SELECT expires_at FROM users WHERE id = ?").bind(user.id).first();
+  await env.DB.prepare(
+    "UPDATE users SET subscription_active = 1, plan_renew_at = ?, cancelled_at = NULL, cancellation_reason = NULL WHERE id = ?"
+  ).bind(row?.expires_at || 0, user.id).run();
+  return jsonResponse$7({ ok: true });
+}
+async function putPhone(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return jsonResponse$7({ error: "Not logged in" }, { status: 401 });
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse$7({ error: "Bad JSON" }, { status: 400 });
+  }
+  const country = String(body?.country || "IL").toUpperCase();
+  const raw = String(body?.phone || "").trim();
+  if (!COUNTRY_DIAL[country]) return jsonResponse$7({ error: "מדינה לא נתמכת" }, { status: 400 });
+  if (!isValidPhone(country, raw)) return jsonResponse$7({ error: "מספר טלפון לא תקין" }, { status: 400 });
+  const e164 = toE164(country, raw);
+  await env.DB.prepare(
+    "UPDATE users SET phone = ?, phone_country = ?, phone_e164 = ? WHERE id = ?"
+  ).bind(raw, country, e164, user.id).run();
+  return jsonResponse$7({ ok: true, phone: raw, phoneCountry: country, phoneE164: e164 });
+}
+async function handleAccount(request, env, url) {
+  const path = url.pathname;
+  const method = request.method;
+  if (path === "/api/account/me" && method === "GET") return getMe(request, env);
+  if (path === "/api/account/phone" && method === "PUT") return putPhone(request, env);
+  if (path === "/api/account/id-number" && method === "PUT") return putIdNumber(request, env);
+  if (path === "/api/account/cancel" && method === "POST") return cancelByUser(request, env);
+  if (path === "/api/account/reactivate" && method === "POST") return reactivate(request, env);
+  return new Response("Not found", { status: 404 });
+}
+const DEFAULT_IMAGE_MODEL = "gemini-3-pro-image-preview";
+const MAX_DETAIL = 1800;
+const MAX_PREVIEW = 220;
+const MAX_SCENE_TEXT = 8e3;
+const MAX_COUNT = 4;
+const DEFAULT_SYSTEM_PROMPT = [
+  "You are a server-side image generator for a Hebrew/English caricature tool.",
+  "Create a clean, family-friendly editorial caricature illustration from the user scene.",
+  "Do not include signatures, artist names, watermarks, logos, copyright marks, or hidden corner text.",
+  "Return image output, not a text-only answer."
+].join("\n");
+const DEFAULT_HARD_RULES = [
+  "No signature. No watermark. No artist name. No logo. No copyright mark.",
+  "No unrelated text unless the user explicitly requested visible text as part of the scene.",
+  "Keep the output safe, non-explicit, and family-friendly."
+].join("\n");
+function jsonResponse$6(body, status = 200) {
+  return Response.json(body, { status, headers: { "cache-control": "no-store" } });
+}
+function clip$1(value, max) {
+  const s = String(value == null ? "" : value);
+  return s.length > max ? s.slice(0, max) : s;
+}
+function nowSec() {
+  return Math.floor(Date.now() / 1e3);
+}
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+function normalizeText(value, max = MAX_SCENE_TEXT) {
+  return clip$1(String(value || "").replace(/\u200B/g, "").replace(/\u00A0/g, " ").replace(/\r/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim(), max);
+}
+async function getAppSetting(env, key) {
+  if (!env.DB) return null;
+  try {
+    const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = ?").bind(key).first();
+    return row && row.value != null ? String(row.value) : null;
+  } catch {
+    return null;
+  }
+}
+async function getSetting(env, key, fallback = "") {
+  const fromEnv = env && env[key] != null ? String(env[key]).trim() : "";
+  if (fromEnv) return fromEnv;
+  const fromDb = String(await getAppSetting(env, key) || "").trim();
+  return fromDb || fallback;
+}
+async function getBoolSetting(env, key, fallback = false) {
+  const v = String(await getSetting(env, key, fallback ? "1" : "0")).trim().toLowerCase();
+  return ["1", "true", "yes", "on", "enabled"].includes(v);
+}
+async function getCaricatureConfig(env) {
+  return {
+    imageModel: await getSetting(env, "CARICATURE_IMAGE_MODEL", DEFAULT_IMAGE_MODEL),
+    systemPrompt: await getSetting(env, "CARICATURE_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT),
+    hardRules: await getSetting(env, "CARICATURE_HARD_RULES", DEFAULT_HARD_RULES),
+    negativeDefault: await getSetting(env, "CARICATURE_NEGATIVE_DEFAULT", ""),
+    referenceImageB64: await getSetting(env, "CARICATURE_REFERENCE_IMAGE_B64", ""),
+    referenceImageMime: await getSetting(env, "CARICATURE_REFERENCE_IMAGE_MIME", "image/jpeg"),
+    debug: await getBoolSetting(env, "CARICATURE_DEBUG", false)
+  };
+}
+function clientApiKey(bodyJson) {
+  return String(
+    bodyJson?.api_key || bodyJson?.apiKey || bodyJson?.gemini_api_key || bodyJson?.geminiApiKey || bodyJson?.user_key || bodyJson?.userKey || bodyJson?.image_api_key || ""
+  ).trim();
+}
+function summarizeRequestBody(bodyJson) {
+  const sceneText = String(bodyJson?.scene_text || "").trim();
+  return {
+    prompt_type: clip$1(bodyJson?.prompt_type, 80),
+    model: clip$1(bodyJson?.model || bodyJson?.image_model || "", 120),
+    style_key: clip$1(bodyJson?.style_key, 180),
+    aspect: clip$1(bodyJson?.aspect, 30),
+    count: Math.max(0, Math.min(Number(bodyJson?.count) || 0, 20)),
+    polish: !!bodyJson?.polish,
+    negative_len: String(bodyJson?.negative || "").length,
+    scene_text_len: sceneText.length,
+    scene_text_preview: clip$1(sceneText.replace(/\s+/g, " "), MAX_PREVIEW),
+    key_source: clientApiKey(bodyJson) ? "client_supplied" : "missing"
+  };
+}
+function summarizeResult(responseJson, statusCode, durationMs) {
+  const images = Array.isArray(responseJson?.images) ? responseJson.images : [];
+  const errorCode = responseJson?.error || (statusCode >= 400 ? `http_${statusCode}` : null);
+  return {
+    upstream_status: statusCode,
+    status: statusCode >= 200 && statusCode < 300 && images.length > 0 && !responseJson?.error ? "success" : "error",
+    image_count: images.length,
+    error_code: errorCode ? clip$1(errorCode, 120) : null,
+    error_message: errorCode ? clip$1(responseJson?.message || errorCode, 700) : null,
+    duration_ms: durationMs
+  };
+}
+async function logCaricatureUsage(env, request, requestBodyJson, summary, startedMs) {
+  if (!env.DB) return;
+  let user = null;
+  try {
+    user = await getUserFromRequest(request, env);
+  } catch {
+    user = null;
+  }
+  const detail = clip$1(JSON.stringify({
+    tool: "haredi-caricature",
+    action: "generate",
+    ...summarizeRequestBody(requestBodyJson || {}),
+    ...summary || { status: "error", error_code: "unknown", duration_ms: Date.now() - startedMs }
+  }), MAX_DETAIL);
+  try {
+    await env.DB.prepare(
+      `INSERT INTO usage_events (user_id, user_email, event, detail, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(user?.id || null, user?.email || null, "haredi_caricature_generate", detail, nowSec()).run();
+  } catch {
+  }
+}
+function geminiUrl(model, apiKey) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+}
+function extractGeminiImages(data) {
+  const images = [];
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  for (const cand of candidates) {
+    const parts = Array.isArray(cand?.content?.parts) ? cand.content.parts : [];
+    for (const part of parts) {
+      const inlineData = part.inlineData || part.inline_data;
+      if (inlineData?.data) images.push(String(inlineData.data));
+    }
+  }
+  return images;
+}
+function extractGeminiText(data) {
+  const out = [];
+  const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+  for (const cand of candidates) {
+    const parts = Array.isArray(cand?.content?.parts) ? cand.content.parts : [];
+    for (const part of parts) if (part.text) out.push(String(part.text));
+    if (cand.finishReason) out.push(`[finishReason: ${cand.finishReason}]`);
+  }
+  if (data?.promptFeedback) out.push(`[promptFeedback: ${JSON.stringify(data.promptFeedback)}]`);
+  return out.join("\n").trim();
+}
+function makePrompt(cfg, bodyJson) {
+  const sceneText = normalizeText(bodyJson.scene_text);
+  const styleKey = normalizeText(bodyJson.style_key || "איור מצחיק/הומוריסטי/משעשע", 240);
+  const aspect = normalizeText(bodyJson.aspect || "1:1", 30);
+  const negative = [cfg.negativeDefault, bodyJson.negative].map((x) => normalizeText(x, 1200)).filter(Boolean).join("\n");
+  return [
+    cfg.systemPrompt,
+    "",
+    "Hard rules:",
+    cfg.hardRules,
+    "",
+    `Visual style key: ${styleKey}`,
+    `Aspect ratio: ${aspect}`,
+    negative ? `Negative constraints:
+${negative}` : "",
+    "",
+    "User scene to illustrate:",
+    sceneText
+  ].filter(Boolean).join("\n");
+}
+function makeImageParts(prompt, cfg) {
+  const parts = [];
+  if (cfg.referenceImageB64) {
+    parts.push({
+      inlineData: {
+        mimeType: cfg.referenceImageMime || "image/jpeg",
+        data: cfg.referenceImageB64
+      }
+    });
+  }
+  parts.push({ text: prompt });
+  return parts;
+}
+async function callGeminiImage({ apiKey, model, prompt, cfg }) {
+  const response = await fetch(geminiUrl(model, apiKey), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: makeImageParts(prompt, cfg) }],
+      generationConfig: {
+        temperature: 0.85,
+        responseModalities: ["TEXT", "IMAGE"]
+      }
+    })
+  });
+  const text = await response.text();
+  const data = safeJsonParse(text);
+  if (!response.ok) {
+    return {
+      images: [],
+      text: extractGeminiText(data),
+      error: `${model}: HTTP ${response.status}: ${clip$1(text, 900)}`,
+      httpStatus: response.status
+    };
+  }
+  return {
+    images: extractGeminiImages(data),
+    text: extractGeminiText(data),
+    httpStatus: response.status
+  };
+}
+async function handleDirectGemini(request, env, cfg, bodyJson, startedMs) {
+  const sceneText = normalizeText(bodyJson?.scene_text);
+  if (!sceneText) {
+    const out2 = { error: "empty_scene_text", message: "לא התקבל טקסט הוראה בשדה scene_text" };
+    await logCaricatureUsage(env, request, bodyJson, summarizeResult(out2, 400, Date.now() - startedMs), startedMs);
+    return jsonResponse$6(out2, 400);
+  }
+  const apiKey = clientApiKey(bodyJson);
+  if (!apiKey) {
+    const out2 = {
+      error: "client_api_key_required",
+      message: "No personal Gemini key was received. Add a key in the global AI key settings or in the caricature widget."
+    };
+    await logCaricatureUsage(env, request, bodyJson, summarizeResult(out2, 401, Date.now() - startedMs), startedMs);
+    return jsonResponse$6(out2, 401);
+  }
+  const count = Math.max(1, Math.min(Number(bodyJson.count) || 1, MAX_COUNT));
+  const basePrompt = makePrompt(cfg, { ...bodyJson, scene_text: sceneText });
+  const images = [];
+  const noImageTexts = [];
+  let lastError = "";
+  let lastHttpStatus = 200;
+  for (let i = 0; i < count; i++) {
+    const prompt = count > 1 ? `${basePrompt}
+
+Variation ${i + 1} of ${count}: keep the same scene but vary composition and gestures.` : basePrompt;
+    const r = await callGeminiImage({ apiKey, model: cfg.imageModel, prompt, cfg });
+    lastHttpStatus = r.httpStatus || lastHttpStatus;
+    if (r.error) lastError = r.error;
+    if (r.text) noImageTexts.push(r.text);
+    for (const img of r.images || []) {
+      images.push(img);
+      if (images.length >= count) break;
+    }
+    if (images.length >= count) break;
+  }
+  if (!images.length) {
+    const out2 = {
+      error: "no_images",
+      message: lastError || `${cfg.imageModel}: no images`,
+      gemini_text: clip$1(noImageTexts.join("\n"), cfg.debug ? 1400 : 500)
+    };
+    await logCaricatureUsage(env, request, bodyJson, summarizeResult(out2, lastHttpStatus >= 400 ? 502 : 200, Date.now() - startedMs), startedMs);
+    return jsonResponse$6(out2, 200);
+  }
+  const out = {
+    images,
+    model: cfg.imageModel,
+    count: images.length,
+    ...cfg.debug ? { prompt_preview: clip$1(basePrompt, 1200) } : {}
+  };
+  await logCaricatureUsage(env, request, bodyJson, summarizeResult(out, 200, Date.now() - startedMs), startedMs);
+  return jsonResponse$6(out, 200);
+}
+async function handleCaricature(request, env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (request.method !== "POST") return jsonResponse$6({ error: "method_not_allowed", message: "Use POST" }, 405);
+  const startedMs = Date.now();
+  let body = "";
+  let bodyJson = null;
+  try {
+    body = await request.text();
+    bodyJson = safeJsonParse(body);
+    if (!bodyJson || typeof bodyJson !== "object") {
+      const out = { error: "bad_json", message: "Request body must be JSON" };
+      await logCaricatureUsage(env, request, null, summarizeResult(out, 400, Date.now() - startedMs), startedMs);
+      return jsonResponse$6(out, 400);
+    }
+  } catch (error) {
+    await logCaricatureUsage(env, request, null, {
+      status: "error",
+      image_count: 0,
+      error_code: "bad_request_body",
+      error_message: error?.message || String(error),
+      duration_ms: Date.now() - startedMs
+    }, startedMs);
+    return jsonResponse$6({ error: "bad_request_body", message: "Could not read request body" }, 400);
+  }
+  const cfg = await getCaricatureConfig(env);
+  return handleDirectGemini(request, env, cfg, bodyJson, startedMs);
+}
+const KEYS = [
+  "CARICATURE_GAS_URL",
+  "CARICATURE_USE_GAS_FALLBACK",
+  "CARICATURE_IMAGE_MODEL",
+  "CARICATURE_SYSTEM_PROMPT",
+  "CARICATURE_HARD_RULES",
+  "CARICATURE_NEGATIVE_DEFAULT",
+  "CARICATURE_REFERENCE_IMAGE_MIME",
+  "CARICATURE_REFERENCE_IMAGE_B64",
+  "CARICATURE_DEBUG"
+];
+const SECRET_KEYS = /* @__PURE__ */ new Set();
+const DEFAULTS = {
+  CARICATURE_USE_GAS_FALLBACK: "1",
+  CARICATURE_IMAGE_MODEL: "gemini-3-pro-image-preview",
+  CARICATURE_REFERENCE_IMAGE_MIME: "image/jpeg",
+  CARICATURE_DEBUG: "0"
+};
+function json(obj, status = 200) {
+  return Response.json(obj, {
+    status,
+    headers: { "cache-control": "no-store" }
+  });
+}
+async function adminOnly(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) return { error: json({ error: "Not logged in" }, 401) };
+  if (!user.is_admin) return { error: json({ error: "Forbidden" }, 403) };
+  return { user };
+}
+function clip(v, n) {
+  const s = String(v == null ? "" : v);
+  return s.length > n ? s.slice(0, n) : s;
+}
+function clean(key, value) {
+  const s = String(value == null ? "" : value);
+  if (key === "CARICATURE_REFERENCE_IMAGE_B64") return s.replace(/\s+/g, "").slice(0, 25e5);
+  if (key === "CARICATURE_SYSTEM_PROMPT" || key === "CARICATURE_HARD_RULES") return clip(s, 3e4);
+  if (key === "CARICATURE_NEGATIVE_DEFAULT") return clip(s, 5e3);
+  if (key === "CARICATURE_GAS_URL") return clip(s.trim(), 1500);
+  if (key === "CARICATURE_IMAGE_MODEL") return clip(s.trim(), 160);
+  if (key === "CARICATURE_REFERENCE_IMAGE_MIME") return clip(s.trim() || "image/jpeg", 100);
+  if (key === "CARICATURE_USE_GAS_FALLBACK" || key === "CARICATURE_DEBUG") {
+    return ["1", "true", "yes", "on", "enabled"].includes(s.trim().toLowerCase()) ? "1" : "0";
+  }
+  return clip(s, 5e3);
+}
+async function readDb(env) {
+  if (!env.DB) return {};
+  const placeholders = KEYS.map(() => "?").join(",");
+  const rows = await env.DB.prepare(
+    `SELECT key, value FROM app_settings WHERE key IN (${placeholders})`
+  ).bind(...KEYS).all();
+  const out = {};
+  for (const r of rows.results || []) {
+    out[r.key] = r.value;
+  }
+  return out;
+}
+function expose(key, value) {
+  const s = String(value || "");
+  if (SECRET_KEYS.has(key)) {
+    return {
+      present: !!s,
+      length: s.length,
+      masked: s ? `${s.slice(0, 6)}…${s.slice(-4)}` : ""
+    };
+  }
+  if (key === "CARICATURE_REFERENCE_IMAGE_B64") {
+    return {
+      present: !!s,
+      length: s.length,
+      preview: s ? s.slice(0, 32) + "…" : ""
+    };
+  }
+  return value == null ? "" : String(value);
+}
+async function getSettings(env) {
+  const db = await readDb(env);
+  const settings = {};
+  for (const key of KEYS) {
+    const envValue = env?.[key] != null ? String(env[key]) : "";
+    const dbValue = db[key] != null ? String(db[key]) : "";
+    const value = envValue || dbValue || DEFAULTS[key] || "";
+    settings[key] = {
+      value: expose(key, value),
+      source: envValue ? "env" : dbValue ? "db" : "default",
+      editable: !envValue,
+      secret: SECRET_KEYS.has(key)
+    };
+  }
+  return json({ ok: true, settings });
+}
+async function saveSettings(request, env, user) {
+  if (!env.DB) return json({ error: "DB is not configured" }, 500);
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Bad JSON" }, 400);
+  }
+  const input = body?.settings && typeof body.settings === "object" ? body.settings : body || {};
+  const now = Math.floor(Date.now() / 1e3);
+  const saved = [];
+  for (const key of KEYS) {
+    if (!(key in input)) continue;
+    if (env?.[key] != null) continue;
+    const value = clean(key, input[key]);
+    await env.DB.prepare(
+      `INSERT INTO app_settings (key,value,updated_at,updated_by_user_id)
+       VALUES (?,?,?,?)
+       ON CONFLICT(key) DO UPDATE SET
+         value=excluded.value,
+         updated_at=excluded.updated_at,
+         updated_by_user_id=excluded.updated_by_user_id`
+    ).bind(key, value, now, user.id || null).run();
+    saved.push(key);
+  }
+  return json({ ok: true, saved });
+}
+async function handleCaricatureAdmin(request, env, url) {
+  const auth = await adminOnly(request, env);
+  if (auth.error) return auth.error;
+  if (url.pathname !== "/api/admin/caricature-settings") {
+    return json({ error: "Not found" }, 404);
+  }
+  if (request.method === "GET") return getSettings(env);
+  if (request.method === "POST") return saveSettings(request, env, auth.user);
+  return json({ error: "method_not_allowed" }, 405);
+}
+const DEFAULT_GAS_URL = "https://script.google.com/macros/s/AKfycbyvt7yUPa2jNiTtTzKli8R8GmNI_plIeOwwFuTgu733es5mFfhEKcTcInP3yzFnlQQCvw/exec";
+const TOOL_PROMPT_TYPES = /* @__PURE__ */ new Set([
+  "nikud_regular",
+  "nikud_torah",
+  "nikud_judge_regular",
+  "nikud_judge_torah",
+  "audio_regular",
+  "audio_torah",
+  "ocr_handwriting",
+  "printed",
+  "elevenlabs_transcribe",
+  "claude_edition",
+  "torah_style_ancient",
+  "torah_style_modern",
+  "torah_style_combined"
+]);
+const CHAT_PROVIDERS = {
+  anthropic: {
+    url: "https://api.anthropic.com/v1/messages",
+    model: "claude-sonnet-4-5",
+    pick: (data) => data?.content?.[0]?.text
+  },
+  openai: {
+    url: "https://api.openai.com/v1/chat/completions",
+    model: "gpt-4o",
+    pick: (data) => data?.choices?.[0]?.message?.content
+  },
+  google: {
+    model: "gemini-2.0-flash-exp",
+    pick: (data) => data?.candidates?.[0]?.content?.parts?.[0]?.text
+  },
+  mistral: {
+    url: "https://api.mistral.ai/v1/chat/completions",
+    model: "mistral-large-latest",
+    pick: (data) => data?.choices?.[0]?.message?.content
+  },
+  groq: {
+    url: "https://api.groq.com/openai/v1/chat/completions",
+    model: "llama-3.3-70b-versatile",
+    pick: (data) => data?.choices?.[0]?.message?.content
+  },
+  deepseek: {
+    url: "https://api.deepseek.com/v1/chat/completions",
+    model: "deepseek-chat",
+    pick: (data) => data?.choices?.[0]?.message?.content
+  }
+};
+function jsonResponse$5(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { "cache-control": "no-store" }
+  });
+}
+function readSameOrigin(request) {
+  try {
+    const reqUrl = new URL(request.url);
+    const origin = request.headers.get("origin");
+    if (origin && origin === reqUrl.origin) return true;
+    const referer = request.headers.get("referer");
+    if (referer && new URL(referer).origin === reqUrl.origin) return true;
+    return request.headers.get("sec-fetch-site") === "same-origin";
+  } catch {
+    return false;
+  }
+}
+function scrubForLog(body) {
+  const clone = { ...body };
+  delete clone.text;
+  delete clone.files;
+  delete clone.ocr_examples;
+  delete clone.api_key;
+  delete clone.access_code;
+  clone._text_chars = body?.text ? String(body.text).length : 0;
+  clone._files_count = Array.isArray(body?.files) ? body.files.length : 0;
+  clone._has_api_key = !!body?.api_key;
+  clone._has_access_code = !!body?.access_code;
+  return clone;
+}
+async function handleAiTools(request, env) {
+  if (request.method !== "POST") {
+    return jsonResponse$5({ error: "method_not_allowed", message: "Use POST" }, 405);
+  }
+  if (!readSameOrigin(request)) {
+    return jsonResponse$5({ error: "forbidden", message: "Bad origin" }, 403);
+  }
+  let bodyText = "";
+  let body;
+  try {
+    bodyText = await request.text();
+    body = JSON.parse(bodyText || "{}");
+  } catch {
+    return jsonResponse$5({ error: "invalid_json", message: "Invalid request body" }, 400);
+  }
+  const promptType = String(body?.prompt_type || "");
+  if (!TOOL_PROMPT_TYPES.has(promptType)) {
+    return jsonResponse$5({ error: "forbidden_prompt_type", message: "Unsupported tool request" }, 400);
+  }
+  try {
+    console.log(`[ai-tools] ${JSON.stringify(scrubForLog(body))}`);
+  } catch {
+  }
+  const gasUrl = (env.RAVTEXT_GAS_URL || env.AI_TOOLS_GAS_URL || DEFAULT_GAS_URL).trim();
+  if (!gasUrl) {
+    return jsonResponse$5({ error: "server_error", message: "AI tools server is not configured" }, 500);
+  }
+  try {
+    const upstream = await fetch(gasUrl, {
+      method: "POST",
+      headers: { "content-type": "text/plain;charset=utf-8" },
+      body: bodyText
+    });
+    const text = await upstream.text();
+    return new Response(text, {
+      status: upstream.status,
+      headers: {
+        "cache-control": "no-store",
+        "content-type": upstream.headers.get("content-type") || "application/json; charset=utf-8"
+      }
+    });
+  } catch (error) {
+    return jsonResponse$5({
+      error: "proxy_fetch_failed",
+      message: error && error.message ? error.message : String(error)
+    }, 502);
+  }
+}
+function chatHeaders(provider, apiKey) {
+  if (provider === "anthropic") {
+    return {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01"
+    };
+  }
+  return {
+    "content-type": "application/json",
+    authorization: `Bearer ${apiKey}`
+  };
+}
+function chatBody(provider, prompt, model) {
+  if (provider === "anthropic") {
+    return {
+      model,
+      max_tokens: 2e3,
+      messages: [{ role: "user", content: prompt }]
+    };
+  }
+  if (provider === "google") {
+    return {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 2e3 }
+    };
+  }
+  return {
+    model,
+    max_tokens: 2e3,
+    messages: [{ role: "user", content: prompt }]
+  };
+}
+async function handleAiChat(request) {
+  if (request.method !== "POST") {
+    return jsonResponse$5({ error: "method_not_allowed", message: "Use POST" }, 405);
+  }
+  if (!readSameOrigin(request)) {
+    return jsonResponse$5({ error: "forbidden", message: "Bad origin" }, 403);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse$5({ error: "invalid_json", message: "Invalid request body" }, 400);
+  }
+  const provider = String(body?.provider || "").toLowerCase();
+  const cfg = CHAT_PROVIDERS[provider];
+  const prompt = String(body?.prompt || "");
+  const apiKey = String(body?.api_key || "");
+  if (!cfg || !prompt || !apiKey) {
+    return jsonResponse$5({ error: "bad_request", message: "Missing provider, prompt, or API key" }, 400);
+  }
+  const model = cfg.model;
+  const url = provider === "google" ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}` : cfg.url;
+  try {
+    console.log(`[ai-chat] provider=${provider} prompt_chars=${prompt.length}`);
+  } catch {
+  }
+  try {
+    const upstream = await fetch(url, {
+      method: "POST",
+      headers: chatHeaders(provider, apiKey),
+      body: JSON.stringify(chatBody(provider, prompt, model))
+    });
+    const upstreamText = await upstream.text();
+    let data;
+    try {
+      data = JSON.parse(upstreamText);
+    } catch {
+      data = { raw: upstreamText };
+    }
+    const text = cfg.pick(data);
+    return jsonResponse$5({
+      text: text || JSON.stringify(data),
+      provider,
+      status: upstream.status
+    }, upstream.ok ? 200 : upstream.status);
+  } catch (error) {
+    return jsonResponse$5({
+      error: "proxy_fetch_failed",
+      message: error && error.message ? error.message : String(error)
+    }, 502);
+  }
+}
+const WATERMARK_TEXTS = [
+  "טקסט זה הודפס מתוך מערכת רב טקסט לוורד AI",
+  "הופק במצב דמו במערכת רב טקסט לוורד AI",
+  "מסמך לדוגמה — מערכת רב טקסט לוורד AI",
+  "תוצר בדיקה במערכת רב טקסט לוורד AI",
+  "טיוטת דמו — רב טקסט לוורד AI",
+  "תצוגה מקדימה — רב טקסט לוורד AI",
+  "גרסת ניסיון — רב טקסט לוורד AI",
+  "RavText AI — מצב הדגמה",
+  "הודפס בגרסת דמו של רב טקסט לוורד AI",
+  "מצב דמו פעיל — רב טקסט לוורד AI",
+  "אין להפיץ — מצב דמו במערכת רב טקסט",
+  "תוצר ניסיוני — רב טקסט AI"
+];
+function randomToken() {
+  try {
+    const bytes = new Uint8Array(8);
+    globalThis.crypto?.getRandomValues?.(bytes);
+    return Array.from(bytes, (b) => b.toString(36).padStart(2, "0")).join("");
+  } catch (_) {
+    return Math.random().toString(36).slice(2, 14);
+  }
+}
+function escapeHtml$2(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function watermarkStyle(className) {
+  return `<style data-ravtext-server-watermark="1">
+.${className}{display:inline!important;color:#991b1b!important;background:rgba(254,226,226,.92)!important;border:1px solid rgba(153,27,27,.45)!important;padding:0 .18em!important;margin:0 .1em!important;font-weight:700!important;white-space:normal!important;opacity:1!important;visibility:visible!important;pointer-events:none!important;user-select:none!important}
+</style>`;
+}
+function makeMark(className, index2) {
+  const text = WATERMARK_TEXTS[index2 % WATERMARK_TEXTS.length];
+  return ` <span class="${className}" data-ravtext-server-watermark="1">${escapeHtml$2(text)}</span> `;
+}
+function watermarkTextChunk(text, className, state) {
+  if (!text || !/[\p{L}\p{N}]{4,}/u.test(text)) return text;
+  const parts = text.split(/(\s+)/);
+  let words = 0;
+  let changed = false;
+  const out = [];
+  for (const part of parts) {
+    out.push(part);
+    if (!/\S/u.test(part)) continue;
+    words += 1;
+    state.totalWords += 1;
+    if (words >= state.nextEvery || state.totalWords % state.globalEvery === 0) {
+      out.push(makeMark(className, state.count++));
+      state.nextEvery = 32 + Math.floor(Math.random() * 28);
+      words = 0;
+      changed = true;
+    }
+  }
+  return changed ? out.join("") : text;
+}
+function addServerWatermarksToHtml(html) {
+  const className = `rt-server-wm-${randomToken()}`;
+  const state = { count: 0, totalWords: 0, globalEvery: 45, nextEvery: 28 };
+  let skip = false;
+  const output = String(html || "").replace(/(<[^>]+>|[^<]+)/g, (token) => {
+    if (token.startsWith("<")) {
+      const lower = token.toLowerCase();
+      if (/^<(script|style|textarea|title|svg|canvas)\b/.test(lower)) skip = true;
+      if (/^<\/(script|style|textarea|title|svg|canvas)>/.test(lower)) skip = false;
+      return token;
+    }
+    return skip ? token : watermarkTextChunk(token, className, state);
+  });
+  const atLeastOne = state.count > 0 ? output : output.replace(/(<body\b[^>]*>)/i, `$1${makeMark(className, 0)}`);
+  if (/<\/head>/i.test(atLeastOne)) return atLeastOne.replace(/<\/head>/i, `${watermarkStyle(className)}</head>`);
+  return `${watermarkStyle(className)}${atLeastOne}`;
+}
+const TOOL_TOKEN_TTL_SEC = 120;
+const DEMO_BLOCK_MS = 5 * 60 * 1e3;
+const PUBLIC_TOOLS = /* @__PURE__ */ new Set([
+  "nikud-merger",
+  "word-extractor",
+  "text-compare-pro",
+  "comparator-tool",
+  "sefaria-downloader",
+  "sefaria-live",
+  "torah-transcription",
+  "torah-nikud",
+  "haredi-caricature",
+  "css-ai",
+  "torah-tools"
+]);
+function b64url(bytes) {
+  const bin = String.fromCharCode(...new Uint8Array(bytes));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+async function signToolToken(payload, secret) {
+  const data = new TextEncoder().encode(JSON.stringify(payload));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, data);
+  return `${b64url(data)}.${b64url(sig)}`;
+}
+function todayKey() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+function requestTriesToDisableWatermark(body) {
+  return [
+    body?.removeWatermark === true,
+    body?.hideWatermark === true,
+    body?.watermark === false,
+    body?.forceWatermark === false,
+    body?.demoWatermark === false,
+    body?.watermarkOpacity === 0,
+    body?.watermarkOpacity === "0"
+  ].some(Boolean);
+}
+async function handleSecureExportHtmlAction(request, env, body) {
+  const user = await getUserFromRequest(request, env);
+  const paid = !!user?.paid;
+  if (!paid && requestTriesToDisableWatermark(body)) {
+    return Response.json(
+      { error: "watermark_tampering", blocked: true },
+      {
+        status: 403,
+        headers: {
+          "cache-control": "no-store",
+          "set-cookie": `ravtext_demo_blocked_until=${Date.now() + DEMO_BLOCK_MS}; Path=/; SameSite=Lax`
+        }
+      }
+    );
+  }
+  const html = String(body?.html || "");
+  if (!html.trim()) {
+    return Response.json(
+      { error: "empty_html" },
+      { status: 400, headers: { "cache-control": "no-store" } }
+    );
+  }
+  const finalHtml = paid ? html : addServerWatermarksToHtml(html);
+  return new Response(finalHtml, {
+    status: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-ravtext-auth-source": "ravtext_session",
+      "x-ravtext-user-paid": paid ? "1" : "0",
+      "x-ravtext-watermark-forced": paid ? "0" : "1"
+    }
+  });
+}
+async function consumeFreeUse(user, toolName, env) {
+  const usageDate = todayKey();
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  try {
+    const inserted = await env.DB.prepare(
+      `INSERT OR IGNORE INTO tool_usage (user_id, tool_name, usage_date, created_at)
+       VALUES (?, ?, ?, ?)`
+    ).bind(user.id, toolName, usageDate, nowSec2).run();
+    if ((inserted?.meta?.changes || 0) > 0) return { ok: true };
+    return { ok: false, reason: "quota" };
+  } catch (_) {
+    const cache = caches.default;
+    const cacheUrl = `https://tool-usage.invalid/${encodeURIComponent(`${user.id}:${toolName}:${usageDate}`)}`;
+    try {
+      const hit = await cache.match(cacheUrl);
+      if (hit) return { ok: false, reason: "quota" };
+      await cache.put(
+        cacheUrl,
+        new Response("1", { headers: { "cache-control": "public, max-age=86400" } })
+      );
+      return { ok: true };
+    } catch {
+      return { ok: false, reason: "quota" };
+    }
+  }
+}
+async function handleToolPreflight(request, env) {
+  if (request.method !== "POST") {
+    return Response.json(
+      { error: "method_not_allowed", message: "Use POST" },
+      { status: 405, headers: { "cache-control": "no-store" } }
+    );
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json(
+      { error: "invalid_json", message: "Invalid request body" },
+      { status: 400, headers: { "cache-control": "no-store" } }
+    );
+  }
+  if (body?.action === "secure_export_html") {
+    return handleSecureExportHtmlAction(request, env, body);
+  }
+  const toolName = String(body?.toolName || "").trim();
+  if (!PUBLIC_TOOLS.has(toolName)) {
+    return Response.json(
+      { error: "unknown_tool", message: "Tool is not allowed" },
+      { status: 403, headers: { "cache-control": "no-store" } }
+    );
+  }
+  const user = await getUserFromRequest(request, env);
+  if (!user) {
+    return Response.json(
+      { error: "login_required", message: "Login is required for this tool" },
+      { status: 401, headers: { "cache-control": "no-store" } }
+    );
+  }
+  if (!user.paid) {
+    const usage = await consumeFreeUse(user, toolName, env);
+    if (!usage.ok) {
+      return Response.json(
+        { error: "quota_exceeded", message: "Free accounts can use each tool once per day" },
+        { status: 429, headers: { "cache-control": "no-store" } }
+      );
+    }
+  }
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  const token = await signToolToken({
+    tool: toolName,
+    iat: nowSec2,
+    exp: nowSec2 + TOOL_TOKEN_TTL_SEC,
+    paid: !!user?.paid,
+    email: user?.email || null,
+    jti: crypto.randomUUID()
+  }, env.SESSION_SECRET);
+  return Response.json({
+    ok: true,
+    toolName,
+    token,
+    expiresAt: (nowSec2 + TOOL_TOKEN_TTL_SEC) * 1e3
+  }, {
+    headers: { "cache-control": "no-store" }
+  });
+}
+const HEBREW_BLOCK = "\\u0590-\\u05FF";
+const HEBREW_NIKUD_TAAM = "\\u0591-\\u05C7";
+const HEBREW_LETTERS = "\\u05D0-\\u05EA";
+const _RE_NIKUD_TAAM = new RegExp(`[${HEBREW_NIKUD_TAAM}]`, "g");
+const _RE_NOT_HEBREW = new RegExp(`[^${HEBREW_BLOCK}]`, "g");
+function stripNikudAndTaam(text) {
+  return String(text).replace(_RE_NIKUD_TAAM, "");
+}
+function getPureHebrew(text) {
+  return String(text).replace(_RE_NOT_HEBREW, "");
+}
+const _RE_INTERNAL_VAV_YUD = new RegExp(
+  `(?<=[${HEBREW_LETTERS}])(?<![וי])[וי](?=[${HEBREW_LETTERS}])`,
+  "g"
+);
+function getSkeleton(text) {
+  const stripped = stripNikudAndTaam(text);
+  return stripped.replace(_RE_INTERNAL_VAV_YUD, "");
+}
+function normalize(text) {
+  try {
+    return String(text).normalize("NFC");
+  } catch (_) {
+    return String(text);
+  }
+}
+const SCOPE_OFF = "off";
+const SCOPE_VOC = "voc";
+const SCOPE_CLEAN = "clean";
+const SCOPE_BOTH = "both";
+class FilterConfig {
+  constructor(init = {}) {
+    this.nikud = SCOPE_CLEAN;
+    this.taamim = SCOPE_BOTH;
+    this.periods = SCOPE_VOC;
+    this.commas = SCOPE_VOC;
+    this.colons = SCOPE_VOC;
+    this.semicolons = SCOPE_VOC;
+    this.dashes = SCOPE_VOC;
+    this.question_exclaim = SCOPE_VOC;
+    this.quotes = SCOPE_OFF;
+    this.hebrew_geresh = SCOPE_OFF;
+    this.maqaf = SCOPE_VOC;
+    this.round_brackets = SCOPE_VOC;
+    this.square_brackets = SCOPE_VOC;
+    this.curly_brackets = SCOPE_VOC;
+    this.angle_brackets = SCOPE_VOC;
+    this.digits = SCOPE_VOC;
+    this.latin_letters = SCOPE_VOC;
+    this.at_markers = SCOPE_VOC;
+    this.asterisks = SCOPE_VOC;
+    this.hashes = SCOPE_VOC;
+    this.extra_spaces = SCOPE_BOTH;
+    this.line_breaks = SCOPE_BOTH;
+    this.ignore_ranges = [
+      ["{", "}", SCOPE_VOC],
+      ["<<", ">>", SCOPE_VOC]
+    ];
+    this.flexible_ktiv = true;
+    this.case_insensitive_latin = true;
+    Object.assign(this, init);
+  }
+  toDict() {
+    return {
+      nikud: this.nikud,
+      taamim: this.taamim,
+      periods: this.periods,
+      commas: this.commas,
+      colons: this.colons,
+      semicolons: this.semicolons,
+      dashes: this.dashes,
+      question_exclaim: this.question_exclaim,
+      quotes: this.quotes,
+      hebrew_geresh: this.hebrew_geresh,
+      maqaf: this.maqaf,
+      round_brackets: this.round_brackets,
+      square_brackets: this.square_brackets,
+      curly_brackets: this.curly_brackets,
+      angle_brackets: this.angle_brackets,
+      digits: this.digits,
+      latin_letters: this.latin_letters,
+      at_markers: this.at_markers,
+      asterisks: this.asterisks,
+      hashes: this.hashes,
+      extra_spaces: this.extra_spaces,
+      line_breaks: this.line_breaks,
+      ignore_ranges: this.ignore_ranges.map((r) => r.slice()),
+      flexible_ktiv: this.flexible_ktiv,
+      case_insensitive_latin: this.case_insensitive_latin
+    };
+  }
+  static fromDict(data) {
+    return new FilterConfig(data || {});
+  }
+  static presetLoose() {
+    return new FilterConfig();
+  }
+  static presetStrict() {
+    const c = new FilterConfig();
+    const fields = [
+      "periods",
+      "commas",
+      "colons",
+      "semicolons",
+      "dashes",
+      "question_exclaim",
+      "quotes",
+      "hebrew_geresh",
+      "maqaf",
+      "round_brackets",
+      "square_brackets",
+      "curly_brackets",
+      "angle_brackets",
+      "digits",
+      "latin_letters",
+      "at_markers",
+      "asterisks",
+      "hashes"
+    ];
+    for (const f of fields) c[f] = SCOPE_OFF;
+    c.ignore_ranges = [];
+    c.flexible_ktiv = false;
+    return c;
+  }
+  static presetMidrash() {
+    const c = new FilterConfig();
+    c.at_markers = SCOPE_BOTH;
+    c.hebrew_geresh = SCOPE_VOC;
+    return c;
+  }
+}
+const _NIKUD_RANGE = "\\u05B0-\\u05BC\\u05BF\\u05C1-\\u05C2\\u05C4-\\u05C5\\u05C7";
+const _TAAMIM_RANGE = "\\u0591-\\u05AF\\u05BD\\u05C0\\u05C3\\u05C6";
+const _HEBREW_MAQAF = "\\u05BE";
+const _HEBREW_GERESH = "\\u05F3\\u05F4";
+const _CHAR_RULES = [
+  ["nikud", _NIKUD_RANGE],
+  ["taamim", _TAAMIM_RANGE],
+  ["periods", "\\."],
+  ["commas", ","],
+  ["colons", ":"],
+  ["semicolons", ";"],
+  ["dashes", "\\-\\u2013\\u2014"],
+  ["question_exclaim", "\\?!"],
+  ["quotes", "\"'`"],
+  ["hebrew_geresh", _HEBREW_GERESH],
+  ["maqaf", _HEBREW_MAQAF],
+  ["round_brackets", "\\(\\)"],
+  ["square_brackets", "\\[\\]"],
+  ["curly_brackets", "\\{\\}"],
+  ["angle_brackets", "<>"],
+  ["digits", "0-9"],
+  ["latin_letters", "A-Za-z"],
+  ["asterisks", "\\*"],
+  ["hashes", "#"],
+  ["line_breaks", "\\n\\r"]
+];
+function _escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function _buildCharPattern(config, scope) {
+  const parts = [];
+  for (const [fieldName, charRegex] of _CHAR_RULES) {
+    const fieldScope = config[fieldName] !== void 0 ? config[fieldName] : SCOPE_OFF;
+    if (fieldScope === SCOPE_BOTH || fieldScope === scope) {
+      parts.push(charRegex);
+    }
+  }
+  if (parts.length === 0) return /(?!)/g;
+  return new RegExp("[" + parts.join("") + "]", "g");
+}
+function _buildAtPattern(config, scope) {
+  const fieldScope = config.at_markers !== void 0 ? config.at_markers : SCOPE_OFF;
+  if (fieldScope === SCOPE_BOTH || fieldScope === scope) {
+    return /@\d+/g;
+  }
+  return null;
+}
+function _buildRangeRemovers(config, scope) {
+  const patterns = [];
+  for (const item of config.ignore_ranges || []) {
+    if (!item || item.length < 3) continue;
+    const opener = item[0], closer = item[1], itemScope = item[2];
+    if (!opener || !closer) continue;
+    if (itemScope === SCOPE_OFF) continue;
+    if (itemScope !== SCOPE_BOTH && itemScope !== scope) continue;
+    const pat = new RegExp(`${_escapeRegex(opener)}[\\s\\S]*?${_escapeRegex(closer)}`, "g");
+    patterns.push(pat);
+  }
+  return patterns;
+}
+function stripIgnoredRanges(text, config, scope) {
+  let t = String(text);
+  for (const pat of _buildRangeRemovers(config, scope)) {
+    t = t.replace(pat, "");
+  }
+  return t;
+}
+function cleanTextFull(text, config, scope) {
+  let t = stripIgnoredRanges(text, config, scope);
+  const atPat = _buildAtPattern(config, scope);
+  if (atPat) t = t.replace(atPat, "");
+  return t;
+}
+function cleanForCompare(text, config, scope = SCOPE_BOTH) {
+  let t = stripIgnoredRanges(text, config, scope);
+  const atPat = _buildAtPattern(config, scope);
+  if (atPat) t = t.replace(atPat, "");
+  const pat = _buildCharPattern(config, scope);
+  t = t.replace(pat, "");
+  const spacesScope = config.extra_spaces !== void 0 ? config.extra_spaces : SCOPE_OFF;
+  if (spacesScope === SCOPE_BOTH || spacesScope === scope) {
+    t = t.replace(/\s+/g, " ");
+  }
+  const latinScope = config.latin_letters !== void 0 ? config.latin_letters : SCOPE_OFF;
+  if (config.case_insensitive_latin && latinScope !== SCOPE_BOTH) {
+    t = t.toLowerCase();
+  }
+  return t.trim();
+}
+const IssueKind = Object.freeze({
+  NO_NIKUD: "no_nikud",
+  PARTIAL_NIKUD: "partial_nikud",
+  MISSING_SHIN_DOT: "missing_shin_dot",
+  DOUBLE_NIKUD: "double_nikud"
+});
+const HEBREW_LETTER_RE = /[א-ת]/;
+const NIKUD_RANGE_RE = /[\u05B0-\u05BC\u05BF\u05C1-\u05C2\u05C4-\u05C5\u05C7]/;
+const SHIN = "ש";
+const SHIN_DOT_RIGHT = "ׁ";
+const SHIN_DOT_LEFT = "ׂ";
+const WORD_PATTERN = /[א-ת֑-ׇ]+/g;
+function hasAnyNikud(word) {
+  return new RegExp(`[\\u05B0-\\u05BC\\u05BF\\u05C1-\\u05C2\\u05C4-\\u05C5\\u05C7]`).test(word);
+}
+function countLettersWithoutNikud(word) {
+  let lettersTotal = 0;
+  let lettersWithout = 0;
+  let i = 0;
+  while (i < word.length) {
+    const ch = word[i];
+    if (HEBREW_LETTER_RE.test(ch)) {
+      lettersTotal += 1;
+      let hasNikudAfter = false;
+      let j = i + 1;
+      while (j < word.length && NIKUD_RANGE_RE.test(word[j])) {
+        hasNikudAfter = true;
+        j += 1;
+      }
+      if (!hasNikudAfter) lettersWithout += 1;
+      i = j;
+    } else {
+      i += 1;
+    }
+  }
+  return [lettersWithout, lettersTotal];
+}
+function checkText(text, ignoreShort = true) {
+  const issues = [];
+  const words = String(text).match(WORD_PATTERN) || [];
+  for (let pos = 0; pos < words.length; pos++) {
+    const word = words[pos];
+    const lettersCount = (word.match(/[א-ת]/g) || []).length;
+    if (lettersCount === 0) continue;
+    if (ignoreShort && lettersCount === 1) continue;
+    if (!hasAnyNikud(word)) {
+      issues.push({
+        kind: IssueKind.NO_NIKUD,
+        word,
+        position: pos,
+        description: "מילה ללא ניקוד כלל"
+      });
+      continue;
+    }
+    const [without, total] = countLettersWithoutNikud(word);
+    if (without > 1 && total > 1) {
+      issues.push({
+        kind: IssueKind.PARTIAL_NIKUD,
+        word,
+        position: pos,
+        description: `${without} אותיות מתוך ${total} ללא ניקוד`
+      });
+    }
+    if (word.includes(SHIN)) {
+      let idx = word.indexOf(SHIN);
+      while (idx !== -1) {
+        const nextChars = word.slice(idx + 1, idx + 4);
+        if (!nextChars.includes(SHIN_DOT_RIGHT) && !nextChars.includes(SHIN_DOT_LEFT)) {
+          issues.push({
+            kind: IssueKind.MISSING_SHIN_DOT,
+            word,
+            position: pos,
+            description: "ש' ללא ניקוד ימני/שמאלי"
+          });
+          break;
+        }
+        idx = word.indexOf(SHIN, idx + 1);
+      }
+    }
+  }
+  return issues;
+}
+function summarizeIssues(issues) {
+  const summary = {
+    [IssueKind.NO_NIKUD]: 0,
+    [IssueKind.PARTIAL_NIKUD]: 0,
+    [IssueKind.MISSING_SHIN_DOT]: 0,
+    [IssueKind.DOUBLE_NIKUD]: 0
+  };
+  for (const issue of issues) {
+    summary[issue.kind] = (summary[issue.kind] || 0) + 1;
+  }
+  summary.total = issues.length;
+  return summary;
+}
+const HEBREW_WORD_RE_SOURCE = "([\\(\\[\\]]*[\\u0590-\\u05FF'\\n\\r]+[\\)\\]]*)";
+const HEBREW_WORD_RE_FULL = new RegExp("^" + HEBREW_WORD_RE_SOURCE + "$");
+const SegmentKind = Object.freeze({
+  PASSTHROUGH: "passthrough",
+  UNCHANGED: "unchanged",
+  INSERTED: "inserted",
+  DELETED: "deleted",
+  SPELLING_DIFF: "spelling_diff"
+});
+function makeSegment(kind, text, original = "") {
+  return { kind, text, original };
+}
+function _isMatch(a, b, config) {
+  const aClean = cleanForCompare(a, config, SCOPE_CLEAN);
+  const bClean = cleanForCompare(b, config, SCOPE_VOC);
+  if (aClean === bClean) return true;
+  const p1 = getPureHebrew(a);
+  const p2 = getPureHebrew(b);
+  if (p1 && p1 === p2) return true;
+  if (config.flexible_ktiv) {
+    const s1 = getSkeleton(a);
+    const s2 = getSkeleton(b);
+    if (s1 && s1 === s2) return true;
+  }
+  return false;
+}
+function _isHebrewToken(token) {
+  return HEBREW_WORD_RE_FULL.test(token);
+}
+const LOOKAHEAD_LIMIT = 5;
+const SEQUENCE_CHECK = 3;
+function _findBestMatchAhead(cleanToken, cleanTokens, cIndex, vocWords, vIndex, config) {
+  let bestIdx = -1;
+  let bestScore = -1;
+  let checkedValid = 0;
+  let searchOffset = 1;
+  while (checkedValid < LOOKAHEAD_LIMIT && vIndex + searchOffset < vocWords.length) {
+    const idx = vIndex + searchOffset;
+    const candidate = vocWords[idx];
+    if (getPureHebrew(candidate).length === 0) {
+      searchOffset += 1;
+      continue;
+    }
+    checkedValid += 1;
+    if (!_isMatch(cleanToken, candidate, config)) {
+      searchOffset += 1;
+      continue;
+    }
+    let sequenceMatches = 0;
+    let lookaheadValid = 0;
+    let cOff = 1, vOff = 1;
+    while (lookaheadValid < SEQUENCE_CHECK && cIndex + cOff < cleanTokens.length && idx + vOff < vocWords.length) {
+      const nextC = cleanTokens[cIndex + cOff];
+      if (getPureHebrew(nextC).length === 0) {
+        cOff += 1;
+        continue;
+      }
+      const nextV = vocWords[idx + vOff];
+      if (getPureHebrew(nextV).length === 0) {
+        vOff += 1;
+        continue;
+      }
+      if (_isMatch(nextC, nextV, config)) sequenceMatches += 1;
+      lookaheadValid += 1;
+      cOff += 1;
+      vOff += 1;
+    }
+    const score = 1 + sequenceMatches;
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = idx;
+    }
+    searchOffset += 1;
+  }
+  return [bestIdx, bestScore];
+}
+function _hebrewSplit(text) {
+  const tokens = [];
+  const re = new RegExp(HEBREW_WORD_RE_SOURCE, "g");
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    tokens.push(text.slice(last, m.index));
+    tokens.push(m[0]);
+    last = m.index + m[0].length;
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  tokens.push(text.slice(last));
+  return tokens;
+}
+function _hebrewFindAll(text) {
+  const result = [];
+  const re = new RegExp(HEBREW_WORD_RE_SOURCE, "g");
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    result.push(m[0]);
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  return result;
+}
+function merge(cleanText, vocalizedText, opts = {}) {
+  let { config = null, progressCallback = null, stopFlag = null, mode = "word" } = opts;
+  if (config === null) config = new FilterConfig();
+  cleanText = normalize(cleanText);
+  vocalizedText = normalize(vocalizedText);
+  cleanText = cleanTextFull(cleanText, config, SCOPE_CLEAN);
+  vocalizedText = cleanTextFull(vocalizedText, config, SCOPE_VOC);
+  if (mode === "char") {
+    return _mergeCharLevel(cleanText, vocalizedText, config, progressCallback);
+  }
+  const cleanTokens = _hebrewSplit(cleanText);
+  const vocWords = _hebrewFindAll(vocalizedText);
+  const segments = [];
+  let vIdx = 0;
+  let matchCount = 0;
+  let stopped = false;
+  const total = cleanTokens.length;
+  let lastPct = -1;
+  for (let cIdx = 0; cIdx < cleanTokens.length; cIdx++) {
+    const token = cleanTokens[cIdx];
+    if (stopFlag && stopFlag.stop) {
+      stopped = true;
+      break;
+    }
+    if (progressCallback && total > 0) {
+      const pct = Math.floor(cIdx / total * 100);
+      if (pct !== lastPct) {
+        progressCallback(pct);
+        lastPct = pct;
+      }
+    }
+    if (!_isHebrewToken(token)) {
+      if (token) segments.push(makeSegment(SegmentKind.PASSTHROUGH, token));
+      continue;
+    }
+    const pureToken = getPureHebrew(token);
+    if (!pureToken) {
+      segments.push(makeSegment(SegmentKind.PASSTHROUGH, token));
+      continue;
+    }
+    while (vIdx < vocWords.length && !getPureHebrew(vocWords[vIdx])) vIdx += 1;
+    if (vIdx >= vocWords.length) {
+      segments.push(makeSegment(SegmentKind.INSERTED, token));
+      continue;
+    }
+    const currentVoc = vocWords[vIdx];
+    if (_isMatch(token, currentVoc, config)) {
+      const aClean = cleanForCompare(token, config, SCOPE_CLEAN);
+      const bClean = cleanForCompare(currentVoc, config, SCOPE_VOC);
+      if (aClean !== bClean) {
+        segments.push(makeSegment(SegmentKind.SPELLING_DIFF, currentVoc, token));
+      } else {
+        segments.push(makeSegment(SegmentKind.UNCHANGED, currentVoc));
+      }
+      vIdx += 1;
+      matchCount += 1;
+      continue;
+    }
+    const [
+      bestIdx
+      /* , _score */
+    ] = _findBestMatchAhead(
+      token,
+      cleanTokens,
+      cIdx,
+      vocWords,
+      vIdx,
+      config
+    );
+    if (bestIdx !== -1) {
+      for (let i = vIdx; i < bestIdx; i++) {
+        segments.push(makeSegment(SegmentKind.DELETED, vocWords[i] + " "));
+      }
+      const found = vocWords[bestIdx];
+      const aClean = cleanForCompare(token, config, SCOPE_CLEAN);
+      const bClean = cleanForCompare(found, config, SCOPE_VOC);
+      if (aClean !== bClean) {
+        segments.push(makeSegment(SegmentKind.SPELLING_DIFF, found, token));
+      } else {
+        segments.push(makeSegment(SegmentKind.UNCHANGED, found));
+      }
+      vIdx = bestIdx + 1;
+      matchCount += 1;
+    } else {
+      segments.push(makeSegment(SegmentKind.INSERTED, token));
+    }
+  }
+  if (!stopped) {
+    for (let i = vIdx; i < vocWords.length; i++) {
+      segments.push(makeSegment(SegmentKind.DELETED, vocWords[i] + " "));
+    }
+  }
+  let cleanWordCount = 0;
+  for (const t of cleanTokens) {
+    if (_isHebrewToken(t) && getPureHebrew(t)) cleanWordCount += 1;
+  }
+  let vocWordCount = 0;
+  for (const w of vocWords) {
+    if (getPureHebrew(w)) vocWordCount += 1;
+  }
+  return {
+    segments,
+    matchCount,
+    cleanWordCount,
+    vocWordCount,
+    stopped,
+    get matchRatio() {
+      return this.matchCount / Math.max(1, this.cleanWordCount);
+    }
+  };
+}
+function _seqMatcher(a, b) {
+  const b2j = /* @__PURE__ */ new Map();
+  for (let j = 0; j < b.length; j++) {
+    const ch = b[j];
+    if (!b2j.has(ch)) b2j.set(ch, []);
+    b2j.get(ch).push(j);
+  }
+  function findLongestMatch(alo, ahi, blo, bhi) {
+    let besti = alo, bestj = blo, bestsize = 0;
+    let j2len = /* @__PURE__ */ new Map();
+    for (let i = alo; i < ahi; i++) {
+      const newJ2len = /* @__PURE__ */ new Map();
+      const indices = b2j.get(a[i]) || [];
+      for (const j of indices) {
+        if (j < blo) continue;
+        if (j >= bhi) break;
+        const k = (j2len.get(j - 1) || 0) + 1;
+        newJ2len.set(j, k);
+        if (k > bestsize) {
+          besti = i - k + 1;
+          bestj = j - k + 1;
+          bestsize = k;
+        }
+      }
+      j2len = newJ2len;
+    }
+    return [besti, bestj, bestsize];
+  }
+  function getMatchingBlocks() {
+    const queue = [[0, a.length, 0, b.length]];
+    const matchingBlocks = [];
+    while (queue.length) {
+      const [alo, ahi, blo, bhi] = queue.pop();
+      const [i, j, k] = findLongestMatch(alo, ahi, blo, bhi);
+      if (k > 0) {
+        matchingBlocks.push([i, j, k]);
+        if (alo < i && blo < j) queue.push([alo, i, blo, j]);
+        if (i + k < ahi && j + k < bhi) queue.push([i + k, ahi, j + k, bhi]);
+      }
+    }
+    matchingBlocks.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+    const merged = [];
+    let i1 = 0, j1 = 0, k1 = 0;
+    for (const [i2, j2, k2] of matchingBlocks) {
+      if (i1 + k1 === i2 && j1 + k1 === j2) k1 += k2;
+      else {
+        if (k1) merged.push([i1, j1, k1]);
+        i1 = i2;
+        j1 = j2;
+        k1 = k2;
+      }
+    }
+    if (k1) merged.push([i1, j1, k1]);
+    merged.push([a.length, b.length, 0]);
+    return merged;
+  }
+  function getOpcodes() {
+    const opcodes = [];
+    let i = 0, j = 0;
+    for (const [ai, bj, size] of getMatchingBlocks()) {
+      let tag = "";
+      if (i < ai && j < bj) tag = "replace";
+      else if (i < ai) tag = "delete";
+      else if (j < bj) tag = "insert";
+      if (tag) opcodes.push([tag, i, ai, j, bj]);
+      i = ai + size;
+      j = bj + size;
+      if (size) opcodes.push(["equal", ai, i, bj, j]);
+    }
+    return opcodes;
+  }
+  return { getOpcodes };
+}
+function _mergeCharLevel(cleanText, vocalizedText, config, progressCallback) {
+  const vocPlainChars = [];
+  const vocOrigIndices = [];
+  for (let idx = 0; idx < vocalizedText.length; idx++) {
+    const ch = vocalizedText[idx];
+    const stripped = stripNikudAndTaam(ch);
+    if (stripped) {
+      vocPlainChars.push(stripped);
+      vocOrigIndices.push(idx);
+    }
+  }
+  const vocPlain = vocPlainChars.join("");
+  const matcher = _seqMatcher(cleanText, vocPlain);
+  const segments = [];
+  let matchCount = 0;
+  function vocSlice(j1, j2) {
+    if (j1 >= vocOrigIndices.length) return "";
+    const start = vocOrigIndices[j1];
+    let end;
+    if (j2 >= vocOrigIndices.length) end = vocalizedText.length;
+    else end = vocOrigIndices[j2];
+    return vocalizedText.slice(start, end);
+  }
+  for (const [op, i1, i2, j1, j2] of matcher.getOpcodes()) {
+    if (op === "equal") {
+      const text = vocSlice(j1, j2);
+      if (text) {
+        segments.push(makeSegment(SegmentKind.UNCHANGED, text));
+        matchCount += text.split(/\s+/).filter(Boolean).length;
+      }
+    } else if (op === "insert") {
+      const text = vocSlice(j1, j2);
+      if (text) segments.push(makeSegment(SegmentKind.DELETED, text));
+    } else if (op === "delete") {
+      const text = cleanText.slice(i1, i2);
+      if (text) segments.push(makeSegment(SegmentKind.INSERTED, text));
+    } else if (op === "replace") {
+      const vocText = vocSlice(j1, j2);
+      const cleanPart = cleanText.slice(i1, i2);
+      if (vocText) segments.push(makeSegment(SegmentKind.DELETED, vocText));
+      if (cleanPart) segments.push(makeSegment(SegmentKind.INSERTED, cleanPart));
+    }
+  }
+  if (progressCallback) progressCallback(100);
+  const cleanWordCount = cleanText.split(/\s+/).filter(Boolean).length;
+  const vocWordCount = vocalizedText.split(/\s+/).filter(Boolean).length;
+  return {
+    segments,
+    matchCount,
+    cleanWordCount,
+    vocWordCount,
+    stopped: false,
+    get matchRatio() {
+      return this.matchCount / Math.max(1, this.cleanWordCount);
+    }
+  };
+}
+const MultiMode = Object.freeze({
+  CHAIN: "chain",
+  VOTING: "voting",
+  BEST_MATCH: "best_match",
+  MANUAL_REVIEW: "manual_review"
+});
+function makeMultiSegment(opts) {
+  return {
+    kind: opts.kind,
+    text: opts.text || "",
+    original: opts.original || "",
+    options: opts.options || [],
+    chosenSource: opts.chosenSource !== void 0 ? opts.chosenSource : -1,
+    get hasOptions() {
+      return (this.options || []).length > 1;
+    }
+  };
+}
+function mergeAllSources(cleanText, sources, opts = {}) {
+  let { config = null, progressCallback = null, stopFlag = null, mode = "word" } = opts;
+  if (!sources || sources.length === 0) {
+    return { segments: [], sourceNames: [], statsPerSource: [], mode: MultiMode.CHAIN };
+  }
+  const allSegments = [];
+  const stats = [];
+  for (let srcIdx = 0; srcIdx < sources.length; srcIdx++) {
+    const [name, text] = sources[srcIdx];
+    const srcResult = merge(cleanText, text, {
+      config,
+      progressCallback: null,
+      stopFlag,
+      mode
+    });
+    let matched = 0;
+    for (const seg of srcResult.segments) {
+      const ms = makeMultiSegment({
+        kind: seg.kind,
+        text: seg.text,
+        original: seg.original,
+        options: [],
+        chosenSource: seg.kind === SegmentKind.UNCHANGED || seg.kind === SegmentKind.SPELLING_DIFF ? srcIdx : -1
+      });
+      allSegments.push(ms);
+      if (seg.kind === SegmentKind.UNCHANGED || seg.kind === SegmentKind.SPELLING_DIFF) {
+        matched += 1;
+      }
+    }
+    if (srcIdx < sources.length - 1) {
+      allSegments.push(makeMultiSegment({
+        kind: SegmentKind.PASSTHROUGH,
+        text: `
+
+━━━ ${name} ↓ | ${sources[srcIdx + 1][0]} ↑ ━━━
+
+`,
+        original: "",
+        options: [],
+        chosenSource: -1
+      }));
+    }
+    stats.push({ matched, source: name });
+  }
+  return {
+    segments: allSegments,
+    sourceNames: sources.map((s) => s[0]),
+    statsPerSource: stats,
+    mode: MultiMode.CHAIN
+  };
+}
+function jsonResponse$4(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { "cache-control": "no-store" }
+  });
+}
+async function handleNikudMerger(request) {
+  if (request.method !== "POST") {
+    return jsonResponse$4({ error: "method_not_allowed", message: "Use POST" }, 405);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse$4({ error: "invalid_json", message: "Invalid request body" }, 400);
+  }
+  const action = String(body?.action || "");
+  if (action === "merge") {
+    const clean2 = String(body?.clean || "");
+    const sources = Array.isArray(body?.sources) ? body.sources : [];
+    const mode = body?.mode || "word";
+    const config = FilterConfig.fromDict(body?.filter_config || {});
+    let result;
+    if (sources.length === 1) {
+      result = merge(clean2, String(sources[0][1] || ""), {
+        config,
+        progressCallback: null,
+        stopFlag: null,
+        mode
+      });
+    } else {
+      result = mergeAllSources(clean2, sources, {
+        config,
+        progressCallback: null,
+        stopFlag: null,
+        mode
+      });
+    }
+    result = {
+      ...result,
+      matchRatio: result.matchCount / Math.max(1, result.cleanWordCount)
+    };
+    return jsonResponse$4({ result });
+  }
+  if (action === "quality") {
+    const text = String(body?.text || "");
+    const issues = checkText(text);
+    const summary = summarizeIssues(issues);
+    return jsonResponse$4({ issues, summary });
+  }
+  return jsonResponse$4({ error: "unknown_action", message: "Unknown nikud merger action" }, 400);
+}
+class CharDiff {
+  diff(oldStr, newStr) {
+    const oldChars = String(oldStr || "").split("");
+    const newChars = String(newStr || "").split("");
+    const maxEditLength = oldChars.length + newChars.length;
+    const bestPath = [{ newPos: -1, components: [] }];
+    let oldPos = this.extractCommon(bestPath[0], newChars, oldChars, 0);
+    if (bestPath[0].newPos + 1 >= newChars.length && oldPos + 1 >= oldChars.length) {
+      return [{ value: newChars.join("") }];
+    }
+    for (let editLength = 1; editLength <= maxEditLength; editLength++) {
+      for (let diagonal = -editLength; diagonal <= editLength; diagonal += 2) {
+        let basePath;
+        const addPath = bestPath[diagonal - 1];
+        const removePath = bestPath[diagonal + 1];
+        const oldPosFromRemove = (removePath ? removePath.newPos : 0) - diagonal;
+        if (addPath) bestPath[diagonal - 1] = void 0;
+        const canAdd = addPath && addPath.newPos + 1 < newChars.length;
+        const canRemove = removePath && oldPosFromRemove >= 0 && oldPosFromRemove < oldChars.length;
+        if (!canAdd && !canRemove) {
+          bestPath[diagonal] = void 0;
+          continue;
+        }
+        if (!canAdd || canRemove && addPath.newPos < removePath.newPos) {
+          basePath = {
+            newPos: removePath.newPos,
+            components: removePath.components.slice(0)
+          };
+          this.pushComponent(basePath.components, false, true);
+        } else {
+          basePath = addPath;
+          basePath.newPos++;
+          this.pushComponent(basePath.components, true, false);
+        }
+        oldPos = this.extractCommon(basePath, newChars, oldChars, diagonal);
+        if (basePath.newPos + 1 >= newChars.length && oldPos + 1 >= oldChars.length) {
+          return this.buildValues(basePath.components, newChars, oldChars);
+        }
+        bestPath[diagonal] = basePath;
+      }
+    }
+    return [{ value: newStr }];
+  }
+  pushComponent(components, added, removed) {
+    const last = components[components.length - 1];
+    if (last && last.added === added && last.removed === removed) {
+      last.count++;
+    } else {
+      components.push({ count: 1, added, removed });
+    }
+  }
+  extractCommon(basePath, newChars, oldChars, diagonal) {
+    const newLen = newChars.length;
+    const oldLen = oldChars.length;
+    let newPos = basePath.newPos;
+    let oldPos = newPos - diagonal;
+    let commonCount = 0;
+    while (newPos + 1 < newLen && oldPos + 1 < oldLen && newChars[newPos + 1] === oldChars[oldPos + 1]) {
+      newPos++;
+      oldPos++;
+      commonCount++;
+    }
+    if (commonCount) basePath.components.push({ count: commonCount });
+    basePath.newPos = newPos;
+    return oldPos;
+  }
+  buildValues(components, newChars, oldChars) {
+    let newPos = 0;
+    let oldPos = 0;
+    const result = components.map((component) => {
+      const out = { ...component };
+      if (component.removed) {
+        out.value = oldChars.slice(oldPos, oldPos + component.count).join("");
+        oldPos += component.count;
+      } else {
+        out.value = newChars.slice(newPos, newPos + component.count).join("");
+        newPos += component.count;
+        if (!component.added) oldPos += component.count;
+      }
+      delete out.count;
+      if (!out.added) delete out.added;
+      if (!out.removed) delete out.removed;
+      return out;
+    });
+    const last = result[result.length - 1];
+    if (result.length > 1 && last && typeof last.value === "string" && (last.added || last.removed) && last.value === "") {
+      result[result.length - 2].value += last.value;
+      result.pop();
+    }
+    return result;
+  }
+}
+const charDiff = new CharDiff();
+function diffChars(oldStr, newStr) {
+  return charDiff.diff(oldStr, newStr);
+}
+const window$1 = { Diff: { diffChars } };
+function escapeHtml$1(t) {
+  return String(t).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  })[c]);
+}
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function getBlocks(text) {
+  return String(text || "").split("\n").map((s) => s.trim()).filter((s) => s.length);
+}
+const NIKUD_RE = /[֑-ׇ‎‏]/g;
+function normalizeForMatch(str, opts, ignoreItems) {
+  opts = opts || {};
+  if (!str) return "";
+  if (opts.useIgnoreList && ignoreItems && ignoreItems.length) {
+    ignoreItems.forEach((item) => {
+      str = str.replace(new RegExp(escapeRegex(item), "g"), "");
+    });
+  }
+  if (opts.ignoreNikud) str = str.replace(NIKUD_RE, "");
+  return str.replace(/\s+/g, "");
+}
+function hasConsecChars(s1, s2, limit) {
+  if (!limit || limit <= 0) return false;
+  if (s1.length < limit || s2.length < limit) return false;
+  for (let i = 0; i <= s1.length - limit; i++) {
+    if (s2.indexOf(s1.substring(i, i + limit)) !== -1) return true;
+  }
+  return false;
+}
+function generateDiffHTML(a, b) {
+  if (typeof window$1.Diff === "undefined") return escapeHtml$1(a) + " / " + escapeHtml$1(b);
+  const parts = window$1.Diff.diffChars(a, b);
+  return parts.map((p) => {
+    const t = escapeHtml$1(p.value);
+    if (p.added) return `<ins class="tcp-diff-added">${t}</ins>`;
+    if (p.removed) return `<del class="tcp-diff-removed">${t}</del>`;
+    return `<span class="tcp-diff-unchanged">${t}</span>`;
+  }).join("");
+}
+function computeSmartCompare(text1, text2, opts) {
+  opts = opts || {};
+  const simThreshold = typeof opts.simThreshold === "number" ? opts.simThreshold / 100 : 0.6;
+  const consecLimit = opts.consecLimit | 0;
+  const normOpts = {
+    ignoreNikud: !!opts.ignoreNikud,
+    useIgnoreList: !!opts.useIgnoreList
+  };
+  const ignoreItems = opts.ignoreItems || [];
+  const map1 = getBlocks(text1).map((b) => ({
+    original: b,
+    norm: normalizeForMatch(b, normOpts, ignoreItems)
+  }));
+  const map2 = getBlocks(text2).map((b) => ({
+    original: b,
+    norm: normalizeForMatch(b, normOpts, ignoreItems)
+  }));
+  let u1 = [];
+  let u2 = [];
+  const used2 = /* @__PURE__ */ new Set();
+  let identicalCount = 0;
+  map1.forEach((item1) => {
+    const idx = map2.findIndex(
+      (it, i) => !used2.has(i) && it.norm === item1.norm
+    );
+    if (idx !== -1) {
+      used2.add(idx);
+      identicalCount++;
+    } else {
+      u1.push(item1);
+    }
+  });
+  map2.forEach((it, i) => {
+    if (!used2.has(i)) u2.push(it);
+  });
+  let consecMatched = 0;
+  if (consecLimit > 0) {
+    const usedConsec = /* @__PURE__ */ new Set();
+    const remain = [];
+    u1.forEach((item1) => {
+      const idx = u2.findIndex(
+        (it, i) => !usedConsec.has(i) && hasConsecChars(item1.norm, it.norm, consecLimit)
+      );
+      if (idx !== -1) {
+        usedConsec.add(idx);
+        consecMatched++;
+      } else {
+        remain.push(item1);
+      }
+    });
+    u1 = remain;
+    u2 = u2.filter((_, i) => !usedConsec.has(i));
+  }
+  const similarPairs = [];
+  const finalU1 = [];
+  const usedSim = /* @__PURE__ */ new Set();
+  u1.forEach((item1) => {
+    let bestScore = -1;
+    let bestIdx = -1;
+    const len1 = item1.norm.length;
+    u2.forEach((item2, idx) => {
+      if (usedSim.has(idx)) return;
+      const len2 = item2.norm.length;
+      if (len2 < len1 * simThreshold || len2 > len1 / simThreshold) return;
+      const diff = window$1.Diff ? window$1.Diff.diffChars(item1.norm, item2.norm) : [];
+      let matchLen = 0;
+      diff.forEach((p) => {
+        if (!p.added && !p.removed) matchLen += p.value.length;
+      });
+      const maxLen = Math.max(len1, len2);
+      const score = maxLen > 0 ? matchLen / maxLen : 1;
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = idx;
+      }
+    });
+    if (bestScore >= simThreshold && bestIdx !== -1) {
+      usedSim.add(bestIdx);
+      similarPairs.push({ item1, item2: u2[bestIdx], score: bestScore });
+    } else {
+      finalU1.push(item1);
+    }
+  });
+  const finalU2 = u2.filter((_, i) => !usedSim.has(i));
+  return {
+    identicalCount,
+    consecMatched,
+    similar: similarPairs,
+    onlyIn1: finalU1,
+    onlyIn2: finalU2,
+    totalIn1: map1.length,
+    totalIn2: map2.length,
+    simThreshold: Math.round(simThreshold * 100),
+    consecLimit
+  };
+}
+function renderSmartReport(r) {
+  let html = "";
+  html += '<div class="tcp-summary-counts">';
+  html += `<div class="tcp-count-card pass"><div class="num">${r.identicalCount}</div><div class="label">קטעים זהים</div></div>`;
+  if (r.consecLimit > 0)
+    html += `<div class="tcp-count-card pass"><div class="num">${r.consecMatched}</div><div class="label">סוננו ברצף תווים</div></div>`;
+  html += `<div class="tcp-count-card warn"><div class="num">${r.similar.length}</div><div class="label">קטעים דומים (≥${r.simThreshold}%)</div></div>`;
+  html += `<div class="tcp-count-card fail"><div class="num">${r.onlyIn1.length}</div><div class="label">חסרים במסמך 2</div></div>`;
+  html += `<div class="tcp-count-card fail"><div class="num">${r.onlyIn2.length}</div><div class="label">נוספו במסמך 2</div></div>`;
+  html += "</div>";
+  if (r.similar.length === 0 && r.onlyIn1.length === 0 && r.onlyIn2.length === 0) {
+    html += '<div class="tcp-result-box pass"><h3>✅ מעולה — שני המסמכים זהים בכל הקטעים.</h3>';
+    html += '<div class="muted">כל הקטעים תואמים או סוננו לפי ההגדרות שלך.</div></div>';
+    return html;
+  }
+  if (r.similar.length) {
+    html += '<div class="tcp-result-box warn">';
+    html += `<h3>⚠ ${r.similar.length} קטעים דומים</h3>`;
+    html += '<div class="muted">אדום עם קו = הוסר ממסמך 1 · ירוק = נוסף במסמך 2</div>';
+    r.similar.forEach((p) => {
+      html += '<div class="tcp-diff-container">';
+      html += `<span class="tcp-score-pill">דמיון ${Math.round(p.score * 100)}%</span>`;
+      html += generateDiffHTML(p.item1.original, p.item2.original);
+      html += "</div>";
+    });
+    html += "</div>";
+  }
+  if (r.onlyIn1.length) {
+    html += '<div class="tcp-result-box fail">';
+    html += `<h3>❌ ${r.onlyIn1.length} קטעים חסרים במסמך 2</h3>`;
+    html += '<div class="muted">קטעים שקיימים במסמך 1 אך לא נמצאו במסמך 2.</div>';
+    r.onlyIn1.forEach((it) => {
+      html += `<div class="tcp-missing-item">${escapeHtml$1(it.original)}</div>`;
+    });
+    html += "</div>";
+  }
+  if (r.onlyIn2.length) {
+    html += '<div class="tcp-result-box fail">';
+    html += `<h3>❌ ${r.onlyIn2.length} קטעים נוספו במסמך 2</h3>`;
+    html += '<div class="muted">קטעים שקיימים במסמך 2 אך לא היו במסמך 1.</div>';
+    r.onlyIn2.forEach((it) => {
+      html += `<div class="tcp-added-item">${escapeHtml$1(it.original)}</div>`;
+    });
+    html += "</div>";
+  }
+  return html;
+}
+function computeIntegrity(base, insert, merged, opts) {
+  opts = opts || {};
+  const normOpts = {
+    ignoreNikud: !!opts.ignoreNikud,
+    useIgnoreList: !!opts.useIgnoreList
+  };
+  const ignoreItems = opts.ignoreItems || [];
+  const mergedNoBrackets = merged.replace(/\{[\s\S]*?\}/g, "");
+  const matches = merged.match(/\{([\s\S]*?)\}/g) || [];
+  const extracted = matches.map((s) => s.slice(1, -1)).join("");
+  const cleanBase = normalizeForMatch(base, normOpts, ignoreItems);
+  const cleanMergedNoBr = normalizeForMatch(mergedNoBrackets, normOpts, ignoreItems);
+  const cleanInsert = normalizeForMatch(insert, normOpts, ignoreItems);
+  const cleanExtracted = normalizeForMatch(extracted, normOpts, ignoreItems);
+  const basePass = cleanBase === cleanMergedNoBr;
+  const insertPass = cleanInsert === cleanExtracted;
+  return {
+    basePass,
+    insertPass,
+    baseDiff: basePass ? null : generateDiffHTML(cleanBase, cleanMergedNoBr),
+    insertDiff: insertPass ? null : generateDiffHTML(cleanInsert, cleanExtracted),
+    braceCount: matches.length,
+    baseLen: base.length,
+    insertLen: insert.length,
+    mergedLen: merged.length
+  };
+}
+function renderIntegrityReport(r) {
+  let html = "";
+  html += '<div class="tcp-summary-counts">';
+  html += `<div class="tcp-count-card ${r.basePass ? "pass" : "fail"}"><div class="num">${r.basePass ? "✓" : "✗"}</div><div class="label">טקסט ראשי</div></div>`;
+  html += `<div class="tcp-count-card ${r.insertPass ? "pass" : "fail"}"><div class="num">${r.insertPass ? "✓" : "✗"}</div><div class="label">טקסט משני</div></div>`;
+  html += `<div class="tcp-count-card"><div class="num">${r.braceCount}</div><div class="label">בלוקי {} שזוהו</div></div>`;
+  html += "</div>";
+  if (r.basePass) {
+    html += '<div class="tcp-result-box pass"><h3>✅ בדיקת טקסט ראשי</h3>';
+    html += '<div class="muted">הטקסט הראשי נמצא במלואו בטקסט המשולב מחוץ לסוגריים.</div></div>';
+  } else {
+    html += '<div class="tcp-result-box fail"><h3>❌ שגיאה בטקסט ראשי</h3>';
+    html += '<div class="muted">הטקסט הראשי אינו זהה לטקסט המשולב לאחר הסרת הסוגריים.</div>';
+    html += `<div class="tcp-diff-container">${r.baseDiff}</div></div>`;
+  }
+  if (r.insertPass) {
+    html += '<div class="tcp-result-box pass"><h3>✅ בדיקת סוגריים {}</h3>';
+    html += '<div class="muted">תוכן הסוגריים בטקסט המשולב תואם בדיוק לטקסט המשני.</div></div>';
+  } else {
+    html += '<div class="tcp-result-box fail"><h3>❌ שגיאה בטקסט משני</h3>';
+    html += '<div class="muted">תוכן הסוגריים בטקסט המשולב אינו תואם לטקסט המשני שהוזן.</div>';
+    html += `<div class="tcp-diff-container">${r.insertDiff}</div></div>`;
+  }
+  return html;
+}
+function jsonResponse$3(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { "cache-control": "no-store" }
+  });
+}
+async function handleTextComparePro(request) {
+  if (request.method !== "POST") {
+    return jsonResponse$3({ error: "method_not_allowed", message: "Use POST" }, 405);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse$3({ error: "invalid_json", message: "Invalid request body" }, 400);
+  }
+  const action = String(body?.action || "");
+  const opts = body?.opts || {};
+  if (action === "smart") {
+    const report = computeSmartCompare(
+      String(body?.text1 || ""),
+      String(body?.text2 || ""),
+      opts
+    );
+    report.html = renderSmartReport(report);
+    return jsonResponse$3({ report });
+  }
+  if (action === "integrity") {
+    const report = computeIntegrity(
+      String(body?.base || ""),
+      String(body?.insert || ""),
+      String(body?.merged || ""),
+      opts
+    );
+    report.html = renderIntegrityReport(report);
+    return jsonResponse$3({ report });
+  }
+  return jsonResponse$3({ error: "unknown_action", message: "Unknown text compare action" }, 400);
+}
+const SEFARIA_BASE = "https://www.sefaria.org/api";
+const ALLOWED_PREFIXES = [
+  "/index",
+  "/shape/",
+  "/v3/texts/",
+  "/links/",
+  "/calendars",
+  "/texts/versions/",
+  "/texts/"
+];
+function jsonResponse$2(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { "cache-control": "no-store" }
+  });
+}
+function isAllowedPath(path) {
+  return ALLOWED_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix));
+}
+async function handleSefariaProxy(request, url) {
+  if (request.method !== "GET") {
+    return jsonResponse$2({ error: "method_not_allowed", message: "Use GET" }, 405);
+  }
+  const suffix = url.pathname.slice("/api/sefaria".length) || "/";
+  if (!isAllowedPath(suffix)) {
+    return jsonResponse$2({ error: "forbidden_path", message: "Unsupported Sefaria path" }, 403);
+  }
+  const target = new URL(SEFARIA_BASE + suffix);
+  target.search = url.search;
+  const upstream = await fetch(target.toString(), {
+    headers: {
+      accept: "application/json",
+      "user-agent": "TorahTypesetter/11.50"
+    }
+  });
+  const headers = new Headers(upstream.headers);
+  headers.set("cache-control", "no-store");
+  headers.delete("access-control-allow-origin");
+  headers.delete("content-security-policy");
+  headers.delete("content-length");
+  return new Response(upstream.body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers
+  });
+}
+const SEPARATOR = "\n— —\n";
+function jsonResponse$1(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: { "cache-control": "no-store" }
+  });
+}
+function escapeForRegex(text) {
+  return String(text || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function escapeHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+const PALETTE = [
+  { bg: "#FEE2E2", fg: "#7F1D1D" },
+  { bg: "#DBEAFE", fg: "#1E3A8A" },
+  { bg: "#DCFCE7", fg: "#14532D" },
+  { bg: "#FEF3C7", fg: "#78350F" },
+  { bg: "#F3E8FF", fg: "#581C87" },
+  { bg: "#CFFAFE", fg: "#164E63" },
+  { bg: "#FCE7F3", fg: "#831843" },
+  { bg: "#E5E7EB", fg: "#1F2937" }
+];
+function colorFor(code) {
+  const n = parseInt(code, 10);
+  if (Number.isFinite(n) && n >= 1) return PALETTE[(n - 1) % PALETTE.length];
+  return PALETTE[0];
+}
+function splitTextByMarkers(rawText) {
+  const matches = [];
+  const rx = /@(\d{1,3})/g;
+  let m;
+  while ((m = rx.exec(rawText)) !== null) {
+    matches.push({
+      start: m.index,
+      end: m.index + m[0].length,
+      symbol: m[0],
+      code: String(parseInt(m[1], 10)).padStart(2, "0")
+    });
+  }
+  const streams = {};
+  if (matches.length === 0) {
+    return { mainText: rawText, streams, intro: rawText };
+  }
+  const intro = rawText.slice(0, matches[0].start);
+  let mainText = intro;
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i];
+    const next = matches[i + 1];
+    const contentEnd = next ? next.start : rawText.length;
+    const content = rawText.slice(cur.end, contentEnd).trim();
+    mainText += mainText.endsWith(" ") || mainText === "" ? cur.symbol : " " + cur.symbol;
+    if (content) {
+      if (!streams[cur.code]) streams[cur.code] = [];
+      streams[cur.code].push(content);
+    }
+  }
+  return { mainText, streams, intro };
+}
+function buildMainHTML(rawText) {
+  const { mainText } = splitTextByMarkers(rawText);
+  const html = escapeHtml(mainText).replace(
+    /@(\d{1,3})/g,
+    (m, n) => {
+      const code = String(parseInt(n, 10)).padStart(2, "0");
+      const c = colorFor(code);
+      return `<span class="stream-marker stream-${code}" data-stream="${code}" data-uid="split-${code}-${Math.random().toString(36).slice(2, 8)}" style="background-color:${c.bg};color:${c.fg};border-radius:3px;padding:0 3px;font-weight:600;">@${n}</span>`;
+    }
+  );
+  const paragraphs = html.split(/\n\s*\n+/).map((s) => s.trim()).filter(Boolean);
+  return paragraphs.length ? paragraphs.map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`).join("\n") : `<p>${html.replace(/\n/g, "<br>")}</p>`;
+}
+function buildStreamHTML(code, notes) {
+  if (!notes || !notes.length) return `<p>—</p>`;
+  const symbol = `@${code}`;
+  const flat = notes.map((n, idx) => `${symbol} [${idx + 1}] ${n.trim()}`).join(SEPARATOR);
+  const escaped = escapeHtml(flat).replace(/\n/g, " ");
+  return `<p>${escaped}</p>`;
+}
+function splitStreamNotesByMarkers(streamText) {
+  const matches = [...String(streamText || "").matchAll(/@\d{1,3}/g)];
+  if (matches.length === 0) return [];
+  const notes = [];
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].index + matches[i][0].length;
+    const end = i + 1 < matches.length ? matches[i + 1].index : streamText.length;
+    notes.push(streamText.slice(start, end).trim().replace(/^\[\d+\]\s*/, ""));
+  }
+  return notes;
+}
+function mergeBackToText(mainText, streamsObj) {
+  const cursors = {};
+  return String(mainText || "").replace(/@(\d{1,3})/g, (m, n) => {
+    const code = String(parseInt(n, 10)).padStart(2, "0");
+    cursors[code] = cursors[code] || 0;
+    const notes = streamsObj[code] || [];
+    const note = notes[cursors[code]];
+    cursors[code]++;
+    return note ? `${m} ${note}` : m;
+  });
+}
+function inlineMerge(mainText, panes) {
+  let out = String(mainText || "");
+  for (const p of panes) {
+    const sym = String(p?.symbol || "").trim();
+    if (!sym) continue;
+    const noteText = String(p?.text || "").trim();
+    if (!noteText) continue;
+    let parts = noteText.split(sym);
+    if (parts.length > 0 && parts[0].trim() === "") parts.shift();
+    let counter = 0;
+    const regex = new RegExp(escapeForRegex(sym), "g");
+    out = out.replace(regex, (match) => {
+      if (counter < parts.length) {
+        const note = parts[counter].trim();
+        counter++;
+        return `[[${sym} ${note}]]`;
+      }
+      return match;
+    });
+  }
+  return out;
+}
+function inlineSplit(mainText, panes) {
+  let out = String(mainText || "");
+  const streamTexts = {};
+  for (const p of panes) {
+    const code = String(p?.streamCode || "");
+    const sym = String(p?.symbol || "").trim();
+    if (!code || !sym) continue;
+    const extracted = [];
+    const regex = new RegExp(`\\[\\[${escapeForRegex(sym)}([\\s\\S]*?)\\]\\]`, "g");
+    out = out.replace(regex, (_match, content) => {
+      extracted.push(content.trim());
+      return sym;
+    });
+    if (extracted.length > 0) {
+      streamTexts[code] = extracted.map((n) => `${sym} ${n}`).join("\n");
+    }
+  }
+  return { mainText: out, streamTexts };
+}
+async function handleMainTextTools(request) {
+  if (request.method !== "POST") {
+    return jsonResponse$1({ error: "method_not_allowed", message: "Use POST" }, 405);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse$1({ error: "invalid_json", message: "Invalid request body" }, 400);
+  }
+  const action = String(body?.action || "");
+  if (action === "split_markers") {
+    const rawText = String(body?.rawText || "");
+    const { mainText, streams } = splitTextByMarkers(rawText);
+    const streamHtml = {};
+    for (const code of Object.keys(streams)) {
+      streamHtml[code] = buildStreamHTML(code, streams[code]);
+    }
+    return jsonResponse$1({
+      mainText,
+      mainHtml: buildMainHTML(rawText),
+      streams,
+      streamHtml
+    });
+  }
+  if (action === "merge_back") {
+    const streams = {};
+    const rawStreams = body?.streams && typeof body.streams === "object" ? body.streams : {};
+    for (const [code, text] of Object.entries(rawStreams)) {
+      streams[code] = splitStreamNotesByMarkers(String(text || ""));
+    }
+    return jsonResponse$1({
+      merged: mergeBackToText(String(body?.mainText || ""), streams),
+      streamCount: Object.keys(streams).length
+    });
+  }
+  if (action === "inline_merge") {
+    const panes = Array.isArray(body?.panes) ? body.panes : [];
+    return jsonResponse$1({
+      mainText: inlineMerge(String(body?.mainText || ""), panes)
+    });
+  }
+  if (action === "inline_split") {
+    const panes = Array.isArray(body?.panes) ? body.panes : [];
+    return jsonResponse$1(inlineSplit(String(body?.mainText || ""), panes));
+  }
+  return jsonResponse$1({ error: "unknown_action", message: "Unknown main text action" }, 400);
+}
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
 function getDefaultExportFromCjs(x) {
   return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
@@ -2548,9 +7573,9 @@ async function importDocx(arrayBuffer, id) {
 function escHtml(text) {
   return String(text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-async function extractChapterContent(arrayBuffer, level, index, id) {
+async function extractChapterContent(arrayBuffer, level, index2, id) {
   level = Number(level) || 1;
-  index = Number(index) || 0;
+  index2 = Number(index2) || 0;
   if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error("לא התקבל קובץ DOCX.");
   if (arrayBuffer.byteLength > MAX_DOCX_BYTES) {
     const err = new Error(`DOCX גדול מדי. מגבלה: ${MAX_DOCX_BYTES} bytes.`);
@@ -2575,13 +7600,13 @@ async function extractChapterContent(arrayBuffer, level, index, id) {
       levelHeads.push({ title: part.text.trim(), start: i });
     }
   }
-  if (index < 0 || index >= levelHeads.length) {
-    const err = new Error(`לא נמצא פרק מספר ${index + 1} ברמה ${level}. סה"כ פרקים: ${levelHeads.length}.`);
+  if (index2 < 0 || index2 >= levelHeads.length) {
+    const err = new Error(`לא נמצא פרק מספר ${index2 + 1} ברמה ${level}. סה"כ פרקים: ${levelHeads.length}.`);
     err.status = 404;
     throw err;
   }
-  const head = levelHeads[index];
-  const nextHead = levelHeads[index + 1];
+  const head = levelHeads[index2];
+  const nextHead = levelHeads[index2 + 1];
   const end = nextHead ? nextHead.start : partsMeta.length;
   const chapterParts = partsMeta.slice(head.start, end);
   const mainHtml = chapterParts.map((p) => {
@@ -2590,7 +7615,7 @@ async function extractChapterContent(arrayBuffer, level, index, id) {
     if (p.level >= 1 && p.level <= 6) return `<h${p.level}>${escHtml(text)}</h${p.level}>`;
     return `<p>${escHtml(text)}</p>`;
   }).filter(Boolean).join("\n");
-  log("log", "chapter_extract_success", { requestId: id, level, index, title: head.title, parts: chapterParts.length, elapsedMs: Date.now() - started });
+  log("log", "chapter_extract_success", { requestId: id, level, index: index2, title: head.title, parts: chapterParts.length, elapsedMs: Date.now() - started });
   return {
     ok: true,
     serverSide: true,
@@ -2723,9 +7748,9 @@ async function handleStreamsScan(request, env, ctx) {
     let arrayBuffer;
     const ct = (request.headers.get("content-type") || "").toLowerCase();
     if (ct.includes("application/json")) {
-      const json = await request.json();
-      if (!json?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
-      const raw = atob(json.docx);
+      const json2 = await request.json();
+      if (!json2?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
+      const raw = atob(json2.docx);
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
       arrayBuffer = bytes.buffer;
@@ -2796,9 +7821,9 @@ async function handleDocxApi(request, env, ctx) {
     let arrayBuffer;
     const ct = (request.headers.get("content-type") || "").toLowerCase();
     if (ct.includes("application/json")) {
-      const json = await request.json();
-      if (!json?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
-      const raw = atob(json.docx);
+      const json2 = await request.json();
+      if (!json2?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
+      const raw = atob(json2.docx);
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
       arrayBuffer = bytes.buffer;
@@ -2809,8 +7834,8 @@ async function handleDocxApi(request, env, ctx) {
     dbLog(env, ctx, "info", "docx_request_start", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
     if (isDocxExtractPath(url.pathname)) {
       const level = url.searchParams.get("level");
-      const index = url.searchParams.get("index");
-      const extracted = await extractChapterContent(arrayBuffer, level, index, id);
+      const index2 = url.searchParams.get("index");
+      const extracted = await extractChapterContent(arrayBuffer, level, index2, id);
       dbLog(env, ctx, "info", "docx_extract_success", { requestId: id, title: extracted?.title });
       return jsonResponse({ ...extracted, extractedAt: Date.now() }, 200, id);
     }
@@ -2833,31 +7858,194 @@ async function handleDocxApi(request, env, ctx) {
     }, error?.status || 500, id);
   }
 }
-const docx_worker_entry = {
+async function serveAdminPage(request, env) {
+  const user = await getUserFromRequest(request, env);
+  if (!user) {
+    return new Response("Not logged in", { status: 401, headers: { "cache-control": "no-store" } });
+  }
+  if (!user.is_admin) {
+    return new Response("Forbidden", { status: 403, headers: { "cache-control": "no-store" } });
+  }
+  const adminUrl = new URL(request.url);
+  adminUrl.pathname = "/admin.html";
+  const adminReq = new Request(adminUrl.toString(), request);
+  const assetResponse = await env.ASSETS.fetch(adminReq);
+  const contentType = assetResponse.headers.get("content-type") || "";
+  if (!contentType.includes("text/html") && assetResponse.status >= 400) return assetResponse;
+  const html = await assetResponse.text();
+  const script = '<script src="/admin_troubleshooting_tab.js?v=20260518a" defer><\/script>';
+  const injected = html.includes("</body>") ? html.replace("</body>", `${script}</body>`) : html + script;
+  const headers = new Headers(assetResponse.headers);
+  headers.delete("content-length");
+  headers.set("cache-control", "no-store");
+  return new Response(injected, { status: assetResponse.status, headers });
+}
+const index = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (isClientLogPath(url.pathname)) {
-      return handleClientLog(request, env, ctx);
+    if (isBadBot(request) && url.pathname !== "/robots.txt") {
+      return new Response("Forbidden", { status: 403 });
     }
-    if (isStreamsScanPath(url.pathname)) {
-      return handleStreamsScan(request, env, ctx);
+    if (isEngineApi(url.pathname)) {
+      const blocked = checkOrigin(request);
+      if (blocked) return blocked;
     }
-    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
-      return handleDocxApi(request, env, ctx);
+    const limited = await checkRateLimit(request, url);
+    if (limited) return limited;
+    let response;
+    let isHtml = false;
+    if (url.pathname.startsWith("/api/auth/")) {
+      response = await handleAuth(request, env, url);
+    } else if (url.pathname === "/api/me") {
+      const user = await getUserFromRequest(request, env);
+      const consoleGuardEnabled = await isConsoleGuardEnabled(env);
+      response = Response.json(
+        {
+          loggedIn: !!user,
+          paid: !!user?.paid,
+          email: user?.email || null,
+          admin: !!user?.is_admin,
+          status: user?.status || null,
+          planType: user?.plan_type || null,
+          expiresAt: user?.expires_at ? user.expires_at * 1e3 : null,
+          balanceSeconds: user?.balance_seconds || 0,
+          consoleGuardEnabled
+        },
+        { headers: { "cache-control": "no-store" } }
+      );
+    } else if (url.pathname === "/api/admin/bug-reports" || url.pathname.startsWith("/api/admin/bug-reports/") || url.pathname === "/api/admin/contact-messages" || url.pathname.startsWith("/api/admin/contact-messages/") || url.pathname === "/api/admin/usage" || /^\/api\/admin\/users\/\d+\/contact-messages$/.test(url.pathname)) {
+      response = await handleAdminInbox(request, env, url);
+    } else if (url.pathname === "/api/admin/payment-config" || url.pathname === "/api/admin/test-packages" || url.pathname.startsWith("/api/admin/test-packages/")) {
+      response = await handlePaymentAdmin(request, env, url);
+    } else if (url.pathname === "/api/admin/caricature-settings") {
+      response = await handleCaricatureAdmin(request, env, url);
+    } else if (url.pathname === "/api/admin/video-gallery/playlist") {
+      response = await handleAdminVideoGallery(request, env);
+    } else if (url.pathname.startsWith("/api/admin/")) {
+      response = await handleAdmin(request, env, url);
+    } else if (url.pathname === "/api/bug-reports" || url.pathname === "/api/bug-reports/public" || url.pathname === "/api/contact" || url.pathname === "/api/contact/mine" || url.pathname === "/api/usage/track") {
+      response = await handlePublicInbox(request, env, url);
+    } else if (url.pathname === "/api/video-gallery/playlist") {
+      response = await handleVideoGallery(request, env);
+    } else if (url.pathname.startsWith("/api/payments/package/")) {
+      response = await handlePackageLookup(request, env, url);
+    } else if (url.pathname.startsWith("/api/payments/")) {
+      response = await handlePayments(request, env, url);
+    } else if (url.pathname.startsWith("/api/account/")) {
+      response = await handleAccount(request, env, url);
+    } else if (url.pathname.startsWith("/api/documents") || url.pathname === "/api/settings") {
+      response = await handleStorage(request, env, url);
+    } else if (url.pathname === "/api/caricature") {
+      response = await handleCaricature(request, env);
+    } else if (url.pathname === "/api/ai-tools/gas") {
+      response = await handleAiTools(request, env);
+    } else if (url.pathname === "/api/ai-tools/chat") {
+      response = await handleAiChat(request);
+    } else if (url.pathname === "/api/tools/preflight") {
+      response = await handleToolPreflight(request, env);
+    } else if (url.pathname === "/api/nikud-merger") {
+      response = await handleNikudMerger(request);
+    } else if (url.pathname === "/api/text-compare-pro") {
+      response = await handleTextComparePro(request);
+    } else if (url.pathname.startsWith("/api/sefaria/")) {
+      response = await handleSefariaProxy(request, url);
+    } else if (url.pathname === "/api/main-text-tools") {
+      response = await handleMainTextTools(request);
+    } else if (isClientLogPath(url.pathname)) {
+      response = await handleClientLog(request, env, ctx);
+    } else if (isStreamsScanPath(url.pathname)) {
+      response = await handleStreamsScan(request, env, ctx);
+    } else if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
+      response = await handleDocxApi(request, env, ctx);
+    } else if (url.pathname === "/api/admin/worker-logs") {
+      const user = await getUserFromRequest(request, env);
+      if (!user?.is_admin) {
+        response = new Response("Forbidden", { status: 403, headers: { "cache-control": "no-store" } });
+      } else {
+        try {
+          const limit = Math.min(parseInt(url.searchParams.get("limit") || "200", 10), 1e3);
+          const since = url.searchParams.get("since") ? parseInt(url.searchParams.get("since"), 10) : 0;
+          const result = await env.DB.prepare(
+            "SELECT id, ts, level, event, data FROM worker_logs WHERE ts > ? ORDER BY ts DESC LIMIT ?"
+          ).bind(since, limit).all();
+          response = Response.json({ ok: true, logs: result.results }, { headers: { "cache-control": "no-store" } });
+        } catch (e) {
+          response = Response.json({ ok: false, error: e?.message || String(e) }, { status: 500, headers: { "cache-control": "no-store" } });
+        }
+      }
+    } else if (url.pathname === "/admin" || url.pathname === "/admin/" || url.pathname === "/admin.html") {
+      response = await serveAdminPage(request, env);
+      isHtml = response.headers.get("content-type")?.includes("text/html") || response.status < 400;
+    } else if (url.pathname === "/api/render/preflight" && request.method === "POST") {
+      response = await handlePreflight(request, env);
+    } else if (url.pathname === "/api/talmud/decide" && request.method === "POST") {
+      const nonceFail = await checkNonce(request, env);
+      response = nonceFail || await handleTalmudDecide(request, env);
+    } else if (url.pathname === "/api/balance/decide" && request.method === "POST") {
+      const nonceFail = await checkNonce(request, env);
+      response = nonceFail || await handleBalanceDecide(request);
+    } else if (url.pathname === "/api/mishna/decide" && request.method === "POST") {
+      const nonceFail = await checkNonce(request, env);
+      response = nonceFail || await handleMishnaDecide(request);
+    } else if (url.pathname === "/api/streams/parse" && request.method === "POST") {
+      let body;
+      try {
+        body = await request.json();
+      } catch {
+        response = new Response("Invalid JSON", { status: 400 });
+      }
+      if (!response) {
+        const text = String(body?.text || "");
+        if (text.length > 2e5) {
+          response = new Response("Text too large (max 200000 chars)", { status: 413 });
+        } else {
+          const result = parseStreamsToHtml(text);
+          response = Response.json(result, {
+            headers: { "cache-control": "no-store" }
+          });
+        }
+      }
+    } else {
+      const assetResponse = await env.ASSETS.fetch(request);
+      const contentType = assetResponse.headers.get("content-type") || "";
+      isHtml = contentType.includes("text/html");
+      if (!isHtml) {
+        response = assetResponse;
+      } else {
+        const user = await getUserFromRequest(request, env);
+        const html = await assetResponse.text();
+        const consoleGuardEnabled = await isConsoleGuardEnabled(env);
+        const authState = {
+          loggedIn: !!user,
+          paid: !!user?.paid,
+          email: user?.email || null,
+          admin: !!user?.is_admin,
+          status: user?.status || null,
+          planType: user?.plan_type || null,
+          expiresAt: user?.expires_at ? user.expires_at * 1e3 : null,
+          balanceSeconds: user?.balance_seconds || 0,
+          consoleGuardEnabled,
+          googleClientId: env.GOOGLE_CLIENT_ID || null
+        };
+        const flagLines = user && user.paid ? 'window.__RAVTEXT_DEMO_MODE__ = false; try{localStorage.setItem("ravtext.demoMode","0");}catch(e){}' : 'try{localStorage.removeItem("ravtext.demoMode");}catch(e){}delete window.__RAVTEXT_DEMO_MODE__;';
+        const injection = `<script>window.__RAVTEXT_AUTH__ = ${JSON.stringify(authState)};${flagLines}<\/script>`;
+        const injected = html.includes("</head>") ? html.replace("</head>", `${injection}</head>`) : injection + html;
+        const newHeaders = new Headers(assetResponse.headers);
+        newHeaders.delete("content-length");
+        newHeaders.set("cache-control", "no-store");
+        response = new Response(injected, {
+          status: assetResponse.status,
+          headers: newHeaders
+        });
+      }
     }
-    if (env?.ASSETS?.fetch) {
-      return env.ASSETS.fetch(request);
-    }
-    return new Response("Asset binding not available.", { status: 500 });
+    return applySecurityHeaders(response, isHtml);
+  },
+  // משה 2026-05-10: cron יומי — חיוב חוזר אוטומטי. רץ כל בוקר ב-04:00 UTC.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runRecurringBilling(env).catch(() => null));
   }
 };
 export {
-  docx_worker_entry as default,
-  handleClientLog,
-  handleDocxApi,
-  handleStreamsScan,
-  isClientLogPath,
-  isDocxExtractPath,
-  isDocxImportPath,
-  isStreamsScanPath
+  index as default
 };
