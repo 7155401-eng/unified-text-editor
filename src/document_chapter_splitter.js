@@ -697,8 +697,10 @@ async function scanHeadingsLocally(fileObj, thisToken) {
   let totalChars = 0;
   let partIndex = 0;
 
-  // Fast indexOf-based paragraph scan — avoids catastrophic regex backtracking on large XML.
-  // Yields to the browser every 500 paragraphs so the UI stays responsive.
+  // Fast indexOf-based paragraph scan.
+  // Key optimisation: sLevelOf uses regex internally — only call it for paragraphs that
+  // actually contain a pStyle or outlineLvl attribute.  Plain body paragraphs are skipped
+  // entirely with two cheap indexOf checks.  sPText is only called for heading paragraphs.
   const END_TAG = "</w:p>";
   let pos = 0;
   while (pos < docXml.length) {
@@ -713,22 +715,35 @@ async function scanHeadingsLocally(fileObj, thisToken) {
     }
     const pEnd = docXml.indexOf(END_TAG, pStart);
     if (pEnd < 0) break;
-    const pXml = docXml.slice(pStart, pEnd + 6);
     pos = pEnd + 6;
 
-    const level = sLevelOf(pXml, styles);
-    const text = sPText(pXml).trim();
-    totalChars += text.length;
-    if (level >= 1 && level <= 6) h[level] = (h[level] || 0) + 1;
-    if ((level === 1 || level === 2) && text) heads[level].push({ title: text, start: partIndex });
+    // Only do regex work for paragraphs that might be headings
+    const hasStyle = docXml.indexOf("<w:pStyle", pStart) < pEnd && docXml.indexOf("<w:pStyle", pStart) >= pStart;
+    const hasOutline = docXml.indexOf("<w:outlineLvl", pStart) < pEnd && docXml.indexOf("<w:outlineLvl", pStart) >= pStart;
+    if (hasStyle || hasOutline) {
+      const pXml = docXml.slice(pStart, pEnd + 6);
+      const level = sLevelOf(pXml, styles);
+      if (level >= 1 && level <= 6) {
+        h[level] = (h[level] || 0) + 1;
+        if (level <= 2) {
+          const text = sPText(pXml).trim();
+          if (text) heads[level].push({ title: text, start: partIndex });
+        }
+      }
+    }
     partIndex++;
 
-    if (partIndex % 500 === 0) {
+    if (partIndex % 1000 === 0) {
       if (thisToken !== token) return null;
       loading(`קורא קובץ — שלב 4: סורק פסקה ${fmt(partIndex)}...`);
       await nextFrame();
     }
   }
+
+  // Count chars with a single fast pass (avoids per-paragraph sPText overhead)
+  const tRe = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+  let tm;
+  while ((tm = tRe.exec(docXml))) totalChars += tm[1].length;
 
   if (!heads[1].length && !heads[2].length) return null;
   return {
