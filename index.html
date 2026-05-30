@@ -14,6 +14,83 @@
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <script src="/bridge_shim.js"></script>
+    <script>
+      // LOCAL DEV ONLY — fakes the admin/paid auth that the Cloudflare Worker
+      // injects in production. Guarded by hostname so it can never run on the
+      // real site (only localhost/127.0.0.1). Lets non-technical testers open
+      // the local dev server and use the full editor without OAuth setup.
+      (function(){
+        var h = location.hostname;
+        if (h !== 'localhost' && h !== '127.0.0.1' && h !== '[::1]') return;
+
+        window.__RAVTEXT_AUTH__ = {
+          loggedIn: true, paid: true, admin: true,
+          email: 'local-dev@127.0.0.1',
+          status: 'active', planType: 'local', expiresAt: null,
+          balanceSeconds: 999999, consoleGuardEnabled: false,
+          googleClientId: null,
+        };
+        try { localStorage.setItem('ravtext.demoMode', '0'); } catch(e) {}
+
+        // Mock the Cloudflare Worker endpoints that the editor calls — they
+        // 404 in dev because there is no Worker. Return permissive responses
+        // so the editor opens normally and we can test the actual features.
+        var rfetch = window.fetch.bind(window);
+        function mock(body, status){
+          return new Response(JSON.stringify(body || {}), {
+            status: status || 200,
+            headers: {'content-type':'application/json'},
+          });
+        }
+        window.fetch = function(input, init){
+          try {
+            var url = typeof input === 'string' ? input : (input && input.url) || '';
+            var p = url.replace(location.origin, '');
+            if (p === '/api/tools/preflight') {
+              return Promise.resolve(mock({ ok:true, token:'local-dev', expiresAt: Date.now()+3600000 }));
+            }
+            if (p === '/api/me') {
+              return Promise.resolve(mock(window.__RAVTEXT_AUTH__));
+            }
+            if (p === '/api/google-drive/status') {
+              return Promise.resolve(mock({ connected:false }));
+            }
+            if (p.indexOf('/api/google-drive/') === 0 || p.indexOf('/api/docx-google-') === 0) {
+              return Promise.resolve(mock({ ok:false, message:'לא זמין בסביבה מקומית' }, 503));
+            }
+            if (p === '/api/client-log' || p === '/api/usage/track') {
+              return Promise.resolve(mock({ ok:true }));
+            }
+            // רינדור מקומי בלי שרת — preflight מזויף שמחזיר plan תקין עם
+            // safety=160 (ברירת המחדל של השרת) כדי שכל סוגי הפריסה
+            // (רגיל/תלמוד/שני טורים/משנה) ירוצו. ה-token מוזרק בכותרת
+            // x-ravtext-nonce של קריאות מנוע (talmud/balance/mishna),
+            // ואותן גם נחתוך כאן.
+            if (p === '/api/render/preflight') {
+              var bodyIn = {};
+              try { bodyIn = init && init.body ? JSON.parse(init.body) : {}; } catch(e) {}
+              return Promise.resolve(mock({
+                token: 'local-render',
+                issuedAt: Date.now(),
+                auth: { paid: true, email: 'local-dev@127.0.0.1' },
+                layoutType: bodyIn.layoutType || 'regular',
+                decisions: {
+                  safety: { newSafety: 160, action: 'default' },
+                  talmud: { mode: 'inline' },
+                },
+              }));
+            }
+            // מנועי רינדור (תלמוד/שני טורים/משנה) — כל אחד מהם מקבל nonce
+            // מהשרת ומחזיר החלטות פריסה. בלוקלי מחזירים תגובה ריקה אך
+            // תקינה כדי לא לעצור את הרינדור.
+            if (p.indexOf('/api/render/') === 0) {
+              return Promise.resolve(mock({ ok:true, decisions:{} }));
+            }
+          } catch(e) {}
+          return rfetch(input, init);
+        };
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
