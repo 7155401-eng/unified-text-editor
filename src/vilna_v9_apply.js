@@ -13,6 +13,7 @@
 // V9 מבצע חישוב אנליטי מלא — כל מילה ממוקמת ב-x,y ידועים ב-position:absolute.
 // אין float, אין shape-outside.
 
+import { loadSpacingSettings } from "./spacing_settings.js";
 import { buildPages } from "./vilna_v9.js";
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
@@ -166,8 +167,7 @@ function readIntSetting(key, fallback, min, max) {
 
 function readSpacingBool(key, fallback = false) {
   try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
+    const settings = loadSpacingSettings();
     return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
   } catch {
     return fallback;
