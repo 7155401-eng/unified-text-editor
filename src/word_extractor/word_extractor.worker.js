@@ -1,7 +1,7 @@
 // word_extractor.worker.js
-// רץ ב-Web Worker — DOMParser זמין (Chrome 87+, Firefox, Safari 14.1+).
-// mammoth משתמש ב-document.createElement → נשאר בחוט הראשי.
-// כל שאר הפעולות (JSZip + DOMParser דרך engine) — בטוחות כאן.
+// 2026-05-31: ההנחה הקודמת ("DOMParser זמין ב-Chrome 87+") שגויה — DOMParser
+// אינו זמין ב-Web Worker בכרום (ReferenceError). ensureDOMParser טוען shim
+// pure-JS פעם אחת לפני שכל אחת מפונקציות ה-engine רצה.
 
 import {
   find_all_note_sources,
@@ -11,12 +11,14 @@ import {
   find_all_styles_in_docx,
   docx_extract_simple,
   find_all_styles_full,
+  ensureDOMParser,
 } from "./word_extractor_engine.js";
 
 self.onmessage = async (ev) => {
   const { type, id, payload } = ev.data;
   const t0 = Date.now();
   try {
+    await ensureDOMParser();
     let result;
 
     if (type === 'scan') {
