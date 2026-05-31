@@ -145,6 +145,14 @@ async function fileHashLocal(buf) {
   } catch { return null; }
 }
 
+// משה 2026-05-31: yield לדפדפן כל ~500 פסקאות. setTimeout(0) ולא
+// requestIdleCallback — האחרון לא נורה כשהדפדפן עסוק (חסר idle time),
+// וגורם לסריקה של 320KB לקחת 39 שניות.
+const SCAN_YIELD_EVERY = 500;
+function _yieldToBrowser() {
+  return new Promise(r => setTimeout(r, 0));
+}
+
 // onProgress({stage, pct, detail}) — תואם ל-onProgress של importWordChaptersOnServer.
 export async function scanWordChaptersLocally(file, onProgress) {
   const reportStage = (stage, detail) => {
@@ -152,20 +160,28 @@ export async function scanWordChaptersLocally(file, onProgress) {
   };
   reportStage("processing", "קורא את הקובץ");
   const buf = await file.arrayBuffer();
+  await _yieldToBrowser();
+
   reportStage("processing", "פותח את הארכיון");
   const { docXml, stylesXml } = await readDocxParts(buf);
   if (!docXml) throw new Error("לא נמצא גוף מסמך Word תקין.");
+  await _yieldToBrowser();
 
   reportStage("processing", "מנתח סגנונות");
   const styles = sParseStyles(stylesXml);
+  await _yieldToBrowser();
 
-  reportStage("processing", "סורק כותרות");
+  reportStage("processing", "סורק כותרות במסמך");
   const heads = { 1: [], 2: [] };
   const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   let partIndex = 0;
   let pos = 0;
   const END_TAG = "</w:p>";
 
+  // משה 2026-05-31: שימוש קודם של indexOf("<w:pStyle", pStart) ללא toIndex
+  // גרם ל-O(n²): כל פסקה ללא pStyle סרקה עד סוף ה-XML (11MB). תיקון:
+  // חותכים pXml = substring(pStart, pEnd+6) פעם אחת ובודקים בתוכו. גודל
+  // פסקה ממוצע ~2000 chars → O(n*k) שטחי במקום O(n*total). שיפור פי ~100.
   while (pos < docXml.length) {
     const pStart = docXml.indexOf("<w:p", pos);
     if (pStart < 0) break;
@@ -179,12 +195,8 @@ export async function scanWordChaptersLocally(file, onProgress) {
     if (pEnd < 0) break;
     pos = pEnd + 6;
 
-    const pPrStartCandidate = docXml.indexOf("<w:pStyle", pStart);
-    const outlineCandidate  = docXml.indexOf("<w:outlineLvl", pStart);
-    const hasStyle   = pPrStartCandidate >= pStart && pPrStartCandidate < pEnd;
-    const hasOutline = outlineCandidate >= pStart && outlineCandidate < pEnd;
-    if (hasStyle || hasOutline) {
-      const pXml = docXml.slice(pStart, pEnd + 6);
+    const pXml = docXml.substring(pStart, pEnd + 6);
+    if (pXml.includes("<w:pStyle") || pXml.includes("<w:outlineLvl")) {
       const level = sLevelOf(pXml, styles);
       if (level >= 1 && level <= 6) {
         h[level] = (h[level] || 0) + 1;
@@ -195,13 +207,27 @@ export async function scanWordChaptersLocally(file, onProgress) {
       }
     }
     partIndex++;
+
+    if (partIndex % SCAN_YIELD_EVERY === 0) {
+      reportStage("processing", `סרק ${partIndex} פסקאות, ${heads[1].length + heads[2].length} כותרות`);
+      await _yieldToBrowser();
+    }
   }
 
   reportStage("processing", "סופר תווים");
+  await _yieldToBrowser();
   const tRe = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
   let totalChars = 0;
   let tm;
-  while ((tm = tRe.exec(docXml))) totalChars += tm[1].length;
+  let charsSinceYield = 0;
+  while ((tm = tRe.exec(docXml))) {
+    totalChars += tm[1].length;
+    charsSinceYield += tm[1].length;
+    if (charsSinceYield > 200000) {
+      charsSinceYield = 0;
+      await _yieldToBrowser();
+    }
+  }
 
   const hash = await fileHashLocal(buf);
 
