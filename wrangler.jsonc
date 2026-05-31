@@ -6,6 +6,12 @@
   "observability": {
     "enabled": true
   },
+  "r2_buckets": [
+    {
+      "binding": "DOCX_UPLOADS",
+      "bucket_name": "ravtext-docx-uploads"
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -25,4 +31,3 @@
     "crons": ["0 4 * * *"]
   }
 }
-
