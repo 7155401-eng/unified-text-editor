@@ -33,10 +33,28 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
     else if (src === "comment") { if (mk) cm_m[mk] = sym; else cm_n = sym; }
   }
 
+  // משה 2026-05-31: יישור עם docx_extract_simple — אם skipEmptyNotes פעיל
+  // (ברירת מחדל), הערה שלאחר ניקוי הסימן ריקה לא מקבלת קישור בגוף, בדיוק
+  // כמו בזרם. בלי זה — mammoth שמה קישור "no-marker" (למשל @06) על 7 הערות
+  // ריקות, ה-engine מדלגת עליהן, וה-reporter מציג אזהרת "קישורים מיותרים".
+  const skipEmptyNotes = options.skipEmptyNotes !== false;
+
   function resolve(noteText, m2s, nsym) {
-    const m = String(noteText || "").match(/@(\d+)/);
-    if (m && m[1] in m2s) return m2s[m[1]];
-    if (nsym && !m) return nsym;
+    const raw = String(noteText || "");
+    if (skipEmptyNotes && !raw.trim()) return null;
+    const m = raw.match(/@(\d+)/);
+    if (m && m[1] in m2s) {
+      if (skipEmptyNotes) {
+        const stripped = raw.replace(new RegExp("^\\s*@" + m[1] + "\\s*:?\\s*"), "").trim();
+        if (raw.replace(new RegExp("@" + m[1] + "\\s*:?\\s*"), "").trim() === ""
+            && stripped === "") return null;
+      }
+      return m2s[m[1]];
+    }
+    if (nsym && !m) {
+      if (skipEmptyNotes && !raw.trim()) return null;
+      return nsym;
+    }
     return null;
   }
 
@@ -439,28 +457,40 @@ function wrapColorAndSizeRuns(xml) {
 function unwrapColorAndSizePlaceholders(html) {
   // ‹‹CST:HEX|SIZE|FONT›› ... ‹‹/CST›› → <span style="...">...</span>
   // ה-placeholder עלול להיחתך ע"י תגי mammoth (strong/em). נחפש זוגות פשוטים בתוך טקסט.
-  return html
-    .replace(
-      /‹‹CST:([0-9a-fA-F]{0,6})\|(\d{0,4}(?:\.\d+)?)\|([^|]*)‹‹([\s\S]*?)‹‹\/CST‹‹/g,
-      (m, color, size, font, inner) => {
-        const decl = [];
-        if (color) decl.push(`color: #${color};`);
-        if (size) decl.push(`font-size: ${size}pt;`);
-        if (font) decl.push(`font-family: "${font.replace(/"/g, "")}";`);
-        // תמיד מחזיר את התוכן — עם span אם יש סגנון, בלי אם ריק
-        return decl.length
-          ? `<span style="${decl.join(" ")}">${inner}</span>`
-          : inner;
+  //
+  // משה 2026-05-31: שני תיקונים קריטיים:
+  //  1) שם הפונט עוטף במירכאות בודדות (בעבר כפולות שגרמו ל-style="" להיסגר
+  //     מוקדם, ה-attribute נשבר, ו-TipTap הפיל קישורי @NN שלמים שאחריו).
+  //  2) ערך הפונט במחלקת [^|]* היה חמדן ובלע ‹‹ פנימיים — כשמאמות' איבד
+  //     ‹‹/CST‹‹ סוגר, הריג'קס בלע placeholder סמוך שלם (כולל הקישור שבתוכו)
+  //     לתוך שדה הפונט, וקישור @NN אחד נעלם מן הטקסט. אסור לפונט להכיל ‹.
+  let out = html.replace(
+    /‹‹CST:([0-9a-fA-F]{0,6})\|(\d{0,4}(?:\.\d+)?)\|([^|‹<>"']*)‹‹([\s\S]*?)‹‹\/CST‹‹/g,
+    (m, color, size, font, inner) => {
+      const decl = [];
+      if (color) decl.push(`color: #${color};`);
+      if (size) decl.push(`font-size: ${size}pt;`);
+      if (font) {
+        const safeFont = String(font).replace(/['"<>]/g, "");
+        decl.push(`font-family: '${safeFont}';`);
       }
-    )
-    // משה 2026-05-14: ניקוי אגרסיבי של leftovers — לפעמים ‹‹ הופך ל-> או נחתך,
-    // ולכן נשארים בפלט סימנים כמו ">CST:ff0000|16|David‹‹" או "CST:..."
-    // בלי הסימנים הפותחים. מסירים כל וריאציה אפשרית.
-    .replace(/‹‹CST:[^‹<>"']*?(?:‹‹|$)/g, '')
-    .replace(/‹‹\/CST‹‹/g, '')
-    .replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}‹‹/g, '')
-    .replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}(?=\s|<|$)/g, '')
-    .replace(/\/CST‹‹/g, '');
+      return decl.length
+        ? `<span style="${decl.join(" ")}">${inner}</span>`
+        : inner;
+    }
+  );
+  // משה 2026-05-14: ניקוי אגרסיבי של leftovers — לפעמים ‹‹ הופך ל-> או נחתך,
+  // ולכן נשארים בפלט סימנים כמו ">CST:ff0000|16|David‹‹" או "CST:..."
+  // בלי הסימנים הפותחים. מסירים כל וריאציה אפשרית.
+  out = out.replace(/‹‹CST:[^‹<>"']*?(?:‹‹|$)/g, '');
+  out = out.replace(/‹‹\/CST‹‹/g, '');
+  out = out.replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}‹‹/g, '');
+  out = out.replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}(?=\s|<|$)/g, '');
+  out = out.replace(/\/CST‹‹/g, '');
+  // משה 2026-05-31: ערובת בטיחות אחרונה — שום ‹‹ לא אמור להישאר ב-HTML.
+  out = out.replace(/‹‹+/g, '');
+  out = out.replace(/CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|<>"']{0,80}/g, '');
+  return out;
 }
 
 // =====================================================================
