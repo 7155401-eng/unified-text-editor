@@ -80,6 +80,7 @@ import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_tra
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
+import { installStylesIOButton } from "./styles_io.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 try {
@@ -1447,6 +1448,7 @@ document.getElementById("btn-render")?.addEventListener("click", () => {
 // משה 2026-05-09: כפתורי דיווח באג / צור קשר. פעם פתחו mailto;
 // עכשיו פותחים מודלים שנשלחים ל-Worker → D1 → פאנל המנהל.
 wireInboxButtons();
+installStylesIOButton();
 
 wireTalmudLayoutControls(rerenderPages);
 wireMishnaWrapToggle(rerenderPages);
