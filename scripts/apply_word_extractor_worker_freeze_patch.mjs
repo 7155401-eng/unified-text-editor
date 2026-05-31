@@ -4,12 +4,28 @@ const TARGET = 'src/word_extractor/word_extractor_dialog.js';
 
 let src = readFileSync(TARGET, 'utf8');
 
+// משה 2026-05-31: ה-functionality הזה (Web Worker + IndexedDB cache לסריקת
+// DOCX, fileHash, scan/extract caching) כבר נכלל ישירות בקוד של
+// word_extractor_dialog.js — אבל בשמות `workerScan` / `workerExtract` במקום
+// `safeWorkerScan` / `safeWorkerExtract`. ה-patch הזה רק יוסיף נספח כפול
+// שייכשל ב-build. אם המצב כבר נכון — לדלג ב-no-op בלי process.exit (קריאה
+// מ-vite.config.js → exit עוצר את כל הקונפיג).
+const _superseded =
+  src.includes('async function workerScan') &&
+  src.includes('async function idbGet') &&
+  src.includes('async function fileHash') &&
+  src.includes('IDB_STORE_SCAN');
+
 function replaceOnce(needle, replacement, label) {
   if (!src.includes(needle)) {
     throw new Error(`[word-extractor-freeze-patch] Missing anchor: ${label}`);
   }
   src = src.replace(needle, replacement);
 }
+
+if (_superseded) {
+  console.log('[word-extractor-freeze-patch] superseded — current file already wires worker+IDB scan/extract; no-op');
+} else {
 
 if (!src.includes('fileHash: null,')) {
   replaceOnce(
@@ -218,3 +234,4 @@ if (src.includes(resetNeedle) && !src.includes('  _state.fileHash = null;\n  _st
 }
 
 writeFileSync(TARGET, src, 'utf8');
+} // end of !_superseded

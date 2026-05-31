@@ -315,15 +315,37 @@ async function postDocx(endpoints, file, params = {}, onProgress) {
   throw new Error(errors.filter(Boolean).join("\n") || "Server DOCX API failed.");
 }
 
+// משה 2026-05-31: סביבת dev מקומית (localhost/127.0.0.1) אין לה Worker עם
+// docx_worker_entry; קריאה לשרת תיכשל ב-404 ותציג הודעה מבולגנת.
+// במצב הזה נזרוק שגיאה מסוג LOCAL_DEV_NO_SERVER שהקורא (document_chapter_
+// splitter) מזהה ועובר אוטומטית ל-importWord הרגיל בלי בלבול למשתמש.
+function isLocalDevEnv() {
+  try {
+    const h = (typeof location !== "undefined" ? location.hostname : "") || "";
+    return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
+  } catch { return false; }
+}
+
+export class LocalDevNoServerError extends Error {
+  constructor(msg = "סביבה מקומית — אין Worker DOCX; חוזר לייבוא רגיל") {
+    super(msg);
+    this.name = "LocalDevNoServerError";
+    this.code = "LOCAL_DEV_NO_SERVER";
+  }
+}
+
 export async function importWordChaptersOnServer(file, onProgress) {
+  if (isLocalDevEnv()) throw new LocalDevNoServerError();
   return postDocx(SERVER_IMPORT_ENDPOINTS, file, {}, onProgress);
 }
 
 export async function scanWordChaptersOnServer(file) {
+  if (isLocalDevEnv()) throw new LocalDevNoServerError();
   return postDocx(SERVER_SCAN_ENDPOINTS, file);
 }
 
 export async function extractWordChapterOnServer(file, { level, index }) {
+  if (isLocalDevEnv()) throw new LocalDevNoServerError();
   return postDocx(SERVER_EXTRACT_ENDPOINTS, file, { level, index });
 }
 
