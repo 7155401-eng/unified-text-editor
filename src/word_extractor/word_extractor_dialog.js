@@ -467,9 +467,15 @@ async function onFileChange(ev) {
     renderMeta();
     renderStreamsTable();
     setStatus('');
+    // משה 2026-05-31: chapter_splitter מאזין לזה כדי להריץ סריקת כותרות
+    // אחרי שה-Word Extractor סיים — לא במקביל. בלי האירוע, חתימה (hash)
+    // + העתקת arrayBuffer + worker postMessage חוסמים את ה-main thread,
+    // וה-setTimeout של chapter splitter לא יורה.
+    document.dispatchEvent(new CustomEvent('ravtext:we-scan-done', { detail: { ok: true, file } }));
   } catch (e) {
     console.error('[word_extractor] scan failed:', e);
     setStatus(`${t('scanFailed')} ${e && e.message ? e.message : e}`, true);
+    document.dispatchEvent(new CustomEvent('ravtext:we-scan-done', { detail: { ok: false, file, error: String(e?.message || e) } }));
   }
 }
 
