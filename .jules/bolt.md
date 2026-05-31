@@ -1,3 +1,7 @@
 ## 2026-05-13 - [style_registry.js Cache Optimization]
 **Learning:** The style registry was repeatedly calling synchronous I/O (`localStorage.getItem`) and expensive parsing (`JSON.parse`) on every element style application, creating a severe bottleneck during dense page renders. Memory caching for static/rarely-changing global configurations is highly effective, but cross-tab synchronization must be handled manually via the `storage` event to prevent stale states in multi-window environments.
 **Action:** When implementing global configuration managers, always use an in-memory cache variable backed by `localStorage` rather than querying `localStorage` continuously. Ensure cache invalidation logic is robust (both local updates and cross-tab `storage` events).
+
+## 2026-05-31 - [Layout Engine Selectors Optimization]
+**Learning:** Including line-level elements (like `.v9-line`) in layout engine intersection checks (`querySelectorAll`) triggers massive O(n²) bounding box comparisons across thousands of lines per page. Since lines are already contained within structural blocks (`.stream`, `.talmud-main`, etc.), checking overlap at the line level is both redundant and causes false positives due to line-height vs bounding-box discrepancies.
+**Action:** When calculating element overlaps in the layout engine, target specific structural classes and strictly exclude line-level elements to prevent severe performance regressions in O(n²) loops.

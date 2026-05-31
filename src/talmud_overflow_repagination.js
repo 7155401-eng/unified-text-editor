@@ -1049,7 +1049,8 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
           let ov = p.scrollHeight - p.clientHeight;
           const pageRect = p.getBoundingClientRect();
 
-          const streamsAndMain = Array.from(p.querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right, .v9-line'));
+          // ⚡ Bolt: Excluded line-level elements (e.g. .v9-line) to avoid O(n²) bounding box comparisons and false positives, yielding a massive speed boost on dense pages.
+          const streamsAndMain = Array.from(p.querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right'));
           const rects = streamsAndMain.map(el => ({ el, rect: el.getBoundingClientRect() }));
 
           rects.forEach(({ rect }) => {
@@ -1100,7 +1101,8 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
           let ov = pages[i].scrollHeight - pages[i].clientHeight;
           const pageRect = pages[i].getBoundingClientRect();
 
-          const streamsAndMain = Array.from(pages[i].querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right, .v9-line'));
+          // ⚡ Bolt: Excluded line-level elements (e.g. .v9-line) to avoid O(n²) bounding box comparisons and false positives, yielding a massive speed boost on dense pages.
+          const streamsAndMain = Array.from(pages[i].querySelectorAll('.talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right'));
           const rects = streamsAndMain.map(el => ({ el, rect: el.getBoundingClientRect() }));
 
           rects.forEach(({ rect }) => {
