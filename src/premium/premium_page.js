@@ -240,6 +240,13 @@ function buildOverlay(opts = {}) {
   hero.appendChild(trustRow);
   sheet.appendChild(hero);
 
+  const moneyBanner = el("div", { cls: "rt-prem-money-banner" });
+  moneyBanner.innerHTML = `
+    <div class="rt-prem-money-banner-title">לאן הכסף שלך הולך?</div>
+    <div class="rt-prem-money-banner-body">כל הכסף בשלב זה הולך מאה אחוז להוצאות הפיתוח!</div>
+  `;
+  sheet.appendChild(moneyBanner);
+
   if (customPkg) {
     // משה 2026-05-10: מוד "חבילת בדיקה" — מציגים רק את החבילה הייעודית
     // ולא את התוכניות הציבוריות. שאר העמוד נשאר זהה (אמון, נימוקים, פוטר).
