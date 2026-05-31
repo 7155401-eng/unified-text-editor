@@ -11,7 +11,6 @@ import { buildDefaultStreamMapping } from "./word_extractor/word_extractor_strea
 import {
   extractWordChapterOnServer,
   importWordChaptersOnServer,
-  LocalDevNoServerError,
   normalizeServerScanState,
   serverLog,
 } from "./chapter_cache/chapter_server_api.js";
@@ -734,14 +733,6 @@ async function scanFile(fileObj, thisToken) {
   } catch (e) {
     stopTicker();
     if (thisToken !== token) return;
-    // משה 2026-05-31: סביבה מקומית אין לה Worker → במקום הודעת 404 מבולגנת
-    // נציג הסבר ברור ונפנה את המשתמש לכלי "ייבוא מוורד עם זרמים מלאים"
-    // (data-cmd=word-import-streams) שעובד לחלוטין בדפדפן בלי שרת.
-    if (e instanceof LocalDevNoServerError || e?.code === "LOCAL_DEV_NO_SERVER") {
-      removeCard();
-      const card = errorCard("פיצול לפרקים דורש שרת ולא זמין בסביבה מקומית. השתמש בכלי \"ייבוא מוורד עם זרמים מלאים\" בטאב קובץ — הוא עובד מקומית מלא.");
-      return;
-    }
     errorCard(`${e?.message || String(e)} · לאחר ${elapsed()}`);
   }
 }

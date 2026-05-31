@@ -316,9 +316,9 @@ async function postDocx(endpoints, file, params = {}, onProgress) {
 }
 
 // משה 2026-05-31: סביבת dev מקומית (localhost/127.0.0.1) אין לה Worker עם
-// docx_worker_entry; קריאה לשרת תיכשל ב-404 ותציג הודעה מבולגנת.
-// במצב הזה נזרוק שגיאה מסוג LOCAL_DEV_NO_SERVER שהקורא (document_chapter_
-// splitter) מזהה ועובר אוטומטית ל-importWord הרגיל בלי בלבול למשתמש.
+// docx_worker_entry; קריאה לשרת תיכשל ב-404. במקום זה נריץ סריקה מקומית
+// בדפדפן (chapter_local_scan.js) שמחזירה בדיוק את אותו פורמט שהשרת מחזיר.
+// כך פיצול לפרקים עובד מקצה לקצה ב-localhost בלי שינוי ב-flow הקיים.
 function isLocalDevEnv() {
   try {
     const h = (typeof location !== "undefined" ? location.hostname : "") || "";
@@ -326,8 +326,9 @@ function isLocalDevEnv() {
   } catch { return false; }
 }
 
+// נשמר לתאימות אחורה — קוד קיים עוד יבדוק instanceof.
 export class LocalDevNoServerError extends Error {
-  constructor(msg = "סביבה מקומית — אין Worker DOCX; חוזר לייבוא רגיל") {
+  constructor(msg = "סביבה מקומית — אין Worker DOCX") {
     super(msg);
     this.name = "LocalDevNoServerError";
     this.code = "LOCAL_DEV_NO_SERVER";
@@ -335,17 +336,26 @@ export class LocalDevNoServerError extends Error {
 }
 
 export async function importWordChaptersOnServer(file, onProgress) {
-  if (isLocalDevEnv()) throw new LocalDevNoServerError();
+  if (isLocalDevEnv()) {
+    const { scanWordChaptersLocally } = await import("./chapter_local_scan.js");
+    return scanWordChaptersLocally(file, onProgress);
+  }
   return postDocx(SERVER_IMPORT_ENDPOINTS, file, {}, onProgress);
 }
 
 export async function scanWordChaptersOnServer(file) {
-  if (isLocalDevEnv()) throw new LocalDevNoServerError();
+  if (isLocalDevEnv()) {
+    const { scanWordChaptersLocally } = await import("./chapter_local_scan.js");
+    return scanWordChaptersLocally(file);
+  }
   return postDocx(SERVER_SCAN_ENDPOINTS, file);
 }
 
 export async function extractWordChapterOnServer(file, { level, index }) {
-  if (isLocalDevEnv()) throw new LocalDevNoServerError();
+  if (isLocalDevEnv()) {
+    const { extractWordChapterLocally } = await import("./chapter_local_scan.js");
+    return extractWordChapterLocally(file, { level, index });
+  }
   return postDocx(SERVER_EXTRACT_ENDPOINTS, file, { level, index });
 }
 
