@@ -177,7 +177,7 @@ const GLOBAL_OVERRIDE_DEFS = {
   opwTarget: { label: "מילה פותחת: יעד", type: "select", value: "word", options: [["word", "מילה"], ["letter", "אות"], ["words", "מילים"]] },
   opwCount: { label: "מילה פותחת: N", type: "number", value: 1, min: 1, max: 12, step: 1 },
   opwStyle: { label: "מילה פותחת: סגנון", type: "text", value: "" },
-  opwSize: { label: "מילה פותחת: גודל%", type: "number", value: 135, min: 80, max: 500, step: 1 },
+  opwSize: { label: "מילה פותחת: גודל%", type: "number", value: 115, min: 80, max: 500, step: 1 },
   opwFont: { label: "מילה פותחת: גופן", type: "text", value: "David" },
   opwWeight: { label: "מילה פותחת: משקל", type: "select", value: "bold", options: [["normal", "רגיל"], ["bold", "מודגש"], ["heavy", "כבד"]] },
   opwPosition: { label: "מילה פותחת: מיקום", type: "select", value: "dropped", options: [["raised", "מוגבהת"], ["dropped", "נפתחת"]] },
@@ -1021,9 +1021,9 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     opwSizeInput.type = "number";
     opwSizeInput.min = "80";
     opwSizeInput.max = "500";
-    opwSizeInput.value = cur.opwSize || 135;
+    opwSizeInput.value = cur.opwSize || 115;
     opwSizeInput.addEventListener("change", () => {
-      cur.opwSize = Math.max(80, Math.min(500, parseInt(opwSizeInput.value, 10) || 135));
+      cur.opwSize = Math.max(80, Math.min(500, parseInt(opwSizeInput.value, 10) || 115));
       opwSizeInput.value = cur.opwSize;
       commitRender();
     });
