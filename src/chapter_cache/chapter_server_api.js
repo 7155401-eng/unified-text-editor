@@ -1,6 +1,7 @@
 const SERVER_IMPORT_ENDPOINTS = ["/api/ravtext-docx-import", "/api/word-chapters-import", "/api/word-chapters/import"];
 const SERVER_SCAN_ENDPOINTS = ["/api/word-chapters-scan", "/api/word-chapters/scan"];
 const SERVER_EXTRACT_ENDPOINTS = ["/api/word-chapters-extract", "/api/word-chapters/extract"];
+const SERVER_STREAMS_SCAN_ENDPOINTS = ["/api/word-streams-scan"];
 
 function canUseServerApi(file) {
   return typeof fetch === "function" && !!file && typeof file.arrayBuffer === "function";
@@ -126,6 +127,15 @@ function logDocxApi(level, payload) {
   } catch {}
 }
 
+export function serverLog(event, data = {}) {
+  try {
+    const payload = JSON.stringify({ event, ts: Date.now(), ...data });
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      navigator.sendBeacon("/api/client-log", new Blob([payload], { type: "application/json" }));
+    }
+  } catch {}
+}
+
 function formatFailure({ url, id, response, headers, text, elapsedMs, probe }) {
   const parts = [
     `Server DOCX API ${url} failed with ${response.status} ${response.statusText || ""}`.trim(),
@@ -139,11 +149,49 @@ function formatFailure({ url, id, response, headers, text, elapsedMs, probe }) {
   return parts.join(" | ");
 }
 
-async function docxBody(file) {
-  return file.arrayBuffer();
+function bufToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+  }
+  return btoa(binary);
 }
 
-async function postDocx(endpoints, file, params = {}) {
+async function docxBody(file) {
+  const buf = await file.arrayBuffer();
+  return JSON.stringify({ docx: bufToBase64(buf) });
+}
+
+function xhrPost(url, jsonBody, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total > 0) {
+          onProgress({ stage: "upload", pct: Math.round(e.loaded / e.total * 100), loaded: e.loaded, total: e.total });
+        }
+      };
+      xhr.upload.onload = () => onProgress({ stage: "processing" });
+    }
+    xhr.timeout = 55000;
+    xhr.onload = () => resolve({
+      ok: xhr.status >= 200 && xhr.status < 300,
+      status: xhr.status,
+      statusText: xhr.statusText,
+      headers: { get: (k) => xhr.getResponseHeader(k) },
+      text: () => Promise.resolve(xhr.responseText),
+    });
+    xhr.onerror = () => reject(new Error("שגיאת רשת בהעלאת הקובץ"));
+    xhr.ontimeout = () => reject(new Error("השרת לא הגיב תוך 55 שניות (timeout)"));
+    xhr.send(jsonBody);
+  });
+}
+
+async function postDocx(endpoints, file, params = {}, onProgress) {
   if (!canUseServerApi(file)) return null;
 
   const urls = endpointUrls(endpoints).map((url) => appendParams(url, params));
@@ -171,12 +219,7 @@ async function postDocx(endpoints, file, params = {}) {
     });
 
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        body,
-        cache: "no-store",
-        mode: "cors",
-      });
+      const response = await xhrPost(url, body, onProgress);
 
       const elapsedMs = Math.round((performance.now?.() || Date.now()) - started);
       const headers = headersOf(response);
@@ -247,6 +290,18 @@ async function postDocx(endpoints, file, params = {}) {
         words: json?.words ?? null,
       });
 
+      serverLog("browser_received_server_json", {
+        requestId: id,
+        url,
+        elapsedMs,
+        total: json?.total ?? null,
+        chars: json?.chars ?? null,
+        words: json?.words ?? null,
+        heads1: json?.heads?.[1]?.length ?? null,
+        heads2: json?.heads?.[2]?.length ?? null,
+        fileHash: json?.fileHash ?? null,
+      });
+
       return json;
     } catch (error) {
       const elapsedMs = Math.round((performance.now?.() || Date.now()) - started);
@@ -260,8 +315,8 @@ async function postDocx(endpoints, file, params = {}) {
   throw new Error(errors.filter(Boolean).join("\n") || "Server DOCX API failed.");
 }
 
-export async function importWordChaptersOnServer(file) {
-  return postDocx(SERVER_IMPORT_ENDPOINTS, file);
+export async function importWordChaptersOnServer(file, onProgress) {
+  return postDocx(SERVER_IMPORT_ENDPOINTS, file, {}, onProgress);
 }
 
 export async function scanWordChaptersOnServer(file) {
@@ -290,6 +345,16 @@ export async function tryServerExtractWordChapter(file, { level, index }) {
   }
 }
 
+export async function tryServerScanNoteSources(file) {
+  try {
+    const result = await postDocx(SERVER_STREAMS_SCAN_ENDPOINTS, file);
+    if (result?.ok && Array.isArray(result.sources)) return result.sources;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeServerScanState(serverScan, file) {
   if (!serverScan?.serverSide) return null;
   return {
@@ -302,6 +367,5 @@ export function normalizeServerScanState(serverScan, file) {
     total: serverScan.total || 0,
     chars: serverScan.chars || 0,
     words: serverScan.words || 0,
-    partsMeta: serverScan.partsMeta || [],
   };
 }

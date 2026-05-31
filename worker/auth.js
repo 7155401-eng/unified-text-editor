@@ -11,6 +11,9 @@ export async function handleAuth(request, env, url) {
   if (url.pathname === '/api/auth/login' || url.pathname === '/api/auth/go') {
     return startLogin(env, url);
   }
+  if (url.pathname === '/api/auth/start-url' && request.method === 'POST') {
+    return startLoginJson(env, url);
+  }
   if (url.pathname === '/api/auth/callback') {
     return handleCallback(request, env, url);
   }
@@ -20,12 +23,7 @@ export async function handleAuth(request, env, url) {
   return new Response('Not found', { status: 404 });
 }
 
-function startLogin(env, url) {
-  if (!env.GOOGLE_CLIENT_ID) {
-    return new Response('Google OAuth not configured yet', { status: 503 });
-  }
-  // Preserve the post-login destination via the OAuth `state` parameter so the
-  // callback knows where to send the user (e.g., back to the premium overlay).
+function buildGoogleAuthUrl(env, url) {
   const next = url.searchParams.get('next') || '/';
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/';
   const params = new URLSearchParams({
@@ -37,13 +35,33 @@ function startLogin(env, url) {
     prompt: 'select_account',
     state: safeNext,
   });
-  return Response.redirect(`${GOOGLE_AUTH_URL}?${params}`, 302);
+  return `${GOOGLE_AUTH_URL}?${params}`;
+}
+
+function startLogin(env, url) {
+  if (!env.GOOGLE_CLIENT_ID) {
+    return new Response('Google OAuth not configured yet', { status: 503 });
+  }
+  return new Response(null, {
+    status: 302,
+    headers: { location: buildGoogleAuthUrl(env, url), 'cache-control': 'no-store' },
+  });
+}
+
+function startLoginJson(env, url) {
+  if (!env.GOOGLE_CLIENT_ID) {
+    return Response.json({ error: 'not_configured' }, { status: 503, headers: { 'cache-control': 'no-store' } });
+  }
+  return Response.json(
+    { url: buildGoogleAuthUrl(env, url) },
+    { headers: { 'cache-control': 'no-store, private', 'pragma': 'no-cache' } }
+  );
 }
 
 async function handleCallback(request, env, url) {
   const code = url.searchParams.get('code');
   if (!code) {
-    return Response.redirect(`${url.origin}/?login=cancelled`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=cancelled`, 'cache-control': 'no-store' } });
   }
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
     return new Response('Google OAuth not configured yet', { status: 503 });
@@ -61,23 +79,23 @@ async function handleCallback(request, env, url) {
     }),
   });
   if (!tokenRes.ok) {
-    return Response.redirect(`${url.origin}/?login=token_error`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=token_error`, 'cache-control': 'no-store' } });
   }
   const { access_token } = await tokenRes.json();
   if (!access_token) {
-    return Response.redirect(`${url.origin}/?login=no_token`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=no_token`, 'cache-control': 'no-store' } });
   }
 
   const infoRes = await fetch(GOOGLE_USERINFO_URL, {
     headers: { authorization: `Bearer ${access_token}` },
   });
   if (!infoRes.ok) {
-    return Response.redirect(`${url.origin}/?login=info_error`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=info_error`, 'cache-control': 'no-store' } });
   }
   const info = await infoRes.json();
   const email = (info.email || '').toLowerCase().trim();
   if (!email || info.email_verified === false) {
-    return Response.redirect(`${url.origin}/?login=no_email`, 302);
+    return new Response(null, { status: 302, headers: { location: `${url.origin}/?login=no_email`, 'cache-control': 'no-store' } });
   }
   // משה 2026-05-10: שומרים שם פרטי + משפחה מ-Google userinfo כדי לשלוח אותם
   // ליעד שריג כ-ClientName/ClientLName. בלי זה יעד שריג דוחים עם שגיאה 401.
@@ -112,13 +130,14 @@ async function handleCallback(request, env, url) {
   const cookie = await buildSessionCookie(email, env);
   const isPaid = row.status === 'active' && (!row.expires_at || row.expires_at >= nowSec);
   const stateNext = url.searchParams.get('state');
-  const safeNext = stateNext && stateNext.startsWith('/') && !stateNext.startsWith('//') ? stateNext : null;
-  const dest = safeNext || (isPaid ? '/' : '/?login=demo');
+  const safeNext = stateNext && stateNext.startsWith('/') && !stateNext.startsWith('//') && stateNext !== '/' ? stateNext : null;
+  const dest = safeNext ? safeNext : (isPaid ? '/' : '/?login=demo');
   return new Response(null, {
     status: 302,
     headers: {
       'set-cookie': cookie,
       location: `${url.origin}${dest}`,
+      'cache-control': 'no-store',
     },
   });
 }
@@ -129,6 +148,7 @@ function logout(url) {
     headers: {
       'set-cookie': buildClearCookie(),
       location: `${url.origin}/`,
+      'cache-control': 'no-store',
     },
   });
 }

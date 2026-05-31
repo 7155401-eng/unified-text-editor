@@ -80,6 +80,7 @@ import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_tra
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
+import { openStylesIODialog } from "./styles_io.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 try {
@@ -1750,6 +1751,10 @@ document.addEventListener("click", async (ev) => {
       if (!tryUseTool("word-export", "ייצוא לוורד")) break;
       exportWord(paneManager);
       trackUsage("export", { format: "docx" });
+      break;
+    }
+    case "styles-io": {
+      openStylesIODialog();
       break;
     }
 

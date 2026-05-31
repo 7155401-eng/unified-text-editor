@@ -147,20 +147,35 @@ function documentBodyXml(xml) {
 
 function bodyParts(bodyXml, styles) {
   const parts = [];
-  const partsMeta = [];
   const allText = [];
-  const re = /<w:p\b[\s\S]*?<\/w:p>|<w:tbl\b[\s\S]*?<\/w:tbl>|<w:sectPr\b[\s\S]*?<\/w:sectPr>/g;
-  let match;
-  while ((match = re.exec(String(bodyXml || "")))) {
-    const xml = match[0];
-    const isParagraph = /^<w:p\b/.test(xml);
-    const text = isParagraph ? paragraphText(xml) : "";
-    const level = isParagraph ? levelOfParagraph(xml, styles) : 0;
+  const xml = String(bodyXml || "");
+  let pos = 0;
+
+  while (pos < xml.length) {
+    // Find next <w:p> or <w:p  (not <w:pPr etc.)
+    let start = -1;
+    let sp = pos;
+    while (sp < xml.length) {
+      const idx = xml.indexOf("<w:p", sp);
+      if (idx < 0) { sp = xml.length; break; }
+      const ch = xml.charCodeAt(idx + 4);
+      if (ch === 32 || ch === 62) { start = idx; break; } // ' ' or '>'
+      sp = idx + 4;
+    }
+    if (start < 0) break;
+
+    const end = xml.indexOf("</w:p>", start);
+    if (end < 0) break;
+
+    const pXml = xml.slice(start, end + 6);
+    const text = paragraphText(pXml);
+    const level = levelOfParagraph(pXml, styles);
     if (text) allText.push(text);
     parts.push({ text, level });
-    partsMeta.push({ text, level });
+    pos = end + 6;
   }
-  return { parts, partsMeta, allText };
+
+  return { parts, partsMeta: parts, allText };
 }
 
 async function sha256Hex(arrayBuffer) {
@@ -177,8 +192,6 @@ async function importDocx(arrayBuffer, id) {
   }
 
   const started = Date.now();
-  log("log", "docx_zip_load_start", { requestId: id, bytes: arrayBuffer.byteLength });
-
   const zip = await JSZip.loadAsync(arrayBuffer);
   const docFile = zip.file("word/document.xml");
   if (!docFile) throw new Error("לא נמצא word/document.xml.");
@@ -190,39 +203,60 @@ async function importDocx(arrayBuffer, id) {
 
   const styles = parseStyles(stylesXml || "");
   const bodyXml = documentBodyXml(docXml);
-  const { parts, partsMeta, allText } = bodyParts(bodyXml, styles);
 
+  // Heading-only scan: skip full parsing for non-heading paragraphs
   const h = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
   const heads = { 1: [], 2: [] };
+  let pos = 0;
+  let partIndex = 0;
 
-  for (let index = 0; index < parts.length; index += 1) {
-    const part = parts[index];
-    if (!part.text?.trim() || part.level < 1 || part.level > 6) continue;
-    h[part.level] += 1;
-    if (part.level === 1 || part.level === 2) {
-      heads[part.level].push({ title: part.text.trim(), start: index });
+  while (pos < bodyXml.length) {
+    let start = -1, sp = pos;
+    while (sp < bodyXml.length) {
+      const idx = bodyXml.indexOf("<w:p", sp);
+      if (idx < 0) { sp = bodyXml.length; break; }
+      const ch = bodyXml.charCodeAt(idx + 4);
+      if (ch === 32 || ch === 62) { start = idx; break; }
+      sp = idx + 4;
     }
+    if (start < 0) break;
+
+    const end = bodyXml.indexOf("</w:p>", start);
+    if (end < 0) break;
+
+    // Only fully parse paragraphs that have a style or outline hint
+    const hasStyle = bodyXml.indexOf("<w:pStyle", start) >= start && bodyXml.indexOf("<w:pStyle", start) < end;
+    const hasOutline = bodyXml.indexOf("<w:outlineLvl", start) >= start && bodyXml.indexOf("<w:outlineLvl", start) < end;
+
+    if (hasStyle || hasOutline) {
+      const pXml = bodyXml.slice(start, end + 6);
+      const level = levelOfParagraph(pXml, styles);
+      if (level >= 1 && level <= 6) {
+        h[level] = (h[level] || 0) + 1;
+        if (level === 1 || level === 2) {
+          const text = paragraphText(pXml);
+          if (text.trim()) heads[level].push({ title: text.trim(), start: partIndex });
+        }
+      }
+    }
+
+    partIndex++;
+    pos = end + 6;
   }
 
-  const full = allText.join("\n");
-  const fileHash = await sha256Hex(arrayBuffer);
+  // Fast char count: single regex pass over all <w:t> text nodes
+  let chars = 0;
+  const textRe = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+  let m;
+  while ((m = textRe.exec(bodyXml))) chars += xmlDecode(m[1]).length;
 
-  const diagnostics = {
-    service: SERVICE,
-    version: VERSION,
-    bytes: arrayBuffer.byteLength,
-    partCount: parts.length,
-    elapsedMs: Date.now() - started,
-  };
+  const fileHash = await sha256Hex(arrayBuffer);
+  const elapsedMs = Date.now() - started;
 
   log("log", "docx_import_success", {
-    requestId: id,
-    bytes: arrayBuffer.byteLength,
-    partCount: parts.length,
-    headingCounts: h,
-    chars: full.length,
-    words: countWords(full),
-    elapsedMs: diagnostics.elapsedMs,
+    requestId: id, bytes: arrayBuffer.byteLength,
+    heads1: heads[1].length, heads2: heads[2].length,
+    chars, elapsedMs,
   });
 
   return {
@@ -234,10 +268,9 @@ async function importDocx(arrayBuffer, id) {
     h,
     heads,
     total: Object.values(h).reduce((a, b) => a + b, 0),
-    chars: full.length,
-    words: countWords(full),
-    partsMeta,
-    diagnostics,
+    chars,
+    words: Math.round(chars / 5),
+    diagnostics: { service: SERVICE, version: VERSION, bytes: arrayBuffer.byteLength, elapsedMs },
   };
 }
 
@@ -318,6 +351,153 @@ async function extractChapterContent(arrayBuffer, level, index, id) {
   };
 }
 
+const INIT_TABLE_SQL = `CREATE TABLE IF NOT EXISTS worker_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  level TEXT NOT NULL DEFAULT 'info',
+  event TEXT NOT NULL,
+  data TEXT
+)`;
+let _dbReady = false;
+
+async function dbLog(env, ctx, level, event, data) {
+  if (!env?.DB) return;
+  const run = async () => {
+    try {
+      if (!_dbReady) {
+        await env.DB.prepare(INIT_TABLE_SQL).run();
+        _dbReady = true;
+      }
+      const payload = JSON.stringify(data || {});
+      await env.DB.prepare(
+        'INSERT INTO worker_logs (ts, level, event, data) VALUES (?, ?, ?, ?)'
+      ).bind(Date.now(), level, event, payload).run();
+    } catch { _dbReady = false; }
+  };
+  if (ctx?.waitUntil) ctx.waitUntil(run());
+  else run().catch(() => {});
+}
+
+const ICON_MAP = {
+  footnote: '\u{1F4DD} שוליים',
+  endnote: '\u{1F4CB} סיום',
+  comment: '\u{1F4AC} בלון',
+};
+
+async function scanNoteSources(arrayBuffer, id) {
+  if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error("לא התקבל קובץ DOCX.");
+  if (arrayBuffer.byteLength > MAX_DOCX_BYTES) {
+    const err = new Error(`DOCX גדול מדי. מגבלה: ${MAX_DOCX_BYTES} bytes.`);
+    err.status = 413;
+    throw err;
+  }
+
+  const started = Date.now();
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const sources = [];
+
+  function noteText(innerXml) {
+    const out = [];
+    const re = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g;
+    let m;
+    while ((m = re.exec(String(innerXml || "")))) out.push(xmlDecode(m[1]));
+    return out.join('');
+  }
+
+  async function scanNoteFile(xmlFileName, noteTag, srcType, heb, positiveOnly) {
+    const local = [];
+    try {
+      const zf = zip.file(xmlFileName);
+      if (!zf) return local;
+      const xml = await zf.async("string");
+      const markers = {};
+      let unmarked = 0;
+      const noteRe = new RegExp(`<w:${noteTag}\\b([^>]*)>([\\s\\S]*?)<\\/w:${noteTag}>`, 'g');
+      let match;
+      while ((match = noteRe.exec(xml)) !== null) {
+        const attrs = match[1];
+        const inner = match[2];
+        const idM = attrs.match(/\bw:id="([^"]*)"/);
+        if (!idM) continue;
+        const idVal = parseInt(idM[1], 10);
+        if (Number.isNaN(idVal)) continue;
+        if (positiveOnly ? idVal <= 0 : idVal < 0) continue;
+        if (/\bw:type="(?:separator|continuationSeparator)"/.test(attrs)) continue;
+        const text = noteText(inner);
+        const m2 = text.match(/@(\d+)/);
+        if (m2) markers[m2[1]] = (markers[m2[1]] || 0) + 1;
+        else unmarked++;
+      }
+      for (const m of Object.keys(markers).sort((a, b) => +a - +b)) {
+        local.push({ id: `${srcType}_@${m}`, source_type: srcType, marker: m, has_at: true, label: `${heb} @${m}`, count: markers[m], icon: ICON_MAP[srcType] || '' });
+      }
+      if (unmarked > 0) {
+        local.push({ id: `${srcType}_none`, source_type: srcType, marker: null, has_at: false, label: `${heb} ללא סימון (${unmarked})`, count: unmarked, icon: ICON_MAP[srcType] || '' });
+      }
+    } catch (e) { /* skip */ }
+    return local;
+  }
+
+  const [fnSrc, enSrc, cmSrc] = await Promise.all([
+    scanNoteFile('word/footnotes.xml', 'footnote', 'footnote', 'שוליים', true),
+    scanNoteFile('word/endnotes.xml', 'endnote', 'endnote', 'סיום', true),
+    scanNoteFile('word/comments.xml', 'comment', 'comment', 'בלון', false),
+  ]);
+  sources.push(...fnSrc, ...enSrc, ...cmSrc);
+
+  try {
+    const docFile = zip.file('word/document.xml');
+    if (docFile) {
+      const docXml = await docFile.async("string");
+      const docMarkers = new Set();
+      const reAll = /@(\d+)/g;
+      let mm;
+      while ((mm = reAll.exec(docXml)) !== null) docMarkers.add(mm[1]);
+      const exist = new Set(sources.filter(s => s.marker).map(s => s.marker));
+      for (const m of Array.from(docMarkers).filter(x => !exist.has(x)).sort((a, b) => +a - +b)) {
+        const c = (docXml.match(new RegExp('@' + m, 'g')) || []).length;
+        sources.push({ id: `inline_@${m}`, source_type: 'footnote', marker: m, has_at: true, label: `inline @${m}`, count: c, icon: ICON_MAP.footnote });
+      }
+    }
+  } catch (e) { /* */ }
+
+  log("log", "streams_scan_success", { requestId: id, bytes: arrayBuffer.byteLength, sources: sources.length, elapsedMs: Date.now() - started });
+  return { ok: true, serverSide: true, requestId: id, sources };
+}
+
+function isStreamsScanPath(path) {
+  return path === '/api/word-streams-scan';
+}
+
+async function handleStreamsScan(request, env, ctx) {
+  const id = request.headers.get("x-docx-request-id") || requestId();
+  if (request.method === "OPTIONS") return optionsResponse(id);
+  if (request.method !== "POST") return jsonResponse({ ok: false, error: "Method not allowed" }, 405, id);
+  try {
+    let arrayBuffer;
+    const ct = (request.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const json = await request.json();
+      if (!json?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
+      const raw = atob(json.docx);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      arrayBuffer = bytes.buffer;
+    } else {
+      arrayBuffer = await request.arrayBuffer();
+    }
+    log("log", "streams_scan_body_loaded", { requestId: id, bytes: arrayBuffer.byteLength });
+    dbLog(env, ctx, "info", "streams_scan_start", { requestId: id, bytes: arrayBuffer.byteLength });
+    const result = await scanNoteSources(arrayBuffer, id);
+    dbLog(env, ctx, "info", "streams_scan_success", { requestId: id, sources: result.sources?.length ?? 0 });
+    return jsonResponse({ ...result, scannedAt: Date.now() }, 200, id);
+  } catch (error) {
+    log("error", "streams_scan_failed", { requestId: id, error: error?.message || String(error) });
+    dbLog(env, ctx, "error", "streams_scan_failed", { requestId: id, error: error?.message || String(error) });
+    return jsonResponse({ ok: false, serverSide: true, requestId: id, error: error?.message || String(error || "Server error") }, error?.status || 500, id);
+  }
+}
+
 function isDocxImportPath(path) {
   return path === "/api/ravtext-docx-import" ||
     path === "/api/word-chapters-import" ||
@@ -330,7 +510,26 @@ function isDocxExtractPath(path) {
   return path === "/api/word-chapters-extract" || path === "/api/word-chapters/extract";
 }
 
-async function handleDocxApi(request) {
+function isClientLogPath(path) {
+  return path === "/api/client-log";
+}
+
+async function handleClientLog(request, env, ctx) {
+  const id = request.headers.get("x-docx-request-id") || requestId();
+  if (request.method === "OPTIONS") return optionsResponse(id);
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "Method not allowed" }, 405, id);
+  }
+  try {
+    const body = await request.json().catch(() => ({}));
+    const payload = { source: "browser", requestId: id, ...body };
+    log("log", "client_log", payload);
+    dbLog(env, ctx, "info", body.event || "client_log", payload);
+  } catch {}
+  return jsonResponse({ ok: true }, 200, id);
+}
+
+async function handleDocxApi(request, env, ctx) {
   const id = request.headers.get("x-docx-request-id") || requestId();
   const url = new URL(request.url);
 
@@ -361,17 +560,31 @@ async function handleDocxApi(request) {
   }
 
   try {
-    const arrayBuffer = await request.arrayBuffer();
+    let arrayBuffer;
+    const ct = (request.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("application/json")) {
+      const json = await request.json();
+      if (!json?.docx) throw Object.assign(new Error("JSON body missing 'docx' field."), { status: 400 });
+      const raw = atob(json.docx);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      arrayBuffer = bytes.buffer;
+    } else {
+      arrayBuffer = await request.arrayBuffer();
+    }
     log("log", "request_body_loaded", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
+    dbLog(env, ctx, "info", "docx_request_start", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
 
     if (isDocxExtractPath(url.pathname)) {
       const level = url.searchParams.get("level");
       const index = url.searchParams.get("index");
       const extracted = await extractChapterContent(arrayBuffer, level, index, id);
+      dbLog(env, ctx, "info", "docx_extract_success", { requestId: id, title: extracted?.title });
       return jsonResponse({ ...extracted, extractedAt: Date.now() }, 200, id);
     }
 
     const imported = await importDocx(arrayBuffer, id);
+    dbLog(env, ctx, "info", "docx_import_success", { requestId: id, heads1: imported?.heads?.[1]?.length, heads2: imported?.heads?.[2]?.length, chars: imported?.chars });
     return jsonResponse({ ...imported, importedAt: Date.now() }, 200, id);
   } catch (error) {
     log("error", "request_failed", {
@@ -380,6 +593,7 @@ async function handleDocxApi(request) {
       error: error?.message || String(error),
       stack: error?.stack || "",
     });
+    dbLog(env, ctx, "error", "docx_request_failed", { requestId: id, path: url.pathname, error: error?.message || String(error) });
     return jsonResponse({
       ok: false,
       serverSide: true,
@@ -390,11 +604,19 @@ async function handleDocxApi(request) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    if (isClientLogPath(url.pathname)) {
+      return handleClientLog(request, env, ctx);
+    }
+
+    if (isStreamsScanPath(url.pathname)) {
+      return handleStreamsScan(request, env, ctx);
+    }
+
     if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
-      return handleDocxApi(request);
+      return handleDocxApi(request, env, ctx);
     }
 
     if (env?.ASSETS?.fetch) {
@@ -405,4 +627,4 @@ export default {
   },
 };
 
-export { handleDocxApi, isDocxImportPath, isDocxExtractPath };
+export { handleDocxApi, isDocxImportPath, isDocxExtractPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };

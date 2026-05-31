@@ -42,7 +42,7 @@ const scanPatch = `  try {
     return;
   }`;
 
-if (!src.includes("מעלה את קובץ Word לשרת לפני עיבוד")) {
+if (!src.includes("importWordChaptersOnServer(fileObj") && !src.includes("scanHeadingsOnlyBrowser")) {
   if (!src.includes(scanNeedle)) {
     throw new Error("document_chapter_splitter: scan loading anchor not found");
   }

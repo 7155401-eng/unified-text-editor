@@ -245,39 +245,64 @@ function getAttrW(el, name) {
   return el.getAttributeNS(WNS, name);
 }
 
+// 2026-05-31: ב-@xmldom/xmldom (shim ל-Web Worker) אין `.children` (HTML-only).
+// fallback ל-childNodes עם סינון לסוג ELEMENT_NODE (1) שומר התנהגות זהה
+// בדפדפן הראשי, ועובד גם ב-worker.
+function _elemChildren(el) {
+  if (!el) return [];
+  if (el.children) return el.children;
+  const out = [];
+  const cn = el.childNodes;
+  if (!cn) return out;
+  for (let i = 0; i < cn.length; i++) {
+    const n = cn[i];
+    if (n && n.nodeType === 1) out.push(n);
+  }
+  return out;
+}
+
 function* iterAll(el) {
-  // pre-order traversal — שווה ערך ל-element.iter() ב-Python.
-  // משתמש ב-stack כדי לשמור סדר preorder יציב.
   if (!el) return;
   const stack = [el];
   while (stack.length) {
     const cur = stack.pop();
     yield cur;
-    const children = cur.children || [];
-    // push reverse — pop will yield in document order
+    const children = _elemChildren(cur);
     for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
   }
 }
 
 // findall שווה ערך ל-`.//{ns}tag`
+// 2026-05-31: הוספת fallback ל-getElementsByTagName('w:tag') — ב-Web Worker
+// (Chrome) ה-DOMParser לא תמיד מכבד namespaces, ו-getElementsByTagNameNS
+// מחזיר 0 גם כשהאלמנטים קיימים. זה גרם ל-find_all_note_sources להחזיר 0
+// הערות שוליים מאז שהסריקה הועברה ל-worker. ה-NS lookup עדיין מנסה קודם,
+// אז בכל סביבה שעובדת ההתנהגות זהה לחלוטין.
 function findAll(root, tag) {
-  if (!root || !root.getElementsByTagNameNS) return [];
-  return Array.from(root.getElementsByTagNameNS(WNS, tag));
+  if (!root) return [];
+  if (root.getElementsByTagNameNS) {
+    const ns = Array.from(root.getElementsByTagNameNS(WNS, tag));
+    if (ns.length) return ns;
+  }
+  if (root.getElementsByTagName) {
+    return Array.from(root.getElementsByTagName(`w:${tag}`));
+  }
+  return [];
 }
 
 // find direct child
 function findChild(el, tag) {
   if (!el) return null;
-  for (const ch of (el.children || [])) {
+  for (const ch of _elemChildren(el)) {
     if (ch.namespaceURI === WNS && ch.localName === tag) return ch;
   }
   return null;
 }
 
 function findDeep(el, tag) {
-  if (!el || !el.getElementsByTagNameNS) return null;
-  const r = el.getElementsByTagNameNS(WNS, tag);
-  return r.length ? r[0] : null;
+  if (!el) return null;
+  const all = findAll(el, tag);
+  return all.length ? all[0] : null;
 }
 
 function localTag(el) {
@@ -344,7 +369,9 @@ export function _extract_rich_orig(element, ns_w) {
 
 export function _plain(element, ns_w) {
   if (!element) return '';
-  const ts = (element.getElementsByTagNameNS && element.getElementsByTagNameNS(WNS, 't')) || [];
+  // 2026-05-31: findAll מוסיף גם fallback לקידומת w: (ל-Web Worker עם xmldom),
+  // ומחזיר Array — חשוב כי NodeList של xmldom לא תמיד איטרבילי.
+  const ts = findAll(element, 't');
   let s = '';
   for (const t of ts) s += t.textContent || '';
   return s;
@@ -512,10 +539,22 @@ async function _loadDocxZip(input) {
   };
 }
 
+// 2026-05-31: ב-Web Worker של כרום אין DOMParser בכלל (ReferenceError).
+// כל ה-engine נופל ב-_parseXml. הפתרון: לטעון פעם אחת shim @xmldom/xmldom,
+// ולהציבו על globalThis.DOMParser כך שכל הקוראים הסינכרוניים ל-_parseXml
+// ימשיכו לעבוד בלי שינוי. ensureDOMParser נקרא בכל entrypoint async.
+let _domParserShimLoaded = false;
+export async function ensureDOMParser() {
+  if (typeof globalThis.DOMParser !== 'undefined') return;
+  if (_domParserShimLoaded) return;
+  const mod = await import('@xmldom/xmldom');
+  globalThis.DOMParser = mod.DOMParser;
+  _domParserShimLoaded = true;
+}
+
 function _parseXml(s) {
-  // ב-Browser — DOMParser; ב-Node — תלות ב-DOMParser shim.
   if (typeof DOMParser === 'undefined') {
-    throw new Error('DOMParser not available — running outside browser?');
+    throw new Error('DOMParser not available — ensureDOMParser() must be awaited at entrypoint');
   }
   const doc = new DOMParser().parseFromString(s, 'application/xml');
   return doc.documentElement;
@@ -828,6 +867,7 @@ export async function docx_extract_simple(input, selected, opts = {}) {
 // =====================================================================
 
 export async function find_all_note_sources(input) {
+  await ensureDOMParser();
   const zip = await _loadDocxZip(input);
   const sources = [];
 
@@ -1081,7 +1121,7 @@ export async function find_sections_in_docx(input) {
     let current_first = null;
     // direct children w:p of body
     const directPs = [];
-    for (const ch of body.children) {
+    for (const ch of _elemChildren(body)) {
       if (ch.namespaceURI === WNS && ch.localName === 'p') directPs.push(ch);
     }
     for (const para of directPs) {
@@ -1115,7 +1155,7 @@ export async function extract_headers_footers(input) {
         try {
           const root = _parseXml(await zip.read(name));
           let text = '';
-          for (const t of root.getElementsByTagNameNS(WNS, 't')) text += t.textContent || '';
+          for (const t of findAll(root, 't')) text += t.textContent || '';
           text = text.trim();
           if (text) result.header = text;
         } catch (e) { /* */ }
@@ -1124,7 +1164,7 @@ export async function extract_headers_footers(input) {
         try {
           const root = _parseXml(await zip.read(name));
           let text = '';
-          for (const t of root.getElementsByTagNameNS(WNS, 't')) text += t.textContent || '';
+          for (const t of findAll(root, 't')) text += t.textContent || '';
           text = text.trim();
           if (text) result.footer = text;
         } catch (e) { /* */ }

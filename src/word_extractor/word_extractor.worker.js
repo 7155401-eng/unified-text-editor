@@ -1,6 +1,10 @@
 // word_extractor.worker.js
 // Runs the heavy DOCX XML work off the browser main thread.
 // mammoth stays on the main thread because it depends on document APIs.
+//
+// 2026-05-31: ההנחה הקודמת ("DOMParser זמין ב-Chrome 87+") שגויה — DOMParser
+// אינו זמין ב-Web Worker בכרום (ReferenceError). ensureDOMParser טוען shim
+// pure-JS פעם אחת לפני שכל אחת מפונקציות ה-engine רצה.
 
 import {
   find_all_note_sources,
@@ -10,6 +14,7 @@ import {
   find_all_styles_in_docx,
   docx_extract_simple,
   find_all_styles_full,
+  ensureDOMParser,
 } from "./word_extractor_engine.js";
 
 self.onmessage = async (ev) => {
@@ -17,6 +22,7 @@ self.onmessage = async (ev) => {
   const t0 = Date.now();
 
   try {
+    await ensureDOMParser();
     let result = null;
 
     if (type === "scan") {

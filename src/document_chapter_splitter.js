@@ -12,6 +12,7 @@ import {
   extractWordChapterOnServer,
   importWordChaptersOnServer,
   normalizeServerScanState,
+  serverLog,
 } from "./chapter_cache/chapter_server_api.js";
 import {
   computeChapterDocId,
@@ -62,6 +63,7 @@ function norm(value) {
     .trim()
     .toLowerCase();
 }
+
 
 function getModal() {
   return document.getElementById(MODAL_ID);
@@ -117,13 +119,21 @@ function ensureCard() {
   return card;
 }
 
-function loading(message) {
+function loading(message, { pct = null, detail = "" } = {}) {
   const card = ensureCard();
   if (!card) return;
+  const bar = pct != null ? `
+    <div style="margin-top:8px;background:#e2e8f0;border-radius:4px;height:8px">
+      <div style="width:${pct}%;background:#7c3aed;border-radius:4px;height:8px;transition:width .4s"></div>
+    </div>
+    <div style="font-size:11px;color:#7c3aed;margin-top:3px;text-align:start">${pct}%</div>
+  ` : "";
+  const detailHtml = detail ? `<div style="font-size:11px;color:#64748b;margin-top:4px;white-space:pre-line">${esc(detail)}</div>` : "";
   card.innerHTML = `
     <b style="color:#312e81">פרקי הספר</b>
     <div style="font-size:12px;color:#64748b">מנהל פרקים בתוך חלון ייבוא Word.</div>
     <div style="margin-top:8px;color:#475569">${esc(message)}</div>
+    ${bar}${detailHtml}
   `;
 }
 
@@ -294,11 +304,9 @@ function ensureLauncher() {
   ensureFileTabButton();
 }
 
-function ensureFileTabButton() {
-  if (!state || !selectedFile) return;
+function _fileTabButtonBase() {
   const host = $(".source-bottom-toolbar", document);
-  if (!host) return;
-
+  if (!host) return null;
   let button = document.getElementById(FILE_BUTTON_ID);
   if (!button) {
     button = document.createElement("button");
@@ -315,14 +323,84 @@ function ensureFileTabButton() {
       "padding:7px 10px",
       "font-weight:800",
       "cursor:pointer",
+      "transition:border-color .3s,color .3s",
     ].join(";");
     host.appendChild(button);
   }
+  return button;
+}
 
+function updateFileTabButtonProgress(pct) {
+  const host = $(".source-bottom-toolbar", document);
+  if (!host) return;
+  let button = document.getElementById(FILE_BUTTON_ID);
+  if (!button) {
+    button = document.createElement("button");
+    button.id = FILE_BUTTON_ID;
+    button.type = "button";
+    button.dir = "rtl";
+    button.style.cssText = [
+      "margin-inline-start:6px",
+      "border:1px solid #7c3aed",
+      "border-radius:8px",
+      "background:#faf5ff",
+      "color:#312e81",
+      "padding:7px 10px",
+      "font-weight:800",
+      "cursor:default",
+    ].join(";");
+    host.appendChild(button);
+  }
+  button.textContent = pct != null ? `פרקי הספר · מעלה ${pct}%` : "פרקי הספר · מעלה...";
+}
+
+function updateFileTabButtonDone() {
+  const button = _fileTabButtonBase();
+  if (!button) return;
+  const heads = currentHeads();
+  button.dataset.wordChapterManager = "1";
+  button.style.borderColor = "#16a34a";
+  button.style.color = "#166534";
+  button.style.cursor = "pointer";
+  button.textContent = `פרקי הספר ✓ ${fmt(heads.length)} פרקים מוכנים`;
+}
+
+function ensureFileTabButton() {
+  if (!state || !selectedFile) return;
+  const button = _fileTabButtonBase();
+  if (!button) return;
+  button.dataset.wordChapterManager = "1";
   const nextIndex = nextChapterIndex();
   button.textContent = nextIndex >= 0
     ? `פרקי הספר · פרק ${fmt(nextIndex + 1)}`
     : "פרקי הספר";
+}
+
+function showSuccessNotice(headsCount) {
+  const NOTICE_ID = "wh-upload-success-notice";
+  document.getElementById(NOTICE_ID)?.remove();
+  const div = document.createElement("div");
+  div.id = NOTICE_ID;
+  div.dir = "rtl";
+  div.style.cssText = [
+    "position:fixed", "top:72px", "left:50%", "transform:translateX(-50%)",
+    "z-index:2147483600",
+    "background:#ecfdf5", "border:2px solid #16a34a", "border-radius:14px",
+    "padding:18px 24px", "max-width:400px", "width:90%",
+    "box-shadow:0 8px 32px rgba(0,0,0,.18)",
+    "text-align:center", "font-family:inherit",
+  ].join(";");
+  div.innerHTML = `
+    <div style="font-size:26px">✅</div>
+    <div style="font-weight:700;font-size:15px;margin:6px 0;color:#166534">ההעלאה הושלמה בהצלחה!</div>
+    <div style="font-size:13px;color:#166534">נמצאו <b>${fmt(headsCount)}</b> פרקים.</div>
+    <div style="font-size:12px;color:#374151;margin-top:10px;line-height:1.6">
+      חזור לכפתור <b>"פרקי הספר ✓"</b> בטאב ייבוא<br>כדי לבחור ולייבא פרקים.
+    </div>
+    <button onclick="this.parentElement.remove()" style="margin-top:12px;border:1px solid #16a34a;border-radius:8px;background:white;padding:6px 18px;cursor:pointer;color:#166534;font-weight:700">סגור</button>
+  `;
+  document.body.appendChild(div);
+  setTimeout(() => document.getElementById(NOTICE_ID)?.remove(), 9000);
 }
 
 function openChapterManager() {
@@ -417,6 +495,7 @@ function countWords(text) {
   }
 }
 
+
 async function waitForNativeScan(thisToken) {
   const start = Date.now();
   while (thisToken === token && Date.now() - start < 15000) {
@@ -437,130 +516,67 @@ async function loadJsZip() {
   return mod.default || mod;
 }
 
-function splitDocumentXml(xml) {
-  const open = xml.match(/<w:body\b[^>]*>/);
-  const closeIndex = xml.lastIndexOf("</w:body>");
-  if (!open || closeIndex < 0) throw new Error("לא נמצא גוף מסמך Word תקין.");
-  return {
-    prefix: xml.slice(0, open.index + open[0].length),
-    suffix: xml.slice(closeIndex),
-  };
-}
-
+// Extracts a single file from a ZIP ArrayBuffer using the browser's native
+// DecompressionStream (C++, fast) instead of JSZip (pure JS, blocks thread).
+// Returns the file content as a UTF-8 string, or null if not found / unsupported.
 async function scanFile(fileObj, thisToken) {
   if (!fileObj || thisToken !== token) return;
-
+  const sizeMB = ((fileObj.size || 0) / 1048576).toFixed(1);
+  const startedAt = Date.now();
+  let elapsedTimer = null;
+  let lastPct = null;
+  let serverProcessing = false;
+  function elapsed() {
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    return s < 60 ? `${s} שנ'` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+  function stopTicker() { clearInterval(elapsedTimer); elapsedTimer = null; }
   try {
-    loading("מעלה את קובץ Word לשרת לפני עיבוד...");
-    const serverImport = await importWordChaptersOnServer(fileObj);
-
+    loading(`מעלה קובץ לשרת (${sizeMB} MB)...`);
+    updateFileTabButtonProgress(null);
+    elapsedTimer = setInterval(() => {
+      if (thisToken !== token) { stopTicker(); return; }
+      if (serverProcessing) {
+        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+      } else {
+        loading(
+          lastPct != null ? `מעלה לשרת: ${lastPct}%` : `מעלה לשרת (${sizeMB} MB)...`,
+          { pct: lastPct, detail: `זמן: ${elapsed()}` }
+        );
+      }
+    }, 1500);
+    const scanResult = await importWordChaptersOnServer(fileObj, (progress) => {
+      if (thisToken !== token) return;
+      if (progress.stage === "upload") {
+        lastPct = progress.pct;
+        const loadedMB = (progress.loaded / 1048576).toFixed(1);
+        const kbps = Math.round(progress.loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
+        loading(`מעלה לשרת: ${progress.pct}%`, { pct: progress.pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
+        updateFileTabButtonProgress(progress.pct);
+      } else if (progress.stage === "processing") {
+        serverProcessing = true;
+        loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
+        updateFileTabButtonProgress(100);
+      }
+    });
+    stopTicker();
     if (thisToken !== token) return;
-
-    const serverState = normalizeServerScanState(serverImport, fileObj);
-    if (!serverState) {
-      throw new Error("השרת לא החזיר manifest תקין עבור מסמך Word.");
-    }
-
+    const serverState = normalizeServerScanState(scanResult, fileObj);
+    if (!serverState) throw new Error("לא נמצאו כותרות בקובץ.");
     state = serverState;
     selectedLevel = !serverState.heads?.[1]?.length && serverState.heads?.[2]?.length ? 2 : 1;
     chaptersOpen = false;
-    renderCard();
-    ensureLauncher();
-    return;
-  } catch (serverError) {
-    if (thisToken !== token) return;
-    errorCard(serverError?.message || String(serverError));
-    return;
-  }
-  await waitForNativeScan(thisToken);
-  await nextFrame();
-  if (thisToken !== token) return;
-
-  loading("סופר תווים, מילים וכותרות בצורה קלה...");
-  try {
-    const JSZip = await loadJsZip();
-    await nextFrame();
-
-    const zip = await JSZip.loadAsync(await fileObj.arrayBuffer());
-    const docFile = zip.file("word/document.xml");
-    if (!docFile) throw new Error("לא נמצא word/document.xml");
-
-    const [docXml, stylesXml] = await Promise.all([
-      docFile.async("text"),
-      zip.file("word/styles.xml")?.async("text") || Promise.resolve(""),
-    ]);
-    if (thisToken !== token) return;
-
-    const { prefix, suffix } = splitDocumentXml(docXml);
-    const doc = new DOMParser().parseFromString(docXml, "application/xml");
-    const body = firstByLocal(doc, "body");
-    if (!body) throw new Error("לא נמצא גוף מסמך Word.");
-
-    const serializer = new XMLSerializer();
-    const styles = parseStyles(stylesXml || "");
-    const h = { 1:0, 2:0, 3:0, 4:0, 5:0, 6:0 };
-    const heads = { 1:[], 2:[] };
-    const parts = [];
-    const allText = [];
-    let sect = "";
-
-    const direct = Array.from(body.childNodes || []).filter(n => n.nodeType === 1);
-    for (let i = 0; i < direct.length; i += 1) {
-      const node = direct[i];
-      const name = localName(node);
-
-      if (name === "sectPr") {
-        sect = serializer.serializeToString(node);
-        continue;
-      }
-
-      const index = parts.length;
-      let text = "";
-      let level = 0;
-
-      if (name === "p") {
-        text = paragraphText(node);
-        level = levelOf(node, styles);
-        allText.push(text);
-
-        if (text.trim() && level >= 1 && level <= 6) {
-          h[level] += 1;
-          if (level === 1 || level === 2) {
-            heads[level].push({ title: text.trim(), start: index });
-          }
-        }
-      }
-
-      parts.push({ xml: serializer.serializeToString(node), text, level });
-
-      if (i % 250 === 0) await nextFrame();
-      if (thisToken !== token) return;
-    }
-
-    const full = allText.join("\n");
-    state = {
-      JSZip,
-      zip,
-      prefix,
-      suffix,
-      sect,
-      parts,
-      heads,
-      h,
-      total: Object.values(h).reduce((a, b) => a + b, 0),
-      chars: full.length,
-      words: countWords(full),
-      fileName: fileObj.name || "מסמך Word",
-    };
-
-    selectedLevel = !heads[1].length && heads[2].length ? 2 : 1;
-    chaptersOpen = false;
-    renderCard();
+    removeCard();
+    updateFileTabButtonDone();
+    showSuccessNotice(serverState?.heads?.[selectedLevel]?.length ?? serverState?.total ?? 0);
     ensureLauncher();
   } catch (e) {
-    errorCard(e?.message || String(e));
+    stopTicker();
+    if (thisToken !== token) return;
+    errorCard(`${e?.message || String(e)} · לאחר ${elapsed()}`);
   }
 }
+
 
 function buildSelectedSources(sources) {
   const streams = buildDefaultStreamMapping(sources || []).filter(s => s.included !== false);

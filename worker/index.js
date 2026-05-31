@@ -26,7 +26,7 @@ import { handleNikudMerger } from './nikud_merger.js';
 import { handleTextComparePro } from './text_compare_pro.js';
 import { handleSefariaProxy } from './sefaria_proxy.js';
 import { handleMainTextTools } from './main_text_tools.js';
-import { handleDocxApi, isDocxImportPath, isDocxExtractPath } from '../cloudflare/docx_worker_entry.js';
+import { handleDocxApi, isDocxImportPath, isDocxExtractPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath } from '../cloudflare/docx_worker_entry.js';
 
 async function serveAdminPage(request, env) {
   const user = await getUserFromRequest(request, env);
@@ -150,8 +150,28 @@ export default {
       response = await handleSefariaProxy(request, url);
     } else if (url.pathname === '/api/main-text-tools') {
       response = await handleMainTextTools(request);
+    } else if (isClientLogPath(url.pathname)) {
+      response = await handleClientLog(request, env, ctx);
+    } else if (isStreamsScanPath(url.pathname)) {
+      response = await handleStreamsScan(request, env, ctx);
     } else if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
-      response = await handleDocxApi(request);
+      response = await handleDocxApi(request, env, ctx);
+    } else if (url.pathname === '/api/admin/worker-logs') {
+      const user = await getUserFromRequest(request, env);
+      if (!user?.is_admin) {
+        response = new Response('Forbidden', { status: 403, headers: { 'cache-control': 'no-store' } });
+      } else {
+        try {
+          const limit = Math.min(parseInt(url.searchParams.get('limit') || '200', 10), 1000);
+          const since = url.searchParams.get('since') ? parseInt(url.searchParams.get('since'), 10) : 0;
+          const result = await env.DB.prepare(
+            'SELECT id, ts, level, event, data FROM worker_logs WHERE ts > ? ORDER BY ts DESC LIMIT ?'
+          ).bind(since, limit).all();
+          response = Response.json({ ok: true, logs: result.results }, { headers: { 'cache-control': 'no-store' } });
+        } catch (e) {
+          response = Response.json({ ok: false, error: e?.message || String(e) }, { status: 500, headers: { 'cache-control': 'no-store' } });
+        }
+      }
     } else if (url.pathname === '/admin' || url.pathname === '/admin/' || url.pathname === '/admin.html') {
       response = await serveAdminPage(request, env);
       isHtml = response.headers.get('content-type')?.includes('text/html') || response.status < 400;
@@ -206,6 +226,7 @@ export default {
           expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
           balanceSeconds: user?.balance_seconds || 0,
           consoleGuardEnabled,
+          googleClientId: env.GOOGLE_CLIENT_ID || null,
         };
         // צוות האתר 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
         // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י צוות האתר ב-DB).
@@ -222,6 +243,7 @@ export default {
 
         const newHeaders = new Headers(assetResponse.headers);
         newHeaders.delete('content-length');
+        newHeaders.set('cache-control', 'no-store');
 
         response = new Response(injected, {
           status: assetResponse.status,
