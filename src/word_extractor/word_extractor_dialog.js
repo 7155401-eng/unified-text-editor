@@ -772,7 +772,7 @@ async function onConfirm() {
       const css = buildStylesCss(_state.stylesFull || {});
       if (css) injectStylesCss(css);
       const mres = await extractBodyHtmlWithSymbols(
-        _state.zipBuf.slice(0), simpleSelected, { styleMap: dynamicMap }
+        _state.zipBuf.slice(0), simpleSelected, { styleMap: dynamicMap, skipEmptyNotes }
       );
       bodyHtml = mres.html;
     } catch (mammothErr) {
@@ -878,6 +878,19 @@ function plainToHtml(s) {
   if (!lines.length) return '<p></p>';
   return lines.map(l => `<p>${escTxt(l)}</p>`).join('');
 }
+// משה 2026-05-31: אחרי setContent על מסמך גדול, ה-perf-guard ב-stream_mark.js
+// עלול לדלג על סריקה מלאה כש-content.size > 20000. שולחים טרנזקציה ריקה עם
+// forceStreamMarkScan כדי להבטיח שכל הסימונים @NN יתויגו, גם אם ה-guard סבר אחרת.
+function forceStreamMarkRescan(editor) {
+  if (!editor || !editor.state || !editor.view) return;
+  try {
+    const tr = editor.state.tr.setMeta('forceStreamMarkScan', true);
+    editor.view.dispatch(tr);
+  } catch (e) {
+    console.warn('[word_extractor] forceStreamMarkRescan failed:', e);
+  }
+}
+
 function distributeToPanesSimple(result, bodyHtml, mode = 'replace') {
   if (!_state.paneManagerRef) return;
   const pm = _state.paneManagerRef;
@@ -906,6 +919,7 @@ function distributeToPanesSimple(result, bodyHtml, mode = 'replace') {
     } else {
       mainPane.editor.commands.setContent(html);
     }
+    forceStreamMarkRescan(mainPane.editor);
   }
   // משה 2026-05-10: בונים מילון symbol → HTML מ-streamsHtml אם קיים (כדי לשמר bold/italic).
   const htmlBySym = {};
@@ -930,6 +944,7 @@ function distributeToPanesSimple(result, bodyHtml, mode = 'replace') {
       } else {
         pane.editor.commands.setContent(streamHtml);
       }
+      forceStreamMarkRescan(pane.editor);
     }
   }
 }
