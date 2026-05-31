@@ -1019,7 +1019,25 @@ function buildPageObject(mainSegments, streamsMap, totalH) {
  * @param {Object} [geom] — { pageWidth, maxPageHeight }
  * @returns {Array<Object>} pages
  */
-function forwardPack(content, geom = DOM_PAGE_GEOM) {
+// משה 2026-05-31: פיצול עמודים על תוכן ענק (מאות עמודים) חוסם את הדפדפן
+// 30-60 שניות. forwardPack הפך ל-async כדי לתת yield לבראוזר כל ~32 פסקאות,
+// וגם לבדוק isCurrent — אם המשתמש עורך באמצע, אנחנו מבטלים. הופך את שמירת
+// ה-thread גם בפרודקשן (אותו mechanism רץ גם בשרת). אם אין `opts.isCurrent`
+// או אין `requestIdleCallback`, נופלים ל-setTimeout(0).
+const PAGINATION_YIELD_EVERY = 32; // פסקאות
+
+function _packYield(){
+  return new Promise(r => {
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(() => r(), { timeout: 50 });
+    } else {
+      setTimeout(r, 0);
+    }
+  });
+}
+
+async function forwardPack(content, geom = DOM_PAGE_GEOM, packOpts = {}) {
+  const isCurrent = typeof packOpts.isCurrent === 'function' ? packOpts.isCurrent : null;
   const isTalmud = shouldMeasureTalmudLayout();
   const packGeom = isTalmud
     ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - getTalmudHeightSafetyForPage(0)) }
@@ -1381,6 +1399,13 @@ function forwardPack(content, geom = DOM_PAGE_GEOM) {
   }
 
   for (let i = 0; i < content.length; i++) {
+    // משה 2026-05-31: yield לדפדפן כל ~32 פסקאות + בדיקת ביטול אם המשתמש
+    // עורך באמצע רינדור ארוך. בלי זה — pack לוקח 45 שניות סינכרוני על 480
+    // עמודים והדפדפן קופא לחלוטין.
+    if (i > 0 && i % PAGINATION_YIELD_EVERY === 0) {
+      await _packYield();
+      if (isCurrent && !isCurrent()) return pages;
+    }
     const para = content[i];
     let prefix = 0;
 
@@ -1777,7 +1802,7 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
     const effectiveGeom = shouldMeasureMishnaWrap()
       ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - MISHNA_WRAP_HEIGHT_SAFETY) }
       : geom;
-    const pages = forwardPack(content, effectiveGeom);
+    const pages = await forwardPack(content, effectiveGeom, { isCurrent: opts.isCurrent });
     const rebalanceOpts = { ...opts };
     if (typeof rebalanceOpts.maxPasses !== "number") {
       rebalanceOpts.maxPasses = pages.length > 8 ? 1 : 3;
