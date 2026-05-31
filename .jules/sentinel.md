@@ -2,3 +2,8 @@
 **Vulnerability:** XSS vulnerability in `comparator_ui.js` and `comparator_integrated.js` where user-controlled variables (`s.label`, `s.count`, `sym`) were being directly concatenated and inserted into the DOM via `innerHTML` without prior sanitization. This allowed execution of malicious scripts if external documents or localStorage contained injected payloads.
 **Learning:** `innerHTML` concatenations are susceptible to XSS if not properly escaped, specifically because parsed docx files/localStorage configurations can be manipulated.
 **Prevention:** Explicitly use an `escapeHtml()` function to escape essential characters (`&`, `<`, `>`, `"`) before injecting dynamically generated text content into `innerHTML` statements.
+
+## 2025-02-13 - [Prevent XSS in admin UI tools via innerHTML interpolations]
+**Vulnerability:** XSS vulnerability in `apps-script-export-sanitized/Index.html` where dynamically injected arrays (`c.name`, `report.calls_count`, etc.) and variable error strings (`err.message`) were interpolated directly into `innerHTML` concatenations without sanitization. Inlines like `onclick="foo('${val}')"` were also heavily exposed to quote breaking/code injection.
+**Learning:** Hardcoded single-file HTML apps often miss standard templating XSS defenses. Even properties perceived as safe (like numeric variables or specific error strings) should be escaped strictly to maintain defense-in-depth across the boundary.
+**Prevention:** Always implement an inline `escapeHtml()` utility for standalone HTML endpoints and avoid passing unsanitized dynamic interpolations directly to event attributes (`onclick`). Instead, serialize variables through HTML5 data attributes (`data-id`, `data-status`) and read them using `this.dataset.*`.
