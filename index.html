@@ -242,6 +242,121 @@
           } catch(e) { return { ok:false, reason: String(e && e.message || e) }; }
           return { ok:true, imported:n };
         };
+
+        // ייבוא סגנונות מהשרת — כפתור שמופיע רק ב-localhost. פתיחה →
+        // דיאלוג עם הוראות (1-2-3) + שדה העלאה של קובץ JSON שירד מהשרת.
+        // אחרי טעינה: localStorage מתעדכן + רענון אוטומטי כדי שהעורך
+        // יקרא את הסגנונות החדשים.
+        function installStyleImportButton(){
+          if (document.getElementById('btn-import-styles-from-server')) return;
+          var actions = document.querySelector('.app-header-actions');
+          if (!actions) return;
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.id = 'btn-import-styles-from-server';
+          btn.className = 'header-action-btn header-action-btn-icon';
+          btn.title = 'ייבוא סגנונות מהחשבון שלך ב-app.ravtext.com';
+          btn.setAttribute('aria-label', 'ייבא סגנונות מהשרת');
+          btn.innerHTML = '<span class="header-action-icon">📥</span><span class="header-action-text">ייבא סגנונות מהשרת</span>';
+          btn.addEventListener('click', openStyleImportDialog);
+          actions.insertBefore(btn, actions.firstChild);
+        }
+
+        function openStyleImportDialog(){
+          var existing = document.getElementById('style-import-dialog-backdrop');
+          if (existing) existing.remove();
+          var bd = document.createElement('div');
+          bd.id = 'style-import-dialog-backdrop';
+          bd.setAttribute('style', 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99999;display:flex;align-items:center;justify-content:center;');
+          var box = document.createElement('div');
+          box.setAttribute('dir', 'rtl');
+          box.setAttribute('style', 'background:#fff;border-radius:10px;max-width:560px;width:92%;padding:22px 26px;box-shadow:0 8px 40px rgba(0,0,0,.35);font-family:inherit;color:#222;line-height:1.5;');
+          box.innerHTML = (
+            '<h3 style="margin:0 0 12px;font-size:20px;">📥 ייבא סגנונות מהשרת</h3>' +
+            '<p style="margin:0 0 12px;">איך מעבירים את הסגנונות מהחשבון שלך ב-<b>app.ravtext.com</b> לכאן:</p>' +
+            '<ol style="margin:0 0 14px 18px;padding:0;">' +
+            '  <li>פתח את <b>app.ravtext.com</b> בדפדפן הרגיל (במצב מחובר).</li>' +
+            '  <li>לחץ <b>F12</b> → לשונית <b>Console</b>.</li>' +
+            '  <li>הדבק והרץ את הסקריפט הקצר הזה (יקראו בשבילך, ייצא קובץ):</li>' +
+            '</ol>' +
+            '<div style="background:#f2f4f6;border:1px solid #d8dde2;border-radius:6px;padding:8px 10px;font-family:Consolas,monospace;font-size:12px;text-align:left;direction:ltr;overflow:auto;margin-bottom:10px;">' +
+            '  <code id="sid-snippet">fetch(\'/copy-styles-from-server.js\').then(r=>r.text()).then(eval)</code>' +
+            '</div>' +
+            '<button type="button" id="sid-copy-snippet" style="font-size:13px;padding:5px 10px;margin-bottom:14px;">העתק לוח</button>' +
+            '<p style="margin:0 0 6px;"><b>4)</b> ייווצר וירד קובץ <code>ravtext-styles-from-server.json</code>. גרור אותו לכאן:</p>' +
+            '<input type="file" id="sid-file" accept="application/json,.json" style="width:100%;padding:8px;border:1px dashed #888;border-radius:6px;margin-bottom:8px;" />' +
+            '<div id="sid-status" style="min-height:22px;font-size:14px;color:#555;"></div>' +
+            '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">' +
+            '  <button type="button" id="sid-close" style="padding:6px 14px;">סגור</button>' +
+            '</div>'
+          );
+          bd.appendChild(box);
+          document.body.appendChild(bd);
+
+          // הסקריפט לדבק הוא קטן, אבל קל יותר ל-fetch מ-app.ravtext.com.
+          // אם משתמש לא רוצה fetch, לחיצה על "העתק לוח" תעתיק את הסניפט המלא.
+          var snippet = "(" + (function(){
+            var BLACKLIST_EXACT = {'ravtext.ai.apiKey':1,'ravtext.demo.blockedUntil':1,'ravtext.demoMode':1,'ravtext.caricature.gemini_api_key':1,'ravtext.torah_transcription.config':1};
+            var BLACKLIST_PREFIXES = ['ravtext.ai.apiKey.','ravtext.caricature.','ravtext.torah_transcription.'];
+            function blocked(k){ if (BLACKLIST_EXACT[k]) return true; for (var i=0;i<BLACKLIST_PREFIXES.length;i++){ if (k.indexOf(BLACKLIST_PREFIXES[i])===0) return true; } return false; }
+            var out = {}, n = 0;
+            for (var i = 0; i < localStorage.length; i++) {
+              var k = localStorage.key(i);
+              if (!k || k.indexOf('ravtext.') !== 0) continue;
+              if (blocked(k)) continue;
+              out[k] = localStorage.getItem(k); n++;
+            }
+            var blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url; a.download = 'ravtext-styles-from-server.json';
+            document.body.appendChild(a); a.click();
+            setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 1000);
+            alert('ירדו ' + n + ' הגדרות / סגנונות.');
+          }).toString() + ")()";
+
+          document.getElementById('sid-copy-snippet').addEventListener('click', function(){
+            try {
+              navigator.clipboard.writeText(snippet);
+              document.getElementById('sid-status').textContent = 'הסניפט הועתק לזיכרון. עבור ל-app.ravtext.com → F12 → Console → הדבק (Ctrl+V) ולחץ Enter.';
+            } catch(e) {
+              document.getElementById('sid-status').textContent = 'לא הצליח להעתיק. נסה ידנית מהשדה למעלה.';
+            }
+          });
+
+          document.getElementById('sid-file').addEventListener('change', function(ev){
+            var f = ev.target.files && ev.target.files[0];
+            if (!f) return;
+            var st = document.getElementById('sid-status');
+            st.textContent = 'קורא את הקובץ...';
+            var rd = new FileReader();
+            rd.onload = function(){
+              try {
+                var obj = JSON.parse(rd.result);
+                var res = window.__ravtextImportSettings(obj);
+                if (res && res.ok) {
+                  st.textContent = 'יובאו ' + res.imported + ' מפתחות. רענון בעוד שנייה...';
+                  setTimeout(function(){ location.reload(); }, 1200);
+                } else {
+                  st.textContent = 'נכשל: ' + (res && res.reason || 'תקלה לא ידועה');
+                }
+              } catch(e) {
+                st.textContent = 'הקובץ אינו JSON תקין: ' + e.message;
+              }
+            };
+            rd.onerror = function(){ st.textContent = 'נכשל בקריאת הקובץ.'; };
+            rd.readAsText(f);
+          });
+
+          document.getElementById('sid-close').addEventListener('click', function(){ bd.remove(); });
+          bd.addEventListener('click', function(e){ if (e.target === bd) bd.remove(); });
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', installStyleImportButton);
+        } else {
+          installStyleImportButton();
+        }
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
