@@ -1,3 +1,5 @@
+import { scanWordChaptersLocally, extractWordChapterLocally } from "./chapter_local_scan.js";
+
 const SERVER_IMPORT_ENDPOINTS = ["/api/ravtext-docx-import", "/api/word-chapters-import", "/api/word-chapters/import"];
 const SERVER_SCAN_ENDPOINTS = ["/api/word-chapters-scan", "/api/word-chapters/scan"];
 const SERVER_EXTRACT_ENDPOINTS = ["/api/word-chapters-extract", "/api/word-chapters/extract"];
@@ -337,25 +339,18 @@ export class LocalDevNoServerError extends Error {
 
 export async function importWordChaptersOnServer(file, onProgress) {
   if (isLocalDevEnv()) {
-    const { scanWordChaptersLocally } = await import("./chapter_local_scan.js");
     return scanWordChaptersLocally(file, onProgress);
   }
   return postDocx(SERVER_IMPORT_ENDPOINTS, file, {}, onProgress);
 }
 
 export async function scanWordChaptersOnServer(file) {
-  if (isLocalDevEnv()) {
-    const { scanWordChaptersLocally } = await import("./chapter_local_scan.js");
-    return scanWordChaptersLocally(file);
-  }
+  if (isLocalDevEnv()) return scanWordChaptersLocally(file);
   return postDocx(SERVER_SCAN_ENDPOINTS, file);
 }
 
 export async function extractWordChapterOnServer(file, { level, index }) {
-  if (isLocalDevEnv()) {
-    const { extractWordChapterLocally } = await import("./chapter_local_scan.js");
-    return extractWordChapterLocally(file, { level, index });
-  }
+  if (isLocalDevEnv()) return extractWordChapterLocally(file, { level, index });
   return postDocx(SERVER_EXTRACT_ENDPOINTS, file, { level, index });
 }
 

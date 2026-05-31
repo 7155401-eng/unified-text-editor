@@ -1033,8 +1033,33 @@ function onFileChange(ev) {
   }).catch(() => {});
 
   const thisToken = ++token;
-  loading("הקובץ נקלט. הספירה תתחיל אחרי הסריקה הרגילה...");
-  setTimeout(() => scanFile(nextFile, thisToken), 800);
+  // משה 2026-05-31: לא להתחיל סריקה אוטומטית. ה-Word Extractor סורק את
+  // הקובץ במקביל, וקריאות סינכרוניות שלו (fileHash על buf גדול +
+  // העתקות arrayBuffer ל-worker) חוסמות את ה-main thread כך שגם
+  // setTimeout(0) של chapter splitter לא יורה בזמן — וזה נראה תקוע.
+  // עכשיו: מציגים כפתור "מצא פרקים" קל; המשתמש לוחץ → סריקה רצה אז
+  // (אחרי שה-Word Extractor סיים בפועל).
+  promptForScan(nextFile, thisToken);
+}
+
+function promptForScan(fileObj, thisToken) {
+  const card = ensureCard();
+  if (!card) return;
+  card.innerHTML = `
+    <b style="color:#312e81">פרקי הספר</b>
+    <div style="font-size:12px;color:#64748b;margin-top:4px">מנהל פרקים בתוך חלון ייבוא Word.</div>
+    <div style="margin-top:10px;color:#475569">קובץ נקלט: ${esc(fileObj.name || "")}</div>
+    <button type="button" data-wh-start-scan
+      style="margin-top:10px;background:#7c3aed;color:white;border:0;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:14px">
+      🔎 מצא פרקים בקובץ
+    </button>
+    <div style="font-size:11px;color:#94a3b8;margin-top:6px">סרוק רק אם רוצים לחלק את המסמך לפרקים נפרדים.</div>
+  `;
+  const btn = card.querySelector("[data-wh-start-scan]");
+  btn?.addEventListener("click", () => {
+    if (thisToken !== token) return;
+    scanFile(fileObj, thisToken);
+  });
 }
 
 function onCardClick(ev) {
