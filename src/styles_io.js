@@ -238,7 +238,6 @@ export function applyImported(parsed, selected, opts = {}) {
 // ─────────────────────────────────────────────────────────────────────────
 
 const DIALOG_ID = 'styles-io-dialog';
-const BUTTON_ID = 'btn-styles-io';
 
 function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
@@ -603,23 +602,3 @@ export function openStylesIODialog() {
   closeBtn.focus();
 }
 
-export function installStylesIOButton() {
-  if (typeof document === 'undefined') return null;
-  if (document.getElementById(BUTTON_ID)) return document.getElementById(BUTTON_ID);
-  const actions = document.querySelector('.app-header-actions');
-  if (!actions) return null;
-  const btn = el('button', {
-    type: 'button',
-    id: BUTTON_ID,
-    class: 'header-action-btn header-action-btn-icon',
-    title: 'ייצוא / ייבוא תוכן, סגנונות והעדפות',
-    'aria-label': 'ייצוא / ייבוא תוכן, סגנונות והעדפות',
-    on: { click: (ev) => { ev.preventDefault(); openStylesIODialog(); } },
-    html: '<span class="header-action-icon">🎨</span><span class="header-action-text">ייצוא/ייבוא</span>',
-  });
-  const after = document.getElementById('btn-troubleshooting')
-             || document.getElementById('btn-dev-updates');
-  if (after && after.parentNode === actions) after.after(btn);
-  else actions.insertBefore(btn, actions.firstElementChild || null);
-  return btn;
-}
