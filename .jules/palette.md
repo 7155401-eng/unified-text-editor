@@ -1,0 +1,3 @@
+## 2026-06-02 - Added ARIA labels and Focus Visibility
+**Learning:** Found over 80 buttons containing only emojis/icons that had hover tooltips (`title`) but missed `aria-label`, leaving them totally inaccessible to screen readers. Also found that default buttons missed an explicit `:focus-visible` state making keyboard navigation visually unclear.
+**Action:** Wrote an automated parser to copy all `title` tags into `aria-label` tags for all buttons, dramatically boosting screen reader coverage. Appended a general `:focus-visible` outline for buttons missing custom ones, improving keyboard usability throughout the UI.
