@@ -334,9 +334,14 @@ function shrinkPagesToContent(container) {
     // on the deepest visible descendants. Floats may extend below their parent.
     const pageRect = p.getBoundingClientRect();
     let maxBottom = pageRect.top; // start from page top
-    p.querySelectorAll("*").forEach(el => {
-      if (getComputedStyle(el).display === "none") return;
+
+    // ⚡ Bolt Optimization:
+    // 1. Exclude `.v9-line` via CSS selector to avoid false-positive layout bounds discrepancies.
+    // 2. Remove `getComputedStyle(el).display` check. It causes severe synchronous layout thrashing.
+    //    Instead, we rely on `getBoundingClientRect().height === 0` to identify non-rendered elements.
+    p.querySelectorAll("*:not(.v9-line)").forEach(el => {
       const r = el.getBoundingClientRect();
+      if (r.height === 0 && r.width === 0) return; // Skip hidden elements without reflow
       if (r.bottom > maxBottom) maxBottom = r.bottom;
     });
     const actualNeeded = maxBottom - pageRect.top;

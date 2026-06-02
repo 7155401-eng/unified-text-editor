@@ -1,3 +1,7 @@
 ## 2026-05-13 - [style_registry.js Cache Optimization]
 **Learning:** The style registry was repeatedly calling synchronous I/O (`localStorage.getItem`) and expensive parsing (`JSON.parse`) on every element style application, creating a severe bottleneck during dense page renders. Memory caching for static/rarely-changing global configurations is highly effective, but cross-tab synchronization must be handled manually via the `storage` event to prevent stale states in multi-window environments.
 **Action:** When implementing global configuration managers, always use an in-memory cache variable backed by `localStorage` rather than querying `localStorage` continuously. Ensure cache invalidation logic is robust (both local updates and cross-tab `storage` events).
+
+## 2026-06-02 - [Layout Engine DOM Query Optimization]
+**Learning:** Calling `getComputedStyle(el).display` inside a layout measurement loop (like `shrinkPagesToContent` in `talmud_pull_backward.js`) causes severe DOM thrashing and reflows. Additionally, including line-level elements (like `.v9-line`) in bottom-overlap calculations causes false positives because bounding boxes don't always match line heights perfectly.
+**Action:** Replace `getComputedStyle` checks with `getBoundingClientRect().height === 0` to identify non-rendered elements safely without triggering reflows. Exclude known problematic elements explicitly from layout overlap queries (e.g., `querySelectorAll("*:not(.v9-line)")`).
