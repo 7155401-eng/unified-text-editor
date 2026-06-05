@@ -444,12 +444,19 @@ async function getStatus(request, env) {
   const row = await env.DB.prepare(
     'SELECT plan_type, expires_at, balance_seconds FROM users WHERE id = ?'
   ).bind(user.id).first();
-  const expiresAtMs = row?.expires_at ? row.expires_at * 1000 : null;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expiresAtSec = row?.expires_at || 0;
+  const expired = expiresAtSec > 0 && expiresAtSec < nowSec;
+  const expiresAtMs = expiresAtSec ? expiresAtSec * 1000 : null;
+  // משה 2026-06-05: יתרה אחרי שתוקף פג היא חסרת תועלת — אסור להחזיר אותה
+  // ל-UI כי המסך "החשבון שלך" יציג "יתרה שנותרה: 20 דקות" והמשתמש יחשוב
+  // שיש לו זמן זמין בעוד שבפועל החלון לשימוש בו הסתיים.
+  const effectiveBalance = expired ? 0 : (row?.balance_seconds || 0);
   return jsonResponse({
     paid: !!user.paid,
     planType: row?.plan_type || null,
     expiresAt: expiresAtMs,
-    balanceSeconds: row?.balance_seconds || 0,
+    balanceSeconds: effectiveBalance,
     email: user.email,
   });
 }

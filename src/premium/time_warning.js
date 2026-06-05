@@ -150,11 +150,20 @@ function showLockScreen() {
 function forceDemoMode() {
   // המשתמש בחר לחזור לדמו אף שהוא מחובר. נדליק את הדגל המקומי כפי שעשה demo_mode.js
   try { localStorage.setItem("ravtext.demoMode", "1"); } catch {}
+  // משה 2026-06-05: דגל נפרד שמסמן "המשתמש בחר ידנית בדמו אחרי שהיתרה נגמרה".
+  // בלעדיו אחרי ה-reload המנוע פולל את השרת, רואה שהחשבון פג, ופותח שוב את
+  // מסך הנעילה — והכפתור "חזרה לדמו" נראה כאילו לא עושה כלום (זה הבאג שמשה
+  // דיווח).
+  try { localStorage.setItem("ravtext.userOptedDemo", "1"); } catch {}
   if (typeof window !== "undefined") {
     window.__RAVTEXT_DEMO_MODE__ = true;
     // השער ב-demo_mode.js נעול לאחר הפעלה ראשונה (_demoLocked) — דורש refresh
     setTimeout(() => location.reload(), 300);
   }
+}
+
+function userOptedIntoDemo() {
+  try { return localStorage.getItem("ravtext.userOptedDemo") === "1"; } catch { return false; }
 }
 
 function tick() {
@@ -224,6 +233,16 @@ export function startTimeWarningEngine() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
   const auth = window.__RAVTEXT_AUTH__;
   if (!auth || !auth.loggedIn) return;
+  // משה 2026-06-05: אם המשתמש לא משלם (חינמי או שתוקף פג) — אין מה לספור.
+  // הוא כבר במצב דמו ע"פ isDemoMode (paid=false). בלי הבדיקה הזו, אחרי
+  // שתוקף פג, המנוע פולל, רואה expiresAt בעבר, ופותח מסך נעילה. אז המשתמש
+  // לוחץ "חזרה לדמו" — reload — אותו דבר חוזר. זה מה שיצר את הלולאה.
+  // עכשיו: משתמש לא-משלם פשוט נשאר בדמו שקט עם סימני מים, ויכול לקנות
+  // זמן דרך אייקון היהלום בכותרת.
+  if (!auth.paid) return;
+  // משה 2026-06-05: דגל נוסף — אם משתמש משלם בחר במפורש "חזרה לדמו",
+  // לא להריץ ספירה גם אם יש לו עדיין זמן בחשבון.
+  if (userOptedIntoDemo()) return;
   // משאבי השרת יחליטו אם המשתמש על מנוי תקין/שעות נטענות; ללא יתרה — לא נריץ ספירה.
 
   // restore session warning flags so we don't double-warn after refresh
