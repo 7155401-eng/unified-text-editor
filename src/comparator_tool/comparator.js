@@ -89,7 +89,7 @@ export async function openComparator(options = {}) {
   const overlay = document.createElement('div');
   overlay.className = 'comparator-host-overlay';
   overlay.id = 'comparator-host-overlay';
-  overlay.innerHTML = `<div class="comparator-host-frame"><button class="comparator-host-close" type="button" title="סגור">✖ סגור</button><div class="comparator-host-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div></div>`;
+  overlay.innerHTML = `<div class="comparator-host-frame"><button class="comparator-host-close" type="button" title="סגור" aria-label="סגור">✖ סגור</button><div class="comparator-host-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div></div>`;
   document.body.appendChild(overlay);
   _activeModal = overlay;
 
