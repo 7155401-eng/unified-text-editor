@@ -64,8 +64,8 @@ function buildComparatorHTML(initialLang) {
 <div class="tb-group">
  <span class="tb-title" data-i18n="t_view">${tr.t_view}</span>
  <button class="btn purple" id="previewBtn" data-action="togglePreview" data-i18n="preview">${tr.preview}</button>
- <button class="btn gold" id="expandToolsBtn" data-action="toggleExpandTools" title="הרחב כלים">⚙️ כלים</button>
- <button class="btn gold" data-action="showTransferSettings" title="הגדרות העתקה">⚙️ העתקה</button>
+ <button class="btn gold" id="expandToolsBtn" data-action="toggleExpandTools" title="הרחב כלים" aria-label="הרחב כלים">⚙️ כלים</button>
+ <button class="btn gold" data-action="showTransferSettings" title="הגדרות העתקה" aria-label="הגדרות העתקה">⚙️ העתקה</button>
  <button class="btn" id="syncBtn" data-action="toggleSync" data-i18n="sync">${tr.sync}</button>
  <button class="btn" id="lineBtn" data-action="toggleLines" data-i18n="lines">${tr.lines}</button>
 </div>
@@ -76,18 +76,18 @@ function buildComparatorHTML(initialLang) {
 <div style="flex:1"></div>
 <div class="tb-group">
  <span class="tb-title" data-i18n="t_theme">${tr.t_theme}</span>
- <button class="btn btn-sm" data-action="toggleTheme" title="Theme">☀️/🌙</button>
+ <button class="btn btn-sm" data-action="toggleTheme" title="Theme" aria-label="Theme">☀️/🌙</button>
  <div class="sep"></div>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="-2">−−</button>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="-1">−</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="-2" aria-label="הקטן גודל טקסט 2">−−</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="-1" aria-label="הקטן גודל טקסט">−</button>
  <span class="font-size" id="fsLabel">15</span>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="1">+</button>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="2">++</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="1" aria-label="הגדל גודל טקסט">+</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="2" aria-label="הגדל גודל טקסט 2">++</button>
 </div>
 <div class="tb-group">
  <span class="tb-title" data-i18n="t_nav">${tr.t_nav}</span>
- <button class="btn btn-sm" data-action="jumpMarker" data-arg="-1" data-i18n="prev">${tr.prev}</button>
- <button class="btn btn-sm" data-action="jumpMarker" data-arg="1" data-i18n="next">${tr.next}</button>
+ <button class="btn btn-sm" data-action="jumpMarker" data-arg="-1" data-i18n="prev" aria-label="${tr.prev}">${tr.prev}</button>
+ <button class="btn btn-sm" data-action="jumpMarker" data-arg="1" data-i18n="next" aria-label="${tr.next}">${tr.next}</button>
 </div>
 <button class="btn gold" data-action="toggleLang" id="langBtn" style="margin-right:8px">${initialLang === 'he' ? 'EN' : 'HE'}</button>
 </div>
@@ -514,7 +514,7 @@ export function mountComparatorUI(rootEl, options = {}) {
    <div class="pane" id="pane-${id}" data-id="${id}">
      <div class="pane-header">
          <span class="pane-title" data-i18n="notesStream" data-stream="${sn}">${titleText}</span>
-         <div><span class="sym-label" data-i18n="linkMarker">${markerText}</span><input class="sym-input" id="sym-${id}" value="${sym}"><button class="btn btn-sm" data-action="removePane" data-arg="${id}" style="margin:0 4px">✕</button></div>
+         <div><span class="sym-label" data-i18n="linkMarker">${markerText}</span><input class="sym-input" id="sym-${id}" value="${sym}"><button class="btn btn-sm" data-action="removePane" data-arg="${id}" aria-label="סגור חלונית" style="margin:0 4px">✕</button></div>
      </div>
      <div class="marker-bar" id="markers-${id}"></div><div id="editor-${id}"></div>
   </div>`);
