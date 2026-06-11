@@ -308,7 +308,26 @@ function makeCheckbox(labelText, checked, onChange) {
   return label;
 }
 
+// ⚡ Bolt Optimization: Cache global stream overrides to prevent repeated localStorage/JSON.parse overhead
+let cachedGlobalStreamOverrides = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === GLOBAL_STREAM_OVERRIDES_KEY) {
+      cachedGlobalStreamOverrides = null;
+    }
+  });
+}
+
 export function loadGlobalStreamOverrides() {
+  if (cachedGlobalStreamOverrides) {
+    // Return explicit copy of inner objects to prevent callers from modifying the cache
+    const copy = {};
+    for (const key in cachedGlobalStreamOverrides) {
+      copy[key] = { ...cachedGlobalStreamOverrides[key] };
+    }
+    return copy;
+  }
   let raw = {};
   try {
     raw = JSON.parse(localStorage.getItem(GLOBAL_STREAM_OVERRIDES_KEY) || "{}") || {};
@@ -323,10 +342,20 @@ export function loadGlobalStreamOverrides() {
       value: item.value !== undefined ? item.value : def.value,
     };
   }
-  return out;
+  cachedGlobalStreamOverrides = out;
+  const copy = {};
+  for (const key in cachedGlobalStreamOverrides) {
+    copy[key] = { ...cachedGlobalStreamOverrides[key] };
+  }
+  return copy;
 }
 
 export function saveGlobalStreamOverrides(overrides) {
+  const overridesCopy = {};
+  for (const key in overrides || {}) {
+    overridesCopy[key] = { ...overrides[key] };
+  }
+  cachedGlobalStreamOverrides = overridesCopy;
   localStorage.setItem(GLOBAL_STREAM_OVERRIDES_KEY, JSON.stringify(overrides || {}));
 }
 
