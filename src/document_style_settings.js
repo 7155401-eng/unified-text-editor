@@ -6,9 +6,22 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+// ⚡ Bolt Optimization:
+// Memory cache for document style settings.
+// What: Caches the raw localStorage string and parsed object.
+// Why: loadDocumentStyleSettings is called frequently during rendering updates.
+// Impact: Eliminates expensive repetitive JSON.parse calls while maintaining correct state when other tabs update localStorage.
+let cachedDocStyleRaw = null;
+let cachedDocStyleParsed = null;
+
 export function loadDocumentStyleSettings() {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    const raw = localStorage.getItem(STORAGE_KEY) || "{}";
+    if (raw !== cachedDocStyleRaw) {
+      cachedDocStyleRaw = raw;
+      cachedDocStyleParsed = { ...DEFAULTS, ...(JSON.parse(raw) || {}) };
+    }
+    return { ...cachedDocStyleParsed };
   } catch {
     return { ...DEFAULTS };
   }
@@ -16,8 +29,11 @@ export function loadDocumentStyleSettings() {
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  return next;
+  const raw = JSON.stringify(next);
+  cachedDocStyleRaw = raw;
+  cachedDocStyleParsed = next;
+  localStorage.setItem(STORAGE_KEY, raw);
+  return { ...next };
 }
 
 export function getMainTextStyle() {
