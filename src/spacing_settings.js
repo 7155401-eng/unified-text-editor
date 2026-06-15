@@ -56,10 +56,30 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+// ⚡ Bolt Optimization:
+// Memory cache for spacing settings.
+// What: Caches the normalized parsed object of localStorage to prevent
+//       expensive JSON.parse() and direct I/O calls during frequent layout operations.
+let cachedSpacingObj = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      cachedSpacingObj = null;
+    }
+  });
+}
+
 export function loadSpacingSettings() {
+  if (cachedSpacingObj !== null) {
+    return { ...cachedSpacingObj };
+  }
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    const raw = localStorage.getItem(STORAGE_KEY) || "{}";
+    const saved = JSON.parse(raw) || {};
+    const normalized = normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacingObj = normalized;
+    return { ...normalized };
   } catch {
     return normalizeSpacing(DEFAULTS);
   }
@@ -67,8 +87,10 @@ export function loadSpacingSettings() {
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  return next;
+  const raw = JSON.stringify(next);
+  localStorage.setItem(STORAGE_KEY, raw);
+  cachedSpacingObj = next;
+  return { ...next };
 }
 
 export function applySpacingSettings(settings = loadSpacingSettings(), pagesContainer = null) {
