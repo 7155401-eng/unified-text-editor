@@ -3,6 +3,18 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "redirects": [
+    {
+      "source": "/api/docx-google-",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/api/docx-google",
+      "destination": "/",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/:path*",
