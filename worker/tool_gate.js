@@ -18,6 +18,16 @@ const PUBLIC_TOOLS = new Set([
   'torah-tools',
 ]);
 
+// Text upload/import through Word extractor is a core free-account workflow.
+// It should still require a logged-in free account, but it must not consume the daily quota.
+const FREE_UNMETERED_TOOLS = new Set([
+  'word-extractor',
+]);
+
+function isFreeUnmeteredTool(toolName) {
+  return FREE_UNMETERED_TOOLS.has(String(toolName || '').trim());
+}
+
 function b64url(bytes) {
   const bin = String.fromCharCode(...new Uint8Array(bytes));
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -91,6 +101,10 @@ async function handleSecureExportHtmlAction(request, env, body) {
 }
 
 async function consumeFreeUse(user, toolName, env) {
+  if (isFreeUnmeteredTool(toolName)) {
+    return { ok: true, unmetered: true };
+  }
+
   const usageDate = todayKey();
   const nowSec = Math.floor(Date.now() / 1000);
   try {
@@ -182,6 +196,7 @@ export async function handleToolPreflight(request, env) {
     toolName,
     token,
     expiresAt: (nowSec + TOOL_TOKEN_TTL_SEC) * 1000,
+    unmetered: !user?.paid && isFreeUnmeteredTool(toolName),
   }, {
     headers: { 'cache-control': 'no-store' },
   });
