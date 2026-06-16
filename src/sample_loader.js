@@ -2,7 +2,6 @@ import { parseAuto } from "./engine/parser.js";
 import { paneManagerFromEngineDoc } from "./engine_bridge.js";
 import { installDefaultTextGuard } from "./default_text_guard.js";
 import "./compact_stream_menu.js";
-import "./compact_stream_menu_full.js";
 import hebrewText from "../samples/sample-hebrew.txt?raw";
 import adminDefaultHtml from "../samples/admin-default.html?raw";
 
@@ -63,7 +62,7 @@ export function loadStaticStarterSample(paneManager) {
 }
 
 installDefaultTextGuard({
-  loadDefault: (paneManager) => loadSampleByName(paneManager, "shulchan"),
+  loadDefault: loadStaticStarterSample,
 });
 
 export function loadEditableDefaultSample(paneManager) {
