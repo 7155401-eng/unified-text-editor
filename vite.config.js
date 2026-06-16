@@ -55,6 +55,21 @@ const PUBLIC_CACHE_BUST = {
   },
 };
 
+
+const PEIMOT_TIDIO_WIDGET = {
+  name: 'peimot-tidio-widget',
+  enforce: 'post',
+  transformIndexHtml(html) {
+    const tidioSrc = '//code.tidio.co/om1yquztujdibhi5ypvtcvo2vfrcd4am.js';
+    if (html.includes('code.tidio.co/om1yquztujdibhi5ypvtcvo2vfrcd4am.js')) return html;
+
+    const scriptTag = `    <script src="${tidioSrc}" async data-ravtext-peimot-tidio="1" data-widget-purpose="peimot-phone-capture"></script>`;
+    if (html.includes('</head>')) return html.replace('</head>', `${scriptTag}\n  </head>`);
+
+    return `${html}\n${scriptTag}\n`;
+  },
+};
+
 const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
   name: 'cloudflare-advanced-worker-build',
   apply: 'build',
@@ -94,5 +109,5 @@ export default defineConfig({
   worker: {
     format: 'es',
   },
-  plugins: [PUBLIC_CACHE_BUST, CLOUDFLARE_ADVANCED_WORKER_BUILD],
+  plugins: [PUBLIC_CACHE_BUST, PEIMOT_TIDIO_WIDGET, CLOUDFLARE_ADVANCED_WORKER_BUILD],
 })
