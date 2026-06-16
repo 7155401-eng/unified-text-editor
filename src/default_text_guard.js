@@ -1,27 +1,18 @@
-// ברירת־מחדל בטוחה לאורחים ולחשבונות חינמיים.
+// Safe starter text fallback.
 //
-// המטרה: אם נשמר/נטען בטעות מצב ריק או ראשוני בלבד, לא לתת לו לחסום את
-// טעינת טקסט ברירת־המחדל. אם המשתמש כבר הכניס טקסט אמיתי — לא נוגעים.
-//
-// תיקון חי: מטפל גם במצב שבו קיימת חלונית אחת ריקה, ולא רק במצב שאין חלוניות.
-// זה המצב שנראה באתר החי: העורך קיים, אבל הסטטיסטיקה נשארת 0 מילים.
+// This guard is intentionally small and idempotent:
+// - no MutationObserver
+// - no repeated recovery series after the first install
+// - no large static sample imports here
+// - never overwrites non-pristine user content
 
 const PANE_STATE_STORAGE_KEY = "ravtext.panes.state.v1";
-const GUARD_VERSION = "live-pristine-pane-2026-06-16";
+const GUARD_VERSION = "safe-static-starter-2026-06-16-1";
 
-function isPaidAccount() {
-  try {
-    const auth = window.__RAVTEXT_AUTH__;
-    return !!(auth && auth.paid === true);
-  } catch (_) {
-    return false;
-  }
-}
-
-function shouldApplyDefaultStarterFallback() {
-  // אורח או חשבון מחובר-חינמי: כן. חשבון משלם: לא משנים התנהגות.
-  return !isPaidAccount();
-}
+let recoveryScheduled = false;
+let recoveryRun = null;
+let recoveryRunQueued = false;
+let recoveryAttempted = false;
 
 function normalizeText(text) {
   return String(text || "")
@@ -32,15 +23,16 @@ function normalizeText(text) {
 }
 
 function extractTextFromNode(node) {
-  if (!node || typeof node !== "object") return "";
-  let out = "";
+  if (node == null) return "";
+  if (typeof node === "string") return node;
+  if (typeof node !== "object") return "";
 
+  let out = "";
   if (typeof node.text === "string") out += node.text;
+  if (typeof node.html === "string") out += node.html.replace(/<[^>]*>/g, " ");
 
   if (Array.isArray(node.content)) {
-    for (const child of node.content) {
-      out += extractTextFromNode(child);
-    }
+    for (const child of node.content) out += extractTextFromNode(child);
   }
 
   return out;
@@ -50,17 +42,16 @@ function isPristinePaneText(text) {
   const clean = normalizeText(text);
   if (!clean) return true;
 
-  return (
-    clean === 'תוכן ראשי. לחצו "טען דוגמה" או הקלידו.' ||
-    clean === 'תוכן ראשי. לחצו "טען דוגמה" או הקלדו.' ||
-    /^תוכן זרם \d{2}…?$/.test(clean)
-  );
+  if (clean.includes("טען דוגמה")) return true;
+  if (/^תוכן זרם \d{2}…?$/.test(clean)) return true;
+  if (/^תוכן ראשי\.?\s/.test(clean) && clean.includes("טען דוגמה")) return true;
+
+  return false;
 }
 
 export function isPristinePaneState(state) {
   if (!state || typeof state !== "object") return true;
 
-  // אם בעתיד יישמר סימון עריכה אמיתי — לא נתייחס לזה כמצב ראשוני.
   if (state.userModified === true || state.manualEdit === true) return false;
 
   const panes = Array.isArray(state.panes) ? state.panes : [];
@@ -82,7 +73,6 @@ function parseStoredPaneState(raw) {
 }
 
 export function clearPristineStoredPaneState() {
-  if (!shouldApplyDefaultStarterFallback()) return false;
   if (typeof localStorage === "undefined") return false;
 
   try {
@@ -135,58 +125,92 @@ function livePaneManagerState(paneManager) {
 function shouldRecoverLivePaneManager(paneManager) {
   if (!paneManager || typeof paneManager.count !== "function") return false;
 
-  // אין חלוניות בכלל — חייבים להחזיר עורך.
   if (paneManager.count() === 0) return true;
 
-  // יש חלונית, אבל היא ריקה/ראשונית בלבד — זה היה החור בתיקון הקודם.
   const state = livePaneManagerState(paneManager);
   return isPristinePaneState(state);
+}
+
+function markRestored(source) {
+  try {
+    window.__RAVTEXT_DEFAULT_TEXT_GUARD_RESTORED__ = true;
+    window.__RAVTEXT_DEFAULT_TEXT_GUARD_RESTORED_SOURCE__ = source || "startup";
+    document.dispatchEvent(new CustomEvent("ravtext:default-text-restored", {
+      detail: { version: GUARD_VERSION, source },
+    }));
+  } catch (_) {}
+}
+
+function rerenderSoon() {
+  try {
+    if (typeof window.__ravtextRerender === "function") {
+      setTimeout(() => window.__ravtextRerender(), 80);
+      setTimeout(() => window.__ravtextRerender(), 350);
+    }
+  } catch (_) {}
+}
+
+function attemptRecovery(loadDefault, source = "startup") {
+  if (recoveryAttempted || window.__RAVTEXT_DEFAULT_TEXT_GUARD_RESTORED__) return;
+
+  const paneManager = window.paneManager;
+  if (!shouldRecoverLivePaneManager(paneManager)) return;
+
+  if (window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__) return;
+  window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = true;
+  recoveryAttempted = true;
+
+  Promise.resolve(loadDefault(paneManager))
+    .then(() => {
+      markRestored(source);
+      rerenderSoon();
+    })
+    .catch((err) => {
+      console.warn("[default-text-guard] failed to restore default pane:", err);
+      // Allow one later retry only when the first failure happened before the app was fully ready.
+      setTimeout(() => {
+        window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = false;
+        if (!window.__RAVTEXT_DEFAULT_TEXT_GUARD_RESTORED__) {
+          recoveryAttempted = false;
+          const pm = window.paneManager;
+          if (shouldRecoverLivePaneManager(pm)) attemptRecovery(loadDefault, "retry");
+        }
+      }, 1200);
+    })
+    .finally(() => {
+      window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = false;
+    });
+}
+
+function queueRecoveryRun() {
+  if (typeof recoveryRun !== "function" || recoveryRunQueued) return;
+  recoveryRunQueued = true;
+  setTimeout(() => {
+    recoveryRunQueued = false;
+    recoveryRun();
+  }, 0);
 }
 
 function schedulePristineEditorRecovery(loadDefault) {
   if (typeof loadDefault !== "function") return;
 
-  const run = () => {
-    if (!shouldApplyDefaultStarterFallback()) return;
+  if (recoveryScheduled) {
+    queueRecoveryRun();
+    return;
+  }
 
-    const paneManager = window.paneManager;
-    if (!shouldRecoverLivePaneManager(paneManager)) return;
+  recoveryScheduled = true;
+  recoveryRun = () => attemptRecovery(loadDefault, "startup");
 
-    if (window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__) return;
-    window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = true;
+  // A bounded boot window: no interval and no recursive timer series.
+  [0, 120, 350, 900, 1800, 3500, 6500].forEach((ms) => {
+    setTimeout(recoveryRun, ms);
+  });
 
-    Promise.resolve(loadDefault(paneManager))
-      .then(() => {
-        try {
-          window.__RAVTEXT_DEFAULT_TEXT_GUARD_RESTORED__ = true;
-          document.dispatchEvent(new CustomEvent("ravtext:default-text-restored", {
-            detail: { version: GUARD_VERSION },
-          }));
-          if (typeof window.__ravtextRerender === "function") {
-            setTimeout(() => window.__ravtextRerender(), 120);
-          }
-        } catch (_) {}
-      })
-      .catch((err) => {
-        console.warn("[default-text-guard] failed to restore default pane:", err);
-      })
-      .finally(() => {
-        window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = false;
-      });
-  };
-
-  // בדיקות סביב האתחול, אחרי טעינת שרת, וגם אחרי setupDemoMode.
-  setTimeout(run, 0);
-  setTimeout(run, 120);
-  setTimeout(run, 350);
-  setTimeout(run, 900);
-  setTimeout(run, 1800);
-  setTimeout(run, 3500);
-  setTimeout(run, 6500);
+  document.addEventListener("ravtext:startup-check-default-text", recoveryRun);
 }
 
 export function installPristineServerDocumentGuard({ onSkippedPristineDocument } = {}) {
-  if (!shouldApplyDefaultStarterFallback()) return false;
   if (typeof window === "undefined" || typeof window.fetch !== "function") return false;
   if (window.__RAVTEXT_DEFAULT_TEXT_GUARD_FETCH__) return false;
 
@@ -195,7 +219,6 @@ export function installPristineServerDocumentGuard({ onSkippedPristineDocument }
   window.fetch = async function guardedFetch(input, init) {
     const response = await originalFetch(input, init);
 
-    if (!shouldApplyDefaultStarterFallback()) return response;
     if (!isCurrentDocumentRead(input, init)) return response;
     if (!response || !response.ok || typeof response.clone !== "function") return response;
 
@@ -208,8 +231,6 @@ export function installPristineServerDocumentGuard({ onSkippedPristineDocument }
 
       if (typeof onSkippedPristineDocument === "function") {
         setTimeout(onSkippedPristineDocument, 0);
-        setTimeout(onSkippedPristineDocument, 500);
-        setTimeout(onSkippedPristineDocument, 1500);
       }
 
       const headers = new Headers(response.headers);
