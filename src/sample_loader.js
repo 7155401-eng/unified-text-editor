@@ -4,10 +4,6 @@ import { installDefaultTextGuard } from "./default_text_guard.js";
 import hebrewText from "../samples/sample-hebrew.txt?raw";
 import adminDefaultHtml from "../samples/admin-default.html?raw";
 
-installDefaultTextGuard({
-  loadDefault: (paneManager) => loadSampleByName(paneManager, "shulchan"),
-});
-
 function emptyDoc() {
   return {
     type: "doc",
@@ -44,6 +40,29 @@ export async function loadSampleByName(paneManager, name = "hebrew") {
   const doc = parseAuto(raw);
   return paneManagerFromEngineDoc(paneManager, doc);
 }
+
+export function loadStaticStarterSample(paneManager) {
+  paneManager.load({
+    version: 1,
+    activeId: "sample-main",
+    panes: [
+      {
+        id: "sample-main",
+        streamCode: null,
+        symbol: "",
+        label: "ראשי",
+        content: emptyDoc(),
+      },
+    ],
+  });
+
+  const doc = parseAuto(hebrewText);
+  return paneManagerFromEngineDoc(paneManager, doc);
+}
+
+installDefaultTextGuard({
+  loadDefault: loadStaticStarterSample,
+});
 
 export function loadEditableDefaultSample(paneManager) {
   paneManager.load({
