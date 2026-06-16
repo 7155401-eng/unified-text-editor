@@ -1,12 +1,13 @@
 // ברירת־מחדל בטוחה לאורחים ולחשבונות חינמיים.
 //
-// המטרה: אם נשמר בטעות מצב ריק/ראשוני בלבד, לא לתת לו לחסום את טעינת
-// טקסט ברירת־המחדל. אם המשתמש כבר הכניס טקסט אמיתי — לא נוגעים.
+// המטרה: אם נשמר/נטען בטעות מצב ריק או ראשוני בלבד, לא לתת לו לחסום את
+// טעינת טקסט ברירת־המחדל. אם המשתמש כבר הכניס טקסט אמיתי — לא נוגעים.
 //
-// בנוסף: אם מסמך ריק מהשרת מחק את כל החלוניות, מחזירים חלונית ברירת־מחדל
-// כדי שהאזור המרכזי לא יישאר לבן ולא־לחיץ.
+// תיקון חי: מטפל גם במצב שבו קיימת חלונית אחת ריקה, ולא רק במצב שאין חלוניות.
+// זה המצב שנראה באתר החי: העורך קיים, אבל הסטטיסטיקה נשארת 0 מילים.
 
 const PANE_STATE_STORAGE_KEY = "ravtext.panes.state.v1";
+const GUARD_VERSION = "live-pristine-pane-2026-06-16";
 
 function isPaidAccount() {
   try {
@@ -59,7 +60,7 @@ function isPristinePaneText(text) {
 export function isPristinePaneState(state) {
   if (!state || typeof state !== "object") return true;
 
-  // מהרגע שנשמר שינוי אמיתי אחרי התיקון — לא מתייחסים לזה כמצב ראשוני.
+  // אם בעתיד יישמר סימון עריכה אמיתי — לא נתייחס לזה כמצב ראשוני.
   if (state.userModified === true || state.manualEdit === true) return false;
 
   const panes = Array.isArray(state.panes) ? state.panes : [];
@@ -122,29 +123,66 @@ function isCurrentDocumentRead(input, init) {
   }
 }
 
-function scheduleEmptyEditorRecovery(loadDefault) {
+function livePaneManagerState(paneManager) {
+  if (!paneManager || typeof paneManager.serialize !== "function") return null;
+  try {
+    return paneManager.serialize();
+  } catch (_) {
+    return null;
+  }
+}
+
+function shouldRecoverLivePaneManager(paneManager) {
+  if (!paneManager || typeof paneManager.count !== "function") return false;
+
+  // אין חלוניות בכלל — חייבים להחזיר עורך.
+  if (paneManager.count() === 0) return true;
+
+  // יש חלונית, אבל היא ריקה/ראשונית בלבד — זה היה החור בתיקון הקודם.
+  const state = livePaneManagerState(paneManager);
+  return isPristinePaneState(state);
+}
+
+function schedulePristineEditorRecovery(loadDefault) {
   if (typeof loadDefault !== "function") return;
 
   const run = () => {
     if (!shouldApplyDefaultStarterFallback()) return;
 
     const paneManager = window.paneManager;
-    if (!paneManager || typeof paneManager.count !== "function") return;
+    if (!shouldRecoverLivePaneManager(paneManager)) return;
 
-    // אם יש חלונית, גם אם היא ריקה — לא מחליפים אוטומטית.
-    // זה מגן על מחיקה ידנית של המשתמש.
-    if (paneManager.count() !== 0) return;
+    if (window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__) return;
+    window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = true;
 
-    Promise.resolve(loadDefault(paneManager)).catch((err) => {
-      console.warn("[default-text-guard] failed to restore default pane:", err);
-    });
+    Promise.resolve(loadDefault(paneManager))
+      .then(() => {
+        try {
+          window.__RAVTEXT_DEFAULT_TEXT_GUARD_RESTORED__ = true;
+          document.dispatchEvent(new CustomEvent("ravtext:default-text-restored", {
+            detail: { version: GUARD_VERSION },
+          }));
+          if (typeof window.__ravtextRerender === "function") {
+            setTimeout(() => window.__ravtextRerender(), 120);
+          }
+        } catch (_) {}
+      })
+      .catch((err) => {
+        console.warn("[default-text-guard] failed to restore default pane:", err);
+      })
+      .finally(() => {
+        window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = false;
+      });
   };
 
-  // בדיקות קצרות סביב האתחול, וגם אחרי תשובת שרת שעלולה להגיע מאוחר.
+  // בדיקות סביב האתחול, אחרי טעינת שרת, וגם אחרי setupDemoMode.
   setTimeout(run, 0);
-  setTimeout(run, 250);
+  setTimeout(run, 120);
+  setTimeout(run, 350);
   setTimeout(run, 900);
   setTimeout(run, 1800);
+  setTimeout(run, 3500);
+  setTimeout(run, 6500);
 }
 
 export function installPristineServerDocumentGuard({ onSkippedPristineDocument } = {}) {
@@ -171,6 +209,7 @@ export function installPristineServerDocumentGuard({ onSkippedPristineDocument }
       if (typeof onSkippedPristineDocument === "function") {
         setTimeout(onSkippedPristineDocument, 0);
         setTimeout(onSkippedPristineDocument, 500);
+        setTimeout(onSkippedPristineDocument, 1500);
       }
 
       const headers = new Headers(response.headers);
@@ -199,13 +238,17 @@ export function installPristineServerDocumentGuard({ onSkippedPristineDocument }
 }
 
 export function installDefaultTextGuard({ loadDefault } = {}) {
+  if (typeof window !== "undefined") {
+    window.__RAVTEXT_DEFAULT_TEXT_GUARD_VERSION__ = GUARD_VERSION;
+  }
+
   clearPristineStoredPaneState();
 
-  const recover = () => scheduleEmptyEditorRecovery(loadDefault);
+  const recover = () => schedulePristineEditorRecovery(loadDefault);
 
   installPristineServerDocumentGuard({
     onSkippedPristineDocument: recover,
   });
 
-  scheduleEmptyEditorRecovery(loadDefault);
+  schedulePristineEditorRecovery(loadDefault);
 }
