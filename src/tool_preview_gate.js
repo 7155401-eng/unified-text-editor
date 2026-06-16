@@ -7,7 +7,7 @@ const PUBLIC_TOOLS = new Set([
   "word-extractor",
   "torah-transcription",
   "torah-nikud",
-  "haredi-karicature",
+  "haredi-caricature",
   "text-compare-pro",
   "sefaria-downloader",
   "sefaria-live",
