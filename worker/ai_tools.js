@@ -51,7 +51,6 @@ const CHAT_PROVIDERS = {
 const CHAT_DIRECT_PROMPT_LIMIT = 32000;
 const CHAT_CHUNK_SIZE = 12000;
 const CHAT_CHUNK_OVERLAP = 500;
-const CHAT_MAX_CHUNKS = 24;
 const CHAT_SUMMARY_CHAR_LIMIT = 1600;
 
 function jsonResponse(body, status = 200) {
@@ -177,10 +176,11 @@ function chatBody(provider, prompt, model, maxTokens = 2000) {
   };
 }
 
-function normalizePositiveInt(value, fallback, min, max) {
-  const n = Number.parseInt(String(value ?? ''), 10);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, n));
+function parseOptionalPositiveInt(value) {
+  if (value == null || value === '') return undefined;
+  const n = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(n) || n < 1) return undefined;
+  return n;
 }
 
 function splitLargePrompt(prompt, chunkSize = CHAT_CHUNK_SIZE, overlap = CHAT_CHUNK_OVERLAP) {
@@ -198,8 +198,8 @@ function splitLargePrompt(prompt, chunkSize = CHAT_CHUNK_SIZE, overlap = CHAT_CH
         slice.lastIndexOf('\n\n'),
         slice.lastIndexOf('\n'),
         slice.lastIndexOf('. '),
-        slice.lastIndexOf('। '),
-        slice.lastIndexOf('׃ '),
+        slice.lastIndexOf('; '),
+        slice.lastIndexOf(', '),
       ].filter((idx) => idx >= 0);
 
       if (breakCandidates.length) {
@@ -222,32 +222,33 @@ function buildTaskExcerpt(prompt) {
   if (text.length <= 4000) return text;
   const head = text.slice(0, 2800).trim();
   const tail = text.slice(-1200).trim();
-  return `${head}\n\n[...אמצע הטקסט הושמט כי הקובץ גדול...]\n\n${tail}`;
+  return `${head}\n\n[...middle of the large text was omitted in this excerpt...]\n\n${tail}`;
 }
 
 function trimForReduce(text, maxChars = CHAT_SUMMARY_CHAR_LIMIT) {
   const normalized = String(text || '').trim();
   if (normalized.length <= maxChars) return normalized;
-  return `${normalized.slice(0, maxChars - 80).trim()}\n[המשך תקציר החלק קוצר אוטומטית]`;
+  return `${normalized.slice(0, maxChars - 80).trim()}\n[summary shortened for the final step]`;
 }
 
 function buildChunkPrompt({ originalPrompt, chunk, index, total }) {
   const taskExcerpt = buildTaskExcerpt(originalPrompt);
-  return `המשתמש שלח קובץ/פרומפט גדול מדי ולכן הוא מעובד בחלקים.
+  return `The user sent a large prompt/file. It is being processed in chunks.
 
-קטע קצר מתוך הבקשה המקורית, כדי להבין את המשימה:
+Original request excerpt:
 ---
 ${taskExcerpt}
 ---
 
-כעת קיבלת חלק ${index + 1} מתוך ${total}.
-נתח רק את החלק הזה.
-החזר תקציר עובדתי קצר של נקודות, ממצאים, שמות, מספרים, החלטות או שורות חשובות שיכולים לעזור לענות לבקשה.
-אל תמציא מידע.
-אם אין בחלק הזה מידע רלוונטי, כתוב זאת במפורש.
-שמור על עד ${CHAT_SUMMARY_CHAR_LIMIT} תווים.
+You are reading chunk ${index + 1} of ${total}.
+Analyze only this chunk.
+Return a short factual summary of the information in this chunk that may help answer the user's original request.
+Keep names, numbers, decisions, unusual lines, and important details.
+Do not invent missing facts.
+If this chunk has no relevant information, say that.
+Maximum ${CHAT_SUMMARY_CHAR_LIMIT} characters.
 
-החלק לעיבוד:
+Chunk content:
 ---
 ${chunk}
 ---`;
@@ -256,26 +257,25 @@ ${chunk}
 function buildFinalPrompt({ originalPrompt, summaries, truncated }) {
   const taskExcerpt = buildTaskExcerpt(originalPrompt);
   const joinedSummaries = summaries
-    .map((summary, idx) => `חלק ${idx + 1}:\n${summary}`)
+    .map((summary, idx) => `Chunk ${idx + 1}:\n${summary}`)
     .join('\n\n---\n\n');
 
-  return `המשתמש שלח קובץ/פרומפט גדול ולכן הוא עובד קודם בחלקים.
-ענה עכשיו לבקשה המקורית על סמך תקצירי החלקים בלבד.
+  return `The user sent a large prompt/file. The file was processed in chunks.
+Answer the original user request using only the chunk summaries below.
 
-קטע קצר מתוך הבקשה המקורית:
+Original request excerpt:
 ---
 ${taskExcerpt}
 ---
 
-תקצירי החלקים:
+Chunk summaries:
 ---
 ${joinedSummaries}
 ---
 
-${truncated ? 'שים לב: הקובץ היה גדול מאוד, ולכן עובדו רק החלקים הראשונים במסגרת מגבלת המערכת. ציין זאת בתשובה אם זה משפיע על הוודאות.' : ''}
-
-תן תשובה אחת ברורה ושימושית.
-אם אין מספיק מידע כדי לענות בוודאות, אמור זאת בגלוי.`;
+${truncated ? 'Important: the user supplied a manual max_chunks value, so only part of the file was processed. Say clearly that the answer may be partial.\n' : ''}
+Give one clear final answer.
+If the summaries are not enough to answer confidently, say what is missing.`;
 }
 
 async function callChatProvider({ provider, cfg, prompt, apiKey, maxTokens = 2000 }) {
@@ -309,14 +309,15 @@ async function callChatProvider({ provider, cfg, prompt, apiKey, maxTokens = 200
 
 async function runChunkedChat({ provider, cfg, prompt, apiKey, maxChunks }) {
   const chunks = splitLargePrompt(prompt);
-  const limitedChunks = chunks.slice(0, maxChunks);
-  const truncated = limitedChunks.length < chunks.length;
+  const hasManualLimit = Number.isInteger(maxChunks) && maxChunks > 0;
+  const chunksToProcess = hasManualLimit ? chunks.slice(0, maxChunks) : chunks;
+  const truncated = chunksToProcess.length < chunks.length;
   const summaries = [];
 
-  for (let i = 0; i < limitedChunks.length; i += 1) {
+  for (let i = 0; i < chunksToProcess.length; i += 1) {
     const chunkPrompt = buildChunkPrompt({
       originalPrompt: prompt,
-      chunk: limitedChunks[i],
+      chunk: chunksToProcess[i],
       index: i,
       total: chunks.length,
     });
@@ -359,7 +360,7 @@ async function runChunkedChat({ provider, cfg, prompt, apiKey, maxChunks }) {
     ...finalResult,
     chunked: true,
     chunks: chunks.length,
-    processed_chunks: limitedChunks.length,
+    processed_chunks: chunksToProcess.length,
     truncated,
   };
 }
@@ -388,11 +389,11 @@ export async function handleAiChat(request) {
     return jsonResponse({ error: 'bad_request', message: 'Missing provider, prompt, or API key' }, 400);
   }
 
-  const maxChunks = normalizePositiveInt(body?.max_chunks, CHAT_MAX_CHUNKS, 1, CHAT_MAX_CHUNKS);
+  const maxChunks = parseOptionalPositiveInt(body?.max_chunks);
   const shouldChunk = prompt.length > CHAT_DIRECT_PROMPT_LIMIT || body?.large_file === true || body?.chunked === true;
 
   try {
-    console.log(`[ai-chat] provider=${provider} prompt_chars=${prompt.length} chunked=${shouldChunk}`);
+    console.log(`[ai-chat] provider=${provider} prompt_chars=${prompt.length} chunked=${shouldChunk} max_chunks=${maxChunks ?? 'unlimited'}`);
   } catch {}
 
   try {
