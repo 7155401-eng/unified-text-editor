@@ -1,7 +1,12 @@
 import { parseAuto } from "./engine/parser.js";
 import { paneManagerFromEngineDoc } from "./engine_bridge.js";
+import { installDefaultTextGuard } from "./default_text_guard.js";
 import hebrewText from "../samples/sample-hebrew.txt?raw";
 import adminDefaultHtml from "../samples/admin-default.html?raw";
+
+installDefaultTextGuard({
+  loadDefault: (paneManager) => loadSampleByName(paneManager, "shulchan"),
+});
 
 function emptyDoc() {
   return {
