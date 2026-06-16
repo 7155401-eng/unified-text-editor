@@ -59,3 +59,69 @@ export async function saveSyncScrollEnabledToServer(enabled) {
     return false;
   }
 }
+const TIDIO_PEIMOT_PUBLIC_KEY_STORAGE = "ravtext.tidio.publicKey";
+const TIDIO_PEIMOT_SCRIPT_FLAG = "data-ravtext-tidio-peimot";
+
+function readPeimotTidioPublicKey() {
+  const candidates = [];
+
+  try {
+    candidates.push(window.__RAVTEXT_TIDIO_PUBLIC_KEY__);
+  } catch (_) {
+    /* noop */
+  }
+
+  try {
+    candidates.push(import.meta.env?.VITE_TIDIO_PUBLIC_KEY);
+  } catch (_) {
+    /* noop */
+  }
+
+  try {
+    candidates.push(localStorage.getItem(TIDIO_PEIMOT_PUBLIC_KEY_STORAGE));
+  } catch (_) {
+    /* noop */
+  }
+
+  for (const value of candidates) {
+    const key = String(value || "").trim();
+    if (key && /^[a-z0-9]+$/i.test(key)) return key;
+  }
+
+  return "";
+}
+
+export function installPeimotTidioWidget() {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (window.__ravtextPeimotTidioLoaded) return;
+
+  const publicKey = readPeimotTidioPublicKey();
+  if (!publicKey) return;
+
+  const appendScript = () => {
+    if (window.__ravtextPeimotTidioLoaded) return;
+    if (document.querySelector(`script[${TIDIO_PEIMOT_SCRIPT_FLAG}]`)) return;
+
+    const script = document.createElement("script");
+    script.src = `https://code.tidio.co/${publicKey}.js`;
+    script.async = true;
+    script.setAttribute(TIDIO_PEIMOT_SCRIPT_FLAG, "1");
+    script.setAttribute("data-widget-purpose", "peimot-phone-capture");
+
+    window.__openPeimotTidioPhoneCapture = () => {
+      try {
+        window.tidioChatApi?.open?.();
+      } catch (_) {
+        /* noop */
+      }
+    };
+
+    document.body.appendChild(script);
+    window.__ravtextPeimotTidioLoaded = true;
+  };
+
+  if (document.body) appendScript();
+  else document.addEventListener("DOMContentLoaded", appendScript, { once: true });
+}
+
+installPeimotTidioWidget();
