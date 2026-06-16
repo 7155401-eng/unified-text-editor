@@ -1,110 +1,24 @@
-// RavText personal contextual help assistant.
-// A light DOM layer that places a friendly help face next to every visible control.
-const RH_ATTACHED="data-rav-help-attached";
-const RH_BTN="rav-help-trigger";
-const RH_CARD="rav-help-card";
-const RH_SELECTOR="button,a[href],select,textarea,input:not([type='hidden']),[role='button'],[role='switch'],[role='tab']";
-const RH_EXACT=new Map([
-["רנדר",["רינדור","יוצר מחדש את תצוגת העמודים לפי הטקסט וההגדרות הנוכחיים."]],
-["שמור ל-Word",["שמירה ל־Word","מייצא את העבודה למסמך Word לפי התצוגה והסגנונות הנוכחיים."]],
-["טען",["טעינה","מכניס תוכן או הגדרות אל סביבת העבודה."]],
-["ביטול",["ביטול","סוגר את הפעולה הנוכחית בלי להמשיך אותה."]],
-["איפוס",["איפוס","מחזיר את ההגדרה או האזור למצב נקי יותר."]],
-["הגדרות",["הגדרות","פותח אפשרויות שמאפשרות להתאים את העבודה להרגלים שלך."]],
-["תצוגה",["תצוגה","משנה איך הדברים נראים, בלי לשנות בהכרח את התוכן עצמו."]],
-["שמירה",["שמירה","שומר את הבחירה או העבודה כדי שתישאר גם אחרי רענון."]],
-["מחיקה",["מחיקה","מסיר פריט או מנקה מידע. כדאי לוודא שזה מה שרצית."]],
-["הורדה",["הורדה","מוריד קובץ למחשב או למכשיר שלך."]],
-["חיפוש",["חיפוש","מאפשר למצוא טקסט או פריט במהירות."]],
-["החלפה",["החלפה","מחליף טקסט קיים בטקסט אחר לפי הבחירה שלך."]],
-["ייבוא Word",["ייבוא Word","טוען מסמך Word ומנסה לשמור מבנה, זרמים ועיצוב."]],
-["ייצוא Word",["ייצוא Word","מכין קובץ Word מתוך העבודה הנוכחית."]],
-["PDF",["ייצוא PDF","מכין קובץ PDF לפי התצוגה הנוכחית."]],
-["ניקוד",["ניקוד","עוזר להוסיף או למזג ניקוד בטקסט."]],
-["השוואת טקסט",["השוואה","מציג הבדלים בין שני טקסטים כדי לזהות שינוי או חוסר."]],
-["זרמים",["זרמים","מנהל חלוקה בין טקסט ראשי, הערות, מקורות ואזורים נוספים."]],
-["עמודים",["עמודים","קשור לאופן שבו הטקסט נשבר ומסתדר בעמודי התצוגה."]],
-["סגנונות",["סגנונות","שולט במראה הטקסט: גופן, גודל, רווחים וצבעים."]],
-["עזרה",["עזרה","פותח הסבר ידידותי על הפעולה שלידך."]]
-]);
-function rhText(v){return String(v||"").replace(/\s+/g," ").trim();}
-function rhVisible(el){
-  if(!el||el.nodeType!==1||el.closest(".rav-help-wrap,#"+RH_CARD)||el.closest("[data-rav-help-skip]"))return false;
-  if(el.disabled||el.hidden||el.getAttribute("aria-hidden")==="true")return false;
-  const st=getComputedStyle(el);
-  if(st.display==="none"||st.visibility==="hidden"||st.opacity==="0")return false;
-  const r=el.getBoundingClientRect();
-  return r.width>0&&r.height>0;
-}
-function rhEsc(v){
-  const s=String(v||"");
-  if(typeof CSS!=="undefined"&&typeof CSS.escape==="function")return CSS.escape(s);
-  return s.replace(/["\\#.;:[\],>+~*'()]/g,"\\$&");
-}
-function rhName(el){
-  let v=rhText(el.getAttribute("aria-label"))||rhText(el.getAttribute("title"))||rhText(el.textContent);
-  if(v)return v.slice(0,90);
-  if(el.id){const l=document.querySelector(`label[for="${rhEsc(el.id)}"]`);v=rhText(l&&l.textContent);if(v)return v.slice(0,90);}
-  v=rhText(el.closest("label")&&el.closest("label").textContent)||rhText(el.getAttribute("placeholder"))||rhText(el.name)||rhText(el.id)||rhText(el.className);
-  return (v||"האפשרות הזו").slice(0,90);
-}
-function rhCat(name,el){
-  for(const [key,val]of RH_EXACT){if(name.includes(key))return val;}
-  if(el.tagName==="SELECT")return["בחירה מרשימה","פותח רשימת אפשרויות כדי לבחור את הערך המתאים."];
-  if(el.tagName==="TEXTAREA")return["שדה טקסט ארוך","כאן כותבים או עורכים טקסט ארוך יותר."];
-  if(el.tagName==="INPUT"){const t=(el.type||"text").toLowerCase();if(t==="checkbox")return["סימון","מפעיל או מכבה אפשרות אחת."];if(t==="radio")return["בחירה אחת","בוחר אפשרות אחת מתוך קבוצה."];if(t==="file")return["בחירת קובץ","מאפשר להעלות קובץ מהמכשיר."];return["שדה קלט","כאן מזינים ערך קצר או מספר."];}
-  const n=name.toLowerCase();
-  if(/word|docx|וורד/.test(n))return["Word","פעולה שקשורה לטעינה או שמירה של מסמך Word."];
-  if(/pdf/.test(n))return["PDF","פעולה שקשורה להכנת קובץ PDF."];
-  if(/render|רנדר|תצוגה|preview/.test(n))return["תצוגה","מרענן או משנה את התצוגה כדי לראות את התוצאה."];
-  if(/save|שמור|שמירה/.test(n))return["שמירה","שומר את המצב הנוכחי או מייצא אותו."];
-  if(/load|טען|ייבא|import/.test(n))return["טעינה","מביא תוכן או הגדרות לתוך העבודה."];
-  if(/delete|clear|נקה|מחק|מחיקה/.test(n))return["ניקוי","מסיר או מנקה מידע. להשתמש בזהירות."];
-  if(/settings|הגדר/.test(n))return["הגדרות","פותח התאמות של המערכת והמסמך."];
-  if(/style|font|גופן|סגנון/.test(n))return["עיצוב","משנה את המראה בלי לשכתב את הטקסט."];
-  if(/search|find|חפש|מצא/.test(n))return["חיפוש","עוזר למצוא משהו במהירות."];
-  if(/tab|לשונית|pane|חלונית/.test(n))return["מעבר אזור","מעביר אותך לאזור עבודה או חלונית אחרת."];
-  return["פעולה","מבצע את האפשרות שעליה כתוב הכפתור או השדה."];
-}
-function rhExplain(el){
-  const name=rhName(el),[title,body]=rhCat(name,el);
-  const short=`בקצרה: ${title} — ${body}`;
-  return {name,title,short,body:`${body} אם אינך בטוח, אפשר לסגור את ההסבר, לבדוק את הטקסט שעל הכפתור, ורק אז להפעיל.`};
-}
-function rhEnsureStyle(){
-  if(document.getElementById("rav-help-style"))return;
-  const css=`.rav-help-wrap{display:inline-flex;align-items:center;gap:.25rem;vertical-align:middle}.rav-help-trigger{border:0;background:#fff8db;color:#5a4211;border-radius:999px;box-shadow:0 1px 5px #0002;cursor:pointer;font-size:15px;line-height:1;min-width:24px;min-height:24px;padding:3px 5px;margin-inline:.2rem}.rav-help-trigger:hover{transform:translateY(-1px)}#rav-help-card{position:fixed;z-index:2147483000;max-width:min(360px,calc(100vw - 24px));background:#fffdf6;color:#2b2315;border:1px solid #ead9a7;border-radius:18px;box-shadow:0 16px 40px #0003;padding:14px;font:14px/1.55 system-ui,Arial,sans-serif;direction:rtl}#rav-help-card .face{font-size:30px;float:inline-start;margin-inline-end:8px}#rav-help-card h3{margin:0 0 4px;font-size:16px}#rav-help-card p{margin:6px 0}#rav-help-card .short{font-weight:700}#rav-help-card button{margin-top:8px;border:1px solid #dcc27b;background:#fff7d5;border-radius:999px;padding:5px 12px;cursor:pointer}`;
-  const st=document.createElement("style");st.id="rav-help-style";st.textContent=css;document.head.appendChild(st);
-}
-function rhClose(){document.getElementById(RH_CARD)?.remove();}
-function rhOpen(trigger,target){
-  rhClose();const info=rhExplain(target),card=document.createElement("aside");card.id=RH_CARD;card.setAttribute("role","dialog");card.setAttribute("aria-live","polite");
-  card.innerHTML=`<div class="face" aria-hidden="true">🙂</div><h3>${info.title}: ${info.name}</h3><p class="short">${info.short}</p><p>${info.body}</p><button type="button">סגור</button>`;
-  card.querySelector("button").addEventListener("click",rhClose);document.body.appendChild(card);
-  const r=trigger.getBoundingClientRect(),pad=10;let top=r.bottom+8,left=Math.min(Math.max(pad,r.left),innerWidth-card.offsetWidth-pad);
-  if(top+card.offsetHeight>innerHeight-pad)top=Math.max(pad,r.top-card.offsetHeight-8);
-  card.style.top=top+"px";card.style.left=left+"px";
-}
-function rhAttach(el){
-  if(!rhVisible(el)||el.hasAttribute(RH_ATTACHED))return;
-  el.setAttribute(RH_ATTACHED,"1");
-  const b=document.createElement("button");b.type="button";b.className=RH_BTN;b.textContent="🙂";b.title="עזרה על האפשרות הזו";b.setAttribute("aria-label","עזרה על "+rhName(el));
-  b.addEventListener("click",ev=>{ev.preventDefault();ev.stopPropagation();rhOpen(b,el);});
-  const w=document.createElement("span");w.className="rav-help-wrap";w.setAttribute("data-rav-help-skip","1");w.appendChild(b);
-  try{el.insertAdjacentElement("afterend",w);}catch{el.parentNode&&el.parentNode.insertBefore(w,el.nextSibling);}
-}
-function rhScan(root=document){
-  if(!root.querySelectorAll)return;
-  const list=root.matches?.(RH_SELECTOR)?[root,...root.querySelectorAll(RH_SELECTOR)]:[...root.querySelectorAll(RH_SELECTOR)];
-  list.forEach(rhAttach);
-}
-function rhInstall(){
-  if(!document.body)return;
-  rhEnsureStyle();rhScan(document);
-  let timer=0;const later=root=>{clearTimeout(timer);timer=setTimeout(()=>rhScan(root||document),80);};
-  new MutationObserver(ms=>{for(const m of ms){if(m.type==="childList"){for(const n of m.addedNodes){if(n.nodeType===1)later(n);}}else if(m.type==="attributes"){later(m.target);}}}).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:["hidden","aria-hidden","class","style"]});
-  document.addEventListener("keydown",e=>{if(e.key==="Escape")rhClose();});
-  document.addEventListener("click",e=>{if(!e.target.closest?.("#"+RH_CARD+",."+RH_BTN))rhClose();},true);
-}
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",rhInstall,{once:true});else rhInstall();
-export { rhScan as refreshPersonalHelpAssistant };
+const A="data-rav-help-attached",S="data-rav-help-skip",D="rav-help-dot",W="rav-help-wrap",C="rav-help-card",Q="button[data-cmd],button[id],select[id],input[id]:not([type='hidden'])";
+const H={
+bold:["מודגש","הדגשה לטקסט המסומן."],italic:["נטוי","הטיית הטקסט המסומן."],underline:["קו תחתון","קו תחתון לטקסט המסומן."],strike:["קו מחיקה","קו מחיקה לטקסט המסומן."],
+rtl:["ימין לשמאל","כיוון כתיבה עברי לפסקה."],ltr:["שמאל לימין","כיוון כתיבה לועזי לפסקה."],"align-right":["יישור ימין","יישור הפסקה לימין."],"align-center":["מרכוז","מרכוז הפסקה."],"align-left":["יישור שמאל","יישור הפסקה לשמאל."],
+bullet:["תבליטים","הפיכת הפסקה לרשימת תבליטים."],ordered:["מספור","הפיכת הפסקה לרשימה ממוספרת."],
+link:["קישור","חיבור הטקסט המסומן לכתובת."],unlink:["הסרת קישור","מחיקת הקישור בלי למחוק טקסט."],clear:["ניקוי עיצוב","הסרת עיצוב מהבחירה."],undo:["ביטול","חזרה צעד אחד אחורה."],redo:["שחזור","החזרת פעולה שבוטלה."],
+"engine-render":["רינדור עמודים","בניית העמודים מחדש לפי הטקסט וההגדרות."],"word-import-streams":["ייבוא Word מלא","טעינת Word עם זרמי מידע לעימוד."],"word-export":["שמירה ל־Word","ייצוא המסמך לקובץ Word."],"styles-io":["סגנונות","ייצוא או ייבוא סגנונות בין מסמכים."],"round-trip":["בדיקת שמירה","שמירה וטעינה חוזרת לבדיקת תקינות."],"diag-toggle":["אבחון","פתיחה או סגירה של חלונית האבחון."],
+"pane-add":["הוספת חלונית","יצירת חלונית עריכה נוספת."],"pane-remove":["הסרת חלונית","מחיקת חלונית העריכה הפעילה."],"split-to-panes":["פיצול לחלוניות","חלוקת טקסט לפי סימוני ‎@NN‎."],"split-special-notes":["הפרדת הערות","העברת הערות מיוחדות לזרם נפרד."],"merge-toggle":["מיזוג או פירוק","מעבר בין חלוניות נפרדות למסמך מאוחד."],"merge-from-panes":["איחוד","איחוד תוכן החלוניות לחלונית הראשית."],"preview-toggle":["תצוגה","מעבר בין עריכה לתצוגת קריאה."],"sync-toggle":["גלילה","סנכרון גלילה בין העריכה לפלט."],"pane-layout-toggle":["פריסת זרמים","שינוי תצוגת הזרמים לרוחב או לגובה."],"lines-toggle":["שורות","הצגה או הסתרה של הפרדת שורות."],
+"insert-table":["טבלה","הכנסת טבלה למסמך."],"insert-toc":["תוכן עניינים","הכנסת אזור תוכן עניינים."],"insert-math":["נוסחה","הכנסת נוסחה למסמך."],"insert-comment":["הערה","הוספת הערה במקום הבחירה."],"theme-toggle":["מצב תצוגה","מעבר בין מצב בהיר לכהה."],"lang-toggle":["שפה","החלפת שפת הממשק."]
+};
+const I={"btn-render":H["engine-render"],"btn-jump-stream":["קפיצה לזרם","מעבר לזרם האחרון שנערך."],"local-font-select":["גופן","בחירת גופן לתצוגה."],"size-selected-select":["גודל","שינוי גודל הטקסט המסומן."],"pdf-zoom-select":["זום","הגדלת או הקטנת חלון התצוגה."],"word-file-input":["קובץ Word","בחירת קובץ לייבוא."]};
+const T=new Map([["רנדר",H["engine-render"]],["ייבוא Word עם זרמים מלאים",H["word-import-streams"]],["שמור ל-Word",H["word-export"]],["ייצוא / ייבוא",H["styles-io"]],["JSON round-trip",H["round-trip"]],["אבחון",H["diag-toggle"]],["+ חלונית",H["pane-add"]],["✔ הסר חלונית",H["pane-remove"]],["✂ פצל לחלוניות",H["split-to-panes"]],["✂ הפרד הערות",H["split-special-notes"]],["מזג / פרק",H["merge-toggle"]],["↺ אחד",H["merge-from-panes"]],["תצוגה",H["preview-toggle"]],["גלילה",H["sync-toggle"]],["▥ זרמים לרוחב",H["pane-layout-toggle"]],["☷ שורות",H["lines-toggle"]],["∑ נוסחה",H["insert-math"]],["הערה",H["insert-comment"]],["תוכן עניינים",H["insert-toc"]],["הבנתי",["סגירה","סגירת ההודעה."]]]);
+const clean=v=>String(v||"").replace(/\s+/g," ").trim(),name=e=>{let c=e.cloneNode(true);c.querySelectorAll?.(`.${D},.${W},#${C}`).forEach(n=>n.remove());return clean(c.textContent)||clean(e.getAttribute("aria-label"))||clean(e.getAttribute("title"))};
+function cmd(c){if(H[c])return H[c];let m=c.match(/^h([1-6])$/);if(m)return[`כותרת ${m[1]}`,`קביעת הפסקה ככותרת ברמה ${m[1]}.`];m=c.match(/^stream-(0[1-8])$/);if(m)return[`זרם ${m[1]}`,`מעבר לעריכת זרם ${m[1]}.`];m=c.match(/^size-(12|15|18|24)$/);if(m)return[`גודל ${m[1]}`,`קביעת גודל ${m[1]}px לטקסט המסומן.`];return null}
+function inf(e){let c=e.getAttribute("data-cmd");if(c)return cmd(c);if(e.id&&I[e.id])return I[e.id];return T.get(name(e))||null}
+function skip(e){if(!e||e.nodeType!==1||e.hasAttribute(A)||e.getAttribute(S)==="1"||e.disabled||e.hidden)return true;if(e.closest?.(`#${C},.${W},#ribbon-tabs,.profile-menu,.modal-overlay:not(.active)`))return true;if(e.matches?.(".ribbon-tab,.ribbon-collapse-toggle"))return true;if(!inf(e))return true;let s=getComputedStyle(e),r=e.getBoundingClientRect();return s.display==="none"||s.visibility==="hidden"||r.width<8||r.height<8}
+function style(){if(document.getElementById("rav-help-style"))return;let s=document.createElement("style");s.id="rav-help-style";s.textContent=`.${W}{display:inline-flex!important;vertical-align:super!important;margin-inline:2px!important;line-height:1!important}.${D}{all:initial!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;width:13px!important;height:13px!important;border-radius:50%!important;border:1px solid #6b93d6!important;background:#fff!important;color:#185abd!important;font:700 9px/1 Arial,sans-serif!important;cursor:help!important;opacity:.75!important;box-shadow:0 1px 2px #0002!important;transform:translateY(-.18em)!important}.${D}:hover,.${D}:focus-visible{opacity:1!important;outline:2px solid #185abd33!important}#${C}{position:fixed;z-index:2147483000;max-width:min(330px,calc(100vw - 24px));background:#fffefa;color:#1f2937;border:1px solid #d8e2f2;border-radius:12px;box-shadow:0 14px 36px #0003;padding:12px 14px;font:13px/1.55 system-ui,Arial,sans-serif;direction:rtl}#${C} h3{margin:0 0 6px;font-size:15px;color:#185abd}#${C} p{margin:0}#${C} button{margin-top:10px;border:1px solid #c8d4e3;background:#f7f9fd;border-radius:999px;padding:4px 10px;cursor:pointer}`;document.head.appendChild(s)}
+function close(){document.getElementById(C)?.remove()}function put(p,t,v){let n=document.createElement(t);n.textContent=v;p.appendChild(n);return n}
+function open(d,e){let i=inf(e);if(!i)return;close();let c=document.createElement("aside");c.id=C;c.setAttribute("role","dialog");put(c,"h3",i[0]);put(c,"p",i[1]);let b=put(c,"button","סגור");b.type="button";b.onclick=close;document.body.appendChild(c);let r=d.getBoundingClientRect(),p=10,top=r.bottom+7,left=Math.min(Math.max(p,r.left),innerWidth-c.offsetWidth-p);if(top+c.offsetHeight>innerHeight-p)top=Math.max(p,r.top-c.offsetHeight-7);c.style.top=top+"px";c.style.left=left+"px"}
+function add(e){if(skip(e))return;let i=inf(e);e.setAttribute(A,"1");let d=document.createElement("span");d.className=D;d.textContent="?";d.title=i[0]+" — "+i[1];d.setAttribute(S,"1");d.setAttribute("role","button");d.setAttribute("tabindex","0");d.setAttribute("aria-label","עזרה: "+i[0]);d.onclick=ev=>{ev.preventDefault();ev.stopPropagation();open(d,e)};d.onkeydown=ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();open(d,e)}};let w=document.createElement("span");w.className=W;w.setAttribute(S,"1");w.appendChild(d);try{e.insertAdjacentElement("afterend",w)}catch{e.parentNode?.insertBefore(w,e.nextSibling)}}
+function scan(root=document){if(!root.querySelectorAll)return;(root.matches?.(Q)?[root,...root.querySelectorAll(Q)]:[...root.querySelectorAll(Q)]).forEach(add)}
+function install(){if(!document.body)return;style();scan();let t=0,sch=r=>{clearTimeout(t);t=setTimeout(()=>scan(r||document),120)};new MutationObserver(ms=>{for(let m of ms)if(m.type==="childList")for(let n of m.addedNodes)n.nodeType===1&&sch(n)}).observe(document.body,{childList:true,subtree:true});document.addEventListener("keydown",e=>{if(e.key==="Escape")close()});document.addEventListener("click",e=>{if(!e.target.closest?.(`#${C},.${D}`))close()},true)}
+document.readyState==="loading"?document.addEventListener("DOMContentLoaded",install,{once:true}):install();
+export{scan as refreshPersonalHelpAssistant};
