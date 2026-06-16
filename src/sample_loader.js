@@ -62,7 +62,7 @@ export function loadStaticStarterSample(paneManager) {
 }
 
 installDefaultTextGuard({
-  loadDefault: (paneManager) => loadSampleByName(paneManager, "shulchan"),
+  loadDefault: loadStaticStarterSample,
 });
 
 export function loadEditableDefaultSample(paneManager) {
