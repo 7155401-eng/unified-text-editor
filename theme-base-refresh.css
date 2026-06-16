@@ -1,0 +1,19 @@
+/* Live fallback for the global language switcher icon.
+   index.html already loads this file. The guard prevents a duplicate icon
+   when the JavaScript language-switcher class is active.
+*/
+#langBtn:not(.language-switcher) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+#langBtn:not(.language-switcher)::before {
+  content: "🌐";
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1;
+  margin-inline-end: 2px;
+}
