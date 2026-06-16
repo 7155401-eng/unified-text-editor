@@ -1,59 +1,34 @@
-import "./first_note_title.js";
+import"./first_note_title.js";
+const STORAGE_KEY="ravtext.nestedNotes";let _cached=null;
+export function isNestedNotesEnabled(){if(_cached!==null)return _cached;if(typeof window==="undefined")return false;try{const p=new URLSearchParams(window.location.search||""),v=p.get("nested");if(v==="1"||v==="true"){try{localStorage.setItem(STORAGE_KEY,"1")}catch(_){}return _cached=true}if(v==="0"||v==="false"){try{localStorage.removeItem(STORAGE_KEY)}catch(_){}return _cached=false}}catch(_){}try{_cached=localStorage.getItem(STORAGE_KEY)==="1"}catch(_){_cached=false}return _cached}
+export function _resetNestedNotesGateCache(){_cached=null}
 
-// Feature gate for nested footnotes ("הערה על הערה").
-//
-// Activated by:
-//   • URL param `?nested=1`            — turns the feature on for THIS visit
-//                                         AND persists to localStorage so
-//                                         subsequent loads keep it on.
-//   • URL param `?nested=0`            — turns it off and clears the flag.
-//   • localStorage `ravtext.nestedNotes=1` — the persisted state.
-//
-// Why same-domain URL gate: `https://app.ravtext.com/?nested=1&k=...`
-// gives the user a shareable link that opts them in. On the same domain,
-// the render preflight succeeds (it gates on origin, not on the feature).
-//
-// When the gate is OFF:
-//   • engine_bridge.js skips the expandNestedInNote pass — `@XX` markers
-//     embedded in stream-pane note text stay as literal characters,
-//     identical to the pre-feature behavior. Backwards-compatible.
-//   • The beginner hint banner is hidden.
-// When the gate is ON:
-//   • Embedded markers are pulled as children; renderer shows them inline.
-//   • The hint banner appears (until dismissed).
+const BTN_ID="nested-notes-open-stream-menu-btn",POP_ID="nested-notes-stream-menu-popover";
+const STREAM_RE=/(זרם|זרמים|חלונית|חלוניות|stream|streams|pane|panes)/i,VIEW_RE=/(תצוגה|view)/i;
+let installed=false,observer=null,resizeHandler=null,lastBtn=null;
 
-const STORAGE_KEY = "ravtext.nestedNotes";
-
-let _cached = null;
-
-export function isNestedNotesEnabled() {
-  if (_cached !== null) return _cached;
-  if (typeof window === "undefined") return false;
-  // URL param wins for this load and writes to storage so subsequent
-  // navigation within the same session keeps the choice.
-  try {
-    const params = new URLSearchParams(window.location.search || "");
-    const v = params.get("nested");
-    if (v === "1" || v === "true") {
-      try { localStorage.setItem(STORAGE_KEY, "1"); } catch (_) {}
-      _cached = true;
-      return true;
-    }
-    if (v === "0" || v === "false") {
-      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
-      _cached = false;
-      return false;
-    }
-  } catch (_) {}
-  try {
-    _cached = localStorage.getItem(STORAGE_KEY) === "1";
-  } catch (_) {
-    _cached = false;
-  }
-  return _cached;
-}
-
-// For tests: drop the cache so a fresh check re-reads URL + localStorage.
-export function _resetNestedNotesGateCache() {
-  _cached = null;
-}
+function textOf(el){if(!el)return"";return[el.textContent||"",el.value||"",el.title||"",el.getAttribute?.("aria-label")||"",el.getAttribute?.("data-label")||"",el.id||"",el.className||""].join(" ").replace(/\s+/g," ").trim()}
+function inside(el){return!!el?.closest?.(`#${POP_ID},#${BTN_ID}`)}
+function findNestedButton(){return Array.from(document.querySelectorAll("button,[role='button'],input[type='button'],input[type='submit']")).find(el=>el instanceof HTMLElement&&el.id!==BTN_ID&&textOf(el).includes("הצג הערות להערות"))||null}
+function styleBtn(btn){btn.type="button";btn.id=BTN_ID;btn.className="nested-notes-stream-menu-button";btn.innerHTML='<span aria-hidden="true" style="font-size:1.05em">🌊</span><span>פתח תפריט זרמים</span>';btn.title="פתח תפריט זרמים";btn.setAttribute("aria-label","פתח תפריט זרמים");btn.setAttribute("aria-haspopup","dialog");btn.setAttribute("aria-expanded","false");btn.style.cssText=["margin-inline-start:6px","display:inline-flex","align-items:center","gap:5px","padding:3px 9px","border-radius:999px","border:1px solid rgba(44,90,160,.38)","background:linear-gradient(180deg,rgba(44,90,160,.12),rgba(44,90,160,.05))","color:inherit","font-size:12px","font-weight:600","line-height:1.35","cursor:pointer","white-space:nowrap","box-shadow:0 1px 2px rgba(0,0,0,.08)"].join(";")}
+function ensureBtn(target){if(!target||!(target instanceof HTMLElement))return false;let btn=document.getElementById(BTN_ID);if(!btn){btn=document.createElement("button");styleBtn(btn);btn.addEventListener("click",ev=>{ev.preventDefault();ev.stopPropagation();toggleMenu(btn)})}else if(!btn.querySelector("span")||!btn.textContent.includes("פתח תפריט זרמים")){const clone=btn.cloneNode(false);btn.replaceWith(clone);btn=clone;styleBtn(btn);btn.addEventListener("click",ev=>{ev.preventDefault();ev.stopPropagation();toggleMenu(btn)})}if(btn.previousElementSibling!==target)target.insertAdjacentElement("afterend",btn);return true}
+function ensurePop(){let pop=document.getElementById(POP_ID);if(pop)return pop;pop=document.createElement("div");pop.id=POP_ID;pop.dir="rtl";pop.setAttribute("role","dialog");pop.setAttribute("aria-label","תפריט זרמים");pop.style.cssText=["position:fixed","z-index:10020","display:none","min-width:210px","max-width:min(320px,calc(100vw - 16px))","max-height:min(62vh,420px)","overflow:auto","box-sizing:border-box","padding:8px","border:1px solid rgba(0,0,0,.16)","border-radius:12px","background:var(--rt-surface,#fff)","color:var(--rt-text,#222)","box-shadow:0 10px 28px rgba(0,0,0,.20)","font-size:12px"].join(";");const h=document.createElement("div");h.style.cssText="display:flex;align-items:center;gap:6px;margin-bottom:6px";const t=document.createElement("strong");t.textContent="🌊 זרמים";t.style.fontSize="12px";const sp=document.createElement("span");sp.style.flex="1";const x=document.createElement("button");x.type="button";x.textContent="×";x.title="סגור";x.style.cssText="border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer;color:inherit;padding:0 2px";x.addEventListener("click",closeMenu);h.append(t,sp,x);const b=document.createElement("div");b.className="nested-notes-stream-menu-body";pop.append(h,b);document.body.appendChild(pop);return pop}
+function paneAnchor(){return document.getElementById("panes-container")||document.getElementById("pane-container")||document.querySelector("[data-pane-container]")||document.querySelector(".panes-container,.pane-container,.panes-shell,.pane-layout,.pane-stack,.panes")}
+function position(pop,btn){pop.style.display="block";pop.style.visibility="hidden";const pad=8,pr=paneAnchor()?.getBoundingClientRect?.(),br=btn?.getBoundingClientRect?.();let top,right;if(pr&&pr.width>0&&pr.height>0){top=pr.top+pad;right=Math.max(pad,window.innerWidth-pr.right+pad)}else if(br){top=br.bottom+6;right=Math.max(pad,window.innerWidth-br.right)}else{top=pad;right=pad}const h=pop.offsetHeight||240,w=pop.offsetWidth||260;if(top+h>window.innerHeight-pad)top=Math.max(pad,window.innerHeight-h-pad);if(right+w>window.innerWidth-pad)right=Math.max(pad,window.innerWidth-w-pad);pop.style.top=`${Math.round(top)}px`;pop.style.right=`${Math.round(right)}px`;pop.style.left="auto";pop.style.visibility="visible"}
+function viewContainers(){const set=new Set,trs=Array.from(document.querySelectorAll("button,[role='button'],[role='menuitem'],summary,a")).filter(el=>VIEW_RE.test(textOf(el)));for(const tr of trs){const p=tr.closest?.("[role='menu'],.menu,.dropdown-menu,.toolbar,.topbar,nav,header,.settings-panel,.panel,section,div")||tr.parentElement;if(p)set.add(p);const n=tr.nextElementSibling;if(n)set.add(n);const id=tr.getAttribute?.("aria-controls");if(id){const c=document.getElementById(id);if(c)set.add(c)}}if(!set.size)set.add(document.body);return Array.from(set)}
+function related(el){if(!(el instanceof HTMLElement)||inside(el)||el.id===BTN_ID)return false;const tx=textOf(el);if(!STREAM_RE.test(tx)||tx.includes("פתח תפריט זרמים"))return false;const c=textOf(el.closest?.("label,button,[role='menuitem'],.menu-item,.dropdown-item,.setting-row,.control-row")||el);return!c.includes("פתח תפריט זרמים")}
+function rootOf(el){return el.closest?.("button,[role='menuitem'],[role='button'],label,.menu-item,.dropdown-item,.setting-row,.control-row")||el}
+function items(){const map=new Map;for(const c of viewContainers()){for(const cand of Array.from(c.querySelectorAll("button,[role='menuitem'],[role='button'],input,select,label,a,.menu-item,.dropdown-item,.setting-row,.control-row"))){if(!related(cand))continue;const r=rootOf(cand);if(!r||inside(r))continue;const k=r.id||r.getAttribute?.("data-command")||textOf(r);if(k&&!map.has(k))map.set(k,{root:r,source:cand})}}return Array.from(map.values()).filter(({root})=>!textOf(root).includes("הצג הערות להערות")).slice(0,14)}
+function label(raw){return String(raw||"").replace(/\s+/g," ").replace(/^(✓|✔|☑|☐|•|-)\s*/,"").replace(/\b(true|false|on|off)\b/gi,"").trim()}
+function fire(src,root){const t=src instanceof HTMLInputElement||src instanceof HTMLSelectElement?src:root;if(!t)return;if(t instanceof HTMLInputElement&&["checkbox","radio"].includes(t.type)){t.click();t.dispatchEvent(new Event("change",{bubbles:true}));return}t.dispatchEvent(new MouseEvent("click",{bubbles:true,cancelable:true,view:window}))}
+function row(it,i){const r=document.createElement("button");r.type="button";r.style.cssText=["width:100%","display:flex","align-items:center","justify-content:space-between","gap:8px","padding:6px 8px","margin:0 0 4px","border:1px solid rgba(0,0,0,.10)","border-radius:9px","background:rgba(0,0,0,.025)","color:inherit","font:inherit","font-size:12px","text-align:right","cursor:pointer"].join(";");const l=document.createElement("span");l.textContent=label(textOf(it.root)||textOf(it.source)||`פעולת זרמים ${i+1}`);l.style.cssText="overflow:hidden;text-overflow:ellipsis;white-space:nowrap";const s=document.createElement("span");s.setAttribute("aria-hidden","true");s.style.cssText="opacity:.65;font-size:11px;flex:0 0 auto";s.textContent=it.source instanceof HTMLInputElement&&["checkbox","radio"].includes(it.source.type)?it.source.checked?"פעיל":"כבוי":it.source instanceof HTMLSelectElement?"בחירה":"פתח";r.append(l,s);r.addEventListener("click",ev=>{ev.preventDefault();ev.stopPropagation();fire(it.source,it.root);setTimeout(refresh,80)});return r}
+function render(body){body.innerHTML="";const found=items();if(!found.length){const e=document.createElement("div");e.textContent="לא נמצאו כעת פעולות זרמים מתוך תפריט תצוגה.";e.style.cssText="opacity:.75;padding:4px 2px";body.appendChild(e);return}const list=document.createElement("div");list.style.cssText="display:flex;flex-direction:column;gap:0";found.forEach((it,i)=>list.appendChild(row(it,i)));body.appendChild(list)}
+function refresh(){const pop=document.getElementById(POP_ID);if(!pop||pop.style.display==="none")return;const b=pop.querySelector(".nested-notes-stream-menu-body");if(b)render(b);position(pop,document.getElementById(BTN_ID)||lastBtn)}
+function closeMenu(){const pop=document.getElementById(POP_ID);if(pop){pop.style.display="none";const b=pop.querySelector(".nested-notes-stream-menu-body");if(b)b.innerHTML=""}const btn=document.getElementById(BTN_ID);if(btn)btn.setAttribute("aria-expanded","false");document.removeEventListener("keydown",key,true);document.removeEventListener("click",outside,true);if(resizeHandler){window.removeEventListener("resize",resizeHandler);window.removeEventListener("scroll",resizeHandler,true);resizeHandler=null}}
+function key(ev){if(ev.key==="Escape")closeMenu()}
+function outside(ev){const p=document.getElementById(POP_ID),b=document.getElementById(BTN_ID),t=ev.target;if(p?.contains(t)||b?.contains(t))return;closeMenu()}
+function openMenu(btn){lastBtn=btn||lastBtn;const pop=ensurePop(),body=pop.querySelector(".nested-notes-stream-menu-body");if(body)render(body);position(pop,btn);btn?.setAttribute("aria-expanded","true");document.addEventListener("keydown",key,true);setTimeout(()=>document.addEventListener("click",outside,true),0);resizeHandler=()=>{const b=document.getElementById(BTN_ID)||lastBtn,p=document.getElementById(POP_ID);if(p&&p.style.display!=="none")position(p,b)};window.addEventListener("resize",resizeHandler);window.addEventListener("scroll",resizeHandler,true)}
+function toggleMenu(btn){const p=document.getElementById(POP_ID);if(p&&p.style.display!=="none"){closeMenu();return}openMenu(btn)}
+function sync(){if(typeof document==="undefined")return;const t=findNestedButton();if(t)ensureBtn(t)}
+function install(){if(installed||typeof document==="undefined")return;installed=true;const run=()=>{sync();if(!observer&&document.body){observer=new MutationObserver(()=>sync());observer.observe(document.body,{childList:true,subtree:true})}};if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",run,{once:true});else run();setTimeout(sync,300);setTimeout(sync,1200)}
+install();
