@@ -26,6 +26,84 @@
     return undefined;
   });
 
+  function installLanguageSwitcherIconShim() {
+    const styleId = "ravtext-language-switcher-icon-shim";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        #langBtn.language-switcher-lite {
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 4px !important;
+          white-space: nowrap !important;
+        }
+        #langBtn .ravtext-lang-globe {
+          font-size: 14px;
+          line-height: 1;
+          pointer-events: none;
+        }
+        #langBtn .ravtext-lang-label {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: .04em;
+          pointer-events: none;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    function render() {
+      const btn = document.getElementById("langBtn");
+      if (!btn) return false;
+
+      // If the module-based switcher already rendered its inline SVG, do not override it.
+      if (btn.classList.contains("language-switcher") && btn.querySelector("svg")) return true;
+
+      const currentLabel =
+        (btn.querySelector(".ravtext-lang-label")?.textContent || btn.textContent || "")
+          .replace("🌐", "")
+          .trim() || "EN";
+
+      if (btn.querySelector(".ravtext-lang-globe") && btn.querySelector(".ravtext-lang-label")) {
+        const label = btn.querySelector(".ravtext-lang-label");
+        if (label.textContent !== currentLabel) label.textContent = currentLabel;
+        return true;
+      }
+
+      btn.classList.add("language-switcher-lite");
+      btn.innerHTML =
+        '<span class="ravtext-lang-globe" aria-hidden="true">🌐</span>' +
+        '<span class="ravtext-lang-label"></span>';
+      btn.querySelector(".ravtext-lang-label").textContent = currentLabel;
+      return true;
+    }
+
+    let renderLock = false;
+    function safeRender() {
+      if (renderLock) return;
+      renderLock = true;
+      try {
+        render();
+      } finally {
+        renderLock = false;
+      }
+    }
+
+    if (render()) {
+      const btn = document.getElementById("langBtn");
+      const observer = new MutationObserver(() => setTimeout(safeRender, 0));
+      observer.observe(btn, { childList: true, characterData: true, subtree: true });
+      return;
+    }
+
+    let attemptsLeft = 80;
+    const timer = setInterval(() => {
+      if (render() || --attemptsLeft <= 0) clearInterval(timer);
+    }, 100);
+  }
+
   let attempts = 0;
   const maxAttempts = 200;
 
@@ -47,7 +125,9 @@
       extract_word: wrap(bridge.editor_extract_word),
       export_word: wrap(bridge.editor_export_word),
       get_initial_file: wrap(bridge.editor_get_initial_file),
-      force_close: function () { bridge.editor_force_close(); },
+      force_close: function () {
+        bridge.editor_force_close();
+      },
     };
   }
 
@@ -61,6 +141,7 @@
       setTimeout(init, 50);
       return;
     }
+
     new QWebChannel(qt.webChannelTransport, (channel) => {
       const bridge = channel.objects.pybridge;
       window.pywebview = window.pywebview || {};
@@ -83,8 +164,10 @@
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
     document.addEventListener("DOMContentLoaded", loadRenderSafetyAddons, { once: true });
+    document.addEventListener("DOMContentLoaded", installLanguageSwitcherIconShim, { once: true });
   } else {
     init();
     loadRenderSafetyAddons();
+    installLanguageSwitcherIconShim();
   }
 })();
