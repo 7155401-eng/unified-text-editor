@@ -1,4 +1,5 @@
 import "./personal_help_assistant.js";
+import "./personal_help_subtle_rest.js";
 
 const PUBLIC_TOOLS = new Set([
   "nikud-merger",
