@@ -24,12 +24,24 @@ function textOf(el) {
   ].join(" ").replace(/\s+/g, " ").trim();
 }
 
+function isVisibleElement(el) {
+  if (!(el instanceof HTMLElement) || !el.isConnected) return false;
+  try {
+    const style = getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  } catch (_) {
+    return true;
+  }
+}
+
 function findNestedNotesButton() {
   return Array.from(document.querySelectorAll("button,[role='button'],input[type='button'],input[type='submit'],label"))
     .find((el) => {
-      if (!(el instanceof HTMLElement) || el.id === BTN_ID) return false;
+      if (!(el instanceof HTMLElement) || el.id === BTN_ID || !isVisibleElement(el)) return false;
       const t = textOf(el);
-      return t.includes("הערות להערות") || /הצג.*הערות.*להערות/.test(t);
+      return t.includes("הערות להערות") || /הצג.*הערות.*להערות/.test(t) || /תמיכה.*הערות.*להערות/.test(t);
     }) || null;
 }
 
@@ -37,14 +49,6 @@ function findAnchor() {
   return findNestedNotesButton()
     || document.getElementById(PICKER_ID)
     || document.getElementById(ADD_BTN_ID);
-}
-
-function paneAnchor() {
-  return document.getElementById("panes-container")
-    || document.getElementById("pane-container")
-    || document.querySelector("[data-pane-container]")
-    || document.querySelector(".panes-container,.pane-container,.panes-shell,.pane-layout,.pane-stack,.panes")
-    || document.getElementById("pages-container");
 }
 
 function selectedCodes() {
@@ -73,27 +77,17 @@ function setSelected(codes) {
   return true;
 }
 
-function ensureButton() {
-  const anchor = findAnchor();
-  if (!(anchor instanceof HTMLElement)) return false;
+function isMenuOpen() {
+  const pop = document.getElementById(POP_ID);
+  return !!(pop && pop.style.display !== "none");
+}
 
-  let btn = document.getElementById(BTN_ID);
-  if (!btn) {
-    btn = document.createElement("button");
-    btn.type = "button";
-    btn.id = BTN_ID;
-    btn.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      toggleMenu(btn);
-    });
-  }
-
+function updateButtonUi(btn) {
   btn.innerHTML = '<span aria-hidden="true">🌊</span><span>פתח תפריט זרמים</span>';
   btn.title = "פתח תפריט זרמים";
   btn.setAttribute("aria-label", "פתח תפריט זרמים");
   btn.setAttribute("aria-haspopup", "dialog");
-  btn.setAttribute("aria-expanded", "false");
+  btn.setAttribute("aria-expanded", isMenuOpen() ? "true" : "false");
   btn.style.cssText = [
     "margin-inline-start:6px",
     "display:inline-flex",
@@ -111,6 +105,29 @@ function ensureButton() {
     "white-space:nowrap",
     "box-shadow:0 1px 2px rgba(0,0,0,.08)",
   ].join(";");
+}
+
+function ensureButton() {
+  const anchor = findAnchor();
+  if (!(anchor instanceof HTMLElement)) return false;
+
+  let btn = document.getElementById(BTN_ID);
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = BTN_ID;
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleMenu(btn);
+    });
+  }
+
+  updateButtonUi(btn);
+
+  // Do not move the button while the menu is open. This prevents the click target
+  // from appearing to vanish when late bounded startup retries run.
+  if (btn.isConnected && isMenuOpen()) return true;
 
   const nestedBtn = findNestedNotesButton();
   if (nestedBtn && btn.previousElementSibling !== nestedBtn) {
@@ -141,12 +158,12 @@ function ensurePopover() {
     "position:fixed",
     "z-index:10020",
     "display:none",
-    "min-width:220px",
-    "max-width:min(340px,calc(100vw - 16px))",
+    "min-width:260px",
+    "max-width:min(360px,calc(100vw - 16px))",
     "max-height:min(62vh,420px)",
     "overflow:auto",
     "box-sizing:border-box",
-    "padding:8px",
+    "padding:9px",
     "border:1px solid rgba(0,0,0,.16)",
     "border-radius:12px",
     "background:var(--rt-surface,#fff)",
@@ -156,7 +173,7 @@ function ensurePopover() {
   ].join(";");
 
   const header = document.createElement("div");
-  header.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:6px";
+  header.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:7px";
 
   const title = document.createElement("strong");
   title.textContent = "🌊 תפריט זרמים";
@@ -181,30 +198,37 @@ function ensurePopover() {
   return pop;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function positionMenu(pop, btn) {
   pop.style.display = "block";
   pop.style.visibility = "hidden";
 
   const pad = 8;
-  const pane = paneAnchor()?.getBoundingClientRect?.();
   const button = btn?.getBoundingClientRect?.();
 
   let top = pad;
   let right = pad;
 
-  if (pane && pane.width > 0 && pane.height > 0) {
-    top = pane.top + pad;
-    right = Math.max(pad, window.innerWidth - pane.right + pad);
-  } else if (button) {
-    top = button.bottom + 6;
-    right = Math.max(pad, window.innerWidth - button.right);
+  // Prefer the clicked button. The previous version preferred the pane area and
+  // could cover the original button, which made it look like the button vanished.
+  if (button && button.width > 0 && button.height > 0) {
+    top = button.bottom + 8;
+    right = window.innerWidth - button.right;
   }
 
   const h = pop.offsetHeight || 260;
   const w = pop.offsetWidth || 280;
 
-  if (top + h > window.innerHeight - pad) top = Math.max(pad, window.innerHeight - h - pad);
-  if (right + w > window.innerWidth - pad) right = Math.max(pad, window.innerWidth - w - pad);
+  // If there is not enough room below, open above the button.
+  if (button && top + h > window.innerHeight - pad) {
+    top = button.top - h - 8;
+  }
+
+  top = clamp(top, pad, Math.max(pad, window.innerHeight - h - pad));
+  right = clamp(right, pad, Math.max(pad, window.innerWidth - w - pad));
 
   pop.style.top = `${Math.round(top)}px`;
   pop.style.right = `${Math.round(right)}px`;
@@ -226,7 +250,7 @@ function toggleCode(code) {
 
 function renderBody() {
   const pop = document.getElementById(POP_ID);
-  if (!pop || pop.style.display === "none") return;
+  if (!pop) return;
 
   const body = pop.querySelector(".nested-notes-stream-menu-body");
   if (!body) return;
@@ -278,6 +302,8 @@ function renderBody() {
 
 function openMenu(btn) {
   const pop = ensurePopover();
+
+  // Render before measuring, then position. This fixes the tiny header-only box.
   renderBody();
   positionMenu(pop, btn);
   btn?.setAttribute("aria-expanded", "true");
