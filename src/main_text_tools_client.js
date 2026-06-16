@@ -59,3 +59,30 @@ export async function saveSyncScrollEnabledToServer(enabled) {
     return false;
   }
 }
+
+const PEIMOT_TIDIO_SCRIPT_SRC = "//code.tidio.co/om1yquztujdibhi5ypvtcvo2vfrcd4am.js";
+const PEIMOT_TIDIO_SCRIPT_FLAG = "data-ravtext-peimot-tidio";
+
+export function installPeimotTidioWidget() {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  if (window.__ravtextPeimotTidioLoaded) return;
+
+  const appendScript = () => {
+    if (window.__ravtextPeimotTidioLoaded) return;
+    if (document.querySelector(`script[${PEIMOT_TIDIO_SCRIPT_FLAG}]`)) return;
+
+    const script = document.createElement("script");
+    script.src = PEIMOT_TIDIO_SCRIPT_SRC;
+    script.async = true;
+    script.setAttribute(PEIMOT_TIDIO_SCRIPT_FLAG, "1");
+    script.setAttribute("data-widget-purpose", "peimot-phone-capture");
+
+    document.body.appendChild(script);
+    window.__ravtextPeimotTidioLoaded = true;
+  };
+
+  if (document.body) appendScript();
+  else document.addEventListener("DOMContentLoaded", appendScript, { once: true });
+}
+
+installPeimotTidioWidget();
