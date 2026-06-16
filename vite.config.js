@@ -20,6 +20,7 @@ const _patches = [
   './scripts/apply_docx_uploadid_splitter_menu_patch.mjs',
   './scripts/apply_docx_uploadid_runtime_guard_patch.mjs',
   './scripts/apply_docx_post_upload_button_handler_fallback_patch.mjs',
+  './scripts/apply_legacy_docx_google_redirect_patch.mjs',
 ];
 for (const p of _patches) {
   try { await import(p); }
