@@ -51,7 +51,6 @@ const CHAT_PROVIDERS = {
 const CHAT_DIRECT_PROMPT_LIMIT = 32000;
 const CHAT_CHUNK_SIZE = 12000;
 const CHAT_CHUNK_OVERLAP = 500;
-const CHAT_MAX_CHUNKS = 24;
 const CHAT_SUMMARY_CHAR_LIMIT = 1600;
 
 function jsonResponse(body, status = 200) {
@@ -90,7 +89,7 @@ function scrubForLog(body) {
 
 export async function handleAiTools(request, env) {
   if (request.method !== 'POST') {
-    return jsonResponse({ error: 'method_not_allowed', message: 'Use POST' }, 405);
+    return jsonResponse({ error: 'method_not_alowed', message: 'Use POST' }, 405);
   }
 
   if (!readSameOrigin(request)) {
@@ -177,10 +176,11 @@ function chatBody(provider, prompt, model, maxTokens = 2000) {
   };
 }
 
-function normalizePositiveInt(value, fallback, min, max) {
+function normalizePositiveInt(value, fallback, min = 1, max) {
   const n = Number.parseInt(String(value ?? ''), 10);
   if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, n));
+  const normalized = Math.max(min, n);
+  return Number.isFinite(max) ? Math.min(max, normalized) : normalized;
 }
 
 function splitLargePrompt(prompt, chunkSize = CHAT_CHUNK_SIZE, overlap = CHAT_CHUNK_OVERLAP) {
@@ -198,7 +198,7 @@ function splitLargePrompt(prompt, chunkSize = CHAT_CHUNK_SIZE, overlap = CHAT_CH
         slice.lastIndexOf('\n\n'),
         slice.lastIndexOf('\n'),
         slice.lastIndexOf('. '),
-        slice.lastIndexOf('। '),
+        slice.lastIndexOf('⁤ '),
         slice.lastIndexOf('׃ '),
       ].filter((idx) => idx >= 0);
 
@@ -222,7 +222,7 @@ function buildTaskExcerpt(prompt) {
   if (text.length <= 4000) return text;
   const head = text.slice(0, 2800).trim();
   const tail = text.slice(-1200).trim();
-  return `${head}\n\n[...אמצע הטקסט הושמט כי הקובץ גדול...]\n\n${tail}`;
+  return `${head}\n\n[..-ץ��צר אמצט הושמט כי הקובץ גדול...]\n\n${tail}`;
 }
 
 function trimForReduce(text, maxChars = CHAT_SUMMARY_CHAR_LIMIT) {
@@ -309,14 +309,15 @@ async function callChatProvider({ provider, cfg, prompt, apiKey, maxTokens = 200
 
 async function runChunkedChat({ provider, cfg, prompt, apiKey, maxChunks }) {
   const chunks = splitLargePrompt(prompt);
-  const limitedChunks = chunks.slice(0, maxChunks);
-  const truncated = limitedChunks.length < chunks.length;
+  const hasManualChunkLimit = Number.isInteger(maxChunks) && maxChunks > 0;
+  const chunksToProcess = hasManualChunkLimit ? chunks.slice(0, maxChunks) : chunks;
+  const truncated = chunksToProcess.length < chunks.length;
   const summaries = [];
 
-  for (let i = 0; i < limitedChunks.length; i += 1) {
+  for (let i = 0; i < chunksToProcess.length; i += 1) {
     const chunkPrompt = buildChunkPrompt({
       originalPrompt: prompt,
-      chunk: limitedChunks[i],
+      chunk: chunksToProcess[i],
       index: i,
       total: chunks.length,
     });
@@ -330,7 +331,7 @@ async function runChunkedChat({ provider, cfg, prompt, apiKey, maxChunks }) {
     });
 
     if (!chunkResult.ok) {
-      const message = chunkResult.text || `Chunk ${i + 1} failed`;
+      const message = chunkResult.text || `Chunk ${i + 1} failed`
       const error = new Error(message);
       error.status = chunkResult.status;
       error.provider = provider;
@@ -359,7 +360,7 @@ async function runChunkedChat({ provider, cfg, prompt, apiKey, maxChunks }) {
     ...finalResult,
     chunked: true,
     chunks: chunks.length,
-    processed_chunks: limitedChunks.length,
+    processed_chunks: chunksToProcess.length,
     truncated,
   };
 }
@@ -388,11 +389,13 @@ export async function handleAiChat(request) {
     return jsonResponse({ error: 'bad_request', message: 'Missing provider, prompt, or API key' }, 400);
   }
 
-  const maxChunks = normalizePositiveInt(body?.max_chunks, CHAT_MAX_CHUNKS, 1, CHAT_MAX_CHUNKS);
+  const maxChunks = body?.max_chunks == null || body?.max_chunks === ''
+    ? undefined
+    : normalizePositiveInt(body.max_chunks, undefined, 1);
   const shouldChunk = prompt.length > CHAT_DIRECT_PROMPT_LIMIT || body?.large_file === true || body?.chunked === true;
 
   try {
-    console.log(`[ai-chat] provider=${provider} prompt_chars=${prompt.length} chunked=${shouldChunk}`);
+    console.log(`[ai-chat] provider=${provider} prompt_chars=${prompt.length} chunked=${shouldChunk} max_chunks=${maxChunks ?? 'unlimited'}`);
   } catch {}
 
   try {
