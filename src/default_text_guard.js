@@ -4,13 +4,17 @@
 // This runs only during boot checks and never replaces real user text.
 
 const PANE_STATE_STORAGE_KEY = "ravtext.panes.state.v1";
-const GUARD_VERSION = "startup-default-sample-2026-06-16-2";
+const GUARD_VERSION = "startup-default-sample-2026-06-16-3";
 
 function now() {
   return Date.now ? Date.now() : new Date().getTime();
 }
 
 const installedAt = now();
+let recoveryScheduled = false;
+let recoveryRun = null;
+let recoveryRunQueued = false;
+let recoveryAttempted = false;
 
 function normalizeText(text) {
   return String(text || "")
@@ -146,15 +150,34 @@ function rerenderSoon() {
   } catch (_) {}
 }
 
+function queueRecoveryRun() {
+  if (typeof recoveryRun !== "function" || recoveryRunQueued) return;
+  recoveryRunQueued = true;
+  setTimeout(() => {
+    recoveryRunQueued = false;
+    recoveryRun();
+  }, 0);
+}
+
 function schedulePristineEditorRecovery(loadDefault) {
   if (typeof loadDefault !== "function") return;
 
+  if (recoveryScheduled) {
+    queueRecoveryRun();
+    return;
+  }
+
+  recoveryScheduled = true;
+
   const run = () => {
+    if (recoveryAttempted || window.__RAVTEXT_DEFAULT_TEXT_GUARD_RESTORED__) return;
+
     const paneManager = window.paneManager;
     if (!shouldRecoverLivePaneManager(paneManager)) return;
 
     if (window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__) return;
     window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = true;
+    recoveryAttempted = true;
 
     Promise.resolve(loadDefault(paneManager))
       .then(() => {
@@ -168,6 +191,8 @@ function schedulePristineEditorRecovery(loadDefault) {
         window.__RAVTEXT_DEFAULT_TEXT_GUARD_LOADING__ = false;
       });
   };
+
+  recoveryRun = run;
 
   // Startup checks. Late checks handle server persistence and demo setup.
   [0, 80, 180, 350, 700, 1200, 2200, 4000, 7000, 11000].forEach((ms) => {
@@ -197,7 +222,7 @@ export function installPristineServerDocumentGuard({ onSkippedPristineDocument }
       if (!isPristinePaneState(content)) return response;
 
       if (typeof onSkippedPristineDocument === "function") {
-        [0, 300, 900, 1800].forEach((ms) => setTimeout(onSkippedPristineDocument, ms));
+        setTimeout(onSkippedPristineDocument, 0);
       }
 
       const headers = new Headers(response.headers);
