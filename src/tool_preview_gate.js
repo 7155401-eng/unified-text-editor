@@ -1,13 +1,11 @@
-// משה 2026-05-08: שער תצוגה לכלי מתורגמים מ-work-files (פייתון).
-// admin שמחובר רואה כלי בבטא אוטומטית. משתמש רגיל רואה רק כלים מאושרים.
-// אישור כלי לכולם = הוספת שמו ל-PUBLIC_TOOLS.
+import "./personal_help_assistant.js";
 
 const PUBLIC_TOOLS = new Set([
-  "nikud-merger",       // אושר 2026-05-08 — מיזוג ניקוד
-  "word-extractor",     // אושר 2026-05-09 — ייבוא Word עם זרמים מלאים
-  "torah-transcription",// אושר 2026-05-10 — תמלול אודיו / OCR / עריכה לשונית תורנית
-  "torah-nikud",        // אושר 2026-05-10 — ניקוד תורני אוטומטי
-  "haredi-caricature",  // אושר 2026-05-10 — קריקטורה AI
+  "nikud-merger",
+  "word-extractor",
+  "torah-transcription",
+  "torah-nikud",
+  "haredi-caricature",
   "text-compare-pro",
   "sefaria-downloader",
   "sefaria-live",
