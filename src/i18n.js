@@ -136,6 +136,9 @@ const tr = {
 let currentLang = localStorage.getItem(STORAGE_KEY) || "he";
 if (!tr[currentLang]) currentLang = "he";
 
+const LANG_ICON='<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>';
+function syncLanguageSwitcher(){const btn=document.getElementById("langBtn");if(!btn)return;const nextLang=currentLang==="he"?"en":"he",label=nextLang==="en"?"EN":"HE";btn.classList.add("language-switcher");btn.dataset.currentLang=currentLang;btn.dataset.nextLang=nextLang;btn.title=nextLang==="en"?"English":"עברית";btn.setAttribute("aria-label",nextLang==="en"?"Switch language to English":"החלף שפה לעברית");btn.innerHTML=`<span aria-hidden="true" style="display:inline-flex;vertical-align:middle;margin-inline-end:4px">${LANG_ICON}</span><b style="font-size:11px;letter-spacing:.04em">${label}</b>`;const select=document.getElementById("settings-language");if(select)select.value=currentLang;}
+
 export function applyLanguage(forceLang) {
   // v33: accept either explicit lang or fall back to localStorage / current.
   if (forceLang && tr[forceLang]) {
@@ -172,8 +175,7 @@ export function applyLanguage(forceLang) {
     }
   });
 
-  const btn = document.getElementById("langBtn");
-  if (btn) btn.textContent = currentLang === "he" ? "EN" : "HE";
+  syncLanguageSwitcher();
   // v33: persist language across reloads.
   localStorage.setItem(STORAGE_KEY, currentLang);
 }
