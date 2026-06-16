@@ -2,11 +2,9 @@ import { parseAuto } from "./engine/parser.js";
 import { paneManagerFromEngineDoc } from "./engine_bridge.js";
 import { installDefaultTextGuard } from "./default_text_guard.js";
 import hebrewText from "../samples/sample-hebrew.txt?raw";
+import shulchanText from "../samples/sample-shulchan.txt?raw";
+import talmudText from "../samples/sample-talmud.txt?raw";
 import adminDefaultHtml from "../samples/admin-default.html?raw";
-
-installDefaultTextGuard({
-  loadDefault: (paneManager) => loadSampleByName(paneManager, "shulchan"),
-});
 
 function emptyDoc() {
   return {
@@ -16,12 +14,8 @@ function emptyDoc() {
 }
 
 async function loadSampleText(name) {
-  if (name === "shulchan") {
-    return (await import("../samples/sample-shulchan.txt?raw")).default;
-  }
-  if (name === "talmud") {
-    return (await import("../samples/sample-talmud.txt?raw")).default;
-  }
+  if (name === "shulchan") return shulchanText;
+  if (name === "talmud") return talmudText;
   return hebrewText;
 }
 
@@ -66,3 +60,7 @@ export function loadEditableDefaultSample(paneManager) {
   }
   return main;
 }
+
+installDefaultTextGuard({
+  loadDefault: (paneManager) => loadSampleByName(paneManager, "shulchan"),
+});
