@@ -1,5 +1,7 @@
 // compact_stream_menu.js — safe, bounded compact stream selector.
-// No MutationObserver, no document-wide click capture, no overlay, and no unrelated action buttons.
+//
+// Loaded once by the app. It only tries a few bounded installs during startup.
+// No MutationObserver, no interval, and no global DOM rewriting.
 
 const BTN_ID = "nested-notes-open-stream-menu-btn";
 const POP_ID = "nested-notes-stream-menu-popover";
@@ -9,7 +11,6 @@ const ADD_BTN_ID = "talmud-add-stream-btn";
 const MAX_STREAMS = 2;
 
 let installStarted = false;
-let fallbackMode = false;
 
 function textOf(el) {
   if (!el) return "";
@@ -40,17 +41,14 @@ function findNestedNotesButton() {
     .find((el) => {
       if (!(el instanceof HTMLElement) || el.id === BTN_ID || !isVisibleElement(el)) return false;
       const t = textOf(el);
-      return t.includes("הערות להערות")
-        || /הצג.*הערות.*להערות/.test(t)
-        || /תמיכה.*הערות.*להערות/.test(t);
+      return t.includes("הערות להערות") || /הצג.*הערות.*להערות/.test(t) || /תמיכה.*הערות.*להערות/.test(t);
     }) || null;
 }
 
 function findAnchor() {
   return findNestedNotesButton()
     || document.getElementById(PICKER_ID)
-    || document.getElementById(ADD_BTN_ID)
-    || document.getElementById(INPUT_ID);
+    || document.getElementById(ADD_BTN_ID);
 }
 
 function selectedCodes() {
@@ -84,14 +82,14 @@ function isMenuOpen() {
   return !!(pop && pop.style.display !== "none");
 }
 
-function styleButton(btn) {
+function updateButtonUi(btn) {
   btn.innerHTML = '<span aria-hidden="true">🌊</span><span>פתח תפריט זרמים</span>';
   btn.title = "פתח תפריט זרמים";
   btn.setAttribute("aria-label", "פתח תפריט זרמים");
   btn.setAttribute("aria-haspopup", "dialog");
   btn.setAttribute("aria-expanded", isMenuOpen() ? "true" : "false");
-
-  const base = [
+  btn.style.cssText = [
+    "margin-inline-start:6px",
     "display:inline-flex",
     "align-items:center",
     "gap:5px",
@@ -106,23 +104,13 @@ function styleButton(btn) {
     "cursor:pointer",
     "white-space:nowrap",
     "box-shadow:0 1px 2px rgba(0,0,0,.08)",
-  ];
-
-  if (fallbackMode) {
-    base.push(
-      "position:fixed",
-      "top:92px",
-      "right:12px",
-      "z-index:10010"
-    );
-  } else {
-    base.push("position:static");
-  }
-
-  btn.style.cssText = base.join(";");
+  ].join(";");
 }
 
 function ensureButton() {
+  const anchor = findAnchor();
+  if (!(anchor instanceof HTMLElement)) return false;
+
   let btn = document.getElementById(BTN_ID);
   if (!btn) {
     btn = document.createElement("button");
@@ -135,27 +123,25 @@ function ensureButton() {
     });
   }
 
-  if (btn.isConnected && isMenuOpen()) {
-    styleButton(btn);
+  updateButtonUi(btn);
+
+  // Do not move the button while the menu is open. This prevents the click target
+  // from appearing to vanish when late bounded startup retries run.
+  if (btn.isConnected && isMenuOpen()) return true;
+
+  const nestedBtn = findNestedNotesButton();
+  if (nestedBtn && btn.previousElementSibling !== nestedBtn) {
+    nestedBtn.insertAdjacentElement("afterend", btn);
     return true;
   }
 
-  const anchor = findAnchor();
-  fallbackMode = !(anchor instanceof HTMLElement);
-
-  if (anchor instanceof HTMLElement) {
-    if (findNestedNotesButton() && btn.previousElementSibling !== anchor) {
-      anchor.insertAdjacentElement("afterend", btn);
-    } else if (document.getElementById(PICKER_ID) && btn.nextElementSibling !== document.getElementById(PICKER_ID)) {
-      document.getElementById(PICKER_ID).insertAdjacentElement("beforebegin", btn);
-    } else if (!btn.isConnected) {
-      anchor.insertAdjacentElement("afterend", btn);
-    }
-  } else if (!btn.isConnected) {
-    document.body.appendChild(btn);
+  const picker = document.getElementById(PICKER_ID);
+  if (picker && btn.nextElementSibling !== picker) {
+    picker.insertAdjacentElement("beforebegin", btn);
+    return true;
   }
 
-  styleButton(btn);
+  if (!btn.isConnected) anchor.insertAdjacentElement("afterend", btn);
   return true;
 }
 
@@ -185,13 +171,6 @@ function ensurePopover() {
     "box-shadow:0 10px 28px rgba(0,0,0,.20)",
     "font-size:12px",
   ].join(";");
-  document.body.appendChild(pop);
-  return pop;
-}
-
-function renderBody() {
-  const pop = ensurePopover();
-  pop.innerHTML = "";
 
   const header = document.createElement("div");
   header.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:7px";
@@ -210,65 +189,17 @@ function renderBody() {
   close.style.cssText = "border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer;color:inherit;padding:0 2px";
   close.addEventListener("click", closeMenu);
 
-  header.append(title, spacer, close);
-
   const body = document.createElement("div");
+  body.className = "nested-notes-stream-menu-body";
 
-  const hint = document.createElement("div");
-  hint.textContent = `בחר עד ${MAX_STREAMS} זרמים להצגה בחלוניות.`;
-  hint.style.cssText = "opacity:.72;margin:0 0 8px;font-size:11px";
-
-  const input = document.getElementById(INPUT_ID);
-  if (!input) {
-    const missing = document.createElement("div");
-    missing.textContent = "בקר הזרמים עדיין לא נטען במסך הזה.";
-    missing.style.cssText = "border:1px solid rgba(0,0,0,.12);border-radius:9px;padding:7px 8px;background:rgba(0,0,0,.025);opacity:.75";
-    body.append(hint, missing);
-    pop.append(header, body);
-    return;
-  }
-
-  const cur = selectedCodes();
-  const chips = document.createElement("div");
-  chips.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px";
-
-  availableCodes().forEach((code) => {
-    const on = cur.includes(code);
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.textContent = on ? `✓ ${code}` : code;
-    chip.title = on ? `הסר זרם ${code}` : `בחר זרם ${code}`;
-    chip.style.cssText = [
-      "display:inline-flex",
-      "align-items:center",
-      "justify-content:center",
-      "min-width:34px",
-      "padding:4px 8px",
-      "border-radius:999px",
-      "border:1px solid rgba(0,0,0,.12)",
-      on ? "background:var(--rt-accent,#2c5aa0);color:#fff" : "background:rgba(0,0,0,.035);color:inherit",
-      "font:inherit",
-      "font-size:12px",
-      "cursor:pointer",
-    ].join(";");
-    chip.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      const next = cur.includes(code)
-        ? cur.filter((c) => c !== code)
-        : (cur.length >= MAX_STREAMS ? [...cur.slice(1), code] : [...cur, code]);
-      setSelected(next);
-      renderBody();
-    });
-    chips.appendChild(chip);
-  });
-
-  const current = document.createElement("div");
-  current.textContent = cur.length ? `נבחרו: ${cur.join(", ")}` : "לא נבחרו זרמים";
-  current.style.cssText = "border-top:1px solid rgba(0,0,0,.10);padding-top:7px;opacity:.72;font-size:11px";
-
-  body.append(hint, chips, current);
+  header.append(title, spacer, close);
   pop.append(header, body);
+  document.body.appendChild(pop);
+  return pop;
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function positionMenu(pop, btn) {
@@ -281,6 +212,8 @@ function positionMenu(pop, btn) {
   let top = pad;
   let right = pad;
 
+  // Prefer the clicked button. The previous version preferred the pane area and
+  // could cover the original button, which made it look like the button vanished.
   if (button && button.width > 0 && button.height > 0) {
     top = button.bottom + 8;
     right = window.innerWidth - button.right;
@@ -289,12 +222,13 @@ function positionMenu(pop, btn) {
   const h = pop.offsetHeight || 260;
   const w = pop.offsetWidth || 280;
 
+  // If there is not enough room below, open above the button.
   if (button && top + h > window.innerHeight - pad) {
     top = button.top - h - 8;
   }
 
-  top = Math.max(pad, Math.min(Math.max(pad, window.innerHeight - h - pad), top));
-  right = Math.max(pad, Math.min(Math.max(pad, window.innerWidth - w - pad), right));
+  top = clamp(top, pad, Math.max(pad, window.innerHeight - h - pad));
+  right = clamp(right, pad, Math.max(pad, window.innerWidth - w - pad));
 
   pop.style.top = `${Math.round(top)}px`;
   pop.style.right = `${Math.round(right)}px`;
@@ -302,12 +236,80 @@ function positionMenu(pop, btn) {
   pop.style.visibility = "visible";
 }
 
-function openMenu(btn) {
+function toggleCode(code) {
+  const cur = selectedCodes();
+  if (cur.includes(code)) {
+    setSelected(cur.filter((c) => c !== code));
+  } else if (cur.length >= MAX_STREAMS) {
+    setSelected([...cur.slice(1), code]);
+  } else {
+    setSelected([...cur, code]);
+  }
   renderBody();
+}
+
+function renderBody() {
+  const pop = document.getElementById(POP_ID);
+  if (!pop) return;
+
+  const body = pop.querySelector(".nested-notes-stream-menu-body");
+  if (!body) return;
+
+  const cur = selectedCodes();
+  const codes = availableCodes();
+  body.innerHTML = "";
+
+  const hint = document.createElement("div");
+  hint.textContent = `בחר עד ${MAX_STREAMS} זרמים להצגה בחלוניות.`;
+  hint.style.cssText = "opacity:.72;margin:0 0 8px;font-size:11px";
+
+  const chips = document.createElement("div");
+  chips.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px";
+
+  codes.forEach((code) => {
+    const selected = cur.includes(code);
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.textContent = selected ? `✓ ${code}` : code;
+    chip.title = selected ? `הסר זרם ${code}` : `בחר זרם ${code}`;
+    chip.style.cssText = [
+      "display:inline-flex",
+      "align-items:center",
+      "justify-content:center",
+      "min-width:34px",
+      "padding:4px 8px",
+      "border-radius:999px",
+      "border:1px solid rgba(0,0,0,.12)",
+      selected ? "background:var(--rt-accent,#2c5aa0);color:#fff" : "background:rgba(0,0,0,.035);color:inherit",
+      "font:inherit",
+      "font-size:12px",
+      "cursor:pointer",
+    ].join(";");
+    chip.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      toggleCode(code);
+    });
+    chips.appendChild(chip);
+  });
+
+  const current = document.createElement("div");
+  current.textContent = cur.length ? `נבחרו: ${cur.join(", ")}` : "לא נבחרו זרמים";
+  current.style.cssText = "border-top:1px solid rgba(0,0,0,.10);padding-top:7px;opacity:.72;font-size:11px";
+
+  body.append(hint, chips, current);
+}
+
+function openMenu(btn) {
   const pop = ensurePopover();
+
+  // Render before measuring, then position. This fixes the tiny header-only box.
+  renderBody();
   positionMenu(pop, btn);
   btn?.setAttribute("aria-expanded", "true");
+
   document.addEventListener("keydown", onKey, true);
+  setTimeout(() => document.addEventListener("click", onOutside, true), 0);
   window.addEventListener("resize", onReposition);
   window.addEventListener("scroll", onReposition, true);
 }
@@ -315,23 +317,29 @@ function openMenu(btn) {
 function closeMenu() {
   const pop = document.getElementById(POP_ID);
   if (pop) pop.style.display = "none";
+
   document.getElementById(BTN_ID)?.setAttribute("aria-expanded", "false");
   document.removeEventListener("keydown", onKey, true);
+  document.removeEventListener("click", onOutside, true);
   window.removeEventListener("resize", onReposition);
   window.removeEventListener("scroll", onReposition, true);
 }
 
 function toggleMenu(btn) {
   const pop = document.getElementById(POP_ID);
-  if (pop && pop.style.display !== "none") {
-    closeMenu();
-  } else {
-    openMenu(btn);
-  }
+  if (pop && pop.style.display !== "none") closeMenu();
+  else openMenu(btn);
 }
 
 function onKey(ev) {
   if (ev.key === "Escape") closeMenu();
+}
+
+function onOutside(ev) {
+  const pop = document.getElementById(POP_ID);
+  const btn = document.getElementById(BTN_ID);
+  if (pop?.contains(ev.target) || btn?.contains(ev.target)) return;
+  closeMenu();
 }
 
 function onReposition() {
