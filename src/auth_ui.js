@@ -9,6 +9,17 @@ const STATUS_LABELS = {
   guest: "אורח",
 };
 
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function gradientForEmail(email) {
   const palettes = [
     ["#6366f1", "#8b5cf6"],
@@ -65,7 +76,7 @@ function buildAvatar(auth) {
 
   if (auth.loggedIn && auth.email) {
     btn.style.background = gradientForEmail(auth.email);
-    btn.innerHTML = `<span class="profile-avatar-initial">${initialFromEmail(auth.email)}</span>`;
+    btn.innerHTML = `<span class="profile-avatar-initial">${escapeHtml(initialFromEmail(auth.email))}</span>`;
   } else {
     btn.classList.add("profile-avatar-guest");
     btn.innerHTML = `<span class="profile-avatar-icon">${guestAvatarSvg()}</span>`;
@@ -91,10 +102,10 @@ function buildMenu(auth) {
     header.className = "profile-menu-header";
     header.innerHTML = `
       <div class="profile-menu-avatar" style="background:${gradientForEmail(auth.email)};">
-        <span>${initialFromEmail(auth.email)}</span>
+        <span>${escapeHtml(initialFromEmail(auth.email))}</span>
       </div>
       <div class="profile-menu-id">
-        <div class="profile-menu-email">${auth.email}</div>
+        <div class="profile-menu-email">${escapeHtml(auth.email)}</div>
         <div class="profile-menu-status status-${status}">${STATUS_LABELS[status]}</div>
       </div>
     `;
