@@ -130,16 +130,47 @@ function patchPauseControlsDefault(source) {
 function liveRenderToggleHelper() {
   return `
   function ensureLiveRenderToggleButton() {
-    const existing = byId("live-render-toggle-button");
-    if (existing) return;
-
-    const host = pauseButton()?.parentElement || renderButton()?.parentElement;
+    const render = renderButton();
+    const pause = pauseButton();
+    const host = render?.parentElement || pause?.parentElement;
     if (!host) return;
+
+    function renderMenuAnchor() {
+      const renderControlIds = new Set([
+        "btn-render",
+        "btn-render-pause",
+        "btn-render-resume",
+        "btn-render-diagnostics",
+        "btn-reset-display-only",
+        "btn-ravtext-snapshots",
+      ]);
+
+      const controlsInDomOrder = Array.from(host.children).filter((el) => renderControlIds.has(el.id));
+      return controlsInDomOrder[controlsInDomOrder.length - 1] || pause || render;
+    }
+
+    function placeLiveRenderControl(wrap) {
+      wrap.classList.add("live-render-menu-control", "live-render-pause-control");
+      wrap.dir = "rtl";
+      wrap.style.cssText = "display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;white-space:nowrap;font-size:12px;";
+
+      const anchor = renderMenuAnchor();
+      if (anchor && anchor.parentElement === host) {
+        if (anchor.nextElementSibling !== wrap) anchor.insertAdjacentElement("afterend", wrap);
+      } else if (wrap.parentElement !== host) {
+        host.appendChild(wrap);
+      }
+    }
+
+    const existingButton = byId("live-render-toggle-button");
+    const existingWrap = existingButton?.closest?.(".live-render-menu-control") || null;
+    if (existingWrap) {
+      placeLiveRenderControl(existingWrap);
+      return;
+    }
 
     const wrap = document.createElement("span");
     wrap.className = "live-render-menu-control live-render-pause-control";
-    wrap.dir = "rtl";
-    wrap.style.cssText = "display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;white-space:nowrap;font-size:12px;";
 
     const btn = document.createElement("button");
     btn.type = "button";
@@ -180,17 +211,11 @@ function liveRenderToggleHelper() {
     wrap.appendChild(btn);
     wrap.appendChild(warning);
 
-    const anchor = pauseButton() || renderButton();
-    if (anchor && anchor.parentElement === host) {
-      anchor.insertAdjacentElement("afterend", wrap);
-    } else {
-      host.appendChild(wrap);
-    }
-
+    placeLiveRenderControl(wrap);
     paintLiveToggle();
   }
 
-`;
+;
 }
 
 function patchPauseControlsToggleUi(source) {
