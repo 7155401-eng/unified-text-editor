@@ -1,13 +1,185 @@
-// משה 2026-05-07: אייקון פרופיל עגול בודד בכותרת, משובץ בתוך app-header-actions
-// כך שהאייקון העגול והכפתורים האחרים (דיווח באג / צור קשר / טלפון) יושבים זה לצד זה.
-// לחיצה על האייקון פותחת תפריט נשלף עם המייל, סטטוס מנוי, קישור ניהול ויציאה.
-// (קודם השתמשנו ב-position:absolute שגרם לחפיפה עם app-header-actions שגם הוא בצד שמאל ב-RTL.)
+// Unified auth menu UI + shared menu visuals.
+// Injected from a module that is loaded at app startup, so menu/dropdown
+// styling stays consistent across profile menus, context menus and selects.
 
 const STATUS_LABELS = {
   paid: "מנוי פעיל",
   demo: "מצב דמו",
   guest: "אורח",
 };
+
+function installUnifiedMenuVisuals() {
+  if (document.getElementById("ravtext-unified-menu-visuals")) return;
+
+  const style = document.createElement("style");
+  style.id = "ravtext-unified-menu-visuals";
+  style.textContent = `
+:root {
+  --rt-menu-radius: 14px;
+  --rt-menu-item-radius: 10px;
+  --rt-menu-pad: 8px;
+  --rt-menu-font-size: 13px;
+  --rt-menu-line-height: 1.35;
+  --rt-menu-shadow: 0 18px 46px rgba(15, 23, 42, .22), 0 0 0 1px rgba(148, 163, 184, .18);
+  --rt-menu-bg: var(--panel, #ffffff);
+  --rt-menu-fg: var(--text, #0f172a);
+  --rt-menu-muted: var(--muted, #64748b);
+  --rt-menu-border: var(--border, #d8e0ea);
+  --rt-menu-hover: color-mix(in srgb, var(--word-blue, #2b579a) 10%, transparent);
+  --rt-menu-control-bg: color-mix(in srgb, var(--panel, #ffffff) 92%, var(--word-blue, #2b579a) 8%);
+}
+body.light-theme {
+  --rt-menu-bg: #ffffff;
+  --rt-menu-fg: #0f172a;
+  --rt-menu-muted: #64748b;
+  --rt-menu-border: #d8e0ea;
+}
+.profile-menu,
+.ctx-menu,
+[data-ravtext-menu],
+.rt-menu,
+.dropdown-menu {
+  direction: rtl;
+  box-sizing: border-box;
+  padding: var(--rt-menu-pad);
+  border: 1px solid var(--rt-menu-border);
+  border-radius: var(--rt-menu-radius);
+  background: var(--rt-menu-bg);
+  color: var(--rt-menu-fg);
+  box-shadow: var(--rt-menu-shadow);
+  font-size: var(--rt-menu-font-size);
+  line-height: var(--rt-menu-line-height);
+  overflow: hidden;
+}
+.profile-menu { min-width: 236px; }
+.profile-menu::before { background: linear-gradient(90deg, var(--word-blue, #2b579a), var(--gold, #c49a2c)); }
+.profile-menu-header,
+.profile-menu-guest {
+  margin: 0 0 6px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--rt-menu-control-bg);
+  border: 1px solid color-mix(in srgb, var(--rt-menu-border) 74%, transparent);
+}
+.profile-menu-email,
+.profile-menu-guest-title { color: var(--rt-menu-fg); font-weight: 700; }
+.profile-menu-guest-sub,
+.profile-menu-status { color: var(--rt-menu-muted); }
+.profile-menu-sep,
+.ctx-sep {
+  height: 1px;
+  margin: 6px 2px;
+  background: color-mix(in srgb, var(--rt-menu-border) 82%, transparent);
+  border: 0;
+}
+.profile-menu-item,
+.profile-menu-login-btn,
+.ctx-menu button,
+[data-ravtext-menu] button,
+[data-ravtext-menu] a,
+.rt-menu button,
+.rt-menu a,
+.dropdown-menu button,
+.dropdown-menu a {
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--rt-menu-item-radius);
+  background: transparent;
+  color: var(--rt-menu-fg);
+  font: inherit;
+  text-align: right;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease, transform .14s ease, color .14s ease;
+}
+.profile-menu-item:hover,
+.profile-menu-login-btn:hover,
+.ctx-menu button:hover,
+[data-ravtext-menu] button:hover,
+[data-ravtext-menu] a:hover,
+.rt-menu button:hover,
+.rt-menu a:hover,
+.dropdown-menu button:hover,
+.dropdown-menu a:hover {
+  background: var(--rt-menu-hover);
+  border-color: color-mix(in srgb, var(--word-blue, #2b579a) 22%, transparent);
+  color: var(--rt-menu-fg);
+  transform: translateY(-1px);
+}
+.profile-menu-item-icon { width: 20px; text-align: center; flex: 0 0 20px; }
+.profile-menu-login-btn {
+  justify-content: center;
+  margin-top: 8px;
+  background: linear-gradient(135deg, #ffffff, var(--rt-menu-control-bg));
+  border-color: var(--rt-menu-border);
+  font-weight: 700;
+}
+.toolbar select,
+.panes-toolbar select,
+.ribbon-panel select,
+.settings-panel select,
+.stream-col-select,
+.font-gallery-select,
+.opw-control select,
+.rt-video-gallery-field select,
+select[data-ravtext-select] {
+  box-sizing: border-box;
+  min-height: 34px;
+  border: 1px solid var(--rt-menu-border);
+  border-radius: 10px;
+  background: var(--rt-menu-control-bg);
+  color: var(--rt-menu-fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 6px 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.45);
+  transition: background .14s ease, border-color .14s ease, box-shadow .14s ease;
+}
+.toolbar select:hover,
+.panes-toolbar select:hover,
+.ribbon-panel select:hover,
+.settings-panel select:hover,
+.stream-col-select:hover,
+.font-gallery-select:hover,
+.opw-control select:hover,
+.rt-video-gallery-field select:hover,
+select[data-ravtext-select]:hover {
+  border-color: color-mix(in srgb, var(--word-blue, #2b579a) 44%, var(--rt-menu-border));
+}
+.toolbar select:focus,
+.panes-toolbar select:focus,
+.ribbon-panel select:focus,
+.settings-panel select:focus,
+.stream-col-select:focus,
+.font-gallery-select:focus,
+.opw-control select:focus,
+.rt-video-gallery-field select:focus,
+select[data-ravtext-select]:focus {
+  outline: 2px solid color-mix(in srgb, var(--word-blue, #2b579a) 34%, transparent);
+  outline-offset: 1px;
+  border-color: var(--word-blue, #2b579a);
+}
+@media (max-width: 560px) {
+  .profile-menu,
+  .ctx-menu,
+  [data-ravtext-menu],
+  .rt-menu,
+  .dropdown-menu {
+    border-radius: 12px;
+    font-size: 12px;
+  }
+  .profile-menu { min-width: min(236px, calc(100vw - 24px)); }
+}`;
+  document.head.appendChild(style);
+}
 
 function gradientForEmail(email) {
   const palettes = [
@@ -19,34 +191,20 @@ function gradientForEmail(email) {
     ["#14b8a6", "#0ea5e9"],
   ];
   let hash = 0;
-  for (let i = 0; i < email.length; i++) hash = ((hash << 5) - hash + email.charCodeAt(i)) | 0;
-  const idx = Math.abs(hash) % palettes.length;
-  const [a, b] = palettes[idx];
+  for (let i = 0; i < email.length; i += 1) hash = ((hash << 5) - hash + email.charCodeAt(i)) | 0;
+  const [a, b] = palettes[Math.abs(hash) % palettes.length];
   return `linear-gradient(135deg, ${a} 0%, ${b} 100%)`;
 }
 
 function initialFromEmail(email) {
   if (!email) return "";
   const ch = email.trim().charAt(0).toUpperCase();
-  return /[A-Z֐-׿0-9]/.test(ch) ? ch : "?";
-}
-
-// משה 2026-05-08: אווטאר אורח = לוגו G הרשמי של גוגל ב-4 צבעים על רקע לבן.
-// קודם היה פילואט אדם אפור-עכור על גרדיאנט אפור — לא ברור שהאווטאר הוא הזמנה
-// להתחברות בגוגל. עכשיו האייקון עצמו מודיע: לחיצה = כניסה עם גוגל.
-function guestAvatarSvg() {
-  return `<svg viewBox="0 0 18 18" width="20" height="20" aria-hidden="true" focusable="false">
-    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
-    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-    <path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z"/>
-    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
-  </svg>`;
+  return /[A-Z\u0590-\u05ff0-9]/.test(ch) ? ch : "?";
 }
 
 function statusFor(auth) {
   if (!auth.loggedIn) return "guest";
-  if (auth.paid) return "paid";
-  return "demo";
+  return auth.paid ? "paid" : "demo";
 }
 
 function buildAvatar(auth) {
@@ -59,22 +217,37 @@ function buildAvatar(auth) {
 
   const status = statusFor(auth);
   btn.dataset.status = status;
-  btn.title = auth.loggedIn
-    ? `${auth.email || ""} · ${STATUS_LABELS[status]}`
-    : "כניסה לחשבון";
+  btn.title = auth.loggedIn ? `${auth.email || ""} · ${STATUS_LABELS[status]}` : "כניסה לחשבון";
 
   if (auth.loggedIn && auth.email) {
     btn.style.background = gradientForEmail(auth.email);
-    btn.innerHTML = `<span class="profile-avatar-initial">${initialFromEmail(auth.email)}</span>`;
+    const initial = document.createElement("span");
+    initial.className = "profile-avatar-initial";
+    initial.textContent = initialFromEmail(auth.email);
+    btn.appendChild(initial);
   } else {
     btn.classList.add("profile-avatar-guest");
-    btn.innerHTML = `<span class="profile-avatar-icon">${guestAvatarSvg()}</span>`;
+    const icon = document.createElement("span");
+    icon.className = "profile-avatar-icon";
+    icon.textContent = "G";
+    btn.appendChild(icon);
   }
-  // ניקוד סטטוס: נקודה צבעונית בפינה
+
   const dot = document.createElement("span");
   dot.className = "profile-avatar-dot";
   btn.appendChild(dot);
   return btn;
+}
+
+function addMenuItem(menu, { href, cls = "", icon = "", text = "" }) {
+  const item = document.createElement("a");
+  item.className = `profile-menu-item ${cls}`.trim();
+  item.href = href;
+  item.setAttribute("role", "menuitem");
+  item.innerHTML = `<span class="profile-menu-item-icon">${icon}</span><span></span>`;
+  item.lastElementChild.textContent = text;
+  menu.appendChild(item);
+  return item;
 }
 
 function buildMenu(auth) {
@@ -94,10 +267,10 @@ function buildMenu(auth) {
         <span>${initialFromEmail(auth.email)}</span>
       </div>
       <div class="profile-menu-id">
-        <div class="profile-menu-email">${auth.email}</div>
+        <div class="profile-menu-email"></div>
         <div class="profile-menu-status status-${status}">${STATUS_LABELS[status]}</div>
-      </div>
-    `;
+      </div>`;
+    header.querySelector(".profile-menu-email").textContent = auth.email;
     menu.appendChild(header);
 
     const sep = document.createElement("div");
@@ -105,32 +278,22 @@ function buildMenu(auth) {
     menu.appendChild(sep);
 
     if (auth.admin) {
-      const adminLink = document.createElement("a");
-      adminLink.className = "profile-menu-item profile-menu-item-admin";
-      adminLink.href = "/admin";
-      adminLink.setAttribute("role", "menuitem");
-      adminLink.innerHTML = `<span class="profile-menu-item-icon">⚙</span><span>פאנל ניהול</span>`;
-      menu.appendChild(adminLink);
+      addMenuItem(menu, { href: "/admin", cls: "profile-menu-item-admin", icon: "⚙", text: "פאנל ניהול" });
     }
-
-    const logout = document.createElement("a");
-    logout.className = "profile-menu-item profile-menu-item-logout";
-    logout.href = "/api/auth/logout";
-    logout.setAttribute("role", "menuitem");
-    logout.innerHTML = `<span class="profile-menu-item-icon">⎋</span><span>יציאה</span>`;
-    menu.appendChild(logout);
+    addMenuItem(menu, { href: "/api/auth/logout", cls: "profile-menu-item-logout", icon: "↪", text: "יציאה" });
   } else {
     const intro = document.createElement("div");
     intro.className = "profile-menu-guest";
     intro.innerHTML = `
       <div class="profile-menu-guest-title">לא מחובר</div>
-      <div class="profile-menu-guest-sub">היכנס כדי לשמור הגדרות וקבצים</div>
-    `;
+      <div class="profile-menu-guest-sub">היכנס כדי לשמור הגדרות וקבצים</div>`;
     menu.appendChild(intro);
 
     const loginBtn = document.createElement("a");
     loginBtn.className = "profile-menu-login-btn";
     loginBtn.href = "/api/auth/go";
+    loginBtn.setAttribute("role", "menuitem");
+    loginBtn.innerHTML = `<span class="profile-menu-item-icon">G</span><span>התחבר עם גוגל</span>`;
     loginBtn.addEventListener("click", (e) => {
       e.preventDefault();
       const clientId = window.__RAVTEXT_AUTH__?.googleClientId;
@@ -149,21 +312,9 @@ function buildMenu(auth) {
         window.location.href = "/api/auth/go?_=" + Date.now();
       }
     });
-    loginBtn.setAttribute("role", "menuitem");
-    // משה 2026-05-08: לוגו G ב-4 צבעים רשמיים, רקע לבן + מסגרת — בהתאם להנחיות
-    // Sign in with Google של גוגל. קודם היה G לבן-מונוכרום על רקע כחול כהה,
-    // לא בולט ולא מזוהה מיד.
-    loginBtn.innerHTML = `
-      <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
-        <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
-        <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-        <path fill="#FBBC05" d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z"/>
-        <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/>
-      </svg>
-      <span>התחבר עם גוגל</span>
-    `;
     menu.appendChild(loginBtn);
   }
+
   return menu;
 }
 
@@ -173,8 +324,8 @@ function showLoginBanner(loginParam) {
   const isInfo = loginParam === "demo";
   banner.className = `login-banner login-banner-${isInfo ? "info" : "error"}`;
   const messages = {
-    demo: "התחברת! לקבלת מנוי גישה צור קשר עם צוות האתר במייל או בטלפון. בינתיים העורך במצב דמו עם סימני מים. הקבצים וההגדרות שלך נשמרים — ברגע שיופעל המנוי, התצוגה המלאה תופיע אוטומטית.",
-    expired: "המנוי פג. ההתחברות נשמרה כדמו עד לחידוש.",
+    demo: "התחברת! לקבלת מנוי מלא נא צור קשר עם צוות האתר במייל או בטלפון.",
+    expired: "המנוי פג. ההתחברות נשמרה כדי לעדכן.",
     cancelled: "ההתחברות בוטלה.",
     token_error: "תקלה זמנית בהתחברות לגוגל. נסה שוב.",
     no_token: "תקלה זמנית בהתחברות לגוגל. נסה שוב.",
@@ -187,9 +338,17 @@ function showLoginBanner(loginParam) {
 
 export function installAuthUi() {
   if (typeof window === "undefined" || typeof document === "undefined") return;
-  if (document.getElementById("profile-avatar-btn")) return; // הגנה כפולה
+  installUnifiedMenuVisuals();
 
-  const auth = window.__RAVTEXT_AUTH__ || { loggedIn: false, paid: false, email: null, admin: false, status: null };
+  if (document.getElementById("profile-avatar-btn")) return;
+
+  const auth = window.__RAVTEXT_AUTH__ || {
+    loggedIn: false,
+    paid: false,
+    email: null,
+    admin: false,
+    status: null,
+  };
 
   const actions = document.querySelector(".app-header .app-header-actions");
   const host = actions || document.querySelector(".app-header") || document.body;
@@ -203,14 +362,12 @@ export function installAuthUi() {
   const menu = buildMenu(auth);
   wrap.appendChild(avatar);
   wrap.appendChild(menu);
-
-  // append → ב-RTL בתוך flex זה הופך לרכיב הכי שמאלי (קצה הכותרת)
   host.appendChild(wrap);
 
   function setOpen(open) {
     menu.hidden = !open;
     avatar.setAttribute("aria-expanded", open ? "true" : "false");
-    if (open) wrap.classList.add("open"); else wrap.classList.remove("open");
+    wrap.classList.toggle("open", open);
   }
 
   avatar.addEventListener("click", (e) => {
