@@ -16,10 +16,14 @@
 import { buildPages } from "./vilna_v9.js";
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
-import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
+import {
+  getMainTextStyle,
+  loadDocumentStyleSettings,
+} from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
 import { getOpeningWordSettings } from "./opening_word.js";
+import { loadSpacingSettings } from "./spacing_settings.js";
 import {
   startVilnaRenderProgress,
   hideVilnaRenderProgressImmediately,
@@ -32,9 +36,9 @@ function readTalmudStreamCodes() {
     const raw = getTalmudStreamsText() || "";
     return raw
       .split(/[,\s|;\n]+/)
-      .map(s => s.trim())
-      .filter(s => /^\d{1,3}$/.test(s))
-      .map(s => String(parseInt(s, 10)).padStart(2, "0"));
+      .map((s) => s.trim())
+      .filter((s) => /^\d{1,3}$/.test(s))
+      .map((s) => String(parseInt(s, 10)).padStart(2, "0"));
   } catch {
     return [];
   }
@@ -100,50 +104,90 @@ function readLevelsFromLocalStorage() {
     if (!raw) return [];
     return raw
       .split(/[|\n;]+/)
-      .map(level => (level.match(/\d{1,3}/g) || [])
-        .map(n => String(parseInt(n, 10)).padStart(2, "0"))
-        .filter(Boolean))
-      .map(level => Array.from(new Set(level)))
-      .filter(level => level.length >= 1);
+      .map((level) =>
+        (level.match(/\d{1,3}/g) || [])
+          .map((n) => String(parseInt(n, 10)).padStart(2, "0"))
+          .filter(Boolean),
+      )
+      .map((level) => Array.from(new Set(level)))
+      .filter((level) => level.length >= 1);
   } catch {
     return [];
   }
 }
 
 function readPageGeomFromContainer(container) {
-  const cs = (typeof window !== "undefined" && window.getComputedStyle)
-    ? window.getComputedStyle(container)
-    : null;
+  const cs =
+    typeof window !== "undefined" && window.getComputedStyle
+      ? window.getComputedStyle(container)
+      : null;
   const pickPx = (val, fallback) => {
     const n = parseFloat(val || "");
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
-  const pageWidth  = pickPx(cs?.getPropertyValue("--ravtext-page-width"), 559);
+  const pageWidth = pickPx(cs?.getPropertyValue("--ravtext-page-width"), 559);
   const pageHeight = pickPx(cs?.getPropertyValue("--ravtext-page-height"), 794);
   const mainStyle = withSafeV9LineHeight(getMainTextStyle());
-  const mainSize   = Number(mainStyle?.fontSize) > 0
-    ? Number(mainStyle.fontSize)
-    : pickPx(cs?.getPropertyValue("--ravtext-page-main-size"), 13);
-  const sideSize   = pickPx(cs?.getPropertyValue("--ravtext-page-stream-size"), 11);
-  const lineHeightRatio = safeV9LineHeightRatio((() => {
-    const n = parseFloat(cs?.getPropertyValue("--ravtext-v9-line-height") || "");
-    return Number(mainStyle?.lineHeight) > 0 ? Number(mainStyle.lineHeight) : (Number.isFinite(n) && n > 0 ? n : 1.55);
-  })());
+  const mainSize =
+    Number(mainStyle?.fontSize) > 0
+      ? Number(mainStyle.fontSize)
+      : pickPx(cs?.getPropertyValue("--ravtext-page-main-size"), 13);
+  const sideSize = pickPx(
+    cs?.getPropertyValue("--ravtext-page-stream-size"),
+    11,
+  );
+  const lineHeightRatio = safeV9LineHeightRatio(
+    (() => {
+      const n = parseFloat(
+        cs?.getPropertyValue("--ravtext-v9-line-height") || "",
+      );
+      return Number(mainStyle?.lineHeight) > 0
+        ? Number(mainStyle.lineHeight)
+        : Number.isFinite(n) && n > 0
+          ? n
+          : 1.55;
+    })(),
+  );
   const mainGap = pickPx(cs?.getPropertyValue("--ravtext-v9-main-gap"), 8);
-  const streamHorizontalGap = pickPx(cs?.getPropertyValue("--ravtext-stream-horizontal-gap"), 8);
+  const streamHorizontalGap = pickPx(
+    cs?.getPropertyValue("--ravtext-stream-horizontal-gap"),
+    8,
+  );
   // קריאת font-family מהcontainer
-  const fontFamily = (mainStyle?.fontFamily || cs?.getPropertyValue("--ravtext-page-font-family") || "")
-    .replace(/^\s+|\s+$/g, "") || "serif";
+  const fontFamily =
+    (
+      mainStyle?.fontFamily ||
+      cs?.getPropertyValue("--ravtext-page-font-family") ||
+      ""
+    ).replace(/^\s+|\s+$/g, "") || "serif";
   // reserved space for overlays (set by document_features.js syncReservedSpace)
-  const docCs = (typeof window !== "undefined" && window.getComputedStyle)
-    ? window.getComputedStyle(document.documentElement)
-    : null;
-  const reservedTop = pickPx(docCs?.getPropertyValue("--ravtext-features-header-reserved"), 0);
+  const docCs =
+    typeof window !== "undefined" && window.getComputedStyle
+      ? window.getComputedStyle(document.documentElement)
+      : null;
+  const reservedTop = pickPx(
+    docCs?.getPropertyValue("--ravtext-features-header-reserved"),
+    0,
+  );
   const reservedBottom = Math.max(
     pickPx(docCs?.getPropertyValue("--ravtext-features-footer-reserved"), 0),
-    pickPx(docCs?.getPropertyValue("--ravtext-features-pagenumber-reserved"), 0),
+    pickPx(
+      docCs?.getPropertyValue("--ravtext-features-pagenumber-reserved"),
+      0,
+    ),
   );
-  return { pageWidth, pageHeight, mainSize, sideSize, fontFamily, lineHeightRatio, mainGap, streamHorizontalGap, reservedTop, reservedBottom };
+  return {
+    pageWidth,
+    pageHeight,
+    mainSize,
+    sideSize,
+    fontFamily,
+    lineHeightRatio,
+    mainGap,
+    streamHorizontalGap,
+    reservedTop,
+    reservedBottom,
+  };
 }
 
 function readPercentSetting(key, fallback, min, max) {
@@ -166,8 +210,7 @@ function readIntSetting(key, fallback, min, max) {
 
 function readSpacingBool(key, fallback = false) {
   try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
+    const settings = loadSpacingSettings();
     return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
   } catch {
     return fallback;
@@ -207,7 +250,12 @@ function findMatchingParagraphSource(sources, currentIdx, lineText) {
   for (let i = Math.max(0, currentIdx); i < sources.length; i++) {
     const rest = sources[i].text.slice(sources[i].offset).trimStart();
     if (!rest) continue;
-    if (rest.startsWith(lineText) || lineText.startsWith(rest) || rest.includes(probe)) return i;
+    if (
+      rest.startsWith(lineText) ||
+      lineText.startsWith(rest) ||
+      rest.includes(probe)
+    )
+      return i;
   }
   return currentIdx;
 }
@@ -230,11 +278,17 @@ function annotateV9RenderedSourceMetadata(container, paragraphs) {
       continues: !!p?._continues,
       emergencySplit: !!p?._emergencySplit,
     }))
-    .filter(p => p.text);
+    .filter((p) => p.text);
 
   let srcIdx = 0;
-  const mainLines = Array.from(container.querySelectorAll('.v9-page .v9-line[data-v9-role]'))
-    .filter(el => String(el.dataset.v9Role || "").toLowerCase().includes("main"))
+  const mainLines = Array.from(
+    container.querySelectorAll(".v9-page .v9-line[data-v9-role]"),
+  )
+    .filter((el) =>
+      String(el.dataset.v9Role || "")
+        .toLowerCase()
+        .includes("main"),
+    )
     .sort((a, b) => lineSortKey(a) - lineSortKey(b));
 
   for (const line of mainLines) {
@@ -260,10 +314,16 @@ function annotateV9RenderedSourceMetadata(container, paragraphs) {
     } else {
       src.offset += lineText.length;
     }
-    while (srcIdx < sources.length && src.offset >= sources[srcIdx].text.length - 1) srcIdx++;
+    while (
+      srcIdx < sources.length &&
+      src.offset >= sources[srcIdx].text.length - 1
+    )
+      srcIdx++;
   }
 
-  for (const line of container.querySelectorAll('.v9-page .v9-line[data-v9-box-id]')) {
+  for (const line of container.querySelectorAll(
+    ".v9-page .v9-line[data-v9-box-id]",
+  )) {
     const boxId = line.dataset.v9BoxId;
     if (!boxId || boxId === "main") continue;
     line.dataset.v9SourceStream = boxId;
@@ -287,7 +347,11 @@ function __ravtextV9NextFrame() {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-async function __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent }) {
+async function __ravtextPrepareV9BeforeRender({
+  container,
+  paragraphs,
+  isCurrent,
+}) {
   const progress = startVilnaRenderProgress({
     container,
     estimatedTotalPages: Math.max(1, estimateV9PageCount(paragraphs)),
@@ -306,13 +370,32 @@ async function __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent
         const geom = readPageGeomFromContainer(container);
         const mainFont = String(geom?.fontFamily || "").trim();
         if (mainFont && typeof fonts.load === "function") {
-          waits.push(fonts.load(String(geom.mainSize || 14) + "px " + mainFont, "אבגד"));
+          waits.push(
+            fonts.load(String(geom.mainSize || 14) + "px " + mainFont, "אבגד"),
+          );
         }
 
         const opening = getOpeningWordSettings();
         const openingFont = String(opening?.font || "").trim();
-        if (opening?.enabled && openingFont && typeof fonts.load === "function") {
-          waits.push(fonts.load(String(Math.max(12, Number(geom.mainSize || 14) * Number(opening.size || 200) / 100)) + "px " + openingFont, "אבגד"));
+        if (
+          opening?.enabled &&
+          openingFont &&
+          typeof fonts.load === "function"
+        ) {
+          waits.push(
+            fonts.load(
+              String(
+                Math.max(
+                  12,
+                  (Number(geom.mainSize || 14) * Number(opening.size || 200)) /
+                    100,
+                ),
+              ) +
+                "px " +
+                openingFont,
+              "אבגד",
+            ),
+          );
         }
       } catch {
         // Non-fatal. fonts.ready is still the main readiness barrier.
@@ -338,7 +421,9 @@ async function __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent
 
     if (container?.dataset) {
       container.dataset.v9PreflightReady = "1";
-      container.dataset.v9PreflightOpeningWord = openingWordSettings?.enabled ? "1" : "0";
+      container.dataset.v9PreflightOpeningWord = openingWordSettings?.enabled
+        ? "1"
+        : "0";
     }
     if (typeof window !== "undefined") {
       window.__ravtextLastV9Preflight = {
@@ -356,16 +441,25 @@ async function __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent
   }
 }
 
-export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = {}) {
+export async function applyVilnaV9FromPaneManager(
+  paragraphs,
+  container,
+  opts = {},
+) {
   if (!container || !Array.isArray(paragraphs)) return;
-  const isCurrent = typeof opts.isCurrent === "function" ? opts.isCurrent : () => true;
+  const isCurrent =
+    typeof opts.isCurrent === "function" ? opts.isCurrent : () => true;
 
   // משה 2026-05-15: V9 מודד רוחב מילים דרך Canvas.measureText (vilna_v9.js).
   // אם הפונט עוד לא טעון, המדידה משתמשת בפונט ברירת־מחדל צר יותר → V9 חושב
   // שנכנסות יותר מילים בשורה ממה שבאמת נכנסות. כשהפונט האמיתי נטען, המילים
   // רחבות יותר → חפיפה ויזואלית. ממתינים ל-fonts.ready עם תקרה של 2 שניות
   // כדי לא לתקוע את הרינדור לעד אם הפונט נכשל.
-  const preflight = await __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent });
+  const preflight = await __ravtextPrepareV9BeforeRender({
+    container,
+    paragraphs,
+    isCurrent,
+  });
   if (preflight?.aborted || !isCurrent()) return { aborted: true };
   hideVilnaRenderProgressImmediately();
   const progress = startVilnaRenderProgress({
@@ -386,13 +480,17 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
 
     const geom = readPageGeomFromContainer(container);
 
-    const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
+    const labels =
+      (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
     const titles = Object.assign({}, DEFAULT_TITLES, labels);
 
-    const rawStreamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+    const rawStreamSettings =
+      (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
     const streamSettings = {};
     for (const code of Object.keys(rawStreamSettings)) {
-      streamSettings[code] = withSafeV9StreamSettings(getEffectiveStreamSettings(code));
+      streamSettings[code] = withSafeV9StreamSettings(
+        getEffectiveStreamSettings(code),
+      );
     }
     const levels = readLevelsFromLocalStorage();
     const talmudStreams = readTalmudStreamCodes();
@@ -438,11 +536,27 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       streamHorizontalGap: geom.streamHorizontalGap,
       mainStyleId,
       mainInlineStyle,
-      mainWidthRatio: readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
+      mainWidthRatio:
+        readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
       crownLines: readIntSetting("ravtext.talmudLayout.crownLines", 4, 0, 12),
-      gapFillMinRatio: readPercentSetting("ravtext.talmudLayout.gapFillMin", 82, 50, 98),
-      gapFillMaxMainLines: readIntSetting("ravtext.talmudLayout.gapFillMaxMainLines", null, 1, 30),
-      carryOnlyMinRatio: readPercentSetting("ravtext.talmudLayout.carryOnlyMin", 78, 50, 98),
+      gapFillMinRatio: readPercentSetting(
+        "ravtext.talmudLayout.gapFillMin",
+        82,
+        50,
+        98,
+      ),
+      gapFillMaxMainLines: readIntSetting(
+        "ravtext.talmudLayout.gapFillMaxMainLines",
+        null,
+        1,
+        30,
+      ),
+      carryOnlyMinRatio: readPercentSetting(
+        "ravtext.talmudLayout.carryOnlyMin",
+        78,
+        50,
+        98,
+      ),
       titles,
       streamSettings,
       levels,
@@ -465,9 +579,11 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // משנה את חישוב הפגינציה ולא יוצר גלישה נסתרת.
     applyV9MainBottomGap(container);
 
-
     progress.finish({
-      totalPages: container.querySelectorAll(".page").length || result?.pages?.length || 0,
+      totalPages:
+        container.querySelectorAll(".page").length ||
+        result?.pages?.length ||
+        0,
     });
     return result;
   } catch (e) {

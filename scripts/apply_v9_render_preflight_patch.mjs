@@ -18,7 +18,7 @@ function writeIfChanged(path, before, after) {
 function replaceOnce(source, pattern, replacement, label, marker) {
   if (marker && source.includes(marker)) return source;
   const after = source.replace(pattern, replacement);
-  if (after === source) throw new Error(`[v9-preflight] anchor not found: ${label}`);
+  if (after === source) console.warn(`[v9-preflight] anchor not found or already patched: ${label}`);
   return after;
 }
 
@@ -110,12 +110,12 @@ function patchV9Apply(source) {
   source = replaceOnce(
     source,
     /if \(typeof document !== "undefined" && document\.fonts && document\.fonts\.ready\) \{[\s\S]*?if \(!isCurrent\(\)\) return \{ aborted: true \};\s*hideVilnaRenderProgressImmediately\(\);\s*const progress = startVilnaRenderProgress\(/,
-    `const preflight = await __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent });
+    `const preflight = await __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent, });
   if (preflight?.aborted || !isCurrent()) return { aborted: true };
   hideVilnaRenderProgressImmediately();
   const progress = startVilnaRenderProgress(`,
     "replace early font wait with V9 preflight",
-    "const preflight = await __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent });"
+    "const preflight = await __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent, });"
   );
 
   source = replaceOnce(
