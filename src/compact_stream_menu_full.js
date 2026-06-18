@@ -1,35 +1,42 @@
-// Supplemental stream-menu actions: bulk delete/clear, short help, and stable inline buttons.
-// The stream-menu controls are anchored only to the real nested-notes checkbox row:
-// #nested-notes-toggle. No text scan and no floating fallback.
+// Stream menu full patch.
+// Creates the main “פתח תפריט זרמים” button itself, then anchors it inline
+// to the real nested-notes row: #nested-notes-toggle.
 
-const STREAM_MENU_BUTTON_ID = "nested-notes-open-stream-menu-btn";
-const SHORT_HELP_BUTTON_ID = "nested-notes-short-help-btn";
-const STREAM_ACTIONS_WRAP_ID = "nested-notes-stream-menu-actions-wrap";
-const STREAM_POPOVER_ID = "nested-notes-stream-menu-popover";
-const BULK_ACTIONS_ID = "stream-menu-bulk-actions";
+const MENU_BTN = "nested-notes-open-stream-menu-btn";
+const HELP_BTN = "nested-notes-short-help-btn";
+const WRAP_ID = "nested-notes-stream-menu-actions-wrap";
+const POPOVER_ID = "nested-notes-stream-menu-popover";
+const BULK_ID = "stream-menu-bulk-actions";
 const STYLE_ID = "stream-menu-actions-style";
-const NESTED_NOTES_TOGGLE_ID = "nested-notes-toggle";
+const TOGGLE_ID = "nested-notes-toggle";
+
+let installed = false;
+const $ = id => document.getElementById(id);
 
 const HELP_TEXT = [
   "איך מקשרים הערות לפנים — בקצרה:",
   "",
-  "1. במקום שבו צריך הערה כותבים בטקסט הראשי סימן זרם, למשל @01.",
+  "1. בטקסט הראשי כותבים סימן זרם, למשל @01.",
   "2. בחלון של זרם 01 כותבים את ההערות לפי הסדר.",
-  "3. ה-@01 הראשון בטקסט הראשי מתחבר להערה הראשונה בזרם 01.",
-  "4. ה-@01 השני מתחבר להערה השנייה, וכן הלאה.",
-  "5. אם יש הערה בתוך הערה, כותבים בתוכה סימן אחר, למשל @02. גם הוא מתחבר לפי הסדר שבו הסימנים מופיעים במסמך.",
-  "6. אחרי שינוי לוחצים רנדר כדי לראות את התוצאה בעמודים."
+  "3. ה-@01 הראשון מתחבר להערה הראשונה, השני לשנייה.",
+  "4. אם יש הערה בתוך הערה, כותבים בתוכה סימן אחר, למשל @02.",
+  "5. אחרי שינוי לוחצים רנדר כדי לראות את התוצאה בעמודים."
 ].join("\n");
 
-let installed = false;
-
-const $ = id => document.getElementById(id);
-
-function paneManager() {
-  return typeof window !== "undefined" ? window.paneManager : null;
+function manager() {
+  return window.paneManager;
 }
 
-function requestRender() {
+function panes() {
+  const m = manager();
+  return Array.isArray(m?.panes) ? m.panes : [];
+}
+
+function streamPanes() {
+  return panes().filter(p => p?.streamCode);
+}
+
+function rerender() {
   try { window.__ravtextApplyPaneWidths?.(); } catch (_) {}
   try { window.__ravtextRerender?.(); } catch (_) {}
 }
@@ -39,19 +46,12 @@ function setStatus(text) {
   if (el) el.textContent = text || "";
 }
 
-function allPanes(manager) {
-  return Array.isArray(manager?.panes) ? manager.panes : [];
-}
+function deleteStreams() {
+  const m = manager();
+  const all = panes();
+  const streams = streamPanes();
 
-function streamPanes(manager) {
-  return allPanes(manager).filter(pane => pane?.streamCode);
-}
-
-function deleteStreamPanes() {
-  const manager = paneManager();
-  const streams = streamPanes(manager);
-
-  if (!manager || !allPanes(manager).length) {
+  if (!m || !all.length) {
     alert("לא נמצאו חלונות זרמים.");
     return false;
   }
@@ -63,35 +63,35 @@ function deleteStreamPanes() {
     return false;
   }
 
-  for (const pane of streams.slice()) {
+  streams.slice().forEach(pane => {
     try {
-      if (typeof manager.removePane === "function") {
-        manager.removePane(pane.id);
+      if (typeof m.removePane === "function") {
+        m.removePane(pane.id);
       } else {
         pane.element?.remove?.();
-        manager.panes = manager.panes.filter(p => p !== pane);
+        m.panes = m.panes.filter(p => p !== pane);
       }
     } catch (err) {
-      console.warn("[stream-menu-full] remove stream pane failed", err);
+      console.warn("[stream-menu-full] remove failed", err);
     }
-  }
+  });
 
   try {
-    manager.merged = false;
-    manager._save?.({ immediate: true });
-    manager._emit?.("change");
+    m.merged = false;
+    m._save?.({ immediate: true });
+    m._emit?.("change");
   } catch (_) {}
 
-  requestRender();
+  rerender();
   setStatus(`נמחקו ${streams.length} חלונות זרמים. הזרם הראשי נשאר.`);
   return true;
 }
 
-function clearAllPaneContent() {
-  const manager = paneManager();
-  const panes = allPanes(manager);
+function clearAllPanes() {
+  const m = manager();
+  const all = panes();
 
-  if (!manager || !panes.length) {
+  if (!m || !all.length) {
     alert("לא נמצאו חלונות לניקוי.");
     return false;
   }
@@ -100,52 +100,49 @@ function clearAllPaneContent() {
   }
 
   let cleared = 0;
-  for (const pane of panes) {
+  all.forEach(pane => {
     try {
       if (pane.editor?.commands?.clearContent) {
         pane.editor.commands.clearContent(true);
       } else {
-        pane.editor?.commands?.setContent?.({
-          type: "doc",
-          content: [{ type: "paragraph" }]
-        });
+        pane.editor?.commands?.setContent?.({ type: "doc", content: [{ type: "paragraph" }] });
       }
       pane.scheduleMarkerBarUpdate?.({ immediate: true });
       cleared++;
     } catch (err) {
-      console.warn("[stream-menu-full] clear pane failed", err);
+      console.warn("[stream-menu-full] clear failed", err);
     }
-  }
+  });
 
   try {
-    manager._save?.({ immediate: true });
-    manager._emit?.("change");
+    m._save?.({ immediate: true });
+    m._emit?.("change");
   } catch (_) {}
 
-  requestRender();
+  rerender();
   setStatus(`נוקה תוכן ${cleared} חלונות. החלונות נשארו.`);
   return true;
 }
 
-function runCommand(command) {
-  if (command === "delete-stream-panes") return deleteStreamPanes();
-  if (command === "clear-all-pane-content") return clearAllPaneContent();
-  if (command === "short-help") {
+function run(command) {
+  if (command === "delete") return deleteStreams();
+  if (command === "clear") return clearAllPanes();
+  if (command === "help") {
     alert(HELP_TEXT);
     return true;
   }
   return false;
 }
 
-function actionButton(text, command, danger = false) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = text;
-  button.style.cssText = [
+function button(text, command, danger = false) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = text;
+  b.style.cssText = [
     "min-height:31px",
-    "padding:6px 8px",
+    "padding:6px 10px",
     "border-radius:9px",
-    `border:1px solid ${danger ? "rgba(170,40,40,.28)" : "rgba(0,0,0,.12)"}`,
+    `border:1px solid ${danger ? "rgba(170,40,40,.28)" : "rgba(0,0,0,.14)"}`,
     `background:${danger ? "rgba(170,40,40,.055)" : "rgba(0,0,0,.035)"}`,
     "color:inherit",
     "font:inherit",
@@ -153,133 +150,206 @@ function actionButton(text, command, danger = false) {
     "cursor:pointer",
     "white-space:nowrap"
   ].join(";");
-  button.addEventListener("click", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    runCommand(command);
+  b.addEventListener("click", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    run(command);
   });
-  return button;
+  return b;
 }
 
-function patchPopover() {
-  const popover = $(STREAM_POPOVER_ID);
-  if (!popover || popover.style.display === "none") return;
-
-  const body = popover.children[1] || popover;
-  if (body.querySelector(`#${BULK_ACTIONS_ID}`)) return;
-
-  const box = document.createElement("div");
-  box.id = BULK_ACTIONS_ID;
-  box.dir = "rtl";
-  box.style.cssText = [
-    "border:1px solid rgba(170,40,40,.18)",
-    "border-radius:10px",
-    "background:rgba(170,40,40,.025)",
-    "padding:8px",
-    "margin:0 0 10px"
+function popover() {
+  let p = $(POPOVER_ID);
+  if (!p) {
+    p = document.createElement("div");
+    p.id = POPOVER_ID;
+    p.dir = "rtl";
+    p.setAttribute("role", "dialog");
+    p.setAttribute("aria-label", "תפריט זרמים");
+    document.body.appendChild(p);
+  }
+  p.style.cssText = [
+    "position:fixed",
+    "z-index:10030",
+    "display:none",
+    "flex-direction:column",
+    "width:min(460px,calc(100vw - 16px))",
+    "max-height:min(82vh,560px)",
+    "overflow:hidden",
+    "border:1px solid rgba(0,0,0,.16)",
+    "border-radius:14px",
+    "background:var(--rt-surface,#fff)",
+    "color:var(--rt-text,#222)",
+    "box-shadow:0 12px 32px rgba(0,0,0,.22)",
+    "font-size:12px",
+    "box-sizing:border-box"
   ].join(";");
+  return p;
+}
 
-  const title = document.createElement("div");
-  title.textContent = "פעולות ניקוי";
-  title.style.cssText = "font-weight:700;font-size:12px;margin:0 0 6px;opacity:.82";
+function closeMenu() {
+  const p = $(POPOVER_ID);
+  if (p) p.style.display = "none";
+  $(MENU_BTN)?.setAttribute("aria-expanded", "false");
+  document.removeEventListener("keydown", onKey, true);
+  document.removeEventListener("mousedown", onOutside, true);
+}
 
-  const grid = document.createElement("div");
-  grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px";
-  grid.append(
-    actionButton("מחק את כל חלונות הזרמים", "delete-stream-panes", true),
-    actionButton("נקה את כל תוכן החלונות", "clear-all-pane-content", true)
+function isOpen() {
+  const p = $(POPOVER_ID);
+  return !!(p && p.style.display !== "none");
+}
+
+function renderMenu() {
+  const p = popover();
+  p.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.style.cssText = "display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid rgba(0,0,0,.10)";
+  head.innerHTML = "<strong style='font-size:13px'>תפריט זרמים</strong><span style='flex:1'></span>";
+  const x = button("× סגור", "noop");
+  x.onclick = e => { e.preventDefault(); e.stopPropagation(); closeMenu(); };
+  head.appendChild(x);
+
+  const body = document.createElement("div");
+  body.style.cssText = "overflow:auto;padding:10px 12px;display:grid;gap:8px";
+  body.append(
+    button("מחק את כל חלונות הזרמים", "delete", true),
+    button("נקה את כל תוכן החלונות", "clear", true),
+    button("הסבר קצר", "help"),
   );
 
-  box.append(title, grid);
-  body.prepend(box);
+  const hint = document.createElement("div");
+  hint.id = "stream-menu-status";
+  hint.textContent = "@01 בכל מקום מזוהה אוטומטית. הערה על הערה: @02 בתוך הערת @01.";
+  hint.style.cssText = "border:1px solid rgba(0,0,0,.10);border-radius:10px;padding:7px 8px;background:rgba(0,0,0,.025);font-size:11px;line-height:1.45;opacity:.82";
+  body.appendChild(hint);
+
+  p.append(head, body);
 }
 
-function nestedNotesToggle() {
-  return $(NESTED_NOTES_TOGGLE_ID);
+function positionMenu() {
+  const p = popover();
+  const b = $(MENU_BTN);
+  const r = b?.getBoundingClientRect?.();
+  const pad = 8;
+
+  p.style.display = "flex";
+  p.style.visibility = "hidden";
+
+  const h = p.offsetHeight || 260;
+  const w = p.offsetWidth || 460;
+  let top = r ? r.bottom + 8 : pad;
+  let right = r ? innerWidth - r.right : pad;
+
+  if (r && top + h > innerHeight - pad) top = r.top - h - 8;
+  top = Math.max(pad, Math.min(innerHeight - h - pad, top));
+  right = Math.max(pad, Math.min(innerWidth - w - pad, right));
+
+  p.style.top = `${Math.round(top)}px`;
+  p.style.right = `${Math.round(right)}px`;
+  p.style.left = "auto";
+  p.style.visibility = "visible";
 }
 
-function nestedNotesAnchor() {
-  const toggle = nestedNotesToggle();
-  if (!toggle) return null;
-
-  return toggle.closest("label") ||
-    toggle.closest(".tb-group,.settings-row,.setting-row,.control-row,.field-row,.form-row,.nested-notes-row") ||
-    toggle.parentElement ||
-    toggle;
+function openMenu() {
+  renderMenu();
+  positionMenu();
+  $(MENU_BTN)?.setAttribute("aria-expanded", "true");
+  document.addEventListener("keydown", onKey, true);
+  setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
 }
 
-function inlineHost(anchor) {
+function toggleMenu() {
+  isOpen() ? closeMenu() : openMenu();
+}
+
+function onKey(e) {
+  if (e.key === "Escape") closeMenu();
+}
+
+function onOutside(e) {
+  const p = $(POPOVER_ID);
+  const b = $(MENU_BTN);
+  if (p?.contains(e.target) || b?.contains(e.target)) return;
+  closeMenu();
+}
+
+function sourceAnchor() {
+  const t = $(TOGGLE_ID);
+  if (!t) return null;
+  return t.closest("label") ||
+    t.closest(".tb-group,.settings-row,.setting-row,.control-row,.field-row,.form-row,.nested-notes-row") ||
+    t.parentElement ||
+    t;
+}
+
+function host(anchor) {
   if (!anchor) return null;
-  if (anchor.matches?.(".source-stream-toolbar,.panes-toolbar")) return anchor;
   return anchor.parentElement || anchor;
 }
 
 function ensureStyle() {
   if ($(STYLE_ID)) return;
-
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
-  style.textContent = `
-    #${STREAM_ACTIONS_WRAP_ID} {
+  const s = document.createElement("style");
+  s.id = STYLE_ID;
+  s.textContent = `
+    #${WRAP_ID}{
       display:inline-flex;
       align-items:center;
       gap:6px;
       margin-inline-start:8px;
       vertical-align:middle;
-      position:static !important;
-      z-index:auto !important;
-      pointer-events:auto !important;
+      position:static!important;
+      z-index:auto!important;
+      pointer-events:auto!important;
       white-space:nowrap;
     }
-    #${STREAM_ACTIONS_WRAP_ID} #${STREAM_MENU_BUTTON_ID},
-    #${STREAM_ACTIONS_WRAP_ID} #${SHORT_HELP_BUTTON_ID} {
-      position:static !important;
-      right:auto !important;
-      left:auto !important;
-      top:auto !important;
-      bottom:auto !important;
-      transform:none !important;
-      margin:0 !important;
-      vertical-align:middle !important;
-      z-index:auto !important;
-      pointer-events:auto !important;
+    #${WRAP_ID} #${MENU_BTN},
+    #${WRAP_ID} #${HELP_BTN}{
+      position:static!important;
+      inset:auto!important;
+      transform:none!important;
+      margin:0!important;
+      z-index:auto!important;
+      pointer-events:auto!important;
+      vertical-align:middle!important;
     }
   `;
-  document.head.appendChild(style);
+  document.head.appendChild(s);
 }
 
-function resetInlineButton(button) {
-  button.hidden = false;
-  button.style.position = "static";
-  button.style.zIndex = "auto";
-  button.style.top = "auto";
-  button.style.right = "auto";
-  button.style.left = "auto";
-  button.style.bottom = "auto";
-  button.style.transform = "none";
-  button.style.margin = "0";
-  button.style.pointerEvents = "auto";
+function inlineStyle(el) {
+  el.hidden = false;
+  el.style.position = "static";
+  el.style.zIndex = "auto";
+  el.style.top = "auto";
+  el.style.right = "auto";
+  el.style.left = "auto";
+  el.style.bottom = "auto";
+  el.style.transform = "none";
+  el.style.margin = "0";
+  el.style.pointerEvents = "auto";
 }
 
-function shortHelpButton() {
-  let button = $(SHORT_HELP_BUTTON_ID);
-  if (!button) {
-    button = document.createElement("button");
-    button.id = SHORT_HELP_BUTTON_ID;
-    button.type = "button";
-    button.addEventListener("click", event => {
-      event.preventDefault();
-      event.stopPropagation();
-      runCommand("short-help");
+function mainButton() {
+  let b = $(MENU_BTN);
+  if (!b) {
+    b = document.createElement("button");
+    b.id = MENU_BTN;
+    b.type = "button";
+    b.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleMenu();
     });
   }
-
-  button.textContent = "הסבר קצר";
-  button.title = "הסבר קצר על קישור ההערות לפנים";
-  button.style.cssText = [
+  b.textContent = "פתח תפריט זרמים";
+  b.setAttribute("aria-haspopup", "dialog");
+  b.setAttribute("aria-expanded", isOpen() ? "true" : "false");
+  b.style.cssText = [
     "display:inline-flex",
     "align-items:center",
-    "justify-content:center",
     "gap:5px",
     "min-height:28px",
     "padding:4px 10px",
@@ -298,135 +368,117 @@ function shortHelpButton() {
     "position:static",
     "z-index:auto"
   ].join(";");
-
-  return button;
+  return b;
 }
 
-function placeWrapAfterAnchor(wrap, anchor) {
-  const host = inlineHost(anchor);
-  if (!anchor || !host) return false;
-
-  if (anchor.matches?.(".source-stream-toolbar,.panes-toolbar")) {
-    if (!anchor.contains(wrap)) anchor.appendChild(wrap);
-    return true;
-  }
-
-  // The source row is the #nested-notes-toggle row. Put the controls directly after
-  // the label/row that contains the checkbox, so it stays on the same visual line.
-  if (wrap.parentElement !== host || wrap.previousElementSibling !== anchor) {
-    anchor.insertAdjacentElement("afterend", wrap);
-  }
-  return true;
-}
-
-function hideUntilSourceRowExists(wrap, mainButton) {
-  wrap.hidden = true;
-  mainButton.hidden = true;
-  if (!wrap.isConnected) document.body.appendChild(wrap);
-  if (!wrap.contains(mainButton)) wrap.prepend(mainButton);
-}
-
-function alignStreamMenuButton() {
-  ensureStyle();
-
-  const mainButton = $(STREAM_MENU_BUTTON_ID);
-  if (!mainButton) return;
-
-  let wrap = $(STREAM_ACTIONS_WRAP_ID);
-  if (!wrap) {
-    wrap = document.createElement("span");
-    wrap.id = STREAM_ACTIONS_WRAP_ID;
-    wrap.dir = "rtl";
-  }
-
-  const anchor = nestedNotesAnchor();
-  if (!anchor) {
-    hideUntilSourceRowExists(wrap, mainButton);
-    return;
-  }
-
-  const placed = placeWrapAfterAnchor(wrap, anchor);
-  if (!placed) {
-    hideUntilSourceRowExists(wrap, mainButton);
-    return;
-  }
-
-  wrap.hidden = false;
-  wrap.style.cssText = [
-    "display:inline-flex",
-    "align-items:center",
-    "gap:6px",
-    "margin-inline-start:8px",
-    "vertical-align:middle",
-    "position:static",
-    "z-index:auto",
-    "pointer-events:auto",
-    "white-space:nowrap"
-  ].join(";");
-
-  if (!wrap.contains(mainButton)) wrap.prepend(mainButton);
-  resetInlineButton(mainButton);
-
-  const help = shortHelpButton();
-  if (!wrap.contains(help)) wrap.appendChild(help);
-  resetInlineButton(help);
-
-  mainButton.setAttribute("aria-describedby", SHORT_HELP_BUTTON_ID);
-}
-
-function toolbarButton(id, text, command) {
-  let button = $(id);
-  if (!button) {
-    button = document.createElement("button");
-    button.id = id;
-    button.type = "button";
-    button.addEventListener("click", event => {
-      event.preventDefault();
-      event.stopPropagation();
-      runCommand(command);
+function helpButton() {
+  let b = $(HELP_BTN);
+  if (!b) {
+    b = document.createElement("button");
+    b.id = HELP_BTN;
+    b.type = "button";
+    b.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      run("help");
     });
   }
-
-  button.textContent = text;
-  button.style.cssText = [
+  b.textContent = "הסבר קצר";
+  b.title = "הסבר קצר על קישור ההערות לפנים";
+  b.style.cssText = [
+    "display:inline-flex",
+    "align-items:center",
+    "justify-content:center",
     "min-height:28px",
-    "padding:4px 9px",
-    "border-radius:8px",
-    "border:1px solid rgba(0,0,0,.14)",
-    "background:rgba(0,0,0,.035)",
+    "padding:4px 10px",
+    "border-radius:999px",
+    "border:1px solid rgba(44,90,160,.38)",
+    "background:linear-gradient(180deg,rgba(44,90,160,.13),rgba(44,90,160,.06))",
     "color:inherit",
     "font:inherit",
     "font-size:12px",
+    "font-weight:600",
     "cursor:pointer",
-    "white-space:nowrap"
+    "white-space:nowrap",
+    "box-shadow:0 1px 3px rgba(0,0,0,.12)",
+    "position:static",
+    "z-index:auto"
   ].join(";");
-
-  return button;
+  return b;
 }
 
-function addViewToolbarButtons() {
+function alignButtons() {
+  ensureStyle();
+
+  const anchor = sourceAnchor();
+  const mb = mainButton();
+  let wrap = $(WRAP_ID);
+  if (!wrap) {
+    wrap = document.createElement("span");
+    wrap.id = WRAP_ID;
+    wrap.dir = "rtl";
+  }
+
+  if (!anchor) {
+    wrap.hidden = true;
+    mb.hidden = true;
+    if (!wrap.isConnected) document.body.appendChild(wrap);
+    if (!wrap.contains(mb)) wrap.prepend(mb);
+    return;
+  }
+
+  const h = host(anchor);
+  if (!h) return;
+
+  if (wrap.parentElement !== h || wrap.previousElementSibling !== anchor) {
+    anchor.insertAdjacentElement("afterend", wrap);
+  }
+
+  wrap.hidden = false;
+  wrap.style.cssText = "display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;vertical-align:middle;position:static;z-index:auto;pointer-events:auto;white-space:nowrap";
+
+  if (!wrap.contains(mb)) wrap.prepend(mb);
+  inlineStyle(mb);
+
+  const hb = helpButton();
+  if (!wrap.contains(hb)) wrap.appendChild(hb);
+  inlineStyle(hb);
+
+  mb.setAttribute("aria-describedby", HELP_BTN);
+}
+
+function toolbarButton(id, text, command) {
+  let b = $(id);
+  if (!b) {
+    b = document.createElement("button");
+    b.id = id;
+    b.type = "button";
+    b.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      run(command);
+    });
+  }
+  b.textContent = text;
+  b.style.cssText = "min-height:28px;padding:4px 9px;border-radius:8px;border:1px solid rgba(0,0,0,.14);background:rgba(0,0,0,.035);color:inherit;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap";
+  return b;
+}
+
+function addToolbarButtons() {
   const toolbar = document.querySelector(".panes-toolbar");
   if (!toolbar) return;
 
-  const deleteButton = toolbarButton(
-    "pane-delete-streams-btn",
-    "מחק את כל חלונות הזרמים",
-    "delete-stream-panes"
-  );
-  const clearButton = toolbarButton(
-    "pane-clear-all-content-btn",
-    "נקה את כל תוכן החלונות",
-    "clear-all-pane-content"
-  );
+  const del = toolbarButton("pane-delete-streams-btn", "מחק את כל חלונות הזרמים", "delete");
+  const clear = toolbarButton("pane-clear-all-content-btn", "נקה את כל תוכן החלונות", "clear");
 
-  if (!toolbar.contains(deleteButton)) toolbar.appendChild(deleteButton);
-  if (!toolbar.contains(clearButton)) toolbar.appendChild(clearButton);
+  if (!toolbar.contains(del)) toolbar.appendChild(del);
+  if (!toolbar.contains(clear)) toolbar.appendChild(clear);
 }
 
 function applyPatch() {
-  alignStreamMenuButton();
-  addViewToolbarButtons();
-  patchPopover();
+  alignButtons();
+  addToolbarButtons();
+  if (isOpen()) positionMenu();
 }
 
 export function installCompactStreamMenuFullPatch() {
@@ -435,16 +487,11 @@ export function installCompactStreamMenuFullPatch() {
 
   const start = () => {
     applyPatch();
-
     const observer = new MutationObserver(() => {
       clearTimeout(observer._timer);
       observer._timer = setTimeout(applyPatch, 60);
     });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    observer.observe(document.body, { childList: true, subtree: true });
   };
 
   if (document.readyState === "loading") {
