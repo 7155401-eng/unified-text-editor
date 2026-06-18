@@ -51,15 +51,66 @@ function patchLiveRenderMenuToggle(source) {
   return source.replace(
     functionPattern,
     `function setupLiveRenderToggle() {
-  if (document.getElementById("live-render-toggle")) return;
+  const existing = document.getElementById("live-render-toggle");
+  if (existing) {
+    const existingWrap = existing.closest(".live-render-menu-control");
+    if (!existing.closest("#ribbon-tabs, .ribbon-tab-render-slot")) return;
+    existingWrap?.remove();
+  }
 
-  const renderBtn = document.getElementById("btn-render");
-  const renderSlot = document.querySelector(".ribbon-tab-render-slot");
-  const mainToolbar = getMainRibbonToolbar();
-  const fallbackGroups = mainToolbar?.querySelectorAll(".tb-group") || [];
-  const fallbackGroup = fallbackGroups[10] || fallbackGroups[fallbackGroups.length - 1] || null;
-  const host = renderSlot || renderBtn?.parentElement || fallbackGroup;
-  if (!host) return;
+  const isTopRenderArea = (el) => !!el?.closest?.("#ribbon-tabs, .ribbon-tab-render-slot");
+  const notTop = (el) => !!el && !isTopRenderArea(el);
+
+  function findRenderMenuHost() {
+    const ids = [
+      "btn-render-pause",
+      "btn-render-resume",
+      "btn-render-diagnostics",
+      "btn-reset-display-only",
+      "btn-ravtext-snapshots",
+    ];
+
+    for (const id of ids) {
+      const btn = document.getElementById(id);
+      if (notTop(btn)) {
+        return btn.closest(".tb-group, .ribbon-panel, .toolbar") || btn.parentElement;
+      }
+    }
+
+    const renderTextPattern = /המשך רינדור|עצור רינדור|בדיקת רינדור|אפס תצוגה|רינדור/;
+    const renderButton = Array.from(document.querySelectorAll("button")).find((btn) => {
+      if (!notTop(btn)) return false;
+      const text = (btn.textContent || "") + " " + (btn.title || "");
+      return renderTextPattern.test(text);
+    });
+    if (renderButton) {
+      return renderButton.closest(".tb-group, .ribbon-panel, .toolbar") || renderButton.parentElement;
+    }
+
+    const groups = Array.from(document.querySelectorAll(".tb-group, .ribbon-panel")).filter(notTop);
+    const renderGroup = groups.find((group) => {
+      const text = group.textContent || "";
+      return /רינדור|רנדר|אבחון ושחזור/.test(text);
+    });
+    if (renderGroup) return renderGroup;
+
+    const mainToolbar = getMainRibbonToolbar();
+    if (mainToolbar) {
+      const lowerGroups = Array.from(mainToolbar.querySelectorAll(".tb-group")).filter(notTop);
+      return lowerGroups[lowerGroups.length - 1] || mainToolbar;
+    }
+
+    return null;
+  }
+
+  const host = findRenderMenuHost();
+  if (!host) {
+    setupLiveRenderToggle._retries = (setupLiveRenderToggle._retries || 0) + 1;
+    if (setupLiveRenderToggle._retries <= 40) {
+      setTimeout(setupLiveRenderToggle, 250);
+    }
+    return;
+  }
 
   const wrap = document.createElement("div");
   wrap.className = "live-render-menu-control";
@@ -102,8 +153,16 @@ function patchLiveRenderMenuToggle(source) {
   wrap.appendChild(button);
   wrap.appendChild(warning);
 
-  if (renderBtn && renderBtn.parentElement === host) {
-    renderBtn.insertAdjacentElement("afterend", wrap);
+  const anchor = [
+    "btn-render-pause",
+    "btn-render-resume",
+    "btn-render-diagnostics",
+    "btn-reset-display-only",
+    "btn-ravtext-snapshots",
+  ].map((id) => document.getElementById(id)).find((btn) => btn && host.contains(btn) && notTop(btn));
+
+  if (anchor) {
+    anchor.insertAdjacentElement("afterend", wrap);
   } else {
     host.appendChild(wrap);
   }
