@@ -10,13 +10,21 @@ function clampInt(value, min, max, fallback) {
   return Math.max(min, Math.min(max, n));
 }
 
-function findToolbarTargetGroup() {
-  const mainToolbar = document.getElementById("main-ribbon-toolbar")
-    || document.querySelector(".ribbon-toolbar")
-    || document.querySelector(".toolbar");
-  if (!mainToolbar) return null;
-  const groups = mainToolbar.querySelectorAll(".tb-group");
-  return groups[10] || groups[groups.length - 1] || mainToolbar;
+function findPaneToolbarTarget() {
+  const layoutButton = document.getElementById("pane-layout-btn")
+    || document.querySelector('[data-cmd="pane-layout-toggle"]');
+  const toolbar = layoutButton?.closest(".panes-toolbar")
+    || document.querySelector(".panes-toolbar");
+  if (!toolbar) return null;
+  return { toolbar, layoutButton };
+}
+
+function insertAfter(parent, node, after) {
+  if (after && after.parentNode === parent) {
+    after.insertAdjacentElement("afterend", node);
+  } else {
+    parent.appendChild(node);
+  }
 }
 
 function paneElements(paneManager) {
@@ -31,30 +39,30 @@ function clearPaneInlineLayout(panes) {
     el.style.removeProperty("width");
     el.style.removeProperty("min-width");
     el.style.removeProperty("height");
+    el.style.removeProperty("margin-bottom");
   }
 }
 
 export function setupPaneSideBySideControls({ paneManager, container }) {
   if (!paneManager || !container || document.getElementById("pane-side-by-side-count")) return;
 
-  const targetGroup = findToolbarTargetGroup();
-  if (!targetGroup) return;
+  const target = findPaneToolbarTarget();
+  if (!target?.toolbar) return;
 
   const includeLabel = document.createElement("label");
   includeLabel.className = "toolbar-checkbox pane-side-by-side-control";
-  includeLabel.title = "כאשר הזרמים מוצגים זה לצד זה, הצג גם את החלונית הראשית באותה שורה";
+  includeLabel.title = "במצב זרמים לרוחב: הצג גם את החלונית הראשית באותה שורה עם הזרמים";
   const includeInput = document.createElement("input");
   includeInput.type = "checkbox";
   includeInput.id = "pane-include-main-inline";
   includeInput.checked = localStorage.getItem(INCLUDE_MAIN_KEY) === "1";
   includeLabel.appendChild(includeInput);
   includeLabel.appendChild(document.createTextNode("ראשי לצד"));
-  targetGroup.appendChild(includeLabel);
 
   const countLabel = document.createElement("label");
   countLabel.className = "pane-side-by-side-count-control";
   countLabel.title = "כמה חלוניות להציג בכל שורה במצב זרמים לרוחב";
-  countLabel.appendChild(document.createTextNode("לצד"));
+  countLabel.appendChild(document.createTextNode("חלוניות בשורה"));
   const countInput = document.createElement("input");
   countInput.type = "number";
   countInput.id = "pane-side-by-side-count";
@@ -63,15 +71,9 @@ export function setupPaneSideBySideControls({ paneManager, container }) {
   countInput.step = "1";
   countInput.value = String(clampInt(localStorage.getItem(SIDE_BY_SIDE_COUNT_KEY), 1, 99, 3));
   countLabel.appendChild(countInput);
-  targetGroup.appendChild(countLabel);
 
-  const streamFilterNote = document.createElement("div");
-  streamFilterNote.className = "pane-stream-filter-note";
-  streamFilterNote.setAttribute("aria-disabled", "true");
-  streamFilterNote.title = "שורה נפרדת בלבד; אינה משנה את הכפתורים או ההתנהגות הקיימת";
-  streamFilterNote.textContent = "סינון חלוניות לפי בחירת זרמים — שורה נפרדת, לא פעילה";
-  streamFilterNote.style.cssText = "display:block;width:100%;font-size:11px;line-height:1.25;opacity:0.72;margin-top:2px;white-space:normal;";
-  targetGroup.appendChild(streamFilterNote);
+  insertAfter(target.toolbar, includeLabel, target.layoutButton);
+  insertAfter(target.toolbar, countLabel, includeLabel);
 
   const apply = () => {
     const allPanes = paneElements(paneManager);
@@ -85,13 +87,14 @@ export function setupPaneSideBySideControls({ paneManager, container }) {
       : `calc((100% - (var(--ravtext-editor-stream-horizontal-gap, 0px) * ${columns - 1})) / ${columns})`;
 
     container.classList.toggle("streams-main-inline", includeMain);
+    container.classList.toggle("streams-custom-side-count", hasStreams && !isStacked);
     container.style.setProperty("--ravtext-pane-inline-columns", String(columns));
     container.style.setProperty("--ravtext-pane-inline-basis", basis);
 
     clearPaneInlineLayout(allPanes);
 
     if (isStacked) {
-      container.classList.remove("streams-main-inline");
+      container.classList.remove("streams-main-inline", "streams-custom-side-count");
       return;
     }
 
@@ -102,6 +105,8 @@ export function setupPaneSideBySideControls({ paneManager, container }) {
       el.style.flexBasis = basis;
       el.style.width = basis;
       el.style.minWidth = "220px";
+      el.style.height = "auto";
+      el.style.marginBottom = "0";
     }
   };
 
