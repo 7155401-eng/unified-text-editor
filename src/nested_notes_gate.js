@@ -1,4 +1,6 @@
 import "./first_note_title.js";
+import "./compact_stream_menu.js";
+import "./compact_stream_menu_full.js";
 
 // Feature gate for nested footnotes ("הערה על הערה").
 //
