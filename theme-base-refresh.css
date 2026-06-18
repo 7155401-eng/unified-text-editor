@@ -211,3 +211,114 @@
 .sheet {
   margin-block-start: 0 !important;
 }
+
+/* RavText ribbon/menu simplification.
+   The screenshot showed group captions that add a line, a gap, and a lower "floor" under some buttons.
+   Keep the toolbar simple: one card, one row level, no inner caption strip. */
+#main-ribbon-toolbar .tb-group,
+.ribbon-toolbar .tb-group,
+.toolbar .tb-group,
+.panes-toolbar .tb-group {
+  align-items: center !important;
+  align-content: center !important;
+  justify-content: center;
+  gap: 6px !important;
+  padding: 7px 8px !important;
+  min-height: 48px;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+#main-ribbon-toolbar .tb-group::before,
+#main-ribbon-toolbar .tb-group::after,
+.ribbon-toolbar .tb-group::before,
+.ribbon-toolbar .tb-group::after,
+.toolbar .tb-group::before,
+.toolbar .tb-group::after,
+.panes-toolbar .tb-group::before,
+.panes-toolbar .tb-group::after {
+  content: none !important;
+  display: none !important;
+}
+
+#main-ribbon-toolbar .tb-group > .tb-title,
+#main-ribbon-toolbar .tb-group > .tb-label,
+#main-ribbon-toolbar .tb-group > .toolbar-title,
+#main-ribbon-toolbar .tb-group > .toolbar-label,
+#main-ribbon-toolbar .tb-group > .ribbon-title,
+#main-ribbon-toolbar .tb-group > .ribbon-label,
+#main-ribbon-toolbar .tb-group > .ribbon-caption,
+#main-ribbon-toolbar .tb-group > .group-title,
+#main-ribbon-toolbar .tb-group > .group-label,
+#main-ribbon-toolbar .tb-group > small,
+.ribbon-toolbar .tb-group > .tb-title,
+.ribbon-toolbar .tb-group > .tb-label,
+.ribbon-toolbar .tb-group > .toolbar-title,
+.ribbon-toolbar .tb-group > .toolbar-label,
+.ribbon-toolbar .tb-group > .ribbon-title,
+.ribbon-toolbar .tb-group > .ribbon-label,
+.ribbon-toolbar .tb-group > .ribbon-caption,
+.ribbon-toolbar .tb-group > .group-title,
+.ribbon-toolbar .tb-group > .group-label,
+.ribbon-toolbar .tb-group > small,
+.toolbar .tb-group > .tb-title,
+.toolbar .tb-group > .tb-label,
+.toolbar .tb-group > .toolbar-title,
+.toolbar .tb-group > .toolbar-label,
+.toolbar .tb-group > .ribbon-title,
+.toolbar .tb-group > .ribbon-label,
+.toolbar .tb-group > .ribbon-caption,
+.toolbar .tb-group > .group-title,
+.toolbar .tb-group > .group-label,
+.toolbar .tb-group > small {
+  display: none !important;
+}
+
+#main-ribbon-toolbar .tb-group > hr,
+#main-ribbon-toolbar .tb-group > .sep,
+#main-ribbon-toolbar .tb-group > .divider,
+#main-ribbon-toolbar .tb-group > .separator,
+.ribbon-toolbar .tb-group > hr,
+.ribbon-toolbar .tb-group > .sep,
+.ribbon-toolbar .tb-group > .divider,
+.ribbon-toolbar .tb-group > .separator,
+.toolbar .tb-group > hr,
+.toolbar .tb-group > .sep,
+.toolbar .tb-group > .divider,
+.toolbar .tb-group > .separator {
+  display: none !important;
+}
+
+#main-ribbon-toolbar .tb-group > button,
+#main-ribbon-toolbar .tb-group > select,
+#main-ribbon-toolbar .tb-group > input,
+#main-ribbon-toolbar .tb-group > label,
+.ribbon-toolbar .tb-group > button,
+.ribbon-toolbar .tb-group > select,
+.ribbon-toolbar .tb-group > input,
+.ribbon-toolbar .tb-group > label,
+.toolbar .tb-group > button,
+.toolbar .tb-group > select,
+.toolbar .tb-group > input,
+.toolbar .tb-group > label {
+  margin-block: 0 !important;
+  align-self: center;
+}
+
+#main-ribbon-toolbar .tb-group > button,
+.ribbon-toolbar .tb-group > button,
+.toolbar .tb-group > button {
+  min-height: 36px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* Do not add automatic separator lines between adjacent buttons inside toolbar cards.
+   The previous generic menu rhythm was useful for dropdowns, but it made ribbon groups look uneven. */
+#main-ribbon-toolbar .tb-group button + button,
+#main-ribbon-toolbar .tb-group a + a,
+.ribbon-toolbar .tb-group button + button,
+.ribbon-toolbar .tb-group a + a,
+.toolbar .tb-group button + button,
+.toolbar .tb-group a + a {
+  box-shadow: none !important;
+}
