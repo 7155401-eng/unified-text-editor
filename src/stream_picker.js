@@ -9,29 +9,13 @@ const PICKER_ID = "talmud-stream-picker";
 const ADD_BTN_ID = "talmud-add-stream-btn";
 const TALMUD_MAX_STREAMS = 2;
 
-let wiredPaneManager = null;
-
-function normalizeStreamCode(code) {
-  const raw = String(code ?? "").trim();
-  if (/^\d{1,3}$/.test(raw)) return raw.padStart(2, "0");
-  const match = raw.match(/\d{1,3}/);
-  return match ? match[0].padStart(2, "0") : null;
-}
-
 function getAvailableStreamCodes() {
-  // Try to find streams in the editor, rendered output, or existing panes.
+  // Try to find streams in the editor or rendered output.
   const codes = new Set();
   document.querySelectorAll(".stream[data-stream], [data-stream]").forEach(el => {
-    const c = normalizeStreamCode(el.getAttribute("data-stream"));
+    const c = el.getAttribute("data-stream");
     if (c && /^\d{2}$/.test(c)) codes.add(c);
   });
-
-  const panes = window.paneManager?.panes || [];
-  panes.forEach(pane => {
-    const c = normalizeStreamCode(pane?.streamCode);
-    if (c && /^\d{2}$/.test(c)) codes.add(c);
-  });
-
   // Fallback: 01-10
   if (codes.size === 0) for (let i = 1; i <= 10; i++) codes.add(String(i).padStart(2, "0"));
   return Array.from(codes).sort();
@@ -40,16 +24,7 @@ function getAvailableStreamCodes() {
 function getCurrentSelected() {
   const input = document.getElementById(HIDDEN_INPUT_ID);
   if (!input) return [];
-  const seen = new Set();
-  const selected = [];
-  for (const raw of (input.value.match(/\d{1,3}/g) || [])) {
-    const code = normalizeStreamCode(raw);
-    if (code && /^\d{2}$/.test(code) && !seen.has(code)) {
-      seen.add(code);
-      selected.push(code);
-    }
-  }
-  return selected;
+  return (input.value.match(/\d{2}/g) || []);
 }
 
 function setSelected(codes) {
@@ -57,92 +32,11 @@ function setSelected(codes) {
   if (!input) return;
   // Hard cap at TALMUD_MAX_STREAMS (2). Any extras are truncated.
   // משה 2026-05-10: מיון עולה — קוד נמוך = ימני, גבוה = שמאלי (סדר וילנא קלאסי).
-  const capped = codes
-    .map(normalizeStreamCode)
-    .filter(Boolean)
-    .slice(0, TALMUD_MAX_STREAMS)
-    .slice()
-    .sort();
-
+  const capped = codes.slice(0, TALMUD_MAX_STREAMS).slice().sort();
   input.value = capped.join(",");
   // Trigger change event so existing listeners pick up.
   input.dispatchEvent(new Event("change", { bubbles: true }));
   input.dispatchEvent(new Event("input", { bubbles: true }));
-  try {
-    window.dispatchEvent(new CustomEvent("ravtext:stream-picker-changed", { detail: { streams: capped } }));
-  } catch (_) {}
-  schedulePaneSync();
-}
-
-function isVisiblePaneElement(el) {
-  return !!el && el.classList?.contains("pane") && !el.hidden;
-}
-
-function refreshStreamResizers(manager) {
-  const container = manager?.container || document.getElementById("panes-container");
-  if (!container) return;
-
-  const visibleStreamCount = (manager.panes || [])
-    .filter(pane => pane?.streamCode && pane?.element && !pane.element.hidden)
-    .length;
-
-  container.querySelectorAll(".main-stream-resizer, .resizer").forEach(resizer => {
-    if (resizer.classList.contains("main-stream-resizer")) {
-      resizer.hidden = visibleStreamCount === 0;
-      return;
-    }
-
-    const prev = resizer.previousElementSibling;
-    const next = resizer.nextElementSibling;
-    resizer.hidden = !(isVisiblePaneElement(prev) && isVisiblePaneElement(next));
-  });
-}
-
-function syncSelectedStreamPanes() {
-  const manager = window.paneManager;
-  if (!manager || !Array.isArray(manager.panes)) return;
-
-  const selected = new Set(getCurrentSelected());
-  const streamPanes = manager.panes.filter(pane => pane?.streamCode && pane?.element);
-  if (streamPanes.length === 0) return;
-
-  const shouldFilter = selected.size > 0;
-  let changed = false;
-
-  for (const pane of streamPanes) {
-    const code = normalizeStreamCode(pane.streamCode);
-    const shouldShow = !shouldFilter || selected.has(code);
-    if (pane.element.hidden !== !shouldShow) {
-      pane.element.hidden = !shouldShow;
-      pane.element.classList.toggle("stream-pane-filtered-out", !shouldShow);
-      changed = true;
-    }
-  }
-
-  refreshStreamResizers(manager);
-
-  try { window.__ravtextApplyPaneWidths?.(); } catch (_) {}
-  try { window.__ravtextRerender?.(); } catch (_) {}
-
-  if (changed && shouldFilter) {
-    const status = document.getElementById("status");
-    if (status) status.textContent = `מוצגות חלוניות זרמים: ${Array.from(selected).sort().join(", ")}`;
-  }
-}
-
-function wirePaneManagerSync() {
-  const manager = window.paneManager;
-  if (!manager || manager === wiredPaneManager || typeof manager.on !== "function") return;
-  manager.on("change", schedulePaneSync);
-  wiredPaneManager = manager;
-}
-
-function schedulePaneSync() {
-  clearTimeout(schedulePaneSync._t);
-  schedulePaneSync._t = setTimeout(() => {
-    wirePaneManagerSync();
-    syncSelectedStreamPanes();
-  }, 0);
 }
 
 function renderPicker() {
@@ -150,7 +44,7 @@ function renderPicker() {
   if (!picker) return;
   // משה 2026-05-10: עדכון מצב הכפתור בכל renderPicker — ערך הקלט נטען מ-localStorage
   // אחרי setupStreamPicker (talmud_controls מאוחר יותר), בלי dispatch של change.
-  // כל קריאה ל-renderPicker עכשיו תעדכן גם את הכפתור.
+  // לכן קריאה ל-renderPicker עכשיו תעדכן גם את הכפתור.
   updateAddButtonState();
   const selected = getCurrentSelected();
   const available = getAvailableStreamCodes();
@@ -183,7 +77,6 @@ function renderPicker() {
     // Click chip → cycle through unused codes
     chip.addEventListener("click", () => {
       const unused = available.filter(c => !selected.includes(c) || c === code);
-      if (unused.length === 0) return;
       const curIdx = unused.indexOf(code);
       const nextCode = unused[(curIdx + 1) % unused.length];
       const newSel = [...selected];
@@ -215,7 +108,7 @@ function updateAddButtonState() {
   if (!btn) return;
   const selected = getCurrentSelected();
   // משה 2026-05-10: בגפ"ת תמיד בדיוק 2 זרמים, אז הכפתור "+" מיותר. מסתירים
-  // אותו לחלוטין כשיש 2. אם פחות מ-2 (ברירת מחדל ממילא ממלאת ל-2), הוא נראה.
+  // אותו לחלוטין כאשר 2. אם פחות מ-2 (ברירת מחדל ממילא ממלאת ל-2), הוא נראה.
   if (selected.length >= TALMUD_MAX_STREAMS) {
     btn.style.display = "none";
   } else {
@@ -247,43 +140,29 @@ export function setupStreamPicker() {
   const picker = document.getElementById(PICKER_ID);
   const addBtn = document.getElementById(ADD_BTN_ID);
   if (!picker || !addBtn) return;
-
-  const renderAndSync = () => {
-    renderPicker();
-    updateAddButtonState();
-    schedulePaneSync();
-  };
-
   // Initial render
-  renderAndSync();
-
+  renderPicker();
+  updateAddButtonState();
   // משה 2026-05-10: רנדור נוסף אחרי 100ms לתפוס מצב שערך הקלט נטען מ-localStorage
   // ע"י talmud_controls שרץ אחרי setupStreamPicker.
-  setTimeout(renderAndSync, 100);
-  setTimeout(renderAndSync, 500);
-  setTimeout(renderAndSync, 1200);
-
+  setTimeout(() => { renderPicker(); updateAddButtonState(); }, 100);
+  setTimeout(() => { renderPicker(); updateAddButtonState(); }, 500);
   // Re-render when input changes externally
-  document.getElementById(HIDDEN_INPUT_ID)?.addEventListener("change", renderAndSync);
-  document.getElementById(HIDDEN_INPUT_ID)?.addEventListener("input", schedulePaneSync);
-
+  document.getElementById(HIDDEN_INPUT_ID)?.addEventListener("change", () => {
+    renderPicker();
+    updateAddButtonState();
+  });
   addBtn.addEventListener("click", () => {
     addStream();
     updateAddButtonState();
-    schedulePaneSync();
   });
-
   // After render, fill defaults if empty
-  setTimeout(() => {
-    defaultsIfEmpty();
-    schedulePaneSync();
-  }, 1500);
-
+  setTimeout(defaultsIfEmpty, 1500);
   // Re-render whenever pages re-render (new stream codes available)
   const observer = new MutationObserver(() => {
     // Debounce
     clearTimeout(observer._t);
-    observer._t = setTimeout(renderAndSync, 300);
+    observer._t = setTimeout(renderPicker, 300);
   });
   const pagesContainer = document.getElementById("pages-container");
   if (pagesContainer) observer.observe(pagesContainer, { childList: true, subtree: true });
