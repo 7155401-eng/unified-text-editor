@@ -86,3 +86,61 @@ export function installPeimotTidioWidget() {
 }
 
 installPeimotTidioWidget();
+
+
+const COMPACT_STREAM_MENU_POPOVER_ID = "nested-notes-stream-menu-popover";
+const COMPACT_SYNC_BUTTON_LABEL = "גלילה";
+
+function updateCompactStreamMenuSyncButton() {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const popover = document.getElementById(COMPACT_STREAM_MENU_POPOVER_ID);
+  if (!popover) return;
+
+  const enabled = !!window.paneManager?.syncEnabled;
+  const buttons = Array.from(popover.querySelectorAll("button"));
+  buttons.forEach((button) => {
+    if ((button.textContent || "").trim() !== COMPACT_SYNC_BUTTON_LABEL) return;
+    button.classList.toggle("active", enabled);
+    button.setAttribute("aria-pressed", enabled ? "true" : "false");
+
+    if (enabled) {
+      button.style.borderColor = "var(--rt-accent,#2c5aa0)";
+      button.style.background = "var(--rt-accent,#2c5aa0)";
+      button.style.color = "#fff";
+    } else {
+      button.style.borderColor = "rgba(0,0,0,.12)";
+      button.style.background = "rgba(0,0,0,.035)";
+      button.style.color = "inherit";
+    }
+  });
+}
+
+function installCompactStreamMenuSyncButtonState() {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+
+  const refresh = () => setTimeout(updateCompactStreamMenuSyncButton, 0);
+
+  document.addEventListener("click", (event) => {
+    const target = event.target?.closest?.("button");
+    if (!target) return;
+    const inCompactMenu = target.closest?.(`#${COMPACT_STREAM_MENU_POPOVER_ID}`);
+    const isCompactMenuOpener = target.id === "nested-notes-open-stream-menu-btn";
+    if (!inCompactMenu && !isCompactMenuOpener) return;
+    refresh();
+    setTimeout(updateCompactStreamMenuSyncButton, 140);
+  }, true);
+
+  const startObserver = () => {
+    if (!document.body) return;
+    const observer = new MutationObserver(refresh);
+    observer.observe(document.body, { childList: true, subtree: true });
+    refresh();
+  };
+
+  if (document.body) startObserver();
+  else document.addEventListener("DOMContentLoaded", startObserver, { once: true });
+
+  [100, 500, 1500, 3000].forEach((ms) => setTimeout(updateCompactStreamMenuSyncButton, ms));
+}
+
+installCompactStreamMenuSyncButtonState();
