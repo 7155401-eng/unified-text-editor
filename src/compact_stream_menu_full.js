@@ -1,10 +1,13 @@
 // Supplemental stream-menu actions: bulk delete/clear, short help, and stable inline buttons.
+// This file anchors the stream-menu buttons to the real nested-notes source row:
+// index.html creates the checkbox that main.js wires as #nested-notes-toggle.
 const STREAM_MENU_BUTTON_ID = "nested-notes-open-stream-menu-btn";
-const SHORT_HELP_BUTTON_ID = "nested-notes-short-help-btn";
+const SHORT_HELP_BUTTOON_ID = "nested-notes-short-help-btn";
 const STREAM_ACTIONS_WRAP_ID = "nested-notes-stream-menu-actions-wrap";
 const STREAM_POPOVER_ID = "nested-notes-stream-menu-popover";
 const BULK_ACTIONS_ID = "stream-menu-bulk-actions";
 const STYLE_ID = "stream-menu-actions-style";
+const NESTED_NOTES_TOGGLE_ID = "nested-notes-toggle";
 
 const HELP_TEXT = [
   "איך מקשרים הערות לפנים — בקצרה:",
@@ -20,7 +23,6 @@ const HELP_TEXT = [
 let installed = false;
 
 const $ = id => document.getElementById(id);
-const qa = selector => Array.from(document.querySelectorAll(selector));
 
 function paneManager() {
   return typeof window !== "undefined" ? window.paneManager : null;
@@ -188,51 +190,52 @@ function patchPopover() {
   body.prepend(box);
 }
 
-function textOf(el) {
-  return [
-    el?.textContent,
-    el?.value,
-    el?.title,
-    el?.getAttribute?.("aria-label"),
-    el?.id
-  ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+function isToolbarHost(el) {
+  return !!el?.matches?.(".source-stream-toolbar,.panes-toolbar");
 }
 
-function isVisible(el) {
-  try {
-    const style = getComputedStyle(el);
-    const rect = el.getBoundingClientRect();
-    return el.isConnected &&
-      style.display !== "none" &&
-      style.visibility !== "hidden" &&
-      rect.width > 0 &&
-      rect.height > 0;
-  } catch (_) {
-    return false;
-  }
+function supportToggle() {
+  return $(NESTED_NOTES_TOGGLE_ID);
 }
 
-function findAnchor() {
-  const textAnchor = qa("button,[role='button'],input[type='button'],select,label,summary,a[href]").find(el => (
-    isVisible(el) &&
-    !$(STREAM_ACTIONS_WRAP_ID)?.contains(el) &&
-    !$(STREAM_POPOVER_ID)?.contains(el) &&
-    el.id !== STREAM_MENU_BUTTON_ID &&
-    el.id !== SHORT_HELP_BUTTON_ID &&
-    (/הצג.*הערות.*להערות/.test(textOf(el)) || textOf(el).includes("הערות להערות"))
-  ));
+function supportAnchor() {
+  const toggle = supportToggle();
+  if (!toggle) return null;
 
-  if (textAnchor) return textAnchor;
+  // Source-defined anchor: main.js wires this exact checkbox ID.
+  return toggle.closest("label") ||
+    toggle.closest(".tb-group,.settings-row,.setting-row,.control-row,.field-row,.form-row") ||
+    toggle.parentElement ||
+    toggle;
+}
 
-  const picker = $("talmud-stream-picker");
-  if (picker && isVisible(picker)) return picker;
+function supportHost(anchor) {
+  if (!anchor) return null;
+  if (isToolbarHost(anchor)) return anchor;
+  if (anchor.matches?.("label")) return anchor.parentElement || anchor;
+  return anchor.parentElement || anchor;
+}
 
-  const add = $("talmud-add-stream-btn");
-  if (add && isVisible(add)) return add;
-
+function fallbackAnchor() {
   return document.querySelector(".source-stream-toolbar") ||
     document.querySelector(".panes-toolbar") ||
-    null;
+    document.querySelector("#settings-panel") ||
+    document.querySelector("#settings-pane") ||
+    document.body;
+}
+
+function placeWrap(wrap, anchor, host) {
+  if (!anchor || !host) return false;
+
+  if (isToolbarHost(host)) {
+    if (!host.contains(wrap)) host.appendChild(wrap);
+    return true;
+  }
+
+  if (wrap.parentElement !== host || wrap.#previousElementSibling !== anchor) {
+    anchor.insertAdjacentElement("afterend", wrap);
+  }
+  return true;
 }
 
 function ensureStyle() {
@@ -249,9 +252,10 @@ function ensureStyle() {
       vertical-align:middle;
       position:static !important;
       z-index:auto !important;
+      pointer-events:auto !important;
     }
     #${STREAM_ACTIONS_WRAP_ID} #${STREAM_MENU_BUTTON_ID},
-    #${STREAM_ACTIONS_WRAP_ID} #${SHORT_HELP_BUTTON_ID} {
+    #${STREAM_ACTIONS_WRAP_ID} #${SHORT_HELP_BUTTOON_ID} {
       position:static !important;
       right:auto !important;
       left:auto !important;
@@ -261,9 +265,23 @@ function ensureStyle() {
       margin:0 !important;
       vertical-align:middle !important;
       z-index:auto !important;
+      pointer-events:auto !important;
     }
   `;
   document.head.appendChild(style);
+}
+
+function resetInlineButton(button) {
+  button.hidden = false;
+  button.style.position = "static";
+  button.style.zIndex = "auto";
+  button.style.top = "auto";
+  button.style.right = "auto";
+  button.style.left = "auto";
+  button.style.bottom = "auto";
+  button.style.transform = "none";
+  button.style.margin = "0";
+  button.style.pointerEvents = "auto";
 }
 
 function shortHelpButton() {
@@ -320,28 +338,11 @@ function alignStreamMenuButton() {
     wrap.dir = "rtl";
   }
 
-  const anchor = findAnchor();
-  const host = anchor?.matches?.(".source-stream-toolbar,.panes-toolbar")
-    ? anchor
-    : anchor?.parentElement;
-
-  if (!host || !anchor) {
-    wrap.hidden = true;
-    mainButton.hidden = true;
-    if (!wrap.isConnected) document.body.appendChild(wrap);
-    if (!wrap.contains(mainButton)) wrap.prepend(mainButton);
-    return;
-  }
+  const anchor = supportAnchor() || fallbackAnchor();
+  const host = supportHost(anchor) || fallbackAnchor();
+  placeWrap(wrap, anchor, host);
 
   wrap.hidden = false;
-  mainButton.hidden = false;
-
-  if (host.classList.contains("source-stream-toolbar") || host.classList.contains("panes-toolbar")) {
-    if (!host.contains(wrap)) host.appendChild(wrap);
-  } else if (wrap.parentElement !== host || wrap.previousElementSibling !== anchor) {
-    anchor.insertAdjacentElement("afterend", wrap);
-  }
-
   wrap.style.cssText = [
     "display:inline-flex",
     "align-items:center",
@@ -354,18 +355,11 @@ function alignStreamMenuButton() {
   ].join(";");
 
   if (!wrap.contains(mainButton)) wrap.prepend(mainButton);
-
-  mainButton.style.position = "static";
-  mainButton.style.zIndex = "auto";
-  mainButton.style.top = "auto";
-  mainButton.style.right = "auto";
-  mainButton.style.left = "auto";
-  mainButton.style.bottom = "auto";
-  mainButton.style.transform = "none";
-  mainButton.style.margin = "0";
+  resetInlineButton(mainButton);
 
   const help = shortHelpButton();
   if (!wrap.contains(help)) wrap.appendChild(help);
+  resetInlineButton(help);
 
   mainButton.setAttribute("aria-describedby", SHORT_HELP_BUTTON_ID);
 }
