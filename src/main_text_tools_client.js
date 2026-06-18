@@ -88,15 +88,59 @@ export function installPeimotTidioWidget() {
 installPeimotTidioWidget();
 
 
+const SYNC_TOGGLE_SELECTOR = '#sync-btn, [data-cmd="sync-toggle"], [data-action="sync-toggle"], [data-sync-scroll-toggle], .sync-scroll-toggle, .streams-sync-toggle';
+
+function isSyncScrollToggleButton(button) {
+  if (!button || button.tagName !== "BUTTON") return false;
+  if (button.matches?.(SYNC_TOGGLE_SELECTOR)) return true;
+  const text = (button.textContent || "").replace(/\s+/g, " ").trim();
+  const title = (button.getAttribute("title") || "").trim();
+  const label = (button.getAttribute("aria-label") || "").trim();
+  const probe = `${text} ${title} ${label}`;
+  return /\bגלילה\b/.test(probe) || /sync\s*scroll/i.test(probe);
+}
+
+function getAllSyncScrollToggleButtons() {
+  if (typeof document === "undefined") return [];
+  const buttons = new Set(document.querySelectorAll(SYNC_TOGGLE_SELECTOR));
+  document.querySelectorAll("button").forEach((button) => {
+    if (isSyncScrollToggleButton(button)) buttons.add(button);
+  });
+  return Array.from(buttons).filter(isSyncScrollToggleButton);
+}
+
 function syncAllScrollToggleButtons(enabled) {
   if (typeof document === "undefined") return;
   const on = !!enabled;
-  const buttons = document.querySelectorAll('#sync-btn, [data-cmd="sync-toggle"]');
-  buttons.forEach((button) => {
-    if (!button || button.tagName !== "BUTTON") return;
+  getAllSyncScrollToggleButtons().forEach((button) => {
     button.classList.toggle("active", on);
     button.setAttribute("aria-pressed", on ? "true" : "false");
   });
+}
+
+function installSyncEnabledPropertyMirror() {
+  const manager = window.paneManager;
+  if (!manager || manager.__ravtextSyncEnabledMirrorInstalled) return false;
+
+  let current = !!manager.syncEnabled;
+  try {
+    Object.defineProperty(manager, "syncEnabled", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        return current;
+      },
+      set(value) {
+        current = !!value;
+        syncAllScrollToggleButtons(current);
+      },
+    });
+    manager.syncEnabled = current;
+    manager.__ravtextSyncEnabledMirrorInstalled = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function installSyncScrollButtonStateMirror() {
@@ -105,13 +149,19 @@ function installSyncScrollButtonStateMirror() {
   window.__ravtextSyncAllScrollToggleButtons = syncAllScrollToggleButtons;
 
   const readState = () => !!window.paneManager?.syncEnabled;
-  const refresh = () => syncAllScrollToggleButtons(readState());
+  const refresh = () => {
+    installSyncEnabledPropertyMirror();
+    syncAllScrollToggleButtons(readState());
+  };
 
   document.addEventListener("click", (event) => {
-    const button = event.target?.closest?.('#sync-btn, [data-cmd="sync-toggle"]');
-    if (!button) return;
+    const button = event.target?.closest?.("button");
+    if (!isSyncScrollToggleButton(button)) return;
     setTimeout(refresh, 0);
+    setTimeout(refresh, 50);
   }, true);
+
+  window.addEventListener("ravtext:sync-scroll-changed", refresh);
 
   const observer = new MutationObserver(refresh);
   const startObserver = () => {
@@ -126,6 +176,7 @@ function installSyncScrollButtonStateMirror() {
   setTimeout(refresh, 100);
   setTimeout(refresh, 500);
   setTimeout(refresh, 1500);
+  setTimeout(refresh, 3000);
 }
 
 installSyncScrollButtonStateMirror();
