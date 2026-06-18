@@ -1,324 +1,69 @@
-/* Live fallback for the global language switcher icon.
-   index.html already loads this file. The guard prevents a duplicate icon
-   when the JavaScript language-switcher class is active.
-*/
-#langBtn:not(.language-switcher) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-#langBtn:not(.language-switcher)::before {
-  content: "🌐";
-  display: inline-block;
-  font-size: 14px;
-  line-height: 1;
-  margin-inline-end: 2px;
-}
-
-/* RavText unified menu rhythm.
-   Keeps floating menus at the same top offset, separator style, and inner level. */
-:root {
-  --rt-menu-anchor-gap: 8px;
-  --rt-menu-section-gap: 6px;
-  --rt-menu-separator-color: rgba(148, 163, 184, 0.32);
-  --rt-menu-surface: var(--panel, #ffffff);
-  --rt-menu-text: var(--text, #0f172a);
-  --rt-menu-border: var(--border, #d8e0ea);
-  --rt-menu-hover-bg: rgba(43, 87, 154, 0.08);
-}
-
-/* Profile menu is the canonical anchor: every open menu begins below its trigger, not stuck to the top. */
-#profile-avatar-wrap,
-.profile-avatar-wrap,
-.rt-menu-anchor,
-.dropdown,
-.menu-anchor {
-  position: relative;
-}
-
-#profile-avatar-wrap #profile-avatar-menu,
-.profile-avatar-wrap .profile-menu,
-.dropdown > .dropdown-menu,
-.menu-anchor > .dropdown-menu {
-  position: absolute;
-  top: calc(100% + var(--rt-menu-anchor-gap)) !important;
-  inset-inline-end: 0;
-  margin-top: 0 !important;
-  z-index: 10010;
-}
-
-#profile-avatar-menu[hidden],
-.profile-menu[hidden],
-.ctx-menu[hidden],
-.context-menu[hidden],
-.dropdown-menu[hidden],
-[role="menu"][hidden],
-[data-ravtext-menu][hidden] {
+/* Live fallback for the global language switcher icon. index.html already loads this file. The guard prevents a duplicate icon when the JavaScript language-switcher class is active. */ #langBtn:not(.language-switcher) { display: inline-flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; } #langBtn:not(.language-switcher)::before { content: ""; display: inline-block; font-size: 14px; line-height: 1; margin-inline-end: 2px; } /* RavText unified menu rhythm.
+Keeps floating menus at the same top offset, separator style, and inner level. */ :root { --rt-menu-anchor-gap: 8px; --rt-menu-section-gap: 6px; --rt-menu-separator-color: rgba(148, 163, 184, 0.32); --rt-menu-surface: var(--panel, #ffffff); --rt-menu-text: var(--text, #0f172a); --rt-menu-border: var(--border, #d8e0ea); --rt-menu-hover-bg: rgba(43, 87, 154, 0.08); } /* Profile menu is the canonical anchor: every open menu begins below its trigger, not stuck to the top.
+*/ #profile-avatar-wrap, .profile-avatar-wrap, .rt-menu-anchor, .dropdown, .menu-anchor { position: relative; } #profile-avatar-wrap #profile-avatar-menu, .profile-avatar-wrap .profile-menu, .dropdown > .dropdown-menu, .menu-anchor > .dropdown-menu { position: absolute; top: calc(100% + var(--rt-menu-anchor-gap)) !important; inset-inline-end: 0; margin-top: 0 !important; z-index: 10010; } #profile-avatar-menu[hidden], .profile-menu[hidden], .ctx-menu[hidden], .context-menu[hidden], .dropdown-menu[hidden], [role="menu"][hidden], [data-ravtext-menu][hidden] { display: none !important; } /* Same external gap for menus that are positioned by JavaScript.
+*/ .profile-menu, .ctx-menu, .context-menu, .editor-context-menu, .dropdown-menu, .rt-menu, .floating-menu, [role="menu"], [data-ravtext-menu] { box-sizing: border-box; margin-block-start: var(--rt-menu-anchor-gap); padding: 8px; border: 1px solid var(--rt-menu-border); border-radius: 14px; background: var(--rt-menu-surface); color: var(--rt-menu-text); box-shadow: 0 18px 46px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(148, 163, 184, 0.16); transform-origin: top right; overflow: hidden; } /* Same internal level: first row starts at the same height in all menus.
+*/ .profile-menu > *, .ctx-menu > *, .context-menu > *, .editor-context-menu > *, .dropdown-menu > *, .rt-menu > *, .floating-menu > *, [role="menu"] > *, [data-ravtext-menu] > * { margin-block-start: 0; margin-block-end: 0; } .profile-menu > *:first-child, .ctx-menu > *:first-child, .context-menu > *:first-child, .editor-context-menu > *:first-child, .dropdown-menu > *:first-child, .rt-menu > *:first-child, .floating-menu > *:first-child, [role="menu"] > *:first-child, [data-ravtext-menu] > *:first-child { margin-block-start: 0 !important; } .profile-menu > *:last-child, .ctx-menu > *:last-child, .context-menu > *:last-child, .editor-context-menu > *:last-child, .dropdown-menu > *:last-child, .rt-menu > *:last-child, .floating-menu > *:last-child, [role="menu"] > *:last-child, [data-ravtext-menu] > *:last-child { margin-block-end: 0 !important; } /* One separator language for every menu.
+*/ .profile-menu-sep, .ctx-sep, .context-menu-sep, .dropdown-menu-sep, .rt-menu-sep, [data-ravtext-menu-sep] { display: block; inline-size: 100%; height: 1px; margin: var(--rt-menu-section-gap) 0; border: 0; background: var(--rt-menu-separator-color); flex: 0 0 auto; } .profile-menu-item + .profile-menu-item, .profile-menu-login-btn + .profile-menu-item, .ctx-menu button + button, .ctx-menu a + a, .context-menu button + button, .context-menu a + a, .dropdown-menu button + button, .dropdown-menu a + a, .rt-menu button + button, .rt-menu a + a, [role="menu"] button + button, [role="menu"] a + a, [data-ravtext-menu] button + button, [data-ravtext-menu] a + a { box-shadow: inset 0 1px 0 var(--rt-menu-separator-color); } /* Same row height and hover feel, so one menu is not visually lower than another.
+*/ .profile-menu-item, .profile-menu-login-btn, .ctx-menu button, .ctx-menu a, .context-menu button, .context-menu a, .dropdown-menu button, .dropdown-menu a, .rt-menu button, .rt-menu a, [role="menu"] button, [role="menu"] a, [data-ravtext-menu] button, [data-ravtext-menu] a { min-height: 34px; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; text-align: right; } .profile-menu-item:hover, .profile-menu-login-btn:hover, .ctx-menu button:hover, .ctx-menu a:hover, .context-menu button:hover, .context-menu a:hover, .dropdown-menu button:hover, .dropdown-menu a:hover, .rt-menu button:hover, .rt-menu a:hover, [role="menu"] button:hover, [role="menu"] a:hover, [data-ravtext-menu] button:hover, [data-ravtext-menu] a:hover { background: var(--rt-menu-hover-bg); } /* Larger menu panels use the same safe top distance from the viewport.
+*/ .rt-prem-overlay, .rt-prem-settings-overlay, .rt-video-gallery-overlay, .modal-overlay, .sheet-overlay { align-items: flex-start !important; padding-block-start: clamp(48px, 8vh, 84px) !important; } .rt-prem-sheet, .rt-prem-settings-sheet, .rt-video-gallery-sheet, .modal-sheet, .sheet { margin-block-start: 0 !important; } /* RavText ribbon/menu simplification. The screenshot showed group captions that add a line, a gap, and a lower "floor" under some buttons.
+Keep the toolbar simple: one card, one row level, no inner caption strip.
+*/ #main-ribbon-toolbar .tb-group, .ribbon-toolbar .tb-group, .toolbar .tb-group, .panes-toolbar .tb-group { align-items: center !important; align-content: center !important; justify-content: center; gap: 6px !important; padding: 7px 8px !important; min-height: 48px; border-radius: 12px !important; box-shadow: none !important; } #main-ribbon-toolbar .tb-group::before, #main-ribbon-toolbar .tb-group::after, .ribbon-toolbar .tb-group::before, .ribbon-toolbar .tb-group::after, .toolbar .tb-group::before, .toolbar .tb-group::after, .panes-toolbar .tb-group::before, .panes-toolbar .tb-group::after { content: none !important; display: none !important; } #main-ribbon-toolbar .tb-group > .tb-title, #main-ribbon-toolbar .tb-group > .tb-label, #main-ribbon-toolbar .tb-group > .toolbar-title, #main-ribbon-toolbar .tb-group > .toolbar-label, #main-ribbon-toolbar .tb-group > .ribbon-title, #main-ribbon-toolbar .tb-group > .ribbon-label, #main-ribbon-toolbar .tb-group > .ribbon-caption, #main-ribbon-toolbar .tb-group > .group-title, #main-ribbon-toolbar .tb-group > .group-label, #main-ribbon-toolbar .tb-group > small, .ribbon-toolbar .tb-group > .tb-title, .ribbon-toolbar .tb-group > .tb-label, .ribbon-toolbar .tb-group > .toolbar-title, .ribbon-toolbar .tb-group > .toolbar-label, .ribbon-toolbar .tb-group > .ribbon-title, .ribbon-toolbar .tb-group > .ribbon-label, .ribbon-toolbar .tb-group > .ribbon-caption, .ribbon-toolbar .tb-group > .group-title, .ribbon-toolbar .tb-group > .group-label, .ribbon-toolbar .tb-group > small, .toolbar .tb-group > .tb-title, .toolbar .tb-group > .tb-label, .toolbar .tb-group > .toolbar-title, .toolbar .tb-group > .toolbar-label, .toolbar .tb-group > .ribbon-title, .toolbar .tb-group > .ribbon-label, .toolbar .tb-group > .ribbon-caption, .toolbar .tb-group > .group-title, .toolbar .tb-group > .group-label, .toolbar .tb-group > small { display: none !important; } #main-ribbon-toolbar .tb-group > hr, #main-ribbon-toolbar .tb-group > .sep, #main-ribbon-toolbar .tb-group > .divider, #main-ribbon-toolbar .tb-group > .separator, .ribbon-toolbar .tb-group > hr, .ribbon-toolbar .tb-group > .sep, .ribbon-toolbar .tb-group > .divider, .ribbon-toolbar .tb-group > .separator, .toolbar .tb-group > hr, .toolbar .tb-group > .sep, .toolbar .tb-group > .divider, .toolbar .tb-group > .separator { display: none !important; } #main-ribbon-toolbar .tb-group > button, #main-ribbon-toolbar .tb-group > select, #main-ribbon-toolbar .tb-group > input, #main-ribbon-toolbar .tb-group > label, .ribbon-toolbar .tb-group > button, .ribbon-toolbar .tb-group > select, .ribbon-toolbar .tb-group > input, .ribbon-toolbar .tb-group > label, .toolbar .tb-group > button, .toolbar .tb-group > select, .toolbar .tb-group > input, .toolbar .tb-group > label { margin-block: 0 !important; align-self: center; } #main-ribbon-toolbar .tb-group > button, .ribbon-toolbar .tb-group > button, .toolbar .tb-group > button { min-height: 36px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); } /* Do not add automatic separator lines between adjacent buttons inside toolbar cards.
+The previous generic menu rhythm was useful for dropdowns, but it made ribbon groups look uneven. */ #main-ribbon-toolbar .tb-group button + button, #main-ribbon-toolbar .tb-group a + a, .ribbon-toolbar .tb-group button + button, .ribbon-toolbar .tb-group a + a, .toolbar .tb-group button + button, .toolbar .tb-group a + a { box-shadow: none !important; }
+/* RavText ribbon empty-level cleanup.
+   Some tabs render a top toolbar strip that only contains separators/empty groups.
+   Hide that placeholder strip so every tab starts at the same level as the Home tab. */
+#main-ribbon-toolbar > .sep,
+#main-ribbon-toolbar > .divider,
+#main-ribbon-toolbar > .separator,
+.ribbon-toolbar > .sep,
+.ribbon-toolbar > .divider,
+.ribbon-toolbar > .separator,
+.toolbar > .sep,
+.toolbar > .divider,
+.toolbar > .separator {
   display: none !important;
-}
-
-/* Same external gap for menus that are positioned by JavaScript. */
-.profile-menu,
-.ctx-menu,
-.context-menu,
-.editor-context-menu,
-.dropdown-menu,
-.rt-menu,
-.floating-menu,
-[role="menu"],
-[data-ravtext-menu] {
-  box-sizing: border-box;
-  margin-block-start: var(--rt-menu-anchor-gap);
-  padding: 8px;
-  border: 1px solid var(--rt-menu-border);
-  border-radius: 14px;
-  background: var(--rt-menu-surface);
-  color: var(--rt-menu-text);
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(148, 163, 184, 0.16);
-  transform-origin: top right;
-  overflow: hidden;
-}
-
-/* Same internal level: first row starts at the same height in all menus. */
-.profile-menu > *,
-.ctx-menu > *,
-.context-menu > *,
-.editor-context-menu > *,
-.dropdown-menu > *,
-.rt-menu > *,
-.floating-menu > *,
-[role="menu"] > *,
-[data-ravtext-menu] > * {
-  margin-block-start: 0;
-  margin-block-end: 0;
-}
-
-.profile-menu > *:first-child,
-.ctx-menu > *:first-child,
-.context-menu > *:first-child,
-.editor-context-menu > *:first-child,
-.dropdown-menu > *:first-child,
-.rt-menu > *:first-child,
-.floating-menu > *:first-child,
-[role="menu"] > *:first-child,
-[data-ravtext-menu] > *:first-child {
-  margin-block-start: 0 !important;
-}
-
-.profile-menu > *:last-child,
-.ctx-menu > *:last-child,
-.context-menu > *:last-child,
-.editor-context-menu > *:last-child,
-.dropdown-menu > *:last-child,
-.rt-menu > *:last-child,
-.floating-menu > *:last-child,
-[role="menu"] > *:last-child,
-[data-ravtext-menu] > *:last-child {
-  margin-block-end: 0 !important;
-}
-
-/* One separator language for every menu. */
-.profile-menu-sep,
-.ctx-sep,
-.context-menu-sep,
-.dropdown-menu-sep,
-.rt-menu-sep,
-[data-ravtext-menu-sep] {
-  display: block;
-  inline-size: 100%;
-  height: 1px;
-  margin: var(--rt-menu-section-gap) 0;
-  border: 0;
-  background: var(--rt-menu-separator-color);
-  flex: 0 0 auto;
-}
-
-.profile-menu-item + .profile-menu-item,
-.profile-menu-login-btn + .profile-menu-item,
-.ctx-menu button + button,
-.ctx-menu a + a,
-.context-menu button + button,
-.context-menu a + a,
-.dropdown-menu button + button,
-.dropdown-menu a + a,
-.rt-menu button + button,
-.rt-menu a + a,
-[role="menu"] button + button,
-[role="menu"] a + a,
-[data-ravtext-menu] button + button,
-[data-ravtext-menu] a + a {
-  box-shadow: inset 0 1px 0 var(--rt-menu-separator-color);
-}
-
-/* Same row height and hover feel, so one menu is not visually lower than another. */
-.profile-menu-item,
-.profile-menu-login-btn,
-.ctx-menu button,
-.ctx-menu a,
-.context-menu button,
-.context-menu a,
-.dropdown-menu button,
-.dropdown-menu a,
-.rt-menu button,
-.rt-menu a,
-[role="menu"] button,
-[role="menu"] a,
-[data-ravtext-menu] button,
-[data-ravtext-menu] a {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 10px;
-  text-align: right;
-}
-
-.profile-menu-item:hover,
-.profile-menu-login-btn:hover,
-.ctx-menu button:hover,
-.ctx-menu a:hover,
-.context-menu button:hover,
-.context-menu a:hover,
-.dropdown-menu button:hover,
-.dropdown-menu a:hover,
-.rt-menu button:hover,
-.rt-menu a:hover,
-[role="menu"] button:hover,
-[role="menu"] a:hover,
-[data-ravtext-menu] button:hover,
-[data-ravtext-menu] a:hover {
-  background: var(--rt-menu-hover-bg);
-}
-
-/* Larger menu panels use the same safe top distance from the viewport. */
-.rt-prem-overlay,
-.rt-prem-settings-overlay,
-.rt-video-gallery-overlay,
-.modal-overlay,
-.sheet-overlay {
-  align-items: flex-start !important;
-  padding-block-start: clamp(48px, 8vh, 84px) !important;
-}
-
-.rt-prem-sheet,
-.rt-prem-settings-sheet,
-.rt-video-gallery-sheet,
-.modal-sheet,
-.sheet {
-  margin-block-start: 0 !important;
-}
-
-/* RavText ribbon/menu simplification.
-   The screenshot showed group captions that add a line, a gap, and a lower "floor" under some buttons.
-   Keep the toolbar simple: one card, one row level, no inner caption strip. */
-#main-ribbon-toolbar .tb-group,
-.ribbon-toolbar .tb-group,
-.toolbar .tb-group,
-.panes-toolbar .tb-group {
-  align-items: center !important;
-  align-content: center !important;
-  justify-content: center;
-  gap: 6px !important;
-  padding: 7px 8px !important;
-  min-height: 48px;
-  border-radius: 12px !important;
+  inline-size: 0 !important;
+  block-size: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
 
-#main-ribbon-toolbar .tb-group::before,
-#main-ribbon-toolbar .tb-group::after,
-.ribbon-toolbar .tb-group::before,
-.ribbon-toolbar .tb-group::after,
-.toolbar .tb-group::before,
-.toolbar .tb-group::after,
-.panes-toolbar .tb-group::before,
-.panes-toolbar .tb-group::after {
-  content: none !important;
+#main-ribbon-toolbar .tb-group:empty,
+.ribbon-toolbar .tb-group:empty,
+.toolbar .tb-group:empty,
+.panes-toolbar .tb-group:empty,
+#main-ribbon-toolbar .tb-group:not(:has(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"])),
+.ribbon-toolbar .tb-group:not(:has(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"])),
+.toolbar .tb-group:not(:has(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"])),
+.panes-toolbar .tb-group:not(:has(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"])) {
   display: none !important;
+  inline-size: 0 !important;
+  block-size: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
-#main-ribbon-toolbar .tb-group > .tb-title,
-#main-ribbon-toolbar .tb-group > .tb-label,
-#main-ribbon-toolbar .tb-group > .toolbar-title,
-#main-ribbon-toolbar .tb-group > .toolbar-label,
-#main-ribbon-toolbar .tb-group > .ribbon-title,
-#main-ribbon-toolbar .tb-group > .ribbon-label,
-#main-ribbon-toolbar .tb-group > .ribbon-caption,
-#main-ribbon-toolbar .tb-group > .group-title,
-#main-ribbon-toolbar .tb-group > .group-label,
-#main-ribbon-toolbar .tb-group > small,
-.ribbon-toolbar .tb-group > .tb-title,
-.ribbon-toolbar .tb-group > .tb-label,
-.ribbon-toolbar .tb-group > .toolbar-title,
-.ribbon-toolbar .tb-group > .toolbar-label,
-.ribbon-toolbar .tb-group > .ribbon-title,
-.ribbon-toolbar .tb-group > .ribbon-label,
-.ribbon-toolbar .tb-group > .ribbon-caption,
-.ribbon-toolbar .tb-group > .group-title,
-.ribbon-toolbar .tb-group > .group-label,
-.ribbon-toolbar .tb-group > small,
-.toolbar .tb-group > .tb-title,
-.toolbar .tb-group > .tb-label,
-.toolbar .tb-group > .toolbar-title,
-.toolbar .tb-group > .toolbar-label,
-.toolbar .tb-group > .ribbon-title,
-.toolbar .tb-group > .ribbon-label,
-.toolbar .tb-group > .ribbon-caption,
-.toolbar .tb-group > .group-title,
-.toolbar .tb-group > .group-label,
-.toolbar .tb-group > small {
+#main-ribbon-toolbar:not(:has(.tb-group > :is(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"]))),
+.ribbon-toolbar:not(:has(.tb-group > :is(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"]))) {
   display: none !important;
-}
-
-#main-ribbon-toolbar .tb-group > hr,
-#main-ribbon-toolbar .tb-group > .sep,
-#main-ribbon-toolbar .tb-group > .divider,
-#main-ribbon-toolbar .tb-group > .separator,
-.ribbon-toolbar .tb-group > hr,
-.ribbon-toolbar .tb-group > .sep,
-.ribbon-toolbar .tb-group > .divider,
-.ribbon-toolbar .tb-group > .separator,
-.toolbar .tb-group > hr,
-.toolbar .tb-group > .sep,
-.toolbar .tb-group > .divider,
-.toolbar .tb-group > .separator {
-  display: none !important;
-}
-
-#main-ribbon-toolbar .tb-group > button,
-#main-ribbon-toolbar .tb-group > select,
-#main-ribbon-toolbar .tb-group > input,
-#main-ribbon-toolbar .tb-group > label,
-.ribbon-toolbar .tb-group > button,
-.ribbon-toolbar .tb-group > select,
-.ribbon-toolbar .tb-group > input,
-.ribbon-toolbar .tb-group > label,
-.toolbar .tb-group > button,
-.toolbar .tb-group > select,
-.toolbar .tb-group > input,
-.toolbar .tb-group > label {
+  min-height: 0 !important;
   margin-block: 0 !important;
-  align-self: center;
-}
-
-#main-ribbon-toolbar .tb-group > button,
-.ribbon-toolbar .tb-group > button,
-.toolbar .tb-group > button {
-  min-height: 36px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
-}
-
-/* Do not add automatic separator lines between adjacent buttons inside toolbar cards.
-   The previous generic menu rhythm was useful for dropdowns, but it made ribbon groups look uneven. */
-#main-ribbon-toolbar .tb-group button + button,
-#main-ribbon-toolbar .tb-group a + a,
-.ribbon-toolbar .tb-group button + button,
-.ribbon-toolbar .tb-group a + a,
-.toolbar .tb-group button + button,
-.toolbar .tb-group a + a {
+  padding-block: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
