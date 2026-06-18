@@ -57,6 +57,23 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // legacy-docx-google-redirect-20260616: Google may still index this inactive legacy DOCX route; send it home.
+    if (
+      url.pathname === '/api/docx-google-' ||
+      url.pathname === '/api/docx-google-/' ||
+      url.pathname === '/api/docx-google' ||
+      url.pathname === '/api/docx-google/'
+    ) {
+      const homeUrl = new URL('/', url.origin);
+      return new Response(null, {
+        status: 301,
+        headers: {
+          location: homeUrl.toString(),
+          'cache-control': 'public, max-age=86400',
+        },
+      });
+    }
+
     if (isBadBot(request) && url.pathname !== '/robots.txt') {
       return new Response('Forbidden', { status: 403 });
     }

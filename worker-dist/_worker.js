@@ -2571,12 +2571,16 @@ async function getStatus(request, env) {
   const row = await env.DB.prepare(
     "SELECT plan_type, expires_at, balance_seconds FROM users WHERE id = ?"
   ).bind(user.id).first();
-  const expiresAtMs = row?.expires_at ? row.expires_at * 1e3 : null;
+  const nowSec2 = Math.floor(Date.now() / 1e3);
+  const expiresAtSec = row?.expires_at || 0;
+  const expired = expiresAtSec > 0 && expiresAtSec < nowSec2;
+  const expiresAtMs = expiresAtSec ? expiresAtSec * 1e3 : null;
+  const effectiveBalance = expired ? 0 : row?.balance_seconds || 0;
   return jsonResponse$8({
     paid: !!user.paid,
     planType: row?.plan_type || null,
     expiresAt: expiresAtMs,
-    balanceSeconds: row?.balance_seconds || 0,
+    balanceSeconds: effectiveBalance,
     email: user.email
   });
 }
@@ -3233,6 +3237,10 @@ const CHAT_PROVIDERS = {
     pick: (data) => data?.choices?.[0]?.message?.content
   }
 };
+const CHAT_DIRECT_PROMPT_LIMIT = 32e3;
+const CHAT_CHUNK_SIZE = 12e3;
+const CHAT_CHUNK_OVERLAP = 500;
+const CHAT_SUMMARY_CHAR_LIMIT = 1600;
 function jsonResponse$5(body, status = 200) {
   return Response.json(body, {
     status,
@@ -3325,24 +3333,190 @@ function chatHeaders(provider, apiKey) {
     authorization: `Bearer ${apiKey}`
   };
 }
-function chatBody(provider, prompt, model) {
+function chatBody(provider, prompt, model, maxTokens = 2e3) {
   if (provider === "anthropic") {
     return {
       model,
-      max_tokens: 2e3,
+      max_tokens: maxTokens,
       messages: [{ role: "user", content: prompt }]
     };
   }
   if (provider === "google") {
     return {
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: 2e3 }
+      generationConfig: { maxOutputTokens: maxTokens }
     };
   }
   return {
     model,
-    max_tokens: 2e3,
+    max_tokens: maxTokens,
     messages: [{ role: "user", content: prompt }]
+  };
+}
+function parseOptionalPositiveInt(value) {
+  if (value == null || value === "") return void 0;
+  const n = Number.parseInt(String(value), 10);
+  if (!Number.isFinite(n) || n < 1) return void 0;
+  return n;
+}
+function splitLargePrompt(prompt, chunkSize = CHAT_CHUNK_SIZE, overlap = CHAT_CHUNK_OVERLAP) {
+  const text = String(prompt || "");
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(text.length, start + chunkSize);
+    if (end < text.length) {
+      const windowStart = Math.max(start + Math.floor(chunkSize * 0.65), start);
+      const slice = text.slice(windowStart, end);
+      const breakCandidates = [
+        slice.lastIndexOf("\n\n"),
+        slice.lastIndexOf("\n"),
+        slice.lastIndexOf(". "),
+        slice.lastIndexOf("; "),
+        slice.lastIndexOf(", ")
+      ].filter((idx) => idx >= 0);
+      if (breakCandidates.length) {
+        end = windowStart + Math.max(...breakCandidates) + 1;
+      }
+    }
+    const chunk = text.slice(start, end).trim();
+    if (chunk) chunks.push(chunk);
+    if (end >= text.length) break;
+    start = Math.max(end - overlap, start + 1);
+  }
+  return chunks;
+}
+function buildTaskExcerpt(prompt) {
+  const text = String(prompt || "");
+  if (text.length <= 4e3) return text;
+  const head = text.slice(0, 2800).trim();
+  const tail = text.slice(-1200).trim();
+  return `${head}
+
+[...middle of the large text was omitted in this excerpt...]
+
+${tail}`;
+}
+function trimForReduce(text, maxChars = CHAT_SUMMARY_CHAR_LIMIT) {
+  const normalized = String(text || "").trim();
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, maxChars - 80).trim()}
+[summary shortened for the final step]`;
+}
+function buildChunkPrompt({ originalPrompt, chunk, index: index2, total }) {
+  const taskExcerpt = buildTaskExcerpt(originalPrompt);
+  return `The user sent a large prompt/file. It is being processed in chunks.
+
+Original request excerpt:
+---
+${taskExcerpt}
+---
+
+You are reading chunk ${index2 + 1} of ${total}.
+Analyze only this chunk.
+Return a short factual summary of the information in this chunk that may help answer the user's original request.
+Keep names, numbers, decisions, unusual lines, and important details.
+Do not invent missing facts.
+If this chunk has no relevant information, say that.
+Maximum ${CHAT_SUMMARY_CHAR_LIMIT} characters.
+
+Chunk content:
+---
+${chunk}
+---`;
+}
+function buildFinalPrompt({ originalPrompt, summaries, truncated }) {
+  const taskExcerpt = buildTaskExcerpt(originalPrompt);
+  const joinedSummaries = summaries.map((summary, idx) => `Chunk ${idx + 1}:
+${summary}`).join("\n\n---\n\n");
+  return `The user sent a large prompt/file. The file was processed in chunks.
+Answer the original user request using only the chunk summaries below.
+
+Original request excerpt:
+---
+${taskExcerpt}
+---
+
+Chunk summaries:
+---
+${joinedSummaries}
+---
+
+${truncated ? "Important: the user supplied a manual max_chunks value, so only part of the file was processed. Say clearly that the answer may be partial.\n" : ""}
+Give one clear final answer.
+If the summaries are not enough to answer confidently, say what is missing.`;
+}
+async function callChatProvider({ provider, cfg, prompt, apiKey, maxTokens = 2e3 }) {
+  const model = cfg.model;
+  const url = provider === "google" ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}` : cfg.url;
+  const upstream = await fetch(url, {
+    method: "POST",
+    headers: chatHeaders(provider, apiKey),
+    body: JSON.stringify(chatBody(provider, prompt, model, maxTokens))
+  });
+  const upstreamText = await upstream.text();
+  let data;
+  try {
+    data = JSON.parse(upstreamText);
+  } catch {
+    data = { raw: upstreamText };
+  }
+  const text = cfg.pick(data) || JSON.stringify(data);
+  return {
+    ok: upstream.ok,
+    status: upstream.status,
+    text,
+    data
+  };
+}
+async function runChunkedChat({ provider, cfg, prompt, apiKey, maxChunks }) {
+  const chunks = splitLargePrompt(prompt);
+  const hasManualLimit = Number.isInteger(maxChunks) && maxChunks > 0;
+  const chunksToProcess = hasManualLimit ? chunks.slice(0, maxChunks) : chunks;
+  const truncated = chunksToProcess.length < chunks.length;
+  const summaries = [];
+  for (let i = 0; i < chunksToProcess.length; i += 1) {
+    const chunkPrompt = buildChunkPrompt({
+      originalPrompt: prompt,
+      chunk: chunksToProcess[i],
+      index: i,
+      total: chunks.length
+    });
+    const chunkResult = await callChatProvider({
+      provider,
+      cfg,
+      prompt: chunkPrompt,
+      apiKey,
+      maxTokens: 900
+    });
+    if (!chunkResult.ok) {
+      const message = chunkResult.text || `Chunk ${i + 1} failed`;
+      const error = new Error(message);
+      error.status = chunkResult.status;
+      error.provider = provider;
+      error.chunkIndex = i;
+      throw error;
+    }
+    summaries.push(trimForReduce(chunkResult.text));
+  }
+  const finalPrompt = buildFinalPrompt({
+    originalPrompt: prompt,
+    summaries,
+    truncated
+  });
+  const finalResult = await callChatProvider({
+    provider,
+    cfg,
+    prompt: finalPrompt,
+    apiKey,
+    maxTokens: 2200
+  });
+  return {
+    ...finalResult,
+    chunked: true,
+    chunks: chunks.length,
+    processed_chunks: chunksToProcess.length,
+    truncated
   };
 }
 async function handleAiChat(request) {
@@ -3365,36 +3539,30 @@ async function handleAiChat(request) {
   if (!cfg || !prompt || !apiKey) {
     return jsonResponse$5({ error: "bad_request", message: "Missing provider, prompt, or API key" }, 400);
   }
-  const model = cfg.model;
-  const url = provider === "google" ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}` : cfg.url;
+  const maxChunks = parseOptionalPositiveInt(body?.max_chunks);
+  const shouldChunk = prompt.length > CHAT_DIRECT_PROMPT_LIMIT || body?.large_file === true || body?.chunked === true;
   try {
-    console.log(`[ai-chat] provider=${provider} prompt_chars=${prompt.length}`);
+    console.log(`[ai-chat] provider=${provider} prompt_chars=${prompt.length} chunked=${shouldChunk} max_chunks=${maxChunks ?? "unlimited"}`);
   } catch {
   }
   try {
-    const upstream = await fetch(url, {
-      method: "POST",
-      headers: chatHeaders(provider, apiKey),
-      body: JSON.stringify(chatBody(provider, prompt, model))
-    });
-    const upstreamText = await upstream.text();
-    let data;
-    try {
-      data = JSON.parse(upstreamText);
-    } catch {
-      data = { raw: upstreamText };
-    }
-    const text = cfg.pick(data);
+    const result = shouldChunk ? await runChunkedChat({ provider, cfg, prompt, apiKey, maxChunks }) : await callChatProvider({ provider, cfg, prompt, apiKey });
     return jsonResponse$5({
-      text: text || JSON.stringify(data),
+      text: result.text,
       provider,
-      status: upstream.status
-    }, upstream.ok ? 200 : upstream.status);
+      status: result.status,
+      chunked: !!result.chunked,
+      chunks: result.chunks || 1,
+      processed_chunks: result.processed_chunks || 1,
+      truncated: !!result.truncated
+    }, result.ok ? 200 : result.status);
   } catch (error) {
     return jsonResponse$5({
       error: "proxy_fetch_failed",
-      message: error && error.message ? error.message : String(error)
-    }, 502);
+      message: error && error.message ? error.message : String(error),
+      provider: error?.provider || provider,
+      chunk_index: Number.isInteger(error?.chunkIndex) ? error.chunkIndex : void 0
+    }, error?.status || 502);
   }
 }
 const WATERMARK_TEXTS = [
@@ -3484,6 +3652,12 @@ const PUBLIC_TOOLS = /* @__PURE__ */ new Set([
   "css-ai",
   "torah-tools"
 ]);
+const FREE_UNMETERED_TOOLS = /* @__PURE__ */ new Set([
+  "word-extractor"
+]);
+function isFreeUnmeteredTool(toolName) {
+  return FREE_UNMETERED_TOOLS.has(String(toolName || "").trim());
+}
 function b64url(bytes) {
   const bin = String.fromCharCode(...new Uint8Array(bytes));
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -3549,6 +3723,9 @@ async function handleSecureExportHtmlAction(request, env, body) {
   });
 }
 async function consumeFreeUse(user, toolName, env) {
+  if (isFreeUnmeteredTool(toolName)) {
+    return { ok: true, unmetered: true };
+  }
   const usageDate = todayKey();
   const nowSec2 = Math.floor(Date.now() / 1e3);
   try {
@@ -3629,7 +3806,8 @@ async function handleToolPreflight(request, env) {
     ok: true,
     toolName,
     token,
-    expiresAt: (nowSec2 + TOOL_TOKEN_TTL_SEC) * 1e3
+    expiresAt: (nowSec2 + TOOL_TOKEN_TTL_SEC) * 1e3,
+    unmetered: !user?.paid && isFreeUnmeteredTool(toolName)
   }, {
     headers: { "cache-control": "no-store" }
   });
@@ -5042,7 +5220,7 @@ Dual licenced under the MIT license or GPLv3. See https://raw.github.com/Stuk/js
 JSZip uses the library pako released under the MIT license :
 https://github.com/nodeca/pako/blob/main/LICENSE
 */
-(function(module, exports$1) {
+(function(module, exports) {
   !function(e) {
     module.exports = e();
   }(function() {
@@ -7883,6 +8061,16 @@ async function serveAdminPage(request, env) {
 const index = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/docx-google-" || url.pathname === "/api/docx-google-/" || url.pathname === "/api/docx-google" || url.pathname === "/api/docx-google/") {
+      const homeUrl = new URL("/", url.origin);
+      return new Response(null, {
+        status: 301,
+        headers: {
+          location: homeUrl.toString(),
+          "cache-control": "public, max-age=86400"
+        }
+      });
+    }
     if (isBadBot(request) && url.pathname !== "/robots.txt") {
       return new Response("Forbidden", { status: 403 });
     }
