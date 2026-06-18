@@ -65,6 +65,14 @@ export function setupPaneSideBySideControls({ paneManager, container }) {
   countLabel.appendChild(countInput);
   targetGroup.appendChild(countLabel);
 
+  const streamFilterNote = document.createElement("div");
+  streamFilterNote.className = "pane-stream-filter-note";
+  streamFilterNote.setAttribute("aria-disabled", "true");
+  streamFilterNote.title = "שורה נפרדת בלבד; אינה משנה את הכפתורים או ההתנהגות הקיימת";
+  streamFilterNote.textContent = "סינון חלוניות לפי בחירת זרמים — שורה נפרדת, לא פעילה";
+  streamFilterNote.style.cssText = "display:block;width:100%;font-size:11px;line-height:1.25;opacity:0.72;margin-top:2px;white-space:normal;";
+  targetGroup.appendChild(streamFilterNote);
+
   const apply = () => {
     const allPanes = paneElements(paneManager);
     const streamPanes = allPanes.filter((p) => p.streamCode);
