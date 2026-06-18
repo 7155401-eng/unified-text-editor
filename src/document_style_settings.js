@@ -6,9 +6,25 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+// ⚡ Bolt Optimization: Cache document style settings to prevent repeated localStorage/JSON.parse overhead
+let cachedDocumentStyleSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      cachedDocumentStyleSettings = null;
+    }
+  });
+}
+
 export function loadDocumentStyleSettings() {
+  if (cachedDocumentStyleSettings) {
+    return { ...cachedDocumentStyleSettings };
+  }
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
+    cachedDocumentStyleSettings = { ...DEFAULTS, ...parsed };
+    return { ...cachedDocumentStyleSettings };
   } catch {
     return { ...DEFAULTS };
   }
@@ -16,6 +32,7 @@ export function loadDocumentStyleSettings() {
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
+  cachedDocumentStyleSettings = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
