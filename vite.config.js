@@ -2,12 +2,13 @@ import { build, defineConfig } from 'vite'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 
 // V9 + DOCX patches must run even when the host calls `vite build` directly
-// instead of `npm run build`. משה 2026-05-31: עברו ל-dynamic import עם
-// try/catch — patches שה-anchor שלהם כבר לא קיים (כי הקוד בעצמו עודכן והם
+// instead of `npm run build`. משה 2026-05-31: עברה ל-dynamic import עם
+// try/catch — patches שהם-anchor שלהם כבר לא קיימים (כי הקוד בעצמו עודכן והם
 // superseded) לא יפילו את כל ה-build, רק יראו warning. ה-fix עצמו ממילא
-// קיים בקוד אז אין רגרסיה. הסדר נשמר כי כל await רץ סדרתית.
+// קיים בקוד או אין רגרסיה. הסדר נשמר כי כל await רץ סדרתית.
 const _patches = [
   './scripts/apply_pane_side_by_side_controls_patch.mjs',
+  './scripts/apply_ribbon_tabs_guard_patch.mjs',
   './scripts/apply_v9_limit_full_strip3_one_line_patch.mjs',
   './scripts/apply_v9_column_continuation_flag_patch.mjs',
   './scripts/apply_v9_column_split_line_edge_guard_patch.mjs',
@@ -65,7 +66,7 @@ const PEIMOT_TIDIO_WIDGET = {
     const tidioSrc = '//code.tidio.co/om1yquztujdibhi5ypvtcvo2vfrcd4am.js';
     if (html.includes('code.tidio.co/om1yquztujdibhi5ypvtcvo2vfrcd4am.js')) return html;
 
-    const scriptTag = `    <script src="${tidioSrc}" async data-ravtext-peimot-tidio="1" data-widget-purpose="peimot-phone-capture"></script>`;
+    const scriptTag = `     <script src="${tidioSrc}" async data-ravtext-peimot-tidio="1" data-widget-purpose="peimot-phone-capture"></script>`;
     if (html.includes('</head>')) return html.replace('</head>', `${scriptTag}\n  </head>`);
 
     return `${html}\n${scriptTag}\n`;
