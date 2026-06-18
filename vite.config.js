@@ -8,6 +8,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 // קיים בקוד אז אין רגרסיה. הסדר נשמר כי כל await רץ סדרתית.
 const _patches = [
   './scripts/apply_pane_side_by_side_controls_patch.mjs',
+  './scripts/apply_stream_menu_inactive_note_tab_patch.mjs',
   './scripts/apply_v9_limit_full_strip3_one_line_patch.mjs',
   './scripts/apply_v9_column_continuation_flag_patch.mjs',
   './scripts/apply_v9_column_split_line_edge_guard_patch.mjs',
