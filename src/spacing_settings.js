@@ -56,10 +56,35 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+
+// ⚡ Bolt Optimization:
+// Memory cache for spacing settings.
+// What: Caches the raw string and parsed object of localStorage.getItem to prevent expensive synchronous I/O and JSON.parse() calls.
+// Why: loadSpacingSettings is called repetitively during layout packing and rendering which blocks the main thread.
+// Impact: Eliminates synchronous I/O and GC pressure from repeated JSON.parse in tight loops.
+let cachedRaw = null;
+let cachedSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      cachedRaw = null;
+      cachedSettings = null;
+    }
+  });
+}
+
 export function loadSpacingSettings() {
+  // If cache is populated, return a clone to prevent mutation without synchronous I/O.
+  if (cachedSettings) {
+    return { ...cachedSettings };
+  }
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    cachedSettings = normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedRaw = raw;
+    return { ...cachedSettings };
   } catch {
     return normalizeSpacing(DEFAULTS);
   }
@@ -67,7 +92,10 @@ export function loadSpacingSettings() {
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  const raw = JSON.stringify(next);
+  localStorage.setItem(STORAGE_KEY, raw);
+  cachedRaw = raw;
+  cachedSettings = { ...next };
   return next;
 }
 
