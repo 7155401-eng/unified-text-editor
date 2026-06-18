@@ -1,6 +1,5 @@
 // Surgical render pause/stop controls.
-// Loaded through the main application bundle so it works even when root-level
-// /template-picker.js is not part of the deployed HTML/build.
+// Loaded through the main application bundle.
 
 const INSTALLED_FLAG = "__ravtextRenderPauseControlsInstalled";
 
@@ -10,9 +9,11 @@ export function installRenderPauseControls() {
   window[INSTALLED_FLAG] = true;
 
   const LIVE_KEY = "ravtext.liveRender";
+  const LIVE_USER_CHOICE_KEY = LIVE_KEY + ".userChoice";
   const PAUSE_KEY = "ravtext.renderPaused";
   const PREV_LIVE_KEY = "ravtext.renderPaused.prevLiveRender";
   const STOP_GUARD_MS = 15000;
+  const DEFAULT_OFF_GUARD_KEY = "__ravtextLiveRenderDefaultOffGuard";
 
   const T = {
     render: "⟳ רנדר",
@@ -20,7 +21,7 @@ export function installRenderPauseControls() {
     pause: "⏸ השהיית רינדור",
     resume: "▶ המשך רינדור",
     resumeRender: "▶ המשך ורנדר",
-    paused: "רינדור מושהה — אפשר לשנות כמה דברים בלי להמתין.",
+    paused: "רינדור מושהה — אפשר לערוך כמה דברים בלי להתקוע.",
     pending: "רינדור מושהה — השינויים נשמרו, אבל עדיין לא רונדרו.",
     resumeStatus: "יוצא מהשהייה — מרנדר פעם אחת את המצב האחרון...",
     active: "רינדור פעיל.",
@@ -41,20 +42,49 @@ export function installRenderPauseControls() {
   const renderButton = () => byId("btn-render");
   const pauseButton = () => byId("btn-render-pause");
 
+  function applyDefaultOffGuard() {
+    try {
+      if (!window[DEFAULT_OFF_GUARD_KEY]) window[DEFAULT_OFF_GUARD_KEY] = true;
+      if (localStorage.getItem(LIVE_USER_CHOICE_KEY) !== "1") {
+        localStorage.setItem(LIVE_KEY, "0");
+      }
+    } catch (_) {}
+  }
+
+  applyDefaultOffGuard();
+
   function setStatus(text) {
     const el = byId("status");
     if (el) el.textContent = text;
   }
 
   function liveEnabled() {
-    const value = localStorage.getItem(LIVE_KEY);
-    return value === null ? true : value === "1";
+    try {
+      const userChoice = localStorage.getItem(LIVE_USER_CHOICE_KEY) === "1";
+      return userChoice && localStorage.getItem(LIVE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
   }
 
-  function setLiveEnabled(on) {
-    localStorage.setItem(LIVE_KEY, on ? "1" : "0");
-    const cb = byId("live-render-toggle");
-    if (cb) cb.checked = !!on;
+  function setLiveEnabled(on, options = {}) {
+    try {
+      if (options.userChoice) localStorage.setItem(LIVE_USER_CHOICE_KEY, "1");
+      localStorage.setItem(LIVE_KEY, on ? "1" : "0");
+    } catch (_) {}
+
+    const oldCheckbox = byId("live-render-toggle");
+    if (oldCheckbox && "checked" in oldCheckbox) oldCheckbox.checked = !!on;
+
+    const btn = byId("live-render-toggle-button");
+    if (btn) {
+      btn.classList.toggle("active", !!on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+      btn.textContent = on ? "רינדור אוטומטי: פעיל" : "רינדור אוטומטי: כבוי";
+      btn.title = on
+        ? "לחץ כדי לכבות רינדור אוטומטי אחרי כל שינוי"
+        : "לחץ כדי להפעיל רינדור אוטומטי אחרי כל שינוי. עלול להאט או לתקוע במסמכים גדולים.";
+    }
   }
 
   function snapshotPreview() {
@@ -97,6 +127,26 @@ export function installRenderPauseControls() {
         border-color: #d97706 !important;
         font-weight: 700;
       }
+      .live-render-menu-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .live-render-menu-control {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-inline-start: 8px;
+        white-space: nowrap;
+        font-size: 12px;
+      }
+      .live-render-toggle-btn.active {
+        font-weight: 700;
+      }
+      .live-render-warning {
+        opacity: .78;
+        font-size: 11px;
+      }
       body.render-paused #status { color: #92400e; }
       body.render-running #status { color: #991b1b; }
     `;
@@ -115,6 +165,81 @@ export function installRenderPauseControls() {
     render.insertAdjacentElement("afterend", btn);
   }
 
+  function removeOldToolbarLiveToggle() {
+    const old = byId("live-render-toggle");
+    if (!old) return;
+
+    const oldControl = old.closest(".toolbar-checkbox, .live-render-control, label");
+    const inNewControl = old.closest(".live-render-menu-control");
+    if (!inNewControl && oldControl) {
+      oldControl.remove();
+    } else if (!inNewControl) {
+      old.remove();
+    }
+  }
+
+  function lowerRibbonHost() {
+    const toolbar = byId("main-ribbon-toolbar") || document.querySelector(".ribbon-toolbar.toolbar");
+    if (!toolbar) return null;
+
+    let group = byId("live-render-menu-group");
+    if (!group) {
+      group = document.createElement("div");
+      group.id = "live-render-menu-group";
+      group.className = "tb-group live-render-menu-group";
+      group.dataset.ribbonTab = "streams view advanced home";
+      group.title = "רינדור אוטומטי";
+      toolbar.appendChild(group);
+    }
+
+    group.classList.remove("ribbon-hidden");
+    return group;
+  }
+
+  function ensureLiveRenderToggleButton() {
+    applyDefaultOffGuard();
+    removeOldToolbarLiveToggle();
+
+    const host = lowerRibbonHost();
+    if (!host) return;
+
+    let wrap = byId("live-render-toggle-button")?.closest(".live-render-menu-control") || null;
+    if (!wrap) {
+      wrap = document.createElement("span");
+      wrap.className = "live-render-menu-control";
+      wrap.dir = "rtl";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.id = "live-render-toggle-button";
+      btn.className = "live-render-toggle-btn";
+      btn.style.cssText = "white-space:nowrap;";
+
+      const warning = document.createElement("span");
+      warning.className = "live-render-warning";
+      warning.textContent = "⚠ עלול להאט או לתקוע במסמכים גדולים";
+
+      btn.addEventListener("click", () => {
+        const next = !liveEnabled();
+        if (next) {
+          const ok = confirm("רינדור אוטומטי לאחר כל שינוי עלול להאט ואף לתקוע את העריכה במסמכים גדולים. להפעיל בכל זאת?");
+          if (!ok) return;
+        }
+
+        setLiveEnabled(next, { userChoice: true });
+        if (next) {
+          try { renderButton()?.click(); } catch (_) {}
+        }
+      });
+
+      wrap.appendChild(btn);
+      wrap.appendChild(warning);
+    }
+
+    if (wrap.parentElement !== host) host.appendChild(wrap);
+    setLiveEnabled(liveEnabled());
+  }
+
   function paint() {
     const render = renderButton();
     const pause = pauseButton();
@@ -131,12 +256,15 @@ export function installRenderPauseControls() {
     }
     document.body.classList.toggle("render-paused", state.paused);
     document.body.classList.toggle("render-running", state.running);
+    setLiveEnabled(liveEnabled());
   }
 
   function pauseRender() {
     if (state.paused) return;
-    localStorage.setItem(PREV_LIVE_KEY, liveEnabled() ? "1" : "0");
-    localStorage.setItem(PAUSE_KEY, "1");
+    try {
+      localStorage.setItem(PREV_LIVE_KEY, liveEnabled() ? "1" : "0");
+      localStorage.setItem(PAUSE_KEY, "1");
+    } catch (_) {}
     state.paused = true;
     state.pending = false;
     setLiveEnabled(false);
@@ -146,11 +274,14 @@ export function installRenderPauseControls() {
 
   function resumeRender() {
     if (!state.paused) return;
-    const prev = localStorage.getItem(PREV_LIVE_KEY);
-    localStorage.removeItem(PAUSE_KEY);
-    localStorage.removeItem(PREV_LIVE_KEY);
+    let prev = "0";
+    try {
+      prev = localStorage.getItem(PREV_LIVE_KEY) || "0";
+      localStorage.removeItem(PAUSE_KEY);
+      localStorage.removeItem(PREV_LIVE_KEY);
+    } catch (_) {}
     state.paused = false;
-    setLiveEnabled(prev === "0" ? false : true);
+    setLiveEnabled(prev === "1");
     const shouldRender = state.pending;
     state.pending = false;
     paint();
@@ -185,6 +316,8 @@ export function installRenderPauseControls() {
 
   function wireButtons() {
     ensurePauseButton();
+    ensureLiveRenderToggleButton();
+
     const render = renderButton();
     const pause = pauseButton();
 
@@ -213,12 +346,14 @@ export function installRenderPauseControls() {
         else pauseRender();
       });
     }
+
     paint();
   }
 
   function installNow() {
     state.paused = localStorage.getItem(PAUSE_KEY) === "1";
     if (state.paused) setLiveEnabled(false);
+    applyDefaultOffGuard();
     addStyle();
     wireButtons();
     document.addEventListener("input", markPending, true);
@@ -235,8 +370,9 @@ export function installRenderPauseControls() {
 
     let count = 0;
     const retry = () => {
+      applyDefaultOffGuard();
       wireButtons();
-      if (++count < 32) setTimeout(retry, 250);
+      if (++count < 80) setTimeout(retry, 250);
     };
     setTimeout(retry, 250);
   }
