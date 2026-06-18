@@ -213,18 +213,26 @@ function isVisible(el) {
 }
 
 function findAnchor() {
-  return qa("button,[role='button'],input[type='button'],select,label,summary,a[href]").find(el => (
+  const textAnchor = qa("button,[role='button'],input[type='button'],select,label,summary,a[href]").find(el => (
     isVisible(el) &&
     !$(STREAM_ACTIONS_WRAP_ID)?.contains(el) &&
     !$(STREAM_POPOVER_ID)?.contains(el) &&
     el.id !== STREAM_MENU_BUTTON_ID &&
     el.id !== SHORT_HELP_BUTTON_ID &&
     (/הצג.*הערות.*להערות/.test(textOf(el)) || textOf(el).includes("הערות להערות"))
-  )) ||
-  $("talmud-stream-picker") ||
-  $("talmud-add-stream-btn") ||
-  document.querySelector(".source-stream-toolbar") ||
-  document.querySelector(".panes-toolbar");
+  ));
+
+  if (textAnchor) return textAnchor;
+
+  const picker = $("talmud-stream-picker");
+  if (picker && isVisible(picker)) return picker;
+
+  const add = $("talmud-add-stream-btn");
+  if (add && isVisible(add)) return add;
+
+  return document.querySelector(".source-stream-toolbar") ||
+    document.querySelector(".panes-toolbar") ||
+    null;
 }
 
 function ensureStyle() {
@@ -239,6 +247,8 @@ function ensureStyle() {
       gap:6px;
       margin-inline-start:6px;
       vertical-align:middle;
+      position:static !important;
+      z-index:auto !important;
     }
     #${STREAM_ACTIONS_WRAP_ID} #${STREAM_MENU_BUTTON_ID},
     #${STREAM_ACTIONS_WRAP_ID} #${SHORT_HELP_BUTTON_ID} {
@@ -250,6 +260,7 @@ function ensureStyle() {
       transform:none !important;
       margin:0 !important;
       vertical-align:middle !important;
+      z-index:auto !important;
     }
   `;
   document.head.appendChild(style);
@@ -288,7 +299,9 @@ function shortHelpButton() {
     "cursor:pointer",
     "white-space:nowrap",
     "box-shadow:0 1px 3px rgba(0,0,0,.12)",
-    "pointer-events:auto"
+    "pointer-events:auto",
+    "position:static",
+    "z-index:auto"
   ].join(";");
 
   return button;
@@ -312,36 +325,44 @@ function alignStreamMenuButton() {
     ? anchor
     : anchor?.parentElement;
 
-  if (host) {
-    if (host.classList.contains("source-stream-toolbar") || host.classList.contains("panes-toolbar")) {
-      if (!host.contains(wrap)) host.appendChild(wrap);
-    } else if (wrap.parentElement !== host || wrap.previousElementSibling !== anchor) {
-      anchor.insertAdjacentElement("afterend", wrap);
-    }
-    wrap.style.cssText = [
-      "display:inline-flex",
-      "align-items:center",
-      "gap:6px",
-      "margin-inline-start:6px",
-      "vertical-align:middle",
-      "position:static",
-      "z-index:auto",
-      "pointer-events:auto"
-    ].join(";");
-  } else {
-    if (wrap.parentElement !== document.body) document.body.appendChild(wrap);
-    wrap.style.cssText = [
-      "position:fixed",
-      "z-index:10021",
-      "right:12px",
-      "top:88px",
-      "display:inline-flex",
-      "align-items:center",
-      "gap:6px"
-    ].join(";");
+  if (!host || !anchor) {
+    wrap.hidden = true;
+    mainButton.hidden = true;
+    if (!wrap.isConnected) document.body.appendChild(wrap);
+    if (!wrap.contains(mainButton)) wrap.prepend(mainButton);
+    return;
   }
 
+  wrap.hidden = false;
+  mainButton.hidden = false;
+
+  if (host.classList.contains("source-stream-toolbar") || host.classList.contains("panes-toolbar")) {
+    if (!host.contains(wrap)) host.appendChild(wrap);
+  } else if (wrap.parentElement !== host || wrap.previousElementSibling !== anchor) {
+    anchor.insertAdjacentElement("afterend", wrap);
+  }
+
+  wrap.style.cssText = [
+    "display:inline-flex",
+    "align-items:center",
+    "gap:6px",
+    "margin-inline-start:6px",
+    "vertical-align:middle",
+    "position:static",
+    "z-index:auto",
+    "pointer-events:auto"
+  ].join(";");
+
   if (!wrap.contains(mainButton)) wrap.prepend(mainButton);
+
+  mainButton.style.position = "static";
+  mainButton.style.zIndex = "auto";
+  mainButton.style.top = "auto";
+  mainButton.style.right = "auto";
+  mainButton.style.left = "auto";
+  mainButton.style.bottom = "auto";
+  mainButton.style.transform = "none";
+  mainButton.style.margin = "0";
 
   const help = shortHelpButton();
   if (!wrap.contains(help)) wrap.appendChild(help);
