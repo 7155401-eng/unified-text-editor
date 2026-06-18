@@ -5,6 +5,7 @@
 
 import { onTimerUpdate } from "./time_warning.js";
 import { openPremiumPage } from "./premium_page.js";
+import { installRibbonTabsGuard } from "../ribbon_tabs_guard.js";
 
 const TIMER_ID = "rt-prem-timer";
 
@@ -106,6 +107,7 @@ function applySnapshot(btn, snap) {
 
 export function installHeaderTimer() {
   if (typeof document === "undefined") return;
+  installRibbonTabsGuard();
   if (document.getElementById(TIMER_ID)) return;
 
   const actions = document.querySelector(".app-header .app-header-actions");
