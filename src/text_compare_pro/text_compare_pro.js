@@ -4,10 +4,27 @@
 import "./text_compare_modal.css";
 import { openModal as openTextCompareModal, closeModal } from "./text_compare_ui.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
+import { openToolStartupOverlay } from "../tool_startup_overlay.js";
 
 export async function openModal(options = {}) {
-  await assertToolAllowed("text-compare-pro");
-  return openTextCompareModal(options);
+  const loader = openToolStartupOverlay({
+    title: "השוואת טקסטים",
+    message: "פותח חלון ומכין את הכלי…",
+  });
+
+  try {
+    await Promise.resolve(); // let the loading UI paint before permission/vendor work starts
+    loader.set(22, "בודק הרשאה…");
+    await assertToolAllowed("text-compare-pro");
+
+    loader.set(58, "טוען את חלון ההשוואה…");
+    const modal = await openTextCompareModal(options);
+
+    loader.set(100, "מוכן.");
+    return modal;
+  } finally {
+    loader.close();
+  }
 }
 
 /**
@@ -24,7 +41,16 @@ export function wireTextComparePro(paneManager) {
     if (btn.dataset.tcpWired) return;
     btn.dataset.tcpWired = "1";
     btn.addEventListener("click", async () => {
-      openModal({ prefillFromActive: true });
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      try {
+        await openModal({ prefillFromActive: true });
+      } catch (err) {
+        console.warn("[text-compare-pro] blocked:", err);
+      } finally {
+        btn.disabled = false;
+        btn.removeAttribute("aria-busy");
+      }
     });
   });
 }
