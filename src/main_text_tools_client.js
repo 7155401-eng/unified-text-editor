@@ -86,3 +86,46 @@ export function installPeimotTidioWidget() {
 }
 
 installPeimotTidioWidget();
+
+
+function syncAllScrollToggleButtons(enabled) {
+  if (typeof document === "undefined") return;
+  const on = !!enabled;
+  const buttons = document.querySelectorAll('#sync-btn, [data-cmd="sync-toggle"]');
+  buttons.forEach((button) => {
+    if (!button || button.tagName !== "BUTTON") return;
+    button.classList.toggle("active", on);
+    button.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
+function installSyncScrollButtonStateMirror() {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+
+  window.__ravtextSyncAllScrollToggleButtons = syncAllScrollToggleButtons;
+
+  const readState = () => !!window.paneManager?.syncEnabled;
+  const refresh = () => syncAllScrollToggleButtons(readState());
+
+  document.addEventListener("click", (event) => {
+    const button = event.target?.closest?.('#sync-btn, [data-cmd="sync-toggle"]');
+    if (!button) return;
+    setTimeout(refresh, 0);
+  }, true);
+
+  const observer = new MutationObserver(refresh);
+  const startObserver = () => {
+    if (!document.body) return;
+    observer.observe(document.body, { childList: true, subtree: true });
+    refresh();
+  };
+
+  if (document.body) startObserver();
+  else document.addEventListener("DOMContentLoaded", startObserver, { once: true });
+
+  setTimeout(refresh, 100);
+  setTimeout(refresh, 500);
+  setTimeout(refresh, 1500);
+}
+
+installSyncScrollButtonStateMirror();
