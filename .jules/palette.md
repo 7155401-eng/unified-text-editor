@@ -1,0 +1,3 @@
+## 2024-06-08 - Formatting Toolbar Accessibility
+**Learning:** The text formatting toolbar (H1-H6, Quote, Code, Link) contains several short-text or icon-only buttons that lacked `aria-label` and `title` attributes. Sighted users rely on tooltips to identify these functions, and screen readers require descriptive `aria-label` attributes to distinguish them when navigating the toolbar.
+**Action:** Always ensure any formatting or text manipulation button without explicit, readable text content has both a descriptive `title` (for tooltips) and an appropriate, localized `aria-label` (for screen readers) when adding new UI elements to the Editor toolbar.
