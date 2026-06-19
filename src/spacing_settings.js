@@ -56,17 +56,33 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+// ⚡ Bolt Optimization: Memory cache for spacing settings
+// Prevents synchronous I/O and JSON.parse bottlenecks during layout rendering loops.
+let cachedSpacing = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      cachedSpacing = null;
+    }
+  });
+}
+
 export function loadSpacingSettings() {
+  if (cachedSpacing !== null) return { ...cachedSpacing };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacing = normalizeSpacing({ ...DEFAULTS, ...saved });
+    return { ...cachedSpacing };
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    cachedSpacing = normalizeSpacing(DEFAULTS);
+    return { ...cachedSpacing };
   }
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
+  cachedSpacing = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
