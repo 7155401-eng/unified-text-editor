@@ -603,27 +603,44 @@ function lastStreamLineFillRatio(streamCode = null) {
   return lineFillRatioForElement(notes[notes.length - 1]);
 }
 
-function noMidLineSplitsEnabled() {
+// ⚡ Bolt: Cache ravtext.spacing.v1 to prevent synchronous I/O and JSON.parse bottleneck in layout loop
+let _cachedSpacingSettings = null;
+let _cachedSpacingRaw = null;
+
+function getSpacingSettings() {
+  if (typeof localStorage === "undefined") return null;
   try {
     const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
-    return !!settings?.noMidLineSplits;
+    if (raw === _cachedSpacingRaw) return _cachedSpacingSettings;
+    _cachedSpacingRaw = raw;
+    _cachedSpacingSettings = raw ? JSON.parse(raw) : null;
   } catch {
-    return false;
+    // Failsafe for SecurityError when accessing localStorage in restricted environments or invalid JSON
+    _cachedSpacingSettings = null;
   }
+  return _cachedSpacingSettings;
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === "ravtext.spacing.v1") {
+      _cachedSpacingRaw = null; // force invalidation
+      _cachedSpacingSettings = null; // force invalidation
+    }
+  });
+}
+
+function noMidLineSplitsEnabled() {
+  const settings = getSpacingSettings();
+  return !!settings?.noMidLineSplits;
 }
 
 // משה 2026-05-14: מצב גמיש — לא מפצל פיסקאות, אבל מנסה למלא רווחים ע"י
 // look-ahead: אם פיסקה לא נכנסת אבל הבאה כן — נשבץ את הבאה במקומה. רק
 // כשההפרש בטעם משמעותי (האלטרנטיבה היא לעמוד עם רווח גדול).
 function noMidParagraphSoftEnabled() {
-  try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
-    return !!settings?.noMidParagraphSoft;
-  } catch {
-    return false;
-  }
+  const settings = getSpacingSettings();
+  return !!settings?.noMidParagraphSoft;
 }
 
 // משה 2026-05-14: live_overflow_corrector מזהה זוגות פיצול שניתן לאחד וכותב
