@@ -5042,7 +5042,7 @@ Dual licenced under the MIT license or GPLv3. See https://raw.github.com/Stuk/js
 JSZip uses the library pako released under the MIT license :
 https://github.com/nodeca/pako/blob/main/LICENSE
 */
-(function(module, exports$1) {
+(function(module, exports) {
   !function(e) {
     module.exports = e();
   }(function() {
