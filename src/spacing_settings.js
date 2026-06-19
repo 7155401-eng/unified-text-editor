@@ -56,17 +56,34 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+
+let cachedSpacing = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      cachedSpacing = null;
+    }
+  });
+}
+
 export function loadSpacingSettings() {
+  if (cachedSpacing !== null) return { ...cachedSpacing };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    const merged = normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacing = { ...merged };
+    return merged;
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    const fallback = normalizeSpacing(DEFAULTS);
+    cachedSpacing = { ...fallback };
+    return fallback;
   }
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
+  cachedSpacing = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
@@ -227,4 +244,13 @@ function ensurePanel() {
   }
   panel.dir = "rtl";
   anchor.insertAdjacentElement("beforebegin", panel);
+}
+
+
+export function noMidLineSplitsEnabled() {
+  return !!loadSpacingSettings().noMidLineSplits;
+}
+
+export function noMidParagraphSoftEnabled() {
+  return !!loadSpacingSettings().noMidParagraphSoft;
 }
