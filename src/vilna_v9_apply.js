@@ -1,3 +1,4 @@
+import { loadSpacingSettings } from "./spacing_settings.js";
 // vilna_v9_apply.js — מחיל את V9 עם פגינציה עצמית.
 //
 // admin-only ב-runtime. כש-V9 דלוק, engine_bridge מדלג על כל הצינור
@@ -165,13 +166,8 @@ function readIntSetting(key, fallback, min, max) {
 }
 
 function readSpacingBool(key, fallback = false) {
-  try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
-    return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
-  } catch {
-    return fallback;
-  }
+  const settings = loadSpacingSettings();
+  return typeof settings[key] === "boolean" ? settings[key] : fallback;
 }
 
 function estimateV9PageCount(paragraphs) {
