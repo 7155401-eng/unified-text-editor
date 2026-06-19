@@ -19,18 +19,25 @@
       // Cloudflare Worker provides in production. Guarded by hostname so it
       // can never run on the real site. Stores documents in IndexedDB and
       // settings in localStorage so a refresh keeps everything you imported.
-      (function(){
+      (function () {
         var h = location.hostname;
-        if (h !== 'localhost' && h !== '127.0.0.1' && h !== '[::1]') return;
+        if (h !== "localhost" && h !== "127.0.0.1" && h !== "[::1]") return;
 
         window.__RAVTEXT_AUTH__ = {
-          loggedIn: true, paid: true, admin: true,
-          email: 'local-dev@127.0.0.1',
-          status: 'active', planType: 'local', expiresAt: null,
-          balanceSeconds: 999999, consoleGuardEnabled: false,
+          loggedIn: true,
+          paid: true,
+          admin: true,
+          email: "local-dev@127.0.0.1",
+          status: "active",
+          planType: "local",
+          expiresAt: null,
+          balanceSeconds: 999999,
+          consoleGuardEnabled: false,
           googleClientId: null,
         };
-        try { localStorage.setItem('ravtext.demoMode', '0'); } catch(e) {}
+        try {
+          localStorage.setItem("ravtext.demoMode", "0");
+        } catch (e) {}
 
         // --- IndexedDB-backed local store for /api/documents/current ---
         // Documents are too big for localStorage (a 500KB content payload is
@@ -39,58 +46,85 @@
         // settings stay in localStorage (already true for ravtext.* keys) and
         // are echoed back through /api/settings GET so the persistence layer
         // sees a non-empty server response on first load.
-        var DB_NAME = 'ravtext-localdev';
-        var STORE = 'kv';
+        var DB_NAME = "ravtext-localdev";
+        var STORE = "kv";
         var _dbPromise = null;
-        function openDB(){
+        function openDB() {
           if (_dbPromise) return _dbPromise;
-          _dbPromise = new Promise(function(resolve, reject){
+          _dbPromise = new Promise(function (resolve, reject) {
             try {
               var req = indexedDB.open(DB_NAME, 1);
-              req.onupgradeneeded = function(){
+              req.onupgradeneeded = function () {
                 var db = req.result;
-                if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+                if (!db.objectStoreNames.contains(STORE))
+                  db.createObjectStore(STORE);
               };
-              req.onsuccess = function(){ resolve(req.result); };
-              req.onerror = function(){ reject(req.error); };
-            } catch(e) { reject(e); }
+              req.onsuccess = function () {
+                resolve(req.result);
+              };
+              req.onerror = function () {
+                reject(req.error);
+              };
+            } catch (e) {
+              reject(e);
+            }
           });
           return _dbPromise;
         }
-        function idbGet(key){
-          return openDB().then(function(db){
-            return new Promise(function(resolve){
-              try {
-                var tx = db.transaction(STORE, 'readonly');
-                var rq = tx.objectStore(STORE).get(key);
-                rq.onsuccess = function(){ resolve(rq.result); };
-                rq.onerror = function(){ resolve(undefined); };
-              } catch(e) { resolve(undefined); }
+        function idbGet(key) {
+          return openDB()
+            .then(function (db) {
+              return new Promise(function (resolve) {
+                try {
+                  var tx = db.transaction(STORE, "readonly");
+                  var rq = tx.objectStore(STORE).get(key);
+                  rq.onsuccess = function () {
+                    resolve(rq.result);
+                  };
+                  rq.onerror = function () {
+                    resolve(undefined);
+                  };
+                } catch (e) {
+                  resolve(undefined);
+                }
+              });
+            })
+            .catch(function () {
+              return undefined;
             });
-          }).catch(function(){ return undefined; });
         }
-        function idbPut(key, val){
-          return openDB().then(function(db){
-            return new Promise(function(resolve){
-              try {
-                var tx = db.transaction(STORE, 'readwrite');
-                tx.objectStore(STORE).put(val, key);
-                tx.oncomplete = function(){ resolve(true); };
-                tx.onerror = function(){ resolve(false); };
-              } catch(e) { resolve(false); }
+        function idbPut(key, val) {
+          return openDB()
+            .then(function (db) {
+              return new Promise(function (resolve) {
+                try {
+                  var tx = db.transaction(STORE, "readwrite");
+                  tx.objectStore(STORE).put(val, key);
+                  tx.oncomplete = function () {
+                    resolve(true);
+                  };
+                  tx.onerror = function () {
+                    resolve(false);
+                  };
+                } catch (e) {
+                  resolve(false);
+                }
+              });
+            })
+            .catch(function () {
+              return false;
             });
-          }).catch(function(){ return false; });
         }
 
-        function collectSettingsForServerEcho(){
+        function collectSettingsForServerEcho() {
           var out = {};
           try {
             for (var i = 0; i < localStorage.length; i++) {
               var k = localStorage.key(i);
-              if (!k || k.indexOf('ravtext.') !== 0) continue;
+              if (!k || k.indexOf("ravtext.") !== 0) continue;
               out[k] = localStorage.getItem(k);
             }
-          } catch(e) {}
+          } catch (e) {}
           return out;
         }
 
@@ -98,51 +132,70 @@
         // 404 in dev because there is no Worker. Return permissive responses
         // so the editor opens normally and we can test the actual features.
         var rfetch = window.fetch.bind(window);
-        function mock(body, status){
+        function mock(body, status) {
           return new Response(JSON.stringify(body || {}), {
             status: status || 200,
-            headers: {'content-type':'application/json'},
+            headers: { "content-type": "application/json" },
           });
         }
-        window.fetch = function(input, init){
+        window.fetch = function (input, init) {
           try {
-            var url = typeof input === 'string' ? input : (input && input.url) || '';
-            var p = url.replace(location.origin, '');
-            var method = (init && init.method) || (input && input.method) || 'GET';
+            var url =
+              typeof input === "string" ? input : (input && input.url) || "";
+            var p = url.replace(location.origin, "");
+            var method =
+              (init && init.method) || (input && input.method) || "GET";
             method = String(method).toUpperCase();
-            if (p === '/api/tools/preflight') {
-              return Promise.resolve(mock({ ok:true, token:'local-dev', expiresAt: Date.now()+3600000 }));
+            if (p === "/api/tools/preflight") {
+              return Promise.resolve(
+                mock({
+                  ok: true,
+                  token: "local-dev",
+                  expiresAt: Date.now() + 3600000,
+                }),
+              );
             }
-            if (p === '/api/me') {
+            if (p === "/api/me") {
               return Promise.resolve(mock(window.__RAVTEXT_AUTH__));
             }
-            if (p === '/api/google-drive/status') {
-              return Promise.resolve(mock({ connected:false }));
+            if (p === "/api/google-drive/status") {
+              return Promise.resolve(mock({ connected: false }));
             }
-            if (p.indexOf('/api/google-drive/') === 0 || p.indexOf('/api/docx-google-') === 0) {
-              return Promise.resolve(mock({ ok:false, message:'לא זמין בסביבה מקומית' }, 503));
+            if (
+              p.indexOf("/api/google-drive/") === 0 ||
+              p.indexOf("/api/docx-google-") === 0
+            ) {
+              return Promise.resolve(
+                mock({ ok: false, message: "לא זמין בסביבה מקומית" }, 503),
+              );
             }
-            if (p === '/api/client-log' || p === '/api/usage/track') {
-              return Promise.resolve(mock({ ok:true }));
+            if (p === "/api/client-log" || p === "/api/usage/track") {
+              return Promise.resolve(mock({ ok: true }));
             }
 
             // Document persistence — round-trips through IndexedDB so a page
             // refresh keeps the imported content intact.
-            if (p === '/api/documents/current' && method === 'GET') {
-              return idbGet('document').then(function(doc){
+            if (p === "/api/documents/current" && method === "GET") {
+              return idbGet("document").then(function (doc) {
                 return mock({ document: doc || null });
               });
             }
-            if (p === '/api/documents/current' && (method === 'PUT' || method === 'POST')) {
+            if (
+              p === "/api/documents/current" &&
+              (method === "PUT" || method === "POST")
+            ) {
               var docBody = null;
-              try { docBody = init && init.body ? JSON.parse(init.body) : null; } catch(e) {}
+              try {
+                docBody = init && init.body ? JSON.parse(init.body) : null;
+              } catch (e) {}
               var docToStore = {
-                content: docBody && docBody.content != null ? docBody.content : null,
-                title: docBody && docBody.title != null ? docBody.title : '',
+                content:
+                  docBody && docBody.content != null ? docBody.content : null,
+                title: docBody && docBody.title != null ? docBody.title : "",
                 updatedAt: Date.now(),
               };
-              return idbPut('document', docToStore).then(function(){
-                return mock({ ok:true });
+              return idbPut("document", docToStore).then(function () {
+                return mock({ ok: true });
               });
             }
 
@@ -151,11 +204,16 @@
             // server response (otherwise applyLocalSettings is skipped). PUT
             // is a no-op (changes were already written to localStorage by the
             // app itself); we just acknowledge.
-            if (p === '/api/settings' && method === 'GET') {
-              return Promise.resolve(mock({ settings: collectSettingsForServerEcho() }));
+            if (p === "/api/settings" && method === "GET") {
+              return Promise.resolve(
+                mock({ settings: collectSettingsForServerEcho() }),
+              );
             }
-            if (p === '/api/settings' && (method === 'PUT' || method === 'POST')) {
-              return Promise.resolve(mock({ ok:true }));
+            if (
+              p === "/api/settings" &&
+              (method === "PUT" || method === "POST")
+            ) {
+              return Promise.resolve(mock({ ok: true }));
             }
 
             // רינדור מקומי בלי שרת — preflight מזויף שמחזיר plan תקין עם
@@ -163,27 +221,31 @@
             // (רגיל/תלמוד/שני טורים/משנה) ירוצו. ה-token מוזרק בכותרת
             // x-ravtext-nonce של קריאות מנוע (talmud/balance/mishna),
             // ואותן גם נחתוך כאן.
-            if (p === '/api/render/preflight') {
+            if (p === "/api/render/preflight") {
               var bodyIn = {};
-              try { bodyIn = init && init.body ? JSON.parse(init.body) : {}; } catch(e) {}
-              return Promise.resolve(mock({
-                token: 'local-render',
-                issuedAt: Date.now(),
-                auth: { paid: true, email: 'local-dev@127.0.0.1' },
-                layoutType: bodyIn.layoutType || 'regular',
-                decisions: {
-                  safety: { newSafety: 160, action: 'default' },
-                  talmud: { mode: 'inline' },
-                },
-              }));
+              try {
+                bodyIn = init && init.body ? JSON.parse(init.body) : {};
+              } catch (e) {}
+              return Promise.resolve(
+                mock({
+                  token: "local-render",
+                  issuedAt: Date.now(),
+                  auth: { paid: true, email: "local-dev@127.0.0.1" },
+                  layoutType: bodyIn.layoutType || "regular",
+                  decisions: {
+                    safety: { newSafety: 160, action: "default" },
+                    talmud: { mode: "inline" },
+                  },
+                }),
+              );
             }
             // מנועי רינדור (תלמוד/שני טורים/משנה) — כל אחד מהם מקבל nonce
             // מהשרת ומחזיר החלטות פריסה. בלוקלי מחזירים תגובה ריקה אך
             // תקינה כדי לא לעצור את הרינדור.
-            if (p.indexOf('/api/render/') === 0) {
-              return Promise.resolve(mock({ ok:true, decisions:{} }));
+            if (p.indexOf("/api/render/") === 0) {
+              return Promise.resolve(mock({ ok: true, decisions: {} }));
             }
-          } catch(e) {}
+          } catch (e) {}
           return rfetch(input, init);
         };
 
@@ -192,39 +254,48 @@
         // last edits before closing the tab would be lost.
         if (navigator.sendBeacon) {
           var origBeacon = navigator.sendBeacon.bind(navigator);
-          navigator.sendBeacon = function(url, data){
+          navigator.sendBeacon = function (url, data) {
             try {
-              var u = String(url || '');
-              var p = u.replace(location.origin, '');
-              if (p === '/api/documents/current') {
+              var u = String(url || "");
+              var p = u.replace(location.origin, "");
+              if (p === "/api/documents/current") {
                 var body = null;
                 try {
-                  var txt = (data && typeof data.text === 'function') ? null : (typeof data === 'string' ? data : null);
+                  var txt =
+                    data && typeof data.text === "function"
+                      ? null
+                      : typeof data === "string"
+                        ? data
+                        : null;
                   if (data && data instanceof Blob) {
                     // best-effort sync parse via FileReader is unavailable; defer to async
-                    data.text().then(function(s){
+                    data.text().then(function (s) {
                       try {
                         var b = JSON.parse(s);
-                        idbPut('document', {
+                        idbPut("document", {
                           content: b && b.content != null ? b.content : null,
-                          title: b && b.title || '',
+                          title: (b && b.title) || "",
                           updatedAt: Date.now(),
                         });
-                      } catch(e) {}
+                      } catch (e) {}
                     });
                     return true;
                   }
                   if (txt) body = JSON.parse(txt);
-                } catch(e) {}
-                if (body) idbPut('document', { content: body.content, title: body.title || '', updatedAt: Date.now() });
+                } catch (e) {}
+                if (body)
+                  idbPut("document", {
+                    content: body.content,
+                    title: body.title || "",
+                    updatedAt: Date.now(),
+                  });
                 return true;
               }
-              if (p === '/api/settings') return true;
-            } catch(e) {}
+              if (p === "/api/settings") return true;
+            } catch (e) {}
             return origBeacon(url, data);
           };
         }
-
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
@@ -2088,6 +2159,7 @@
                   class="ai-key-toggle"
                   data-toggle-for="anthropic"
                   title="הצג/הסתר"
+                  aria-label="הצג/הסתר"
                 >
                   👁
                 </button>
@@ -2108,6 +2180,7 @@
                   class="ai-key-toggle"
                   data-toggle-for="openai"
                   title="הצג/הסתר"
+                  aria-label="הצג/הסתר"
                 >
                   👁
                 </button>
@@ -2128,6 +2201,7 @@
                   class="ai-key-toggle"
                   data-toggle-for="google"
                   title="הצג/הסתר"
+                  aria-label="הצג/הסתר"
                 >
                   👁
                 </button>
@@ -2148,6 +2222,7 @@
                   class="ai-key-toggle"
                   data-toggle-for="mistral"
                   title="הצג/הסתר"
+                  aria-label="הצג/הסתר"
                 >
                   👁
                 </button>
@@ -2166,6 +2241,7 @@
                   class="ai-key-toggle"
                   data-toggle-for="groq"
                   title="הצג/הסתר"
+                  aria-label="הצג/הסתר"
                 >
                   👁
                 </button>
@@ -2186,6 +2262,7 @@
                   class="ai-key-toggle"
                   data-toggle-for="deepseek"
                   title="הצג/הסתר"
+                  aria-label="הצג/הסתר"
                 >
                   👁
                 </button>
@@ -2842,7 +2919,16 @@
           סמן זרמים והגדר סימן קישור:
         </p>
 
-        <label class="word-import-option" style="display:flex;align-items:center;gap:8px;margin:10px 0 12px;font-size:14px;">
+        <label
+          class="word-import-option"
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 10px 0 12px;
+            font-size: 14px;
+          "
+        >
           <input type="checkbox" id="word-import-overwrite-styles" checked />
           <span>דרוס סגנונות קיימים</span>
         </label>
