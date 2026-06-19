@@ -1,3 +1,6 @@
 ## 2026-05-13 - [style_registry.js Cache Optimization]
 **Learning:** The style registry was repeatedly calling synchronous I/O (`localStorage.getItem`) and expensive parsing (`JSON.parse`) on every element style application, creating a severe bottleneck during dense page renders. Memory caching for static/rarely-changing global configurations is highly effective, but cross-tab synchronization must be handled manually via the `storage` event to prevent stale states in multi-window environments.
 **Action:** When implementing global configuration managers, always use an in-memory cache variable backed by `localStorage` rather than querying `localStorage` continuously. Ensure cache invalidation logic is robust (both local updates and cross-tab `storage` events).
+## $(date +%Y-%m-%d) - [Layout Engine Settings Cache Optimization]
+**Learning:** Functions like `noMidLineSplitsEnabled` in `src/engine/dom_packer.js` were querying and parsing `localStorage` on every execution, causing significant overhead in tight pagination loops. Caching `localStorage` values by raw string to avoid repetitive `JSON.parse` calls yields significant performance gains.
+**Action:** Always wrap `localStorage.getItem` and `JSON.parse` in caching layers, especially for layout loop configuration checks. Compare raw strings before re-parsing to minimize GC pressure and execution time.
