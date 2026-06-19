@@ -198,7 +198,7 @@ function buildPanel() {
   panel.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border,#d0d0d4);padding-bottom:6px;">
       <strong style="font-size:14px;color:var(--word-blue,#2B579A);">CSS מותאם · AI</strong>
-      <button id="ci-close" class="ci-btn" style="padding:2px 8px;">×</button>
+      <button id="ci-close" class="ci-btn" style="padding:2px 8px;" aria-label="סגור">×</button>
     </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
       <span style="min-width:50px;color:var(--muted,#666);">היקף:</span>
@@ -220,7 +220,7 @@ function buildPanel() {
       resize:vertical;min-height:100px;"></textarea>
     <div style="display:flex;gap:4px;flex-wrap:wrap;">
       <button id="ci-apply" class="ci-btn ci-btn-primary">החל ושמור בהיסטוריה</button>
-      <button id="ci-clear" class="ci-btn">נקה</button>
+      <button id="ci-clear" class="ci-btn" aria-label="נקה">נקה</button>
     </div>
     <div style="border-top:1px solid var(--border,#d0d0d4);padding-top:6px;">
       <strong style="color:var(--word-blue,#2B579A);font-size:12px;">JS מותאם (לתיקוני engine)</strong>
@@ -230,7 +230,7 @@ function buildPanel() {
         resize:vertical;min-height:80px;width:100%;"></textarea>
       <div style="display:flex;gap:4px;margin-top:4px;">
         <button id="ci-js-run" class="ci-btn ci-btn-primary">הרץ JS</button>
-        <button id="ci-js-clear" class="ci-btn">נקה</button>
+        <button id="ci-js-clear" class="ci-btn" aria-label="נקה JS">נקה</button>
       </div>
       <div id="ci-js-result" style="font-size:11px;color:#444;margin-top:4px;display:none;background:#fafafa;padding:4px;border-radius:3px;border:1px solid var(--border,#d0d0d4);direction:ltr;text-align:left;"></div>
     </div>
