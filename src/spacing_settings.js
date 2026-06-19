@@ -1,5 +1,19 @@
 import { loadTextStyles, saveTextStyles, styleOptionsHtml } from "./style_registry.js";
 
+// ⚡ Bolt Optimization:
+// Memory cache for spacing settings to prevent repetitive, expensive JSON.parse()
+// and synchronous I/O operations inside layout engine tight loops.
+let cachedSpacingSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      cachedSpacingSettings = null;
+    }
+  });
+}
+
+
 const STORAGE_KEY = "ravtext.spacing.v1";
 
 // Hebrew niqqud and te'amim sit above/below the base glyph as combining marks.
@@ -57,16 +71,20 @@ const FIELDS = [
 ];
 
 export function loadSpacingSettings() {
+  if (cachedSpacingSettings) return { ...cachedSpacingSettings };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacingSettings = normalizeSpacing({ ...DEFAULTS, ...saved });
+    return { ...cachedSpacingSettings };
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    cachedSpacingSettings = normalizeSpacing(DEFAULTS);
+    return { ...cachedSpacingSettings };
   }
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
+  cachedSpacingSettings = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
