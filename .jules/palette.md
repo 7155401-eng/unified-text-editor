@@ -1,0 +1,3 @@
+## 2024-05-14 - Icon Button Accessibility
+**Learning:** The UI extensively uses icon-only/symbol-only buttons in toolbars (e.g., heading levels rendered as "H1", quote icons as "❝", unlink icons as "⛓⃠"). These rely heavily on native `title` attributes for sighted users on hover but previously lacked `aria-label` attributes, which is an anti-pattern for screen readers navigating via keyboard where hover tooltips aren't announced effectively.
+**Action:** Always ensure that icon-only/symbol-only action buttons and inputs without visible explicit labels have an `aria-label` attribute matching the intended action. When a `title` attribute is present for sighted users, mirroring its value to `aria-label` provides a consistent accessible experience.
