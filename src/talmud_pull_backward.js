@@ -332,9 +332,12 @@ function shrinkPagesToContent(container) {
 
     // Compute the true bottom of all rendered content using getBoundingClientRect
     // on the deepest visible descendants. Floats may extend below their parent.
+    // OPTIMIZATION: Avoid querySelectorAll('*') to prevent performance regressions
+    // and layout thrashing. Target structural classes instead, excluding inline
+    // elements like .v9-line that cause sub-pixel false positives.
     const pageRect = p.getBoundingClientRect();
     let maxBottom = pageRect.top; // start from page top
-    p.querySelectorAll("*").forEach(el => {
+    p.querySelectorAll(".talmud-main, .stream, .talmud-body-portion, .v9-stream-title, .v9-role-main, .v9-role-stream, .v9-role-left, .v9-role-right").forEach(el => {
       if (getComputedStyle(el).display === "none") return;
       const r = el.getBoundingClientRect();
       if (r.bottom > maxBottom) maxBottom = r.bottom;
