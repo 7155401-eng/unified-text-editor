@@ -1,3 +1,7 @@
 ## 2026-05-13 - [style_registry.js Cache Optimization]
 **Learning:** The style registry was repeatedly calling synchronous I/O (`localStorage.getItem`) and expensive parsing (`JSON.parse`) on every element style application, creating a severe bottleneck during dense page renders. Memory caching for static/rarely-changing global configurations is highly effective, but cross-tab synchronization must be handled manually via the `storage` event to prevent stale states in multi-window environments.
 **Action:** When implementing global configuration managers, always use an in-memory cache variable backed by `localStorage` rather than querying `localStorage` continuously. Ensure cache invalidation logic is robust (both local updates and cross-tab `storage` events).
+
+## 2026-06-21 - [In-Memory caching for layout loop properties]
+**Learning:** High-frequency layout loop components (like `src/engine/dom_packer.js` parsing `ravtext.spacing.v1` in `noMidLineSplitsEnabled`) were repeatedly invoking `localStorage.getItem` and `JSON.parse` across thousands of sub-pixel pack calls, causing severe Garbage Collection (GC) overhead and synchronous layout bottlenecks.
+**Action:** When a global object state in `localStorage` is repeatedly queried during synchronous tight layout loops, implement a cached reference in memory that auto-updates via the global `window.addEventListener("storage")` event, and return a shallow clone (e.g. `{ ...cachedSpacing }`) on getters to eliminate repetitive GC and disk I/O pressure while preventing accidental cache mutation.
