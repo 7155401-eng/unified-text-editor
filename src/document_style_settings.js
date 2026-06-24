@@ -6,9 +6,30 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+// ⚡ Bolt: Cache layout settings to avoid synchronous I/O
+// 💡 What: Add in-memory caching for `loadDocumentStyleSettings`.
+// 🎯 Why: Prevents repetitive synchronous `localStorage.getItem` and `JSON.parse` overhead during rendering loops, reducing main thread blockage and Garbage Collection pressure.
+// 📊 Impact: Significantly speeds up document style rendering and layout processing.
+// 🔬 Measurement: Run performance profiling during page load/rendering and observe reduced time spent in layout functions.
+let cachedDocumentStyleSettings = null;
+
+// Ensure cross-tab synchronization correctly clears cache
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedDocumentStyleSettings = null;
+    }
+  });
+}
+
 export function loadDocumentStyleSettings() {
+  if (cachedDocumentStyleSettings) {
+    // Return shallow copy to prevent consumers from mutating global state
+    return { ...cachedDocumentStyleSettings };
+  }
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    cachedDocumentStyleSettings = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    return { ...cachedDocumentStyleSettings };
   } catch {
     return { ...DEFAULTS };
   }
@@ -16,8 +37,9 @@ export function loadDocumentStyleSettings() {
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
+  cachedDocumentStyleSettings = next;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  return next;
+  return { ...next };
 }
 
 export function getMainTextStyle() {
