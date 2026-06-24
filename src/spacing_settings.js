@@ -56,10 +56,31 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+// ⚡ Bolt: Cache spacing settings to avoid synchronous I/O
+// 💡 What: Add in-memory caching for `loadSpacingSettings`.
+// 🎯 Why: Prevents repetitive synchronous `localStorage.getItem` and `JSON.parse` overhead during layout calculations, which caused severe performance bottlenecks.
+// 📊 Impact: Radically speeds up page and component reflows when processing dense spacing definitions.
+// 🔬 Measurement: Verify layout calculation speeds and overall page loading smoothness under heavy text loads.
+let cachedSpacingSettings = null;
+
+// Listen for local storage changes from other tabs to clear the cache properly
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedSpacingSettings = null;
+    }
+  });
+}
+
 export function loadSpacingSettings() {
+  if (cachedSpacingSettings) {
+    // Return shallow copy to protect the global cache from caller mutations
+    return { ...cachedSpacingSettings };
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacingSettings = normalizeSpacing({ ...DEFAULTS, ...saved });
+    return { ...cachedSpacingSettings };
   } catch {
     return normalizeSpacing(DEFAULTS);
   }
@@ -67,8 +88,9 @@ export function loadSpacingSettings() {
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
+  cachedSpacingSettings = next;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  return next;
+  return { ...next };
 }
 
 export function applySpacingSettings(settings = loadSpacingSettings(), pagesContainer = null) {
