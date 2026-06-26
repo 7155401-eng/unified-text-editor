@@ -20,6 +20,7 @@ import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_se
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
 import { getOpeningWordSettings } from "./opening_word.js";
+import { loadSpacingSettings } from "./spacing_settings.js";
 import {
   startVilnaRenderProgress,
   hideVilnaRenderProgressImmediately,
@@ -166,8 +167,7 @@ function readIntSetting(key, fallback, min, max) {
 
 function readSpacingBool(key, fallback = false) {
   try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
+    const settings = loadSpacingSettings();
     return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
   } catch {
     return fallback;

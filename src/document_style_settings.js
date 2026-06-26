@@ -6,17 +6,35 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
-export function loadDocumentStyleSettings() {
+let _cachedSettings = null;
+
+function _initCache() {
+  if (_cachedSettings) return;
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
+    _cachedSettings = { ...DEFAULTS, ...saved };
   } catch {
-    return { ...DEFAULTS };
+    _cachedSettings = { ...DEFAULTS };
   }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      _cachedSettings = null;
+    }
+  });
+}
+
+export function loadDocumentStyleSettings() {
+  _initCache();
+  return { ..._cachedSettings };
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  _cachedSettings = { ...next };
   return next;
 }
 
