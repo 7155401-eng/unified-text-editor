@@ -6,18 +6,31 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+let _documentStyleCache = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      _documentStyleCache = null;
+    }
+  });
+}
+
 export function loadDocumentStyleSettings() {
+  if (_documentStyleCache) return { ..._documentStyleCache };
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    _documentStyleCache = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
   } catch {
-    return { ...DEFAULTS };
+    _documentStyleCache = { ...DEFAULTS };
   }
+  return { ..._documentStyleCache };
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
+  _documentStyleCache = next;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  return next;
+  return { ...next };
 }
 
 export function getMainTextStyle() {
