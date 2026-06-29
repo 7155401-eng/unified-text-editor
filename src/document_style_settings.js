@@ -6,16 +6,37 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+
+// ⚡ Bolt Optimization:
+// Memory cache for document style settings.
+// What: Caches the parsed result of localStorage to prevent expensive JSON.parse() calls.
+// Why: loadDocumentStyleSettings is called heavily during the rendering pipeline.
+// Impact: Significantly reduces synchronous I/O bottlenecks in tight loops.
+let cachedDocSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedDocSettings = null;
+    }
+  });
+}
+
 export function loadDocumentStyleSettings() {
+  if (cachedDocSettings !== null) return { ...cachedDocSettings };
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
+    cachedDocSettings = { ...DEFAULTS, ...saved };
+    return { ...cachedDocSettings };
   } catch {
-    return { ...DEFAULTS };
+    cachedDocSettings = { ...DEFAULTS };
+    return { ...cachedDocSettings };
   }
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
+  cachedDocSettings = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
