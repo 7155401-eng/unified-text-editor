@@ -7,6 +7,17 @@ const STORAGE_KEY = "ravtext.spacing.v1";
 // though the underlying text is still intact. Keep spacing dense, but safe.
 const HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN = 1.25;
 
+
+let cachedSpacingSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedSpacingSettings = null;
+    }
+  });
+}
+
 const DEFAULTS = {
   editorLineHeight: 1.55,
   editorParagraphGap: 6,
@@ -57,17 +68,24 @@ const FIELDS = [
 ];
 
 export function loadSpacingSettings() {
+  if (cachedSpacingSettings) {
+    return { ...cachedSpacingSettings };
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacingSettings = normalizeSpacing({ ...DEFAULTS, ...saved });
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    cachedSpacingSettings = normalizeSpacing(DEFAULTS);
   }
+  return { ...cachedSpacingSettings };
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  cachedSpacingSettings = { ...next };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {}
   return next;
 }
 

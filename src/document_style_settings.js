@@ -2,21 +2,39 @@ import { applyStyleToElement, loadTextStyles, resolveTextStyle, styleOptionsHtml
 
 const STORAGE_KEY = "ravtext.documentStyles.v1";
 
+
+let cachedDocumentStyleSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedDocumentStyleSettings = null;
+    }
+  });
+}
+
 const DEFAULTS = {
   mainStyleId: "",
 };
 
 export function loadDocumentStyleSettings() {
-  try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
-  } catch {
-    return { ...DEFAULTS };
+  if (cachedDocumentStyleSettings) {
+    return { ...cachedDocumentStyleSettings };
   }
+  try {
+    cachedDocumentStyleSettings = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+  } catch {
+    cachedDocumentStyleSettings = { ...DEFAULTS };
+  }
+  return { ...cachedDocumentStyleSettings };
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  cachedDocumentStyleSettings = { ...next };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {}
   return next;
 }
 
