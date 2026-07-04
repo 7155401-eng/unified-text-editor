@@ -56,17 +56,31 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+let cachedSpacingSettings = null;
+
 export function loadSpacingSettings() {
+  if (cachedSpacingSettings) return { ...cachedSpacingSettings };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacingSettings = normalizeSpacing({ ...DEFAULTS, ...saved });
+    return { ...cachedSpacingSettings };
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    cachedSpacingSettings = normalizeSpacing(DEFAULTS);
+    return { ...cachedSpacingSettings };
   }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedSpacingSettings = null;
+    }
+  });
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
+  cachedSpacingSettings = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
