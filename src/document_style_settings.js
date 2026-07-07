@@ -1,4 +1,9 @@
-import { applyStyleToElement, loadTextStyles, resolveTextStyle, styleOptionsHtml } from "./style_registry.js";
+import {
+  applyStyleToElement,
+  loadTextStyles,
+  resolveTextStyle,
+  styleOptionsHtml,
+} from "./style_registry.js";
 
 const STORAGE_KEY = "ravtext.documentStyles.v1";
 
@@ -6,17 +11,34 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+let cachedDocumentStyleSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedDocumentStyleSettings = null;
+    }
+  });
+}
+
 export function loadDocumentStyleSettings() {
+  if (cachedDocumentStyleSettings) return { ...cachedDocumentStyleSettings };
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    cachedDocumentStyleSettings = {
+      ...DEFAULTS,
+      ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}),
+    };
+    return { ...cachedDocumentStyleSettings };
   } catch {
-    return { ...DEFAULTS };
+    cachedDocumentStyleSettings = { ...DEFAULTS };
+    return { ...cachedDocumentStyleSettings };
   }
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  cachedDocumentStyleSettings = { ...next };
   return next;
 }
 
@@ -53,31 +75,42 @@ export function wireDocumentStyleControls({ pagesContainer, rerender } = {}) {
     select.value = current;
   };
 
-  panel.querySelector("#document-main-style-select")?.addEventListener("change", (ev) => {
-    const value = ev.target.value;
-    if (value === "__add-custom__") {
-      const gallery = document.getElementById("styles-gallery-select");
-      if (gallery) {
-        gallery.value = "__add-custom__";
-        gallery.dispatchEvent(new Event("change", { bubbles: true }));
+  panel
+    .querySelector("#document-main-style-select")
+    ?.addEventListener("change", (ev) => {
+      const value = ev.target.value;
+      if (value === "__add-custom__") {
+        const gallery = document.getElementById("styles-gallery-select");
+        if (gallery) {
+          gallery.value = "__add-custom__";
+          gallery.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        render();
+        return;
       }
-      render();
-      return;
-    }
-    const styles = loadTextStyles();
-    saveDocumentStyleSettings({
-      ...loadDocumentStyleSettings(),
-      mainStyleId: styles.some(s => s.id === value || s.name === value) ? value : "",
+      const styles = loadTextStyles();
+      saveDocumentStyleSettings({
+        ...loadDocumentStyleSettings(),
+        mainStyleId: styles.some((s) => s.id === value || s.name === value)
+          ? value
+          : "",
+      });
+      pagesContainer
+        ?.querySelectorAll?.(".page-main")
+        .forEach(applyMainTextStyleToElement);
+      rerender?.();
     });
-    pagesContainer?.querySelectorAll?.(".page-main").forEach(applyMainTextStyleToElement);
-    rerender?.();
-  });
 
-  panel.querySelector("#document-main-style-clear")?.addEventListener("click", () => {
-    saveDocumentStyleSettings({ ...loadDocumentStyleSettings(), mainStyleId: "" });
-    render();
-    rerender?.();
-  });
+  panel
+    .querySelector("#document-main-style-clear")
+    ?.addEventListener("click", () => {
+      saveDocumentStyleSettings({
+        ...loadDocumentStyleSettings(),
+        mainStyleId: "",
+      });
+      render();
+      rerender?.();
+    });
 
   window.addEventListener("ravtext:styles-changed", render);
   render();
