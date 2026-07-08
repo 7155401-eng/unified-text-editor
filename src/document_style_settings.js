@@ -6,9 +6,22 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+// ⚡ Bolt Optimization: Cache document style settings to prevent synchronous I/O
+let cachedSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedSettings = null;
+    }
+  });
+}
+
 export function loadDocumentStyleSettings() {
+  if (cachedSettings !== null) return { ...cachedSettings };
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    cachedSettings = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    return { ...cachedSettings };
   } catch {
     return { ...DEFAULTS };
   }
@@ -16,6 +29,7 @@ export function loadDocumentStyleSettings() {
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
+  cachedSettings = next;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
