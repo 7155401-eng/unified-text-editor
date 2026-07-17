@@ -240,6 +240,12 @@ function buildOverlay(opts = {}) {
   hero.appendChild(trustRow);
   sheet.appendChild(hero);
 
+  // משה 2026-05-31: בכתב מאוד בולט — לאן הכסף שלך הולך?
+  const moneyNote = el("div", { cls: "rt-prem-money-note" });
+  moneyNote.appendChild(el("div", { cls: "rt-prem-money-note-q", text: "לאן הכסף שלך הולך?" }));
+  moneyNote.appendChild(el("div", { cls: "rt-prem-money-note-a", text: "כל הכסף בשלב זה הולך מאה אחוז להוצאות הפיתוח!" }));
+  sheet.appendChild(moneyNote);
+
   if (customPkg) {
     // משה 2026-05-10: מוד "חבילת בדיקה" — מציגים רק את החבילה הייעודית
     // ולא את התוכניות הציבוריות. שאר העמוד נשאר זהה (אמון, נימוקים, פוטר).
