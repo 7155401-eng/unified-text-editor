@@ -320,6 +320,28 @@
   border-radius: 20px;
 }
 
+/* משה 2026-05-31: לאן הכסף שלך הולך — בכתב מאוד בולט */
+.rt-prem-money-note {
+  text-align: center;
+  margin: 0 auto 26px;
+  max-width: 640px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border: 2px solid #f59e0b;
+}
+.rt-prem-money-note-q {
+  font-size: 22px;
+  font-weight: 800;
+  color: #92400e;
+  margin-bottom: 6px;
+}
+.rt-prem-money-note-a {
+  font-size: 18px;
+  font-weight: 700;
+  color: #78350f;
+}
+
 /* Plans grid */
 .rt-prem-plans-wrap {
   display: grid;
