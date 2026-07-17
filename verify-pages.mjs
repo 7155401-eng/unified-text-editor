@@ -26,11 +26,13 @@ page.on("console", (msg) => consoleMsgs.push(`${msg.type()}: ${msg.text()}`));
 page.on("pageerror", (err) => pageErrors.push(err.message));
 
 await page.goto(URL, { waitUntil: "networkidle0", timeout: 45000 });
-await page.waitForSelector(`#${SAMPLE_BUTTON}`, { timeout: 15000 });
 await page.evaluate(() => {
   window.__FORCE_SYNC_RENDER__ = true;
 });
-await page.$eval(`#${SAMPLE_BUTTON}`, (el) => el.click());
+// הכפתורים btn-load-* הוסרו מהממשק; האתר טוען שו"ע אוטומטית בכניסה ראשונה.
+// אם הכפתור עדיין קיים (ממשק ישן / VERIFY_BUTTON מותאם) — לוחצים עליו, אחרת ממשיכים.
+const sampleBtn = await page.$(`#${SAMPLE_BUTTON}`);
+if (sampleBtn) await sampleBtn.click();
 const deadline = Date.now() + 180000;
 let ready = false;
 while (Date.now() < deadline) {
