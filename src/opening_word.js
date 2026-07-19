@@ -6,7 +6,8 @@ const DEFAULTS = {
   count: 1,
   style: "",
   font: "David",
-  size: 200,
+  // משה 2026-05-31: הוקטן מ-200 ל-150 — בקשת משה למילת פתיח קטנה יותר.
+  size: 150,
   weight: "bold",
   position: "dropped",
   dropLines: 2,
@@ -22,7 +23,8 @@ const STREAM_DEFAULTS = {
   opwCount: 1,
   opwStyle: "",
   opwFont: "David",
-  opwSize: 135,
+  // משה 2026-05-31: הוקטן מ-135 ל-115 — בהתאמה ל-DEFAULTS המוקטן.
+  opwSize: 115,
   opwWeight: "bold",
   opwPosition: "dropped",
   opwDropLines: 1,
