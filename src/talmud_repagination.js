@@ -1,9 +1,11 @@
 import { logMove, logEvent } from "./settings_pane.js";
+import { pullBackwardAcrossAllPages } from "./talmud_pull_backward.js";
 
-// talmud_repagination.js — v33 redesigned approach.
+// talmud_repagination.js — v34 integrated pagination hook.
 //
-// Previous approach (cross-page move) caused text duplication via ledger
-// conflicts. v33 strategy: NO cross-page mutations.
+// Previous ad-hoc cross-page moves caused text duplication via ledger conflicts.
+// Current strategy keeps one engine pipeline and coordinates only safe operations
+// on the transient layout DOM after all render/style changes have settled.
 //
 //   • IN-PAGE VISUAL CAP for catastrophic overflow.
 //     Cap the height of an oversized body via overflow: hidden + a marker
@@ -11,10 +13,10 @@ import { logMove, logEvent } from "./settings_pane.js";
 //     truncated. The engine on the next render starts fresh; on user edit
 //     the engine repaginates and overflow may resolve naturally.
 //
-//   • PULL-BACKWARD for large gaps lives in talmud_pull_backward.js.
+//   • SAFE PULL-BACKWARD for large gaps lives in talmud_pull_backward.js and is
+//     called from this hook so gap filling is synchronized with the same engine.
 //
-// All operations leave the source ledger untouched. They mutate only
-// transient layout DOM that lives between renders.
+// All operations leave the source ledger untouched. They mutate only transient layout DOM that lives between renders.
 
 const CATASTROPHIC_RATIO = 2;     // overflow > 2× page-height counts as catastrophic
 const CONTINUATION_LABEL = " ←המשך בעמוד הבא";
@@ -99,8 +101,26 @@ export function correctTalmudOverflowOnPage(pageEl) {
   return correctOnePage(pageEl) ? 1 : 0;
 }
 
-// Public surface kept for backwards compatibility with engine_bridge.js.
-// v33: cross-page move replaced by in-page cap. Kept as no-op.
+// Public surface kept for engine_bridge.js: this is still the same pagination
+// pipeline hook, not a second engine. It runs after render/style application, so
+// measurements are taken from the actual styled DOM. First cap truly catastrophic
+// overflows, then let the existing safe pull-back pass fill page gaps.
 export function repaginateCatastrophicPages(container) {
-  return { passes: 0, fixed: 0 };
+  if (!container) return { passes: 0, fixed: 0 };
+
+  let passes = 0;
+  let fixed = 0;
+  const MAX_PASSES = 3;
+
+  for (let i = 0; i < MAX_PASSES; i++) {
+    const capped = correctTalmudOverflow(container);
+    const pulled = pullBackwardAcrossAllPages(container);
+    const changed = (capped || 0) + (pulled || 0);
+
+    if (!changed) break;
+    passes++;
+    fixed += changed;
+  }
+
+  return { passes, fixed };
 }
