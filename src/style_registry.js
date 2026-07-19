@@ -148,11 +148,37 @@ export function applyTextStyleObjectToElement(el, rawStyle) {
   return true;
 }
 
+function runtimeStreamStyleForElement(el) {
+  if (typeof window === "undefined" || !el) return null;
+  // Only stream containers should receive the pane-level inline stream style.
+  // Descendant note parts also carry data-stream, but styling them here would
+  // duplicate inherited styles and could override intentionally narrower marks.
+  if (!el.classList || !el.classList.contains("stream")) return null;
+  const code = el.getAttribute("data-stream") || el.dataset?.stream || "";
+  if (!code) return null;
+  const settings = window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code];
+  if (!settings || typeof settings !== "object") return null;
+  return settings.inlineStyle || settings.manualStyle || null;
+}
+
+function applyRuntimeStreamStyleToElement(el) {
+  const runtimeStyle = runtimeStreamStyleForElement(el);
+  return runtimeStyle ? applyTextStyleObjectToElement(el, runtimeStyle) : false;
+}
 
 export function applyStyleToElement(el, styleIdOrName) {
+  if (!el) return false;
   const style = resolveTextStyle(styleIdOrName);
-  if (!el || !style) return false;
-  return applyTextStyleObjectToElement(el, style);
+  let applied = false;
+  if (style) applied = applyTextStyleObjectToElement(el, style) || applied;
+
+  // Critical pagination invariant: the hidden measurement DOM and the final
+  // renderer must see the same stream-level font/size/line-height. dom_packer
+  // calls applyStyleToElement() on `.stream[data-stream]` before measuring, so
+  // applying inlineStyle/manualStyle here merges user/editor style BEFORE
+  // pagination instead of trying to fix gaps after render.
+  applied = applyRuntimeStreamStyleToElement(el) || applied;
+  return applied;
 }
 
 function readDocxOverwriteStylesDefault() {
