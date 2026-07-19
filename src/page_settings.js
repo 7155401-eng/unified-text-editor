@@ -42,12 +42,24 @@ function clampPx(value, fallback) {
 export function getPageMargins() {
   if (runtimeMargins) return { ...runtimeMargins };
   const saved = readJson(PAGE_SETTINGS_KEY, {});
-  return {
+  runtimeMargins = {
     top: clampPx(saved.top, DEFAULT_MARGINS.top),
     right: clampPx(saved.right, DEFAULT_MARGINS.right),
     bottom: clampPx(saved.bottom, DEFAULT_MARGINS.bottom),
     left: clampPx(saved.left, DEFAULT_MARGINS.left),
   };
+  return { ...runtimeMargins };
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === PAGE_SETTINGS_KEY || e.key === null) {
+      runtimeMargins = null;
+    }
+    if (e.key === OUTPUT_BACKGROUND_KEY || e.key === null) {
+      runtimeOutputBackground = null;
+    }
+  });
 }
 
 export function setPageMargins(next) {

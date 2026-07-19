@@ -6,16 +6,30 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
+let cachedDocumentStyleSettings = null;
+
 export function loadDocumentStyleSettings() {
+  if (cachedDocumentStyleSettings) return { ...cachedDocumentStyleSettings };
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    cachedDocumentStyleSettings = { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    return { ...cachedDocumentStyleSettings };
   } catch {
-    return { ...DEFAULTS };
+    cachedDocumentStyleSettings = { ...DEFAULTS };
+    return { ...cachedDocumentStyleSettings };
   }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedDocumentStyleSettings = null;
+    }
+  });
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
+  cachedDocumentStyleSettings = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
