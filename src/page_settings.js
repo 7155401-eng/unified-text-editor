@@ -12,7 +12,10 @@ let runtimeMargins = null;
 let runtimeOutputBackground = null;
 
 function storageDisabled() {
-  return typeof window !== "undefined" && window.__RAVTEXT_STORAGE_DISABLED__ === true;
+  return (
+    typeof window !== "undefined" &&
+    window.__RAVTEXT_STORAGE_DISABLED__ === true
+  );
 }
 
 function readJson(key, fallback) {
@@ -39,15 +42,27 @@ function clampPx(value, fallback) {
   return Math.max(0, Math.min(90, Math.round(n)));
 }
 
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === PAGE_SETTINGS_KEY || e.key === null) {
+      runtimeMargins = null;
+    }
+    if (e.key === OUTPUT_BACKGROUND_KEY || e.key === null) {
+      runtimeOutputBackground = null;
+    }
+  });
+}
+
 export function getPageMargins() {
   if (runtimeMargins) return { ...runtimeMargins };
   const saved = readJson(PAGE_SETTINGS_KEY, {});
-  return {
+  runtimeMargins = {
     top: clampPx(saved.top, DEFAULT_MARGINS.top),
     right: clampPx(saved.right, DEFAULT_MARGINS.right),
     bottom: clampPx(saved.bottom, DEFAULT_MARGINS.bottom),
     left: clampPx(saved.left, DEFAULT_MARGINS.left),
   };
+  return { ...runtimeMargins };
 }
 
 export function setPageMargins(next) {
@@ -71,16 +86,30 @@ export function applyPageSettings(pagesContainer = null) {
   root.style.setProperty("--ravtext-page-margin-bottom", `${margins.bottom}px`);
   root.style.setProperty("--ravtext-page-margin-left", `${margins.left}px`);
   root.style.setProperty("--ravtext-page-pack-safety", "6px");
-  pagesContainer?.style.setProperty("--ravtext-page-margin-top", `${margins.top}px`);
-  pagesContainer?.style.setProperty("--ravtext-page-margin-right", `${margins.right}px`);
-  pagesContainer?.style.setProperty("--ravtext-page-margin-bottom", `${margins.bottom}px`);
-  pagesContainer?.style.setProperty("--ravtext-page-margin-left", `${margins.left}px`);
+  pagesContainer?.style.setProperty(
+    "--ravtext-page-margin-top",
+    `${margins.top}px`,
+  );
+  pagesContainer?.style.setProperty(
+    "--ravtext-page-margin-right",
+    `${margins.right}px`,
+  );
+  pagesContainer?.style.setProperty(
+    "--ravtext-page-margin-bottom",
+    `${margins.bottom}px`,
+  );
+  pagesContainer?.style.setProperty(
+    "--ravtext-page-margin-left",
+    `${margins.left}px`,
+  );
 }
 
 export function isOutputBackgroundEnabled() {
   if (runtimeOutputBackground !== null) return runtimeOutputBackground;
   try {
-    return localStorage.getItem(OUTPUT_BACKGROUND_KEY) === "1";
+    runtimeOutputBackground =
+      localStorage.getItem(OUTPUT_BACKGROUND_KEY) === "1";
+    return runtimeOutputBackground;
   } catch {
     return false;
   }
@@ -90,7 +119,10 @@ export function setOutputBackgroundEnabled(enabled) {
   runtimeOutputBackground = !!enabled;
   if (!storageDisabled()) {
     try {
-      localStorage.setItem(OUTPUT_BACKGROUND_KEY, runtimeOutputBackground ? "1" : "0");
+      localStorage.setItem(
+        OUTPUT_BACKGROUND_KEY,
+        runtimeOutputBackground ? "1" : "0",
+      );
     } catch (err) {
       console.warn("[page-settings] output background save failed:", err);
     }
@@ -149,10 +181,18 @@ export function wirePageSettingsControls(onChange) {
     onChange?.();
   };
 
-  group.appendChild(makeMarginInput("page-margin-top", "עליון", margins.top, commit));
-  group.appendChild(makeMarginInput("page-margin-right", "ימין", margins.right, commit));
-  group.appendChild(makeMarginInput("page-margin-bottom", "תחתון", margins.bottom, commit));
-  group.appendChild(makeMarginInput("page-margin-left", "שמאל", margins.left, commit));
+  group.appendChild(
+    makeMarginInput("page-margin-top", "עליון", margins.top, commit),
+  );
+  group.appendChild(
+    makeMarginInput("page-margin-right", "ימין", margins.right, commit),
+  );
+  group.appendChild(
+    makeMarginInput("page-margin-bottom", "תחתון", margins.bottom, commit),
+  );
+  group.appendChild(
+    makeMarginInput("page-margin-left", "שמאל", margins.left, commit),
+  );
   toolbar.appendChild(group);
 }
 
@@ -166,13 +206,16 @@ export function wireOutputBackgroundControl() {
   input.type = "checkbox";
   input.id = "pdf-output-background";
   input.checked = isOutputBackgroundEnabled();
-  input.addEventListener("change", () => setOutputBackgroundEnabled(input.checked));
+  input.addEventListener("change", () =>
+    setOutputBackgroundEnabled(input.checked),
+  );
   // משה 2026-05-14: אייקון של "טפט/רקע" + טקסט קריא בכל ערכת נושא.
   const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   icon.setAttribute("viewBox", "0 0 18 18");
   icon.setAttribute("aria-hidden", "true");
   icon.classList.add("pdf-output-background-icon");
-  icon.innerHTML = '<rect x="2.5" y="2.5" width="13" height="13" rx="1.6" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 11 L7 6.5 L11 10.5 L13.5 8 L15.5 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="6" r="1" fill="currentColor"/>';
+  icon.innerHTML =
+    '<rect x="2.5" y="2.5" width="13" height="13" rx="1.6" fill="currentColor" opacity="0.18" stroke="currentColor" stroke-width="1.3"/><path d="M2.5 11 L7 6.5 L11 10.5 L13.5 8 L15.5 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="6" r="1" fill="currentColor"/>';
   label.appendChild(icon);
   label.appendChild(input);
   label.appendChild(document.createTextNode("רקע ביצוא"));
