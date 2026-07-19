@@ -374,7 +374,18 @@ export function openSefariaLive(opts) {
     placeholder: isVip ? t("ph_vip") : t("ph_lock"),
     maxLength: isVip ? null : 500,
   });
-  if (opts.prefillText) inputArea.value = opts.prefillText;
+  if (opts.prefillText) {
+    // משה 2026-05-12: משתמש חינמי מוגבל ל-500 תווים ב"תורה אור השלם".
+    // maxLength חוסם הקלדה/הדבקה אך לא השמה תוכניתית של value, ולכן השאיבה
+    // האוטומטית מהזרם הראשי (prefillText) עקפה את המגבלה. חותכים כאן במפורש
+    // למשתמש שאינו VIP ומיידעים בדיוק כפי שביקש משה.
+    let prefill = opts.prefillText;
+    if (!isVip && prefill.length > 500) {
+      prefill = prefill.slice(0, 500);
+      try { window.alert("הטקסט נחתך לאחר 500 תוים עקב הגבלת 500 תוים למשתמש חינמי"); } catch (_) {}
+    }
+    inputArea.value = prefill;
+  }
   inputPane.appendChild(inputArea);
 
   // Output pane
