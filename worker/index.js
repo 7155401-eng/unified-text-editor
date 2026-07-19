@@ -53,6 +53,25 @@ async function serveAdminPage(request, env) {
   return new Response(injected, { status: assetResponse.status, headers });
 }
 
+function isRenderPlannerApi(pathname) {
+  return (
+    pathname.startsWith('/api/render/') ||
+    pathname.startsWith('/api/talmud/') ||
+    pathname.startsWith('/api/balance/') ||
+    pathname.startsWith('/api/mishna/')
+  );
+}
+
+async function isAdminRenderRequest(request, env, pathname) {
+  if (!isRenderPlannerApi(pathname)) return false;
+  try {
+    const user = await getUserFromRequest(request, env);
+    return !!user?.is_admin;
+  } catch {
+    return false;
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -62,9 +81,14 @@ export default {
     }
 
     // צוות האתר 2026-05-07: נתיבי מנוע — רק מ-Origin/Referer מורשה.
+    // משה 2026-05-17: במצב מנהל מותר להפעיל את מנוע הרינדור מכל מקור.
+    // לא מסתמכים על פרמטר מהלקוח; רק session חתום + is_admin מה-DB.
     if (isEngineApi(url.pathname)) {
-      const blocked = checkOrigin(request, url);
-      if (blocked) return blocked;
+      const allowAnyOriginForAdminRender = await isAdminRenderRequest(request, env, url.pathname);
+      if (!allowAnyOriginForAdminRender) {
+        const blocked = checkOrigin(request, url);
+        if (blocked) return blocked;
+      }
     }
 
     const limited = await checkRateLimit(request, url);
