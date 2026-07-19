@@ -56,17 +56,40 @@ const FIELDS = [
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
 ];
 
+/*
+ * ⚡ BOLT OPTIMIZATION
+ * 💡 What: Cached Spacing Settings parsing.
+ * 🎯 Why: Replaced synchronous `localStorage.getItem` and `JSON.parse` with an in-memory cache to eliminate severe performance bottleneck during layout rendering loops.
+ * 📊 Impact: O(1) memory lookup vs O(N) string parsing, greatly reducing Main Thread blocking and Garbage Collection overhead.
+ * 🔬 Measurement: Profile the application during dense layout rendering via DevTools Performance tab, confirming zero `localStorage.getItem` invocations for spacing settings.
+ */
+let cachedSpacingSettings = null;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      cachedSpacingSettings = null;
+    }
+  });
+}
+
 export function loadSpacingSettings() {
+  if (cachedSpacingSettings) {
+    return { ...cachedSpacingSettings };
+  }
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    cachedSpacingSettings = normalizeSpacing({ ...DEFAULTS, ...saved });
+    return { ...cachedSpacingSettings };
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    cachedSpacingSettings = normalizeSpacing(DEFAULTS);
+    return { ...cachedSpacingSettings };
   }
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
+  cachedSpacingSettings = { ...next };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   return next;
 }
