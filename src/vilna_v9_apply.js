@@ -15,7 +15,7 @@
 
 import { buildPages } from "./vilna_v9.js";
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
-import { getTalmudStreamsText } from "./talmud_controls.js";
+import { getTalmudStreamsText, getTalmudSideMode } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
@@ -30,14 +30,46 @@ import {
 function readTalmudStreamCodes() {
   try {
     const raw = getTalmudStreamsText() || "";
-    return raw
+    const codes = raw
       .split(/[,\s|;\n]+/)
       .map(s => s.trim())
       .filter(s => /^\d{1,3}$/.test(s))
       .map(s => String(parseInt(s, 10)).padStart(2, "0"));
+    return applyStreamRoleOrder(codes);
   } catch {
     return [];
   }
+}
+
+// תפקידי הזרמים שהמשתמש הגדיר בבורר (פנימי/חיצוני או ימין/שמאל).
+// נשמר כ-JSON: { "01": "inner", "02": "outer" }.
+function readTalmudStreamRoles() {
+  try {
+    return JSON.parse(localStorage.getItem("ravtext.talmudLayout.streamRoles") || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+// משה 2026-05-06 (אודיט 2026-07-21): עד כה בורר התפקידים (פנימי/חיצוני, ימין/שמאל)
+// היה ממשק מת — הצד של כל זרם נקבע תמיד לפי סדר הקלט בלבד. כאן מחברים אותו:
+// הזרם שסומן "פנימי"/"ימני" הופך לזרם הצד הראשון (talmudStreams[0] = הימני),
+// והשני הופך לשמאלי. שאר הזרמים (footer) לא זזים. בלי תפקיד מוגדר או במצב "auto"
+// הסדר המקורי נשמר — כך שברירת המחדל (הזרם הראשון שנבחר = פנימי) לא משתנה.
+// הערה: החלפת ימין↔שמאל לפי זוגיות עמוד לא מיושמת — הפלט הוא רצף עמודים חד-צדדי
+// (לא ספר עם עמודים נגדיים), ולכן הצד נקבע פעם אחת לפי בחירת המשתמש.
+function applyStreamRoleOrder(codes) {
+  if (!Array.isArray(codes) || codes.length < 2) return codes;
+  const mode = getTalmudSideMode();
+  if (mode !== "inner-outer" && mode !== "right-left") return codes;
+  const roles = readTalmudStreamRoles();
+  const firstKey = mode === "right-left" ? "right" : "inner";
+  const [a, b, ...rest] = codes;
+  // רק אם המשתמש סימן במפורש שהזרם השני הוא הפנימי/ימני — מחליפים.
+  if (roles[b] === firstKey && roles[a] !== firstKey) {
+    return [b, a, ...rest];
+  }
+  return codes;
 }
 
 const STORAGE_KEY = "ravtext.vilnaV9Beta";
