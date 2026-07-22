@@ -896,6 +896,20 @@ function setupRibbonTabs() {
   });
   setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
 
+  // משה 2026-05-10: כשמסך העריכה צר מדי וכרטיסיות הכלים נחתכות ונדחפות לגלילה
+  // אופקית, יש להציג ליד כפתור הרינדור אייקון "המשך תפריט" (⋯) כדי שהמשתמש ידע
+  // שיש עוד כרטיסיות מעבר למה שנראה. כלל ה-CSS ‎.ribbon-tabs.has-overflow‎ היה
+  // קיים אך אף פעם לא הופעל — כאן מחברים אותו למדידת הרוחב בפועל.
+  const updateTabsOverflow = () => {
+    const overflowing = tabsBar.scrollWidth - tabsBar.clientWidth > 1;
+    tabsBar.classList.toggle("has-overflow", overflowing);
+  };
+  updateTabsOverflow();
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(updateTabsOverflow).observe(tabsBar);
+  }
+  window.addEventListener("resize", updateTabsOverflow);
+
   activateTab(localStorage.getItem("ravtext.ribbonTab") || "home");
 }
 
