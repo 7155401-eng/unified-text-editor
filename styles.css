@@ -2803,6 +2803,18 @@ body.ribbon-collapsed.ribbon-peek .ribbon-panel:not(.ribbon-hidden) {
   line-height: 1.5;
   box-shadow: 0 1px 3px rgba(217, 119, 6, 0.2);
 }
+.talmud-toolbar .talmud-experimental-note {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px 0;
+  padding: 6px 10px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  border-radius: 4px;
+  text-align: right;
+}
 .talmud-toolbar .talmud-experimental-badge {
   flex-shrink: 0;
   display: inline-block;
