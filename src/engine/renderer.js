@@ -201,6 +201,8 @@ function mainBlockTagFor(tup) {
       ? window.__MAIN_BLOCK_META__[idx]
       : null;
   const meta = (tup && tup[4]) || globalMeta || {};
+  if (meta.blockType === "codeBlock") return "pre";
+  if (meta.blockType === "blockquote") return "blockquote";
   if (meta.blockType !== "heading") return "p";
   const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
   return `h${level}`;
@@ -403,6 +405,8 @@ function createMainBlockElement(tup, paraRefs = [], usedRefs = null) {
     return table;
   }
   const p = document.createElement(mainBlockTagFor(tup));
+  // קוד באנגלית תמיד LTR בפלט (חוק PRIME), אחרת הוא מתהפך בתוך עמוד RTL.
+  if (p.tagName === "PRE") p.setAttribute("dir", "ltr");
   const segText = tup[1] || "";
   const segStart = typeof tup[2] === "number" ? tup[2] : 0;
   const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;

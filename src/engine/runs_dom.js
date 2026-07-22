@@ -33,6 +33,14 @@ export function applyMarksToSpan(span, marks) {
   if (marks.underline) appendTextDecoration(span, "underline");
   if (marks.strike) appendTextDecoration(span, "line-through");
   if (marks.textDecoration) appendTextDecoration(span, marks.textDecoration);
+  // מצב קוד בשורה: קוד באנגלית תמיד LTR (חוק PRIME) עם גופן monospace, אחרת
+  // הטקסט מתהפך (םולש במקום שלום) ומאבד עיצוב בפלט. class לעיצוב-רקע דרך CSS.
+  if (marks.code) {
+    span.style.fontFamily = '"Consolas", "Menlo", "Monaco", monospace';
+    span.style.direction = "ltr";
+    span.style.unicodeBidi = "bidi-override";
+    span.classList.add("rt-inline-code");
+  }
   if (marks.color) span.style.color = marks.color;
   if (marks.backgroundColor || marks.bgColor) span.style.backgroundColor = marks.backgroundColor || marks.bgColor;
   if (marks.fontFamily) span.style.fontFamily = marks.fontFamily;

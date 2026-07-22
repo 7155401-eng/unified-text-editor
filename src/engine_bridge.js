@@ -219,6 +219,7 @@ export function runsFromNode(node) {
       else if (name === "italic") marks.italic = true;
       else if (name === "underline") marks.underline = true;
       else if (name === "strike") marks.strike = true;
+      else if (name === "code") marks.code = true;
       else if (name === "highlight") marks.backgroundColor = mAttrs.color || marks.backgroundColor;
     }
     runs.push({ start: offset, end: offset + text.length, marks });
