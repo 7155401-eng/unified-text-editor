@@ -164,6 +164,18 @@ function readIntSetting(key, fallback, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
+// משה: "רווח צדדי (px)" בפאנל גפ"ת (talmud-side-gap-input) חייב לפעול —
+// כשהמשתמש קובע ערך במפורש הוא דורס את רוחב הרווח בין הראשי לפרשנים.
+// כשלא הוגדר — נשמר ה-fallback (CSS var --ravtext-v9-main-gap) כבעבר.
+function readTalmudSideGapOverride(fallback) {
+  if (typeof localStorage === "undefined") return fallback;
+  const raw = localStorage.getItem("ravtext.talmudLayout.sideGap");
+  if (raw === null || raw === "") return fallback;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 60) return fallback;
+  return n;
+}
+
 function readSpacingBool(key, fallback = false) {
   try {
     const raw = localStorage.getItem("ravtext.spacing.v1");
@@ -434,7 +446,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       sideFontFamily: geom.fontFamily,
       lineHeightRatio: geom.lineHeightRatio,
       padding: 12,
-      mainGap: geom.mainGap,
+      mainGap: readTalmudSideGapOverride(geom.mainGap),
       streamHorizontalGap: geom.streamHorizontalGap,
       mainStyleId,
       mainInlineStyle,
