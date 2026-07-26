@@ -1,41 +1,24 @@
-<!doctype html>
-<html lang="he" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>בדיקות רב־טקסט ללא Console</title>
-<style>
-body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f6f7fb;color:#172033;margin:0;line-height:1.55}
-main{max-width:980px;margin:auto;padding:22px}
-section{background:#fff;border:1px solid #dfe3ee;border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 8px 24px rgba(15,23,42,.06)}
-button{border:0;border-radius:12px;background:#1f4fd8;color:#fff;padding:11px 14px;font-weight:700;cursor:pointer;margin:5px}
-button.secondary{background:#e9ecf5;color:#172033}
-button:disabled{opacity:.55;cursor:wait}
-pre{direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;background:#eef2ff;border:1px solid #dfe3ee;border-radius:12px;padding:12px;max-height:520px;overflow:auto}
-.ok{color:#126b36;font-weight:700}.bad{color:#9b1c1c;font-weight:700}.muted{color:#5c6475}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media(max-width:700px){.grid{grid-template-columns:1fr}}
-</style>
-</head>
-<body>
-<main>
-<section>
-<h1>בדיקות תמלול ומפתחות AI</h1>
-<p>עמוד בדיקות ללקוח, בלי לפתוח Console. מתחברים לאתר, נכנסים לעמוד הזה, ולוחצים על הכפתורים לפי הסדר.</p>
-<p class="muted">העמוד לא מציג מפתח API מלא. הוא מציג רק אורך מפתח, סטטוס, סיבה משוערת ו־debug_id.</p>
-<button id="runAll">הרץ בדיקות 1–3</button>
-<button id="copy" class="secondary">העתק תוצאות</button>
-<button id="download" class="secondary">הורד קובץ תוצאות</button>
+<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>בדיקות AI</title><style>
+body{margin:0;background:#f5f7fb;color:#172033;font-family:Arial,"Segoe UI",sans-serif;line-height:1.55}main{max-width:920px;margin:auto;padding:18px}.c{background:#fff;border:1px solid #dde3ee;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 6px 18px #0001}.g{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:700px){.g{grid-template-columns:1fr}}button,label{border:0;border-radius:10px;padding:10px 14px;margin:4px;background:#1f4fd8;color:#fff;font-weight:700;cursor:pointer;display:inline-block}.s{background:#e9edf5;color:#172033}.st{display:inline-block;margin-top:7px;border-radius:999px;padding:4px 10px;background:#eef2ff;color:#647084;font-weight:700}.ok{background:#e8f7ee;color:#0f8a3b}.bad{background:#fdecec;color:#b42318}.warn{background:#fff4df;color:#ad6800}pre{direction:ltr;text-align:left;white-space:pre-wrap;word-break:break-word;background:#eef2ff;border:1px solid #dde3ee;border-radius:12px;padding:12px;max-height:520px;overflow:auto}.m{color:#647084}input[type=file]{display:none}</style></head><body><main>
+<section class="c"><h1>בדיקות תמלול ומפתחות AI</h1><p>עמוד בדיקות רגיל ללקוח — בלי Console.</p><p class="m">הבדיקה לא מציגה מפתח API מלא. היא מציגה רק סטטוס, אורך מפתח, סיבת שגיאה ו־debug_id.</p><button id="all">הרץ בדיקות 1–3</button><button id="copy" class="s">העתק תוצאות</button><button id="down" class="s">הורד תוצאות</button><button id="clear" class="s">נקה</button></section>
+<section class="g">
+<div class="c"><h2>1. דפדפן</h2><p>בודק אם ההגדרות והמפתח שמורים בדפדפן.</p><button data-r="1">הפעל 1</button><div id="s1" class="st">טרם הורץ</div></div>
+<div class="c"><h2>2. מפתח Gemini</h2><p>בודק את המפתח מול Gemini בלי קובץ.</p><button data-r="2">הפעל 2</button><div id="s2" class="st">טרם הורץ</div></div>
+<div class="c"><h2>3. שרת בלי קובץ</h2><p>בודק את /api/ai-tools/gas עם טקסט קצר.</p><button data-r="3">הפעל 3</button><div id="s3" class="st">טרם הורץ</div></div>
+<div class="c"><h2>4. קובץ</h2><p>בחר קובץ קצר כדי לבדוק את מסלול הקובץ.</p><label for="f">בחר קובץ והפעל 4</label><span id="fn" class="m"></span><input id="f" type="file" accept="audio/*,image/*,.pdf"><div id="s4" class="st">טרם הורץ</div></div>
 </section>
-<section class="grid">
-<div><h2>1. דפדפן</h2><p>בודק אם המפתח שמור בדפדפן.</p><button data-diag="01">הפעל 1</button><div id="status01" class="muted">טרם הורץ</div></div>
-<div><h2>2. מפתח Gemini</h2><p>בודק את המפתח מול Gemini בלי קובץ.</p><button data-diag="02">הפעל 2</button><div id="status02" class="muted">טרם הורץ</div></div>
-<div><h2>3. שרת בלי קובץ</h2><p>בודק את /api/ai-tools/gas עם טקסט קצר.</p><button data-diag="03">הפעל 3</button><div id="status03" class="muted">טרם הורץ</div></div>
-<div><h2>4. קובץ</h2><p>פותח בחירת קובץ קטן ובודק את מסלול הקובץ.</p><button data-diag="04">הפעל 4</button><div id="status04" class="muted">טרם הורץ</div></div>
-</section>
-<section>
-<h2>תוצאות להעתקה</h2>
-<pre id="out">אין תוצאות עדיין.</pre>
-</section>
-</main>
-<script src="/diagnostics/browser.js?v=20260726-ui02" defer></script>
-</body>
-</html>
+<section class="c"><h2>תוצאות לשליחה</h2><p class="m">בסיום לחץ “העתק תוצאות” ושלח את הטקסט.</p><pre id="o">אין תוצאות עדיין.</pre></section>
+</main><script>
+(()=>{const V='20260726-ui04',K='ravtext.torah_transcription.config',S={v:V,started_at:new Date().toISOString(),page:location.href,results:{}};const $=i=>document.getElementById(i),j=x=>{try{return JSON.parse(x||'{}')||{}}catch(e){return{}}},cl=x=>String(x??'').replace(/[\u200B-\u200D\uFEFF]/g,'').trim().replace(/\s+/g,''),red=x=>String(x??'').replace(/key=([^&\s"'<>]+)/gi,'key=[redacted]').replace(/AIza[0-9A-Za-z_\-]{20,}/g,'[redacted-google-key]').replace(/sk-ant-[0-9A-Za-z_\-]{20,}/g,'[redacted-anthropic-key]').replace(/sk_[0-9A-Za-z_\-]{20,}/g,'[redacted-elevenlabs-key]').replace(/Bearer\s+[0-9A-Za-z._\-]{20,}/gi,'Bearer [redacted]');
+function san(v,d=0){if(v==null||typeof v==='number'||typeof v==='boolean')return v;if(typeof v==='string')return red(v);if(d>6)return'[deep]';if(Array.isArray(v))return v.slice(0,80).map(x=>san(x,d+1));let o={};for(const[k,x]of Object.entries(v)){if(/api[_-]?key|access[_-]?code|token|secret|password|authorization/i.test(k))o[k]=x?`[redacted ${String(x).length} chars]`:'';else if(/content[_-]?base64|base64|blob/i.test(k))o[k]=x?`[omitted ${String(x).length} chars]`:'';else o[k]=san(x,d+1)}return o}
+function cfg(){return j(localStorage.getItem(K))}function keyInfo(n,v,p){let r=String(v??''),c=cl(r);return{label:n,has_key:!!c,raw_chars:r.length,cleaned_chars:c.length,removed_chars:r.length-c.length,sanitized_needed:r!==c,prefix_hint:!c?'missing':p&&c.startsWith(p)?`${n}_prefix_ok`:`${n}_prefix_unexpected`}}function model(c){return String(c.model||'gemini-3.1-pro-preview')}function gkey(c){return cl(c.gemini_api_key||'')}
+function stat(i,r){if(!r)return['st','טרם הורץ'];if(r.error||r.original_error||(r.http_status&&(r.http_status<200||r.http_status>=300)))return['st bad','נכשל: '+(r.possible_cause||r.error||r.original_error||r.http_status)];if(i==='1')return r.config_summary?.gemini?.has_key?['st ok','נמצא מפתח Gemini בדפדפן']:['st bad','לא נמצא מפתח Gemini'];if(i==='2'){if(r.key_valid===true&&(r.tiny_generation_ok===true||r.model_available===true||r.model_available==null))return['st ok','המפתח עבר בדיקה'];if(r.key_valid===false)return['st bad','המפתח נדחה'];return['st warn','בדיקה לא הושלמה']}return['st ok','עבר']}
+function render(){for(const i of['1','2','3','4']){let e=$('s'+i),a=stat(i,S.results[i]);e.className=a[0];e.textContent=a[1]}$('o').textContent=JSON.stringify(san({timestamp:new Date().toISOString(),user_agent:navigator.userAgent,...S}),null,2)}
+async function r1(){let c=cfg();return{diagnostic:'01-client-config',version:V,config_found:!!localStorage.getItem(K),auth_summary:{has_auth_object:!!window.__RAVTEXT_AUTH__,paid:!!window.__RAVTEXT_AUTH__?.paid,balance_seconds:Number(window.__RAVTEXT_AUTH__?.balanceSeconds||window.__RAVTEXT_AUTH__?.balance_seconds||0)},config_summary:{model:model(c),use_premium:c.use_premium===true,has_access_code:!!c.access_code,access_code_chars:c.access_code?String(c.access_code).length:0,gemini:keyInfo('gemini',c.gemini_api_key,'AIza'),claude:keyInfo('claude',c.claude_api_key,'sk-ant-'),elevenlabs:keyInfo('elevenlabs',c.elevenlabs_api_key,'sk_')},note:'No full API key is printed.'}}
+async function r2(){let c=cfg(),t=performance.now(),res=await fetch('/api/ai-tools/diagnose-key',{method:'POST',headers:{'content-type':'application/json'},credentials:'same-origin',body:JSON.stringify({provider:'gemini',model:model(c),api_key:gkey(c)})}),d=await res.json().catch(async()=>({error:'non_json_response',raw:await res.text()}));return{diagnostic:'02-gemini-key-isolated',version:V,http_status:res.status,response_debug_id_header:res.headers.get('x-ravtext-debug-id'),duration_ms:Math.round(performance.now()-t),...d}}
+async function r3(){let c=cfg(),t=performance.now(),body={diagnostic:true,diagnostic_name:'03-gas-minimal',prompt_type:'printed',model:model(c),api_key:gkey(c),text:'Diagnostic ping. Return only: OK',custom_prompt:'Return only the word OK.'},res=await fetch('/api/ai-tools/gas',{method:'POST',headers:{'content-type':'text/plain;charset=utf-8'},credentials:'same-origin',body:JSON.stringify(body)}),d=await res.json().catch(async()=>({error:'non_json_response',raw:await res.text()}));return{diagnostic:'03-gas-minimal',version:V,http_status:res.status,response_debug_id_header:res.headers.get('x-ravtext-debug-id'),duration_ms:Math.round(performance.now()-t),...d}}
+function fk(f){let t=String(f.type||'').toLowerCase(),n=String(f.name||'').toLowerCase();if(t.startsWith('audio/')||/\.(mp3|wav|m4a|ogg|webm|flac)$/i.test(n))return'audio';if(t.startsWith('image/')||/\.(png|jpg|jpeg|webp)$/i.test(n))return'image';if(t==='application/pdf'||/\.pdf$/i.test(n))return'pdf';return'unknown'}function b64(f){return new Promise((ok,no)=>{let r=new FileReader;r.onerror=()=>no(r.error||new Error('file_read_failed'));r.onload=()=>ok(String(r.result||'').split(',')[1]||'');r.readAsDataURL(f)})}
+async function r4(file){if(!file)return{diagnostic:'04-file-flow',error:'no_file_selected'};let c=cfg(),kind=fk(file),content=await b64(file),t=performance.now(),body={diagnostic:true,diagnostic_name:'04-file-flow',prompt_type:kind==='audio'?'audio_regular':'printed',model:model(c),api_key:gkey(c),files:[{name:file.name,type:kind,mime:file.type||'application/octet-stream',content_base64:content}],text:kind==='audio'?'':'Diagnostic file flow.',custom_prompt:'Return a short technical confirmation.'},res=await fetch('/api/ai-tools/gas',{method:'POST',headers:{'content-type':'text/plain;charset=utf-8'},credentials:'same-origin',body:JSON.stringify(body)}),d=await res.json().catch(async()=>({error:'non_json_response',raw:await res.text()}));return{diagnostic:'04-file-flow',version:V,file_summary:{name:file.name,mime:file.type,size:file.size,detected_kind:kind,base64_chars:content.length},http_status:res.status,response_debug_id_header:res.headers.get('x-ravtext-debug-id'),duration_ms:Math.round(performance.now()-t),...d}}
+async function run(i,file){$('s'+i).className='st';$('s'+i).textContent='מריץ בדיקה...';try{S.results[i]=i==='1'?await r1():i==='2'?await r2():i==='3'?await r3():await r4(file);S.results[i].finished_at=new Date().toISOString()}catch(e){S.results[i]={diagnostic:i+'-client-error',error:'client_run_failed',message:e?.message||String(e),stack:e?.stack||'',finished_at:new Date().toISOString()}}render()}
+document.addEventListener('click',e=>{let b=e.target.closest('button[data-r]');if(b)run(b.dataset.r)});$('f').addEventListener('change',e=>{let f=e.target.files&&e.target.files[0];$('fn').textContent=f?`${f.name} (${Math.round(f.size/1024)} KB)`:'';if(f)run('4',f)});$('all').onclick=async()=>{for(const i of['1','2','3'])await run(i)};$('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('o').textContent);alert('התוצאות הועתקו')}catch(e){alert('לא הצלחתי להעתיק אוטומטית. נא לסמן ולהעתיק ידנית')}};$('down').onclick=()=>{let u=URL.createObjectURL(new Blob([$('o').textContent],{type:'application/json;charset=utf-8'})),a=document.createElement('a');a.href=u;a.download='ravtext-diagnostics.json';a.click();URL.revokeObjectURL(u)};$('clear').onclick=()=>{S.results={};render()};render();
+})();</script></body></html>
