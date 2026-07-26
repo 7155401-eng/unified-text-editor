@@ -8,7 +8,6 @@ function b64urlEncode(bytes) {
   const bin = String.fromCharCode(...new Uint8Array(bytes));
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
-
 function b64urlDecode(str) {
   const padded = str.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - str.length % 4) % 4);
   const bin = atob(padded);
@@ -26,7 +25,6 @@ async function hmacKey(secret) {
     ['sign', 'verify']
   );
 }
-
 async function sign(payloadObj, secret) {
   const json = JSON.stringify(payloadObj);
   const dataBytes = new TextEncoder().encode(json);
@@ -34,7 +32,6 @@ async function sign(payloadObj, secret) {
   const sig = await crypto.subtle.sign('HMAC', key, dataBytes);
   return `${b64urlEncode(dataBytes)}.${b64urlEncode(sig)}`;
 }
-
 async function verify(token, secret) {
   if (!token || typeof token !== 'string') return null;
   const parts = token.split('.');
@@ -50,7 +47,6 @@ async function verify(token, secret) {
     return null;
   }
 }
-
 function parseCookieHeader(header, name) {
   if (!header) return null;
   for (const part of header.split(';')) {
@@ -62,6 +58,11 @@ function parseCookieHeader(header, name) {
   return null;
 }
 
+function getPositiveSeconds(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
 export async function getUserFromRequest(request, env) {
   const token = parseCookieHeader(request.headers.get('cookie'), COOKIE_NAME);
   if (!token) return null;
@@ -69,16 +70,22 @@ export async function getUserFromRequest(request, env) {
   if (!payload || !payload.email) return null;
   const nowSec = Math.floor(Date.now() / 1000);
   if (payload.exp && payload.exp < nowSec) return null;
-
   const row = await env.DB.prepare(
     'SELECT id, email, status, expires_at, is_admin, plan_type, balance_seconds FROM users WHERE email = ?'
   ).bind(payload.email).first();
   if (!row) return null;
 
-  // צוות האתר 2026-05-07: כל משתמש עם עוגייה תקפה ושיש לו רשומה ב-DB נחשב "מחובר".
-  // paid נקבע לפי הסטטוס: active + לא פג תוקף.
+  // צוות האתר 2026-07-26:
+  // דקות שנרכשו/הוענקו הן יתרה פעילה, לא תוקף שעון. לכן משתמש עם balance_seconds>0
+  // נחשב פרימיום גם אם expires_at הישן כבר עבר. כך הדקות אינן "נשרפות" מחוץ לחשבון,
+  // והן נסגרות רק אחרי שהשרת מוריד בפועל את היתרה בזמן שימוש מחובר.
+  const balanceSeconds = getPositiveSeconds(row.balance_seconds);
   const notExpired = !row.expires_at || row.expires_at >= nowSec;
-  const isPaid = row.status === 'active' && notExpired;
+  const hasMinuteAccess = balanceSeconds > 0;
+  const hasSubscriptionAccess = row.plan_type === 'subscription' && row.status === 'active' && notExpired;
+  const hasLegacyTimedAccess = row.plan_type !== 'hours' && row.status === 'active' && notExpired;
+  const isPaid = row.status === 'active' && (hasMinuteAccess || hasSubscriptionAccess || hasLegacyTimedAccess);
+
   return {
     id: row.id,
     email: row.email,
@@ -87,10 +94,9 @@ export async function getUserFromRequest(request, env) {
     is_admin: row.is_admin === 1,
     paid: isPaid,
     plan_type: row.plan_type || null,
-    balance_seconds: row.balance_seconds || 0,
+    balance_seconds: balanceSeconds,
   };
 }
-
 export async function buildSessionCookie(email, env) {
   const nowSec = Math.floor(Date.now() / 1000);
   const payload = { email, iat: nowSec, exp: nowSec + COOKIE_TTL_SEC };
