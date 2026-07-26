@@ -4,6 +4,22 @@ export function friendlyError(errText) {
   // מקבל טקסט שגיאה ומחזיר {title, message} בעברית.
   const s = (errText || "").toLowerCase();
 
+  if (
+    (s.includes("elevenlabs") || s.includes("eleven labs")) &&
+    (s.includes("invalid_api_key") || s.includes("invalid api key") || s.includes("api_key_invalid") ||
+     s.includes("401") || s.includes("403") || s.includes("unauthorized"))
+  ) {
+    return {
+      title: "מפתח ElevenLabs חסר או לא תקין",
+      message:
+        "השירות הנוסף של ElevenLabs הופעל, אבל מפתח ElevenLabs חסר, שגוי או חסום.\n\n" +
+        "מה לעשות:\n" +
+        "• חזור לשלב 'חשבון' והזן מפתח ElevenLabs תקין.\n" +
+        "• או חזור לשלב ההגדרות והסר את השירות הנוסף של ElevenLabs.\n\n" +
+        "התמלול הרגיל דרך Gemini לא דורש מפתח ElevenLabs.",
+    };
+  }
+
   if (s.includes("credit balance is too low") || s.includes("purchase credits")) {
     return {
       title: "נגמרה היתרה ב-Claude",
@@ -15,7 +31,6 @@ export function friendlyError(errText) {
         "• ואז נסה שוב",
     };
   }
-
   if (s.includes("insufficient_balance")) {
     return {
       title: "אין מספיק נקודות בחשבון",
@@ -49,7 +64,6 @@ export function friendlyError(errText) {
         "המתן 1–2 דקות ונסה שוב.\n\nאם זה חוזר — שדרג את החשבון אצל הספק.",
     };
   }
-
   if (s.includes("timeout") || s.includes("deadline exceeded")) {
     return {
       title: "זמן ההמתנה תם",
@@ -59,7 +73,6 @@ export function friendlyError(errText) {
         "אם הקובץ גדול מאוד — נסה לפצל אותו.",
     };
   }
-
   // תקלת רשת — כולל הודעות הכשל של הדפדפנים השונים ושל ה-proxy בשרת.
   // כרום: "Failed to fetch"; ספארי: "Load failed"; פיירפוקס: "NetworkError";
   // ה-worker שלנו מחזיר "proxy_fetch_failed" כשלא הצליח להגיע ל-Apps Script;
@@ -83,7 +96,6 @@ export function friendlyError(errText) {
         "• אם הקובץ גדול מאוד — נסה לפצל אותו לחלקים קטנים יותר.",
     };
   }
-
   if (s.includes("500") || s.includes("502") || s.includes("503") || s.includes("504")) {
     return { title: "שרת לא זמין כרגע", message: "המתן כמה דקות ונסה שוב." };
   }
@@ -94,7 +106,6 @@ export function friendlyError(errText) {
       message: "פצל את הקובץ לחלקים קטנים יותר ונסה שוב.",
     };
   }
-
   if (s.includes("401") || s.includes("unauthorized") || s.includes("403") || s.includes("permission_denied")) {
     return { title: "אין הרשאה", message: "המפתח לא הורשה לפעולה הזאת." };
   }

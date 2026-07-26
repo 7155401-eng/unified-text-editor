@@ -7,6 +7,113 @@ import { TranscriptionWindow } from "./torah_transcription_ui.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
 import { openTorahLinguisticEditor } from "./torah_linguistic_editing.js";
 
+const ELEVENLABS_AUDIO_VIDEO_EXTS = new Set([
+  ".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac",
+  ".mp4", ".mov", ".avi", ".mkv", ".webm",
+]);
+
+function _ttSuffixLower(name) {
+  const s = String(name || "");
+  const i = s.lastIndexOf(".");
+  return i >= 0 ? s.slice(i).toLowerCase() : "";
+}
+
+function _ttIsAudioOrVideo(name) {
+  return ELEVENLABS_AUDIO_VIDEO_EXTS.has(_ttSuffixLower(name));
+}
+
+function _ttElevenLabsRuns(win) {
+  const cardVisible = !!(win && win.elevenCard && win.elevenCard.style.display !== "none");
+  const stateRuns = parseInt((win && win.appState && win.appState.elevenlabs_runs) || 0, 10) || 0;
+  if (!cardVisible) return stateRuns;
+  const sliderRuns = parseInt((win && win.elevenRunsSlider && win.elevenRunsSlider.value) || 0, 10) || 0;
+  return Math.max(1, sliderRuns || stateRuns || 1);
+}
+
+function _ttElevenLabsKey(win) {
+  return String(
+    (win && win.elevenlabsEntry && win.elevenlabsEntry.value) ||
+    (win && win.appState && win.appState.elevenlabs_api_key) ||
+    ""
+  ).trim();
+}
+
+function _ttElevenLabsGuardMessage(win) {
+  try {
+    if (!win || !win.appState) return "";
+    const isTranscriptionMode = win.modeTrans ? !!win.modeTrans.checked : win.appState.mode === "transcription";
+    if (!isTranscriptionMode) return "";
+
+    const filename = win.appState.file_name || win.appState.file_path || "";
+    if (!_ttIsAudioOrVideo(filename)) return "";
+
+    const runs = _ttElevenLabsRuns(win);
+    if (runs <= 0 || _ttElevenLabsKey(win)) return "";
+
+    return (
+      "השירות הנוסף של ElevenLabs הופעל לעדי נוסח, אבל לא הוזן מפתח ElevenLabs.\n\n" +
+      "חזור לשלב 'חשבון' והזן מפתח ElevenLabs, או חזור לשלב ההגדרות והסר את השירות הנוסף.\n\n" +
+      "התמלול הרגיל דרך Gemini ימשיך לעבוד בלי מפתח ElevenLabs."
+    );
+  } catch (e) {
+    return "";
+  }
+}
+
+function installElevenLabsKeyGuard() {
+  const proto = TranscriptionWindow && TranscriptionWindow.prototype;
+  if (!proto || proto.__ravtextElevenLabsKeyGuardInstalled) return;
+
+  Object.defineProperty(proto, "__ravtextElevenLabsKeyGuardInstalled", {
+    value: true,
+    configurable: false,
+  });
+
+  const originalValidateStep = proto._validateStep;
+  if (typeof originalValidateStep === "function") {
+    proto._validateStep = function _validateStepWithElevenLabsGuard(idx, ...args) {
+      const err = originalValidateStep.call(this, idx, ...args);
+      if (err) return err;
+      if (idx === 2) return _ttElevenLabsGuardMessage(this) || "";
+      return "";
+    };
+  }
+
+  const originalOnRun = proto._onRun;
+  if (typeof originalOnRun === "function") {
+    proto._onRun = function _onRunWithElevenLabsGuard(...args) {
+      const err = _ttElevenLabsGuardMessage(this);
+      if (err) {
+        try { window.alert("חסר מפתח ElevenLabs\n\n" + err); }
+        catch (e) {}
+        return;
+      }
+      return originalOnRun.apply(this, args);
+    };
+  }
+
+  const originalRefreshRunSummary = proto._refreshRunSummary;
+  if (typeof originalRefreshRunSummary === "function") {
+    proto._refreshRunSummary = function _refreshRunSummaryWithElevenLabsGuard(...args) {
+      const result = originalRefreshRunSummary.apply(this, args);
+      try {
+        const s = this.appState || {};
+        const runs = parseInt(s.elevenlabs_runs, 10) || 0;
+        if (
+          this.summaryLabel &&
+          s.mode === "transcription" &&
+          runs > 0 &&
+          _ttIsAudioOrVideo(s.file_name || s.file_path || "") &&
+          !String(this.summaryLabel.textContent || "").includes("ElevenLabs")
+        ) {
+          this.summaryLabel.textContent += `\n• עדי ElevenLabs: ${runs} (דורש מפתח ElevenLabs בשלב חשבון)`;
+        }
+      } catch (e) {}
+      return result;
+    };
+  }
+}
+
 /**
  * משה 2026-05-10: שלושה כפתורים נפרדים — תמלול אודיו (STT), OCR (סריקת תמונה),
  * ועריכה לשונית תורנית (כניסה ישירה לשלב הסגנון התורני).
@@ -18,7 +125,6 @@ export function wireTorahTranscription(paneManager) {
 
   // אם הקבוצה כבר קיימת — לא להוסיף שוב
   if (toolbar.querySelector("#tt-trigger-btn")) return;
-
   const group = document.createElement("span");
   group.className = "tb-group";
   group.dataset.title = "תמלול ועריכה תורנית";
@@ -68,6 +174,7 @@ export function wireTorahTranscription(paneManager) {
  */
 export async function openTranscriptionWindow(paneManager, opts = {}) {
   await assertToolAllowed("torah-transcription");
+  installElevenLabsKeyGuard();
   const win = new TranscriptionWindow({
     initialMode: opts.initialMode || null,
     jumpToStep: opts.jumpToStep || null,
