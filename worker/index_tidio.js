@@ -66,6 +66,19 @@ function injectTidio(html) {
   return `${html}\n${PEIMOT_TIDIO_SCRIPT_TAG}\n`;
 }
 
+
+function fixAiKeyDisclosure(html) {
+  return String(html || '')
+    .replace(
+      /כל מפתח נשמר אצלך בדפדפן\s*בלבד\s*\(לא נשלח לשרת שלנו\)\.\s*ספק ברירת המחדל הוא הספק שייעשה בו שימוש\s*כשלא מוגדר אחר\./g,
+      'כל מפתח נשמר בדפדפן שלך. בזמן הפעלת כלי AI המפתח נשלח דרך השרת רק לצורך הקריאה לספק, ואינו נשמר אצלנו. ספק ברירת המחדל הוא הספק שייעשה בו שימוש כשלא מוגדר אחר.'
+    )
+    .replace(
+      /המפתחות נשמרים אצלך בלבד\.\s*המנוי לרב טקסט אינו כולל גישה למודלי AI\s*— את המפתחות יש להוציא ישירות מהספקים\./g,
+      'המפתחות נשמרים בדפדפן שלך, ונשלחים דרך השרת רק בזמן הפעלת כלי AI לצורך הקריאה לספק. המנוי לרב טקסט אינו כולל גישה למודלי AI — את המפתחות יש להוציא ישירות מהספקים.'
+    );
+}
+
 async function injectTidioIntoHtmlResponse(response) {
   const headers = new Headers(response.headers);
   const contentType = headers.get('content-type') || '';
@@ -75,7 +88,7 @@ async function injectTidioIntoHtmlResponse(response) {
   }
 
   const html = await response.text();
-  const injectedHtml = injectTidio(html);
+  const injectedHtml = fixAiKeyDisclosure(injectTidio(html));
 
   headers.delete('content-length');
   headers.set('cache-control', 'no-store');
@@ -83,7 +96,7 @@ async function injectTidioIntoHtmlResponse(response) {
 
   return new Response(injectedHtml, {
     status: response.status,
-    statusText: response.statusText,
+    statusText: response.statut,
     headers,
   });
 }
