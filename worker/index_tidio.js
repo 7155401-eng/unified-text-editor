@@ -1,4 +1,5 @@
 import app from './index.js';
+import { handleAiToolsWithAccountLicense } from './ai_tools_account.js';
 
 const PEIMOT_TIDIO_SCRIPT_SRC = '//code.tidio.co/om1yquztujdibhi5ypvtcvo2vfrcd4am.js';
 const PEIMOT_TIDIO_SCRIPT_KEY = 'code.tidio.co/om1yquztujdibhi5ypvtcvo2vfrcd4am.js';
@@ -90,6 +91,11 @@ async function injectTidioIntoHtmlResponse(response) {
 
 export default {
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/ai-tools/gas') {
+      return handleAiToolsWithAccountLicense(request, env);
+    }
+
     const response = await app.fetch(request, env, ctx);
     return injectTidioIntoHtmlResponse(response);
   },
