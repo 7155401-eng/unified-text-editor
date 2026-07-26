@@ -1930,7 +1930,7 @@ export class TranscriptionWindow {
                  e instanceof GasNetworkError ||
                  e instanceof GasTimeoutError) {
         logExc("_doRun server/network error", e);
-        const fe = friendlyError(String(e.message || e));
+        const fe = friendlyError(String((e && e.error_code ? e.error_code + " " : "") + (e.message || e)));
         showMessage(fe.title, fe.message);
       } else {
         logExc("_doRun unexpected error", e);
@@ -2051,7 +2051,7 @@ export class TranscriptionWindow {
       } else if (e instanceof GasServerError ||
                  e instanceof GasNetworkError ||
                  e instanceof GasTimeoutError) {
-        const fe = friendlyError(String(e.message || e));
+        const fe = friendlyError(String((e && e.error_code ? e.error_code + " " : "") + (e.message || e)));
         showMessage(fe.title, fe.message);
         this.torahStyleStatus.textContent = "נכשל — נסה שוב.";
         this.torahStyleProgressFill.style.width = "0%";

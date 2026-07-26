@@ -1,3 +1,5 @@
+import { callAiDirect } from './ai_direct.js';
+
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbyvt7yUPa2jNiTtTzKli8R8GmNI_plIeOwwFuTgu733es5mFfhEKcTcInP3yzFnlQQCvw/exec';
 
 const TOOL_PROMPT_TYPES = new Set([
@@ -113,6 +115,18 @@ export async function handleAiTools(request, env) {
   try {
     console.log(`[ai-tools] ${JSON.stringify(scrubForLog(body))}`);
   } catch {}
+
+  // מסלול ישיר בשרת — בלי Google Apps Script (מפתח אישי, ללא access_code).
+  if (!body.access_code && body.api_key) {
+    try {
+      const direct = await callAiDirect(body, env);
+      if (direct.handled) {
+        return jsonResponse(direct.data);
+      }
+    } catch (error) {
+      try { console.log(`[ai-tools] direct path error, falling back to GAS: ${error && error.message}`); } catch {}
+    }
+  }
 
   const gasUrl = (env.RAVTEXT_GAS_URL || env.AI_TOOLS_GAS_URL || DEFAULT_GAS_URL).trim();
   if (!gasUrl) {
