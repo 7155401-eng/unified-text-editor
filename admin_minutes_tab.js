@@ -21,14 +21,29 @@
     return (n / 60).toFixed(n % 60 ? 1 : 0);
   }
 
-  async function api(path) {
+  function asErrorMessage(text, status) {
+    const raw = String(text || '').trim();
+    if (!raw) return `HTTP ${status}`;
+    if (/^\s*<!doctype html/i.test(raw) || raw.includes('Worker threw exception')) {
+      return `שגיאת Worker בענן (HTTP ${status}). הנתיב החזיר HTML במקום JSON.`;
+    }
+    try {
+      const obj = JSON.parse(raw);
+      return obj.detail ? `${obj.error || 'שגיאה'}: ${obj.detail}` : (obj.error || raw);
+    } catch (_) {
+      return raw.slice(0, 500);
+    }
+  }
+
+  async function api(path, opts = {}) {
     const res = await originalFetch(path, {
       credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(opts.headers || {}) },
+      ...opts,
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(text || `HTTP ${res.status}`);
+      throw new Error(asErrorMessage(text, res.status));
     }
     return res.json();
   }
@@ -38,6 +53,45 @@
     document.getElementById(TAB_ID)?.classList.add('active');
   }
 
+  async function adjustMinutes(userId, email, deltaMinutes) {
+    const amount = Number(deltaMinutes);
+    if (!Number.isFinite(amount) || amount === 0) return;
+    await api(`/api/admin/users/${userId}/minutes`, {
+      method: 'POST',
+      body: JSON.stringify({ deltaMinutes: amount }),
+    });
+    await renderMinutesTab(document.getElementById('minute-search')?.value?.trim() || '');
+  }
+
+  async function promptAdjust(userId, email) {
+    const raw = prompt(`כמה דקות להוסיף/להוריד עבור ${email}?\nמספר חיובי מוסיף, מספר שלילי מוריד.`, '20');
+    if (raw == null) return;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value === 0) {
+      alert('מספר דקות לא חוקי');
+      return;
+    }
+    await adjustMinutes(userId, email, value);
+  }
+
+  window.ravtextAdminAdjustMinutes = async function(userId, encodedEmail, deltaMinutes) {
+    const email = decodeURIComponent(encodedEmail || '');
+    try {
+      await adjustMinutes(userId, email, deltaMinutes);
+    } catch (err) {
+      alert(`שגיאה בהוספת דקות: ${err.message || err}`);
+    }
+  };
+
+  window.ravtextAdminPromptMinutes = async function(userId, encodedEmail) {
+    const email = decodeURIComponent(encodedEmail || '');
+    try {
+      await promptAdjust(userId, email);
+    } catch (err) {
+      alert(`שגיאה בהוספת דקות: ${err.message || err}`);
+    }
+  };
+
   async function renderMinutesTab(search = '') {
     setActiveTab();
     const body = document.getElementById(BODY_ID);
@@ -46,10 +100,10 @@
     body.innerHTML = `
       <div class="panel">
         <div class="toolbar">
-          <strong>⏱️ דקות חינם</strong>
+          <strong>⏱️ דקות חינם ודקות ידניות</strong>
           <input type="search" id="minute-search" placeholder="חיפוש משתמש..." value="${escapeAttr(search)}" />
           <button id="minute-refresh">רענן</button>
-          <span class="right info">מציג לכל משתמש כמה דקות מתנה נוצלו וכמה נשארו</span>
+          <span class="right info">מציג יתרה כוללת וגם פירוט דקות מתנה שנוצלו.</span>
         </div>
         <div id="minute-list"><div class="empty">טוען...</div></div>
       </div>
@@ -90,22 +144,32 @@
               <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">משתמש</th>
               <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">סטטוס</th>
               <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">יתרת דקות כוללת</th>
-              <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">דקות חינם שקיבל</th>
-              <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">דקות חינם שנוצלו</th>
-              <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">דקות חינם שלא נוצלו</th>
+              <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">דקות מתנה שקיבל</th>
+              <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">דקות מתנה שנוצלו</th>
+              <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">דקות מתנה שלא נוצלו</th>
+              <th style="text-align:right;border-bottom:1px solid #e2e8f0;padding:8px;">פעולות</th>
             </tr>
           </thead>
           <tbody>
-            ${users.map((u) => `
-              <tr>
-                <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${escapeHtml(u.email || u.id)}</td>
-                <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${escapeHtml(u.status || '')}${u.plan_type ? ` / ${escapeHtml(u.plan_type)}` : ''}</td>
-                <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${minutes(u.balance_seconds)}</td>
-                <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${minutes(u.gift_seconds_granted)}</td>
-                <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${minutes(u.gift_seconds_used)}</td>
-                <td style="border-bottom:1px solid #f1f5f9;padding:8px;font-weight:700;">${minutes(u.gift_seconds_unused)}</td>
-              </tr>
-            `).join('')}
+            ${users.map((u) => {
+              const email = String(u.email || u.id || '');
+              const enc = encodeURIComponent(email);
+              return `
+                <tr>
+                  <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${escapeHtml(email)}</td>
+                  <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${escapeHtml(u.status || '')}${u.plan_type ? ` / ${escapeHtml(u.plan_type)}` : ''}</td>
+                  <td style="border-bottom:1px solid #f1f5f9;padding:8px;font-weight:700;">${minutes(u.balance_seconds)}</td>
+                  <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${minutes(u.gift_seconds_granted)}</td>
+                  <td style="border-bottom:1px solid #f1f5f9;padding:8px;">${minutes(u.gift_seconds_used)}</td>
+                  <td style="border-bottom:1px solid #f1f5f9;padding:8px;font-weight:700;">${minutes(u.gift_seconds_unused)}</td>
+                  <td style="border-bottom:1px solid #f1f5f9;padding:8px;white-space:nowrap;">
+                    <button class="btn-small" onclick="ravtextAdminAdjustMinutes(${Number(u.id)}, '${enc}', 20)">+20</button>
+                    <button class="btn-small" onclick="ravtextAdminAdjustMinutes(${Number(u.id)}, '${enc}', -20)">−20</button>
+                    <button class="btn-small" onclick="ravtextAdminPromptMinutes(${Number(u.id)}, '${enc}')">מותאם</button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -117,6 +181,7 @@
     const body = document.getElementById(BODY_ID);
     if (!tabs || !body) return false;
     if (document.getElementById(TAB_ID)) return true;
+
     const tab = document.createElement('button');
     tab.type = 'button';
     tab.id = TAB_ID;
@@ -127,6 +192,7 @@
       ev.stopImmediatePropagation();
       renderMinutesTab();
     }, true);
+
     const users = tabs.querySelector('[data-tab="users"]');
     if (users) users.after(tab);
     else tabs.appendChild(tab);
