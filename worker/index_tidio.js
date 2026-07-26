@@ -96,7 +96,7 @@ async function injectTidioIntoHtmlResponse(response) {
 
   return new Response(injectedHtml, {
     status: response.status,
-    statusText: response.statut,
+    statusText: response.statusText,
     headers,
   });
 }
