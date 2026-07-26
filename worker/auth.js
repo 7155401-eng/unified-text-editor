@@ -131,7 +131,8 @@ async function handleCallback(request, env, url) {
   const isPaid = row.status === 'active' && (!row.expires_at || row.expires_at >= nowSec);
   const stateNext = url.searchParams.get('state');
   const safeNext = stateNext && stateNext.startsWith('/') && !stateNext.startsWith('//') && stateNext !== '/' ? stateNext : null;
-  const dest = safeNext ? safeNext : (isPaid ? '/' : '/?login=demo');
+  // צוות האתר 2026-07-25: מחובר-לא-משלם הוא "חשבון חינם" (שימוש נקי 1 ל-24ש), לא דמו.
+  const dest = safeNext ? safeNext : (isPaid ? '/' : '/?login=free');
   return new Response(null, {
     status: 302,
     headers: {

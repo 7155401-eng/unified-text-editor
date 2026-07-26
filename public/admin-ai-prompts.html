@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ניהול הנחיות — מנוע התמלול</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, "Segoe UI", Arial, sans-serif; direction: rtl;
+         max-width: 820px; margin: 32px auto; padding: 0 18px; line-height: 1.6; }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  h2 { font-size: 1.1rem; margin: 0 0 8px; }
+  .card { border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin: 16px 0; }
+  button { font-size: 1rem; padding: 9px 16px; border-radius: 8px; border: 0;
+           background: #2563eb; color: #fff; cursor: pointer; }
+  button.secondary { background: #64748b; }
+  button.save { background: #16a34a; }
+  input[type=file] { font-size: 1rem; margin: 8px 0; }
+  .status { margin-top: 10px; padding: 10px 14px; border-radius: 8px; background: #f1f5f9; color: #0f172a; white-space: pre-wrap; }
+  .ok { background: #dcfce7; color: #14532d; }
+  .err { background: #fee2e2; color: #7f1d1d; }
+  .muted { color: #64748b; font-size: .9rem; }
+  .warn { border-right: 4px solid #f59e0b; background: #fffbeb; color: #78350f; padding: 10px 14px; border-radius: 8px; }
+  .field { margin: 14px 0; }
+  .field label { display: block; font-weight: 700; margin-bottom: 4px; font-family: monospace; direction: ltr; text-align: right; }
+  textarea { width: 100%; min-height: 120px; font-size: .95rem; line-height: 1.5;
+             border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<h1>ניהול הנחיות — מנוע התמלול / OCR / הכרעת נוסח / סגנון תורני</h1>
+<p class="muted">מנהל בלבד. ההנחיות נשמרות במסד הנתונים של האתר; השרת קורא ל-Gemini/Claude ישירות — בלי Google Apps Script ובלי Cloudflare.</p>
+<div class="warn">כל מנוע נשמר בנפרד — אין לערבב ביניהם. בחר את המנוע שברצונך לנהל. (מנוע הקריקטורה מנוהל בנתיב נפרד משלו.)</div>
+
+<div class="card">
+  <strong>מנוע לניהול:</strong>
+  <select id="engine" style="font-size:1rem;padding:8px 12px;border-radius:8px;margin-inline-start:8px;">
+    <option value="/api/admin/ai-prompts">מנוע התמלול / OCR / הכרעת נוסח / סגנון תורני</option>
+    <option value="/api/admin/nikud-prompts">מנוע הניקוד</option>
+  </select>
+  <p class="muted" id="engineHint" style="margin-top:8px;">קובץ מתאים לטעינה ראשונה: <code>ravtext_prompts.json</code></p>
+</div>
+
+<div class="card">
+  <h2>מצב נוכחי</h2>
+  <button class="secondary" id="checkBtn" type="button">בדוק מצב</button>
+  <div class="status" id="checkStatus">טרם נבדק.</div>
+</div>
+
+<div class="card">
+  <h2>עריכת ההנחיות</h2>
+  <p class="muted">טוען את ההנחיות הקיימות לעריכה. כל הנחיה בתיבה נפרדת. בסיום — "שמור שינויים".</p>
+  <button id="editBtn" type="button">טען הנחיות לעריכה</button>
+  <div id="editArea"></div>
+  <div id="saveWrap" style="display:none; margin-top:14px;">
+    <button class="save" id="saveBtn" type="button">שמור שינויים</button>
+  </div>
+  <div class="status" id="editStatus">לחץ "טען הנחיות לעריכה".</div>
+</div>
+
+<div class="card">
+  <h2>טעינה מקובץ (טעינה ראשונה / החלפה מלאה)</h2>
+  <p class="muted">בחר קובץ JSON של ההנחיות (למשל <code>ravtext_prompts.json</code>) ולחץ "טען".</p>
+  <input type="file" id="fileInput" accept=".json,application/json"><br>
+  <button id="loadBtn" type="button">טען מקובץ</button>
+  <div class="status" id="loadStatus">בחר קובץ כדי להתחיל.</div>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function setStatus(el, msg, cls) { el.textContent = msg; el.className = 'status' + (cls ? ' ' + cls : ''); }
+  function authMsg(res) { return (res.status === 401 || res.status === 403); }
+  function base() { return document.getElementById('engine').value; }
+  document.getElementById('engine').addEventListener('change', function () {
+    var nikud = base().indexOf('nikud') >= 0;
+    document.getElementById('engineHint').innerHTML = 'קובץ מתאים לטעינה ראשונה: <code>' + (nikud ? 'nikud_prompts.json' : 'ravtext_prompts.json') + '</code>';
+    document.getElementById('editArea').innerHTML = '';
+    document.getElementById('saveWrap').style.display = 'none';
+  });
+
+  // ----- בדיקת מצב -----
+  $('checkBtn').addEventListener('click', function () {
+    setStatus($('checkStatus'), 'בודק...', '');
+    fetch(base(), { method: 'GET', credentials: 'include' })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
+      .then(function (res) {
+        if (authMsg(res)) { setStatus($('checkStatus'), 'צריך להיות מחובר כמנהל.', 'err'); return; }
+        if (!res.ok) { setStatus($('checkStatus'), 'שגיאה: ' + (res.d && res.d.error || res.status), 'err'); return; }
+        if (res.d.configured) {
+          setStatus($('checkStatus'), 'יש הנחיות טעונות ✔  (' + res.d.keys + ' הנחיות, ' + res.d.length + ' תווים).\nהנחיות: ' + (res.d.keyNames || []).join(', '), 'ok');
+        } else {
+          setStatus($('checkStatus'), 'עדיין אין הנחיות טעונות — טען מקובץ (הקטע התחתון).', '');
+        }
+      })
+      .catch(function (e) { setStatus($('checkStatus'), 'תקלת רשת: ' + e.message, 'err'); });
+  });
+
+  // ----- עריכה לכל הנחיה -----
+  var loadedKeys = [];
+  $('editBtn').addEventListener('click', function () {
+    setStatus($('editStatus'), 'טוען לעריכה...', '');
+    $('editArea').innerHTML = '';
+    $('saveWrap').style.display = 'none';
+    fetch(base() + '?full=1', { method: 'GET', credentials: 'include' })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
+      .then(function (res) {
+        if (authMsg(res)) { setStatus($('editStatus'), 'צריך להיות מחובר כמנהל.', 'err'); return; }
+        if (!res.ok) { setStatus($('editStatus'), 'שגיאה: ' + (res.d && res.d.error || res.status), 'err'); return; }
+        if (!res.d.value) { setStatus($('editStatus'), 'אין עדיין הנחיות לעריכה. טען קודם מקובץ (הקטע התחתון).', ''); return; }
+        var obj;
+        try { obj = JSON.parse(res.d.value); } catch (e) { setStatus($('editStatus'), 'ההנחיות השמורות אינן JSON תקין.', 'err'); return; }
+        loadedKeys = Object.keys(obj);
+        loadedKeys.forEach(function (k) {
+          var field = document.createElement('div');
+          field.className = 'field';
+          var lab = document.createElement('label');
+          lab.textContent = k;
+          var ta = document.createElement('textarea');
+          ta.id = 'ta__' + k;
+          ta.value = obj[k];
+          field.appendChild(lab);
+          field.appendChild(ta);
+          $('editArea').appendChild(field);
+        });
+        $('saveWrap').style.display = '';
+        setStatus($('editStatus'), 'נטענו ' + loadedKeys.length + ' הנחיות לעריכה. ערוך ולחץ "שמור שינויים".', 'ok');
+      })
+      .catch(function (e) { setStatus($('editStatus'), 'תקלת רשת: ' + e.message, 'err'); });
+  });
+
+  $('saveBtn').addEventListener('click', function () {
+    if (!loadedKeys.length) { setStatus($('editStatus'), 'אין מה לשמור.', 'err'); return; }
+    var obj = {};
+    for (var i = 0; i < loadedKeys.length; i++) {
+      var k = loadedKeys[i];
+      var ta = $('ta__' + k);
+      obj[k] = ta ? ta.value : '';
+    }
+    var text = JSON.stringify(obj);
+    setStatus($('editStatus'), 'שומר...', '');
+    fetch(base(), {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' }, body: text
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
+      .then(function (res) {
+        if (authMsg(res)) { setStatus($('editStatus'), 'צריך להיות מחובר כמנהל.', 'err'); return; }
+        if (!res.ok) { setStatus($('editStatus'), 'שגיאה: ' + (res.d && (res.d.message || res.d.error) || res.status), 'err'); return; }
+        setStatus($('editStatus'), 'נשמר בהצלחה ✔  (' + res.d.keys + ' הנחיות, ' + res.d.length + ' תווים).', 'ok');
+      })
+      .catch(function (e) { setStatus($('editStatus'), 'תקלת רשת: ' + e.message, 'err'); });
+  });
+
+  // ----- טעינה מקובץ -----
+  $('loadBtn').addEventListener('click', function () {
+    var f = $('fileInput').files[0];
+    if (!f) { setStatus($('loadStatus'), 'קודם בחר קובץ.', 'err'); return; }
+    setStatus($('loadStatus'), 'קורא קובץ...', '');
+    var reader = new FileReader();
+    reader.onload = function () {
+      var text = String(reader.result || '').trim();
+      try { JSON.parse(text); } catch (e) { setStatus($('loadStatus'), 'הקובץ אינו JSON תקין.', 'err'); return; }
+      setStatus($('loadStatus'), 'מעלה לאתר...', '');
+      fetch(base(), {
+        method: 'POST', credentials: 'include',
+        headers: { 'content-type': 'application/json' }, body: text
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
+        .then(function (res) {
+          if (authMsg(res)) { setStatus($('loadStatus'), 'צריך להיות מחובר כמנהל.', 'err'); return; }
+          if (!res.ok) { setStatus($('loadStatus'), 'שגיאה: ' + (res.d && (res.d.message || res.d.error) || res.status), 'err'); return; }
+          setStatus($('loadStatus'), 'נטען בהצלחה ✔  (' + res.d.keys + ' הנחיות, ' + res.d.length + ' תווים). מעכשיו התמלול רץ בשרת בלי Google Apps Script.', 'ok');
+        })
+        .catch(function (e) { setStatus($('loadStatus'), 'תקלת רשת: ' + e.message, 'err'); });
+    };
+    reader.onerror = function () { setStatus($('loadStatus'), 'קריאת הקובץ נכשלה.', 'err'); };
+    reader.readAsText(f, 'utf-8');
+  });
+})();
+</script>
+</body>
+</html>

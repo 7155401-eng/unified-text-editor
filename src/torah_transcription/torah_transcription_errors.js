@@ -60,8 +60,28 @@ export function friendlyError(errText) {
     };
   }
 
-  if (s.includes("connection") || s.includes("network") || s.includes("dns")) {
-    return { title: "תקלת רשת", message: "לא הצלחנו להגיע לשרת. בדוק את חיבור האינטרנט." };
+  // תקלת רשת — כולל הודעות הכשל של הדפדפנים השונים ושל ה-proxy בשרת.
+  // כרום: "Failed to fetch"; ספארי: "Load failed"; פיירפוקס: "NetworkError";
+  // ה-worker שלנו מחזיר "proxy_fetch_failed" כשלא הצליח להגיע ל-Apps Script;
+  // ו-GasNetworkError שלנו מוסיף את הקידומת "שגיאת חיבור".
+  if (
+    s.includes("connection") || s.includes("network") || s.includes("dns") ||
+    s.includes("proxy_fetch_failed") || s.includes("failed to fetch") ||
+    s.includes("fetch failed") || s.includes("load failed") ||
+    s.includes("getaddrinfo") || s.includes("err_internet") ||
+    s.includes("err_connection") || s.includes("err_name_not_resolved") ||
+    s.includes("err_network") || s.includes("err_timed_out") ||
+    s.includes("שגיאת חיבור")
+  ) {
+    return {
+      title: "תקלת רשת",
+      message:
+        "לא הצלחנו להגיע לשרת.\n\n" +
+        "• בדוק שיש חיבור אינטרנט תקין.\n" +
+        "• אם אתה מחובר דרך סינון (כמו נטפרי) — ייתכן שהסינון חוסם את השרת. " +
+        "נסה שוב פעם-פעמיים; אם זה חוזר, פנה אלינו כדי שנבדוק.\n" +
+        "• אם הקובץ גדול מאוד — נסה לפצל אותו לחלקים קטנים יותר.",
+    };
   }
 
   if (s.includes("500") || s.includes("502") || s.includes("503") || s.includes("504")) {

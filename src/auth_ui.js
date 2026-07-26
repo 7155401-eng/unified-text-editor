@@ -4,6 +4,7 @@
 
 const STATUS_LABELS = {
   paid: "מנוי פעיל",
+  free: "מצב משתמש חינמי",
   demo: "מצב דמו",
   guest: "אורח",
 };
@@ -204,7 +205,7 @@ function initialFromEmail(email) {
 
 function statusFor(auth) {
   if (!auth.loggedIn) return "guest";
-  return auth.paid ? "paid" : "demo";
+  return auth.paid ? "paid" : "free";
 }
 
 function buildAvatar(auth) {
@@ -321,9 +322,10 @@ function buildMenu(auth) {
 function showLoginBanner(loginParam) {
   const banner = document.createElement("div");
   banner.dir = "rtl";
-  const isInfo = loginParam === "demo";
+  const isInfo = loginParam === "demo" || loginParam === "free";
   banner.className = `login-banner login-banner-${isInfo ? "info" : "error"}`;
   const messages = {
+    free: "התחברת! זהו מצב משתמש חינמי — הפלט מסומן בסימני מים ומספר השימושים מוגבל. לשימוש מלא ללא סימני מים צור קשר עם צוות האתר לקבלת מנוי. הקבצים וההגדרות שלך נשמרים תמיד.",
     demo: "התחברת! לקבלת מנוי מלא נא צור קשר עם צוות האתר במייל או בטלפון.",
     expired: "המנוי פג. ההתחברות נשמרה כדי לעדכן.",
     cancelled: "ההתחברות בוטלה.",

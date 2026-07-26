@@ -326,9 +326,13 @@ function installDemoBanner() {
   const banner = document.createElement("div");
   banner.className = "demo-mode-banner";
   banner.dataset.ravtextDemoCanary = "1";
+  // צוות האתר 2026-07-25: משתמש מחובר-חינמי אינו "דמו" אלא "מצב משתמש חינמי"
+  // (ההתנהגות זהה — סימני מים ומכסת שימושים — רק הכיתוב שונה). אורח נשאר "מצב דמו".
+  const registered = isRegisteredUser();
+  const title = registered ? "מצב משתמש חינמי," : "מצב דמו,";
   const registeredBody = "בחשבון חינמי כל יצוא או הדפסה מסומן.";
   const guestBody = "השינויים אינם נשמרים והתוכנה מתאפסת במצב זה מידי דקה.<p>כדי למנוע איפוס הירשם או התחבר. בחשבון חינמי כל יצוא או הדפסה מסומן.</p>";
-  banner.innerHTML = `<strong data-i18n="demoTitle">מצב דמו,</strong><div data-i18n="demoBody">${isRegisteredUser() ? registeredBody : guestBody}</div><span class="demo-reset-clock" id="demo-reset-clock"></span>`;
+  banner.innerHTML = `<strong>${title}</strong><div>${registered ? registeredBody : guestBody}</div><span class="demo-reset-clock" id="demo-reset-clock"></span>`;
   document.body.prepend(banner);
 }
 function installTamperMonitor() {

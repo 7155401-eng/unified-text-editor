@@ -87,7 +87,70 @@ export async function handleAdmin(request, env, url) {
   if (path === '/api/admin/payments-report' && method === 'GET') {
     return getPaymentsReport(request, env, url);
   }
+  // צוות האתר 2026-07-25: הנחיות ה-AI מאוחסנות במסד הנתונים של האתר (app_settings),
+  // כדי שהעיבוד ירוץ בשרת בלי Google Apps Script. הטעינה דרך פאנל הניהול של האתר.
+  // כל מנוע במפתח D1 נפרד — אין לערבב ביניהם.
+  //   תמלול/OCR/הכרעה/סגנון → SERVER_PROMPTS_JSON (מפתח נדרש audio_torah)
+  //   ניקוד                  → NIKUD_PROMPTS_JSON  (מפתח נדרש nikud_torah)
+  //   (קריקטורה = CARICATURE_* בנתיב נפרד משלה.)
+  if (path === '/api/admin/ai-prompts' && method === 'GET') {
+    return getPromptsStatus(env, url, 'SERVER_PROMPTS_JSON');
+  }
+  if (path === '/api/admin/ai-prompts' && method === 'POST') {
+    return setPrompts(request, env, auth.user.id, 'SERVER_PROMPTS_JSON', 'audio_torah');
+  }
+  if (path === '/api/admin/nikud-prompts' && method === 'GET') {
+    return getPromptsStatus(env, url, 'NIKUD_PROMPTS_JSON');
+  }
+  if (path === '/api/admin/nikud-prompts' && method === 'POST') {
+    return setPrompts(request, env, auth.user.id, 'NIKUD_PROMPTS_JSON', 'nikud_torah');
+  }
   return new Response('Not found', { status: 404 });
+}
+
+async function getPromptsStatus(env, url, settingKey) {
+  const full = url && url.searchParams.get('full') === '1';
+  let value = '';
+  try {
+    const row = await env.DB.prepare('SELECT value FROM app_settings WHERE key = ?')
+      .bind(settingKey).first();
+    if (row && row.value) value = String(row.value);
+  } catch (_) {}
+  let keyNames = [];
+  try { keyNames = value ? Object.keys(JSON.parse(value)) : []; } catch (_) {}
+  const payload = {
+    configured: value.length > 0,
+    length: value.length,
+    keys: keyNames.length,
+    keyNames,
+  };
+  // full=1 מחזיר גם את התוכן עצמו — לעריכה בפאנל הניהול (מנהל בלבד).
+  if (full) payload.value = value;
+  return new Response(JSON.stringify(payload), {
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  });
+}
+
+async function setPrompts(request, env, adminId, settingKey, requiredKey) {
+  let text = '';
+  try { text = await request.text(); } catch (_) {
+    return new Response(JSON.stringify({ error: 'bad_body' }), { status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  }
+  text = String(text || '').trim();
+  let obj;
+  try { obj = JSON.parse(text); } catch (_) {
+    return new Response(JSON.stringify({ error: 'invalid_json', message: 'התוכן אינו JSON תקין' }), { status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  }
+  if (!obj || typeof obj !== 'object' || !obj[requiredKey]) {
+    return new Response(JSON.stringify({ error: 'missing_keys', message: 'חסרות הנחיות (למשל ' + requiredKey + ')' }), { status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  }
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(
+    'INSERT INTO app_settings (key, value, updated_at, updated_by_user_id) VALUES (?, ?, ?, ?)\n     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by_user_id = excluded.updated_by_user_id'
+  ).bind(settingKey, text, now, adminId).run();
+  return new Response(JSON.stringify({ ok: true, keys: Object.keys(obj).length, length: text.length }), {
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  });
 }
 
 async function getPaymentsReport(request, env, url) {
