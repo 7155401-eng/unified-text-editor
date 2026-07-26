@@ -4,7 +4,6 @@
 // 3. כל בקשה אחרת ל-HTML — מחדיר לתוך index.html שני משתני חלון לפני שה-JS עולה,
 //    כך שהמנגנון הקיים (demo_mode.js) רואה paid/demo כבר ברגע הראשון.
 // כל תגובה עוברת דרך applySecurityHeaders + checkRateLimit + isBadBot.
-
 import { handleAuth } from './auth.js';
 import { getUserFromRequest } from './session.js';
 import { applySecurityHeaders, checkRateLimit, isBadBot, isEngineApi, checkOrigin } from './security.js';
@@ -26,7 +25,21 @@ import { handleNikudMerger } from './nikud_merger.js';
 import { handleTextComparePro } from './text_compare_pro.js';
 import { handleSefariaProxy } from './sefaria_proxy.js';
 import { handleMainTextTools } from './main_text_tools.js';
+import {
+  buildMinuteUsageClientScript,
+  handleAdminMinuteAdjust,
+  handleAdminMinuteUsage,
+  handleGiftClaim,
+  handlePaymentStatus,
+  handleUsageTick,
+} from './minute_access.js';
 import { handleDocxApi, isDocxImportPath, isDocxExtractPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath } from '../cloudflare/docx_worker_entry.js';
+
+function visibleExpiresAtForUser(user) {
+  if (!user?.expires_at) return null;
+  if (user?.plan_type === 'hours' || Number(user?.balance_seconds || 0) > 0) return null;
+  return user.expires_at * 1000;
+}
 
 async function serveAdminPage(request, env) {
   const user = await getUserFromRequest(request, env);
@@ -43,10 +56,13 @@ async function serveAdminPage(request, env) {
   const contentType = assetResponse.headers.get('content-type') || '';
   if (!contentType.includes('text/html') && assetResponse.status >= 400) return assetResponse;
   const html = await assetResponse.text();
-  const script = '<script src="/admin_troubleshooting_tab.js?v=20260518a" defer></script>';
+  const scripts = [
+    '<script src="/admin_troubleshooting_tab.js?v=20260518a" defer></script>',
+    '<script src="/admin_minutes_tab.js?v=20260726a" defer></script>',
+  ].join('');
   const injected = html.includes('</body>')
-    ? html.replace('</body>', `${script}</body>`)
-    : html + script;
+    ? html.replace('</body>', `${scripts}</body>`)
+    : html + scripts;
   const headers = new Headers(assetResponse.headers);
   headers.delete('content-length');
   headers.set('cache-control', 'no-store');
@@ -69,10 +85,8 @@ export default {
 
     const limited = await checkRateLimit(request, url);
     if (limited) return limited;
-
     let response;
     let isHtml = false;
-
     if (url.pathname.startsWith('/api/auth/')) {
       response = await handleAuth(request, env, url);
     } else if (url.pathname === '/api/me') {
@@ -86,7 +100,7 @@ export default {
           admin: !!user?.is_admin,
           status: user?.status || null,
           planType: user?.plan_type || null,
-          expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
+          expiresAt: visibleExpiresAtForUser(user),
           balanceSeconds: user?.balance_seconds || 0,
           consoleGuardEnabled,
         },
@@ -101,6 +115,10 @@ export default {
       /^\/api\/admin\/users\/\d+\/contact-messages$/.test(url.pathname)
     ) {
       response = await handleAdminInbox(request, env, url);
+    } else if (url.pathname === '/api/admin/minute-usage') {
+      response = await handleAdminMinuteUsage(request, env, url);
+    } else if (/^\/api\/admin\/users\/\d+\/minutes$/.test(url.pathname)) {
+      response = await handleAdminMinuteAdjust(request, env, url);
     } else if (
       url.pathname === '/api/admin/payment-config' ||
       url.pathname === '/api/admin/test-packages' ||
@@ -125,6 +143,12 @@ export default {
       response = await handleVideoGallery(request, env, url);
     } else if (url.pathname.startsWith('/api/payments/package/')) {
       response = await handlePackageLookup(request, env, url);
+    } else if (url.pathname === '/api/payments/status') {
+      response = await handlePaymentStatus(request, env);
+    } else if (url.pathname === '/api/payments/usage/tick') {
+      response = await handleUsageTick(request, env);
+    } else if (url.pathname === '/api/payments/gift/claim') {
+      response = await handleGiftClaim(request, env);
     } else if (url.pathname.startsWith('/api/payments/')) {
       response = await handlePayments(request, env, url);
     } else if (url.pathname.startsWith('/api/account/')) {
@@ -223,11 +247,12 @@ export default {
           admin: !!user?.is_admin,
           status: user?.status || null,
           planType: user?.plan_type || null,
-          expiresAt: user?.expires_at ? user.expires_at * 1000 : null,
+          expiresAt: visibleExpiresAtForUser(user),
           balanceSeconds: user?.balance_seconds || 0,
           consoleGuardEnabled,
           googleClientId: env.GOOGLE_CLIENT_ID || null,
         };
+
         // צוות האתר 2026-05-07: paid → תצוגה מלאה (demo OFF). הצגת דמו במכל מצב אחר —
         // כולל "מחובר אך לא מאושר" (משתמש שלא שודרג ע"י צוות האתר ב-DB).
         // localStorage('ravtext.demoMode') חייב להתאפס בכל מצב לא־משלם, אחרת
@@ -235,7 +260,8 @@ export default {
         const flagLines = (user && user.paid)
           ? 'window.__RAVTEXT_DEMO_MODE__ = false; try{localStorage.setItem("ravtext.demoMode","0");}catch(e){}'
           : 'try{localStorage.removeItem("ravtext.demoMode");}catch(e){}delete window.__RAVTEXT_DEMO_MODE__;';
-        const injection = `<script>window.__RAVTEXT_AUTH__ = ${JSON.stringify(authState)};${flagLines}</script>`;
+        const minuteUsageScript = buildMinuteUsageClientScript();
+        const injection = `<script>window.__RAVTEXT_AUTH__ = ${JSON.stringify(authState)};${flagLines}${minuteUsageScript}</script>`;
 
         const injected = html.includes('</head>')
           ? html.replace('</head>', `${injection}</head>`)
