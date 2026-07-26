@@ -1,7 +1,7 @@
 {
   "name": "unified-text-editor",
   "compatibility_date": "2026-05-07",
-  "main": "worker/index_tidio_ai_debug_v2.js",
+  "main": "worker/index_tidio_ai_debug_v3.js",
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
