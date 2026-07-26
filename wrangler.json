@@ -1,7 +1,7 @@
 {
   "name": "unified-text-editor",
   "compatibility_date": "2026-05-07",
-  "main": "worker/index_tidio_account_patch.js",
+  "main": "worker/index_tidio.js",
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
