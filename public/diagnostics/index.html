@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>בדיקות AI - רב טקסט</title>
-  <!-- RAVTEXT_DIAGNOSTICS_STATIC_V2 -->
+  <!-- RAVTEXT_DIAGNOSTICS_STATIC_V3 -->
   <style>
     *{box-sizing:border-box}
     body{margin:0;background:#f5f7fb;color:#172033;font-family:Arial,"Segoe UI",sans-serif;line-height:1.55}
@@ -32,8 +32,8 @@
 <main>
   <section class="box">
     <h1>בדיקות AI ללא Console</h1>
-    <p>העמוד הזה בודק את מסלול המפתח וה־AI בלי לפתוח Console.</p>
-    <p class="muted">הבדיקה לא מציגה מפתח API מלא. היא מציגה רק סטטוס, אורכי שדות, סיבה משוערת ו־debug_id.</p>
+    <p>העמוד הזה בודק את מסלול ה-AI בלי לפתוח Console.</p>
+    <p class="muted">הבדיקה לא מציגה מפתח API מלא. היא מציגה רק אורך, סטטוס, סיבה משוערת ו-debug_id.</p>
     <button id="all">הרץ בדיקות 1–3</button>
     <button id="copy" class="alt">העתק תוצאות</button>
     <button id="down" class="alt">הורד JSON</button>
@@ -42,8 +42,8 @@
 
   <section class="grid">
     <div class="box">
-      <h2>1. בדפדפן</h2>
-      <p>בודק אם ההגדרות והמפתח שמורים בדפדפן.</p>
+      <h2>1. דפדפן</h2>
+      <p>בודק האם ההגדרות והמפתח קיימים בדפדפן.</p>
       <button data-run="1">הפעל 1</button>
       <span id="s1" class="st">טרם הופעל</span>
     </div>
@@ -55,13 +55,13 @@
     </div>
     <div class="box">
       <h2>3. שרת בלי קובץ</h2>
-      <p>בודק את ‎/api/ai-tools/gas‎ עם טקסט קצר.</p>
+      <p>בודק את /api/ai-tools/gas עם טקסט קצר.</p>
       <button data-run="3">הפעל 3</button>
       <span id="s3" class="st">טרם הופעל</span>
     </div>
     <div class="box">
       <h2>4. קובץ</h2>
-      <p>בחר קובץ קטן כדי לבדוק את מסלול הקובץ.</p>
+      <p>בחר קובץ קצר כדי לבדוק את מסלול הקובץ.</p>
       <label class="btn" for="file">בחר קובץ והפעל 4</label>
       <input id="file" type="file" accept="audio/*,image/*,.pdf">
       <div id="fileName" class="muted"></div>
@@ -77,7 +77,7 @@
 
 <script>
 (() => {
-  const VERSION = '20260727-static-v2';
+  const VERSION = '20260727-static-v3-no-prefix-validation';
   const CONFIG_KEY = 'ravtext.torah_transcription.config';
   const state = { version: VERSION, page: location.href, started_at: new Date().toISOString(), results: {} };
   const $ = (id) => document.getElementById(id);
@@ -95,7 +95,8 @@
 
   function redactText(value) {
     return String(value == null ? '' : value)
-      .replace(/key=([^&\s"'<>]+)/gi, 'key=[redacted]')
+      .replace(/key=([^&\s"'<>\u05D0-\u05EA]+)/gi, 'key=[redacted]')
+      .replace(/AQ\.[0-9A-Za-z_.\-]{16,}/g, '[redacted-gemini-auth-key]')
       .replace(/AIza[0-9A-Za-z_\-]{20,}/g, '[redacted-google-key]')
       .replace(/sk-ant-[0-9A-Za-z_\-]{20,}/g, '[redacted-anthropic-key]')
       .replace(/sk_[0-9A-Za-z_\-]{20,}/g, '[redacted-elevenlabs-key]')
@@ -124,7 +125,7 @@
   function model(cfg) { return String(cfg.model || 'gemini-3.1-pro-preview'); }
   function geminiKey(cfg) { return cleanSecret(cfg.gemini_api_key || ''); }
 
-  function keyInfo(label, value, prefix) {
+  function keyInfo(label, value) {
     const raw = String(value == null ? '' : value);
     const cleaned = cleanSecret(raw);
     return {
@@ -133,7 +134,7 @@
       raw_chars: raw.length,
       cleaned_chars: cleaned.length,
       removed_chars: raw.length - cleaned.length,
-      prefix_hint: !cleaned ? 'missing' : (cleaned.startsWith(prefix) ? `${label}_prefix_ok` : `${label}_prefix_unexpected`)
+      format_hint: cleaned ? `${label}_key_present_format_not_validated` : 'missing'
     };
   }
 
@@ -143,10 +144,10 @@
       return ['st bad', 'נכשל: ' + (result.possible_cause || result.error || result.original_error || result.http_status)];
     }
     if (id === '1') {
-      return result.config_summary?.gemini?.has_key ? ['st ok', 'נמצא מפתח Gemini בדפדפן'] : ['st bad', 'לא נמצא מפתח Gemini'];
+      return result.config_summary?.gemini?.has_key ? ['st ok', 'נמצא מפתח בדפדפן'] : ['st bad', 'לא נמצא מפתח Gemini'];
     }
     if (id === '2') {
-      if (result.key_valid === false) return ['st bad', 'המפתח נדחה'];
+      if (result.key_valid === false) return ['st bad', 'המפתח נדחה על ידי Gemini'];
       if (result.key_valid === true) return ['st ok', 'המפתח עבר בדיקה'];
       return ['st warn', 'בדיקה לא הושלמה'];
     }
@@ -217,9 +218,9 @@
         model: model(cfg),
         use_premium: cfg.use_premium === true,
         has_access_code: !!cfg.access_code,
-        gemini: keyInfo('gemini', cfg.gemini_api_key, 'AIza'),
-        claude: keyInfo('claude', cfg.claude_api_key, 'sk-ant-'),
-        elevenlabs: keyInfo('elevenlabs', cfg.elevenlabs_api_key, 'sk_')
+        gemini: keyInfo('gemini', cfg.gemini_api_key),
+        claude: keyInfo('claude', cfg.claude_api_key),
+        elevenlabs: keyInfo('elevenlabs', cfg.elevenlabs_api_key)
       }
     };
   }
