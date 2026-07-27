@@ -1,7 +1,7 @@
 import app from './index_tidio_ai_debug_v8.js';
 
 const DIAGNOSTICS_PATHS = new Set(['/diagnostics', '/diagnostics/', '/diagnostics/index.html']);
-const STATIC_MARKER = 'RAVTEXT_DIAGNOSTICS_STATIC_V4';
+const STATIC_MARKER = 'RAVTEXT_DIAGNOSTICS_STATIC_V5';
 
 async function serveDiagnosticsPage(request, env) {
   const assetUrl = new URL(request.url);
