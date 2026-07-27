@@ -1,7 +1,7 @@
-import app from './index_tidio_ai_debug_v7.js';
+import app from './index_tidio_ai_debug_v8.js';
 
 const DIAGNOSTICS_PATHS = new Set(['/diagnostics', '/diagnostics/', '/diagnostics/index.html']);
-const STATIC_MARKER = 'RAVTEXT_DIAGNOSTICS_STATIC_V3';
+const STATIC_MARKER = 'RAVTEXT_DIAGNOSTICS_STATIC_V4';
 
 async function serveDiagnosticsPage(request, env) {
   const assetUrl = new URL(request.url);
@@ -30,7 +30,7 @@ async function serveDiagnosticsPage(request, env) {
 <body style="font-family:Arial,sans-serif;max-width:760px;margin:30px auto;padding:16px;line-height:1.6;background:#f7f7fb;color:#172033">
   <main style="background:white;border:1px solid #ddd;border-radius:14px;padding:18px">
     <h1>עמוד הבדיקות עדיין לא נבנה בפריסה</h1>
-    <p>ה-Worker פעיל, אבל הקובץ <code>public/diagnostics/index.html</code> עדיין לא הגיע ל-dist בפריסה החיה.</p>
+    <p>ה־Worker פעיל, אבל הקובץ <code>public/diagnostics/index.html</code> עדיין לא הגיע ל־dist בפריסה החיה.</p>
     <p>יש להמתין לסיום build/deploy ולרענן חזק.</p>
     <pre style="direction:ltr;text-align:left;background:#eef2ff;padding:12px;border-radius:10px">expected_marker=${STATIC_MARKER}</pre>
   </main>
