@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 const TAG = 'RAVTEXT_GOOGLE_DRIVE_UPLOAD_HARDENING_PATCH';
+const HEAVY_LABEL = 'מומלץ לקבצים כבדים';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
@@ -29,6 +30,33 @@ function assertHas(src, token, path) {
   if (!src.includes(token)) throw new Error(`[drive-upload-hardening] verification failed in ${path}: ${token}`);
 }
 
+function patchUiHeavyLabel() {
+  const path = 'src/torah_transcription/torah_transcription_ui.js';
+  const before = read(path);
+  let src = before;
+
+  assertHas(src, 'RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_UI', path);
+  assertHas(src, '_setDriveUrl', path);
+
+  if (!src.includes(HEAVY_LABEL)) {
+    const exactHeading = 'driveRow.appendChild(el("div", { class: "tt-h2" }, "קישור Google Drive"));';
+    const exactHeadingReplacement = 'driveRow.appendChild(el("div", { class: "tt-h2" }, "קישור Google Drive · מומלץ לקבצים כבדים"));';
+    if (src.includes(exactHeading)) {
+      src = src.replace(exactHeading, exactHeadingReplacement);
+    } else {
+      src = src.replace('"קישור Google Drive"', '"קישור Google Drive · מומלץ לקבצים כבדים"');
+    }
+  }
+
+  if (!src.includes('הדבק קישור Google Drive')) {
+    const oldNoteStart = 'driveRow.appendChild(el("div", { class: "tt-note" }';
+    assertHas(src, oldNoteStart, path);
+  }
+
+  assertHas(src, HEAVY_LABEL, path);
+  writeIfChanged(path, before, src);
+}
+
 function patchDirect() {
   const path = 'worker/ai_direct.js';
   const before = read(path);
@@ -55,7 +83,6 @@ async function fetchDriveBlob(body) {
   if (!/^https?:\\/\\//i.test(original)) {
     return { error: "bad_request", message: "קישור Google Drive אינו תקין" };
   }
-
   let first;
   try {
     first = await fetch(driveDownloadUrl(original), { redirect: "follow" });
@@ -68,7 +95,6 @@ async function fetchDriveBlob(body) {
     const name = remoteName(body);
     return { blob: await first.blob(), name, mime: driveContentTypeFor(name, firstType) };
   }
-
   const html = await first.text().catch(() => "");
   const confirm = driveConfirmFromHtml(html);
   if (confirm && (confirm.href || confirm.confirm)) {
@@ -84,7 +110,6 @@ async function fetchDriveBlob(body) {
     }
     return { error: "server_error", message: "Google Drive החזיר שגיאה " + second.status };
   }
-
   if (!first.ok) return { error: "server_error", message: "Google Drive החזיר שגיאה " + first.status };
   return {
     error: "bad_request",
@@ -132,7 +157,6 @@ async function uploadDriveToGemini(apiKey, body) {
 }
 `;
   src = insertBefore(src, 'async function callGemini(modelName, apiKey, promptText, body) {', helper, 'direct hardening helper');
-
   const oldGeminiDrive = `  if (body.drive_url) {
     const n = remoteName(body);
     parts.push({ file_data: { mime_type: detectMimeType(remoteType(n), n), file_uri: driveDownloadUrl(body.drive_url) } });
@@ -144,7 +168,6 @@ async function uploadDriveToGemini(apiKey, body) {
     if (uploadedDriveFile.error) return uploadedDriveFile;
     parts.push({ file_data: { mime_type: uploadedDriveFile.mimeType, file_uri: uploadedDriveFile.uri } });
   }
-
 `;
   src = replaceOnce(src, oldGeminiDrive, newGeminiDrive, 'gemini drive files upload');
 
@@ -156,7 +179,7 @@ async function uploadDriveToGemini(apiKey, body) {
 
 function verifyAll() {
   const checks = [
-    ['src/torah_transcription/torah_transcription_ui.js', ['RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_UI', 'drive_url', '_setDriveUrl']],
+    ['src/torah_transcription/torah_transcription_ui.js', ['RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_UI', 'drive_url', '_setDriveUrl', HEAVY_LABEL]],
     ['src/torah_transcription/torah_transcription_gas.js', ['RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_GAS', 'drive_url', '_has_drive_url']],
     ['worker/ai_direct.js', ['RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_DIRECT', TAG, 'uploadDriveToGemini', 'fetchDriveBlob']],
   ];
@@ -168,4 +191,5 @@ function verifyAll() {
 }
 
 patchDirect();
+patchUiHeavyLabel();
 verifyAll();
