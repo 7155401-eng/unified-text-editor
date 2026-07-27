@@ -90,7 +90,7 @@ function driveFileName(url, typedName) {
 
 `, 'ui drive inputs');
 
-  s = before(s, `  _setFile(file) {\n`, `  _setDriveUrl(url, typedName = "") {
+  s = before(s, "  _setFile(file) {\n", `  _setDriveUrl(url, typedName = "") {
     const driveUrl = String(url || "").trim();
     if (!driveUrl) return;
     const name = driveFileName(driveUrl, typedName);
