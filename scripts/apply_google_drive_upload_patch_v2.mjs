@@ -1,40 +1,84 @@
 import fs from 'node:fs';
 
 const TAG = 'RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH';
-const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
-const write = (p, a, b) => {
-  if (a === b) return console.log(`[drive-upload] no changes for ${p}`);
-  fs.writeFileSync(p, b);
-  console.log(`[drive-upload] patched ${p}`);
-};
-function rep(s, a, b, label) {
-  if (!s.includes(a)) throw new Error(`[drive-upload] missing ${label}`);
-  return s.replace(a, b);
+
+function read(path) {
+  return fs.readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
 }
-function before(s, a, b, label) {
-  if (!s.includes(a)) throw new Error(`[drive-upload] missing ${label}`);
-  return s.replace(a, b + a);
+
+function writeIfChanged(path, before, after) {
+  if (before === after) {
+    console.log(`[drive-upload] no changes for ${path}`);
+    return;
+  }
+  fs.writeFileSync(path, after);
+  console.log(`[drive-upload] patched ${path}`);
+}
+
+function replaceOnce(src, needle, replacement, label) {
+  if (!src.includes(needle)) {
+    throw new Error(`[drive-upload] missing ${label}`);
+  }
+  return src.replace(needle, replacement);
+}
+
+function insertBefore(src, needle, addition, label) {
+  if (!src.includes(needle)) {
+    throw new Error(`[drive-upload] missing ${label}`);
+  }
+  return src.replace(needle, addition + needle);
+}
+
+function insertAfter(src, needle, addition, label) {
+  if (!src.includes(needle)) {
+    throw new Error(`[drive-upload] missing ${label}`);
+  }
+  return src.replace(needle, needle + addition);
+}
+
+function assertHas(src, token, path) {
+  if (!src.includes(token)) {
+    throw new Error(`[drive-upload] verification failed in ${path}: ${token}`);
+  }
 }
 
 function patchUi() {
-  const p = 'src/torah_transcription/torah_transcription_ui.js';
-  const a = read(p);
-  if (a.includes(`${TAG}_UI`)) return write(p, a, a);
-  let s = a;
+  const path = 'src/torah_transcription/torah_transcription_ui.js';
+  const before = read(path);
+  if (before.includes(`${TAG}_UI`)) {
+    writeIfChanged(path, before, before);
+    return;
+  }
+  let s = before;
 
-  s = rep(s, `function suffixLower(name) {
+  s = insertAfter(s, `function suffixLower(name) {
   const s = String(name || "");
   const i = s.lastIndexOf(".");
   return i >= 0 ? s.slice(i).toLowerCase() : "";
 }
-
-`, `function suffixLower(name) {
-  const s = String(name || "");
-  const i = s.lastIndexOf(".");
-  return i >= 0 ? s.slice(i).toLowerCase() : "";
-}
-
+`, `
 // ${TAG}_UI
+function driveFileId(url) {
+  const raw = String(url || "").trim();
+  try {
+    const u = new URL(raw);
+    const id = u.searchParams.get("id");
+    if (id) return id;
+    const m = u.pathname.match(/\\/file\\/d\\/([^/]+)/);
+    if (m) return m[1];
+  } catch (_) {
+    const m = raw.match(/\\/file\\/d\\/([^/]+)/);
+    if (m) return m[1];
+    const q = raw.match(/[?&]id=([^&]+)/);
+    if (q) return q[1];
+  }
+  return "";
+}
+function isGoogleDriveUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return false;
+  return /(^https?:\\/\\/)?(drive|docs)\\.google\\.com\\//i.test(raw) || !!driveFileId(raw);
+}
 function driveFileName(url, typedName) {
   const typed = String(typedName || "").trim();
   if (typed) return basename(typed);
@@ -43,14 +87,13 @@ function driveFileName(url, typedName) {
     const u = new URL(raw);
     const parts = decodeURIComponent(u.pathname || "").split("/").filter(Boolean);
     const last = parts[parts.length - 1] || "";
-    if (last.includes(".")) return basename(last);
+    if (last && last.includes(".")) return basename(last);
   } catch (_) {}
   return "google-drive-file.mp3";
 }
-
 `, 'ui helper');
 
-  s = rep(s, `      file_blob: null,
+  s = replaceOnce(s, `      file_blob: null,
       file_name: "",
 `, `      file_blob: null,
       drive_url: "",
@@ -58,13 +101,13 @@ function driveFileName(url, typedName) {
       file_name: "",
 `, 'ui state');
 
-  s = rep(s, `    row.appendChild(fileRow);
-
-`, `    row.appendChild(fileRow);
-
+  s = insertAfter(s, `    row.appendChild(fileRow);
+`, `
     const driveRow = el("div", { class: "tt-card", style: "margin-top:12px;" });
     driveRow.appendChild(el("div", { class: "tt-h2" }, "קישור Google Drive"));
-    driveRow.appendChild(el("div", { class: "tt-note" }, "יש לשתף את הקובץ בדרייב: כל מי שיש לו קישור יכול לצפות. בקובץ בלי סיומת כתוב שם כמו shiur.mp3."));
+    driveRow.appendChild(el("div", { class: "tt-note" },
+      "אפשר לשתף קובץ ציבורי בדרייב במקום להעלות קובץ גדול. צריך הרשאה: כל מי שיש לו קישור יכול לצפות."
+    ));
     this.driveUrlInput = el("input", {
       type: "url",
       class: "tt-input",
@@ -75,7 +118,7 @@ function driveFileName(url, typedName) {
     this.driveNameInput = el("input", {
       type: "text",
       class: "tt-input",
-      placeholder: "שם קובץ כולל סיומת, רשות",
+      placeholder: "שם קובץ כולל סיומת, לדוגמה audio.mp3",
       style: "width:calc(100% - 50px); margin:0 25px 8px 25px;",
       value: this.appState.drive_file_name || "",
     });
@@ -87,12 +130,16 @@ function driveFileName(url, typedName) {
       onclick: () => this._setDriveUrl(this.driveUrlInput.value, this.driveNameInput.value),
     }, "בחר מקישור Drive"));
     row.appendChild(driveRow);
-
 `, 'ui drive inputs');
 
-  s = before(s, "  _setFile(file) {\n", `  _setDriveUrl(url, typedName = "") {
+  s = insertBefore(s, `  _setFile(file) {
+`, `  _setDriveUrl(url, typedName = "") {
     const driveUrl = String(url || "").trim();
     if (!driveUrl) return;
+    if (!isGoogleDriveUrl(driveUrl)) {
+      showMessage("קישור לא תקין", "יש להדביק קישור Google Drive תקין לקובץ.");
+      return;
+    }
     const name = driveFileName(driveUrl, typedName);
     this.appState.drive_url = driveUrl;
     this.appState.drive_file_name = name;
@@ -106,36 +153,38 @@ function driveFileName(url, typedName) {
       this.fileLabel.classList.remove("muted");
       this.fileLabel.textContent = "Google Drive · " + name;
     }
+    log("drive file selected: " + name);
     this._refreshFileWarning();
   }
 
 `, 'ui method');
 
-  s = rep(s, `    this.appState.file_path = file.name; // התאמה: בקוד המקורי file_path הוא נתיב; ב-JS השם בלבד
-`, `    this.appState.file_path = file.name; // התאמה: בקוד המקורי file_path הוא נתיב; ב-JS השם בלבד
-    this.appState.drive_url = "";
+  s = s.replace(
+    /(this\.appState\.file_path\s*=\s*file\.name;[^\n]*\n)/,
+    `$1    this.appState.drive_url = "";
     this.appState.drive_file_name = "";
     if (this.driveUrlInput) this.driveUrlInput.value = "";
     if (this.driveNameInput) this.driveNameInput.value = "";
-`, 'ui local clears drive');
+`
+  );
 
-  s = rep(s, `  _refreshFileWarning() {
+  s = replaceOnce(s, `  _refreshFileWarning() {
     const file = this.appState.file_blob;
 `, `  _refreshFileWarning() {
     if (this.appState.drive_url) {
-      if (this.fileWarnLabel) this.fileWarnLabel.textContent = "קישור Drive נבחר. ודא שהקובץ פתוח לכל מי שיש לו קישור ושיש שם קובץ עם סיומת.";
+      if (this.fileWarnLabel) this.fileWarnLabel.textContent = "קישור Drive נבחר. ודא שהקובץ פתוח לכל מי שיש לו קישור וששם הקובץ עם סיומת.";
       if (this.fileWarnFrame) this.fileWarnFrame.style.display = "flex";
       return;
     }
     const file = this.appState.file_blob;
 `, 'ui drive warning');
 
-  s = rep(s, `    if (s.file_name) lines.push(\`קובץ: \${s.file_name}\`);
+  s = replaceOnce(s, `    if (s.file_name) lines.push(\`קובץ: \${s.file_name}\`);
 `, `    if (s.file_name) lines.push(\`קובץ: \${s.file_name}\`);
-    if (s.drive_url) lines.push(\`Google Drive: \${s.drive_file_name || s.file_name || "קישור"}\`);
+    if (s.drive_url) lines.push("Google Drive: " + (s.drive_file_name || s.file_name || "קישור"));
 `, 'ui summary');
 
-  s = rep(s, `    } else if (key === "options") {
+  s = replaceOnce(s, `    } else if (key === "options") {
 `, `    } else if (key === "file") {
       const u = this.driveUrlInput ? (this.driveUrlInput.value || "").trim() : "";
       const n = this.driveNameInput ? (this.driveNameInput.value || "").trim() : "";
@@ -143,21 +192,22 @@ function driveFileName(url, typedName) {
     } else if (key === "options") {
 `, 'ui save file');
 
-  s = rep(s, `      if (!this.appState.file_blob) return "לא נבחר קובץ.";
-`, `      if (!this.appState.file_blob && !String(this.appState.drive_url || "").trim()) return "לא נבחר קובץ או קישור Google Drive.";
-`, 'ui validate');
+  s = s.replace(
+    /if \(!this\.appState\.file_blob\) return "לא נבחר קובץ\.";?/,
+    `if (!this.appState.file_blob && !String(this.appState.drive_url || "").trim()) return "לא נבחר קובץ או קישור Google Drive.";`
+  );
 
-  s = rep(s, `      const ftype = detectFileType(s.file_name);
+  s = replaceOnce(s, `      const ftype = detectFileType(s.file_name);
 `, `      const driveUrl = String(s.drive_url || "").trim();
       const sourceFileName = s.file_name || s.drive_file_name || driveFileName(driveUrl, "");
       const ftype = detectFileType(sourceFileName);
 `, 'ui ftype');
 
-  s = rep(s, `      const filesToSend = [s.file_blob];
+  s = replaceOnce(s, `      const filesToSend = [s.file_blob];
 `, `      const filesToSend = s.file_blob ? [s.file_blob] : [];
 `, 'ui files');
 
-  s = rep(s, `          files: filesToSend,
+  s = replaceOnce(s, `          files: filesToSend,
           ocr_examples: s.ocr_examples.length ? s.ocr_examples : null,
 `, `          files: filesToSend,
           drive_url: driveUrl || null,
@@ -165,30 +215,37 @@ function driveFileName(url, typedName) {
           ocr_examples: s.ocr_examples.length ? s.ocr_examples : null,
 `, 'ui gemini payload');
 
-  s = rep(s, `              files: [s.file_blob],
-              torah_mode: s.torah_mode,
-`, `              files: s.file_blob ? [s.file_blob] : null,
-              drive_url: driveUrl || null,
-              drive_file_name: s.drive_file_name || s.file_name || null,
-              torah_mode: s.torah_mode,
+  s = replaceOnce(s, `            files: [s.file_blob],
+            torah_mode: s.torah_mode,
+`, `            files: s.file_blob ? [s.file_blob] : null,
+            drive_url: driveUrl || null,
+            drive_file_name: s.drive_file_name || s.file_name || null,
+            torah_mode: s.torah_mode,
 `, 'ui eleven payload');
 
-  write(p, a, s);
+  assertHas(s, `${TAG}_UI`, path);
+  assertHas(s, 'drive_url', path);
+  assertHas(s, '_setDriveUrl', path);
+  writeIfChanged(path, before, s);
 }
 
 function patchGas() {
-  const p = 'src/torah_transcription/torah_transcription_gas.js';
-  const a = read(p);
-  if (a.includes(`${TAG}_GAS`)) return write(p, a, a);
-  let s = a;
-  s = rep(s, `    files = null,           // [{name, mime, blob}] OR [File]
+  const path = 'src/torah_transcription/torah_transcription_gas.js';
+  const before = read(path);
+  if (before.includes(`${TAG}_GAS`)) {
+    writeIfChanged(path, before, before);
+    return;
+  }
+  let s = before;
+  s = replaceOnce(s, `    files = null,           // [{name, mime, blob}] OR [File]
     text_payload = null,
 `, `    files = null,           // [{name, mime, blob}] OR [File]
     drive_url = null,       // ${TAG}_GAS
     drive_file_name = null,
     text_payload = null,
 `, 'gas args');
-  s = rep(s, `    if (filesData.length) {
+
+  s = replaceOnce(s, `    if (filesData.length) {
       requestBody.files = filesData;
     }
 `, `    if (drive_url) {
@@ -199,23 +256,31 @@ function patchGas() {
       requestBody.files = filesData;
     }
 `, 'gas body');
-  s = rep(s, `      const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code"]);
+
+  s = replaceOnce(s, `      const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code"]);
 `, `      const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code", "drive_url"]);
 `, 'gas log heavy');
-  s = rep(s, `      logBody._files_count = (requestBody.files || []).length;
+
+  s = replaceOnce(s, `      logBody._files_count = (requestBody.files || []).length;
 `, `      logBody._files_count = (requestBody.files || []).length;
       logBody._has_drive_url = !!requestBody.drive_url;
 `, 'gas log summary');
-  write(p, a, s);
+
+  assertHas(s, `${TAG}_GAS`, path);
+  assertHas(s, 'drive_url', path);
+  writeIfChanged(path, before, s);
 }
 
 function patchDirect() {
-  const p = 'worker/ai_direct.js';
-  const a = read(p);
-  if (a.includes(`${TAG}_DIRECT`)) return write(p, a, a);
-  let s = a;
+  const path = 'worker/ai_direct.js';
+  const before = read(path);
+  if (before.includes(`${TAG}_DIRECT`)) {
+    writeIfChanged(path, before, before);
+    return;
+  }
+  let s = before;
 
-  const h = `
+  const helper = `
 // ${TAG}_DIRECT
 function driveFileId(url) {
   const text = String(url || "").trim();
@@ -260,9 +325,9 @@ async function fetchDriveBlob(body) {
 }
 
 `;
-  s = before(s, `// הנחיה הסופית לפי סוג`, h, 'direct helper');
+  s = insertBefore(s, `// הנחיה הסופית לפי סוג`, helper, 'direct helper');
 
-  s = rep(s, `  if (body.files && body.files.length) {
+  s = replaceOnce(s, `  if (body.files && body.files.length) {
     body.files.forEach((f) => {
       parts.push({ inline_data: { mime_type: detectMimeType(f.type, f.name), data: f.content_base64 } });
     });
@@ -282,7 +347,7 @@ async function fetchDriveBlob(body) {
   if (body.text) parts.push({ text: body.text });
 `, 'direct gemini file_data');
 
-  s = rep(s, `async function callElevenLabs(apiKey, body) {
+  s = replaceOnce(s, `async function callElevenLabs(apiKey, body) {
   const file = body.files && body.files[0];
   if (!file || !file.content_base64) {
     return { error: 'server_error', message: 'לא נשלח קובץ אודיו לתמלול' };
@@ -307,13 +372,18 @@ async function fetchDriveBlob(body) {
   const modelId = (body.model && body.model.indexOf('elevenlabs-') === 0)
 `, 'direct eleven start');
 
-  s = rep(s, `  form.append('file', base64ToBlob(file.content_base64, detectMimeType(file.type, file.name)), file.name || 'audio');
+  s = replaceOnce(s, `  form.append('file', base64ToBlob(file.content_base64, detectMimeType(file.type, file.name)), file.name || 'audio');
 `, `  form.append('file', audioBlob, audioName || 'audio');
 `, 'direct eleven append');
 
-  write(p, a, s);
+  assertHas(s, `${TAG}_DIRECT`, path);
+  assertHas(s, 'driveDownloadUrl', path);
+  assertHas(s, 'fetchDriveBlob', path);
+  writeIfChanged(path, before, s);
 }
 
 patchUi();
 patchGas();
 patchDirect();
+
+console.log('[drive-upload] verification passed');
