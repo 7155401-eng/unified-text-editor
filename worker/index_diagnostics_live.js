@@ -1,18 +1,17 @@
-import app from './index_tidio_ai_debug_v5.js';
+import app from './index_tidio_ai_debug_v7.js';
 
 const DIAGNOSTICS_PATHS = new Set(['/diagnostics', '/diagnostics/', '/diagnostics/index.html']);
-const STATIC_MARKER = 'RAVTEXT_DIAGNOSTICS_STATIC_V2';
+const STATIC_MARKER = 'RAVTEXT_DIAGNOSTICS_STATIC_V3';
 
 async function serveDiagnosticsPage(request, env) {
   const assetUrl = new URL(request.url);
   assetUrl.pathname = '/diagnostics/index.html';
   assetUrl.search = '';
   const assetRequest = new Request(assetUrl.toString(), request);
-  let assetResponse;
   let html = '';
 
   try {
-    assetResponse = await env.ASSETS.fetch(assetRequest);
+    const assetResponse = await env.ASSETS.fetch(assetRequest);
     html = await assetResponse.text();
   } catch (error) {
     html = '';
@@ -31,8 +30,8 @@ async function serveDiagnosticsPage(request, env) {
 <body style="font-family:Arial,sans-serif;max-width:760px;margin:30px auto;padding:16px;line-height:1.6;background:#f7f7fb;color:#172033">
   <main style="background:white;border:1px solid #ddd;border-radius:14px;padding:18px">
     <h1>עמוד הבדיקות עדיין לא נבנה בפריסה</h1>
-    <p>הנתיב נתפס על ידי ה־Worker, אבל הקובץ <code>public/diagnostics/index.html</code> עדיין לא הגיע ל־dist בפריסה החיה.</p>
-    <p>יש להמתין לסיום GitHub Pages build ואז לרענן חזק.</p>
+    <p>ה-Worker פעיל, אבל הקובץ <code>public/diagnostics/index.html</code> עדיין לא הגיע ל-dist בפריסה החיה.</p>
+    <p>יש להמתין לסיום build/deploy ולרענן חזק.</p>
     <pre style="direction:ltr;text-align:left;background:#eef2ff;padding:12px;border-radius:10px">expected_marker=${STATIC_MARKER}</pre>
   </main>
 </body>
@@ -52,8 +51,6 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    if (typeof app.scheduled === 'function') {
-      return app.scheduled(event, env, ctx);
-    }
+    if (typeof app.scheduled === 'function') return app.scheduled(event, env, ctx);
   },
 };
