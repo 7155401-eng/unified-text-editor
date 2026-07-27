@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>בדיקות AI - רב טקסט</title>
-  <!-- RAVTEXT_DIAGNOSTICS_STATIC_V3 -->
+  <!-- RAVTEXT_DIAGNOSTICS_STATIC_V4 -->
   <style>
     *{box-sizing:border-box}
     body{margin:0;background:#f5f7fb;color:#172033;font-family:Arial,"Segoe UI",sans-serif;line-height:1.55}
@@ -32,8 +32,8 @@
 <main>
   <section class="box">
     <h1>בדיקות AI ללא Console</h1>
-    <p>העמוד הזה בודק את מסלול ה-AI בלי לפתוח Console.</p>
-    <p class="muted">הבדיקה לא מציגה מפתח API מלא. היא מציגה רק אורך, סטטוס, סיבה משוערת ו-debug_id.</p>
+    <p>העמוד הזה בודק את מפתח ה־AI בלי לפתוח Console.</p>
+    <p class="muted">הבדיקה לא מציג מפתח API מלא. היא מצייג רק� אורך, סטטוס, מקור שמירה משוער ו־debug_id.</p>
     <button id="all">הרץ בדיקות 1–3</button>
     <button id="copy" class="alt">העתק תוצאות</button>
     <button id="down" class="alt">הורד JSON</button>
@@ -42,14 +42,14 @@
 
   <section class="grid">
     <div class="box">
-      <h2>1. דפדפן</h2>
-      <p>בודק האם ההגדרות והמפתח קיימים בדפדפן.</p>
+      <h2>1. דפדפן ואחסון בדפדפן</h2>
+      <p>בודק איפו שמורים מפתחות AI בדפדפן, כולל ההגדרות הכלליות.</p>
       <button data-run="1">הפעל 1</button>
       <span id="s1" class="st">טרם הופעל</span>
     </div>
     <div class="box">
       <h2>2. מפתח Gemini</h2>
-      <p>בודק את המפתח מול Gemini בלי קובץ.</p>
+      <p>בודק את המפתח שנמצא מול Gemini בלי קובץ.</p>
       <button data-run="2">הפעל 2</button>
       <span id="s2" class="st">טרם הופעל</span>
     </div>
@@ -77,8 +77,8 @@
 
 <script>
 (() => {
-  const VERSION = '20260727-static-v3-no-prefix-validation';
-  const CONFIG_KEY = 'ravtext.torah_transcription.config';
+  const VERSION = '20260727-static-v4-storage-scan';
+  const LEGACY_CONFIG_KEY = 'ravtext.torah_transcription.config';
   const state = { version: VERSION, page: location.href, started_at: new Date().toISOString(), results: {} };
   const $ = (id) => document.getElementById(id);
 
@@ -107,7 +107,7 @@
     if (value == null || typeof value === 'number' || typeof value === 'boolean') return value;
     if (typeof value === 'string') return redactText(value);
     if (depth > 6) return '[deep]';
-    if (Array.isArray(value)) return value.slice(0, 80).map((item) => safe(item, depth + 1));
+    if (Array.isArray(value)) return value.slice(0, 120).map((item) => safe(item, depth + 1));
     const out = {};
     for (const [key, item] of Object.entries(value)) {
       if (/api[_-]?key|access[_-]?code|token|secret|password|authorization/i.test(key)) {
@@ -121,11 +121,16 @@
     return out;
   }
 
-  function config() { return parseJson(localStorage.getItem(CONFIG_KEY)); }
-  function model(cfg) { return String(cfg.model || 'gemini-3.1-pro-preview'); }
-  function geminiKey(cfg) { return cleanSecret(cfg.gemini_api_key || ''); }
+  function isPossibleSecret(value) {
+    const v = cleanSecret(value);
+    if (v.length < 20) return false;
+    if (/^(true|false|null|undefined)$/i.test(v)) return false;
+    if (/^https?:\/\//i.test(v)) return false;
+    if (/^[\d.,:-]+$/.test(v)) return false;
+    return /[A-Za-z]/.test(v) && /[0-9]/.test(v);
+  }
 
-  function keyInfo(label, value) {
+  function keyInfo(label, value, source = null) {
     const raw = String(value == null ? '' : value);
     const cleaned = cleanSecret(raw);
     return {
@@ -134,9 +139,141 @@
       raw_chars: raw.length,
       cleaned_chars: cleaned.length,
       removed_chars: raw.length - cleaned.length,
-      format_hint: cleaned ? `${label}_key_present_format_not_validated` : 'missing'
+      format_hint: cleaned ? `${label}_key_present_format_not_validated` : 'missing',
+      source
     };
   }
+
+  function addCandidate(candidates, provider, value, source) {
+    const cleaned = cleanSecret(value);
+    if (!isPossibleSecret(cleaned)) return;
+    candidates.push({
+      provider,
+      value: cleaned,
+      storage: source.storage,
+      storage_key: source.storage_key,
+      path: source.path,
+      chars: cleaned.length,
+      score: source.score || 0
+    });
+  }
+
+  function scanObject(value, source, candidates, depth = 0) {
+    if (value == null || depth > 8) return;
+
+    if (typeof value === 'string') {
+      const v = value.trim();
+      const parsed = parseJson(v);
+      if (parsed && Object.keys(parsed).length) {
+        scanObject(parsed, source, candidates, depth + 1);
+        return;
+      }
+      if (isPossibleSecret(v)) {
+        const path = String(source.path || '').toLowerCase();
+        const skey = String(source.storage_key || '').toLowerCase();
+        const combined = `${key}.${path}`;
+        let provider = 'unknown';
+        let score = 1;
+        if (/gemini|google|ai[_-]?studio|generative/.test(combined)) { provider = 'gemini'; score = 100; }
+        else if (/claude|anthropic/.test(combined)) { provider = 'claude'; score = 80; }
+        else if (/eleven|voice/.test(combined)) { provider = 'elevenlabs'; score = 60; }
+        else if (/api[_-]?key|apikey|token|secret|key/.test(combined)) { score = 20; }
+        addCandidate(candidates, provider, v, { ...source, score });
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => scanObject(item, { ...source, path: `${source.path || '$'}[${index}]` }, candidates, depth + 1));
+      return;
+    }
+
+    if (typeof value === 'object') {
+      for (const [key, item] of Object.entries(value)) {
+        scanObject(item, { ...source, path: source.path ? `${source.path}.${key}` : key }, candidates, depth + 1);
+      }
+    }
+  }
+
+  function scanStorageArea(storage, storageName) {
+    const candidates = [];
+    const scanned_keys = [];
+    try {
+      for (let i = 0; i < storage.length; i++) {
+        const storageKey = storage.key(i);
+        const raw = storage.getItem(storageKey);
+        const interesting = /ravtext|ai|gemini|google|claude|anthropic|eleven|api|key|token|secret|config|setting/i.test(storageKey || '');
+        scanned_keys.push({ storage: storageName, key: storageKey, chars: raw ? raw.length : 0, interesting });
+        if (!interesting && !(raw && /gemini|google|api[_-]?key|apikey|claude|anthropic|eleven/i.test(raw))) continue;
+        const parsed = parseJson(raw);
+        if (parsed && Object.keys(parsed).length) {
+          scanObject(parsed, { storage: storageName, storage_key: storageKey, path: '' }, candidates);
+        } else {
+          scanObject(raw, { storage: storageName, storage_key: storageKey, path: '' }, candidates);
+        }
+      }
+    } catch (error) {
+      return { candidates, scanned_keys, error: error && error.message ? error.message : String(error) };
+    }
+    return { candidates, scanned_keys };
+  }
+
+  function findStoredKeys() {
+    const legacy = parseJson(localStorage.getItem(LEGACY_CONFIG_KEY));
+    const allCandidates = [];
+
+    addCandidate(allCandidates, 'gemini', legacy.gemini_api_key, {
+      storage: 'localStorage',
+      storage_key: LEGACY_CONFIG_KEY,
+      path: 'gemini_api_key',
+      score: legacy.gemini_api_key ? 200 : 0
+    });
+    addCandidate(allCandidates, 'claude', legacy.claude_api_key, {
+      storage: 'localStorage',
+      storage_key: LEGACY_CONFIG_KEY,
+      path: 'claude_api_key',
+      score: legacy.claude_api_key ? 160 : 0
+    });
+    addCandidate(allCandidates, 'elevenlabs', legacy.elevenlabs_api_key, {
+      storage: 'localStorage',
+      storage_key: LEGACY_CONFIG_KEY,
+      path: 'elevenlabs_api_key',
+      score: legacy.elevenlabs_api_key ? 140 : 0
+    });
+
+    const localScan = scanStorageArea(localStorage, 'localStorage');
+    const sessionScan = scanStorageArea(sessionStorage, 'sessionStorage');
+    allCandidates.push(...localScan.candidates, ...sessionScan.candidates);
+
+    const byProvider = (provider) => allCandidates
+      .filter((c) => c.provider === provider)
+      .sort((a, b) => b.score - a.score || b.chars - a.chars)[0] || null;
+
+    const geminiSpecific = byProvider('gemini');
+    const fallbackUnknown = allCandidates
+      .filter((c) => c.provider === 'unknown')
+      .sort((a, b) => b.score - a.score || b.chars - a.chars)[0] || null;
+
+    const selectedGemini = geminiSpecific || fallbackUnknown || null;
+
+    return {
+      legacy,
+      selected_gemini: selectedGemini,
+      selected_claude: byProvider('claude'),
+      selected_elevenlabs: byProvider('elevenlabs'),
+      candidates: allCandidates,
+      scans: {
+        localStorage: localScan,
+        sessionStorage: sessionScan
+      }
+    };
+  }
+
+  function getSelectedGeminiKey() {
+    return findStoredKeys().selected_gemini?.value || '';
+  }
+
+  function model(cfg) { return String(cfg.model || 'gemini-3.1-pro-preview'); }
 
   function renderStatus(id, result) {
     if (!result) return ['st', 'טרם הופעל'];
@@ -144,7 +281,7 @@
       return ['st bad', 'נכשל: ' + (result.possible_cause || result.error || result.original_error || result.http_status)];
     }
     if (id === '1') {
-      return result.config_summary?.gemini?.has_key ? ['st ok', 'נמצא מפתח בדפדפן'] : ['st bad', 'לא נמצא מפתח Gemini'];
+      return result.config_summary?.gemini?.has_key ? ['st ok', 'נמצא מפתח Gemini'] : ['st bad', 'לא נמצא מפתח Gemini'];
     }
     if (id === '2') {
       if (result.key_valid === false) return ['st bad', 'המפתח נדחה על ידי Gemini'];
@@ -204,11 +341,21 @@
   }
 
   async function run1() {
-    const cfg = config();
+    const found = findStoredKeys();
+    const cfg = found.legacy || {};
+    const publicCandidates = found.candidates.map((c) => ({
+      provider: c.provider,
+      storage: c.storage,
+      storage_key: c.storage_key,
+      path: c.path,
+      chars: c.chars,
+      score: c.score
+    });
+
     return {
-      diagnostic: '01-client-config',
+      diagnostic: '01-browser-storage-scan',
       version: VERSION,
-      config_found: !!localStorage.getItem(CONFIG_KEY),
+      legacy_config_found: !!localStorage.getItem(LEGACY_CONFIG_KEY),
       auth: {
         has_auth_object: !!window.__RAVTEXT_AUTH__,
         paid: !!window.__RAVTEXT_AUTH__?.paid,
@@ -218,28 +365,43 @@
         model: model(cfg),
         use_premium: cfg.use_premium === true,
         has_access_code: !!cfg.access_code,
-        gemini: keyInfo('gemini', cfg.gemini_api_key),
-        claude: keyInfo('claude', cfg.claude_api_key),
-        elevenlabs: keyInfo('elevenlabs', cfg.elevenlabs_api_key)
+        gemini: keyInfo('gemini', found.selected_gemini?.value || '', found.selected_gemini ? {
+          storage: found.selected_gemini.storage,
+          storage_key: found.selected_gemini.storage_key,
+          path: found.selected_gemini.path,
+          source_type: found.selected_gemini.provider === 'gemini' ? 'provider_specific' : 'fallback_unknown'
+        } : null),
+        claude: keyInfo('claude', found.selected_claude?.value || ''),
+        elevenlabs: keyInfo('elevenlabs', found.selected_elevenlabs?.value || '')
+      },
+      storage_scan_summary: {
+        candidates_count: publicCandidates.length,
+        candidates: publicCandidates,
+        localStorage_keys: found.scans.localStorage.scanned_keys,
+        sessionStorage_keys: found.scans.sessionStorage.scanned_keys,
+        localStorage_error: found.scans.localStorage.error || null,
+        sessionStorage_error: found.scans.sessionStorage.error || null
       }
     };
   }
 
   async function run2() {
-    const cfg = config();
+    const found = findStoredKeys();
+    const cfg = found.legacy || {};
     return {
       diagnostic: '02-gemini-key-isolated',
       version: VERSION,
       ...(await postJson('/api/ai-tools/diagnose-key', {
         provider: 'gemini',
         model: model(cfg),
-        api_key: geminiKey(cfg)
+        api_key: getSelectedGeminiKey()
       }))
     };
   }
 
   async function run3() {
-    const cfg = config();
+    const found = findStoredKeys();
+    const cfg = found.legacy || {};
     return {
       diagnostic: '03-gas-minimal',
       version: VERSION,
@@ -248,7 +410,7 @@
         diagnostic_name: '03-gas-minimal',
         prompt_type: 'printed',
         model: model(cfg),
-        api_key: geminiKey(cfg),
+        api_key: getSelectedGeminiKey(),
         text: 'Diagnostic ping. Return only: OK',
         custom_prompt: 'Return only the word OK.'
       }, 'text/plain;charset=utf-8'))
@@ -257,7 +419,8 @@
 
   async function run4(file) {
     if (!file) return { diagnostic: '04-file-flow', error: 'no_file_selected' };
-    const cfg = config();
+    const found = findStoredKeys();
+    const cfg = found.legacy || {};
     const kind = fileKind(file);
     const content = await readFileBase64(file);
     return {
@@ -269,7 +432,7 @@
         diagnostic_name: '04-file-flow',
         prompt_type: kind === 'audio' ? 'audio_regular' : 'printed',
         model: model(cfg),
-        api_key: geminiKey(cfg),
+        api_key: getSelectedGeminiKey(),
         files: [{ name: file.name, type: kind, mime: file.type || 'application/octet-stream', content_base64: content }],
         text: kind === 'audio' ? '' : 'Diagnostic file flow.',
         custom_prompt: 'Return a short technical confirmation.'
@@ -323,7 +486,7 @@
       await navigator.clipboard.writeText($('out').textContent);
       alert('התוצאות הועתקו');
     } catch (_) {
-      alert('לא הצלחתי להעתיק אוטומטית. נא לסמן ולהעתיק ידנית מהתיבה.');
+      alert('לא הצלחתי להעתיק אוטומטיפ. נא לסמן ולהעתיק ידנית מהתיבה.');
     }
   };
 
