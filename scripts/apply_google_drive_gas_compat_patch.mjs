@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 
 const TAG = 'RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_GAS_COMPAT';
+const DIRECT_ANCHOR = '// הנחיה הסופית לפי סוג';
+const DIRECT_TAG = 'RAVTEXT_GOOGLE_DRIVE_DIRECT_ANCHOR_COMPAT';
 
 function read(path) {
   return fs.readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
@@ -27,7 +29,7 @@ function addDriveArgs(src) {
 
   const exactFilesLine = '    files = null,           // [{name, mime, blob}] OR [File]\n';
   const driveArgs =
-    `    drive_url = null,        // ${TAG}\n` +
+    `    drive_url = null,       // ${TAG}\n` +
     `    drive_file_name = null,\n`;
 
   if (src.includes(exactFilesLine)) {
@@ -108,5 +110,23 @@ function patchGas() {
   writeIfChanged(path, before, src);
 }
 
+function patchDirectAnchor() {
+  const path = 'worker/ai_direct.js';
+  const before = read(path);
+  let src = before;
+
+  const callGemini = 'async function callGemini(modelName, apiKey, promptText, body) {';
+  assertHas(src, callGemini, path);
+
+  if (!src.includes(DIRECT_ANCHOR)) {
+    src = src.replace(callGemini, `${DIRECT_ANCHOR} // ${DIRECT_TAG}\n${callGemini}`);
+  }
+
+  assertHas(src, DIRECT_ANCHOR, path);
+  assertHas(src, callGemini, path);
+  writeIfChanged(path, before, src);
+}
+
 patchGas();
+patchDirectAnchor();
 console.log('[drive-gas-compat] verification passed');
