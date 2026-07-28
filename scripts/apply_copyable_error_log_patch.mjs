@@ -7,6 +7,7 @@ const DIRECT_TAG = 'RAVTEXT_ERROR_DETAILS_FOR_GEMINI_DRIVE_DIRECT';
 function read(path) {
   return fs.readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
 }
+
 function writeIfChanged(path, before, after) {
   if (before === after) {
     console.log(`[gemini-drive-error-details] no changes for ${path}`);
@@ -15,45 +16,60 @@ function writeIfChanged(path, before, after) {
   fs.writeFileSync(path, after);
   console.log(`[gemini-drive-error-details] patched ${path}`);
 }
-function must(src, token, label) {
-  if (!src.includes(token)) throw new Error(`[gemini-drive-error-details] missing ${label}`);
+
+function requireToken(source, token, label, path) {
+  if (!source.includes(token)) {
+    throw new Error(`[gemini-drive-error-details] missing ${label} in ${path}`);
+  }
 }
-function replace(src, a, b, label) {
-  must(src, a, label);
-  return src.replace(a, b);
+
+function replaceRequired(source, needle, replacement, label, path) {
+  if (!source.includes(needle)) {
+    throw new Error(`[gemini-drive-error-details] missing ${label} in ${path}`);
+  }
+  const after = source.replace(needle, replacement);
+  if (after === source) {
+    throw new Error(`[gemini-drive-error-details] failed to replace ${label} in ${path}`);
+  }
+  return after;
 }
 
 function patchUi() {
   const path = 'src/torah_transcription/torah_transcription_ui.js';
   const before = read(path);
-  if (before.includes(UI_TAG)) return writeIfChanged(path, before, before);
-  let s = before;
+
+  if (before.includes(UI_TAG)) {
+    requireToken(before, 'redactedErrorDetails', 'UI redaction helper', path);
+    requireToken(before, 'לוג שגיאה מפורט', 'visible details text', path);
+    return writeIfChanged(path, before, before);
+  }
 
   const oldShow = `function showMessage(title, msg) {
   try {
-    window.alert(\`${title}\\n\\n${msg}\`);
+    window.alert(\`\${title}\\n\\n\${msg}\`);
   } catch (e) {
     /* swallow */
   }
 }
 `;
+
   const newShow = `// ${UI_TAG}
 function redactedErrorDetails(value) {
   try {
     const seen = new WeakSet();
-    const text = JSON.stringify(value, (k, v) => {
-      if (/api[_-]?key|access[_-]?code|authorization|token|secret/i.test(k)) return "[REDACTED]";
-      if (typeof v === "object" && v) {
-        if (seen.has(v)) return "[circular]";
-        seen.add(v);
+    const text = JSON.stringify(value, (key, item) => {
+      if (/api[_-]?key|access[_-]?code|authorization|token|secret/i.test(key)) return "[REDACTED]";
+      if (typeof item === "object" && item) {
+        if (seen.has(item)) return "[circular]";
+        seen.add(item);
       }
-      if (typeof v === "string") {
-        return v
+      if (typeof item === "string") {
+        return item
           .replace(/AIza[0-9A-Za-z_\\-]{20,}/g, "AIza...[REDACTED]")
           .replace(/sk-[0-9A-Za-z_\\-]{12,}/g, "sk-...[REDACTED]")
           .slice(0, 5000);
       }
-      return v;
+      return item;
     }, 2);
     return text || "";
   } catch (_) {
@@ -63,33 +79,40 @@ function redactedErrorDetails(value) {
 function showMessage(title, msg, details = null) {
   try {
     const extra = details ? "\\n\\nלוג שגיאה מפורט:\\n" + redactedErrorDetails(details) : "";
-    window.alert(\`${title}\\n\\n${msg}\${extra}\`);
+    window.alert(\`\${title}\\n\\n\${msg}\${extra}\`);
   } catch (e) {
     /* swallow */
   }
 }
 `;
-  s = replace(s, oldShow, newShow, 'showMessage');
 
-  // Put the real server/Gemini details into the visible error if present.
-  s = s.replaceAll(
-    `showMessage(fe.title, fe.message);`,
-    `showMessage(fe.title, fe.message, { stage: this.currentStep, error_name: e && e.name, error_code: e && e.error_code, error_message: e && e.message, details: e && e.details, state: this.appState });`
-  );
+  let source = replaceRequired(before, oldShow, newShow, 'showMessage function', path);
 
-  must(s, UI_TAG, 'ui tag');
-  must(s, 'לוג שגיאה מפורט', 'visible details text');
-  writeIfChanged(path, before, s);
+  const oldCall = 'showMessage(fe.title, fe.message);';
+  const newCall = 'showMessage(fe.title, fe.message, { stage: this.currentStep, error_name: e && e.name, error_code: e && e.error_code, error_message: e && e.message, details: e && e.details, state: this.appState });';
+  if (source.includes(oldCall)) {
+    source = source.replaceAll(oldCall, newCall);
+  } else if (!source.includes(newCall)) {
+    throw new Error(`[gemini-drive-error-details] missing showMessage error call in ${path}`);
+  }
+
+  requireToken(source, UI_TAG, 'UI tag', path);
+  requireToken(source, 'redactedErrorDetails', 'UI redaction helper', path);
+  requireToken(source, 'לוג שגיאה מפורט', 'visible details text', path);
+  writeIfChanged(path, before, source);
 }
 
 function patchGas() {
   const path = 'src/torah_transcription/torah_transcription_gas.js';
   const before = read(path);
-  if (before.includes(GAS_TAG)) return writeIfChanged(path, before, before);
-  let s = before;
 
-  s = replace(s,
-`export class GasServerError extends Error {
+  if (before.includes(GAS_TAG)) {
+    requireToken(before, 'this.details = details', 'GAS details property', path);
+    requireToken(before, 'response_body_chars', 'GAS response details', path);
+    return writeIfChanged(path, before, before);
+  }
+
+  const oldClass = `export class GasServerError extends Error {
   constructor(errorCode, message = "", balanceAgorot = 0) {
     super(message || errorCode);
     this.name = "GasServerError";
@@ -98,8 +121,9 @@ function patchGas() {
     this.balance_agorot = balanceAgorot;
   }
 }
-`,
-`export class GasServerError extends Error {
+`;
+
+  const newClass = `export class GasServerError extends Error {
   constructor(errorCode, message = "", balanceAgorot = 0, details = null) {
     super(message || errorCode);
     this.name = "GasServerError";
@@ -109,16 +133,15 @@ function patchGas() {
     this.details = details; // ${GAS_TAG}
   }
 }
-`, 'GasServerError constructor');
+`;
 
-  s = replace(s,
-`        throw new GasServerError(
+  const oldThrow = `        throw new GasServerError(
           err,
           data.message || "",
           data.balance_agorot || 0
-        );
-`,
-`        throw new GasServerError(
+        );`;
+
+  const newThrow = `        throw new GasServerError(
           err,
           data.message || "",
           data.balance_agorot || 0,
@@ -127,28 +150,41 @@ function patchGas() {
             response_body: data,
             response_body_chars: text.length,
           }
-        );
-`, 'GasServerError throw');
+        );`;
 
-  must(s, GAS_TAG, 'gas tag');
-  must(s, 'response_body_chars', 'gas details');
-  writeIfChanged(path, before, s);
+  let source = replaceRequired(before, oldClass, newClass, 'GasServerError constructor', path);
+  source = replaceRequired(source, oldThrow, newThrow, 'GasServerError throw', path);
+
+  requireToken(source, GAS_TAG, 'GAS tag', path);
+  requireToken(source, 'response_body_chars', 'GAS response details', path);
+  writeIfChanged(path, before, source);
 }
 
 function patchWorker() {
   const path = 'worker/ai_direct.js';
   const before = read(path);
-  if (before.includes(DIRECT_TAG)) return writeIfChanged(path, before, before);
-  let s = before;
 
-  must(s, 'fetchDriveBlob', 'fetchDriveBlob');
-  must(s, 'uploadDriveToGemini', 'uploadDriveToGemini');
-  must(s, 'async function callGemini', 'callGemini');
+  if (before.includes(DIRECT_TAG)) {
+    const required = [
+      '_driveErrDetails',
+      'gemini_files_start',
+      'gemini_files_upload_finalize',
+      'gemini_files_missing_uri',
+      'gemini_generate_content',
+      'drive_download_not_file',
+    ];
+    for (const token of required) requireToken(before, token, token, path);
+    return writeIfChanged(path, before, before);
+  }
 
-  const helper = `
-// ${DIRECT_TAG}
-function _clipDriveErr(x, max = 3500) {
-  return String(x || "").slice(0, max);
+  let source = before;
+  requireToken(source, 'fetchDriveBlob', 'fetchDriveBlob', path);
+  requireToken(source, 'uploadDriveToGemini', 'uploadDriveToGemini', path);
+  requireToken(source, 'async function callGemini', 'callGemini', path);
+
+  const helper = `// ${DIRECT_TAG}
+function _clipDriveErr(value, max = 3500) {
+  return String(value || "").slice(0, max);
 }
 function _driveErrDetails(body, extra = {}) {
   const url = String((body && body.drive_url) || "").trim();
@@ -167,146 +203,67 @@ function _driveErrDetails(body, extra = {}) {
   };
 }
 function _driveErr(code, message, body, extra = {}) {
-  return { error: code || "server_error", message: message || code || "server_error", details: _driveErrDetails(body, extra) };
+  return {
+    error: code || "server_error",
+    message: message || code || "server_error",
+    details: _driveErrDetails(body, extra),
+  };
 }
+
 `;
-  s = s.replace('async function callGemini(modelName, apiKey, promptText, body) {', helper + '\nasync function callGemini(modelName, apiKey, promptText, body) {');
 
-  const fetchRe = /async function fetchDriveBlob\(body\) \{[\s\S]*?\n\}\nasync function uploadDriveToGemini/;
-  const fetchNew = `async function fetchDriveBlob(body) {
-  const original = String(body.drive_url || "").trim();
-  if (!/^https?:\\/\\//i.test(original)) {
-    return _driveErr("bad_request", "קישור Google Drive אינו תקין", body, { stage: "drive_url_validation", input_chars: original.length });
-  }
+  const callGeminiAnchor = 'async function callGemini(modelName, apiKey, promptText, body) {';
+  source = replaceRequired(source, callGeminiAnchor, helper + callGeminiAnchor, 'worker helper insertion point', path);
 
-  let first;
-  const firstUrl = driveDownloadUrl(original);
-  try {
-    first = await fetch(firstUrl, { redirect: "follow" });
-  } catch (e) {
-    return _driveErr("server_error", "לא הצלחתי להוריד את הקובץ מ-Google Drive", body, {
-      stage: "drive_fetch_network",
-      download_url_used: firstUrl,
-      exception_name: e && e.name ? e.name : "",
-      exception_message: e && e.message ? e.message : String(e),
-    });
-  }
+  const startOld = `  if (!start.ok || !uploadUrl) {
+    return { error: "server_error", message: "Gemini Files upload start failed " + start.status + ": " + await start.text().catch(() => "") };
+  }`;
+  const startNew = `  if (!start.ok || !uploadUrl) {
+    const responseText = await start.text().catch(() => "");
+    return _driveErr(
+      start.status === 401 || start.status === 403 ? "invalid_api_key" : "server_error",
+      "Gemini Files upload start failed " + start.status + ": " + responseText,
+      body,
+      {
+        stage: "gemini_files_start",
+        http_status: start.status,
+        upload_url_present: !!uploadUrl,
+        file_name: remote.name,
+        file_size: remote.blob.size,
+        mime_type: mime,
+        response_body: _clipDriveErr(responseText),
+      }
+    );
+  }`;
+  source = replaceRequired(source, startOld, startNew, 'Gemini Files start error block', path);
 
-  const firstType = first.headers.get("content-type") || "";
-  if (first.ok && !/text\\/html/i.test(firstType)) {
-    const name = driveRemoteName(body);
-    const blob = await first.blob();
-    return { blob, name, mime: driveContentTypeFor(name, firstType), size: blob.size };
-  }
+  const finishOld = `  if (!finish.ok) {
+    return { error: "server_error", message: "Gemini Files upload failed " + finish.status + ": " + text };
+  }`;
+  const finishNew = `  if (!finish.ok) {
+    return _driveErr(
+      finish.status === 401 || finish.status === 403 ? "invalid_api_key" : "server_error",
+      "Gemini Files upload failed " + finish.status + ": " + text,
+      body,
+      {
+        stage: "gemini_files_upload_finalize",
+        http_status: finish.status,
+        file_name: remote.name,
+        file_size: remote.blob.size,
+        mime_type: mime,
+        response_body: _clipDriveErr(text),
+      }
+    );
+  }`;
+  source = replaceRequired(source, finishOld, finishNew, 'Gemini Files finalize error block', path);
 
-  const html = await first.text().catch(() => "");
-  const confirm = driveConfirmFromHtml(html);
-  if (confirm && (confirm.href || confirm.confirm)) {
-    const nextUrl = confirm.href
-      ? new URL(confirm.href, "https://drive.google.com").toString()
-      : driveDownloadUrl(original) + "&confirm=" + encodeURIComponent(confirm.confirm) + (confirm.uuid ? "&uuid=" + encodeURIComponent(confirm.uuid) : "");
-    let second;
-    try {
-      const cookie = first.headers.get("set-cookie");
-      second = await fetch(nextUrl, { redirect: "follow", headers: cookie ? { cookie } : {} });
-    } catch (e) {
-      return _driveErr("server_error", "Google Drive דרש אישור, אבל ההורדה השנייה נכשלה", body, {
-        stage: "drive_confirm_fetch_network",
-        http_status_initial: first.status,
-        content_type_initial: firstType,
-        exception_name: e && e.name ? e.name : "",
-        exception_message: e && e.message ? e.message : String(e),
-      });
-    }
-
-    const secondType = second.headers.get("content-type") || "";
-    if (second.ok && !/text\\/html/i.test(secondType)) {
-      const name = driveRemoteName(body);
-      const blob = await second.blob();
-      return { blob, name, mime: driveContentTypeFor(name, secondType), size: blob.size };
-    }
-
-    return _driveErr("server_error", "Google Drive לא החזיר קובץ גם אחרי אישור הורדה", body, {
-      stage: "drive_confirm_response",
-      http_status_initial: first.status,
-      http_status_confirm: second.status,
-      content_type_initial: firstType,
-      content_type_confirm: secondType,
-      response_preview: _clipDriveErr(await second.text().catch(() => ""), 1200),
-    });
-  }
-
-  return _driveErr(first.ok ? "bad_request" : "server_error", "Google Drive החזיר HTML או שגיאה במקום קובץ, ולכן הקובץ לא הגיע ל-Gemini", body, {
-    stage: "drive_download_not_file",
-    http_status: first.status,
-    content_type: firstType,
-    confirm_found: !!(confirm && (confirm.href || confirm.confirm)),
-    response_preview: _clipDriveErr(html, 1200),
-  });
-}
-
-async function uploadDriveToGemini`;
-  s = s.replace(fetchRe, fetchNew);
-
-  const uploadRe = /async function uploadDriveToGemini\(apiKey, body\) \{[\s\S]*?\n\}\n\nasync function callGemini/;
-  const uploadNew = `async function uploadDriveToGemini(apiKey, body) {
-  const remote = await fetchDriveBlob(body);
-  if (remote.error) return remote;
-
-  const mime = remote.mime || driveContentTypeFor(remote.name, "");
-  const start = await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + encodeURIComponent(apiKey), {
-    method: "POST",
-    headers: {
-      "X-Goog-Upload-Protocol": "resumable",
-      "X-Goog-Upload-Command": "start",
-      "X-Goog-Upload-Header-Content-Length": String(remote.blob.size),
-      "X-Goog-Upload-Header-Content-Type": mime,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ file: { display_name: remote.name } }),
-  });
-
-  const uploadUrl = start.headers.get("x-goog-upload-url");
-  if (!start.ok || !uploadUrl) {
-    const txt = await start.text().catch(() => "");
-    return _driveErr(start.status === 401 || start.status === 403 ? "invalid_api_key" : "server_error", "Gemini Files API לא פתח upload session לקובץ Drive", body, {
-      stage: "gemini_files_start",
-      http_status: start.status,
-      upload_url_present: !!uploadUrl,
-      file_name: remote.name,
-      file_size: remote.blob.size,
-      mime_type: mime,
-      response_body: _clipDriveErr(txt),
-    });
-  }
-
-  const finish = await fetch(uploadUrl, {
-    method: "POST",
-    headers: {
-      "X-Goog-Upload-Command": "upload, finalize",
-      "X-Goog-Upload-Offset": "0",
-      "Content-Type": mime,
-      "Content-Length": String(remote.blob.size),
-    },
-    body: remote.blob,
-  });
-
-  const text = await finish.text();
-  if (!finish.ok) {
-    return _driveErr(finish.status === 401 || finish.status === 403 ? "invalid_api_key" : "server_error", "הקובץ ירד מ-Drive, אבל לא הועלה ל-Gemini Files", body, {
-      stage: "gemini_files_upload_finalize",
-      http_status: finish.status,
-      file_name: remote.name,
-      file_size: remote.blob.size,
-      mime_type: mime,
-      response_body: _clipDriveErr(text),
-    });
-  }
-
-  let data = {};
+  const parseOld = `  let data = {};
+  try { data = JSON.parse(text); } catch (_) {}
+  const file = data.file || data;`;
+  const parseNew = `  let data = {};
   try { data = JSON.parse(text); }
   catch (e) {
-    return _driveErr("server_error", "Gemini Files החזיר תשובה לא תקינה אחרי העלאת הקובץ", body, {
+    return _driveErr("server_error", "Gemini Files returned invalid JSON", body, {
       stage: "gemini_files_parse",
       file_name: remote.name,
       file_size: remote.blob.size,
@@ -315,51 +272,57 @@ async function uploadDriveToGemini`;
       exception_message: e && e.message ? e.message : String(e),
     });
   }
+  const file = data.file || data;`;
+  source = replaceRequired(source, parseOld, parseNew, 'Gemini Files JSON parse block', path);
 
-  const file = data.file || data;
-  if (!file.uri) {
-    return _driveErr("server_error", "Gemini Files לא החזיר file_uri, ולכן הקובץ לא הגיע ל-Gemini", body, {
+  const uriOld = `  if (!file.uri) return { error: "server_error", message: "Gemini Files upload did not return file uri" };`;
+  const uriNew = `  if (!file.uri) {
+    return _driveErr("server_error", "Gemini Files upload did not return file uri", body, {
       stage: "gemini_files_missing_uri",
       file_name: remote.name,
       file_size: remote.blob.size,
       mime_type: mime,
       response_json: data,
     });
-  }
+  }`;
+  source = replaceRequired(source, uriOld, uriNew, 'Gemini Files missing URI block', path);
 
-  return { uri: file.uri, mimeType: file.mimeType || mime, name: file.name || remote.name, drive_file_size: remote.blob.size };
-}
+  const uploadErrorOld = '    if (uploadedDriveFile.error) return uploadedDriveFile;';
+  const uploadErrorNew = '    if (uploadedDriveFile.error) return { ...uploadedDriveFile, details: uploadedDriveFile.details || _driveErrDetails(body, { stage: "gemini_files_upload" }) };';
+  source = replaceRequired(source, uploadErrorOld, uploadErrorNew, 'Drive upload propagation', path);
 
-async function callGemini`;
-  s = s.replace(uploadRe, uploadNew);
-
-  const oldStatus = `  if (response.status !== 200) {
+  const statusOld = `  if (response.status !== 200) {
     if (response.status === 401 || response.status === 403) return { error: 'invalid_api_key', message: responseText };
     if (response.status === 429) return { error: 'ai_quota_exceeded', message: responseText };
     return { error: 'server_error', message: 'Gemini error ' + response.status + ': ' + responseText };
-  }
-`;
-  const newStatus = `  if (response.status !== 200) {
+  }`;
+  const statusNew = `  if (response.status !== 200) {
     const details = _driveErrDetails(body, {
       stage: "gemini_generate_content",
       http_status: response.status,
       used_drive_url: !!body.drive_url,
       response_body: _clipDriveErr(responseText),
-      file_data_parts: parts.filter((p) => !!p.file_data).length,
-      inline_file_parts: parts.filter((p) => !!p.inline_data).length,
+      file_data_parts: parts.filter((part) => !!part.file_data).length,
+      inline_file_parts: parts.filter((part) => !!part.inline_data).length,
     });
     if (response.status === 401 || response.status === 403) return { error: 'invalid_api_key', message: responseText, details };
     if (response.status === 429) return { error: 'ai_quota_exceeded', message: responseText, details };
     return { error: 'server_error', message: 'Gemini error ' + response.status + ': ' + responseText, details };
-  }
-`;
-  s = replace(s, oldStatus, newStatus, 'Gemini non-200 details');
+  }`;
+  source = replaceRequired(source, statusOld, statusNew, 'Gemini non-200 details', path);
 
-  must(s, DIRECT_TAG, 'direct tag');
-  must(s, 'gemini_files_upload_finalize', 'Gemini upload error stage');
-  must(s, 'drive_download_not_file', 'Drive fetch error stage');
-  must(s, 'gemini_generate_content', 'Gemini generate stage');
-  writeIfChanged(path, before, s);
+  const required = [
+    DIRECT_TAG,
+    '_driveErrDetails',
+    'gemini_files_start',
+    'gemini_files_upload_finalize',
+    'gemini_files_missing_uri',
+    'gemini_generate_content',
+    'drive_download_not_file',
+  ];
+  for (const token of required) requireToken(source, token, token, path);
+
+  writeIfChanged(path, before, source);
 }
 
 patchUi();
