@@ -16,101 +16,90 @@ function writeIfChanged(path, before, after) {
   console.log(`[drive-gas-compat] patched ${path}`);
 }
 function assertHas(src, token, path) {
-  if (!src.includes(token)) throw new Error(`[drive-gas-compat] verification failed in ${path}: missing ${token}`);
+  if (!src.includes(token)) {
+    throw new Error(`[drive-gas-compat] verification failed in ${path}: missing ${token}`);
+  }
 }
-
 function insertAfterFirst(src, needle, addition, label) {
-  if (!src.includes(needle)) throw new Error(`[drive-gas-compat] missing ${label}`);
+  if (!src.includes(needle)) {
+    throw new Error(`[drive-gas-compat] missing ${label}`);
+  }
   return src.replace(needle, needle + addition);
 }
 
-function addDriveArgs(src) {
-  if (src.includes(TAG)) return src;
+function patchGas() {
+  const path = 'src/torah_transcription/torah_transcription_gas.js';
+  const before = read(path);
+  if (
+    before.includes(TAG) &&
+    before.includes('requestBody.drive_url') &&
+    before.includes('_has_drive_url')
+  ) {
+    writeIfChanged(path, before, before);
+    return;
+  }
 
+  let src = before;
   const exactFilesLine = '    files = null,           // [{name, mime, blob}] OR [File]\n';
   const driveArgs =
-    `    drive_url = null,       // ${TAG}\n` +
+    `    drive_url = null,        // ${TAG}\n` +
     `    drive_file_name = null,\n`;
 
-  if (src.includes(exactFilesLine)) {
-    return insertAfterFirst(src, exactFilesLine, driveArgs, 'files argument line');
+  if (!src.includes('drive_url = null')) {
+    if (src.includes(exactFilesLine)) {
+      src = insertAfterFirst(src, exactFilesLine, driveArgs, 'files argument line');
+    } else {
+      const textPayloadLine = '    text_payload = null,\n';
+      if (!src.includes(textPayloadLine)) {
+        throw new Error('[drive-gas-compat] could not locate GAS call argument block');
+      }
+      src = src.replace(textPayloadLine, driveArgs + textPayloadLine);
+    }
   }
 
-  const textPayloadLine = '    text_payload = null,\n';
-  if (src.includes(textPayloadLine)) {
-    return src.replace(textPayloadLine, driveArgs + textPayloadLine);
-  }
-
-  throw new Error('[drive-gas-compat] could not locate GAS call argument block');
-}
-
-function addDriveRequestBody(src) {
-  if (src.includes('requestBody.drive_url')) return src;
-
-  const filesBlock = `    if (filesData.length) {
+  if (!src.includes('requestBody.drive_url')) {
+    const filesBlock = `    if (filesData.length) {
       requestBody.files = filesData;
     }
 `;
-  const driveBlock = `    if (drive_url) {
+    const driveBlock = `    if (drive_url) {
       requestBody.drive_url = String(drive_url).trim();
       if (drive_file_name) requestBody.drive_file_name = _basename(drive_file_name);
     }
 `;
-  if (src.includes(filesBlock)) {
-    return src.replace(filesBlock, driveBlock + filesBlock);
-  }
-
-  const textBlock = `    if (text_payload) {
+    const textBlock = `    if (text_payload) {
       requestBody.text = text_payload;
     }
 `;
-  if (src.includes(textBlock)) {
-    return src.replace(textBlock, driveBlock + textBlock);
+    if (src.includes(filesBlock)) {
+      src = src.replace(filesBlock, driveBlock + filesBlock);
+    } else if (src.includes(textBlock)) {
+      src = src.replace(textBlock, driveBlock + textBlock);
+    } else {
+      throw new Error('[drive-gas-compat] could not locate request body insertion point');
+    }
   }
 
-  throw new Error('[drive-gas-compat] could not locate request body insertion point');
-}
-
-function addDriveLogSummary(src) {
-  let out = src;
-
-  const oldHeavy = `      const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code"]);
+  const oldHeavy = `     const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code"]);
 `;
   const newHeavy = `      const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code", "drive_url"]);
 `;
-  if (out.includes(oldHeavy)) out = out.replace(oldHeavy, newHeavy);
+  if (src.includes(oldHeavy)) src = src.replace(oldHeavy, newHeavy);
 
   const oldCount = `      logBody._files_count = (requestBody.files || []).length;
 `;
   const newCount = `      logBody._files_count = (requestBody.files || []).length;
       logBody._has_drive_url = !!requestBody.drive_url;
 `;
-  if (out.includes(oldCount) && !out.includes('_has_drive_url')) out = out.replace(oldCount, newCount);
-
-  return out;
-}
-
-function patchGas() {
-  const path = 'src/torah_transcription/torah_transcription_gas.js';
-  const before = read(path);
-  if (before.includes(TAG) && before.includes('requestBody.drive_url') && before.includes('_has_drive_url')) {
-    writeIfChanged(path, before, before);
-    return;
-  }
-
-  let src = before;
-  src = addDriveArgs(src);
-  src = addDriveRequestBody(src);
-  src = addDriveLogSummary(src);
+  if (src.includes(oldCount) && !src.includes('_has_drive_url')) src = src.replace(oldCount, newCount);
 
   assertHas(src, TAG, path);
-  assertHas(src, 'drive_url', path);
   assertHas(src, 'requestBody.drive_url', path);
   assertHas(src, '_has_drive_url', path);
   writeIfChanged(path, before, src);
 }
 
-function patchDirectAnchor() {
+function patchDirectSeed() {
   const path = 'worker/ai_direct.js';
   const before = read(path);
   let src = before;
@@ -119,14 +108,37 @@ function patchDirectAnchor() {
   assertHas(src, callGemini, path);
 
   if (!src.includes(DIRECT_ANCHOR)) {
-    src = src.replace(callGemini, `${DIRECT_ANCHOR} // ${DIRECT_TAG}\n${callGemini}`);
+    src = src.replace(
+      callGemini,
+      `${DIRECT_ANCHOR} // ${DIRECT_TAG}\n${callGemini}`
+    );
+  }
+
+  const expectedDriveBlock = `  if (body.drive_url) {
+    const n = remoteName(body);
+    parts.push({ file_data: { mime_type: detectMimeType(remoteType(n), n), file_uri: driveDownloadUrl(body.drive_url) } });
+  }
+
+`;
+
+  if (!src.includes(expectedDriveBlock)) {
+    const textLine = '  if (body.text) parts.push({ text: body.text });\n';
+    if (src.includes(textLine)) {
+      src = src.replace(textLine, expectedDriveBlock + textLine);
+    } else {
+      const textRegex = /(^\s*if\s*\(s*body\.text\s*\)\s*parts\.push\(\{\*\s*text:\s*body\.text\s*\}\);\s*$)/m;
+      if (!textRegex.test(src)) {
+        throw new Error('[drive-gas-compat] could not locate Gemini text part insertion point');
+      }
+      src = src.replace(textRegex, expectedDriveBlock.trimEnd() + '\n$1');
+    }
   }
 
   assertHas(src, DIRECT_ANCHOR, path);
-  assertHas(src, callGemini, path);
+  assertHas(src, expectedDriveBlock.trim(), path);
   writeIfChanged(path, before, src);
 }
 
 patchGas();
-patchDirectAnchor();
+patchDirectSeed();
 console.log('[drive-gas-compat] verification passed');
