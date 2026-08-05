@@ -385,6 +385,9 @@ function buildMeasurePage(mainSegments, streams) {
       title.textContent = streamTitleForCode(code);
       applyStyleToElement(title, settings.titleStyleId);
       applyBarStyleToElement(title, settings);
+      // משה (הוראה חוזרת): כותרת הזרם לעולם טור אחד — גם כשתוכן הזרם ב-2 טורים
+      // הכותרת נפרסת לרוחב מלא מעל הטורים ולא נדחקת לתוך הטור הראשון.
+      if (cols > 1) title.style.columnSpan = "all";
       s.appendChild(title);
 
       // Default = inline (continuous notes); user can toggle off per-stream.

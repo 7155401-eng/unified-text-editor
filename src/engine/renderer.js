@@ -477,6 +477,9 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
   // משה 2026-05-13: שליטת "פס מעל המפרש" — לוגיקה מאוחדת בין V9 לרגיל.
   // לוקח barShow/barPreset/barColor/barThickness מההגדרות.
   applyBarStyleToElement(title, settings);
+  // משה (הוראה חוזרת): כותרת הזרם לעולם טור אחד — גם כשתוכן הזרם ב-2 טורים
+  // הכותרת נפרסת לרוחב מלא מעל הטורים ולא נדחקת לתוך הטור הראשון.
+  if (cols > 1) title.style.columnSpan = "all";
   wrap.appendChild(title);
 
   const notes = notesArr;
