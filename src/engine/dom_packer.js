@@ -14,6 +14,7 @@ import { createLayoutContext, publishLayoutContextToCssVars, currentLayoutMeasur
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
 import { isTalmudLayoutEnabled } from "../talmud_controls.js";
+import { loadSpacingSettings } from "../spacing_settings.js";
 
 // Pack to ~15px below the rendered page height to leave a safety buffer for
 // sub-pixel rounding / margin-collapse / font-metric drift between the
@@ -605,8 +606,7 @@ function lastStreamLineFillRatio(streamCode = null) {
 
 function noMidLineSplitsEnabled() {
   try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
+    const settings = loadSpacingSettings();
     return !!settings?.noMidLineSplits;
   } catch {
     return false;
@@ -618,8 +618,7 @@ function noMidLineSplitsEnabled() {
 // כשההפרש בטעם משמעותי (האלטרנטיבה היא לעמוד עם רווח גדול).
 function noMidParagraphSoftEnabled() {
   try {
-    const raw = localStorage.getItem("ravtext.spacing.v1");
-    const settings = raw ? JSON.parse(raw) : null;
+    const settings = loadSpacingSettings();
     return !!settings?.noMidParagraphSoft;
   } catch {
     return false;
