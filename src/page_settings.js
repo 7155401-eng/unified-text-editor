@@ -11,6 +11,13 @@ const DEFAULT_MARGINS = {
 let runtimeMargins = null;
 let runtimeOutputBackground = null;
 
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === PAGE_SETTINGS_KEY || e.key === null) runtimeMargins = null;
+    if (e.key === OUTPUT_BACKGROUND_KEY || e.key === null) runtimeOutputBackground = null;
+  });
+}
+
 function storageDisabled() {
   return typeof window !== "undefined" && window.__RAVTEXT_STORAGE_DISABLED__ === true;
 }
