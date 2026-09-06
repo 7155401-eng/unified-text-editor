@@ -139,6 +139,8 @@ function buildEditorExtensions() {
   ];
 }
 
+const MARKER_BAR_DEFAULT_KEY = "ravtext.markerBar.defaultCollapsed.v1";
+
 export class Pane {
   constructor({ id, streamCode, symbol, label, dir, markerBarCollapsed, content, onFocus, onChange }) {
     this.id = id || nextPaneId();
@@ -783,17 +785,29 @@ export class PaneManager {
       this.container.innerHTML = "";
       this.panes = [];
       this.activePane = null;
-    for (const ps of state.panes || []) {
-      this.addPane({
-        id: ps.id,
-        streamCode: ps.streamCode,
-        symbol: ps.symbol,
-        label: ps.label,
-        dir: ps.dir,
-        markerBarCollapsed: ps.markerBarCollapsed,
-        content: ps.content,
-      });
-    }
+      // משה 06/09/2026 (הערה 3): רשימת מספרי ההערות מתחילה ממוזערת.
+      // ברירת המחדל בקוד כבר הייתה כזו, אבל מצב שנשמר פעם אחת כ"פתוח"
+      // נשאר פתוח לנצח. לכן פעם אחת בלבד, בטעינה הראשונה של הגירסה הזו,
+      // כל החלוניות נסגרות — ומאותו רגע הבחירה של המשתמש נשמרת כרגיל.
+      let forceCollapseOnce = false;
+      try {
+        if (localStorage.getItem(MARKER_BAR_DEFAULT_KEY) !== "1") {
+          forceCollapseOnce = true;
+          localStorage.setItem(MARKER_BAR_DEFAULT_KEY, "1");
+        }
+      } catch (_) {}
+
+      for (const ps of state.panes || []) {
+        this.addPane({
+          id: ps.id,
+          streamCode: ps.streamCode,
+          symbol: ps.symbol,
+          label: ps.label,
+          dir: ps.dir,
+          markerBarCollapsed: forceCollapseOnce ? true : ps.markerBarCollapsed,
+          content: ps.content,
+        });
+      }
     if (state.activeId) {
       const a = this.panes.find(p => p.id === state.activeId);
       if (a) this.activePane = a;
