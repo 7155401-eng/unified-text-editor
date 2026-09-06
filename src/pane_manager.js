@@ -142,7 +142,7 @@ function buildEditorExtensions() {
 const MARKER_BAR_DEFAULT_KEY = "ravtext.markerBar.defaultCollapsed.v1";
 
 export class Pane {
-  constructor({ id, streamCode, symbol, label, dir, markerBarCollapsed, content, onFocus, onChange }) {
+  constructor({ id, streamCode, symbol, label, dir, markerBarCollapsed, collapsed, content, onFocus, onChange }) {
     this.id = id || nextPaneId();
     this.streamCode = streamCode;
     this.symbol = symbol || (streamCode ? `@${streamCode}` : "");
@@ -158,6 +158,10 @@ export class Pane {
     this._markerTimer = null;
     this.initialContent = content;
     this.markerBarCollapsed = markerBarCollapsed === undefined ? true : !!markerBarCollapsed;
+    // משה 06/09/2026 (הערה 14): חלונית ממוזערת מצטמצמת לשורת הכותרת בלבד
+    // ומפנה מקום לשאר. ברירת המחדל — פתוחה.
+    this.collapsed = !!collapsed;
+    this._collapseToggle = null;
     this._manager = null;
   }
 
@@ -216,6 +220,18 @@ export class Pane {
     spacer.style.flex = "1";
     header.appendChild(spacer);
 
+    const collapseToggle = document.createElement("button");
+    collapseToggle.type = "button";
+    collapseToggle.className = "pane-collapse-toggle";
+    collapseToggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.collapsed = !this.collapsed;
+      this._applyCollapsedState();
+      this._save();
+    });
+    this._collapseToggle = collapseToggle;
+    header.appendChild(collapseToggle);
+
     const markerToggle = document.createElement("button");
     markerToggle.type = "button";
     markerToggle.className = "pane-marker-toggle";
@@ -256,6 +272,7 @@ export class Pane {
     this.element.appendChild(body);
     parent.appendChild(this.element);
     this._applyMarkerBarState();
+    this._applyCollapsedState();
 
     this.editor = new Editor({
       element: body,
@@ -325,6 +342,7 @@ export class Pane {
       label: this.label,
       dir: this.dir,
       markerBarCollapsed: this.markerBarCollapsed,
+      collapsed: this.collapsed,
       content: this.editor ? this.editor.getJSON() : null,
     };
   }
@@ -357,6 +375,28 @@ export class Pane {
       syncPaneByFraction(body, other._body);
     }
     requestAnimationFrame(() => { mgr.syncBusy = false; });
+  }
+
+  _applyCollapsedState() {
+    if (this.element) {
+      this.element.classList.toggle("pane-collapsed", this.collapsed);
+    }
+    if (this._collapseToggle) {
+      const text = this.collapsed ? "❐" : "—";
+      const title = this.collapsed
+        ? `הרחב את החלונית "${this.label}"`
+        : `מזער את החלונית "${this.label}"`;
+      if (this._collapseToggle.textContent !== text) this._collapseToggle.textContent = text;
+      if (this._collapseToggle.getAttribute("title") !== title) {
+        this._collapseToggle.setAttribute("title", title);
+        this._collapseToggle.setAttribute("aria-label", title);
+      }
+      const pressed = this.collapsed ? "true" : "false";
+      if (this._collapseToggle.getAttribute("aria-pressed") !== pressed) {
+        this._collapseToggle.setAttribute("aria-pressed", pressed);
+      }
+    }
+    try { window.__ravtextApplyPaneWidths?.(); } catch (_) {}
   }
 
   _applyMarkerBarState() {
@@ -805,6 +845,7 @@ export class PaneManager {
           label: ps.label,
           dir: ps.dir,
           markerBarCollapsed: forceCollapseOnce ? true : ps.markerBarCollapsed,
+          collapsed: ps.collapsed,
           content: ps.content,
         });
       }

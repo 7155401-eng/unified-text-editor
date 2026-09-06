@@ -3690,6 +3690,38 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   display: none;
 }
 
+/* משה 06/09/2026 (הערה 14): כפתור מיזעור בכל חלונית, כולל הראשית.
+   חלונית ממוזערת מצטמצמת לשורת הכותרת ומפנה את המקום לשאר. */
+.pane-collapse-toggle {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  margin-inline-start: 4px;
+  border: 1px solid var(--rt-line, #d7d0be);
+  border-radius: 5px;
+  background: var(--rt-surface-3, #f4f1ea);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pane-collapse-toggle:hover {
+  background: #e7f0ff;
+  border-color: #8fb8f6;
+}
+.pane.pane-collapsed {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+.pane.pane-collapsed > *:not(.pane-header) {
+  display: none !important;
+}
+.pane.pane-collapsed .pane-header {
+  border-bottom: 0;
+}
+
 .marker-bar-collapsed .marker-bar {
   display: none;
 }
