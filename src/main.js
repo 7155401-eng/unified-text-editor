@@ -471,11 +471,19 @@ document.getElementById("local-font-upload-input")?.addEventListener("change", a
 const LIVE_RENDER_KEY = "ravtext.liveRender";
 const LIVE_RENDER_MAX_DOC_SIZE = 60000;
 
+const LIVE_RENDER_CHOICE_KEY = LIVE_RENDER_KEY + ".userChoice";
+
+// LIVE_RENDER_DEFAULT_OFF_IN_SOURCE
+// משה 06/09/2026: רינדור אוטומטי כבוי כברירת מחדל, ונדלק רק אחרי שהמשתמש
+// בחר בכך במפורש בתפריט "רינדור". ההוראה הישנה (דלוק כברירת מחדל, 06/05)
+// בוטלה — משה דיווח שהרינדור רץ בלי שביקש והאט את העריכה.
 function isLiveRenderEnabled() {
-  // משה 2026-05-06: ברירת מחדל ON — רינדור איטי אוטומטי בכל שינוי
-  // שומר ביצועים גם כשהמשתמש לא לחץ "רינדור".
-  const v = localStorage.getItem(LIVE_RENDER_KEY);
-  return v === null ? true : v === "1";
+  try {
+    if (localStorage.getItem(LIVE_RENDER_CHOICE_KEY) !== "1") return false;
+    return localStorage.getItem(LIVE_RENDER_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
 }
 
 function paneManagerDocSize() {
@@ -637,29 +645,36 @@ function setupWidthSlider() {
   applyWidth();
 }
 
+// משה 06/09/2026 (הערה 1): המתג של הרינדור האוטומטי יושב בתוך תפריט המשנה
+// של "רינדור", ולא בסרגל הראשי. בפס העליון נשארים רק שניים: הלשונית
+// "רינדור" והכפתור "רנדר".
 function setupLiveRenderToggle() {
-  const mainToolbar = getMainRibbonToolbar();
-  if (!mainToolbar || document.getElementById("live-render-toggle")) return;
+  if (document.getElementById("live-render-toggle")) return;
 
-  const groups = mainToolbar.querySelectorAll(".tb-group");
-  const targetGroup = groups[10] || groups[groups.length - 1];
+  const renderGroup = document.getElementById("render-safety-render-group");
+  const mainToolbar = getMainRibbonToolbar();
+  const groups = mainToolbar ? mainToolbar.querySelectorAll(".tb-group") : [];
+  const targetGroup = renderGroup || groups[10] || groups[groups.length - 1];
   if (!targetGroup) return;
 
   const label = document.createElement("label");
   label.className = "toolbar-checkbox live-render-control";
-  label.title = "רינדור אוטומטי אחרי עריכה. כבוי כברירת מחדל כדי שהעורך יישאר מהיר.";
+  label.title = "רינדור אוטומטי אחרי כל עריכה. כבוי כברירת מחדל כדי שהעריכה תישאר מהירה.";
 
   const input = document.createElement("input");
   input.type = "checkbox";
   input.id = "live-render-toggle";
   input.checked = isLiveRenderEnabled();
   input.addEventListener("change", () => {
-    localStorage.setItem(LIVE_RENDER_KEY, input.checked ? "1" : "0");
+    try {
+      localStorage.setItem(LIVE_RENDER_CHOICE_KEY, "1");
+      localStorage.setItem(LIVE_RENDER_KEY, input.checked ? "1" : "0");
+    } catch (_) {}
     if (input.checked && shouldLiveRenderNow()) rerenderPages();
   });
 
   label.appendChild(input);
-  label.appendChild(document.createTextNode("רינדור חי"));
+  label.appendChild(document.createTextNode("רינדור אוטומטי"));
   targetGroup.appendChild(label);
 }
 
@@ -682,6 +697,9 @@ function setupRibbonTabs() {
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
+    // משה 06/09/2026 (הערה 1): "רינדור" היא לשונית אמיתית שנבנית כאן.
+    // קודם היא נדחפה לפס העליון מסקריפט חיצוני שהוזרק אחרי הטעינה.
+    ["render", "רינדור"],
   ];
 
   let tabsBar = document.getElementById("ribbon-tabs");
@@ -710,6 +728,7 @@ function setupRibbonTabs() {
       torah: "כלים תורניים — גימטריה, ראשי תיבות, גרשיים, תאריך עברי",
       review: "סקירה ובדיקה", view: "תצוגה",
       advanced: "מתקדם", settings: "הגדרות מערכת", downloads: "הורדה ושמירה למחשב",
+      render: "אפשרויות רינדור",
     };
     for (const [id, label] of tabs) {
       const button = document.createElement("button");
@@ -718,6 +737,9 @@ function setupRibbonTabs() {
       button.dataset.ribbonTab = id;
       button.setAttribute("role", "tab");
       button.textContent = label;
+      // מזהה קבוע ללשונית הרינדור, כדי שהתוסף הישן יזהה שהיא כבר קיימת
+      // ולא ייצור עוד אחת.
+      if (id === "render") button.id = "btn-render-tab";
       if (tabTitles[id]) button.title = tabTitles[id];
       tabsBar.appendChild(button);
     }
@@ -731,6 +753,29 @@ function setupRibbonTabs() {
     }
     tabsBar.appendChild(renderBtnSlot);
   }
+
+    // משה 06/09/2026 (הערה 1): תפריט המשנה של הרינדור נבנה כאן, בקובץ
+    // התפריט עצמו. המזהים זהים לאלה שהתוסף הישן היה יוצר, כדי שהוא ימצא
+    // אותם, ידלג על היצירה, ורק ישים את הכפתורים שלו בפנים — כך שום
+    // אפשרות קיימת לא נעלמת.
+    if (!document.getElementById("render-safety-toolbar")) {
+      const renderPanel = document.createElement("div");
+      renderPanel.id = "render-safety-toolbar";
+      renderPanel.className = "toolbar bottom-toolbar source-bottom-toolbar ribbon-panel render-safety-toolbar ribbon-hidden";
+      renderPanel.dir = "rtl";
+      renderPanel.dataset.ribbonTab = "render";
+      const renderGroup = document.createElement("span");
+      renderGroup.className = "tb-group";
+      renderGroup.id = "render-safety-render-group";
+      renderGroup.dataset.title = "רינדור";
+      const diagGroup = document.createElement("span");
+      diagGroup.className = "tb-group";
+      diagGroup.id = "render-safety-diagnostics-group";
+      diagGroup.dataset.title = "אבחון ושחזור";
+      renderPanel.appendChild(renderGroup);
+      renderPanel.appendChild(diagGroup);
+      mainToolbar.after(renderPanel);
+    }
 
   // משה 2026-05-07: מערך זה ממפה כל .tb-group בסרגל הראשי ללשונית.
   // לאחר שהוספתי ב-PR #42 קבוצה חדשה (גודל טקסט נבחר) האינדקסים זזו ב-1

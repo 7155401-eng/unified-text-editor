@@ -2650,6 +2650,24 @@ body.light-theme .pdf-scroll-progress-fill {
 .ribbon-tabs::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 2px; }
 .ribbon-tabs .ribbon-tab { flex-shrink: 0; }
 
+/* משה 06/09/2026 (הערה 1): כשאין מקום — מצמצמים את הריווח במקום להסתיר
+   לשוניות מאחורי גלילה. הדרגות נדלקות רק אחרי מדידה בפועל. */
+.ribbon-tabs.rt-compact { gap: 1px; padding: 0 4px; }
+.ribbon-tabs.rt-compact .ribbon-tab { padding-inline: 9px; }
+.ribbon-tabs.rt-compact .ribbon-tab-render-slot { padding: 0 6px; padding-inline: 6px; }
+.ribbon-tabs.rt-compact #btn-render.btn-render-prominent { padding: 6px 11px; min-width: 84px; }
+.ribbon-tabs.rt-compact .ribbon-collapse-toggle { padding: 2px 5px; margin-inline-start: 2px; }
+
+.ribbon-tabs.rt-compact-2 { gap: 0; padding: 0 2px; }
+.ribbon-tabs.rt-compact-2 .ribbon-tab { padding-inline: 6px; font-size: 12px; }
+.ribbon-tabs.rt-compact-2 .ribbon-tab-render-slot { padding: 0 4px; padding-inline: 4px; }
+.ribbon-tabs.rt-compact-2 #btn-render.btn-render-prominent { padding: 6px 9px; min-width: 74px; font-size: 12px; }
+
+/* דרגה שלישית — חלון צר במיוחד: הלשוניות נשברות לשתי שורות, וכך שום
+   לשונית לא נעלמת ואין גלילה הצדה. */
+.ribbon-tabs.rt-compact-3 { flex-wrap: wrap; overflow-x: visible; row-gap: 2px; padding-block: 2px; }
+.ribbon-tabs.rt-compact-3 .ribbon-tab-render-slot { position: static; margin-inline-start: auto !important; box-shadow: none; }
+
 .ribbon-toolbar {
   margin-top: 0;
   border-radius: 0 0 4px 4px;
