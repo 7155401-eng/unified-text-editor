@@ -28,6 +28,19 @@ export function inlineSplitOnServer(mainText, panes) {
   return postMainTextTool("inline_split", { mainText, panes });
 }
 
+// משה 06/09/2026 (הערות 10 ו-11): הוספת הערת שוליים לזרם מחושבת בשרת.
+// כאן נשארת רק השליחה — מה שרץ בדפדפן לא יודע איך ההערה משובצת ואיך
+// המספור מסתדר, ולכן אי אפשר להעתיק את השיטה מתוך הדפדפן.
+export function addNoteToStreamOnServer({ mainText, streamText, code, noteText, caretIndex }) {
+  return postMainTextTool("add_note_to_stream", {
+    mainText,
+    streamText,
+    code,
+    noteText,
+    caretIndex,
+  });
+}
+
 export async function loadSyncScrollEnabledFromServer() {
   try {
     const res = await fetch("/api/settings", {
