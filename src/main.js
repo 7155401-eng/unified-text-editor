@@ -23,6 +23,7 @@ import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { installFinalLayoutGuard } from "./engine/final_layout_guard.js";
+import "./stream_button_labels.js";
 import { bootstrapLiveOverflowReserve, resetLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
