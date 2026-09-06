@@ -46,15 +46,28 @@ export function installRenderPauseControls() {
     if (el) el.textContent = text;
   }
 
+  // LIVE_RENDER_DEFAULT_OFF_IN_SOURCE
+  // משה 06/09/2026: רינדור אוטומטי דולק רק אם המשתמש הדליק אותו בעצמו
+  // בתפריט "רינדור". בלי בחירה מפורשת — כבוי. וגם כשהוא דלוק, הרינדור
+  // רץ רק כשבאמת היה שינוי.
+  const LIVE_CHOICE_KEY = LIVE_KEY + ".userChoice";
+
   function liveEnabled() {
-    const value = localStorage.getItem(LIVE_KEY);
-    return value === null ? true : value === "1";
+    try {
+      if (localStorage.getItem(LIVE_CHOICE_KEY) !== "1") return false;
+      return localStorage.getItem(LIVE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
   }
 
-  function setLiveEnabled(on) {
-    localStorage.setItem(LIVE_KEY, on ? "1" : "0");
+  function setLiveEnabled(on, options = {}) {
+    try {
+      if (options.userChoice) localStorage.setItem(LIVE_CHOICE_KEY, "1");
+      localStorage.setItem(LIVE_KEY, on ? "1" : "0");
+    } catch (_) {}
     const cb = byId("live-render-toggle");
-    if (cb) cb.checked = !!on;
+    if (cb && cb.checked !== !!on) cb.checked = !!on;
   }
 
   function snapshotPreview() {
