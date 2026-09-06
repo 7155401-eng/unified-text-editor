@@ -13,6 +13,28 @@ const TOGGLE_ID = "nested-notes-toggle";
 let installed = false;
 const $ = id => document.getElementById(id);
 
+// משה 06/09/2026: הקובץ הזה כתב מחדש טקסט וסגנון בכל סבב, גם כשכלום לא
+// השתנה. כתיבה של טקסט מחליפה את צומת הטקסט, וזה נחשב שינוי בדף — ולכן
+// ה-MutationObserver של הקובץ עצמו התעורר והריץ את הסבב שוב, בלי סוף.
+// נמדד לפני התיקון: 14 סבבים בשנייה, 833 שינויים בשתי שניות.
+// מעכשיו כותבים רק כשהערך באמת שונה.
+const _cssApplied = new WeakMap();
+const _inlined = new WeakSet();
+
+function setText(el, text) {
+  if (el && el.textContent !== text) el.textContent = text;
+}
+
+function setAttr(el, name, value) {
+  if (el && el.getAttribute(name) !== value) el.setAttribute(name, value);
+}
+
+function setCss(el, css) {
+  if (!el || _cssApplied.get(el) === css) return;
+  _cssApplied.set(el, css);
+  el.style.cssText = css;
+}
+
 const HELP_TEXT = [
   "איך מקשרים הערות לפנים — בקצרה:",
   "",
@@ -320,7 +342,9 @@ function ensureStyle() {
 }
 
 function inlineStyle(el) {
-  el.hidden = false;
+  if (el.hidden) el.hidden = false;
+  if (_inlined.has(el)) return;
+  _inlined.add(el);
   el.style.position = "static";
   el.style.zIndex = "auto";
   el.style.top = "auto";
@@ -344,10 +368,10 @@ function mainButton() {
       toggleMenu();
     });
   }
-  b.textContent = "פתח תפריט זרמים";
-  b.setAttribute("aria-haspopup", "dialog");
-  b.setAttribute("aria-expanded", isOpen() ? "true" : "false");
-  b.style.cssText = [
+  setText(b, "פתח תפריט זרמים");
+  setAttr(b, "aria-haspopup", "dialog");
+  setAttr(b, "aria-expanded", isOpen() ? "true" : "false");
+  setCss(b, [
     "display:inline-flex",
     "align-items:center",
     "gap:5px",
@@ -367,7 +391,7 @@ function mainButton() {
     "pointer-events:auto",
     "position:static",
     "z-index:auto"
-  ].join(";");
+  ].join(";"));
   return b;
 }
 
@@ -383,9 +407,9 @@ function helpButton() {
       run("help");
     });
   }
-  b.textContent = "הסבר קצר";
-  b.title = "הסבר קצר על קישור ההערות לפנים";
-  b.style.cssText = [
+  setText(b, "הסבר קצר");
+  setAttr(b, "title", "הסבר קצר על קישור ההערות לפנים");
+  setCss(b, [
     "display:inline-flex",
     "align-items:center",
     "justify-content:center",
@@ -403,7 +427,7 @@ function helpButton() {
     "box-shadow:0 1px 3px rgba(0,0,0,.12)",
     "position:static",
     "z-index:auto"
-  ].join(";");
+  ].join(";"));
   return b;
 }
 
@@ -435,7 +459,7 @@ function alignButtons() {
   }
 
   wrap.hidden = false;
-  wrap.style.cssText = "display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;vertical-align:middle;position:static;z-index:auto;pointer-events:auto;white-space:nowrap";
+  setCss(wrap, "display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;vertical-align:middle;position:static;z-index:auto;pointer-events:auto;white-space:nowrap");
 
   if (!wrap.contains(mb)) wrap.prepend(mb);
   inlineStyle(mb);
@@ -444,7 +468,7 @@ function alignButtons() {
   if (!wrap.contains(hb)) wrap.appendChild(hb);
   inlineStyle(hb);
 
-  mb.setAttribute("aria-describedby", HELP_BTN);
+  setAttr(mb, "aria-describedby", HELP_BTN);
 }
 
 function toolbarButton(id, text, command) {
@@ -459,8 +483,8 @@ function toolbarButton(id, text, command) {
       run(command);
     });
   }
-  b.textContent = text;
-  b.style.cssText = "min-height:28px;padding:4px 9px;border-radius:8px;border:1px solid rgba(0,0,0,.14);background:rgba(0,0,0,.035);color:inherit;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap";
+  setText(b, text);
+  setCss(b, "min-height:28px;padding:4px 9px;border-radius:8px;border:1px solid rgba(0,0,0,.14);background:rgba(0,0,0,.035);color:inherit;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap");
   return b;
 }
 
@@ -489,7 +513,16 @@ export function installCompactStreamMenuFullPatch() {
     applyPatch();
     const observer = new MutationObserver(() => {
       clearTimeout(observer._timer);
-      observer._timer = setTimeout(applyPatch, 60);
+      observer._timer = setTimeout(() => {
+        // מנתקים את ההאזנה בזמן העדכון, כדי שהעדכון לא יעיר את עצמו.
+        observer.disconnect();
+        try {
+          applyPatch();
+        } finally {
+          observer.takeRecords();
+          observer.observe(document.body, { childList: true, subtree: true });
+        }
+      }, 60);
     });
     observer.observe(document.body, { childList: true, subtree: true });
   };
