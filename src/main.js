@@ -24,6 +24,8 @@ import { setupPdfToolbar } from "./engine_toolbar.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { installFinalLayoutGuard } from "./engine/final_layout_guard.js";
 import "./stream_button_labels.js";
+import { addNoteToStream, paneForCode } from "./stream_note_insert.js";
+import "./add_note_dialog.js";
 import { bootstrapLiveOverflowReserve, resetLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
@@ -1371,12 +1373,62 @@ async function toggleInlineMerge() {
   rerenderPages();
 }
 
+// משה 07/09/2026 (הערה 2): "סמן בחירה כזרם" באמת מעביר את הקטע.
+//
+// עד היום הכפתור רק צבע את הטקסט הנבחר בצבע של הזרם. הטקסט נשאר בדיוק
+// במקומו, ולחלונית של הזרם לא נכנס כלום — ולכן זה נראה כאילו הלחיצה לא
+// עושה כלום. נמדד בדף החי לפני התיקון: הטקסט הראשי 20 תווים לפני ו-20
+// אחרי, וזרם 01 5060 תווים לפני ו-5060 אחרי.
+//
+// מעכשיו: אם יש קטע מסומן בחלונית הראשית — הקטע יוצא משם, נכנס כהערה
+// לחלונית של הזרם שנבחר, ובמקומו נשאר הסימן שמקשר ביניהם. אם אין קטע
+// מסומן, או שהסמן עומד בתוך חלונית של זרם, נשארת ההתנהגות הישנה של
+// צביעת הבחירה — לא לקחנו שום דבר שכבר עבד.
+function streamNameFor(code) {
+  const pane = paneForCode(code);
+  const label = String(pane?.label || "").trim();
+  return label || defaultLabelForCode(String(code).padStart(2, "0"));
+}
+
+async function markSelectionAsStream(code) {
+  const main = paneManager.getMainPane();
+  const active = paneManager.activePane;
+  const sel = main?.editor?.state?.selection;
+  const movable = !!main?.editor && (!active || active === main) && !!sel && !sel.empty;
+
+  if (!movable) {
+    activeChain()?.toggleStream(code).run();
+    return false;
+  }
+
+  const status = document.getElementById("status");
+  const text = main.editor.state.doc.textBetween(sel.from, sel.to, "\n", "\n");
+  const name = streamNameFor(code);
+
+  try {
+    const res = await addNoteToStream({ code, noteText: text, from: sel.from, to: sel.to });
+    if (status) {
+      status.textContent = res.inSync
+        ? `הקטע עבר ל${name} והפך להערה מספר ${res.ordinal} מתוך ${res.noteCount}. בטקסט הראשי נשאר הסימן @${res.code}.`
+        : `הקטע עבר ל${name} ונוסף בסוף (הערה ${res.ordinal} מתוך ${res.noteCount}), כי בזרם הזה יש יותר סימנים בטקסט הראשי מאשר הערות בחלונית.`;
+    }
+    return true;
+  } catch (err) {
+    console.warn("[mark-as-stream] failed", err);
+    if (status) status.textContent = `לא הצלחנו להעביר את הקטע ל${name}: ${err?.message || "שגיאה לא ידועה"}. הטקסט נשאר במקומו.`;
+    return false;
+  }
+}
+
 document.querySelectorAll(".btn-stream").forEach((btn) => {
   btn.addEventListener("mousedown", (e) => e.preventDefault());
   btn.addEventListener("click", () => {
-    activeChain()?.toggleStream(btn.dataset.stream).run();
+    markSelectionAsStream(btn.dataset.stream);
   });
 });
+
+// חשיפה לבדיקות: מאפשר להריץ את אותה פעולה בדיוק בלי לחיצה עם עכבר.
+window.__ravtextMarkSelectionAsStream = markSelectionAsStream;
 
 // משה 2026-05-10: כפתור × להסרת סימן הזרם מהטקסט הנבחר. הועבר מקבוצת
 // "זרמים" הישנה (data-cmd="stream-clear") שנמחקה — הוא יושב עכשיו
@@ -1399,7 +1451,7 @@ if (btnCustomStream && customStreamInput) {
       customStreamInput.focus();
       return;
     }
-    activeChain()?.toggleStream(String(n).padStart(2, "0")).run();
+    markSelectionAsStream(String(n).padStart(2, "0"));
   });
 }
 
