@@ -217,7 +217,13 @@ function getMeasureRoot() {
   if (!_measureRoot) {
     _measureRoot = document.createElement("div");
     _measureRoot.id = "__measure_root";
-    _measureRoot.style.position = "absolute";
+    // Fixed rather than absolute. <body> is position:static, so an absolute
+    // child of it belongs to the initial containing block and its -99999px
+    // offset became real RTL scrollable overflow on <html>
+    // (documentElement.scrollWidth = clientWidth + 99999). A fixed box is
+    // owned by the viewport and adds nothing to the document scroll area.
+    // Measuring is unaffected: the box still has its explicit 1000px width.
+    _measureRoot.style.position = "fixed";
     _measureRoot.style.visibility = "hidden";
     _measureRoot.style.left = "-99999px";
     _measureRoot.style.top = "0";
