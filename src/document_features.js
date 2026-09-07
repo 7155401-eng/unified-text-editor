@@ -88,7 +88,10 @@ function getOrCreateMeasurePage() {
   if (page) return page;
   page = document.createElement("div");
   page.className = "page";
-  page.style.cssText = "position:absolute;left:-99999px;top:0;width:380px;height:537px;visibility:hidden;overflow:hidden;box-sizing:border-box;flex:none;pointer-events:none;";
+  // fixed, not absolute - see dom_packer.getMeasureRoot(). Absolute + a
+  // -99999px offset on a child of the static <body> is real RTL overflow
+  // on <html>; fixed is owned by the viewport and overflows nothing.
+  page.style.cssText = "position:fixed;left:-99999px;top:0;width:380px;height:537px;visibility:hidden;overflow:hidden;box-sizing:border-box;flex:none;pointer-events:none;";
   const rootStyle = getComputedStyle(document.documentElement);
   page.style.paddingTop = rootStyle.getPropertyValue("--ravtext-page-margin-top") || "22px";
   page.style.paddingBottom = rootStyle.getPropertyValue("--ravtext-page-margin-bottom") || "18px";
