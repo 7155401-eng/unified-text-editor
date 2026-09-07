@@ -44,7 +44,13 @@ function normalizePosition(settings, parts) {
   const suffixWords = suffix ? suffix.split(/\s+/).length : 0;
   const suffixChars = suffix.length;
   if (settings.position !== "dropped") return "raised";
-  if (suffixWords < 2 || suffixChars < 18) return "raised";
+  // משה 07/09/2026 (הערה 2): ההכרעה שלו — מילת הפתיח תתפוס מקום אמיתי,
+  // כמו תמונה שהטקסט גולש סביבה, והמילה שאחריה תתחיל רק אחרי שהיא נגמרת.
+  // רק מצב "נפתחת" עושה זאת. השער הקודם ויתר עליו בכל שורה שנשארו בה
+  // פחות משתי מילים או 18 תווים — ובטקסט תורני זה כמעט תמיד, ולכן המילה
+  // גלשה מעל הטקסט במקום לתפוס מקום. מעכשיו מוותרים רק כשאין אחריה כלום,
+  // כי לגלישה סביב תמונה שאין לצידה טקסט אין משמעות.
+  if (suffixChars === 0) return "raised";
   return "dropped";
 }
 

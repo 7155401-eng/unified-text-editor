@@ -575,7 +575,17 @@ function setWrappedText(el, parts, settings, options = {}) {
   if (options.skipOrphan && isOrphanText(fullText)) return false;
 
   const centeredPartialLine = settings.position === "dropped" && isCenteredPartialOpeningLine(el, fullText, options);
-  const shortFallback = (settings.skipHeadings && len < settings.headingMin) || options._forceRaised || centeredPartialLine;
+  // משה 07/09/2026 (הערה 2): ההכרעה שלו — מילת הפתיח צריכה לתפוס מקום
+  // אמיתי, כמו תמונה שהטקסט גולש סביבה, והמילה שאחריה מתחילה רק אחרי
+  // שהיא נגמרת. מצב "נפתחת" הוא היחיד שעושה זאת (float ב-CSS), אבל הוא
+  // כמעט אף פעם לא חל: כל פסקה קצרה מ-80 תווים הוחזרה ל"מוגבהת", ובטקסט
+  // תורני זה כמעט תמיד. הכוונה המקורית של הכלל הייתה לא לעשות אות פתיחה
+  // מכותרת — אז מעכשיו הוא חל על כותרות בלבד, וכך פסקה קצרה רגילה
+  // מקבלת סוף-סוף מילת פתיח שתופסת מקום.
+  const shortHeadingFallback = settings.skipHeadings
+    && len < settings.headingMin
+    && isHeadingElement(el);
+  const shortFallback = shortHeadingFallback || options._forceRaised || centeredPartialLine;
   const effectivePosition = settings.position === "dropped" && !shortFallback ? "dropped" : "raised";
 
   el.textContent = "";
