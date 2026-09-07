@@ -1184,6 +1184,13 @@ import("./nested_notes_bubble.js").then((m) => {
   if (typeof m.installNestedNotesBubble === "function") m.installNestedNotesBubble(paneManager);
 }).catch((_) => {});
 
+// Notes-on-notes links: a small chooser in every stream pane header that says
+// which other streams this stream's notes may hang from. Default is the main
+// text only, so nothing changes until the user picks something.
+import("./stream_links_ui.js").then((m) => {
+  if (typeof m.installStreamLinksUI === "function") m.installStreamLinksUI(paneManager);
+}).catch((_) => {});
+
 window.addEventListener("ravtext:engine-rendered", (ev) => {
   refreshStreamSettingsPanel(ev.detail?.pages || []);
 });

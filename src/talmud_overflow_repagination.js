@@ -3,6 +3,7 @@ import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 import { runPreflight } from "./render_preflight.js";
 import { isNestedNotesEnabled } from "./nested_notes_gate.js";
+import { canNestInside, streamLinksSignature } from "./stream_links.js";
 
 function injectDemoWatermarksIfNeeded(content) {
   if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
@@ -189,6 +190,9 @@ function paneManagerContentSignature(paneManager) {
   const globalStreamOverridesSig = (typeof window !== "undefined" && window.localStorage)
     ? window.localStorage.getItem("ravtext.globalStreamOverrides.v1") || ""
     : "";
+  // Changing which streams may nest inside which changes the packed content,
+  // so it has to invalidate the cached result too.
+  const streamLinksSig = streamLinksSignature();
   const sigParts = paneManager.panes
     .map((p) => [
       p.id,
@@ -200,7 +204,7 @@ function paneManagerContentSignature(paneManager) {
       p.editor ? docKey(p.editor.state.doc) : "0",
     ].join(":"))
     .join("|");
-  return sigParts + "##" + nestedFlag + "##" + globalStreamOverridesSig;
+  return sigParts + "##" + nestedFlag + "##" + globalStreamOverridesSig + "##" + streamLinksSig;
 }
 
 function extractMainParagraphs(mainPane, paneManager) {
@@ -335,8 +339,10 @@ export function expandNestedInNote(noteText, streamNotes, noteCounters, ownCode,
   while ((m = re.exec(txt)) !== null) {
     const sym = m[0];
     const code = paneSymToCode[sym];
-    if (!code || code === ownCode) {
-      // self-reference or unknown — keep literal
+    if (!code || code === ownCode || !canNestInside(code, ownCode)) {
+      // self-reference, unknown symbol, or a stream the user did not link to
+      // the stream that owns this note — keep the marker as literal text.
+      // Default configuration = no links = "attached to the main only".
       continue;
     }
     strippedText += txt.substring(prevEnd, m.index);
@@ -512,6 +518,8 @@ export function paneManagerToPackerContent(paneManager) {
         while ((m = findRe.exec(noteText)) !== null) {
           const ycode = paneSymToCode[m[0]];
           if (!ycode || ycode === code) continue;
+          // Only a stream the user linked to `code` may hang off this note.
+          if (!canNestInside(ycode, code)) continue;
           if (!consumersByStream[ycode]) consumersByStream[ycode] = [];
           consumersByStream[ycode].push({ paraIdx: c.paraIdx, anchor: c.anchor, priority: 1 });
         }
@@ -561,10 +569,12 @@ export function paneManagerToPackerContent(paneManager) {
           const ycode = paneSymToCode[m[0]];
           stripped += c.text.substring(prev, m.index);
           prev = m.index + m[0].length;
-          if (!ycode || ycode === code) {
-            stripped += m[0]; // keep self-stream / unknown markers literal
+          if (!ycode || ycode === code || !canNestInside(ycode, code)) {
+            // self-stream, unknown, or a stream that is not linked to this
+            // one — it was never pulled as a child, so it stays literal.
+            stripped += m[0];
           } else {
-            didStrip = true; // cross-stream — drop from display
+            didStrip = true; // cross-stream and linked — drop from display
           }
         }
         if (didStrip) {
