@@ -1153,6 +1153,13 @@ function isRenderCurrent(myToken) {
 
 export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi = null) {
   if (_debounceTimer) clearTimeout(_debounceTimer);
+  // משה 06/09/2026 (הערה 15): רינדור מלא נמשך כ-3.7 שניות ובונה אלפי
+  // עמודי ניסיון. עד היום, מי שהקליד בזמן הזה חיכה מאחורי כל העבודה
+  // הזאת — למרות שהיא כבר לא רלוונטית, כי הטקסט השתנה. מעכשיו בקשה
+  // לרינדור חדש מבטלת מיד את זה שרץ. הפלט הקודם נשאר על המסך עד
+  // שהחדש מסתיים; שום דבר לא נמחק, ואין הודעת עצירה — מבחינת המשתמש
+  // זו לא עצירה אלא החלפה.
+  _renderToken++;
   const statusEl = document.getElementById("status");
   if (statusEl) statusEl.textContent = "מרענן...";
   _debounceTimer = setTimeout(() => {
