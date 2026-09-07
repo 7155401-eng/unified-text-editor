@@ -258,6 +258,15 @@ export class Pane {
       header.appendChild(close);
     }
 
+    // Notes-on-notes: give an optional module one chance to hang its own
+    // control in this header. Called exactly once, right after the header
+    // is built, so nothing here runs repeatedly and no mutation loop can
+    // start. If no module registered a hook, nothing happens at all.
+    if (this.streamCode && typeof window !== "undefined"
+        && typeof window.__ravtextStreamLinksHeaderHook === "function") {
+      try { window.__ravtextStreamLinksHeaderHook(this, header); } catch (_) {}
+    }
+
     const markerBar = document.createElement("div");
     markerBar.className = "marker-bar";
     this._markerBar = markerBar;
