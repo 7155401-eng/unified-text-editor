@@ -34,6 +34,7 @@ export function installRenderPauseControls() {
     stoppedUntil: 0,
     snapshotHtml: null,
     snapshotScrollTop: 0,
+    snapshotPages: 0,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -70,16 +71,33 @@ export function installRenderPauseControls() {
     if (cb && cb.checked !== !!on) cb.checked = !!on;
   }
 
+  // KEEP_LAST_RENDER_20260907
+  // The photograph is taken when the render button is pressed, i.e. before
+  // the new render exists. On a cold start with auto-render off the screen
+  // is empty, so the photograph was of nothing - and every later "stop"
+  // pasted that nothing over a finished render. A photograph is only kept
+  // when it actually holds pages, and it is never pasted over more pages
+  // than it contains.
+  function realPages(el) {
+    if (!el || typeof el.querySelectorAll !== "function") return 0;
+    return el.querySelectorAll(".page:not(.page-placeholder)").length;
+  }
+
   function snapshotPreview() {
     const el = pages();
     if (!el) return;
+    const count = realPages(el);
+    if (count <= 0) return;
     state.snapshotHtml = el.innerHTML;
     state.snapshotScrollTop = el.scrollTop || 0;
+    state.snapshotPages = count;
   }
 
   function restorePreview() {
     const el = pages();
     if (!el || state.snapshotHtml == null) return;
+    if ((state.snapshotPages || 0) <= 0) return;
+    if (realPages(el) >= (state.snapshotPages || 0)) return;
     el.innerHTML = state.snapshotHtml;
     el.scrollTop = state.snapshotScrollTop || 0;
   }
@@ -248,6 +266,21 @@ export function installRenderPauseControls() {
     document.addEventListener("input", markPending, true);
     document.addEventListener("change", markPending, true);
     document.addEventListener("paste", markPending, true);
+    // LOADING_INDICATOR_20260907: until now state.running was set only by a
+    // click on the render button, so aria-busy on #btn-render read "false"
+    // during a render that started any other way (measured). The engine's own
+    // start event is the truth, so the button follows it.
+    window.addEventListener("ravtext:engine-render-start", () => {
+      if (state.running) return;
+      snapshotPreview();
+      state.running = true;
+      paint();
+    });
+    window.addEventListener("ravtext:engine-render-cancelled", () => {
+      if (!state.running) return;
+      state.running = false;
+      paint();
+    });
     window.addEventListener("ravtext:engine-rendered", () => {
       if (stoppedGuardActive()) {
         restorePreview();

@@ -3,7 +3,7 @@ import fs from 'fs';
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
-await page.goto('http://127.0.0.1:5205/', { waitUntil: 'networkidle' });
+await page.goto('http://127.0.0.1:5204/', { waitUntil: 'networkidle' });
 await page.waitForTimeout(Number(process.argv[2]||20000));
 
 const res = await page.evaluate(async () => {

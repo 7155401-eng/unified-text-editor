@@ -1176,6 +1176,15 @@ export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi 
     _debounceTimer = null;
     _renderToken++;
     if (typeof window !== "undefined") window.__ravtextRenderCancelRequested = false;
+    // LOADING_INDICATOR_20260907: the engine already announces every ending
+    // ("ravtext:engine-rendered" fires on success, on an empty document and
+    // from the catch block). This is the matching beginning, so anything that
+    // wants to show "working..." can listen instead of guessing.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("ravtext:engine-render-start", {
+        detail: { token: _renderToken },
+      }));
+    }
     const myToken = _renderToken;
     _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, /*skipSmartTune*/false);
   }, LIVE_RENDER_DELAY_MS);
@@ -1183,6 +1192,10 @@ export function scheduleEngineRender(paneManager, pagesContainer, pdfToolbarApi 
 
 export function cancelEngineRender(reason = "user") {
   if (typeof window !== "undefined") window.__ravtextRenderCancelRequested = true;
+  // KEEP_LAST_RENDER_20260907: the status line below promises the previous
+  // view was kept. This is the line that actually keeps it.
+  restoreLastGoodRender(null, "cancelled");
+  setTimeout(() => restoreLastGoodRender(null, "cancelled-late"), 60);
   if (_debounceTimer) {
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
@@ -1200,9 +1213,66 @@ if (typeof window !== "undefined") window.__ravtextCancelRender = cancelEngineRe
 // Smart-tune state: prevent re-entry while a tune cycle is active.
 let _smartTuneActive = false;
 
+// KEEP_LAST_RENDER_20260907
+// A render that is cancelled, superseded or that throws must not take the
+// previous picture down with it. renderPages() empties the container before
+// it draws, so from that moment until the new pages exist the screen is bare.
+// We keep one copy of the last drawing that really had pages and put it back
+// on every bail-out path. Only a finished render replaces what the user sees.
+let _lastGoodRenderHtml = null;
+let _lastGoodRenderScrollTop = 0;
+let _lastGoodRenderPages = 0;
+
+function realPageCount(container) {
+  if (!container || typeof container.querySelectorAll !== "function") return 0;
+  return container.querySelectorAll(".page:not(.page-placeholder)").length;
+}
+
+function resolvePagesContainer(container) {
+  if (container) return container;
+  if (typeof document === "undefined") return null;
+  return document.getElementById("pages-container") || document.querySelector(".pages-container");
+}
+
+function rememberLastGoodRender(container) {
+  const el = resolvePagesContainer(container);
+  const n = realPageCount(el);
+  if (n <= 0) return false;
+  _lastGoodRenderHtml = el.innerHTML;
+  _lastGoodRenderScrollTop = el.scrollTop || 0;
+  _lastGoodRenderPages = n;
+  return true;
+}
+
+// Returns true when it actually put the previous drawing back, so callers can
+// skip the "nothing here" placeholder they were about to paint.
+function restoreLastGoodRender(container, reason) {
+  const el = resolvePagesContainer(container);
+  if (!el) return false;
+  if (_lastGoodRenderHtml == null || _lastGoodRenderPages <= 0) return false;
+  if (realPageCount(el) > 0) return false;
+  el.innerHTML = _lastGoodRenderHtml;
+  el.scrollTop = _lastGoodRenderScrollTop;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("ravtext:engine-render-kept", {
+      detail: { reason: reason || "aborted", pages: _lastGoodRenderPages },
+    }));
+  }
+  return true;
+}
+
+if (typeof window !== "undefined") {
+  window.__ravtextLastGoodRenderInfo = () => ({
+    hasSnapshot: _lastGoodRenderHtml != null,
+    snapshotPages: _lastGoodRenderPages,
+  });
+}
+
 async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, skipSmartTune = false) {
   try {
     if (typeof window !== "undefined") window.__ravtextRenderCancelRequested = false;
+    // KEEP_LAST_RENDER_20260907: photograph the screen before we touch it.
+    rememberLastGoodRender(pagesContainer);
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
     let content = paneManagerToPackerContent(paneManager);
@@ -1228,6 +1298,14 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     const t1 = performance.now();
 
     if (content.length === 0) {
+      // KEEP_LAST_RENDER_20260907: an empty editor does not erase the last
+      // render. The placeholder below is only for a screen with nothing on it.
+      if (restoreLastGoodRender(pagesContainer, "empty-content")) {
+        window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
+          detail: { pages: [], content: [], keptPrevious: true },
+        }));
+        return;
+      }
       pagesContainer.innerHTML = '<div class="empty-hint">אין תוכן לרינדור</div>';
       if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
       const emptyStatusEl = document.getElementById("status");
@@ -1288,15 +1366,15 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
-    if (!isRenderCurrent(myToken)) return;
+    if (!isRenderCurrent(myToken)) { restoreLastGoodRender(pagesContainer, "superseded"); return; }
     // משה 2026-05-08: שלב talmud_layout הוסר — V1/V2/V8 נמחקו. מצב לא־גפ"ת
     // ממשיך ישר ל-mishna_wrap ויתר הפאסים.
     logEvent("mishna_wrap");
     await applyMishnaWrapToPages(pagesContainer);
-    if (!isRenderCurrent(myToken)) return;
+    if (!isRenderCurrent(myToken)) { restoreLastGoodRender(pagesContainer, "superseded"); return; }
     logEvent("balanced_columns");
     await applyBalancedColumnsToPages(pagesContainer);
-    if (!isRenderCurrent(myToken)) return;
+    if (!isRenderCurrent(myToken)) { restoreLastGoodRender(pagesContainer, "superseded"); return; }
     logEvent("opening_word");
     applyOpeningWordsToPages(pagesContainer);
     // Bug 17 + 18: cap stretch at 250% and switch to SVG textLength
@@ -2186,10 +2264,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     if (errStatusEl) {
       errStatusEl.textContent = `שגיאת רינדור: ${err && err.message ? err.message : err}`;
     }
-    pagesContainer.innerHTML = `<div class="error-hint">שגיאת רינדור: ${escapeHtml(err && err.message ? err.message : String(err))}</div>`;
-    if (pdfToolbarApi) pdfToolbarApi.setTotal(0);
+    // KEEP_LAST_RENDER_20260907: a failed render explains itself in #status,
+    // it does not delete the drawing the user already had.
+    const keptPreviousAfterError = restoreLastGoodRender(pagesContainer, "render-error");
+    if (!keptPreviousAfterError) pagesContainer.innerHTML = `<div class="error-hint">שגיאת רינדור: ${escapeHtml(err && err.message ? err.message : String(err))}</div>`;
+    if (pdfToolbarApi && !keptPreviousAfterError) pdfToolbarApi.setTotal(0);
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-      detail: { pages: [], content: [], error: err && err.message ? err.message : String(err) },
+      detail: { pages: [], content: [], keptPrevious: keptPreviousAfterError, error: err && err.message ? err.message : String(err) },
     }));
   }
 }

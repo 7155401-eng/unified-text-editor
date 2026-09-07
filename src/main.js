@@ -53,6 +53,7 @@ import { wireDocumentStyleControls } from "./document_style_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
 import { setupStreamPicker } from "./stream_picker.js";
+import { installLoadingIndicator, setStartupLoading } from "./loading_indicator.js";
 import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
 import { setupFindReplace } from "./find_replace.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
@@ -145,7 +146,8 @@ function wireOtherAsMishna() {
   cb.addEventListener("change", () => {
     apply();
     // Trigger a re-render so the change takes effect immediately.
-    if (typeof rerenderPages === "function") rerenderPages();
+    // AUTO_RENDER_GATE_20260907: רק אם המשתמש באמת סימן את התיבה.
+    if (typeof settingRerenderPages === "function") settingRerenderPages();
   });
   apply();
 }
@@ -205,6 +207,11 @@ const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ו
 `;
 
 // === אתחול ===
+// LOADING_INDICATOR_20260907: the pill goes up before anything slow starts,
+// so the very first thing the user sees is a sign of life, not a blank page.
+installLoadingIndicator();
+setStartupLoading(true);
+
 const container = document.querySelector("#panes-container");
 const paneManager = new PaneManager(container);
 window.paneManager = paneManager;
@@ -240,8 +247,9 @@ installFinalLayoutGuard({
   getPagesContainer: () => pagesContainer,
   rerender: () => {
     try {
-      if (typeof rerenderPages === "function") rerenderPages();
-      else if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
+      // AUTO_RENDER_GATE_20260907: שומר-הפריסה הוא משקיף, לא בקשה של משתמש.
+      if (typeof autoRerenderPages === "function") autoRerenderPages();
+      else if (typeof window.__ravtextAutoRerender === "function") window.__ravtextAutoRerender();
     } catch (err) {
       console.warn("[final-layout-guard] rerender failed", err);
     }
@@ -311,6 +319,15 @@ function isLegacyDemoState() {
 // אם יש מצב שמור — משחזר. אחרת — טוען שו"ע כברירת מחדל בכל נקודת התחלה.
 const loadedFromStorage = paneManager.loadFromStorage();
 let initialLoadPromise = Promise.resolve();
+// LOADING_INDICATOR_20260907: down on success AND on failure. A spinner that
+// can get stuck is worse than no spinner, so this is the single place that
+// ends the start-up phase, whatever happened.
+queueMicrotask(() => {
+  Promise.resolve(initialLoadPromise)
+    .catch(() => {})
+    .finally(() => setStartupLoading(false));
+  setTimeout(() => setStartupLoading(false), 30000);
+});
 if (!loadedFromStorage || isLegacyDemoState()) {
   initialLoadPromise = loadSampleByName(paneManager, "shulchan");
 }
@@ -358,7 +375,7 @@ function applyTypography({ rerender = false } = {}) {
   localStorage.setItem("ravtext.fontSize", String(_fontSize));
   localStorage.setItem("ravtext.fontFamily", _fontFamily);
 
-  if (rerender) rerenderPages();
+  if (rerender) settingRerenderPages();
 }
 
 function setGlobalFontFamily(fontName, options = {}) {
@@ -498,6 +515,59 @@ function paneManagerDocSize() {
 
 function shouldLiveRenderNow() {
   return isLiveRenderEnabled() && paneManagerDocSize() <= LIVE_RENDER_MAX_DOC_SIZE;
+}
+
+// AUTO_RENDER_GATE_20260907
+// משה 07/09/2026: רינדור שהמשתמש לא ביקש רץ רק אם "רינדור אוטומטי" דלוק.
+// איך יודעים אם המשתמש ביקש? רק אירוע שנוצר מאצבע או ממקלדת אמיתית מקבל
+// isTrusted=true. אירוע שהקוד שלנו יצר בעצמו (dispatchEvent) לעולם לא יקבל
+// אותו, ולכן אי אפשר לזייף בקשה של משתמש.
+let _lastTrustedUserEventAt = 0;
+const USER_GESTURE_WINDOW_MS = 4000;
+if (typeof window !== "undefined") {
+  const markUser = (ev) => { if (ev && ev.isTrusted) _lastTrustedUserEventAt = Date.now(); };
+  for (const type of ["pointerdown", "mousedown", "keydown", "click", "change", "input", "touchstart", "wheel"]) {
+    window.addEventListener(type, markUser, { capture: true, passive: true });
+  }
+}
+function userAskedForThis() {
+  return Date.now() - _lastTrustedUserEventAt <= USER_GESTURE_WINDOW_MS;
+}
+
+// רינדור אוטומטי: טעינה, שומר, טיימר, משקיף. עובר רק דרך השער.
+function autoRerenderPages() {
+  if (!shouldLiveRenderNow()) return false;
+  rerenderPages();
+  return true;
+}
+
+// שינוי הגדרה: אם אצבע אמיתית שינתה אותה — מציירים מיד, כי זה בדיוק מה
+// שהמשתמש מצפה לראות. אם קוד האתחול שלנו "שינה" אותה — זה רינדור
+// אוטומטי בתחפושת, ולכן הוא עובר דרך אותו שער.
+function settingRerenderPages() {
+  if (userAskedForThis()) {
+    rerenderPages();
+    return true;
+  }
+  return autoRerenderPages();
+}
+
+// "רק אם באמת היה שינוי" — חתימה קצרה של הטקסט בכל החלוניות.
+// FNV-1a, ריצה אחת על מסמך שממילא מוגבל ל-60,000 תווים בנתיב האוטומטי.
+let _lastRenderedSignature = null;
+function paneContentSignature() {
+  try {
+    let h = 0x811c9dc5;
+    for (const p of paneManager.panes) {
+      const text = p.editor?.state?.doc?.textContent || "";
+      const head = (p.streamCode || "-") + "\u0000" + text.length + "\u0000";
+      for (let i = 0; i < head.length; i++) { h ^= head.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+      for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    }
+    return h >>> 0;
+  } catch (_) {
+    return null;
+  }
 }
 
 function getMainRibbonToolbar() {
@@ -1080,7 +1150,7 @@ setupWidthSlider();
 setupLiveRenderToggle();
 wirePageSettingsControls(() => {
   applyPageSettings(pagesContainer);
-  rerenderPages();
+  settingRerenderPages();
 });
 wireSpacingControls({ pagesContainer, rerender: rerenderPages });
 wireOutputBackgroundControl();
@@ -1107,6 +1177,14 @@ if (typeof paneManager !== "undefined" && paneManager?.on) {
 // צוות האתר 2026-05-08: hook לרענון יזום מ-settings_pane (V8 toggle וכו').
 if (typeof window !== "undefined") {
   window.__ravtextRerender = rerenderPages;
+  // AUTO_RENDER_GATE_20260907: נקודת כניסה לרינדור שאיש לא ביקש —
+  // מודולים שרצים על טיימר או על טעינה קוראים לזה, לא ל-__ravtextRerender.
+  window.__ravtextAutoRerender = autoRerenderPages;
+  window.__ravtextRenderGateStatus = () => ({
+    liveRenderEnabled: isLiveRenderEnabled(),
+    shouldRenderNow: shouldLiveRenderNow(),
+    userAskedRecently: userAskedForThis(),
+  });
 }
 
 function refreshStreamSettingsPanel(pages = []) {
@@ -1131,7 +1209,14 @@ function scheduleDiagnosticsRefresh({ force = false } = {}) {
 paneManager.on("change", () => {
   scheduleDiagnosticsRefresh();
   refreshStreamSettingsPanel();
-  if (shouldLiveRenderNow()) rerenderPages();
+  // AUTO_RENDER_GATE_20260907: רק אם השער פתוח וגם הטקסט באמת השתנה.
+  if (shouldLiveRenderNow()) {
+    const sig = paneContentSignature();
+    if (sig === null || sig !== _lastRenderedSignature) {
+      _lastRenderedSignature = sig;
+      rerenderPages();
+    }
+  }
   updateNestedNotesHint();
 });
 
@@ -1555,9 +1640,12 @@ document.getElementById("btn-render")?.addEventListener("click", () => {
 // עכשיו פותחים מודלים שנשלחים ל-Worker → D1 → פאנל המנהל.
 wireInboxButtons();
 
-wireTalmudLayoutControls(rerenderPages);
-wireMishnaWrapToggle(rerenderPages);
-wireOpeningWordControls(rerenderPages);
+// AUTO_RENDER_GATE_20260907: אלה שלושת המקומות שבהם הרינדור התחיל לבד.
+// stream_picker ממלא שני זרמים ברירת-מחדל 1.5 שניות אחרי הטעינה ומשגר
+// אירוע "change" מלאכותי; talmud_controls שמע אותו וריצה רינדור מלא.
+wireTalmudLayoutControls(settingRerenderPages);
+wireMishnaWrapToggle(settingRerenderPages);
+wireOpeningWordControls(settingRerenderPages);
 
 document.querySelectorAll(".btn-stress").forEach((btn) => {
   btn.addEventListener("click", () => {
