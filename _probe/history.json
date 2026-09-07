@@ -1,0 +1,141 @@
+{
+  "url": "http://127.0.0.1:5202/",
+  "when": "2026-09-07T17:58:32.656Z",
+  "pageErrors": [
+    "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+  ],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_UNKNOWN_URL_SCHEME",
+    "Failed to load resource: net::ERR_CONNECTION_RESET",
+    "Failed to load resource: net::ERR_ADDRESS_UNREACHABLE",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "checks": [
+    {
+      "name": "settled doc: one undo restores exactly",
+      "pass": true,
+      "before": 20,
+      "afterUndo": 20
+    },
+    {
+      "name": "hot replace: 3 replaced, length exactly as predicted",
+      "pass": true,
+      "shown": "3",
+      "actual": 21,
+      "predicted": 21
+    },
+    {
+      "name": "hot replace: ONE undo lands back on the typed text, does not overshoot",
+      "pass": true,
+      "afterUndoLen": 24,
+      "typedLen": 24,
+      "seedLen": 9,
+      "overshotToSeed": false
+    },
+    {
+      "name": "no match: document untouched by the click",
+      "pass": true,
+      "hash": 1750960849
+    },
+    {
+      "name": "no match: no wasted entry on the undo stack (undo goes past it, not onto it)",
+      "pass": true,
+      "beforeLen": 20,
+      "afterUndoLen": 24
+    }
+  ],
+  "historyModuleServed": {
+    "probedDepUrl": 404
+  },
+  "settled": {
+    "htmlLen": 27,
+    "textLen": 20,
+    "hash": 2907783451
+  },
+  "hot": {
+    "seed": {
+      "htmlLen": 16,
+      "textLen": 9,
+      "hash": 2267844561
+    },
+    "typed": {
+      "htmlLen": 31,
+      "textLen": 24,
+      "hash": 1865807986
+    },
+    "status": {
+      "digits": "3",
+      "isError": false
+    },
+    "after": {
+      "htmlLen": 28,
+      "textLen": 21,
+      "hash": 564701869
+    },
+    "predicted": 21,
+    "afterUndo": {
+      "htmlLen": 31,
+      "textLen": 24,
+      "hash": 1865807986
+    }
+  },
+  "noPush": {
+    "afterClick": {
+      "htmlLen": 27,
+      "textLen": 20,
+      "hash": 1750960849
+    },
+    "afterUndo": {
+      "htmlLen": 31,
+      "textLen": 24,
+      "hash": 1865807986
+    }
+  },
+  "summary": {
+    "total": 5,
+    "passed": 5,
+    "failed": []
+  }
+}
