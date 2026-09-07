@@ -1,0 +1,177 @@
+{
+  "url": "http://127.0.0.1:5202/",
+  "when": "2026-09-07T00:22:50.219Z",
+  "pageErrors": [
+    "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+  ],
+  "steps": {
+    "paneShape": {
+      "hasPaneManager": true,
+      "paneCount": 6,
+      "hasActivePane": true,
+      "panes": [
+        {
+          "id": "sample-main",
+          "streamCode": null,
+          "hasTitleProp": false,
+          "titleIsUndefined": true,
+          "hasLabelProp": true,
+          "labelLen": 4,
+          "hasEditor": true,
+          "hasElement": true
+        },
+        {
+          "id": "pane-mtqhyjcy-6",
+          "streamCode": "01",
+          "hasTitleProp": false,
+          "titleIsUndefined": true,
+          "hasLabelProp": true,
+          "labelLen": 9,
+          "hasEditor": true,
+          "hasElement": true
+        },
+        {
+          "id": "pane-mtqhyjd8-7",
+          "streamCode": "02",
+          "hasTitleProp": false,
+          "titleIsUndefined": true,
+          "hasLabelProp": true,
+          "labelLen": 10,
+          "hasEditor": true,
+          "hasElement": true
+        },
+        {
+          "id": "pane-mtqhyjdm-8",
+          "streamCode": "03",
+          "hasTitleProp": false,
+          "titleIsUndefined": true,
+          "hasLabelProp": true,
+          "labelLen": 10,
+          "hasEditor": true,
+          "hasElement": true
+        },
+        {
+          "id": "pane-mtqhyjdy-9",
+          "streamCode": "04",
+          "hasTitleProp": false,
+          "titleIsUndefined": true,
+          "hasLabelProp": true,
+          "labelLen": 8,
+          "hasEditor": true,
+          "hasElement": true
+        },
+        {
+          "id": "pane-mtqhyje7-10",
+          "streamCode": "05",
+          "hasTitleProp": false,
+          "titleIsUndefined": true,
+          "hasLabelProp": true,
+          "labelLen": 8,
+          "hasEditor": true,
+          "hasElement": true
+        }
+      ]
+    },
+    "setup": {
+      "paneCount": 6,
+      "labels": [
+        "USERNAME-ONE",
+        "USERNAME-TWO",
+        "משנה ברורה",
+        "ביאור הלכה",
+        "טורי זהב",
+        "כף החיים"
+      ]
+    },
+    "panelUi": {
+      "panelExists": true,
+      "hidden": false,
+      "dir": "rtl",
+      "hasScopeRadioOrSelect": false,
+      "checkboxCount": 6,
+      "scopeLabelsShown": [
+        "הכל",
+        "זרם sample-main",
+        "מגן אברהם",
+        "משנה ברורה",
+        "ביאור הלכה",
+        "טורי זהב",
+        "כף החיים"
+      ],
+      "liveUserLabels": [
+        "USERNAME-ONE",
+        "USERNAME-TWO",
+        "משנה ברורה",
+        "ביאור הלכה",
+        "טורי זהב",
+        "כף החיים"
+      ],
+      "showsLiveLabels": false,
+      "buttons": [
+        "fr-close",
+        "fr-find-next",
+        "fr-replace-one",
+        "fr-replace-all"
+      ]
+    },
+    "load": {
+      "p0": {
+        "htmlLen": 102,
+        "textLen": 95,
+        "hash": 1985265341
+      },
+      "p1": {
+        "htmlLen": 74,
+        "textLen": 67,
+        "hash": 2585403229
+      }
+    },
+    "replaceAllBoth": {
+      "statusDigits": "12",
+      "statusLen": 16,
+      "p0": {
+        "htmlLen": 95,
+        "textLen": 88,
+        "hash": 3416463628
+      },
+      "p1": {
+        "htmlLen": 69,
+        "textLen": 62,
+        "hash": 1277276460
+      }
+    },
+    "undoCost": {
+      "undoStepsToRestore": 60,
+      "after": {
+        "htmlLen": 7,
+        "textLen": 0,
+        "hash": 2348338314
+      },
+      "targetLen": 95
+    },
+    "growingReplacement": {
+      "occurrencesBefore": 4,
+      "occurrencesAfterReplacement": 1,
+      "stillPlain": 3,
+      "statusDigits": "1",
+      "before": {
+        "htmlLen": 30,
+        "textLen": 23,
+        "hash": 1182538446
+      },
+      "after": {
+        "htmlLen": 31,
+        "textLen": 24,
+        "hash": 4260673398
+      }
+    },
+    "overlapCount": {
+      "reportedDigits": "3",
+      "trueNonOverlapping": 2
+    },
+    "splitAcrossMarks": {
+      "reportedDigits": "1",
+      "trueOccurrencesInText": 2
+    }
+  }
+}

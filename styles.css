@@ -3870,6 +3870,23 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   color: #888;
   min-height: 16px;
 }
+.find-replace-panel .fr-mode-row {
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.find-replace-panel .fr-pane-row select {
+  flex: 1;
+  padding: 4px 6px;
+  font: inherit;
+  direction: rtl;
+}
+.find-replace-panel .fr-pane-row[hidden],
+.find-replace-panel .fr-scope[hidden] {
+  display: none;
+}
+.find-replace-panel .fr-status-error {
+  color: #a33;
+}
 
 /* === תיבת הודעה בפינה === */
 .toast {
