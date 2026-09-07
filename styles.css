@@ -3715,6 +3715,12 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   width: auto !important;
   min-width: 0 !important;
 }
+/* משה 06/09/2026 (הערה 16): חלונית שלא נבחרה בבורר הזרמים מוסתרת בלבד —
+   התוכן שלה נשאר שלם ולא נמחק, וחזרה לבחירה קודמת מחזירה אותה. */
+.pane.pane-hidden-by-picker {
+  display: none !important;
+}
+
 .pane.pane-collapsed > *:not(.pane-header) {
   display: none !important;
 }
