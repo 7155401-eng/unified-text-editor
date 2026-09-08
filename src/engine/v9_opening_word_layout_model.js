@@ -185,9 +185,11 @@ function stabilizeDroppedSpan(span, model) {
   span.style.boxSizing = "border-box";
   span.style.contain = "paint";
 
-  if (openingWidthPx > 0) {
-    span.style.width = `${openingWidthPx}px`;
-  }
+  // משה 08/09/2026: רוחב צרוב בפיקסלים נשבר ברגע שמשתנים גופן, גודל או
+  // סגנון. מילת פתיח היא אות מוגדלת בשורה — היא צריכה לתפוס מקום דינמי,
+  // בדיוק כמו תמונה שהדפדפן מודד לבדו. לכן הרוחב נקבע מהתוכן.
+  span.style.width = "max-content";
+  span.style.maxWidth = "100%";
 
   if (baseLineHeightPx > 0) {
     span.style.setProperty("--opw-base-line-height", `${baseLineHeightPx}px`);
@@ -197,9 +199,15 @@ function stabilizeDroppedSpan(span, model) {
   }
   if (windowHeightPx > 0) {
     const px = `${windowHeightPx}px`;
-    span.style.height = px;
-    span.style.minHeight = px;
-    span.style.maxHeight = px;
+    // משה 08/09/2026: הגובה בא מהאותיות, לא ממספר צרוב.
+    // משה 08/09/2026: גובה צרוב שובר את מילת הפתיח ברגע שמשתנה גופן
+    // או גודל. הגובה בא מהאותיות עצמן. רווח השורות של הפסקה לא נגע —
+    // float תופס מקום לצידו ואינו מרחיב את השורה.
+    // // span.style.height = px;
+    // משה 08/09/2026: הגובה בא מהאותיות, לא ממספר צרוב.
+  // span.style.minHeight = px;
+    // משה 08/09/2026: הגובה בא מהאותיות, לא ממספר צרוב.
+  // span.style.maxHeight = px;
   }
 
   span.dataset.opwWindowStable = "1";

@@ -274,6 +274,66 @@ function openPanel(pane, anchorEl) {
   setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
 }
 
+/* --------------------------------------------- what the header button says */
+
+// משה 08/09/2026: הכפתור אמר „קישור” בלבד, ולא היה אפשר לדעת לאן החלונית
+// מחוברת בלי לפתוח תפריט. עכשיו הוא אומר את המצב בעצמו, וכך רואים את כל
+// מפת הקישורים במבט אחד על הכותרות.
+function linkSummary(code) {
+  let parents = [];
+  try {
+    parents = getStreamParents(String(code)) || [];
+  } catch (_) {
+    parents = [];
+  }
+  if (!parents.length) return "\u2b05 לראשי בלבד";
+  if (parents.length === 1) {
+    const one = livePanes().find((p) => String(p.code) === String(parents[0]));
+    return "\u2b05 " + (one ? one.label : "זרם " + parents[0]);
+  }
+  return "\u2b05 " + parents.length + " זרמים";
+}
+
+// כתיבה מותנית בלבד: נוגעים בדף רק כשהכיתוב באמת השתנה.
+export function refreshStreamLinkSummaries() {
+  let changed = 0;
+  for (const btn of document.querySelectorAll("." + BUTTON_CLASS)) {
+    const code = btn.dataset.streamLinksFor;
+    if (!code) continue;
+    const text = linkSummary(code);
+    if (btn.textContent !== text) {
+      btn.textContent = text;
+      changed += 1;
+    }
+  }
+  return changed;
+}
+
+if (typeof window !== "undefined") {
+  window.__ravtextRefreshStreamLinkSummaries = refreshStreamLinkSummaries;
+  const bump = () => {
+    try {
+      refreshStreamLinkSummaries();
+    } catch (_) {}
+  };
+  window.addEventListener(STREAM_LINKS_CHANGED_EVENT, bump);
+  document.addEventListener("input", (event) => {
+    if (event.target?.closest?.(".pane-header")) bump();
+  }, true);
+  let tries = 0;
+  const attach = () => {
+    tries += 1;
+    bump();
+    const mgr = window.paneManager;
+    if (mgr && typeof mgr.on === "function") {
+      mgr.on("change", bump);
+      return;
+    }
+    if (tries < 40) setTimeout(attach, 150);
+  };
+  attach();
+}
+
 /* ------------------------------------------------------- header button */
 
 export function attachStreamLinksButton(pane, header) {
@@ -287,7 +347,8 @@ export function attachStreamLinksButton(pane, header) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "pane-marker-toggle " + BUTTON_CLASS;
-  btn.textContent = "קישור";
+  btn.textContent = linkSummary(pane.streamCode);
+  btn.dataset.streamLinksFor = String(pane.streamCode);
   btn.title = "בחר לאילו זרמים ההערות של החלונית הזאת מתחברות";
   btn.setAttribute("aria-label", btn.title);
   btn.setAttribute("aria-haspopup", "dialog");
