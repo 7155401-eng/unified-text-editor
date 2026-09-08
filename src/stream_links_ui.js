@@ -288,7 +288,7 @@ function linkSummary(code) {
   }
   if (!parents.length) return "\u2b05 לראשי בלבד";
   if (parents.length === 1) {
-    const one = livePanes().find((p) => String(p.code) === String(parents[0]));
+    const one = streamPanes().find((p) => String(p.code) === String(parents[0]));
     return "\u2b05 " + (one ? one.label : "זרם " + parents[0]);
   }
   return "\u2b05 " + parents.length + " זרמים";
