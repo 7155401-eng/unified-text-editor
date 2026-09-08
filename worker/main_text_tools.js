@@ -169,6 +169,55 @@ function inlineSplit(mainText, panes) {
   return { mainText: out, streamTexts };
 }
 
+const MAX_NOTE_LENGTH = 20000;
+
+function normalizeStreamCode(raw) {
+  const n = parseInt(String(raw ?? "").replace(/[^\d]/g, ""), 10);
+  if (!Number.isFinite(n) || n < 1 || n > 999) return null;
+  return String(n).padStart(2, "0");
+}
+
+function markerOrdinalBefore(text, code, caretIndex) {
+  const before = String(text || "").slice(0, caretIndex);
+  let count = 0;
+  for (const match of before.matchAll(/@(\d{1,3})/g)) {
+    if (normalizeStreamCode(match[1]) === code) count += 1;
+  }
+  return count;
+}
+
+function rebuildStreamText(code, notes) {
+  const symbol = `@${code}`;
+  return notes
+    .map((note, idx) => `${symbol} [${idx + 1}] ${String(note || "").trim()}`)
+    .join(SEPARATOR);
+}
+
+function addNoteToStream({ mainText, streamText, code, noteText, caretIndex }) {
+  const text = String(mainText || "");
+  const note = String(noteText || "").trim();
+  const at = Math.max(0, Math.min(Number(caretIndex) || 0, text.length));
+
+  const ordinalIndex = markerOrdinalBefore(text, code, at);
+  const notes = splitStreamNotesByMarkers(String(streamText || ""));
+  const insertAt = Math.max(0, Math.min(ordinalIndex, notes.length));
+  notes.splice(insertAt, 0, note);
+
+  return {
+    mainText: `${text.slice(0, at)}@${code}${text.slice(at)}`,
+    streamText: rebuildStreamText(code, notes),
+    streamHtml: buildStreamHTML(code, notes),
+    ordinal: insertAt + 1,
+    noteCount: notes.length,
+    // מספר הסימנים של הזרם הזה שכבר מופיעים לפני נקודת ההוספה. אם הוא גדול
+    // מ-ordinal סימן שיש בזרם פחות הערות מאשר סימנים בטקסט — כלומר המסמך כבר
+    // לא מסונכרן. אנחנו לא ממציאים הערות ריקות כדי לסגור את הפער; מדווחים
+    // עליו, וצד הדפדפן יכול להזהיר את המשתמש.
+    markerOrdinal: ordinalIndex + 1,
+    inSync: insertAt === ordinalIndex,
+  };
+}
+
 export async function handleMainTextTools(request) {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'method_not_allowed', message: 'Use POST' }, 405);
@@ -220,6 +269,27 @@ export async function handleMainTextTools(request) {
   if (action === 'inline_split') {
     const panes = Array.isArray(body?.panes) ? body.panes : [];
     return jsonResponse(inlineSplit(String(body?.mainText || ''), panes));
+  }
+
+  if (action === 'add_note_to_stream') {
+    const code = normalizeStreamCode(body?.code);
+    if (!code) {
+      return jsonResponse({ error: 'bad_stream', message: 'לא נבחר זרם תקין' }, 400);
+    }
+    const noteText = String(body?.noteText || '').trim();
+    if (!noteText) {
+      return jsonResponse({ error: 'empty_note', message: 'ההערה ריקה — כתוב טקסט לפני האישור' }, 400);
+    }
+    if (noteText.length > MAX_NOTE_LENGTH) {
+      return jsonResponse({ error: 'note_too_long', message: 'ההערה ארוכה מדי' }, 400);
+    }
+    return jsonResponse(addNoteToStream({
+      mainText: String(body?.mainText || ''),
+      streamText: String(body?.streamText || ''),
+      code,
+      noteText,
+      caretIndex: body?.caretIndex,
+    }));
   }
 
   return jsonResponse({ error: 'unknown_action', message: 'Unknown main text action' }, 400);

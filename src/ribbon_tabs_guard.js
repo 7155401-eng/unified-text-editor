@@ -85,6 +85,41 @@ function syncRibbonTabs() {
   return true;
 }
 
+// משה 06/09/2026 (הערה 1): הפס העליון לא יגלוש הצדה. מודדים את הרוחב
+// האמיתי, ורק אם התוכן לא נכנס — מצמצמים את הריווח בשתי דרגות.
+// הבדיקה רצה בטעינה, בשינוי גודל חלון ובבנייה מחדש של הלשוניות בלבד —
+// לא בכל סבב סנכרון, כדי שלא תיווצר לולאה.
+export function fitRibbonTabs() {
+  const bar = document.getElementById("ribbon-tabs");
+  if (!bar) return;
+  const had = bar.className;
+  bar.classList.remove("rt-compact", "rt-compact-2", "rt-compact-3");
+  if (bar.scrollWidth > bar.clientWidth) {
+    bar.classList.add("rt-compact");
+    if (bar.scrollWidth > bar.clientWidth) bar.classList.add("rt-compact-2");
+    // מסך צר מאוד: מוטב שתי שורות מאשר לשוניות שנעלמות מאחורי גלילה.
+    if (bar.scrollWidth > bar.clientWidth) bar.classList.add("rt-compact-3");
+  }
+  bar.classList.toggle("has-overflow", bar.scrollWidth > bar.clientWidth);
+  if (bar.className === had) return;
+}
+
+let fitQueued = false;
+function queueFit() {
+  if (fitQueued) return;
+  fitQueued = true;
+  const run = () => {
+    fitQueued = false;
+    try {
+      fitRibbonTabs();
+    } catch (err) {
+      console.warn("[ribbon-tabs-guard] fit failed", err);
+    }
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+  else setTimeout(run, 0);
+}
+
 function queueSync() {
   if (queued) return;
   queued = true;
@@ -127,6 +162,7 @@ export function installRibbonTabsGuard() {
     if (event.ctrlKey && event.key === "F1") queueSync();
   }, true);
   window.addEventListener("resize", queueSync);
+  window.addEventListener("resize", queueFit);
 
   let attempts = 0;
   const boot = () => {
@@ -143,4 +179,5 @@ export function installRibbonTabsGuard() {
   }
 
   [0, 50, 150, 400, 900, 1800, 3000].forEach((delay) => setTimeout(queueSync, delay));
+  [0, 120, 400, 900, 1800, 3000].forEach((delay) => setTimeout(queueFit, delay));
 }

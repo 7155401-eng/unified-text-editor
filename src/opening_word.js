@@ -497,7 +497,14 @@ function isCenterAlignedElement(el, options = {}) {
   const cs = getComputedStyle(el);
   const textAlign = String(cs.textAlign || "").toLowerCase();
   const textAlignLast = String(cs.textAlignLast || "").toLowerCase();
-  if (textAlign === "center" || textAlignLast === "center") return true;
+  // משה 07/09/2026 (הערה 2): כאן נמצא השורש. נמדד על הדף החי: הפסקאות
+  // האלה הן justify — כלומר **אינן** ממורכזות — אבל השורה האחרונה שלהן
+  // ממורכזת (text-align-last: center), וזה סגנון תורני רגיל לגמרי.
+  // הכלל הסיק מיישור השורה האחרונה שכל הפסקה ממורכזת, וביטל את מצב
+  // "נפתחת" — ולכן מילת הפתיח גלשה מעל הטקסט במקום לתפוס מקום.
+  // מילת הפתיח יושבת בשורה ה**ראשונה**; ליישור השורה האחרונה אין לזה
+  // שום נגיעה. לכן נשארת רק בדיקת היישור האמיתי של הפסקה.
+  if (textAlign === "center") return true;
   const display = String(cs.display || "").toLowerCase();
   const justifyContent = String(cs.justifyContent || "").toLowerCase();
   return (display.includes("flex") || display.includes("grid")) && justifyContent.includes("center");
@@ -574,8 +581,26 @@ function setWrappedText(el, parts, settings, options = {}) {
   const len = plainLength(fullText);
   if (options.skipOrphan && isOrphanText(fullText)) return false;
 
+  // משה 07/09/2026 (הערה 2): השער השלישי — והוא תפס את עצמו.
+  // הכלל שבודק "האם הפסקה ממורכזת" קורא את העיצוב בפועל, ומוסיף בעצמו
+  // את הסימון opw-center-full שממרכז את הפסקה. כלומר אחרי מעבר אחד
+  // הפסקה נראית ממורכזת *בגלל הכלל עצמו*, הכלל מאשר את עצמו שוב, ומילת
+  // הפתיח נעולה ב"מוגבהת" לנצח. נמדד: 105 מתוך 105 מילות פתיח נשאו את
+  // הסימון הזה. לכן מסירים אותו לפני ההחלטה — כל מעבר מחליט מחדש לפי
+  // היישור האמיתי של המחבר, והסימון נוסף שוב רק אם הכלל באמת חל.
+  el.classList?.remove?.("opw-center-full");
   const centeredPartialLine = settings.position === "dropped" && isCenteredPartialOpeningLine(el, fullText, options);
-  const shortFallback = (settings.skipHeadings && len < settings.headingMin) || options._forceRaised || centeredPartialLine;
+  // משה 07/09/2026 (הערה 2): ההכרעה שלו — מילת הפתיח צריכה לתפוס מקום
+  // אמיתי, כמו תמונה שהטקסט גולש סביבה, והמילה שאחריה מתחילה רק אחרי
+  // שהיא נגמרת. מצב "נפתחת" הוא היחיד שעושה זאת (float ב-CSS), אבל הוא
+  // כמעט אף פעם לא חל: כל פסקה קצרה מ-80 תווים הוחזרה ל"מוגבהת", ובטקסט
+  // תורני זה כמעט תמיד. הכוונה המקורית של הכלל הייתה לא לעשות אות פתיחה
+  // מכותרת — אז מעכשיו הוא חל על כותרות בלבד, וכך פסקה קצרה רגילה
+  // מקבלת סוף-סוף מילת פתיח שתופסת מקום.
+  const shortHeadingFallback = settings.skipHeadings
+    && len < settings.headingMin
+    && isHeadingElement(el);
+  const shortFallback = shortHeadingFallback || options._forceRaised || centeredPartialLine;
   const effectivePosition = settings.position === "dropped" && !shortFallback ? "dropped" : "raised";
 
   el.textContent = "";

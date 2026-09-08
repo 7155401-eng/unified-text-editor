@@ -1,0 +1,51 @@
+{
+  "url": "http://127.0.0.1:5202/",
+  "when": "2026-09-07T00:26:08.183Z",
+  "pageErrors": [
+    "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+  ],
+  "steps": {
+    "seed": {
+      "htmlLen": 83,
+      "textLen": 76,
+      "hash": 3472876916
+    },
+    "afterReplace": {
+      "statusDigits": "7",
+      "snap": {
+        "htmlLen": 76,
+        "textLen": 69,
+        "hash": 2469656165
+      }
+    },
+    "fairUndo": {
+      "beforeHash": 3472876916,
+      "beforeTextLen": 76,
+      "restoredAfterNUndos": 7,
+      "textLenTrail": [
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        2259,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "caseSensitivity": {
+      "hasCaseToggle": false,
+      "hasWholeWordToggle": false,
+      "reportedForLowercaseQuery": "1",
+      "trueCaseInsensitiveCount": 3,
+      "trueCaseSensitiveCount": 1
+    }
+  }
+}

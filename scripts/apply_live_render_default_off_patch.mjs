@@ -21,7 +21,15 @@ function replaceRequired(source, name, pattern, replacement) {
   return source.replace(pattern, replacement);
 }
 
+// משה 06/09/2026: אם הקוד המקורי כבר נושא את הכלל, לא נוגעים בו.
+// קודם הסקריפט הזה דרס את הקוד בכל בנייה, וכל תיקון ידני נמחק.
+const SOURCE_TRUTH = "LIVE_RENDER_DEFAULT_OFF_IN_SOURCE";
+
 function patchMain(source) {
+  if (source.includes(SOURCE_TRUTH)) {
+    console.log("[live-render-default-off] src/main.js already carries the rule - left as is");
+    return source;
+  }
   let next = source;
   next = replaceRequired(
     next,
@@ -41,6 +49,10 @@ function patchMain(source) {
 const LIVE_TOGGLE_HELPER = "  function ensureLiveRenderToggleButton() {\n    const render = renderButton();\n    const pause = pauseButton();\n    const host = render?.parentElement || pause?.parentElement;\n    if (!host) return;\n\n    function renderMenuAnchor() {\n      const ids = new Set([\"btn-render\", \"btn-render-pause\", \"btn-render-resume\", \"btn-render-diagnostics\", \"btn-reset-display-only\", \"btn-ravtext-snapshots\"]);\n      const controls = Array.from(host.children).filter((el) => ids.has(el.id));\n      return controls[controls.length - 1] || pause || render;\n    }\n\n    function place(wrap) {\n      wrap.classList.add(\"live-render-menu-control\", \"live-render-pause-control\");\n      wrap.dir = \"rtl\";\n      wrap.style.cssText = \"display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;white-space:nowrap;font-size:12px;\";\n      const anchor = renderMenuAnchor();\n      if (anchor && anchor.parentElement === host) {\n        if (anchor.nextElementSibling !== wrap) anchor.insertAdjacentElement(\"afterend\", wrap);\n      } else if (wrap.parentElement !== host) {\n        host.appendChild(wrap);\n      }\n    }\n\n    const existingBtn = byId(\"live-render-toggle-button\");\n    const existingWrap = existingBtn?.closest?.(\".live-render-menu-control\") || null;\n    if (existingWrap) {\n      place(existingWrap);\n      return;\n    }\n\n    const wrap = document.createElement(\"span\");\n    wrap.className = \"live-render-menu-control live-render-pause-control\";\n\n    const btn = document.createElement(\"button\");\n    btn.type = \"button\";\n    btn.id = \"live-render-toggle-button\";\n    btn.className = \"live-render-toggle-btn\";\n    btn.style.cssText = \"white-space:nowrap;\";\n\n    const warning = document.createElement(\"span\");\n    warning.className = \"live-render-warning\";\n    warning.textContent = \"⚠ עלול להאט או לתקוע במסמכים גדולים\";\n    warning.style.cssText = \"opacity:.78;font-size:11px;\";\n\n    function paintLiveToggle() {\n      const enabled = liveEnabled();\n      btn.classList.toggle(\"active\", enabled);\n      btn.setAttribute(\"aria-pressed\", enabled ? \"true\" : \"false\");\n      btn.textContent = enabled ? \"רינדור אוטומטי: פעיל\" : \"רינדור אוטומטי: כבוי\";\n      btn.title = enabled\n        ? \"לחץ כדי לכבות רינדור אוטומטי אחרי כל שינוי\"\n        : \"לחץ כדי להפעיל רינדור אוטומטי אחרי כל שינוי. עלול להאט או לתקוע במסמכים גדולים.\";\n    }\n\n    btn.addEventListener(\"click\", () => {\n      const next = !liveEnabled();\n      if (next) {\n        const ok = confirm(\"רינדור אוטומטי לאחר כל שינוי עלול להאט ואף לתקוע את העריכה במסמכים גדולים. להפעיל בכל זאת?\");\n        if (!ok) return;\n      }\n\n      setLiveEnabled(next, { userChoice: true });\n      paintLiveToggle();\n      if (next) {\n        try { renderButton()?.click(); } catch (_) {}\n      }\n    });\n\n    wrap.appendChild(btn);\n    wrap.appendChild(warning);\n    place(wrap);\n    paintLiveToggle();\n  }\n\n";
 
 function patchPauseControls(source) {
+  if (source.includes(SOURCE_TRUTH)) {
+    console.log("[live-render-default-off] src/render_pause_controls.js already carries the rule - left as is");
+    return source;
+  }
   let next = source;
 
   next = replaceRequired(

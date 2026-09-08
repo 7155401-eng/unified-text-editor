@@ -62,7 +62,10 @@ function stabilizeDroppedOpeningWord(opw, root) {
   if (lineHeight > 0) {
     opw.style.setProperty("--opw-base-line-height", `${lineHeight}px`);
     opw.style.lineHeight = `${lineHeight}px`;
-    opw.style.height = `${windowHeight}px`;
+    // משה 08/09/2026: גובה צרוב בפיקסלים נשבר ברגע שמשתנה גופן, גודל
+    // או סגנון — מילת פתיח היא אות מוגדלת שצריכה לתפוס מקום דינמי.
+    // הגובה בא מהאותיות עצמן. רווח השורות של הפסקה לא נגע.
+    // opw.style.height = `${windowHeight}px`;
     opw.style.minHeight = `${windowHeight}px`;
   }
 

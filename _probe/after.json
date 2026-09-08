@@ -1,0 +1,428 @@
+{
+  "url": "http://127.0.0.1:5202/",
+  "when": "2026-09-07T05:21:26.892Z",
+  "pageErrors": [
+    "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+  ],
+  "checks": [
+    {
+      "name": "dropdown lists the CURRENT user names",
+      "pass": true,
+      "optionCount": 6
+    },
+    {
+      "name": "scope radios exist (one / all / custom)",
+      "pass": true,
+      "radios": 3
+    },
+    {
+      "name": "nothing removed: checkboxes + 4 buttons still there",
+      "pass": true,
+      "checkboxes": 6,
+      "buttons": [
+        "fr-close",
+        "fr-find-next",
+        "fr-replace-one",
+        "fr-replace-all"
+      ]
+    },
+    {
+      "name": "live count before replacing = matches in the chosen pane only",
+      "pass": true,
+      "shown": "7",
+      "expected": 7
+    },
+    {
+      "name": "replaced count reported = 7",
+      "pass": true,
+      "shown": "7",
+      "expected": 7
+    },
+    {
+      "name": "chosen pane length changed exactly as predicted",
+      "pass": true,
+      "actual": 55,
+      "predicted": 55
+    },
+    {
+      "name": "OTHER pane is byte-identical (hash + lengths)",
+      "pass": true,
+      "beforeB": {
+        "htmlLen": 42,
+        "textLen": 35,
+        "hash": 3141534282
+      },
+      "afterB": {
+        "htmlLen": 42,
+        "textLen": 35,
+        "hash": 3141534282
+      }
+    },
+    {
+      "name": "one single undo restores the pane exactly (hash match)",
+      "pass": true,
+      "restoredTextLen": 62,
+      "originalTextLen": 62,
+      "hashMatch": true
+    },
+    {
+      "name": "live count across all panes = 7 + 4 = 11",
+      "pass": true,
+      "shown": "112",
+      "expected": 11
+    },
+    {
+      "name": "all-panes replaced count = 11",
+      "pass": true,
+      "shown": "112"
+    },
+    {
+      "name": "pane A grew exactly as predicted (longer replacement)",
+      "pass": true,
+      "actual": 118,
+      "predicted": 118
+    },
+    {
+      "name": "pane B grew exactly as predicted (longer replacement)",
+      "pass": true,
+      "actual": 67,
+      "predicted": 67
+    },
+    {
+      "name": "one undo per pane restores both panes exactly",
+      "pass": true,
+      "A": {
+        "restored": 62,
+        "orig": 62
+      },
+      "B": {
+        "restored": 35,
+        "orig": 35
+      }
+    },
+    {
+      "name": "empty search: error message shown, document untouched",
+      "pass": true,
+      "statusLen": 57,
+      "isError": true
+    },
+    {
+      "name": "no matches: error message shown, document untouched",
+      "pass": true,
+      "liveIsError": true,
+      "statusLen": 81
+    },
+    {
+      "name": "mixed Hebrew+English: 3 matches found and replaced",
+      "pass": true,
+      "shown": "3"
+    },
+    {
+      "name": "shorter replacement: length shrank exactly as predicted",
+      "pass": true,
+      "actual": 35,
+      "predicted": 35
+    },
+    {
+      "name": "mixed Hebrew+English: one undo restores exactly",
+      "pass": true,
+      "restored": 44,
+      "orig": 44
+    },
+    {
+      "name": "replacement containing the search text: all 4 replaced, none left",
+      "pass": true,
+      "replaced": 4,
+      "leftPlain": 0,
+      "statusDigits": "4"
+    },
+    {
+      "name": "overlap counting: AA in AAAA counts 2, not 3",
+      "pass": true,
+      "shown": "2"
+    },
+    {
+      "name": "match split by bold is still found: counts 2, not 1",
+      "pass": true,
+      "shown": "2"
+    },
+    {
+      "name": "empty replacement deletes only the matches, keeps the rest",
+      "pass": true,
+      "before": 25,
+      "after": 19,
+      "predicted": 19
+    },
+    {
+      "name": "replaced text keeps the bold it had",
+      "pass": true,
+      "boldKept": true,
+      "htmlLen": 43
+    },
+    {
+      "name": "custom checkbox mode still scopes correctly (pane B untouched)",
+      "pass": true,
+      "shown": "2"
+    }
+  ],
+  "steps": {
+    "setup": {
+      "paneCount": 6,
+      "ids": [
+        "sample-main",
+        "01",
+        "02",
+        "03",
+        "04",
+        "05"
+      ],
+      "labels": [
+        "LIVE-NAME-ALEF",
+        "LIVE-NAME-BET",
+        "משנה ברורה",
+        "ביאור הלכה",
+        "טורי זהב",
+        "כף החיים"
+      ]
+    },
+    "dropdown": {
+      "panelDir": "rtl",
+      "hasModeRadios": 3,
+      "hasSelect": true,
+      "optionCount": 6,
+      "optionTextsMatchLiveLabels": true,
+      "firstTwoOptionTexts": [
+        "LIVE-NAME-ALEF",
+        "LIVE-NAME-BET"
+      ],
+      "defaultMode": "one",
+      "defaultSelectedIsActivePane": true,
+      "paneRowHidden": false,
+      "customCheckboxRowHidden": true,
+      "stillHasCheckboxes": 6,
+      "stillHasButtons": [
+        "fr-close",
+        "fr-find-next",
+        "fr-replace-one",
+        "fr-replace-all"
+      ]
+    },
+    "scopeOne": {
+      "seedA": {
+        "htmlLen": 69,
+        "textLen": 62,
+        "hash": 2778169239
+      },
+      "seedB": {
+        "htmlLen": 42,
+        "textLen": 35,
+        "hash": 3141534282
+      },
+      "liveCount": {
+        "digits": "7",
+        "len": 14,
+        "isError": false
+      },
+      "status": {
+        "digits": "7",
+        "len": 60,
+        "isError": false
+      },
+      "before": {
+        "A": {
+          "htmlLen": 69,
+          "textLen": 62,
+          "hash": 2778169239
+        },
+        "B": {
+          "htmlLen": 42,
+          "textLen": 35,
+          "hash": 3141534282
+        }
+      },
+      "after": {
+        "A": {
+          "htmlLen": 62,
+          "textLen": 55,
+          "hash": 3455442086
+        },
+        "B": {
+          "htmlLen": 42,
+          "textLen": 35,
+          "hash": 3141534282
+        }
+      },
+      "predictedALen": 55,
+      "afterOneUndo": {
+        "htmlLen": 69,
+        "textLen": 62,
+        "hash": 2778169239
+      }
+    },
+    "scopeAll": {
+      "liveCount": {
+        "digits": "112",
+        "len": 27,
+        "isError": false
+      },
+      "status": {
+        "digits": "112",
+        "len": 73,
+        "isError": false
+      },
+      "before": {
+        "A": {
+          "htmlLen": 69,
+          "textLen": 62,
+          "hash": 2778169239
+        },
+        "B": {
+          "htmlLen": 42,
+          "textLen": 35,
+          "hash": 3141534282
+        }
+      },
+      "after": {
+        "A": {
+          "htmlLen": 125,
+          "textLen": 118,
+          "hash": 4142724381
+        },
+        "B": {
+          "htmlLen": 74,
+          "textLen": 67,
+          "hash": 2856550410
+        }
+      },
+      "predicted": {
+        "A": 118,
+        "B": 67,
+        "delta": 8
+      },
+      "afterOneUndoEach": {
+        "A": {
+          "htmlLen": 69,
+          "textLen": 62,
+          "hash": 2778169239
+        },
+        "B": {
+          "htmlLen": 42,
+          "textLen": 35,
+          "hash": 3141534282
+        }
+      }
+    },
+    "edge": {
+      "emptySearch": {
+        "digits": "",
+        "len": 57,
+        "isError": true
+      },
+      "emptySearchSnap": {
+        "htmlLen": 29,
+        "textLen": 22,
+        "hash": 1010082705
+      },
+      "noMatchLive": {
+        "digits": "",
+        "len": 81,
+        "isError": true
+      },
+      "noMatch": {
+        "digits": "",
+        "len": 81,
+        "isError": true
+      },
+      "noMatchSnap": {
+        "htmlLen": 29,
+        "textLen": 22,
+        "hash": 1010082705
+      },
+      "mixedLive": {
+        "digits": "3",
+        "len": 14,
+        "isError": false
+      },
+      "mixedStatus": {
+        "digits": "3",
+        "len": 60,
+        "isError": false
+      },
+      "mixed": {
+        "findLen": 9,
+        "replLen": 6,
+        "perMatchDelta": -3,
+        "before": {
+          "htmlLen": 51,
+          "textLen": 44,
+          "hash": 3392943888
+        },
+        "after": {
+          "htmlLen": 42,
+          "textLen": 35,
+          "hash": 502876655
+        },
+        "predicted": 35
+      },
+      "mixedUndo": {
+        "htmlLen": 51,
+        "textLen": 44,
+        "hash": 3392943888
+      },
+      "growingStatus": {
+        "digits": "4",
+        "len": 60,
+        "isError": false
+      },
+      "growing": {
+        "replaced": 4,
+        "leftPlain": 0,
+        "snap": {
+          "htmlLen": 34,
+          "textLen": 27,
+          "hash": 714013518
+        }
+      },
+      "overlap": {
+        "digits": "2",
+        "len": 14,
+        "isError": false
+      },
+      "splitMarks": {
+        "digits": "2",
+        "len": 14,
+        "isError": false
+      },
+      "deleteStatus": {
+        "digits": "2",
+        "len": 60,
+        "isError": false
+      },
+      "deleteAfter": {
+        "hasKeep1": true,
+        "hasKeep2": true,
+        "hasKeep3": true,
+        "delLeft": 0,
+        "snap": {
+          "htmlLen": 26,
+          "textLen": 19,
+          "hash": 2732797441
+        }
+      },
+      "marksKept": {
+        "boldKept": true,
+        "htmlLen": 43
+      },
+      "customStatus": {
+        "digits": "2",
+        "len": 60,
+        "isError": false
+      }
+    }
+  },
+  "summary": {
+    "total": 24,
+    "passed": 24,
+    "failed": []
+  }
+}

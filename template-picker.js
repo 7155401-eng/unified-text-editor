@@ -259,19 +259,30 @@
     render.insertAdjacentElement('afterend', btn);
   }
 
+  // משה 06/09/2026: כתיבה חוזרת של אותו טקסט מחליפה את צומת הטקסט וזה
+  // נחשב שינוי בדף — ושומר הלשוניות מקשיב לאזור הזה ומגיב. כך נוצרה
+  // תנועה מיותרת של ארבע פעמים בשנייה. כותבים רק כשבאמת השתנה.
+  function setText(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+
+  function setAttr(el, name, value) {
+    if (el && el.getAttribute(name) !== value) el.setAttribute(name, value);
+  }
+
   function paint() {
     const render = renderButton();
     const pause = pauseButton();
     if (render) {
       render.classList.toggle('render-running', state.running);
-      render.setAttribute('aria-busy', state.running ? 'true' : 'false');
-      render.textContent = state.running ? T.stop : T.render;
-      render.title = state.running ? T.stop : T.render;
+      setAttr(render, 'aria-busy', state.running ? 'true' : 'false');
+      setText(render, state.running ? T.stop : T.render);
+      setAttr(render, 'title', state.running ? T.stop : T.render);
     }
     if (pause) {
       pause.classList.toggle('active', state.paused);
-      pause.setAttribute('aria-pressed', state.paused ? 'true' : 'false');
-      pause.textContent = state.paused ? (state.pending ? T.resumeRender : T.resume) : T.pause;
+      setAttr(pause, 'aria-pressed', state.paused ? 'true' : 'false');
+      setText(pause, state.paused ? (state.pending ? T.resumeRender : T.resume) : T.pause);
     }
     document.body.classList.toggle('render-paused', state.paused);
     document.body.classList.toggle('render-running', state.running);

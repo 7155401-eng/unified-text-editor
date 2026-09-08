@@ -23,6 +23,10 @@ import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { installFinalLayoutGuard } from "./engine/final_layout_guard.js";
+import "./stream_button_labels.js";
+import "./stream_visibility.js";
+import { addNoteToStream, paneForCode } from "./stream_note_insert.js";
+import "./add_note_dialog.js";
 import { bootstrapLiveOverflowReserve, resetLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
@@ -49,6 +53,7 @@ import { wireDocumentStyleControls } from "./document_style_settings.js";
 import { installTalmudDebugApi } from "./talmud_debug_api.js";
 import { setupSettingsPane } from "./settings_pane.js";
 import { setupStreamPicker } from "./stream_picker.js";
+import { installLoadingIndicator, setStartupLoading } from "./loading_indicator.js";
 import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
 import { setupFindReplace } from "./find_replace.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
@@ -141,7 +146,8 @@ function wireOtherAsMishna() {
   cb.addEventListener("change", () => {
     apply();
     // Trigger a re-render so the change takes effect immediately.
-    if (typeof rerenderPages === "function") rerenderPages();
+    // AUTO_RENDER_GATE_20260907: רק אם המשתמש באמת סימן את התיבה.
+    if (typeof settingRerenderPages === "function") settingRerenderPages();
   });
   apply();
 }
@@ -201,6 +207,11 @@ const INTERNAL_SAMPLE = `@MAIN בראשית ברא אלהים את השמים ו
 `;
 
 // === אתחול ===
+// LOADING_INDICATOR_20260907: the pill goes up before anything slow starts,
+// so the very first thing the user sees is a sign of life, not a blank page.
+installLoadingIndicator();
+setStartupLoading(true);
+
 const container = document.querySelector("#panes-container");
 const paneManager = new PaneManager(container);
 window.paneManager = paneManager;
@@ -236,8 +247,9 @@ installFinalLayoutGuard({
   getPagesContainer: () => pagesContainer,
   rerender: () => {
     try {
-      if (typeof rerenderPages === "function") rerenderPages();
-      else if (typeof window.__ravtextRerender === "function") window.__ravtextRerender();
+      // AUTO_RENDER_GATE_20260907: שומר-הפריסה הוא משקיף, לא בקשה של משתמש.
+      if (typeof autoRerenderPages === "function") autoRerenderPages();
+      else if (typeof window.__ravtextAutoRerender === "function") window.__ravtextAutoRerender();
     } catch (err) {
       console.warn("[final-layout-guard] rerender failed", err);
     }
@@ -307,6 +319,15 @@ function isLegacyDemoState() {
 // אם יש מצב שמור — משחזר. אחרת — טוען שו"ע כברירת מחדל בכל נקודת התחלה.
 const loadedFromStorage = paneManager.loadFromStorage();
 let initialLoadPromise = Promise.resolve();
+// LOADING_INDICATOR_20260907: down on success AND on failure. A spinner that
+// can get stuck is worse than no spinner, so this is the single place that
+// ends the start-up phase, whatever happened.
+queueMicrotask(() => {
+  Promise.resolve(initialLoadPromise)
+    .catch(() => {})
+    .finally(() => setStartupLoading(false));
+  setTimeout(() => setStartupLoading(false), 30000);
+});
 if (!loadedFromStorage || isLegacyDemoState()) {
   initialLoadPromise = loadSampleByName(paneManager, "shulchan");
 }
@@ -354,7 +375,7 @@ function applyTypography({ rerender = false } = {}) {
   localStorage.setItem("ravtext.fontSize", String(_fontSize));
   localStorage.setItem("ravtext.fontFamily", _fontFamily);
 
-  if (rerender) rerenderPages();
+  if (rerender) settingRerenderPages();
 }
 
 function setGlobalFontFamily(fontName, options = {}) {
@@ -471,11 +492,19 @@ document.getElementById("local-font-upload-input")?.addEventListener("change", a
 const LIVE_RENDER_KEY = "ravtext.liveRender";
 const LIVE_RENDER_MAX_DOC_SIZE = 60000;
 
+const LIVE_RENDER_CHOICE_KEY = LIVE_RENDER_KEY + ".userChoice";
+
+// LIVE_RENDER_DEFAULT_OFF_IN_SOURCE
+// משה 06/09/2026: רינדור אוטומטי כבוי כברירת מחדל, ונדלק רק אחרי שהמשתמש
+// בחר בכך במפורש בתפריט "רינדור". ההוראה הישנה (דלוק כברירת מחדל, 06/05)
+// בוטלה — משה דיווח שהרינדור רץ בלי שביקש והאט את העריכה.
 function isLiveRenderEnabled() {
-  // משה 2026-05-06: ברירת מחדל ON — רינדור איטי אוטומטי בכל שינוי
-  // שומר ביצועים גם כשהמשתמש לא לחץ "רינדור".
-  const v = localStorage.getItem(LIVE_RENDER_KEY);
-  return v === null ? true : v === "1";
+  try {
+    if (localStorage.getItem(LIVE_RENDER_CHOICE_KEY) !== "1") return false;
+    return localStorage.getItem(LIVE_RENDER_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
 }
 
 function paneManagerDocSize() {
@@ -486,6 +515,59 @@ function paneManagerDocSize() {
 
 function shouldLiveRenderNow() {
   return isLiveRenderEnabled() && paneManagerDocSize() <= LIVE_RENDER_MAX_DOC_SIZE;
+}
+
+// AUTO_RENDER_GATE_20260907
+// משה 07/09/2026: רינדור שהמשתמש לא ביקש רץ רק אם "רינדור אוטומטי" דלוק.
+// איך יודעים אם המשתמש ביקש? רק אירוע שנוצר מאצבע או ממקלדת אמיתית מקבל
+// isTrusted=true. אירוע שהקוד שלנו יצר בעצמו (dispatchEvent) לעולם לא יקבל
+// אותו, ולכן אי אפשר לזייף בקשה של משתמש.
+let _lastTrustedUserEventAt = 0;
+const USER_GESTURE_WINDOW_MS = 4000;
+if (typeof window !== "undefined") {
+  const markUser = (ev) => { if (ev && ev.isTrusted) _lastTrustedUserEventAt = Date.now(); };
+  for (const type of ["pointerdown", "mousedown", "keydown", "click", "change", "input", "touchstart", "wheel"]) {
+    window.addEventListener(type, markUser, { capture: true, passive: true });
+  }
+}
+function userAskedForThis() {
+  return Date.now() - _lastTrustedUserEventAt <= USER_GESTURE_WINDOW_MS;
+}
+
+// רינדור אוטומטי: טעינה, שומר, טיימר, משקיף. עובר רק דרך השער.
+function autoRerenderPages() {
+  if (!shouldLiveRenderNow()) return false;
+  rerenderPages();
+  return true;
+}
+
+// שינוי הגדרה: אם אצבע אמיתית שינתה אותה — מציירים מיד, כי זה בדיוק מה
+// שהמשתמש מצפה לראות. אם קוד האתחול שלנו "שינה" אותה — זה רינדור
+// אוטומטי בתחפושת, ולכן הוא עובר דרך אותו שער.
+function settingRerenderPages() {
+  if (userAskedForThis()) {
+    rerenderPages();
+    return true;
+  }
+  return autoRerenderPages();
+}
+
+// "רק אם באמת היה שינוי" — חתימה קצרה של הטקסט בכל החלוניות.
+// FNV-1a, ריצה אחת על מסמך שממילא מוגבל ל-60,000 תווים בנתיב האוטומטי.
+let _lastRenderedSignature = null;
+function paneContentSignature() {
+  try {
+    let h = 0x811c9dc5;
+    for (const p of paneManager.panes) {
+      const text = p.editor?.state?.doc?.textContent || "";
+      const head = (p.streamCode || "-") + "\u0000" + text.length + "\u0000";
+      for (let i = 0; i < head.length; i++) { h ^= head.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+      for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    }
+    return h >>> 0;
+  } catch (_) {
+    return null;
+  }
 }
 
 function getMainRibbonToolbar() {
@@ -637,29 +719,36 @@ function setupWidthSlider() {
   applyWidth();
 }
 
+// משה 06/09/2026 (הערה 1): המתג של הרינדור האוטומטי יושב בתוך תפריט המשנה
+// של "רינדור", ולא בסרגל הראשי. בפס העליון נשארים רק שניים: הלשונית
+// "רינדור" והכפתור "רנדר".
 function setupLiveRenderToggle() {
-  const mainToolbar = getMainRibbonToolbar();
-  if (!mainToolbar || document.getElementById("live-render-toggle")) return;
+  if (document.getElementById("live-render-toggle")) return;
 
-  const groups = mainToolbar.querySelectorAll(".tb-group");
-  const targetGroup = groups[10] || groups[groups.length - 1];
+  const renderGroup = document.getElementById("render-safety-render-group");
+  const mainToolbar = getMainRibbonToolbar();
+  const groups = mainToolbar ? mainToolbar.querySelectorAll(".tb-group") : [];
+  const targetGroup = renderGroup || groups[10] || groups[groups.length - 1];
   if (!targetGroup) return;
 
   const label = document.createElement("label");
   label.className = "toolbar-checkbox live-render-control";
-  label.title = "רינדור אוטומטי אחרי עריכה. כבוי כברירת מחדל כדי שהעורך יישאר מהיר.";
+  label.title = "רינדור אוטומטי אחרי כל עריכה. כבוי כברירת מחדל כדי שהעריכה תישאר מהירה.";
 
   const input = document.createElement("input");
   input.type = "checkbox";
   input.id = "live-render-toggle";
   input.checked = isLiveRenderEnabled();
   input.addEventListener("change", () => {
-    localStorage.setItem(LIVE_RENDER_KEY, input.checked ? "1" : "0");
+    try {
+      localStorage.setItem(LIVE_RENDER_CHOICE_KEY, "1");
+      localStorage.setItem(LIVE_RENDER_KEY, input.checked ? "1" : "0");
+    } catch (_) {}
     if (input.checked && shouldLiveRenderNow()) rerenderPages();
   });
 
   label.appendChild(input);
-  label.appendChild(document.createTextNode("רינדור חי"));
+  label.appendChild(document.createTextNode("רינדור אוטומטי"));
   targetGroup.appendChild(label);
 }
 
@@ -682,6 +771,9 @@ function setupRibbonTabs() {
     ["review", "סקירה"],
     ["view", "תצוגה"],
     ["advanced", "מתקדם"],
+    // משה 06/09/2026 (הערה 1): "רינדור" היא לשונית אמיתית שנבנית כאן.
+    // קודם היא נדחפה לפס העליון מסקריפט חיצוני שהוזרק אחרי הטעינה.
+    ["render", "רינדור"],
   ];
 
   let tabsBar = document.getElementById("ribbon-tabs");
@@ -710,6 +802,7 @@ function setupRibbonTabs() {
       torah: "כלים תורניים — גימטריה, ראשי תיבות, גרשיים, תאריך עברי",
       review: "סקירה ובדיקה", view: "תצוגה",
       advanced: "מתקדם", settings: "הגדרות מערכת", downloads: "הורדה ושמירה למחשב",
+      render: "אפשרויות רינדור",
     };
     for (const [id, label] of tabs) {
       const button = document.createElement("button");
@@ -718,6 +811,9 @@ function setupRibbonTabs() {
       button.dataset.ribbonTab = id;
       button.setAttribute("role", "tab");
       button.textContent = label;
+      // מזהה קבוע ללשונית הרינדור, כדי שהתוסף הישן יזהה שהיא כבר קיימת
+      // ולא ייצור עוד אחת.
+      if (id === "render") button.id = "btn-render-tab";
       if (tabTitles[id]) button.title = tabTitles[id];
       tabsBar.appendChild(button);
     }
@@ -731,6 +827,29 @@ function setupRibbonTabs() {
     }
     tabsBar.appendChild(renderBtnSlot);
   }
+
+    // משה 06/09/2026 (הערה 1): תפריט המשנה של הרינדור נבנה כאן, בקובץ
+    // התפריט עצמו. המזהים זהים לאלה שהתוסף הישן היה יוצר, כדי שהוא ימצא
+    // אותם, ידלג על היצירה, ורק ישים את הכפתורים שלו בפנים — כך שום
+    // אפשרות קיימת לא נעלמת.
+    if (!document.getElementById("render-safety-toolbar")) {
+      const renderPanel = document.createElement("div");
+      renderPanel.id = "render-safety-toolbar";
+      renderPanel.className = "toolbar bottom-toolbar source-bottom-toolbar ribbon-panel render-safety-toolbar ribbon-hidden";
+      renderPanel.dir = "rtl";
+      renderPanel.dataset.ribbonTab = "render";
+      const renderGroup = document.createElement("span");
+      renderGroup.className = "tb-group";
+      renderGroup.id = "render-safety-render-group";
+      renderGroup.dataset.title = "רינדור";
+      const diagGroup = document.createElement("span");
+      diagGroup.className = "tb-group";
+      diagGroup.id = "render-safety-diagnostics-group";
+      diagGroup.dataset.title = "אבחון ושחזור";
+      renderPanel.appendChild(renderGroup);
+      renderPanel.appendChild(diagGroup);
+      mainToolbar.after(renderPanel);
+    }
 
   // משה 2026-05-07: מערך זה ממפה כל .tb-group בסרגל הראשי ללשונית.
   // לאחר שהוספתי ב-PR #42 קבוצה חדשה (גודל טקסט נבחר) האינדקסים זזו ב-1
@@ -1031,7 +1150,7 @@ setupWidthSlider();
 setupLiveRenderToggle();
 wirePageSettingsControls(() => {
   applyPageSettings(pagesContainer);
-  rerenderPages();
+  settingRerenderPages();
 });
 wireSpacingControls({ pagesContainer, rerender: rerenderPages });
 wireOutputBackgroundControl();
@@ -1058,6 +1177,14 @@ if (typeof paneManager !== "undefined" && paneManager?.on) {
 // צוות האתר 2026-05-08: hook לרענון יזום מ-settings_pane (V8 toggle וכו').
 if (typeof window !== "undefined") {
   window.__ravtextRerender = rerenderPages;
+  // AUTO_RENDER_GATE_20260907: נקודת כניסה לרינדור שאיש לא ביקש —
+  // מודולים שרצים על טיימר או על טעינה קוראים לזה, לא ל-__ravtextRerender.
+  window.__ravtextAutoRerender = autoRerenderPages;
+  window.__ravtextRenderGateStatus = () => ({
+    liveRenderEnabled: isLiveRenderEnabled(),
+    shouldRenderNow: shouldLiveRenderNow(),
+    userAskedRecently: userAskedForThis(),
+  });
 }
 
 function refreshStreamSettingsPanel(pages = []) {
@@ -1082,7 +1209,14 @@ function scheduleDiagnosticsRefresh({ force = false } = {}) {
 paneManager.on("change", () => {
   scheduleDiagnosticsRefresh();
   refreshStreamSettingsPanel();
-  if (shouldLiveRenderNow()) rerenderPages();
+  // AUTO_RENDER_GATE_20260907: רק אם השער פתוח וגם הטקסט באמת השתנה.
+  if (shouldLiveRenderNow()) {
+    const sig = paneContentSignature();
+    if (sig === null || sig !== _lastRenderedSignature) {
+      _lastRenderedSignature = sig;
+      rerenderPages();
+    }
+  }
   updateNestedNotesHint();
 });
 
@@ -1133,6 +1267,13 @@ function updateNestedNotesHint() {
 // Wire the marker hover bubble (works for any @XX marker in any pane).
 import("./nested_notes_bubble.js").then((m) => {
   if (typeof m.installNestedNotesBubble === "function") m.installNestedNotesBubble(paneManager);
+}).catch((_) => {});
+
+// Notes-on-notes links: a small chooser in every stream pane header that says
+// which other streams this stream's notes may hang from. Default is the main
+// text only, so nothing changes until the user picks something.
+import("./stream_links_ui.js").then((m) => {
+  if (typeof m.installStreamLinksUI === "function") m.installStreamLinksUI(paneManager);
 }).catch((_) => {});
 
 window.addEventListener("ravtext:engine-rendered", (ev) => {
@@ -1325,12 +1466,62 @@ async function toggleInlineMerge() {
   rerenderPages();
 }
 
+// משה 07/09/2026 (הערה 2): "סמן בחירה כזרם" באמת מעביר את הקטע.
+//
+// עד היום הכפתור רק צבע את הטקסט הנבחר בצבע של הזרם. הטקסט נשאר בדיוק
+// במקומו, ולחלונית של הזרם לא נכנס כלום — ולכן זה נראה כאילו הלחיצה לא
+// עושה כלום. נמדד בדף החי לפני התיקון: הטקסט הראשי 20 תווים לפני ו-20
+// אחרי, וזרם 01 5060 תווים לפני ו-5060 אחרי.
+//
+// מעכשיו: אם יש קטע מסומן בחלונית הראשית — הקטע יוצא משם, נכנס כהערה
+// לחלונית של הזרם שנבחר, ובמקומו נשאר הסימן שמקשר ביניהם. אם אין קטע
+// מסומן, או שהסמן עומד בתוך חלונית של זרם, נשארת ההתנהגות הישנה של
+// צביעת הבחירה — לא לקחנו שום דבר שכבר עבד.
+function streamNameFor(code) {
+  const pane = paneForCode(code);
+  const label = String(pane?.label || "").trim();
+  return label || defaultLabelForCode(String(code).padStart(2, "0"));
+}
+
+async function markSelectionAsStream(code) {
+  const main = paneManager.getMainPane();
+  const active = paneManager.activePane;
+  const sel = main?.editor?.state?.selection;
+  const movable = !!main?.editor && (!active || active === main) && !!sel && !sel.empty;
+
+  if (!movable) {
+    activeChain()?.toggleStream(code).run();
+    return false;
+  }
+
+  const status = document.getElementById("status");
+  const text = main.editor.state.doc.textBetween(sel.from, sel.to, "\n", "\n");
+  const name = streamNameFor(code);
+
+  try {
+    const res = await addNoteToStream({ code, noteText: text, from: sel.from, to: sel.to });
+    if (status) {
+      status.textContent = res.inSync
+        ? `הקטע עבר ל${name} והפך להערה מספר ${res.ordinal} מתוך ${res.noteCount}. בטקסט הראשי נשאר הסימן @${res.code}.`
+        : `הקטע עבר ל${name} ונוסף בסוף (הערה ${res.ordinal} מתוך ${res.noteCount}), כי בזרם הזה יש יותר סימנים בטקסט הראשי מאשר הערות בחלונית.`;
+    }
+    return true;
+  } catch (err) {
+    console.warn("[mark-as-stream] failed", err);
+    if (status) status.textContent = `לא הצלחנו להעביר את הקטע ל${name}: ${err?.message || "שגיאה לא ידועה"}. הטקסט נשאר במקומו.`;
+    return false;
+  }
+}
+
 document.querySelectorAll(".btn-stream").forEach((btn) => {
   btn.addEventListener("mousedown", (e) => e.preventDefault());
   btn.addEventListener("click", () => {
-    activeChain()?.toggleStream(btn.dataset.stream).run();
+    markSelectionAsStream(btn.dataset.stream);
   });
 });
+
+// חשיפה לבדיקות: מאפשר להריץ את אותה פעולה בדיוק בלי לחיצה עם עכבר.
+window.__ravtextMarkSelectionAsStream = markSelectionAsStream;
 
 // משה 2026-05-10: כפתור × להסרת סימן הזרם מהטקסט הנבחר. הועבר מקבוצת
 // "זרמים" הישנה (data-cmd="stream-clear") שנמחקה — הוא יושב עכשיו
@@ -1353,7 +1544,7 @@ if (btnCustomStream && customStreamInput) {
       customStreamInput.focus();
       return;
     }
-    activeChain()?.toggleStream(String(n).padStart(2, "0")).run();
+    markSelectionAsStream(String(n).padStart(2, "0"));
   });
 }
 
@@ -1449,9 +1640,12 @@ document.getElementById("btn-render")?.addEventListener("click", () => {
 // עכשיו פותחים מודלים שנשלחים ל-Worker → D1 → פאנל המנהל.
 wireInboxButtons();
 
-wireTalmudLayoutControls(rerenderPages);
-wireMishnaWrapToggle(rerenderPages);
-wireOpeningWordControls(rerenderPages);
+// AUTO_RENDER_GATE_20260907: אלה שלושת המקומות שבהם הרינדור התחיל לבד.
+// stream_picker ממלא שני זרמים ברירת-מחדל 1.5 שניות אחרי הטעינה ומשגר
+// אירוע "change" מלאכותי; talmud_controls שמע אותו וריצה רינדור מלא.
+wireTalmudLayoutControls(settingRerenderPages);
+wireMishnaWrapToggle(settingRerenderPages);
+wireOpeningWordControls(settingRerenderPages);
 
 document.querySelectorAll(".btn-stress").forEach((btn) => {
   btn.addEventListener("click", () => {

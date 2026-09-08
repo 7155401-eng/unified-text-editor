@@ -34,6 +34,7 @@ export function installRenderPauseControls() {
     stoppedUntil: 0,
     snapshotHtml: null,
     snapshotScrollTop: 0,
+    snapshotPages: 0,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -46,27 +47,57 @@ export function installRenderPauseControls() {
     if (el) el.textContent = text;
   }
 
+  // LIVE_RENDER_DEFAULT_OFF_IN_SOURCE
+  // משה 06/09/2026: רינדור אוטומטי דולק רק אם המשתמש הדליק אותו בעצמו
+  // בתפריט "רינדור". בלי בחירה מפורשת — כבוי. וגם כשהוא דלוק, הרינדור
+  // רץ רק כשבאמת היה שינוי.
+  const LIVE_CHOICE_KEY = LIVE_KEY + ".userChoice";
+
   function liveEnabled() {
-    const value = localStorage.getItem(LIVE_KEY);
-    return value === null ? true : value === "1";
+    try {
+      if (localStorage.getItem(LIVE_CHOICE_KEY) !== "1") return false;
+      return localStorage.getItem(LIVE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
   }
 
-  function setLiveEnabled(on) {
-    localStorage.setItem(LIVE_KEY, on ? "1" : "0");
+  function setLiveEnabled(on, options = {}) {
+    try {
+      if (options.userChoice) localStorage.setItem(LIVE_CHOICE_KEY, "1");
+      localStorage.setItem(LIVE_KEY, on ? "1" : "0");
+    } catch (_) {}
     const cb = byId("live-render-toggle");
-    if (cb) cb.checked = !!on;
+    if (cb && cb.checked !== !!on) cb.checked = !!on;
+  }
+
+  // KEEP_LAST_RENDER_20260907
+  // The photograph is taken when the render button is pressed, i.e. before
+  // the new render exists. On a cold start with auto-render off the screen
+  // is empty, so the photograph was of nothing - and every later "stop"
+  // pasted that nothing over a finished render. A photograph is only kept
+  // when it actually holds pages, and it is never pasted over more pages
+  // than it contains.
+  function realPages(el) {
+    if (!el || typeof el.querySelectorAll !== "function") return 0;
+    return el.querySelectorAll(".page:not(.page-placeholder)").length;
   }
 
   function snapshotPreview() {
     const el = pages();
     if (!el) return;
+    const count = realPages(el);
+    if (count <= 0) return;
     state.snapshotHtml = el.innerHTML;
     state.snapshotScrollTop = el.scrollTop || 0;
+    state.snapshotPages = count;
   }
 
   function restorePreview() {
     const el = pages();
     if (!el || state.snapshotHtml == null) return;
+    if ((state.snapshotPages || 0) <= 0) return;
+    if (realPages(el) >= (state.snapshotPages || 0)) return;
     el.innerHTML = state.snapshotHtml;
     el.scrollTop = state.snapshotScrollTop || 0;
   }
@@ -115,19 +146,30 @@ export function installRenderPauseControls() {
     render.insertAdjacentElement("afterend", btn);
   }
 
+  // משה 06/09/2026: כתיבה חוזרת של אותו טקסט מחליפה את צומת הטקסט וזה
+  // נחשב שינוי בדף — ושומר הלשוניות מקשיב לאזור הזה ומגיב. כך נוצרה
+  // תנועה מיותרת של ארבע פעמים בשנייה. כותבים רק כשבאמת השתנה.
+  function setText(el, text) {
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+
+  function setAttr(el, name, value) {
+    if (el && el.getAttribute(name) !== value) el.setAttribute(name, value);
+  }
+
   function paint() {
     const render = renderButton();
     const pause = pauseButton();
     if (render) {
       render.classList.toggle("render-running", state.running);
-      render.setAttribute("aria-busy", state.running ? "true" : "false");
-      render.textContent = state.running ? T.stop : T.render;
-      render.title = state.running ? T.stop : T.render;
+      setAttr(render, "aria-busy", state.running ? "true" : "false");
+      setText(render, state.running ? T.stop : T.render);
+      setAttr(render, "title", state.running ? T.stop : T.render);
     }
     if (pause) {
       pause.classList.toggle("active", state.paused);
-      pause.setAttribute("aria-pressed", state.paused ? "true" : "false");
-      pause.textContent = state.paused ? (state.pending ? T.resumeRender : T.resume) : T.pause;
+      setAttr(pause, "aria-pressed", state.paused ? "true" : "false");
+      setText(pause, state.paused ? (state.pending ? T.resumeRender : T.resume) : T.pause);
     }
     document.body.classList.toggle("render-paused", state.paused);
     document.body.classList.toggle("render-running", state.running);
@@ -224,6 +266,21 @@ export function installRenderPauseControls() {
     document.addEventListener("input", markPending, true);
     document.addEventListener("change", markPending, true);
     document.addEventListener("paste", markPending, true);
+    // LOADING_INDICATOR_20260907: until now state.running was set only by a
+    // click on the render button, so aria-busy on #btn-render read "false"
+    // during a render that started any other way (measured). The engine's own
+    // start event is the truth, so the button follows it.
+    window.addEventListener("ravtext:engine-render-start", () => {
+      if (state.running) return;
+      snapshotPreview();
+      state.running = true;
+      paint();
+    });
+    window.addEventListener("ravtext:engine-render-cancelled", () => {
+      if (!state.running) return;
+      state.running = false;
+      paint();
+    });
     window.addEventListener("ravtext:engine-rendered", () => {
       if (stoppedGuardActive()) {
         restorePreview();

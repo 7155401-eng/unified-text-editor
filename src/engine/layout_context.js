@@ -45,8 +45,12 @@ function ensureMeasurePage() {
   page.id = "ravtext-layout-context-measure-page";
   page.className = "page measure-page";
   page.setAttribute("dir", "rtl");
+  // fixed, not absolute - see dom_packer.getMeasureRoot(). Appended to
+  // <body> (position:static), an absolute box here would hang off the
+  // initial containing block and inflate documentElement.scrollWidth by
+  // 99999px in this RTL document. Explicit width keeps measuring identical.
   page.style.cssText = [
-    "position:absolute",
+    "position:fixed",
     "left:-99999px",
     "top:0",
     "width:var(--ravtext-page-width,380px)",

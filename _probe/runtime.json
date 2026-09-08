@@ -1,0 +1,78 @@
+{
+  "url": "http://127.0.0.1:5202/",
+  "when": "2026-09-07T05:19:23.339Z",
+  "pageErrors": [
+    "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+  ],
+  "checks": [
+    {
+      "name": "the live scope module marks transactions to close the undo group",
+      "pass": true,
+      "ready": true,
+      "exports": [
+        "collectBlocks",
+        "countMatches",
+        "findMatches",
+        "historyHelperReady",
+        "paneDisplayName",
+        "replaceAllInPane"
+      ]
+    },
+    {
+      "name": "the close-undo-group marker round-trips on a transaction",
+      "pass": true,
+      "markerRoundTrips": true
+    },
+    {
+      "name": "closeHistory is doing its job: one undo lands on the typed text, not past it",
+      "pass": true,
+      "replaced": 2,
+      "typedLen": 14,
+      "afterLen": 12,
+      "undoneLen": 14,
+      "baseLen": 6
+    }
+  ],
+  "moduleState": {
+    "exportsSeen": [
+      "collectBlocks",
+      "countMatches",
+      "findMatches",
+      "historyHelperReady",
+      "paneDisplayName",
+      "replaceAllInPane"
+    ],
+    "typeofHistoryHelperReady": "function",
+    "typeofReplaceAllInPane": "function",
+    "historyHelperReady": true
+  },
+  "depState": {
+    "markerRoundTrips": true
+  },
+  "behaviour": {
+    "base": {
+      "textLen": 6,
+      "hash": 2572959027
+    },
+    "typed": {
+      "textLen": 14,
+      "hash": 3256353136
+    },
+    "replaced": 2,
+    "after": {
+      "textLen": 12,
+      "hash": 3643520752
+    },
+    "undone": {
+      "textLen": 14,
+      "hash": 3256353136
+    },
+    "landedOnTyped": true,
+    "overshotToBase": false
+  },
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": []
+  }
+}
