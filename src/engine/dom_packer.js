@@ -1813,9 +1813,12 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
     if (typeof rebalanceOpts.maxPasses !== "number") {
       rebalanceOpts.maxPasses = pages.length > 8 ? 1 : 3;
     }
-    if (rebalanceOpts.skipCompact === undefined && pages.length > 8) {
-      rebalanceOpts.skipCompact = true;
-    }
+    // משה 08/09/2026: „ההגבלה של 8 עמודים נראה משהו כנרי שצריך בכל מקרה
+    // לבטל — אז תבטל בינתיים לגמרי.” הכלל ויתר על דחיסת העמודים בכל
+    // מסמך גדול מ-8 עמודים, כלומר כמעט תמיד. הוסר.
+    // if (rebalanceOpts.skipCompact === undefined && pages.length > 8) {
+    //   rebalanceOpts.skipCompact = true;
+    // }
     await rebalancePages(pages, effectiveGeom, rebalanceOpts);
     mergeAdjacentNotesOnlyPages(pages, effectiveGeom);
     seedNotesOnlyPagesWithMain(pages, effectiveGeom);
