@@ -539,6 +539,17 @@ function makeGlobalOverrideControl(key, item, onCommit) {
     valueEl.checked = !!item.value;
     valueEl.addEventListener("change", () => {
       item.value = valueEl.checked;
+      // משה 08/09/2026: „אני מסמן וי ולא רואה שהשתנה משהו”.
+      // לכל הגדרה כאן יש שתי תיבות: אחת מפעילה את הדריסה ואחת הערך.
+      // getEffectiveStreamSettings מדלג על כל הגדרה שהמפעילה שלה כבויה,
+      // ולכן סימון הערך לבדו באמת לא עשה כלום — והמשתמש אינו יכול
+      // לדעת זאת. מי שנוגע בערך מתכוון להפעיל אותו, אז מדליקים גם את
+      // המפעילה. ביטול הסימון משאיר את הדריסה פעילה עם הערך „כבוי”,
+      // שזו בחירה אמיתית ולא אותו דבר כמו „בלי דריסה”.
+      if (valueEl.checked) {
+        item.enabled = true;
+        if (enable && enable.checked !== true) enable.checked = true;
+      }
       onCommit();
     });
   } else {
