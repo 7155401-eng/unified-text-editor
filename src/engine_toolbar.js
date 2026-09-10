@@ -504,15 +504,91 @@ export function setupPdfToolbar(pagesContainer) {
 
   pagesContainer.addEventListener("scroll", scheduleScrollUpdate, { passive: true });
 
+  // משה 09/09/2026: „תמיד כתוב עמוד 1 מתוך אפס.”
+  // כמה עמודים באמת קיימים ברגע זה. עמודי דמה ועמודים ריקים אינם נספרים,
+  // כי משה סופר עמודים שיש בהם משהו.
+  function livePageCount() {
+    try {
+      // התמונות הממוזערות בסרגל הצד נושאות אף הן את הסיווג "page",
+      // אבל הן אינן עמודים — הן תצוגה מוקטנת שלהם. אילו נספרו, המספר
+      // היה גדל בכל פעם שנפתח סרגל הצד. נמדד: 5 כאלה מול 35 עמודים.
+      return pagesContainer.querySelectorAll(
+        ".page:not(.page-placeholder):not(.ravtext-empty-page)"
+        + ":not(.pdf-thumb-page):not(.pdf-thumb-mini .page)"
+      ).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // כתיבה מותנית בלבד: נוגעים בדף רק כשהמספר באמת השתנה.
+  function paintTotal(total) {
+    const n = Math.max(0, Number(total) || 0);
+    toolbar.total = n;
+    if (toolbar.pageTotal) {
+      const text = `/ ${n}`;
+      if (toolbar.pageTotal.textContent !== text) toolbar.pageTotal.textContent = text;
+    }
+    if (toolbar.pageInput) {
+      const max = n ? String(n) : "1";
+      if (toolbar.pageInput.max !== max) toolbar.pageInput.max = max;
+      // לא חוטפים את התיבה מתחת לאצבע של משה בזמן שהוא מקליד בה.
+      if (document.activeElement !== toolbar.pageInput) {
+        const cur = parseInt(toolbar.pageInput.value || "1", 10) || 1;
+        const next = n ? String(Math.min(Math.max(1, cur), n)) : "0";
+        if (toolbar.pageInput.value !== next) toolbar.pageInput.value = next;
+      }
+    }
+  }
+
+  // עדכון בשעת אמת בזמן שהעמודים נולדים. מרוכז לפעימה אחת, כדי שלא
+  // נצייר מאה פעמים בשנייה בזמן שהמנוע עסוק.
+  let livePaintQueued = false;
+  function scheduleLivePaint() {
+    if (livePaintQueued) return;
+    livePaintQueued = true;
+    const run = () => {
+      livePaintQueued = false;
+      paintTotal(livePageCount());
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+    else setTimeout(run, 60);
+  }
+
+  try {
+    const liveObserver = new MutationObserver(scheduleLivePaint);
+    // משה 09/09/2026: עמודים אינם תמיד ילדים ישירים של המכל — לפעמים
+    // הם נולדים בתוך עטיפה פנימית. עם ילדים ישירים בלבד המספר נתקע
+    // באמצע (נמדד: נתקע על 29 בזמן ש-34 עמודים כבר היו על המסך).
+    liveObserver.observe(pagesContainer, { childList: true, subtree: true });
+  } catch (_) {}
+
+  try {
+    for (const evt of [
+      "ravtext:engine-render-start",
+      "ravtext:engine-rendered",
+      "ravtext:engine-render-cancelled",
+      "ravtext:engine-render-kept",
+    ]) {
+      window.addEventListener(evt, scheduleLivePaint);
+    }
+  } catch (_) {}
+
+  function refreshAll(total) {
+    paintTotal(total == null ? livePageCount() : total);
+    rememberBaseSize();
+    rebuildSidebar();
+    updateCurrentPageFromScroll();
+  }
+
+  paintTotal(livePageCount());
+
   return {
-    refresh(total) {
-      toolbar.total = total;
-      if (toolbar.pageTotal) toolbar.pageTotal.textContent = String(total || 0);
-      if (toolbar.pageInput) toolbar.pageInput.value = total ? "1" : "0";
-      rememberBaseSize();
-      rebuildSidebar();
-      updateCurrentPageFromScroll();
-    },
+    refresh: refreshAll,
+    // משה 09/09/2026: המנוע קורא לשמות האלה. עד היום הם לא היו קיימים,
+    // והקריאה — שאינה עטופה בשום הגנה — זרקה שגיאה וקטעה את הרינדור.
+    setTotal: refreshAll,
+    rememberBaseSize,
     applyZoom,
   };
 }
