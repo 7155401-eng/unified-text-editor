@@ -2250,14 +2250,31 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       detail: { pages, content },
     }));
 
+    // ⛔⛔ משה 10/09/2026 — ראה ההסבר המלא מיד למטה.
+    const RESURRECTED_POST_RENDER_IS_OFF = true;
+
     if (pdfToolbarApi) {
       pdfToolbarApi.setTotal(pages.length);
-      // משה 09/09/2026: ברקע אין ציור, ולכן ההערה הזאת לא הגיעה לעולם
-      // והזום נשאר לא מעודכן עד שמשה חזר לחלון.
-      afterPaint(() => {
-        pdfToolbarApi.rememberBaseSize();
-        pdfToolbarApi.applyZoom();
-      });
+      // ⛔⛔ משה 10/09/2026: „רווחים מטורפים בעמודים, יותר ממה שהיה קודם”
+      // ו„נראה שהוא לא מפצל קטעים”.
+      //
+      // הסיבה: עד היום `setTotal` **לא היתה קיימת כלל**. כל קריאה אליה
+      // זרקה שגיאה, שנבלעה ב-try עוטף — ולכן כל מה שכתוב אחריה מעולם
+      // לא רץ. כשתיקנתי את המונה („עמוד 1 מתוך אפס”) הפונקציה נולדה,
+      // והקוד הזה קם לתחייה אחרי שהיה מת זמן רב.
+      //
+      // קוד שלא רץ מעולם אינו קוד בדוק. ברגע שהתעורר הוא שינה את
+      // חלוקת העמוד, וזה מה שמשה ראה.
+      //
+      // לכן: המונה נשאר עובד (זה מה שהתבקש ומשה אישר שהוא טוב), אבל
+      // ההתנהגות של החלק הזה מוחזרת בדיוק למה שהיתה — כלומר לא רץ.
+      // כשנרצה להחיות אותו, זה ייעשה בנפרד ועם מדידה לפני ואחרי.
+      if (!RESURRECTED_POST_RENDER_IS_OFF) {
+        afterPaint(() => {
+          pdfToolbarApi.rememberBaseSize();
+          pdfToolbarApi.applyZoom();
+        });
+      }
     }
 
     // משה 2026-05-14: תיקון-עצמי דינמי לחריגות שנותרו אחרי כל הצנרת.
@@ -2266,8 +2283,11 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // ב-CSS var ומבקשים rerender. מוגבל ל-4 iterations בכל session כדי לא
     // ליצור לולאות. בלי MutationObserver, רק קריאה מפורשת מסוף הצנרת.
     if (!skipSmartTune) {
-      // משה 09/09/2026: אותו דבר — תיקון הגלישה פשוט לא רץ ברקע.
-      afterPaint(() => {
+      // ⛔⛔ משה 10/09/2026: גם הבלוק הזה מעולם לא רץ, מאותה סיבה בדיוק —
+      // הוא יושב אחרי הקריאה ל-setTotal שזרקה שגיאה. `tryRemergeSplitMarks`
+      // **ממזג בחזרה פיצולים**, וזה בדיוק „נראה שהוא לא מפצל קטעים”.
+      // מוחזר למצב שבו היה: כבוי.
+      if (!RESURRECTED_POST_RENDER_IS_OFF) afterPaint(() => {
         const overflowFix = correctLiveOverflowOnce(pagesContainer);
         // משה 2026-05-14: אחרי שאין יותר חריגות, בודקים אם יש זוגות סימני
         // פיצול U+2060 שיכולים להתמזג חזרה בעמוד אחד. אם כן — rerender שאחד
