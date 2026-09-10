@@ -652,6 +652,23 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   for (const pane of window.paneManager?.panes || []) {
     if (pane.streamCode) used.add(pane.streamCode);
   }
+
+  // ⛔⛔ משה 10/09/2026: „רק כשיש פופאפ רינדור הבעיה של V קיימת”.
+  // כשהרינדור מסתיים הוא מרענן את הפאנל, וזה מוחק את התיבה שמשה
+  // בדיוק לחץ עליה. השמירה על המוקד לא הספיקה — משה כבר הזיז את
+  // העכבר, והמוקד כבר לא בתיבה.
+  //
+  // אבל הרינדור לא שינה כאן שום דבר מבני: אותם זרמים בדיוק. אין שום
+  // סיבה לפרק ולבנות. הערכים בפאנל הם ההגדרות שמשה קבע, והם נכונים.
+  //
+  // לכן: אם רשימת הזרמים זהה למה שכבר מצויר — לא נוגעים בפאנל בכלל.
+  // בנייה מחדש נעשית רק כשזרם נוסף, נמחק, או שינה קוד.
+  const signature = [...used].sort().join(",");
+  if (panel.childElementCount > 0 && panel.dataset.builtFor === signature) {
+    return;
+  }
+  panel.dataset.builtFor = signature;
+
   panel.innerHTML = "";
   if (used.size === 0) return;
 
