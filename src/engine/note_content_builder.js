@@ -240,10 +240,28 @@ export function injectMainRefs(mainText, mainRuns, notes) {
   const origRuns = Array.isArray(mainRuns) ? mainRuns : [];
   const origNotes = Array.isArray(notes) ? notes : [];
 
+  // משה 09/09/2026: עוגן שנמצא מעבר לסוף הטקסט הזה אינו מיקום בטקסט הזה.
+  // הוא נמדד בתוך טקסט אחר (זרם שמארח הערות להערות), ו-Math.min שלמטה
+  // דוחס את כולם בכוח לאותה נקודה אחרונה. נמדד על הקובץ של משה:
+  // 1,033 מתוך 1,168 מספרים של זרם מקונן נחתו על נקודה שכבר תפוסה,
+  // עד 15 באותו מקום. לכן לא מדפיסים כאן מספר עבור עוגן כזה.
+  // ההערה עצמה אינה נעלמת — היא מופיעה באריח שלה עם המספר שלה.
+  let outOfRange = 0;
+  let inRange = 0;
+  for (const n of origNotes) {
+    if (!n || typeof n.anchor !== "number") continue;
+    if (n.anchor > text.length) outOfRange += 1;
+    else inRange += 1;
+  }
+  // רשת ביטחון: אם *כל* העוגנים מחוץ לתחום, המדידה כולה בסולם אחר וזו
+  // תקלה אחרת. אז לא נוגעים — עדיף התנהגות ישנה מאשר מסמך בלי מספרים.
+  const dropOutOfRange = outOfRange > 0 && inRange > 0;
+
   const refs = [];
   for (let i = 0; i < origNotes.length; i++) {
     const n = origNotes[i];
     if (!n || typeof n.anchor !== "number") continue;
+    if (dropOutOfRange && n.anchor > text.length) continue;
     const s = getEffectiveStreamSettings(n.stream);
     if (!_streamBoolSetting(s.mainRefEnabled, false)) continue;
     const formatted = formatStreamNumber(n.stream, n.num || 0, "main");

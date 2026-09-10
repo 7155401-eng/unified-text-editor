@@ -5,6 +5,12 @@
 // הערה = פיסה אחת מתוך תוכן חלונית הזרם המתאים, כשמפצלים אותו לפי הסמל "@NN".
 // אם החלונית פותחת בסמל — הפיסה הריקה הראשונה נופלת (תאימות עם word_bridge).
 
+import { getStreamParents, STREAM_LINKS_CHANGED_EVENT } from "./stream_links.js";
+
+// מפתח פנימי ל"החלונית הראשית". תו שאינו יכול להופיע בקוד זרם אמיתי,
+// כדי שלא יתנגש בשום קוד שמשה ייתן.
+const MAIN_HOST = "\u0000main";
+
 function findStreamMarksInState(state) {
   const found = [];
   if (!state || !state.doc || typeof state.doc.descendants !== "function") return found;
@@ -28,51 +34,110 @@ function noteCountForStreamPane(pane) {
   return parts.length;
 }
 
-function markerCountsInMains(paneManager) {
-  const counts = {};
+// משה 09/09/2026: כאן ישב הבאג של „הערות להערות”.
+// הגירסה הקודמת דילגה על כל חלונית שיש לה קוד זרם, כלומר חיפשה סימנים
+// אך ורק בראשי. אבל זרם שהוגדר כהערות-להערות מניח את הסימנים שלו בתוך
+// חלונית האב — ולכן קיבל תמיד 0, וההודעה „אבל רק 0 קישורים בראשי”
+// הופיעה גם כשהכול תקין. עכשיו סופרים בכל חלונית, ואחר כך שואלים לכל
+// זרם בנפרד אילו חלוניות רלוונטיות לו.
+function markerCountsByHost(paneManager) {
+  const byHost = {};
   for (const pane of paneManager.panes) {
-    if (pane.streamCode || !pane.editor) continue;
-    const marks = findStreamMarksInState(pane.editor.state);
-    for (const m of marks) {
+    if (!pane.editor) continue;
+    const key = pane.streamCode ? String(pane.streamCode) : MAIN_HOST;
+    const bucket = byHost[key] || (byHost[key] = {});
+    for (const m of findStreamMarksInState(pane.editor.state)) {
       const code = m.streamCode;
       if (!code) continue;
-      counts[code] = (counts[code] || 0) + 1;
+      bucket[code] = (bucket[code] || 0) + 1;
     }
   }
-  return counts;
+  return byHost;
+}
+
+function safeParents(code) {
+  try {
+    return getStreamParents(code) || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+// איפה מותר לסימנים של זרם אחד לשבת.
+// הראשי תמיד ברשימה — סימן בגוף הראשי לעולם אינו חסום (וכך גם מתנהג
+// מנוע הפריסה). אב שנמחקה חלוניתו יורד מהרשימה, אחרת היינו סופרים
+// סימנים שאיש כבר לא יכול לראות.
+function hostsForStream(code, livePaneCodes, override) {
+  const hosts = [MAIN_HOST];
+  const raw = Array.isArray(override) ? override : safeParents(code);
+  for (const entry of raw) {
+    const parent = String(entry == null ? "" : entry).trim();
+    if (!parent || parent === String(code)) continue;
+    if (!livePaneCodes.has(parent)) continue;
+    if (hosts.indexOf(parent) === -1) hosts.push(parent);
+  }
+  return hosts;
 }
 
 export function computeLinkMismatches(paneManager) {
   if (!paneManager || !Array.isArray(paneManager.panes)) return [];
-  const markerCounts = markerCountsInMains(paneManager);
+  const byHost = markerCountsByHost(paneManager);
+
+  const livePaneCodes = new Set();
+  const labelByCode = {};
+  for (const pane of paneManager.panes) {
+    if (!pane.streamCode) continue;
+    const code = String(pane.streamCode);
+    livePaneCodes.add(code);
+    labelByCode[code] = pane.label || `זרם ${code}`;
+  }
+
   const issues = [];
   const seenCodes = new Set();
 
   for (const pane of paneManager.panes) {
     if (!pane.streamCode) continue;
-    seenCodes.add(pane.streamCode);
-    const markerCount = markerCounts[pane.streamCode] || 0;
+    const code = String(pane.streamCode);
+    seenCodes.add(code);
+    const hosts = hostsForStream(code, livePaneCodes, pane.parentCodes);
+    let markerCount = 0;
+    for (const host of hosts) {
+      markerCount += (byHost[host] && byHost[host][code]) || 0;
+    }
     const noteCount = noteCountForStreamPane(pane);
     if (markerCount === noteCount) continue;
     issues.push({
-      streamCode: pane.streamCode,
-      label: pane.label || `זרם ${pane.streamCode}`,
-      symbol: pane.symbol || `@${pane.streamCode}`,
+      streamCode: code,
+      label: pane.label || `זרם ${code}`,
+      symbol: pane.symbol || `@${code}`,
       markerCount,
       noteCount,
       orphanedMarkers: false,
+      // שמות קריאים של המקומות שבהם הסימנים נספרו — כדי שההודעה תוכל
+      // לומר איפה לחפש, ולא רק „בראשי”.
+      hostNames: hosts.map((h) => (h === MAIN_HOST ? "הראשי" : (labelByCode[h] || `זרם ${h}`))),
+      hostIsMain: hosts.length === 1,
     });
   }
 
-  for (const code of Object.keys(markerCounts)) {
-    if (seenCodes.has(code)) continue;
+  // סימנים שמצביעים על זרם שאין לו חלונית כלל — בכל מקום שבו הם נמצאו.
+  const orphanTotals = {};
+  for (const host of Object.keys(byHost)) {
+    for (const code of Object.keys(byHost[host])) {
+      if (seenCodes.has(code)) continue;
+      orphanTotals[code] = (orphanTotals[code] || 0) + byHost[host][code];
+    }
+  }
+  for (const code of Object.keys(orphanTotals)) {
     issues.push({
       streamCode: code,
       label: `זרם ${code}`,
       symbol: `@${code}`,
-      markerCount: markerCounts[code],
+      markerCount: orphanTotals[code],
       noteCount: 0,
       orphanedMarkers: true,
+      hostNames: ["הראשי"],
+      hostIsMain: true,
     });
   }
 
@@ -80,16 +145,33 @@ export function computeLinkMismatches(paneManager) {
   return issues;
 }
 
+// „איפה” — בראשי בלבד, או בראשי ובתוך הזרמים שהוא מקושר אליהם.
+function whereText(issue) {
+  const names = Array.isArray(issue.hostNames) ? issue.hostNames : [];
+  if (names.length <= 1) return "בראשי";
+  return "בראשי או בתוך " + names.slice(1).map((n) => `«${n}»`).join(", ");
+}
+
+// שורה מלאה לחלון הפירוט: אומרת גם מה זה אומר וגם מה לעשות.
+function describeIssueLong(issue) {
+  const line = describeIssue(issue);
+  if (issue.orphanedMarkers || issue.hostIsMain !== false) return line;
+  const names = (issue.hostNames || []).slice(1).map((n) => `«${n}»`).join(", ");
+  return line + ` הזרם הזה מוגדר כהערות להערות, ולכן הסימן ${issue.symbol} `
+    + `יכול לשבת בטקסט הראשי או בתוך ${names}.`;
+}
+
 function describeIssue(issue) {
   if (issue.orphanedMarkers) {
     return `${issue.label}: ${issue.markerCount} קישורים בראשי, אבל אין חלונית להערות.`;
   }
+  const where = whereText(issue);
   if (issue.markerCount > issue.noteCount) {
     const diff = issue.markerCount - issue.noteCount;
-    return `${issue.label}: יש ${issue.markerCount} קישורים בראשי, אבל רק ${issue.noteCount} הערות. חסרות ${diff}.`;
+    return `${issue.label}: יש ${issue.markerCount} קישורים ${where}, אבל רק ${issue.noteCount} הערות. חסרות ${diff}.`;
   }
   const diff = issue.noteCount - issue.markerCount;
-  return `${issue.label}: יש ${issue.noteCount} הערות, אבל רק ${issue.markerCount} קישורים בראשי. ${diff} הערות לא ייוצאו.`;
+  return `${issue.label}: יש ${issue.noteCount} הערות, אבל רק ${issue.markerCount} קישורים ${where}. ${diff} הערות לא ייוצאו.`;
 }
 
 function ensureBar() {
@@ -172,7 +254,7 @@ function showDialog(issues) {
     list.innerHTML = "";
     for (const issue of issues) {
       const li = document.createElement("li");
-      li.textContent = describeIssue(issue);
+      li.textContent = describeIssueLong(issue);
       list.appendChild(li);
     }
   }
@@ -208,6 +290,15 @@ export function installLinkMismatchReporter(paneManager) {
 
   paneManager.on("change", schedule);
   paneManager.on("focus", schedule);
+
+  // שינוי של „לאיזה זרם החלונית מקושרת” משנה איפה מותר לסימנים לשבת,
+  // ולכן חייב לחשב את האזהרה מחדש — אחרת היא נשארת על המסך אחרי שמשה
+  // כבר תיקן את ההגדרה.
+  try {
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      window.addEventListener(STREAM_LINKS_CHANGED_EVENT, schedule);
+    }
+  } catch (_) {}
 
   refresh();
 

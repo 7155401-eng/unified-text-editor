@@ -260,8 +260,12 @@ export function ensureOriginalStreamSettings(code) {
   if (!settings[code]) {
     settings[code] = { ...DEFAULT_STREAM_SETTINGS };
   }
-  settings[code] = { ...DEFAULT_STREAM_SETTINGS, ...settings[code] };
-  settings[code] = normalizeStreamOpeningWordSettings(settings[code]);
+  // משה 10/09/2026: אותו טעם כמו בפאנל — לא מחליפים את האובייקט אלא
+  // ממלאים אותו, כדי שמי שמחזיק בו כבר לא יכתוב לאובייקט נטוש.
+  Object.assign(
+    settings[code],
+    normalizeStreamOpeningWordSettings({ ...DEFAULT_STREAM_SETTINGS, ...settings[code] })
+  );
   return settings[code];
 }
 
@@ -627,7 +631,17 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   for (let codeIdx = 0; codeIdx < sorted.length; codeIdx++) {
     const code = sorted[codeIdx];
     if (!settings[code]) settings[code] = { ...DEFAULT_STREAM_SETTINGS };
-    settings[code] = normalizeStreamOpeningWordSettings({ ...DEFAULT_STREAM_SETTINGS, ...settings[code] });
+    // משה 10/09/2026: כאן ישב הבאג של „מסמן V ולא קורה כלום”.
+    // השורה הקודמת יצרה אובייקט הגדרות **חדש** בכל בנייה של הפאנל.
+    // כל תיבת סימון שנבנתה קודם המשיכה להחזיק את האובייקט הישן, וכשמשה
+    // סימן — הסימון נכתב לאובייקט נטוש שאיש כבר לא קורא ממנו.
+    // לכן זה עבד דווקא כשהרינדור נעצר: בלי רינדור אין בנייה מחדש.
+    // עכשיו ממלאים בתוך אותו אובייקט, וזהותו נשמרת — כך כל התיבות
+    // בפאנל כותבות למקום הנכון, גם אלה שנבנו מזמן.
+    Object.assign(
+      settings[code],
+      normalizeStreamOpeningWordSettings({ ...DEFAULT_STREAM_SETTINGS, ...settings[code] })
+    );
     const cur = settings[code];
     const block = document.createElement("span");
     block.className = "stream-settings-block";

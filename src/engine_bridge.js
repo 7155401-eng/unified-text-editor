@@ -66,7 +66,7 @@ import { applyBalancedColumnsToPages } from "./balanced_columns.js";
 import { applyOpeningWordsToPages } from "./opening_word.js";
 import { applyOpeningWordStretchToPages } from "./opening_word_stretch.js";
 import { correctLiveOverflowOnce, bootstrapLiveOverflowReserve, tryRemergeSplitMarks } from "./engine/live_overflow_corrector.js";
-import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
+import { getEffectiveStreamSettings, getStreamSettings, formatStreamNumber } from "./original_stream_columns.js";
 import { firePackerHook } from "./engine/packer_hooks.js";
 import { installTalmudDebugV2 } from "./talmud_debug_v2.js";
 import { correctTalmudOverflow, correctTalmudOverflowOnPage } from "./talmud_overflow_corrector.js";
@@ -240,16 +240,22 @@ export function stripMarkersAndAlignRuns(paragraphText, runs, markers) {
     return { text: paragraphText, runs: Array.isArray(runs) ? runs.slice() : [] };
   }
   const keep = new Array(paragraphText.length).fill(true);
+  // משה 09/09/2026: סימן יכול גם להיות **מוחלף** ולא רק להימחק — כך
+  // המספר של ההערה המקוננת יושב בתוך הערת האב, בדיוק במקום שבו נכתב
+  // הסימן שלה, במקום להישלח לטקסט הראשי ולהיערם שם.
+  const replaceAt = new Map();
   for (const m of markers) {
     const len = (m.sym || "").length;
     for (let i = m.atInPara; i < m.atInPara + len; i++) {
       if (i >= 0 && i < paragraphText.length) keep[i] = false;
     }
+    if (m.replaceWith) replaceAt.set(m.atInPara, String(m.replaceWith));
   }
   let newText = "";
   const map = new Array(paragraphText.length + 1).fill(0);
   for (let i = 0; i < paragraphText.length; i++) {
     map[i] = newText.length;
+    if (replaceAt.has(i)) newText += replaceAt.get(i);
     if (keep[i]) newText += paragraphText[i];
   }
   map[paragraphText.length] = newText.length;
@@ -881,7 +887,28 @@ export function paneManagerToPackerContent(paneManager) {
           // Only a stream the user linked to `code` may hang off this note.
           if (!canNestInside(ycode, code)) continue;
           if (!consumersByStream[ycode]) consumersByStream[ycode] = [];
-          consumersByStream[ycode].push({ paraIdx: c.paraIdx, anchor: c.anchor, priority: 1 });
+          // משה 09/09/2026: ההערה המקוננת קיבלה כאן את העוגן של ההורה
+          // בטקסט הראשי. כשבהערה אחת יש חמישה־עשר סימנים מקוננים, כל
+          // החמישה־עשר קיבלו את אותה נקודה בדיוק ונערמו שם. נמדד על
+          // הפלט של משה: 1,033 מתוך 1,168 על נקודה תפוסה, עד 15 יחד.
+          // העוגן נשאר (הוא קובע לאיזה עמוד ההערה שייכת), אבל הסימון
+          // `nested` אומר למנוע לא להדפיס בשבילה מספר בטקסט הראשי.
+          const nestedConsumer = {
+            paraIdx: c.paraIdx,
+            anchor: c.anchor,
+            priority: 1,
+            nested: true,
+            nestedParentStream: code,
+          };
+          consumersByStream[ycode].push(nestedConsumer);
+          // הקשר להערת האב, לשימוש בשלב שמציב את המספר בתוך הערת האב.
+          if (!Array.isArray(c.nestedChildren)) c.nestedChildren = [];
+          c.nestedChildren.push(nestedConsumer);
+          // המפתח הוא **מיקום הסימן בתוך הערת האב**, ולא סדר או ספירה,
+          // כדי ששום מיון מאוחר לא יצמיד מספר לסימן הלא נכון.
+          nestedConsumer.stream = ycode;
+          if (!c.nestedChildrenByPos) c.nestedChildrenByPos = {};
+          c.nestedChildrenByPos[m.index] = nestedConsumer;
         }
       }
     }
@@ -932,7 +959,19 @@ export function paneManagerToPackerContent(paneManager) {
           // A marker of a stream that is NOT linked to this one was never
           // pulled as a child, so it must stay visible as literal text.
           if (ycode && ycode !== code && canNestInside(ycode, code)) {
-            localMarkers.push({ atInPara: m.index, sym: m[0] });
+            // משה 09/09/2026: עד היום הסימן נמחק מהערת האב והמספר נשתל
+            // בטקסט הראשי — שני הצעדים היו הפוכים. עכשיו הסימן מוחלף
+            // במספר של ההערה שהוא מושך, וכך הוא נשאר בדיוק במקומו.
+            const child = c.nestedChildrenByPos && c.nestedChildrenByPos[m.index];
+            let replaceWith = "";
+            if (child && child.num) {
+              try {
+                replaceWith = formatStreamNumber(ycode, child.num, "main") || "";
+              } catch (_) {
+                replaceWith = "";
+              }
+            }
+            localMarkers.push({ atInPara: m.index, sym: m[0], replaceWith });
           }
         }
         if (localMarkers.length) {
@@ -957,7 +996,7 @@ export function paneManagerToPackerContent(paneManager) {
     for (const code of Object.keys(consumersByStream)) {
       for (const c of consumersByStream[code]) {
         if (c.paraIdx !== info.paraIdx || c.text === null) continue;
-        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, num: c.num, priority: c.priority });
+        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, num: c.num, priority: c.priority, nested: !!c.nested });
       }
     }
     paraNotes.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
@@ -972,6 +1011,9 @@ export function paneManagerToPackerContent(paneManager) {
         localAnchor: n.anchor,
         num: n.num,
         uid,
+        // משה 09/09/2026: עובר הלאה כדי שמנוע הפריסה ידע לא להדפיס
+        // מספר בטקסט הראשי עבור הערה שאינה שייכת לשם.
+        nested: !!n.nested,
         priority: n.priority || 0,
       };
     });
@@ -985,6 +1027,10 @@ export function paneManagerToPackerContent(paneManager) {
         anchor: n.anchor,
         absoluteAnchor: n.anchor,
         localAnchor: n.anchor,
+        // משה 09/09/2026: מנוע הפריסה מעדיף את הרשימה הזאת על פני
+        // רשימת ההערות, ולכן הסימון חייב להופיע גם כאן — אחרת הערה
+        // מקוננת ממשיכה לקבל מספר בטקסט הראשי ולהיערם על ההורה.
+        nested: !!n.nested,
         priority: n.priority || 0,
       };
     });
