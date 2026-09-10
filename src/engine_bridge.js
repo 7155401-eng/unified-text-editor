@@ -1,3 +1,4 @@
+import { afterPaint } from "./engine/background_safe_yield.js";
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
 import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
@@ -2251,7 +2252,9 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
 
     if (pdfToolbarApi) {
       pdfToolbarApi.setTotal(pages.length);
-      requestAnimationFrame(() => {
+      // משה 09/09/2026: ברקע אין ציור, ולכן ההערה הזאת לא הגיעה לעולם
+      // והזום נשאר לא מעודכן עד שמשה חזר לחלון.
+      afterPaint(() => {
         pdfToolbarApi.rememberBaseSize();
         pdfToolbarApi.applyZoom();
       });
@@ -2263,7 +2266,8 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     // ב-CSS var ומבקשים rerender. מוגבל ל-4 iterations בכל session כדי לא
     // ליצור לולאות. בלי MutationObserver, רק קריאה מפורשת מסוף הצנרת.
     if (!skipSmartTune) {
-      requestAnimationFrame(() => {
+      // משה 09/09/2026: אותו דבר — תיקון הגלישה פשוט לא רץ ברקע.
+      afterPaint(() => {
         const overflowFix = correctLiveOverflowOnce(pagesContainer);
         // משה 2026-05-14: אחרי שאין יותר חריגות, בודקים אם יש זוגות סימני
         // פיצול U+2060 שיכולים להתמזג חזרה בעמוד אחד. אם כן — rerender שאחד

@@ -1030,16 +1030,15 @@ function buildPageObject(mainSegments, streamsMap, totalH) {
 // וגם לבדוק isCurrent — אם המשתמש עורך באמצע, אנחנו מבטלים. הופך את שמירת
 // ה-thread גם בפרודקשן (אותו mechanism רץ גם בשרת). אם אין `opts.isCurrent`
 // או אין `requestIdleCallback`, נופלים ל-setTimeout(0).
+import { yieldToBrowser } from "./background_safe_yield.js";
 const PAGINATION_YIELD_EVERY = 32; // פסקאות
 
+// משה 09/09/2026: הנשימה הזאת היתה קשורה לציור על המסך, ולכן נחנקה
+// לפעימה אחת בערך בשנייה ברגע שהחלון ירד לרקע. על ספר של מאות עמודים
+// זה נראה בדיוק כמו רינדור שנתקע. yieldToBrowser עובר ברקע לצינור
+// הודעות פנימי שאינו נחנק, ובחלון עליון מתנהג בדיוק כמו קודם.
 function _packYield(){
-  return new Promise(r => {
-    if (typeof requestIdleCallback === 'function') {
-      requestIdleCallback(() => r(), { timeout: 50 });
-    } else {
-      setTimeout(r, 0);
-    }
-  });
+  return yieldToBrowser();
 }
 
 async function forwardPack(content, geom = DOM_PAGE_GEOM, packOpts = {}) {
