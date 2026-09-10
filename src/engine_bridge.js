@@ -881,7 +881,23 @@ export function paneManagerToPackerContent(paneManager) {
           // Only a stream the user linked to `code` may hang off this note.
           if (!canNestInside(ycode, code)) continue;
           if (!consumersByStream[ycode]) consumersByStream[ycode] = [];
-          consumersByStream[ycode].push({ paraIdx: c.paraIdx, anchor: c.anchor, priority: 1 });
+          // משה 09/09/2026: ההערה המקוננת קיבלה כאן את העוגן של ההורה
+          // בטקסט הראשי. כשבהערה אחת יש חמישה־עשר סימנים מקוננים, כל
+          // החמישה־עשר קיבלו את אותה נקודה בדיוק ונערמו שם. נמדד על
+          // הפלט של משה: 1,033 מתוך 1,168 על נקודה תפוסה, עד 15 יחד.
+          // העוגן נשאר (הוא קובע לאיזה עמוד ההערה שייכת), אבל הסימון
+          // `nested` אומר למנוע לא להדפיס בשבילה מספר בטקסט הראשי.
+          const nestedConsumer = {
+            paraIdx: c.paraIdx,
+            anchor: c.anchor,
+            priority: 1,
+            nested: true,
+            nestedParentStream: code,
+          };
+          consumersByStream[ycode].push(nestedConsumer);
+          // הקשר להערת האב, לשימוש בשלב שמציב את המספר בתוך הערת האב.
+          if (!Array.isArray(c.nestedChildren)) c.nestedChildren = [];
+          c.nestedChildren.push(nestedConsumer);
         }
       }
     }
@@ -957,7 +973,7 @@ export function paneManagerToPackerContent(paneManager) {
     for (const code of Object.keys(consumersByStream)) {
       for (const c of consumersByStream[code]) {
         if (c.paraIdx !== info.paraIdx || c.text === null) continue;
-        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, num: c.num, priority: c.priority });
+        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, num: c.num, priority: c.priority, nested: !!c.nested });
       }
     }
     paraNotes.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
@@ -972,6 +988,9 @@ export function paneManagerToPackerContent(paneManager) {
         localAnchor: n.anchor,
         num: n.num,
         uid,
+        // משה 09/09/2026: עובר הלאה כדי שמנוע הפריסה ידע לא להדפיס
+        // מספר בטקסט הראשי עבור הערה שאינה שייכת לשם.
+        nested: !!n.nested,
         priority: n.priority || 0,
       };
     });
@@ -985,6 +1004,10 @@ export function paneManagerToPackerContent(paneManager) {
         anchor: n.anchor,
         absoluteAnchor: n.anchor,
         localAnchor: n.anchor,
+        // משה 09/09/2026: מנוע הפריסה מעדיף את הרשימה הזאת על פני
+        // רשימת ההערות, ולכן הסימון חייב להופיע גם כאן — אחרת הערה
+        // מקוננת ממשיכה לקבל מספר בטקסט הראשי ולהיערם על ההורה.
+        nested: !!n.nested,
         priority: n.priority || 0,
       };
     });

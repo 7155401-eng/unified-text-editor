@@ -997,6 +997,10 @@ function v9MainRefsFromParagraph(p, textLen) {
     const anchor = Number(anchorRaw);
     if (!Number.isFinite(anchor)) continue;
     if (dropOutOfRange && anchor > limit) continue;
+    // משה 09/09/2026: הערה מקוננת (הערה על הערה) אינה שייכת לטקסט
+    // הראשי, ולכן אינה מקבלת מספר שם. היא מופיעה באריח שלה עם המספר
+    // שלה. בלי זה כל אחיותיה נערמות על נקודת ההורה — נמדד עד 15 יחד.
+    if (raw?.nested === true) continue;
     const clamped = Math.max(0, Math.min(limit, anchor));
     const num = typeof raw?.num === "number" && raw.num > 0 ? raw.num : 0;
     if (!num) continue;
