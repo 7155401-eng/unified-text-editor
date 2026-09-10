@@ -978,17 +978,16 @@ function v9MainRefsFromParagraph(p, textLen) {
   // לנקודה האחרונה, ומשם הערמה. נמדד על הקובץ של משה: עד 15 מספרים
   // באותו מקום בדיוק. לכן עוגן כזה אינו הופך למספר כאן.
   const limit = Number(textLen) || 0;
-  let inRange = 0;
-  let outOfRange = 0;
-  for (const raw of source || []) {
-    const a = Number(raw?.absoluteAnchor ?? raw?.anchor ?? raw?.localAnchor);
-    if (!Number.isFinite(a)) continue;
-    if (a > limit) outOfRange += 1;
-    else inRange += 1;
-  }
-  // רשת ביטחון זהה לזו שב-note_content_builder: אם *כל* העוגנים מחוץ
-  // לתחום, כל המדידה בסולם אחר וזו תקלה אחרת. אז לא נוגעים.
-  const dropOutOfRange = outOfRange > 0 && inRange > 0;
+  // ⛔⛔ משה 10/09/2026: „זרם 03 — 401 סימנים, 0 מספרים.”
+  // כאן ישבה רגרסיה שלי. הוספתי כלל „עוגן מעבר לסוף הטקסט אינו שייך
+  // לטקסט הזה” — נכון בפני עצמו, אבל לא כאן: הפונקציה מקבלת את אורך
+  // **חתיכה** מהפסקה (cleanPiece.length), בעוד שהעוגנים נמדדו על
+  // הפסקה **השלמה**. לכן כל מספר שיושב אחרי החתיכה הראשונה נראה
+  // „מחוץ לתחום” — ונמחק. זרם 03 איבד את כל 401 המספרים שלו,
+  // וזרם 01 איבד 31.
+  // המבחן הנכון אינו המיקום אלא **מהות ההערה**: הערה מקוננת אינה
+  // שייכת לטקסט הראשי. זה בדיוק מה שהסימון `nested` אומר, והוא
+  // מגיע מהמקום שבו באמת יודעים את התשובה.
 
   for (const raw of source || []) {
     const stream = String(raw?.stream || raw?.code || raw?.streamId || raw?.streamCode || "");
@@ -996,7 +995,6 @@ function v9MainRefsFromParagraph(p, textLen) {
     const anchorRaw = raw?.absoluteAnchor ?? raw?.anchor ?? raw?.localAnchor;
     const anchor = Number(anchorRaw);
     if (!Number.isFinite(anchor)) continue;
-    if (dropOutOfRange && anchor > limit) continue;
     // משה 09/09/2026: הערה מקוננת (הערה על הערה) אינה שייכת לטקסט
     // הראשי, ולכן אינה מקבלת מספר שם. היא מופיעה באריח שלה עם המספר
     // שלה. בלי זה כל אחיותיה נערמות על נקודת ההורה — נמדד עד 15 יחד.
