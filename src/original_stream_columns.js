@@ -607,6 +607,41 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     panel.dataset.styleRefreshBound = "1";
     window.addEventListener("ravtext:styles-changed", () => updateOriginalStreamColumnsPanel(pages, scheduleRender));
   }
+  // ⛔⛔ משה 10/09/2026: „אי אפשר להכניס סימון V בהגדרות של זרם בודד”.
+  // נמדד בדפדפן: הסימון נרשם ואף נשמר, אבל תוך חצי שנייה התיבה
+  // **נעקרת מהדף** ונולדת אחרת במקומה (stillInDom=false, sameNode=false).
+  // הסיבה: כל לחיצה מפעילה רינדור, והרינדור בונה את הפאנל מחדש מאפס.
+  //
+  // לחיצה של מכונה היא רגע אחד ולכן היא שורדת. לחיצה של אדם היא שניים —
+  // לחיצה ושחרור. אם הפאנל נבנה מחדש ביניהם, השחרור נופל על אלמנט
+  // שכבר איננו, אירוע השינוי לא נשלח, וכלום לא נשמר.
+  // כמו לשלוף טופס מתחת לעט באמצע החתימה.
+  //
+  // לכן: לא בונים מחדש פאנל שמשה עומד בתוכו. דוחים עד שיעזוב אותו.
+  try {
+    const active = document.activeElement;
+    if (active && active !== document.body && panel.contains(active)) {
+      if (!panel.dataset.rebuildDeferred) {
+        panel.dataset.rebuildDeferred = "1";
+        const runWhenFree = () => {
+          panel.removeEventListener("focusout", onOut, true);
+          delete panel.dataset.rebuildDeferred;
+          updateOriginalStreamColumnsPanel(pages, scheduleRender);
+        };
+        const onOut = () => {
+          // focusout יורה גם במעבר בין שדה לשדה בתוך אותו פאנל,
+          // ולכן בודקים בפעימה הבאה אם המוקד באמת יצא החוצה.
+          setTimeout(() => {
+            const now = document.activeElement;
+            if (!now || now === document.body || !panel.contains(now)) runWhenFree();
+          }, 0);
+        };
+        panel.addEventListener("focusout", onOut, true);
+      }
+      return;
+    }
+  } catch (_) {}
+
   const used = new Set();
   for (const p of pages) for (const c of Object.keys(p.streams || {})) used.add(c);
   for (const pane of window.paneManager?.panes || []) {
