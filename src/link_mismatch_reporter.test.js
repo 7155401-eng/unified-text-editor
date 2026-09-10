@@ -16,12 +16,16 @@ function test(name, fn) {
 }
 
 function mainPane(markerCodes) {
+  // 10/09/2026: הקישורים נספרים עכשיו מהטקסט, כמו ההערות, ולכן
+  // החלונית הראשית חייבת להחזיק טקסט אמיתי ולא רק סימונים פנימיים.
+  const text = markerCodes.map((c) => `מילה @${c}`).join(" ");
   return {
     streamCode: null,
     label: "ראשי",
     editor: {
       state: {
         doc: {
+          textContent: text,
           descendants(cb) {
             for (const code of markerCodes) {
               cb({
@@ -145,6 +149,9 @@ test("שני זרמים מעורבים — אחד תקין אחד לא", () => {
 
 // חלונית זרם שגם מחזיקה הערות משלה וגם מארחת סימנים של זרם אחר.
 function hostingStreamPane(streamCode, paneText, hostedCodes) {
+  // הסימנים שהחלונית הזאת מארחת חייבים להופיע גם בטקסט שלה,
+  // כי זה המקור שממנו סופרים עכשיו.
+  const withHosted = paneText + " " + hostedCodes.map((c) => `@${c}`).join(" ");
   return {
     streamCode,
     label: `זרם ${streamCode}`,
@@ -152,7 +159,7 @@ function hostingStreamPane(streamCode, paneText, hostedCodes) {
     editor: {
       state: {
         doc: {
-          textContent: paneText,
+          textContent: withHosted,
           descendants(cb) {
             for (const code of hostedCodes) {
               cb({

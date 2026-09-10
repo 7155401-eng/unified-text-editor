@@ -40,16 +40,57 @@ function noteCountForStreamPane(pane) {
 // חלונית האב — ולכן קיבל תמיד 0, וההודעה „אבל רק 0 קישורים בראשי”
 // הופיעה גם כשהכול תקין. עכשיו סופרים בכל חלונית, ואחר כך שואלים לכל
 // זרם בנפרד אילו חלוניות רלוונטיות לו.
+function paneText(pane) {
+  try {
+    return String(pane?.editor?.state?.doc?.textContent || "");
+  } catch (_) {
+    return "";
+  }
+}
+
+function countOccurrences(haystack, needle) {
+  if (!haystack || !needle) return 0;
+  return haystack.split(needle).length - 1;
+}
+
+// משה 10/09/2026: „האזהרה עדיין קיימת.”
+// הגירסה הקודמת ספרה קישורים לפי הסימון הפנימי של העורך (streamMark),
+// בעוד שההערות נספרות לפי הטקסט עצמו. הסימון הפנימי הוא צביעה שנוספת
+// בזמן הקלדה, ובמסמך שנטען מקובץ הוא עלול פשוט לא להיות שם — ואז צד
+// אחד סופר 1,156 והשני סופר 0, לא כי חסר משהו אלא כי כל צד הסתכל על
+// משהו אחר. עכשיו שני הצדדים נספרים מאותו מקור: הטקסט. זה גם המקור
+// שממנו מנוע הפריסה והייצוא עובדים.
 function markerCountsByHost(paneManager) {
   const byHost = {};
+
+  // הסמל של כל זרם, לפי החלונית שלו; ובנוסף כל @NN שמופיע בטקסט
+  // ואין לו חלונית — כדי שסימן יתום עדיין ייתפס.
+  const symbolByCode = {};
   for (const pane of paneManager.panes) {
-    if (!pane.editor) continue;
+    if (!pane.streamCode) continue;
+    const code = String(pane.streamCode);
+    symbolByCode[code] = pane.symbol || ("@" + code);
+  }
+  for (const pane of paneManager.panes) {
+    const text = paneText(pane);
+    if (!text) continue;
+    for (const m of text.match(/@\d{1,3}/g) || []) {
+      const code = m.slice(1);
+      if (!symbolByCode[code]) symbolByCode[code] = m;
+    }
+  }
+
+  for (const pane of paneManager.panes) {
     const key = pane.streamCode ? String(pane.streamCode) : MAIN_HOST;
+    const text = paneText(pane);
     const bucket = byHost[key] || (byHost[key] = {});
-    for (const m of findStreamMarksInState(pane.editor.state)) {
-      const code = m.streamCode;
-      if (!code) continue;
-      bucket[code] = (bucket[code] || 0) + 1;
+    if (!text) continue;
+    for (const code of Object.keys(symbolByCode)) {
+      // סימן של זרם בתוך החלונית של עצמו הוא מפריד בין הערה להערה,
+      // ולא קישור. אינו נספר.
+      if (key === code) continue;
+      const n = countOccurrences(text, symbolByCode[code]);
+      if (n) bucket[code] = (bucket[code] || 0) + n;
     }
   }
   return byHost;
