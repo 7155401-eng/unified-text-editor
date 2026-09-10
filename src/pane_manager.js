@@ -7,6 +7,10 @@ import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { TextStyle, Color, BackgroundColor, FontFamily, FontSize } from "@tiptap/extension-text-style";
 import TextAlign from "@tiptap/extension-text-align";
+// משה 08/09/2026: „אפשר להתבסס על סרגל הבחירה של טיפטופ מבחינתי,
+// רק לדאוג שיעבוד.” עד היום החבילה כלל לא היתה מותקנת, ולכן לא היה
+// מה להפעיל. עכשיו היא מותקנת ומחוברת.
+import BubbleMenu from "@tiptap/extension-bubble-menu";
 import Underline from "@tiptap/extension-underline";
 import Superscript from "@tiptap/extension-superscript";
 import Subscript from "@tiptap/extension-subscript";
@@ -108,8 +112,72 @@ function syncPaneByFraction(sourceBody, targetBody) {
   targetBody.scrollTop = Math.max(0, Math.min(targetMax, fraction * targetMax));
 }
 
+/* ------------------------------------------------ סרגל הבחירה הצף */
+
+// משה 08/09/2026: „לדאוג שיעבוד”.
+// סרגל קטן שצץ מעל טקסט מסומן, עם הפעולות שמשה משתמש בהן הכי הרבה.
+// נבנה פעם אחת בלבד — בחירה אחת פעילה בכל רגע, ולכן אין טעם בסרגל
+// לכל חלונית, וגם אין לולאת ריצוד בין כמה סרגלים.
+let _selectionToolbar = null;
+
+function ensureSelectionToolbar() {
+  if (_selectionToolbar) return _selectionToolbar;
+  const bar = document.createElement("div");
+  bar.className = "rt-selection-toolbar";
+  bar.dir = "rtl";
+  bar.style.cssText = [
+    "display:flex", "gap:2px", "padding:3px",
+    "background:#1f2937", "border-radius:8px",
+    "box-shadow:0 4px 14px rgba(0,0,0,.28)",
+    "direction:rtl", "z-index:9999",
+  ].join(";");
+
+  // [כיתוב, שם הפעולה, כותרת מרחפת]
+  const actions = [
+    ["ב", "toggleBold", "מודגש"],
+    ["נ", "toggleItalic", "נטוי"],
+    ["ק", "toggleUnderline", "קו תחתון"],
+    ["מ", "toggleHighlight", "הדגשה"],
+    ["x²", "toggleSuperscript", "מוגבה"],
+    ["x₂", "toggleSubscript", "מונמך"],
+    ["⌫", "unsetAllMarks", "נקה עיצוב"],
+  ];
+  for (const [label, cmd, title] of actions) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute("aria-label", title);
+    b.style.cssText = [
+      "min-width:26px", "height:26px", "border:0", "cursor:pointer",
+      "background:transparent", "color:#f9fafb", "border-radius:5px",
+      "font-size:13px", "line-height:1",
+    ].join(";");
+    b.addEventListener("mouseenter", () => { b.style.background = "#374151"; });
+    b.addEventListener("mouseleave", () => { b.style.background = "transparent"; });
+    // mousedown ולא click: לחיצה רגילה מאבדת את הבחירה לפני שהפעולה רצה.
+    b.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      const ed = window.paneManager?.activePane?.editor;
+      if (!ed) return;
+      const chain = ed.chain().focus();
+      if (typeof chain[cmd] === "function") chain[cmd]().run();
+    });
+    bar.appendChild(b);
+  }
+  document.body.appendChild(bar);
+  _selectionToolbar = bar;
+  return bar;
+}
+
 function buildEditorExtensions() {
   return [
+    // סרגל הבחירה: צף מעל הטקסט המסומן. האלמנט עצמו נבנה פעם אחת
+    // ומשותף לכל החלוניות, כי רק בחירה אחת פעילה בכל רגע.
+    BubbleMenu.configure({
+      element: ensureSelectionToolbar(),
+      updateDelay: 120,
+    }),
     StarterKit,
     TextStyle.configure({ types: ["textStyle"] }),
     Color,
