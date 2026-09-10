@@ -600,7 +600,12 @@ function appendGlobalOverridesPanel(panel, scheduleRender) {
   panel.appendChild(block);
 }
 
+let _suppressPanelRebuild = false;
+
 export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
+  // שינוי הגדרה שמשה בדיוק עשה אינו סיבה לבנות מחדש את הפאנל שהוא
+  // עומד בתוכו. ראה ההסבר המלא ליד commitRender.
+  if (_suppressPanelRebuild) return;
   const panel = document.getElementById("stream-columns-panel");
   if (!panel) return;
   if (!panel.dataset.styleRefreshBound) {
@@ -651,9 +656,20 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   if (used.size === 0) return;
 
   const settings = getStreamSettings();
+  // ⛔⛔ משה 10/09/2026: „כשהפופאפ של הרינדור לא פעיל הסימון של V עובד”.
+  // זה הנתיב. commitRender קורא ל-scheduleRender, וזו rerenderPages —
+  // וממש בשורה שלפני הרינדור היא בונה את הפאנל **מחדש מאפס**, בתוך
+  // אירוע הלחיצה עצמו. כלומר התיבה שמשה לוחץ עליה נמחקת באמצע הלחיצה.
+  // שינוי הגדרה לא צריך לבנות מחדש את הפאנל: הערכים שבו כבר נכונים,
+  // משה בדיוק קבע אותם. לכן חוסמים את הבנייה מחדש לאורך הקריאה הזאת.
   const commitRender = () => {
     saveStreamSettings();
-    scheduleRender();
+    _suppressPanelRebuild = true;
+    try {
+      scheduleRender();
+    } finally {
+      _suppressPanelRebuild = false;
+    }
   };
 
   const heading = document.createElement("span");
