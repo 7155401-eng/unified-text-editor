@@ -14,6 +14,7 @@
 // אין float, אין shape-outside.
 
 import { buildPages } from "./vilna_v9.js";
+import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna_daf_lock.js";
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
@@ -422,7 +423,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       };
     });
 
-    const result = await buildPages(container, transformedParagraphs, {
+    const v9Config = {
       isCurrent,
       pageWidth: geom.pageWidth,
       pageHeight: geom.pageHeight,
@@ -451,7 +452,21 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       noMidLineSplits: readSpacingBool("noMidLineSplits", false),
       preventMidLineSplit: readSpacingBool("preventMidLineSplit", true),
       openingWordSettings: preflight.openingWordSettings,
-    });
+    };
+
+    // ★ נעילת דף (משה, 11/09/2026): כשיש בטקסט סימני ⟦דף …⟧ — כל עמוד אצלנו
+    // נגמר בדיוק היכן שנגמר העמוד בש"ס וילנא. במקום קריאה אחת שרצה על כל
+    // המסמך, הטקסט נחתך לקטעי-דף וכל קטע נבנה בנפרד; קריאה נפרדת מתחילה
+    // תמיד מעמוד חדש, ולכן שני דפים לעולם לא מתערבבים באותו עמוד.
+    // בלי סימנים בטקסט — שום דבר לא משתנה, וזו אותה קריאה כמו תמיד.
+    const dafSettings = readDafLockSettings();
+    const dafLockOn = dafLockActive(transformedParagraphs, dafSettings);
+    const result = dafLockOn
+      ? await buildPagesDafLocked(container, transformedParagraphs, v9Config, {
+          settings: dafSettings,
+          buildPages,
+        })
+      : await buildPages(container, transformedParagraphs, v9Config);
 
     if (result?.aborted || !isCurrent()) {
       progress.abort();
