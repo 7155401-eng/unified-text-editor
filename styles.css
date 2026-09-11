@@ -2958,6 +2958,28 @@ details.ravtext-collapsible[open] {
   border-bottom: 1px dashed #cbd5e1;
   user-select: none;
 }
+/* תווית הדף בנעילת-דף (vilna_daf_lock.js). יושבת מעל התוכן בפינה העליונה
+   ואינה תופסת מקום בפריסה — המנוע כבר סיים לחשב כשהיא נוספת. */
+.v9-daf-label {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: 6px;
+  font-size: 10px;
+  line-height: 1.2;
+  color: #7c2d12;
+  background: rgba(255, 247, 237, 0.9);
+  border: 1px solid #fed7aa;
+  border-radius: 3px;
+  padding: 0 5px;
+  z-index: 6;
+  pointer-events: none;
+  user-select: none;
+}
+body[data-theme="dark"] .v9-daf-label {
+  color: #fed7aa;
+  background: rgba(60, 30, 10, 0.85);
+  border-color: #7c2d12;
+}
 .ravtext-page-footer {
   position: absolute;
   bottom: 2mm;

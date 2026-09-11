@@ -1721,6 +1721,90 @@
             </label>
           </span>
           <span class="sep"></span>
+          <span class="tb-group" data-title="דפי ש&quot;ס וילנא">
+            <label
+              class="toolbar-checkbox"
+              title="כשיש בטקסט סימני דף (⟦דף ב.⟧) — כל עמוד נגמר בדיוק היכן שנגמר העמוד בש&quot;ס וילנא. בלי סימנים בטקסט שום דבר לא משתנה."
+            >
+              <input type="checkbox" id="daf-lock-toggle" />
+              <span>נעילת דף</span>
+            </label>
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="דף = עמוד: מקטין או מגדיל את האות עד שכל הדף נכנס בדיוק בעמוד אחד. רק גבול: לא נוגע בגודל האות, אבל דף חדש תמיד פותח עמוד חדש."
+            >
+              <span>מצב:</span>
+              <select id="daf-lock-mode-select" style="font-size: 12px; padding: 3px 6px">
+                <option value="strict">דף = עמוד</option>
+                <option value="soft">רק גבול הדף</option>
+              </select>
+            </label>
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="עד כמה מותר להקטין את האות כדי שדף גדול ייכנס בעמוד אחד (אחוז מהגודל הרגיל)."
+            >
+              <span>הקטנה עד %:</span>
+              <input
+                type="number"
+                id="daf-lock-min-input"
+                min="40"
+                max="100"
+                placeholder="70"
+                style="width: 54px; font-size: 12px; padding: 3px 6px"
+              />
+            </label>
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="עד כמה מותר להגדיל את האות כדי שדף קטן ימלא את העמוד (אחוז מהגודל הרגיל)."
+            >
+              <span>הגדלה עד %:</span>
+              <input
+                type="number"
+                id="daf-lock-max-input"
+                min="100"
+                max="250"
+                placeholder="130"
+                style="width: 54px; font-size: 12px; padding: 3px 6px"
+              />
+            </label>
+            <label class="toolbar-checkbox" title="מציג את שם הדף בפינת העמוד.">
+              <input type="checkbox" id="daf-lock-label-toggle" />
+              <span>שם הדף</span>
+            </label>
+            <button
+              type="button"
+              id="daf-lock-mark-btn"
+              title="מכניס סימן דף במקום הסמן. כל מה שאחריו יתחיל בעמוד חדש."
+            >
+              סמן דף כאן
+            </button>
+            <button
+              type="button"
+              id="daf-lock-report-btn"
+              title="מראה מה קרה בפועל: כמה עמודים, איזה דף הוקטן, ומי לא נכנס."
+            >
+              דוח דפים
+            </button>
+          </span>
+          <span class="sep"></span>
           <span class="tb-group" data-title="כותרת עליונה ותחתונה">
             <label
               style="

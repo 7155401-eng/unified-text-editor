@@ -33,6 +33,8 @@ import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
 import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
 import { wireTalmudLayoutControls } from "./talmud_controls.js";
+import { wireDafLockControls } from "./vilna_daf_ui.js";
+import { openVilnaImportModal, enableVilnaLayoutFor, wireVilnaImportButton } from "./vilna_import_modal.js";
 import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
@@ -1644,6 +1646,39 @@ wireInboxButtons();
 // stream_picker ממלא שני זרמים ברירת-מחדל 1.5 שניות אחרי הטעינה ומשגר
 // אירוע "change" מלאכותי; talmud_controls שמע אותו וריצה רינדור מלא.
 wireTalmudLayoutControls(settingRerenderPages);
+wireDafLockControls(settingRerenderPages);
+
+// ★ ייבוא גמרא בצורת ש"ס וילנא (משה, 11/09/2026).
+// הייבוא בונה טקסט גולמי עם סימני ⟦דף …⟧ ועם הערות רש"י כזרם, מכניס אותו
+// לעורך דרך אותו מסלול של הדוגמאות (parseAuto), ואז — אם המשתמש ביקש —
+// מדליק את צורת הדף ואת נעילת הדף ומרנדר.
+async function handleVilnaImport({ text, stats, book, code, autoLayout }) {
+  loadEngineDoc(parseAuto(text));
+  // שם הזרם שיוצג מעל עמודת רש"י
+  try {
+    window.__STREAM_LABELS__ = window.__STREAM_LABELS__ || {};
+    window.__STREAM_LABELS__[code] = 'רש"י';
+  } catch (_) {}
+  const pane = paneManager.panes.find((p) => p.streamCode === code);
+  if (pane) pane.label = 'רש"י';
+  if (autoLayout) {
+    enableVilnaLayoutFor(code);
+    const talmudToggle = document.getElementById("talmud-layout-toggle");
+    if (talmudToggle) talmudToggle.checked = true;
+    const dafToggle = document.getElementById("daf-lock-toggle");
+    if (dafToggle) dafToggle.checked = true;
+  }
+  rerenderPages();
+  trackUsage("vilna_import", {
+    tractate: book.title,
+    amudim: stats.amudim,
+    rashi: stats.rashiNotes,
+  });
+}
+
+// הכפתור נכנס לסרגל התורני אחרי ש-wireTorahTools בנה אותו מחדש (הוא מוחק
+// את כל תוכן הסרגל, ולכן כפתור סטטי ב-HTML לא היה שורד).
+setTimeout(() => wireVilnaImportButton(paneManager, handleVilnaImport), 260);
 wireMishnaWrapToggle(settingRerenderPages);
 wireOpeningWordControls(settingRerenderPages);
 
