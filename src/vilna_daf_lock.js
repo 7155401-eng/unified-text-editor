@@ -190,10 +190,28 @@ export function measurePageFill(pageEl, cfg) {
   if (!pageEl) return 0;
   const usable = Math.max(1, (cfg.pageHeight || 794) - (cfg.padding || 12) - (cfg.reservedBottom || 0));
   let bottom = 0;
-  for (const child of pageEl.children) {
-    const top = child.offsetTop || 0;
-    const h = child.offsetHeight || 0;
-    if (top + h > bottom) bottom = top + h;
+  // V9 ממקם כל שורה ב-position:absolute. שורה כזו אינה מוסיפה גובה להורה
+  // שלה, ולכן מדידה לפי offsetHeight של הילדים הישירים מחזירה מספר קטן
+  // מדי (נמדד: 48% כשהעמוד היה מלא כמעט לגמרי). לכן מודדים את התחתית
+  // האמיתית של כל שורה ושורה ביחס לראש העמוד.
+  const pageTop = pageEl.getBoundingClientRect ? pageEl.getBoundingClientRect().top : 0;
+  const nodes = pageEl.querySelectorAll
+    ? pageEl.querySelectorAll(".v9-line, .v9-stream-title, .v9-opening-word")
+    : [];
+  if (nodes.length && pageEl.getBoundingClientRect) {
+    for (const node of nodes) {
+      if (node.classList && node.classList.contains("v9-daf-label")) continue;
+      const r = node.getBoundingClientRect();
+      const rel = r.bottom - pageTop;
+      if (rel > bottom) bottom = rel;
+    }
+  }
+  if (!bottom) {
+    for (const child of pageEl.children) {
+      const top = child.offsetTop || 0;
+      const h = child.offsetHeight || 0;
+      if (top + h > bottom) bottom = top + h;
+    }
   }
   return bottom / usable;
 }
@@ -217,6 +235,17 @@ function makeTrialContainer(realContainer) {
   const doc = realContainer.ownerDocument;
   const el = doc.createElement("div");
   el.className = realContainer.className;
+  // ★ חשוב: גודל העמוד נקבע במשתני CSS שיושבים ישירות על המיכל
+  // (page_settings.js כותב אותם גם על ה-root וגם על pages-container).
+  // בלי להעתיק אותם, הניסיון נמדד על עמוד בגודל ברירת המחדל בזמן שהעמוד
+  // האמיתי בגודל אחר — וכך יצא שדף "נכנס" לפי מדידה של עמוד קטן ואז
+  // התיישב על עמוד גדול וחצי ריק. נמדד: מילוי 47% במקום 95%.
+  const inlineStyle = realContainer.getAttribute("style");
+  if (inlineStyle) el.setAttribute("style", inlineStyle);
+  for (const attr of ["dir", "lang", "data-theme"]) {
+    const v = realContainer.getAttribute(attr);
+    if (v !== null) el.setAttribute(attr, v);
+  }
   el.setAttribute("data-daf-trial", "1");
   el.style.position = "absolute";
   el.style.left = "-100000px";
@@ -260,7 +289,9 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
   for (let si = 0; si < segments.length; si++) {
     if (!isCurrent()) return { pages: allPages, report: { ...report, aborted: true } };
     const seg = segments[si];
-    const segReport = { label: seg.label, paragraphs: seg.paragraphs.length, scale: 1, pages: 0, fill: 0, overflow: false };
+    // tried = יומן הניסיונות (גודל → נכנס/לא נכנס). עוזר להבין למה דף מסוים
+    // קיבל דווקא את הגודל הזה, ומאפשר לראות אם החיפוש נתקע.
+    const segReport = { label: seg.label, paragraphs: seg.paragraphs.length, scale: 1, pages: 0, fill: 0, overflow: false, tried: [] };
 
     if (settings.mode === "soft") {
       const res = await buildPages(container, seg.paragraphs, cfg);
@@ -298,6 +329,12 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         result = { scale, fits: false, pages: 0, fill: 0, el: trialEl, error: String(e && e.message || e) };
       }
       tried.set(key, result);
+      segReport.tried.push({
+        scale: Math.round(scale * 1000) / 1000,
+        fits: result.fits,
+        pages: result.pages,
+        fill: Math.round(result.fill * 100) / 100,
+      });
       // שומרים בזיכרון רק את העמוד של הניסיון הטוב ביותר; כל השאר נמחקים
       // מיד מה-DOM כדי שלא יצטברו מאות עמודים מוסתרים.
       if (result.fits && (!best || result.scale > best.scale)) {
