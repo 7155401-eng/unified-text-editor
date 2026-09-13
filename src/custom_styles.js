@@ -115,7 +115,40 @@ function ensureStylesCss() {
   document.head.appendChild(s);
 }
 
+// משה 13/09/2026: רשימת הגופנים בחלון הסגנון נבנית עכשיו דינמית — כולל
+// הגופנים המותקנים במחשב של המשתמש. קודם היו כאן חמישה שמות קבועים בלבד.
+const CSD_BASE_FONTS = [
+  "David Libre", "Frank Ruhl Libre", "Segoe UI", "Times New Roman",
+  "Arial", "Tahoma", "Narkisim", "Guttman Yad-Brush", "Miriam Libre", "Rubik",
+];
+
+export async function refreshCustomStyleFontList(dialog) {
+  const list = dialog?.querySelector("#csd-font-list");
+  if (!list) return;
+  const names = new Set();
+  // (א) מה שכבר נטען לגלריית הגופנים בסרגל
+  document.querySelectorAll("#local-font-select option").forEach((o) => {
+    const v = (o.value || "").trim();
+    if (v) names.add(v);
+  });
+  // (ב) גופני המחשב — רק אם הדפדפן מרשה ואם הגלריה עוד ריקה
+  if (names.size < 8 && typeof window !== "undefined" && "queryLocalFonts" in window) {
+    try {
+      const fonts = await window.queryLocalFonts();
+      for (const f of fonts) if (f.family) names.add(f.family);
+    } catch {
+      // הדפדפן דורש אישור מפורש — ממשיכים עם מה שיש, בלי להפריע למשתמש
+    }
+  }
+  // (ג) רשימת הבסיס — תמיד, כדי שלא תישאר רשימה ריקה
+  for (const f of CSD_BASE_FONTS) names.add(f);
+
+  const sorted = [...names].sort((a, b) => a.localeCompare(b, "he"));
+  list.innerHTML = sorted.map((n) => `<option value="${String(n).replace(/"/g, "&quot;")}"></option>`).join("");
+}
+
 function buildDialog() {
+
   ensureStylesCss();
   let dialog = document.getElementById("custom-style-dialog");
   if (dialog) return dialog;
@@ -305,12 +338,13 @@ export function wireCustomStyles(paneManager) {
   refreshCustomStylesGallery(select, loadStyles());
   window.addEventListener("ravtext:styles-changed", () => refreshCustomStylesGallery(select, loadStyles()));
   const dialog = buildDialog();
-  const openDialog = () => { dialog.classList.add("open"); delete dialog.dataset.editingId; fillForm({}); refreshSavedList(dialog, paneManager, select); document.getElementById("csd-name")?.focus(); };
+  const openDialog = () => { dialog.classList.add("open"); delete dialog.dataset.editingId; fillForm({}); refreshSavedList(dialog, paneManager, select); refreshCustomStyleFontList(dialog); document.getElementById("csd-name")?.focus(); };
   const openStyleEditor = (styleId) => {
     if (styleId === "__add-custom__") { openDialog(); return; }
     const target = loadStyles().find(s => s.id === styleId || s.name === styleId);
     if (!target) return alert("צריך לבחור סגנון לעריכה.");
     dialog.classList.add("open");
+    refreshCustomStyleFontList(dialog);
     fillForm(target);
     dialog.dataset.editingId = target.id;
     refreshSavedList(dialog, paneManager, select);

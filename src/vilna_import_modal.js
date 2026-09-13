@@ -13,6 +13,7 @@ import {
   amudLabel, amudLabelLong, parseDafInput, perekRange,
 } from "./vilna_import.js";
 import { DAF_LOCK_KEYS } from "./vilna_daf_lock.js";
+import { getStreamSettings, saveStreamSettings } from "./original_stream_columns.js";
 
 const SEDER_HE = {
   "Seder Zeraim": "זרעים",
@@ -87,6 +88,13 @@ export async function openVilnaImportModal(paneManager, onImported) {
     }
     tractateSelect.appendChild(group);
   }
+  // משה 13/09/2026: ברירת המחדל היא ברכות — תחילת הש"ס. בלי זה נפתחה
+  // המסכת הראשונה ברשימה (ערכין, לפי סדר האלפבית האנגלי), שזה מקום
+  // מוזר להתחיל בו. אם ברכות חסרה מסיבה כלשהי — נשארים בראשונה שיש.
+  const DEFAULT_SLUG = "berakhot";
+  if (manifest.books.some((b) => b.slug === DEFAULT_SLUG)) {
+    tractateSelect.value = DEFAULT_SLUG;
+  }
 
   // --- טווח ---
   const rangeMode = el("select", { class: "sef-select" }, [
@@ -101,6 +109,10 @@ export async function openVilnaImportModal(paneManager, onImported) {
   const withRashi = el("input", { type: "checkbox", checked: "checked" });
   const wholeDafim = el("input", { type: "checkbox", checked: "checked" });
   const autoLayout = el("input", { type: "checkbox", checked: "checked" });
+  const fitPage = el("input", {
+    type: "checkbox",
+    ...(localStorage.getItem(DAF_LOCK_KEYS.fitPageToText) === "1" ? { checked: "checked" } : {}),
+  });
   const streamInput = el("input", { class: "sef-input", style: "width: 60px;", value: "01" });
 
   const row = (label, ...controls) => el("div", {
@@ -124,6 +136,8 @@ export async function openVilnaImportModal(paneManager, onImported) {
     "פרק בגמרא מתחיל ונגמר באמצע דף. עם הסימון הזה מייבאים את הדפים השלמים, וכל עמוד אצלנו ייגמר בדיוק כמו בוילנא."));
   body.appendChild(checkboxRow(autoLayout, "להפעיל מיד את צורת הדף (גפ\"ת) ונעילת דף",
     "מדליק את העימוד של צורת הדף ואת נעילת הדף, כדי שתראה את התוצאה מיד"));
+  body.appendChild(checkboxRow(fitPage, "התאם את גודל הדף לפי גודל הטקסט",
+    "במקום להקטין את האות כדי שהדף ייכנס — האות נשארת כפי שקבעת, וגובה העמוד מתאים את עצמו לכל דף."));
   body.appendChild(row('קוד זרם לרש"י:', streamInput));
 
   const preview = el("div", {
@@ -222,6 +236,7 @@ export async function openVilnaImportModal(paneManager, onImported) {
     status.textContent = "בונה את המסמך…";
     try {
       const code = String(parseInt(streamInput.value, 10) || 1).padStart(2, "0");
+      try { localStorage.setItem(DAF_LOCK_KEYS.fitPageToText, fitPage.checked ? "1" : "0"); } catch { /* דמו */ }
       const { text, stats } = buildVilnaRawText(book, {
         ...r,
         withRashi: withRashi.checked,
@@ -266,8 +281,28 @@ export function wireVilnaImportButton(paneManager, onImported) {
   toolbar.appendChild(group);
 }
 
+/**
+ * מכוון את זרם רש"י לצורת וילנא:
+ *  • בלי מספרי [1] [2] — בדפוס וילנא אין מספור להערות.
+ *  • הדיבור המתחיל מודגש עד הנקודה (ולא רק המילה הראשונה).
+ * זה חל רק על הזרם שנוצר בייבוא הזה, ורק כאן — זרמים אחרים לא נוגעים.
+ */
+export function applyVilnaStreamStyle(code) {
+  try {
+    const settings = getStreamSettings();
+    const cur = settings[code] || (settings[code] = {});
+    cur.noteNumEnabled = false;   // בלי [1] [2]
+    cur.lemmaBold = true;         // דיבור המתחיל מודגש
+    cur.lemmaUntilDot = true;     // ...עד הנקודה, כמו בוילנא
+    saveStreamSettings();
+  } catch (e) {
+    console.warn("[vilna] לא הצלחתי לכוון את הגדרות הזרם:", e);
+  }
+}
+
 /** מדליק את צורת הדף, מגדיר את זרם רש"י ואת נעילת הדף. */
 export function enableVilnaLayoutFor(code) {
+  applyVilnaStreamStyle(code);
   try {
     localStorage.setItem("ravtext.talmudLayout", "1");
     const existing = (localStorage.getItem("ravtext.talmudLayout.streams") || "").trim();

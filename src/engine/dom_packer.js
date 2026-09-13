@@ -8,7 +8,7 @@ import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layou
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
 import { applyStyleToElement } from "../style_registry.js";
 import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
-import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma } from "../original_stream_columns.js";
+import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma, lemmaSplitIndex } from "../original_stream_columns.js";
 import { createLayoutContext, publishLayoutContextToCssVars, currentLayoutMeasureSignature } from "./layout_context.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
@@ -414,7 +414,7 @@ function buildMeasurePage(mainSegments, streams) {
         const leadingWs = text.length - text.replace(/^\s+/, "").length;
         const trimmed = text.replace(/^\s+/, "");
         const trimmedRuns = sliceRuns(runs, leadingWs, leadingWs + trimmed.length);
-        const spaceIdx = trimmed.indexOf(" ");
+        const spaceIdx = lemmaSplitIndex(code, trimmed);
         const boldLemma = shouldBoldStreamLemma(code);
 
         if (spaceIdx > 0) {

@@ -153,6 +153,9 @@ export const DAF_LOCK_KEYS = {
   minScale: "ravtext.vilnaDaf.minScale", // אחוזים
   maxScale: "ravtext.vilnaDaf.maxScale",
   showLabel: "ravtext.vilnaDaf.showLabel", // "1" = להראות את שם הדף על העמוד
+  // משה 13/09/2026: הכיוון ההפוך — האות נשארת כמו שהיא, והעמוד מתאים
+  // את עצמו לדף. "1" = גודל העמוד נגזר מהטקסט.
+  fitPageToText: "ravtext.vilnaDaf.fitPageToText",
 };
 
 function readLs(key, fallback) {
@@ -175,6 +178,7 @@ export function readDafLockSettings() {
     minScale: num(DAF_LOCK_KEYS.minScale, 70, 40, 100) / 100,
     maxScale: num(DAF_LOCK_KEYS.maxScale, 130, 100, 250) / 100,
     showLabel: readLs(DAF_LOCK_KEYS.showLabel, "1") === "1",
+    fitPageToText: readLs(DAF_LOCK_KEYS.fitPageToText, "0") === "1",
   };
 }
 
@@ -222,6 +226,11 @@ function pageOverflows(pageEl) {
 }
 
 // ===================== הבנייה =====================
+// במצב "העמוד מתאים את עצמו לטקסט" משנים את גובה העמוד ולא את האות.
+function heightConfig(cfg, height) {
+  return { ...cfg, pageHeight: Math.round(height) };
+}
+
 function scaledConfig(cfg, scale) {
   if (scale === 1) return cfg;
   return {
@@ -307,6 +316,77 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       segReport.pages = built.length;
       report.segments.push(segReport);
       report.pagesTotal += built.length;
+      continue;
+    }
+
+    // --- מצב "העמוד מתאים את עצמו לטקסט" ---
+    // האות נשארת בדיוק כפי שהמשתמש קבע; מחפשים את **הגובה הקטן ביותר**
+    // של עמוד שבו כל הדף עדיין נכנס. כך אין הקטנת אות בכלל, והעמוד יוצא
+    // מדויק לתוכן — כמו שדפי וילנא אינם שווים בכמות השורות.
+    if (settings.fitPageToText) {
+      const baseH = cfg.pageHeight || 794;
+      let lo = Math.round(baseH * 0.5);
+      let hi = Math.round(baseH * 3);
+      let bestFit = null;
+      const tryHeight = async (h) => {
+        const trialEl = makeTrialContainer(container);
+        trialEl.style.setProperty("--ravtext-page-height", `${Math.round(h)}px`);
+        try {
+          const res = await buildPages(trialEl, seg.paragraphs, { ...heightConfig(cfg, h), maxPages: 2 });
+          const pages = (res && res.pages) || [];
+          for (const pg of pages) pg.style.height = `${Math.round(h)}px`;
+          const fits = pages.length === 1 && !pageOverflows(pages[0]);
+          return { h, fits, pages: pages.length, el: trialEl };
+        } catch (e) {
+          return { h, fits: false, pages: 0, el: trialEl, error: String(e && e.message || e) };
+        }
+      };
+      const keepBest = (r) => {
+        if (r.fits && (!bestFit || r.h < bestFit.h)) {
+          if (bestFit?.el?.parentNode) bestFit.el.parentNode.removeChild(bestFit.el);
+          bestFit = r;
+        } else if (r.el.parentNode && (!bestFit || bestFit.el !== r.el)) {
+          r.el.parentNode.removeChild(r.el);
+        }
+      };
+      keepBest(await tryHeight(hi));
+      if (!bestFit) {
+        // אפילו בגובה המרבי לא נכנס — לא חורגים; בונים כרגיל ומדווחים.
+        const res = await buildPages(container, seg.paragraphs, heightConfig(cfg, hi));
+        const built = (res && res.pages) || [];
+        built.forEach((pageEl, i) => {
+          pageEl.style.height = `${hi}px`;
+          pageEl.dataset.pageIndex = String(allPages.length + i);
+          tagPage(pageEl, seg.label, 1, settings, i, built.length);
+        });
+        allPages.push(...built);
+        Object.assign(segReport, { scale: 1, pages: built.length, overflow: true, pageHeight: hi });
+        report.segments.push(segReport);
+        report.pagesTotal += built.length;
+        report.dafimOverflowed++;
+        continue;
+      }
+      for (let iter = 0; iter < 8 && hi - lo > 8; iter++) {
+        const mid = Math.round((lo + hi) / 2);
+        const r = await tryHeight(mid);
+        keepBest(r);
+        if (r.fits) hi = mid; else lo = mid + 1;
+        if (!isCurrent()) return { pages: allPages, report: { ...report, aborted: true } };
+      }
+      const pageEl = bestFit.el.firstElementChild;
+      if (pageEl) {
+        container.appendChild(pageEl);
+        pageEl.style.height = `${Math.round(bestFit.h)}px`;
+        pageEl.dataset.pageIndex = String(allPages.length);
+        tagPage(pageEl, seg.label, 1, settings);
+        allPages.push(pageEl);
+      }
+      if (bestFit.el.parentNode) bestFit.el.parentNode.removeChild(bestFit.el);
+      Object.assign(segReport, { scale: 1, pages: 1, pageHeight: Math.round(bestFit.h), fill: 1 });
+      report.segments.push(segReport);
+      report.pagesTotal += 1;
+      if (typeof opts.onProgress === "function") opts.onProgress(si + 1, segments.length, seg.label);
+      await new Promise((r) => setTimeout(r, 0));
       continue;
     }
 

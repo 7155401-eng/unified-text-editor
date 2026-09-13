@@ -34,6 +34,7 @@ import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "
 import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
 import { wireTalmudLayoutControls } from "./talmud_controls.js";
 import { wireDafLockControls } from "./vilna_daf_ui.js";
+import { wirePageSizeControls, applyPageSize } from "./page_size.js";
 import { openVilnaImportModal, enableVilnaLayoutFor, wireVilnaImportButton } from "./vilna_import_modal.js";
 import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
@@ -1647,20 +1648,24 @@ wireInboxButtons();
 // אירוע "change" מלאכותי; talmud_controls שמע אותו וריצה רינדור מלא.
 wireTalmudLayoutControls(settingRerenderPages);
 wireDafLockControls(settingRerenderPages);
+// גודל הנייר — חייב לחול לפני הרינדור הראשון, אחרת המנוע יחשב עמוד
+// בגודל אחד והקופסה על המסך תהיה בגודל אחר.
+wirePageSizeControls(settingRerenderPages);
 
 // ★ ייבוא גמרא בצורת ש"ס וילנא (משה, 11/09/2026).
 // הייבוא בונה טקסט גולמי עם סימני ⟦דף …⟧ ועם הערות רש"י כזרם, מכניס אותו
 // לעורך דרך אותו מסלול של הדוגמאות (parseAuto), ואז — אם המשתמש ביקש —
 // מדליק את צורת הדף ואת נעילת הדף ומרנדר.
 async function handleVilnaImport({ text, stats, book, code, autoLayout }) {
-  loadEngineDoc(parseAuto(text));
-  // שם הזרם שיוצג מעל עמודת רש"י
+  // ★ הסדר כאן חשוב: קודם מדליקים את צורת הדף ואת נעילת הדף, ורק אחר כך
+  // טוענים את המסמך. אם עושים הפוך — loadEngineDoc מריץ רינדור מלא אחד
+  // עם ההגדרות הישנות, ומיד אחריו רינדור שני עם החדשות. על דף בודד זה
+  // בזבוז; על פרק שלם זו המתנה כפולה של דקות, והרינדור הראשון נקטע
+  // באמצע ומשאיר עמודים חלקיים על המסך.
   try {
     window.__STREAM_LABELS__ = window.__STREAM_LABELS__ || {};
     window.__STREAM_LABELS__[code] = 'רש"י';
   } catch (_) {}
-  const pane = paneManager.panes.find((p) => p.streamCode === code);
-  if (pane) pane.label = 'רש"י';
   if (autoLayout) {
     enableVilnaLayoutFor(code);
     const talmudToggle = document.getElementById("talmud-layout-toggle");
@@ -1668,7 +1673,9 @@ async function handleVilnaImport({ text, stats, book, code, autoLayout }) {
     const dafToggle = document.getElementById("daf-lock-toggle");
     if (dafToggle) dafToggle.checked = true;
   }
-  rerenderPages();
+  loadEngineDoc(parseAuto(text));
+  const pane = paneManager.panes.find((p) => p.streamCode === code);
+  if (pane) pane.label = 'רש"י';
   trackUsage("vilna_import", {
     tractate: book.title,
     amudim: stats.amudim,
