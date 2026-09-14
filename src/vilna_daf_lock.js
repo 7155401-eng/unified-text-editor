@@ -570,15 +570,12 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       if (pageEl) {
         container.appendChild(pageEl);
         applyPageGeom(pageEl, bestFit.h);
-        // קודם מיישרים שורות שרוכבות זו על זו, ורק אחר כך מקצצים —
-        // אחרת הקיצוץ היה נעשה לפי תחתית שגויה (בקשות משה 14/09).
         const fixes = resolveLineOverlaps(pageEl);
         if (fixes) segReport.overlapFixes = fixes;
-        const trimmed = trimPageToContent(pageEl);
-        if (trimmed) {
-          segReport.trimmedTo = trimmed;
-          fitPageIntoView(pageEl);
-        }
+        // ⛔ משה 14/09: קיצוץ תחתית העמוד **בוטל**. המטרה היא להדפיס
+        // עמודים בגודל אחיד, ולכן כל העמודים חייבים להישאר באותו יחס
+        // רוחב-גובה. חיתוך התחתית הרס בדיוק את זה. הפתרון למילוי הוא
+        // הקטנה יחסית של כל העמוד (המכפיל), לא חיתוך.
         pageEl.dataset.pageIndex = String(allPages.length);
         tagPage(pageEl, seg.label, 1, settings);
         allPages.push(pageEl);
@@ -715,6 +712,42 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
     if (typeof opts.onProgress === "function") opts.onProgress(si + 1, segments.length, seg.label);
     // שחרור ה-thread בין דף לדף — כמו ב-V9 עצמו.
     await new Promise((r) => setTimeout(r, 0));
+  }
+
+  // ★ משה 14/09/2026: "כל העמודים חייבים להיות בגודל אורך ורוחב יחסי"
+  // — כי בסוף מדפיסים ספר, וספר שדפיו בגדלים שונים אינו ספר.
+  // כל דף קיבל את המכפיל המינימלי שלו; כאן מיישרים את כולם למכפיל
+  // הגדול ביותר, כך שכל העמודים יוצאים **בדיוק באותו גודל**.
+  // הדף שדרש הכי הרבה מקום קובע — וכך אף דף אינו נחתך.
+  if (settings.fitPageToText && allPages.length > 1) {
+    let maxFactor = 0;
+    for (const pg of allPages) {
+      const f = parseFloat(pg.dataset.dafPageFactor || "0");
+      if (f > maxFactor) maxFactor = f;
+    }
+    if (maxFactor > 0) {
+      const baseW = cfg.pageWidth || 380;
+      const baseH = cfg.pageHeight || 794;
+      const W = Math.round(baseW * maxFactor);
+      const H = Math.round(baseH * maxFactor);
+      const rootZoom = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--ravtext-print-zoom")
+      );
+      for (const pg of allPages) {
+        pg.style.width = `${W}px`;
+        pg.style.height = `${H}px`;
+        pg.style.setProperty("--ravtext-page-width", `${W}px`);
+        pg.style.setProperty("--ravtext-page-height", `${H}px`);
+        if (Number.isFinite(rootZoom) && rootZoom > 0) {
+          pg.style.setProperty("--ravtext-print-zoom", String(rootZoom / maxFactor));
+        }
+        pg.dataset.dafPageFactor = String(Math.round(maxFactor * 1000) / 1000);
+        pg.dataset.dafUniform = "1";
+        fitPageIntoView(pg);
+      }
+      report.uniformFactor = Math.round(maxFactor * 1000) / 1000;
+      report.uniformSize = `${W}x${H}`;
+    }
   }
 
   report.durationMs = Date.now() - report.startedAt;

@@ -140,8 +140,11 @@ check("לכל עמוד נקבע גובה משלו", res.pages.every((x) => x.inl
 check("הגובה נקבע גם כמשתנה CSS (כדי שההדפסה תכבד אותו)",
   res.pages.every((x) => x.cssVar && parseInt(x.cssVar, 10) === x.boxH),
   res.pages.map((x) => x.cssVar).join(","));
-check("הגבהים אינם זהים — כל דף לפי התוכן שלו",
-  new Set(res.pages.map((x) => x.boxH)).size > 1, res.pages.map((x) => x.boxH).join(","));
+// ★ משה 14/09: "המטרה היא להדפיס עמודים בגודל אחיד" — זו הדרישה
+// שמחליפה את הקודמת. כל העמודים חייבים לצאת באותו גודל בדיוק.
+check("כל העמודים באותו גודל בדיוק (לצורך הדפסה אחידה)",
+  new Set(res.pages.map((x) => `${x.boxW}x${x.boxH}`)).size === 1,
+  res.pages.map((x) => `${x.boxW}x${x.boxH}`).join(" "));
 check("אין חריגה מגבולות העמוד",
   res.pages.every((x) => x.scrollH <= x.offsetH + 2),
   res.pages.map((x) => `${x.scrollH}/${x.offsetH}`).join(" "));
