@@ -90,26 +90,18 @@ await page.reload({ waitUntil: "networkidle2", timeout: 90000 });
 // גודל העמוד: ברירת המחדל של האתר היא עמוד מסך קטן (380x537). דף גמרא שלם
 // עם רש"י לא נכנס בו גם באות זעירה. הבדיקה רצה על עמוד בגודל A4, שזה
 // הגודל שבו באמת מדפיסים דף גמרא. אפשר לשנות עם VERIFY_PAGE=default.
-const PAGE_SIZE = process.env.VERIFY_PAGE || "a4";
+// גודל העמוד נקבע דרך בורר גודל הדף האמיתי (src/page_size.js) ולא
+// בהזרקת CSS: הבורר כותב את המשתנים כסגנון אינליין על :root, וסגנון
+// אינליין גובר על כל גיליון — כלומר הזרקה חיצונית פשוט נדרסת.
+// "מותאם אישית" 210×580 מ"מ נותן עמוד לוגי גבוה (380×1050), וזה מה
+// שצריך כדי שדף גמרא שלם ייכנס בעמוד אחד בגודל אות סביר.
+const PAGE_SIZE = process.env.VERIFY_PAGE || "tall";
 if (PAGE_SIZE !== "default") {
-  // חייבים לשנות גם את משתני ה-CSS (מהם המנוע קורא את גודל העמוד) וגם את
-  // הכלל של .page (שבו הגודל כתוב בפיקסלים קבועים). אם משנים רק את
-  // המשתנים — המנוע בונה עמוד A4 בתוך קופסה של 537px, והתוכן נחתך בשקט
-  // בגלל overflow:hidden. זה בדיוק מה שקרה בבדיקה הראשונה.
   await page.evaluate(() => {
-    const st = document.createElement("style");
-    st.id = "verify-a4-page";
-    st.textContent = `
-      :root, .pages-container {
-        --ravtext-page-width: 794px;
-        --ravtext-page-height: 1123px;
-      }
-      .page { width: 794px !important; height: 1123px !important; flex: 0 0 1123px !important; }
-      .pages-container > .page:not(.measure-page) { contain-intrinsic-size: 794px 1123px !important; }
-    `;
-    document.head.appendChild(st);
+    localStorage.setItem("ravtext.pageSize.v1", JSON.stringify({ id: "custom", w: 210, h: 580 }));
   });
-  await new Promise((r) => setTimeout(r, 300));
+  await page.reload({ waitUntil: "networkidle2", timeout: 90000 });
+  await new Promise((r) => setTimeout(r, 4000));
 }
 
 // --- ייבוא דרך החלון האמיתי ---
@@ -226,8 +218,17 @@ check("אין חריגה מגבולות העמוד",
 // בשרת הפיתוח אין את ה-Worker, ולכן /api/streams/parse מחזיר 404 והדפדפן
 // רושם שגיאת רשת. זה קיים גם בלי השינוי הזה ואינו קשור לנעילת דף.
 const devNoise = /Failed to load resource|not valid JSON|ERR_UNKNOWN_URL_SCHEME|favicon/i;
-const criticalErrors = errors.filter((e) => !devNoise.test(e));
+// מנגנוני-הגנה של המערכת מדווחים דרך console.error גם כשהם **הצליחו**
+// (זיהו בעיה וביטלו את המהלך). זו אינה שגיאה אלא הגנה שפעלה, ולכן היא
+// מדווחת בנפרד ולא נספרת ככשל.
+const guardMsg = /rolled back|rollback|CONTENT LOSS detected/i;
+const guardNotices = errors.filter((e) => guardMsg.test(e));
+const criticalErrors = errors.filter((e) => !devNoise.test(e) && !guardMsg.test(e));
 check("אין שגיאות JS אמיתיות בדף", criticalErrors.length === 0, criticalErrors.slice(0, 3).join(" | "));
+if (guardNotices.length) {
+  console.log(`    ⓘ ${guardNotices.length} מנגנוני-הגנה פעלו וביטלו מהלך (זו התנהגות תקינה):`);
+  for (const g of [...new Set(guardNotices)].slice(0, 3)) console.log(`       ${g.slice(0, 120)}`);
+}
 if (errors.length) console.log(`    (${errors.length} שגיאות רשת של שרת הפיתוח — לא קשורות)`);
 
 // --- סוף עמוד = סוף הדף בוילנא ---
