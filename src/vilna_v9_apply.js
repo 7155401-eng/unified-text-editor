@@ -18,7 +18,7 @@ import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
-import { getEffectiveStreamSettings } from "./original_stream_columns.js";
+import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
 import { getOpeningWordSettings } from "./opening_word.js";
 import {
@@ -391,8 +391,17 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     const titles = Object.assign({}, DEFAULT_TITLES, labels);
 
     const rawStreamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
+    // ★ משה 13/09/2026 — תיקון "בחרתי סגנון לזרם ולא ראיתי שום שינוי בפלט":
+    // הרשימה נבנתה רק מהמפתחות של __STREAM_SETTINGS__, שמתמלא בזמן הרינדור
+    // מהחלוניות. סגנון שהמשתמש שמר בטבלת ההגדרות יושב בחנות ההגדרות
+    // (getStreamSettings) — ואם הקוד לא הופיע ב-__STREAM_SETTINGS__, המנוע
+    // בכלל לא קיבל רשומה לזרם הזה ולכן ה-styleId לא הוחל. עכשיו לוקחים את
+    // איחוד שני המקורות.
+    let storedCodes = [];
+    try { storedCodes = Object.keys(getStreamSettings() || {}); } catch { /* אין חנות */ }
+    const allCodes = new Set([...Object.keys(rawStreamSettings), ...storedCodes]);
     const streamSettings = {};
-    for (const code of Object.keys(rawStreamSettings)) {
+    for (const code of allCodes) {
       streamSettings[code] = withSafeV9StreamSettings(getEffectiveStreamSettings(code));
     }
     const levels = readLevelsFromLocalStorage();

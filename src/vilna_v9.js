@@ -1,6 +1,6 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
-import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings } from "./original_stream_columns.js";
+import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
@@ -2977,7 +2977,8 @@ function renderPagePlan(plan, pageEl, cfg) {
     const colorClass = streamColorClass(box.id);
     drawBox(box, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
 
-    const title = (cfg.titles || {})[box.id];
+    // משה 13/09/2026: זרם שכבתה בו "הצג כותרת זרם" — לא מציירים שם בכלל.
+    const title = shouldShowStreamTitle(box.id) ? (cfg.titles || {})[box.id] : "";
     if (title && box.lines.length > 0) {
       const firstLine = box.lines[0];
       // משה 2026-05-10: צורה 4 —
