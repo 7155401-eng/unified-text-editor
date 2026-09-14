@@ -81,14 +81,39 @@ const res = await p.evaluate(() => {
       scale: pg.dataset.dafScale,
       inlineH: pg.style.height,
       cssVar: pg.style.getPropertyValue("--ravtext-page-height"),
+      cssVarW: pg.style.getPropertyValue("--ravtext-page-width"),
+      boxW: Math.round(parseFloat(getComputedStyle(pg).width)),
       boxH: Math.round(parseFloat(getComputedStyle(pg).height)),
+      factor: parseFloat(pg.dataset.dafPageFactor || "0"),
+      printZoom: parseFloat(pg.style.getPropertyValue("--ravtext-print-zoom") || "0"),
+      viewZoom: parseFloat(pg.dataset.dafViewZoom || "1"),
+      // רוחב אמיתי על המסך אחרי זום-התצוגה, מול הרוחב הזמין במיכל
+      shownW: Math.round(pg.getBoundingClientRect().width),
+      availW: Math.round((pg.closest(".pages-container")?.clientWidth || 0) - 20),
       scrollH: pg.scrollHeight,
       offsetH: pg.offsetHeight,
     })),
   };
 });
 
-console.log("עמודים:", res.pages.map((x) => `${x.label}=${x.boxH}px`).join(" · "));
+console.log("עמודים:", res.pages.map((x) => `${x.label}=${x.boxW}x${x.boxH}px (×${x.factor}, זום ${Math.round(x.printZoom*1000)/1000})`).join(" · "));
+// ★ הדרישה של משה: הגדלה בגובה וברוחב יחד, כדי שבהדפסה כל הדפים יצאו
+// בגודל נייר דומה. שתי הבדיקות הבאות מודדות בדיוק את זה.
+const ratios = res.pages.map((x) => x.boxW / x.boxH);
+check("היחס רוחב/גובה זהה בכל העמודים (הגדלה פרופורציונלית)",
+  Math.max(...ratios) - Math.min(...ratios) < 0.02,
+  ratios.map((r) => r.toFixed(3)).join(","));
+const paper = res.pages.map((x) => x.boxW * x.printZoom);
+check("בהדפסה כל הדפים יוצאים באותו רוחב נייר",
+  Math.max(...paper) - Math.min(...paper) < 2,
+  paper.map((v) => Math.round(v)).join(","));
+check("הרוחב גדל יחד עם הגובה",
+  res.pages.every((x) => x.cssVarW && parseInt(x.cssVarW, 10) === x.boxW),
+  res.pages.map((x) => x.cssVarW).join(","));
+// ★ משה 14/09: העמודים חייבים להיראות במלואם, בכל גודל שהם.
+check("כל עמוד נכנס ברוחב המסך (לא נחתך)",
+  res.pages.every((x) => x.shownW <= x.availW + 4),
+  res.pages.map((x) => `${x.shownW}/${x.availW}`).join(" "));
 check(`${EXPECTED} דפים → ${EXPECTED} עמודים`, res.pages.length === EXPECTED, `=${res.pages.length}`);
 check("גודל האות לא שונה (100%)", res.pages.every((x) => x.scale === "1"), res.pages.map((x) => x.scale).join(","));
 check("לכל עמוד נקבע גובה משלו", res.pages.every((x) => x.inlineH && x.boxH > 0),

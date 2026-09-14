@@ -1239,6 +1239,12 @@ function rebalanceFooterContinuationCut(allLines, maxLinesFit, metrics, widthPx)
 // ⛔ כלל ברזל: נקודות החיתוך המותרות הן **סופי שורות בלבד**. אסור לחתוך
 // באמצע שורה, ואסור להשאיר רווח בסוף השורה שנחתכה.
 function balanceOneLongSplitByHeight(allText, metrics, rightStrips, leftStrips, maxY, opts = {}) {
+  // opts.lineStrips = הרצועות שבהן המנוע באמת מזרים את הטור הימני.
+  // חובה לחשב את סופי-השורות מהן ולא מרצועות-האיזון, אחרת „סוף שורה”
+  // כאן אינו סוף שורה שם — וזה בדיוק מה שגרם לחיתוך באמצע שורה.
+  const lineStrips = Array.isArray(opts.lineStrips) && opts.lineStrips.length
+    ? opts.lineStrips
+    : rightStrips;
   const words = String(allText || "").split(/\s+/).filter(Boolean);
   if (words.length < 4) return null;
   if (!Array.isArray(rightStrips) || !rightStrips.length) return null;
@@ -1269,7 +1275,7 @@ function balanceOneLongSplitByHeight(allText, metrics, rightStrips, leftStrips, 
   // לכן קודם מזרימים את כל הטקסט דרך רצועות הטור הימני ורואים היכן
   // נגמרות השורות בפועל; אלה, ורק אלה, נקודות החיתוך המותרות.
   const TALL = 1e6;
-  const fullFlow = flowStreamThroughStrips(allText, rightStrips.map((st) => ({
+  const fullFlow = flowStreamThroughStrips(allText, lineStrips.map((st) => ({
     ...st, y_end: (st.y_end !== undefined ? st.y_end + TALL : undefined),
   })), metrics, TALL);
   const lineEnds = [];
@@ -1856,8 +1862,18 @@ function buildPagePlan(pageContent, config) {
           }
           return out;
         };
+        // המרת רצועות-האמת של הטור הימני (רוחב+גובה) לצורת y מצטבר,
+        // כדי שאפשר יהיה למדוד בהן היכן נגמרות השורות בפועל.
+        let yCursor = sideTopY;
+        const realRightStrips = rightStrips.map((st) => {
+          const y_start = yCursor;
+          const y_end = yCursor + (st.height || 0);
+          yCursor = y_end;
+          return { y_start, y_end, width: st.width, x: sideRightX };
+        });
         const balanced = balanceOneLongSplitByHeight(
-          allText, splitMetricsForStream, yStrips('right'), yStrips('left'), _pageBottomYForSplit
+          allText, splitMetricsForStream, yStrips('right'), yStrips('left'), _pageBottomYForSplit,
+          { lineStrips: realRightStrips }
         );
         if (balanced) parts = balanced;
       }

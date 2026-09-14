@@ -178,6 +178,8 @@ const result = await page.evaluate(() => {
         labelShown: labelEl ? labelEl.textContent : "",
         height: p.offsetHeight,
         scrollHeight: p.scrollHeight,
+        // מילת פתיח — צריכה להופיע רק בעמוד הראשון, לא בכל מעבר דף
+        openingWords: p.querySelectorAll(".v9-opening-word, [class*=opening-word]").length,
         text: joinText(lines),
         mainText: joinText(lines.filter((x) => x.classList.contains("v9-role-main"))),
         sideText: joinText(lines.filter((x) => !x.classList.contains("v9-role-main"))),
@@ -209,6 +211,11 @@ check("תוויות הדפים בסדר הנכון",
 check("שם הדף מוצג על כל עמוד", result.pages.every((p) => p.labelShown), 
   result.pages.map((p) => p.labelShown || "-").join(","));
 check("אף דף לא נשבר לשני עמודים", !result.pages.some((p) => p.part));
+// ★ משה 14/09: מילת פתיח שייכת לקטע חדש, לא למעבר עמוד.
+const pagesWithOpening = result.pages.filter((p) => p.openingWords > 0).length;
+check("אין מילת פתיח בכל מעבר דף (לכל היותר בעמוד הראשון)",
+  pagesWithOpening <= 1,
+  `${pagesWithOpening} עמודים עם מילת פתיח מתוך ${result.pages.length}`);
 check("קופסת העמוד תואמת את מה שהמנוע חישב",
   geomProbe.pageOffsetHeight === parseInt(geomProbe.pageVar, 10),
   `${geomProbe.pageOffsetHeight} מול ${geomProbe.pageVar}`);
