@@ -2811,6 +2811,17 @@ function renderPagePlan(plan, pageEl, cfg) {
       if (box.inlineStyle) {
         applyTextStyleObjectToElement(lineEl, box.inlineStyle);
       }
+      // ★ משה 14/09/2026 — שורש "השטח הלבן בלי סיבה הנראית לעין":
+      // הסגנון שמוחל כאן הוא סגנון של **פסקה**, אבל V9 מפרק פסקה לשורות
+      // ומחיל אותו על כל שורה בנפרד. התוצאה: margin-top/bottom של פסקה
+      // (נמדד אצל משה: 7px + 16px) מופיע בין **כל שתי שורות** — כ-8,000
+      // פיקסלים של רווח לבן בדף אחד. ה-margin גם מנפח את מלבן השורה
+      // ולכן יוצר "חפיפות" מדומות.
+      // שורות V9 ממוקמות ב-position:absolute עם top מחושב מראש, ולכן
+      // מרווחי פסקה כאן רק מזיקים — ומנוטרלים.
+      lineEl.style.marginTop = "0px";
+      lineEl.style.marginBottom = "0px";
+      lineEl.style.textIndent = "0px";
 
       // משה 2026-05-13: הגנה נגד חיתוך אותיות/ניקוד.
       // אם הפונט בפועל גדול מגובה השורה המחושב, אסור להשאיר height נמוך.
