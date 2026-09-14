@@ -229,6 +229,28 @@ export function measurePageFill(pageEl, cfg) {
   return (bottom / (viewZoom || 1)) / usable;
 }
 
+/**
+ * ★ משה 14/09/2026: "חייבת להיות מדידה של כמות השטח בעמוד שאין בו תוכן".
+ * measurePageFill מודדת גובה בלבד ולכן עיוורת לחורים לרוחב: עמוד שהטקסט
+ * בו יורד עד התחתית אבל חצי מהרוחב ריק נמדד כ-100%.
+ * כאן מחשבים את **שטח** התוכן: סכום (רוחב×גובה) של כל השורות, חלקי
+ * שטח העמוד השימושי. המדידה בקואורדינטות לוגיות, כמו כל השאר.
+ */
+export function measurePageArea(pageEl, cfg) {
+  if (!pageEl || !pageEl.querySelectorAll) return 0;
+  const padding = cfg.padding || 12;
+  const usableH = Math.max(1, (cfg.pageHeight || 794) - 2 * padding - (cfg.reservedBottom || 0));
+  const usableW = Math.max(1, (cfg.pageWidth || 380) - 2 * padding);
+  let covered = 0;
+  for (const node of pageEl.querySelectorAll(".v9-line, .v9-stream-title, .v9-opening-word")) {
+    if (node.classList && node.classList.contains("v9-daf-label")) continue;
+    const w = parseFloat(node.style.width) || 0;
+    const h = parseFloat(node.style.height) || parseFloat(node.style.lineHeight) || 0;
+    if (w > 0 && h > 0) covered += w * h;
+  }
+  return covered / (usableW * usableH);
+}
+
 function pageOverflows(pageEl) {
   if (!pageEl) return false;
   return pageEl.scrollHeight > pageEl.offsetHeight + 1;
@@ -768,7 +790,12 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         const pageEl = allPages[si2];
         const seg2 = segments[si2];
         if (!pageEl || !seg2) continue;
-        const fillNow = measurePageFill(pageEl, uniformCfg);
+        // ★ בודקים גם גובה וגם שטח, ולוקחים את הנמוך: חור לרוחב וחור
+        // לגובה נחשבים שניהם כחוסר מילוי (בקשת משה 14/09).
+        const fillNow = Math.min(
+          measurePageFill(pageEl, uniformCfg),
+          measurePageArea(pageEl, uniformCfg) * 1.6   // שטח תוכן טיפוסי
+        );
         if (fillNow >= 0.9) continue;                 // כבר מלא
         // חיפוש חצייה על גודל האות: הגדול ביותר שעדיין נכנס בעמוד אחד
         // ★ משה 14/09: "לפעמים הטקסט של הזרם הפנימי ממש מתקטן".
@@ -801,7 +828,10 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
             });
             const pgs = (res2 && res2.pages) || [];
             const ok = pgs.length === 1 && !pageOverflows(pgs[0]);
-            const fillK = ok ? measurePageFill(pgs[0], uniformCfg) : 0;
+            const fillK = ok ? Math.min(
+              measurePageFill(pgs[0], uniformCfg),
+              measurePageArea(pgs[0], uniformCfg) * 1.6
+            ) : 0;
             if (ok && (!bestBig || fillK > bestBig.fill + 0.005)) {
               if (bestBig?.el?.parentNode) bestBig.el.parentNode.removeChild(bestBig.el);
               bestBig = { k, el: trialEl, fill: fillK };
