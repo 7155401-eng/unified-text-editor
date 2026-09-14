@@ -488,9 +488,19 @@ export function boldOverrideStyleIdForStream(code) {
 }
 
 export function getEffectiveStreamSettings(code) {
+  // ★ משה 13/09/2026 — שורש הבאג "בחרתי סגנון לזרם ולא ראיתי שינוי בפלט":
+  // כאן נבנו ההגדרות האפקטיביות מברירות-המחדל ומהאובייקט שנבנה בזמן ריצה
+  // מהחלוניות (window.__STREAM_SETTINGS__) — **בלי חנות ההגדרות**, שהיא
+  // המקום שבו הטבלה שומרת את מה שהמשתמש בחר (styleId, כותרת, פס, וכו').
+  // לכן כל בחירה בטבלה נשמרה, הוצגה בטבלה — ומעולם לא הגיעה למנוע.
+  // סדר המיזוג: ברירות מחדל → אובייקט זמן-הריצה → **בחירת המשתמש מנצחת**.
+  const runtime = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {};
+  let stored = {};
+  try { stored = (getStreamSettings() || {})[code] || {}; } catch { stored = {}; }
   const base = normalizeStreamOpeningWordSettings({
     ...DEFAULT_STREAM_SETTINGS,
-    ...((typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__[code]) || {}),
+    ...runtime,
+    ...stored,
   });
   const overrides = loadGlobalStreamOverrides();
   const out = { ...base };
