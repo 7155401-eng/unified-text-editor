@@ -151,6 +151,15 @@ for (const r of report) {
   console.log(`דף ${r.daf} (${r.size}) · ראשי ${r.mainLines} · צד ${r.sideLines} · ${flags.length ? "⚠ " + flags.join(" · ") : "✓ נקי"}`);
   console.log(`   פונטים: ${JSON.stringify(r.fonts)}`);
 }
+// ★ משה: "הפונט של הזרם הראשי בעמוד הראשון בלבד אינו הפונט המבוקש".
+{
+  const mains = report.map((r) => r.fonts.main || "(אין)");
+  const first = mains[0], rest = [...new Set(mains.slice(1))];
+  console.log(`
+פונט הראשי — עמוד 1: ${first}`);
+  console.log(`פונט הראשי — שאר העמודים: ${JSON.stringify(rest)}`);
+  console.log(rest.includes(first) ? "  ✓ העמוד הראשון זהה לשאר" : "  ✗ העמוד הראשון שונה מהשאר!");
+}
 await writeFile("C:/Users/User/ravtext_work/page_defects.json", JSON.stringify(report, null, 1), "utf8");
 console.log("\nדוח מלא: C:/Users/User/ravtext_work/page_defects.json");
 await b.close();

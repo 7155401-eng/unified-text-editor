@@ -56,6 +56,30 @@ for (let i = 0; i < 180; i++) {
 await new Promise((r) => setTimeout(r, 4000));
 check("נבנו עמודים", pages > 0, `=${pages}`);
 
+// ★ משה: "בעמוד הראשון בלבד הפונט אינו הפונט שהוגדר, בשאר העמודים כן".
+// לכן בודקים **כל עמוד בנפרד** ולא את כולם יחד — הבדיקה הקודמת ערבבה
+// אותם ולכן פספסה בדיוק את המקרה הזה.
+const perPage = await p.evaluate(() => {
+  return [...document.querySelectorAll(".pages-container .page")].map((pg, i) => {
+    const ls = [...pg.querySelectorAll(".v9-line.v9-role-main")].slice(0, 4);
+    return {
+      page: i + 1,
+      fonts: [...new Set(ls.map((l) => getComputedStyle(l).fontFamily))],
+      inline: [...new Set(ls.map((l) => l.style.fontFamily || "(ריק)"))],
+      lines: pg.querySelectorAll(".v9-line.v9-role-main").length,
+    };
+  });
+});
+console.log("פונט לפי עמוד:");
+for (const x of perPage) console.log(`   עמוד ${x.page} (${x.lines} שורות): ${JSON.stringify(x.fonts)}`);
+const firstFonts = perPage[0]?.fonts || [];
+const restFonts = perPage.slice(1).flatMap((x) => x.fonts);
+check("העמוד הראשון באותו פונט כמו השאר",
+  perPage.length < 2 || firstFonts.every((f) => restFonts.includes(f)),
+  `ראשון=${JSON.stringify(firstFonts)} שאר=${JSON.stringify([...new Set(restFonts)])}`);
+check("העמוד הראשון בפונט שהוגדר",
+  firstFonts.some((f) => f.includes(REAL_FONT)), JSON.stringify(firstFonts));
+
 const out = await p.evaluate(() => {
   const lines = [...document.querySelectorAll(".pages-container .page .v9-line.v9-role-main")].slice(0, 6);
   return lines.map((l) => ({
