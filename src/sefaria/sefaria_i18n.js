@@ -5,26 +5,25 @@
 const STRINGS = {
   he: {
     // Downloader window chrome
-    downloader_title: "📖 טעינת ספר מספריא — רב טקסט לוורד AI",
+    downloader_title: "📖 טעינת ספר ממאגר התורה — רב טקסט לוורד AI",
     btn_close: "✕",
     btn_lang_to_en: "🌐 English",
     btn_lang_to_he: "🌐 עברית",
-    title_main: "📖 טעינת ספר מספריא",
+    title_main: "📖 טעינת ספר ממאגר התורה",
     placeholder_search_book: "חיפוש ספר…",
     btn_today: "🗓 היום",
     btn_presets: "📋 תבניות",
     btn_refresh_api: "🔄 רענן API",
     btn_log: "📜 לוג",
-    netfree_warn_downloader:
-      "⚠ שים לב: טעינת ספר מספריא לא עובדת ב-Netfree (ספריא חסומה שם). " +
-      "אם אתה גולש ב-Netfree — הטעינה תיכשל.",
+    // משה 14/09/2026: האזהרה על חסימה בנטפרי הוסרה — היא אינה נכונה.
+    netfree_warn_downloader: "",
     hint_action_row:
       "◀ פעולה ראשית — טען את הספר ישירות לרב טקסט   |   או שמור Word בלבד לעריכה ידנית ▶",
     btn_export_load: "📚 הוסף לרב טקסט (ייצא וטען)",
     btn_export_only: "💾 ייצא Word בלבד",
     btn_cancel: "⏹ עצור",
     status_ready: "מוכן",
-    status_loading_index: "טוען אינדקס מספריא…",
+    status_loading_index: "טוען אינדקס ממאגר התורה…",
     status_index_failed: "❌ נכשלה טעינת אינדקס — בדוק חיבור אינטרנט",
 
     // Tree pane
@@ -85,8 +84,8 @@ const STRINGS = {
     btn_today_daf: "📜 דף היומי בבבלי",
     btn_today_parsha: "📖 פרשת השבוע",
     btn_cancel_short: "ביטול",
-    today_no_daf: "לא ניתן לאתר את דף היום מספריא",
-    today_no_parsha: "לא ניתן לאתר פרשת שבוע מספריא",
+    today_no_daf: "לא ניתן לאתר את דף היום ממאגר התורה",
+    today_no_parsha: "לא ניתן לאתר פרשת שבוע ממאגר התורה",
     today_loaded_daf: "📜 הוטען דף היומי: {ref}",
     today_loaded_parsha: "📖 הוטענה פרשת השבוע: {ref}",
     status_seek_daf: "מאתר דף יומי…",
@@ -133,7 +132,7 @@ const STRINGS = {
     cache_refresh_title: "רענון cache",
 
     // Log viewer
-    log_title: "📜 לוג ספריא",
+    log_title: "📜 לוג מאגר התורה",
     log_empty: "(הלוג ריק)",
     log_not_yet: "(הלוג עוד לא נוצר)",
     log_read_err: "שגיאה בקריאת לוג: {err}",
@@ -197,9 +196,8 @@ const STRINGS = {
 
     // Live tool window
     live_title: "כלי משיכת פסוקים",
-    netfree_warn_live:
-      "⚠ שים לב: כלי משיכת פסוקים לא עובד ב-Netfree (ספריא חסומה שם). " +
-      "אם אתה גולש ב-Netfree, המשיכה תיכשל.",
+    // משה 14/09/2026: האזהרה על חסימה בנטפרי הוסרה — היא אינה נכונה.
+    netfree_warn_live: "",
     t_actions: "פעולות",
     btn_start: "▶ התחל עיבוד",
     t_settings: "הגדרות עיבוד",
@@ -293,9 +291,7 @@ const STRINGS = {
     btn_presets: "📋 Presets",
     btn_refresh_api: "🔄 Refresh API",
     btn_log: "📜 Log",
-    netfree_warn_downloader:
-      "⚠ Note: Sefaria book loading does not work on Netfree (Sefaria is blocked). " +
-      "If you browse Netfree — the load will fail.",
+    netfree_warn_downloader: "",
     hint_action_row:
       "◀ Primary action — load the book directly into Rav Text   |   Or save Word only for manual editing ▶",
     btn_export_load: "📚 Add to Rav Text (export & load)",
@@ -459,9 +455,7 @@ const STRINGS = {
       "(Cannot load preview — is the range valid?)\n\n💡 {hint}",
 
     live_title: "Sefaria Verse Picker",
-    netfree_warn_live:
-      "⚠ Note: this tool does not work on Netfree (Sefaria is blocked). " +
-      "If you browse Netfree, fetching will fail.",
+    netfree_warn_live: "",
     t_actions: "Actions",
     btn_start: "▶ Start Processing",
     t_settings: "Process Settings",

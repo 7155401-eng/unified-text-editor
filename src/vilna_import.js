@@ -2,7 +2,7 @@
 //
 // מאיפה הטקסט: public/data/sefaria/vilna_shas/<מסכת>.json — מאגר מקומי שנבנה
 // ע"י scripts/build_vilna_shas_mirror.mjs. אין כאן שום פנייה ל-sefaria.org
-// (כלל קבוע: כל כלי ספריא עובד מול המאגר המקומי בלבד).
+// (כלל קבוע: כל כלי מאגר התורה עובד מול המאגר המקומי בלבד).
 //
 // מה יוצא מכאן: טקסט גולמי בפורמט שהעורך כבר יודע לקרוא —
 //   ⟦דף ב.⟧
@@ -13,7 +13,7 @@
 // ובתוכה הערות רש"י צמודות למקום שאליו הן מתייחסות.
 //
 // למה פסקה אחת לעמוד: בוילנא הגמרא היא גוש רץ, לא פסקאות. חלוקת הקטעים של
-// ספריא היא עזר טכני (משפט-משפט) ואינה קיימת בדפוס.
+// מאגר התורה היא עזר טכני (משפט-משפט) ואינה קיימת בדפוס.
 
 export const VILNA_DATA_BASE = "data/sefaria/vilna_shas";
 
@@ -201,7 +201,7 @@ export function buildVilnaRawText(book, opts = {}) {
     const rashiLines = withRashi ? ((book.rashi || [])[ai] || []) : [];
 
     // חיתוך חלקי בקצוות: פרק בגמרא מתחיל ונגמר לפעמים באמצע דף. כשמייבאים
-    // "רק את הפרק" מדלגים על השורות שלפניו ואחריו. (שורות ספריא מתחילות מ-1.)
+    // "רק את הפרק" מדלגים על השורות שלפניו ואחריו. (שורות מאגר התורה מתחילות מ-1.)
     const firstLine = ai === fromAmud && Number.isFinite(opts.fromLine) ? Math.max(0, opts.fromLine - 1) : 0;
     const lastLine = ai === toAmud && Number.isFinite(opts.toLine) ? Math.min(segs.length, opts.toLine) : segs.length;
 

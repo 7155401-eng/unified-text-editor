@@ -122,7 +122,7 @@ export function wireSpellcheck(paneManager) {
     checkBtn.type = "button";
     checkBtn.id = "torah-spellcheck-run";
     checkBtn.textContent = "בדוק תורני";
-    checkBtn.title = "בודק מילים מול חיפוש ספריא; מילה שמופיעה בהרבה מקורות נחשבת תקינה";
+    checkBtn.title = "בודק מילים מול חיפוש במאגר התורה; מילה שמופיעה בהרבה מקורות נחשבת תקינה";
     group.appendChild(checkBtn);
   }
   if (torahCb) torahCb.checked = localStorage.getItem(TORAH_STORAGE) === "1";
