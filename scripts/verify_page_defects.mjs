@@ -89,6 +89,14 @@ const report = await p.evaluate(() => {
     // 1. מילוי העמוד
     const bottom = lines.length ? Math.max(...lines.map((l) => l.rect.bottom - pr.top)) : 0;
     const fill = Math.round((bottom / H) * 100);
+    // ★ משה 14/09: למדוד גם את **השטח** שאין בו תוכן, לא רק את הגובה.
+    // עמוד שהטקסט בו יורד עד התחתית אבל חצי מהרוחב ריק — "מילוי 100%"
+    // לפי גובה, ובעין חצי עמוד לבן.
+    const logicalW = parseFloat(pg.style.width) || W;
+    const logicalH = parseFloat(pg.style.height) || H;
+    let covered = 0;
+    for (const l of lines) covered += (l.width || 0) * (l.height || 0);
+    const area = Math.round((covered / Math.max(1, logicalW * logicalH)) * 100);
 
     // 2. שבר אנכי בגמרא: פער גדול מגובה שורה בין שורות עוקבות
     const lineH = main.length ? Math.max(...main.map((l) => l.height)) : 0;
@@ -132,7 +140,7 @@ const report = await p.evaluate(() => {
     return {
       pageIdx, daf: pg.dataset.dafLabel || "?",
       size: `${Math.round(W)}x${Math.round(H)}`,
-      fill, mainLines: main.length, sideLines: sides.length,
+      fill, area, mainLines: main.length, sideLines: sides.length,
       verticalBreaks: gaps, stretchedLines: stretched.length,
       overlaps: overlaps.length, overlapSample: overlaps.slice(0, 3),
       outside, fonts,
@@ -143,12 +151,13 @@ const report = await p.evaluate(() => {
 console.log(`נסרקו ${report.length} עמודים\n`);
 for (const r of report) {
   const flags = [];
-  if (r.fill < 90) flags.push(`מילוי ${r.fill}%`);
+  if (r.fill < 90) flags.push(`גובה ${r.fill}%`);
+  if (r.area < 35) flags.push(`שטח ${r.area}%`);
   if (r.verticalBreaks.length) flags.push(`${r.verticalBreaks.length} שברים (${r.verticalBreaks.map((g) => g.gap + "px").join(",")})`);
   if (r.stretchedLines) flags.push(`${r.stretchedLines} שורות מתוחות`);
   if (r.overlaps) flags.push(`${r.overlaps} חפיפות`);
   if (r.outside) flags.push(`${r.outside} שורות מחוץ לעמוד`);
-  console.log(`דף ${r.daf} (${r.size}) · ראשי ${r.mainLines} · צד ${r.sideLines} · ${flags.length ? "⚠ " + flags.join(" · ") : "✓ נקי"}`);
+  console.log(`דף ${r.daf} (${r.size}) · גובה ${r.fill}% · שטח ${r.area}% · ${flags.length ? "⚠ " + flags.join(" · ") : "✓ נקי"}`);
   console.log(`   פונטים: ${JSON.stringify(r.fonts)}`);
 }
 // ★ משה: "הפונט של הזרם הראשי בעמוד הראשון בלבד אינו הפונט המבוקש".
