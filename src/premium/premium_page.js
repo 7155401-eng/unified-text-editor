@@ -33,7 +33,6 @@ const PLANS = {
     perks: [
       "כל מה שיש בחודשי — בחצי מחיר",
       "12 חודשים שימוש ללא הגבלה",
-      "תמיכה במייל ובטלפון בעדיפות",
     ],
     cta: "הפעל מנוי שנתי",
   },
@@ -236,7 +235,6 @@ function buildOverlay(opts = {}) {
   const trustRow = el("div", { cls: "rt-prem-trust-row" });
   trustRow.appendChild(el("span", { cls: "rt-prem-trust-item", text: "🔒 חיוב מאובטח דרך יעד שריג" }));
   trustRow.appendChild(el("span", { cls: "rt-prem-trust-item", text: "✓ ביטול בכל עת" }));
-  trustRow.appendChild(el("span", { cls: "rt-prem-trust-item", text: "📞 תמיכה אישית בטלפון" }));
   hero.appendChild(trustRow);
   sheet.appendChild(hero);
 

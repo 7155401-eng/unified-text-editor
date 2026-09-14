@@ -120,6 +120,19 @@ function safeStyleText(cssText) {
   return String(cssText || "").replace(/<\/style/gi, "<\\/style");
 }
 
+// משה 13/09/2026: הסרת כל הפניה חיצונית מתוך ה-CSS שנצרב ל-SVG.
+// גופן או תמונה שנטענים מכתובת חיצונית מלכלכים את הקנבס (tainted), וכרום
+// אוסר לייצא ממנו — וכך הייצוא נפל בשקט להדפסת דפדפן. שומרים data: URI
+// (הם מוטמעים ואינם חוצי-מקור).
+export function stripExternalUrlsFromCss(cssText) {
+  return String(cssText || "")
+    .replace(/@import[^;]+;/gi, "")
+    .replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (match, quote, url) => {
+      if (/^data:/i.test(url.trim())) return match;
+      return "none";
+    });
+}
+
 function isExternalResourceValue(value) {
   const s = String(value || "").trim();
   if (!s || s === "none") return false;
@@ -651,17 +664,46 @@ export async function downloadPagesAsPdf(
           progressTotal: totalPages,
         });
       } catch (legacyErr) {
-        if (fallbackToPrint && isCanvasSecurityError(legacyErr)) {
+        // ניסיון שלישי: אותו CSS בלי אף הפניה חיצונית. זה מה שפותר את
+        // ה-tainted canvas ברוב המקרים — ומייצר קובץ במקום ליפול להדפסה.
+        if (isCanvasSecurityError(legacyErr)) {
+          try {
+            console.warn("PDF: מנסה שוב בלי משאבים חיצוניים ב-CSS (tainted canvas)");
+            pageImages = await renderAllPages(pages, stripExternalUrlsFromCss(legacyCssText), {
+              onProgress,
+              includeBackgrounds,
+              progressOffset: 1,
+              progressTotal: totalPages,
+            });
+          } catch (cleanErr) {
+            if (fallbackToPrint && isCanvasSecurityError(cleanErr)) {
+              await nextFrame();
+              window.print();
+              return { fallback: "print" };
+            }
+            throw cleanErr;
+          }
+        } else {
+          throw legacyErr;
+        }
+      }
+    } else if (isCanvasSecurityError(err)) {
+      try {
+        console.warn("PDF: מנסה שוב בלי משאבים חיצוניים ב-CSS (tainted canvas)");
+        pageImages = await renderAllPages(pages, stripExternalUrlsFromCss(cssText), {
+          onProgress,
+          includeBackgrounds,
+          progressOffset: 1,
+          progressTotal: totalPages,
+        });
+      } catch (cleanErr) {
+        if (fallbackToPrint && isCanvasSecurityError(cleanErr)) {
           await nextFrame();
           window.print();
           return { fallback: "print" };
         }
-        throw legacyErr;
+        throw cleanErr;
       }
-    } else if (fallbackToPrint && isCanvasSecurityError(err)) {
-      await nextFrame();
-      window.print();
-      return { fallback: "print" };
     } else {
       throw err;
     }
