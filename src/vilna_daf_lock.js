@@ -325,8 +325,11 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
     // מדויק לתוכן — כמו שדפי וילנא אינם שווים בכמות השורות.
     if (settings.fitPageToText) {
       const baseH = cfg.pageHeight || 794;
-      let lo = Math.round(baseH * 0.5);
-      let hi = Math.round(baseH * 3);
+      // טווח החיפוש: דף גמרא שלם עם רש"י בגודל אות מלא צריך עמוד גבוה
+      // בהרבה מעמוד רגיל. נמדד: פי 3 לא הספיק ודפים נשברו לשניים, ולכן
+      // התקרה היא פי 12. זו בדיוק המשמעות של "העמוד מתאים את עצמו לדף".
+      let lo = Math.round(baseH * 0.4);
+      let hi = Math.round(baseH * 12);
       let bestFit = null;
       const tryHeight = async (h) => {
         const trialEl = makeTrialContainer(container);
@@ -373,7 +376,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         report.dafimOverflowed++;
         continue;
       }
-      for (let iter = 0; iter < 8 && hi - lo > 8; iter++) {
+      for (let iter = 0; iter < 11 && hi - lo > 8; iter++) {
         const mid = Math.round((lo + hi) / 2);
         const r = await tryHeight(mid);
         keepBest(r);
