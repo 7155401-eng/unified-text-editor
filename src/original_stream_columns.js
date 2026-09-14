@@ -2,7 +2,7 @@
 // current render callback instead of the original local scheduleRender().
 
 import { normalizeStreamOpeningWordSettings } from "./opening_word.js";
-import { styleOptionsHtml } from "./style_registry.js";
+import { styleOptionsHtml, loadTextStyles } from "./style_registry.js";
 
 const STREAM_SETTINGS_KEY = "ravtext.streamSettings.v1";
 const GLOBAL_STREAM_OVERRIDES_KEY = "ravtext.globalStreamOverrides.v1";
@@ -521,6 +521,46 @@ export function getEffectiveStreamSettings(code) {
   return normalizeStreamOpeningWordSettings(out);
 }
 
+// ★ משה 14/09/2026: אחרי יצירת סגנון חדש מתוך בורר-סגנון, הסגנון נוצר
+// ברשימה אבל לא נבחר — והבורר חזר לערכו הישן. כאן פותרים את זה: זוכרים
+// את הבורר שפתח את החלון, ומחכים לאירוע `ravtext:styles-changed`.
+// ברגע שמופיע סגנון שלא היה קודם — בוחרים אותו ומפעילים את ה-onChange,
+// כך שהוא נכנס לטבלה ולפלט מיד.
+function openStyleDialogAndSelect(select, applyValue) {
+  const before = new Set(loadTextStyleIdsSafe());
+  const gallery = document.getElementById("styles-gallery-select");
+  if (!gallery) return;
+
+  const onChanged = () => {
+    window.removeEventListener("ravtext:styles-changed", onChanged);
+    // מרעננים את האפשרויות ואז מחפשים מה נוסף
+    const after = loadTextStyleIdsSafe();
+    const added = after.find((id) => !before.has(id));
+    select.innerHTML = styleOptionsHtml(added || select.value || "");
+    if (added) {
+      select.value = added;
+      applyValue(added);
+    }
+  };
+  window.addEventListener("ravtext:styles-changed", onChanged);
+  // אם המשתמש סגר בלי לשמור — לא נשאיר מאזין תלוי לנצח
+  setTimeout(() => window.removeEventListener("ravtext:styles-changed", onChanged), 10 * 60 * 1000);
+
+  gallery.value = "__add-custom__";
+  gallery.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function loadTextStyleIdsSafe() {
+  // קוראים דרך אותה פונקציה שממנה נבנית רשימת האפשרויות, ולא ממפתח
+  // אחסון מנוחש — כך אין תלות בשם המפתח הפנימי.
+  try {
+    const list = typeof loadTextStyles === "function" ? loadTextStyles() : [];
+    return Array.isArray(list) ? list.map((x) => x && (x.id || x.name)).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
 function makeStyleSelect(labelText, value, onChange) {
   const label = document.createElement("label");
   label.className = "stream-col-input";
@@ -531,12 +571,8 @@ function makeStyleSelect(labelText, value, onChange) {
   select.innerHTML = styleOptionsHtml(value || "");
   select.addEventListener("change", () => {
     if (select.value === "__add-custom__") {
-      const gallery = document.getElementById("styles-gallery-select");
-      if (gallery) {
-        gallery.value = "__add-custom__";
-        gallery.dispatchEvent(new Event("change", { bubbles: true }));
-      }
       select.value = value || "";
+      openStyleDialogAndSelect(select, (id) => onChange(id));
       return;
     }
     onChange(select.value);
@@ -570,12 +606,8 @@ function makeGlobalOverrideControl(key, item, onCommit) {
     valueEl.value = item.value || "";
     valueEl.addEventListener("change", () => {
       if (valueEl.value === "__add-custom__") {
-        const gallery = document.getElementById("styles-gallery-select");
-        if (gallery) {
-          gallery.value = "__add-custom__";
-          gallery.dispatchEvent(new Event("change", { bubbles: true }));
-        }
         valueEl.value = item.value || "";
+        openStyleDialogAndSelect(valueEl, (id) => { item.value = id; onCommit(); });
         return;
       }
       item.value = valueEl.value;

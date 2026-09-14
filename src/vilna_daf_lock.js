@@ -226,9 +226,19 @@ function pageOverflows(pageEl) {
 }
 
 // ===================== הבנייה =====================
-// במצב "העמוד מתאים את עצמו לטקסט" משנים את גובה העמוד ולא את האות.
-function heightConfig(cfg, height) {
-  return { ...cfg, pageHeight: Math.round(height) };
+// במצב "העמוד מתאים את עצמו לטקסט" משנים את **גודל העמוד** ולא את האות.
+// ★ משה 14/09/2026: ההגדלה חייבת להיות בגובה וברוחב יחד (אותו מכפיל).
+// אחרת העמוד יוצא צר וארוך, ובהדפסה — שבה הזום נגזר מהרוחב — כל דף
+// נוחת על נייר באורך אחר. עם מכפיל אחיד, עמוד שהוגדל פי k מקבל זום קטן
+// פי k, וכל הדפים יוצאים בדיוק על אותו גודל נייר.
+function scaledPageConfig(cfg, factor) {
+  const baseW = cfg.pageWidth || 380;
+  const baseH = cfg.pageHeight || 537;
+  return {
+    ...cfg,
+    pageWidth: Math.round(baseW * factor),
+    pageHeight: Math.round(baseH * factor),
+  };
 }
 
 function scaledConfig(cfg, scale) {
@@ -238,6 +248,40 @@ function scaledConfig(cfg, scale) {
     mainFontSize: (cfg.mainFontSize || 13) * scale,
     sideFontSize: (cfg.sideFontSize || 11) * scale,
   };
+}
+
+// ★ משה 14/09/2026: "העמודים צריכים להיות מוצגים ברוחב מלא בכל גודל שהם".
+// עמוד שהוגדל רחב מהמיכל, ולמיכל יש overflow-x:hidden — כלומר הצד נחתך.
+// נותנים לעמוד זום-תצוגה כך שייכנס במלואו. זו תצוגה בלבד: העימוד כבר
+// חושב, וכלל ההדפסה (--ravtext-print-zoom עם !important) גובר בהדפסה.
+export function fitPageIntoView(pageEl) {
+  if (!pageEl || !pageEl.parentElement) return;
+  const container = pageEl.closest(".pages-container") || pageEl.parentElement;
+  const cs = typeof getComputedStyle === "function" ? getComputedStyle(container) : null;
+  const padX = cs ? (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0) : 16;
+  const avail = Math.max(60, (container.clientWidth || 0) - padX - 4);
+  const pageW = parseFloat(pageEl.style.width) || pageEl.offsetWidth || 0;
+  if (!pageW || !avail) return;
+  const z = pageW > avail ? Math.max(0.15, avail / pageW) : 1;
+  pageEl.style.zoom = z === 1 ? "" : String(Math.round(z * 10000) / 10000);
+  pageEl.dataset.dafViewZoom = String(Math.round(z * 1000) / 1000);
+}
+
+// כשמשנים את גודל החלון — מעדכנים את זום-התצוגה של כל העמודים שהוגדלו.
+if (typeof window !== "undefined" && !window.__VILNA_DAF_FIT_BOUND__) {
+  window.__VILNA_DAF_FIT_BOUND__ = true;
+  let t = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      for (const pg of document.querySelectorAll(".page[data-daf-page-factor], .page[data-dafPageFactor]")) {
+        fitPageIntoView(pg);
+      }
+      for (const pg of document.querySelectorAll(".pages-container .page")) {
+        if (pg.dataset.dafPageFactor) fitPageIntoView(pg);
+      }
+    }, 150);
+  });
 }
 
 function makeTrialContainer(realContainer) {
@@ -298,6 +342,18 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
   for (let si = 0; si < segments.length; si++) {
     if (!isCurrent()) return { pages: allPages, report: { ...report, aborted: true } };
     const seg = segments[si];
+    // ★ משה 14/09/2026: "מילת פתיח נוצרת בכל עמוד חדש, וזה לא אמור להיות
+    // ככה — היא שייכת רק לקטע חדש אמיתי".
+    // בנעילת דף כל קטע-דף נבנה בקריאה נפרדת, ולכן הפסקה הראשונה בו
+    // נראית למנוע כתחילת פסקה — וקיבלה מילת פתיח. אבל מעבר העמוד כאן
+    // נובע מגבול הדף בוילנא, לא מפתיחת קטע: הגמרא היא רצף אחד.
+    // לכן כל קטע פרט לראשון מסומן כהמשך, בדיוק כמו חצי שני של פסקה
+    // שפוצלה בין עמודים.
+    if (si > 0 && Array.isArray(seg.paragraphs) && seg.paragraphs.length) {
+      seg.paragraphs = seg.paragraphs.map((para, i) => (
+        i === 0 && para ? { ...para, _v9OpeningWordAllowed: false, continues: true } : para
+      ));
+    }
     // tried = יומן הניסיונות (גודל → נכנס/לא נכנס). עוזר להבין למה דף מסוים
     // קיבל דווקא את הגודל הזה, ומאפשר לראות אם החיפוש נתקע.
     const segReport = { label: seg.label, paragraphs: seg.paragraphs.length, scale: 1, pages: 0, fill: 0, overflow: false, tried: [] };
@@ -324,30 +380,47 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
     // של עמוד שבו כל הדף עדיין נכנס. כך אין הקטנת אות בכלל, והעמוד יוצא
     // מדויק לתוכן — כמו שדפי וילנא אינם שווים בכמות השורות.
     if (settings.fitPageToText) {
+      const baseW = cfg.pageWidth || 380;
       const baseH = cfg.pageHeight || 794;
-      // טווח החיפוש: דף גמרא שלם עם רש"י בגודל אות מלא צריך עמוד גבוה
-      // בהרבה מעמוד רגיל. נמדד: פי 3 לא הספיק ודפים נשברו לשניים, ולכן
-      // התקרה היא פי 12. זו בדיוק המשמעות של "העמוד מתאים את עצמו לדף".
-      let lo = Math.round(baseH * 0.4);
-      let hi = Math.round(baseH * 12);
+      // טווח החיפוש הוא **מכפיל** על שני הממדים. דף גמרא שלם עם רש"י
+      // בגודל אות מלא צריך עמוד גדול בהרבה מעמוד רגיל; נמדד שפי 3 לא
+      // הספיק, ולכן התקרה פי 12.
+      let lo = 0.4;
+      let hi = 12;
       let bestFit = null;
-      const tryHeight = async (h) => {
+      const applyPageGeom = (pg, k) => {
+        const w = Math.round(baseW * k);
+        const h = Math.round(baseH * k);
+        // גם אינליין וגם משתני CSS: כללי ההדפסה משתמשים במשתנים עם
+        // !important, וסגנון אינליין לבדו היה נדרס בהדפסה.
+        pg.style.width = `${w}px`;
+        pg.style.height = `${h}px`;
+        pg.style.setProperty("--ravtext-page-width", `${w}px`);
+        pg.style.setProperty("--ravtext-page-height", `${h}px`);
+        // זום ההדפסה של העמוד הזה: רוחב הנייר חלקי הרוחב הלוגי שלו.
+        // כך עמוד שהוגדל פי k מקבל זום קטן פי k, וכל הדפים נוחתים על
+        // אותו גודל נייר — וזו בדיוק הדרישה של משה.
+        const rootZoom = parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--ravtext-print-zoom")
+        );
+        if (Number.isFinite(rootZoom) && rootZoom > 0) {
+          pg.style.setProperty("--ravtext-print-zoom", String(rootZoom / k));
+        }
+        pg.dataset.dafPageFactor = String(Math.round(k * 1000) / 1000);
+        fitPageIntoView(pg);
+      };
+      const tryHeight = async (k) => {
         const trialEl = makeTrialContainer(container);
-        trialEl.style.setProperty("--ravtext-page-height", `${Math.round(h)}px`);
+        trialEl.style.setProperty("--ravtext-page-width", `${Math.round(baseW * k)}px`);
+        trialEl.style.setProperty("--ravtext-page-height", `${Math.round(baseH * k)}px`);
         try {
-          const res = await buildPages(trialEl, seg.paragraphs, { ...heightConfig(cfg, h), maxPages: 2 });
+          const res = await buildPages(trialEl, seg.paragraphs, { ...scaledPageConfig(cfg, k), maxPages: 2 });
           const pages = (res && res.pages) || [];
-          // קובעים גם את משתנה ה-CSS ולא רק גובה אינליין: כלל ההדפסה
-          // משתמש ב-var(--ravtext-page-height) עם !important, ולכן גובה
-          // אינליין לבדו היה נדרס בהדפסה וכל העמודים היו יוצאים באותו גובה.
-          for (const pg of pages) {
-            pg.style.height = `${Math.round(h)}px`;
-            pg.style.setProperty("--ravtext-page-height", `${Math.round(h)}px`);
-          }
+          for (const pg of pages) applyPageGeom(pg, k);
           const fits = pages.length === 1 && !pageOverflows(pages[0]);
-          return { h, fits, pages: pages.length, el: trialEl };
+          return { h: k, fits, pages: pages.length, el: trialEl };
         } catch (e) {
-          return { h, fits: false, pages: 0, el: trialEl, error: String(e && e.message || e) };
+          return { h: k, fits: false, pages: 0, el: trialEl, error: String(e && e.message || e) };
         }
       };
       const keepBest = (r) => {
@@ -361,39 +434,42 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       keepBest(await tryHeight(hi));
       if (!bestFit) {
         // אפילו בגובה המרבי לא נכנס — לא חורגים; בונים כרגיל ומדווחים.
-        const res = await buildPages(container, seg.paragraphs, heightConfig(cfg, hi));
+        const res = await buildPages(container, seg.paragraphs, scaledPageConfig(cfg, hi));
         const built = (res && res.pages) || [];
         built.forEach((pageEl, i) => {
-          pageEl.style.height = `${hi}px`;
-          pageEl.style.setProperty("--ravtext-page-height", `${hi}px`);
+          applyPageGeom(pageEl, hi);
           pageEl.dataset.pageIndex = String(allPages.length + i);
           tagPage(pageEl, seg.label, 1, settings, i, built.length);
         });
         allPages.push(...built);
-        Object.assign(segReport, { scale: 1, pages: built.length, overflow: true, pageHeight: hi });
+        Object.assign(segReport, { scale: 1, pages: built.length, overflow: true, pageFactor: hi });
         report.segments.push(segReport);
         report.pagesTotal += built.length;
         report.dafimOverflowed++;
         continue;
       }
-      for (let iter = 0; iter < 11 && hi - lo > 8; iter++) {
-        const mid = Math.round((lo + hi) / 2);
+      for (let iter = 0; iter < 11 && hi - lo > 0.02; iter++) {
+        const mid = (lo + hi) / 2;
         const r = await tryHeight(mid);
         keepBest(r);
-        if (r.fits) hi = mid; else lo = mid + 1;
+        if (r.fits) hi = mid; else lo = mid;
         if (!isCurrent()) return { pages: allPages, report: { ...report, aborted: true } };
       }
       const pageEl = bestFit.el.firstElementChild;
       if (pageEl) {
         container.appendChild(pageEl);
-        pageEl.style.height = `${Math.round(bestFit.h)}px`;
-        pageEl.style.setProperty("--ravtext-page-height", `${Math.round(bestFit.h)}px`);
+        applyPageGeom(pageEl, bestFit.h);
         pageEl.dataset.pageIndex = String(allPages.length);
         tagPage(pageEl, seg.label, 1, settings);
         allPages.push(pageEl);
       }
       if (bestFit.el.parentNode) bestFit.el.parentNode.removeChild(bestFit.el);
-      Object.assign(segReport, { scale: 1, pages: 1, pageHeight: Math.round(bestFit.h), fill: 1 });
+      Object.assign(segReport, {
+        scale: 1, pages: 1, fill: 1,
+        pageFactor: Math.round(bestFit.h * 1000) / 1000,
+        pageWidth: Math.round(baseW * bestFit.h),
+        pageHeight: Math.round(baseH * bestFit.h),
+      });
       report.segments.push(segReport);
       report.pagesTotal += 1;
       if (typeof opts.onProgress === "function") opts.onProgress(si + 1, segments.length, seg.label);
