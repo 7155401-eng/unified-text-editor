@@ -2678,6 +2678,21 @@ function autoResolveV9CrownMainOverlap(pageEl) {
   });
 }
 
+// ★ משה 14/09/2026: מחזיר את הפונט ששולט ב-runs של השורה, אם כולם
+// מסכימים עליו. בלי זה מילה שאין לה run נשארת בפונט ברירת-המחדל
+// ונראית זרה בתוך השורה.
+function dominantRunFontFamily(line) {
+  const runs = Array.isArray(line && line.runs) ? line.runs : [];
+  if (!runs.length) return "";
+  const fonts = new Set();
+  for (const r of runs) {
+    const f = r && r.marks && (r.marks.fontFamily || r.marks.font);
+    if (f) fonts.add(String(f).trim());
+    else return "";        // יש run בלי פונט — אין הסכמה
+  }
+  return fonts.size === 1 ? [...fonts][0] : "";
+}
+
 function renderPagePlan(plan, pageEl, cfg) {
   ensureGlobalStyles();
 
@@ -2783,7 +2798,15 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.style.height = (fontSize * lineHeight) + 'px';
       lineEl.style.fontSize = fontSize + 'px';
       lineEl.style.lineHeight = (fontSize * lineHeight) + 'px';
-      if (fontFamily) lineEl.style.fontFamily = fontFamily;
+      // ★ משה 14/09/2026 — "הפונט בעמוד הראשון אינו הפונט שביקשתי".
+      // נמדד בפלט אמיתי: 791 שורות ו-791 מופעים של פונט ברירת-המחדל
+      // ברמת השורה, לצד 6,446 מופעים של הפונט האמיתי ברמת המילה.
+      // כלומר מילה שאין לה run יורשת את פונט השורה ונראית שונה
+      // משכנותיה. לכן: אם כל ה-runs בשורה מסכימים על פונט אחד — הוא
+      // נקבע כפונט השורה, והמילים "היתומות" מתיישרות איתו.
+      const runFont = dominantRunFontFamily(line);
+      if (runFont) lineEl.style.fontFamily = runFont;
+      else if (fontFamily) lineEl.style.fontFamily = fontFamily;
       applyStyleToElement(lineEl, box.styleId);
       if (box.inlineStyle) {
         applyTextStyleObjectToElement(lineEl, box.inlineStyle);
