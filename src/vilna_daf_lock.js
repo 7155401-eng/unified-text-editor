@@ -768,7 +768,10 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         // 3.2, ודף דליל בעמוד שנקבע לפי הדף הצפוף ביותר צריך יותר.
         // התקרה הועלתה ל-6; החיפוש עוצר ממילא ברגע שהדף כבר לא נכנס,
         // ולכן אין סכנה של אות ענקית בדף צפוף.
-        let lo2 = 1, hi2 = 6, bestBig = null;
+        // ⚠ נמדד ובוטל (14/09): העלאת התקרה ל-6 שיפרה דפים דלילים אך
+        // הרעה מאוד אחרים — מילוי ירד מ-98%/94%/94% ל-44%/52%/78%.
+        // חיפוש חצייה על טווח רחב מדי מפספס את האזור הרלוונטי. 3.2 נשאר.
+        let lo2 = 1, hi2 = 3.2, bestBig = null;
         const tryFont = async (k) => {
           const trialEl = makeTrialContainer(container);
           trialEl.style.setProperty("--ravtext-page-width", `${W}px`);
