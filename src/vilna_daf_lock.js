@@ -334,7 +334,13 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         try {
           const res = await buildPages(trialEl, seg.paragraphs, { ...heightConfig(cfg, h), maxPages: 2 });
           const pages = (res && res.pages) || [];
-          for (const pg of pages) pg.style.height = `${Math.round(h)}px`;
+          // קובעים גם את משתנה ה-CSS ולא רק גובה אינליין: כלל ההדפסה
+          // משתמש ב-var(--ravtext-page-height) עם !important, ולכן גובה
+          // אינליין לבדו היה נדרס בהדפסה וכל העמודים היו יוצאים באותו גובה.
+          for (const pg of pages) {
+            pg.style.height = `${Math.round(h)}px`;
+            pg.style.setProperty("--ravtext-page-height", `${Math.round(h)}px`);
+          }
           const fits = pages.length === 1 && !pageOverflows(pages[0]);
           return { h, fits, pages: pages.length, el: trialEl };
         } catch (e) {
@@ -356,6 +362,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         const built = (res && res.pages) || [];
         built.forEach((pageEl, i) => {
           pageEl.style.height = `${hi}px`;
+          pageEl.style.setProperty("--ravtext-page-height", `${hi}px`);
           pageEl.dataset.pageIndex = String(allPages.length + i);
           tagPage(pageEl, seg.label, 1, settings, i, built.length);
         });
@@ -377,6 +384,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       if (pageEl) {
         container.appendChild(pageEl);
         pageEl.style.height = `${Math.round(bestFit.h)}px`;
+        pageEl.style.setProperty("--ravtext-page-height", `${Math.round(bestFit.h)}px`);
         pageEl.dataset.pageIndex = String(allPages.length);
         tagPage(pageEl, seg.label, 1, settings);
         allPages.push(pageEl);

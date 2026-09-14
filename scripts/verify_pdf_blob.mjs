@@ -44,6 +44,9 @@ await p.evaluate((lock) => {
   localStorage.setItem("ravtext.talmudLayout.streams", "01");
 }, WITH_DAF);
 await p.reload({ waitUntil: "networkidle2", timeout: 90000 });
+// הרינדור האוטומטי מושבת במערכת (AUTO_RENDER_GATE) — לוחצים "רנדר".
+await new Promise((r) => setTimeout(r, 4000));
+await p.evaluate(() => document.getElementById("btn-render")?.click());
 // ממתינים לרינדור אמיתי — המסמך הפותח בצורת גפ"ת לוקח זמן.
 let pages = 0;
 for (let i = 0; i < 180; i++) {
