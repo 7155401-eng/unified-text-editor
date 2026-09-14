@@ -122,6 +122,43 @@ const CSD_BASE_FONTS = [
   "Arial", "Tahoma", "Narkisim", "Guttman Yad-Brush", "Miriam Libre", "Rubik",
 ];
 
+function bindFontWarning(dialog) {
+  const input = dialog?.querySelector("#csd-font-family");
+  if (!input || input.dataset.fontWarnBound) return;
+  input.dataset.fontWarnBound = "1";
+  const run = () => checkFontAvailability(dialog);
+  input.addEventListener("change", run);
+  input.addEventListener("blur", run);
+  input.addEventListener("input", () => setTimeout(run, 400));
+}
+
+// ★ משה 14/09/2026: פונט שאינו מותקן במחשב אינו נכשל — הדפדפן פשוט
+// נופל בשקט לפונט הבא ברשימה, והמשתמש רואה "עדיין פרנקרול" בלי לדעת
+// למה. כאן בודקים אם הפונט שהוקלד מזוהה, ואם לא — אומרים זאת מפורשות.
+export function checkFontAvailability(dialog) {
+  const input = dialog?.querySelector("#csd-font-family");
+  if (!input) return;
+  let note = dialog.querySelector("#csd-font-warning");
+  if (!note) {
+    note = document.createElement("div");
+    note.id = "csd-font-warning";
+    note.style.cssText = "font-size:12px;color:#b45309;margin:2px 0 6px;line-height:1.5";
+    input.parentElement?.insertAdjacentElement("afterend", note);
+  }
+  const name = String(input.value || "").trim().replace(/^["']|["']$/g, "");
+  if (!name) { note.textContent = ""; return; }
+  let known = true;
+  try {
+    known = document.fonts.check(`16px "${name}"`);
+  } catch {
+    known = true;   // אין ממשק בדיקה — לא מטרידים את המשתמש
+  }
+  note.textContent = known
+    ? ""
+    : `⚠ הגופן „${name}” אינו מותקן במחשב הזה, ולכן הטקסט יוצג בגופן חלופי. ` +
+      `בחר גופן מהרשימה (היא מציגה את הגופנים שמותקנים אצלך).`;
+}
+
 export async function refreshCustomStyleFontList(dialog) {
   const list = dialog?.querySelector("#csd-font-list");
   if (!list) return;
@@ -338,13 +375,15 @@ export function wireCustomStyles(paneManager) {
   refreshCustomStylesGallery(select, loadStyles());
   window.addEventListener("ravtext:styles-changed", () => refreshCustomStylesGallery(select, loadStyles()));
   const dialog = buildDialog();
-  const openDialog = () => { dialog.classList.add("open"); delete dialog.dataset.editingId; fillForm({}); refreshSavedList(dialog, paneManager, select); refreshCustomStyleFontList(dialog); document.getElementById("csd-name")?.focus(); };
+  const openDialog = () => { dialog.classList.add("open"); delete dialog.dataset.editingId; fillForm({}); refreshSavedList(dialog, paneManager, select); refreshCustomStyleFontList(dialog); checkFontAvailability(dialog); bindFontWarning(dialog); document.getElementById("csd-name")?.focus(); };
   const openStyleEditor = (styleId) => {
     if (styleId === "__add-custom__") { openDialog(); return; }
     const target = loadStyles().find(s => s.id === styleId || s.name === styleId);
     if (!target) return alert("צריך לבחור סגנון לעריכה.");
     dialog.classList.add("open");
     refreshCustomStyleFontList(dialog);
+    checkFontAvailability(dialog);
+    bindFontWarning(dialog);
     fillForm(target);
     dialog.dataset.editingId = target.id;
     refreshSavedList(dialog, paneManager, select);
