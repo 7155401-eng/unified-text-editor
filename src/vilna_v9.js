@@ -2827,7 +2827,19 @@ function renderPagePlan(plan, pageEl, cfg) {
       // אם הפונט בפועל גדול מגובה השורה המחושב, אסור להשאיר height נמוך.
       const actualFontSize = parseFloat(lineEl.style.fontSize) || line.fontSize || fontSize || 0;
       const requestedLineHeight = line.lineHeightPx || parseFloat(lineEl.style.lineHeight) || (actualFontSize * lineHeight);
-      const safeLineHeight = Math.max(requestedLineHeight, actualFontSize * 1.35);
+      // ★ משה 14/09/2026 — "שיטה תמהונית למרוח תוכן": נמדד בפלט שלו
+      // ש-71% משורות הראשי (407 מתוך 576) קיבלו גובה שורה של פי 1.9 עד
+      // **3.3** מגודל האות, בעוד התקין הוא ~1.5. זה השטח הלבן.
+      // המקור: גובה השורה נלקח מהמדידה בפועל של הפונט, ופונטים עבריים
+      // מעוטרים (Guttman Vilna, Rashi DP) מדווחים גובה טבעי עצום. הייתה
+      // רק הגנה מלמטה (נגד חיתוך אותיות) ולא תקרה מלמעלה.
+      // עכשיו יש גם תקרה: הגובה לא יחרוג מהיחס שנקבע בהגדרות בתוספת 15%.
+      const ratioForCap = Math.max(1.35, Number(lineHeight) > 0 ? Number(lineHeight) : 1.55);
+      const lineHeightCap = actualFontSize * ratioForCap * 1.15;
+      const safeLineHeight = Math.min(
+        Math.max(requestedLineHeight, actualFontSize * 1.35),
+        Math.max(lineHeightCap, actualFontSize * 1.35)
+      );
 
       if (actualFontSize > 0) lineEl.style.fontSize = actualFontSize + 'px';
       if (safeLineHeight > 0) {
