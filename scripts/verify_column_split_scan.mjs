@@ -69,6 +69,7 @@ await new Promise((r) => setTimeout(r, 3000));
 const scan = await p.evaluate((fullRatio) => {
   const out = [];
   for (const pg of document.querySelectorAll(".pages-container .page")) {
+    // (pg בשימוש גם למדידת הזום בהמשך)
     const right = [...pg.querySelectorAll('.v9-line[data-v9-role="right"]')];
     const left = [...pg.querySelectorAll('.v9-line[data-v9-role="left"]')];
     if (!right.length || !left.length) continue;
@@ -79,7 +80,22 @@ const scan = await p.evaluate((fullRatio) => {
     // רוחב הרצועה שבה השורה יושבת = הרוחב המרבי בין שורות באותו x
     const sameCol = right.filter((l) => Math.abs(parseFloat(l.style.left) - parseFloat(last.style.left)) < 2);
     const stripW = Math.max(...sameCol.map((l) => parseFloat(l.style.width) || 0));
-    const lastW = parseFloat(last.style.width) || 0;
+    // ⚠ תיקון 14/09: קודם נמדד כאן style.width — שהוא רוחב **התיבה**
+    // ולא רוחב הטקסט. כל השורות יצאו 240/240 (100%) והסורק היה חסר ערך.
+    // עכשיו מודדים את רוחב הטקסט עצמו עם Range, וכך רואים אם השורה
+    // באמת מלאה או שנחתכה באמצעה.
+    const measureText = (el) => {
+      try {
+        const rng = document.createRange();
+        rng.selectNodeContents(el);
+        const r = rng.getBoundingClientRect();
+        return r.width || 0;
+      } catch { return 0; }
+    };
+    const pgRect = pg.getBoundingClientRect();
+    const zoom = pgRect.width && parseFloat(pg.style.width)
+      ? pgRect.width / parseFloat(pg.style.width) : 1;
+    const lastW = measureText(last) / (zoom || 1);
     // שורה שמסומנת במפורש כסוף-פסקה אינה "חיתוך"
     const isParagraphEnd = last.dataset.v9SourceContinuationEnd === "1";
     out.push({

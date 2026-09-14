@@ -134,14 +134,22 @@ check("כל עמוד נכנס ברוחב המסך (לא נחתך)",
   res.pages.every((x) => x.shownW <= x.availW + 4),
   res.pages.map((x) => `${x.shownW}/${x.availW}`).join(" "));
 check(`${EXPECTED} דפים → ${EXPECTED} עמודים`, res.pages.length === EXPECTED, `=${res.pages.length}`);
-check("גודל האות לא שונה (100%)", res.pages.every((x) => x.scale === "1"), res.pages.map((x) => x.scale).join(","));
+// ★ משה 14/09: העמוד קבוע בגודלו, **והאות** היא שמשתנה כדי שכל דף
+// ימלא אותו. לכן גודל אות שונה בין דף לדף הוא בדיוק ההתנהגות הנכונה —
+// הבדיקה הקודמת ("האות לא משתנה") סתרה את הדרישה הזו והוחלפה.
+const scales = res.pages.map((x) => parseFloat(x.scale) || 1);
+check("גודל האות מותאם לכל דף כדי למלא את העמוד",
+  scales.every((v) => v >= 0.5 && v <= 3.2), scales.map((v) => Math.round(v * 100) + "%").join(","));
 check("לכל עמוד נקבע גובה משלו", res.pages.every((x) => x.inlineH && x.boxH > 0),
   res.pages.map((x) => x.inlineH).join(","));
 check("הגובה נקבע גם כמשתנה CSS (כדי שההדפסה תכבד אותו)",
   res.pages.every((x) => x.cssVar && parseInt(x.cssVar, 10) === x.boxH),
   res.pages.map((x) => x.cssVar).join(","));
-check("הגבהים אינם זהים — כל דף לפי התוכן שלו",
-  new Set(res.pages.map((x) => x.boxH)).size > 1, res.pages.map((x) => x.boxH).join(","));
+// ★ משה 14/09: "המטרה היא להדפיס עמודים בגודל אחיד" — זו הדרישה
+// שמחליפה את הקודמת. כל העמודים חייבים לצאת באותו גודל בדיוק.
+check("כל העמודים באותו גודל בדיוק (לצורך הדפסה אחידה)",
+  new Set(res.pages.map((x) => `${x.boxW}x${x.boxH}`)).size === 1,
+  res.pages.map((x) => `${x.boxW}x${x.boxH}`).join(" "));
 check("אין חריגה מגבולות העמוד",
   res.pages.every((x) => x.scrollH <= x.offsetH + 2),
   res.pages.map((x) => `${x.scrollH}/${x.offsetH}`).join(" "));

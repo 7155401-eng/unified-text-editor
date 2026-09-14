@@ -189,5 +189,23 @@ const settings = { enabled: "1", mode: "strict", minScale: 0.5, maxScale: 1.5, s
   check("בלי סימנים — קטע אחד", report.segments.length === 1 && report.markerCount === 0);
 }
 
+
+// ===================== 4. שינוי אוטומטי — רק בייבוא וילנא =====================
+// ★ משה 14/09: "הגדלה והקטנה של הדף או של הפונט בצורה אוטומטית לא אמורה
+// לקרות בדבר שאינו ייבוא וילנא". הבדיקה הזו נועלת את הכלל.
+console.log("\n[4] שינוי אוטומטי רק כשיש סימני דף");
+{
+  const plain = [para("טקסט רגיל בלי סימני דף"), para("עוד פסקה")];
+  check("מסמך בלי סימני דף — הנעילה אינה חלה", !hasDafMarkers(plain));
+  check("מסמך עם סימן דף — הנעילה חלה", hasDafMarkers([para("⟦דף ב.⟧"), ...plain]));
+
+  const container4 = document.getElementById("pages");
+  container4.innerHTML = "";
+  await buildPagesDafLocked(container4, plain, baseCfg,
+    { settings: { ...settings, mode: "soft" }, buildPages: fakeBuildPages });
+  const scaled = container4.querySelectorAll("[data-daf-page-factor], [data-daf-font-scale]").length;
+  check("בטקסט בלי סימנים לא נקבע שום מכפיל גודל", scaled === 0, `=${scaled}`);
+}
+
 console.log(`\nעברו ${pass} · נכשלו ${fail}`);
 process.exit(fail ? 1 : 0);

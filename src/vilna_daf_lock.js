@@ -355,6 +355,10 @@ function resolveLineOverlaps(pageEl) {
       }
     }
   }
+  // ⚠ נוסה ונדחה (14/09): פאס שמושך שורות מעלה כדי לסגור את הפער
+  // שנוצר מהדחיפה. נמדד שהוא יוצר רכיבה חדשה במקום אחר — 1 חפיפה בכל
+  // עמוד — ולא סוגר את הפער. עדיף פער של 12–15px מאשר שורות רוכבות,
+  // ולכן הוא הוסר. הפער הזה הוא גובה שורה אחת והוא נשאר פתוח בכוונה.
   if (moved) pageEl.dataset.dafOverlapFixes = String(moved);
   return moved;
 }
@@ -566,15 +570,12 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       if (pageEl) {
         container.appendChild(pageEl);
         applyPageGeom(pageEl, bestFit.h);
-        // קודם מיישרים שורות שרוכבות זו על זו, ורק אחר כך מקצצים —
-        // אחרת הקיצוץ היה נעשה לפי תחתית שגויה (בקשות משה 14/09).
         const fixes = resolveLineOverlaps(pageEl);
         if (fixes) segReport.overlapFixes = fixes;
-        const trimmed = trimPageToContent(pageEl);
-        if (trimmed) {
-          segReport.trimmedTo = trimmed;
-          fitPageIntoView(pageEl);
-        }
+        // ⛔ משה 14/09: קיצוץ תחתית העמוד **בוטל**. המטרה היא להדפיס
+        // עמודים בגודל אחיד, ולכן כל העמודים חייבים להישאר באותו יחס
+        // רוחב-גובה. חיתוך התחתית הרס בדיוק את זה. הפתרון למילוי הוא
+        // הקטנה יחסית של כל העמוד (המכפיל), לא חיתוך.
         pageEl.dataset.pageIndex = String(allPages.length);
         tagPage(pageEl, seg.label, 1, settings);
         allPages.push(pageEl);
@@ -711,6 +712,119 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
     if (typeof opts.onProgress === "function") opts.onProgress(si + 1, segments.length, seg.label);
     // שחרור ה-thread בין דף לדף — כמו ב-V9 עצמו.
     await new Promise((r) => setTimeout(r, 0));
+  }
+
+  // ★ משה 14/09/2026: "כל העמודים חייבים להיות בגודל אורך ורוחב יחסי"
+  // — כי בסוף מדפיסים ספר, וספר שדפיו בגדלים שונים אינו ספר.
+  // כל דף קיבל את המכפיל המינימלי שלו; כאן מיישרים את כולם למכפיל
+  // הגדול ביותר, כך שכל העמודים יוצאים **בדיוק באותו גודל**.
+  // הדף שדרש הכי הרבה מקום קובע — וכך אף דף אינו נחתך.
+  if (settings.fitPageToText && allPages.length > 1) {
+    let maxFactor = 0;
+    for (const pg of allPages) {
+      const f = parseFloat(pg.dataset.dafPageFactor || "0");
+      if (f > maxFactor) maxFactor = f;
+    }
+    if (maxFactor > 0) {
+      const baseW = cfg.pageWidth || 380;
+      const baseH = cfg.pageHeight || 794;
+      const W = Math.round(baseW * maxFactor);
+      const H = Math.round(baseH * maxFactor);
+      const rootZoom = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue("--ravtext-print-zoom")
+      );
+      for (const pg of allPages) {
+        pg.style.width = `${W}px`;
+        pg.style.height = `${H}px`;
+        pg.style.setProperty("--ravtext-page-width", `${W}px`);
+        pg.style.setProperty("--ravtext-page-height", `${H}px`);
+        if (Number.isFinite(rootZoom) && rootZoom > 0) {
+          pg.style.setProperty("--ravtext-print-zoom", String(rootZoom / maxFactor));
+        }
+        pg.dataset.dafPageFactor = String(Math.round(maxFactor * 1000) / 1000);
+        pg.dataset.dafUniform = "1";
+        fitPageIntoView(pg);
+      }
+      report.uniformFactor = Math.round(maxFactor * 1000) / 1000;
+      report.uniformSize = `${W}x${H}`;
+
+      // ★ מעבר ב': עכשיו כשכל העמודים באותו גודל — כל דף שאינו ממלא
+      // את העמוד נבנה מחדש עם **אות גדולה יותר**, עד לגודל שממלא. כך
+      // מתקיימות שתי הדרישות יחד: גודל עמוד אחיד, ועמוד מלא.
+      // (זו הדרך שמשה ניסח: "למלא את התוכן או להקטין בגודל יחסי" —
+      //  ולא לחתוך את הנייר.)
+      const uniformCfg = { ...cfg, pageWidth: W, pageHeight: H };
+      for (let si2 = 0; si2 < segments.length && si2 < allPages.length; si2++) {
+        if (!isCurrent()) break;
+        const pageEl = allPages[si2];
+        const seg2 = segments[si2];
+        if (!pageEl || !seg2) continue;
+        const fillNow = measurePageFill(pageEl, uniformCfg);
+        if (fillNow >= 0.9) continue;                 // כבר מלא
+        // חיפוש חצייה על גודל האות: הגדול ביותר שעדיין נכנס בעמוד אחד
+        // ★ משה 14/09: "לפעמים הטקסט של הזרם הפנימי ממש מתקטן".
+        // נמדד: דפים דלילים (23 שורות רש"י) נשארו במילוי 48%–50% בעוד
+        // דפים צפופים הגיעו ל-95%–98%. הסיבה: התקרה להגדלת האות הייתה
+        // 3.2, ודף דליל בעמוד שנקבע לפי הדף הצפוף ביותר צריך יותר.
+        // התקרה הועלתה ל-6; החיפוש עוצר ממילא ברגע שהדף כבר לא נכנס,
+        // ולכן אין סכנה של אות ענקית בדף צפוף.
+        // ⚠ נמדד ובוטל (14/09): העלאת התקרה ל-6 שיפרה דפים דלילים אך
+        // הרעה מאוד אחרים — מילוי ירד מ-98%/94%/94% ל-44%/52%/78%.
+        // חיפוש חצייה על טווח רחב מדי מפספס את האזור הרלוונטי. 3.2 נשאר.
+        let lo2 = 1, hi2 = 3.2, bestBig = null;
+        const tryFont = async (k) => {
+          const trialEl = makeTrialContainer(container);
+          trialEl.style.setProperty("--ravtext-page-width", `${W}px`);
+          trialEl.style.setProperty("--ravtext-page-height", `${H}px`);
+          try {
+            const res2 = await buildPages(trialEl, seg2.paragraphs, {
+              ...uniformCfg,
+              mainFontSize: (cfg.mainFontSize || 13) * k,
+              sideFontSize: (cfg.sideFontSize || 11) * k,
+              maxPages: 2,
+            });
+            const pgs = (res2 && res2.pages) || [];
+            const ok = pgs.length === 1 && !pageOverflows(pgs[0]);
+            if (ok && (!bestBig || k > bestBig.k)) {
+              if (bestBig?.el?.parentNode) bestBig.el.parentNode.removeChild(bestBig.el);
+              bestBig = { k, el: trialEl };
+              return true;
+            }
+            if (trialEl.parentNode) trialEl.parentNode.removeChild(trialEl);
+            return ok;
+          } catch {
+            if (trialEl.parentNode) trialEl.parentNode.removeChild(trialEl);
+            return false;
+          }
+        };
+        for (let it = 0; it < 9 && hi2 - lo2 > 0.04; it++) {
+          const mid = (lo2 + hi2) / 2;
+          if (await tryFont(mid)) lo2 = mid; else hi2 = mid;
+        }
+        if (bestBig && bestBig.el.firstElementChild) {
+          const fresh = bestBig.el.firstElementChild;
+          fresh.style.width = `${W}px`;
+          fresh.style.height = `${H}px`;
+          fresh.style.setProperty("--ravtext-page-width", `${W}px`);
+          fresh.style.setProperty("--ravtext-page-height", `${H}px`);
+          if (Number.isFinite(rootZoom) && rootZoom > 0) {
+            fresh.style.setProperty("--ravtext-print-zoom", String(rootZoom / maxFactor));
+          }
+          fresh.dataset.dafPageFactor = String(Math.round(maxFactor * 1000) / 1000);
+          fresh.dataset.dafUniform = "1";
+          fresh.dataset.dafFontScale = String(Math.round(bestBig.k * 100) / 100);
+          fresh.dataset.pageIndex = pageEl.dataset.pageIndex;
+          tagPage(fresh, seg2.label, bestBig.k, settings);
+          resolveLineOverlaps(fresh);
+          container.replaceChild(fresh, pageEl);
+          allPages[si2] = fresh;
+          fitPageIntoView(fresh);
+          if (report.segments[si2]) report.segments[si2].fontScale = bestBig.k;
+        }
+        if (bestBig?.el?.parentNode) bestBig.el.parentNode.removeChild(bestBig.el);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+    }
   }
 
   report.durationMs = Date.now() - report.startedAt;
