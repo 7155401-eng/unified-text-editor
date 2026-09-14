@@ -563,38 +563,136 @@ export class Pane {
   _onContextMenu(ev) {
     ev.preventDefault();
     closeAllContextMenus();
+
+    // ★ משה 13/09/2026 — תיקון: התפריט נפתח אבל הפעולות לא עשו כלום.
+    // שתי סיבות: (1) execCommand("paste") חסום בכרום מאז ומתמיד;
+    // (2) ברגע הלחיצה על כפתור בתפריט המיקוד עובר לכפתור והסימון בעורך
+    // נעלם — ואז "העתק" עבד על סימון ריק. לכן תופסים כאן את הטווח
+    // *לפני* שהתפריט מקבל מיקוד, ומשתמשים בו בכל הפעולות.
+    const editor = this.editor;
+    const sel = editor ? editor.state.selection : null;
+    const range = sel ? { from: sel.from, to: sel.to } : null;
+    const selectedText = (editor && range && range.to > range.from)
+      ? editor.state.doc.textBetween(range.from, range.to, "\n", "\n")
+      : "";
+    const hasSelection = selectedText.length > 0;
+
+    const focusRange = () => {
+      if (!editor || !range) return;
+      editor.commands.focus();
+      editor.commands.setTextSelection(range);
+    };
+
+    const copySelection = async () => {
+      if (!hasSelection) { flashCtxHint("אין טקסט מסומן להעתקה"); return; }
+      try {
+        await navigator.clipboard.writeText(selectedText);
+      } catch {
+        // דפדפן ישן או הרשאה חסומה — ניסיון אחרון בדרך הישנה, עם מיקוד.
+        focusRange();
+        if (!document.execCommand("copy")) flashCtxHint("ההעתקה נחסמה — נסה Ctrl+C");
+      }
+    };
+
+    const items = [
+      {
+        l: "📋 העתק",
+        disabled: !hasSelection,
+        h: async () => { await copySelection(); focusRange(); },
+      },
+      {
+        l: "✂ גזור",
+        disabled: !hasSelection,
+        h: async () => {
+          await copySelection();
+          if (!editor || !range || !hasSelection) return;
+          editor.chain().focus().deleteRange(range).run();
+        },
+      },
+      {
+        l: "📥 הדבק",
+        h: async () => {
+          if (!editor) return;
+          try {
+            const text = await navigator.clipboard.readText();
+            if (!text) { flashCtxHint("הלוח ריק"); return; }
+            editor.chain().focus().insertContentAt(range || editor.state.selection, text).run();
+          } catch {
+            // כרום לא נותן לקרוא מהלוח בלי הרשאה — אומרים את זה ישר.
+            flashCtxHint("הדפדפן לא מרשה הדבקה מתפריט. השתמש ב-Ctrl+V");
+            focusRange();
+          }
+        },
+      },
+      { l: "🅰 בחר הכל", h: () => editor && editor.chain().focus().selectAll().run() },
+      { l: "—" },
+      { l: "𝐁 מודגש", disabled: !editor, h: () => editor.chain().focus().setTextSelection(range || editor.state.selection).toggleBold().run() },
+      { l: "𝐼 נטוי", disabled: !editor, h: () => editor.chain().focus().setTextSelection(range || editor.state.selection).toggleItalic().run() },
+      { l: "U̲ קו תחתון", disabled: !editor, h: () => editor.chain().focus().setTextSelection(range || editor.state.selection).toggleUnderline().run() },
+      { l: "🧹 נקה עיצוב", disabled: !editor, h: () => editor.chain().focus().setTextSelection(range || editor.state.selection).unsetAllMarks().run() },
+    ];
+    if (this.streamCode) {
+      items.push({ l: "—" });
+      items.push({ l: "🗑 מחק חלונית", h: () => { if (confirm("למחוק חלונית?")) this._requestRemove(); } });
+    }
+
     const menu = document.createElement("div");
     menu.className = "ctx-menu";
     menu.style.position = "fixed";
     menu.style.top = `${ev.clientY}px`;
     menu.style.right = `${window.innerWidth - ev.clientX}px`;
-    const items = [
-      { l: "📋 העתק", h: () => document.execCommand("copy") },
-      { l: "✂ גזור", h: () => document.execCommand("cut") },
-      { l: "📥 הדבק", h: () => document.execCommand("paste") },
-      { l: "🅰 בחר הכל", h: () => this.editor && this.editor.commands.selectAll() },
-    ];
-    if (this.streamCode) {
-      items.push({ l: "—", h: null });
-      items.push({ l: "🗑 מחק חלונית", h: () => { if (confirm("למחוק חלונית?")) this._requestRemove(); } });
-    }
+
     for (const it of items) {
       if (it.l === "—") {
         const sep = document.createElement("hr");
         sep.className = "ctx-sep";
         menu.appendChild(sep);
-      } else {
-        const b = document.createElement("button");
-        b.textContent = it.l;
-        b.addEventListener("click", () => { it.h(); closeAllContextMenus(); });
-        menu.appendChild(b);
+        continue;
       }
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = it.l;
+      if (it.disabled) {
+        b.disabled = true;
+        b.style.opacity = "0.45";
+        b.title = "אין טקסט מסומן";
+      }
+      // mousedown עם preventDefault — כך הלחיצה אינה גוזלת את המיקוד
+      // מהעורך לפני שהפעולה רצה.
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", async () => {
+        closeAllContextMenus();
+        try { await it.h?.(); } catch (err) { console.warn("[ctx-menu]", err); }
+      });
+      menu.appendChild(b);
     }
+
     document.body.appendChild(menu);
+
+    // אם התפריט חורג מתחתית החלון — מרימים אותו כדי שייראה במלואו.
+    const rect = menu.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight - 4) {
+      menu.style.top = `${Math.max(4, window.innerHeight - rect.height - 4)}px`;
+    }
+    if (rect.left < 4) {
+      menu.style.right = `${Math.max(4, window.innerWidth - rect.width - 4)}px`;
+    }
+
     setTimeout(() => {
       document.addEventListener("click", closeAllContextMenus, { once: true });
+      document.addEventListener("contextmenu", closeAllContextMenus, { once: true });
+      window.addEventListener("scroll", closeAllContextMenus, { once: true, capture: true });
     }, 0);
   }
+}
+
+// הודעה קצרה ליד העכבר — עדיפה על alert שעוצר את העבודה.
+function flashCtxHint(text) {
+  const el = document.createElement("div");
+  el.className = "ctx-hint";
+  el.textContent = text;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
 }
 
 function closeAllContextMenus() {

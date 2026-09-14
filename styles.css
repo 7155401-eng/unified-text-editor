@@ -1562,9 +1562,13 @@ body.light-theme .pdf-scroll-progress-fill {
 }
 
 .page {
-  width: 380px;
-  height: 537px;
-  flex: 0 0 537px;
+  /* משה 13/09/2026: הגודל בא ממשתנים (src/page_size.js) כדי שאפשר יהיה
+     לבחור נייר. ברירת המחדל זהה למספרים שהיו כאן קבועים, כך שמסמך קיים
+     לא זז אפילו בפיקסל. ⚠️ המשתנים האלה הם גם מה שהמנוע קורא — אסור
+     שהקופסה כאן תהיה בגודל אחר ממה שהמנוע חישב. */
+  width: var(--ravtext-page-width, 380px);
+  height: var(--ravtext-page-height, 537px);
+  flex: 0 0 var(--ravtext-page-height, 537px);
   background: #fff;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
   padding:
@@ -1582,7 +1586,7 @@ body.light-theme .pdf-scroll-progress-fill {
 
 .pages-container > .page:not(.measure-page) {
   content-visibility: auto;
-  contain-intrinsic-size: 380px 537px;
+  contain-intrinsic-size: var(--ravtext-page-width, 380px) var(--ravtext-page-height, 537px);
 }
 
 .page.measure-page {
@@ -2198,7 +2202,7 @@ body.light-theme .pdf-scroll-progress-fill {
   .pages-container {
     display: block !important;
     direction: ltr !important;
-    width: 210mm !important;
+    width: var(--ravtext-paper-width, 210mm) !important;
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
@@ -2215,8 +2219,8 @@ body.light-theme .pdf-scroll-progress-fill {
 
   .page {
     direction: rtl !important;
-    width: 380px !important;
-    height: 537px !important;
+    width: var(--ravtext-page-width, 380px) !important;
+    height: var(--ravtext-page-height, 537px) !important;
     flex: none !important;
     margin: 0 !important;
     padding:
@@ -2226,7 +2230,7 @@ body.light-theme .pdf-scroll-progress-fill {
       var(--ravtext-page-margin-left) !important;
     /* גורם ההגדלה המדויק ל-A4 portrait: 210mm = 793.7px ב-96dpi.
        380px × 2.0887 ≈ 793.7px. הערך הקודם (2.088) היה קטן ב-0.25px. */
-    zoom: 2.0887 !important;
+    zoom: var(--ravtext-print-zoom, 2.0887) !important;
     transform: none !important;
     transform-origin: top left !important;
     content-visibility: visible !important;
@@ -4253,7 +4257,23 @@ body.lang-en .toast { direction: ltr; }
   cursor: pointer;
   border-radius: 4px;
 }
-.ctx-menu button:hover { background: var(--btn-h); }
+.ctx-menu button:hover:not(:disabled) { background: var(--btn-h); }
+.ctx-menu button:disabled { cursor: default; }
+/* הודעה קצרה מתפריט העכבר הימני (pane_manager.js) */
+.ctx-hint {
+  position: fixed;
+  bottom: 18px;
+  inset-inline-start: 50%;
+  transform: translateX(50%);
+  background: rgba(15, 23, 41, 0.94);
+  color: #f8fafc;
+  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  z-index: 10000;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+}
 .ctx-sep {
   border: none;
   border-top: 1px solid var(--border);

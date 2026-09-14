@@ -1,6 +1,6 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
-import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber } from "./original_stream_columns.js";
+import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
@@ -1225,6 +1225,85 @@ function rebalanceFooterContinuationCut(allLines, maxLinesFit, metrics, widthPx)
 // =====================================================================
 // בונה strips לראשי לפי בר־מצרא: כשפרשן נגמר, הראשי מתפשט לתוך שטחו.
 // =====================================================================
+// ★ משה 13/09/2026 — איזון שני הצדדים של זרם יחיד (תרחיש one_long_split).
+//
+// הבעיה: החלוקה בין הטור הימני לשמאלי נעשתה ע"י "מלא את הימני עד שנגמר
+// המקום, והשאר לשמאלי". התוצאה: הימני יורד עד תחתית העמוד והשמאלי נגמר
+// באמצע — בעוד שבדף וילנא שני צדי הפירוש נגמרים באותו גובה.
+//
+// הפתרון: מודדים בפועל כמה גובה תופס כל צד (flowStreamThroughStrips מחזיר
+// endY), ומזיזים את נקודת החיתוך בחיפוש חצייה עד ששני הגבהים מתקרבים.
+// המדידה מונוטונית: כל שורה שעוברת ימינה→שמאלה מנמיכה את הימני ומגביהה
+// את השמאלי, ולכן החיפוש מתכנס ב-~10 צעדים גם על אלפי מילים.
+//
+// ⛔ כלל ברזל: נקודות החיתוך המותרות הן **סופי שורות בלבד**. אסור לחתוך
+// באמצע שורה, ואסור להשאיר רווח בסוף השורה שנחתכה.
+function balanceOneLongSplitByHeight(allText, metrics, rightStrips, leftStrips, maxY, opts = {}) {
+  const words = String(allText || "").split(/\s+/).filter(Boolean);
+  if (words.length < 4) return null;
+  if (!Array.isArray(rightStrips) || !rightStrips.length) return null;
+  if (!Array.isArray(leftStrips) || !leftStrips.length) return null;
+
+  const topOf = (strips) => (strips.length ? strips[0].y_start : 0);
+  const rightTop = topOf(rightStrips);
+  const leftTop = topOf(leftStrips);
+
+  const measure = (k) => {
+    const first = words.slice(0, k).join(" ");
+    const second = words.slice(k).join(" ");
+    const r = flowStreamThroughStrips(first, rightStrips, metrics, maxY);
+    const l = flowStreamThroughStrips(second, leftStrips, metrics, maxY);
+    return {
+      k,
+      first,
+      second,
+      hRight: Math.max(0, (r.endY || rightTop) - rightTop),
+      hLeft: Math.max(0, (l.endY || leftTop) - leftTop),
+      overflowRight: !!(r.overflowText && r.overflowText.trim()),
+      overflowLeft: !!(l.overflowText && l.overflowText.trim()),
+    };
+  };
+
+  // ★ הוראה קשיחה (משה 13/09/2026): החיתוך בין הטור הימני לשמאלי חייב
+  // ליפול **בדיוק בסוף שורה** — לא באמצע שורה, ובלי להשאיר רווח בסופה.
+  // לכן קודם מזרימים את כל הטקסט דרך רצועות הטור הימני ורואים היכן
+  // נגמרות השורות בפועל; אלה, ורק אלה, נקודות החיתוך המותרות.
+  const TALL = 1e6;
+  const fullFlow = flowStreamThroughStrips(allText, rightStrips.map((st) => ({
+    ...st, y_end: (st.y_end !== undefined ? st.y_end + TALL : undefined),
+  })), metrics, TALL);
+  const lineEnds = [];
+  let acc = 0;
+  for (const line of (fullFlow.lines || [])) {
+    const n = Array.isArray(line.words) ? line.words.length : String(line.text || "").split(/\s+/).filter(Boolean).length;
+    acc += n;
+    if (acc > 0 && acc < words.length) lineEnds.push(acc);
+  }
+  // בלי נקודות-שורה (טקסט קצר מאוד) — לא מאזנים, כדי לא לחתוך באמצע שורה.
+  if (!lineEnds.length) return null;
+
+  // חיפוש חצייה על **אינדקסי השורות**: כל מועמד הוא סוף שורה מלאה.
+  let lo = 0;
+  let hi = lineEnds.length - 1;
+  let best = null;
+  for (let iter = 0; iter < 12 && lo <= hi; iter++) {
+    const mid = Math.floor((lo + hi) / 2);
+    const m = measure(lineEnds[mid]);
+    const gap = Math.abs(m.hRight - m.hLeft);
+    if (!best || gap < Math.abs(best.hRight - best.hLeft)) best = m;
+    if (m.hRight > m.hLeft) hi = mid - 1;
+    else lo = mid + 1;
+  }
+  if (!best) return null;
+
+  // אם החלוקה המאוזנת גורמת לגלישה באחד הצדדים — לא מאלצים אותה.
+  if (best.overflowRight || best.overflowLeft) {
+    if (!opts.allowOverflow) return null;
+  }
+  return { first: best.first, second: best.second, _v9BalancedHeights: true,
+    _v9BalanceGap: Math.round(Math.abs(best.hRight - best.hLeft)) };
+}
+
 function buildMainStrips(opts) {
   const { mainTopY, mainX, mainWidth, mainGap, innerWidth,
           rightEndY, leftEndY, pageBottom } = opts;
@@ -1752,6 +1831,35 @@ function buildPagePlan(pageContent, config) {
       // fallback אם הפונקציה החדשה לא הצליחה (רצועות לא תקינות וכו')
       if (!parts) {
         parts = splitWordsAtVisualLine(allText, splitMetricsForStream, sideHalfWidth);
+      }
+
+      // ★ משה 13/09/2026: בצורת וילנא שני צדי הפירוש נגמרים באותו גובה.
+      // בונים את הרצועות של שני הצדדים במצב "שניהם פעילים עד התחתית" —
+      // שזה בדיוק המצב שאליו אנחנו מכוונים — ומאזנים לפיו.
+      if (cfg.balanceSingleStreamSides !== false) {
+        const yStrips = (side) => {
+          const out = [];
+          if (crownHeight > 0 && mainTopY > sideTopY) {
+            out.push({ y_start: sideTopY, y_end: Math.min(mainTopY, _pageBottomYForSplit),
+              width: sideHalfWidth, x: side === 'right' ? sideRightX : 0 });
+          }
+          if (naiveMainHeight > 0 && Math.min(naiveMainBottomY, _pageBottomYForSplit) > mainTopY) {
+            const w = side === 'right'
+              ? Math.max(0, innerWidth - (mainX + mainWidth) - mainGap)
+              : Math.max(0, mainX - mainGap);
+            out.push({ y_start: mainTopY, y_end: Math.min(naiveMainBottomY, _pageBottomYForSplit),
+              width: w, x: side === 'right' ? (mainX + mainWidth + mainGap) : 0 });
+          }
+          if (naiveMainBottomY < _pageBottomYForSplit) {
+            out.push({ y_start: naiveMainBottomY, y_end: _pageBottomYForSplit,
+              width: sideHalfWidth, x: side === 'right' ? sideRightX : 0 });
+          }
+          return out;
+        };
+        const balanced = balanceOneLongSplitByHeight(
+          allText, splitMetricsForStream, yStrips('right'), yStrips('left'), _pageBottomYForSplit
+        );
+        if (balanced) parts = balanced;
       }
       // משה 2026-05-15: בעבר השורות האלה דרסו את single.runs (סימני פונט/בולד
       // פר-מילה) — וכך הפלט הציג פונט ברירת-מחדל גם כשהמשתמש סימן פונט אחר
@@ -2846,7 +2954,14 @@ function renderPagePlan(plan, pageEl, cfg) {
     applyStyleToElement(t, styleId);
     // משה 2026-05-13: שליטה בפס מעל המפרש דרך applyBarStyleToElement —
     // לוגיקה מאוחדת עם המנוע הרגיל (תומכת barShow/barPreset/barColor/barThickness).
-    const settings = streamId ? (cfg.streamSettings || {})[streamId] : null;
+    // משה 13/09/2026 — תיקון "כיביתי את הפס והוא עדיין שם":
+    // ל-.v9-stream-title יש border-bottom קבוע ב-CSS, והוא מוסר רק כאן.
+    // קודם הקריאה הותנתה בקיום רשומת הגדרות ב-cfg — ולזרם חדש (למשל זה
+    // שנוצר בייבוא) אין רשומה כזו, ולכן הפס נשאר תמיד. עכשיו נופלים חזרה
+    // להגדרות האפקטיביות, וכך הכיבוי עובד בכל זרם.
+    const settings = streamId
+      ? ((cfg.streamSettings || {})[streamId] || getEffectiveStreamSettings(streamId))
+      : null;
     if (settings) applyBarStyleToElement(t, settings);
     t.textContent = text;
     pageEl.appendChild(t);
@@ -2862,7 +2977,8 @@ function renderPagePlan(plan, pageEl, cfg) {
     const colorClass = streamColorClass(box.id);
     drawBox(box, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
 
-    const title = (cfg.titles || {})[box.id];
+    // משה 13/09/2026: זרם שכבתה בו "הצג כותרת זרם" — לא מציירים שם בכלל.
+    const title = shouldShowStreamTitle(box.id) ? (cfg.titles || {})[box.id] : "";
     if (title && box.lines.length > 0) {
       const firstLine = box.lines[0];
       // משה 2026-05-10: צורה 4 —
@@ -3133,6 +3249,10 @@ export async function buildPages(container, paragraphs, config) {
     levels: [],
     noMidLineSplits: false,
     noMidParagraphSoft: false,
+    // משה 13/09/2026: זרם הערות יחיד שעוטף את הראשי — שני הצדדים נגמרים
+    // באותו גובה (כמו בדף וילנא). כיבוי מחזיר את ההתנהגות הישנה
+    // ("הימני מתמלא ראשון").
+    balanceSingleStreamSides: true,
     // משה 2026-05-15: דגל — מונע חיתוכי טקסט באמצע שורה. מטפל רק ברמת
     // השורה, לא ברמת פסקה (זה תפקיד noMidLineSplits).
     //

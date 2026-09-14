@@ -25,6 +25,7 @@ import {
   formatStreamNumber,
   shouldBoldStreamNumber,
   shouldBoldStreamLemma,
+  lemmaSplitIndex,
   noteTextPrefixForStream,
   noteTextSuffixForStream,
   getEffectiveStreamSettings,
@@ -141,7 +142,9 @@ export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
   const leadingWs = raw.length - raw.replace(/^\s+/, "").length;
   const trimmed = raw.replace(/^\s+/, "");
   const trimmedRuns = sliceRuns(origRuns, leadingWs, leadingWs + trimmed.length);
-  const spaceIdx = trimmed.indexOf(" ");
+  // משה 13/09/2026: נקודת החיתוך של הדיבור המתחיל — רווח ראשון כברירת
+  // מחדל, או הנקודה הראשונה כשהזרם מוגדר "עד הנקודה" (רש"י וילנא).
+  const spaceIdx = lemmaSplitIndex(streamCode, trimmed);
   const boldLemmaRaw = shouldBoldStreamLemma(streamCode);
   const boldLemma = boldLemmaRaw && !boldOverrideMarks;
   const lemmaOverride = boldLemmaRaw && boldOverrideMarks ? boldOverrideMarks : null;

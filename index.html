@@ -1721,6 +1721,63 @@
             </label>
           </span>
           <span class="sep"></span>
+          <span class="tb-group" data-title="גודל הדף">
+            <label
+              style="
+                font-size: 12px;
+                color: #555;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+              "
+              title="גודל הנייר שעליו יודפס המסמך. העמוד על המסך הוא תמיד תצוגה מוקטנת של הנייר הזה."
+            >
+              <span>נייר:</span>
+              <select id="page-size-select" style="font-size: 12px; padding: 3px 6px"></select>
+            </label>
+            <span id="page-size-custom" style="display: none">
+              <label
+                style="
+                  font-size: 12px;
+                  color: #555;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 4px;
+                "
+                title="רוחב הנייר במילימטרים"
+              >
+                <span>רוחב מ&quot;מ:</span>
+                <input
+                  type="number"
+                  id="page-size-width"
+                  min="50"
+                  max="600"
+                  style="width: 60px; font-size: 12px; padding: 3px 6px"
+                />
+              </label>
+              <label
+                style="
+                  font-size: 12px;
+                  color: #555;
+                  display: inline-flex;
+                  align-items: center;
+                  gap: 4px;
+                "
+                title="גובה הנייר במילימטרים"
+              >
+                <span>גובה מ&quot;מ:</span>
+                <input
+                  type="number"
+                  id="page-size-height"
+                  min="50"
+                  max="600"
+                  style="width: 60px; font-size: 12px; padding: 3px 6px"
+                />
+              </label>
+            </span>
+            <span id="page-size-info" style="font-size: 11px; color: #777"></span>
+          </span>
+          <span class="sep"></span>
           <span class="tb-group" data-title="דפי ש&quot;ס וילנא">
             <label
               class="toolbar-checkbox"

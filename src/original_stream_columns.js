@@ -127,6 +127,12 @@ export function applyBarStyleToElement(el, settings) {
     el.style.borderTop = "none";
     el.style.borderBottom = "none";
     el.style.backgroundImage = "";
+    // משה 13/09/2026: "הסרתי את הפס ועדיין רואים פס" — מה שנשאר היה
+    // הרקע הצבעוני של הכותרת. מבחינת המשתמש זה אותו פס, ולכן כיבוי
+    // האפשרות מסיר גם אותו ומחזיר כותרת בטקסט רגיל.
+    el.style.background = "transparent";
+    el.style.backgroundColor = "transparent";
+    if (!el.style.color || el.style.color === "rgb(255, 255, 255)") el.style.color = "inherit";
     return;
   }
   if (settings.barPreset) {
@@ -186,6 +192,9 @@ const GLOBAL_OVERRIDE_DEFS = {
   opwSkipOrphan: { label: "מילה פותחת: דלג קצר", type: "boolean", value: false },
   opwCenterFull: { label: "מילה פותחת: מרכוז מלא", type: "boolean", value: false },
   barShow: { label: "פס מעל המפרש", type: "boolean", value: true },
+  // משה 13/09/2026: אפשרות להסיר לגמרי את כותרת הזרם (שם המפרש).
+  // דלוקה כברירת מחדל — כל זרם קיים ממשיך להציג את שמו כרגיל.
+  titleShow: { label: "הצג כותרת זרם", type: "boolean", value: true },
   barPreset: { label: "סגנון פס", type: "select", value: "", options: [["", "ידני"], ["hairline", "חוט יחיד"], ["double-line", "כפול וילנא"], ["thick-thin", "עבה ודק"], ["antique-gold", "זהב עתיק"], ["manuscript", "כתב יד"], ["crown", "כתר"]] },
   barColor: { label: "צבע הפס", type: "text", value: "#888" },
   barThickness: { label: "עובי הפס (px)", type: "number", value: 1, min: 0, max: 6, step: 1 },
@@ -231,6 +240,11 @@ const GLOBAL_OVERRIDE_DEFS = {
   noteTextPrefix: { label: "סוגר גוף פתיחה", type: "text", value: "" },
   noteTextSuffix: { label: "סוגר גוף סגירה", type: "text", value: "" },
   lemmaBold: { label: "דיבור המתחיל מודגש", type: "boolean", value: true },
+  // משה 13/09/2026: ברש"י של וילנא הדיבור המתחיל הוא כמה מילים ונגמר
+  // בנקודה ("מאימתי קורין את שמע בערבין. משעה שהכהנים..."), ולא מילה אחת.
+  // כשהאפשרות דלוקה — ההדגשה נמשכת עד הנקודה הראשונה במקום עד הרווח
+  // הראשון. כבויה כברירת מחדל, כדי שאף זרם קיים לא ישנה את מראהו.
+  lemmaUntilDot: { label: "דיבור המתחיל עד הנקודה", type: "boolean", value: false },
   childNumPrefix: { label: "תת-הערה פתיחה", type: "text", value: "[" },
   childNumSuffix: { label: "תת-הערה סגירה", type: "text", value: "]" },
   childNumShowStream: { label: "תת-הערה: הצג קוד זרם", type: "boolean", value: true },
@@ -417,9 +431,34 @@ export function shouldBoldStreamNumber(code, place = "note") {
   return _streamBoolSetting(s.noteNumBold, false);
 }
 
+export function shouldShowStreamTitle(code) {
+  const s = getEffectiveStreamSettings(code);
+  return _streamBoolSetting(s.titleShow, true);
+}
+
 export function shouldBoldStreamLemma(code) {
   const s = getEffectiveStreamSettings(code);
   return _streamBoolSetting(s.lemmaBold, true);
+}
+
+export function lemmaEndsAtDot(code) {
+  const s = getEffectiveStreamSettings(code);
+  return _streamBoolSetting(s.lemmaUntilDot, false);
+}
+
+/**
+ * היכן נגמר הדיבור המתחיל בתוך טקסט ההערה.
+ * ברירת המחדל: הרווח הראשון (מילה אחת) — כמו שהיה תמיד.
+ * עם "עד הנקודה": הנקודה הראשונה ועד בכלל. אם אין נקודה סבירה
+ * (עד 120 תווים) חוזרים לרווח הראשון, כדי שהערה בלי נקודה לא תודגש כולה.
+ */
+export function lemmaSplitIndex(code, text) {
+  const t = String(text || "");
+  const spaceIdx = t.indexOf(" ");
+  if (!lemmaEndsAtDot(code)) return spaceIdx;
+  const dotIdx = t.indexOf(".");
+  if (dotIdx > 0 && dotIdx <= 120) return dotIdx + 1;
+  return spaceIdx;
 }
 
 export function noteTextPrefixForStream(code) {
@@ -884,6 +923,11 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     }));
 
     // משה 2026-05-13: שליטה בפס שמעל המפרש לכל זרם בנפרד.
+    block.appendChild(makeCheckbox("הצג כותרת זרם", cur.titleShow !== false, (checked) => {
+      cur.titleShow = checked;
+      saveStreamSettings();
+      onChange?.();
+    }));
     block.appendChild(makeCheckbox("פס מעל המפרש", cur.barShow !== false, (checked) => {
       cur.barShow = checked;
       commitRender();
