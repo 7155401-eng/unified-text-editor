@@ -2278,7 +2278,14 @@ function buildPagePlan(pageContent, config) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
       otherSideEndY: cap(pass2Left.endY),
-      suppressFullStrip3: isScenario1,
+      // ★ משה 14/09/2026 — שורש "המרווחים הלבנים בלי סיבה":
+      // הרצועה ברוחב מלא מתחת לטקסט הראשי הייתה חסומה בתרחיש הזה,
+      // ולכן כשהגמרא נגמרה כל השטח שמתחתיה נשאר ריק (נמדד: מילוי 50%
+      // בדף עם 26 שורות גמרא ו-31 שורות רש"י).
+      // החסימה מוסרת לטור השמאלי בלבד — הוא הנסגר אחרון, ולכן המשך
+      // רש"י יורד אליו בסדר הנכון וממלא את העמוד. הימני נשאר חסום כדי
+      // שהרצף ימין→שמאל לא יישבר.
+      suppressFullStrip3: false,
       maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
       lockFullStrip3Start: !!pass2Left,
     });
@@ -2840,6 +2847,8 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
+      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
       if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";

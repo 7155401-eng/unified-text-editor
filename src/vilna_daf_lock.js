@@ -198,7 +198,15 @@ export function measurePageFill(pageEl, cfg) {
   // שלה, ולכן מדידה לפי offsetHeight של הילדים הישירים מחזירה מספר קטן
   // מדי (נמדד: 48% כשהעמוד היה מלא כמעט לגמרי). לכן מודדים את התחתית
   // האמיתית של כל שורה ושורה ביחס לראש העמוד.
-  const pageTop = pageEl.getBoundingClientRect ? pageEl.getBoundingClientRect().top : 0;
+  // ⚠ משה 14/09 — שורש "המרווחים הלבנים": כאן נמדד ב-getBoundingClientRect
+  // (פיקסלים של **המסך**, אחרי זום-התצוגה) וחולק ב-cfg.pageHeight שהוא
+  // בפיקסלים **לוגיים**. כשעמוד מוצג מוקטן, המדידה החזירה מספר שגוי,
+  // מעבר-ההגדלה "חשב" שהעמוד מלא ולא הגדיל — והמשתמש ראה חצי עמוד ריק.
+  // אותה טעות בדיוק תוקנה כבר ב-trimPageToContent; כאן היא נשארה.
+  const pageRect = pageEl.getBoundingClientRect ? pageEl.getBoundingClientRect() : null;
+  const pageTop = pageRect ? pageRect.top : 0;
+  const logicalW = parseFloat(pageEl.style.width) || (pageRect ? pageRect.width : 0);
+  const viewZoom = (pageRect && pageRect.width && logicalW) ? pageRect.width / logicalW : 1;
   const nodes = pageEl.querySelectorAll
     ? pageEl.querySelectorAll(".v9-line, .v9-stream-title, .v9-opening-word")
     : [];
@@ -217,7 +225,8 @@ export function measurePageFill(pageEl, cfg) {
       if (top + h > bottom) bottom = top + h;
     }
   }
-  return bottom / usable;
+  // המרה חזרה לקואורדינטות לוגיות לפני ההשוואה לגובה הלוגי
+  return (bottom / (viewZoom || 1)) / usable;
 }
 
 function pageOverflows(pageEl) {
@@ -772,6 +781,13 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         // הרעה מאוד אחרים — מילוי ירד מ-98%/94%/94% ל-44%/52%/78%.
         // חיפוש חצייה על טווח רחב מדי מפספס את האזור הרלוונטי. 3.2 נשאר.
         let lo2 = 1, hi2 = 3.2, bestBig = null;
+        // ★ משה 14/09: "יש מרווחים לבנים בלי סיבה הנראית לעין".
+        // הקריטריון היה "הגודל הגדול ביותר שנכנס" — ודף דליל ברש"י נכנס
+        // בכל גודל, ולכן החיפוש לא חיפש מילוי כלל ונשאר עם חצי עמוד ריק
+        // (נמדד: דף ה: עם 32 שורות רש"י — מילוי 50%).
+        // עכשיו נשמר לכל גודל שנוסה גם **המילוי** שהתקבל, ונבחר הגודל
+        // שממלא הכי טוב מבין אלה שנכנסו. דף צפוף אינו נפגע: אצלו הגודל
+        // המרבי הוא ממילא גם הממלא ביותר.
         const tryFont = async (k) => {
           const trialEl = makeTrialContainer(container);
           trialEl.style.setProperty("--ravtext-page-width", `${W}px`);
@@ -785,9 +801,10 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
             });
             const pgs = (res2 && res2.pages) || [];
             const ok = pgs.length === 1 && !pageOverflows(pgs[0]);
-            if (ok && (!bestBig || k > bestBig.k)) {
+            const fillK = ok ? measurePageFill(pgs[0], uniformCfg) : 0;
+            if (ok && (!bestBig || fillK > bestBig.fill + 0.005)) {
               if (bestBig?.el?.parentNode) bestBig.el.parentNode.removeChild(bestBig.el);
-              bestBig = { k, el: trialEl };
+              bestBig = { k, el: trialEl, fill: fillK };
               return true;
             }
             if (trialEl.parentNode) trialEl.parentNode.removeChild(trialEl);
