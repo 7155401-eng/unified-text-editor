@@ -1011,7 +1011,7 @@ export function openSefariaDownloader(opts) {
     const safeBook = currentBook.replace(/ /g, "_");
     const ts = Math.floor(Date.now() / 1000);
     const filename = `${safeBook}_${ts}.docx`;
-    const docTitle = `${meta.getHebrewName(currentBook)} — ספריא`;
+    const docTitle = `${meta.getHebrewName(currentBook)} — מאגר התורה`;
     const { blob } = buildAndDownloadDocx(units, streamsMeta, docTitle, filename);
 
     presets.pushRecent(currentBook, ref);

@@ -75,11 +75,11 @@ export function wireSefariaTools(paneManager) {
   if (toolbar && !toolbar.querySelector('[data-action="open-sefaria-downloader"]')) {
     const group = document.createElement("span");
     group.className = "tb-group";
-    group.dataset.title = "ספריא";
+    group.dataset.title = "מאגר התורה";
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.textContent = "הורד ספר מספריא";
-    btn.title = "הורדת ספר מספריא כ-DOCX עם הערות שוליים";
+    btn.textContent = "הורד ספר ממאגר התורה";
+    btn.title = "הורדת ספר ממאגר התורה כ-DOCX עם הערות שוליים";
     btn.hidden = true;
     btn.setAttribute("data-action", "open-sefaria-downloader");
     btn.setAttribute("data-tool-preview", "sefaria-downloader");

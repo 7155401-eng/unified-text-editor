@@ -245,7 +245,7 @@ export function wireTorahTools(paneManager) {
 
   const groupVerseActions = document.createElement("span");
   groupVerseActions.className = "tb-group torah-verse-actions-group";
-  groupVerseActions.dataset.title = "פעולות ספריא";
+  groupVerseActions.dataset.title = "פעולות מאגר התורה";
 
   const labelBook = document.createElement("span");
   labelBook.style.cssText = "font-size:12px;color:#555;";
@@ -421,7 +421,7 @@ export function wireTorahTools(paneManager) {
   fetchBtn.type = "button";
   fetchBtn.id = "torah-fetch-verse";
   fetchBtn.textContent = "📜 הכנס פסוק";
-  fetchBtn.title = "מחפש את הפסוק הנבחר בספריא ומכניס אותו עם מקור בסוף";
+  fetchBtn.title = "מחפש את הפסוק הנבחר במאגר התורה ומכניס אותו עם מקור בסוף";
 
   const status = document.createElement("span");
   status.id = "torah-verse-status";
@@ -498,7 +498,7 @@ export function wireTorahTools(paneManager) {
     if (!ed) { alert("פתח עורך פעיל לפני הכנסת פסוק."); return; }
 
     fetchBtn.disabled = true;
-    status.textContent = ref.wholeChapter ? "טוען פרק שלם…" : "טוען מספריא…";
+    status.textContent = ref.wholeChapter ? "טוען פרק שלם…" : "טוען ממאגר התורה…";
     try {
       let text;
       if (ref.wholeChapter) {
@@ -590,7 +590,7 @@ export function wireTorahTools(paneManager) {
     }
     const matches = await _searchByText(selectionText);
     if (matches.length === 0) {
-      throw new Error("הטקסט לא נמצא במאגר ספריא");
+      throw new Error("הטקסט לא נמצא במאגר התורה");
     }
     if (matches.length === 1) return { match: matches[0] };
     const picked = await _showMatchDialog(matches, dialogDefaults);

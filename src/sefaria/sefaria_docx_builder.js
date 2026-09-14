@@ -310,7 +310,7 @@ export function buildDocxBytes(units, streamsMeta, docTitle) {
   const documentXml = _buildDocumentXml(enrichedUnits, {
     rtl: true,
     doc_title: docTitle,
-    doc_subtitle: "מתוך מאגר ספריא",
+    doc_subtitle: "מתוך מאגר התורה",
   });
   const footnotesXml = _buildFootnotesXml(allFootnotes, true);
   const coreXml = _corePropsXml(docTitle, "Sefaria Importer");

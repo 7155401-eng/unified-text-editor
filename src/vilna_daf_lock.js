@@ -288,6 +288,77 @@ if (typeof window !== "undefined" && !window.__VILNA_DAF_FIT_BOUND__) {
 // כשהתוכן נגמר הרבה לפני תחתית העמוד — מקצצים את הרווח המת ומעמידים
 // את גובה הנייר על גובה התוכן בפועל. הפריסה כבר חושבה ואינה זזה;
 // משתנה רק גובה הקופסה. רצפה של 45% מהגובה שנבחר מונעת הקטנה מוגזמת.
+// ★ משה 14/09/2026: "שורות שעולות אחת על השנייה".
+// נמדד בקובץ הדיבאג: 58 חפיפות, רובן באותו מקום בדיוק — השורה הראשונה
+// של הגמרא רוכבת 6px על השורה האחרונה של הכתר. הפאס הזה עובר על השורות
+// לפי סדר אנכי ודוחף מטה כל שורה שרוכבת על קודמתה באותה עמודה.
+// מזיז רק בציר האנכי, ורק כמה שצריך — שבירת השורות אינה משתנה.
+function resolveLineOverlaps(pageEl) {
+  if (!pageEl || !pageEl.querySelectorAll) return 0;
+  const nodes = [...pageEl.querySelectorAll(".v9-line")]
+    .map((el) => ({
+      el,
+      top: parseFloat(el.style.top) || 0,
+      left: parseFloat(el.style.left) || 0,
+      w: parseFloat(el.style.width) || 0,
+      h: parseFloat(el.style.height) || parseFloat(el.style.lineHeight) || 0,
+    }))
+    .filter((n) => n.h > 0)
+    .sort((a, b) => a.top - b.top || a.left - b.left);
+
+  let moved = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    const cur = nodes[i];
+    for (let j = 0; j < i; j++) {
+      const prev = nodes[j];
+      const xo = Math.min(prev.left + prev.w, cur.left + cur.w) - Math.max(prev.left, cur.left);
+      if (xo <= 2) continue;                       // עמודות שונות — אין בעיה
+      const prevBottom = prev.top + prev.h;
+      if (cur.top >= prevBottom - 0.5) continue;   // אין רכיבה
+      const delta = prevBottom - cur.top;
+      if (delta <= 0.5 || delta > cur.h * 1.2) continue;  // פער חריג — לא נוגעים
+      cur.top += delta;
+      cur.el.style.top = `${Math.round(cur.top * 100) / 100}px`;
+      moved++;
+    }
+  }
+  // פאס שני — לפי המידות **האמיתיות** על המסך.
+  // יש שורות שהטקסט בהן רחב מהתיבה המוצהרת (style.width), ולכן הן
+  // רוכבות זו על זו בלי שהמדידה הראשונה רואה זאת. כאן מודדים את המצב
+  // בפועל, וממירים חזרה לקואורדינטות לוגיות לפי זום-התצוגה של העמוד.
+  if (pageEl.getBoundingClientRect) {
+    const pr = pageEl.getBoundingClientRect();
+    const logicalW = parseFloat(pageEl.style.width) || pr.width || 1;
+    const zoom = pr.width ? pr.width / logicalW : 1;
+    const real = nodes.map((n) => {
+      const r = n.el.getBoundingClientRect();
+      return {
+        n,
+        top: (r.top - pr.top) / zoom,
+        bottom: (r.bottom - pr.top) / zoom,
+        left: (r.left - pr.left) / zoom,
+        right: (r.right - pr.left) / zoom,
+      };
+    }).sort((a, b) => a.top - b.top);
+    for (let i = 0; i < real.length; i++) {
+      for (let j = 0; j < i; j++) {
+        const A = real[j], B = real[i];
+        const xo = Math.min(A.right, B.right) - Math.max(A.left, B.left);
+        const yo = Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top);
+        if (xo <= 2 || yo <= 0.5) continue;
+        const h = B.bottom - B.top;
+        if (yo > h * 1.2) continue;          // חפיפה חריגה — לא נוגעים
+        const top = parseFloat(B.n.el.style.top) || 0;
+        B.n.el.style.top = `${Math.round((top + yo) * 100) / 100}px`;
+        B.top += yo; B.bottom += yo;
+        moved++;
+      }
+    }
+  }
+  if (moved) pageEl.dataset.dafOverlapFixes = String(moved);
+  return moved;
+}
+
 function trimPageToContent(pageEl, minHeight) {
   if (!pageEl || !pageEl.getBoundingClientRect) return null;
   const pr = pageEl.getBoundingClientRect();
@@ -495,7 +566,10 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       if (pageEl) {
         container.appendChild(pageEl);
         applyPageGeom(pageEl, bestFit.h);
-        // מקצצים רווח מת בתחתית כדי שהעמוד יהיה מלא (בקשת משה 14/09)
+        // קודם מיישרים שורות שרוכבות זו על זו, ורק אחר כך מקצצים —
+        // אחרת הקיצוץ היה נעשה לפי תחתית שגויה (בקשות משה 14/09).
+        const fixes = resolveLineOverlaps(pageEl);
+        if (fixes) segReport.overlapFixes = fixes;
         const trimmed = trimPageToContent(pageEl);
         if (trimmed) {
           segReport.trimmedTo = trimmed;
@@ -620,6 +694,8 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
     const pageEl = best.el.firstElementChild;
     if (pageEl) {
       container.appendChild(pageEl);
+      const fixes = resolveLineOverlaps(pageEl);
+      if (fixes) segReport.overlapFixes = fixes;
       pageEl.dataset.pageIndex = String(allPages.length);
       tagPage(pageEl, seg.label, best.scale, settings);
       allPages.push(pageEl);
