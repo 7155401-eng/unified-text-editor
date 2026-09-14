@@ -747,6 +747,74 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       }
       report.uniformFactor = Math.round(maxFactor * 1000) / 1000;
       report.uniformSize = `${W}x${H}`;
+
+      // ★ מעבר ב': עכשיו כשכל העמודים באותו גודל — כל דף שאינו ממלא
+      // את העמוד נבנה מחדש עם **אות גדולה יותר**, עד לגודל שממלא. כך
+      // מתקיימות שתי הדרישות יחד: גודל עמוד אחיד, ועמוד מלא.
+      // (זו הדרך שמשה ניסח: "למלא את התוכן או להקטין בגודל יחסי" —
+      //  ולא לחתוך את הנייר.)
+      const uniformCfg = { ...cfg, pageWidth: W, pageHeight: H };
+      for (let si2 = 0; si2 < segments.length && si2 < allPages.length; si2++) {
+        if (!isCurrent()) break;
+        const pageEl = allPages[si2];
+        const seg2 = segments[si2];
+        if (!pageEl || !seg2) continue;
+        const fillNow = measurePageFill(pageEl, uniformCfg);
+        if (fillNow >= 0.9) continue;                 // כבר מלא
+        // חיפוש חצייה על גודל האות: הגדול ביותר שעדיין נכנס בעמוד אחד
+        let lo2 = 1, hi2 = 3.2, bestBig = null;
+        const tryFont = async (k) => {
+          const trialEl = makeTrialContainer(container);
+          trialEl.style.setProperty("--ravtext-page-width", `${W}px`);
+          trialEl.style.setProperty("--ravtext-page-height", `${H}px`);
+          try {
+            const res2 = await buildPages(trialEl, seg2.paragraphs, {
+              ...uniformCfg,
+              mainFontSize: (cfg.mainFontSize || 13) * k,
+              sideFontSize: (cfg.sideFontSize || 11) * k,
+              maxPages: 2,
+            });
+            const pgs = (res2 && res2.pages) || [];
+            const ok = pgs.length === 1 && !pageOverflows(pgs[0]);
+            if (ok && (!bestBig || k > bestBig.k)) {
+              if (bestBig?.el?.parentNode) bestBig.el.parentNode.removeChild(bestBig.el);
+              bestBig = { k, el: trialEl };
+              return true;
+            }
+            if (trialEl.parentNode) trialEl.parentNode.removeChild(trialEl);
+            return ok;
+          } catch {
+            if (trialEl.parentNode) trialEl.parentNode.removeChild(trialEl);
+            return false;
+          }
+        };
+        for (let it = 0; it < 7 && hi2 - lo2 > 0.04; it++) {
+          const mid = (lo2 + hi2) / 2;
+          if (await tryFont(mid)) lo2 = mid; else hi2 = mid;
+        }
+        if (bestBig && bestBig.el.firstElementChild) {
+          const fresh = bestBig.el.firstElementChild;
+          fresh.style.width = `${W}px`;
+          fresh.style.height = `${H}px`;
+          fresh.style.setProperty("--ravtext-page-width", `${W}px`);
+          fresh.style.setProperty("--ravtext-page-height", `${H}px`);
+          if (Number.isFinite(rootZoom) && rootZoom > 0) {
+            fresh.style.setProperty("--ravtext-print-zoom", String(rootZoom / maxFactor));
+          }
+          fresh.dataset.dafPageFactor = String(Math.round(maxFactor * 1000) / 1000);
+          fresh.dataset.dafUniform = "1";
+          fresh.dataset.dafFontScale = String(Math.round(bestBig.k * 100) / 100);
+          fresh.dataset.pageIndex = pageEl.dataset.pageIndex;
+          tagPage(fresh, seg2.label, bestBig.k, settings);
+          resolveLineOverlaps(fresh);
+          container.replaceChild(fresh, pageEl);
+          allPages[si2] = fresh;
+          fitPageIntoView(fresh);
+          if (report.segments[si2]) report.segments[si2].fontScale = bestBig.k;
+        }
+        if (bestBig?.el?.parentNode) bestBig.el.parentNode.removeChild(bestBig.el);
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
   }
 
