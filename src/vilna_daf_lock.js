@@ -284,6 +284,42 @@ if (typeof window !== "undefined" && !window.__VILNA_DAF_FIT_BOUND__) {
   });
 }
 
+// ★ משה 14/09/2026: "הפלט אינו ממלא את כל העמוד".
+// כשהתוכן נגמר הרבה לפני תחתית העמוד — מקצצים את הרווח המת ומעמידים
+// את גובה הנייר על גובה התוכן בפועל. הפריסה כבר חושבה ואינה זזה;
+// משתנה רק גובה הקופסה. רצפה של 45% מהגובה שנבחר מונעת הקטנה מוגזמת.
+function trimPageToContent(pageEl, minHeight) {
+  if (!pageEl || !pageEl.getBoundingClientRect) return null;
+  const pr = pageEl.getBoundingClientRect();
+  if (!pr.height) return null;
+  const cs = typeof getComputedStyle === "function" ? getComputedStyle(pageEl) : null;
+  const padTop = cs ? parseFloat(cs.paddingTop) || 0 : 12;
+  const padBottom = cs ? parseFloat(cs.paddingBottom) || 0 : 12;
+  // ⚠ חובה למדוד בקואורדינטות **לוגיות** ולא ב-getBoundingClientRect:
+  // לעמוד כבר הוחל זום-תצוגה, ולכן ה-rect מוחזר בפיקסלים של המסך בעוד
+  // שגובה העמוד נקבע בפיקסלים לוגיים. מדידה מעורבת חתכה יותר מדי
+  // (נמדד: מילוי 146% — כלומר התוכן גלש מחוץ לעמוד). ערכי ה-style
+  // שהמנוע כתב הם המקור הנכון.
+  const logicalH = parseFloat(pageEl.style.height) || pr.height;
+  let bottom = 0;
+  for (const node of pageEl.querySelectorAll(".v9-line, .v9-stream-title, .v9-opening-word")) {
+    if (node.classList && node.classList.contains("v9-daf-label")) continue;
+    const top = parseFloat(node.style.top);
+    const h = parseFloat(node.style.height) || parseFloat(node.style.lineHeight) || 0;
+    if (!Number.isFinite(top)) continue;
+    if (top + h > bottom) bottom = top + h;
+  }
+  if (!bottom) return null;
+  const wanted = Math.ceil(bottom + padBottom);
+  const floor = Math.max(minHeight || 0, Math.round(logicalH * 0.45), padTop + padBottom + 40);
+  const finalH = Math.max(floor, Math.min(Math.round(logicalH), wanted));
+  if (finalH >= Math.round(logicalH) - 2) return null;   // כבר מלא — לא נוגעים
+  pageEl.style.height = `${finalH}px`;
+  pageEl.style.setProperty("--ravtext-page-height", `${finalH}px`);
+  pageEl.dataset.dafTrimmed = "1";
+  return finalH;
+}
+
 function makeTrialContainer(realContainer) {
   const doc = realContainer.ownerDocument;
   const el = doc.createElement("div");
@@ -459,6 +495,12 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       if (pageEl) {
         container.appendChild(pageEl);
         applyPageGeom(pageEl, bestFit.h);
+        // מקצצים רווח מת בתחתית כדי שהעמוד יהיה מלא (בקשת משה 14/09)
+        const trimmed = trimPageToContent(pageEl);
+        if (trimmed) {
+          segReport.trimmedTo = trimmed;
+          fitPageIntoView(pageEl);
+        }
         pageEl.dataset.pageIndex = String(allPages.length);
         tagPage(pageEl, seg.label, 1, settings);
         allPages.push(pageEl);

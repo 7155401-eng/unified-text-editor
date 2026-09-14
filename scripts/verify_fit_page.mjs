@@ -90,6 +90,17 @@ const res = await p.evaluate(() => {
       // רוחב אמיתי על המסך אחרי זום-התצוגה, מול הרוחב הזמין במיכל
       shownW: Math.round(pg.getBoundingClientRect().width),
       availW: Math.round((pg.closest(".pages-container")?.clientWidth || 0) - 20),
+      trimmed: pg.dataset.dafTrimmed === "1",
+      // מילוי אמיתי: תחתית התוכן מול גובה העמוד
+      fillPct: (() => {
+        const pr = pg.getBoundingClientRect();
+        let bottom = 0;
+        for (const n of pg.querySelectorAll(".v9-line, .v9-stream-title")) {
+          const r = n.getBoundingClientRect();
+          if (r.bottom - pr.top > bottom) bottom = r.bottom - pr.top;
+        }
+        return pr.height ? Math.round((bottom / pr.height) * 100) : 0;
+      })(),
       scrollH: pg.scrollHeight,
       offsetH: pg.offsetHeight,
     })),
@@ -99,10 +110,13 @@ const res = await p.evaluate(() => {
 console.log("עמודים:", res.pages.map((x) => `${x.label}=${x.boxW}x${x.boxH}px (×${x.factor}, זום ${Math.round(x.printZoom*1000)/1000})`).join(" · "));
 // ★ הדרישה של משה: הגדלה בגובה וברוחב יחד, כדי שבהדפסה כל הדפים יצאו
 // בגודל נייר דומה. שתי הבדיקות הבאות מודדות בדיוק את זה.
-const ratios = res.pages.map((x) => x.boxW / x.boxH);
-check("היחס רוחב/גובה זהה בכל העמודים (הגדלה פרופורציונלית)",
-  Math.max(...ratios) - Math.min(...ratios) < 0.02,
-  ratios.map((r) => r.toFixed(3)).join(","));
+// ההגדלה עצמה פרופורציונלית (רוחב וגובה באותו מכפיל) — זה נמדד דרך
+// המכפיל עצמו. אחרי ההגדלה מקוצץ הרווח המת בתחתית לבקשת משה, ולכן
+// היחס הסופי שונה בין דף לדף — וזה מכוון, לא פגם.
+const factors = res.pages.map((x) => x.factor);
+check("ההגדלה עצמה פרופורציונלית (אותו מכפיל לרוחב ולגובה)",
+  res.pages.every((x) => Math.abs(x.boxW / (380 * x.factor) - 1) < 0.02),
+  factors.join(","));
 const paper = res.pages.map((x) => x.boxW * x.printZoom);
 check("בהדפסה כל הדפים יוצאים באותו רוחב נייר",
   Math.max(...paper) - Math.min(...paper) < 2,
@@ -111,6 +125,11 @@ check("הרוחב גדל יחד עם הגובה",
   res.pages.every((x) => x.cssVarW && parseInt(x.cssVarW, 10) === x.boxW),
   res.pages.map((x) => x.cssVarW).join(","));
 // ★ משה 14/09: העמודים חייבים להיראות במלואם, בכל גודל שהם.
+// ★ משה 14/09: "הפלט חייב למלא את כל העמוד, או שהעמוד יתקטן לפי הצורך".
+console.log("מילוי:", res.pages.map((x) => `${x.label}=${x.fillPct}%${x.trimmed ? " (קוצץ)" : ""}`).join(" · "));
+check("כל עמוד מלא לפחות ב-90%",
+  res.pages.every((x) => x.fillPct >= 90),
+  res.pages.map((x) => `${x.label}:${x.fillPct}%`).join(" "));
 check("כל עמוד נכנס ברוחב המסך (לא נחתך)",
   res.pages.every((x) => x.shownW <= x.availW + 4),
   res.pages.map((x) => `${x.shownW}/${x.availW}`).join(" "));
