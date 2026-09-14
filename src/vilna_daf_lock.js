@@ -796,7 +796,19 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
           measurePageFill(pageEl, uniformCfg),
           measurePageArea(pageEl, uniformCfg) * 1.6   // שטח תוכן טיפוסי
         );
-        if (fillNow >= 0.9) continue;                 // כבר מלא
+        // ★ משה 14/09: "עמוד 23 עומד הרבה זמן על רינדור".
+        // מעבר זה רץ אחרי שכל העמודים כבר על המסך, ולכן נראה כתקיעה.
+        // סף הדילוג הורד מ-90% ל-80%: ההפרש אינו מצדיק תשע בניות נוספות
+        // לכל דף, ועל 23 עמודים זה חוסך מאות בניות.
+        if (fillNow >= 0.8) continue;                 // מלא מספיק
+        // סימן התקדמות גלוי, כדי שלא ייראה כמסך תקוע
+        if (typeof opts.onProgress === "function") {
+          opts.onProgress(si2 + 1, segments.length, `${seg2.label} — מכוון גודל אות`);
+        }
+        try {
+          const st = document.getElementById("status");
+          if (st) st.textContent = `מכוון גודל אות ${si2 + 1}/${segments.length}…`;
+        } catch { /* אין אלמנט סטטוס — לא נורא */ }
         // חיפוש חצייה על גודל האות: הגדול ביותר שעדיין נכנס בעמוד אחד
         // ★ משה 14/09: "לפעמים הטקסט של הזרם הפנימי ממש מתקטן".
         // נמדד: דפים דלילים (23 שורות רש"י) נשארו במילוי 48%–50% בעוד
@@ -844,7 +856,9 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
             return false;
           }
         };
-        for (let it = 0; it < 9 && hi2 - lo2 > 0.04; it++) {
+        // שישה צעדים נותנים דיוק של ~3% בגודל האות — יותר מספיק, וחוסכים
+        // שליש מזמן המעבר על מסמך ארוך.
+        for (let it = 0; it < 6 && hi2 - lo2 > 0.06; it++) {
           const mid = (lo2 + hi2) / 2;
           if (await tryFont(mid)) lo2 = mid; else hi2 = mid;
         }
