@@ -2795,9 +2795,16 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
       lineEl.style.width = line.width + 'px';
-      lineEl.style.height = (fontSize * lineHeight) + 'px';
-      lineEl.style.fontSize = fontSize + 'px';
-      lineEl.style.lineHeight = (fontSize * lineHeight) + 'px';
+      // ★ משה 14/09/2026 — סנכרון בין המנוע לרינדור.
+      // המנוע חישב כמה מילים נכנסות בשורה לפי גודל האות של אותו זרם
+      // ושמר אותו ב-line.fontSize. הרינדור, לעומתו, צייר את כל הקופסה
+      // בגודל הגלובלי מ-cfg — שתי הוראות סותרות על אותה שורה: אם גודל
+      // הציור גדול מזה שחושב הטקסט אינו נכנס ונחתך, ואם קטן — נוצר רווח
+      // לבן. לכן מציירים בגודל שהמנוע חישב, ונופלים לגלובלי רק בהיעדרו.
+      const drawFontSize = Number(line.fontSize) > 0 ? Number(line.fontSize) : fontSize;
+      lineEl.style.height = (drawFontSize * lineHeight) + 'px';
+      lineEl.style.fontSize = drawFontSize + 'px';
+      lineEl.style.lineHeight = (drawFontSize * lineHeight) + 'px';
       // ★ משה 14/09/2026 — "הפונט בעמוד הראשון אינו הפונט שביקשתי".
       // נמדד בפלט אמיתי: 791 שורות ו-791 מופעים של פונט ברירת-המחדל
       // ברמת השורה, לצד 6,446 מופעים של הפונט האמיתי ברמת המילה.
