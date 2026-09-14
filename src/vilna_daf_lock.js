@@ -272,6 +272,51 @@ function scaledPageConfig(cfg, factor) {
   };
 }
 
+/**
+ * ★ משה 14/09/2026: "צריך בשלב ראשון לחשב חישוב יחסי של המילים כמה הם,
+ * ואז ליצור גודל עמוד מתאים שיכוסה ב-90 אחוז, ורק אחר כך להפעיל עליו V9".
+ *
+ * עד עכשיו עבדנו הפוך: בנינו דף, מדדנו כמה התמלא, ניחשנו גודל אחר, בנינו
+ * שוב. כל ניחוש עולה בנייה שלמה, ולכן הגבלנו את מספר הניחושים — ואז חלק
+ * מהדפים נעצרו באמצע החיפוש וקיבלו גודל אחר מהאחרים. זה מה שנראה כמו
+ * "כמה מנועים שונים".
+ *
+ * כאן מחשבים את התשובה **בלי לבנות כלום**: סופרים את האותיות. שטח שאות
+ * תופסת הוא (רוחב אות) × (גובה שורה), ושניהם יחסיים לגודל האות. לכן:
+ *     שטח הטקסט = מספר אותיות × גודל-אות² × רוחב-יחסי × גובה-שורה
+ * מכאן גודל האות שייתן כיסוי של 90% הוא חשבון של שורש אחד, מיידי.
+ */
+const AVG_GLYPH_W = 0.5;        // רוחב אות עברית ממוצע ביחס לגובהה
+const AVG_LINE_H  = 1.55;       // גובה שורה ביחס לגודל האות
+
+export function estimateInkArea(paragraphs, cfg) {
+  let mainChars = 0, sideChars = 0;
+  for (const para of (paragraphs || [])) {
+    if (!para) continue;
+    mainChars += String(para.mainText || "").length;
+    for (const n of (para.notes || [])) sideChars += String((n && n.text) || "").length;
+  }
+  const mfs = cfg.mainFontSize || 13;
+  const sfs = cfg.sideFontSize || 11;
+  const per = AVG_GLYPH_W * AVG_LINE_H;
+  return (mainChars * mfs * mfs + sideChars * sfs * sfs) * per;
+}
+
+/**
+ * גודל האות שבו הטקסט הזה יכסה בדיוק את היעד (ברירת מחדל 90%) בעמוד הנתון.
+ * מוחזר כמכפיל ביחס לגודל האות הנוכחי. זהו ניחוש-הפתיחה של החיפוש, ובדרך
+ * כלל הוא כבר התשובה עצמה — כך החיפוש מתכנס בבנייה אחת במקום בעשר.
+ */
+export function predictFontScale(paragraphs, cfg, target = 0.9) {
+  const ink = estimateInkArea(paragraphs, cfg);
+  if (!(ink > 0)) return 1;
+  const p = cfg.padding || 12;
+  const usable = Math.max(1, (cfg.pageWidth || 380) - 2 * p)
+               * Math.max(1, (cfg.pageHeight || 794) - 2 * p - (cfg.reservedBottom || 0));
+  const f = Math.sqrt((target * usable) / ink);
+  return Math.min(3.2, Math.max(0.35, f));
+}
+
 function scaledConfig(cfg, scale) {
   if (scale === 1) return cfg;
   return {
@@ -480,10 +525,17 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
   // מתחילים כל דף מהגודל שהתקבל בדף הקודם — דפים סמוכים דומים בגודלם, כך
   // החיפוש מתכנס אחרי 2–3 ניסיונות במקום 8.
   let lastScale = 1;
+  // ★ הניחוש הראשון אינו ניחוש: הוא מחושב מספירת האותיות (ראה
+  // predictFontScale). משה: "קודם לחשב חישוב יחסי של המילים כמה הם, ואז
+  // ליצור גודל עמוד מתאים שיכוסה ב-90 אחוז, ורק אחר כך להפעיל עליו V9".
+  const predicted = segments.map((sg) => predictFontScale(sg.paragraphs, cfg, 0.9));
+  report.predictedScales = predicted.map((x) => Math.round(x * 100) / 100);
 
   for (let si = 0; si < segments.length; si++) {
     if (!isCurrent()) return { pages: allPages, report: { ...report, aborted: true } };
     const seg = segments[si];
+    // מתחילים מהחישוב, לא מהדף הקודם — הדף הקודם הוא ניחוש, החישוב הוא תשובה.
+    if (predicted[si] > 0) lastScale = predicted[si];
     // ★ משה 14/09/2026: "מילת פתיח נוצרת בכל עמוד חדש, וזה לא אמור להיות
     // ככה — היא שייכת רק לקטע חדש אמיתי".
     // בנעילת דף כל קטע-דף נבנה בקריאה נפרדת, ולכן הפסקה הראשונה בו
