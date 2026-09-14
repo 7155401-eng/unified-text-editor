@@ -762,7 +762,13 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         const fillNow = measurePageFill(pageEl, uniformCfg);
         if (fillNow >= 0.9) continue;                 // כבר מלא
         // חיפוש חצייה על גודל האות: הגדול ביותר שעדיין נכנס בעמוד אחד
-        let lo2 = 1, hi2 = 3.2, bestBig = null;
+        // ★ משה 14/09: "לפעמים הטקסט של הזרם הפנימי ממש מתקטן".
+        // נמדד: דפים דלילים (23 שורות רש"י) נשארו במילוי 48%–50% בעוד
+        // דפים צפופים הגיעו ל-95%–98%. הסיבה: התקרה להגדלת האות הייתה
+        // 3.2, ודף דליל בעמוד שנקבע לפי הדף הצפוף ביותר צריך יותר.
+        // התקרה הועלתה ל-6; החיפוש עוצר ממילא ברגע שהדף כבר לא נכנס,
+        // ולכן אין סכנה של אות ענקית בדף צפוף.
+        let lo2 = 1, hi2 = 6, bestBig = null;
         const tryFont = async (k) => {
           const trialEl = makeTrialContainer(container);
           trialEl.style.setProperty("--ravtext-page-width", `${W}px`);
@@ -788,7 +794,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
             return false;
           }
         };
-        for (let it = 0; it < 7 && hi2 - lo2 > 0.04; it++) {
+        for (let it = 0; it < 9 && hi2 - lo2 > 0.04; it++) {
           const mid = (lo2 + hi2) / 2;
           if (await tryFont(mid)) lo2 = mid; else hi2 = mid;
         }
