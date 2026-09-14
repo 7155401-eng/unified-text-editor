@@ -25,6 +25,9 @@ export function wireDafLockControls(onChange) {
   const minInput = document.getElementById("daf-lock-min-input");
   const maxInput = document.getElementById("daf-lock-max-input");
   const labelToggle = document.getElementById("daf-lock-label-toggle");
+  // משה 13/09: האפשרות הייתה רק בתוך חלון הייבוא ולכן לא הייתה ניתנת
+  // למציאה למסמך קיים. עכשיו היא גם בסרגל, ליד שאר הגדרות הדף.
+  const fitPageToggle = document.getElementById("daf-lock-fitpage-toggle");
   const markBtn = document.getElementById("daf-lock-mark-btn");
   const reportBtn = document.getElementById("daf-lock-report-btn");
   if (!toggle && !markBtn) return;
@@ -35,6 +38,7 @@ export function wireDafLockControls(onChange) {
   if (minInput) minInput.value = Math.round(s.minScale * 100);
   if (maxInput) maxInput.value = Math.round(s.maxScale * 100);
   if (labelToggle) labelToggle.checked = s.showLabel;
+  if (fitPageToggle) fitPageToggle.checked = s.fitPageToText;
 
   const commit = () => onChange?.();
 
@@ -62,6 +66,11 @@ export function wireDafLockControls(onChange) {
   });
   labelToggle?.addEventListener("change", () => {
     ls(DAF_LOCK_KEYS.showLabel, labelToggle.checked ? "1" : "0");
+    commit();
+  });
+
+  fitPageToggle?.addEventListener("change", () => {
+    ls(DAF_LOCK_KEYS.fitPageToText, fitPageToggle.checked ? "1" : "0");
     commit();
   });
 
