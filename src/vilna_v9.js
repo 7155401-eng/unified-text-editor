@@ -1275,9 +1275,18 @@ function balanceOneLongSplitByHeight(allText, metrics, rightStrips, leftStrips, 
   // לכן קודם מזרימים את כל הטקסט דרך רצועות הטור הימני ורואים היכן
   // נגמרות השורות בפועל; אלה, ורק אלה, נקודות החיתוך המותרות.
   const TALL = 1e6;
-  const fullFlow = flowStreamThroughStrips(allText, lineStrips.map((st) => ({
-    ...st, y_end: (st.y_end !== undefined ? st.y_end + TALL : undefined),
-  })), metrics, TALL);
+  // ⚠ תיקון 14/09: קודם הוארכו **כל** הרצועות ב-TALL — וכך הרצועה
+  // הראשונה הפכה לאינסופית וכל הטקסט זרם בה ברוחב אחד. סופי-השורות
+  // שהתקבלו לא שיקפו את המעבר בין הרצועות, ולכן החיתוך נפל באמצע שורה
+  // (נמדד: שורה אחרונה בטור הימני מלאה ב-27% בלבד).
+  // עכשיו מאריכים **רק את הרצועה האחרונה**, כך שהזרימה בין הרצועות
+  // נשארת אמיתית ורק בסוף יש מקום בלתי מוגבל.
+  const flowStrips = lineStrips.map((st, i) => (
+    i === lineStrips.length - 1 && st.y_end !== undefined
+      ? { ...st, y_end: st.y_end + TALL }
+      : { ...st }
+  ));
+  const fullFlow = flowStreamThroughStrips(allText, flowStrips, metrics, TALL);
   const lineEnds = [];
   let acc = 0;
   for (const line of (fullFlow.lines || [])) {
