@@ -192,6 +192,18 @@
 
 
   <script>
+
+
+    function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     var allCustomers = [];
 
     function showTab(tabName) {
@@ -213,7 +225,7 @@
         })
         .withFailureHandler(function(err) {
           document.getElementById('customers-table').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+            '<div class="alert">שגיאה: ' + escapeHtml(err.message || '') + '</div>';
         })
         .admin_listCustomers();
     }
@@ -245,17 +257,17 @@
         var statusClass = c.status === 'active' ? 'status-active' : 'status-blocked';
 
         html += '<tr>' +
-          '<td>' + (c.customer_id || '') + '</td>' +
-          '<td>' + (c.name || '') + '</td>' +
-          '<td>' + (c.email || '') + '</td>' +
+          '<td>' + escapeHtml(c.customer_id) + '</td>' +
+          '<td>' + escapeHtml(c.name) + '</td>' +
+          '<td>' + escapeHtml(c.email) + '</td>' +
           '<td class="' + statusClass + '">' + c.status + '</td>' +
           '<td class="' + balanceClass + '">' + balance + '</td>' +
           '<td>' + used + '</td>' +
           '<td>' +
-            '<button onclick="addPointsAction(\'' + c.customer_id + '\')">+ נקודות</button>' +
-            '<button class="danger" onclick="toggleStatus(\'' + c.customer_id + '\', \'' + c.status + '\')">' +
+            '<button data-id="' + escapeHtml(c.customer_id) + '" onclick="addPointsAction(this.dataset.id)">+ נקודות</button>' +
+            '<button class="danger" data-id="' + escapeHtml(c.customer_id) + '" data-status="' + escapeHtml(c.status) + '" onclick="toggleStatus(this.dataset.id, this.dataset.status)">' +
               (c.status === 'active' ? 'חסום' : 'שחרר') + '</button>' +
-            '<button onclick="regenerateCode(\'' + c.customer_id + '\')">קוד חדש</button>' +
+            '<button data-id="' + escapeHtml(c.customer_id) + '" onclick="regenerateCode(this.dataset.id)">קוד חדש</button>' +
           '</td></tr>';
       });
       html += '</tbody></table>';
@@ -280,7 +292,7 @@
         })
         .withFailureHandler(function(err) {
           document.getElementById('new-customer-result').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+            '<div class="alert">שגיאה: ' + escapeHtml(err.message || '') + '</div>';
         })
         .admin_addCustomer(name, email, phone);
     }
@@ -292,7 +304,7 @@
 
       google.script.run
         .withSuccessHandler(function() { alert('נוסף בהצלחה'); loadCustomers(); })
-        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + (err.message || '')); })
         .admin_addPoints(customerId, shekels, note);
     }
 
@@ -301,7 +313,7 @@
       if (!confirm('לשנות סטטוס ל-' + newStatus + '?')) return;
       google.script.run
         .withSuccessHandler(function() { loadCustomers(); })
-        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + (err.message || '')); })
         .admin_setStatus(customerId, newStatus);
     }
 
@@ -312,7 +324,7 @@
           alert('קוד חדש: ' + result.new_access_code + '\n\nשמור אותו - הוא לא יוצג שוב!');
           loadCustomers();
         })
-        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + (err.message || '')); })
         .admin_regenerateCode(customerId);
     }
 
@@ -334,7 +346,7 @@
             html += '<h3>10 הלקוחות הכי פעילים</h3><table><thead><tr>' +
               '<th>ID</th><th>קריאות</th><th>הכנסה (ש"ח)</th></tr></thead><tbody>';
             report.top_customers.forEach(function(tc) {
-              html += '<tr><td>' + tc.customer_id + '</td><td>' + tc.calls +
+              html += '<tr><td>' + escapeHtml(tc.customer_id) + '</td><td>' + escapeHtml(tc.calls) +
                 '</td><td>' + (tc.revenue_agorot / 100).toFixed(2) + '</td></tr>';
             });
             html += '</tbody></table>';
@@ -344,7 +356,7 @@
         })
         .withFailureHandler(function(err) {
           document.getElementById('report-result').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+            '<div class="alert">שגיאה: ' + escapeHtml(err.message || '') + '</div>';
         })
         .admin_getMonthlyReport(year, month);
     }
@@ -376,7 +388,7 @@
         })
         .withFailureHandler(function(err) {
           document.getElementById('key-save-result').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+            '<div class="alert">שגיאה: ' + escapeHtml(err.message || '') + '</div>';
         })
         .admin_setServerKey(provider, apiKey);
     }
