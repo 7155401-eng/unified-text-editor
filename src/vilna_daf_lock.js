@@ -486,6 +486,35 @@ function makeTrialContainer(realContainer) {
     const v = realContainer.getAttribute(attr);
     if (v !== null) el.setAttribute(attr, v);
   }
+  // ★★ 18/09/2026 — המדידה חייבת לרוץ באותה טיפוגרפיה בדיוק.
+  //
+  // המיכל הזה מעתיק class, style, dir, lang ו-data-theme — אבל
+  // **לא את ה-id**. וכל כלל CSS שמכוון לפי מזהה (#pages-container)
+  // פשוט אינו חל עליו. ⇒ הטקסט נמדד בגופן אחד ומוצג באחר.
+  //
+  // ⭐ הדימוי: לתפור חליפה לפי מידות שנלקחו מאדם אחר.
+  //
+  // ⚠️ ולמה לא פשוט להעתיק את ה-id: שני אלמנטים באותו מזהה הם
+  //    מסמך פגום, ו-getElementById היה מחזיר את הלא-נכון.
+  //
+  // ⇒ במקום זה מעתיקים את **תכונות הטיפוגרפיה המחושבות** כסגנון
+  //   ישיר. זה עוקף את שאלת הסלקטור לגמרי: לא משנה איך הכלל
+  //   נכתב, המדידה רואה את אותו גופן, אותו גודל ואותו משקל.
+  try {
+    const TRIAL_TYPOGRAPHY = [
+      "font-family", "font-size", "font-weight", "font-style",
+      "line-height", "letter-spacing", "word-spacing",
+      "text-align", "direction", "font-variant-ligatures",
+    ];
+    const cs = (realContainer.ownerDocument.defaultView || window)
+      .getComputedStyle(realContainer);
+    for (const prop of TRIAL_TYPOGRAPHY) {
+      const v = cs.getPropertyValue(prop);
+      if (v) el.style.setProperty(prop, v);
+    }
+  } catch (_) {
+    // ⚠️ סביבה בלי getComputedStyle (בדיקות) — ממשיכים כרגיל.
+  }
   el.setAttribute("data-daf-trial", "1");
   el.style.position = "absolute";
   el.style.left = "-100000px";
