@@ -87,7 +87,7 @@ const diag = await p.evaluate(() => {
     sideLines: pg.querySelectorAll('.v9-line:not([data-v9-role="main"])').length,
   }));
   return { uniformFactor: r.uniformFactor, predicted: r.predictedScales,
-    fitPage: r.fitPageToText, segScales: (r.segments||[]).map((s)=>s&&s.fontScale), scen: (()=>{const a=window.__V9_SCENARIOS__||[];const m={};for(const x of a)m[x]=(m[x]||0)+1;return m;})(), factors: r.pageFactors, ratio: r.ratioMode, triedH: (r.segments||[]).map((x)=>x&&x.triedH), pages: pages.map(x=>({i:x.i,w:x.w,h:x.h})) };
+    fitPage: r.fitPageToText, segScales: (r.segments||[]).map((s)=>s&&s.fontScale), scen: (()=>{const a=window.__V9_SCENARIOS__||[];const m={};for(const x of a)m[x]=(m[x]||0)+1;return m;})(), main: (()=>{const a=window.__V9_FLOW__||[];const seen=new Set();const out=[];for(const x of a){if(seen.has(x.pb))continue;seen.add(x.pb);out.push([x.pb,x.end,x.ovf?1:0,x.rE,x.lE,(x.st||[]).length]);}return out.sort((p,q)=>p[0]-q[0]);})(), nAll: (window.__V9_SIDE__||[]).length, factors: r.pageFactors, ratio: r.ratioMode, triedH: (r.segments||[]).map((x)=>x&&x.triedH), pages: pages.map(x=>({i:x.i,w:x.w,h:x.h})) };
 });
 console.log(JSON.stringify(diag, null, 1));
 await b.close();
