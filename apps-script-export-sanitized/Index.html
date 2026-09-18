@@ -192,6 +192,22 @@
 
 
   <script>
+
+    function escapeHtml(unsafe) {
+      if (unsafe == null) return '';
+      return String(unsafe)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function escapeJsQuote(unsafe) {
+      if (unsafe == null) return '';
+      return String(unsafe).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    }
+
     var allCustomers = [];
 
     function showTab(tabName) {
@@ -245,17 +261,17 @@
         var statusClass = c.status === 'active' ? 'status-active' : 'status-blocked';
 
         html += '<tr>' +
-          '<td>' + (c.customer_id || '') + '</td>' +
-          '<td>' + (c.name || '') + '</td>' +
-          '<td>' + (c.email || '') + '</td>' +
-          '<td class="' + statusClass + '">' + c.status + '</td>' +
+          '<td>' + escapeHtml(c.customer_id || '') + '</td>' +
+          '<td>' + escapeHtml(c.name || '') + '</td>' +
+          '<td>' + escapeHtml(c.email || '') + '</td>' +
+          '<td class="' + statusClass + '">' + escapeHtml(c.status) + '</td>' +
           '<td class="' + balanceClass + '">' + balance + '</td>' +
           '<td>' + used + '</td>' +
           '<td>' +
-            '<button onclick="addPointsAction(\'' + c.customer_id + '\')">+ נקודות</button>' +
-            '<button class="danger" onclick="toggleStatus(\'' + c.customer_id + '\', \'' + c.status + '\')">' +
+            '<button onclick="addPointsAction(\'' + escapeHtml(escapeJsQuote(c.customer_id)) + '\')">+ נקודות</button>' +
+            '<button class="danger" onclick="toggleStatus(\'' + escapeHtml(escapeJsQuote(c.customer_id)) + '\', \'' + escapeHtml(escapeJsQuote(c.status)) + '\')">' +
               (c.status === 'active' ? 'חסום' : 'שחרר') + '</button>' +
-            '<button onclick="regenerateCode(\'' + c.customer_id + '\')">קוד חדש</button>' +
+            '<button onclick="regenerateCode(\'' + escapeHtml(escapeJsQuote(c.customer_id)) + '\')">קוד חדש</button>' +
           '</td></tr>';
       });
       html += '</tbody></table>';
