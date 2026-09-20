@@ -24,7 +24,12 @@ import { initMainStreamResizer, initResizer } from "./resizer.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
-const MAX_BOOT_STORAGE_BYTES = 900000;
+// משה 2026-09-20: הסף היה 900,000 תווים, ומסמך אמיתי (מדרש הלל אחרי
+// ניקוי הציונים — 1,179,540 תווים) נדחה בעלייה: האתר זרק אותו לצד
+// וחזר למסמך הדוגמה, בלי שהמשתמש ידע למה. זה נראה כאילו האתר "שוכח".
+// הדפדפן עצמו מרשה כ-5,000,000 תווים לאתר; 4,000,000 משאיר מקום נוח
+// לכל שאר ההגדרות ועדיין קורא מסמך גדול בפחות מרבע שנייה.
+const MAX_BOOT_STORAGE_BYTES = 4000000;
 
 let _paneIdCounter = 0;
 
@@ -1010,10 +1015,25 @@ export class PaneManager {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       if (raw.length > MAX_BOOT_STORAGE_BYTES) {
-        const backupKey = `${STORAGE_KEY}.oversized.${Date.now()}`;
-        try { localStorage.setItem(backupKey, raw); } catch {}
-        localStorage.removeItem(STORAGE_KEY);
-        console.warn(`[paneManager] skipped oversized saved state (${raw.length} bytes), backup=${backupKey}`);
+        // משה 2026-09-20: קודם העתקנו את המסמך למפתח גיבוי ואז מחקנו את
+        // המקורי — כלומר הכפלנו זמנית את הנפח, דווקא ברגע שכבר חרגנו
+        // ממנו. אם ההעתקה נכשלה, המסמך פשוט נמחק. עכשיו **לא נוגעים**
+        // במקור: מסמנים דגל, והמשתמש יכול לפתוח אותו ידנית או לפנות מקום.
+        try {
+          localStorage.setItem(`${STORAGE_KEY}.oversizedAt`, String(Date.now()));
+        } catch {}
+        console.warn(
+          `[paneManager] saved document is ${raw.length} chars, over the ` +
+          `${MAX_BOOT_STORAGE_BYTES} boot limit — left untouched, not loaded`
+        );
+        try {
+          const el = document.getElementById("status");
+          if (el) {
+            el.textContent =
+              `המסמך השמור גדול מדי לטעינה אוטומטית (${Math.round(raw.length / 1000)} אלף תווים). ` +
+              `הוא לא נמחק — אפשר לטעון אותו מקובץ או לפצל אותו.`;
+          }
+        } catch {}
         return false;
       }
       this.load(JSON.parse(raw));
