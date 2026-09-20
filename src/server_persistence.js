@@ -168,6 +168,32 @@ export async function loadInitialState(paneManager) {
   }
 }
 
+// משה 2026-09-20: הודעה אחת ברורה כשהשמירה לשרת נכשלת. בלי קודי שגיאה
+// ובלי האשמות — מה קרה, ומה לעשות עכשיו.
+let _lastSaveError = 0;
+
+export function lastSaveError() {
+  return _lastSaveError;
+}
+
+function showSaveProblem(status, chars) {
+  const size = `${Math.round(chars / 1000)} אלף תווים`;
+  const msg = status === 413
+    ? `המסמך (${size}) גדול מכדי להישמר בשרת. הוא נשאר אצלך בדפדפן, ` +
+      `אבל לא יישמר לפעם הבאה — כדאי לפצל אותו לשני מסמכים.`
+    : status === 401 || status === 403
+      ? 'החיבור לחשבון פג — המסמך לא נשמר. כדאי להתחבר מחדש.'
+      : `המסמך לא נשמר בשרת (תקלה ${status}). הוא נשאר אצלך בדפדפן.`;
+  try {
+    const el = document.getElementById('status');
+    if (el) el.textContent = msg;
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent('ravtext:save-failed',
+      { detail: { status, chars } }));
+  } catch {}
+}
+
 async function saveDocumentNow(paneManager) {
   if (!isLoggedIn() || !paneManager || typeof paneManager.serialize !== 'function') return;
   try {
@@ -181,8 +207,15 @@ async function saveDocumentNow(paneManager) {
     });
     if (res.ok) {
       _lastDocSig = sig;
+      _lastSaveError = 0;
     } else {
-      console.warn('[persistence] save document failed:', res.status);
+      // משה 2026-09-20: עד כאן הכישלון היה **שקט** — רק שורה ביומן.
+      // התוצאה: המסמך החדש לא נשמר בשרת, ובכל רענון חזר המסמך הישן
+      // תוך שתי שניות, והמשתמש חשב שהאתר "מתעלם" ממנו. עכשיו הוא רואה.
+      _lastSaveError = res.status;
+      console.warn('[persistence] save document failed:', res.status,
+                   { chars: sig.length });
+      showSaveProblem(res.status, sig.length);
     }
   } catch (e) {
     console.warn('[persistence] saveDocumentNow error:', e);
