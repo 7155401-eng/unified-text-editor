@@ -150,6 +150,20 @@ export async function loadInitialState(paneManager) {
 
     if (docRes && docRes.document && docRes.document.content) {
       const content = docRes.document.content;
+      // משה 2026-09-20: כאן נולד התסמין "האתר שוכח". אם השמירה האחרונה
+      // לשרת נכשלה (בדרך כלל 413 — מסמך גדול), בשרת יושב עותק **ישן**.
+      // עד עכשיו הוא נטען בכל פתיחה ודרס את העבודה החדשה תוך שתי שניות,
+      // והמשתמש ראה את המסמך הקודם חוזר שוב ושוב.
+      // הדימוי: המזכיר מקבל דף מעודכן, לא מצליח לתייק אותו, ובכל בוקר
+      // מניח על השולחן את הדף הישן שכן מתויק.
+      // מעכשיו: עותק שנדחה בשרת אינו דורס עבודה מקומית חדשה יותר.
+      const stale = staleServerCopy();
+      if (stale && hasNewerLocalDocument(content)) {
+        console.warn('[persistence] server copy is stale (last save failed ' +
+                     `${stale.status}) — keeping the local document`);
+        showStaleServerNotice(stale);
+        return { loaded: false, skipped: 'stale-server-copy' };
+      }
       try {
         if (typeof paneManager.load === 'function') {
           paneManager.load(content);
@@ -171,6 +185,63 @@ export async function loadInitialState(paneManager) {
 // משה 2026-09-20: הודעה אחת ברורה כשהשמירה לשרת נכשלת. בלי קודי שגיאה
 // ובלי האשמות — מה קרה, ומה לעשות עכשיו.
 let _lastSaveError = 0;
+
+// דגל "בשרת יושב עותק ישן". נשמר בדפדפן ולא בזיכרון בלבד, כי הבעיה
+// מתגלה דווקא **אחרי** רענון — וזה בדיוק הרגע שבו הזיכרון מתאפס.
+const STALE_KEY = 'ravtext.doc.serverStale.v1';
+const DOC_KEY = 'ravtext.panes.state.v1';
+
+function markServerStale(status, chars) {
+  try {
+    localStorage.setItem(STALE_KEY, JSON.stringify({
+      status, chars, at: Date.now(),
+    }));
+  } catch {}
+}
+
+function clearServerStale() {
+  try { localStorage.removeItem(STALE_KEY); } catch {}
+}
+
+function staleServerCopy() {
+  try {
+    const raw = localStorage.getItem(STALE_KEY);
+    if (!raw) return null;
+    const v = JSON.parse(raw);
+    // דגל ישן מאוד כבר אינו רלוונטי — אולי המסמך כבר הוקטן או נמחק.
+    if (!v || (Date.now() - (v.at || 0)) > 14 * 24 * 3600 * 1000) {
+      clearServerStale();
+      return null;
+    }
+    return v;
+  } catch { return null; }
+}
+
+/** האם מה ששמור בדפדפן שונה ממה שהשרת מחזיר — כלומר יש עבודה שלא עלתה. */
+function hasNewerLocalDocument(serverContent) {
+  try {
+    const local = localStorage.getItem(DOC_KEY);
+    if (!local) return false;
+    return local !== JSON.stringify(serverContent);
+  } catch { return false; }
+}
+
+function showStaleServerNotice(stale) {
+  const size = `${Math.round((stale.chars || 0) / 1000)} אלף תווים`;
+  const msg = stale.status === 413
+    ? `נטען העותק שלך מהמחשב. בשרת יושבת גרסה ישנה יותר, כי המסמך ` +
+      `(${size}) גדול מכדי להישמר שם — לכן הוא לא נדרס.`
+    : `נטען העותק שלך מהמחשב. השמירה האחרונה לשרת נכשלה ` +
+      `(תקלה ${stale.status}), ולכן הגרסה שבשרת לא נדרסה על שלך.`;
+  try {
+    const el = document.getElementById('status');
+    if (el) el.textContent = msg;
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent('ravtext:server-stale',
+      { detail: stale }));
+  } catch {}
+}
 
 export function lastSaveError() {
   return _lastSaveError;
@@ -208,11 +279,13 @@ async function saveDocumentNow(paneManager) {
     if (res.ok) {
       _lastDocSig = sig;
       _lastSaveError = 0;
+      clearServerStale();
     } else {
       // משה 2026-09-20: עד כאן הכישלון היה **שקט** — רק שורה ביומן.
       // התוצאה: המסמך החדש לא נשמר בשרת, ובכל רענון חזר המסמך הישן
       // תוך שתי שניות, והמשתמש חשב שהאתר "מתעלם" ממנו. עכשיו הוא רואה.
       _lastSaveError = res.status;
+      markServerStale(res.status, sig.length);
       console.warn('[persistence] save document failed:', res.status,
                    { chars: sig.length });
       showSaveProblem(res.status, sig.length);
