@@ -42,6 +42,45 @@ function isStorageDisabled() {
   return typeof window !== "undefined" && window.__RAVTEXT_STORAGE_DISABLED__ === true;
 }
 
+// משה 2026-09-20: שלושת העוזרים של השמירה שנכשלת. כולם עטופים ב-try כי
+// כשהאחסון מלא, גם ניקיון וגם כתיבת דגל יכולים להיכשל בעצמם.
+
+/** מוחק מה שמותר לאבד — גיבויים ישנים של מסמכים חורגים. מחזיר כמה פינה. */
+function _freeDisposableStorage() {
+  let freed = 0;
+  try {
+    const doomed = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(`${STORAGE_KEY}.oversized`)) doomed.push(k);
+    }
+    for (const k of doomed) {
+      freed += (localStorage.getItem(k) || "").length;
+      localStorage.removeItem(k);
+    }
+  } catch { /* אין מה לעשות */ }
+  return freed;
+}
+
+function _raiseStorageAlarm(chars) {
+  const msg = `המסמך (${Math.round(chars / 1000)} אלף תווים) לא נשמר בדפדפן — ` +
+    `אין מקום פנוי. הוא קיים כרגע רק על המסך: רענון יאבד אותו. ` +
+    `כדאי לייצא לקובץ, ולפנות מקום בדיסק.`;
+  try {
+    const el = document.getElementById("status");
+    if (el) el.textContent = msg;
+  } catch {}
+  try {
+    document.body?.classList.add("ravtext-storage-full");
+    window.dispatchEvent(new CustomEvent("ravtext:storage-full",
+      { detail: { chars } }));
+  } catch {}
+}
+
+function _clearStorageAlarm() {
+  try { document.body?.classList.remove("ravtext-storage-full"); } catch {}
+}
+
 function escapeSelectorValue(value) {
   if (typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function") {
     return window.CSS.escape(String(value));
@@ -978,11 +1017,32 @@ export class PaneManager {
       this._savePending = false;
       return;
     }
+    const text = JSON.stringify(this.serialize());
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.serialize()));
+      localStorage.setItem(STORAGE_KEY, text);
       this._savePending = false;
+      _clearStorageAlarm();
     } catch (e) {
+      // משה 2026-09-20: כאן נעלמה עבודה בשקט. כשאין מקום — בדפדפן או
+      // בדיסק עצמו — הכתיבה נכשלת, איש אינו יודע, והמסמך קיים רק
+      // בזיכרון. ברגע שהדף מתרענן (והייבוא מרענן אותו בעצמו אחרי
+      // שנייה וחצי) התוכן נעלם, והמשתמש רואה את המסמך הקודם חוזר.
+      //
+      // לפני שמוותרים: מפנים מקום ממה שאפשר לוותר עליו — גיבויים ישנים
+      // של מסמכים חורגים — ומנסים שוב פעם אחת. רק אם גם זה נכשל,
+      // אומרים למשתמש בפירוש שהמסמך אינו נשמר.
       console.warn("[paneManager] save failed:", e);
+      const freed = _freeDisposableStorage();
+      if (freed > 0) {
+        try {
+          localStorage.setItem(STORAGE_KEY, text);
+          this._savePending = false;
+          _clearStorageAlarm();
+          console.warn(`[paneManager] saved after freeing ${freed} chars`);
+          return;
+        } catch (e2) { /* עדיין אין מקום */ }
+      }
+      _raiseStorageAlarm(text.length);
     }
   }
 
