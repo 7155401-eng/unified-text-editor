@@ -1354,19 +1354,11 @@
               value="80"
             />
           </label>
-          <label class="toolbar-checkbox">
-            <input type="checkbox" id="talmud-layout-toggle" />
-            תלמוד: שורות ימין/שמאל
-          </label>
-          <label class="talmud-sides-control">
-            <span>צדדים:</span>
-            <input
-              type="text"
-              id="talmud-sides-input"
-              placeholder="01,03 | 02,04"
-              title="זרמי ימין | זרמי שמאל — לדוגמה: 01,03 | 02,04"
-            />
-          </label>
+          <!-- משה 2026-05-06: "במצב עברית במקום תלמוד לכתוב גפ״ת". כאן ישב
+               שריד מהמנוע הישן (תלמוד: שורות ימין/שמאל + צדדים) — צ'קבוקס עם
+               id כפול של talmud-layout-toggle שלא היה מחווט לכלום, ושדה
+               talmud-sides-input שאף קוד לא קורא. ההפעלה האמיתית של גפ״ת היא
+               בכרטיסיית הפריסה: "גפ״ת: צורת הדף" (talmud-toolbar). -->
         </div>
         <div
           id="stream-columns-panel"
