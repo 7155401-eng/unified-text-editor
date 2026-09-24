@@ -506,8 +506,19 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // בלי סימנים בטקסט — שום דבר לא משתנה, וזו אותה קריאה כמו תמיד.
     const dafSettings = readDafLockSettings();
     const dafLockOn = dafLockActive(transformedParagraphs, dafSettings);
+    // משה 24/09/2026: „יש תכונה ביבוא גמרא ורש"י ששם זה צריך להישאר
+    // לפי הכמות שיש בווילנא, בעוד בעימוד רגיל זה לא כך אלא לפי מה
+    // שמתמלא בעמוד, והעמוד לא מתקטן או מתגדל לפי זה."
+    //
+    // שני מצבים הפוכים, וחשוב לא לערבב ביניהם:
+    //   ביבוא גמרא ורש"י — כמות הטקסט בעמוד **קבועה** לפי דפוס וילנא,
+    //     ולכן הדף הוא זה שחייב להתאים את עצמו אליה.
+    //   בעימוד רגיל — הדף קבוע, והטקסט הוא שזורם לפי מה שנכנס בו.
+    //
+    // הדגל הזה הוא מה שמפריד ביניהם: רק כשהוא דלוק מותר לשומרים
+    // לשנות את גודל הדף.
     const result = dafLockOn
-      ? await buildPagesDafLocked(container, transformedParagraphs, v9Config, {
+      ? await buildPagesDafLocked(container, transformedParagraphs, { ...v9Config, dafLocked: true }, {
           settings: dafSettings,
           buildPages,
         })

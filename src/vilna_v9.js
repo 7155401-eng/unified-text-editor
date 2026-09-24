@@ -3052,7 +3052,7 @@ function renderPagePlan(plan, pageEl, cfg) {
   // למטה ובכך ליצור חריגה חדשה.
   const finish = () => {
     autoResolveV9CrownMainOverlap(pageEl);
-    growPageIfContentOutside(pageEl);
+    growPageIfContentOutside(pageEl, cfg);
   };
   if (typeof queueMicrotask === "function") {
     queueMicrotask(finish);
@@ -3083,6 +3083,9 @@ const SHRINK_WHEN_GAP_EXCEEDS_PADDING_BY = 2;
 function shrinkPageToContent(pageEl, plan, cfg) {
   try {
     if (!pageEl || !plan || !plan.pageBox) return;
+    // ⛔ רק ביבוא גמרא ורש"י. בעימוד רגיל הדף נשאר בגודלו — שם הטקסט
+    // הוא שזורם לפי מה שנכנס בדף, ולא הדף שמתאים את עצמו לטקסט.
+    if (!(cfg && cfg.dafLocked)) return;
     const padding = Number(plan.pageBox.padding) || 0;
     const height = Number(plan.pageBox.height) || 0;
     if (!height) return;
@@ -3143,12 +3146,13 @@ function shrinkPageToContent(pageEl, plan, cfg) {
 // לכן אחרי שהדף כבר מצויר במלואו, בודקים בפועל — בעיניים של הדפדפן,
 // לא בחישוב — האם משהו חורג. ואם כן, מגדילים את הדף עד שהכול נכנס.
 // שוב: בלי לגעת באות אחת. רק הנייר.
-function growPageIfContentOutside(pageEl) {
+function growPageIfContentOutside(pageEl, cfg) {
   try {
     if (!pageEl) return;
+    // ⛔ אותו גבול בדיוק כמו בכיווץ — רק ביבוא גמרא ורש"י.
+    if (!(cfg && cfg.dafLocked)) return;
     const current = parseFloat(pageEl.style.height);
     if (!Number.isFinite(current) || current <= 0) return;
-    const padding = parseFloat(pageEl.style.padding) || 0;
 
     let bottom = 0;
     for (const el of pageEl.children) {
@@ -3161,7 +3165,14 @@ function growPageIfContentOutside(pageEl) {
     }
     if (!(bottom > 0)) return;
 
-    const needed = Math.ceil(bottom + padding);
+    // ⚠️ כאן טעיתי בגרסה הראשונה והוספתי שוליים לתחתית התוכן. אבל
+    // המרחק שנמדד כאן כבר נספר מקצה הדף, והשוליים כבר בתוכו. התוצאה
+    // הייתה ש-13 דפים „גדלו" בלי שום סיבה — התוכן שלהם נגמר בדיוק
+    // בתחתית, וההוספה המציאה חריגה שלא הייתה. נתפס במדידה: תחתית
+    // התוכן 537 מול דף 537, ובכל זאת הדף נופח.
+    //
+    // מגדילים רק כשהתוכן באמת **עובר** את תחתית הדף.
+    const needed = Math.ceil(bottom);
     if (needed <= current + 0.5) return;      // הכול בפנים — אין מה לעשות
 
     pageEl.style.height = needed + 'px';
@@ -4987,3 +4998,9 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   return { mainText, mainRuns, mainParagraphs, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
 }
 
+
+// לבדיקות בלבד — מאפשר להריץ את שומרי גודל הדף על עמוד מלאכותי,
+// ולוודא שהם באמת מגיבים לחריגה. בלי זה הם קוד שאי אפשר להוכיח
+// שעובד, כי במסמך תקין הם פשוט לא נכנסים לפעולה.
+// אותה גישה כמו ב-background_safe_yield.js.
+export const _v9PageBoxInternals = { shrinkPageToContent, growPageIfContentOutside };
