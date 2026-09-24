@@ -4172,6 +4172,50 @@ export async function buildPages(container, paragraphs, config) {
       }
     }
 
+    // ★ משה, 08/09 + 14/09/2026: "יש הרבה רווח לא מובן" / "עדיין מאוד בעייתי
+    // מבחינת השטח הלבן".
+    //
+    // מה נמדד (24/09, הרצה חיה, 26 עמודים): רוב העמודים מלאים 95%–98%, אבל
+    // שישה עמודים צנחו ל-13%–50%. ולכל אחד מהם, אילו היה לוקח **עוד פסקה
+    // אחת**, העמוד היה מתמלא 97%–99%:
+    //
+    //     עמוד 5  — 38.7% → 97.3%       עמוד 19 — 48.0% → 97.2%
+    //     עמוד 13 — 50.2% → 99.0%       עמוד 20 — 12.7% → 97.2%
+    //     עמוד 18 — 79.6% → 99.5%       עמוד 23 — 45.6% → 99.0%
+    //
+    // ומה עצר? הפסקה הנוספת גררה גלישה של פרשן אחד — לפעמים 945 תווים בלבד —
+    // ו-fitsClean פוסל כל גלישה. מסלול ההצלה שקיים כאן (overflowTakeN) היה
+    // אמור להציל בדיוק את זה, אבל הוא נבנה למטרה אחרת — "למלא פער קטן" —
+    // ולכן הוא כבוי כשיש carry, ותקרתו חמש שורות ראשי. שני הכללים האלה
+    // נכונים למילוי-פער, ושגויים כשהעמוד עצמו חצי ריק.
+    //
+    // ⭐ ההחלטה: עמוד חצי ריק גרוע בהרבה מפרשן שממשיך בעמוד הבא — וגלישת
+    // פרשן ממילא כבר קורית בכל עמוד "מלא" רגיל. לכן נוסף כאן מסלול שני,
+    // נפרד וצר: הוא נכנס **רק** כשהעמוד באמת רזה, **רק** אם הפסקה הנוספת
+    // באמת ממלאת אותו, ולעולם לא כשהטקסט הראשי עצמו נחתך.
+    const UNDERFILLED_PAGE = 0.72;   // מתחת לזה העמוד נראה שבור
+    const RESCUE_TARGET_FILL = 0.85; // והתוספת חייבת באמת לפתור את זה
+    if (!overflowTakeN && !noMidParagraph && bestN_clean > 0 && bestN_clean < totalAvail) {
+      const currentSlice = splitInfo
+        ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
+        : getSlice(bestN_clean);
+      const currentPlan = buildPagePlan(
+        aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+        cfg,
+      );
+      const currentFill = planFillRatio(currentPlan);
+      if (currentFill < UNDERFILLED_PAGE) {
+        const candidateN = bestN_clean + 1;
+        const tp = trialAtN(candidateN);
+        const fill = planFillRatio(tp);
+        const mainCut = normalizeRichTextEntry(tp?.overflow?.mainText || "").text.trim();
+        if (tp && tp.overflow && !mainCut && fill >= RESCUE_TARGET_FILL && fill > currentFill + 0.08) {
+          overflowTakeN = candidateN;
+          splitInfo = null;
+        }
+      }
+    }
+
     // משה 2026-05-09: ★ drain-alone — אם יש pending + carry-over שלבד חורג, נריץ
     // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
     // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
