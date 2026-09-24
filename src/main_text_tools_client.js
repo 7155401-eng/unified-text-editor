@@ -1,15 +1,64 @@
 const ENDPOINT = "/api/main-text-tools";
 const SYNC_SCROLL_KEY = "ravtext.syncScrollEnabled";
 
+// ★ נמצא בבדיקה, 24/09/2026: כשהשרת לא ענה, המשתמש קיבל על המסך את השורה
+// "Main text tool failed: HTTP 404" — באנגלית, עם קוד שגיאה, בלי לומר מה קרה
+// ובלי לומר מה לעשות עכשיו. כל הכלים של הטקסט הראשי (פיצול סימנים, איחוד
+// חזרה, הוספת הערה לזרם) עוברים דרך הפונקציה הזאת, ולכן ההודעה מתוקנת כאן —
+// במקום אחד — וכל הכלים מרוויחים.
+// הפרטים הטכניים לא אובדים: הם נשמרים על השגיאה עצמה ונרשמים ליומן המפתחים.
+function humanServerMessage(status) {
+  if (status === 0) {
+    return "אין כרגע חיבור לשרת של רב טקסט. הפעולה לא בוצעה ושום דבר לא השתנה — בדוק את החיבור לאינטרנט ונסה שוב.";
+  }
+  if (status === 401 || status === 403) {
+    return "צריך להתחבר מחדש כדי לבצע את הפעולה הזו. התחבר ונסה שוב — מה שכתבת נשאר.";
+  }
+  if (status === 404) {
+    return "הכלי הזה אינו זמין כרגע בשרת. הפעולה לא בוצעה ושום דבר לא השתנה — נסה שוב בעוד רגע.";
+  }
+  if (status === 413) {
+    return "הטקסט גדול מדי לפעולה הזו. הפעולה לא בוצעה ושום דבר לא השתנה — נסה לחלק אותו לחלקים קטנים יותר ולבצע שוב.";
+  }
+  if (status === 429) {
+    return "נשלחו יותר מדי בקשות ברצף. הפעולה לא בוצעה ושום דבר לא השתנה — חכה כמה שניות ונסה שוב.";
+  }
+  if (status >= 500) {
+    return "השרת נתקל בתקלה זמנית. הפעולה לא בוצעה ושום דבר לא השתנה — נסה שוב בעוד רגע.";
+  }
+  return "הפעולה לא הושלמה. שום דבר לא השתנה — נסה שוב.";
+}
+
+function serverError(status, detail) {
+  const err = new Error(humanServerMessage(status));
+  err.name = "RavTextServerError";
+  err.status = status;
+  err.technical = detail || `main-text-tools HTTP ${status}`;
+  if (typeof console !== "undefined") {
+    console.warn("[main-text-tools]", err.technical);
+  }
+  return err;
+}
+
 async function postMainTextTool(action, payload) {
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, ...payload }),
-  });
-  if (!res.ok) throw new Error(`Main text tool failed: HTTP ${res.status}`);
-  return res.json();
+  let res;
+  try {
+    res = await fetch(ENDPOINT, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, ...payload }),
+    });
+  } catch (networkErr) {
+    throw serverError(0, `${action}: ${networkErr?.message || networkErr}`);
+  }
+  if (!res.ok) throw serverError(res.status, `${action}: HTTP ${res.status}`);
+  try {
+    return await res.json();
+  } catch (parseErr) {
+    // תשובה שאינה JSON — למשל דף שגיאה של שרת ביניים.
+    throw serverError(502, `${action}: bad JSON (${parseErr?.message || parseErr})`);
+  }
 }
 
 export function splitMarkersOnServer(rawText) {
