@@ -530,7 +530,7 @@ export function openStylesIODialog() {
     rd.readAsText(f);
   });
 
-  applyBtn.addEventListener('click', () => {
+  applyBtn.addEventListener('click', async () => {
     if (!lastParsed) return;
     const sel = {
       content: !!importCBs.content?.checked,
@@ -554,11 +554,46 @@ export function openStylesIODialog() {
     if (res.styles) parts.push(`${res.styles} סגנונות`);
     if (res.layout) parts.push(`${res.layout} הגדרות עימוד`);
     if (res.other)  parts.push(`${res.other} שונות`);
-    importStatus.style.color = '#1e5631';
+    // ★ משה, 24/09/2026: "בזמן יבוא הוא חוזר מיד לטקסט שהיה לפני היבוא".
+    //
+    // כך זה קרה: התוכן נטען לחלוניות, השמירה לדפדפן מתוזמנת בהשהיה של
+    // 350 מ"ש — והיבוא מרענן את הדף בעצמו אחרי 1,500 מ"ש. אם השמירה לא
+    // הספיקה להיכתב (או נכשלה מחוסר מקום), הרענון טוען את המצב הישן
+    // והמשתמש רואה את הטקסט שלפני היבוא חוזר.
+    // ובנוסף: גם אם נשמר בדפדפן, בשרת עדיין יושב המסמך הישן, והטעינה
+    // שאחרי הרענון הייתה מושכת אותו ודורסת.
+    //
+    // לכן לפני הרענון: כופים שמירה **עכשיו**, מוודאים שהיא באמת נכתבה,
+    // ומסמנים שהעותק המקומי הוא הקובע. ואם השמירה לא נכתבה — **לא
+    // מרעננים בכלל**, כי רענון היה זורק את מה שהרגע יובא.
+    let contentSafe = true;
+    if (res.content === 'loaded') {
+      try {
+        const pm = (typeof window !== 'undefined' && window.paneManager) || null;
+        if (pm && typeof pm.flushSave === 'function') pm.flushSave();
+        const { localDocumentIsSaved, protectLocalDocumentAfterImport } =
+          await import('./server_persistence.js');
+        contentSafe = localDocumentIsSaved(pm);
+        if (contentSafe) {
+          protectLocalDocumentAfterImport(JSON.stringify(pm.serialize()).length);
+        }
+      } catch (err) {
+        console.warn('[styles-io] could not verify the imported document was saved:', err);
+        contentSafe = false;
+      }
+    }
+
+    const needsReload = !!(sel.styles || sel.layout || sel.other);
+    importStatus.style.color = contentSafe ? '#1e5631' : '#b00020';
     importStatus.textContent = 'יובאו: ' + (parts.join(', ') || 'כלום') +
-      (res.content === 'loaded' ? ' — התוכן נטען מיד.' : ' — הדף יתרענן בעוד שנייה.');
+      (res.content === 'loaded'
+        ? (contentSafe
+            ? (needsReload ? ' — התוכן נשמר, והדף יתרענן בעוד שנייה.' : ' — התוכן נטען מיד.')
+            : ' — ⚠️ התוכן נטען אבל לא הצלחנו לשמור אותו במחשב, ולכן לא נרענן את הדף כדי לא לאבד אותו. פנו מקום בדפדפן ושמרו שוב.')
+        : (needsReload ? ' — הדף יתרענן בעוד שנייה.' : ''));
+
     // אם רק תוכן הוטען, אין צורך לרענן — paneManager כבר עודכן.
-    if (sel.styles || sel.layout || sel.other) {
+    if (needsReload && contentSafe) {
       setTimeout(() => { location.reload(); }, 1500);
     }
   });
