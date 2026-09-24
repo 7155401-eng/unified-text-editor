@@ -480,9 +480,46 @@ export function installConsoleGuard() {
   let suspiciousHits = 0;
   let lastSuspiciousAt = 0;
   const measureDelta = () => Math.max(window.outerWidth - window.innerWidth, window.outerHeight - window.innerHeight);
-  const setBaseline = () => { baselineDelta = measureDelta(); baselineSet = true; };
+  // ★ משה: "עדיין ההודעה 'ניסיתי לפרוץ' עולה גם כשלא פותחים את הקונסול".
+  //
+  // איך הזיהוי עובד: מודדים את ההפרש בין גודל החלון החיצוני לפנימי. כשנפתח
+  // חלון הקונסול, הפנימי מתכווץ וההפרש גדל.
+  // הבעיה: **שינוי זום בדפדפן משנה בדיוק את אותו מספר.** הגדלה ל-200%
+  // מקטינה את הרוחב הפנימי לחצי, וההפרש קופץ במאות פיקסלים — בלי שאיש
+  // פתח קונסול. המנגנון הקיים מחדש את נקודת הייחוס רק כשגודל החלון
+  // **החיצוני** משתנה, וזום אינו משנה אותו. לכן שלוש בדיקות רצופות
+  // נספרו כחשד, והמסך נחסם.
+  // אותו דבר בדיוק קורה כשנפתח סרגל צדדי של תוסף או סרגל תרגום.
+  //
+  // התיקון: עוקבים גם אחרי יחס הפיקסלים ואחרי מידת הזום של הדפדפן, וכל
+  // שינוי שלהם מחדש את נקודת הייחוס במקום להיחשב לחשד. הזיהוי עצמו לא
+  // נחלש: פתיחת קונסול אינה משנה את היחס, ולכן היא עדיין נתפסת.
+  let lastRatio = (typeof window.devicePixelRatio === "number" ? window.devicePixelRatio : 1);
+  const viewportScale = () => {
+    try {
+      const vv = window.visualViewport;
+      return vv && typeof vv.scale === "number" ? vv.scale : 1;
+    } catch (_) { return 1; }
+  };
+  let lastScale = viewportScale();
+  const zoomChanged = () => {
+    const ratio = (typeof window.devicePixelRatio === "number" ? window.devicePixelRatio : 1);
+    const scale = viewportScale();
+    const changed = Math.abs(ratio - lastRatio) > 0.001 || Math.abs(scale - lastScale) > 0.001;
+    lastRatio = ratio;
+    lastScale = scale;
+    return changed;
+  };
+  const setBaseline = () => {
+    baselineDelta = measureDelta();
+    baselineSet = true;
+    suspiciousHits = 0;
+    zoomChanged();            // מסנכרן את הערכים כדי שלא ייחשב שינוי בפעם הבאה
+  };
   const check = () => {
     if (guardSuspended > 0 || !baselineSet) return;
+    // זום השתנה — זו אינה פתיחת קונסול. מודדים מחדש ולא סופרים חשד.
+    if (zoomChanged()) { setBaseline(); return; }
     if (measureDelta() > baselineDelta + 100) {
       warnOnly();
       const now = Date.now();
@@ -491,6 +528,11 @@ export function installConsoleGuard() {
       if (suspiciousHits >= 3) blockConsoleAccess();
     } else suspiciousHits = Math.max(0, suspiciousHits - 1);
   };
+  try {
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", () => { setBaseline(); }, { passive: true });
+    }
+  } catch (_) {}
   let lastOuter = { w: window.outerWidth, h: window.outerHeight };
   let resizeTimer = null;
   window.addEventListener("resize", () => {
