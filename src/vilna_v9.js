@@ -1,5 +1,6 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
+import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
@@ -3052,6 +3053,10 @@ function renderPagePlan(plan, pageEl, cfg) {
   // למטה ובכך ליצור חריגה חדשה.
   const finish = () => {
     autoResolveV9CrownMainOverlap(pageEl);
+    // המרווח שמתחת לגמרא הוחל עד היום רק בסוף הרינדור, על כל העמודים
+    // ביחד — ולכן עמוד שכבר נראה מוכן עוד זז אחר כך. עכשיו הוא מוחל
+    // כאן, ברגע שהעמוד נגמר, וכך העמוד סופי מרגע שהוא מצויר.
+    try { applyV9MainBottomGapToPage(pageEl); } catch (_) {}
     growPageIfContentOutside(pageEl, cfg);
   };
   if (typeof queueMicrotask === "function") {

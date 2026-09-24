@@ -331,6 +331,34 @@ function applyV9VisualSafetyGap(container, desiredGapPx) {
   return results;
 }
 
+// משה 24/09/2026: „אני רוצה שכל עמוד לא יתחיל עד שמסתיים כל העבודה
+// של העמודים שלפניו. ראיתי הרבה בעיות ממנוע שעובר רק אחרי כל הרינדור
+// וצריך לבטל אותו, למזג אותו בשעת אמת."
+//
+// המעבר הזה אכן רץ עד היום רק בסוף, על כל העמודים ביחד — ולכן עמוד
+// שכבר נראה מוכן היה עוד זז אחר כך. נמדד: שני עמודים השתנו אחרי
+// שכבר צוירו, אחד מהם שלוש פעמים.
+//
+// הפונקציה הזו מריצה את אותה עבודה בדיוק על **עמוד אחד**, כדי שאפשר
+// יהיה לקרוא לה ברגע שהעמוד נגמר. העבודה עצמה לא השתנתה — רק העיתוי.
+//
+// ⭐ למה זה בטוח להריץ פעמיים: applyGapToPage מודד את המרווח הקיים
+// ומשווה למבוקש. אם כבר יש מספיק, הוא מסמן „already-enough" ולא נוגע.
+// לכן המעבר הכולל שנשאר בסוף אינו מזיז דבר — הוא רק רשת ביטחון.
+export function applyV9MainBottomGapToPage(pageEl, options = {}) {
+  if (!pageEl) return null;
+  const scope = pageEl.parentElement || pageEl;
+  const desiredGapPx = readGapPx(scope, options.gapPx);
+  // ⚠️ ניסיתי להוסיף לכאן גם את שמירת המרווח הוויזואלי, והחמרתי:
+  // העמודים הלא-יציבים קפצו מ-1 ל-12. הסיבה: אותה שמירה **אינה**
+  // בטוחה להרצה כפולה — היא מזיזה שורות לפי מדידה, וכשהיא רצה שוב
+  // בסוף היא מזיזה אותן שוב. החזרתי אותה למקומה בסוף.
+  //
+  // ההבדל בין השתיים: applyGapToPage בודק קודם כמה מרווח כבר יש
+  // ומוותר אם מספיק, ולכן אפשר להריץ אותו פעמיים בלי נזק.
+  return applyGapToPage(pageEl, desiredGapPx);
+}
+
 export function applyV9MainBottomGap(container, options = {}) {
   if (!container || !container.querySelectorAll) return [];
   const desiredGapPx = readGapPx(container, options.gapPx);
