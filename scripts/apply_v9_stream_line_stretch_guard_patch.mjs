@@ -138,14 +138,17 @@ function patchDomMeasureHelper(source) {
   return source.replace(anchor, helper + anchor);
 }
 
+// ★ נמצא 24/09/2026: אותו באג בדיוק כמו ב-apply_v9_column_continuation_flag_patch.
+// בדיקת "כבר הוחל" חיפשה את שתי השורות צמודות, והסקריפט השני נדחף ביניהן.
+// שני הסקריפטים הזריקו מחדש בכל הפעלה של שרת הפיתוח — 53 עותקים בפועל.
+// בודקים את השורה המוזרקת לבדה.
 function patchDebugDataset(source) {
-  const after = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";`;
-  if (source.includes(after)) return source;
+  const injected = `      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";`;
+  if (source.includes(injected)) return source;
 
-  const before = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);`;
-  if (!source.includes(before)) fail("missing v9BoxId dataset anchor");
-  return source.replace(before, after);
+  const anchor = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);`;
+  if (!source.includes(anchor)) fail("missing v9BoxId dataset anchor");
+  return source.replace(anchor, `${anchor}\n${injected}`);
 }
 
 function patchAppendHook(source) {

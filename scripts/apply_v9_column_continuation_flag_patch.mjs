@@ -40,13 +40,20 @@ function patchContinuationPredicate(source) {
   return source.replace(before, after);
 }
 
+// ★ נמצא 24/09/2026: כאן ישב באג שהתפיח את הקובץ בכל הפעלה של שרת הפיתוח.
+// בדיקת "כבר הוחל" חיפשה את **שתי השורות צמודות** — העוגן והשורה שמוזרקת
+// אחריו. אבל סקריפט אחר (apply_v9_stream_line_stretch_guard_patch) מזריק
+// את השורה שלו אחרי אותו עוגן בדיוק, ולכן דחף את עצמו בין השתיים ושבר את
+// הזיווג. בהרצה הבאה הבדיקה לא זיהתה את ההזרקה הקודמת והזריקה שוב —
+// ושני הסקריפטים עשו זאת זה לזה לסירוגין.
+// נמדד: 53 עותקים של כל שורה, 104 שורות מתות שרצו על כל שורה מצוירת.
+// התיקון: בודקים את השורה המוזרקת **לבדה**, ולא את הזיווג.
 function patchDebugDataset(source) {
-  const after = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";`;
-  if (source.includes(after)) return source;
-  const before = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);`;
-  if (!source.includes(before)) fail("missing dataset anchor");
-  return source.replace(before, after);
+  const injected = `      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";`;
+  if (source.includes(injected)) return source;
+  const anchor = `      if (box.id) lineEl.dataset.v9BoxId = String(box.id);`;
+  if (!source.includes(anchor)) fail("missing dataset anchor");
+  return source.replace(anchor, `${anchor}\n${injected}`);
 }
 
 function verify(source) {
