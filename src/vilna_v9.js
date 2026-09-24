@@ -2748,6 +2748,14 @@ function renderPagePlan(plan, pageEl, cfg) {
     const fill = renderedWidth / targetWidth;
     lineEl.dataset.v9RenderedFill = String(Math.max(0, Math.min(1, fill)).toFixed(4));
 
+    // ★ אותה תקרת מתיחה כמו למעלה. בלעדיה השומר הזה היה מוסיף יישור
+    // לשורות שהתקרה בדיוק פסלה — נמדד: 47 מתוך 96 שורות חמקו דרך כאן.
+    const extraPerGap = deficit / Math.max(1, wordCount - 1);
+    if (extraPerGap > 6) {
+      lineEl.dataset.v9StretchCapped = String(Math.round(extraPerGap));
+      return;
+    }
+
     if (deficit > 1.5) {
       lineEl.classList.add('justify');
       lineEl.dataset.v9MeasuredStreamStretch = '1';
@@ -2789,9 +2797,30 @@ function renderPagePlan(plan, pageEl, cfg) {
       const isParagraphEnd = (line.isLast || line.forcedBreak)
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;
+      // ★ משה, 24/09/2026: "חלק מהעמודים הוא עושה יותר רווח בין השורות או
+      // אולי גם במילים, זה חמור מאוד, מעולם לא ביקשתי כזה דבר", ובאותה
+      // נשימה הכלל: "גודל המילים והאותיות והרווחים והכל תמיד יישאר אותו
+      // דבר, רק גודל הדף ישתנה בלבד".
+      //
+      // נמדד בפלט שלו מאותו יום (ravtext-debug-20260924_151247.html):
+      // ההגדרות זהות בכל עשרת העמודים — אות 13, גובה שורה 20.15, מרווח
+      // מילים 0, בלי מתיחה אופקית. כלומר מקור הרווחים אינו בהגדרות אלא
+      // ב**יישור**: 49–95 שורות בכל עמוד מיושרות לרוחב מלא, והמתיחה
+      // פותחת רווחים בין המילים. נמדד: 12 שורות עם תוספת מעל 8 פיקסלים
+      // לכל רווח, והגרועה — **117 פיקסלים** בעמוד 8. זה חור שרואים בעין.
+      //
+      // התיקון: תקרת מתיחה. שורה שכדי ליישר אותה צריך להוסיף יותר מ-6
+      // פיקסלים לכל רווח — לא מיושרת כלל, ונשארת ברווח הטבעי שלה. זה
+      // בדיוק מה שנהוג בדפוס, וזה מסלק את החורים בלי לגעת בגודל האות.
+      const MAX_EXTRA_PER_GAP_PX = 6;
+      const gapCount = Math.max(1, ((line.words && line.words.length) || 1) - 1);
+      const extraPerGap = ((Number(line.width) || 0) - (Number(line.naturalWidth) || 0)) / gapCount;
+      const stretchTooWide = extraPerGap > MAX_EXTRA_PER_GAP_PX;
+      if (stretchTooWide) lineEl.dataset.v9StretchCapped = String(Math.round(extraPerGap));
+
       if (useManualContinuationStretch) lineEl.className += ' v9-continuation-manual-stretch';
       else if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
-      else if (shouldJustify) lineEl.className += ' justify';
+      else if (shouldJustify && !stretchTooWide) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
       lineEl.style.width = line.width + 'px';
