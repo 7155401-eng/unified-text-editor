@@ -3044,10 +3044,73 @@ function renderPagePlan(plan, pageEl, cfg) {
     }
   }
 
+  shrinkPageToContent(pageEl, plan, cfg);
+
   if (typeof queueMicrotask === "function") {
     queueMicrotask(() => autoResolveV9CrownMainOverlap(pageEl));
   } else {
     setTimeout(() => autoResolveV9CrownMainOverlap(pageEl), 0);
+  }
+}
+
+// משה 24/09/2026, הכלל הגדול:
+//   „גודל המילים והאותיות והרווחים והכל תמיד יישאר אותו דבר, רק גודל
+//    הדף ישתנה בלבד על מנת שלא יישאר תוכן מחוץ לדף ולא יישאר חלל לבן
+//    בדף, וזה חל גם על התלמוד ולא רק על הפירושים והערות הצד."
+//
+// עד היום כל העמודים קיבלו בדיוק את אותו גובה, וכשנגמר התוכן באמצע —
+// נשאר חלל. נמדד על המסמך של המעבדה: העמוד הגרוע היה מלא ב-49.5%,
+// כלומר 258 פיקסלים ריקים בתחתית.
+//
+// מה עושים כאן: אחרי שכל השורות כבר צוירו, מודדים איפה התוכן באמת
+// נגמר, ומקצרים את הדף עד לשם. האותיות, הרווחים והפריסה לא זזים
+// במילימטר — רק הנייר נחתך קצר יותר.
+//
+// ⚠️ לא מכווצים על כל שוליים טבעיים. לדף תמיד יש שוליים תחתונים, וזה
+// לא „חלל לבן". מכווצים רק כשהריק גדול פי שניים מהשוליים — כלומר
+// כשבאמת נשאר שטח מת. כך עמודים מלאים נשארים אחידים לגמרי, ורק
+// העמודים החריגים מתקצרים.
+const SHRINK_WHEN_GAP_EXCEEDS_PADDING_BY = 2;
+
+function shrinkPageToContent(pageEl, plan, cfg) {
+  try {
+    if (!pageEl || !plan || !plan.pageBox) return;
+    const padding = Number(plan.pageBox.padding) || 0;
+    const height = Number(plan.pageBox.height) || 0;
+    if (!height) return;
+
+    const reservedBottom = Number(cfg && cfg.reservedBottom) || 0;
+
+    // התחתית האמיתית של התוכן. נקרא מתוך ה-style שכבר נכתב, ולא מתוך
+    // מדידה חיה — כדי לא לאלץ את הדפדפן לחשב פריסה מחדש לכל עמוד.
+    let bottom = 0;
+    for (const el of pageEl.children) {
+      const top = parseFloat(el.style.top);
+      if (!Number.isFinite(top)) continue;
+      const h = parseFloat(el.style.height);
+      const end = top + (Number.isFinite(h) ? h : 0);
+      if (end > bottom) bottom = end;
+    }
+    if (!(bottom > 0)) return;
+
+    const wanted = Math.ceil(bottom + padding + reservedBottom);
+    const gap = height - wanted;
+    if (gap <= padding * SHRINK_WHEN_GAP_EXCEEDS_PADDING_BY) return;
+    if (wanted < padding * 4) return;   // דף זעיר מדי — לא נוגעים
+
+    pageEl.style.height = wanted + 'px';
+    // ⚠️ לא מספיק לקבוע גובה. העמודים יושבים בתוך רצועה גמישה, ושם
+    // מידה אחרת (flex-basis) היא הקובעת — וה-CSS מקבע אותה לגובה
+    // המלא. נמדד: הגובה נכתב 399 והעמוד נשאר 537 על המסך. לכן מעדכנים
+    // גם אותה, אחרת הכיווץ נכתב בקוד ולא נראה בעין.
+    pageEl.style.flexBasis = wanted + 'px';
+    pageEl.style.flexGrow = '0';
+    pageEl.style.flexShrink = '0';
+    pageEl.style.containIntrinsicSize = '';
+    pageEl.dataset.v9ShrunkFrom = String(Math.round(height));
+    pageEl.dataset.v9ShrunkTo = String(wanted);
+  } catch (_) {
+    // כיווץ הוא שיפור, לא תנאי. אם משהו לא צפוי — הדף נשאר כמו שהיה.
   }
 }
 
