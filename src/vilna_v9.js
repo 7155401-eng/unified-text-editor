@@ -1,4 +1,5 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
+import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
@@ -3296,7 +3297,12 @@ export async function buildPages(container, paragraphs, config) {
   // ל-event loop (setTimeout 0) כדי שאירועי-קלט יטופלו, ובודקים isCurrent
   // — אם התחיל רינדור חדש (עם token גבוה יותר), קוטעים את הנוכחי.
   const isCurrent = typeof cfg.isCurrent === "function" ? cfg.isCurrent : () => true;
-  const yieldToBrowser = () => new Promise((r) => setTimeout(r, 0));
+  // משה 24/09/2026: „מרנדר רק כשהדף בחזית — צריך להמשיך ברקע.”
+  // ההפסקה הזאת רצה **בין עמוד לעמוד**. כשהחלון יורד לרקע הדפדפן
+  // מותח כל setTimeout לשנייה שלמה לפחות (ואחרי חמש דקות — לדקה),
+  // כך שעמוד אחד לשנייה. yieldToBrowser המשותף עובר שם לצינור
+  // ההודעות הפנימי, שאינו נחנק, והקצב נשאר מלא.
+  const yieldToBrowser = yieldToBrowserShared;
 
   const pages = [];
   let cursor = 0;

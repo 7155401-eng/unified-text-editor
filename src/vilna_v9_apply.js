@@ -13,6 +13,7 @@
 // V9 מבצע חישוב אנליטי מלא — כל מילה ממוקמת ב-x,y ידועים ב-position:absolute.
 // אין float, אין shape-outside.
 
+import { nextFrame } from "./engine/background_safe_yield.js";
 import { buildPages } from "./vilna_v9.js";
 import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna_daf_lock.js";
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
@@ -305,9 +306,12 @@ function annotateV9RenderedSourceMetadata(container, paragraphs) {
   }
 }
 
+// ההמתנה הזאת עומדת בדיוק לפני בניית העמודים. כשהחלון ברקע הדפדפן
+// מפסיק לצייר, ולכן ההמתנה הישנה (requestAnimationFrame ישירות) לא
+// הייתה נגמרת לעולם והרינדור היה נשאר תקוע על „מתארגן”. nextFrame
+// יודע לעבור ברקע לצינור ההודעות הפנימי ולהמשיך מיד.
 function __ravtextV9NextFrame() {
-  if (typeof requestAnimationFrame !== "function") return Promise.resolve();
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  return nextFrame();
 }
 
 async function __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent }) {

@@ -1,3 +1,4 @@
+import { nextFrame as sharedNextFrame } from "./engine/background_safe_yield.js";
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
 import { readDocumentFontStack } from "./export_cover_page.js";
@@ -590,8 +591,10 @@ function buildPdf(images) {
   return new Blob([concatBytes(chunks)], { type: "application/pdf" });
 }
 
+// גם ייצוא PDF נושם בין עמוד לעמוד, וגם הוא היה נעצר לגמרי אם משה
+// עבר ללשונית אחרת באמצע. אותו פתרון: ברקע עוברים לצינור הפנימי.
 function nextFrame() {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  return sharedNextFrame();
 }
 
 async function waitForExportFonts(timeoutMs = 2500) {

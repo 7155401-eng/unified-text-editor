@@ -89,5 +89,40 @@ export function afterPaint(fn) {
   setTimeout(fn, 0);
 }
 
+// „חכה לציור הבא ואז תמשיך.” זה נראה כמו afterPaint, אבל כאן הקוד
+// **ממתין** לתשובה במקום להמשיך הלאה — ולכן כשהחלון ברקע והציור לא
+// מגיע, כל הרינדור עומד מלכת. ברקע עונים דרך הצינור הפנימי ומיד.
+//
+// משה 24/09/2026: „יש גם בעיה שהוא מרנדר רק כשהדף בחזית וזה אסור,
+// זה צריך להמשיך לרנדר ברקע חבל על הזמן.” ההמתנה הזאת היא אחת
+// הדלתות שדרכן הרינדור נתקע.
+export function nextFrame() {
+  return new Promise((resolve) => {
+    if (isHidden()) {
+      postViaChannel(resolve);
+      return;
+    }
+    if (typeof requestAnimationFrame !== "function") {
+      setTimeout(resolve, 0);
+      return;
+    }
+    requestAnimationFrame(() => resolve());
+  });
+}
+
+// הפוגה קצרה שאינה תלויה בציור. בחזית — setTimeout רגיל. ברקע
+// הדפדפן מותח כל setTimeout לשנייה שלמה לפחות, ולכן שם מוותרים על
+// ההמתנה ומעבירים דרך הצינור: ההשהיה נועדה לתת לדפדפן לנשום, והצינור
+// כבר עושה בדיוק את זה.
+export function pause(ms) {
+  return new Promise((resolve) => {
+    if (isHidden()) {
+      postViaChannel(resolve);
+      return;
+    }
+    setTimeout(resolve, Math.max(0, Number(ms) || 0));
+  });
+}
+
 // לבדיקות בלבד — מאפשר לדמות חלון מוסתר בלי דפדפן אמיתי.
 export const _internals = { isHidden, postViaChannel };
