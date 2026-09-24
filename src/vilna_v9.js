@@ -3046,10 +3046,18 @@ function renderPagePlan(plan, pageEl, cfg) {
 
   shrinkPageToContent(pageEl, plan, cfg);
 
+  // השומר רץ **אחרי** שהדפדפן כבר סידר את העמוד, כי רק אז אפשר לשאול
+  // אותו איפה כל דבר באמת יושב. קודם פותרים חפיפות, ואז מוודאים
+  // שכלום לא נשאר בחוץ — בסדר הזה, כי פתרון חפיפה יכול להזיז שורה
+  // למטה ובכך ליצור חריגה חדשה.
+  const finish = () => {
+    autoResolveV9CrownMainOverlap(pageEl);
+    growPageIfContentOutside(pageEl);
+  };
   if (typeof queueMicrotask === "function") {
-    queueMicrotask(() => autoResolveV9CrownMainOverlap(pageEl));
+    queueMicrotask(finish);
   } else {
-    setTimeout(() => autoResolveV9CrownMainOverlap(pageEl), 0);
+    setTimeout(finish, 0);
   }
 }
 
@@ -3081,17 +3089,28 @@ function shrinkPageToContent(pageEl, plan, cfg) {
 
     const reservedBottom = Number(cfg && cfg.reservedBottom) || 0;
 
-    // התחתית האמיתית של התוכן. נקרא מתוך ה-style שכבר נכתב, ולא מתוך
-    // מדידה חיה — כדי לא לאלץ את הדפדפן לחשב פריסה מחדש לכל עמוד.
+    // התחתית האמיתית של התוכן. קוראים קודם מתוך ה-style שכבר נכתב,
+    // כדי לא לאלץ את הדפדפן לחשב פריסה מחדש לכל עמוד.
+    //
+    // ⚠️ אבל יש מלכודת: לא לכל פריט נכתב גובה מפורש. פריט כזה היה
+    // נספר כאילו גובהו אפס — והדף היה מתקצר ממש מעליו וחותך אותו.
+    // לכן כשחסר גובה, מודדים אותו בפועל. זה קורה במעט פריטים בלבד,
+    // ועדיף לשלם על מדידה מאשר להעלים שורה מהמסך.
     let bottom = 0;
+    let measuredLive = 0;
     for (const el of pageEl.children) {
       const top = parseFloat(el.style.top);
       if (!Number.isFinite(top)) continue;
-      const h = parseFloat(el.style.height);
-      const end = top + (Number.isFinite(h) ? h : 0);
+      let h = parseFloat(el.style.height);
+      if (!Number.isFinite(h)) {
+        h = Number(el.offsetHeight) || 0;
+        measuredLive++;
+      }
+      const end = top + h;
       if (end > bottom) bottom = end;
     }
     if (!(bottom > 0)) return;
+    if (measuredLive) pageEl.dataset.v9MeasuredLive = String(measuredLive);
 
     const wanted = Math.ceil(bottom + padding + reservedBottom);
     const gap = height - wanted;
@@ -3111,6 +3130,48 @@ function shrinkPageToContent(pageEl, plan, cfg) {
     pageEl.dataset.v9ShrunkTo = String(wanted);
   } catch (_) {
     // כיווץ הוא שיפור, לא תנאי. אם משהו לא צפוי — הדף נשאר כמו שהיה.
+  }
+}
+
+// החצי השני של הכלל הגדול: „שלא יישאר תוכן מחוץ לדף".
+//
+// למה זה צריך שומר נפרד: לדף מוגדר „חתוך את מה שחורג". כלומר אם משהו
+// יצא מגבולותיו — הוא לא מציג פס אדום ולא נשבר. הוא פשוט **נעלם**.
+// זו התקלה הכי מסוכנת שיש, כי היא לא נראית כמו תקלה אלא כמו טקסט
+// שמעולם לא היה.
+//
+// לכן אחרי שהדף כבר מצויר במלואו, בודקים בפועל — בעיניים של הדפדפן,
+// לא בחישוב — האם משהו חורג. ואם כן, מגדילים את הדף עד שהכול נכנס.
+// שוב: בלי לגעת באות אחת. רק הנייר.
+function growPageIfContentOutside(pageEl) {
+  try {
+    if (!pageEl) return;
+    const current = parseFloat(pageEl.style.height);
+    if (!Number.isFinite(current) || current <= 0) return;
+    const padding = parseFloat(pageEl.style.padding) || 0;
+
+    let bottom = 0;
+    for (const el of pageEl.children) {
+      if (!(el.textContent || '').trim()) continue;
+      const top = Number(el.offsetTop);
+      const h = Number(el.offsetHeight) || 0;
+      if (!Number.isFinite(top)) continue;
+      const end = top + h;
+      if (end > bottom) bottom = end;
+    }
+    if (!(bottom > 0)) return;
+
+    const needed = Math.ceil(bottom + padding);
+    if (needed <= current + 0.5) return;      // הכול בפנים — אין מה לעשות
+
+    pageEl.style.height = needed + 'px';
+    pageEl.style.flexBasis = needed + 'px';
+    pageEl.style.flexGrow = '0';
+    pageEl.style.flexShrink = '0';
+    pageEl.dataset.v9GrewFrom = String(Math.round(current));
+    pageEl.dataset.v9GrewTo = String(needed);
+  } catch (_) {
+    // השומר הוא רשת ביטחון. אם הוא עצמו נכשל, הדף נשאר כפי שהיה.
   }
 }
 
