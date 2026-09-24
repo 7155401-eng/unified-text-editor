@@ -1527,6 +1527,22 @@ body.light-theme .pdf-scroll-progress-fill {
   text-align: center;
 }
 
+.empty-hint-btn {
+  margin-top: 12px;
+  padding: 8px 18px;
+  font: inherit;
+  font-size: 13px;
+  color: #fff;
+  background: #2c5aa0;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s;
+}
+
+.empty-hint-btn:hover { background: #24497f; }
+.empty-hint-btn:focus-visible { outline: 2px solid #6ba8d8; outline-offset: 2px; }
+
 .error-hint {
   margin: 24px 0;
   padding: 16px;

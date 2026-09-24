@@ -381,6 +381,13 @@ export function setupPdfToolbar(pagesContainer) {
     else if (sidebarToggleBtn) sidebarToggleBtn.setAttribute("aria-pressed", "false");
   } catch (_) {}
 
+  // הכפתור שבתוך אזור התצוגה הריק. הוא נבנה מחדש בכל פעם שהאזור מתרוקן,
+  // ולכן מאזינים על המכל ולא על הכפתור עצמו.
+  document.getElementById("pages-container")?.addEventListener("click", (event) => {
+    if (!event.target?.closest?.("#empty-hint-render")) return;
+    document.getElementById("btn-render")?.click();
+  });
+
   document.getElementById("pdf-first")?.addEventListener("click", () => goToPage(1));
   document.getElementById("pdf-prev")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) - 1));
   document.getElementById("pdf-next")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) + 1));
