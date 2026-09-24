@@ -1,6 +1,5 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
-import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
@@ -3045,149 +3044,21 @@ function renderPagePlan(plan, pageEl, cfg) {
     }
   }
 
-  shrinkPageToContent(pageEl, plan, cfg);
-
   // השומר רץ **אחרי** שהדפדפן כבר סידר את העמוד, כי רק אז אפשר לשאול
   // אותו איפה כל דבר באמת יושב. קודם פותרים חפיפות, ואז מוודאים
   // שכלום לא נשאר בחוץ — בסדר הזה, כי פתרון חפיפה יכול להזיז שורה
   // למטה ובכך ליצור חריגה חדשה.
   const finish = () => {
     autoResolveV9CrownMainOverlap(pageEl);
-    // המרווח שמתחת לגמרא הוחל עד היום רק בסוף הרינדור, על כל העמודים
-    // ביחד — ולכן עמוד שכבר נראה מוכן עוד זז אחר כך. עכשיו הוא מוחל
-    // כאן, ברגע שהעמוד נגמר, וכך העמוד סופי מרגע שהוא מצויר.
-    try { applyV9MainBottomGapToPage(pageEl); } catch (_) {}
-    growPageIfContentOutside(pageEl, cfg);
+    // ⛔ כאן הייתה החלה של המרווח-שמתחת-לגמרא בזמן אמת (סבב 43).
+    // משה דיווח אחריה על "רווחים מיותרים", והיא הדבר האחרון שנגע
+    // במרווחים — לכן היא הוסרה במלואה ולא טולאה. המרווח מוחל שוב
+    // רק פעם אחת, בסוף, כפי שהיה קודם.
   };
   if (typeof queueMicrotask === "function") {
     queueMicrotask(finish);
   } else {
     setTimeout(finish, 0);
-  }
-}
-
-// משה 24/09/2026, הכלל הגדול:
-//   „גודל המילים והאותיות והרווחים והכל תמיד יישאר אותו דבר, רק גודל
-//    הדף ישתנה בלבד על מנת שלא יישאר תוכן מחוץ לדף ולא יישאר חלל לבן
-//    בדף, וזה חל גם על התלמוד ולא רק על הפירושים והערות הצד."
-//
-// עד היום כל העמודים קיבלו בדיוק את אותו גובה, וכשנגמר התוכן באמצע —
-// נשאר חלל. נמדד על המסמך של המעבדה: העמוד הגרוע היה מלא ב-49.5%,
-// כלומר 258 פיקסלים ריקים בתחתית.
-//
-// מה עושים כאן: אחרי שכל השורות כבר צוירו, מודדים איפה התוכן באמת
-// נגמר, ומקצרים את הדף עד לשם. האותיות, הרווחים והפריסה לא זזים
-// במילימטר — רק הנייר נחתך קצר יותר.
-//
-// ⚠️ לא מכווצים על כל שוליים טבעיים. לדף תמיד יש שוליים תחתונים, וזה
-// לא „חלל לבן". מכווצים רק כשהריק גדול פי שניים מהשוליים — כלומר
-// כשבאמת נשאר שטח מת. כך עמודים מלאים נשארים אחידים לגמרי, ורק
-// העמודים החריגים מתקצרים.
-const SHRINK_WHEN_GAP_EXCEEDS_PADDING_BY = 2;
-
-function shrinkPageToContent(pageEl, plan, cfg) {
-  try {
-    if (!pageEl || !plan || !plan.pageBox) return;
-    // ⛔ רק ביבוא גמרא ורש"י. בעימוד רגיל הדף נשאר בגודלו — שם הטקסט
-    // הוא שזורם לפי מה שנכנס בדף, ולא הדף שמתאים את עצמו לטקסט.
-    if (!(cfg && cfg.dafLocked)) return;
-    const padding = Number(plan.pageBox.padding) || 0;
-    const height = Number(plan.pageBox.height) || 0;
-    if (!height) return;
-
-    const reservedBottom = Number(cfg && cfg.reservedBottom) || 0;
-
-    // התחתית האמיתית של התוכן. קוראים קודם מתוך ה-style שכבר נכתב,
-    // כדי לא לאלץ את הדפדפן לחשב פריסה מחדש לכל עמוד.
-    //
-    // ⚠️ אבל יש מלכודת: לא לכל פריט נכתב גובה מפורש. פריט כזה היה
-    // נספר כאילו גובהו אפס — והדף היה מתקצר ממש מעליו וחותך אותו.
-    // לכן כשחסר גובה, מודדים אותו בפועל. זה קורה במעט פריטים בלבד,
-    // ועדיף לשלם על מדידה מאשר להעלים שורה מהמסך.
-    let bottom = 0;
-    let measuredLive = 0;
-    for (const el of pageEl.children) {
-      const top = parseFloat(el.style.top);
-      if (!Number.isFinite(top)) continue;
-      let h = parseFloat(el.style.height);
-      if (!Number.isFinite(h)) {
-        h = Number(el.offsetHeight) || 0;
-        measuredLive++;
-      }
-      const end = top + h;
-      if (end > bottom) bottom = end;
-    }
-    if (!(bottom > 0)) return;
-    if (measuredLive) pageEl.dataset.v9MeasuredLive = String(measuredLive);
-
-    const wanted = Math.ceil(bottom + padding + reservedBottom);
-    const gap = height - wanted;
-    if (gap <= padding * SHRINK_WHEN_GAP_EXCEEDS_PADDING_BY) return;
-    if (wanted < padding * 4) return;   // דף זעיר מדי — לא נוגעים
-
-    pageEl.style.height = wanted + 'px';
-    // ⚠️ לא מספיק לקבוע גובה. העמודים יושבים בתוך רצועה גמישה, ושם
-    // מידה אחרת (flex-basis) היא הקובעת — וה-CSS מקבע אותה לגובה
-    // המלא. נמדד: הגובה נכתב 399 והעמוד נשאר 537 על המסך. לכן מעדכנים
-    // גם אותה, אחרת הכיווץ נכתב בקוד ולא נראה בעין.
-    pageEl.style.flexBasis = wanted + 'px';
-    pageEl.style.flexGrow = '0';
-    pageEl.style.flexShrink = '0';
-    pageEl.style.containIntrinsicSize = '';
-    pageEl.dataset.v9ShrunkFrom = String(Math.round(height));
-    pageEl.dataset.v9ShrunkTo = String(wanted);
-  } catch (_) {
-    // כיווץ הוא שיפור, לא תנאי. אם משהו לא צפוי — הדף נשאר כמו שהיה.
-  }
-}
-
-// החצי השני של הכלל הגדול: „שלא יישאר תוכן מחוץ לדף".
-//
-// למה זה צריך שומר נפרד: לדף מוגדר „חתוך את מה שחורג". כלומר אם משהו
-// יצא מגבולותיו — הוא לא מציג פס אדום ולא נשבר. הוא פשוט **נעלם**.
-// זו התקלה הכי מסוכנת שיש, כי היא לא נראית כמו תקלה אלא כמו טקסט
-// שמעולם לא היה.
-//
-// לכן אחרי שהדף כבר מצויר במלואו, בודקים בפועל — בעיניים של הדפדפן,
-// לא בחישוב — האם משהו חורג. ואם כן, מגדילים את הדף עד שהכול נכנס.
-// שוב: בלי לגעת באות אחת. רק הנייר.
-function growPageIfContentOutside(pageEl, cfg) {
-  try {
-    if (!pageEl) return;
-    // ⛔ אותו גבול בדיוק כמו בכיווץ — רק ביבוא גמרא ורש"י.
-    if (!(cfg && cfg.dafLocked)) return;
-    const current = parseFloat(pageEl.style.height);
-    if (!Number.isFinite(current) || current <= 0) return;
-
-    let bottom = 0;
-    for (const el of pageEl.children) {
-      if (!(el.textContent || '').trim()) continue;
-      const top = Number(el.offsetTop);
-      const h = Number(el.offsetHeight) || 0;
-      if (!Number.isFinite(top)) continue;
-      const end = top + h;
-      if (end > bottom) bottom = end;
-    }
-    if (!(bottom > 0)) return;
-
-    // ⚠️ כאן טעיתי בגרסה הראשונה והוספתי שוליים לתחתית התוכן. אבל
-    // המרחק שנמדד כאן כבר נספר מקצה הדף, והשוליים כבר בתוכו. התוצאה
-    // הייתה ש-13 דפים „גדלו" בלי שום סיבה — התוכן שלהם נגמר בדיוק
-    // בתחתית, וההוספה המציאה חריגה שלא הייתה. נתפס במדידה: תחתית
-    // התוכן 537 מול דף 537, ובכל זאת הדף נופח.
-    //
-    // מגדילים רק כשהתוכן באמת **עובר** את תחתית הדף.
-    const needed = Math.ceil(bottom);
-    if (needed <= current + 0.5) return;      // הכול בפנים — אין מה לעשות
-
-    pageEl.style.height = needed + 'px';
-    pageEl.style.flexBasis = needed + 'px';
-    pageEl.style.flexGrow = '0';
-    pageEl.style.flexShrink = '0';
-    pageEl.dataset.v9GrewFrom = String(Math.round(current));
-    pageEl.dataset.v9GrewTo = String(needed);
-  } catch (_) {
-    // השומר הוא רשת ביטחון. אם הוא עצמו נכשל, הדף נשאר כפי שהיה.
   }
 }
 
@@ -5004,8 +4875,3 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
 }
 
 
-// לבדיקות בלבד — מאפשר להריץ את שומרי גודל הדף על עמוד מלאכותי,
-// ולוודא שהם באמת מגיבים לחריגה. בלי זה הם קוד שאי אפשר להוכיח
-// שעובד, כי במסמך תקין הם פשוט לא נכנסים לפעולה.
-// אותה גישה כמו ב-background_safe_yield.js.
-export const _v9PageBoxInternals = { shrinkPageToContent, growPageIfContentOutside };
