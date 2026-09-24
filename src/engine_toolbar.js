@@ -343,6 +343,44 @@ export function setupPdfToolbar(pagesContainer) {
     return root;
   }
 
+  // ★ משה: "ה-PDF.js אמור להציג תמונה קטנה של כל עמוד בסרגל הצד אבל לא עובד"
+  // (רשימת המשימות למפתח, פריט 4).
+  // נמדד 24/09/2026: התמונות הממוזערות נבנות כמו שצריך — ארבע מהן ישבו
+  // ב-DOM — אבל `#pdf-sidebar` נולד עם `hidden` ב-index.html, ולכפתור
+  // `#pdf-sidebar-toggle` **לא היה שום מאזין לחיצה בכל הקוד**. לכל שאר
+  // כפתורי הסרגל יש מאזין; רק לזה לא. לכן הלחיצה לא עשתה כלום, והלוח
+  // נשאר סגור לעד — וזה נראה בדיוק כמו "התצוגה המקדימה לא עובדת".
+  const SIDEBAR_OPEN_KEY = "ravtext.pdfSidebarOpen";
+  const sidebarToggleBtn = document.getElementById("pdf-sidebar-toggle");
+  function setSidebarOpen(open, { remember = true } = {}) {
+    const sidebar = document.getElementById("pdf-sidebar");
+    if (!sidebar) return;
+    sidebar.hidden = !open;
+    if (sidebarToggleBtn) {
+      sidebarToggleBtn.setAttribute("aria-pressed", open ? "true" : "false");
+      sidebarToggleBtn.classList.toggle("active", open);
+    }
+    if (remember) {
+      try { localStorage.setItem(SIDEBAR_OPEN_KEY, open ? "1" : "0"); } catch (_) {}
+    }
+    if (open) {
+      // הלוח נבנה כשהוא היה סגור, ולכן לרוחב היה 0 ולא היה לפי מה להקטין.
+      // עכשיו יש רוחב אמיתי — בונים מחדש כדי שהתמונות יהיו בגודל הנכון.
+      rebuildSidebar();
+      activeThumbIndex = -1;
+      highlightActiveThumb();
+    }
+  }
+  sidebarToggleBtn?.addEventListener("click", () => {
+    const sidebar = document.getElementById("pdf-sidebar");
+    if (!sidebar) return;
+    setSidebarOpen(sidebar.hidden);
+  });
+  try {
+    if (localStorage.getItem(SIDEBAR_OPEN_KEY) === "1") setSidebarOpen(true, { remember: false });
+    else if (sidebarToggleBtn) sidebarToggleBtn.setAttribute("aria-pressed", "false");
+  } catch (_) {}
+
   document.getElementById("pdf-first")?.addEventListener("click", () => goToPage(1));
   document.getElementById("pdf-prev")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) - 1));
   document.getElementById("pdf-next")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) + 1));
