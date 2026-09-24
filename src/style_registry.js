@@ -231,12 +231,49 @@ export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
   return imported;
 }
 
+// משה 24/09/2026: „הטקסט הפנימי נראה בולד בחלק מהעמודים ובחלק לא."
+//
+// מה שנמצא במדידה על הפלט שלו: אין שום אי-אחידות. **כל** 301 שורות
+// הגמרא היו מודגשות, וכל 415 שורות הפירושים לא. מה שהשתנה בין עמוד
+// לעמוד הוא רק כמה גמרא יש בו — ולכן עמוד עם הרבה גמרא נראה מודגש,
+// ועמוד שרובו פירושים נראה רגיל.
+//
+// ולמה הגמרא מודגשת מלכתחילה? כי הסגנון שנבחר לטקסט הראשי מוגדר כך.
+// הרשימה הציגה **שם בלבד** — אז אי אפשר היה לדעת שסגנון מסוים מדגיש,
+// והבחירה נראתה תמימה. זה כמו לבחור צבע מרשימה שכתוב בה רק "צבע 3".
+//
+// התיקון: כל שורה ברשימה אומרת מה הסגנון עושה, וגם נראית כך בפועל.
+// ⚠️ loadTextStyles מחזיר את הסגנונות **כפי שנשמרו**, בלי עיבוד. סגנון
+// יכול להיות שמור כ-fontWeight:"700" בלי הסימון bold, ואז בדיקה ישירה
+// של s.bold מחמיצה אותו. לכן מעבירים קודם דרך אותו מנרמל שהמנוע עצמו
+// משתמש בו — אחרת הרשימה תשקר בדיוק במקרה שבגללו נכתב התיקון.
+function styleOptionSummary(raw) {
+  const s = normalizeTextStyle(raw) || raw || {};
+  const bits = [];
+  if (s.bold) bits.push("מודגש");
+  if (s.italic) bits.push("נטוי");
+  if (s.underline) bits.push("קו תחתי");
+  const size = Number(s.fontSize);
+  if (Number.isFinite(size) && size > 0) bits.push(`${size}`);
+  return bits.length ? ` — ${bits.join(", ")}` : "";
+}
+
+function styleOptionCss(raw) {
+  const s = normalizeTextStyle(raw) || raw || {};
+  const css = [];
+  if (s.bold) css.push("font-weight:700");
+  if (s.italic) css.push("font-style:italic");
+  if (s.fontFamily) css.push(`font-family:${String(s.fontFamily).replace(/[";]/g, "")}`);
+  return css.length ? ` style="${css.join(";")}"` : "";
+}
+
 export function styleOptionsHtml(selected = "") {
   const styles = loadTextStyles();
   const opts = ['<option value="">ללא סגנון</option>'];
   for (const s of styles) {
-    const label = s.source === IMPORT_SOURCE ? `${s.name} · Word` : s.name;
-    opts.push(`<option value="${escapeAttr(s.id)}"${s.id === selected || s.name === selected ? " selected" : ""}>${escapeHtml(label)}</option>`);
+    const base = s.source === IMPORT_SOURCE ? `${s.name} · Word` : s.name;
+    const label = base + styleOptionSummary(s);
+    opts.push(`<option value="${escapeAttr(s.id)}"${s.id === selected || s.name === selected ? " selected" : ""}${styleOptionCss(s)}>${escapeHtml(label)}</option>`);
   }
   opts.push('<option value="__add-custom__">+ הוסף סגנון משלך...</option>');
   return opts.join("");
