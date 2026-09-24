@@ -226,7 +226,43 @@ function hasNewerLocalDocument(serverContent) {
   } catch { return false; }
 }
 
+// ★ משה, 24/09/2026: "עשיתי בדיקת יבוא JSON פשוט ושוב אותה תקלה — בזמן
+// יבוא הוא חוזר מיד לטקסט שהיה לפני היבוא".
+//
+// השורש השני (הראשון הוא הרענון של היבוא עצמו): אחרי יבוא, העותק שבשרת
+// עדיין מחזיק את המסמך **הישן**, כי הסנכרון לשרת מושהה. בטעינה שאחרי
+// הרענון `loadInitialState` מושך את העותק הזה ודורס את מה שיובא.
+// ההגנה הקיימת פועלת רק כשהשמירה לשרת **נכשלה** — ואחרי יבוא היא לא
+// נכשלה, היא פשוט טרם קרתה.
+//
+// לכן היבוא מסמן במפורש: "העותק המקומי הוא הקובע". הסימון נצרך פעם אחת
+// בטעינה הבאה, ואז נמחק — כדי שלא יישאר תקוע לנצח.
+export function protectLocalDocumentAfterImport(chars = 0) {
+  try {
+    localStorage.setItem(STALE_KEY, JSON.stringify({
+      status: 'local-import', chars, at: Date.now(),
+    }));
+  } catch {}
+}
+
+/** האם מה שנשמר בדפדפן זהה למה שיושב עכשיו בחלוניות. */
+export function localDocumentIsSaved(paneManager) {
+  try {
+    if (!paneManager || typeof paneManager.serialize !== 'function') return false;
+    const wanted = JSON.stringify(paneManager.serialize());
+    return localStorage.getItem(DOC_KEY) === wanted;
+  } catch { return false; }
+}
+
 function showStaleServerNotice(stale) {
+  if (stale.status === 'local-import') {
+    try {
+      const el = document.getElementById('status');
+      if (el) el.textContent = 'נטען מה שיובא זה עתה. הגרסה שבשרת לא דרסה אותו.';
+    } catch {}
+    clearServerStale();          // הגנה חד-פעמית — לא נשארת תקועה
+    return;
+  }
   const size = `${Math.round((stale.chars || 0) / 1000)} אלף תווים`;
   const msg = stale.status === 413
     ? `נטען העותק שלך מהמחשב. בשרת יושבת גרסה ישנה יותר, כי המסמך ` +

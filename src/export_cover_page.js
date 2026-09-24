@@ -3,6 +3,37 @@
 // be rendered by the PDF foreignObject path, native print, and standalone HTML
 // debug snapshots without relying on app chrome CSS.
 
+// ★ משה, 14/09/2026: "הפונט בעמוד הראשון פונט אחר" / "בעמוד הראשון הפונט אינו
+// מופיע בפונט שעוצבו בו המילים למרות שבשאר העמודים הוא אכן מופיע".
+// נמדד בפלט שלו עצמו (ravtext-debug-20260914_163116.html): עמוד 1 הוא
+// `ravtext-export-cover-page` — דף השער של הייצוא — והוא צויר ב-David Libre
+// בעוד כל 12 עמודי התוכן צוירו ב-FrankRuehl DP. השער התעלם מגופן המסמך.
+// מסמך שמחליף גופן בעמוד הראשון נראה שבור, ולכן השער לוקח מעכשיו את הגופן
+// האמיתי של התוכן, ונופל חזרה לברירת המחדל רק אם אין מה למדוד.
+const COVER_FALLBACK_FONT = "'David Libre','Frank Ruhl Libre','Times New Roman',serif";
+
+/**
+ * קורא את הגופן שבו התוכן באמת מצויר על המסך — לא מנחש ולא קורא הגדרות,
+ * אלא מודד שורה אמיתית. מחזיר מחרוזת font-family מוכנה לשימוש.
+ */
+export function readDocumentFontStack(container) {
+  try {
+    const scope = container || (typeof document !== "undefined" ? document.getElementById("pages-container") : null);
+    if (!scope || typeof getComputedStyle !== "function") return COVER_FALLBACK_FONT;
+    const line = scope.querySelector(
+      ".v9-line.v9-role-main, .v9-line, .talmud-main p, .page p, .page div",
+    );
+    const raw = line ? getComputedStyle(line).fontFamily : "";
+    const first = String(raw || "").split(",")[0].trim();
+    if (!first) return COVER_FALLBACK_FONT;
+    const quoted = /^['"]/.test(first) ? first : `'${first.replace(/'/g, "")}'`;
+    // הגופן של המסמך קודם, והשאר נשאר כרשת ביטחון לספרות ולטקסט לועזי.
+    return `${quoted},${COVER_FALLBACK_FONT}`;
+  } catch (_) {
+    return COVER_FALLBACK_FONT;
+  }
+}
+
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
     "&": "&amp;",
@@ -116,6 +147,7 @@ export function buildExportCoverPage(options = {}) {
     generatedAt = new Date(),
     includePrintPatch = false,
     note = "דף זה נוצר אוטומטית בתחילת הייצוא כדי למנוע פתיחה בעמוד ריק ולתעד את פרטי הייצוא.",
+    fontFamily = COVER_FALLBACK_FONT,
   } = options;
 
   const page = document.createElement("div");
@@ -129,7 +161,7 @@ export function buildExportCoverPage(options = {}) {
     "padding:34px 32px 30px 32px",
     "background:#fff",
     "color:#111827",
-    "font-family:'David Libre','Frank Ruhl Libre','Times New Roman',serif",
+    `font-family:${fontFamily || COVER_FALLBACK_FONT}`,
     "display:flex",
     "flex-direction:column",
     "justify-content:space-between",

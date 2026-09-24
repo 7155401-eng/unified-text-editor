@@ -79,13 +79,41 @@ export function setupPdfToolbar(pagesContainer) {
     return Math.min(1, fitWidth());
   }
 
+  // ★ משה, 14/09/2026 07:05: "צריך שגם העמודים ימשיכו להיות מוצגים ברוחב מלא
+  // בכל גודל שהם".
+  //
+  // נמדד 24/09: הבחירה "התאם רוחב" אכן ממלאת את הרוחב ברגע שבוחרים אותה
+  // (העמוד גדל מ-380 ל-418 פיקסלים, 97.4% מהרוחב הזמין) — אבל:
+  //   · אחרי כל רינדור העמודים נבנים מחדש, ולאלמנטים החדשים אף אחד לא
+  //     כותב את הזום. נמדד: `zoom` חזר ל"ריק" והעמוד חזר ל-380 (88.5%).
+  //   · וכשאזור התצוגה משתנה (למשל כשפותחים את לוח העמודים) אין חישוב
+  //     מחדש. נמדד: הרוחב הזמין ירד ל-269 והעמוד נשאר 380 — כלומר
+  //     **גלש החוצה ב-141%**.
+  // שתי הסיבות יחד הן בדיוק "לא ברוחב מלא בכל גודל".
+  //
+  // התיקון: זוכרים את **המצב** שנבחר (לא רק את המספר), מחשבים אותו מחדש
+  // אחרי כל רינדור ובכל שינוי גודל של אזור התצוגה. בחירה במספר קבוע
+  // (100%, 200%…) נשארת קבועה, כמו שמצופה.
+  let zoomMode = "auto";
+
+  function computeZoomForMode(mode) {
+    if (mode === "auto") return fitAuto();
+    if (mode === "fit") return fitWidth();
+    if (mode === "actual") return 1;
+    const n = parseFloat(mode);
+    return Number.isFinite(n) && n > 0 ? n : toolbar.zoom;
+  }
+
   function setZoomFromSelect(value) {
-    if (value === "auto") toolbar.zoom = fitAuto();
-    else if (value === "fit") toolbar.zoom = fitWidth();
-    else if (value === "actual") toolbar.zoom = 1;
-    else {
-      const n = parseFloat(value);
-      if (Number.isFinite(n) && n > 0) toolbar.zoom = n;
+    zoomMode = value;
+    toolbar.zoom = computeZoomForMode(value);
+    applyZoom();
+  }
+
+  // מחיל מחדש את המצב הנוכחי. במצבים המסתגלים הוא גם מחושב מחדש.
+  function reapplyZoomMode() {
+    if (zoomMode === "auto" || zoomMode === "fit") {
+      toolbar.zoom = computeZoomForMode(zoomMode);
     }
     applyZoom();
   }
@@ -343,6 +371,51 @@ export function setupPdfToolbar(pagesContainer) {
     return root;
   }
 
+  // ★ משה: "ה-PDF.js אמור להציג תמונה קטנה של כל עמוד בסרגל הצד אבל לא עובד"
+  // (רשימת המשימות למפתח, פריט 4).
+  // נמדד 24/09/2026: התמונות הממוזערות נבנות כמו שצריך — ארבע מהן ישבו
+  // ב-DOM — אבל `#pdf-sidebar` נולד עם `hidden` ב-index.html, ולכפתור
+  // `#pdf-sidebar-toggle` **לא היה שום מאזין לחיצה בכל הקוד**. לכל שאר
+  // כפתורי הסרגל יש מאזין; רק לזה לא. לכן הלחיצה לא עשתה כלום, והלוח
+  // נשאר סגור לעד — וזה נראה בדיוק כמו "התצוגה המקדימה לא עובדת".
+  const SIDEBAR_OPEN_KEY = "ravtext.pdfSidebarOpen";
+  const sidebarToggleBtn = document.getElementById("pdf-sidebar-toggle");
+  function setSidebarOpen(open, { remember = true } = {}) {
+    const sidebar = document.getElementById("pdf-sidebar");
+    if (!sidebar) return;
+    sidebar.hidden = !open;
+    if (sidebarToggleBtn) {
+      sidebarToggleBtn.setAttribute("aria-pressed", open ? "true" : "false");
+      sidebarToggleBtn.classList.toggle("active", open);
+    }
+    if (remember) {
+      try { localStorage.setItem(SIDEBAR_OPEN_KEY, open ? "1" : "0"); } catch (_) {}
+    }
+    if (open) {
+      // הלוח נבנה כשהוא היה סגור, ולכן לרוחב היה 0 ולא היה לפי מה להקטין.
+      // עכשיו יש רוחב אמיתי — בונים מחדש כדי שהתמונות יהיו בגודל הנכון.
+      rebuildSidebar();
+      activeThumbIndex = -1;
+      highlightActiveThumb();
+    }
+  }
+  sidebarToggleBtn?.addEventListener("click", () => {
+    const sidebar = document.getElementById("pdf-sidebar");
+    if (!sidebar) return;
+    setSidebarOpen(sidebar.hidden);
+  });
+  try {
+    if (localStorage.getItem(SIDEBAR_OPEN_KEY) === "1") setSidebarOpen(true, { remember: false });
+    else if (sidebarToggleBtn) sidebarToggleBtn.setAttribute("aria-pressed", "false");
+  } catch (_) {}
+
+  // הכפתור שבתוך אזור התצוגה הריק. הוא נבנה מחדש בכל פעם שהאזור מתרוקן,
+  // ולכן מאזינים על המכל ולא על הכפתור עצמו.
+  document.getElementById("pages-container")?.addEventListener("click", (event) => {
+    if (!event.target?.closest?.("#empty-hint-render")) return;
+    document.getElementById("btn-render")?.click();
+  });
+
   document.getElementById("pdf-first")?.addEventListener("click", () => goToPage(1));
   document.getElementById("pdf-prev")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) - 1));
   document.getElementById("pdf-next")?.addEventListener("click", () => goToPage((parseInt(toolbar.pageInput?.value || "1", 10) || 1) + 1));
@@ -379,15 +452,33 @@ export function setupPdfToolbar(pagesContainer) {
   const zoomSelect = document.getElementById("pdf-zoom-select");
   document.getElementById("pdf-zoom-in")?.addEventListener("click", () => {
     toolbar.zoom = Math.min(3, toolbar.zoom + 0.1);
+    zoomMode = String(toolbar.zoom);   // מספר קבוע — לא מסתגל יותר
     applyZoom();
     if (zoomSelect) zoomSelect.value = "actual";
   });
   document.getElementById("pdf-zoom-out")?.addEventListener("click", () => {
     toolbar.zoom = Math.max(0.3, toolbar.zoom - 0.1);
+    zoomMode = String(toolbar.zoom);
     applyZoom();
     if (zoomSelect) zoomSelect.value = "actual";
   });
   zoomSelect?.addEventListener("change", () => setZoomFromSelect(zoomSelect.value));
+
+  // אזור התצוגה משנה גודל — פותחים את לוח העמודים, גוררים את המפריד,
+  // משנים את גודל החלון. במצב מסתגל מחשבים מחדש, אחרת לא נוגעים.
+  if (typeof ResizeObserver !== "undefined" && pagesContainer) {
+    let zoomResizeRaf = 0;
+    let lastUsableWidth = pagesContainer.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (zoomMode !== "auto" && zoomMode !== "fit") return;
+      // שינוי של פחות מ-2 פיקסלים אינו שינוי — כך אין לולאת ריענון.
+      if (Math.abs(pagesContainer.clientWidth - lastUsableWidth) < 2) return;
+      lastUsableWidth = pagesContainer.clientWidth;
+      if (zoomResizeRaf) return;
+      zoomResizeRaf = requestAnimationFrame(() => { zoomResizeRaf = 0; reapplyZoomMode(); });
+    });
+    try { ro.observe(pagesContainer); } catch (_) {}
+  }
 
   const findInput = document.getElementById("pdf-find-input");
   if (findInput) {
@@ -577,6 +668,9 @@ export function setupPdfToolbar(pagesContainer) {
   function refreshAll(total) {
     paintTotal(total == null ? livePageCount() : total);
     rememberBaseSize();
+    // אחרי רינדור העמודים הם אלמנטים חדשים ואין עליהם זום. בלי השורה הזו
+    // הבחירה של המשתמש נמחקת בכל רינדור — וזה בדיוק מה שנמדד.
+    reapplyZoomMode();
     rebuildSidebar();
     updateCurrentPageFromScroll();
   }

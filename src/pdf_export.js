@@ -1,5 +1,7 @@
+import { nextFrame as sharedNextFrame } from "./engine/background_safe_yield.js";
 import { applyDemoWatermarkToElement, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { buildSelfContainedCssSnapshot, collectComputedCssVariables } from "./export_snapshot_css.js";
+import { readDocumentFontStack } from "./export_cover_page.js";
 
 const PAGE_CSS_WIDTH = 380;
 const PAGE_CSS_HEIGHT = 537;
@@ -349,6 +351,9 @@ function drawRtlText(ctx, text, x, y, maxWidth, lineHeight, options = {}) {
 }
 
 async function renderPdfCoverImage({ contentPageCount, filename }) {
+  // ★ משה, 14/09/2026: דף השער חייב לשאת את גופן המסמך, אחרת העמוד הראשון
+  // של ה-PDF נראה מגופן אחר מכל השאר. נמדד מהתצוגה החיה, לא מנוחש.
+  const coverFont = readDocumentFontStack();
   const scale = PDF_EXPORT_SCALE;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(PAGE_CSS_WIDTH * scale);
@@ -368,11 +373,11 @@ async function renderPdfCoverImage({ contentPageCount, filename }) {
   let y = 34;
 
   ctx.fillStyle = "#111827";
-  ctx.font = "800 24px 'David Libre', 'Times New Roman', serif";
+  ctx.font = `800 24px ${coverFont}`;
   ctx.fillText("רב טקסט", right, y, width);
   y += 33;
 
-  ctx.font = "700 14px 'David Libre', 'Times New Roman', serif";
+  ctx.font = `700 14px ${coverFont}`;
   ctx.fillStyle = "#374151";
   ctx.fillText("דף מידע טכני לייצוא", right, y, width);
   y += 29;
@@ -385,7 +390,7 @@ async function renderPdfCoverImage({ contentPageCount, filename }) {
   ctx.stroke();
   y += 18;
 
-  ctx.font = "400 11.5px 'David Libre', 'Times New Roman', serif";
+  ctx.font = `400 11.5px ${coverFont}`;
   ctx.fillStyle = "#374151";
   y = drawRtlText(ctx, "דף זה נוצר אוטומטית בתחילת הייצוא כדי למנוע פתיחה בעמוד ריק ולתעד את פרטי הייצוא.", right, y, width, 16);
   y += 8;
@@ -418,11 +423,11 @@ async function renderPdfCoverImage({ contentPageCount, filename }) {
   y = boxY + 9;
   for (const [label, value] of rows) {
     ctx.fillStyle = "#6b7280";
-    ctx.font = "700 10.5px 'David Libre', 'Times New Roman', serif";
+    ctx.font = `700 10.5px ${coverFont}`;
     ctx.fillText(label, right - 8, y, 88);
 
     ctx.fillStyle = "#111827";
-    ctx.font = "400 10.5px 'David Libre', 'Times New Roman', serif";
+    ctx.font = `400 10.5px ${coverFont}`;
     ctx.fillText(String(value || "—"), right - 108, y, 210);
 
     ctx.strokeStyle = "#e5e7eb";
@@ -439,7 +444,7 @@ async function renderPdfCoverImage({ contentPageCount, filename }) {
   ctx.lineTo(right, 499);
   ctx.stroke();
   ctx.fillStyle = "#6b7280";
-  ctx.font = "400 9.5px 'David Libre', 'Times New Roman', serif";
+  ctx.font = `400 9.5px ${coverFont}`;
   drawRtlText(ctx, "נוצר אוטומטית על ידי RavText. דף זה אינו חלק מתוכן המסמך המקורי.", right, 508, width, 13);
 
   const pdfImage = await canvasToPdfImage(canvas, ctx);
@@ -586,8 +591,10 @@ function buildPdf(images) {
   return new Blob([concatBytes(chunks)], { type: "application/pdf" });
 }
 
+// גם ייצוא PDF נושם בין עמוד לעמוד, וגם הוא היה נעצר לגמרי אם משה
+// עבר ללשונית אחרת באמצע. אותו פתרון: ברקע עוברים לצינור הפנימי.
 function nextFrame() {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  return sharedNextFrame();
 }
 
 async function waitForExportFonts(timeoutMs = 2500) {

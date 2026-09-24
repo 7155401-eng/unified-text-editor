@@ -7,6 +7,25 @@ let styleEl = null;
 let activeSession = null;
 let sessionSeq = 0;
 
+// ★ משה, 14/09/2026: "בזמן הרינדור של העמוד האחרון עמוד 23 עדיין עומד הרבה
+// זמן על רינדור 23 עמודים". השורש: האחוזים חושבו אך ורק מספירת ה-.page.
+// אחרי שהעמוד האחרון נבנה המנוע עדיין עובד (יישור, מדידה, סידור הערות),
+// אבל אין יותר עמודים חדשים — ולכן המספר, האחוז והמשפט קפאו לגמרי.
+// מסך שלא זז נקרא "נתקע", גם כשהכול בסדר.
+// התיקון: כשהעמודים מפסיקים להגיע והעבודה נמשכת, עוברים לשלב "מסיים",
+// המשפט משתנה למה שבאמת קורה, והאחוז ממשיך לזחול לעבר 99 — אף פעם לא
+// מגיע ל-100, כי 100 שמור אך ורק לסיום אמיתי.
+const QUIET_BEFORE_FINISHING_MS = 1100;   // כמה שקט נחשב "סיימנו לבנות עמודים"
+const CREEP_TIME_CONSTANT_MS = 4200;      // כמה מהר הזחילה מתקרבת לתקרה
+const CREEP_CEILING_BUILDING = 99;        // תקרה — 100 שמור לסיום אמיתי בלבד
+
+// זחילה אסימפטוטית: תמיד זזה, לעולם לא מגיעה לתקרה.
+function creep(from, ceiling, sinceMs) {
+  if (!(ceiling > from)) return from;
+  const q = Math.max(0, sinceMs) / CREEP_TIME_CONSTANT_MS;
+  return from + (ceiling - from) * (1 - Math.exp(-q));
+}
+
 function canUseDom() {
   return typeof window !== "undefined" && typeof document !== "undefined" && document.body;
 }
@@ -338,25 +357,52 @@ function pageCountFrom(container) {
 
 function updateSession(session, forcedPercent = null) {
   if (!session || session.stopped) return;
+  const now = performance.now();
   const pages = pageCountFrom(session.container);
-  session.pageCount = pages;
+  if (pages !== session.pageCount) {
+    session.pageCount = pages;
+    session.lastChangeAt = now;
+    session.creepFrom = null;   // יש תנועה אמיתית — מבטלים זחילה
+  }
   if (pages >= session.estimatedTotalPages) {
     session.estimatedTotalPages = pages + 1;
   }
 
-  const elapsed = Math.max(0, performance.now() - session.startedAt);
+  const elapsed = Math.max(0, now - session.startedAt);
   const softByPages = pages <= 0
     ? 3
     : (pages / Math.max(session.estimatedTotalPages, 1)) * 92;
   const softByTime = Math.min(24, elapsed / 380);
-  const percent = forcedPercent == null
-    ? clamp(Math.max(softByPages, softByTime), 1, 96)
-    : forcedPercent;
+  let percent = clamp(Math.max(softByPages, softByTime), 1, 96);
 
-  setPercent(percent);
+  // ★ אף עמוד חדש כבר זמן־מה, והמנוע עדיין עובד — זה השלב שקפא קודם.
+  // רק אחרי שנבנה לפחות עמוד אחד: לפני כן באמת אין מה לדעת, ושם ההתנהגות
+  // נשארת כפי שהייתה.
+  const quietMs = now - (session.lastChangeAt || session.startedAt);
+  const stalled = pages > 0 && quietMs >= QUIET_BEFORE_FINISHING_MS;
+  if (stalled) {
+    if (session.creepFrom == null) {
+      session.creepFrom = percent;
+      session.creepAt = now;
+    }
+    percent = creep(session.creepFrom, CREEP_CEILING_BUILDING, now - session.creepAt);
+  }
+
+  // פס התקדמות לא חוזר אחורה. קפיצה לאחור נראית כמו תקלה גם כשהיא נכונה.
+  let shown = forcedPercent == null ? clamp(percent, 1, 99) : forcedPercent;
+  if (forcedPercent == null) {
+    shown = Math.max(shown, session.shownPercent || 0);
+    session.shownPercent = shown;
+  }
+  setPercent(shown);
   setText("page", `עמוד ${pages}`);
   setText("count", `${pages} עמודים נבנו`);
-  setText("status", pages > 0 ? "עובר דף־דף…" : "מודד מסמך…");
+  setText(
+    "status",
+    pages <= 0
+      ? "מודד מסמך…"
+      : (stalled ? "מסיים — מיישר, מודד ומסדר הערות…" : "עובר דף־דף…"),
+  );
 }
 
 function stopSession(session) {
@@ -389,6 +435,10 @@ export function startVilnaRenderProgress({
     estimatedTotalPages: Math.max(1, Number(estimatedTotalPages) || 1),
     pageCount: 0,
     startedAt: performance.now(),
+    lastChangeAt: performance.now(),
+    creepFrom: null,
+    creepAt: 0,
+    shownPercent: 0,
     stopped: false,
     observer: null,
     timer: null,

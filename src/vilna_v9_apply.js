@@ -13,6 +13,7 @@
 // V9 מבצע חישוב אנליטי מלא — כל מילה ממוקמת ב-x,y ידועים ב-position:absolute.
 // אין float, אין shape-outside.
 
+import { nextFrame } from "./engine/background_safe_yield.js";
 import { buildPages } from "./vilna_v9.js";
 import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna_daf_lock.js";
 import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
@@ -108,6 +109,28 @@ function readLevelsFromLocalStorage() {
       .filter(level => level.length >= 1);
   } catch {
     return [];
+  }
+}
+
+// ★ משה: "מצב משנה ברורה (משולב) — הכפתור קיים אבל אין לו השפעה ב-V9".
+//
+// נמדד 24/09/2026:
+//   במנוע הרגיל  — כבוי: 22 עמודים, 0 בתבנית · דלוק: 26 עמודים, 26 בתבנית ✔
+//   ב-V9         — כבוי: 938 שורות · דלוק: 910 שורות, אבל **אף עמוד לא קיבל
+//                  את התבנית**. כלומר הכפתור באמת לא עשה את מה שהוא מבטיח.
+//
+// השורש: ל-V9 כבר יש את כל לוגיקת הרמות של המשנ"ב — אבל ב-aggregateForV9
+// היא רצה **רק** כשרשימת זרמי הגפ"ת ריקה. ובמצב גפ"ת הרשימה הזו תמיד
+// מלאה (ברירת המחדל היא "01,02"), ולכן ענף הרמות לא נכנס לעולם.
+//
+// התיקון: כשהמתג "משנה ברורה: גלישה" דלוק, לא מעבירים למנוע את רשימת
+// זרמי הגפ"ת — וכך ענף הרמות, שכבר קיים ובדוק, הוא זה שרץ. כשהמתג כבוי
+// שום דבר לא משתנה.
+function isMishnaWrapOn() {
+  try {
+    return localStorage.getItem("ravtext.mishnaWrap") === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -283,9 +306,12 @@ function annotateV9RenderedSourceMetadata(container, paragraphs) {
   }
 }
 
+// ההמתנה הזאת עומדת בדיוק לפני בניית העמודים. כשהחלון ברקע הדפדפן
+// מפסיק לצייר, ולכן ההמתנה הישנה (requestAnimationFrame ישירות) לא
+// הייתה נגמרת לעולם והרינדור היה נשאר תקוע על „מתארגן”. nextFrame
+// יודע לעבור ברקע לצינור ההודעות הפנימי ולהמשיך מיד.
 function __ravtextV9NextFrame() {
-  if (typeof requestAnimationFrame !== "function") return Promise.resolve();
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+  return nextFrame();
 }
 
 async function __ravtextPrepareV9BeforeRender({ container, paragraphs, isCurrent }) {
@@ -405,7 +431,10 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       streamSettings[code] = withSafeV9StreamSettings(getEffectiveStreamSettings(code));
     }
     const levels = readLevelsFromLocalStorage();
-    const talmudStreams = readTalmudStreamCodes();
+    // ראה ההסבר למעלה ליד isMishnaWrapOn: במצב משנ"ב ענף הרמות הוא שקובע
+    // מי בצדדים, ולכן רשימת זרמי הגפ"ת לא מועברת. בלי המתג — כרגיל.
+    const mishnaWrapOn = isMishnaWrapOn();
+    const talmudStreams = mishnaWrapOn ? [] : readTalmudStreamCodes();
 
     // משה 2026-05-13: סגנון של "טקסט ראשי" — הזרמת ה-id והאובייקט הגולמי למנוע
     // כדי שהבולד/האיטליק וכל שאר התכונות יחולו על שורות הראשי ב-V9.
@@ -488,6 +517,12 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // הפאס הזה מזיז רק זרמי תחתית, ורק אם יש מקום אמיתי בדף — כך הוא לא
     // משנה את חישוב הפגינציה ולא יוצר גלישה נסתרת.
     applyV9MainBottomGap(container);
+
+    // סימון העמודים במצב משנ"ב — אותו סיווג שהמנוע הרגיל נותן, כדי שגם
+    // כאן יחולו כללי העיצוב של התבנית ושיהיה אפשר לראות שהמצב באמת פעיל.
+    for (const pageEl of container.querySelectorAll(".page")) {
+      pageEl.classList.toggle("mishna-wrap-page", mishnaWrapOn);
+    }
 
 
     progress.finish({

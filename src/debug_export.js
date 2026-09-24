@@ -6,7 +6,7 @@
 //   toggleProblemHighlight(container)    — overlays colored borders on problems
 
 import { buildSelfContainedCssSnapshot } from "./export_snapshot_css.js";
-import { buildExportCoverPage } from "./export_cover_page.js";
+import { buildExportCoverPage, readDocumentFontStack } from "./export_cover_page.js";
 
 const PRINTABLE_PAGE_SELECTOR = ".page:not(.page-placeholder):not(.ravtext-empty-page)";
 
@@ -46,6 +46,8 @@ function buildContainerHtmlWithCover(container, filename) {
     contentPageCount,
     filename,
     includePrintPatch: true,
+    // נמדד מהתצוגה החיה, לא מהעותק — בעותק אין עדיין סגנונות מחושבים.
+    fontFamily: readDocumentFontStack(container),
   });
   clone.insertBefore(cover, clone.firstChild);
   return { html: clone.outerHTML, contentPageCount };

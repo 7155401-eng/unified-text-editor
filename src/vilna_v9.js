@@ -1,4 +1,5 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
+import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
@@ -2748,6 +2749,14 @@ function renderPagePlan(plan, pageEl, cfg) {
     const fill = renderedWidth / targetWidth;
     lineEl.dataset.v9RenderedFill = String(Math.max(0, Math.min(1, fill)).toFixed(4));
 
+    // ★ אותה תקרת מתיחה כמו למעלה. בלעדיה השומר הזה היה מוסיף יישור
+    // לשורות שהתקרה בדיוק פסלה — נמדד: 47 מתוך 96 שורות חמקו דרך כאן.
+    const extraPerGap = deficit / Math.max(1, wordCount - 1);
+    if (extraPerGap > 6) {
+      lineEl.dataset.v9StretchCapped = String(Math.round(extraPerGap));
+      return;
+    }
+
     if (deficit > 1.5) {
       lineEl.classList.add('justify');
       lineEl.dataset.v9MeasuredStreamStretch = '1';
@@ -2789,9 +2798,30 @@ function renderPagePlan(plan, pageEl, cfg) {
       const isParagraphEnd = (line.isLast || line.forcedBreak)
         && line.words && line.words.length > 0
         && line.naturalWidth < line.width - 2;
+      // ★ משה, 24/09/2026: "חלק מהעמודים הוא עושה יותר רווח בין השורות או
+      // אולי גם במילים, זה חמור מאוד, מעולם לא ביקשתי כזה דבר", ובאותה
+      // נשימה הכלל: "גודל המילים והאותיות והרווחים והכל תמיד יישאר אותו
+      // דבר, רק גודל הדף ישתנה בלבד".
+      //
+      // נמדד בפלט שלו מאותו יום (ravtext-debug-20260924_151247.html):
+      // ההגדרות זהות בכל עשרת העמודים — אות 13, גובה שורה 20.15, מרווח
+      // מילים 0, בלי מתיחה אופקית. כלומר מקור הרווחים אינו בהגדרות אלא
+      // ב**יישור**: 49–95 שורות בכל עמוד מיושרות לרוחב מלא, והמתיחה
+      // פותחת רווחים בין המילים. נמדד: 12 שורות עם תוספת מעל 8 פיקסלים
+      // לכל רווח, והגרועה — **117 פיקסלים** בעמוד 8. זה חור שרואים בעין.
+      //
+      // התיקון: תקרת מתיחה. שורה שכדי ליישר אותה צריך להוסיף יותר מ-6
+      // פיקסלים לכל רווח — לא מיושרת כלל, ונשארת ברווח הטבעי שלה. זה
+      // בדיוק מה שנהוג בדפוס, וזה מסלק את החורים בלי לגעת בגודל האות.
+      const MAX_EXTRA_PER_GAP_PX = 6;
+      const gapCount = Math.max(1, ((line.words && line.words.length) || 1) - 1);
+      const extraPerGap = ((Number(line.width) || 0) - (Number(line.naturalWidth) || 0)) / gapCount;
+      const stretchTooWide = extraPerGap > MAX_EXTRA_PER_GAP_PX;
+      if (stretchTooWide) lineEl.dataset.v9StretchCapped = String(Math.round(extraPerGap));
+
       if (useManualContinuationStretch) lineEl.className += ' v9-continuation-manual-stretch';
       else if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
-      else if (shouldJustify) lineEl.className += ' justify';
+      else if (shouldJustify && !stretchTooWide) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       lineEl.style.top = line.y + 'px';
       lineEl.style.width = line.width + 'px';
@@ -2900,110 +2930,6 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
-      if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
-      if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
       if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isSourceContinuationEnd) {
@@ -3371,7 +3297,12 @@ export async function buildPages(container, paragraphs, config) {
   // ל-event loop (setTimeout 0) כדי שאירועי-קלט יטופלו, ובודקים isCurrent
   // — אם התחיל רינדור חדש (עם token גבוה יותר), קוטעים את הנוכחי.
   const isCurrent = typeof cfg.isCurrent === "function" ? cfg.isCurrent : () => true;
-  const yieldToBrowser = () => new Promise((r) => setTimeout(r, 0));
+  // משה 24/09/2026: „מרנדר רק כשהדף בחזית — צריך להמשיך ברקע.”
+  // ההפסקה הזאת רצה **בין עמוד לעמוד**. כשהחלון יורד לרקע הדפדפן
+  // מותח כל setTimeout לשנייה שלמה לפחות (ואחרי חמש דקות — לדקה),
+  // כך שעמוד אחד לשנייה. yieldToBrowser המשותף עובר שם לצינור
+  // ההודעות הפנימי, שאינו נחנק, והקצב נשאר מלא.
+  const yieldToBrowser = yieldToBrowserShared;
 
   const pages = [];
   let cursor = 0;
@@ -4169,6 +4100,50 @@ export async function buildPages(container, paragraphs, config) {
       ) {
         overflowTakeN = candidateN;
         splitInfo = null;
+      }
+    }
+
+    // ★ משה, 08/09 + 14/09/2026: "יש הרבה רווח לא מובן" / "עדיין מאוד בעייתי
+    // מבחינת השטח הלבן".
+    //
+    // מה נמדד (24/09, הרצה חיה, 26 עמודים): רוב העמודים מלאים 95%–98%, אבל
+    // שישה עמודים צנחו ל-13%–50%. ולכל אחד מהם, אילו היה לוקח **עוד פסקה
+    // אחת**, העמוד היה מתמלא 97%–99%:
+    //
+    //     עמוד 5  — 38.7% → 97.3%       עמוד 19 — 48.0% → 97.2%
+    //     עמוד 13 — 50.2% → 99.0%       עמוד 20 — 12.7% → 97.2%
+    //     עמוד 18 — 79.6% → 99.5%       עמוד 23 — 45.6% → 99.0%
+    //
+    // ומה עצר? הפסקה הנוספת גררה גלישה של פרשן אחד — לפעמים 945 תווים בלבד —
+    // ו-fitsClean פוסל כל גלישה. מסלול ההצלה שקיים כאן (overflowTakeN) היה
+    // אמור להציל בדיוק את זה, אבל הוא נבנה למטרה אחרת — "למלא פער קטן" —
+    // ולכן הוא כבוי כשיש carry, ותקרתו חמש שורות ראשי. שני הכללים האלה
+    // נכונים למילוי-פער, ושגויים כשהעמוד עצמו חצי ריק.
+    //
+    // ⭐ ההחלטה: עמוד חצי ריק גרוע בהרבה מפרשן שממשיך בעמוד הבא — וגלישת
+    // פרשן ממילא כבר קורית בכל עמוד "מלא" רגיל. לכן נוסף כאן מסלול שני,
+    // נפרד וצר: הוא נכנס **רק** כשהעמוד באמת רזה, **רק** אם הפסקה הנוספת
+    // באמת ממלאת אותו, ולעולם לא כשהטקסט הראשי עצמו נחתך.
+    const UNDERFILLED_PAGE = 0.72;   // מתחת לזה העמוד נראה שבור
+    const RESCUE_TARGET_FILL = 0.85; // והתוספת חייבת באמת לפתור את זה
+    if (!overflowTakeN && !noMidParagraph && bestN_clean > 0 && bestN_clean < totalAvail) {
+      const currentSlice = splitInfo
+        ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
+        : getSlice(bestN_clean);
+      const currentPlan = buildPagePlan(
+        aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+        cfg,
+      );
+      const currentFill = planFillRatio(currentPlan);
+      if (currentFill < UNDERFILLED_PAGE) {
+        const candidateN = bestN_clean + 1;
+        const tp = trialAtN(candidateN);
+        const fill = planFillRatio(tp);
+        const mainCut = normalizeRichTextEntry(tp?.overflow?.mainText || "").text.trim();
+        if (tp && tp.overflow && !mainCut && fill >= RESCUE_TARGET_FILL && fill > currentFill + 0.08) {
+          overflowTakeN = candidateN;
+          splitInfo = null;
+        }
       }
     }
 

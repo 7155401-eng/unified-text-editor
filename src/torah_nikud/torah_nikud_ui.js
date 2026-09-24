@@ -9,6 +9,13 @@
 // Public API: openTorahNikudModal({ initialText, onResult }).
 
 import { STRINGS, t } from "./torah_nikud_i18n.js";
+// ★ נמצא 24/09/2026: כלי הניקוד הציג שגיאות כ-`alert("שגיאה: " + e.message)` —
+// כלומר את הטקסט הגולמי של השגיאה, בדיוק כמו שהלקוח קיבל בתמלול
+// ("תשובה לא תקינה מהשרת server_error"). לכלי התמלול כבר יש מתרגם הודעות
+// מלא, ואין סיבה לנסח נוסח שני שיסתור אותו — לכן משתמשים באותו מתרגם.
+// באנגלית לא נוגעים: המתרגם כתוב בעברית, ועדיף טקסט טכני באנגלית על פני
+// הודעה עברית למי שבחר ממשק אנגלי.
+import { friendlyError as friendlyAiError } from "../torah_transcription/torah_transcription_errors.js";
 import { extractText } from "./torah_nikud_engine.js";
 import {
   NikudGasClient,
@@ -97,6 +104,18 @@ function stripBidi(s) {
 let modalEl = null;
 let cssInjected = false;
 let lang = "he";
+
+// הודעה אחת, במקום אחד: בעברית עוברת דרך המתרגם של כלי ה-AI; באנגלית
+// נשארת ההתנהגות הקיימת.
+function showAiError(raw) {
+  const text = raw && raw.message ? raw.message : String(raw == null ? "" : raw);
+  if (lang !== "he") {
+    window.alert(t(lang, "err_title") + ": " + text);
+    return;
+  }
+  const fe = friendlyAiError(text);
+  window.alert(`${fe.title}\n\n${fe.message}`);
+}
 let appearance = readHostAppearance();
 let extEditions = [];          // {name, text}
 let currentStep = 1;
@@ -819,7 +838,7 @@ function wireEvents() {
       renderRecent();
       refreshLiveCounter();
     } catch (e) {
-      alert(t(lang, "err_title") + ": " + (e.message || e));
+      showAiError(e);
     }
   });
 
@@ -922,7 +941,7 @@ function wireEvents() {
     if (!result.ok) {
       $("tnk-progress-fill").style.width = "0%";
       setStatus(t(lang, "status_ready"));
-      alert(t(lang, "err_title") + ": " + result.error);
+      showAiError(result.error);
       return;
     }
     $("tnk-progress-fill").style.width = "100%";
