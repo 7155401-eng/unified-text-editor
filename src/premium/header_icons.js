@@ -758,6 +758,32 @@ export function installHeaderPremiumIcons() {
   });
   videosIcon.addEventListener("click", openVideoGallery);
 
+  // ★ משה: "להוסיף לאייקונים למעלה שאלות נפוצות".
+  // התוכן בא מטקסטי העזרה שכבר קיימים באתר — אותם הסברים בדיוק.
+  const faqIcon = buildIconButton({
+    id: "rt-prem-icon-faq",
+    cls: "rt-prem-icon-faq",
+    title: "שאלות נפוצות",
+    label: "פתח שאלות נפוצות",
+    text: "שאלות",
+    html: `
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="rt-faq-icon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="currentColor" stop-opacity="1"/>
+            <stop offset="100%" stop-color="currentColor" stop-opacity="0.78"/>
+          </linearGradient>
+        </defs>
+        <circle cx="12" cy="12" r="9.4" fill="url(#rt-faq-icon-grad)" stroke="rgba(255,255,255,0.7)" stroke-width="0.65"/>
+        <path d="M9.5 9.2a2.6 2.6 0 1 1 3.4 2.5c-.7.25-1 .8-1 1.5v.4" fill="none" stroke="rgba(255,255,255,0.96)" stroke-width="1.7" stroke-linecap="round"/>
+        <circle cx="11.9" cy="16.6" r="1.05" fill="rgba(255,255,255,0.96)"/>
+      </svg>
+    `,
+  });
+  faqIcon.addEventListener("click", () => {
+    import("../faq_panel.js").then((m) => m.openFaqPanel()).catch(() => {});
+  });
+
   // משה 2026-05-09: גלגל שיניים אלגנטי עם גרדיאנט פנימי + סיבוב hover.
   // (קודם היה מפתח שוודי — חסר השראה. הגלגל מקובל יותר ומיד מזוהה כ"הגדרות".)
   const settingsIcon = buildIconButton({
@@ -867,11 +893,13 @@ export function installHeaderPremiumIcons() {
     const ref1 = avatarWrap1 || null;
     if (ref1) {
       actions.insertBefore(videosIcon, ref1);
+      actions.insertBefore(faqIcon, ref1);
       actions.insertBefore(settingsIcon, ref1);
       actions.insertBefore(downloadsIcon, ref1);
       actions.insertBefore(gift, ref1);
     } else {
       actions.appendChild(videosIcon);
+      actions.appendChild(faqIcon);
       actions.appendChild(settingsIcon);
       actions.appendChild(downloadsIcon);
       actions.appendChild(gift);
@@ -922,12 +950,14 @@ export function installHeaderPremiumIcons() {
   const ref = avatarWrap || null;
   if (ref) {
     actions.insertBefore(videosIcon, ref);
+    actions.insertBefore(faqIcon, ref);
     actions.insertBefore(settingsIcon, ref);
     actions.insertBefore(downloadsIcon, ref);
     actions.insertBefore(gift, ref);
     actions.insertBefore(diamond, ref);
   } else {
     actions.appendChild(videosIcon);
+      actions.appendChild(faqIcon);
     actions.appendChild(settingsIcon);
     actions.appendChild(downloadsIcon);
     actions.appendChild(gift);
