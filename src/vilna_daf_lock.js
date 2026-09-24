@@ -371,14 +371,40 @@ if (typeof window !== "undefined" && !window.__VILNA_DAF_FIT_BOUND__) {
 // מזיז רק בציר האנכי, ורק כמה שצריך — שבירת השורות אינה משתנה.
 function resolveLineOverlaps(pageEl) {
   if (!pageEl || !pageEl.querySelectorAll) return 0;
+  // ★★ 18/09/2026 — OVERLAP_GEOM_FALLBACK
+  //
+  // ⛔ הפותר הזה קרא **סגנון ישיר בלבד**: el.style.top/left/width.
+  //    שורה שמיקומה מגיע מכלל CSS ולא משורת-סגנון החזירה אפס,
+  //    ואז רוחב החפיפה יצא אפס — והפותר **דילג עליה בשקט**.
+  //
+  // ⭐ הדימוי: פקח חניה שבודק רק מכוניות עם פתק על השמשה.
+  //    מי שלא שם פתק — לא קיים מבחינתו.
+  //
+  // ⇒ מה שחסר נלקח מהגיאומטריה האמיתית על המסך. הסגנון הישיר
+  //   נשאר עדיף (הוא זול, ובו הפותר גם כותב), והמדידה היא
+  //   רשת-הביטחון בלבד.
+  const pageRect = pageEl.getBoundingClientRect
+    ? pageEl.getBoundingClientRect()
+    : { top: 0, left: 0 };
   const nodes = [...pageEl.querySelectorAll(".v9-line")]
-    .map((el) => ({
-      el,
-      top: parseFloat(el.style.top) || 0,
-      left: parseFloat(el.style.left) || 0,
-      w: parseFloat(el.style.width) || 0,
-      h: parseFloat(el.style.height) || parseFloat(el.style.lineHeight) || 0,
-    }))
+    .map((el) => {
+      const top = parseFloat(el.style.top);
+      const left = parseFloat(el.style.left);
+      const w = parseFloat(el.style.width);
+      const h = parseFloat(el.style.height)
+        || parseFloat(el.style.lineHeight);
+      const need = !Number.isFinite(top) || !Number.isFinite(left)
+        || !Number.isFinite(w) || !Number.isFinite(h);
+      const r = need && el.getBoundingClientRect
+        ? el.getBoundingClientRect() : null;
+      return {
+        el,
+        top: Number.isFinite(top) ? top : (r ? r.top - pageRect.top : 0),
+        left: Number.isFinite(left) ? left : (r ? r.left - pageRect.left : 0),
+        w: Number.isFinite(w) ? w : (r ? r.width : 0),
+        h: Number.isFinite(h) ? h : (r ? r.height : 0),
+      };
+    })
     .filter((n) => n.h > 0)
     .sort((a, b) => a.top - b.top || a.left - b.left);
 
@@ -485,6 +511,35 @@ function makeTrialContainer(realContainer) {
   for (const attr of ["dir", "lang", "data-theme"]) {
     const v = realContainer.getAttribute(attr);
     if (v !== null) el.setAttribute(attr, v);
+  }
+  // ★★ 18/09/2026 — המדידה חייבת לרוץ באותה טיפוגרפיה בדיוק.
+  //
+  // המיכל הזה מעתיק class, style, dir, lang ו-data-theme — אבל
+  // **לא את ה-id**. וכל כלל CSS שמכוון לפי מזהה (#pages-container)
+  // פשוט אינו חל עליו. ⇒ הטקסט נמדד בגופן אחד ומוצג באחר.
+  //
+  // ⭐ הדימוי: לתפור חליפה לפי מידות שנלקחו מאדם אחר.
+  //
+  // ⚠️ ולמה לא פשוט להעתיק את ה-id: שני אלמנטים באותו מזהה הם
+  //    מסמך פגום, ו-getElementById היה מחזיר את הלא-נכון.
+  //
+  // ⇒ במקום זה מעתיקים את **תכונות הטיפוגרפיה המחושבות** כסגנון
+  //   ישיר. זה עוקף את שאלת הסלקטור לגמרי: לא משנה איך הכלל
+  //   נכתב, המדידה רואה את אותו גופן, אותו גודל ואותו משקל.
+  try {
+    const TRIAL_TYPOGRAPHY = [
+      "font-family", "font-size", "font-weight", "font-style",
+      "line-height", "letter-spacing", "word-spacing",
+      "text-align", "direction", "font-variant-ligatures",
+    ];
+    const cs = (realContainer.ownerDocument.defaultView || window)
+      .getComputedStyle(realContainer);
+    for (const prop of TRIAL_TYPOGRAPHY) {
+      const v = cs.getPropertyValue(prop);
+      if (v) el.style.setProperty(prop, v);
+    }
+  } catch (_) {
+    // ⚠️ סביבה בלי getComputedStyle (בדיקות) — ממשיכים כרגיל.
   }
   el.setAttribute("data-daf-trial", "1");
   el.style.position = "absolute";

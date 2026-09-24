@@ -488,7 +488,14 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       talmudStreams,
       noMidParagraphSoft: readSpacingBool("noMidParagraphSoft", false),
       noMidLineSplits: readSpacingBool("noMidLineSplits", false),
-      preventMidLineSplit: readSpacingBool("preventMidLineSplit", true),
+      // ★★ משה 15/09/2026 — "אם יש שם חסימה לא הגיונית פתח אותה".
+      // נמדד: בעמוד בגובה 981 הגמרא נגמרה ב-576 ורש"י ב-309, ואף אחד
+      // מהם לא גלש — ובכל זאת נפתח עמוד שני והעמוד נשאר מלא ב-59%.
+      // הסיבה: הפסקה הבאה לא נכנסה שלמה, ואיסור החיתוך באמצע שורה מנע
+      // לחתוך אותה — אז היא הועפה כולה לעמוד הבא, ו-41% מהעמוד נשאר לבן.
+      // בספר אמיתי פסקה נחתכת בסוף העמוד וממשיכה בעמוד הבא; זו הנורמה,
+      // לא חריג. לכן ברירת המחדל מתהפכת: מותר לחתוך.
+      preventMidLineSplit: readSpacingBool("preventMidLineSplit", false),
       openingWordSettings: preflight.openingWordSettings,
     };
 

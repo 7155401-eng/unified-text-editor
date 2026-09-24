@@ -1,0 +1,208 @@
+{
+ "typed": true,
+ "built": 23,
+ "errors": [
+  "Uncaught (in promise) SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON"
+ ],
+ "pages": [
+  {
+   "page": 1,
+   "lines": 4,
+   "fonts": {
+    "David Libre": 4
+   },
+   "weights": {
+    "400": 4
+   }
+  },
+  {
+   "page": 2,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 3,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 4,
+   "lines": 1,
+   "fonts": {
+    "David Libre": 1
+   },
+   "weights": {
+    "400": 1
+   }
+  },
+  {
+   "page": 5,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 6,
+   "lines": 3,
+   "fonts": {
+    "David Libre": 3
+   },
+   "weights": {
+    "400": 3
+   }
+  },
+  {
+   "page": 7,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 8,
+   "lines": 1,
+   "fonts": {
+    "David Libre": 1
+   },
+   "weights": {
+    "400": 1
+   }
+  },
+  {
+   "page": 9,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 10,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 11,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 12,
+   "lines": 3,
+   "fonts": {
+    "David Libre": 3
+   },
+   "weights": {
+    "400": 3
+   }
+  },
+  {
+   "page": 13,
+   "lines": 1,
+   "fonts": {
+    "David Libre": 1
+   },
+   "weights": {
+    "400": 1
+   }
+  },
+  {
+   "page": 14,
+   "lines": 1,
+   "fonts": {
+    "David Libre": 1
+   },
+   "weights": {
+    "400": 1
+   }
+  },
+  {
+   "page": 15,
+   "lines": 3,
+   "fonts": {
+    "David Libre": 3
+   },
+   "weights": {
+    "400": 3
+   }
+  },
+  {
+   "page": 16,
+   "lines": 1,
+   "fonts": {
+    "David Libre": 1
+   },
+   "weights": {
+    "400": 1
+   }
+  },
+  {
+   "page": 17,
+   "lines": 1,
+   "fonts": {
+    "David Libre": 1
+   },
+   "weights": {
+    "400": 1
+   }
+  },
+  {
+   "page": 18,
+   "lines": 3,
+   "fonts": {
+    "David Libre": 3
+   },
+   "weights": {
+    "400": 3
+   }
+  },
+  {
+   "page": 19,
+   "lines": 2,
+   "fonts": {
+    "David Libre": 2
+   },
+   "weights": {
+    "400": 2
+   }
+  },
+  {
+   "page": 20,
+   "lines": 0,
+   "fonts": {},
+   "weights": {}
+  },
+  {
+   "page": 21,
+   "lines": 3,
+   "fonts": {
+    "David Libre": 3
+   },
+   "weights": {
+    "400": 3
+   }
+  },
+  {
+   "page": 22,
+   "lines": 3,
+   "fonts": {
+    "David Libre": 3
+   },
+   "weights": {
+    "400": 3
+   }
+  },
+  {
+   "page": 23,
+   "lines": 1,
+   "fonts": {
+    "David Libre": 1
+   },
+   "weights": {
+    "400": 1
+   }
+  }
+ ],
+ "trialsLeft": 0
+}
