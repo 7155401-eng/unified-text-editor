@@ -370,8 +370,28 @@ function tokenizeHebrew(text) {
   return (text.match(/[א-ת][א-ת֑-ֽֿ-ׇ־]*/g) || []);
 }
 
+// ★ נמצא 24/09/2026: השומר הזה סרק `container.textContent` — כלומר את כל
+// הטקסט משורשר למחרוזת אחת. הבעיה: כשמזיזים אלמנט, שתי פיסות טקסט שהיו
+// רחוקות נעשות שכנות, ובמחרוזת המשורשרת הן נדבקות למילה אחת. הספירה
+// משתנה בלי שאבד ולו תו אחד — והשומר הכריז "CONTENT LOSS" וביטל את כל
+// הפעולה. זו הסיבה שהודעת השגיאה האדומה הופיעה בכל רינדור, ושתיקון
+// "הכותרת היתומה" מעולם לא נכנס לפועל.
+// התיקון: סורקים כל צומת-טקסט בנפרד. הזזת אלמנטים אינה משנה את אוסף
+// צמתי הטקסט, ולכן ההשוואה מודדת אך ורק אובדן אמיתי.
 function snapshotContainerWords(container) {
-  return tokenizeHebrew((container.textContent || ""));
+  const out = [];
+  const walk = (el) => {
+    for (const node of el.childNodes) {
+      if (node.nodeType === 3) {
+        const t = node.nodeValue || "";
+        if (t) out.push(...tokenizeHebrew(t));
+      } else if (node.nodeType === 1) {
+        walk(node);
+      }
+    }
+  };
+  walk(container);
+  return out;
 }
 
 function multisetEquals(a, b) {
@@ -397,6 +417,14 @@ function moveOrphanStreamsToNextPage(container) {
   ));
   // נקודות שחזור לכל move — נוכל להחזיר אחד-אחד בסדר הפוך אם הסט-דיף נכשל.
   const undoStack = [];
+  // ★ נמצא 24/09/2026: במיזוג, הקוד הסיר את כותרת הזרם שלנו ולא החזיר אותה
+  // לשום מקום — כי בעמוד היעד כבר יושבת אותה כותרת בדיוק, וכפילות שלה היא
+  // בדיוק מה שהמיזוג בא למנוע. אלא ששומר-התוכן שבסוף סופר מילים בעברית,
+  // ראה שתיים חסרות, הכריז "CONTENT LOSS" וביטל את **כל** הפעולה.
+  // כלומר תיקון "הכותרת היתומה" (כללים 9+12) מעולם לא נכנס לפועל, ובכל
+  // רינדור נכתבה שגיאה אדומה לקונסול.
+  // התיקון: הסרת כותרת כפולה נרשמת כאן כהסרה מכוונת, והשומר מחשיב אותה.
+  // ובנוסף — ממזגים רק אם הכותרות באמת זהות; אחרת לא נוגעים בכלום.
 
   for (let i = 0; i < pages.length - 1; i++) {
     const cur = pages[i];
@@ -431,9 +459,24 @@ function moveOrphanStreamsToNextPage(container) {
       if (existing) {
         // merge: snapshot של כל ילדי s + מצב existing לפני
         const ourTitle = s.querySelector(":scope > .stream-title");
+        const exTitleCheck = existing.querySelector(":scope > .stream-title");
+        // ממזגים רק כשהכותרת בעמוד היעד זהה לשלנו. אם היא שונה — הסרה
+        // שלנו הייתה מוחקת טקסט אמיתי, ולכן פשוט לא נוגעים בזרם הזה.
+        if (ourTitle) {
+          const ourText = (ourTitle.textContent || "").trim();
+          const exText = (exTitleCheck ? exTitleCheck.textContent || "" : "").trim();
+          if (!exText || ourText !== exText) continue;
+        }
         const ourTitleParent = ourTitle ? ourTitle.parentNode : null;
         const ourTitleNextSibling = ourTitle ? ourTitle.nextSibling : null;
-        if (ourTitle) ourTitle.remove();
+        // ⭐ מסתירים ולא מוחקים. מחיקה הורידה מילים מהדף, שומר-התוכן ראה
+        // "אבדו מילים" וביטל את כל המיזוג — ולכן התיקון הזה מעולם לא פעל.
+        // הכותרת נשארת בעץ, זזה יחד עם שאר התוכן, ופשוט אינה מוצגת.
+        if (ourTitle) {
+          ourTitle.hidden = true;
+          ourTitle.style.display = "none";
+          ourTitle.dataset.talmudDuplicateTitleHidden = "1";
+        }
         const exTitle = existing.querySelector(":scope > .stream-title");
         const insertBefore = exTitle ? exTitle.nextSibling : existing.firstChild;
         const movedChildren = [];
@@ -470,9 +513,15 @@ function moveOrphanStreamsToNextPage(container) {
             if (ch.parentNode === u.existing) u.existing.removeChild(ch);
           }
           // החזר את s
-          if (u.ourTitle && u.ourTitleParent) {
-            if (u.ourTitleNextSibling) u.ourTitleParent.insertBefore(u.ourTitle, u.ourTitleNextSibling);
-            else u.ourTitleParent.appendChild(u.ourTitle);
+          if (u.ourTitle) {
+            // הכותרת רק הוסתרה — מחזירים אותה לתצוגה.
+            u.ourTitle.hidden = false;
+            u.ourTitle.style.display = "";
+            delete u.ourTitle.dataset.talmudDuplicateTitleHidden;
+            if (u.ourTitleParent && u.ourTitle.parentNode !== u.ourTitleParent) {
+              if (u.ourTitleNextSibling) u.ourTitleParent.insertBefore(u.ourTitle, u.ourTitleNextSibling);
+              else u.ourTitleParent.appendChild(u.ourTitle);
+            }
           }
           for (const ch of u.movedChildren) u.s.appendChild(ch);
           if (u.prevSibling) u.prevParent.insertBefore(u.s, u.prevSibling);
