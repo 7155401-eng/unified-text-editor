@@ -109,9 +109,12 @@ export async function openVilnaImportModal(paneManager, onImported) {
   const withRashi = el("input", { type: "checkbox", checked: "checked" });
   const wholeDafim = el("input", { type: "checkbox", checked: "checked" });
   const autoLayout = el("input", { type: "checkbox", checked: "checked" });
+  // „רק גודל הדף ישתנה בלבד" — לכן זו ברירת המחדל. מסומן כשלא נבחר
+  // אחרת, ולא רק כשנבחר במפורש; קודם תיבה ריקה בפעם הראשונה הובילה
+  // להקטנת האותיות, וזה בדיוק מה שמשה ביקש שלא יקרה.
   const fitPage = el("input", {
     type: "checkbox",
-    ...(localStorage.getItem(DAF_LOCK_KEYS.fitPageToText) === "1" ? { checked: "checked" } : {}),
+    ...(localStorage.getItem(DAF_LOCK_KEYS.fitPageToText) !== "0" ? { checked: "checked" } : {}),
   });
   const streamInput = el("input", { class: "sef-input", style: "width: 60px;", value: "01" });
 

@@ -178,7 +178,16 @@ export function readDafLockSettings() {
     minScale: num(DAF_LOCK_KEYS.minScale, 70, 40, 100) / 100,
     maxScale: num(DAF_LOCK_KEYS.maxScale, 130, 100, 250) / 100,
     showLabel: readLs(DAF_LOCK_KEYS.showLabel, "1") === "1",
-    fitPageToText: readLs(DAF_LOCK_KEYS.fitPageToText, "0") === "1",
+    // משה אמר את זה פעמיים — 13/09 וגם 24/09: „גודל המילים והאותיות
+    // והרווחים והכל תמיד יישאר אותו דבר, רק גודל הדף ישתנה בלבד."
+    //
+    // המתג הזה בוחר בין שתי דרכים להכניס דף וילנא שלם לעמוד אחד:
+    //   דלוק  — גודל הדף נגזר מהטקסט. האותיות לא זזות.   ✅ מה שביקש
+    //   כבוי  — האותיות מוקטנות כדי להיכנס לדף קבוע.      ⛔ מה שאסר
+    //
+    // המתג נבנה כבר ב-13/09 אבל **נולד כבוי**, ולכן ברירת המחדל עשתה
+    // בדיוק את ההפך מההוראה. מי שהגדיר ידנית — ההגדרה שלו נשמרת.
+    fitPageToText: readLs(DAF_LOCK_KEYS.fitPageToText, "1") === "1",
   };
 }
 
