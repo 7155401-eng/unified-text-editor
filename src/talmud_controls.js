@@ -229,9 +229,27 @@ export function wireTalmudLayoutControls(onChange) {
   const stretchGiveUpInput = document.getElementById("v9-stretch-giveup-input");
   if (!toggle) return;
 
-  // משה 2026-05-08: גפ"ת פתוח לדמו/אורחים (עם סימני מים בטקסט). לא חוסמים את ה-toggle.
+  // משה, מטלה 19: אותה פעולה מופיעה בשני מקומות בסרגל — „גפ"ת: צורת
+  // הדף" ו„תלמוד: שורות ימין/שמאל". עד היום שניהם נשאו את אותו מזהה,
+  // ומזהה חייב להיות יחיד בדף — ולכן הדפדפן החזיר תמיד את הראשון,
+  // והשני נראה על המסך אבל לא עשה כלום.
+  //
+  // לא מוחקים אף כפתור. נתנו לשני מזהה משלו, ומכאן הם חיים ביחד:
+  // לחיצה על אחד מסמנת גם את השני, ושניהם מפעילים את אותה פעולה.
+  const mirrorToggle = document.getElementById("talmud-layout-toggle-sides");
+  if (mirrorToggle) {
+    mirrorToggle.addEventListener("change", () => {
+      if (mirrorToggle.checked === toggle.checked) return;
+      toggle.checked = mirrorToggle.checked;
+      toggle.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    toggle.addEventListener("change", () => {
+      mirrorToggle.checked = toggle.checked;
+    });
+  }
 
   toggle.checked = isTalmudLayoutEnabled();
+  if (mirrorToggle) mirrorToggle.checked = toggle.checked;
   if (streamsInput) streamsInput.value = getTalmudStreamsText();
   if (crownInput)   crownInput.value   = getTalmudCrownLines();
   if (widthInput)   widthInput.value   = getTalmudMainWidth();
