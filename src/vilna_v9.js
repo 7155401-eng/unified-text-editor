@@ -1,5 +1,6 @@
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
+import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
@@ -3053,10 +3054,18 @@ function renderPagePlan(plan, pageEl, cfg) {
   // למטה ובכך ליצור חריגה חדשה.
   const finish = () => {
     autoResolveV9CrownMainOverlap(pageEl);
-    // ⛔ כאן הייתה החלה של המרווח-שמתחת-לגמרא בזמן אמת (סבב 43).
-    // משה דיווח אחריה על "רווחים מיותרים", והיא הדבר האחרון שנגע
-    // במרווחים — לכן היא הוסרה במלואה ולא טולאה. המרווח מוחל שוב
-    // רק פעם אחת, בסוף, כפי שהיה קודם.
+    // משה, 25/09, פעמיים: "ביקשתי מפורש שלא להמשיך שום עמוד לפני
+    // שהעמוד הנוכחי גמור לגמרי", ו"החלוקה לשני מנועים היא נגד
+    // ההנחיות".
+    //
+    // המרווח שמתחת לגמרא הוחל עד היום רק בסוף הרינדור, על כל
+    // העמודים ביחד — כלומר מנוע שני שעובר על הכול שוב. כאן הוא
+    // מוחל על העמוד ברגע שהוא נגמר, וכך העמוד סופי מרגע שצויר.
+    //
+    // ⚠️ הסרתי את זה קודם מתוך חשד שזה מקור "הרווחים המיותרים",
+    // ואז מדדתי: המרווחים היו זהים בדיוק עם ובלי. החשד היה שגוי,
+    // וההסרה הסירה דווקא את התיקון שמשה ביקש. מוחזר.
+    try { applyV9MainBottomGapToPage(pageEl); } catch (_) {}
   };
   if (typeof queueMicrotask === "function") {
     queueMicrotask(finish);
