@@ -2,6 +2,10 @@ const STORAGE_KEY = "ravtext.lang";
 
 const tr = {
   he: {
+    fmtBold: "ב",
+    fmtItalic: "נ",
+    fmtUnderline: "ק",
+    fmtHighlight: "מ",
     profileBtn: "מנוי",
     renderStop: "■ עצור רינדור",
     devUpdates: "📰 עדכוני פיתוח",
@@ -87,6 +91,10 @@ const tr = {
     "font-segoe": "סגו",
   },
   en: {
+    fmtBold: "B",
+    fmtItalic: "I",
+    fmtUnderline: "U",
+    fmtHighlight: "H",
     profileBtn: "Account",
     renderStop: "■ Stop render",
     devUpdates: "📰 Updates",
@@ -200,6 +208,10 @@ export function applyLanguage(forceLang) {
   // במקום לגעת ב-HTML של כל אחד — ממפים כאן מזהה למפתח תרגום.
   // ⛔ לא מוחק ולא משנה שום כפתור; רק מחליף את הכיתוב שלו לפי השפה.
   const BY_ID = {
+    "fmt-bold": "fmtBold",
+    "fmt-italic": "fmtItalic",
+    "fmt-underline": "fmtUnderline",
+    "fmt-highlight": "fmtHighlight",
     "profile-avatar-btn": "profileBtn",
     "btn-dev-updates": "devUpdates",
     "btn-troubleshooting": "troubleshoot",

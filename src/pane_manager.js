@@ -176,19 +176,33 @@ function ensureSelectionToolbar() {
     "direction:rtl", "z-index:9999",
   ].join(";");
 
-  // [כיתוב, שם הפעולה, כותרת מרחפת]
+  // משה, מטלה 20: לכפתורים כאן לא היה מזהה ולא תרגום, ולכן אי אפשר
+  // היה לתרגם אותם כלל — אין דרך לפנות לאלמנט שאין לו זהות.
+  // נוסף מזהה יציב לכל אחד, והכיתוב נבחר לפי השפה הפעילה.
+  //
+  // האותיות העבריות כאן הן ראשי תיבות: ב=מודגש, נ=נטוי, ק=קו תחתון,
+  // מ=הדגשה. באנגלית משתמשים בראשי התיבות המקבילים המקובלים.
+  const enUi = () => {
+    try { return document.documentElement.lang === "en"; } catch (_) { return false; }
+  };
+  const L = (he, en) => (enUi() ? en : he);
+
+  // [מזהה, כיתוב עברי, כיתוב אנגלי, שם הפעולה, כותרת עברית, כותרת אנגלית]
   const actions = [
-    ["ב", "toggleBold", "מודגש"],
-    ["נ", "toggleItalic", "נטוי"],
-    ["ק", "toggleUnderline", "קו תחתון"],
-    ["מ", "toggleHighlight", "הדגשה"],
-    ["x²", "toggleSuperscript", "מוגבה"],
-    ["x₂", "toggleSubscript", "מונמך"],
-    ["⌫", "unsetAllMarks", "נקה עיצוב"],
+    ["fmt-bold",        "ב",  "B",  "toggleBold",        "מודגש",      "Bold"],
+    ["fmt-italic",      "נ",  "I",  "toggleItalic",      "נטוי",       "Italic"],
+    ["fmt-underline",   "ק",  "U",  "toggleUnderline",   "קו תחתון",   "Underline"],
+    ["fmt-highlight",   "מ",  "H",  "toggleHighlight",   "הדגשה",      "Highlight"],
+    ["fmt-superscript", "x²", "x²", "toggleSuperscript", "מוגבה",      "Superscript"],
+    ["fmt-subscript",   "x₂", "x₂", "toggleSubscript",   "מונמך",      "Subscript"],
+    ["fmt-clear",       "⌫",  "⌫",  "unsetAllMarks",     "נקה עיצוב",  "Clear formatting"],
   ];
-  for (const [label, cmd, title] of actions) {
+  for (const [btnId, labelHe, labelEn, cmd, titleHe, titleEn] of actions) {
+    const label = L(labelHe, labelEn);
+    const title = L(titleHe, titleEn);
     const b = document.createElement("button");
     b.type = "button";
+    b.id = btnId;
     b.textContent = label;
     b.title = title;
     b.setAttribute("aria-label", title);
@@ -525,7 +539,9 @@ export class Pane {
       this.element.classList.toggle("marker-bar-collapsed", this.markerBarCollapsed);
     }
     if (this._markerToggle) {
-      this._markerToggle.textContent = this.markerBarCollapsed ? "מס׳ ▾" : "מס׳ ▴";
+      // משה, מטלה 20: הכיתוב נבנה בקוד ולכן נבחר לפי השפה הפעילה.
+      const numLbl = (document.documentElement.lang === "en") ? "No." : "מס׳";
+      this._markerToggle.textContent = numLbl + (this.markerBarCollapsed ? " ▾" : " ▴");
       this._markerToggle.title = this.markerBarCollapsed
         ? "הצג רשימת מספרי הערות"
         : "מזער רשימת מספרי הערות";

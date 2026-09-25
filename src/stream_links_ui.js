@@ -286,7 +286,8 @@ function linkSummary(code) {
   } catch (_) {
     parents = [];
   }
-  if (!parents.length) return "\u2b05 לראשי בלבד";
+  // משה, מטלה 20: הכיתוב נבנה בקוד ולכן נבחר לפי השפה הפעילה.
+  if (!parents.length) return "⬅ " + (document.documentElement.lang === "en" ? "To main only" : "לראשי בלבד");
   if (parents.length === 1) {
     const one = streamPanes().find((p) => String(p.code) === String(parents[0]));
     return "\u2b05 " + (one ? one.label : "זרם " + parents[0]);
