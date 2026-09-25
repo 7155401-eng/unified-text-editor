@@ -2,6 +2,24 @@ const STORAGE_KEY = "ravtext.lang";
 
 const tr = {
   he: {
+    devUpdates: "📰 עדכוני פיתוח",
+    troubleshoot: "🛠️ פתרון בעיות",
+    reportBug: "🐞 דיווח באג",
+    contactUs: "✉️ צור קשר",
+    navVideos: "סרטונים",
+    navFaq: "שאלות",
+    navSettings: "הגדרות",
+    navDownloads: "הורדות",
+    navGift: "מתנה",
+    navPremium: "פרמיום",
+    renderTab: "רינדור",
+    renderNow: "⟳ רנדר",
+    highlightBtn: "🖍 הדגש",
+    formatPainter: "🎨 מברשת",
+    streamRules: "כללי סגנון לכל זרם",
+    loadFont: "📁 טען",
+    openStreamMenu: "פתח תפריט זרמים",
+    shortHelp: "הסבר קצר",
     appTitle: "רב טקסט לוורד AI",
     status: 'טען טקסט ולחץ "רנדר עמודים" כדי לראות את התצוגה.',
     markAsStream: "סמן כזרם:",
@@ -67,6 +85,24 @@ const tr = {
     "font-segoe": "סגו",
   },
   en: {
+    devUpdates: "📰 Updates",
+    troubleshoot: "🛠️ Troubleshoot",
+    reportBug: "🐞 Report a bug",
+    contactUs: "✉️ Contact",
+    navVideos: "Videos",
+    navFaq: "FAQ",
+    navSettings: "Settings",
+    navDownloads: "Downloads",
+    navGift: "Gift",
+    navPremium: "Premium",
+    renderTab: "Render",
+    renderNow: "⟳ Render",
+    highlightBtn: "🖍 Highlight",
+    formatPainter: "🎨 Format painter",
+    streamRules: "Per-stream style rules",
+    loadFont: "📁 Load",
+    openStreamMenu: "Open streams menu",
+    shortHelp: "Quick help",
     appTitle: "RavText to Word AI",
     status: 'Load text and click "Render pages" to see the preview.',
     markAsStream: "Mark as stream:",
@@ -155,6 +191,35 @@ export function applyLanguage(forceLang) {
   // Also set body class so CSS can target language-specific tweaks.
   document.body.classList.toggle("lang-he", currentLang === "he");
   document.body.classList.toggle("lang-en", currentLang === "en");
+
+  // משה, מטלה 20: כפתורים שנוצרים בקוד ואין להם data-i18n ב-HTML.
+  // במקום לגעת ב-HTML של כל אחד — ממפים כאן מזהה למפתח תרגום.
+  // ⛔ לא מוחק ולא משנה שום כפתור; רק מחליף את הכיתוב שלו לפי השפה.
+  const BY_ID = {
+    "btn-dev-updates": "devUpdates",
+    "btn-troubleshooting": "troubleshoot",
+    "btn-report-bug": "reportBug",
+    "btn-contact": "contactUs",
+    "rt-prem-icon-videos": "navVideos",
+    "rt-prem-icon-faq": "navFaq",
+    "rt-prem-icon-settings": "navSettings",
+    "rt-prem-icon-downloads": "navDownloads",
+    "rt-prem-icon-gift": "navGift",
+    "rt-prem-icon-diamond": "navPremium",
+    "btn-render-tab": "renderTab",
+    "btn-render": "renderNow",
+    "btn-highlight": "highlightBtn",
+    "btn-format-painter": "formatPainter",
+    "btn-stream-auto-rules": "streamRules",
+    "local-font-upload-btn": "loadFont",
+    "nested-notes-open-stream-menu-btn": "openStreamMenu",
+    "nested-notes-short-help-btn": "shortHelp",
+  };
+  for (const id in BY_ID) {
+    const el = document.getElementById(id);
+    const val = tr[currentLang] && tr[currentLang][BY_ID[id]];
+    if (el && val) el.textContent = val;
+  }
 
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n");
