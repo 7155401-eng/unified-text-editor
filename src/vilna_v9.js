@@ -2884,8 +2884,27 @@ function renderPagePlan(plan, pageEl, cfg) {
 
       if (actualFontSize > 0) lineEl.style.fontSize = actualFontSize + 'px';
       if (safeLineHeight > 0) {
+        // ★ משה 25/09: "שורה תחתונה עולה על חצי משורה שמעליה ומכסה
+        // חצי ממנה" (עמ' ד' ועמ' ט').
+        //
+        // נמדד: 62 זוגות שורות חופפים ב-49 מתוך 55 עמודים, כולם
+        // בטקסט הראשי. השורש — המנוע הקצה לשורה מרווח של 15.17
+        // פיקסלים, ואז שלב הציור הגדיל את גובה הקופסה ל-20.15 כדי
+        // להגן על הניקוד. אבל המיקום של השורה **הבאה** כבר נקבע לפי
+        // 15.17, ולכן הקופסה הגדולה נכנסה לתוכה. ההפרש 4.98 הוא
+        // בדיוק החפיפה שנמדדה.
+        //
+        // זה בדיוק מה שמשה תיאר: "מחשב חישובים ולאחר מכן לא מתקן את
+        // הפלט שנוצר לפי החישובים שלו".
+        //
+        // התיקון: גובה **הקופסה** נשאר המרווח שהמנוע הקצה, כדי שלא
+        // תיכנס לשכנתה. גובה **השורה** (line-height) נשאר הגדול,
+        // והאות מצוירת בו במלואה — הדפדפן מצייר מעבר לקופסה כל עוד
+        // אין חיתוך, ולכן שום ניקוד לא נעלם.
         lineEl.style.lineHeight = safeLineHeight + 'px';
-        lineEl.style.height = safeLineHeight + 'px';
+        const allottedHeight = Number(line.lineHeightPx) > 0 ? Number(line.lineHeightPx) : safeLineHeight;
+        lineEl.style.height = Math.min(safeLineHeight, allottedHeight) + 'px';
+        if (allottedHeight < safeLineHeight) lineEl.style.overflow = 'visible';
       }
 
       // משה 2026-05-19: מתיחה מאוזנת לשורת חיתוך קצרה מדי.
