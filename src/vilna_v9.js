@@ -494,30 +494,6 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
   };
 }
 
-// משה 14/09/2026: „במקום ליצור רווח מיותר פשוט להחזיר מילים אחורה."
-// ומשה 15/05/2026, סולם הפתרונות שכתב בעצמו, מהזול ליקר:
-//   1. שורה מגיעה לקצה — חינם
-//   2. שורה שלמה נדחפת לעמוד הבא — זול
-//   3. שורות הפסקה מתפזרות אחרת — בינוני
-//   4. **רווחים בין מילים מצומצמים** — יותר יקר
-//   5. חיתוך באמצע שורה — היקר ביותר
-//
-// ## למה שלב 4 ולא „משיכה אחורה"
-// מדדתי: מתוך 41,153 זוגות שורות, ב-1,847 מקרים השורה נשארה קצרה —
-// ובכל אחד מהם המילה הבאה **פשוט לא נכנסת**. אין מה למשוך אחורה,
-// כי המילוי כבר ניסה ונכשל. לכן עוברים לשלב הבא בסולם שמשה קבע.
-//
-// ## מה נעשה כאן
-// לפני שמוותרים על מילה ושוברים, בודקים: אם היא נכנסת כשמצמצמים
-// מעט את הרווחים שכבר יש בשורה — מכניסים אותה. הצמצום מוגבל ל-12%
-// מרוחב רווח, וזה **הפוך** ממה שקורה היום: היום השורה נשארת קצרה
-// והיישור **מותח** את אותם רווחים הרבה יותר מזה.
-//
-// ⬛ אותיות, גופן וגובה שורה לא משתנים כלל. רק המרווח שבין מילה
-//    למילה מצטמצם במעט, ורק בשורה שאחרת הייתה נמתחת.
-const MAX_SPACE_SQUEEZE = 0.12;   // עד 12% צמצום ברווח
-const MIN_GAPS_TO_SQUEEZE = 2;    // צריך לפחות שני רווחים כדי שיהיה מה לצמצם
-
 function buildOneLine(tokens, startIdx, widthPx, metrics) {
   const spaceW = metrics.spaceWidth;
   let curWidth = 0;
@@ -525,7 +501,6 @@ function buildOneLine(tokens, startIdx, widthPx, metrics) {
   const lineWordTokens = [];
   let forcedBreak = false;
   let tokensConsumed = 0;
-  let squeezedSpaces = 0;   // כמה צומצם כל רווח בשורה הזו, בפיקסלים
 
   for (let i = startIdx; i < tokens.length; i++) {
     const tok = tokens[i];
@@ -545,22 +520,9 @@ function buildOneLine(tokens, startIdx, widthPx, metrics) {
       curWidth = addW;
       tokensConsumed++;
     } else {
-      // המילה לא נכנסת ברווחים הרגילים. לפני שמוותרים עליה ומשאירים
-      // שורה קצרה שתימתח — בודקים אם היא נכנסת בצמצום קל של הרווחים
-      // שכבר בשורה. אם כן, עדיף לצמצם מעט מאשר למתוח הרבה.
-      const gaps = lineWords.length;          // מספר הרווחים אחרי הוספת המילה
-      if (gaps >= MIN_GAPS_TO_SQUEEZE) {
-        const overflow = addW - widthPx;
-        const maxSqueeze = spaceW * MAX_SPACE_SQUEEZE * gaps;
-        if (overflow <= maxSqueeze) {
-          lineWords.push(tok.text);
-          lineWordTokens.push(tok);
-          curWidth = widthPx;                 // אחרי הצמצום השורה מגיעה בדיוק לשוליים
-          tokensConsumed++;
-          squeezedSpaces = Math.round((overflow / gaps) * 100) / 100;
-          continue;
-        }
-      }
+      // ⛔ כאן היה צמצום רווחים כדי להכניס מילה נוספת (25/09). משה:
+      // "המנוע החדש שלך שובר שורות באמצע ללא שום הסבר" — ההסרה מיידית
+      // ומלאה, בלי טלאי. חוזרים לשבירה הרגילה בדיוק כפי שהייתה.
       break;
     }
   }
@@ -572,7 +534,6 @@ function buildOneLine(tokens, startIdx, widthPx, metrics) {
     tokensConsumed,
     width: curWidth,
     forcedBreak,
-    squeezedSpaces,
   };
 }
 
