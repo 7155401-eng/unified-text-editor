@@ -347,7 +347,34 @@ export function fitPageIntoView(pageEl) {
   const avail = Math.max(60, (container.clientWidth || 0) - padX - 4);
   const pageW = parseFloat(pageEl.style.width) || pageEl.offsetWidth || 0;
   if (!pageW || !avail) return;
-  const z = pageW > avail ? Math.max(0.15, avail / pageW) : 1;
+
+  // משה, 25/09: "דפים גדולים מרוחב התצוגה, למרות שביקשתי מפורש
+  // שלא יהיה כך — אלא שכל דף בכל גודל יתאים את עצמו בתצוגה
+  // אוטומטית **לגובה תצוגת המסך**, כברירת מחדל עם אפשרות לשנות."
+  //
+  // עד כה ההתאמה נעשתה לרוחב בלבד, ולכן דף גבוה נכנס לרוחב אבל
+  // חרג מהמסך לגובה. נמדד על הפלט שלו: 23 מתוך 24 עמודים היו
+  // גבוהים מהחלון (1297 מול 1000).
+  //
+  // עכשיו מחשבים שני מכפילים — אחד לרוחב ואחד לגובה — ולוקחים את
+  // הקטן, כך שהדף נכנס בשלמותו. מי שמעדיף את ההתנהגות הישנה יכול
+  // לכבות בהגדרה אחת.
+  const fitHeightToo = (() => {
+    try { return localStorage.getItem("ravtext.vilnaDaf.fitToScreenHeight") !== "0"; }
+    catch (_) { return true; }
+  })();
+  const zW = pageW > avail ? Math.max(0.15, avail / pageW) : 1;
+  let zH = 1;
+  if (fitHeightToo) {
+    const padY = cs ? (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0) : 16;
+    // גובה הצפייה: המיכל אם הוא מוגבל, אחרת חלון הדפדפן
+    const winH = (typeof window !== "undefined" && window.innerHeight) || 0;
+    const contH = (container.clientHeight || 0) - padY - 4;
+    const availH = Math.max(120, contH > 80 ? contH : winH - 120);
+    const pageH = parseFloat(pageEl.style.height) || pageEl.offsetHeight || 0;
+    if (pageH && availH && pageH > availH) zH = Math.max(0.15, availH / pageH);
+  }
+  const z = Math.min(zW, zH);
   pageEl.style.zoom = z === 1 ? "" : String(Math.round(z * 10000) / 10000);
   pageEl.dataset.dafViewZoom = String(Math.round(z * 1000) / 1000);
 }
