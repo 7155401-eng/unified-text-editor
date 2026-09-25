@@ -901,7 +901,25 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       // (זו הדרך שמשה ניסח: "למלא את התוכן או להקטין בגודל יחסי" —
       //  ולא לחתוך את הנייר.)
       const uniformCfg = { ...cfg, pageWidth: W, pageHeight: H };
-      for (let si2 = 0; si2 < segments.length && si2 < allPages.length; si2++) {
+      // ⛔⛔ משה, 24/09: "גודל המילים והאותיות והרווחים והכל תמיד
+      // יישאר אותו דבר, רק גודל הדף ישתנה בלבד". ו-25/09: "רק ביחס
+      // גודל ורוחב של כל העמודים של המסמך".
+      //
+      // המעבר שמתחיל כאן מגדיל את **האות** בכל דף שאינו מלא — וזה
+      // בדיוק מה שההוראות האחרונות אוסרות. הוא נבנה ב-14/09 לפי
+      // בקשה קודמת ("למלא את התוכן או להקטין בגודל יחסי"), וההוראה
+      // החדשה גוברת עליה.
+      //
+      // ⬛ לא נמחק דבר: המעבר נשאר במלואו ורק מדולג, ואפשר להחזיר
+      //    אותו בהגדרה אחת. כך גם נשמרות כל המדידות שהושקעו בו.
+      //
+      // נמדד על הפלט של משה: המעבר חישב 14 ערכי dafScale שונים —
+      // כלומר אות בגודל אחר כמעט לכל עמוד.
+      const allowLetterResize = (() => {
+        try { return localStorage.getItem("ravtext.vilnaDaf.allowLetterResize") === "1"; }
+        catch (_) { return false; }
+      })();
+      for (let si2 = 0; allowLetterResize && si2 < segments.length && si2 < allPages.length; si2++) {
         if (!isCurrent()) break;
         const pageEl = allPages[si2];
         const seg2 = segments[si2];
