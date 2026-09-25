@@ -14,12 +14,20 @@ export function installRenderPauseControls() {
   const PREV_LIVE_KEY = "ravtext.renderPaused.prevLiveRender";
   const STOP_GUARD_MS = 15000;
 
+  // משה, מטלה 20: הכיתובים האלה נכתבו על הכפתור שוב ושוב בזמן
+  // עבודה, ולכן כל תרגום שהוחל עליהם מבחוץ נדרס מיד.
+  // התיקון במקור: הטקסט נבחר לפי השפה הפעילה ברגע הכתיבה.
+  const enUi = () => {
+    try { return document.documentElement.lang === "en"; } catch (_) { return false; }
+  };
+  const L = (he, en) => (enUi() ? en : he);
+
   const T = {
-    render: "⟳ רנדר",
-    stop: "■ עצור רינדור",
-    pause: "⏸ השהיית רינדור",
-    resume: "▶ המשך רינדור",
-    resumeRender: "▶ המשך ורנדר",
+    get render() { return L("⟳ רנדר", "⟳ Render"); },
+    get stop() { return L("■ עצור רינדור", "■ Stop render"); },
+    get pause() { return L("⏸ השהיית רינדור", "⏸ Pause render"); },
+    get resume() { return L("▶ המשך רינדור", "▶ Resume render"); },
+    get resumeRender() { return L("▶ המשך ורנדר", "▶ Resume and render"); },
     paused: "רינדור מושהה — אפשר לשנות כמה דברים בלי להמתין.",
     pending: "רינדור מושהה — השינויים נשמרו, אבל עדיין לא רונדרו.",
     resumeStatus: "יוצא מהשהייה — מרנדר פעם אחת את המצב האחרון...",

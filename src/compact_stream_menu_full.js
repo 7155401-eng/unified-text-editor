@@ -4,6 +4,22 @@
 
 const MENU_BTN = "nested-notes-open-stream-menu-btn";
 const HELP_BTN = "nested-notes-short-help-btn";
+
+// משה, מטלה 20: שני הכפתורים כאן נכתבו עם טקסט עברי קבוע בקוד,
+// ו-MutationObserver שבקובץ הזה בונה אותם מחדש שוב ושוב — ולכן כל
+// תרגום שהוחל עליהם מבחוץ נדרס תוך שבריר שנייה.
+// התיקון במקור: הטקסט נבחר לפי השפה הפעילה, ולא מקובע.
+function uiLang() {
+  try {
+    return (document.documentElement.lang === "en") ? "en" : "he";
+  } catch (_) {
+    return "he";
+  }
+}
+function label(he, en) {
+  return uiLang() === "en" ? en : he;
+}
+
 const WRAP_ID = "nested-notes-stream-menu-actions-wrap";
 const POPOVER_ID = "nested-notes-stream-menu-popover";
 const BULK_ID = "stream-menu-bulk-actions";
@@ -368,7 +384,7 @@ function mainButton() {
       toggleMenu();
     });
   }
-  setText(b, "פתח תפריט זרמים");
+  setText(b, label("פתח תפריט זרמים", "Open streams menu"));
   setAttr(b, "aria-haspopup", "dialog");
   setAttr(b, "aria-expanded", isOpen() ? "true" : "false");
   setCss(b, [
@@ -407,8 +423,8 @@ function helpButton() {
       run("help");
     });
   }
-  setText(b, "הסבר קצר");
-  setAttr(b, "title", "הסבר קצר על קישור ההערות לפנים");
+  setText(b, label("הסבר קצר", "Quick help"));
+  setAttr(b, "title", label("הסבר קצר על קישור ההערות לפנים", "Quick help on linking notes inward"));
   setCss(b, [
     "display:inline-flex",
     "align-items:center",
