@@ -2,6 +2,8 @@ const STORAGE_KEY = "ravtext.lang";
 
 const tr = {
   he: {
+    profileBtn: "מנוי",
+    renderStop: "■ עצור רינדור",
     devUpdates: "📰 עדכוני פיתוח",
     troubleshoot: "🛠️ פתרון בעיות",
     reportBug: "🐞 דיווח באג",
@@ -85,6 +87,8 @@ const tr = {
     "font-segoe": "סגו",
   },
   en: {
+    profileBtn: "Account",
+    renderStop: "■ Stop render",
     devUpdates: "📰 Updates",
     troubleshoot: "🛠️ Troubleshoot",
     reportBug: "🐞 Report a bug",
@@ -196,6 +200,7 @@ export function applyLanguage(forceLang) {
   // במקום לגעת ב-HTML של כל אחד — ממפים כאן מזהה למפתח תרגום.
   // ⛔ לא מוחק ולא משנה שום כפתור; רק מחליף את הכיתוב שלו לפי השפה.
   const BY_ID = {
+    "profile-avatar-btn": "profileBtn",
     "btn-dev-updates": "devUpdates",
     "btn-troubleshooting": "troubleshoot",
     "btn-report-bug": "reportBug",
@@ -207,7 +212,6 @@ export function applyLanguage(forceLang) {
     "rt-prem-icon-gift": "navGift",
     "rt-prem-icon-diamond": "navPremium",
     "btn-render-tab": "renderTab",
-    "btn-render": "renderNow",
     "btn-highlight": "highlightBtn",
     "btn-format-painter": "formatPainter",
     "btn-stream-auto-rules": "streamRules",
@@ -215,10 +219,31 @@ export function applyLanguage(forceLang) {
     "nested-notes-open-stream-menu-btn": "openStreamMenu",
     "nested-notes-short-help-btn": "shortHelp",
   };
-  for (const id in BY_ID) {
-    const el = document.getElementById(id);
-    const val = tr[currentLang] && tr[currentLang][BY_ID[id]];
-    if (el && val) el.textContent = val;
+  const applyById = () => {
+    for (const id in BY_ID) {
+      const el = document.getElementById(id);
+      const val = tr[currentLang] && tr[currentLang][BY_ID[id]];
+      if (el && val && el.textContent !== val) el.textContent = val;
+    }
+    // כפתור הרינדור מיוחד: הכיתוב שלו מתחלף בזמן עבודה בין "רנדר"
+    // ל"עצור רינדור", ולכן אסור לקבע לו טקסט אחד. מזהים באיזה מצב
+    // הוא נמצא לפי הכיתוב הנוכחי, ומתרגמים את אותו מצב בלבד.
+    const rb = document.getElementById("btn-render");
+    if (rb) {
+      const t = (rb.textContent || "");
+      const stopping = /עצור|Stop/.test(t);
+      const key = stopping ? "renderStop" : "renderNow";
+      const val = tr[currentLang] && tr[currentLang][key];
+      if (val && rb.textContent !== val) rb.textContent = val;
+    }
+  };
+  applyById();
+  // ⭐ חלק מהכפתורים נבנים אחרי שהשפה כבר הוחלה, וחלקם נכתבים מחדש
+  // בזמן עבודה. לכן מחילים שוב: מעט אחרי, ובכל פעם שהרינדור מסתיים.
+  setTimeout(applyById, 1200);
+  if (!window.__i18nRerunBound) {
+    window.__i18nRerunBound = true;
+    window.addEventListener("ravtext:engine-rendered", () => setTimeout(applyById, 60));
   }
 
   document.querySelectorAll("[data-i18n]").forEach((el) => {
