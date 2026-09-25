@@ -154,9 +154,33 @@ export function buildExportCoverPage(options = {}) {
   page.className = "page ravtext-export-cover-page";
   page.setAttribute("dir", "rtl");
   page.dataset.exportCover = "1";
+  // משה, 25/09: "עמוד ראשון פונט שונה משאר העמודים".
+  //
+  // מדדתי: הפונט **זהה** (FrankRuehl DP בשניהם) — מה ששונה הוא
+  // **הגודל**. דף השער נוצר תמיד ב-380x537, בעוד שבצורת הדף שאר
+  // העמודים מוגדלים (למשל ל-931x1316). לכן הוא נראה קטן ודחוס,
+  // וזה נקרא "פונט אחר".
+  //
+  // ⚠️ הפרדה שמשה הדגיש: יש כללים נפרדים לצורת הדף ולעימוד הקלאסי.
+  // לכן מתאימים את דף השער **רק** אם עמודי המסמך באמת שונים מגודל
+  // ברירת המחדל — כלומר רק בצורת הדף. בעימוד קלאסי שום דבר לא זז.
+  const coverSize = (() => {
+    const base = { w: 380, h: 537 };
+    try {
+      const sample = document.querySelector("#pages-container > .page.v9-page, .pages-container > .page.v9-page");
+      if (!sample) return base;
+      const w = parseFloat(sample.style.width) || 0;
+      const h = parseFloat(sample.style.height) || 0;
+      if (w > 0 && h > 0 && (Math.abs(w - base.w) > 1 || Math.abs(h - base.h) > 1)) {
+        return { w: Math.round(w), h: Math.round(h) };
+      }
+    } catch (_) {}
+    return base;
+  })();
+
   page.style.cssText = [
-    "width:380px",
-    "height:537px",
+    `width:${coverSize.w}px`,
+    `height:${coverSize.h}px`,
     "box-sizing:border-box",
     "padding:34px 32px 30px 32px",
     "background:#fff",
