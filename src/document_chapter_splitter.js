@@ -924,7 +924,7 @@ async function importChapter(chapterIndex) {
       {
         notesHtmlMap,
         skipEmptyNotes: true,
-        markerMatchMode: "starts",
+        markerMatchMode: "contains",
       }
     );
 
@@ -982,7 +982,12 @@ async function importAllChapters() {
       const result = await docx_extract_simple(
         buffer.slice(0),
         selected,
-        { notesHtmlMap, skipEmptyNotes: true, markerMatchMode: "starts" }
+        // ★ משה 27/09/2026 — „במסך יבוא מוורד יש אפשרות מכילה או מתחילה,
+        // כברירת מחדל שיהיה מכילה".
+        // המסלול של מסמך שלם כבר שונה ל-contains; כאן, במסלול של מסמך
+        // מחולק לפרקים, נשאר "starts" — ואותו קובץ היה מתנהג אחרת לפי
+        // הדרך שבה נטען. עכשיו שני המסלולים זהים.
+        { notesHtmlMap, skipEmptyNotes: true, markerMatchMode: "contains" }
       );
 
       if (docId) {
