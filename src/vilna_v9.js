@@ -346,6 +346,28 @@ function richTextFromRemainingTokens(tokens, startIdx, sourceRuns) {
 }
 
 // =====================================================================
+// כמה שורות נכנסות ברצועה בגובה נתון
+// =====================================================================
+// ★ משה 27/09/2026 — „מילת הפתיח אינה שומרת ריק מתחתיה".
+// רצועה שנבנתה במכוון בגובה של בדיוק שתי שורות יצאה לפעמים בגובה
+// 37.199999999999996 במקום 37.2, כי 18.6 אינו ניתן לייצוג מדויק
+// במספר עשרוני בינארי. החלוקה החזירה 1.9999999999999996, ו-Math.floor
+// הפך את זה ל-1. התוצאה: רק שורה אחת נכנסה לרצועה המוצרת שליד מילת
+// הפתיח, והשורה השנייה גלשה לרצועה הרחבה שמתחתיה וקיבלה רוחב מלא —
+// ולכן הרווח מתחת למילת הפתיח נעלם.
+// נמדד באותו רינדור: 265 רצועות נפגעו מול 107 שיצאו תקינות, וההבדל
+// היחיד ביניהן היה הסיבית האחרונה של המספר.
+// הסף 1e-6 שורה = כ-0.00002 פיקסל בגובה שורה רגיל — קטן מכל מידה
+// אמיתית, וגדול בהרבה משגיאת החישוב (בערך 4e-16).
+const V9_LINE_FIT_EPSILON = 1e-6;
+function v9LinesThatFit(height, lineHeight) {
+  const h = Number(height);
+  const lh = Number(lineHeight);
+  if (!(lh > 0) || !(h > 0)) return 0;
+  return Math.floor(h / lh + V9_LINE_FIT_EPSILON);
+}
+
+// =====================================================================
 // מזרים טקסט בפסים אנכיים בעלי רוחבים שונים
 // =====================================================================
 function flowStreamThroughStrips(input, strips, metrics, maxY) {
@@ -381,7 +403,7 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
     if (curY < strip.y_start) curY = strip.y_start;
 
     const availableHeight = nextStripY - curY;
-    const availableLines = Math.floor(availableHeight / lineH);
+    const availableLines = v9LinesThatFit(availableHeight, lineH);
 
     if (availableLines <= 0) {
       if (
@@ -618,7 +640,7 @@ function splitWordsByStrips(text, metrics, rightStrips) {
   
   // הסר רצועות לא תקינות
   const strips = rightStrips.filter(s => 
-    s && s.width > 0 && s.height > 0 && Math.floor(s.height / lineH) > 0
+    s && s.width > 0 && s.height > 0 && v9LinesThatFit(s.height, lineH) > 0
   );
   if (strips.length === 0) return null;
   
@@ -634,7 +656,7 @@ function splitWordsByStrips(text, metrics, rightStrips) {
       const strip = strips[i];
       if (cursor >= wordSlice.length) break;
       
-      const maxLines = Math.floor(strip.height / lineH);
+      const maxLines = v9LinesThatFit(strip.height, lineH);
       if (maxLines <= 0) continue;
       
       const remaining = wordSlice.slice(cursor).join(' ');
@@ -673,7 +695,7 @@ function splitWordsByStrips(text, metrics, rightStrips) {
 
     for (let i = 0; i < strips.length; i++) {
       const strip = strips[i];
-      const maxLines = Math.max(0, Math.floor(strip.height / lineH));
+      const maxLines = Math.max(0, v9LinesThatFit(strip.height, lineH));
       capacity += maxLines;
       if (cursor >= wordSlice.length || maxLines <= 0) continue;
 
@@ -797,7 +819,7 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
   if (!(lineH > 0)) return fallback;
 
   const strips = rightStrips.filter(s =>
-    s && Number(s.width) > 0 && Number(s.height) > 0 && Math.floor(Number(s.height) / lineH) > 0
+    s && Number(s.width) > 0 && Number(s.height) > 0 && v9LinesThatFit(s.height, lineH) > 0
   );
   if (!strips.length) return fallback;
 
@@ -818,7 +840,7 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
 
     for (let i = 0; i < strips.length; i++) {
       const strip = strips[i];
-      const maxLines = Math.max(0, Math.floor(Number(strip.height) / lineH));
+      const maxLines = Math.max(0, v9LinesThatFit(strip.height, lineH));
       capacity += maxLines;
       if (cursor >= target || maxLines <= 0) continue;
 
@@ -864,7 +886,7 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
     let totalLines = 0;
 
     for (const strip of strips) {
-      const maxLines = Math.max(0, Math.floor(Number(strip.height) / lineH));
+      const maxLines = Math.max(0, v9LinesThatFit(strip.height, lineH));
       if (maxLines <= 0 || cursor >= words.length) continue;
 
       const remaining = words.slice(cursor).join(' ');
@@ -1420,31 +1442,15 @@ function cloneV9StripsFromY(strips, startY) {
   return out;
 }
 
-function applyV9OpeningWindowToStrips(strips, model, metrics, pageBottom) {
-  if (!model || !Array.isArray(strips) || strips.length === 0) {
-    return { strips: strips || [], skippedReason: model ? "no-main-strips" : "disabled" };
-  }
-  const first = strips[0];
-  const reserve = Math.max(0, Math.min(
-    Number(model.metrics?.reserveWidthPx) || 0,
-    Math.max(0, (first.width || 0) - 24)
-  ));
-  if (reserve <= 0) return { strips, skippedReason: "no-reserve-width" };
-
-  const lineH = metrics.lineHeight;
-  const windowLineCount = Math.max(1, Number(model.flow?.windowLineCount) || 1);
-  const windowTop = first.y_start;
-  const windowBottom = windowTop + windowLineCount * lineH;
-  if (model.position === "dropped" && windowBottom > pageBottom + 0.5) {
-    return { strips: [], skippedReason: "not-enough-page-space" };
-  }
-
+// ★ משה 27/09/2026 — צמצום הרצועות בתוך טווח אנכי נתון.
+// הופרד החוצה כדי שגם פסקה חדשה שמתחילה בעוד מילת הפתיח „חיה" תיכנס
+// לאותו חלון בדיוק. קודם לכן הצמצום היה קשור לפסקה אחת בלבד.
+function narrowV9StripsInYRange(strips, windowTop, windowBottom, reserve) {
   const out = [];
   const push = (strip) => {
     if (!strip || strip.y_end <= strip.y_start || strip.width <= 0) return;
     out.push(strip);
   };
-
   for (const strip of strips) {
     const overlapStart = Math.max(strip.y_start, windowTop);
     const overlapEnd = Math.min(strip.y_end, windowBottom);
@@ -1464,7 +1470,35 @@ function applyV9OpeningWindowToStrips(strips, model, metrics, pageBottom) {
     if (overlapEnd < strip.y_end) push({ ...strip, y_start: overlapEnd });
   }
   out.sort((a, b) => a.y_start - b.y_start || a.x - b.x || a.width - b.width);
-  return { strips: out, skippedReason: "" };
+  return out;
+}
+
+function applyV9OpeningWindowToStrips(strips, model, metrics, pageBottom) {
+  if (!model || !Array.isArray(strips) || strips.length === 0) {
+    return { strips: strips || [], skippedReason: model ? "no-main-strips" : "disabled" };
+  }
+  const first = strips[0];
+  const reserve = Math.max(0, Math.min(
+    Number(model.metrics?.reserveWidthPx) || 0,
+    Math.max(0, (first.width || 0) - 24)
+  ));
+  if (reserve <= 0) return { strips, skippedReason: "no-reserve-width" };
+
+  const lineH = metrics.lineHeight;
+  const windowLineCount = Math.max(1, Number(model.flow?.windowLineCount) || 1);
+  const windowTop = first.y_start;
+  const windowBottom = windowTop + windowLineCount * lineH;
+  if (model.position === "dropped" && windowBottom > pageBottom + 0.5) {
+    return { strips: [], skippedReason: "not-enough-page-space" };
+  }
+
+  const out = narrowV9StripsInYRange(strips, windowTop, windowBottom, reserve);
+  return {
+    strips: out,
+    skippedReason: "",
+    // החלון נמסר החוצה כדי שפסקה שתתחיל בזמן שהוא עוד פתוח תיכנס אליו גם היא
+    window: { top: windowTop, bottom: windowBottom, reserve },
+  };
 }
 
 function markV9ContinuationParagraph(p) {
@@ -1495,6 +1529,14 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
   const allLines = [];
   let curY = mainStrips && mainStrips[0] ? mainStrips[0].y_start : 0;
   let lastDebug = null;
+  // ★ משה 27/09/2026 — „מילת הפתיח אינה שומרת ריק מתחתיה".
+  // מילת פתיח מושפלת תופסת גובה של שתי שורות. אם הפסקה שפותחת בה
+  // ארוכה משורה אחת — השורה השנייה שלה נסוגה, וזה עבד. אבל כשהפסקה
+  // באורך שורה אחת בלבד, הפסקה הבאה התחילה מרצועות חדשות שנלקחו
+  // מהמקור הלא-מוצר, ולכן השורה הראשונה שלה נמתחה לכל הרוחב וישבה
+  // בדיוק מתחת לאות הגדולה — בלי שום ריק.
+  // לכן החלון נשמר כאן וממשיך לחול על כל פסקה שמתחילה בזמן שהוא פתוח.
+  let activeOpeningWindow = null;
 
   for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
@@ -1502,7 +1544,7 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
     if (!rich.text) continue;
 
     const continued = !!(entry.continues || entry._v9ContinuesFromSplit || entry._v9OpeningWordAllowed === false);
-    const model = !continued && entry._v9OpeningWordAllowed !== false
+    const modelForEntry = !continued && entry._v9OpeningWordAllowed !== false
       ? buildV9OpeningWordLayoutModel(rich.text, cfg.openingWordSettings || null, {
           isParagraphStart: true,
           continuesFromPrevious: false,
@@ -1513,7 +1555,26 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
 
     let paragraphStrips = cloneV9StripsFromY(mainStrips, curY);
     let flowInput = rich;
+    let model = modelForEntry;
     let skippedReason = continued ? "continued-from-prev" : "disabled-or-no-segment";
+
+    // ★ משה 27/09/2026 — שתי אותיות פתיח באותה פינה.
+    // אות פתיח מושפלת יורדת לגובה שתי שורות. כשהפסקה שפותחת בה באורך
+    // שורה אחת בלבד, חצי האות השני יורד אל השורה של הפסקה הבאה — ושם
+    // הייתה יושבת האות הגדולה שלה, זו על גבי זו באותה פינה ימנית.
+    // נמדד: 9 מתוך 20 מילות הפתיח בדף; בכולן השורה שמתחת נשאה בעצמה
+    // `opw-host`, ובכל ה-11 התקינות היא הייתה שורת המשך רגילה.
+    //
+    // ⛔ ניסיתי קודם להחליף את האות בגרסה „מורמת" במקום מושפלת. זה
+    // אמנם סגר את הפער (11/11), אבל אות מורמת בגודל 200% עולה מעל
+    // השורה — ומספר החפיפות בדף קפץ מ-3 ל-12. הוחזר לאחור.
+    //
+    // הפתרון שנשאר: פסקה שמתחילה בזמן שחלון של אות קודמת עוד פתוח
+    // אינה מקבלת אות משלה, אלא נכנסת לאותו חלון כטקסט רגיל. כך אין
+    // שתי אותיות באותו מקום, אין רווח מיותר, ואין אות שעולה מעל השורה.
+    if (model && activeOpeningWindow && curY < activeOpeningWindow.bottom - 0.5) {
+      model = null;
+    }
 
     if (model) {
       const prepared = applyV9OpeningWindowToStrips(paragraphStrips, model, mainMetrics, pageBottom);
@@ -1525,7 +1586,18 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
       }
       paragraphStrips = prepared.strips;
       flowInput = makeRichText(model.flow?.remainingText || "", []);
+      activeOpeningWindow = prepared.window || null;
+    } else if (activeOpeningWindow && curY < activeOpeningWindow.bottom - 0.5) {
+      // הפסקה הקודמת פתחה חלון למילת פתיח והוא עדיין לא נגמר —
+      // הפסקה הזו נכנסת לאותו חלון במקום להימתח על כל הרוחב.
+      paragraphStrips = narrowV9StripsInYRange(
+        paragraphStrips,
+        Math.max(curY, activeOpeningWindow.top),
+        activeOpeningWindow.bottom,
+        activeOpeningWindow.reserve
+      );
     }
+    if (activeOpeningWindow && curY >= activeOpeningWindow.bottom - 0.5) activeOpeningWindow = null;
 
     const flow = flowStreamThroughStrips(flowInput, paragraphStrips, mainMetrics, pageBottom);
     const lines = flow.lines || [];
@@ -3468,7 +3540,7 @@ export async function buildPages(container, paragraphs, config) {
       const explicit = parseInt(cfg.gapFillMaxMainLines, 10);
       if (Number.isFinite(explicit) && explicit > 0) return explicit;
       const lineH = cfg.mainFontSize * cfg.lineHeightRatio;
-      const availableLines = Math.max(1, Math.floor((cfg.pageHeight - 2 * cfg.padding) / lineH));
+      const availableLines = Math.max(1, v9LinesThatFit(cfg.pageHeight - 2 * cfg.padding, lineH));
       return Math.max(4, Math.min(9, Math.round(availableLines * 0.22)));
     };
     const carryGapMaxMainLines = () => Math.max(3, Math.min(5, dynamicGapFillMaxMainLines()));
