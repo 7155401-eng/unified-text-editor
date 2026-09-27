@@ -2345,10 +2345,12 @@ function buildPagePlan(pageContent, config) {
   }
   // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
   let pass2Left = null;
+  let leftAssumedRightEnd = null;
   if (pageContent.leftStream) {
     const otherEnd = pass2Right ? cap(pass2Right.endY)
                    : pass1Right ? cap(pass1Right.endY)
                    : mainTopY;
+    leftAssumedRightEnd = otherEnd;
     pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
@@ -2375,6 +2377,30 @@ function buildPagePlan(pageContent, config) {
       maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
       lockFullStrip3Start: !!pass2Left,
     });
+  }
+
+  // ★ משה 27/09/2026 — „חפיפה בטקסטים בין זרם ימני לשמאלי, ראה בעמוד הראשון".
+  // ההתכנסות כאן נעצרה צעד אחד מוקדם מדי. איטרציה 3 מריצה את הימני מחדש,
+  // והפעם מותר לו לקחת את הרצועה ברוחב מלא — ולכן הוא נגמר נמוך יותר מאשר
+  // בחישוב שעליו התבסס השמאלי באיטרציה 2. השמאלי, שכבר לא חושב מחדש,
+  // המשיך להניח שהימני נגמר גבוה, ופרש את הרצועה הרחבה שלו לתוך שטח
+  // שהימני תפס בפועל.
+  // נמדד על הייצוא של משה: 42 עמודים מתוך 55 עם חפיפה בין הזרמים,
+  // והגרועות כולן `left+right` — בעמוד הראשון 174×15.5 פיקסל, ושתי
+  // השורות התחילו באותו גובה בדיוק (372).
+  // כאן מושלמת ההתכנסות: אם הימני זז, השמאלי מחושב שוב מול המיקום החדש.
+  // פעם אחת בלבד — כדי שלא תיווצר לולאה.
+  if (pass2Left && pass2Right && leftAssumedRightEnd !== null) {
+    const actualRightEnd = cap(pass2Right.endY);
+    if (Math.abs(actualRightEnd - leftAssumedRightEnd) > 0.5) {
+      const relaid = buildSideStream(pageContent.leftStream, 'left', {
+        mainBottomY,
+        otherSideEndY: actualRightEnd,
+        maxFullStrip3Lines: 0,
+        lockFullStrip3Start: !!(pass2Right || pass1Right),
+      });
+      if (relaid) pass2Left = relaid;
+    }
   }
 
   if (pass2Right && pass2Left && pass2Right.id === pass2Left.id) {
