@@ -2438,7 +2438,17 @@ import pkg from "../package.json";
 try {
   const vEl = document.getElementById("app-version-display");
   if (vEl && pkg && pkg.version) {
-    vEl.textContent = `גירסה: ${pkg.version}`;
+    // ★ משה 27/09/2026 — "כדי שנדע אם התעדכן משהו".
+    // מספר הגרסה מ-package.json קבוע ולכן אינו עונה על זה. נצרפים אליו
+    // מזהה הדחיפה ותאריך הבנייה, ששניהם משתנים בכל פריסה — כך אפשר
+    // לראות בעין אם מה שעל המסך הוא באמת העדכון האחרון.
+    // בשרת פיתוח אין ערכים כאלה, ואז מוצג רק מספר הגרסה, כמו קודם.
+    const sha = typeof __RAVTEXT_BUILD_SHA__ === "string" ? __RAVTEXT_BUILD_SHA__ : "";
+    const when = typeof __RAVTEXT_BUILD_TIME__ === "string" ? __RAVTEXT_BUILD_TIME__ : "";
+    vEl.textContent = sha
+      ? `גירסה: ${pkg.version} · ${sha}`
+      : `גירסה: ${pkg.version}`;
+    if (when) vEl.title = `נבנה: ${when}${sha ? ` · ${sha}` : ""}`;
   }
 } catch (e) {}
 

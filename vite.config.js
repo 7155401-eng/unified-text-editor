@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { build, defineConfig } from 'vite'
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'
 
@@ -107,10 +108,31 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
   },
 };
 
+// ★ משה 27/09/2026 — "שיהיה גירסה על כל ענף למעלה מספר גירסה כדי שנדע
+// אם התעדכן משהו".
+// המספר מ-package.json הוא 0.1.0 והוא לא משתנה בין דחיפה לדחיפה, ולכן
+// אי אפשר לדעת ממנו אם הגרסה שעל המסך היא החדשה. כאן נצרב בזמן הבנייה
+// גם מזהה הדחיפה הקצר וגם תאריך הבנייה — שניהם משתנים בכל פריסה, וכך
+// אפשר לראות בעין אם מה שרואים הוא באמת העדכון האחרון.
+const BUILD_STAMP = (() => {
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    const when = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    return { sha, when };
+  } catch (_) {
+    // בנייה מחוץ לעותק גיט (למשל בשרת) — לא מפילים את הבנייה
+    return { sha: '', when: new Date().toISOString().slice(0, 16).replace('T', ' ') };
+  }
+})();
+
 export default defineConfig({
   base: BASE,
   worker: {
     format: 'es',
+  },
+  define: {
+    __RAVTEXT_BUILD_SHA__: JSON.stringify(BUILD_STAMP.sha),
+    __RAVTEXT_BUILD_TIME__: JSON.stringify(BUILD_STAMP.when),
   },
   plugins: [PUBLIC_CACHE_BUST, PEIMOT_TIDIO_WIDGET, CLOUDFLARE_ADVANCED_WORKER_BUILD],
 })
