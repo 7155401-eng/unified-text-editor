@@ -2889,7 +2889,33 @@ function renderPagePlan(plan, pageEl, cfg) {
 
   function drawBox(box, fontSize, lineHeight, fontFamily, colorClass) {
     const innerW = plan.pageBox.innerWidth;
+    // ★ משה 27/09/2026 — „יש שורות בטקסט הראשי שעוברות מעל השורה שעליהן
+    // ומסתירות קצת ממנה" (עמ' ד', שורה 2).
+    // נמדד על הייצוא שלו: 145 חפיפות מתוך 1,612 שורות ראשי. גובה הקופסה
+    // היה **תמיד 20.14** (13px × 1.55), אבל המרחק בפועל לשורה הבאה נע בין
+    // 11.86 ל-17.83 — וההפרש, 2.3 עד 8.3 פיקסלים, הוא בדיוק החפיפה.
+    // ⛔ ההגנה הקיימת הגבילה את הגובה ל-`line.lineHeightPx`, אבל גם הוא
+    // 20.15 — כלומר לא המרחק האמיתי. לכן היא לא תפסה את המקרים האלה.
+    // כאן מחשבים לכל שורה את המרחק **בפועל** אל השורה הבאה שמתחתיה
+    // באותו טור, וזו התקרה האמיתית לגובה הקופסה.
+    const byTop = box.lines
+      .map((l, i) => ({ i, y: Number(l.y) || 0, x: Number(l.x) || 0, w: Number(l.width) || 0 }))
+      .sort((a, b) => a.y - b.y);
+    const gapToNext = new Map();
+    for (let i = 0; i < byTop.length; i++) {
+      const cur = byTop[i];
+      for (let j = i + 1; j < byTop.length; j++) {
+        const nxt = byTop[j];
+        if (nxt.y <= cur.y + 0.5) continue;                 // אותה שורה
+        const overlapX = Math.min(cur.x + cur.w, nxt.x + nxt.w) - Math.max(cur.x, nxt.x);
+        if (overlapX <= 1) continue;                        // טור אחר — לא רלוונטי
+        gapToNext.set(cur.i, nxt.y - cur.y);
+        break;
+      }
+    }
+    let __lineIdx = -1;
     for (const line of box.lines) {
+      __lineIdx += 1;
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
@@ -3029,9 +3055,20 @@ function renderPagePlan(plan, pageEl, cfg) {
         // תיכנס לשכנתה. גובה **השורה** (line-height) נשאר הגדול,
         // והאות מצוירת בו במלואה — הדפדפן מצייר מעבר לקופסה כל עוד
         // אין חיתוך, ולכן שום ניקוד לא נעלם.
-        lineEl.style.lineHeight = safeLineHeight + 'px';
-        const allottedHeight = Number(line.lineHeightPx) > 0 ? Number(line.lineHeightPx) : safeLineHeight;
-        lineEl.style.height = Math.min(safeLineHeight, allottedHeight) + 'px';
+        // ★ משה 27/09/2026 — התקרה האמיתית היא המרחק **בפועל** לשורה
+        // שמתחתיה, לא `lineHeightPx` שהוא קבוע 20.15 גם כשהשורות צפופות.
+        const measuredGap = gapToNext.get(__lineIdx);
+        const allottedHeight = Number.isFinite(measuredGap) && measuredGap > 0
+          ? measuredGap
+          : (Number(line.lineHeightPx) > 0 ? Number(line.lineHeightPx) : safeLineHeight);
+        // גובה השורה לא יעלה על המרווח בפועל, אחרת האותיות נכנסות לשכנה.
+        // רצפה של 1.05 מגודל האות כדי שהגליף עצמו לעולם לא ייחתך.
+        const drawnLineHeight = Math.max(
+          Math.min(safeLineHeight, allottedHeight),
+          actualFontSize * 1.05
+        );
+        lineEl.style.lineHeight = drawnLineHeight + 'px';
+        lineEl.style.height = Math.min(drawnLineHeight, allottedHeight) + 'px';
         if (allottedHeight < safeLineHeight) lineEl.style.overflow = 'visible';
       }
 

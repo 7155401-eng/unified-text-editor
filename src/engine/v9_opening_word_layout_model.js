@@ -245,7 +245,15 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   };
 
   const openingWordWidthPx = measureOpeningTextWidthPx(parts.segment, effectiveOpeningFontSize, style);
-  const spaceAfterPx = Math.max(0, effectiveOpeningFontSize * settings.spaceAfter * 0.5);
+  // ★ משה 27/09/2026 — „בשורה השנייה הטקסט מתחיל רק מקביל להיכן שבשורה
+  // הראשונה מתחיל הטקסט הרגיל, כיום זה מתחיל קצת קודם".
+  // השורש: כאן נשמר **חצי** מהרווח (`* 0.5`), בעוד הציור נותן את הרווח
+  // המלא — `span.style.marginLeft = ${spaceAfterEm}em`, ו-em באלמנט הזה
+  // הוא גודל האות של מילת הפתיח עצמה. כלומר המקום שנתפס בפועל היה
+  // פי שניים מהמקום שנשמר, ולכן השורה השנייה נסוגה פחות מדי והתחילה
+  // קצת לפני תחילת הטקסט הרגיל שמעליה.
+  // מעכשיו שמורה בדיוק אותה כמות שמצוירת.
+  const spaceAfterPx = Math.max(0, effectiveOpeningFontSize * settings.spaceAfter);
   const windowLineCount = position === "dropped" ? dropLines : 1;
   const openingWordHeightPx = position === "dropped"
     ? Math.max(baseLineHeight * dropLines, effectiveOpeningFontSize * 1.05)

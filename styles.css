@@ -3467,6 +3467,26 @@ ol.ravtext-footnotes li { color: #475569; margin: 4px 0; }
   text-align-last: center;
 }
 
+/* ★ משה 27/09/2026 — "מילת פתיח בשורה יתומה ממורכזת: המילה בצד ימין
+   והשורה הממורכזת מרוחקת ממנה".
+   השורש: .opw-dropped משתמשת ב-float: right. אלמנט צף יוצא מזרימת
+   הטקסט ונדבק לקצה הימני של הקופסה, בעוד שאר השורה מתמרכזת — ולכן
+   נפער ביניהם רווח שגדל ככל שהשורה קצרה יותר.
+   בשורה ממורכזת אין מה לעטוף סביב האות (אין שורה שנייה מתחתיה), ולכן
+   הציפה מיותרת: המילה חוזרת לזרימה כאלמנט רגיל ומתמרכזת יחד עם
+   שאר השורה, צמודה אליה. */
+.v9-line.center .opw-dropped,
+.opw-center-full .opw-dropped,
+.center > .opw-dropped {
+  float: none;
+  display: inline-block;
+  vertical-align: baseline;
+  line-height: inherit;
+  margin-top: 0;
+  margin-left: var(--opw-space-after, 0.3em);
+  margin-right: 0;
+}
+
 .note-part {
   display: inline;
 }
