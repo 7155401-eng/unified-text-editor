@@ -359,6 +359,17 @@ function richTextFromRemainingTokens(tokens, startIdx, sourceRuns) {
 // היחיד ביניהן היה הסיבית האחרונה של המספר.
 // הסף 1e-6 שורה = כ-0.00002 פיקסל בגובה שורה רגיל — קטן מכל מידה
 // אמיתית, וגדול בהרבה משגיאת החישוב (בערך 4e-16).
+// ★ משה 27/09/2026 — „שורות בהערות צד קצרות מגבול הערות הצד".
+// הסף הזה מבטל את היישור בשורה שדורשת מתיחה גדולה מדי בין המילים,
+// כדי שלא ייפערו חורים. הוא מופיע בשני מקומות — בבניית השורה
+// וגם בשומר שרץ אחריה על ה-DOM — וההערה בשומר אומרת במפורש
+// „אותה תקרת מתיחה כמו למעלה".
+// ⛔ אבל הם נפרדו: אחד הועלה ל-12 (6139dcd) והשני נשאר 6. התוצאה —
+// השומר פסל שורות שהבנייה כבר אישרה. נמדד על הייצוא של משה:
+// 205 שורות אמצע-פסקה בהערות הצד נשארו קצרות מגבול הטור, **כולן**
+// נושאות `stretch-capped`, ו-155 מתוכן (76%) דרשו 7–12 בלבד —
+// כלומר הסף הגבוה היה מיישר אותן. מעכשיו מספר אחד לשני המקומות.
+const V9_MAX_EXTRA_PER_GAP_PX = 12;
 const V9_LINE_FIT_EPSILON = 1e-6;
 function v9LinesThatFit(height, lineHeight) {
   const h = Number(height);
@@ -2860,10 +2871,11 @@ function renderPagePlan(plan, pageEl, cfg) {
     const fill = renderedWidth / targetWidth;
     lineEl.dataset.v9RenderedFill = String(Math.max(0, Math.min(1, fill)).toFixed(4));
 
-    // ★ אותה תקרת מתיחה כמו למעלה. בלעדיה השומר הזה היה מוסיף יישור
-    // לשורות שהתקרה בדיוק פסלה — נמדד: 47 מתוך 96 שורות חמקו דרך כאן.
+    // ★ אותה תקרת מתיחה כמו למעלה — ועכשיו באמת אותו מספר,
+    // מתוך V9_MAX_EXTRA_PER_GAP_PX. קודם לכן כתוב היה כאן 6 בעוד שלמעלה
+    // הועלה ל-12, והשומר פסל שורות שהבנייה כבר אישרה.
     const extraPerGap = deficit / Math.max(1, wordCount - 1);
-    if (extraPerGap > 6) {
+    if (extraPerGap > V9_MAX_EXTRA_PER_GAP_PX) {
       lineEl.dataset.v9StretchCapped = String(Math.round(extraPerGap));
       return;
     }
@@ -2933,7 +2945,7 @@ function renderPagePlan(plan, pageEl, cfg) {
       // וזו מתיחה סבירה לגמרי — ולכן הן נראו "לא מיושרות משני
       // הצדדים" בלי סיבה. הסף הועלה ל-12; שורה שדורשת יותר מכך
       // עדיין לא תימתח.
-      const MAX_EXTRA_PER_GAP_PX = 12;
+      const MAX_EXTRA_PER_GAP_PX = V9_MAX_EXTRA_PER_GAP_PX;
       const gapCount = Math.max(1, ((line.words && line.words.length) || 1) - 1);
       const extraPerGap = ((Number(line.width) || 0) - (Number(line.naturalWidth) || 0)) / gapCount;
       const stretchTooWide = extraPerGap > MAX_EXTRA_PER_GAP_PX;
