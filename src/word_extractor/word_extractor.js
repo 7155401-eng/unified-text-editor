@@ -380,7 +380,7 @@ function captureImportEnhancementState(modal) {
   const file = modal.querySelector(".we-file-input")?.files?.[0] || null;
   const mappings = readIncludedRowsAndMappings();
   const skipEmptyNotes = modal.querySelector(".we-skip-empty-notes")?.checked !== false;
-  const markerMatchMode = modal.querySelector(".we-marker-match-mode")?.value || "starts";
+  const markerMatchMode = modal.querySelector(".we-marker-match-mode")?.value || "contains";
 
   _pendingEnhancement = {
     file,

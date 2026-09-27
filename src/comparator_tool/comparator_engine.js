@@ -90,7 +90,7 @@ export async function docx_find_streams(file) {
           id: `${src}_none`,
           source: src,
           marker: null,
-          label: `${heb} ללא סימון (${um})`,
+          label: `הערות ללא שיוך (${um})`,
           count: um
         });
       }

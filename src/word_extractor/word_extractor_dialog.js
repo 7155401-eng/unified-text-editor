@@ -59,6 +59,10 @@ function _getWorker() {
   if (!_worker) {
     _worker = new Worker(new URL('./word_extractor.worker.js', import.meta.url), { type: 'module' });
     _worker.onmessage = (ev) => {
+      if (ev.data.type === 'progress') {
+        setStatus(ev.data.message || 'מעבד...', false, ev.data.progress);
+        return;
+      }
       const { id, ok, result, error } = ev.data;
       const pending = _workerPending.get(id);
       if (!pending) return;
@@ -209,6 +213,7 @@ function ensureModalShell() {
       </div>
 
       <div class="we-status" hidden></div>
+      <progress id="import-progress" value="0" max="100" hidden style="width: 100%; margin-top: 5px;"></progress>
       <div class="we-meta" hidden></div>
       <div class="we-streams-wrap" hidden>
         <h3>${escapeHtml(t('streamsTable'))}</h3>
@@ -264,8 +269,8 @@ function ensureModalShell() {
         <label style="display:block; padding:3px 0; margin-top:6px;">
           התאמת סימן בהערות:
           <select class="we-marker-match-mode" style="margin-right:6px; padding:2px 6px;">
-            <option value="starts">מתחילה ב־ (אחרי רווחים)</option>
             <option value="contains">מכילה (בכל מקום)</option>
+            <option value="starts">מתחילה ב־ (אחרי רווחים)</option>
           </select>
         </label>
         <label style="display:block; padding:3px 0;">
@@ -419,13 +424,27 @@ export function closeModal() {
   if (m) m.classList.remove('active');
 }
 
-function setStatus(text, isError) {
+function setStatus(text, isError, progressVal = null) {
   const m = document.getElementById(MODAL_ID); if (!m) return;
   const el = m.querySelector('.we-status');
-  if (!text) { el.hidden = true; el.textContent = ''; return; }
+  const prog = m.querySelector('#import-progress');
+  if (!text) { 
+    el.hidden = true; 
+    el.textContent = ''; 
+    if (prog) prog.hidden = true;
+    return; 
+  }
   el.hidden = false;
   el.textContent = text;
   el.classList.toggle('we-error', !!isError);
+  if (prog) {
+    if (progressVal !== null) {
+      prog.hidden = false;
+      prog.value = progressVal;
+    } else {
+      prog.hidden = true;
+    }
+  }
 }
 
 async function onFileChange(ev) {
@@ -705,7 +724,7 @@ async function onConfirm() {
   try {
     // משה 2026-05-14: קריאת אפשרויות נוספות
     const skipEmptyNotes = document.querySelector('.we-skip-empty-notes')?.checked !== false;
-    const markerMatchMode = document.querySelector('.we-marker-match-mode')?.value || 'starts';
+    const markerMatchMode = document.querySelector('.we-marker-match-mode')?.value || 'contains';
     
     // משה 2026-05-09: מסלול ב — חיקוי docx_extract של comparator_tool.py.
     // בגוף נכנס רק הסמל (@01), תוכן ההערה לזרם הנפרד. אין LaTeX, אין סינון.

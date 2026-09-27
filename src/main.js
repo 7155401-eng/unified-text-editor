@@ -2434,4 +2434,11 @@ window.__streamMarkOnDetected = function (detected) {
 
 scheduleDiagnosticsRefresh({ force: true });
 
+import pkg from "../package.json";
+try {
+  const vEl = document.getElementById("app-version-display");
+  if (vEl && pkg && pkg.version) {
+    vEl.textContent = `גירסה: ${pkg.version}`;
+  }
+} catch (e) {}
 

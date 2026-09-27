@@ -50,7 +50,7 @@ function paneText(pane) {
 
 function countOccurrences(haystack, needle) {
   if (!haystack || !needle) return 0;
-  return haystack.split(needle).length - 1;
+  return (haystack.match(new RegExp(needle + "(?!\\d)", "g")) || []).length;
 }
 
 // משה 10/09/2026: „האזהרה עדיין קיימת.”

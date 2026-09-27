@@ -753,7 +753,7 @@ export async function docx_extract_simple(input, selected, opts = {}) {
 
   // משה 2026-05-14: תמיכה ב-skipEmptyNotes + markerMatchMode
   const skipEmptyNotes = opts.skipEmptyNotes !== false;
-  const markerMatchMode = opts.markerMatchMode || 'starts';
+  const markerMatchMode = opts.markerMatchMode || 'contains';
 
   function _res(txt, m2s, nsym) {
     // דילוג על הערות ריקות (רווחים בלבד)
@@ -795,7 +795,14 @@ export async function docx_extract_simple(input, selected, opts = {}) {
   const data = await zip.read('word/document.xml');
   const root = _parseXml(data);
   const parts = [];
-  for (const para of findAll(root, 'p')) {
+  const allParas = findAll(root, 'p');
+  let paraIdx = 0;
+  const totalParas = allParas.length || 1;
+  for (const para of allParas) {
+    if (paraIdx % 20 === 0 && opts.onProgress) {
+      opts.onProgress(Math.floor((paraIdx / totalParas) * 100));
+    }
+    paraIdx++;
     const pt = [];
     for (const ch of iterAll(para)) {
       const ln = ch.namespaceURI === WNS ? ch.localName : null;
@@ -916,7 +923,7 @@ export async function find_all_note_sources(input) {
           source_type: src_type,
           marker: null,
           has_at: false,
-          label: `${heb} ללא סימון (${unmarked})`,
+          label: `הערות ללא שיוך (${unmarked})`,
           count: unmarked,
           icon: SOURCE_LABELS[src_type],
         });
@@ -979,7 +986,7 @@ export async function load_external_notes(ext_file, ext_marker) {
         const pr = _extract_rich(para, WNS);
         const plain = pr.get_text();
         const mm = plain.match(re_marker);
-        current = mm ? new RichText(pr.tokens.slice((mm.index || 0) + mm[0].length)) : pr;
+        current = mm ? richSlice(pr, (mm.index || 0) + mm[0].length, plain.length) : pr;
       } else if (collecting) {
         const pr = _extract_rich(para, WNS);
         if (pr.get_text().trim()) {
@@ -1002,7 +1009,7 @@ export async function load_external_notes(ext_file, ext_marker) {
             const nr = _extract_rich(n, WNS);
             const p = nr.get_text();
             const mm2 = p.match(re_marker);
-            notes.push(mm2 ? new RichText(nr.tokens.slice((mm2.index || 0) + mm2[0].length)) : nr);
+            notes.push(mm2 ? richSlice(nr, (mm2.index || 0) + mm2[0].length, p.length) : nr);
           }
         }
       } catch (e) { /* */ }
