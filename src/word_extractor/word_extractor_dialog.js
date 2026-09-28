@@ -424,6 +424,42 @@ export function closeModal() {
   if (m) m.classList.remove('active');
 }
 
+// ★ משה 28/09/2026 — "בסיום יבוא פופאפ הודעת הצלחה ביבוא".
+// הודעה קצרה שנעלמת לבד אחרי כמה שניות, כדי שלא תדרוש לחיצה נוספת.
+// אפשר לסגור מיד בלחיצה. RTL, ומספרת מה נכנס בפועל.
+function showImportDonePopup({ streamCount = 0, noteCount = 0, mode = 'replace' } = {}) {
+  if (typeof document === 'undefined') return;
+  const prev = document.getElementById('we-import-done');
+  if (prev) prev.remove();
+
+  const box = document.createElement('div');
+  box.id = 'we-import-done';
+  box.dir = 'rtl';
+  box.setAttribute('role', 'status');
+  box.style.cssText = [
+    'position:fixed', 'inset-inline-end:18px', 'inset-block-start:18px', 'z-index:99999',
+    'background:#ecfdf5', 'border:1px solid #10b981', 'border-radius:12px',
+    'padding:14px 18px', 'box-shadow:0 8px 28px rgba(0,0,0,.18)',
+    'font-family:inherit', 'color:#065f46', 'max-width:340px', 'cursor:pointer',
+    'line-height:1.6',
+  ].join(';');
+
+  const modeText = mode === 'append' ? 'נוסף בסוף המסמך' : 'החליף את התוכן';
+  const parts = [`<b style="font-size:15px">✅ הייבוא הסתיים</b>`];
+  const detail = [];
+  if (streamCount) detail.push(`${streamCount} זרמים`);
+  if (noteCount) detail.push(`${noteCount} הערות`);
+  if (detail.length) parts.push(`<div style="margin-top:4px">${detail.join(' · ')}</div>`);
+  parts.push(`<div style="margin-top:2px;font-size:12px;opacity:.85">${modeText}</div>`);
+  parts.push(`<div style="margin-top:6px;font-size:11px;opacity:.65">לחיצה לסגירה</div>`);
+  box.innerHTML = parts.join('');
+
+  const close = () => { box.remove(); };
+  box.addEventListener('click', close);
+  document.body.appendChild(box);
+  setTimeout(close, 6000);
+}
+
 function setStatus(text, isError, progressVal = null) {
   const m = document.getElementById(MODAL_ID); if (!m) return;
   const el = m.querySelector('.we-status');
@@ -876,6 +912,20 @@ async function onConfirm() {
     distributeToPanesSimple(result, bodyHtml, importMode);
     setStatus('');
     closeModal();
+    // ★ משה 28/09/2026 — "בסיום יבוא פופאפ הודעת הצלחה ביבוא" (דחיפות 6).
+    // עד עכשיו הדיאלוג פשוט נסגר בלי מילה, ולא היה שום סימן שהייבוא
+    // הצליח — בדיוק כמו שלא היה סימן שהוא בעבודה (הבאג הקודם).
+    // ההודעה מספרת מה נכנס בפועל, כדי שאפשר יהיה לראות מיד אם חסר משהו.
+    try {
+      const streamCount = Array.isArray(result?.streams) ? result.streams.length : 0;
+      const noteCount = Array.isArray(result?.streams)
+        ? result.streams.reduce((sum, pair) => {
+            const body = String((pair && pair[1]) || '');
+            return sum + (body ? body.split('\n').filter(l => l.trim()).length : 0);
+          }, 0)
+        : 0;
+      showImportDonePopup({ streamCount, noteCount, mode: importMode });
+    } catch (_) {}
     if (typeof _state.onLoadedRef === 'function') _state.onLoadedRef();
   } catch (e) {
     console.error('[word_extractor] import failed:', e);
