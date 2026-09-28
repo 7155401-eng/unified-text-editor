@@ -567,7 +567,7 @@ async function fallbackMainToStablePlainIfHtmlLostLinks(pending, mainPane) {
       const actual = countLiteral(currentText, item.symbol);
       return expected > 0 && actual < expected;
     });
-    const suspiciousPlaceholderLeak = /CST:|TCI:|TCD:|‹‹|\/CST|&quot;;|";/.test(mainPane.editor.getHTML?.() || "");
+    const suspiciousPlaceholderLeak = /CST:|TCI:|TCD:|‹‹|\/CST/.test(mainPane.editor.getHTML?.() || "");
 
     if (lost || suspiciousPlaceholderLeak) {
       console.warn("[word_extractor] styled body HTML failed validation; using stable plain main body", { lost, suspiciousPlaceholderLeak });
