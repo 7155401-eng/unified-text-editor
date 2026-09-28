@@ -2914,12 +2914,8 @@ function renderPagePlan(plan, pageEl, cfg) {
       }
     }
     let __lineIdx = -1;
-    // כששתי השורות הראשונות של פסקה עם מילת פתיח מצוירות כבלוק זורם
-    // אחד, השורה השנייה כבר נמצאת בתוכו ואין לצייר אותה שוב.
-    let __skipNextLine = false;
     for (const line of box.lines) {
       __lineIdx += 1;
-      if (__skipNextLine) { __skipNextLine = false; continue; }
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
@@ -3175,19 +3171,30 @@ function renderPagePlan(plan, pageEl, cfg) {
           && Math.abs((Number(nextLine.x) || 0) - (Number(line.x) || 0)) < 2;
 
         if (canFlow) {
+          // ★ משה 28/09/2026 — "המילות פתיח הרבה יותר טובות", אבל גם
+          // "שבירות שורה יותר בטקסט הראשי במקומות שלא צריך" ו"התחברו
+          // מקומות שהיו שבירות ונעלמו".
+          //
+          // נמדד בהשוואת שני הייצואים שלו, על אותו תוכן בדיוק:
+          //   שורות ראשי   1,544 -> 1,484   (מלאות יותר: 7.01 -> 7.30 מילים)
+          //   עמודים         152 ->   165   ⛔
+          //
+          // הסיבה: הבלוק **מיזג** את שתי השורות הראשונות וקיבל גובה של
+          // שתי שורות קבוע. ברוחב המלא נכנס לתוכו יותר טקסט מכפי שהמנוע
+          // תכנן, ולכן החלוקה לשורות השתנתה ונוצר חלל — 13 עמודים נוספים.
+          //
+          // התיקון משאיר את מה שעבד ומסיר את המחיר: הבלוק מכיל **רק את
+          // השורה הראשונה**, והאות צפה בתוכו כמו תמונה. השורה השנייה
+          // נשארת אלמנט נפרד עם הצמצום שהמנוע כבר חישב — אותו מנגנון
+          // שנמדד כתקין ב-96% מהמקרים. כך העימוד אינו זז כלל.
           const fullW = Number(line.openingHostFullWidth) > 0
             ? Number(line.openingHostFullWidth)
             : Number(line.width) || 0;
           if (fullW > 0) lineEl.style.width = fullW + 'px';
-          lineEl.style.height = (stepToNext * 2) + 'px';
           lineEl.style.whiteSpace = 'normal';
           lineEl.style.overflow = 'visible';
-          lineEl.classList.remove('justify');
-          lineEl.dataset.v9OpeningFlowBlock = '2';
-          const merged = [line.text || '', nextLine.text || '']
-            .filter(Boolean).join(' ');
-          applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, merged);
-          __skipNextLine = true;
+          lineEl.dataset.v9OpeningFlowBlock = '1';
+          applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
         } else {
           applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
         }
