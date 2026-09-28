@@ -3210,12 +3210,48 @@ function renderPagePlan(plan, pageEl, cfg) {
       const MAX_EXTRA_PER_GAP_PX = V9_MAX_EXTRA_PER_GAP_PX;
       const gapCount = Math.max(1, ((line.words && line.words.length) || 1) - 1);
       const extraPerGap = ((Number(line.width) || 0) - (Number(line.naturalWidth) || 0)) / gapCount;
-      const stretchTooWide = extraPerGap > MAX_EXTRA_PER_GAP_PX;
+      // ⛔⛔⛔ משה 28/09/2026 — ההוראה, מילה במילה:
+      // „צריך שלא יישארו שום שורות שאינן שלמות, כלומר שום שורה שאינה
+      //  מסתיימת בגבול השמאלי של העמוד — למעט מה שמוגדר במקור כפיסקה
+      //  נפרדת. בכל מקרה אחר המערכת תבדוק פתרונות עד לחיסול השבירה."
+      //
+      // ═══ מה היה ═══
+      // הייתה תקרת מתיחה: שורה שדורשת יותר מ-20 פיקסלים תוספת לכל
+      // רווח — לא מיושרת כלל, ונשארת קצרה. התקרה נולדה מדיווח קודם
+      // („רווחים גדולים בין המילים"), והיא הייתה נכונה **אז**.
+      //
+      // ═══ למה מותר להסיר אותה עכשיו ═══
+      // הסיבה שהיו שורות שדרשו מתיחה ענקית הייתה שורות בנות **מילה
+      // אחת**, שנולדו מחלון צר מדי למילת פתיח. זה תוקן בשורש (284c554),
+      // ונמדד: **0** שורות כאלה נותרו. החוסר החציוני בשורה קצרה הוא
+      // עכשיו 18 פיקסלים בלבד — שנפרסים על 5–8 רווחים, כלומר 2–4
+      // פיקסלים לרווח. בלתי מורגש לעין.
+      //
+      // ⇒ שורה שאינה סוף פסקה ואינה שבירה מהמקור **תמיד** נמתחת עד
+      //   הקצה. אין יותר שורה „תלויה באוויר" באמצע פסקה.
+      //
+      // ⬛ שורה שכן מסתיימת פסקה, או שנשברה במקור — לא נגענו בה כלל.
+      //    היא ממורכזת או טבעית, בדיוק כפי שהייתה.
+      const isTrueParagraphEnd = !!(line.isLast || line.forcedBreak);
+      const stretchTooWide = (extraPerGap > MAX_EXTRA_PER_GAP_PX) && isTrueParagraphEnd;
+      if (extraPerGap > MAX_EXTRA_PER_GAP_PX) {
+        lineEl.dataset.v9StretchWide = String(Math.round(extraPerGap));
+      }
       if (stretchTooWide) lineEl.dataset.v9StretchCapped = String(Math.round(extraPerGap));
+
+      // שורה באמצע פסקה שאינה נכנסת לאף קטגוריה אחרת — נמתחת בכוח,
+      // כדי שלא תישאר שבורה. זה „חיסול השבירה" שמשה דורש.
+      // ⚠️ בלי תנאי על `naturalWidth`. נמדד: ארבע שורות נשארו קצרות
+      // למרות שהמנוע חישב אותן כמלאות — כי הוא מודד ברוחב משלו
+      // והדפדפן מסדר קצת אחרת. הפער היה 11–23 פיקסלים, וזה בדיוק מה
+      // שנראה כשורה „תלויה באוויר". לכן ההחלטה כאן נשענת רק על מה
+      // שידוע בוודאות: האם זו סוף פסקה, וכמה מילים יש.
+      const mustCompleteLine = !isTrueParagraphEnd
+        && line.words && line.words.length > 1;
 
       if (useManualContinuationStretch) lineEl.className += ' v9-continuation-manual-stretch';
       else if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
-      else if (shouldJustify && !stretchTooWide) lineEl.className += ' justify';
+      else if ((shouldJustify && !stretchTooWide) || mustCompleteLine) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
       // ★ 28/09 — `renderY` הוא תיקון המרווח, והוא חי **רק בציור**.
       // `line.y` המקורי — התוכנית — לעולם אינו משתנה, ולכן רינדור חוזר
@@ -3458,7 +3494,24 @@ function renderPagePlan(plan, pageEl, cfg) {
           lineEl.style.height = (safeLineHeight * 2) + 'px';
           lineEl.style.whiteSpace = 'normal';
           lineEl.style.overflow = 'visible';
-          lineEl.classList.remove('justify');
+          // ⛔⛔⛔ משה 28/09/2026 — „בעמוד 1 יש ריחוק בין מילת פתיח
+          // לתוכן בשורה", ו„צריך שלא יישארו שום שורות שאינן שלמות".
+          //
+          // ⬛ נמדד בייצוא שלו (22:25): מתוך 104 השורות שלא הגיעו לקצה
+          //    ואינן סוף פסקה — **81 הן שורות מילת פתיח**. כלומר זה
+          //    הרוב המכריע של הבעיה.
+          //
+          // הסיבה ישבה בדיוק בשורה שהייתה כאן: `classList.remove('justify')`
+          // — הבלוק של מילת הפתיח נולד בלי יישור, ולכן הטקסט שלו
+          // נשאר צמוד לימין ולא נמתח עד הקצה השמאלי.
+          //
+          // ⭐ `text-align: justify` מתאים כאן בדיוק: הוא מותח את כל
+          //    השורות בבלוק **חוץ מהאחרונה**. כלומר השורה הראשונה
+          //    מתמלאת עד הקצה, והשנייה — שהיא סוף הקטע הזורם — נשארת
+          //    טבעית, כפי שצריך.
+          lineEl.classList.add('justify');
+          lineEl.style.textAlign = 'justify';
+          lineEl.style.textAlignLast = 'right';
           lineEl.dataset.v9OpeningFlowBlock = '2';
           const merged = [line.text || '', nextLine.text || '']
             .filter(Boolean).join(' ');
