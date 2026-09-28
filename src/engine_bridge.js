@@ -252,11 +252,39 @@ export function stripMarkersAndAlignRuns(paragraphText, runs, markers) {
     }
     if (m.replaceWith) replaceAt.set(m.atInPara, String(m.replaceWith));
   }
+  // ★ משה 27/09/2026 — „נראה שלפעמים אחרי פסיק או נקודה חסר רווח".
+  // נמדד על הייצוא שלו: במקור **0** פסיקים בלי רווח (מול 3,569 תקינים),
+  // ובפלט **25**. כלומר הרווח לא חסר בכתיבה — הוא נעלם בעיבוד.
+  // השורש: סימן זרם שיושב בין שני תווים בלי רווח, כמו „מילה,@01מילה".
+  // כאן נמחקים תווי הסימן בלבד, ולכן שני התווים שמשני צדיו נדבקים זה
+  // לזה והמילים מתאחדות. במקור של משה: 23 מקרים של פסיק+סימן+אות,
+  // 56 של נקודה+סימן+אות, ו-48 של אות+סימן+אות — סך 127.
+  // מעכשיו סימן שנמחק מבין שני תווים שאינם רווח משאיר רווח אחד
+  // במקומו. כשיש כבר רווח באחד הצדדים לא מוסיפים דבר, כדי שלא ייווצר
+  // רווח כפול.
+  const isSpaceAt = (idx) =>
+    idx < 0 || idx >= paragraphText.length || /\s/.test(paragraphText[idx]);
+  const removedStarts = new Set();
+  for (const m of markers) {
+    const len = (m.sym || "").length;
+    if (len > 0) removedStarts.add(m.atInPara);
+  }
+  const bridgeSpaceAt = new Set();
+  for (const m of markers) {
+    const len = (m.sym || "").length;
+    if (len <= 0) continue;
+    if (m.replaceWith) continue;              // סימן שהוחלף בתוכן — לא נוצר חור
+    const before = m.atInPara - 1;
+    const after = m.atInPara + len;
+    if (!isSpaceAt(before) && !isSpaceAt(after)) bridgeSpaceAt.add(m.atInPara);
+  }
+
   let newText = "";
   const map = new Array(paragraphText.length + 1).fill(0);
   for (let i = 0; i < paragraphText.length; i++) {
     map[i] = newText.length;
     if (replaceAt.has(i)) newText += replaceAt.get(i);
+    else if (bridgeSpaceAt.has(i)) newText += " ";
     if (keep[i]) newText += paragraphText[i];
   }
   map[paragraphText.length] = newText.length;
