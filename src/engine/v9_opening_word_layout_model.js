@@ -96,6 +96,15 @@ function openingLineIsBlockedByParagraphMetadata(el) {
 function keepOpeningLineStable(el, lineHeightPx = 0) {
   if (!el) return;
 
+  // ★ משה 28/09/2026 — במצב הזרימה ("דינמי כמו תמונה") שתי השורות
+  // הראשונות מצוירות כבלוק אחד שגובהו שתי שורות, והטקסט גולש סביב
+  // האות. נעילה לגובה שורה **אחת** כאן הייתה חותכת אותו בדיוק בחצי.
+  if (el.dataset?.v9OpeningFlowBlock === "2") {
+    el.style.boxSizing = "border-box";
+    el.style.overflow = "visible";
+    return;
+  }
+
   // The opening word may use a different font and size, but it must never
   // change the row pitch of the Talmud/V9 stream. Do not touch margins here:
   // V9 line elements may inherit stream spacing margins, and changing them only

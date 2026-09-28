@@ -2914,8 +2914,12 @@ function renderPagePlan(plan, pageEl, cfg) {
       }
     }
     let __lineIdx = -1;
+    // כששתי השורות הראשונות של פסקה עם מילת פתיח מצוירות כבלוק זורם
+    // אחד, השורה השנייה כבר נמצאת בתוכו ואין לצייר אותה שוב.
+    let __skipNextLine = false;
     for (const line of box.lines) {
       __lineIdx += 1;
+      if (__skipNextLine) { __skipNextLine = false; continue; }
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
@@ -3067,9 +3071,14 @@ function renderPagePlan(plan, pageEl, cfg) {
           Math.min(safeLineHeight, allottedHeight),
           actualFontSize * 1.05
         );
-        lineEl.style.lineHeight = drawnLineHeight + 'px';
-        lineEl.style.height = Math.min(drawnLineHeight, allottedHeight) + 'px';
-        if (allottedHeight < safeLineHeight) lineEl.style.overflow = 'visible';
+        // בלוק זורם של מילת פתיח מחזיק שתי שורות בתוכו, ולכן התקרה
+        // של שורה בודדת אינה חלה עליו — היא הייתה חותכת אותו לחצי.
+        const isFlowBlock = lineEl.dataset.v9OpeningFlowBlock === '2';
+        if (!isFlowBlock) {
+          lineEl.style.lineHeight = drawnLineHeight + 'px';
+          lineEl.style.height = Math.min(drawnLineHeight, allottedHeight) + 'px';
+          if (allottedHeight < safeLineHeight) lineEl.style.overflow = 'visible';
+        }
       }
 
       // משה 2026-05-19: מתיחה מאוזנת לשורת חיתוך קצרה מדי.
@@ -3135,7 +3144,50 @@ function renderPagePlan(plan, pageEl, cfg) {
       // משה 2026-05-13: רינדור עם inline runs — בולד/הדגשה/צבע פר-מילה.
       // אם line.runs ריק, appendTextWithRuns ייצור textNode רגיל (זהה ל-textContent).
       if (line.openingWord && line.openingWord.model) {
-        applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
+        // ★ משה 28/09/2026 — "צריך לעשות את זה דינמי כמו תמונה: גלישת
+        // טקסט סביב המילה, לידה ותחתיה שורה אחת, כאילו הייתה תמונה שיש
+        // גלישת דף אינטרנט סביבה".
+        //
+        // המצב הרגיל: כל שורה מצוירת בנפרד ב-position:absolute, ולכן
+        // ה-float שכבר מוגדר ב-CSS על `.opw-dropped` אינו משפיע עליה —
+        // אין זרימה טבעית שתגלוש. משם הגיע כל החישוב הידני של הרוחב.
+        //
+        // במצב הזה שתי השורות הראשונות של הפסקה מצוירות כ**בלוק אחד
+        // זורם**: רוחב מלא, גובה שתי שורות, `white-space: normal`,
+        // והאות צפה בתוכו. הדפדפן עצמו מחשב את הגלישה — בדיוק כמו
+        // סביב תמונה — ואין מה למדוד ומה לצמצם.
+        //
+        // ⚠️ כבוי כברירת מחדל: זו דרך ציור אחרת לגמרי, והיא משנה גם
+        // את היישור ואת שבירת השורות. להדלקה:
+        //     localStorage.setItem("ravtext.openingWord.floatMode", "1")
+        const floatMode = (() => {
+          try { return localStorage.getItem("ravtext.openingWord.floatMode") === "1"; }
+          catch (_) { return false; }
+        })();
+        const nextLine = floatMode ? box.lines[__lineIdx + 1] : null;
+        const stepToNext = gapToNext.get(__lineIdx);
+        const canFlow = !!nextLine
+          && !nextLine.openingWord
+          && Number.isFinite(stepToNext) && stepToNext > 0
+          && Math.abs((Number(nextLine.x) || 0) - (Number(line.x) || 0)) < 2;
+
+        if (canFlow) {
+          const fullW = Number(line.openingHostFullWidth) > 0
+            ? Number(line.openingHostFullWidth)
+            : Number(line.width) || 0;
+          if (fullW > 0) lineEl.style.width = fullW + 'px';
+          lineEl.style.height = (stepToNext * 2) + 'px';
+          lineEl.style.whiteSpace = 'normal';
+          lineEl.style.overflow = 'visible';
+          lineEl.classList.remove('justify');
+          lineEl.dataset.v9OpeningFlowBlock = '2';
+          const merged = [line.text || '', nextLine.text || '']
+            .filter(Boolean).join(' ');
+          applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, merged);
+          __skipNextLine = true;
+        } else {
+          applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
+        }
       } else {
         appendV9TextWithMainRefs(lineEl, line);
       }
