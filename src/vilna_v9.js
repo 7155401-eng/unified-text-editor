@@ -2970,7 +2970,12 @@ function renderPagePlan(plan, pageEl, cfg) {
       ? Number(plan.pageBox.height) - padding
       : Infinity;
 
+    // ★ 28/09 — מנקים תיקון-ציור קודם לפני שמחשבים מחדש. בלי זה, שורה
+    // שכבר אינה זקוקה להזזה הייתה נשארת מוזזת לנצח.
+    for (const l of lines) { if (l && l.renderY != null) delete l.renderY; }
+
     // מקבצים לטורים לפי חפיפה אופקית, בדיוק כמו שהעין רואה טור.
+    // ⬛ `y` כאן הוא עותק מקומי לחישוב. התוכנית (`l.y`) אינה נוגעת.
     const byTop = lines
       .map((l, i) => ({ i, l, y: Number(l.y) || 0, x: Number(l.x) || 0, w: Number(l.width) || 0 }))
       .sort((a, b) => a.y - b.y);
@@ -3034,8 +3039,25 @@ function renderPagePlan(plan, pageEl, cfg) {
         const units = hasSecondLineToWrap ? 2 : 1;
         const needed = cur.y + pitch * units;
         if (nxt.y < needed - 0.5 && needed + pitch <= bottom + 0.5) {
+          // ⛔⛔⛔ משה 28/09/2026 — „2b49a0d עדיין כולל את הבאג שבעמוד
+          // הראשון השתחל תוכן מהעמוד השני", „לא ברור איך זזו אחורה".
+          //
+          // כאן היה גם `nxt.l.y = needed` — כלומר כתיבה **לתוך תוכנית
+          // העימוד עצמה**. וזה בדיוק מה שמשה אסר: „הסידור של השורות
+          // צריך לבצע V9 מחדש, מה שישפיע גם על מה התוכן שיישאר בעמוד
+          // הזה ומה ימשיך לעמוד הבא".
+          //
+          // הנזק: הציור רץ שוב ושוב (רינדור חוזר, שינוי הגדרה, שינוי
+          // גודל חלון), ובכל פעם ההזזה מתווספת על הקודמת. השורות זוחלות
+          // מטה בהדרגה, והתוכנית שלפיה נקבע מה שייך לאיזה עמוד נדרסת.
+          // מכאן התחושה שתוכן „השתחל" מעמוד לעמוד בלי סיבה.
+          //
+          // ⇒ מעכשיו היישור נוגע **רק במיקום שעל המסך**, ולא בתוכנית.
+          //   `nxt.y` הוא עותק מקומי לחישוב בלבד; `nxt.l.y` המקורי
+          //   נשאר כפי שהמנוע קבע אותו, ולכן הריצה הבאה מתחילה תמיד
+          //   מאותה נקודה ואינה מצטברת.
           nxt.y = needed;
-          nxt.l.y = needed;
+          nxt.l.renderY = needed;
           moved += 1;
         }
         break;                                   // רק השכנה הישירה
@@ -3155,7 +3177,11 @@ function renderPagePlan(plan, pageEl, cfg) {
       else if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
       else if (shouldJustify && !stretchTooWide) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
-      lineEl.style.top = line.y + 'px';
+      // ★ 28/09 — `renderY` הוא תיקון המרווח, והוא חי **רק בציור**.
+      // `line.y` המקורי — התוכנית — לעולם אינו משתנה, ולכן רינדור חוזר
+      // מתחיל תמיד מאותה נקודה ואינו מצטבר. ראה ההסבר המלא ליד
+      // enforceUniformLinePitch.
+      lineEl.style.top = (Number.isFinite(line.renderY) ? line.renderY : line.y) + 'px';
       lineEl.style.width = line.width + 'px';
       // ★ משה 14/09/2026 — סנכרון בין המנוע לרינדור.
       // המנוע חישב כמה מילים נכנסות בשורה לפי גודל האות של אותו זרם
