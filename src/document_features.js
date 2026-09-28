@@ -15,10 +15,51 @@ function pageElements() {
   );
 }
 
+// ★ משה 28/09/2026 — "לפעמים העמודים ממוספרים באותיות ולפעמים במספרים".
+//
+// השורש: הייתה כאן טבלה קבועה של 20 ערכים בלבד (א..כ), ומעמוד 21 ואילך
+// `HEB[num]` יצא undefined והקוד נפל ל-`String(num)`. לכן עמוד ה' הוצג
+// כאות ועמוד 26 כספרה — באותו מסמך.
+// נמדד בייצוא של משה: עמ' 5 = "ה", עמ' 26 = "26".
+//
+// כאן המרה מלאה לגימטריה, בלי תקרה. הכללים המקובלים בספרות תורנית:
+//   • 15 ו-16 נכתבים טו/טז ולא יה/יו
+//   • מאות מעל 400 מורכבות מ-ת חוזרת (500 = תק, 900 = תתק)
+function toHebrewNumeral(n) {
+  const num = Math.floor(Number(n) || 0);
+  if (num <= 0) return String(n);
+
+  const HUNDREDS = ["", "ק", "ר", "ש", "ת"];
+  const TENS = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"];
+  const ONES = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
+
+  let out = "";
+  let rest = num;
+
+  // אלפים — נכתבים כאות ואחריה גרש, למשל 1000 = א'
+  const thousands = Math.floor(rest / 1000);
+  if (thousands > 0) {
+    out += toHebrewNumeral(thousands) + "'";
+    rest %= 1000;
+  }
+
+  // מאות: מעל 400 בונים מ-ת חוזרת
+  while (rest >= 400) { out += "ת"; rest -= 400; }
+  out += HUNDREDS[Math.floor(rest / 100)];
+  rest %= 100;
+
+  // טו/טז — לא יה/יו
+  if (rest === 15) out += "טו";
+  else if (rest === 16) out += "טז";
+  else {
+    out += TENS[Math.floor(rest / 10)];
+    out += ONES[rest % 10];
+  }
+  return out;
+}
+
 function applyPageNumbers() {
   const on = localStorage.getItem(PAGE_NUM_KEY) === "1";
-  const HEB = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י",
-    "יא", "יב", "יג", "יד", "טו", "טז", "יז", "יח", "יט", "כ"];
   pageElements().forEach((page, i) => {
     let label = page.querySelector(".ravtext-page-number-overlay");
     if (!on) {
@@ -31,7 +72,7 @@ function applyPageNumbers() {
       page.appendChild(label);
     }
     const num = i + 1;
-    label.textContent = HEB[num] || String(num);
+    label.textContent = toHebrewNumeral(num);
   });
 }
 
