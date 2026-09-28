@@ -428,16 +428,19 @@ function wrapColorAndSizeRuns(xml) {
     const szMatch = rPr.match(/<w:sz\s+[^>]*\bw:val="(\d+)"/);
     const fontMatch = rPr.match(/<w:rFonts\s+[^>]*\bw:cs="([^"]+)"/) ||
                       rPr.match(/<w:rFonts\s+[^>]*\bw:ascii="([^"]+)"/);
-    if (!colorMatch && !szMatch && !fontMatch) return full;
+    const hlMatch = rPr.match(/<w:highlight\s+[^>]*\bw:val="([^"]+)"/);
+    const shdMatch = rPr.match(/<w:shd\s+[^>]*\bw:fill="([0-9a-fA-F]{6})"/);
+    if (!colorMatch && !szMatch && !fontMatch && !hlMatch && !shdMatch) return full;
     const color = colorMatch ? colorMatch[1].toLowerCase() : "";
     const sizeHalf = szMatch ? parseInt(szMatch[1], 10) : 0;
     const sizePt = sizeHalf ? (sizeHalf / 2) : 0;
     const font = fontMatch ? fontMatch[1].replace(/\|/g, "") : "";
+    const highlight = hlMatch ? hlMatch[1] : (shdMatch ? "#" + shdMatch[1].toLowerCase() : "");
     
-    // רק אם יש צבע או גודל — פונט לבד לא מספיק
-    if (!color && !sizePt) return full;
+    // משה 2026-09-28: תמיכה בהדגשות (Highlight / Shading)
+    if (!color && !sizePt && !highlight) return full;
     
-    const open = `‹‹CST:${color}|${sizePt || ""}|${font}‹‹`;
+    const open = `‹‹CST:${color}|${sizePt || ""}|${font}|${highlight}‹‹`;
     // עוטפים כל <w:t>...</w:t> בתוך ה-run
     const newBody = body.replace(/<w:t(\s[^>]*)?>([\s\S]*?)<\/w:t>/g, (m, tAttrs, txt) => {
       const a = tAttrs || ' xml:space="preserve"';
@@ -449,6 +452,8 @@ function wrapColorAndSizeRuns(xml) {
     cleanedBody = cleanedBody.replace(/<w:color\s+[^>]*\/>/g, '');
     cleanedBody = cleanedBody.replace(/<w:sz\s+[^>]*\/>/g, '');
     cleanedBody = cleanedBody.replace(/<w:szCs\s+[^>]*\/>/g, '');
+    cleanedBody = cleanedBody.replace(/<w:highlight\s+[^>]*\/>/g, '');
+    cleanedBody = cleanedBody.replace(/<w:shd\s+[^>]*\/>/g, '');
     
     return `<w:r${attrs || ""}>${cleanedBody}</w:r>`;
   });
@@ -465,14 +470,17 @@ function unwrapColorAndSizePlaceholders(html) {
   //     ‹‹/CST‹‹ סוגר, הריג'קס בלע placeholder סמוך שלם (כולל הקישור שבתוכו)
   //     לתוך שדה הפונט, וקישור @NN אחד נעלם מן הטקסט. אסור לפונט להכיל ‹.
   let out = html.replace(
-    /‹‹CST:([0-9a-fA-F]{0,6})\|(\d{0,4}(?:\.\d+)?)\|([^|‹<>"']*)‹‹([\s\S]*?)‹‹\/CST‹‹/g,
-    (m, color, size, font, inner) => {
+    /‹‹CST:([0-9a-fA-F]{0,6})\|(\d{0,4}(?:\.\d+)?)\|([^|‹<>"']*)\|([^|‹<>"']*)‹‹([\s\S]*?)‹‹\/CST‹‹/g,
+    (m, color, size, font, highlight, inner) => {
       const decl = [];
       if (color) decl.push(`color: #${color};`);
       if (size) decl.push(`font-size: ${size}pt;`);
       if (font) {
         const safeFont = String(font).replace(/['"<>]/g, "");
         decl.push(`font-family: '${safeFont}';`);
+      }
+      if (highlight) {
+        decl.push(`background-color: ${highlight};`);
       }
       return decl.length
         ? `<span style="${decl.join(" ")}">${inner}</span>`
@@ -484,12 +492,12 @@ function unwrapColorAndSizePlaceholders(html) {
   // בלי הסימנים הפותחים. מסירים כל וריאציה אפשרית.
   out = out.replace(/‹‹CST:[^‹<>"']*?(?:‹‹|$)/g, '');
   out = out.replace(/‹‹\/CST‹‹/g, '');
-  out = out.replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}‹‹/g, '');
-  out = out.replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}(?=\s|<|$)/g, '');
+  out = out.replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}\|[^|‹<>"']{0,40}‹‹/g, '');
+  out = out.replace(/[>";']?CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|‹<>"']{0,40}\|[^|‹<>"']{0,40}(?=\s|<|$)/g, '');
   out = out.replace(/\/CST‹‹/g, '');
   // משה 2026-05-31: ערובת בטיחות אחרונה — שום ‹‹ לא אמור להישאר ב-HTML.
   out = out.replace(/‹‹+/g, '');
-  out = out.replace(/CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|<>"']{0,80}/g, '');
+  out = out.replace(/CST:[0-9a-fA-F]{0,6}\|\d{0,4}(?:\.\d+)?\|[^|<>"']{0,80}\|[^|<>"']{0,40}/g, '');
   return out;
 }
 
