@@ -1386,6 +1386,45 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       }
     ));
 
+    // ★ משה 28/09/2026 — „בהגדרות זרם הראשי 'מספר בראשי' וכו' הוא לא
+    // רלוונטי, קלוט את זה".
+    //
+    // צודק לגמרי. לזרם הראשי אין מספרי הערות, אין תת-הערות, אין פס
+    // מעל המפרש ואין דיבור המתחיל — כל אלה שייכים לזרמי ההערות בלבד.
+    // שדה שלא עושה כלום הוא גרוע משדה חסר: הוא מבטיח ולא מקיים.
+    //
+    // לכן בבלוק הראשי נשארות רק ההגדרות שבאמת פועלות עליו, ואלה
+    // בדיוק אלה שביקשת: סגנון הטקסט, וסגנון מותאם לבולד.
+    // ⬛ שום שדה לא נמחק מזרמי ההערות — שם הכול נשאר כפי שהיה.
+    if (isMain) pruneMainStreamBlock(block);
+
     panel.appendChild(block);
+  }
+}
+
+// השדות היחידים שיש להם משמעות בזרם הראשי. כל השאר מוסתרים מהבלוק
+// שלו בלבד. ההשוואה היא על הטקסט שמופיע למסך, כי זה מה שמשה רואה.
+const MAIN_STREAM_ALLOWED_LABELS = [
+  "סגנון זרם",
+  "סגנון מותאם לבולד",
+  "סגנון לבולד",
+];
+
+function pruneMainStreamBlock(block) {
+  const keep = (text) => {
+    const t = String(text || "").replace(/:$/, "").trim();
+    if (!t) return true;                       // מפרידים וכותרות — משאירים
+    return MAIN_STREAM_ALLOWED_LABELS.some(a => t === a || t.startsWith(a));
+  };
+  for (const child of [...block.children]) {
+    // הכותרת („זרם ראשי") וכפתורי הסדר נשארים תמיד
+    if (child.classList?.contains("stream-settings-code")) continue;
+    if (child.tagName === "BR") continue;
+    const tag = String(child.tagName || "").toLowerCase();
+    if (tag !== "label" && tag !== "select" && tag !== "span" && tag !== "div") continue;
+    // הטקסט של השדה: או ה-span הראשון (stream-col-input) או הטקסט עצמו
+    const labelText = child.querySelector(":scope > span")?.textContent
+      ?? child.textContent;
+    if (!keep(labelText)) child.remove();
   }
 }
