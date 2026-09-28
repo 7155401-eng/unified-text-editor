@@ -567,7 +567,33 @@ async function fallbackMainToStablePlainIfHtmlLostLinks(pending, mainPane) {
       const actual = countLiteral(currentText, item.symbol);
       return expected > 0 && actual < expected;
     });
-    const suspiciousPlaceholderLeak = /CST:|TCI:|TCD:|‹‹|\/CST/.test(mainPane.editor.getHTML?.() || "");
+    // ⛔⛔⛔ משה 28/09/2026, קריטי ובהול — „אותיות ענקיות בטקסט הפנימי
+    // עקב השינוי של אנטיגרביטי שהכניס קודי עיצוב שגויים".
+    //
+    // ═══ מה קרה ═══
+    // הגלאי הזה תופס מקרה שבו מחרוזת של הוראות עיצוב **דלפה לתוך
+    // הטקסט** במקום להישאר מאחורי הקלעים. כשזה קורה, הוא נופל בחזרה
+    // לגוף טקסט פשוט ובטוח — עדיף בלי עיצוב מאשר עם עיצוב שבור.
+    //
+    // בקומיט 289143f (לא שלי) הוסרו ממנו שתי בדיקות: `&quot;;` ו-`";`.
+    // הן בדיוק אלה שתפסו מחרוזת סגנון שדלפה. בלעדיהן הדליפה נכנסת
+    // בשקט — ומכאן „אותיות ענקיות" ו„קודי עיצוב שגויים".
+    //
+    // ═══ אבל ההסרה לא הייתה שרירותית ═══
+    // `";` לבדו תופס גם HTML **תקין** לגמרי (כל מאפיין style מסתיים
+    // כך), ולכן הוא הפיל גם ייבוא שהיה בסדר גמור. זו הייתה הסיבה
+    // המקורית להסרה, והיא נכונה.
+    //
+    // ═══ הפתרון שמכבד את שני הצדדים ═══
+    // במקום לחפש בקוד ה-HTML, בודקים את **הטקסט שנראה על המסך**.
+    // ב-HTML תקין המילים „font-size" ו„font-family" יושבות מאחורי
+    // הקלעים ואינן נראות; אם הן מופיעות בטקסט עצמו — זו דליפה ודאית,
+    // בלי שום ספק ובלי לפגוע באף ייבוא תקין.
+    const visibleText = (mainPane.editor.getText ? mainPane.editor.getText() : "") || "";
+    const styleLeakedIntoText =
+      /font-size\s*:|font-family\s*:|font-weight\s*:|text-align\s*:|&quot;\s*;/.test(visibleText);
+    const suspiciousPlaceholderLeak =
+      /CST:|TCI:|TCD:|‹‹|\/CST/.test(mainPane.editor.getHTML?.() || "") || styleLeakedIntoText;
 
     if (lost || suspiciousPlaceholderLeak) {
       console.warn("[word_extractor] styled body HTML failed validation; using stable plain main body", { lost, suspiciousPlaceholderLeak });
