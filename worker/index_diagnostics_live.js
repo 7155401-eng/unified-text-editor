@@ -41,13 +41,52 @@ async function serveDiagnosticsPage(request, env) {
   return new Response(html, { status: 200, headers });
 }
 
+// ★ משה 28/09/2026 — "רוב הבעיות קיימות בו, איני יודע אם משהו תוקן בכלל".
+//
+// זה היה השורש האמיתי לכך שתיקונים נפרסו ולא הגיעו למסך.
+// נמדד על הייצוא שלו מ-04:39, אחרי שהפריסה של d84bb1b הסתיימה
+// בהצלחה ב-00:08 UTC:
+//   • ה-CSS החדש **כן** הופיע בייצוא
+//   • 3,726 שורות עדיין בגובה 20.15px — כלומר ה-JS הישן
+//   • מספר הגרסה לא הוצג כלל
+//
+// ההסבר: ב-vite.config.js יש `PUBLIC_CACHE_BUST`, אבל הוא מוסיף
+// `?v=timestamp` **רק לקובצי CSS**. index.html עצמו נשמר במטמון
+// הדפדפן, ומכיוון שהוא זה שמפנה אל קובץ ה-JS עם ה-hash, דפדפן
+// שמחזיק HTML ישן ימשיך לטעון את ה-JS הישן — גם אחרי פריסה מוצלחת.
+// כך נוצר בדיוק מה שמשה ראה: העיצוב מתעדכן והמנוע לא.
+//
+// התיקון: מסמך HTML מוגש עם `no-cache`. זה אינו מבטל מטמון —
+// הדפדפן עדיין שומר עותק, אבל **חייב לשאול את השרת** אם הוא עדכני
+// לפני שהוא משתמש בו. קובצי ה-JS וה-CSS עצמם נשארים עם מטמון ארוך,
+// כי שמם כולל hash שמשתנה בכל בנייה.
+const HTML_NO_CACHE = 'no-cache, must-revalidate';
+
+function withFreshHtmlHeaders(response) {
+  try {
+    const type = response.headers.get('content-type') || '';
+    if (!type.includes('text/html')) return response;
+    const headers = new Headers(response.headers);
+    headers.set('cache-control', HTML_NO_CACHE);
+    headers.set('x-ravtext-html-cache', 'revalidate');
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  } catch (_) {
+    return response;
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (DIAGNOSTICS_PATHS.has(url.pathname)) {
       return serveDiagnosticsPage(request, env);
     }
-    return app.fetch(request, env, ctx);
+    const response = await app.fetch(request, env, ctx);
+    return withFreshHtmlHeaders(response);
   },
 
   async scheduled(event, env, ctx) {

@@ -95,10 +95,45 @@ function paragraphGroups(container) {
   const groups = [];
   const byKey = new Map();
 
+  // ★ משה 27/09/2026 — "יש שורה שלא ממשיכה עד הסוף... אסור שיקרו דברים
+  // כאלה" (עמ' יג שורה 6), וגם "הערות הצד אינן מיושרות משני הצדדים".
+  //
+  // נמדד על הייצוא שלו: **1,439 מתוך 1,521** שורות הראשי (94.6%) סומנו
+  // `paragraph-end`. זה בלתי אפשרי — לא ייתכן ש-95% מהשורות הן סוף פסקה.
+  // ושורה שמסומנת כך אינה נמתחת בכוונה, כי זה הכלל הטיפוגרפי לשורה
+  // אחרונה בפסקה. לכן כמעט שום שורה לא יושרה.
+  //
+  // השורש: הקיבוץ נשען על `v9ParagraphId`, אבל נמדד שרק **44 מתוך 1,186**
+  // שורות נושאות אותו. בהיעדרו נוצר כאן מפתח חדש **לכל שורה**
+  // (`p{page}-{n}`), כל שורה הפכה לפסקה בת שורה אחת, וממילא כל שורה
+  // הייתה גם האחרונה בפסקה שלה.
+  //
+  // התיקון: כשאין מזהה פסקה מקבצים לפי **רצף גאומטרי** — שורות עוקבות
+  // באותו עמוד ובאותו טור הן אותה פסקה. פסקה חדשה נפתחת רק בסימון
+  // מפורש (`paragraph-start`), במעבר טור, או בקפיצה אנכית גדולה.
+  let prev = null;
+  let autoKey = "";
   for (const line of lines) {
     const ds = line.dataset || {};
     let key = ds.v9ParagraphId || ds.paragraphId || ds.paraId || "";
-    if (!key) key = groups.length && isContinuation(line) ? groups[groups.length - 1].key : `p${pageIndex(line)}-${groups.length}`;
+    if (!key) {
+      const sameColumn =
+        prev &&
+        pageIndex(line) === pageIndex(prev) &&
+        Math.abs(leftOf(line) - leftOf(prev)) < 2 &&
+        Math.abs(widthOf(line) - widthOf(prev)) < 2;
+      // קפיצה של יותר משתי שורות פירושה בלוק חדש, לא המשך
+      const step = prev ? topOf(line) - topOf(prev) : 0;
+      const reasonableStep = prev && step > 0 && step < (widthOf(prev) > 0 ? 3 * 40 : 120);
+      const startsNew = ds.v9ParagraphStart === "1" && !isContinuation(line);
+      if (prev && sameColumn && reasonableStep && !startsNew && autoKey) {
+        key = autoKey;
+      } else {
+        autoKey = `p${pageIndex(line)}-${groups.length}`;
+        key = autoKey;
+      }
+    }
+    prev = line;
 
     if (!byKey.has(key)) {
       const group = { key, lines: [] };
