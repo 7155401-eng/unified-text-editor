@@ -2958,11 +2958,14 @@ function renderPagePlan(plan, pageEl, cfg) {
   // ⬛ שורה שכבר יושבת נכון או רחוק יותר — לא נוגעים בה בכלל.
   // ⬛ אם אין מקום לדחוף עד תחתית העמוד — משאירים כפי שהוא, כדי לא
   //    להוציא תוכן מהדף. עדיף חפיפה נדירה מאשר טקסט שנעלם.
-  function enforceUniformLinePitch(box, lineHeight) {
+  // ⚠️ `pitchPx` הוא המרווח **בפיקסלים**, לא היחס. זו הייתה טעות בגרסה
+  // הראשונה של התיקון: הועבר לכאן `cfg.lineHeightRatio` (1.55), וכל
+  // השורות כבר היו רחוקות מזה — כלומר הפונקציה רצה ולא הזיזה כלום.
+  function enforceUniformLinePitch(box, pitchPx) {
     const lines = Array.isArray(box?.lines) ? box.lines : [];
     if (lines.length < 2) return 0;
-    const pitch = Number(lineHeight);
-    if (!(pitch > 0)) return 0;
+    const pitch = Number(pitchPx);
+    if (!(pitch > 1)) return 0;
     const bottom = Number(plan.pageBox?.height) > 0
       ? Number(plan.pageBox.height) - padding
       : Infinity;
@@ -2980,7 +2983,16 @@ function renderPagePlan(plan, pageEl, cfg) {
         if (nxt.y <= cur.y + 0.5) continue;
         const overlapX = Math.min(cur.x + cur.w, nxt.x + nxt.w) - Math.max(cur.x, nxt.x);
         if (overlapX <= 1) continue;             // טור אחר — לא נוגע
-        const needed = cur.y + pitch;
+
+        // ★ שורה שנושאת מילת פתיח **נפתחת** תופסת שתי שורות: האות
+        // יורדת לגובה שתיים, והטקסט זורם לצידה. לכן השורה הנראית הבאה
+        // חייבת לשבת במרווח כפול.
+        // ⬛ זה עדיין „מרחק אחיד": פעמיים אותו מרווח יחיד, ולא מדידה
+        //    של האות. בדיוק ההוראה — „המרחק לפי האותיות הרגילות".
+        const dropped = cur.l?.openingWord
+          && (cur.l.openingWord.position || cur.l.openingWord.model?.position) === 'dropped';
+        const units = dropped ? 2 : 1;
+        const needed = cur.y + pitch * units;
         if (nxt.y < needed - 0.5 && needed + pitch <= bottom + 0.5) {
           nxt.y = needed;
           nxt.l.y = needed;
@@ -2997,7 +3009,20 @@ function renderPagePlan(plan, pageEl, cfg) {
 
     // ★ 28/09 — קודם מחזירים את הרווחים למסלול הרגיל (ראה ההסבר המלא
     // למעלה), ורק אחר כך מציירים. כך אין יותר מה „לפצות" בציור.
-    enforceUniformLinePitch(box, lineHeight);
+    //
+    // המרווח האחיד נלקח מהשורות עצמן (`lineHeightPx`), ורק אם אין —
+    // מחושב מגודל האות כפול היחס. `lineHeight` שמגיע לכאן הוא **היחס**
+    // (1.55) ולא פיקסלים, ולכן אסור להעביר אותו כמו שהוא.
+    const uniformPitchPx = (() => {
+      for (const l of (box.lines || [])) {
+        const v = Number(l?.lineHeightPx);
+        if (v > 1) return v;
+      }
+      const fs = Number(fontSize) > 0 ? Number(fontSize) : 13;
+      const ratio = Number(lineHeight) > 0 ? Number(lineHeight) : 1.55;
+      return fs * ratio;
+    })();
+    enforceUniformLinePitch(box, uniformPitchPx);
 
     // המפה הזאת נשארת **רק** כרשת ביטחון לשורה שהיישור לא הצליח להזיז
     // (כי לא היה מקום עד תחתית העמוד). היא כבר לא הכלי הראשי.
@@ -3334,6 +3359,31 @@ function renderPagePlan(plan, pageEl, cfg) {
           __skipNextLine = true;
         } else {
           applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
+
+          // ⛔⛔⛔ משה 28/09/2026 — „המילת פתיח שחי כביכול באטמוספירה
+          // אחרת ועשו בשבילו רווח מיוחד... הרווחים צריכים להיות אחידים
+          // בכל הקטע".
+          //
+          // כאן נופלים כשאין שורה שנייה לזרום סביבה — הפסקה נגמרה, או
+          // שהשורה הבאה היא בעצמה מילת פתיח, או שהיא בטור אחר.
+          // במצב הזה האות עדיין קיבלה גובה של שתי שורות, ולכן היא ירדה
+          // 18.59 פיקסלים אל תוך השורה שמתחתיה ודרכה עליה.
+          //
+          // ⬛ נמדד: **כל** שמונה החפיפות שנשארו אחרי יישור המרווחים היו
+          //    בדיוק המקרה הזה — שורת `opw-host` ללא זרימה, דיו בגובה
+          //    37.19 בתוך שורה בגובה 18.59.
+          //
+          // אות שאין לה לאן לרדת פשוט לא יורדת: היא נשארת בגובה שורה
+          // אחת, בדיוק לפי המרווח של האותיות הרגילות. היא עדיין גדולה
+          // ועדיין מילת פתיח — היא רק לא חורגת מהשורה שלה.
+          // ⛔ ניסיתי כאן להקטין את האות ולמנוע גלישה — ההפך קרה:
+          // החפיפות עלו מ-8 ל-9 והדיו גדל מ-37.19 ל-40.19. הוחזר.
+          // הפתרון האמיתי אינו בציור אלא במרווח, והוא נמצא ב-
+          // `enforceUniformLinePitch`: אחרי מילת פתיח נפתחת, השורה
+          // הנראית הבאה יושבת במרווח **כפול** — וזו עדיין מכפלה של
+          // אותו מרווח אחיד, בדיוק כפי שמשה הורה.
+          lineEl.classList.add('opw-no-flow');
+          lineEl.style.overflow = 'visible';
         }
       } else {
         appendV9TextWithMainRefs(lineEl, line);
