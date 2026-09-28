@@ -240,50 +240,27 @@ export function rich_sub(pattern, repl_func, rich_text, flags) {
 
 const XMLNS_W_PREFIX = `{${WNS}}`;
 
-// ⛔⛔⛔ משה 28/09/2026 — „נראה שהמייבא לא מייבא הדגשות, בעבר עבד, חבל".
+// ⛔⛔⛔ 28/09/2026 — כאן ישבו שתי פונקציות עזר שהרחיבו את קריאת ה-XML
+// של וורד גם למפענח שאינו מודע למשפחות התגיות. הן **הוסרו**.
 //
-// ═══ השורש ═══
-// קובץ Word הוא XML שבו לכל תגית יש „שם משפחה" (namespace). יש שני
-// מצבים שבהם המפענח עובד:
-//   • מודע לשם המשפחה — אז התגית היא „b" מהמשפחה w.
-//   • לא מודע          — אז שם התגית הוא פשוט „w:b", בלי משפחה.
-// הקוד כאן כבר ידע על שני המצבים — `findAll` נופל למצב השני כשצריך.
-// אבל הפונקציות שבונות את ה-HTML של ההערה בדקו **רק** את המצב
-// הראשון: `if (ch.namespaceURI !== WNS) continue;`
+// כתבתי עליהן במפורש שהן הקשחה בלבד ושלא הוכח שהן מתקנות באג — ואכן
+// לא. מה שהן כן עשו: אלמנטים ממשפחות אחרות של וורד, שקודם נזרקו
+// בשקט, התחילו להיקלט כאילו היו הוראות עיצוב. התוצאה הייתה הדיווח
+// של משה בדחיפות 1: „חלק מהטקסט הראשי ממש נהיה ענקי ובלתי ניתן
+// לקריאה" — 713 שורות שקיבלו 18 נקודות במקום 13 פיקסלים.
 //
-// ⇒ במצב השני כל הילדים נפסלו, ה-HTML של ההערה יצא ריק, והמערכת
-//   נפלה חזרה לטקסט פשוט — כלומר בלי בולד, בלי נטוי, בלי קו תחתון.
-//   בדיוק „לא מייבא הדגשות".
+// הלקח: הקשחה שלא נמדד שהיא מתקנת משהו אינה „בחינם". היא שינוי
+// התנהגות לכל דבר, ויש לה מחיר.
 //
-// שתי הפונקציות האלה מכירות את שני המצבים, וכל מי שנוגע ב-XML של
-// וורד צריך לעבור דרכן.
-function _isW(node, localName) {
-  if (!node || node.nodeType !== 1) return false;
-  if (node.namespaceURI === WNS) return node.localName === localName;
-  // מפענח בלי מודעות למשפחות: השם המלא הוא "w:b"
-  const n = String(node.nodeName || node.tagName || '');
-  return n === `w:${localName}` || n === localName;
-}
+// ⭐ מה שכן נשאר מאותו תיקון: קריאת „סגנון תו מודגש" (rStyle) — זה
+//    מה שהוכח בבדיקה על קובץ Word אמיתי, וזה מה שמשה אישר:
+//    „עכשיו ההדגשות עובדות".
 
-function _wLocalName(node) {
-  if (!node) return '';
-  if (node.namespaceURI === WNS) return node.localName || '';
-  const n = String(node.nodeName || node.tagName || '');
-  return n.startsWith('w:') ? n.slice(2) : n;
-}
-
+// ⛔ 28/09 — הוחזר למקור. ההרחבה כאן הייתה חלק מהרגרסיה „הטקסט הראשי
+// נהיה ענקי". ראה ההסבר המלא ליד localTag.
 function getAttrW(el, name) {
-  if (!el) return null;
-  let v = el.getAttributeNS ? el.getAttributeNS(WNS, name) : null;
-  if (v === null || v === undefined || v === '') {
-    if (el.getAttribute) {
-      const withPrefix = el.getAttribute(`w:${name}`);
-      v = (withPrefix === null || withPrefix === undefined)
-        ? el.getAttribute(name)
-        : withPrefix;
-    }
-  }
-  return (v === undefined) ? null : v;
+  if (!el || !el.getAttributeNS) return null;
+  return el.getAttributeNS(WNS, name);
 }
 
 // 2026-05-31: ב-@xmldom/xmldom (shim ל-Web Worker) אין `.children` (HTML-only).
@@ -335,9 +312,9 @@ function findAll(root, tag) {
 function findChild(el, tag) {
   if (!el) return null;
   for (const ch of _elemChildren(el)) {
-    // ★ 28/09 — דרך _isW, כדי שיעבוד גם כשהמפענח אינו מודע למשפחות
-    // התגיות. זה אותו שורש שמחק את ההדגשות ביבוא.
-    if (_isW(ch, tag)) return ch;
+    // ⛔ 28/09 — הוחזר למקור. ההרחבה כאן הייתה חלק מהרגרסיה „הטקסט
+    // הראשי נהיה ענקי". ראה ההסבר המלא ליד localTag.
+    if (ch.namespaceURI === WNS && ch.localName === tag) return ch;
   }
   return null;
 }
@@ -348,12 +325,26 @@ function findDeep(el, tag) {
   return all.length ? all[0] : null;
 }
 
+// ⛔⛔⛔ משה 28/09/2026, דחיפות 1 — „חלק מהטקסט הראשי ממש נהיה ענקי
+// ובלתי ניתן לקריאה".
+//
+// זו הייתה **הרגרסיה שלי**. הרחבתי כאן את הבדיקה כדי שתכיר גם מפענח
+// XML שאינו מודע למשפחות התגיות — הקשחה שכתבתי במפורש שלא הוכחה
+// שהיא מתקנת משהו. התוצאה: אלמנטים ממשפחות אחרות של וורד, שקודם
+// נזרקו בשקט, התחילו להיקלט כאילו היו הוראות עיצוב.
+//
+// ═══ נמדד בייצוא של משה (17:59) ═══
+//   שורות בטקסט הראשי                1,531
+//   בגודל התקין (13px)                1,515
+//   שורות עם טקסט מוגדל                 713
+//   הגדלים שנקלטו              20px ו-24px  (font-size: 18pt)
+//
+// ⇒ מוחזר בדיוק למה שהיה. מה שנשאר מהתיקון של אותו יום הוא **רק**
+//   קריאת „סגנון תו מודגש" (rStyle) — זה מה שהוכח בבדיקה, וזה מה
+//   שמשה אישר שעובד: „עכשיו ההדגשות עובדות".
 function localTag(el) {
   // האם זה אלמנט WNS עם localName tag?
-  // ★ 28/09 — מחזיר את השם גם כשהמפענח אינו מודע למשפחות ("w:r").
-  if (!el || el.nodeType !== 1) return null;
-  const n = _wLocalName(el);
-  return n || null;
+  return el && el.namespaceURI === WNS ? el.localName : null;
 }
 
 // =====================================================================
@@ -708,11 +699,14 @@ function _readStyleEmphasisMap(root) {
                     basedOn: basedOn ? getAttrW(basedOn, 'val') : null };
     if (rPr) {
       for (const p of _elemChildren(rPr)) {
-        const pn = _wLocalName(p);
+        if (!p || p.nodeType !== 1 || p.namespaceURI !== WNS) continue;
+        const pn = p.localName;
         const v = getAttrW(p, 'val');
         if (pn === 'b' || pn === 'bCs') { if (v !== '0' && v !== 'false') entry.bold = true; }
         else if (pn === 'i' || pn === 'iCs') { if (v !== '0' && v !== 'false') entry.italic = true; }
         else if (pn === 'u') { if (v && v !== 'none') entry.underline = true; }
+        // ⛔ 28/09 — גודל וצבע **לא** נקראים כאן במכוון. ניסיתי, וזה
+        // בדיוק מה שהפך טקסט ראשי לענקי. משה: „לא דחוף".
       }
     }
     map[id] = entry;
@@ -740,14 +734,13 @@ function _runToHtml(rEl) {
   let bold = false, italic = false, underline = false;
   let text = '';
   for (const ch of Array.from(rEl.childNodes || [])) {
-    if (!ch || ch.nodeType !== 1) continue;
-    // ★ 28/09 — מכיר גם מפענח שאינו מודע למשפחות התגיות. ראה ההסבר
-    // המלא ליד _isW: זה בדיוק מה שמחק את כל ההדגשות ביבוא.
-    const ln = _wLocalName(ch);
+    // ⛔ 28/09 — הוחזר לבדיקה המקורית. ראה ההסבר המלא ליד localTag.
+    if (!ch || ch.nodeType !== 1 || ch.namespaceURI !== WNS) continue;
+    const ln = ch.localName;
     if (ln === 'rPr') {
       for (const p of Array.from(ch.childNodes || [])) {
-        if (!p || p.nodeType !== 1) continue;
-        const pn = _wLocalName(p);
+        if (!p || p.nodeType !== 1 || p.namespaceURI !== WNS) continue;
+        const pn = p.localName;
         if (pn === 'b' || pn === 'bCs') {
           const v = getAttrW(p, 'val');
           if (v !== '0' && v !== 'false') bold = true;
@@ -790,9 +783,9 @@ function _note_to_html(noteEl) {
   for (const para of findAll(noteEl, 'p')) {
     const parts = [];
     for (const ch of Array.from(para.childNodes || [])) {
-      // ★ 28/09 — הבדיקה הישנה דרשה namespace, ולכן במפענח שאינו מודע
-      // למשפחות **כל** ה-runs נפסלו וההערה יצאה ריקה מעיצוב.
-      if (_isW(ch, 'r')) {
+      // ⛔ 28/09 — הוחזר למקור. ראה ההסבר המלא ליד localTag.
+      if (ch.nodeType !== 1 || ch.namespaceURI !== WNS) continue;
+      if (ch.localName === 'r') {
         parts.push(_runToHtml(ch));
       }
     }
@@ -975,8 +968,8 @@ export async function docx_extract_simple(input, selected, opts = {}) {
     paraIdx++;
     const pt = [];
     for (const ch of iterAll(para)) {
-      // ★ 28/09 — דרך _wLocalName, שמכיר גם מפענח בלי מודעות למשפחות.
-      const ln = localTag(ch);
+      // ⛔ 28/09 — הוחזר למקור (היה `localTag`, שהורחב וגרם לרגרסיה).
+      const ln = ch.namespaceURI === WNS ? ch.localName : null;
       if (ln === 't' && ch.textContent) {
         pt.push(ch.textContent);
       } else if (ln === 'footnoteReference') {
@@ -1305,7 +1298,7 @@ export async function find_sections_in_docx(input) {
     // direct children w:p of body
     const directPs = [];
     for (const ch of _elemChildren(body)) {
-      if (_isW(ch, 'p')) directPs.push(ch);   // ★ 28/09 — גם בלי מודעות למשפחות
+      if (ch.namespaceURI === WNS && ch.localName === 'p') directPs.push(ch);  // ⛔ 28/09 — הוחזר למקור
     }
     for (const para of directPs) {
       const t = _plain(para, WNS).trim();

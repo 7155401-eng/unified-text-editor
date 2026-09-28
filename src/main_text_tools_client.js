@@ -96,11 +96,14 @@ export async function loadSyncScrollEnabledFromServer() {
       credentials: "same-origin",
       headers: { accept: "application/json" },
     });
-    if (!res.ok) return false;
+    if (!res.ok) return true;
     const body = await res.json();
-    return String(body?.settings?.[SYNC_SCROLL_KEY] || "") === "1";
+    if (!body?.settings || typeof body.settings[SYNC_SCROLL_KEY] === "undefined") {
+      return true;
+    }
+    return String(body.settings[SYNC_SCROLL_KEY]) === "1";
   } catch (_) {
-    return false;
+    return true;
   }
 }
 
