@@ -1551,14 +1551,6 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
   const allLines = [];
   let curY = mainStrips && mainStrips[0] ? mainStrips[0].y_start : 0;
   let lastDebug = null;
-  // ★ משה 27/09/2026 — „מילת הפתיח אינה שומרת ריק מתחתיה".
-  // מילת פתיח מושפלת תופסת גובה של שתי שורות. אם הפסקה שפותחת בה
-  // ארוכה משורה אחת — השורה השנייה שלה נסוגה, וזה עבד. אבל כשהפסקה
-  // באורך שורה אחת בלבד, הפסקה הבאה התחילה מרצועות חדשות שנלקחו
-  // מהמקור הלא-מוצר, ולכן השורה הראשונה שלה נמתחה לכל הרוחב וישבה
-  // בדיוק מתחת לאות הגדולה — בלי שום ריק.
-  // לכן החלון נשמר כאן וממשיך לחול על כל פסקה שמתחילה בזמן שהוא פתוח.
-  let activeOpeningWindow = null;
 
   for (let idx = 0; idx < entries.length; idx++) {
     const entry = entries[idx];
@@ -1580,24 +1572,13 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
     let model = modelForEntry;
     let skippedReason = continued ? "continued-from-prev" : "disabled-or-no-segment";
 
-    // ★ משה 27/09/2026 — שתי אותיות פתיח באותה פינה.
-    // אות פתיח מושפלת יורדת לגובה שתי שורות. כשהפסקה שפותחת בה באורך
-    // שורה אחת בלבד, חצי האות השני יורד אל השורה של הפסקה הבאה — ושם
-    // הייתה יושבת האות הגדולה שלה, זו על גבי זו באותה פינה ימנית.
-    // נמדד: 9 מתוך 20 מילות הפתיח בדף; בכולן השורה שמתחת נשאה בעצמה
-    // `opw-host`, ובכל ה-11 התקינות היא הייתה שורת המשך רגילה.
-    //
-    // ⛔ ניסיתי קודם להחליף את האות בגרסה „מורמת" במקום מושפלת. זה
-    // אמנם סגר את הפער (11/11), אבל אות מורמת בגודל 200% עולה מעל
-    // השורה — ומספר החפיפות בדף קפץ מ-3 ל-12. הוחזר לאחור.
-    //
-    // הפתרון שנשאר: פסקה שמתחילה בזמן שחלון של אות קודמת עוד פתוח
-    // אינה מקבלת אות משלה, אלא נכנסת לאותו חלון כטקסט רגיל. כך אין
-    // שתי אותיות באותו מקום, אין רווח מיותר, ואין אות שעולה מעל השורה.
-    if (model && activeOpeningWindow && curY < activeOpeningWindow.bottom - 0.5) {
-      model = null;
-    }
-
+    // ⛔⛔ משה 28/09/2026 — **הוחזר לאחור**.
+    // ניסיתי למנוע שתי אותיות פתיח באותה פינה על ידי כך שפסקה
+    // שמתחילה בתוך חלון פתוח לא תקבל אות משלה, ושהיא תיכנס לאותו חלון.
+    // משה: „כשיש שורה יתומה הפיסקה שלאחריה אינה מקבלת שורת פתיח — זה
+    // טעות. הכניסה בשורה שלאחר המילת פתיח **לא יכולה להיות בפיסקה
+    // שלאחריה אלא רק באותה פיסקה** — וזה כבר הנחיות ישנות."
+    // ⇒ כל פסקה מקבלת את מילת הפתיח שלה, והנסיגה חלה רק בתוך הפסקה עצמה.
     if (model) {
       const prepared = applyV9OpeningWindowToStrips(paragraphStrips, model, mainMetrics, pageBottom);
       skippedReason = prepared.skippedReason || "";
@@ -1608,18 +1589,7 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
       }
       paragraphStrips = prepared.strips;
       flowInput = makeRichText(model.flow?.remainingText || "", []);
-      activeOpeningWindow = prepared.window || null;
-    } else if (activeOpeningWindow && curY < activeOpeningWindow.bottom - 0.5) {
-      // הפסקה הקודמת פתחה חלון למילת פתיח והוא עדיין לא נגמר —
-      // הפסקה הזו נכנסת לאותו חלון במקום להימתח על כל הרוחב.
-      paragraphStrips = narrowV9StripsInYRange(
-        paragraphStrips,
-        Math.max(curY, activeOpeningWindow.top),
-        activeOpeningWindow.bottom,
-        activeOpeningWindow.reserve
-      );
     }
-    if (activeOpeningWindow && curY >= activeOpeningWindow.bottom - 0.5) activeOpeningWindow = null;
 
     const flow = flowStreamThroughStrips(flowInput, paragraphStrips, mainMetrics, pageBottom);
     const lines = flow.lines || [];
