@@ -40,7 +40,10 @@ import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 // הסיבה: V9 אינו יוצר DOM element עצמאי למספרי ההפניה בראשי; הוא מזריק אותם
 // לתוך mainRuns. לכן אסור לצמצם את הסגנון רק לצבע/פונט/בולד, אחרת כתב
 // עילי/תחתי, יחידות pt ו-line-height נעלמים לפני PDF.JS.
-function styleIdToMarks(styleId) {
+// ★ משה 28/09/2026 — „ניסיתי להגדיר בולד בסגנון מותאם אישית בזרם
+// הראשי ולא הצליח". שתי הפונקציות האלה ידעו לעשות את זה מאז ומתמיד,
+// אבל רק עבור זרמי ההערות. מייצאים אותן כדי שגם הטקסט הראשי יוכל.
+export function styleIdToMarks(styleId) {
   if (!styleId) return null;
   const raw = resolveTextStyle(styleId);
   if (!raw) return null;
@@ -79,7 +82,7 @@ function styleIdToMarks(styleId) {
 // משה 2026-05-15: כאשר זרם הוגדר עם "סגנון מותאם לבולד", כל סימן bold:true
 // ב-runs מוחלף ב-marks של הסגנון הנבחר. בעלי-marks נוספים בריצה (כמו color
 // שצויר ידנית) נשמרים — רק "bold" מתחלף בסגנון. מחזיר עותק; לא מזיק לקלט.
-function applyBoldOverrideToRuns(runs, overrideMarks) {
+export function applyBoldOverrideToRuns(runs, overrideMarks) {
   if (!Array.isArray(runs) || !overrideMarks) return runs;
   let touched = false;
   const out = runs.map((r) => {

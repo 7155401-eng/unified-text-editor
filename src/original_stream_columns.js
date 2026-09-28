@@ -27,6 +27,34 @@ function saveStreamOrder(order) {
   } catch (_) {}
 }
 
+// ★ 28/09/2026 — הקוד שבו נקרא הטקסט הראשי כשהוא מופיע ברשימת הזרמים.
+// אותו קוד בדיוק נקרא במנוע (vilna_v9) כדי להחיל „סגנון לבולד" על הראשי.
+export const MAIN_STREAM_CODE = "main";
+
+// סגנון הטקסט הראשי נשמר מאז ומתמיד תחת „סגנונות מסמך". אסור להעתיק
+// אותו למקום חדש — המנוע קורא משם. לכן קוראים וכותבים אל אותה משבצת,
+// והבלוק החדש הוא רק חלון תצוגה נוסף אליה.
+const MAIN_DOC_STYLE_KEY = "ravtext.documentStyles.v1";
+
+function readMainDocumentStyleId() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(MAIN_DOC_STYLE_KEY) || "{}") || {};
+    return String(raw.mainStyleId || "");
+  } catch (_) { return ""; }
+}
+
+function writeMainDocumentStyleId(value) {
+  try {
+    let raw = {};
+    try { raw = JSON.parse(localStorage.getItem(MAIN_DOC_STYLE_KEY) || "{}") || {}; } catch (_) { raw = {}; }
+    raw.mainStyleId = String(value || "");
+    localStorage.setItem(MAIN_DOC_STYLE_KEY, JSON.stringify(raw));
+    // החלונית הישנה מקשיבה לאירוע הזה ומרעננת את הבורר שלה, כדי ששני
+    // המקומות יראו תמיד את אותו ערך.
+    window.dispatchEvent(new CustomEvent("ravtext:styles-changed"));
+  } catch (_) {}
+}
+
 export function getOrderedStreamCodes(codes) {
   const all = Array.from(new Set(codes || [])).filter(Boolean);
   const order = loadStreamOrder();
@@ -828,7 +856,17 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   panel.appendChild(heading);
   appendGlobalOverridesPanel(panel, commitRender);
 
-  const sorted = getOrderedStreamCodes(Array.from(used));
+  // ★ משה 28/09/2026 — „בהגדרות זרמים צריך הגדרות **זרם ראשי** כמו
+  // בכל הזרמים... ניסיתי להגדיר בולד בסגנון מותאם אישית בזרם הראשי
+  // ולא הצליח בגלל שאין ברשימת הזרמים זרם ראשי", ואחר כך: „במקום
+  // הגדרות כלליות זה צריך להיות הגדרות זרם ראשי וצריך להיות **ביחד**
+  // עם שאר הגדרות הזרמים".
+  //
+  // לכן הראשי נכנס לרשימה כזרם לכל דבר, בקוד `main`, ותמיד ראשון —
+  // ומקבל את אותו בלוק הגדרות מלא בדיוק. אין כאן שדה חדש ואין שדה
+  // שנמחק: אותה רשימה, אותם כפתורים, פשוט עוד חבר אחד ברשימה.
+  const sorted = [MAIN_STREAM_CODE, ...getOrderedStreamCodes(Array.from(used))
+    .filter(c => c !== MAIN_STREAM_CODE)];
   for (let codeIdx = 0; codeIdx < sorted.length; codeIdx++) {
     const code = sorted[codeIdx];
     if (!settings[code]) settings[code] = { ...DEFAULT_STREAM_SETTINGS };
@@ -848,14 +886,19 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     block.className = "stream-settings-block";
 
     const codeLabel = document.createElement("strong");
-    codeLabel.textContent = code;
+    // הזרם הראשי אינו נושא קוד מספרי, ולכן הוא מוצג בשמו.
+    codeLabel.textContent = code === MAIN_STREAM_CODE ? "זרם ראשי" : code;
     codeLabel.className = "stream-settings-code";
+    if (code === MAIN_STREAM_CODE) {
+      codeLabel.title = "הגדרות הטקסט הראשי — כמו בכל זרם";
+    }
     block.appendChild(codeLabel);
 
     // משה 2026-05-13: שינוי סדר זרמים — חצי ↑/↓ + ידית גרירה ⋮⋮.
     // חצים מעבירים את הרשימה הנוכחית כפרמטר ל-moveStreamInOrder (תיקון לבאג
     // שהחצים לא עשו כלום בכניסה ראשונה).
-    block.draggable = true;
+    // הראשי תמיד ראשון ואינו נגרר — אין לו מקום אחר ברשימה.
+    block.draggable = code !== MAIN_STREAM_CODE;
     block.dataset.streamCode = code;
     block.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData("text/stream-code", code);
@@ -912,8 +955,10 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       });
       return b;
     };
-    orderControls.appendChild(makeArrowBtn("▲", "הזז למעלה", "up", codeIdx === 0));
-    orderControls.appendChild(makeArrowBtn("▼", "הזז למטה", "down", codeIdx === sorted.length - 1));
+    const isMain = code === MAIN_STREAM_CODE;
+    orderControls.appendChild(makeArrowBtn("▲", "הזז למעלה", "up", isMain || codeIdx === 0));
+    // הראשי נשאר ראשון תמיד, ולכן גם החץ למטה מושבת עבורו.
+    orderControls.appendChild(makeArrowBtn("▼", "הזז למטה", "down", isMain || codeIdx === sorted.length - 1));
     block.appendChild(orderControls);
 
     block.appendChild(makeLabeledInput("כותרת:", cur.title || "", {
@@ -1000,8 +1045,16 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       commitRender();
     }));
 
-    block.appendChild(makeStyleSelect("סגנון זרם:", cur.styleId || "", (value) => {
+    // ★ 28/09/2026 — בזרם הראשי „סגנון זרם" חייב להיות **אותו שדה
+    // בדיוק** שכבר קיים תחת „הגדרות כלליות · סגנונות מסמך", אחרת משה
+    // יבחר סגנון ולא יקרה כלום — בדיוק התסכול שהוא דיווח עליו.
+    // לכן השניים מסונכרנים לשני הכיוונים: אותו ערך, שני מקומות תצוגה.
+    const styleSeed = isMain
+      ? (readMainDocumentStyleId() || cur.styleId || "")
+      : (cur.styleId || "");
+    block.appendChild(makeStyleSelect("סגנון זרם:", styleSeed, (value) => {
       cur.styleId = value;
+      if (isMain) writeMainDocumentStyleId(value);
       commitRender();
     }));
 

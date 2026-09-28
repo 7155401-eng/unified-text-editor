@@ -37,7 +37,7 @@ export function wireDocumentStyleControls({ pagesContainer, rerender } = {}) {
   panel.dataset.bound = "1";
 
   panel.innerHTML = `
-    <span class="stream-label-static">הגדרות כלליות - סגנונות מסמך:</span>
+    <span class="stream-label-static">סגנון טקסט ראשי (מסונכרן עם „זרם ראשי" ברשימת הזרמים):</span>
     <label class="stream-col-input">
       <span>טקסט ראשי:</span>
       <select id="document-main-style-select"></select>

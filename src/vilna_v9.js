@@ -2,7 +2,7 @@
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
-import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle } from "./original_stream_columns.js";
+import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle, boldOverrideStyleIdForStream } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
@@ -11,7 +11,7 @@ import {
   concatRichTextParts,
   appendRichTextPart,
 } from "./engine/rich_text_runs.js";
-import { buildNoteContentNodes, nodesToTextRuns } from "./engine/note_content_builder.js";
+import { buildNoteContentNodes, nodesToTextRuns, styleIdToMarks, applyBoldOverrideToRuns } from "./engine/note_content_builder.js";
 import {
   buildV9SplitPolicy,
   buildParagraphBreakCandidates,
@@ -1145,10 +1145,29 @@ function appendV9MainRefSpan(parent, ref) {
   return true;
 }
 
+// ★ משה 28/09/2026 — „בהגדרות זרמים צריך הגדרות זרם ראשי כמו בכל
+// הזרמים... ניסיתי להגדיר בולד בסגנון מותאם אישית בזרם הראשי ולא
+// הצליח בגלל שאין ברשימת הזרמים זרם ראשי".
+//
+// עד היום „סגנון לבולד" עבד רק בזרמי ההערות. הטקסט הראשי צייר את
+// ה-runs שלו כמו שהם, ולכן כל הגדרה כזאת פשוט לא נגעה בו.
+// מעכשיו הראשי נקרא בשם הזרם `main` ומקבל את אותו טיפול בדיוק.
+const V9_MAIN_STREAM_CODE = "main";
+
+function v9MainBoldOverrideRuns(runs) {
+  try {
+    const marks = styleIdToMarks(boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE));
+    if (!marks) return runs;
+    return applyBoldOverrideToRuns(Array.isArray(runs) ? runs : [], marks);
+  } catch (_) {
+    return runs;
+  }
+}
+
 function appendV9TextWithMainRefs(parent, line) {
   const refs = Array.isArray(line?.mainRefs) ? line.mainRefs : [];
   const text = String(line?.text || "");
-  const runs = Array.isArray(line?.runs) ? line.runs : [];
+  const runs = v9MainBoldOverrideRuns(Array.isArray(line?.runs) ? line.runs : []);
   if (!refs.length) {
     appendTextWithRuns(parent, text, runs);
     return;
