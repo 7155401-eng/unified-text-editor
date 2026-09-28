@@ -26,6 +26,9 @@ import {
   t,
 } from "./word_extractor_i18n.js";
 import { serverLog } from "../chapter_cache/chapter_server_api.js";
+// ★ 28/09/2026 — שם זרם שנבחר במסך היבוא נכתב לאותה חנות הגדרות שבה
+// יושבות כל הכותרות, כדי שלא ייווצר מקור-אמת שני.
+import { getStreamSettings, saveStreamSettings } from "../original_stream_columns.js";
 import "./word_extractor.css";
 
 // משה 2026-05-08: סמני בקרה ייחודיים, כך ש-PARBREAK לא יבלבל אם מופיע בטקסט המשתמש
@@ -227,6 +230,15 @@ function ensureModalShell() {
                 <th>${escapeHtml(t('colMarker'))}</th>
                 <th>${escapeHtml(t('colCount'))}</th>
                 <th>${escapeHtml(t('colSeries'))}</th>
+                <!-- ★ משה 28/09/2026 — עמודת הסדר קיימת בשורות מאז 14/05
+                     אבל מעולם לא הופיעה בכותרת, ולכן כל הכותרות היו
+                     מוסטות בעמודה אחת. מתוקן כאן. -->
+                <th>סדר</th>
+                <!-- ★ משה 28/09/2026 — „במסך היבוא צריך להיות אפשרות
+                     לבחור שם חדש לכל זרם, כברירת מחדל זה מסומן כשדה
+                     שאינו ניתן למילוי (צריך לפתוח את השדה עם כפתור
+                     רדיו) ויתנהג בהתנהגות הישנה". -->
+                <th>שם הזרם</th>
                 <th>${escapeHtml(t('colPosition'))}</th>
                 <th>${escapeHtml(t('colPreview'))}</th>
               </tr>
@@ -654,6 +666,61 @@ function renderStreamsTable() {
     tdOrder.appendChild(downBtn);
     tr.appendChild(tdOrder);
 
+    // ★ משה 28/09/2026 — „במסך היבוא צריך להיות אפשרות לבחור שם חדש
+    // לכל זרם, כברירת מחדל זה מסומן כשדה שאינו ניתן למילוי (צריך
+    // לפתוח את השדה עם כפתור רדיו) ויתנהג בהתנהגות הישנה".
+    //
+    // שני כפתורי רדיו לכל שורה: „ברירת מחדל" — וזו בדיוק ההתנהגות
+    // שהייתה עד היום, שום דבר לא זז; ו„שם משלי" — שפותח את השדה.
+    // כל עוד השדה נעול הוא אפור ואי אפשר להקליד בו, כך שברור לעין
+    // שהוא לא בשימוש.
+    const tdName = document.createElement('td');
+    tdName.style.cssText = 'white-space:nowrap;text-align:start;';
+    const groupName = `we-name-mode-${i}`;
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'שם חדש לזרם';
+    nameInput.value = st.customTitle || '';
+    nameInput.style.cssText = 'width:120px;font-size:12px;padding:2px 4px;margin-top:3px;';
+    // שמירה בכל הקלדה — אותו לקח מ„שם הזרם לא נשמר": אירוע change
+    // לבדו הולך לאיבוד כשהטבלה נבנית מחדש.
+    nameInput.addEventListener('input', () => {
+      st.customTitle = nameInput.value;
+    });
+
+    const setLocked = (locked) => {
+      nameInput.disabled = locked;
+      nameInput.style.background = locked ? '#f1f5f9' : '';
+      nameInput.style.color = locked ? '#94a3b8' : '';
+      st.useCustomTitle = !locked;
+      if (locked) st.customTitle = '';
+      if (locked) nameInput.value = '';
+    };
+
+    const mkRadio = (labelText, checked, locked) => {
+      const lab = document.createElement('label');
+      lab.style.cssText = 'font-size:11px;margin-inline-end:6px;cursor:pointer;';
+      const r = document.createElement('input');
+      r.type = 'radio';
+      r.name = groupName;
+      r.checked = checked;
+      r.style.cssText = 'margin-inline-end:3px;';
+      r.addEventListener('change', () => { if (r.checked) setLocked(locked); });
+      lab.appendChild(r);
+      lab.appendChild(document.createTextNode(labelText));
+      return lab;
+    };
+
+    const useCustom = !!st.useCustomTitle;
+    tdName.appendChild(mkRadio('ברירת מחדל', !useCustom, true));
+    tdName.appendChild(mkRadio('שם משלי', useCustom, false));
+    tdName.appendChild(document.createElement('br'));
+    tdName.appendChild(nameInput);
+    setLocked(!useCustom);
+    if (useCustom) nameInput.value = st.customTitle || '';
+    tr.appendChild(tdName);
+
     // position (only meaningful for sidenote)
     const td5 = document.createElement('td');
     if (st.source_type === SOURCE_SIDENOTE) {
@@ -780,6 +847,35 @@ async function onConfirm() {
         marker: s.marker || null,
         symbol: '@' + seriesToCode[s.series],
       });
+    }
+
+    // ★ משה 28/09/2026 — „במסך היבוא צריך להיות אפשרות לבחור שם חדש
+    // לכל זרם". כאן, ורק כאן, השם מגיע ליעדו.
+    //
+    // זו הנקודה שבה נקבע איזה קוד (01, 02...) מקבלת כל סדרה, ולכן זה
+    // המקום היחיד שבו אפשר לתרגם „שם משלי" שהוקלד בטבלה לכותרת של
+    // הקוד הנכון. הכותרת נכתבת לאותה חנות הגדרות שבה יושבות כל
+    // הכותרות — בלי מקור-אמת שני.
+    //
+    // מי שהשאיר „ברירת מחדל" — לא נוגעים בו כלל. ההתנהגות הישנה במלואה.
+    try {
+      const store = getStreamSettings();
+      let wrote = 0;
+      for (const s of selected) {
+        if (!s.useCustomTitle) continue;
+        const title = String(s.customTitle || '').trim();
+        const code = seriesToCode[s.series];
+        if (!title || !code) continue;
+        // ממלאים לתוך האובייקט הקיים ולא מחליפים אותו — אותו לקח
+        // מהבאג „שם הזרם לא נשמר" (28/09).
+        if (!store[code]) store[code] = {};
+        store[code].title = title;
+        if (window.__STREAM_LABELS__) window.__STREAM_LABELS__[code] = title;
+        wrote += 1;
+      }
+      if (wrote) saveStreamSettings();
+    } catch (err) {
+      console.warn('[word_extractor] custom stream titles failed:', err);
     }
     // משה 2026-05-10: ראשית — מפת HTML של הערות מ-mammoth (תמונות/רשימות/טבלאות).
     // נופלים ל-_dnotes_html שב-engine אם mammoth נכשל.
@@ -999,7 +1095,14 @@ function distributeToPanesSimple(result, bodyHtml, mode = 'replace') {
     const code = sym.replace(/^@/, '');
     let pane = pm.panes.find(p => p.symbol === sym || p.streamCode === code);
     if (!pane) {
-      pane = pm.addPane({ streamCode: code, symbol: sym, label: `זרם ${sym}` });
+      // ★ 28/09/2026 — אם נבחר „שם משלי" בטבלת היבוא, החלונית נולדת
+      // ישר עם השם הזה במקום „זרם @01". בלי בחירה — בדיוק כמו קודם.
+      let label = `זרם ${sym}`;
+      try {
+        const chosen = String((getStreamSettings()[code] || {}).title || '').trim();
+        if (chosen) label = chosen;
+      } catch (_) {}
+      pane = pm.addPane({ streamCode: code, symbol: sym, label });
     }
     if (pane && pane.editor) {
       pane.symbol = sym;
