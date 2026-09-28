@@ -3058,6 +3058,15 @@ function renderPagePlan(plan, pageEl, cfg) {
       lineEl.style.marginBottom = "0px";
       lineEl.style.textIndent = "0px";
 
+      // ★ 28/09/2026 — סימון אבחוני: למה השורה הזאת קצרה.
+      // בלי זה אי אפשר למדוד את הדיווח „שורות חתוכות באמצע": מדידה
+      // מבחוץ רואה שורה קצרה, אבל לא יודעת אם היא קצרה **כדין** —
+      // סוף פסקה או שבירה שנכתבה במקור — או שהיא נשברה שלא לצורך.
+      // אלה שני דברים הפוכים: באחד אסור לגעת, בשני חייבים.
+      // ⬛ תכונת נתונים בלבד. אין לה שום השפעה על העיצוב או על המידות.
+      if (line.forcedBreak) lineEl.dataset.v9ForcedBreak = "1";
+      if (line.isLast) lineEl.dataset.v9ParaLast = "1";
+
       // משה 2026-05-13: הגנה נגד חיתוך אותיות/ניקוד.
       // אם הפונט בפועל גדול מגובה השורה המחושב, אסור להשאיר height נמוך.
       const actualFontSize = parseFloat(lineEl.style.fontSize) || line.fontSize || fontSize || 0;
