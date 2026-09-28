@@ -3157,12 +3157,15 @@ function renderPagePlan(plan, pageEl, cfg) {
         // והאות צפה בתוכו. הדפדפן עצמו מחשב את הגלישה — בדיוק כמו
         // סביב תמונה — ואין מה למדוד ומה לצמצם.
         //
-        // ⚠️ כבוי כברירת מחדל: זו דרך ציור אחרת לגמרי, והיא משנה גם
-        // את היישור ואת שבירת השורות. להדלקה:
-        //     localStorage.setItem("ravtext.openingWord.floatMode", "1")
+        // ★ זו ברירת המחדל: משה קבע במפורש שזו השיטה — "וזו השיטה
+        // שביססתי בשביל לעשות את הזרמים זה לצד זה".
+        // נמדד בפועל: האות תופסת בדיוק שתי שורות (גובה 37 מול 18.6
+        // לשורה), ושתי שורות הטקסט נסוגות 61px — רוחב האות ועוד הרווח.
+        // מי שרוצה לחזור לחישוב הישן:
+        //     localStorage.setItem("ravtext.openingWord.floatMode", "0")
         const floatMode = (() => {
-          try { return localStorage.getItem("ravtext.openingWord.floatMode") === "1"; }
-          catch (_) { return false; }
+          try { return localStorage.getItem("ravtext.openingWord.floatMode") !== "0"; }
+          catch (_) { return true; }
         })();
         const nextLine = floatMode ? box.lines[__lineIdx + 1] : null;
         const stepToNext = gapToNext.get(__lineIdx);
