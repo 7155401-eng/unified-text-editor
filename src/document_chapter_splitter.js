@@ -106,10 +106,15 @@ function ensureCard() {
     "width:100%",
   ].join(";");
 
+  // ★ משה 27/09/2026 — „יש אפשרות לחלק לפרקים במסך יבוא וורד, מפריע
+  // מאוד לתצוגה, צריך להיות למטה ברשימת האפשרויות".
+  // הכרטיס הוכנס `insertBefore(streamsWrap)` — כלומר **מעל** רשימת
+  // הזרמים, בראש הדיאלוג, ודחף את כל האפשרויות מטה. עכשיו הוא נכנס
+  // **אחרי** הרשימה, בתחתית, כפי שמשה ביקש.
   const streamsWrap = $(".we-streams-wrap", modal);
   const meta = $(".we-meta", modal);
   if (streamsWrap?.parentElement) {
-    streamsWrap.parentElement.insertBefore(card, streamsWrap);
+    streamsWrap.parentElement.insertBefore(card, streamsWrap.nextSibling);
   } else if (meta?.parentElement) {
     meta.parentElement.insertBefore(card, meta.nextSibling);
   } else {
