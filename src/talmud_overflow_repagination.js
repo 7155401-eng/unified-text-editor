@@ -409,15 +409,24 @@ function ensureEngineStreamSettings(paneManager) {
   if (!window.__STREAM_LABELS__) window.__STREAM_LABELS__ = {};
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
-    window.__STREAM_SETTINGS__[p.streamCode] = {
+    // ⛔⛔⛔ משה 28/09/2026 — אותו באג בדיוק כמו ב-engine_bridge:
+    // החלפת האובייקט ניתקה אותו מפאנל ההגדרות, ולכן שם זרם שהוקלד אחרי
+    // הרינדור הראשון נכתב לאובייקט נטוש ולא נשמר. ממלאים במקום להחליף.
+    if (!window.__STREAM_SETTINGS__[p.streamCode]) {
+      window.__STREAM_SETTINGS__[p.streamCode] = {};
+    }
+    const slot = window.__STREAM_SETTINGS__[p.streamCode];
+    const fallbacks = {
       title: "",
       cols: 1,
       minLinesForCols: 3,
       inline: true,
       lastLineCenter: true,
       firstNoteAsTitle: false,
-      ...(window.__STREAM_SETTINGS__[p.streamCode] || {}),
     };
+    for (const [k, v] of Object.entries(fallbacks)) {
+      if (!(k in slot)) slot[k] = v;
+    }
     const manualTitle = String(window.__STREAM_SETTINGS__[p.streamCode].title || "").trim();
     window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || defaultLabelForCode(p.streamCode);
   }

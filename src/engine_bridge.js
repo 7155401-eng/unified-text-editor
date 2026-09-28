@@ -771,20 +771,45 @@ function ensureEngineStreamSettings(paneManager) {
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
 
-    const prev = window.__STREAM_SETTINGS__[p.streamCode] || {};
+    // ⛔⛔⛔ משה 28/09/2026 — **כאן ישב הבאג „שם הזרם לא נשמר"**.
+    // דיווחו: „לפעמים נשמר ולפעמים לא, **אולי רק הפעם הראשונה אחרי
+    // רענון הדף נשמר והשאר הרוב לא**". הרמז הזה הוא כל הפתרון.
+    //
+    // השורה שהייתה כאן — `window.__STREAM_SETTINGS__[code] = { ... }` —
+    // בנתה **אובייקט חדש** בכל רינדור. פאנל ההגדרות מחזיק מצביע לאובייקט
+    // שהיה קיים כשהוא נבנה, ולכן אחרי הרינדור הראשון הוא כותב לאובייקט
+    // נטוש שאיש כבר לא קורא ממנו. הערכים נשמרים — לתוך הפח.
+    //
+    // כמו להחליף את תיבת הדואר של הבניין: מי שכבר כתב את הכתובת הישנה
+    // ממשיך לשלשל מכתבים לתיבה שאין לה בעלים.
+    //
+    // וזה בדיוק למה דווקא הפעם הראשונה אחרי רענון כן נשמרת: אז הפאנל
+    // והאובייקט עדיין אותו אחד. הרינדור הראשון מפריד ביניהם.
+    //
+    // ⇒ מעכשיו **ממלאים לתוך אותו אובייקט** במקום להחליף אותו, וזהותו
+    //   נשמרת לאורך כל חיי הדף. זה אותו תיקון שנעשה כבר בפאנל עצמו
+    //   (ראה `Object.assign` ב-original_stream_columns) — כאן הוא חסר.
+    if (!window.__STREAM_SETTINGS__[p.streamCode]) {
+      window.__STREAM_SETTINGS__[p.streamCode] = {};
+    }
+    const prev = window.__STREAM_SETTINGS__[p.streamCode];
     const inlineStyle = styleMetaForPane(p);
     const keepInline = hasUsefulInlineStyle(inlineStyle) ? inlineStyle : (prev.inlineStyle || {});
 
-    window.__STREAM_SETTINGS__[p.streamCode] = {
+    // ברירות מחדל נכנסות רק למפתחות שעדיין אינם קיימים — מה שהמשתמש
+    // קבע אף פעם לא נדרס.
+    const fallbacks = {
       title: "",
       cols: 1,
       minLinesForCols: 3,
       inline: true,
       lastLineCenter: true,
       firstNoteAsTitle: false,
-      ...prev,
-      inlineStyle: keepInline,
     };
+    for (const [k, v] of Object.entries(fallbacks)) {
+      if (!(k in prev)) prev[k] = v;
+    }
+    prev.inlineStyle = keepInline;
 
     const manualTitle = String(window.__STREAM_SETTINGS__[p.streamCode].title || "").trim();
     window.__STREAM_LABELS__[p.streamCode] = manualTitle || p.label || defaultLabelForCode(p.streamCode);
