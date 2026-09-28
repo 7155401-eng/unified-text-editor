@@ -252,8 +252,13 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   // הוא גודל האות של מילת הפתיח עצמה. כלומר המקום שנתפס בפועל היה
   // פי שניים מהמקום שנשמר, ולכן השורה השנייה נסוגה פחות מדי והתחילה
   // קצת לפני תחילת הטקסט הרגיל שמעליה.
-  // מעכשיו שמורה בדיוק אותה כמות שמצוירת.
-  const spaceAfterPx = Math.max(0, effectiveOpeningFontSize * settings.spaceAfter);
+  // ⛔⛔ משה 28/09/2026 — **הוחזר לאחור**. ניסיתי לשמור את הרווח המלא
+  // (בלי ה-0.5), כי הציור נותן `marginLeft` מלא. משה דיווח מיד על
+  // **החמרה**: "התוכן של המשך השורה הראשונה מכסה חלק ממילת הפתיח עצמה".
+  // כלומר הגדלת השמירה דחפה את הטקסט אל תוך האות במקום להרחיק ממנה.
+  // חוזרים לחישוב המקורי; הפער שמשה תיאר ("מתחיל קצת קודם") ייפתר
+  // בדרך אחרת — ביישור בין הרוחב הנשמר לרוחב המצויר, לא בהכפלתו.
+  const spaceAfterPx = Math.max(0, effectiveOpeningFontSize * settings.spaceAfter * 0.5);
   const windowLineCount = position === "dropped" ? dropLines : 1;
   const openingWordHeightPx = position === "dropped"
     ? Math.max(baseLineHeight * dropLines, effectiveOpeningFontSize * 1.05)
