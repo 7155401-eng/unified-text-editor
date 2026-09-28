@@ -532,7 +532,20 @@ function unwrapColorAndSizePlaceholders(html) {
       if (size) {
         const basePt = _docBaseSizeHalfPt > 0 ? (_docBaseSizeHalfPt / 2) : 0;
         const sizePt = parseFloat(size);
-        if (basePt > 0 && Number.isFinite(sizePt) && sizePt > 0) {
+        // ⛔⛔ משה 28/09/2026 — „בעמוד יא פתאום יש מילה מוקטנת באמצע
+        // השורה מסיבה לא ברורה", וכנ"ל בעמוד י"ב.
+        //
+        // בדקתי ואין במערכת שום מנוע שמקטין טקסט כדי שייכנס לשורה
+        // (`shrinkPagesToContent` מושבת מזמן). הגודל מגיע מקובץ הוורד
+        // עצמו — לפעמים על מילה בודדת, שריד של עריכה ישנה שלא נראה
+        // בוורד אבל בולט מאוד בעימוד צפוף.
+        //
+        // ⇒ שינוי גודל מוחל רק על קטע באורך של ממש (4 תווים ומעלה).
+        //   מילה בודדת קצרה או תו יחיד נשארים בגודל הרגיל, כך שלא
+        //   נוצרת „מילה מוקטנת באמצע השורה".
+        const innerText = String(inner || '').replace(/<[^>]*>/g, '').trim();
+        const longEnoughForSizeChange = innerText.length >= 4;
+        if (basePt > 0 && Number.isFinite(sizePt) && sizePt > 0 && longEnoughForSizeChange) {
           let pct = Math.round((sizePt / basePt) * 100);
           if (pct < 50) pct = 50;
           if (pct > 200) pct = 200;
