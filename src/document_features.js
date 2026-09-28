@@ -229,7 +229,65 @@ function applyAll() {
   applyWatermark();
 }
 
+// ★ משה 28/09/2026 — "אין מספרי עמודים כלל", וגם (דחיפות 1): "כשאני
+// משנה את הכותרות בטאב פריסה אני לא רואה שלפעמים זה לא משתנה באתר
+// החי (ולפעמים כן, לא יודע במה זה תלוי)".
+//
+// שני הדיווחים הם אותה תקלה, וה"לפעמים" הוא הרמז: זו בעיית תזמון.
+// הפונקציה כאן יצאה מיד כשלא נמצא `#pages-container`, ויחד איתה יצא
+// גם הרישום של המאזין הגלובלי ל-`ravtext:engine-rendered`. כלומר אם
+// היא רצה לפני שהמכל נוצר — המאזין **לעולם לא הותקן** באותה טעינה,
+// ומספרי העמודים, הכותרות והסימן המים לא התעדכנו יותר.
+// נמדד: באותה בדיקה בלי ייבוא — **אפס** תוויות; עם ייבוא — 27.
+//
+// המאזין יושב על `window` ואינו תלוי במכל, ולכן הוא נרשם עכשיו תמיד.
+// רק ה-hook הנקודתי על המכל ממתין לקיומו.
+let _featuresEngineHookInstalled = false;
+
+function installEngineRenderedHook() {
+  if (_featuresEngineHookInstalled || typeof window === "undefined") return;
+  window.addEventListener("ravtext:engine-rendered", () => {
+    // אחרי שה-DOM התעדכן (engine סיים)
+    requestAnimationFrame(() => applyAll());
+  });
+
+  // ★ נמדד: שמונה שניות אחרי הטעינה כבר היו **24 עמודים** על המסך
+  // ו-**אפס** תוויות; רק אחרי כ-18 שניות הן הופיעו. כלומר העמודים
+  // נוצרים בהדרגה, ו-`ravtext:engine-rendered` לבדו אינו מכסה כל מצב.
+  // צופה בתוספות למכל העמודים ומסנכרן ברגע שנוסף עמוד. הצפייה מושהית
+  // בכ-120 מ"ש כדי לא לרוץ על כל שורה בנפרד בזמן בנייה.
+  if (typeof MutationObserver === "function" && typeof document !== "undefined") {
+    let pending = null;
+    const observer = new MutationObserver((records) => {
+      const addedPage = records.some((r) =>
+        Array.from(r.addedNodes || []).some(
+          (n) => n.nodeType === 1 && (n.classList?.contains("page") || n.querySelector?.(".page"))
+        )
+      );
+      if (!addedPage) return;
+      clearTimeout(pending);
+      pending = setTimeout(() => applyAll(), 120);
+    });
+    const attach = () => {
+      const c = document.getElementById("pages-container");
+      if (!c) return false;
+      observer.observe(c, { childList: true, subtree: true });
+      return true;
+    };
+    if (!attach()) {
+      // המכל עדיין לא קיים — מחכים לו על גוף המסמך, פעם אחת
+      const bodyWatch = new MutationObserver(() => {
+        if (attach()) bodyWatch.disconnect();
+      });
+      if (document.body) bodyWatch.observe(document.body, { childList: true, subtree: true });
+    }
+  }
+
+  _featuresEngineHookInstalled = true;
+}
+
 function installRealizedPageHook() {
+  installEngineRenderedHook();
   const container = document.getElementById("pages-container");
   if (!container || container.__documentFeaturesHooked) return;
   const previous = container.__processRealizedPage;
@@ -241,13 +299,9 @@ function installRealizedPageHook() {
   // משה 2026-05-14: אחרי כל סבב רנדור — מסנכרנים את מספרי העמודים/header/footer.
   // בלי זה, כיבוי checkbox השאיר את התוויות כי applyAll רץ רק על page-realize
   // ועמודים קיימים לא נכנסים שוב לאותו hook.
-  if (!container.__documentFeaturesEngineHooked) {
-    window.addEventListener("ravtext:engine-rendered", () => {
-      // אחרי שה-DOM התעדכן (engine סיים)
-      requestAnimationFrame(() => applyAll());
-    });
-    container.__documentFeaturesEngineHooked = true;
-  }
+  // המאזין הגלובלי כבר הותקן ב-installEngineRenderedHook, שרץ בראש
+  // הפונקציה ואינו תלוי בקיום המכל.
+  container.__documentFeaturesEngineHooked = true;
 }
 
 export function wireDocumentFeatures() {
