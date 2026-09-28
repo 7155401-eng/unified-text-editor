@@ -433,8 +433,24 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     const levels = readLevelsFromLocalStorage();
     // ראה ההסבר למעלה ליד isMishnaWrapOn: במצב משנ"ב ענף הרמות הוא שקובע
     // מי בצדדים, ולכן רשימת זרמי הגפ"ת לא מועברת. בלי המתג — כרגיל.
+    // ★ משה 28/09/2026 — "יש מדורי הערות אחרים במקום ה'פשר דבר'" (דחיפות 1).
+    //
+    // בהגדרות שלו: `talmudLayout.streams = "01,02"` — כלומר הוא קבע במפורש
+    // מי יושב בצדדים. אבל כאן, כשמתג משנ"ב דלוק, נשלח מערך **ריק**, ולכן
+    // המסלול היציב במנוע (הראשון=ימני, השני=שמאלי) מדולג לגמרי וההגדרה
+    // שלו לא נקראת. במקומו פועל פולבאק שבוחר את הצד לפי מי שיש לו תוכן
+    // בעמוד — ולכן בכל עמוד יכול לקפוץ זרם אחר.
+    // נמדד בייצוא שלו: בצד השמאלי התחלפו חמישה זרמים שונים.
+    //
+    // ההיגיון הנכון: שני המתגים אינם סותרים. `talmudLayout.streams` קובע
+    // **מי בצדדים**, והרמות של משנ"ב קובעות **מה קורה לשאר** — הן יורדות
+    // מתחת לטקסט. לכן כשההגדרה קיימת מכבדים אותה גם במשנ"ב; רק כשאין
+    // הגדרה מפורשת נשענים על הרמות, כמו קודם.
     const mishnaWrapOn = isMishnaWrapOn();
-    const talmudStreams = mishnaWrapOn ? [] : readTalmudStreamCodes();
+    const explicitTalmudStreams = readTalmudStreamCodes();
+    const talmudStreams = (mishnaWrapOn && !(Array.isArray(explicitTalmudStreams) && explicitTalmudStreams.length))
+      ? []
+      : explicitTalmudStreams;
 
     // משה 2026-05-13: סגנון של "טקסט ראשי" — הזרמת ה-id והאובייקט הגולמי למנוע
     // כדי שהבולד/האיטליק וכל שאר התכונות יחולו על שורות הראשי ב-V9.
