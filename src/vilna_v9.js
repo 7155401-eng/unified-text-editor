@@ -2975,14 +2975,38 @@ function renderPagePlan(plan, pageEl, cfg) {
       .map((l, i) => ({ i, l, y: Number(l.y) || 0, x: Number(l.x) || 0, w: Number(l.width) || 0 }))
       .sort((a, b) => a.y - b.y);
 
+    // ⚠️ מעבר אחד אינו מספיק. כשמזיזים שורה למטה, המרווח בינה לבין
+    // **השורה שאחריה** מתקצר — ואז נוצרת צפיפות חדשה במקום אחר.
+    // נמדד: אחרי מעבר יחיד ירדו החפיפות ל-0, אבל ערכי המרווח השונים
+    // קפצו מ-2 ל-7 והופיעו שתי שורות צפופות חדשות.
+    // לכן חוזרים עד שאין יותר מה להזיז: כל מעבר ממיין מחדש לפי הגובה
+    // המעודכן. גבול של 6 מעברים כדי שלעולם לא ניתקע.
+    let moved = 0;
+    for (let pass = 0; pass < 6; pass++) {
+      byTop.sort((a, b) => a.y - b.y);
+      const movedBefore = moved;
+      moved += passOnce();
+      if (moved === movedBefore) break;
+    }
+    return moved;
+
+    function passOnce() {
     let moved = 0;
     for (let i = 0; i < byTop.length; i++) {
       const cur = byTop[i];
       for (let j = i + 1; j < byTop.length; j++) {
         const nxt = byTop[j];
-        if (nxt.y <= cur.y + 0.5) continue;
         const overlapX = Math.min(cur.x + cur.w, nxt.x + nxt.w) - Math.max(cur.x, nxt.x);
         if (overlapX <= 1) continue;             // טור אחר — לא נוגע
+
+        // ⛔⛔ 28/09 — כאן היה `if (nxt.y <= cur.y + 0.5) continue`, שדילג
+        // על שתי שורות שיושבות באותו גובה. זה נראה סביר — „אותה שורה" —
+        // אבל הוא בדיוק מה שהשאיר את החפיפות האחרונות.
+        //
+        // ⬛ נמדד: שתי שורות מילת-פתיח **שונות** (30 תווים מול 5) נחתו
+        //    שתיהן ב-top 471, עם אותו רוחב בדיוק, אחת על גבי השנייה.
+        // שתי שורות של אותה קופסה שחופפות אופקית ויושבות באותו גובה הן
+        // תמיד תקלה — לא „אותה שורה". לכן הן מטופלות ככל שורה צפופה.
 
         // ★ שורה שנושאת מילת פתיח **נפתחת** תופסת שתי שורות: האות
         // יורדת לגובה שתיים, והטקסט זורם לצידה. לכן השורה הנראית הבאה
@@ -3002,6 +3026,7 @@ function renderPagePlan(plan, pageEl, cfg) {
       }
     }
     return moved;
+    }
   }
 
   function drawBox(box, fontSize, lineHeight, fontFamily, colorClass) {
