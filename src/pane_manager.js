@@ -1,4 +1,4 @@
-﻿// pane_manager.js
+// pane_manager.js
 // מנהל חלוניות עורך — כל חלונית = עורך TipTap עם קוד זרם משלה.
 // תומך עד 99 חלוניות, הוספה/מחיקה דינמית, בחירת זרם, תפריט קליק‑ימני,
 // שמירת מצב ב‑localStorage.
@@ -130,6 +130,37 @@ function visibleMarkerAnchor(body) {
   };
 }
 
+// ⛔⛔⛔ משה 28/09/2026 — „בלחיצה על כפתור גלילה בטאב תצוגה פתאום
+// נגללים לי כל הטקסטים בצורה רועדת בלי הפסקה בלי סיבה ברורה".
+//
+// ═══ מאיפה הרעידה ═══
+// כשחלונית אחת נגללת, הקוד גולל אחריה את כל האחרות. אבל גלילה בקוד
+// היא גלילה לכל דבר — הדפדפן יורה עליה אירוע „נגלל", בדיוק כמו על
+// גלילה ביד. אז החלונית השנייה „מרגישה" שנגללה, ומסנכרנת בחזרה את
+// הראשונה, וחוזר חלילה. זו הרעידה.
+//
+// היה בלם אחד: דגל שנכבה אחרי 50 אלפיות שנייה. אבל האירוע המושרה
+// מגיע בפעימה הבאה של הדפדפן, ובדף כבד זה לוקח יותר מ-50 אלפיות —
+// ואז הבלם כבר משוחרר והלולאה נפתחת.
+//
+// ═══ שני בלמים חדשים, ושניהם לא תלויים בשעון ═══
+// 1. **לא כותבים אם כבר שם.** אם המיקום החדש שווה לקיים (עד פיקסל),
+//    לא נוגעים — ואז אין אירוע חדש, ואין דלק ללולאה.
+// 2. **מי שגללנו אותו — בולע את האירוע שלו.** כל חלונית שגללנו בקוד
+//    מסומנת, וכשמגיע אליה האירוע היא מזהה שהוא שלנו ולא מסנכרנת הלאה.
+//
+// שתי הפונקציות מחזירות עכשיו אם הן **באמת** הזיזו משהו.
+const PANE_SCROLL_EPSILON_PX = 1;
+
+function setPaneScrollTop(pane, body, value) {
+  const next = Math.max(0, Math.min(paneScrollRange(body), value));
+  if (Math.abs(body.scrollTop - next) <= PANE_SCROLL_EPSILON_PX) return false;
+  // מסמנים לפני הכתיבה: האירוע שיגיע אחריה הוא שלנו, לא של המשתמש.
+  if (pane) pane._syncSelfScroll = true;
+  body.scrollTop = next;
+  return true;
+}
+
 function scrollPaneToAnchor(pane, anchor) {
   if (!pane?._body || !anchor?.code || !Number.isFinite(anchor.num)) return false;
   const body = pane._body;
@@ -144,16 +175,16 @@ function scrollPaneToAnchor(pane, anchor) {
   const bodyRect = body.getBoundingClientRect();
   const targetRect = target.getBoundingClientRect();
   const desiredTop = bodyRect.top + bodyRect.height * Math.max(0.05, Math.min(0.45, anchor.offsetRatio ?? 0.25));
-  const maxScroll = paneScrollRange(body);
-  body.scrollTop = Math.max(0, Math.min(maxScroll, body.scrollTop + targetRect.top - desiredTop));
+  setPaneScrollTop(pane, body, body.scrollTop + targetRect.top - desiredTop);
+  // מצאנו עוגן — זו הצלחה גם אם לא היה צריך לזוז בכלל.
   return true;
 }
 
-function syncPaneByFraction(sourceBody, targetBody) {
+function syncPaneByFraction(sourcePane, sourceBody, targetPane, targetBody) {
   const sourceMax = paneScrollRange(sourceBody);
   const targetMax = paneScrollRange(targetBody);
   const fraction = sourceMax > 0 ? sourceBody.scrollTop / sourceMax : 0;
-  targetBody.scrollTop = Math.max(0, Math.min(targetMax, fraction * targetMax));
+  return setPaneScrollTop(targetPane, targetBody, fraction * targetMax);
 }
 
 /* ------------------------------------------------ סרגל הבחירה הצף */
@@ -497,6 +528,13 @@ export class Pane {
   }
 
   _onScroll() {
+    // ★ בלם 2 (ראה ההסבר המלא ליד setPaneScrollTop): אם הגלילה הזו
+    // היא זו שאנחנו עצמנו ביצענו — בולעים אותה כאן ולא מסנכרנים הלאה.
+    // זה מה שמונע את הרעידה, והוא לא תלוי בשום שעון.
+    if (this._syncSelfScroll) {
+      this._syncSelfScroll = false;
+      return;
+    }
     const mgr = this._manager;
     if (!mgr || !mgr.syncEnabled || mgr.syncBusy) return;
     mgr.syncBusy = true;
@@ -507,9 +545,10 @@ export class Pane {
     for (const other of mgr.panes) {
       if (other === this || !other._body) continue;
       if (syncAnchor && scrollPaneToAnchor(other, syncAnchor)) continue;
-      syncPaneByFraction(body, other._body);
+      syncPaneByFraction(this, body, other, other._body);
     }
-    requestAnimationFrame(() => { mgr.syncBusy = false; });
+    // רשת ביטחון בלבד. הבלם האמיתי הוא שני הבלמים שלמעלה.
+    setTimeout(() => { mgr.syncBusy = false; }, 50);
   }
 
   _applyCollapsedState() {
@@ -833,7 +872,14 @@ export class PaneManager {
     this.panes = [];
     this.activePane = null;
     this._listeners = { change: [], focus: [] };
-    this.syncEnabled = false;
+    // ★ משה 28/09/2026 — „ובכלל ביקשתי שזה יהיה לחוץ גלילה כברירת
+    // מחדל, לא יודע למה לא נעשה".
+    //
+    // הסיבה: כאן זה נולד **כבוי**, והקריאה לשרת שמדליקה אותו היא
+    // אסינכרונית — כלומר עד שהיא חוזרת, הסנכרון כבוי והכפתור לא
+    // לחוץ. מעכשיו הוא נולד דלוק, והקריאה לשרת רק **מכבה** אותו אם
+    // משה עצמו כיבה אותו בעבר. כיבוי ידני נשמר כמובן.
+    this.syncEnabled = true;
     this.syncBusy = false;
     this._lastSyncAnchor = null;
     this.lineMode = false;
