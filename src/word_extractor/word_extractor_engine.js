@@ -698,6 +698,46 @@ async function _dnotes_html(zip, xml_file, note_tag) {
   return out;
 }
 
+// ★★★ משה 28/09/2026 — האבחון שלו, מילה במילה:
+// „ראיתי שמה שגרם חוסר אחידות ביבוא היה שבהערה אחת היה פעמיים סימון
+//  @01@01 והתיקון ברור, במקרה שמופיע במקור סימון של הערה — בזמן יבוא
+//  היבוא יחריג אותו ויסמן סימונים שיעקרו ממנו את התחביר של ההערה עם
+//  סימון ברור בדוח שנמצאו בהערות סימוני @01 והוספנו להם '@'0'1'
+//  לסימן היכר שלא ייחשבו אוטומטית כסימון זרם".
+//
+// ═══ מה קורה בלי זה ═══
+// כל הערה מקבלת את סימן הזרם שלה בתחילתה. אם המחבר כבר הקליד „@01"
+// בתוך גוף ההערה בוורד, התוצאה היא „@01@01" — והמפרסר קורא את זה
+// כשתי הערות במקום אחת. מכאן חוסר האחידות בספירה.
+//
+// ═══ הנטרול ═══
+// „@01" בתוך גוף הערה הופך ל-„'@'0'1'": גרש עוטף את ה-@, וגרש אחרי
+// כל ספרה. הטקסט עדיין נקרא לעין, אבל התחביר נעקר ממנו והוא לא
+// ייחשב עוד סימן זרם.
+const STREAM_MARK_IN_NOTE_RE = /@(\d{1,3})/g;
+
+function _neutralizeStreamMark(_m, digits) {
+  return "'@'" + String(digits).split('').join("'") + "'";
+}
+
+// בטקסט רגיל — החלפה ישירה.
+function _neutralizeStreamMarksInText(text, counter) {
+  const s = String(text || '');
+  if (s.indexOf('@') < 0) return s;
+  return s.replace(STREAM_MARK_IN_NOTE_RE, (m, d) => { counter.n += 1; return _neutralizeStreamMark(m, d); });
+}
+
+// ב-HTML — נוגעים רק בטקסט שבין התגיות, כדי לא לשבור מאפיין של תג
+// (למשל כתובת שמכילה @). מפצלים לפי „<...>" ומחליפים רק בחלקים
+// שאינם תגיות.
+function _neutralizeStreamMarksInHtml(html, counter) {
+  const s = String(html || '');
+  if (s.indexOf('@') < 0) return s;
+  return s.split(/(<[^>]*>)/g)
+    .map(part => (part.startsWith('<') ? part : _neutralizeStreamMarksInText(part, counter)))
+    .join('');
+}
+
 // משה 2026-05-10: משלב את הסמל (@01) לתחילת ה-<p> הראשונה של ההערה,
 // במקום לייצר פסקה נפרדת. אם אין <p> בתחילה — עוטף ב-<p> חדש.
 function _prependSymbolToHtml(symbol, html) {
@@ -720,6 +760,9 @@ function _stripMarkerFromHtml(html, marker) {
 }
 
 export async function docx_extract_simple(input, selected, opts = {}) {
+  // ★ 28/09 — מונה של סימני זרם שנוטרלו בתוך גוף ההערות.
+  // אובייקט ולא מספר, כדי שפונקציות העזר יוכלו להגדיל אותו.
+  const _markGuard = { n: 0 };
   const zip = await _loadDocxZip(input);
   const fn_d = await _dnotes_plain(zip, 'word/footnotes.xml', 'footnote');
   const en_d = await _dnotes_plain(zip, 'word/endnotes.xml',  'endnote');
@@ -813,11 +856,13 @@ export async function docx_extract_simple(input, selected, opts = {}) {
         if (fid && (fid in fn_d)) {
           const [s, c, mk] = _res(fn_d[fid], fn_m, fn_n);
           if (s) {
-            pt.push(s); sn[s].push(`${s}${c}`);
+            // ★ 28/09 — מנטרלים סימני זרם שכבר יושבים בגוף ההערה,
+            // אחרת מתקבל „@01@01" והמפרסר סופר שתי הערות.
+            pt.push(s); sn[s].push(`${s}${_neutralizeStreamMarksInText(c, _markGuard)}`);
             // משה 2026-05-10: גרסת HTML — מסיר את ה-marker ומוסיף את הסמל בתחילת ה-HTML
             const rawHtml = fn_h[fid] || '';
             const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
-            snHtml[s].push(_prependSymbolToHtml(s, stripped));
+            snHtml[s].push(_prependSymbolToHtml(s, _neutralizeStreamMarksInHtml(stripped, _markGuard)));
           }
         }
       } else if (ln === 'endnoteReference') {
@@ -825,10 +870,10 @@ export async function docx_extract_simple(input, selected, opts = {}) {
         if (eid && (eid in en_d)) {
           const [s, c, mk] = _res(en_d[eid], en_m, en_n);
           if (s) {
-            pt.push(s); sn[s].push(`${s}${c}`);
+            pt.push(s); sn[s].push(`${s}${_neutralizeStreamMarksInText(c, _markGuard)}`);
             const rawHtml = en_h[eid] || '';
             const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
-            snHtml[s].push(_prependSymbolToHtml(s, stripped));
+            snHtml[s].push(_prependSymbolToHtml(s, _neutralizeStreamMarksInHtml(stripped, _markGuard)));
           }
         }
       } else if (ln === 'commentReference') {
@@ -836,10 +881,10 @@ export async function docx_extract_simple(input, selected, opts = {}) {
         if (cid && (cid in cm_d)) {
           const [s, c, mk] = _res(cm_d[cid], cm_m, cm_n);
           if (s) {
-            pt.push(s); sn[s].push(`${s}${c}`);
+            pt.push(s); sn[s].push(`${s}${_neutralizeStreamMarksInText(c, _markGuard)}`);
             const rawHtml = cm_h[cid] || '';
             const stripped = mk ? _stripMarkerFromHtml(rawHtml, mk) : rawHtml;
-            snHtml[s].push(_prependSymbolToHtml(s, stripped));
+            snHtml[s].push(_prependSymbolToHtml(s, _neutralizeStreamMarksInHtml(stripped, _markGuard)));
           }
         }
       } else if (ln === 'br') {
@@ -866,7 +911,10 @@ export async function docx_extract_simple(input, selected, opts = {}) {
       streamsHtml.push([sym, snHtml[sym].join('')]);
     }
   }
-  return { main, streams, streamsHtml };
+  // ★ 28/09 — מדווחים כמה סימני זרם נוטרלו בתוך גוף ההערות, כדי שזה
+  // יופיע בדוח סיום היבוא. משה: „עם סימון ברור בדוח שנמצאו בהערות
+  // סימוני @01".
+  return { main, streams, streamsHtml, neutralizedStreamMarks: _markGuard.n };
 }
 
 // =====================================================================

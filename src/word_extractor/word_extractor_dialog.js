@@ -439,7 +439,7 @@ export function closeModal() {
 // ★ משה 28/09/2026 — "בסיום יבוא פופאפ הודעת הצלחה ביבוא".
 // הודעה קצרה שנעלמת לבד אחרי כמה שניות, כדי שלא תדרוש לחיצה נוספת.
 // אפשר לסגור מיד בלחיצה. RTL, ומספרת מה נכנס בפועל.
-function showImportDonePopup({ streamCount = 0, noteCount = 0, mode = 'replace' } = {}) {
+function showImportDonePopup({ streamCount = 0, noteCount = 0, mode = 'replace', neutralizedMarks = 0 } = {}) {
   if (typeof document === 'undefined') return;
   const prev = document.getElementById('we-import-done');
   if (prev) prev.remove();
@@ -462,6 +462,17 @@ function showImportDonePopup({ streamCount = 0, noteCount = 0, mode = 'replace' 
   if (streamCount) detail.push(`${streamCount} זרמים`);
   if (noteCount) detail.push(`${noteCount} הערות`);
   if (detail.length) parts.push(`<div style="margin-top:4px">${detail.join(' · ')}</div>`);
+  // ★ משה 28/09 — „עם סימון ברור בדוח שנמצאו בהערות סימוני @01".
+  // זה מה שגרם לחוסר האחידות בספירה, ולכן זה מוצג בולט ולא נבלע.
+  if (neutralizedMarks) {
+    parts.push(
+      `<div style="margin-top:8px;padding:8px 10px;background:#fff7ed;border:1px solid #fb923c;` +
+      `border-radius:8px;color:#9a3412;font-size:12px">` +
+      `<b>${neutralizedMarks}</b> סימוני זרם נמצאו <b>בתוך גוף ההערות</b> ונוטרלו.<br>` +
+      `הם מוצגים כ־<code>'@'0'1'</code> כדי שלא ייחשבו בטעות כתחילת הערה חדשה.` +
+      `</div>`
+    );
+  }
   parts.push(`<div style="margin-top:2px;font-size:12px;opacity:.85">${modeText}</div>`);
   parts.push(`<div style="margin-top:6px;font-size:11px;opacity:.65">לחיצה לסגירה</div>`);
   box.innerHTML = parts.join('');
@@ -1020,7 +1031,13 @@ async function onConfirm() {
             return sum + (body ? body.split('\n').filter(l => l.trim()).length : 0);
           }, 0)
         : 0;
-      showImportDonePopup({ streamCount, noteCount, mode: importMode });
+      const neutralizedMarks = Number(result?.neutralizedStreamMarks) || 0;
+      if (neutralizedMarks) {
+        serverLog('we_stream_marks_neutralized', {
+          hash: _state.fileHash, fileName: _state.fileName, count: neutralizedMarks,
+        });
+      }
+      showImportDonePopup({ streamCount, noteCount, mode: importMode, neutralizedMarks });
     } catch (_) {}
     if (typeof _state.onLoadedRef === 'function') _state.onLoadedRef();
   } catch (e) {
