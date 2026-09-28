@@ -240,9 +240,50 @@ export function rich_sub(pattern, repl_func, rich_text, flags) {
 
 const XMLNS_W_PREFIX = `{${WNS}}`;
 
+// ⛔⛔⛔ משה 28/09/2026 — „נראה שהמייבא לא מייבא הדגשות, בעבר עבד, חבל".
+//
+// ═══ השורש ═══
+// קובץ Word הוא XML שבו לכל תגית יש „שם משפחה" (namespace). יש שני
+// מצבים שבהם המפענח עובד:
+//   • מודע לשם המשפחה — אז התגית היא „b" מהמשפחה w.
+//   • לא מודע          — אז שם התגית הוא פשוט „w:b", בלי משפחה.
+// הקוד כאן כבר ידע על שני המצבים — `findAll` נופל למצב השני כשצריך.
+// אבל הפונקציות שבונות את ה-HTML של ההערה בדקו **רק** את המצב
+// הראשון: `if (ch.namespaceURI !== WNS) continue;`
+//
+// ⇒ במצב השני כל הילדים נפסלו, ה-HTML של ההערה יצא ריק, והמערכת
+//   נפלה חזרה לטקסט פשוט — כלומר בלי בולד, בלי נטוי, בלי קו תחתון.
+//   בדיוק „לא מייבא הדגשות".
+//
+// שתי הפונקציות האלה מכירות את שני המצבים, וכל מי שנוגע ב-XML של
+// וורד צריך לעבור דרכן.
+function _isW(node, localName) {
+  if (!node || node.nodeType !== 1) return false;
+  if (node.namespaceURI === WNS) return node.localName === localName;
+  // מפענח בלי מודעות למשפחות: השם המלא הוא "w:b"
+  const n = String(node.nodeName || node.tagName || '');
+  return n === `w:${localName}` || n === localName;
+}
+
+function _wLocalName(node) {
+  if (!node) return '';
+  if (node.namespaceURI === WNS) return node.localName || '';
+  const n = String(node.nodeName || node.tagName || '');
+  return n.startsWith('w:') ? n.slice(2) : n;
+}
+
 function getAttrW(el, name) {
-  if (!el || !el.getAttributeNS) return null;
-  return el.getAttributeNS(WNS, name);
+  if (!el) return null;
+  let v = el.getAttributeNS ? el.getAttributeNS(WNS, name) : null;
+  if (v === null || v === undefined || v === '') {
+    if (el.getAttribute) {
+      const withPrefix = el.getAttribute(`w:${name}`);
+      v = (withPrefix === null || withPrefix === undefined)
+        ? el.getAttribute(name)
+        : withPrefix;
+    }
+  }
+  return (v === undefined) ? null : v;
 }
 
 // 2026-05-31: ב-@xmldom/xmldom (shim ל-Web Worker) אין `.children` (HTML-only).
@@ -294,7 +335,9 @@ function findAll(root, tag) {
 function findChild(el, tag) {
   if (!el) return null;
   for (const ch of _elemChildren(el)) {
-    if (ch.namespaceURI === WNS && ch.localName === tag) return ch;
+    // ★ 28/09 — דרך _isW, כדי שיעבוד גם כשהמפענח אינו מודע למשפחות
+    // התגיות. זה אותו שורש שמחק את ההדגשות ביבוא.
+    if (_isW(ch, tag)) return ch;
   }
   return null;
 }
@@ -307,7 +350,10 @@ function findDeep(el, tag) {
 
 function localTag(el) {
   // האם זה אלמנט WNS עם localName tag?
-  return el && el.namespaceURI === WNS ? el.localName : null;
+  // ★ 28/09 — מחזיר את השם גם כשהמפענח אינו מודע למשפחות ("w:r").
+  if (!el || el.nodeType !== 1) return null;
+  const n = _wLocalName(el);
+  return n || null;
 }
 
 // =====================================================================
@@ -629,26 +675,97 @@ function _escapeForHtml(s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ⛔⛔⛔ משה 28/09/2026 — „נראה שהמייבא לא מייבא הדגשות, בעבר עבד, חבל".
+//
+// ═══ מה שנמצא ═══
+// בדקתי את כל השרשרת על קובץ Word אמיתי שבניתי לצורך הבדיקה, ומצאתי
+// שבולד **ישיר** — כזה שנוצר בלחיצה על B — עובר מצוין בכל השלבים:
+// גוף ראשי, הערות, והעורך. אז זה לא היה השבר.
+//
+// ═══ מה כן חסר ═══
+// בוורד יש דרך שנייה, ונפוצה מאוד בספרים: להגדיר **סגנון תו** בשם
+// כלשהו, ולסמן בתוכו שהוא מודגש. אז ב-XML לא כתוב „מודגש" ליד המילה,
+// אלא רק „המילה הזאת בסגנון X" — וההדגשה עצמה יושבת בקובץ הסגנונות.
+// הקוד כאן קרא רק את הדרך הראשונה, ולכן כל מי שעיצב דרך סגנון קיבל
+// טקסט חלק לגמרי.
+//
+// כמו מתכון שכתוב בו „להוסיף את התבלין של סבתא" — המילה „חריף" לא
+// מופיעה במתכון, היא נמצאת בצנצנת.
+//
+// ⇒ מעכשיו נקרא גם קובץ הסגנונות, ונבנית ממנו מפה: שם סגנון ⇐ האם
+//   הוא מודגש / נטוי / קו תחתון. כולל ירושה בין סגנונות.
+let _styleEmphasisMap = {};
+
+function _readStyleEmphasisMap(root) {
+  const map = {};
+  if (!root) return map;
+  for (const st of findAll(root, 'style')) {
+    const id = getAttrW(st, 'styleId');
+    if (!id) continue;
+    const rPr = findChild(st, 'rPr');
+    const basedOn = findChild(st, 'basedOn');
+    const entry = { bold: false, italic: false, underline: false,
+                    basedOn: basedOn ? getAttrW(basedOn, 'val') : null };
+    if (rPr) {
+      for (const p of _elemChildren(rPr)) {
+        const pn = _wLocalName(p);
+        const v = getAttrW(p, 'val');
+        if (pn === 'b' || pn === 'bCs') { if (v !== '0' && v !== 'false') entry.bold = true; }
+        else if (pn === 'i' || pn === 'iCs') { if (v !== '0' && v !== 'false') entry.italic = true; }
+        else if (pn === 'u') { if (v && v !== 'none') entry.underline = true; }
+      }
+    }
+    map[id] = entry;
+  }
+  return map;
+}
+
+// מחזיר את ההדגשה האפקטיבית של סגנון, כולל מה שירש מאבותיו.
+// עומק מוגבל, כדי שסגנון שיורש מעצמו בטעות לא יתקע את היבוא.
+function _styleEmphasis(styleId) {
+  const out = { bold: false, italic: false, underline: false };
+  let cur = styleId;
+  for (let depth = 0; cur && depth < 8; depth++) {
+    const e = _styleEmphasisMap[cur];
+    if (!e) break;
+    if (e.bold) out.bold = true;
+    if (e.italic) out.italic = true;
+    if (e.underline) out.underline = true;
+    cur = e.basedOn;
+  }
+  return out;
+}
+
 function _runToHtml(rEl) {
   let bold = false, italic = false, underline = false;
   let text = '';
-  for (const ch of Array.from(rEl.childNodes)) {
-    if (ch.nodeType !== 1) continue;
-    if (ch.namespaceURI !== WNS) continue;
-    const ln = ch.localName;
+  for (const ch of Array.from(rEl.childNodes || [])) {
+    if (!ch || ch.nodeType !== 1) continue;
+    // ★ 28/09 — מכיר גם מפענח שאינו מודע למשפחות התגיות. ראה ההסבר
+    // המלא ליד _isW: זה בדיוק מה שמחק את כל ההדגשות ביבוא.
+    const ln = _wLocalName(ch);
     if (ln === 'rPr') {
-      for (const p of Array.from(ch.childNodes)) {
-        if (p.nodeType !== 1 || p.namespaceURI !== WNS) continue;
-        const pn = p.localName;
+      for (const p of Array.from(ch.childNodes || [])) {
+        if (!p || p.nodeType !== 1) continue;
+        const pn = _wLocalName(p);
         if (pn === 'b' || pn === 'bCs') {
-          const v = p.getAttributeNS(WNS, 'val');
+          const v = getAttrW(p, 'val');
           if (v !== '0' && v !== 'false') bold = true;
         } else if (pn === 'i' || pn === 'iCs') {
-          const v = p.getAttributeNS(WNS, 'val');
+          const v = getAttrW(p, 'val');
           if (v !== '0' && v !== 'false') italic = true;
         } else if (pn === 'u') {
-          const v = p.getAttributeNS(WNS, 'val');
+          const v = getAttrW(p, 'val');
           if (v && v !== 'none') underline = true;
+        } else if (pn === 'rStyle') {
+          // ★ 28/09 — ההדגשה יושבת בקובץ הסגנונות, לא כאן.
+          const sid = getAttrW(p, 'val');
+          if (sid) {
+            const e = _styleEmphasis(sid);
+            if (e.bold) bold = true;
+            if (e.italic) italic = true;
+            if (e.underline) underline = true;
+          }
         }
       }
     } else if (ln === 't') {
@@ -672,9 +789,10 @@ function _note_to_html(noteEl) {
   const paras = [];
   for (const para of findAll(noteEl, 'p')) {
     const parts = [];
-    for (const ch of Array.from(para.childNodes)) {
-      if (ch.nodeType !== 1 || ch.namespaceURI !== WNS) continue;
-      if (ch.localName === 'r') {
+    for (const ch of Array.from(para.childNodes || [])) {
+      // ★ 28/09 — הבדיקה הישנה דרשה namespace, ולכן במפענח שאינו מודע
+      // למשפחות **כל** ה-runs נפסלו וההערה יצאה ריקה מעיצוב.
+      if (_isW(ch, 'r')) {
         parts.push(_runToHtml(ch));
       }
     }
@@ -764,6 +882,15 @@ export async function docx_extract_simple(input, selected, opts = {}) {
   // אובייקט ולא מספר, כדי שפונקציות העזר יוכלו להגדיל אותו.
   const _markGuard = { n: 0 };
   const zip = await _loadDocxZip(input);
+
+  // ★ 28/09 — קוראים את קובץ הסגנונות פעם אחת, כדי שנדע אילו סגנונות
+  // מסמנים מודגש/נטוי/קו-תחתון. בלי זה, כל מי שעיצב דרך סגנון תו
+  // במקום בלחיצה על B קיבל טקסט חלק. ראה ההסבר המלא ליד _runToHtml.
+  try {
+    _styleEmphasisMap = _readStyleEmphasisMap(_parseXml(await zip.read('word/styles.xml')));
+  } catch (_) {
+    _styleEmphasisMap = {};
+  }
   const fn_d = await _dnotes_plain(zip, 'word/footnotes.xml', 'footnote');
   const en_d = await _dnotes_plain(zip, 'word/endnotes.xml',  'endnote');
   const cm_d = await _dnotes_plain(zip, 'word/comments.xml',  'comment');
@@ -848,7 +975,8 @@ export async function docx_extract_simple(input, selected, opts = {}) {
     paraIdx++;
     const pt = [];
     for (const ch of iterAll(para)) {
-      const ln = ch.namespaceURI === WNS ? ch.localName : null;
+      // ★ 28/09 — דרך _wLocalName, שמכיר גם מפענח בלי מודעות למשפחות.
+      const ln = localTag(ch);
       if (ln === 't' && ch.textContent) {
         pt.push(ch.textContent);
       } else if (ln === 'footnoteReference') {
@@ -1177,7 +1305,7 @@ export async function find_sections_in_docx(input) {
     // direct children w:p of body
     const directPs = [];
     for (const ch of _elemChildren(body)) {
-      if (ch.namespaceURI === WNS && ch.localName === 'p') directPs.push(ch);
+      if (_isW(ch, 'p')) directPs.push(ch);   // ★ 28/09 — גם בלי מודעות למשפחות
     }
     for (const para of directPs) {
       const t = _plain(para, WNS).trim();
