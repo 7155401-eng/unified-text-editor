@@ -2675,9 +2675,43 @@ function buildPagePlan(pageContent, config) {
   // המודגשות (פס לבן-על-צבע), הם נראים דחוסים מדי ב-8px. 0.55 * titleHeight
   // ≈ 11–13px לזרמים בגודל ברירת מחדל, וגדל אוטומטית כשהפונט גדל.
   const interStreamGap = Math.max(10, Math.round(titleHeight * 0.55));
+  // ⛔⛔⛔ משה 28/09/2026 — „בעמ' י' ההערות וציונים עלה יותר גבוה
+  // ממקומו, הוא אמור להיות מתחת, וכרגע הוא עולה על הטקסט הראשי ומוחק
+  // חלק ממנו".
+  //
+  // ═══ השורש ═══
+  // מיקום הזרמים התחתונים נקבע לפי `endY` — ערך ש**מדווח** על סוף כל
+  // קופסה. אבל שורה יכולה לשבת נמוך יותר ממה שהערך אומר: מילת פתיח
+  // יורדת לגובה שתי שורות, יישור מותח, וניקוד חורג מתחת לאות.
+  //
+  // ⇒ ה-footer התחיל בגובה שבו התוכן שמעליו עדיין נמצא — ולכן הוא
+  //   „עלה גבוה ממקומו" ונחת על הטקסט הראשי.
+  //
+  // כמו לקבוע איפה מתחיל המדף הבא לפי הרשימה, בלי לבדוק כמה גבוה
+  // באמת הספר האחרון שהונח.
+  //
+  // ═══ התיקון ═══
+  // הגבול נלקח מ**המיקום האמיתי של השורות** — התחתית הנמוכה ביותר
+  // שנמצאה בפועל — או מהערך המדווח, הגדול מביניהם. כך ה-footer לעולם
+  // אינו מתחיל בתוך תוכן קיים.
+  // ⬛ בתכנון, לפני שה-footer נבנה. אין כאן הזזה אחרי מעשה.
+  const realBottomOf = (box) => {
+    if (!box) return 0;
+    let low = Number(box.endY) || 0;
+    for (const l of (box.lines || [])) {
+      const y = Number(l?.y);
+      if (!Number.isFinite(y)) continue;
+      const h = Number(l?.lineHeightPx) > 0 ? Number(l.lineHeightPx) : 0;
+      const bottom = y + h;
+      if (bottom > low) low = bottom;
+    }
+    return low;
+  };
+  const mainRealBottom = realBottomOf(result.mainBox);
   let footerY = Math.max(
-    ...result.streamBoxes.map(b => b.endY || 0),
-    mainBottomY
+    ...result.streamBoxes.map(b => realBottomOf(b)),
+    mainBottomY,
+    mainRealBottom
   ) + interStreamGap;
   let anyFooterTrimmed = false;
 
