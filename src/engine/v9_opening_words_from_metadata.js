@@ -172,6 +172,11 @@ function applyDroppedOpeningWindowIndents(container) {
       if (top <= hostTop + 0.5) continue;
       if (top >= windowBottom) break;
 
+      // ★ משה 28/09/2026 — שורה שהזרימה כבר צמצמה עבור מילת הפתיח
+      // מסומנת ב-`v9OpeningWindowApplied`. בלי הדילוג הזה היא הייתה
+      // מצומצמת פעם שנייה, והנסיגה יוצאת כפולה מרוחב האות.
+      if (line.dataset.v9OpeningWindowApplied === "1") continue;
+
       const originalWidth =
         numberOrZero(line.dataset.v9PreOpeningWindowWidth) ||
         stylePx(line, "width") ||

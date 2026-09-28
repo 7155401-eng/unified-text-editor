@@ -3118,6 +3118,10 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      // ★ משה 28/09/2026 — סימון לשורה שכבר צומצמה בזרימה עבור מילת הפתיח.
+      // בלעדיו, המדידה מה-DOM שרצה אחרי הציור מצמצמת אותה **פעם שנייה**,
+      // והנסיגה יוצאת כפולה מרוחב האות (נמדד: פער 106 מול אות ברוחב 49).
+      if (line.openingWindow) lineEl.dataset.v9OpeningWindowApplied = "1";
       if (isV9ForcedStreamJustify) lineEl.dataset.v9ForcedStreamJustify = "1";
       if (isColumnAContinuation) lineEl.dataset.v9ColumnAContinuation = "1";
       if (isSourceContinuationEnd) {
