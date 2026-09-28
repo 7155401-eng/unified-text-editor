@@ -416,6 +416,17 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     const labels = (typeof window !== "undefined" && window.__STREAM_LABELS__) || {};
     const titles = Object.assign({}, DEFAULT_TITLES, labels);
 
+    // ★ משה 28/09/2026 — „הצג כותרת זרם בראשי לא עובד".
+    // לזרם הראשי לא היה מקום ברשימת הכותרות בכלל. עכשיו יש: הכותרת
+    // נלקחת מהשדה „כותרת" של „זרם ראשי" בהגדרות הזרמים.
+    // אם משה לא הקליד כלום — הערך ריק, ושום כותרת לא מצוירת. כלומר
+    // מי שלא ביקש כותרת לראשי לא רואה שום שינוי.
+    try {
+      const mainCfg = (typeof window !== "undefined" && window.__STREAM_SETTINGS__ && window.__STREAM_SETTINGS__.main) || {};
+      const mainTitle = String(mainCfg.title || "").trim();
+      if (mainTitle) titles.main = mainTitle;
+    } catch (_) {}
+
     const rawStreamSettings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
     // ★ משה 13/09/2026 — תיקון "בחרתי סגנון לזרם ולא ראיתי שום שינוי בפלט":
     // הרשימה נבנתה רק מהמפתחות של __STREAM_SETTINGS__, שמתמלא בזמן הרינדור

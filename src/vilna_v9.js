@@ -3292,6 +3292,32 @@ function renderPagePlan(plan, pageEl, cfg) {
   // ראשי — בלי צבע זרם (הראשי הוא הטקסט המרכזי, לא זרם)
   if (plan.mainBox) {
     drawBox(plan.mainBox, cfg.mainFontSize || 13, cfg.lineHeightRatio || 1.55, cfg.mainFontFamily, '');
+
+    // ★ משה 28/09/2026 — „הצג כותרת זרם בראשי לא עובד".
+    //
+    // ═══ הסיבה ═══
+    // הטקסט הראשי צויר כאן בלי שום קריאה לציור כותרת. כלומר ההגדרה
+    // לא „לא עבדה" — היא פשוט לא הייתה קיימת עבורו. לכל זרם צד יש
+    // שורת שם מעליו, ולראשי מעולם לא הייתה.
+    //
+    // ═══ למה זה בטוח ═══
+    // הכותרת מצוירת **רק** אם משה הקליד כותרת ל„זרם ראשי" בהגדרות.
+    // מי שלא הקליד — הערך ריק, ושום דבר לא משתנה בעמוד.
+    // בנוסף: אם אין מקום פנוי מעל השורה הראשונה (למשל כשהכתר יושב
+    // שם), לא מציירים — עדיף בלי כותרת מאשר כותרת שדורכת על התוכן.
+    const mainTitle = shouldShowStreamTitle(V9_MAIN_STREAM_CODE)
+      ? String((cfg.titles || {}).main || "").trim()
+      : "";
+    if (mainTitle && plan.mainBox.lines && plan.mainBox.lines.length > 0) {
+      const firstLine = plan.mainBox.lines[0];
+      const titleY = firstLine.y - plan.titleHeight;
+      // רק אם השורה נשארת בתוך הדף ולא נכנסת לשטח שמעליה.
+      if (titleY >= padding - 0.5) {
+        const mainSettings = getEffectiveStreamSettings(V9_MAIN_STREAM_CODE) || {};
+        drawTitle(mainTitle, firstLine.x, titleY, firstLine.width, '',
+                  mainSettings.titleStyleId || '', V9_MAIN_STREAM_CODE);
+      }
+    }
   }
 
   // זרמים צדיים + כותרות — כל זרם בצבע משלו
