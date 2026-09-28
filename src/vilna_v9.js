@@ -3591,6 +3591,20 @@ export async function buildPages(container, paragraphs, config) {
   // (טקסט בלבד, ללא הערות — הן כבר ניתנו) נשמר ל-pendingParagraph לעמוד הבא.
   let pendingParagraph = null;
 
+  // ★ משה 28/09/2026 — "בהגדרות מצוין פנימי/חיצוני... בעמוד אי-זוגי הוא
+  // היה צריך להיות ימני ובעמוד זוגי הוא היה צריך להיות שמאלי!!"
+  // ההגדרה נשמרה ומעולם לא נקראה — חיפוש חישוב זוגיות עמוד בכל הקובץ
+  // החזיר אפס תוצאות, ולכן הראשון ברשימה תמיד ישב מימין.
+  // כאן, כשהמצב "פנימי/חיצוני", הצדדים מתחלפים בעמודים הזוגיים בדיוק
+  // כפי שמשה תיאר. בשאר המצבים ("ימין/שמאל", "אוטומטי") שום דבר לא זז.
+  const streamsForPage = (pageNo) => {
+    const list = cfg.talmudStreams;
+    if (!Array.isArray(list) || list.length < 2) return list;
+    if (cfg.sideMode !== "inner-outer") return list;
+    const isOdd = (pageNo + 1) % 2 === 1;      // pageIdx 0 = עמוד א = אי-זוגי
+    return isOdd ? list : [list[1], list[0], ...list.slice(2)];
+  };
+
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
     if (pendingParagraph?._drainMarker && !hasCarryOver(carryOver)) {
       pendingParagraph = null;
@@ -3611,7 +3625,7 @@ export async function buildPages(container, paragraphs, config) {
 
     const trialAtN = (n) => {
       const slice = getSlice(n);
-      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+      const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
       return buildPagePlan(aggContent, cfg);
     };
 
@@ -3743,7 +3757,7 @@ export async function buildPages(container, paragraphs, config) {
         const tryPrefix = (len) => {
           const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len) };
           const slice = [...baseSlice, half];
-          return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+          return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
         };
         const splitPlanMeta = (tp, movedNotes) => {
           if (!tp || !tp.overflow || tp.overflow.mainText) return null;
@@ -3952,7 +3966,7 @@ export async function buildPages(container, paragraphs, config) {
               };
 
               const fallbackPlan = buildPagePlan(
-                aggregateForV9([...getSlice(baseN), firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+                aggregateForV9([...getSlice(baseN), firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
                 cfg
               );
               const fallbackScore = scoreV9PageCandidate(
@@ -3990,7 +4004,7 @@ export async function buildPages(container, paragraphs, config) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -4063,7 +4077,7 @@ export async function buildPages(container, paragraphs, config) {
             };
 
             const slice = [...baseSlice, firstHalf];
-            const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+            const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
             if (!tp || !tp.overflow || tp.overflow.mainText) continue;
 
             const rescueScore = scoreV9PageCandidate(
@@ -4118,7 +4132,7 @@ export async function buildPages(container, paragraphs, config) {
 
     if (splitInfo && (allowParagraphSplit || noMidParagraph)) {
       const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -4185,7 +4199,7 @@ export async function buildPages(container, paragraphs, config) {
             notes: splitNotes.after,
           };
           const slice = [...getSlice(splitInfo.baseN), firstHalf];
-          const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+          const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
 
           const extensionScore = scoreV9PageCandidate(
@@ -4309,7 +4323,7 @@ export async function buildPages(container, paragraphs, config) {
             notes: splitNotes.after,
           };
           const emergencyPlan = buildPagePlan(
-            aggregateForV9([firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+            aggregateForV9([firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
             cfg
           );
           const emergencyScore = scoreV9PageCandidate(
@@ -4351,7 +4365,7 @@ export async function buildPages(container, paragraphs, config) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -4397,7 +4411,7 @@ export async function buildPages(container, paragraphs, config) {
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
       const currentPlan = buildPagePlan(
-        aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+        aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
         cfg,
       );
       const currentFill = planFillRatio(currentPlan);
@@ -4420,7 +4434,7 @@ export async function buildPages(container, paragraphs, config) {
     if (!splitInfo && hasCarryOver(carryOver)) {
       // בדוק אם carry לבד (slice ריק) חורג
       const carryAloneTrial = buildPagePlan(
-        aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver),
+        aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
         cfg
       );
       // אם carry לבד חורג, או שהוא ממלא את העמוד דינמית, ננקז אותו לבד.
@@ -4466,7 +4480,7 @@ export async function buildPages(container, paragraphs, config) {
       return out;
     };
     const droppedFootersOf = (slice) => {
-      const agg = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+      const agg = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
       const tp = buildPagePlan(agg, cfg);
       const dropped = [];
       for (const fs of (agg.footerStreams || [])) {
@@ -4485,7 +4499,7 @@ export async function buildPages(container, paragraphs, config) {
       const dropped = droppedFootersOf(checkSlice);
       if (dropped.length === 0) break;
       if (splitInfo) {
-        const tp = buildPagePlan(aggregateForV9(checkSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver), cfg);
+        const tp = buildPagePlan(aggregateForV9(checkSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
         const commentaryCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0)
           + (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
         if (commentaryCount > 0 && fillsPageEnough(tp, Math.min(0.62, cfg.gapFillMinRatio))) break;
@@ -4511,7 +4525,7 @@ export async function buildPages(container, paragraphs, config) {
       : (splitInfo ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf] : getSlice(bestN));
 
     let finalSlice = buildFinalSlice();
-    let finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+    let finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
     let finalProbe = buildPagePlan(finalContent, cfg);
     let finalGuardTries = 0;
 
@@ -4539,7 +4553,7 @@ export async function buildPages(container, paragraphs, config) {
       }
 
       finalSlice = buildFinalSlice();
-      finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, cfg.talmudStreams, carryOver);
+      finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
       finalProbe = buildPagePlan(finalContent, cfg);
       finalGuardTries++;
     }

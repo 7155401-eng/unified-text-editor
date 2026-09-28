@@ -502,6 +502,18 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       streamSettings,
       levels,
       talmudStreams,
+      // ★ משה 28/09/2026 — "בהגדרות המסמך מצוין פנימי/חיצוני בהגדרות
+      // גפ\"ת, כלומר הראשון ברשימה יהיה פנימי, ובפועל תמיד הביאור הוא
+      // ימני ולא תמיד פנימי. לפי ההגדרות בעמוד אי-זוגי הוא היה צריך
+      // להיות ימני ובעמוד זוגי הוא היה צריך להיות שמאלי!!"
+      // ההגדרה נשמרה ומעולם לא נקראה: חיפוש חישוב זוגיות עמוד בכל
+      // vilna_v9.js החזיר אפס תוצאות. כאן היא מועברת למנוע.
+      sideMode: (() => {
+        try {
+          const v = localStorage.getItem("ravtext.talmudLayout.sideMode") || "inner-outer";
+          return ["auto", "right-left", "inner-outer"].includes(v) ? v : "inner-outer";
+        } catch (_) { return "inner-outer"; }
+      })(),
       noMidParagraphSoft: readSpacingBool("noMidParagraphSoft", false),
       noMidLineSplits: readSpacingBool("noMidLineSplits", false),
       // ★★ משה 15/09/2026 — "אם יש שם חסימה לא הגיונית פתח אותה".
