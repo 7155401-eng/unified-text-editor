@@ -111,14 +111,22 @@ function ensureCard() {
   // הכרטיס הוכנס `insertBefore(streamsWrap)` — כלומר **מעל** רשימת
   // הזרמים, בראש הדיאלוג, ודחף את כל האפשרויות מטה. עכשיו הוא נכנס
   // **אחרי** הרשימה, בתחתית, כפי שמשה ביקש.
-  const streamsWrap = $(".we-streams-wrap", modal);
-  const meta = $(".we-meta", modal);
-  if (streamsWrap?.parentElement) {
-    streamsWrap.parentElement.insertBefore(card, streamsWrap.nextSibling);
-  } else if (meta?.parentElement) {
-    meta.parentElement.insertBefore(card, meta.nextSibling);
+  // ⛔ משה 28/09/2026 — „את החלון של הפרקים בצד שמאל לא ראיתי שסידרת".
+  //
+  // התיקון הקודם (27/09) אכן הוריד את הכרטיס מתחת לרשימת הזרמים —
+  // אבל לא לתחתית. `streamsWrap.nextSibling` הוא התצוגה המקדימה, ולכן
+  // הכרטיס נחת **באמצע** הדיאלוג ועדיין דחף למטה את כל מה שאחריו.
+  // הדיאלוג עצמו הוא עמודה אחת (flex-direction: column), ולכן „למטה"
+  // כאן פירושו: אחרון בעמודה, ממש מעל כפתורי הפעולה.
+  //
+  // ⇒ הכרטיס נכנס עכשיו לפני `.we-btns` — השורה האחרונה של הדיאלוג —
+  //   ואם אין כפתורים, פשוט בסוף. כך הוא לא דוחף שום דבר.
+  const inner = $(".we-modal", modal) || modal;
+  const btns = $(".we-btns", inner);
+  if (btns?.parentElement) {
+    btns.parentElement.insertBefore(card, btns);
   } else {
-    ($(".we-modal", modal) || modal).appendChild(card);
+    inner.appendChild(card);
   }
 
   return card;
