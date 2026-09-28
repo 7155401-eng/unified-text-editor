@@ -297,6 +297,24 @@ function makeSelect(options, value, onChange) {
   return select;
 }
 
+// ⛔⛔⛔ משה 28/09/2026 — „הבאג שלפעמים לא נשמר שם הזרם שמקלידים לא
+// תוקן, עדיין לפעמים נשמר ולפעמים לא, **אולי רק הפעם הראשונה אחרי
+// רענון הדף נשמר והשאר הרוב לא**".
+//
+// הרמז הזה הוא כל הפתרון. השדה שמע **רק** את האירוע "change", ואירוע
+// כזה נורה רק כשעוזבים את השדה — לחיצה בחוץ, או Enter. כל עוד הסמן
+// בפנים, הדפדפן שותק.
+//
+// בינתיים כל שינוי אחר מפעיל רינדור, והרינדור בונה את פאנל ההגדרות
+// מחדש מאפס. כלומר: משה מקליד שם חדש, הפאנל נהרס, השדה שהוא הקליד
+// לתוכו **נעקר מהדף לפני שעזב אותו** — ולכן אירוע ה"change" לעולם לא
+// נורה, ומה שהוקלד מת יחד עם השדה.
+//
+// וזה בדיוק למה דווקא הפעם הראשונה אחרי רענון כן נשמרת: מיד אחרי
+// רענון אין רינדור רץ, הפאנל יציב, והשדה שורד עד שמשה עוזב אותו.
+//
+// ⇒ מעכשיו שדה טקסט שומר את עצמו **בכל הקלדה** (`saveOnType`), בלי
+//   רינדור ובלי הפרעה. גם אם הפאנל ייהרס מיד — הערך כבר בפנים.
 function makeLabeledInput(labelText, value, attrs, onChange) {
   const label = document.createElement("label");
   label.className = "stream-col-input";
@@ -309,6 +327,13 @@ function makeLabeledInput(labelText, value, attrs, onChange) {
   if (attrs.step !== undefined) input.step = String(attrs.step);
   input.value = value ?? "";
   input.addEventListener("change", () => onChange(input));
+  if (typeof attrs.saveOnType === "function") {
+    // שמירה שקטה תוך כדי הקלדה: כותבת את הערך ומעגנת אותו באחסון,
+    // אבל **לא** מפעילה רינדור — כדי שהפאנל לא ייהרס מתחת לאצבעות.
+    input.addEventListener("input", () => {
+      try { attrs.saveOnType(input); } catch (_) {}
+    });
+  }
   label.appendChild(span);
   label.appendChild(input);
   return label;
@@ -682,6 +707,18 @@ function appendGlobalOverridesPanel(panel, scheduleRender) {
 }
 
 let _suppressPanelRebuild = false;
+let _rebuildWaitsForBlur = false;
+
+// ★ משה 28/09/2026 — החצי השני של „השם לא נשמר".
+// אפילו עם שמירה-בהקלדה, פאנל שנהרס באמצע כתיבה עוקר את הסמן מהשדה
+// ומאבד את מה שעוד לא הוקלד. לכן: כל עוד הסמן יושב **בתוך** שדה בפאנל,
+// דוחים את הבנייה מחדש, ומבצעים אותה ברגע שהסמן יוצא.
+function typingInsidePanel(panel) {
+  const el = document.activeElement;
+  if (!el || !panel || !panel.contains(el)) return false;
+  const tag = String(el.tagName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || el.isContentEditable === true;
+}
 
 export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   // שינוי הגדרה שמשה בדיוק עשה אינו סיבה לבנות מחדש את הפאנל שהוא
@@ -689,6 +726,21 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   if (_suppressPanelRebuild) return;
   const panel = document.getElementById("stream-columns-panel");
   if (!panel) return;
+  if (typingInsidePanel(panel)) {
+    if (!_rebuildWaitsForBlur) {
+      _rebuildWaitsForBlur = true;
+      panel.addEventListener("focusout", () => {
+        _rebuildWaitsForBlur = false;
+        // הסמן אולי רק קפץ לשדה שכן בפאנל — אז עוד לא בונים.
+        setTimeout(() => {
+          if (!typingInsidePanel(document.getElementById("stream-columns-panel"))) {
+            try { updateOriginalStreamColumnsPanel(pages, scheduleRender); } catch (_) {}
+          }
+        }, 0);
+      }, { once: true });
+    }
+    return;
+  }
   if (!panel.dataset.styleRefreshBound) {
     panel.dataset.styleRefreshBound = "1";
     window.addEventListener("ravtext:styles-changed", () => updateOriginalStreamColumnsPanel(pages, scheduleRender));
@@ -864,7 +916,12 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     orderControls.appendChild(makeArrowBtn("▼", "הזז למטה", "down", codeIdx === sorted.length - 1));
     block.appendChild(orderControls);
 
-    block.appendChild(makeLabeledInput("כותרת:", cur.title || "", { type: "text" }, (input) => {
+    block.appendChild(makeLabeledInput("כותרת:", cur.title || "", {
+      type: "text",
+      // ★ 28/09 — נשמר בכל הקלדה, ולא רק כשעוזבים את השדה.
+      // ⚠️ בלי trim כאן: משה עדיין מקליד, ורווח באמצע שם הוא חוקי.
+      saveOnType: (input) => { cur.title = input.value; saveStreamSettings(); },
+    }, (input) => {
       cur.title = input.value.trim();
       input.value = cur.title;
       commitRender();
