@@ -28,16 +28,19 @@ jobs:
           from pathlib import Path
           import json, gzip, base64, hashlib
           encoded = ''.join(Path(f'.github/v9-candidate-edits-{i}.b64').read_text().strip() for i in [1,2,3])
-          # Repair one identified transcription character; the full payload and
-          # every input/output source file must still match the pinned hashes.
+          # Repair one identified transcription character; all source hashes
+          # and the full decoded payload remain independently pinned.
           encoded = encoded.replace('GJZ karhi', 'GJZ' + chr(105) + 'karhi')
           raw = gzip.decompress(base64.b64decode(encoded, validate=True))
           assert hashlib.sha256(raw).hexdigest() == 'e978ea83f737356a7badf083af47aa2b915256011c69cbc0751974e13107714e'
-          edits = json.loads(raw)
+          compat = Path('.github/v9-build-compat-edits.json').read_bytes()
+          assert hashlib.sha256(compat).hexdigest() == '96a259fbc9ee4ba1390823ddd74c9f48914d7d9b53bc528357cb7a490e611b27'
+          edits = json.loads(raw) + json.loads(compat)
+          assert len({e['path'] for e in edits}) == len(edits)
           outputs = []
           for item in edits:
               p = Path(item['path'])
-              assert p.parts[0] in ('src','tests') and '..' not in p.parts and not p.is_absolute()
+              assert p.parts[0] in ('src','tests','scripts') and '..' not in p.parts and not p.is_absolute()
               assert not p.is_symlink()
               if item['before'] is None:
                   assert not p.exists(), f'New path already exists: {p}'
@@ -62,8 +65,8 @@ jobs:
           Path('test-results/v9-unified/source-hashes.json').write_text(json.dumps([{k:v for k,v in e.items() if k!='edits'} for e in edits],indent=2))
           print(f'Verified and applied {len(outputs)} source files; no document or font files included.')
           PY
-          git rm .github/v9-candidate-edits-*.b64 .github/workflows/v9-apply-candidate-once.yml
-          git add src tests
+          git rm .github/v9-candidate-edits-*.b64 .github/v9-build-compat-edits.json .github/workflows/v9-apply-candidate-once.yml
+          git add src tests scripts
           git diff --cached --check
           git config user.name 'RavText validation'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
