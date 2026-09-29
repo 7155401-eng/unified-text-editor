@@ -1,4 +1,4 @@
-// vilna_v9.js — מנוע פריסת דף וילנא, V9.
+﻿// vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
