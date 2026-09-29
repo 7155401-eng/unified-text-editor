@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeEditorMark } from '../../src/engine/editor_mark_normalization.js';
+import { normalizeEditorMark, editorMarksToRunMarks } from '../../src/engine/editor_mark_normalization.js';
 
 test('serialized Word textStyle mark survives editor bridge normalization',()=>{
   const mark={toJSON(){return {type:'textStyle',attrs:{fontFamily:'Word Imported Font',fontSize:'11pt',color:'rgb(12, 34, 56)'}};}};
@@ -24,5 +24,21 @@ test('live mark attributes override serialized fallback attributes',()=>{
   assert.deepEqual(normalizeEditorMark(mark),{
     name:'textStyle',
     attrs:{fontFamily:'Live Font',fontSize:'10pt'}
+  });
+});
+
+
+test('serialized Word marks become the actual run marks consumed by runsFromNode',()=>{
+  const marks=[
+    {toJSON(){return {type:'textStyle',attrs:{fontFamily:'Word Imported Font',fontSize:'11pt',color:'rgb(12, 34, 56)'}};}},
+    {toJSON(){return {type:'bold',attrs:{}};}},
+    {toJSON(){return {type:'italic',attrs:{}};}}
+  ];
+  assert.deepEqual(editorMarksToRunMarks(marks),{
+    fontFamily:'Word Imported Font',
+    fontSize:'11pt',
+    color:'rgb(12, 34, 56)',
+    bold:true,
+    italic:true
   });
 });
