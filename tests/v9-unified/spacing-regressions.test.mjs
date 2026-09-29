@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
-import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate } from '../../src/engine/v9_split_policy.js';
+import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow } from '../../src/engine/v9_split_policy.js';
 import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
 import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
@@ -26,6 +26,34 @@ test('backward notes and refs retain previous word at exact split and all aliase
  const joined=joinV9ParagraphFragments(h.firstHalf,h.secondHalf);
  assert.equal(joined.mainText,t);assert.equal(joined.notes[1].anchor,10);assert.equal(joined.notes[1].absoluteAnchor,10);
  assert.deepEqual(joined.mainRefs.map(r=>r.anchor),[5,10]);
+});
+
+test('started long-note continuation is legal and remains scoreable',()=>{
+ const plan={
+   unstartedNotes:[],
+   overflow:{exceedsPage:false,mainText:'',streams:{'01':{text:'continued note body',runs:[]}}},
+   pageBox:{height:200,padding:0},
+   mainBox:{continues:false,lines:[{text:'alpha beta',width:100,naturalWidth:96,isLast:true,y:0,lineHeightPx:20}]},
+   streamBoxes:[{id:'01',lines:[{text:'note start',y:20,lineHeightPx:20}]}],
+   footerBoxes:[]
+ };
+ assert.equal(hasUnsafeV9StreamOverflow(plan),false);
+ const score=scoreV9PageCandidate(plan,{kind:'visual-line-end',priority:900},{rejectSparsePages:false,minLineEdgeFill:.82},{
+   movedNotes:[{uid:'n1'}],cfg:{pageHeight:200,padding:0}
+ });
+ assert.equal(score.accept,true,score.reason);
+});
+
+test('stream overflow without a rendered note start remains unsafe',()=>{
+ const plan={
+   unstartedNotes:[],
+   overflow:{exceedsPage:false,mainText:'',streams:{'01':{text:'whole note still pending',runs:[]}}},
+   pageBox:{height:200,padding:0},
+   mainBox:{continues:false,lines:[{text:'alpha beta',width:100,naturalWidth:96,isLast:true,y:0,lineHeightPx:20}]},
+   streamBoxes:[],footerBoxes:[]
+ };
+ assert.equal(hasUnsafeV9StreamOverflow(plan),true);
+ assert.equal(scoreV9PageCandidate(plan,{kind:'visual-line-end',priority:900},{rejectSparsePages:false},{cfg:{pageHeight:200,padding:0}}).accept,false);
 });
 
 test('backward references belong to one adjacent line, forward refs remain right-open',()=>{

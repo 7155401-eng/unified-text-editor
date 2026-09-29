@@ -227,6 +227,16 @@ export function hasV9StreamOverflow(plan) {
   return Object.values(plan?.overflow?.streams || {}).some(entry => overflowText(entry).trim());
 }
 
+export function hasUnsafeV9StreamOverflow(plan) {
+  if (!hasV9StreamOverflow(plan)) return false;
+  // A long note may continue only after its body has actually started on this
+  // page. unstartedNotes is the authoritative ownership audit for new notes.
+  if (plan?.unstartedNotes?.length) return true;
+  // Carry/continuation that consumed no commentary line at all is not progress
+  // and must not be treated as a legal continuation.
+  return planCommentaryLineCount(plan) === 0;
+}
+
 export function planBottomY(plan) {
   let bottom = 0;
   const visit = lines => { for (const line of lines || []) bottom = Math.max(bottom, (line.y || 0) + (line.lineHeightPx || line.height || 0)); };
@@ -368,7 +378,12 @@ export function scoreV9PageCandidate(plan, candidate, policy = {}, meta = {}) {
     return { accept: false, score: -Infinity, reason: lineEdgeGuard.reason, debug: lineEdgeGuard.debug };
   }
   const streamOverflow = hasV9StreamOverflow(plan);
-  if (streamOverflow && Array.isArray(meta.movedNotes) && meta.movedNotes.length) return { accept: false, score: -Infinity, reason: "moved-notes-overflow" };
+  if (hasUnsafeV9StreamOverflow(plan)) {
+    return { accept: false, score: -Infinity, reason: "stream-overflow-without-valid-start" };
+  }
+  // A moved/anchored note that has started correctly may continue. Keep a
+  // modest score penalty for the continuation, but do not prefer a sparse page
+  // merely to avoid legal carry-over.
   const fill = planFillRatio(plan, meta.cfg || {});
   const mainLines = planMainLineCount(plan);
   const commentaryLines = planCommentaryLineCount(plan);

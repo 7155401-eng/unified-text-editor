@@ -269,6 +269,41 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('legal note continuation does not create very short intermediate pages',async()=>{
+    const settings=getStreamSettings(),saved={};
+    for(const id of ['01','02']){saved[id]=settings[id];settings[id]={...(settings[id]||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};}
+    const page=makePage();
+    try {
+      const input=Array.from({length:6},(_,i)=>{
+        const text=Array(3).fill(neutral).join(' ');
+        const words=[...text.matchAll(/\S+/gu)],w=words[5+i%8];
+        return {id:`fill-source-${i}`,mainText:text,notes:[{
+          stream:i%2?'02':'01',uid:`fill-note-${i}`,num:i+1,
+          anchor:w.index+w[0].length,anchorAffinity:'backward',
+          text:Array(10+(i%3)*3).fill(neutral).join(' ')
+        }]};
+      });
+      const result=await buildPages(page,input,{...cfg,pageHeight:300,talmudStreams:['01','02'],maxPages:80});
+      assert(result.complete,'underfill fixture incomplete');
+      assert(result.pages.length>2,'underfill fixture did not paginate');
+      const fills=result.pages.slice(0,-1).map((p)=>{
+        let bottom=0;
+        for(const l of p.querySelectorAll('.v9-line')){
+          const y=parseFloat(l.style.top)||0,h=parseFloat(l.style.height)||0;
+          bottom=Math.max(bottom,y+h);
+        }
+        return bottom/(300-12);
+      });
+      const minFill=Math.min(...fills);
+      assert(minFill>=0.50,`very short intermediate page survived: min fill=${minFill.toFixed(3)}, fills=${fills.map(x=>x.toFixed(3)).join(',')}`);
+      assert((result.noteAnchorFallbacks||[]).length===0,`anchor fallback in fill fixture: ${JSON.stringify(result.noteAnchorFallbacks)}`);
+      return {pages:result.pages.length,minFill:+minFill.toFixed(3)};
+    } finally {
+      page.remove();
+      for(const id of ['01','02']){if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];}
+    }
+  });
+
   await test('long anchored note may continue after starting with its source line',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
