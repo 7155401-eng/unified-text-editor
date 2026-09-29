@@ -5,6 +5,17 @@ const TARGET = 'src/vilna_v9.js';
 function patchFile(path) {
   const beforeRaw = fs.readFileSync(path, 'utf8');
   let source = beforeRaw.replace(/\r\n/g, "\n");
+  // The integrated planner owns continuation decisions. Do not reintroduce
+  // a legacy text-replacement guard into a finalized main-line plan.
+  if (source.includes('layoutV9MainParagraphs(entries, mainStrips, context, pageBottom)')) {
+    const planner = fs.readFileSync('src/engine/v9_text_measurement.js', 'utf8');
+    if (!planner.includes('entry.continues || entry._v9OpeningWordAllowed === false')) {
+      throw new Error('Unified V9 opening continuation guard is missing');
+    }
+    console.log('[v9-continuation-opw-guard] integrated planner owns continuation');
+    return;
+  }
+
 
   // `_continues` is a generic pagination/layout marker. V9 uses it in several
   // flows, including first halves pulled into the current page by gap/rescue

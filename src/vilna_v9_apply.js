@@ -262,6 +262,7 @@ function annotateV9RenderedSourceMetadata(container, paragraphs) {
     .sort((a, b) => lineSortKey(a) - lineSortKey(b));
 
   for (const line of mainLines) {
+    if (line.dataset.v9LayoutFinal) continue; // authoritative source metadata from V9
     const lineText = normalizeV9SourceText(line.textContent);
     if (!lineText) continue;
     srcIdx = findMatchingParagraphSource(sources, srcIdx, lineText);
@@ -284,7 +285,7 @@ function annotateV9RenderedSourceMetadata(container, paragraphs) {
     } else {
       src.offset += lineText.length;
     }
-    while (srcIdx < sources.length && src.offset >= sources[srcIdx].text.length - 1) srcIdx++;
+    while (srcIdx < sources.length && sources[srcIdx].offset >= sources[srcIdx].text.length) srcIdx++;
   }
 
   for (const line of container.querySelectorAll('.v9-page .v9-line[data-v9-box-id]')) {

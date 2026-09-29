@@ -20,11 +20,10 @@ import {
   splitNotesByAnchor,
   debugV9SplitDecision,
 } from "./engine/v9_split_policy.js";
-import {
-  buildV9OpeningWordLayoutModel,
-  rescaleV9OpeningWordModel,
-  applyV9OpeningWordModelToLineElement,
-} from "./engine/v9_opening_word_layout_model.js";
+import { getOpeningWordSettings } from "./opening_word.js";
+import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main_inline_layout.js";
+import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
+import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
@@ -532,6 +531,8 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
             naturalWidth: fillLine.width,
             isLast: isLastFillLine,
             forcedBreak: fillLine.forcedBreak,
+            openingWindow: !!strip.openingWindow,
+            openingHostFullWidth: Number(strip.openingHostFullWidth) || 0,
           });
 
           tokenIdx += fillLine.tokensConsumed;
@@ -1070,7 +1071,7 @@ function splitWordsByStripsWithLineEdgeGuard(text, metrics, rightStrips, opts = 
 // Main-reference anchors for V9
 // =====================================================================
 function v9MainRefsFromParagraph(p, textLen) {
-  const source = Array.isArray(p?.mainRefs) && p.mainRefs.length ? p.mainRefs : (Array.isArray(p?.notes) ? p.notes : []);
+  const source = Array.isArray(p?.mainRefs) && (p._v9Source || p.mainRefs.length) ? p.mainRefs : (Array.isArray(p?.notes) ? p.notes : []);
   const out = [];
 
   // משה 09/09/2026: עוגן שנמצא מעבר לסוף הפסקה הזאת נמדד בטקסט אחר —
@@ -1619,415 +1620,52 @@ function debugV9OpeningWord(info) {
   };
 }
 
-function cloneV9StripsFromY(strips, startY) {
-  const out = [];
-  for (const strip of strips || []) {
-    if (!strip || strip.y_end <= startY) continue;
-    out.push({ ...strip, y_start: Math.max(strip.y_start, startY) });
-  }
-  return out;
-}
-
-// ★ משה 27/09/2026 — צמצום הרצועות בתוך טווח אנכי נתון.
-// הופרד החוצה כדי שגם פסקה חדשה שמתחילה בעוד מילת הפתיח „חיה" תיכנס
-// לאותו חלון בדיוק. קודם לכן הצמצום היה קשור לפסקה אחת בלבד.
-function narrowV9StripsInYRange(strips, windowTop, windowBottom, reserve) {
-  const out = [];
-  const push = (strip) => {
-    if (!strip || strip.y_end <= strip.y_start || strip.width <= 0) return;
-    out.push(strip);
-  };
-
-  // ⛔⛔⛔ משה 28/09/2026 — „בעמוד ח' פתאום יש טקסט בפירוש באמצע
-  // הטקסט הראשי", „אני לא רוצה שום חפיפות, הכול צריך לעבוד אוטומטי
-  // לחלוטין כאילו היתה פה תמונה — אם יש תמונה הטקסט הולך הצידה".
-  //
-  // ⬛ נמדד: **כל** החפיפות שנשארו בין הראשי לביאור היו שורות מילת
-  //    פתיח — שורת ראשי 215→417 מול שורת ביאור 372→468, חפיפה של 45
-  //    פיקסלים. הקופסה בגובה 18.6 והדיו בגובה 37.2, כלומר שתי שורות.
-  //
-  // ═══ השורש ═══
-  // האות „נפתחת" משתרעת על שתי שורות, והחלון שמפנים לה יכול לחצות
-  // גבול בין שתי רצועות ברוחב שונה — רחבה למעלה, צרה למטה (כי שם
-  // הזרם עדיין תופס שטח). כל רצועה צומצמה בנפרד, ולכן החלק העליון
-  // של החלון קיבל רוחב שאינו תקף לחלקו התחתון.
-  //
-  // כמו לפרוס שולחן לפי רוחב הקצה העליון של החדר, בלי לשים לב שהחדר
-  // מצטמצם למטה.
-  //
-  // ⇒ כל הרצועות בתוך החלון מקבלות את **הרוחב הצר ביותר** שבהן. כך
-  //   הבלוק כולו נשאר בתוך השטח שפנוי לו לכל אורכו.
-  //
-  // ⬛ זה בתכנון ולא בציור: המנוע מזרים את הטקסט לרוחב הזה מלכתחילה,
-  //    ולכן אין גלישה. צמצום באותו מקום בציור נוסה ונמדד — הוא אמנם
-  //    הוריד את החפיפות מול הזרם מ-18 ל-11, אבל העלה את החפיפות בתוך
-  //    הראשי מ-14 ל-20, כי הטקסט כבר לא נכנס. בדיוק כפי שמשה אמר:
-  //    „הסידור צריך לבצע V9 מחדש".
-  let windowMinWidth = Infinity;
-  for (const strip of strips) {
-    const oS = Math.max(strip.y_start, windowTop);
-    const oE = Math.min(strip.y_end, windowBottom);
-    if (oE <= oS) continue;
-    const w = Number(strip.width) || 0;
-    if (w > 0 && w < windowMinWidth) windowMinWidth = w;
-  }
-  const hasWindowMin = Number.isFinite(windowMinWidth) && windowMinWidth > 0;
-
-  for (const strip of strips) {
-    const overlapStart = Math.max(strip.y_start, windowTop);
-    const overlapEnd = Math.min(strip.y_end, windowBottom);
-    if (overlapEnd <= overlapStart) {
-      push({ ...strip });
-      continue;
-    }
-    if (strip.y_start < overlapStart) push({ ...strip, y_end: overlapStart });
-
-    // ⛔⛔⛔ משה 28/09/2026 — „אני חושב שהסיבה שנוצרות שורות כאלה היא
-    // בגלל שהחישוב של V9 הוא לפני חלק מהתהליכים, בעיקר לפני התהליך
-    // של מילת פתיח", ו„שורה שבורה ונצפה שורה של מילה אחת באמצע קטע".
-    //
-    // ═══ מה שנמדד על הייצוא שלו (20:59) ═══
-    //   שורות שנבדקו                           6,261
-    //   שורות קצרות                              165
-    //   מהן שבורות **כדין** (מקור/סוף פסקה)      111
-    //   **שבורות שלא לצורך**                      54
-    //   מהן בנות **מילה אחת**                 54 מתוך 54
-    //   מהן שורות מילת פתיח                       34
-    //
-    // כלומר: **כל** השורות השבורות שלא לצורך הן בנות מילה אחת. ולכן
-    // גם המתיחה לא יכולה לעזור להן — אין רווחים בין מילים למתוח.
-    //
-    // ═══ השורש ═══
-    // כשמילת הפתיח רחבה יחסית לטור, אחרי שמפנים לה מקום נשאר רוחב
-    // זעיר. הקוד נתן לו רצפה של 24 פיקסלים — וברוחב כזה נכנסת בדיוק
-    // מילה אחת. כך נולדה שורה של מילה בודדת באמצע פסקה.
-    //
-    // כמו לפנות מקום לתמונה רחבה בעמוד צר: מה שנשאר לטקסט הוא רצועה
-    // שאפשר לדחוס בה מילה אחת, ואז המשפט נקרע.
-    //
-    // ═══ התיקון ═══
-    // אם אחרי פינוי המקום לא נשאר רוחב שימושי — פשוט **לא מפנים**.
-    // מילת הפתיח תשב באותה שורה בלי חלון מיוחד, והשורה תתמלא כרגיל.
-    // עדיף מילת פתיח בלי גלישה סביבה מאשר משפט שנקרע לשורה של מילה.
-    // ★ הרוחב הבסיסי לחלון הוא **הצר ביותר** מבין הרצועות שהחלון
-    // חוצה — ראה ההסבר המלא בראש הפונקציה.
-    const baseWidth = hasWindowMin ? Math.min(strip.width, windowMinWidth) : strip.width;
-    const narrowed = baseWidth - reserve;
-    const MIN_USABLE_WIDTH_PX = 96;          // מקום לשלוש-ארבע מילים
-    const usable = Math.max(
-      MIN_USABLE_WIDTH_PX,
-      Math.round(baseWidth * 0.45),          // ולפחות 45% מרוחב הטור
-    );
-    if (narrowed < usable) {
-      // אין מספיק מקום לחלון — הרצועה נשארת שלמה, בלי צמצום.
-      push({ ...strip, y_start: overlapStart, y_end: overlapEnd });
-      if (overlapEnd < strip.y_end) push({ ...strip, y_start: overlapEnd });
-      continue;
-    }
-    push({
-      ...strip,
-      y_start: overlapStart,
-      y_end: overlapEnd,
-      width: narrowed,
-      openingWindow: true,
-      // ★ גם הרוחב המלא של הבלוק הוא הצר ביותר בחלון, ולא רוחב
-      // הרצועה הזאת בלבד. אחרת הבלוק יצויר רחב מדי ויחרוג לשטח הזרם.
-      openingHostFullWidth: baseWidth,
-    });
-    if (overlapEnd < strip.y_end) push({ ...strip, y_start: overlapEnd });
-  }
-  out.sort((a, b) => a.y_start - b.y_start || a.x - b.x || a.width - b.width);
-  return out;
-}
-
-function applyV9OpeningWindowToStrips(strips, model, metrics, pageBottom) {
-  if (!model || !Array.isArray(strips) || strips.length === 0) {
-    return { strips: strips || [], skippedReason: model ? "no-main-strips" : "disabled" };
-  }
-  const first = strips[0];
-
-  // ⛔⛔⛔ משה 28/09/2026 — „עדיין לפעמים שורה שניה או שלישית מסתירה
-  // השורה שלפניה או הניקוד של השורה שלפניה".
-  //
-  // ═══ מה שנמדד על הייצוא שלו (14:32, 165 עמודים) ═══
-  //   זוגות שורות שנבדקו                 6,356
-  //   חופפות                               190
-  //   מהן בבלוק מילת הפתיח                 144   <-- שלושה רבעים
-  //   בלוקים שנבדקו                        200
-  //   נכנסו בשתי שורות                      62
-  //   **גלשו לשורה שלישית**                138
-  //
-  // ═══ הסיבה ═══
-  // הבלוק גבוה שתי שורות בדיוק, אבל הטקסט בתוכו דרש שלוש — והשלישית
-  // נפלה על השורה שהמנוע צייר מתחתיו. המנוע מודד רוחב מילים בכלי מדידה
-  // משלו, והדפדפן מסדר אותן קצת אחרת. הפרש קטן, אבל מספיק כדי שמילה
-  // אחת לא תיכנס ותיפול לשורה נוספת.
-  //
-  // כמו מדף שמודדים לו 60 ס"מ וקונים ספרים ל-60 ס"מ בדיוק — ואז ספר
-  // אחד לא נכנס, ונשאר מונח מעל האחרים.
-  //
-  // ═══ המדידה שנתנה את המספר ═══
-  // הרחבתי כל בלוק שגלש, שני פיקסלים בכל פעם, עד שנכנס בשתי שורות:
-  //   נפתרו בהרחבה             138 מתוך 138
-  //   תוספת חציונית             12px
-  //   תוספת מרבית               66px
-  //   רוחב בלוק חציוני         149px   ⇒ החוסר הוא כ-8%
-  //
-  // ═══ התיקון ═══
-  // מרווח ביטחון של 8% מרוחב הרצועה נכנס ל**תכנון בלבד**: המנוע ייתן
-  // לשתי השורות הראשונות קצת פחות טקסט, וכך מה שנכנס לבלוק באמת נכנס.
-  // ⬛ המראה אינו משתנה: האות באותו גודל, המרווח אחריה זהה, ורוחב
-  //    הבלוק (openingHostFullWidth) נשאר הרוחב המלא כפי שהיה.
-  const V9_OPENING_FIT_SAFETY_RATIO = 0.08;  // ⛔ 16% נוסה ונפסל: 299⟵289 בלבד, וכותרות מכוסות 7⟵30
-  // ⛔⛔⛔⛔ משה 29/09/2026 — נמדד על **המסמך האמיתי שלו** (172 עמודים):
-    //   רוחב האות לפי המנוע    22px
-    //   רוחב האות בפועל        32px   ⇐ 45% יותר
-    //   הרזרבה שהופנתה         25px
-    //   **החוסר**            12.9px
-    //   ממוצע על 197 בלוקים: **13.4 פיקסלים חסרים בכל אחד**
-    //
-    // המנוע מודד את האות בכלי מדידה משלו, והדפדפן מצייר אותה בגופן
-    // שנבחר בפועל — ואלה לא זהים. הפער יוצא כמעט חצי מרוחב האות.
-    //
-    // ⇒ הטקסט שנועד לשתי שורות לא נכנס, נשבר לשלוש, והשלישית נופלת
-    //   על מה שמתחתיה. זה מקור 186 מתוך 246 השורות שנשברות בתוך עצמן.
-    //
-    // ⬛ המרווח חושב עד כה כאחוז מרוחב ה**טור** — וזה לא קשור לבעיה.
-    //    הפער הוא ברוחב ה**אות**, ולכן המרווח נגזר ממנו.
-    // ⛔ נוסו ונפסלו: 8% מהטור (299 חפיפות), 16% מהטור (289 — וכותרות
-    //    מכוסות קפצו מ-7 ל-30).
-    // ⛔ נוסה ונפסל גם זה: מרווח שנגזר מרוחב האות (חצי מהרזרבה).
-    // 299 ⟵ 301, כלומר ללא שיפור, ועוד שורה לא-שלמה אחת. הסיבה:
-    // הבלוק מקבל ממילא את הרוחב המלא, ולכן הגדלת הרזרבה אינה משנה
-    // כמה מקום נשאר לטקסט לצד האות.
-    const fitSafety = Math.ceil((Number(first.width) || 0) * V9_OPENING_FIT_SAFETY_RATIO);
-  const reserve = Math.max(0, Math.min(
-    (Number(model.metrics?.reserveWidthPx) || 0) + fitSafety,
-    Math.max(0, (first.width || 0) - 24)
-  ));
-  if (reserve <= 0) return { strips, skippedReason: "no-reserve-width" };
-
-  const lineH = metrics.lineHeight;
-  const windowLineCount = Math.max(1, Number(model.flow?.windowLineCount) || 1);
-  const windowTop = first.y_start;
-  const windowBottom = windowTop + windowLineCount * lineH;
-  if (model.position === "dropped" && windowBottom > pageBottom + 0.5) {
-    return { strips: [], skippedReason: "not-enough-page-space" };
-  }
-
-  const out = narrowV9StripsInYRange(strips, windowTop, windowBottom, reserve);
-  return {
-    strips: out,
-    skippedReason: "",
-    // החלון נמסר החוצה כדי שפסקה שתתחיל בזמן שהוא עוד פתוח תיכנס אליו גם היא
-    window: { top: windowTop, bottom: windowBottom, reserve },
-  };
-}
-
 function markV9ContinuationParagraph(p) {
   if (!p) return p;
   return {
     ...p,
-    _continues: true,
+    _continues: p._v9Source ? p._v9SourceEnd < p._v9Source.text.length : !!p._continues,
     _v9ContinuesFromSplit: true,
     _v9OpeningWordAllowed: false,
   };
 }
 
-function concatV9OverflowParagraphs(entries, startIdx, firstOverflowRich) {
-  const parts = [];
-  const first = normalizeRichTextEntry(firstOverflowRich);
-  if (first.text) parts.push(first);
-  for (let i = startIdx + 1; i < entries.length; i++) {
-    const entry = normalizeRichTextEntry(entries[i]?.rich || entries[i]);
-    if (entry.text) parts.push(entry);
-  }
-  return concatRichTextParts(parts, "\n");
+// A render-scoped context snapshots styles and measures exactly what is painted.
+function createMainInlineContext(cfg) {
+  return createV9TextLayoutContext(cfg, {
+    decorateBase(el) {
+      applyStyleToElement(el, cfg.mainStyleId);
+      if (cfg.mainInlineStyle) applyTextStyleObjectToElement(el, cfg.mainInlineStyle);
+    },
+    prepareRuns: v9MainBoldOverrideRuns,
+    prepareRefs(refs) {
+      return refs.map(ref => {
+        const holder = document.createElement("span");
+        appendV9MainRefSpan(holder, ref);
+        const span = holder.firstElementChild;
+        return { ...ref, formatted: span?.textContent || "", cssText: span?.style.cssText || "" };
+      });
+    },
+    openingStyle: styleIdToMarks,
+  });
 }
 
 function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, cfg, pageBottom) {
-  const entries = Array.isArray(pageContent.mainParagraphs) && pageContent.mainParagraphs.length
-    ? pageContent.mainParagraphs
-    : [{ text: pageContent.mainText || "", runs: pageContent.mainRuns || [], continues: !!pageContent.mainStartsContinued }];
-  const allLines = [];
-  let curY = mainStrips && mainStrips[0] ? mainStrips[0].y_start : 0;
-  let lastDebug = null;
-
-  for (let idx = 0; idx < entries.length; idx++) {
-    const entry = entries[idx];
-    const rich = normalizeRichTextEntry(entry.rich || { text: entry.text || "", runs: entry.runs || [] });
-    if (!rich.text) continue;
-
-    const continued = !!(entry.continues || entry._v9ContinuesFromSplit || entry._v9OpeningWordAllowed === false);
-    const modelForEntry = !continued && entry._v9OpeningWordAllowed !== false
-      ? buildV9OpeningWordLayoutModel(rich.text, cfg.openingWordSettings || null, {
-          isParagraphStart: true,
-          continuesFromPrevious: false,
-          baseFontSize: cfg.mainFontSize,
-          baseLineHeight: mainMetrics.lineHeight,
-          // ⭐ 29/09 — בלי זה המדידה נופלת לגופן של גוף האתר
-          // ומחזירה רוחב גדול ב-35% ממה שיצויר.
-          baseFontFamily: cfg.mainFontFamily,
-        })
-      : null;
-
-    let paragraphStrips = cloneV9StripsFromY(mainStrips, curY);
-    let flowInput = rich;
-    let model = modelForEntry;
-    let skippedReason = continued ? "continued-from-prev" : "disabled-or-no-segment";
-
-    // ⛔⛔ משה 28/09/2026 — **הוחזר לאחור**.
-    // ניסיתי למנוע שתי אותיות פתיח באותה פינה על ידי כך שפסקה
-    // שמתחילה בתוך חלון פתוח לא תקבל אות משלה, ושהיא תיכנס לאותו חלון.
-    // משה: „כשיש שורה יתומה הפיסקה שלאחריה אינה מקבלת שורת פתיח — זה
-    // טעות. הכניסה בשורה שלאחר המילת פתיח **לא יכולה להיות בפיסקה
-    // שלאחריה אלא רק באותה פיסקה** — וזה כבר הנחיות ישנות."
-    // ⇒ כל פסקה מקבלת את מילת הפתיח שלה, והנסיגה חלה רק בתוך הפסקה עצמה.
-    if (model) {
-      const prepared = applyV9OpeningWindowToStrips(paragraphStrips, model, mainMetrics, pageBottom);
-      skippedReason = prepared.skippedReason || "";
-      if (skippedReason) {
-        const overflow = concatV9OverflowParagraphs(entries, idx, rich);
-        lastDebug = { entry, model, skippedReason, applied: false, continued };
-        return { lines: allLines, overflowText: overflow.text, overflowRuns: overflow.runs, overflowRich: overflow, endY: curY, debug: lastDebug };
-      }
-      paragraphStrips = prepared.strips;
-
-      // ⛔⛔⛔⛔ משה 29/09/2026 — „גובה שורות חייב להתנהג כמו שהיו כאן
-      // שורות אמיתיות, לא משהו מלאכותי, זה הגורם לבעיות".
-      //
-      // ⬛ נמדד: **17 מתוך 32** החפיפות שנשארו בתוך הטקסט הראשי הן
-      //    שורות מילת פתיח — האות בגובה שתי שורות בקופסה של שורה אחת.
-      //
-      // ═══ מתי זה קורה ═══
-      // אות „נפתחת" יורדת שתי שורות, והמנוע מפנה לה חלון בגובה הזה.
-      // אבל כשלא נשאר רוחב שימושי אחרי הפינוי, המנוע מוותר על החלון —
-      // והאות נשארה גדולה בלי שיהיה לה לאן לרדת.
-      //
-      // ⇒ אם אין חלון, אין ירידה: האות יורדת ל**שורה אחת** כבר כאן,
-      //   בתכנון — לפני שהטקסט זורם. כך המנוע מחשב הכול לפי הגודל
-      //   האמיתי, והשורה חוזרת להיות שורה אמיתית שגובהה שווה לתוכן.
-      //
-      // ⬛ ניסיתי לעשות את אותו דבר בציור, ונמדד שזה מחמיר (33 ⟵ 35):
-      //    שם המידות עדיין לא סופיות. כאן, בתכנון, זה המקום הנכון.
-      // ⭐⭐⭐ משה 29/09/2026 — „שורות שעולים זה על זה ומוחקים חלקים".
-      //
-      // ═══ מה נמדד ═══
-      // 192 בלוקי מילת פתיח, כל אחד בגובה שתי שורות בדיוק. גובה
-      // הטקסט בפועל: **2.82 שורות** בממוצע. 172 מהם גלשו החוצה
-      // ונפלו על מה שמתחתיהם.
-      //
-      // ═══ השורש ═══
-      // השאלה „האם פינינו לאות חלון?" נבדקה על **כל** הרצועות של
-      // הפסקה — „האם באיזו רצועה שהיא יש חלון". והתשובה הייתה כן,
-      // גם כשהחלון נפתח ברצועה אחרת לגמרי, לא בזו שהפסקה מתחילה בה.
-      //
-      // ⬛ נמדד: בכל 192 הבלוקים, השורה הראשונה **לא** ישבה ברצועה
-      //    עם חלון (openingNarrowWidth=0 בכולם). כלומר האות נשארה
-      //    בגודל מלא ובגובה שתי שורות, בעוד הטקסט לצידה תוכנן לפי
-      //    הרוחב המלא של הרצועה — בלי להפחית את מקום האות.
-      //
-      // ═══ הדימוי ═══
-      // כמו לפנות מקום לארון בחדר השני, ואז להכניס את הארון לחדר
-      // הזה ולהמשיך לסדר את הרהיטים כאילו הוא לא נמצא כאן.
-      //
-      // ⇒ בודקים את הרצועה שהפסקה **באמת מתחילה בה**. אם שם אין
-      //   חלון — האות יורדת לשורה אחת, וכל המידות מחושבות מחדש.
-      const firstStripForParagraph = (prepared.strips || [])
-        .find(s => s && Number(s.y_end) > curY + 0.1) || (prepared.strips || [])[0];
-      const windowReallyApplied = !!(firstStripForParagraph
-        && firstStripForParagraph.openingWindow === true);
-      //
-      // ⭐⭐⭐ 29/09 — וכאן היה **שורש 9.51 הפיקסלים**: שיניתי כאן את
-      // אחוז הגודל של האות, אבל הרוחב־השמור, הרווח והגובה שלה כבר
-      // חושבו קודם לפי הגודל הישן ואיש לא חישב אותם מחדש. המנוע
-      // פינה לאות מקום של גודל 26 בזמן שהיא מצוירת בגודל 19.
-      // מעכשיו כל שינוי גודל עובר דרך rescaleV9OpeningWordModel,
-      // שמחשב מחדש את **כל** מה שנגזר מהגודל.
-      if (!windowReallyApplied && model.style
-          && Number(model.style.dropLines) > 1) {
-        const lineH = Number(mainMetrics?.lineHeight) || 0;
-        const baseFs = Number(cfg.mainFontSize) || 0;
-        // הגודל הגדול ביותר שעדיין נכנס בשורה אחת, ולא קטן מהרגיל.
-        const maxPct = (lineH > 0 && baseFs > 0)
-          ? Math.max(100, Math.floor((lineH * 0.92 / baseFs) * 100))
-          : null;
-        const nextPct = (maxPct != null && Number(model.style.fontSizePercent) > maxPct)
-          ? maxPct
-          : Number(model.style.fontSizePercent);
-        rescaleV9OpeningWordModel(model, {
-          dropLines: 1,
-          fontSizePercent: nextPct,
-          baseFontSize: baseFs || undefined,
-          baseLineHeight: lineH || undefined,
-        });
-        // הרצועות פונו לפי המידות הישנות — בונים אותן מחדש לפי החדשות.
-        const reprepared = applyV9OpeningWindowToStrips(
-          cloneV9StripsFromY(mainStrips, curY), model, mainMetrics, pageBottom);
-        if (!reprepared.skippedReason) paragraphStrips = reprepared.strips;
-      }
-
-      flowInput = makeRichText(model.flow?.remainingText || "", []);
-    }
-
-    const flow = flowStreamThroughStrips(flowInput, paragraphStrips, mainMetrics, pageBottom);
-    const lines = flow.lines || [];
-    const entryRefs = Array.isArray(entry.mainRefs) ? entry.mainRefs : [];
-    for (const line of lines) {
-      line.mainRefs = v9RefsForWordTokens(entryRefs, line.wordTokens || []);
-    }
-    if (model && lines.length) {
-      const first = lines[0];
-      first.openingWord = { model, position: model.position, segment: model.parts?.segment || "" };
-      // ⛔⛔⛔⛔ משה 28–29/09/2026 — שורש החפיפות בין הראשי לזרם.
-      //
-      // ⬛ נמדד, ובבירור מוחלט:
-      //      רוחב השורה   202
-      //      רוחב הרצועה  149     ⇒ חריגה של 53 פיקסלים
-      //      השורה: מילת פתיח **ללא חלון** (opw-no-flow)
-      //    53 = בדיוק רוחב האות ועוד המרווח שאחריה.
-      //
-      // ═══ ההיגיון, ולמה הוא נשבר ═══
-      // שורה שנושאת מילת פתיח מקבלת רוחב מורחב, כי האות הגדולה תופסת
-      // חלק ממנו. זה נכון **כשהוחל חלון** — אז המנוע צמצם את הרצועה
-      // מראש, וההרחבה רק מחזירה את מה שהופחת.
-      //
-      // אבל כשלא הוחל חלון (אין מספיק רוחב שימושי — ראה
-      // narrowV9StripsInYRange), הרצועה מעולם לא צומצמה — וההרחבה
-      // מוסיפה 53 פיקסלים שאין להם כיסוי. השורה חורגת מהרצועה שלה
-      // ונכנסת ישר לשטח של הזרם שלצידה.
-      //
-      // כמו להחזיר עודף למי שלא שילם: הרוחב „מוחזר" גם כשמעולם לא
-      // נלקח.
-      //
-      // ⇒ ההרחבה חלה **רק** כשהחלון באמת הוחל. אחרת השורה נשארת
-      //   בדיוק ברוחב הרצועה שלה, כמו כל שורה אחרת.
-      const windowWasApplied = !!first.openingWindow;
-      if (windowWasApplied) {
-        // ⭐⭐⭐ 29/09 — הרוחב הצר שבו **הטקסט תוכנן** בפועל, לפני
-        // שהשורה מורחבת לרוחב המלא לצורך הציור. בלי לשמור אותו כאן
-        // אי אפשר לדעת אחר כך אילו שתי שורות באמת שייכות לאותו חלון.
-        first.openingNarrowWidth = Number(first.width) || 0;
-        first.openingHostFullWidth = first.openingHostFullWidth || first.width + (model.metrics?.reserveWidthPx || 0);
-        first.width = first.openingHostFullWidth;
-        first.naturalWidth = (first.naturalWidth || 0) + (model.metrics?.reserveWidthPx || 0);
-      } else {
-        first.openingHostFullWidth = first.width;
-      }
-      first.runs = [];
-    }
-    allLines.push(...lines);
-    lastDebug = { entry, model, skippedReason, applied: !!(model && lines.length), continued };
-
-    if (flow.overflowText) {
-      const overflow = concatV9OverflowParagraphs(entries, idx, flow.overflowRich || { text: flow.overflowText, runs: flow.overflowRuns || [] });
-      return { lines: allLines, overflowText: overflow.text, overflowRuns: overflow.runs, overflowRich: overflow, endY: flow.endY || curY, debug: lastDebug };
-    }
-    curY = flow.endY || curY;
-  }
-
-  const empty = makeRichText("", []);
-  return { lines: allLines, overflowText: "", overflowRuns: [], overflowRich: empty, endY: curY, debug: lastDebug };
+  const ownContext = !cfg.__v9InlineContext;
+  const effectiveConfig = { ...cfg, openingWordSettings: cfg.openingWordSettings || getOpeningWordSettings() };
+  const context = cfg.__v9InlineContext || createMainInlineContext(effectiveConfig);
+  try {
+    const raw = Array.isArray(pageContent.mainParagraphs) && pageContent.mainParagraphs.length
+      ? pageContent.mainParagraphs
+      : [{ id: "main-1", index: 1, text: pageContent.mainText || "", runs: pageContent.mainRuns || [],
+          mainRefs: pageContent.mainRefs || [], continues: !!pageContent.mainStartsContinued }];
+    const entries = raw.map(entry => context.prepareEntry({
+      ...entry,
+      text: String(entry.text ?? entry.rich?.text ?? ""),
+      runs: entry.runs || entry.rich?.runs || [],
+    }));
+    return layoutV9MainParagraphs(entries, mainStrips, context, pageBottom);
+  } finally { if (ownContext) context.dispose(); }
 }
 
 // =====================================================================
@@ -2871,6 +2509,11 @@ function buildPagePlan(pageContent, config) {
 
     const mainLines = [];
     for (const line of mainFlow.lines) {
+      if (line.layoutVersion === V9_INLINE_PLAN_VERSION) {
+        // Already finalized, including source ranges and opening placement.
+        mainLines.push(line);
+        continue;
+      }
       const strip = mainStrips.find(s =>
         line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
       if (!strip) continue;
@@ -2945,6 +2588,7 @@ function buildPagePlan(pageContent, config) {
       y: mainTopY,
       width: mainWidth, // רוחב בסיסי; שורות יחידות עשויות להיות רחבות יותר
       height: actualMainHeight,
+      endY: mainFlow.endY,
       lines: mainLines,
       barMitzraStrips: mainStrips,
       continues: !!mainFlow.overflowText || !!pageContent.mainContinues,
@@ -2954,9 +2598,12 @@ function buildPagePlan(pageContent, config) {
       inlineStyle: cfg.mainInlineStyle || null,
     };
 
-    if (mainFlow.overflowText) {
-      result.overflow.mainText = mainFlow.overflowText;
-    }
+    // Reset on EVERY pass: a successful second pass must not inherit stale
+    // overflow from the first. Paragraph identity/runs/refs are carried intact.
+    result.overflow.mainText = mainFlow.overflowText || "";
+    result.overflow.mainParagraphs = mainFlow.overflowParagraphs || [];
+    result.overflow.mainReason = mainFlow.overflowReason || "";
+    result.mainInlineDiagnostics = mainFlow.diagnostics || [];
 
     // חסימה ב-pageBottom: אם flow לא הצליח לדחוס הכול, mainBottomY עלול לחרוג.
     mainBottomY = Math.min(mainFlow.endY, effectivePageBottom);
@@ -3886,10 +3533,12 @@ function renderPagePlan(plan, pageEl, cfg) {
     // כששתי השורות הראשונות של פסקה עם מילת פתיח מצוירות כבלוק זורם
     // אחד, השורה השנייה כבר נמצאת בתוכו ואין לצייר אותה שוב.
     // ⛔ הסרת הדגל הזו (28/09) היא שגרמה ל-205 בלוקים לגלוש זה על זה.
-    let __skipNextLine = false;
     for (const line of box.lines) {
       __lineIdx += 1;
-      if (__skipNextLine) { __skipNextLine = false; continue; }
+      if (line.layoutVersion === V9_INLINE_PLAN_VERSION) {
+        renderV9PlannedMainLine(line, pageEl, padding);
+        continue;
+      }
       const lineEl = document.createElement('div');
       lineEl.className = 'v9-line' + (colorClass || '');
       // משה 2026-05-10: שורה שמסתיימת בשבירה מאולצת (\n במקור) — לא מיושרת.
@@ -4177,331 +3826,7 @@ function renderPagePlan(plan, pageEl, cfg) {
       }
       // משה 2026-05-13: רינדור עם inline runs — בולד/הדגשה/צבע פר-מילה.
       // אם line.runs ריק, appendTextWithRuns ייצור textNode רגיל (זהה ל-textContent).
-      if (line.openingWord && line.openingWord.model) {
-        // ★ משה 28/09/2026 — "צריך לעשות את זה דינמי כמו תמונה: גלישת
-        // טקסט סביב המילה, לידה ותחתיה שורה אחת, כאילו הייתה תמונה שיש
-        // גלישת דף אינטרנט סביבה".
-        //
-        // המצב הרגיל: כל שורה מצוירת בנפרד ב-position:absolute, ולכן
-        // ה-float שכבר מוגדר ב-CSS על `.opw-dropped` אינו משפיע עליה —
-        // אין זרימה טבעית שתגלוש. משם הגיע כל החישוב הידני של הרוחב.
-        //
-        // במצב הזה שתי השורות הראשונות של הפסקה מצוירות כ**בלוק אחד
-        // זורם**: רוחב מלא, גובה שתי שורות, `white-space: normal`,
-        // והאות צפה בתוכו. הדפדפן עצמו מחשב את הגלישה — בדיוק כמו
-        // סביב תמונה — ואין מה למדוד ומה לצמצם.
-        //
-        // ★ זו ברירת המחדל: משה קבע במפורש שזו השיטה — "וזו השיטה
-        // שביססתי בשביל לעשות את הזרמים זה לצד זה".
-        // נמדד בפועל: האות תופסת בדיוק שתי שורות (גובה 37 מול 18.6
-        // לשורה), ושתי שורות הטקסט נסוגות 61px — רוחב האות ועוד הרווח.
-        // מי שרוצה לחזור לחישוב הישן:
-        //     localStorage.setItem("ravtext.openingWord.floatMode", "0")
-        const floatMode = (() => {
-          try { return localStorage.getItem("ravtext.openingWord.floatMode") !== "0"; }
-          catch (_) { return true; }
-        })();
-        const nextLine = floatMode ? box.lines[__lineIdx + 1] : null;
-        const stepToNext = gapToNext.get(__lineIdx);
-        // ⭐⭐⭐ משה 29/09/2026 — „שורות שעולים זה על זה ומוחקים חלקים".
-        //
-        // ═══ מה נמדד על 192 בלוקי מילת פתיח ═══
-        //     גובה הבלוק              שתי שורות (40.3)
-        //     גובה הטקסט בפועל        **2.82 שורות** בממוצע, עד 3.89
-        //     172 מתוך 192 גלשו החוצה ונפלו על מה שמתחתיהם
-        //
-        // ═══ השורש ═══
-        // הבלוק מאחד את שתי השורות הראשונות ונותן לדפדפן לסדר אותן
-        // סביב האות הגדולה — בדיוק כמו טקסט סביב תמונה. אבל האיחוד
-        // התנה רק שתי דרישות: אותה נקודת התחלה, ושהשורה הבאה אינה
-        // מילת פתיח בעצמה. הוא **לא** בדק שלשתי השורות יש אותו רוחב.
-        //
-        // ⬛ נמדד: שורה 1 תוכננה לרוחב 226, שורה 2 לרוחב עד 356 —
-        //    רצועה רחבה לגמרי, לפעמים כל רוחב העמוד. כלומר אוחדו שתי
-        //    שורות מגיאומטריות שונות.
-        //
-        // ═══ הדימוי ═══
-        // כמו לקחת שורה שנכתבה על דף רחב ולהדביק אותה בתוך עמודה
-        // צרה: הטקסט לא נעלם, הוא פשוט דורש עוד שורה — והשורה
-        // הנוספת הזו נוחתת על מה שכבר מצויר מתחת.
-        //
-        // ⇒ מאחדים **רק** שתי שורות שתוכננו לאותו רוחב צר — הרוחב
-        //   שנשאר לצד האות. אחרת השורה הראשונה מצוירת לבדה (בלי
-        //   זרימה), וזה מצב תקין שנמדד ואינו גולש.
-        const narrowW = Number(line.openingNarrowWidth) || 0;
-        const canFlow = !!nextLine
-          && !nextLine.openingWord
-          && Number.isFinite(stepToNext) && stepToNext > 0
-          && Math.abs((Number(nextLine.x) || 0) - (Number(line.x) || 0)) < 2
-          // שתי השורות חייבות לשבת **באותו חלון** שפונה לאות. שורה
-          // שתוכננה לרוחב אחר תדרוש שורה שלישית בתוך בלוק של שתיים,
-          // והשלישית תיפול על מה שמתחתיו.
-          && narrowW > 0
-          && !!nextLine.openingWindow
-          && Math.abs((Number(nextLine.width) || 0) - narrowW) <= 2;
-
-        if (canFlow) {
-          // ⛔⛔⛔ משה 28/09/2026 — "איבדת את הטוב שעשית במילת פתיח
-          // שהשורה השניה נכנסת כדין ועכשיו היא נכנסת רק קצת, גרוע
-          // וחמור בעיני מאוד הרגרסיה הזו".
-          //
-          // ═══ מה ניסיתי, ולמה זה היה טעות ═══
-          // ניסיתי לחסוך 13 עמודים בכך שהבלוק יכיל **רק את השורה
-          // הראשונה**. זה נראה הגיוני — אבל המדידה הוכיחה שזה שבור
-          // מיסודו: **205 מתוך 205** בלוקי הזרימה גלשו אנכית מחוץ
-          // לקופסה שלהם (scrollHeight > clientHeight בכל אחד ואחד).
-          //
-          // הסיבה פשוטה כמו מגירה: האות הגדולה צפה בפינה ותופסת מקום.
-          // לכן בשורה הראשונה נשאר פחות רוחב לטקסט, וחלק ממנו **נדחק
-          // לשורה שנייה בתוך הבלוק**. אבל הבלוק גבוה רק שורה אחת, ולכן
-          // אותה שארית נופלת בדיוק על השורה שהמנוע כבר צייר מתחתיה.
-          // מכאן — ורק מכאן — באו שלושת הדיווחים באותו יום:
-          //   • "בעמוד כב שורה 1 נראה שיש אובדן טקסט"
-          //   • "בעמוד סז שורה א' בבירור בסוף השורה אובדן טקסט"
-          //   • "בעמוד ע' שורה 1 בבירור בסוף השורה אובדן טקסט"
-          // הטקסט מעולם לא אבד — הוא נכתב אחד על גבי השני.
-          // ⬛ נמדד: clipX=0, clipY=0 בכל 7,370 השורות. שום דבר לא נחתך.
-          //
-          // ═══ המצב הנכון, וזה שמוחזר כאן ═══
-          // הבלוק מכיל את **שתי** השורות הראשונות ומקבל גובה של שתי
-          // שורות. אז יש לשארית לאן לזרום, הגלישה סביב האות היא גלישה
-          // אמיתית — בדיוק כמו טקסט סביב תמונה בדף אינטרנט, וזו השיטה
-          // שמשה קבע במפורש — והשורה השנייה נכנסת כדין ולא "רק קצת".
-          // ⛔⛔⛔ משה 28/09/2026 — „עדיין השורות של מילות פתיח לא
-          // צמודות לתחילת השורה", „עדיין המילות פתיח מרוחקות מההתחלה".
-          //
-          // ⬛ נמדד: שורת מילת הפתיח יצאה **צרה ב-12 פיקסלים** משורה
-          //    רגילה באותו טור (137 מול 149). הקצה השמאלי זהה, ולכן
-          //    כל ההפרש נופל על הקצה **הימני** — וזו בעברית תחילת
-          //    השורה. מכאן הרושם שהיא „מרוחקת מההתחלה".
-          //
-          // הסיבה: הרוחב נלקח מחישוב פנימי של חלון מילת הפתיח, שאינו
-          // תמיד זהה לרוחב הטור בפועל.
-          //
-          // ⇒ הרוחב נלקח עכשיו מ**השורות השכנות באותו טור** — אותן
-          //   שורות שמשה רואה מתחת. כך תחילת השורה מיושרת איתן בדיוק.
-          const peerW = (() => {
-            let best = 0;
-            for (const other of box.lines) {
-              if (!other || other === line) continue;
-              if (Math.abs((Number(other.x) || 0) - (Number(line.x) || 0)) > 2) continue;
-              const w = Number(other.width) || 0;
-              if (w > best) best = w;
-            }
-            return best;
-          })();
-          // ⛔ נמדד ונפסל: `Math.max(..., peerW)` הרחיב את שורת מילת
-          // הפתיח ל-202 פיקסלים בעוד השורות השכנות 149 — והעודף נכנס
-          // ישר לשטח של הזרם שמימין. כך נולדה חפיפה אופקית של 45
-          // פיקסלים בין הראשי לביאור.
-          // ⇒ הרוחב הוא זה שהמנוע הקצה לשורה, ולא יותר.
-          // ⛔⛔⛔ משה 28/09/2026 — „בעמוד ח' פתאום יש טקסט בפירוש
-          // באמצע הטקסט הראשי", „אני לא רוצה שום חפיפות, הכול צריך
-          // לעבוד אוטומטי כאילו היתה פה תמונה".
-          //
-          // ⬛ נמדד: **כל 18 החפיפות שנשארו** הן שורות מילת פתיח:
-          //      שורת ראשי   215→417   קופסה 18.6, דיו 37.2
-          //      שורת ביאור  372→468
-          //      ⇒ חפיפה אופקית של 45 פיקסלים
-          //
-          // ═══ השורש ═══
-          // הבלוק משתרע על **שתי** שורות, אבל הרוחב נלקח מהשורה
-          // הראשונה בלבד. בשורה השנייה הזרם כבר תופס חלק מהשטח —
-          // ולכן הרוחב הרחב של השורה הראשונה נכנס לתוכו.
-          //
-          // כמו לפרוס שולחן לפי רוחב הקצה העליון של החדר, בלי לשים לב
-          // שהחדר מצטמצם למטה.
-          //
-          // ⇒ הרוחב הוא **הצר מבין שתי השורות**. כך הבלוק כולו נשאר
-          //   בתוך השטח שפנוי לו לכל אורכו, והזרם נשאר תמונה שהטקסט
-          //   הולך הצידה ממנה — בלי אף חפיפה.
-          // ⬛ הצמצום עבר ל**תכנון** (`narrowV9StripsInYRange`), שם כל
-          //    הרצועות בחלון מקבלות את הרוחב הצר ביותר שבהן. לכן כאן
-          //    פשוט משתמשים במה שהמנוע כבר הקצה — בלי חישוב נוסף.
-          //    צמצום באותו מקום בציור נוסה ונמדד: הוא הוריד את החפיפות
-          //    מול הזרם מ-18 ל-11, אבל העלה את החפיפות בתוך הראשי
-          //    מ-14 ל-20, כי הטקסט כבר לא נכנס לרוחב הצר. בדיוק כפי
-          //    שמשה אמר — „הסידור צריך לבצע V9 מחדש".
-          // ⛔⛔⛔ הנתון שהכריע (נמדד, שרת חי):
-          //     שורת ראשי   215 → 417   (רוחב 202)
-          //     שורת ביאור  372 → 468
-          //     המקום הפנוי עד הביאור: 157 בלבד.
-          // כלומר שורת מילת הפתיח קיבלה 202 במקום 157, והעודף נכנס
-          // ישר לשטח הביאור. שורות רגילות באותו טור רחבות 149 — הן
-          // יושבות בגבול הנכון.
-          //
-          // ⇒ הרוחב מוגבל לרוחב של השורות השכנות באותו טור. הן הגבול
-          //   שהמנוע כבר חישב נכון, והן בדיוק „הצד" שאליו הטקסט אמור
-          //   ללכת כשיש תמונה.
-          // ⛔⛔ משה 28/09/2026 — „בדקתי עכשיו 8db82bc, יש שם רגרסיה
-          // רצינית בנושא של הצמדת מילת פתיח לתחילת השורה לגבול הימני".
-          //
-          // הגבלת הרוחב לרוחב השורות השכנות (`Math.min(ownW, peerW)`)
-          // היא שגרמה לה: השורות השכנות יכולות להשתייך לרצועה אחרת
-          // וצרה יותר, ואז שורת מילת הפתיח הצטמצמה יתר על המידה
-          // והתרחקה מהגבול הימני. **מוחזר.**
-          //
-          // ⬛ הרוחב הוא מה שהמנוע הקצה לשורה, בלי חישוב נוסף בציור.
-          const fullW = Number(line.width) > 0
-            ? Number(line.width)
-            : (Number(line.openingHostFullWidth) || 0);
-          void peerW;
-          if (fullW > 0) lineEl.style.width = fullW + 'px';
-          // ⛔ משה 28/09 — „המרחק צריך להיות לפי האותיות הרגילות ולא לפי
-          // המילת פתיח שחי כביכול באטמוספירה אחרת ועשו בשבילו רווח
-          // מיוחד". כאן היה `stepToNext * 2` — כלומר **מדידה** של
-          // המרחק בפועל. עכשיו: פשוט שתי שורות רגילות, בגובה השורה של
-          // האות הרגילה, בדיוק כמו כל שאר השורות בקטע.
-          lineEl.style.height = (safeLineHeight * 2) + 'px';
-          lineEl.style.whiteSpace = 'normal';
-          lineEl.style.overflow = 'visible';
-          // ⛔⛔⛔ משה 28/09/2026 — „בעמוד 1 יש ריחוק בין מילת פתיח
-          // לתוכן בשורה", ו„צריך שלא יישארו שום שורות שאינן שלמות".
-          //
-          // ⬛ נמדד בייצוא שלו (22:25): מתוך 104 השורות שלא הגיעו לקצה
-          //    ואינן סוף פסקה — **81 הן שורות מילת פתיח**. כלומר זה
-          //    הרוב המכריע של הבעיה.
-          //
-          // הסיבה ישבה בדיוק בשורה שהייתה כאן: `classList.remove('justify')`
-          // — הבלוק של מילת הפתיח נולד בלי יישור, ולכן הטקסט שלו
-          // נשאר צמוד לימין ולא נמתח עד הקצה השמאלי.
-          //
-          // ⭐ `text-align: justify` מתאים כאן בדיוק: הוא מותח את כל
-          //    השורות בבלוק **חוץ מהאחרונה**. כלומר השורה הראשונה
-          //    מתמלאת עד הקצה, והשנייה — שהיא סוף הקטע הזורם — נשארת
-          //    טבעית, כפי שצריך.
-          lineEl.classList.add('justify');
-          lineEl.style.textAlign = 'justify';
-          lineEl.style.textAlignLast = 'right';
-          lineEl.dataset.v9OpeningFlowBlock = '2';
-          // אבחון: הרוחב שהמנוע נתן לכל אחת משתי השורות שמוזגו לבלוק.
-          // בלי זה אי אפשר לדעת אם הבלוק גולש כי שורה 2 תוכננה רחבה.
-          lineEl.dataset.v9FlowW1 = String(Math.round(Number(line.width) || 0));
-          lineEl.dataset.v9FlowW2 = String(Math.round(Number(nextLine.width) || 0));
-          lineEl.dataset.v9FlowHostFull = String(Math.round(Number(line.openingHostFullWidth) || 0));
-          lineEl.dataset.v9FlowNarrowW = String(Math.round(narrowW));
-          const merged = [line.text || '', nextLine.text || '']
-            .filter(Boolean).join(' ');
-          applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, merged);
-          __skipNextLine = true;
-        } else {
-          applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, line.text);
-
-          // ⛔⛔⛔ משה 28/09/2026 — „המילת פתיח שחי כביכול באטמוספירה
-          // אחרת ועשו בשבילו רווח מיוחד... הרווחים צריכים להיות אחידים
-          // בכל הקטע".
-          //
-          // כאן נופלים כשאין שורה שנייה לזרום סביבה — הפסקה נגמרה, או
-          // שהשורה הבאה היא בעצמה מילת פתיח, או שהיא בטור אחר.
-          // במצב הזה האות עדיין קיבלה גובה של שתי שורות, ולכן היא ירדה
-          // 18.59 פיקסלים אל תוך השורה שמתחתיה ודרכה עליה.
-          //
-          // ⬛ נמדד: **כל** שמונה החפיפות שנשארו אחרי יישור המרווחים היו
-          //    בדיוק המקרה הזה — שורת `opw-host` ללא זרימה, דיו בגובה
-          //    37.19 בתוך שורה בגובה 18.59.
-          //
-          // אות שאין לה לאן לרדת פשוט לא יורדת: היא נשארת בגובה שורה
-          // אחת, בדיוק לפי המרווח של האותיות הרגילות. היא עדיין גדולה
-          // ועדיין מילת פתיח — היא רק לא חורגת מהשורה שלה.
-          // ⛔ ניסיתי כאן להקטין את האות ולמנוע גלישה — ההפך קרה:
-          // החפיפות עלו מ-8 ל-9 והדיו גדל מ-37.19 ל-40.19. הוחזר.
-          // הפתרון האמיתי אינו בציור אלא במרווח, והוא נמצא ב-
-          // `enforceUniformLinePitch`: אחרי מילת פתיח נפתחת, השורה
-          // הנראית הבאה יושבת במרווח **כפול** — וזו עדיין מכפלה של
-          // אותו מרווח אחיד, בדיוק כפי שמשה הורה.
-          lineEl.classList.add('opw-no-flow');
-          lineEl.style.overflow = 'visible';
-
-          // ⛔⛔⛔ משה 28/09/2026 — „לגבי גובה שורות זה חייב להתנהג כמו
-          // שהיו כאן שורות אמיתיות, לא משהו מלאכותי, זה הגורם לבעיות".
-          //
-          // ⬛ נמדד: שורה כזו היא קופסה בגובה **18.6** שמחזיקה דיו
-          //    בגובה **40.2** — כלומר האות גדולה פי שתיים מהשורה שלה,
-          //    וחורגת ממנה. זו בדיוק „שורה מלאכותית" שמשה מתאר, וזה
-          //    מקור החפיפות שנשארו.
-          //
-          // ═══ למה זה קורה דווקא כאן ═══
-          // אות „נפתחת" יורדת לגובה שתי שורות, והמנוע מפנה לה חלון
-          // מתאים. אבל כשלא נשאר רוחב שימושי אחרי פינוי המקום, המנוע
-          // מוותר על החלון (284c554) — ואז האות נשארה בגודל מלא בלי
-          // שיהיה לה לאן לרדת.
-          //
-          // ⇒ אין חלון, אין ירידה: האות נשארת גדולה ובולטת, אבל בגובה
-          //   שורה אחת — כלומר השורה חוזרת להיות שורה אמיתית שגובהה
-          //   שווה לתוכן שבתוכה.
-          // ⬛ נמדד: **17 מתוך 32** החפיפות שנשארו בתוך הטקסט הראשי הן
-          //    שורות מילת פתיח. כשאין חלון, המנוע לא הקצה לאות מקום
-          //    לרדת אליו — ולכן אין טעם להשאיר אותה בגובה שתי שורות.
-          //    הגדלת הקופסה לא תעזור: השורה הבאה ממוקמת בנפרד ולא תזוז.
-          //    לכן **האות עצמה** חייבת להיכנס בשורה אחת.
-          // ⛔ נמדד ונפסל: להקטין כאן את האות לפי מדידת גובה בזמן
-          // הציור. התוצאה החמירה (33 ⟵ 35), כי `getBoundingClientRect`
-          // בשלב הזה מחזיר מידות של פריסה שעוד לא הושלמה — כלומר
-          // המדידה עצמה לא אמינה כאן. אם בעתיד נרצה לטפל בזה, המקום
-          // הוא בתכנון (גודל האות נקבע לפני הזרימה), לא בציור.
-          const dropNF = lineEl.querySelector('.opw-dropped');
-          if (dropNF && safeLineHeight > 0) {
-            const basePx = parseFloat(lineEl.style.fontSize) || actualFontSize || 0;
-            if (basePx > 0) {
-              // ⭐⭐ 29/09 — „הV9 היא המילה האחרונה". הגודל נקבע בתכנון
-              // ונרשם על השורה; הציור רק מיישם אותו. עיגול או חישוב
-              // עצמאי כאן יוצר פער בין המקום שנשמר לאות לבין גודלה
-              // בפועל — וזה היה שורש 9.51 הפיקסלים בכל מילת פתיח.
-              const plannedPx = Number(lineEl.dataset.v9OpeningFontPx) || 0;
-              const maxPx = plannedPx > 0
-                ? plannedPx
-                : Math.max(basePx, safeLineHeight * 0.92);
-              dropNF.style.fontSize = maxPx + 'px';
-              dropNF.style.lineHeight = safeLineHeight + 'px';
-              dropNF.style.setProperty('--opw-drop-lines', '1');
-              // ⛔⛔⛔ הפספוס שלקח זמן למצוא: `stabilizeDroppedSpan`
-              // קובע לאות `min-height` בגובה **שתי שורות** — זה החלון
-              // שמאפשר לשורה השנייה להיכנס פנימה. הקטנתי את הגופן ואת
-              // גובה השורה, אבל הרצפה הזאת נשארה, ולכן האות המשיכה
-              // לתפוס 37.2 פיקסלים בקופסה של 18.6.
-              // ⬛ נמדד: dropFs=17px, dropLh=18.6px — ובכל זאת
-              //    dropH=37.2. רק ביטול הרצפה סוגר את הפער.
-              // כאן אין שורה שנייה להיכנס, ולכן אין צורך בחלון.
-              dropNF.style.minHeight = safeLineHeight + 'px';
-            }
-          }
-
-          // ⛔⛔⛔ משה 28/09/2026 — „בשורות של שורה בודדת יתומה המילת
-          // פתיח מתרחק לצד ימין ומוזח משאר השורה, ראה עמוד א', זה ממש
-          // משונה. הדבר הנכון למרכז את כל השורה ביחד כולל המילת פתיח".
-          //
-          // ═══ מה שנמדד על הייצוא שלו ═══
-          //   מילות פתיח בשורה ממורכזת            10
-          //   מהן שקיבלו את הכלל שמבטל את הציפה   **0**
-          //   הפער בין האות לטקסט           103–125px
-          //   חריגת האות מתחת לשורה              20.2px
-          //
-          // יש כלל ב-CSS שנכתב בדיוק בשביל זה (27/09), אבל הוא **לא
-          // תופס**: ההגדרות של האות נכתבות ישירות על האלמנט בזמן
-          // הציור, וכתיבה ישירה גוברת תמיד על כלל עיצוב.
-          //
-          // ═══ שני דיווחים, שורש אחד ═══
-          // אותה ציפה גם דוחפת את האות שורה שלמה מתחת לשורה שלה, וזה
-          // מקור החפיפות שנשארו בין שתי מילות פתיח עוקבות.
-          //
-          // בשורה ממורכזת אין מה לעטוף סביב האות — אין שורה שנייה
-          // מתחתיה — ולכן הציפה מיותרת. האות חוזרת לזרימה ומתמרכזת
-          // יחד עם שאר השורה, צמודה אליה, בדיוק כפי שביקשת.
-          if (lineEl.classList.contains('center')) {
-            const dropC = lineEl.querySelector('.opw-dropped');
-            if (dropC) {
-              dropC.style.cssFloat = 'none';
-              dropC.style.float = 'none';
-              dropC.style.display = 'inline-block';
-              dropC.style.verticalAlign = 'baseline';
-              dropC.style.lineHeight = 'inherit';
-              dropC.style.marginTop = '0';
-            }
-          }
-        }
-      } else {
-        appendV9TextWithMainRefs(lineEl, line);
-      }
+      appendV9TextWithMainRefs(lineEl, line);
       pageEl.appendChild(lineEl);
       applyV9MeasuredStreamStretchGuard(lineEl, {
         isCandidate: isV9StreamLikeStretchBox && (isRegularMidLine || isContinuationCandidate),
@@ -4862,7 +4187,21 @@ function safeBreakCandidates(text, visualLineEnds, opts = {}) {
 //   - config: הגדרות
 //   החזרה: { pages: [pageEl, ...] }
 
-export async function buildPages(container, paragraphs, config) {
+export async function buildPages(container, paragraphs, config = {}) {
+  if (!container || !Array.isArray(paragraphs) || !paragraphs.length) return { pages: [] };
+  const input = paragraphs.map((p, i) => prepareV9SourceParagraph(p, i));
+  const cfg = { ...config, openingWordSettings: config.openingWordSettings || getOpeningWordSettings() };
+  await waitForV9LayoutFonts(input, cfg);
+  if (typeof cfg.isCurrent === "function" && !cfg.isCurrent()) return { pages: [], aborted: true };
+  const context = createMainInlineContext(cfg);
+  try {
+    const result = await buildPagesWithInlineContext(container, input, { ...cfg, __v9InlineContext: context });
+    if (context.generation !== 0) throw new Error("V9_FONT_CHANGED: fonts changed during layout; rerender is required");
+    return result;
+  } finally { context.dispose(); }
+}
+
+async function buildPagesWithInlineContext(container, paragraphs, config) {
   if (!container || !Array.isArray(paragraphs) || paragraphs.length === 0) return { pages: [] };
 
   const cfg = Object.assign({
@@ -5122,7 +4461,7 @@ export async function buildPages(container, paragraphs, config) {
       if (fullText.length >= MIN_SPLIT) {
         const baseSlice = getSlice(baseN);
         const tryPrefix = (len) => {
-          const half = { ...target, mainText: fullText.substring(0, len), notes: notesBeforeAnchor(len) };
+          const half = sliceV9Paragraph(target, 0, len, { notes: notesBeforeAnchor(len) });
           const slice = [...baseSlice, half];
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
         };
@@ -5195,8 +4534,7 @@ export async function buildPages(container, paragraphs, config) {
             splitText.suffixBaseOffset
           );
           return {
-            firstHalf: { ...target, mainText: splitText.prefixText, notes: movedNotes || splitNotes.before, _continues: true },
-            secondHalf: { ...target, mainText: splitText.suffixText, notes: splitNotes.after },
+            ...splitV9Paragraph(target, splitText, movedNotes || splitNotes.before, splitNotes.after),
             sliceIdx,
             baseN,
           };
@@ -5319,18 +4657,9 @@ export async function buildPages(container, paragraphs, config) {
                 splitText.suffixBaseOffset
               );
 
-              const firstHalf = {
-                ...target,
-                mainText: splitText.prefixText,
-                notes: splitNotes.before,
-                _continues: true,
-              };
+              const firstHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).firstHalf;
 
-              const secondHalf = {
-                ...target,
-                mainText: splitText.suffixText,
-                notes: splitNotes.after,
-              };
+              const secondHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).secondHalf;
 
               const fallbackPlan = buildPagePlan(
                 aggregateForV9([...getSlice(baseN), firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
@@ -5436,12 +4765,7 @@ export async function buildPages(container, paragraphs, config) {
               splitText.suffixBaseOffset
             );
 
-            const firstHalf = {
-              ...target,
-              mainText: splitText.prefixText,
-              notes: splitNotes.before,
-              _continues: true,
-            };
+            const firstHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).firstHalf;
 
             const slice = [...baseSlice, firstHalf];
             const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
@@ -5483,11 +4807,7 @@ export async function buildPages(container, paragraphs, config) {
             rescueBestScore = score;
             rescueBest = {
               firstHalf,
-              secondHalf: {
-                ...target,
-                mainText: splitText.suffixText,
-                notes: splitNotes.after,
-              },
+              secondHalf: splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).secondHalf,
               sliceIdx,
               baseN,
             };
@@ -5553,18 +4873,10 @@ export async function buildPages(container, paragraphs, config) {
           const prefix = splitText.prefixText;
           if (!prefix) continue;
 
-          const firstHalf = {
-            ...splitInfo.firstHalf,
-            mainText: ((splitInfo.firstHalf.mainText || '').trim() + " " + prefix).trim(),
-            notes: [...(splitInfo.firstHalf.notes || []), ...splitNotes.before],
-            _continues: true,
-          };
-
-          const secondHalf = {
-            ...splitInfo.secondHalf,
-            mainText: splitText.suffixText,
-            notes: splitNotes.after,
-          };
+          const extension = splitV9Paragraph(splitInfo.secondHalf, splitText, splitNotes.before, splitNotes.after);
+          const firstHalf = joinV9ParagraphFragments(splitInfo.firstHalf, extension.firstHalf,
+            [...(splitInfo.firstHalf.notes || []), ...splitNotes.before]);
+          const secondHalf = extension.secondHalf;
           const slice = [...getSlice(splitInfo.baseN), firstHalf];
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
@@ -5677,18 +4989,8 @@ export async function buildPages(container, paragraphs, config) {
             splitText.suffixBaseOffset
           );
 
-          const firstHalf = {
-            ...target,
-            mainText: splitText.prefixText,
-            notes: splitNotes.before,
-            _continues: true,
-            _emergencySplit: true,
-          };
-          const secondHalf = {
-            ...target,
-            mainText: splitText.suffixText,
-            notes: splitNotes.after,
-          };
+          const firstHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after, { _emergencySplit: true }).firstHalf;
+          const secondHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).secondHalf;
           const emergencyPlan = buildPagePlan(
             aggregateForV9([firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
             cfg
@@ -6031,18 +5333,9 @@ export async function buildPages(container, paragraphs, config) {
           splitText.suffixBaseOffset
         );
 
-        const firstHalf = {
-          ...target,
-          mainText: splitText.prefixText,
-          notes: splitNotes.before,
-          _continues: true,
-        };
+        const firstHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).firstHalf;
 
-        const secondHalf = markV9ContinuationParagraph({
-          ...target,
-          mainText: splitText.suffixText,
-          notes: splitNotes.after,
-        });
+        const secondHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).secondHalf;
 
         const testSlice = [...baseSlice, firstHalf];
         const testContent = aggregateForV9(
@@ -6267,19 +5560,27 @@ export async function buildPages(container, paragraphs, config) {
       __mainStuckCount = 0;
     }
     if (__mainLeftover) {
-      const tailText = String(pendingParagraph?.mainText || "").trim();
-      const tailRuns = Array.isArray(pendingParagraph?.runs) ? pendingParagraph.runs : [];
-      const joined = tailText
-        ? concatRichTextParts(
-            [__mainLeftover, { text: tailText, runs: tailRuns }],
-            "\n"
-          )
-        : __mainLeftover;
-      pendingParagraph = markV9ContinuationParagraph({
-        mainText: joined.text,
-        runs: joined.runs || [],
-        notes: Array.isArray(pendingParagraph?.notes) ? pendingParagraph.notes : [],
-      });
+      const fragments = plan?.overflow?.mainParagraphs;
+      if (!Array.isArray(fragments) || !fragments.length) {
+        throw new Error("V9 main overflow is missing source fragments");
+      }
+      const queued = fragments.map(e => ({
+        id: e.id, mainText: e.text, mainRuns: e.runs || [], runs: e.runs || [],
+        mainRefs: e.mainRefs || [], notes: [],
+        _v9Source: e.source, _v9SourceOffset: e.sourceOffset || 0,
+        _v9SourceEnd: (e.sourceOffset || 0) + e.text.length,
+        _v9ContinuesFromSplit: !!e.continues,
+        _v9OpeningWordAllowed: e._v9OpeningWordAllowed !== false && !e.continues,
+        _continues: !!e.continuesAfter,
+      }));
+      if (pendingParagraph && !pendingParagraph._drainMarker) queued.push(pendingParagraph);
+      pendingParagraph = null;
+      paragraphs.splice(cursor, 0, ...queued);
+      if (__mainStuckCount >= 3 && !plan.mainBox?.lines?.length && totalCarrySize(nextCarry) >= totalCarrySize(carryOver)) {
+        const error = new Error("V9_LAYOUT_NO_PROGRESS: " + (plan.overflow.mainReason || "content does not fit"));
+        error.remainingParagraphs = paragraphs.slice(cursor);
+        throw error;
+      }
     }
 
     // משה 2026-05-09: ★ סמן ניקוז (drain marker) — אם בוצע force-take עם הערות שעלו,
@@ -6300,7 +5601,11 @@ export async function buildPages(container, paragraphs, config) {
     if (bestN === 0 && !splitInfo && !hadPending && cursor < paragraphs.length) {
       const prevSize = totalCarrySize(carryOver);
       const newSize = totalCarrySize(nextCarry);
-      if (newSize >= prevSize) cursor += 1;
+      if (newSize >= prevSize) {
+        const error = new Error("V9_LAYOUT_NO_PROGRESS: refusing to skip an unconsumed source paragraph");
+        error.remainingParagraphs = paragraphs.slice(cursor);
+        throw error;
+      }
     }
     carryOver = nextCarry;
 
@@ -6316,7 +5621,9 @@ export async function buildPages(container, paragraphs, config) {
     }
   }
 
-  return { pages };
+  return { pages, complete: cursor >= paragraphs.length && !pendingParagraph && !hasCarryOver(carryOver),
+    remainingParagraphs: [...(pendingParagraph ? [pendingParagraph] : []), ...paragraphs.slice(cursor)],
+    remainingStreams: carryOver, mainLayoutVersion: V9_INLINE_PLAN_VERSION };
 }
 
 function hasCarryOver(co) {
@@ -6380,28 +5687,33 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   let mainOffset = 0;
   let mainParagraphIndex = 0;
   for (const p of paragraphs) {
-    const piece = blockToText(p);
+    const prepared = prepareV9SourceParagraph(p, mainParagraphIndex);
+    const piece = prepared.mainText;
     if (!piece) continue;
-    const cleanPiece = stripStreamMarkers(piece);
-    const localRuns = Array.isArray(p.mainRuns) ? p.mainRuns : [];
+    const cleanPiece = piece;
+    const localRuns = prepared.mainRuns || [];
     mainParagraphIndex += 1;
     mainParagraphs.push({
-      id: p.id || `main-${mainParagraphIndex}`,
-      index: mainParagraphIndex,
+      id: prepared._v9Source.id,
+      index: prepared._v9Source.index,
+      source: prepared._v9Source,
+      sourceOffset: prepared._v9SourceOffset,
+      continuesAfter: !!prepared._continues,
+      isHeading: prepared.blockType === "heading" || prepared.isHeading === true,
       text: cleanPiece,
       runs: localRuns,
       rich: makeRichText(cleanPiece, localRuns),
-      mainRefs: v9MainRefsFromParagraph(p, cleanPiece.length),
+      mainRefs: v9MainRefsFromParagraph(prepared, cleanPiece.length),
       continues: !!(p._v9ContinuesFromSplit || p._v9OpeningWordAllowed === false),
       _v9ContinuesFromSplit: !!p._v9ContinuesFromSplit,
       _v9OpeningWordAllowed: p._v9OpeningWordAllowed,
     });
     if (mainPieces.length > 0) mainOffset += 1; // for the '\n' separator
     mainPieces.push(piece);
-    if (Array.isArray(p.mainRuns) && p.mainRuns.length) {
+    if (localRuns.length) {
       // הסר את stripStreamMarkers שעשוי לשנות תוכן בתוך הפסקה — לפסקאות
       // טיפוסיות זה רק מנקה רווחים, ה-runs יישארו רוב הזמן נכונים.
-      for (const r of p.mainRuns) {
+      for (const r of localRuns) {
         if (r.end > r.start) {
           mainRunsAccum.push({
             start: mainOffset + r.start,

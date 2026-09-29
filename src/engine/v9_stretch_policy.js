@@ -195,6 +195,7 @@ export function normalizeV9StretchPolicy(container) {
     paragraphs++;
 
     for (let i = 0; i < lines.length; i++) {
+      if (lines[i].dataset.v9LayoutFinal) { skipped++; continue; }
       const plan = planStretch(lines[i], i === lines.length - 1);
       if (plan.ok) {
         applyPlan(lines[i], plan);
