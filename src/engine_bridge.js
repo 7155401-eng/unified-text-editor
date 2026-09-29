@@ -127,8 +127,10 @@ function styleMetaForNode(node) {
     if (!child.text || !child.text.trim()) return false;
     const m = {};
     for (const mark of child.marks || []) {
-      const mAttrs = mark.attrs || {};
-      const name = mark.type?.name;
+      let serialized = null;
+      try { serialized = typeof mark?.toJSON === "function" ? mark.toJSON() : null; } catch (_) {}
+      const mAttrs = mark?.attrs || serialized?.attrs || {};
+      const name = mark?.type?.name || serialized?.type || mark?.name || "";
       if (name === "textStyle") {
         if (mAttrs.fontFamily) m.fontFamily = mAttrs.fontFamily;
         if (mAttrs.fontSize) m.fontSize = mAttrs.fontSize;
