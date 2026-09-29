@@ -1201,14 +1201,63 @@ function appendV9MainRefSpan(parent, ref) {
 // מעכשיו הראשי נקרא בשם הזרם `main` ומקבל את אותו טיפול בדיוק.
 const V9_MAIN_STREAM_CODE = "main";
 
-function v9MainBoldOverrideRuns(runs) {
+function v9StyleIsBold(style) {
+  const st = normalizeTextStyle(style || {}) || {};
+  if (st.bold === true) return true;
+  const weight = st.fontWeight;
+  if (typeof weight === "number") return weight >= 600;
+  const text = String(weight || "").trim().toLowerCase();
+  if (text === "bold" || text === "bolder") return true;
+  const numeric = parseInt(text, 10);
+  return Number.isFinite(numeric) && numeric >= 600;
+}
+
+function v9MainBaseTextStyle(cfg) {
+  const registryStyle = cfg?.mainStyleId ? resolveTextStyle(cfg.mainStyleId) : null;
+  return normalizeTextStyle({
+    ...(registryStyle || {}),
+    ...(cfg?.mainInlineStyle || {}),
+  }) || {};
+}
+
+function v9RunExplicitlyCancelsBold(marks) {
+  const m = marks || {};
+  if (m.bold === false) return true;
+  const weight = m.fontWeight;
+  if (typeof weight === "number") return weight < 600;
+  const text = String(weight || "").trim().toLowerCase();
+  if (text === "normal" || text === "lighter") return true;
+  const numeric = parseInt(text, 10);
+  return Number.isFinite(numeric) && numeric < 600;
+}
+
+function v9MergeInheritedBoldOverride(runs, marks, forceDocumentStyles) {
+  return (Array.isArray(runs) ? runs : []).map((run) => {
+    if (!run || v9RunExplicitlyCancelsBold(run.marks)) return run;
+    const nextMarks = { ...(run.marks || {}) };
+    for (const [key, value] of Object.entries(marks || {})) {
+      if (forceDocumentStyles || nextMarks[key] == null) nextMarks[key] = value;
+    }
+    return { ...run, marks: nextMarks };
+  });
+}
+
+function v9MainBoldOverrideRuns(runs, inheritedBold = false) {
   try {
     const marks = styleIdToMarks(boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE));
     if (!marks) return runs;
+    const forceDocumentStyles = boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE);
+    if (inheritedBold) {
+      // When the main paragraph/style itself is bold, every unqualified child
+      // inherits bold even if the Word run carries only fontFamily/fontSize.
+      // Apply the selected bold style to those runs too, otherwise the child
+      // Word font wins over the chosen bold style.
+      return v9MergeInheritedBoldOverride(runs, marks, forceDocumentStyles);
+    }
     return applyBoldOverrideToRuns(
       Array.isArray(runs) ? runs : [],
       marks,
-      boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE)
+      forceDocumentStyles
     );
   } catch (_) {
     return runs;
@@ -1643,12 +1692,21 @@ function markV9ContinuationParagraph(p) {
 
 // A render-scoped context snapshots styles and measures exactly what is painted.
 function createMainInlineContext(cfg) {
+  const baseTextStyle = v9MainBaseTextStyle(cfg);
+  const inheritedBold = v9StyleIsBold(baseTextStyle);
+  const boldOverrideStyleId = boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE);
   return createV9TextLayoutContext(cfg, {
     decorateBase(el) {
       applyStyleToElement(el, cfg.mainStyleId);
       if (cfg.mainInlineStyle) applyTextStyleObjectToElement(el, cfg.mainInlineStyle);
+      // "Everything bold" is inherited from the main style, not represented
+      // by per-character runs. The measurement probe and final painter must
+      // therefore receive the selected bold style at the base level as well.
+      if (inheritedBold && boldOverrideStyleId) applyStyleToElement(el, boldOverrideStyleId);
     },
-    prepareRuns: v9MainBoldOverrideRuns,
+    prepareRuns(runs) {
+      return v9MainBoldOverrideRuns(runs, inheritedBold);
+    },
     prepareRefs(refs) {
       return refs.map(ref => {
         const holder = document.createElement("span");
@@ -2874,60 +2932,177 @@ function buildPagePlanCore(pageContent, config) {
   let anyFooterTrimmed = false;
 
   if (pageContent.footerStreams && pageContent.footerStreams.length) {
+    const secondaryLevelIndex = (streamId) => {
+      if (!cfg.mishnaWrapOn || !Array.isArray(cfg.levels)) return -1;
+      for (let i = 1; i < cfg.levels.length; i++) {
+        if ((cfg.levels[i] || []).map(String).includes(String(streamId))) return i;
+      }
+      return -1;
+    };
+
+    // Preserve configured order, but streams in the same secondary Mishnah
+    // level are one geometric unit. Level 03,04 must not become two unrelated
+    // full-width footers stacked one below the other.
+    const footerGroups = [];
+    const levelGroups = new Map();
     for (const fs of pageContent.footerStreams) {
-      const text = fs.items.join(' ');
-      if (!text) continue;
+      const level = secondaryLevelIndex(fs.id);
+      if (level < 0) {
+        footerGroups.push({ level: -1, streams: [fs] });
+        continue;
+      }
+      if (!levelGroups.has(level)) {
+        const group = { level, streams: [] };
+        levelGroups.set(level, group);
+        footerGroups.push(group);
+      }
+      levelGroups.get(level).streams.push(fs);
+    }
 
+    const streamRich = (fs) => fs.rich || makeRichText((fs.items || []).join(" "), fs.runs || []);
+    const streamText = (fs) => normalizeRichTextEntry(streamRich(fs)).text;
+
+    const footerMeta = (fs) => {
       const settings = streamSettings[fs.id] || {};
-      // משה 2026-05-13: footer גם משתמש ב-metrics לפי הסגנון של הזרם.
-      // אם המשתמש החיל סגנון עם פונט/גודל שונה — המדידה חייבת להתאים,
-      // אחרת מילים יחתכו/יעלמו.
-      const fsResolvedStyle = composeStreamTextStyle(fs.id);
-      const fsMetrics = getSideMetricsForStream(fs.id);
-      const fsFontSize = Number(fsResolvedStyle?.fontSize) > 0 ? Number(fsResolvedStyle.fontSize) : fsMetrics.fontSize;
-      const fsLineH = Math.max(fsMetrics.lineHeight, fsFontSize * 1.35);
+      const resolvedStyle = composeStreamTextStyle(fs.id);
+      const metrics = getSideMetricsForStream(fs.id);
+      const fontSize = Number(resolvedStyle?.fontSize) > 0 ? Number(resolvedStyle.fontSize) : metrics.fontSize;
+      const lineH = Math.max(metrics.lineHeight, fontSize * 1.35);
+      return { fs, settings, resolvedStyle, metrics, lineH };
+    };
 
-      // אם אין מקום אפילו לכותרת + שורה אחת, כל ה-footer הזה ל-overflow.
-      if (footerY + titleHeight + fsLineH > pageBottom) {
-        result.overflow.streams[fs.id] = makeRichText(text, Array.isArray(fs.runs) ? fs.runs : []);
+    const pushFooterBox = (meta, measured, titleY, titleX, titleWidth, extra = {}) => {
+      const footerContinues = !!measured.overflowRich.text;
+      if (footerContinues) {
+        result.overflow.streams[meta.fs.id] = measured.overflowRich;
         anyFooterTrimmed = true;
+      }
+      result.footerBoxes.push({
+        id: meta.fs.id,
+        role: "stream",
+        styleId: meta.settings.styleId || "",
+        inlineStyle: meta.resolvedStyle || {},
+        titleStyleId: meta.settings.titleStyleId || "",
+        lines: measured.lines,
+        titleY,
+        titleX,
+        titleWidth,
+        titleHeight,
+        continues: footerContinues,
+        ...extra,
+      });
+      return measured.endY;
+    };
+
+    const overflowWholeGroup = (metas) => {
+      for (const meta of metas) {
+        result.overflow.streams[meta.fs.id] = streamRich(meta.fs);
+      }
+      anyFooterTrimmed = true;
+    };
+
+    for (const group of footerGroups) {
+      const active = group.streams.filter(fs => streamText(fs));
+      if (!active.length) continue;
+      const metas = active.map(footerMeta);
+
+      // Exact analytical equivalent of the historical Mishnah-wrap level for
+      // the common two-stream case: the shorter stream is a fixed float; the
+      // longer stream flows beside it and then expands to full width below it.
+      if (group.level >= 1 && metas.length === 2) {
+        const [a, b] = metas;
+        const aLen = streamText(a.fs).length;
+        const bLen = streamText(b.fs).length;
+        const flowMeta = aLen >= bLen ? a : b;
+        const floatMeta = flowMeta === a ? b : a;
+        const maxLineH = Math.max(flowMeta.lineH, floatMeta.lineH);
+        if (footerY + titleHeight + maxLineH > pageBottom) {
+          overflowWholeGroup(metas);
+          continue;
+        }
+
+        const gap = Math.max(0, Number(cfg.streamHorizontalGap) || 0);
+        const requestedPercent = Number(floatMeta.settings.mishnaWidth);
+        const floatWidth = Number.isFinite(requestedPercent) && requestedPercent > 0
+          ? Math.max(24, Math.min(innerWidth - 24 - gap, innerWidth * Math.min(95, requestedPercent) / 100))
+          : Math.max(24, (innerWidth - gap) / 2);
+        const narrowWidth = Math.max(24, innerWidth - floatWidth - gap);
+        const pageNo = (Number(cfg.__v9PageIndex) || 0) + 1;
+        const pref = String(floatMeta.settings.mishnaSide || "auto");
+        let floatRight = true;
+        if (pref === "left") floatRight = false;
+        else if (pref === "right") floatRight = true;
+        else if (pref === "outer") floatRight = pageNo % 2 === 0;
+        else if (pref === "inner") floatRight = pageNo % 2 === 1;
+
+        const titleY = footerY;
+        const bodyTop = footerY + titleHeight;
+        const floatX = floatRight ? innerWidth - floatWidth : 0;
+        const narrowX = floatRight ? 0 : floatWidth + gap;
+
+        const floatMeasured = flowV9MeasuredStream(
+          streamRich(floatMeta.fs),
+          [{ x: floatX, width: floatWidth, y_start: bodyTop, y_end: pageBottom }],
+          floatMeta.metrics._v9TextContext,
+          pageBottom
+        );
+        const floatEnd = Math.max(bodyTop, floatMeasured.endY || bodyTop);
+
+        const flowStrips = [];
+        if (floatEnd > bodyTop + 0.1) {
+          flowStrips.push({ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: Math.min(floatEnd, pageBottom) });
+        }
+        if (floatEnd < pageBottom - 0.1) {
+          flowStrips.push({ x: 0, width: innerWidth, y_start: floatEnd, y_end: pageBottom });
+        }
+        const flowMeasured = flowV9MeasuredStream(
+          streamRich(flowMeta.fs),
+          flowStrips.length ? flowStrips : [{ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: pageBottom }],
+          flowMeta.metrics._v9TextContext,
+          pageBottom
+        );
+
+        pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
+          mishnaLevel: group.level + 1,
+          mishnaRole: "float",
+        });
+        pushFooterBox(flowMeta, flowMeasured, titleY, narrowX, narrowWidth, {
+          mishnaLevel: group.level + 1,
+          mishnaRole: "flow",
+        });
+        footerY = Math.max(floatMeasured.endY || bodyTop, flowMeasured.endY || bodyTop) + interStreamGap;
         continue;
       }
 
-      const footerCols = Math.max(1, Math.min(6, parseInt(settings.cols || 1, 10) || 1));
-      const colGap = Math.max(0, Number(cfg.streamHorizontalGap) || 0);
-      const colWidth = footerCols > 1
-        ? Math.max(24, (innerWidth - colGap * (footerCols - 1)) / footerCols)
-        : innerWidth;
-      const titleY = footerY;
-      footerY += titleHeight;
-      const measured = flowV9MeasuredColumns(fs.rich || makeRichText(text,fs.runs || []),fsMetrics._v9TextContext,
-        {top:footerY,bottom:pageBottom,width:innerWidth,columns:footerCols,gap:colGap});
-      const linesData = measured.lines;
-      const footerContinues = !!measured.overflowRich.text;
-      if (footerContinues) {
-        result.overflow.streams[fs.id] = measured.overflowRich;
-        anyFooterTrimmed = true;
+      // Non-Mishnah footers, and uncommon levels with more than two streams,
+      // retain the stable full-width V9 path.
+      for (const meta of metas) {
+        if (footerY + titleHeight + meta.lineH > pageBottom) {
+          result.overflow.streams[meta.fs.id] = streamRich(meta.fs);
+          anyFooterTrimmed = true;
+          continue;
+        }
+        const footerCols = Math.max(1, Math.min(6, parseInt(meta.settings.cols || 1, 10) || 1));
+        const colGap = Math.max(0, Number(cfg.streamHorizontalGap) || 0);
+        const titleY = footerY;
+        const bodyTop = footerY + titleHeight;
+        const measured = flowV9MeasuredColumns(
+          streamRich(meta.fs),
+          meta.metrics._v9TextContext,
+          { top: bodyTop, bottom: pageBottom, width: innerWidth, columns: footerCols, gap: colGap }
+        );
+        pushFooterBox(meta, measured, titleY, 0, innerWidth);
+        footerY = measured.endY + interStreamGap;
       }
-
-      result.footerBoxes.push({
-        id: fs.id,
-        role: "stream",
-        styleId: settings.styleId || "",
-        inlineStyle: fsResolvedStyle || {},
-        titleStyleId: settings.titleStyleId || "",
-        lines: linesData,
-        titleY: titleY,
-        titleHeight: titleHeight,
-        continues: footerContinues,
-      });
-      footerY = measured.endY + interStreamGap;
     }
   }
 
-  // העמוד נחשב חורג אם footerY עבר את הגובה (לא צריך לקרות עם החיתוך)
-  // או אם נחתך משהו (כדי ש-buildPages יקטין פסקאות וייתן לתוכן הבא להיכנס לעמוד הבא).
-  result.overflow.exceedsPage = footerY > cfg.pageHeight || anyFooterTrimmed;
+  // A commentary continuation is not a geometric page overflow. It is valid
+  // for a long note to start beside its main-text anchor and continue on the
+  // next page. Only actual geometry beyond the physical page is "exceedsPage".
+  result.overflow.exceedsPage = footerY > cfg.pageHeight + 0.1;
+  result.overflow.hasStreamContinuation = Object.values(result.overflow.streams || {})
+    .some(entry => !!normalizeRichTextEntry(entry).text);
 
   // ⭐⭐⭐⭐ המעבר האחרון של הראשי — אחרי שכל הקופסאות בעמוד קיימות.
   //
@@ -3933,9 +4108,11 @@ function renderPagePlan(plan, pageEl, cfg) {
   for (const fb of plan.footerBoxes) {
     const colorClass = streamColorClass(fb.id);
     drawBox(fb, cfg.sideFontSize || 11, cfg.lineHeightRatio || 1.55, cfg.sideFontFamily, colorClass);
-    const title = (cfg.titles || {})[fb.id];
+    const title = shouldShowStreamTitle(fb.id) ? (cfg.titles || {})[fb.id] : "";
     if (title) {
-      drawTitle(title, 0, fb.titleY, plan.pageBox.innerWidth, colorClass, fb.titleStyleId, fb.id);
+      const titleX = Number.isFinite(Number(fb.titleX)) ? Number(fb.titleX) : 0;
+      const titleWidth = Number(fb.titleWidth) > 0 ? Number(fb.titleWidth) : plan.pageBox.innerWidth;
+      drawTitle(title, titleX, fb.titleY, titleWidth, colorClass, fb.titleStyleId, fb.id);
     }
   }
 
@@ -4381,6 +4558,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   const __v9NoteAnchorFallbacks = [];
 
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
+    cfg.__v9PageIndex = pageIdx;
     cfg.__v9AllowMainOverlap = __mainStuckCount >= 3;
     if (pendingParagraph?._drainMarker && !hasCarryOver(carryOver)) {
       pendingParagraph = null;
@@ -4405,16 +4583,24 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       return buildPagePlan(aggContent, cfg);
     };
 
-    // משה 2026-05-08: "fits clean" = העמוד לא חורג ויזואלית וגם אף הערה לא נחתכה.
-    // אם הערות נחתכות אבל העמוד לא חורג ויזואלית — זה גורם ל-carry-over של
-    // הערות לעמוד הבא בלי הפסקה שלהן (חוסר קישור הערות-ראשי). אז נדחה.
+    // A plan is clean when main text fits and every required note has actually
+    // STARTED on its anchor page. The remainder of an already-started long note
+    // may legally continue to the next page; rejecting that remainder was the
+    // root of V9_NOTE_ANCHOR_NO_FIT and of severely underfilled pages.
     const fitsClean = (tp) => {
       if (!tp || !tp.overflow) return false;
       if (tp.overflow.exceedsPage) return false;
       if (tp.overflow.mainText) return false;
       if (tp.unstartedNotes?.length) return false;
-      const ovs = tp.overflow.streams || {};
-      for (const k in ovs) if (ovs[k]) return false;
+      const hasStreamContinuation = Object.values(tp.overflow.streams || {})
+        .some(entry => !!normalizeRichTextEntry(entry).text);
+      if (hasStreamContinuation) {
+        const plannedCommentaryLines =
+          (tp.streamBoxes || []).reduce((n, box) => n + (box?.lines?.length || 0), 0) +
+          (tp.footerBoxes || []).reduce((n, box) => n + (box?.lines?.length || 0), 0);
+        // Never accept a continuation-only page that consumed zero commentary.
+        if (plannedCommentaryLines === 0) return false;
+      }
       return true;
     };
 

@@ -175,6 +175,121 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       assert(page.querySelectorAll('[data-v9-main-ref]').length===notes.length,'styled number missing');
     } finally {page.remove();saveTextStyles(styles);if(saved)settings['01']=saved;else delete settings['01'];}
   });
+  await test('main inherited bold style overrides Word font when override is enabled',async()=>{
+    const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
+    saveTextStyles([
+      ...styles,
+      {id:'v9-main-base-bold-test',name:'Main base bold test',fontFamily:'serif',fontSize:13,fontSizeUnit:'px',bold:true},
+      {id:'v9-main-bold-choice-test',name:'Chosen bold test',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px'}
+    ]);
+    settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-bold-choice-test',boldOverrideForcesDocStyles:true};
+    const page=makePage();
+    try {
+      const text='alpha beta gamma delta';
+      const result=await buildPages(page,[{id:'main-bold-base',mainText:text,
+        mainRuns:[{start:0,end:text.length,marks:{fontFamily:'serif'}}],notes:[]}],
+        {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-test'});
+      assert(result.complete,'main bold fixture incomplete');
+      const body=page.querySelector('.v9-planned-line-text');
+      assert(body,'missing main body');
+      const textSpans=[...body.querySelectorAll('span')].filter(el=>el.textContent.trim());
+      assert(textSpans.length>0,'Word-font run was not painted as a span');
+      for(const span of textSpans) {
+        const cs=getComputedStyle(span);
+        assert(cs.fontFamily.toLowerCase().includes('monospace'),`Word font beat chosen bold style: ${cs.fontFamily}`);
+        assert(+cs.fontSize.replace('px','')>=16.5,`chosen bold size missing: ${cs.fontSize}`);
+        assert(+cs.fontWeight>=600 || ['bold','bolder'].includes(cs.fontWeight),`base bold inheritance lost: ${cs.fontWeight}`);
+      }
+    } finally {
+      page.remove();saveTextStyles(styles);
+      if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
+    }
+  });
+
+  await test('main bold override checkbox off preserves Word internal font',async()=>{
+    const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
+    saveTextStyles([
+      ...styles,
+      {id:'v9-main-base-bold-test-off',name:'Main base bold test off',fontFamily:'sans-serif',fontSize:13,fontSizeUnit:'px',bold:true},
+      {id:'v9-main-bold-choice-test-off',name:'Chosen bold test off',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px'}
+    ]);
+    settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-bold-choice-test-off',boldOverrideForcesDocStyles:false};
+    const page=makePage();
+    try {
+      const text='alpha beta gamma';
+      const result=await buildPages(page,[{id:'main-bold-base-off',mainText:text,
+        mainRuns:[{start:0,end:text.length,marks:{fontFamily:'serif',fontSize:15,fontSizeUnit:'px'}}],notes:[]}],
+        {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-test-off'});
+      assert(result.complete,'main bold opt-out fixture incomplete');
+      const span=[...page.querySelectorAll('.v9-planned-line-text span')].find(el=>el.textContent.trim());
+      assert(span,'missing Word styled span');
+      const cs=getComputedStyle(span);
+      assert(cs.fontFamily.toLowerCase().includes('serif'),`unchecked override did not preserve Word font: ${cs.fontFamily}`);
+      assert(Math.abs(parseFloat(cs.fontSize)-15)<.6,`unchecked override did not preserve Word size: ${cs.fontSize}`);
+    } finally {
+      page.remove();saveTextStyles(styles);
+      if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
+    }
+  });
+
+  await test('secondary Mishnah level 03/04 flows analytically beside and below its float',()=>{
+    const page=makePage();
+    const short='alpha beta gamma delta';
+    const long=Array(14).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'main text',
+      rightStream:null,leftStream:null,
+      footerStreams:[
+        {id:'03',items:[short],runs:[],rich:{text:short,runs:[]}},
+        {id:'04',items:[long],runs:[],rich:{text:long,runs:[]}}
+      ]
+    },{
+      ...cfg,pageHeight:720,talmudStreams:['01','02'],mishnaWrapOn:true,
+      levels:[['01','02'],['03','04']],
+      streamSettings:{
+        '03':{mishnaSide:'right',inlineStyle:{fontSize:11}},
+        '04':{inlineStyle:{fontSize:11}}
+      }
+    });
+    const b3=plan.footerBoxes.find(b=>b.id==='03'),b4=plan.footerBoxes.find(b=>b.id==='04');
+    assert(b3&&b4,'Mishnah level boxes missing');
+    assert(b3.mishnaRole==='float'&&b4.mishnaRole==='flow',`wrong Mishnah roles: ${b3.mishnaRole}/${b4.mishnaRole}`);
+    assert(Math.abs(b3.titleY-b4.titleY)<.1,'03/04 do not start in one Mishnah level');
+    assert(b3.titleX>b4.titleX,'configured right float is not on the right');
+    assert(b3.titleWidth<plan.pageBox.innerWidth*.75,'03 is still a full-width footer');
+    assert(b4.lines.length>2,'long flow fixture too short');
+    const firstWidth=b4.lines[0].width;
+    const expanded=b4.lines.some(l=>l.width>firstWidth+40 && l.y>=Math.max(...b3.lines.map(x=>x.y+x.lineHeightPx))-.1);
+    assert(expanded,'04 never expands to full width below 03');
+    assert(!plan.overflow.streams['03'],'short Mishnah float overflowed');
+    page.remove();
+  });
+
+  await test('long anchored note may continue after starting with its source line',async()=>{
+    const settings=getStreamSettings(),saved=settings['01'];
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const main=Array(12).fill(neutral).join(' '),words=[...main.matchAll(/\S+/gu)],anchorWord=words[4];
+      const noteText=Array(80).fill(neutral).join(' ');
+      const note={stream:'01',uid:'long-anchor-continuation',num:1,
+        anchor:anchorWord.index+anchorWord[0].length,anchorAffinity:'backward',text:noteText};
+      const result=await buildPages(page,[{id:'long-anchor-source',mainText:main,notes:[note]}],
+        {...cfg,pageHeight:240,talmudStreams:['01','02'],maxPages:80});
+      assert(result.complete,'long-note pagination incomplete');
+      assert(result.pages.length>1,'fixture did not force note continuation');
+      assert((result.noteAnchorFallbacks||[]).length===0,
+        `anchor fallback used for a legal continuation: ${JSON.stringify(result.noteAnchorFallbacks)}`);
+      const refPage=result.pages.findIndex(p=>p.querySelector('[data-uid="long-anchor-continuation"]'));
+      const key='long-anchor-source:01:long-anchor-continuation';
+      const startPage=result.pages.findIndex(p=>p.querySelector(`[data-v9-note-start="${key}"]`));
+      assert(refPage>=0&&refPage===startPage,`note start separated from source: ref=${refPage}, start=${startPage}`);
+      const occupied=result.pages.map((p,i)=>p.querySelector(`[data-v9-note-key="${key}"]`)?i:-1).filter(i=>i>=0);
+      assert(occupied.length>1,'note did not actually continue across pages');
+      for(let i=1;i<occupied.length;i++)assert(occupied[i]===occupied[i-1]+1,'note continuation skipped a page');
+    } finally { page.remove();if(saved===undefined)delete settings['01'];else settings['01']=saved; }
+  });
+
   await test('font preflight includes note runs, nested notes and resolved label styles',async()=>{
     const descriptor=Object.getOwnPropertyDescriptor(document,'fonts'),requests=[];
     Object.defineProperty(document,'fonts',{configurable:true,value:{load:font=>{requests.push(font);return Promise.resolve([]);},ready:Promise.resolve()}});

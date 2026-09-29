@@ -1,4 +1,5 @@
 import { mapMainParagraphSource } from './engine/main_source_mapping.js';
+import { normalizeEditorMark } from './engine/editor_mark_normalization.js';
 import { afterPaint } from "./engine/background_safe_yield.js";
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
@@ -127,8 +128,7 @@ function styleMetaForNode(node) {
     if (!child.text || !child.text.trim()) return false;
     const m = {};
     for (const mark of child.marks || []) {
-      const mAttrs = mark.attrs || {};
-      const name = mark.type?.name;
+      const { name, attrs: mAttrs } = normalizeEditorMark(mark);
       if (name === "textStyle") {
         if (mAttrs.fontFamily) m.fontFamily = mAttrs.fontFamily;
         if (mAttrs.fontSize) m.fontSize = mAttrs.fontSize;

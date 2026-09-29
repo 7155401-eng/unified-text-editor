@@ -514,6 +514,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       streamSettings,
       levels,
       talmudStreams,
+      // V9 needs the mode flag itself, not only the stored levels: persisted
+      // level text must not change footer geometry when Mishnah-wrap is off.
+      mishnaWrapOn,
       // ★ משה 28/09/2026 — "בהגדרות המסמך מצוין פנימי/חיצוני בהגדרות
       // גפ\"ת, כלומר הראשון ברשימה יהיה פנימי, ובפועל תמיד הביאור הוא
       // ימני ולא תמיד פנימי. לפי ההגדרות בעמוד אי-זוגי הוא היה צריך
