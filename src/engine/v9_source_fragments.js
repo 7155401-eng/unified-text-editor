@@ -54,6 +54,33 @@ function mapRuns(runs, map) {
   });
 }
 
+function sourceParagraphStyleMarks(style) {
+  const src = style && typeof style === 'object' ? style : {};
+  const marks = {};
+  for (const key of [
+    'fontFamily','fontSize','fontSizeUnit','fontWeight','fontStyle',
+    'color','backgroundColor','bgColor','lineHeight','textDecoration'
+  ]) {
+    if (src[key] !== undefined && src[key] !== null && src[key] !== '') marks[key] = src[key];
+  }
+  if (src.bold === true) marks.bold = true;
+  if (src.italic === true) marks.italic = true;
+  if (src.underline === true) marks.underline = true;
+  if (src.strike === true) marks.strike = true;
+  return marks;
+}
+
+function mappedSourceRuns(p, map) {
+  const explicit = mapRuns(p.mainRuns || p.runs || [], map);
+  const paragraphMarks = sourceParagraphStyleMarks(p.style);
+  if (!map.text.length || Object.keys(paragraphMarks).length === 0) return explicit;
+  // Source paragraph style is semantic document formatting. It is deliberately
+  // separate from cfg.mainStyleId (the chosen stream style). Putting it in a
+  // full-range run lets explicit child runs override it while still allowing
+  // the bold-override rule to recognize a genuinely bold source paragraph.
+  return [{ start: 0, end: map.text.length, marks: paragraphMarks }, ...explicit];
+}
+
 function shiftRef(r, anchor) {
   return { ...r, anchor, absoluteAnchor: anchor, localAnchor: anchor };
 }
@@ -86,7 +113,7 @@ export function prepareV9SourceParagraph(p, index = 0) {
         return note && !ref.anchorAffinity ? {...ref,anchorAffinity:note.anchorAffinity} : ref;
       })
     : notes.filter(r=>r.nested !== true).map(r=>({...r}));
-  const runs = mapRuns(p.mainRuns || p.runs || [], map);
+  const runs = mappedSourceRuns(p, map);
   return {
     ...p, id, mainText: map.text, mainRuns: runs, runs, mainRefs, notes,
     _v9Source: { id, index: index + 1, text: map.text, starts: map.starts, ends: map.ends, rawLength: map.rawLength },
