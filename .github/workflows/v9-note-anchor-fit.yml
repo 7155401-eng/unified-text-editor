@@ -1,0 +1,55 @@
+name: V9 note anchor fit regression
+on:
+  push:
+    branches: [fix/v9-note-anchor-fit]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/v9-unified/**'
+      - 'scripts/**'
+      - '.github/workflows/v9-note-anchor-fit.yml'
+permissions:
+  contents: read
+concurrency:
+  group: v9-note-fit-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/fix/v9-note-anchor-fit' || github.head_ref == 'fix/v9-note-anchor-fit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Record exact implementation
+        run: |
+          mkdir -p test-results/v9-note-fit
+          git rev-parse HEAD > test-results/v9-note-fit/commit.txt
+          git archive --format=zip HEAD src scripts tests package.json package-lock.json vite.config.js > test-results/v9-note-fit/source.zip
+      - name: Unit regressions
+        run: node --test tests/v9-unified/*.test.mjs | tee test-results/v9-note-fit/unit.tap
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Browser regressions
+        run: node scripts/v9-unified/run-browser.mjs
+      - name: Evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v9-note-fit-${{ github.run_id }}
+          path: |
+            test-results/v9-note-fit/
+            test-results/v9-unified/
+          retention-days: 7
