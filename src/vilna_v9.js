@@ -1467,6 +1467,99 @@ function buildMainStrips(opts) {
   return strips;
 }
 
+// ⭐⭐⭐⭐ משה 28–29/09/2026 — „אני לא רוצה שום חפיפות, הכול צריך
+// לעבוד אוטומטי לחלוטין כאילו היתה פה תמונה — אם יש תמונה הטקסט הולך
+// הצידה, כך זה צריך להתנהג".
+//
+// זו בדיוק הפונקציה הזאת: היא לוקחת את הרצועות של הטקסט הראשי ו„חותכת"
+// אותן סביב כל קופסה תפוסה — כאילו כל זרם הוא תמונה שהטקסט חייב
+// לזרום סביבה.
+//
+// ═══ למה גבול יחיד לא עבד ═══
+// ניסיתי קודם להעביר מספר אחד: „עד כאן מותר להתפשט". זה נכשל קשות
+// (44 ⟵ 68 חפיפות), כי footer יושב בתחתית העמוד — וגבול שנגזר ממנו
+// מונע מהראשי להתפשט גם באמצע, שם השטח פנוי לגמרי.
+//
+// ⇒ החסימה חייבת להיות **פר-טווח אנכי**: בכל גובה בנפרד, לבדוק מי
+//   תופס שם מקום ולצמצם רק שם.
+//
+// ═══ איך זה עובד ═══
+// לכל רצועה של הראשי עוברים על הקופסאות התפוסות. קופסה שחופפת את
+// הרצועה גם אנכית וגם אופקית — חותכת אותה לשלושה חלקים:
+//   1. החלק שמעל הקופסה — נשאר ברוחב המלא
+//   2. החלק שמקביל לקופסה — מצטמצם כדי לא לגעת בה
+//   3. החלק שמתחת — נשאר ברוחב המלא
+// אם אחרי הצמצום לא נשאר רוחב שמיש, אותו קטע פשוט נמחק — עדיף
+// שהטקסט יזרום לקטע הבא מאשר שיידרס.
+function carveStripsAroundBoxes(strips, boxes, minUsableWidth, gapPx) {
+  if (!Array.isArray(strips) || !strips.length) return strips;
+  // ⬛ נמדד: אחרי החיתוך נשארו חפיפות של **4 פיקסלים בלבד** — הרצועה
+  //    נגעה בזרם בלי מרווח ביניהם. מרווח קטן מונע את המגע הזה.
+  const gap = Number(gapPx) > 0 ? Number(gapPx) : 8;
+
+  // התחום שכל קופסה תפוסה תופסת בפועל, לפי השורות שלה.
+  const blockers = [];
+  for (const b of (boxes || [])) {
+    if (!b || !Array.isArray(b.lines) || !b.lines.length) continue;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const l of b.lines) {
+      const lx = Number(l?.x), lw = Number(l?.width), ly = Number(l?.y);
+      const lh = Number(l?.lineHeightPx) > 0 ? Number(l.lineHeightPx) : 0;
+      if (!Number.isFinite(lx) || !Number.isFinite(lw) || !Number.isFinite(ly)) continue;
+      if (lx < x0) x0 = lx;
+      if (lx + lw > x1) x1 = lx + lw;
+      if (ly < y0) y0 = ly;
+      if (ly + lh > y1) y1 = ly + lh;
+    }
+    if (!Number.isFinite(x0) || !Number.isFinite(y0)) continue;
+    // כותרת הזרם יושבת מעל השורה הראשונה, וגם היא תופסת מקום.
+    const th = Number(b.titleHeight) > 0 ? Number(b.titleHeight) : 0;
+    const ty = Number(b.titleY);
+    if (th > 0 && Number.isFinite(ty) && ty < y0) y0 = ty;
+    blockers.push({ x0, x1, y0, y1 });
+  }
+  if (!blockers.length) return strips;
+
+  const minW = Number(minUsableWidth) > 0 ? Number(minUsableWidth) : 24;
+  let work = strips.map(s => ({ ...s }));
+
+  for (const bl of blockers) {
+    const next = [];
+    for (const s of work) {
+      const sy0 = Number(s.y_start), sy1 = Number(s.y_end);
+      const sx0 = Number(s.x), sx1 = Number(s.x) + Number(s.width);
+
+      const yOverlap = Math.min(sy1, bl.y1) - Math.max(sy0, bl.y0);
+      const xOverlap = Math.min(sx1, bl.x1) - Math.max(sx0, bl.x0);
+      if (yOverlap <= 0.5 || xOverlap <= 0.5) { next.push(s); continue; }
+
+      // 1. מעל הקופסה — ללא שינוי
+      if (bl.y0 > sy0 + 0.5) next.push({ ...s, y_end: bl.y0 });
+
+      // 2. מקביל לקופסה — מצטמצם לצד הרחב שנשאר פנוי
+      const midTop = Math.max(sy0, bl.y0);
+      const midBot = Math.min(sy1, bl.y1);
+      if (midBot > midTop + 0.5) {
+        const leftFree = (bl.x0 - gap) - sx0;      // פנוי משמאל לקופסה
+        const rightFree = sx1 - (bl.x1 + gap);     // פנוי מימין לקופסה
+        if (leftFree >= rightFree && leftFree >= minW) {
+          next.push({ ...s, y_start: midTop, y_end: midBot, width: leftFree });
+        } else if (rightFree >= minW) {
+          next.push({ ...s, y_start: midTop, y_end: midBot, x: bl.x1 + gap, width: rightFree });
+        }
+        // אין צד פנוי שמיש — הקטע נמחק, והטקסט ימשיך בקטע הבא.
+      }
+
+      // 3. מתחת לקופסה — ללא שינוי
+      if (bl.y1 < sy1 - 0.5) next.push({ ...s, y_start: bl.y1 });
+    }
+    work = next;
+  }
+
+  work.sort((a, b) => a.y_start - b.y_start || a.x - b.x);
+  return work;
+}
+
 function appendOverflowStream(overflow, sid, entry) {
   if (!overflow || !sid) return;
 
@@ -2343,9 +2436,44 @@ function buildPagePlan(pageContent, config) {
     pass1Left = buildSideStream(pageContent.leftStream, 'left');
   }
 
+  // ⛔⛔⛔⛔ משה 28–29/09/2026 — השינוי המבני, באישורו המפורש:
+  // „מאשר שתשנה כל מה שצריך בשביל לפתור את הבעיות... כל דבר שאתה
+  //  רואה צריך בניה מחדש תבנה בלי היסוס".
+  //
+  // ═══ מה שכלי המדידה החדש מצא ═══
+  // `measure_strips_vs_streams_v1.0.mjs` מודד את הרצועות של הראשי מול
+  // המיקום האמיתי של הזרמים. הוא הראה:
+  //     רצועת ראשי  116 → 318  (רוחב 202), מ-y=31
+  //     זרם הביאור  273 → 369,  מ-y=31 עד y=46.5
+  //     ⇒ חפיפה של 45 פיקסלים
+  // הרצועה הרחבה מתחילה **בדיוק כשהזרם מתחיל**.
+  //
+  // ═══ השורש ═══
+  // יש כאן תלות מעגלית: הראשי צריך לדעת איפה הזרמים נגמרים, והזרמים
+  // צריכים לדעת איפה הראשי נגמר. הפתרון הקיים הוא שני מעברים —
+  // ולזרמים אף שלוש איטרציות של המעבר השני.
+  //
+  // אבל **הראשי נבנה רק פעם אחת**, לפי המעבר הראשון. המעבר השני של
+  // הזרמים נבנה עם גבול אחר ויכול לצאת ארוך יותר — ואז הראשי כבר
+  // תפס שטח שהזרם יתפוס בפועל. מכאן „טקסט בפירוש באמצע הטקסט הראשי".
+  //
+  // כמו שני פועלים שמחלקים חדר: הראשון מודד לפי איפה שהשני עמד
+  // בהתחלה, והשני זז אחר כך — ואיש לא חוזר למדוד מחדש.
+  //
+  // ═══ התיקון ═══
+  // בניית הראשי הוצאה לפונקציה, והיא נקראת **פעמיים**: פעם לפי המעבר
+  // הראשון (כדי לתת לזרמים את הגבול שלהם), ופעם שנייה אחרי שהזרמים
+  // התייצבו — בדיוק כמו שהזרמים עצמם נבנים שוב.
+  // ⬛ זה „V9 ירוץ מחדש" שמשה דרש, והכול בתכנון.
+  let runMainPass = null;
+
   // 4.5 ראשי — בר־מצרא: זורם דרך strips לפי endY של הצדדים.
   // אם פרשן נגמר באמצע (endY < naiveMainBottomY), הראשי מתפשט לתוך שטחו.
-  if (pageContent.mainText) {
+  // ★ הפונקציה מקבלת את שתי קופסאות הצד שלפיהן לחשב. במעבר הראשון
+  // אלה pass1, ובמעבר השני — pass2, אחרי שהזרמים התייצבו.
+  runMainPass = function runMainPass(sideRight, sideLeft) {
+    const pass1Right = sideRight;
+    const pass1Left = sideLeft;
     // אם אין צד בכלל — endY = mainTopY (פנוי מההתחלה).
     // אם צד קיים אבל endY עבר את naiveMainBottomY — נחשב Infinity (חוסם הכול).
     // ⛔⛔⛔ משה 28/09/2026 — „בעמוד ח' פתאום יש טקסט בפירוש באמצע
@@ -2423,12 +2551,74 @@ function buildPagePlan(pageContent, config) {
       return Number.isFinite(low) ? low : reported;
     };
 
+    // ⛔⛔⛔⛔ משה 29/09/2026 — השורש הסופי, שנמצא רק אחרי שחשפתי את
+    // הרצועות עצמן למדידה.
+    //
+    // ═══ מה שנמדד ═══
+    //   רצועת הראשי:  13 → 369  (רוחב מלא, 356)
+    //                 מגובה 30 עד 525 — כלומר **כל העמוד**
+    //   זרם 02:       13 → 369, מגובה 134 עד 150
+    //   ⇒ חפיפה מלאה: הזרם יושב בתוך רצועת הראשי
+    //
+    // ═══ הסיבה ═══
+    // הראשי מחשב את ההתפשטות שלו מול **שני זרמי הצד בלבד**
+    // (rightStream / leftStream). כשאין כאלה, הוא מניח שכל העמוד פנוי
+    // ובונה רצועה ברוחב מלא לכל גובה הדף — גם כשיש זרמים אחרים
+    // שיושבים שם בפועל.
+    //
+    // כמו לפרוס שולחן על כל החדר אחרי שבדקת רק את שני הקירות הצדדיים,
+    // בלי לראות את הרהיטים שבאמצע.
+    //
+    // ═══ התיקון ═══
+    // הגבול נלקח מ**כל** הקופסאות שכבר נבנו ושחופפות את הראשי אופקית,
+    // ולא משתיים בלבד. במעבר הראשון זה בדרך כלל ריק; במעבר השני —
+    // שרץ אחרי שכל הזרמים התייצבו — זה התמונה המלאה.
+    const otherBoxesBottom = (() => {
+      let low = -Infinity;
+      // ★ גם ה-footers נספרים. הם נבנים אחרי הראשי, ולכן במעבר הראשון
+      // הרשימה ריקה — אבל במעבר האחרון היא מלאה, וזה בדיוק מה שמונע
+      // מהראשי להתפשט לשטח שלהם.
+      for (const b of [...(result.streamBoxes || []), ...(result.footerBoxes || [])]) {
+        if (!b || b === pass1Right || b === pass1Left) continue;
+
+        // ⚠️ ל-footer אין שדות x/width — הם קיימים רק על זרמי צד.
+        // לכן התחום האופקי נלקח מהשורות עצמן. בלי זה הבדיקה נכשלה
+        // בשקט וכל ה-footers נראו כאילו אינם מפריעים לראשי.
+        let bx = Number(b.x), bw = Number(b.width);
+        if (!Number.isFinite(bx) || !Number.isFinite(bw) || bw <= 0) {
+          let lo = Infinity, hi = -Infinity;
+          for (const l of (b.lines || [])) {
+            const lx = Number(l?.x), lw = Number(l?.width);
+            if (!Number.isFinite(lx) || !Number.isFinite(lw)) continue;
+            if (lx < lo) lo = lx;
+            if (lx + lw > hi) hi = lx + lw;
+          }
+          if (!Number.isFinite(lo) || !Number.isFinite(hi)) continue;
+          bx = lo; bw = hi - lo;
+        }
+
+        // רק קופסאות שחופפות את הראשי אופקית — אחרת הן לא מפריעות לו.
+        const xo = Math.min(mainX + mainWidth, bx + bw) - Math.max(mainX, bx);
+        if (xo <= 1) continue;
+        const bottom = realEndY(b);
+        if (Number.isFinite(bottom) && bottom > low) low = bottom;
+      }
+      return low;
+    })();
+
+    // ⛔ נמדד ונפסל: להשתמש ב-`otherBoxesBottom` כגבול **יחיד** להתפשטות.
+    // התוצאה הייתה החמרה חדה — 44 ⟵ 68 חפיפות. הסיבה ברורה בדיעבד:
+    // footer יושב בתחתית העמוד, ולכן גבול יחיד שנגזר ממנו מונע מהראשי
+    // להתפשט גם באמצע העמוד, שם השטח פנוי לגמרי. הגבול חייב להיות
+    // **פר-טווח אנכי**, ולא מספר אחד. ראה carveStripsAroundBoxes למטה.
+    void otherBoxesBottom;
+
     const rawRight = pass1Right ? realEndY(pass1Right) + inkSafetyY : mainTopY;
     const rawLeft  = pass1Left  ? realEndY(pass1Left)  + inkSafetyY : mainTopY;
     const rightEnd = (rawRight >= naiveMainBottomY - 0.5) ? Infinity : rawRight;
     const leftEnd  = (rawLeft  >= naiveMainBottomY - 0.5) ? Infinity : rawLeft;
 
-    const mainStrips = buildMainStrips({
+    const rawMainStrips = buildMainStrips({
       mainTopY,
       mainX,
       mainWidth,
@@ -2438,6 +2628,19 @@ function buildPagePlan(pageContent, config) {
       leftEndY:  leftEnd,
       pageBottom: effectivePageBottom,
     });
+
+    // ⭐ „כאילו היתה פה תמונה — הטקסט הולך הצידה".
+    // הרצועות נחתכות סביב כל קופסה תפוסה בעמוד, בכל גובה בנפרד.
+    // במעבר הראשון הרשימה כמעט ריקה; במעבר האחרון — אחרי שהזרמים
+    // וה-footers כבר בנויים — זו התמונה המלאה, וזה מה שמונע את
+    // „טקסט בפירוש באמצע הטקסט הראשי".
+    const occupiedBoxes = [
+      ...(result.streamBoxes || []),
+      ...(result.footerBoxes || []),
+    ].filter(b => b && b !== pass1Right && b !== pass1Left);
+    const mainStrips = occupiedBoxes.length
+      ? carveStripsAroundBoxes(rawMainStrips, occupiedBoxes, 96, mainGap)
+      : rawMainStrips;
 
     const mainFlow = flowMainParagraphsThroughStrips(
       pageContent,
@@ -2502,6 +2705,17 @@ function buildPagePlan(pageContent, config) {
     }
     const actualMainHeight = mainFlow.endY - mainTopY;
 
+    // ★ 29/09 — עקבות אבחון: מאיפה הראשי קיבל את גבולות ההתפשטות.
+    // בלי זה אי אפשר לדעת אם המעבר השני בכלל שינה משהו.
+    result._mainPassTrace = {
+      pass: (result._mainPassTrace?.pass || 0) + 1,
+      rightEnd, leftEnd,
+      otherBoxesBottom: Number.isFinite(otherBoxesBottom) ? Math.round(otherBoxesBottom) : null,
+      hadRight: !!pass1Right, hadLeft: !!pass1Left,
+      stripCount: mainStrips.length,
+      widest: Math.max(0, ...mainStrips.map(s => Math.round(s.width))),
+    };
+
     result.mainBox = {
       id: 'main',
       role: 'main',
@@ -2524,6 +2738,12 @@ function buildPagePlan(pageContent, config) {
 
     // חסימה ב-pageBottom: אם flow לא הצליח לדחוס הכול, mainBottomY עלול לחרוג.
     mainBottomY = Math.min(mainFlow.endY, effectivePageBottom);
+  };
+
+  // מעבר ראשון: לפי הזרמים כפי שחושבו בשלב 4. זה מה שנותן לזרמים את
+  // `mainBottomY` שלפיו הם ייבנו שוב.
+  if (pageContent.mainText) {
+    runMainPass(pass1Right, pass1Left);
   }
 
   // 4.6 Pass 2 — חישוב מחדש של הצדדים עם:
@@ -2662,6 +2882,27 @@ function buildPagePlan(pageContent, config) {
         text: pass2Left.overflowText,
         runs: pass2Left.overflowRuns || [],
       });
+    }
+  }
+
+  // ⭐⭐⭐ המעבר השני של הראשי — כאן נסגר המעגל.
+  //
+  // ⬛ המיקום קריטי: הוא **אחרי** ש-`result.streamBoxes` התמלא. בניסיון
+  //    קודם הצבתי אותו קודם לכן, והרשימה עוד הייתה ריקה — ולכן הבדיקה
+  //    „יש זרמים נוספים" תמיד נכשלה והמעבר השני מעולם לא רץ באמת.
+  //
+  // הזרמים סיימו להתייצב. אם הם נגמרים במקום אחר ממה שהמעבר הראשון
+  // הניח — או אם יש בעמוד זרמים שהמעבר הראשון כלל לא הכיר — הראשי
+  // נבנה על שטח שאינו פנוי. כאן הוא נבנה שוב, מול התמונה המלאה.
+  if (pageContent.mainText && typeof runMainPass === "function") {
+    const endOf = (b) => (b ? Number(b.endY) : null);
+    const movedRight = Math.abs((endOf(pass2Right) ?? 0) - (endOf(pass1Right) ?? 0)) > 0.5;
+    const movedLeft = Math.abs((endOf(pass2Left) ?? 0) - (endOf(pass1Left) ?? 0)) > 0.5;
+    // ★ זרם שאינו אחד משני זרמי הצד — המעבר הראשון לא ידע עליו כלום.
+    const hasOtherStreams = (result.streamBoxes || [])
+      .some(b => b && b !== pass1Right && b !== pass1Left && b !== pass2Right && b !== pass2Left);
+    if (movedRight || movedLeft || hasOtherStreams) {
+      runMainPass(pass2Right || pass1Right, pass2Left || pass1Left);
     }
   }
 
@@ -2809,6 +3050,37 @@ function buildPagePlan(pageContent, config) {
   // העמוד נחשב חורג אם footerY עבר את הגובה (לא צריך לקרות עם החיתוך)
   // או אם נחתך משהו (כדי ש-buildPages יקטין פסקאות וייתן לתוכן הבא להיכנס לעמוד הבא).
   result.overflow.exceedsPage = footerY > cfg.pageHeight || anyFooterTrimmed;
+
+  // ⭐⭐⭐⭐ המעבר האחרון של הראשי — אחרי שכל הקופסאות בעמוד קיימות.
+  //
+  // ═══ מה שהעקבות חשפו ═══
+  // הוספתי עקבות אבחון (`_mainPassTrace`) וראיתי שני דברים:
+  //   1. **בכל העמודים pass = 1** — כלומר המעבר השני שהוספתי קודם
+  //      מעולם לא רץ באמת.
+  //   2. בעמוד הבעייתי: hadRight=false, hadLeft=false, stripCount=1,
+  //      widest=356 — רצועה אחת ברוחב מלא לכל גובה העמוד.
+  //
+  // ═══ הסיבה ═══
+  // הזרמים שחופפים את הראשי אינם זרמי צד כלל — הם **footers**, והם
+  // נבנים בשלב 5, אחרי הראשי. בזמן שהראשי חושב איפה מותר לו
+  // להתפשט, הם עוד לא קיימים, ולכן הוא מניח שכל העמוד פנוי.
+  //
+  // כמו לפרוס שולחן בחדר ריק, ורק אחר כך להכניס את הספה.
+  //
+  // ═══ התיקון ═══
+  // מעבר אחרון של הראשי, כאן — אחרי שגם הזרמים וגם ה-footers כבר
+  // בנויים. עכשיו `otherBoxesBottom` רואה את התמונה המלאה, והרצועות
+  // נבנות רק על שטח שבאמת פנוי.
+  //
+  // ⬛ רץ רק כשיש בעמוד קופסאות שהמעבר הקודם לא הכיר — אחרת אין טעם.
+  if (pageContent.mainText && typeof runMainPass === "function") {
+    const known = new Set([pass1Right, pass1Left, pass2Right, pass2Left].filter(Boolean));
+    const unseen = [...(result.streamBoxes || []), ...(result.footerBoxes || [])]
+      .some(b => b && !known.has(b));
+    if (unseen) {
+      runMainPass(pass2Right || pass1Right, pass2Left || pass1Left);
+    }
+  }
 
   return result;
 }
@@ -3085,6 +3357,10 @@ function renderPagePlan(plan, pageEl, cfg) {
   ensureGlobalStyles();
 
   pageEl.classList.add('v9-page');
+  // ★ 29/09 — עקבות התכנון של הראשי, לצורכי מדידה בלבד.
+  if (plan._mainPassTrace) {
+    try { pageEl.dataset.v9MainPass = JSON.stringify(plan._mainPassTrace); } catch (_) {}
+  }
   pageEl.style.width = plan.pageBox.width + 'px';
   pageEl.style.height = plan.pageBox.height + 'px';
   pageEl.style.padding = plan.pageBox.padding + 'px';
@@ -3542,6 +3818,21 @@ function renderPagePlan(plan, pageEl, cfg) {
       // ⬛ תכונת נתונים בלבד. אין לה שום השפעה על העיצוב או על המידות.
       if (line.forcedBreak) lineEl.dataset.v9ForcedBreak = "1";
       if (line.isLast) lineEl.dataset.v9ParaLast = "1";
+
+      // ★ 29/09 — סימון אבחוני: הרצועה שממנה השורה נולדה.
+      // בלי זה אפשר למדוד רק את השורות, ולא את השטח שהמנוע הקצה —
+      // וכל הדיון על „הראשי נכנס לשטח של הזרם" נשאר ניחוש.
+      // ⬛ תכונות נתונים בלבד. אפס השפעה על עיצוב או מידות.
+      if (box.barMitzraStrips && Number.isFinite(Number(line.y))) {
+        const st = box.barMitzraStrips.find(s =>
+          Number(line.y) >= s.y_start - 0.1 && Number(line.y) < s.y_end - 0.1);
+        if (st) {
+          lineEl.dataset.v9StripX = String(Math.round(st.x));
+          lineEl.dataset.v9StripW = String(Math.round(st.width));
+          lineEl.dataset.v9StripY0 = String(Math.round(st.y_start));
+          lineEl.dataset.v9StripY1 = String(Math.round(st.y_end));
+        }
+      }
 
       // משה 2026-05-13: הגנה נגד חיתוך אותיות/ניקוד.
       // אם הפונט בפועל גדול מגובה השורה המחושב, אסור להשאיר height נמוך.
