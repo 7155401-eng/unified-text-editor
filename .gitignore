@@ -42,3 +42,4 @@ chrome-verify-profile/
 debug-*.png
 debug-*.ps1
 bject CreationTime, LastWriteTime, Length, FullName*
+public/__probe_doc.json
