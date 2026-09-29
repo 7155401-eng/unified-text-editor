@@ -18,6 +18,20 @@ for(const raw of ['alpha@01beta gamma',' alpha  @01beta  gamma ','alpha@01@02bet
  assert.equal(input[0].start,at);
 });
 
+test('source paragraph style becomes a semantic V9 run, separate from stream style',()=>{
+ const p=prepareV9SourceParagraph({
+   id:'source-style-bold',
+   mainText:'alpha beta',
+   mainRuns:[],
+   style:{fontFamily:'Word Font',fontSize:'12pt',fontWeight:'700'}
+ });
+ assert.equal(p.mainRuns.length,1);
+ assert.deepEqual(p.mainRuns[0],{
+   start:0,end:'alpha beta'.length,
+   marks:{fontFamily:'Word Font',fontSize:'12pt',fontWeight:'700'}
+ });
+});
+
 test('backward notes and refs retain previous word at exact split and all aliases rebase',()=>{
  const t='alpha beta gamma',p=prepareV9SourceParagraph({id:'affinity',mainText:t,notes:[{stream:'01',uid:'a',anchor:5,anchorAffinity:'backward'},{stream:'01',uid:'b',anchor:10,absoluteAnchor:10,localAnchor:10,anchorAffinity:'backward'}]});
  const st=splitMainTextAtOffset(t,5),ns=splitNotesByAnchor(p.notes,5,t.length,st.suffixBaseOffset),h=splitV9Paragraph(p,st,ns.before,ns.after);

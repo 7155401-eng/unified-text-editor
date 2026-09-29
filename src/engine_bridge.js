@@ -126,19 +126,7 @@ function styleMetaForNode(node) {
   node?.descendants?.((child) => {
     if (!child.isText) return false;
     if (!child.text || !child.text.trim()) return false;
-    const m = {};
-    for (const mark of child.marks || []) {
-      const { name, attrs: mAttrs } = normalizeEditorMark(mark);
-      if (name === "textStyle") {
-        if (mAttrs.fontFamily) m.fontFamily = mAttrs.fontFamily;
-        if (mAttrs.fontSize) m.fontSize = mAttrs.fontSize;
-        if (mAttrs.color) m.color = mAttrs.color;
-        if (mAttrs.backgroundColor || mAttrs.bgColor) m.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
-      } else if (name === "bold") m.bold = true;
-      else if (name === "italic") m.italic = true;
-      else if (name === "underline") m.underline = true;
-      else if (name === "highlight") m.backgroundColor = mAttrs.color;
-    }
+    const m = editorMarksToRunMarks(child.marks || []);
     runMarks.push(m);
     return false;
   });
@@ -153,6 +141,7 @@ function styleMetaForNode(node) {
   };
 
   if (allHave("bold") && sameValueAcross("bold")) style.bold = true;
+  if (allHave("fontWeight") && sameValueAcross("fontWeight")) style.fontWeight = runMarks[0].fontWeight;
   if (allHave("italic") && sameValueAcross("italic")) style.italic = true;
   if (allHave("underline") && sameValueAcross("underline")) style.underline = true;
   if (allHave("fontFamily") && sameValueAcross("fontFamily")) style.fontFamily = runMarks[0].fontFamily;
@@ -178,6 +167,7 @@ function hasUsefulInlineStyle(style) {
     style.backgroundColor ||
     style.bgColor ||
     style.bold ||
+    style.fontWeight ||
     style.italic ||
     style.underline ||
     style.lineHeight ||
