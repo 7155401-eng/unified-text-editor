@@ -42,3 +42,13 @@ test('serialized Word marks become the actual run marks consumed by runsFromNode
     italic:true
   });
 });
+
+
+test('textStyle fontWeight survives and remains detectable as semantic bold',()=>{
+  const marks=[{toJSON(){return {type:'textStyle',attrs:{fontFamily:'Word Font',fontSize:'12pt',fontWeight:'700'}};}}];
+  assert.deepEqual(editorMarksToRunMarks(marks),{
+    fontFamily:'Word Font',
+    fontSize:'12pt',
+    fontWeight:'700'
+  });
+});
