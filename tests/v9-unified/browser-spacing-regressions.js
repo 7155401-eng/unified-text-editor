@@ -206,6 +206,32 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     }
   });
 
+  await test('main bold override checkbox off preserves Word internal font',async()=>{
+    const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
+    saveTextStyles([
+      ...styles,
+      {id:'v9-main-base-bold-test-off',name:'Main base bold test off',fontFamily:'sans-serif',fontSize:13,fontSizeUnit:'px',bold:true},
+      {id:'v9-main-bold-choice-test-off',name:'Chosen bold test off',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px'}
+    ]);
+    settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-bold-choice-test-off',boldOverrideForcesDocStyles:false};
+    const page=makePage();
+    try {
+      const text='alpha beta gamma';
+      const result=await buildPages(page,[{id:'main-bold-base-off',mainText:text,
+        mainRuns:[{start:0,end:text.length,marks:{fontFamily:'serif',fontSize:15,fontSizeUnit:'px'}}],notes:[]}],
+        {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-test-off'});
+      assert(result.complete,'main bold opt-out fixture incomplete');
+      const span=[...page.querySelectorAll('.v9-planned-line-text span')].find(el=>el.textContent.trim());
+      assert(span,'missing Word styled span');
+      const cs=getComputedStyle(span);
+      assert(cs.fontFamily.toLowerCase().includes('serif'),`unchecked override did not preserve Word font: ${cs.fontFamily}`);
+      assert(Math.abs(parseFloat(cs.fontSize)-15)<.6,`unchecked override did not preserve Word size: ${cs.fontSize}`);
+    } finally {
+      page.remove();saveTextStyles(styles);
+      if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
+    }
+  });
+
   await test('secondary Mishnah level 03/04 flows analytically beside and below its float',()=>{
     const page=makePage();
     const short='alpha beta gamma delta';
