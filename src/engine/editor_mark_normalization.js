@@ -15,3 +15,22 @@ export function normalizeEditorMark(mark) {
   };
   return { name, attrs };
 }
+
+
+export function editorMarksToRunMarks(marks) {
+  const out = {};
+  for (const mark of marks || []) {
+    const { name, attrs } = normalizeEditorMark(mark);
+    if (name === 'textStyle') {
+      if (attrs.fontFamily) out.fontFamily = attrs.fontFamily;
+      if (attrs.fontSize) out.fontSize = attrs.fontSize;
+      if (attrs.color) out.color = attrs.color;
+      if (attrs.backgroundColor || attrs.bgColor) out.backgroundColor = attrs.backgroundColor || attrs.bgColor;
+    } else if (name === 'bold') out.bold = true;
+    else if (name === 'italic') out.italic = true;
+    else if (name === 'underline') out.underline = true;
+    else if (name === 'strike') out.strike = true;
+    else if (name === 'highlight') out.backgroundColor = attrs.color || out.backgroundColor;
+  }
+  return out;
+}
