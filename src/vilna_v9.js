@@ -5524,6 +5524,40 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         }
         for(const n of [...new Set(ends)].sort((a,b)=>b-a))candidates.push({i,p,n});
       }
+      // ⛔⛔⛔⛔ משה 29/09/2026 — „יש משהו חדש שמייצר עמודים ריקים
+      // ברובם... פשוט שופך את השארית לעמוד חדש במקום למזג עם העמוד
+      // הבא, וגם עברת על הכלל שאסור להמשיך לעמוד הבא לפני שהכול
+      // הסתיים עם העמוד הקודם".
+      //
+      // ═══ מה נמדד בייצוא שלו (20:23) ═══
+      //     עמודים                       243
+      //     מילוי ממוצע                  77.2%
+      //     עמודים מתחת ל-50%             18
+      //     עמודים מתחת ל-25%              7
+      //     הגרועים ביותר: **שורה אחת** בעמוד שלם (7.6% מילוי)
+      //
+      // ═══ השורש ═══
+      // הבחירה כאן העדיפה „הערה נקייה" על פני „עמוד מלא" — **בלי שום
+      // רצפה**. מועמד „נקי" ניצח תמיד, גם כשהוא מותיר בעמוד שורה אחת.
+      // כלומר כדי לשמור הערה אחת צמודה למקור שלה, המנוע היה מוכן
+      // לחתוך עמוד שלם ולשפוך את כל השאר לעמוד הבא.
+      //
+      // ═══ הדימוי ═══
+      // כמו לארוז מזוודה, לגלות שגרב אחת לא נכנסת — ולהוציא את כל
+      // הבגדים כדי שהגרב תשב לבד בנוחות.
+      //
+      // ⇒ נוספה רצפת מילוי: מועמד שמשאיר בעמוד פחות ממחצית השורות
+      //   שהעמוד כבר החזיק — נדחה, גם אם הוא „נקי". רק אם אין שום
+      //   מועמד שעומד ברצפה, חוזרים להעדפה הישנה. כך העמוד הנוכחי
+      //   נגמר לפני שמתחילים את הבא, בדיוק כפי שמשה קבע.
+      const baseMainLines = Number(finalProbe.mainBox?.lines?.length) || 0;
+      const fillFloor = baseMainLines > 0 ? Math.max(1, Math.ceil(baseMainLines * 0.5)) : 0;
+      const betterThan = (cand, cur) => {
+        if (!cur) return true;
+        if (cand.keepsEnough !== cur.keepsEnough) return cand.keepsEnough;
+        if (cand.clean !== cur.clean) return cand.clean;
+        return cand.score > cur.score;
+      };
       for(const {i,p,n} of candidates.reverse()) {
         const st=splitMainTextAtOffset(p.mainText,n);
         const ns=splitNotesByAnchor(p.notes || [],n,p.mainText.length,st.suffixBaseOffset);
@@ -5534,8 +5568,10 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         if(probe.overflow.mainText || probe.unstartedNotes?.length || !probe.mainBox?.lines?.length)continue;
         const clean=!hasV9NoteRemainder(probe);
         const score=i*100000000+n;
-        if(!accepted || (clean && !accepted.clean) || (clean===accepted.clean && score>accepted.score))
-          accepted={slice:candidateSlice,content,probe,halves,i,clean,score};
+        const candLines=Number(probe.mainBox?.lines?.length) || 0;
+        const keepsEnough = fillFloor === 0 || candLines >= fillFloor;
+        const cand={slice:candidateSlice,content,probe,halves,i,clean,score,keepsEnough,candLines};
+        if(betterThan(cand, accepted)) accepted=cand;
       }
       if(accepted) {
         // Preserve the tail of an already split source paragraph.
@@ -5959,45 +5995,33 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     const wantLeftId  = talmudStreams.length >= 2 ? talmudStreams[1] : null;
     const wantedSet = new Set(talmudStreams.slice(0, 2));
 
-    // ⭐⭐⭐ משה 29/09/2026 — „בהגדרות מוגדר שמה שאינו מהערות של גפ״ת
-    // יהיה הערות 3 ו-4 בסגנון עיצוב משנ״ב, אבל בפועל זה לא עובד".
+    // ⛔⛔⛔ משה 29/09/2026 — „מה שאינו מהערות גפ״ת מוגדר כמשנ״ב ולא
+    // עובד". זה עדיין **פתוח**, ולהלן למה הניסיון הראשון בוטל.
     //
-    // ═══ מה שהיה ═══
-    // ברגע שהוגדרו זרמי גפ״ת, הקוד כאן שלח **כל** זרם אחר לתחתית
-    // העמוד — בלי להסתכל אפילו פעם אחת על שדה „פריסה" שלו. כלומר
-    // הבחירה „משנ״ב" לזרמים 3 ו-4 נרשמה בהגדרות ולא נקראה אף פעם.
+    // ═══ מה שנכון בדיווח ═══
+    // ברגע שהוגדרו זרמי גפ״ת, הקוד כאן שולח כל זרם אחר לתחתית העמוד
+    // בלי להסתכל על שדה „פריסה" שלו. ההגדרה באמת אינה נקראת.
     //
-    // ═══ הדימוי ═══
-    // כמו טופס שבו אתה ממלא „אני מעדיף מקום ליד החלון", והפקיד
-    // מושיב את כולם מאחור בלי לפתוח את הטופס.
+    // ═══ מה שניסיתי, ולמה הוחזר ═══
+    // נתתי לזרם כזה לתפוס צד **כשהצד פנוי**. זו הייתה טעות: שני
+    // הצדדים שייכים לגפ״ת באופן קבוע, ולכן „פנוי" משתנה מעמוד לעמוד
+    // — בעמוד שבו זרם גפ״ת ריק, זרם אחר קפץ לשם ושינה את צורת הדף.
+    // משה דיווח מיד: „עמודים ריקים ברובם".
+    // זה בדיוק הדפוס שהוא כבר תיאר בעבר: „בצד השמאלי התחלפו חמישה
+    // זרמים שונים".
     //
-    // ⇒ זרם שהמשתמש סימן לו פריסה שמשמעותה „לצד הטקסט הראשי"
-    //   (משנ״ב / אונקלוס / הערות-צד) נחשב מועמד לצד. הוא יקבל מקום
-    //   בצד כשיש מקום פנוי, ורק אם שני הצדדים כבר תפוסים — יירד
-    //   לתחתית. כך ההגדרה עושה בדיוק את מה שכתוב בה.
-    const SIDE_ROLES = new Set(["mishna", "onkelos", "side_notes"]);
-    const extraSideCandidates = [];
-
+    // ⇒ ההקצאה חייבת להיות **קבועה לכל המסמך**, לא הזדמנותית.
+    //   וכשגפ״ת תופס את שני הצדדים, אין מקום פיזי לזרם שלישי בצד —
+    //   כלומר „משנ״ב לזרמים 3 ו-4" מחייב **צורת דף אחרת**, וזו
+    //   החלטה של משה ולא ניחוש שלי. חוזרים להתנהגות היציבה.
     for (const s of allStreams) {
       if (s.id === wantRightId && !rightStream) {
         rightStream = s;
       } else if (s.id === wantLeftId && !leftStream) {
         leftStream = s;
       } else if (!wantedSet.has(s.id)) {
-        const role = String((streamSettings[s.id] || {}).layoutRole || "");
-        if (SIDE_ROLES.has(role)) extraSideCandidates.push(s);
-        else footerStreams.push(s);
+        footerStreams.push(s);
       }
-    }
-
-    // ממלאים צד פנוי לפי סדר הזרמים, ומה שלא נכנס יורד לתחתית.
-    for (const s of extraSideCandidates) {
-      const want = String((streamSettings[s.id] || {}).mishnaSide || "");
-      if (want === "right" && !rightStream) rightStream = s;
-      else if (want === "left" && !leftStream) leftStream = s;
-      else if (!rightStream) rightStream = s;
-      else if (!leftStream) leftStream = s;
-      else footerStreams.push(s);
     }
     return { mainText, mainRuns, mainParagraphs, requiredNoteStarts, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
   }

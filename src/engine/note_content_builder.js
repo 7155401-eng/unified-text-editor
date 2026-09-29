@@ -93,14 +93,40 @@ export function styleIdToMarks(styleId) {
 //
 // ⇒ עכשיו יש הכרעה מפורשת: `forceOverDocStyles`. מסומן (ברירת
 //   המחדל) = מה שבחרת מנצח. כבוי = המסמך מנצח, כמו קודם.
+// ⭐⭐ משה 29/09/2026 — „מה שמוגדר כבולד רק במערכת, שסגנון מסוים הוא
+// בולד — במקרה כזה זה לא מוצג בפונט הנכון".
+//
+// ═══ הפער ═══
+// „מודגש" יכול להגיע בשתי דרכים שונות לגמרי:
+//   1. סימון הדגשה מפורש (כך זה מגיע מוורד) — `bold`
+//   2. **משקל גופן** שנקבע בסגנון שהוגדר במערכת — `fontWeight: 700`
+// הקוד בדק רק את הדרך הראשונה, ולכן טקסט שקיבל הדגשה מתוך סגנון
+// פשוט לא נחשב „מודגש" ולא קיבל את הפונט שנבחר.
+//
+// כמו לחפש את כל מי שמרכיב משקפיים ולספור רק את מי שכתוב לו „משקפיים"
+// בתעודה — ולפספס את כל מי שפשוט מרכיב אותם.
+function _runIsBold(marks) {
+  if (!marks) return false;
+  if (marks.bold) return true;
+  const w = marks.fontWeight;
+  if (w == null || w === "") return false;
+  const s = String(w).trim().toLowerCase();
+  if (s === "bold" || s === "bolder") return true;
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 600;
+}
+
 export function applyBoldOverrideToRuns(runs, overrideMarks, forceOverDocStyles = true) {
   if (!Array.isArray(runs) || !overrideMarks) return runs;
   let touched = false;
   const out = runs.map((r) => {
-    if (!r || !r.marks || !r.marks.bold) return r;
+    if (!r || !_runIsBold(r.marks)) return r;
     touched = true;
     const newMarks = { ...r.marks };
     delete newMarks.bold;
+    // המשקל הישן חייב לרדת יחד עם הסימון, אחרת הוא ימשיך לצבוע את
+    // הטקסט אחרי שהסגנון החדש כבר נכנס — ושוב לא נראה מה שנבחר.
+    if (forceOverDocStyles && overrideMarks.fontWeight == null) delete newMarks.fontWeight;
     for (const k of Object.keys(overrideMarks)) {
       if (forceOverDocStyles || newMarks[k] == null) newMarks[k] = overrideMarks[k];
     }

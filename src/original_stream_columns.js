@@ -205,6 +205,8 @@ const GLOBAL_OVERRIDE_DEFS = {
   // הסגנון מחליף את הצגת ה"בולד" בכל זרם.
   boldOverrideEnabled: { label: "סגנון מותאם לבולד", type: "boolean", value: false },
   boldOverrideStyleId: { label: "סגנון לבולד", type: "style", value: "" },
+  // ⭐ 29/09 — מי מנצח: הסגנון שנבחר או העיצוב שהגיע עם המסמך.
+  boldOverrideForcesDocStyles: { label: "דרוס סגנונות עיצוב פנימיים במסמך", type: "boolean", value: true },
   cols: { label: "טורים", type: "number", value: 1, min: 1, max: 6, step: 1 },
   minLinesForCols: { label: "מינ' שורות לטור", type: "number", value: 3, min: 1, max: 20, step: 1 },
   inline: { label: "תצוגה רציפה", type: "boolean", value: true },
