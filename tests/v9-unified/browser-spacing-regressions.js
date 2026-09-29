@@ -194,16 +194,18 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
         ],notes:[]}],
         {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-semantic'});
       assert(result.complete,'semantic bold fixture incomplete');
-      const spans=[...page.querySelectorAll('.v9-planned-line-text span')].filter(el=>el.textContent.trim());
-      const byText=t=>spans.find(el=>el.textContent.trim()===t);
-      const alpha=byText('alpha'),beta=byText('beta'),gamma=byText('gamma');
-      assert(alpha&&beta&&gamma,`expected run spans missing: ${spans.map(x=>x.textContent).join('|')}`);
-      const a=getComputedStyle(alpha),b=getComputedStyle(beta),g=getComputedStyle(gamma);
-      assert(a.fontFamily.toLowerCase().includes('serif'),`non-bold alpha was promoted to Y: ${a.fontFamily}`);
-      assert(g.fontFamily.toLowerCase().includes('serif'),`non-bold gamma was promoted to Y: ${g.fontFamily}`);
-      assert(!a.fontFamily.toLowerCase().includes('monospace')&&!g.fontFamily.toLowerCase().includes('monospace'),'whole document became Y');
+      const body=page.querySelector('[data-v9-paragraph-id="main-bold-semantic"] .v9-planned-line-text');
+      assert(body,'missing main body');
+      const spans=[...body.querySelectorAll('span')].filter(el=>el.textContent.trim());
+      const beta=spans.find(el=>el.textContent.trim()==='beta');
+      assert(beta,`explicit bold beta span missing: ${spans.map(x=>x.textContent).join('|')}`);
+      const base=getComputedStyle(body),b=getComputedStyle(beta);
+      assert(base.fontFamily.toLowerCase().includes('sans-serif'),`selected X font missing from ordinary text: ${base.fontFamily}`);
+      assert(!base.fontFamily.toLowerCase().includes('monospace'),'base X promoted whole document to Y');
       assert(b.fontFamily.toLowerCase().includes('monospace'),`explicit bold beta did not receive Y: ${b.fontFamily}`);
       assert(parseFloat(b.fontSize)>=16.5,`explicit bold beta missed Y size: ${b.fontSize}`);
+      assert(!spans.some(el=>['alpha','gamma'].includes(el.textContent.trim()) && getComputedStyle(el).fontFamily.toLowerCase().includes('serif')),
+        'Word font survived on non-bold source despite override ON');
     } finally {
       page.remove();saveTextStyles(styles);
       if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
@@ -230,13 +232,51 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       const plainRow=page.querySelector('[data-v9-paragraph-id="base-x-only"] .v9-planned-line-text');
       assert(boldRow&&plainRow,'missing source-style rows');
       const boldSpan=[...boldRow.querySelectorAll('span')].find(el=>el.textContent.trim());
-      const plainSpan=[...plainRow.querySelectorAll('span')].find(el=>el.textContent.trim());
-      assert(boldSpan&&plainSpan,'source paragraph style was not converted to runs');
-      const b=getComputedStyle(boldSpan),p=getComputedStyle(plainSpan);
+      assert(boldSpan,'source paragraph bold style was not converted to a Y run');
+      const b=getComputedStyle(boldSpan),p=getComputedStyle(plainRow);
       assert(b.fontFamily.toLowerCase().includes('monospace'),`style-defined bold did not receive Y: ${b.fontFamily}`);
       assert(parseFloat(b.fontSize)>=16.5,`style-defined bold missed Y size: ${b.fontSize}`);
       assert(!p.fontFamily.toLowerCase().includes('monospace'),`base X bold promoted non-bold source to Y: ${p.fontFamily}`);
-      assert(p.fontFamily.toLowerCase().includes('serif'),`non-bold source font unexpectedly lost: ${p.fontFamily}`);
+      assert(p.fontFamily.toLowerCase().includes('sans-serif'),`selected X did not override source Word font: ${p.fontFamily}`);
+      assert(![...plainRow.querySelectorAll('span')].some(el=>getComputedStyle(el).fontFamily.toLowerCase().includes('serif')),
+        'source serif font survived in plain paragraph');
+    } finally {
+      page.remove();saveTextStyles(styles);
+      if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
+    }
+  });
+
+  await test('snapshot case: explicit Word Arial cannot beat selected X, explicit bold still gets Y',async()=>{
+    const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
+    saveTextStyles([
+      ...styles,
+      {id:'v9-main-snapshot-x',name:'Snapshot X',fontFamily:'FrankRuehl DP',fontSize:13,fontSizeUnit:'px',bold:true},
+      {id:'v9-main-snapshot-y',name:'Snapshot Y',fontFamily:'PFT_Vilna',fontSize:9,fontSizeUnit:'px',bold:true}
+    ]);
+    settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-snapshot-y',boldOverrideForcesDocStyles:true};
+    const page=makePage();
+    try {
+      const text='alpha beta gamma';
+      const result=await buildPages(page,[{id:'snapshot-font',mainText:text,
+        mainRuns:[
+          {start:0,end:5,marks:{fontFamily:'Arial'}},
+          {start:6,end:10,marks:{fontFamily:'Arial',bold:true}},
+          {start:11,end:16,marks:{}}
+        ],notes:[]}],
+        {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-snapshot-x'});
+      assert(result.complete,'snapshot font fixture incomplete');
+      const body=page.querySelector('[data-v9-paragraph-id="snapshot-font"] .v9-planned-line-text');
+      assert(body,'snapshot font body missing');
+      const spans=[...body.querySelectorAll('span')].filter(x=>x.textContent.trim());
+      const beta=spans.find(x=>x.textContent.trim()==='beta');
+      assert(beta,`snapshot bold span missing: ${spans.map(x=>x.textContent).join('|')}`);
+      const a=getComputedStyle(body),b=getComputedStyle(beta);
+      assert(!a.fontFamily.toLowerCase().includes('arial'),`Word Arial survived override ON at body level: ${a.fontFamily}`);
+      assert(a.fontFamily.toLowerCase().includes('frankruehl'),`selected X font missing: ${a.fontFamily}`);
+      assert(!spans.some(el=>getComputedStyle(el).fontFamily.toLowerCase().includes('arial')),
+        'an explicit Word Arial span survived override ON');
+      assert(b.fontFamily.toLowerCase().includes('pft_vilna'),`explicit source bold did not get Y: ${b.fontFamily}`);
+      assert(Math.abs(parseFloat(b.fontSize)-9)<.7,`Y size missing: ${b.fontSize}`);
     } finally {
       page.remove();saveTextStyles(styles);
       if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
@@ -300,6 +340,62 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     assert(expanded,'04 never expands to full width below 03');
     assert(!plan.overflow.streams['03'],'short Mishnah float overflowed');
     page.remove();
+  });
+
+  await test('short heading is not published as a one-line intermediate page',async()=>{
+    const settings=getStreamSettings(),saved=settings['01'];
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const body=Array(8).fill(neutral).join(' ');
+      const words=[...body.matchAll(/\S+/gu)],w=words[5];
+      const input=[
+        {id:'orphan-heading',blockType:'heading',headingLevel:1,mainText:'SECTION TITLE',notes:[]},
+        {id:'orphan-body',mainText:body,notes:[{stream:'01',uid:'orphan-heading-note',num:1,anchor:w.index+w[0].length,anchorAffinity:'backward',text:Array(24).fill(neutral).join(' ')}]},
+        {id:'orphan-after',mainText:Array(4).fill(neutral).join(' '),notes:[]}
+      ];
+      const result=await buildPages(page,input,{...cfg,pageHeight:260,talmudStreams:['01','02'],maxPages:40});
+      assert(result.complete,'heading orphan fixture incomplete');
+      const bad=result.pages.slice(0,-1).find((p)=>{
+        const mains=[...p.querySelectorAll('.v9-role-main')];
+        const streams=[...p.querySelectorAll('.v9-line:not(.v9-role-main)')];
+        return mains.length===1 &&
+          mains[0].dataset.v9ParagraphId==='orphan-heading' &&
+          streams.length===0;
+      });
+      assert(!bad,'heading was published alone on an intermediate page');
+      assert((result.noteAnchorFallbacks||[]).length===0,'heading rescue broke note ownership');
+    } finally {page.remove();if(saved===undefined)delete settings['01'];else settings['01']=saved;}
+  });
+
+  await test('short stream carry shares the next page instead of creating a drain-marker page',async()=>{
+    const settings=getStreamSettings(),saved=settings['03'];
+    settings['03']={...(settings['03']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const first=Array(7).fill(neutral).join(' '),words=[...first.matchAll(/\S+/gu)],w=words[7];
+      const input=[
+        {id:'carry-owner',mainText:first,notes:[{stream:'03',uid:'carry-tail-note',num:1,anchor:w.index+w[0].length,anchorAffinity:'backward',text:Array(35).fill(neutral).join(' ')}]},
+        {id:'carry-next-a',mainText:Array(6).fill(neutral).join(' '),notes:[]},
+        {id:'carry-next-b',mainText:Array(6).fill(neutral).join(' '),notes:[]}
+      ];
+      const result=await buildPages(page,input,{...cfg,pageHeight:260,talmudStreams:['01','02'],mishnaWrapOn:false,maxPages:50});
+      assert(result.complete,'carry-tail fixture incomplete');
+      assert(result.pages.length>1,'carry-tail fixture did not paginate');
+      const sparseCarry=result.pages.slice(0,-1).find((p)=>{
+        const mainCount=p.querySelectorAll('.v9-role-main').length;
+        const streamCount=p.querySelectorAll('.v9-line:not(.v9-role-main)').length;
+        let bottom=0;
+        for(const l of p.querySelectorAll('.v9-line')){
+          const y=parseFloat(l.style.top)||0,h=parseFloat(l.style.height)||0;
+          bottom=Math.max(bottom,y+h);
+        }
+        const fill=bottom/(260-12);
+        return mainCount===0 && streamCount>0 && streamCount<=3 && fill<0.50;
+      });
+      assert(!sparseCarry,'obsolete drain-marker behavior produced a sparse carry-only page');
+      assert((result.noteAnchorFallbacks||[]).length===0,'carry-tail rescue broke note ownership');
+    } finally {page.remove();if(saved===undefined)delete settings['03'];else settings['03']=saved;}
   });
 
   await test('legal note continuation does not create very short intermediate pages',async()=>{

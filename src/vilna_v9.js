@@ -1203,16 +1203,73 @@ function appendV9MainRefSpan(parent, ref) {
 // מעכשיו הראשי נקרא בשם הזרם `main` ומקבל את אותו טיפול בדיוק.
 const V9_MAIN_STREAM_CODE = "main";
 
-function v9MainBoldOverrideRuns(runs) {
+function v9RunIsSourceBold(marks) {
+  if (!marks) return false;
+  if (marks.bold === true) return true;
+  const weight = marks.fontWeight;
+  if (weight === undefined || weight === null || weight === "") return false;
+  const text = String(weight).trim().toLowerCase();
+  if (text === "bold" || text === "bolder") return true;
+  const numeric = Number(text);
+  return Number.isFinite(numeric) && numeric >= 600;
+}
+
+function v9MainBaseTypography(cfg) {
+  const registry = cfg?.mainStyleId ? resolveTextStyle(cfg.mainStyleId) : null;
+  return normalizeTextStyle({
+    ...(registry || {}),
+    ...(cfg?.mainInlineStyle || {}),
+  }) || {};
+}
+
+function v9MainSourceRunsUnderSelectedStyle(runs, cfg) {
+  const list = Array.isArray(runs) ? runs : [];
+  if (!boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE)) return list;
+
+  const base = v9MainBaseTypography(cfg);
+  const controlsFontFamily = !!String(base.fontFamily || "").trim();
+  const controlsFontSize = base.fontSize !== undefined && base.fontSize !== null && base.fontSize !== "";
+  const controlsWeight = base.bold === true || (base.fontWeight !== undefined && base.fontWeight !== null && base.fontWeight !== "");
+  const controlsStyle = base.italic === true || !!base.fontStyle;
+
+  if (!controlsFontFamily && !controlsFontSize && !controlsWeight && !controlsStyle) return list;
+
+  return list.map((run) => {
+    if (!run) return run;
+    const marks = { ...(run.marks || {}) };
+    // Preserve the SEMANTIC fact that Word/source marked this range bold before
+    // removing document typography that the selected main style is meant to
+    // override. This is what lets bold style Y still target only genuine source
+    // bold, while style X controls the ordinary text.
+    const sourceBold = v9RunIsSourceBold(marks);
+
+    if (controlsFontFamily) delete marks.fontFamily;
+    if (controlsFontSize) {
+      delete marks.fontSize;
+      delete marks.fontSizeUnit;
+    }
+    if (controlsWeight) {
+      delete marks.fontWeight;
+      delete marks.bold;
+    }
+    if (controlsStyle) {
+      delete marks.fontStyle;
+      delete marks.italic;
+    }
+    if (sourceBold) marks.bold = true;
+    return { ...run, marks };
+  });
+}
+
+function v9MainBoldOverrideRuns(runs, cfg = null) {
   try {
+    const sourceRuns = v9MainSourceRunsUnderSelectedStyle(runs, cfg);
     const marks = styleIdToMarks(boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE));
-    if (!marks) return runs;
-    // Important: the override is semantic. It applies only to text that is
-    // explicitly bold in the document/run itself. A bold base style for the
-    // main stream must NOT turn the entire document into the selected bold
-    // override style.
+    if (!marks) return sourceRuns;
+    // Only semantic source bold is eligible for style Y. A bold base style X
+    // never promotes ordinary text to Y.
     return applyBoldOverrideToRuns(
-      Array.isArray(runs) ? runs : [],
+      sourceRuns,
       marks,
       boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE)
     );
@@ -1224,7 +1281,7 @@ function v9MainBoldOverrideRuns(runs) {
 function appendV9TextWithMainRefs(parent, line) {
   const refs = Array.isArray(line?.mainRefs) ? line.mainRefs : [];
   const text = String(line?.text || "");
-  const runs = v9MainBoldOverrideRuns(Array.isArray(line?.runs) ? line.runs : []);
+  const runs = v9MainBoldOverrideRuns(Array.isArray(line?.runs) ? line.runs : [], line?._v9Config || null);
   if (!refs.length) {
     appendTextWithRuns(parent, text, runs);
     return;
@@ -1654,9 +1711,9 @@ function createMainInlineContext(cfg) {
       applyStyleToElement(el, cfg.mainStyleId);
       if (cfg.mainInlineStyle) applyTextStyleObjectToElement(el, cfg.mainInlineStyle);
     },
-    // Only explicit bold runs are eligible for the "bold → style Y" rule.
-    // Bold inherited from mainStyleId remains part of style X itself.
-    prepareRuns: v9MainBoldOverrideRuns,
+    prepareRuns(runs) {
+      return v9MainBoldOverrideRuns(runs, cfg);
+    },
     prepareRefs(refs) {
       return refs.map(ref => {
         const holder = document.createElement("span");
@@ -4510,11 +4567,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
     cfg.__v9PageIndex = pageIdx;
     cfg.__v9AllowMainOverlap = __mainStuckCount >= 3;
-    if (pendingParagraph?._drainMarker && !hasCarryOver(carryOver)) {
-      pendingParagraph = null;
-      if (cursor >= paragraphs.length) break;
-    }
-
     // אורך הזמינות הכולל = pendingParagraph (אם קיים) + פסקאות שלא נצרכו
     const totalAvail = (pendingParagraph ? 1 : 0) + (paragraphs.length - cursor);
 
@@ -5821,6 +5873,150 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       }
     }
 
+    // Final sparse-page guard.
+    //
+    // The real 2026-09-30 snapshot exposed three cases that ordinary gap fill
+    // did not cover: a one-line heading page, a one-line carry-only stream page,
+    // and a short pending tail. Before publishing any intermediate page below
+    // 50% fill, offer V9 the next source paragraph (whole first, then safe
+    // line-boundary prefixes). Note ownership remains authoritative.
+    const trySparseIntermediateRescue = () => {
+      if (!finalProbe || !finalProbe.overflow) return null;
+      if (drainAloneMode) return null;
+      const beforeFill = planFillRatio(finalProbe);
+      if (beforeFill >= 0.50) return null;
+      if (bestN >= totalAvail) return null;
+      if (mainOverflowTextOf(finalProbe)) return null;
+      if (finalProbe.unstartedNotes?.length) return null;
+
+      const nextAvailable = getSlice(bestN + 1);
+      const target = nextAvailable[bestN] || null;
+      const fullText = String(target?.mainText || "");
+      if (!target || !fullText.trim()) return null;
+
+      const baseSlice = [...finalSlice];
+      let best = null;
+
+      const consider = (testSlice, testPlan, info) => {
+        if (!testPlan || !testPlan.overflow) return;
+        if (testPlan.overflow.exceedsPage) return;
+        if (mainOverflowTextOf(testPlan)) return;
+        if (testPlan.unstartedNotes?.length) return;
+        if (hasUnsafeV9StreamOverflow(testPlan)) return;
+        const fill = planFillRatio(testPlan);
+        if (fill <= beforeFill + 0.06) return;
+
+        const candidateScore = scoreV9PageCandidate(
+          testPlan,
+          info.candidate || { kind: info.kind || "sparse-rescue", priority: 900 },
+          v9SplitPolicy,
+          {
+            cfg,
+            movedNotes: info.movedNotes || [],
+            pageIdx,
+            source: "final-sparse-rescue",
+          }
+        );
+        if (!candidateScore.accept && fill < 0.68) return;
+
+        const score = fill + Math.min(0.08, (info.offset || fullText.length) / Math.max(1, fullText.length) * 0.08);
+        if (!best || score > best.score) best = { score, fill, testSlice, testPlan, ...info };
+      };
+
+      // Whole next paragraph — especially important for short headings.
+      {
+        const wholeSlice = [...baseSlice, target];
+        const wholeContent = aggregateForV9(
+          wholeSlice, cfg.titles, cfg.streamSettings, cfg.levels,
+          streamsForPage(pageIdx), carryOver
+        );
+        const wholePlan = buildPagePlan(wholeContent, cfg);
+        consider(wholeSlice, wholePlan, {
+          kind: "whole-paragraph",
+          offset: fullText.length,
+          whole: true,
+          testContent: wholeContent,
+        });
+      }
+
+      // If whole paragraph does not fit, try all useful V9 break candidates,
+      // not only the first 2-3. Sparse pages are expensive enough to justify
+      // the extra bounded search.
+      const candidates = buildParagraphBreakCandidates(
+        fullText,
+        splitMetrics,
+        splitMainWidth,
+        v9SplitPolicy,
+        { source: "final-sparse-rescue" }
+      )
+        .filter(c => c.offset >= 2 && c.offset < fullText.length)
+        .slice(0, 24);
+
+      for (const candidate of candidates) {
+        const splitText = splitMainTextAtOffset(fullText, candidate.offset);
+        if (!splitText.prefixText || !splitText.suffixText) continue;
+        const splitNotes = splitNotesByAnchor(
+          target?.notes || [],
+          splitText.splitOffset,
+          fullText.length,
+          splitText.suffixBaseOffset
+        );
+        const halves = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after);
+        const testSlice = [...baseSlice, halves.firstHalf];
+        const testContent = aggregateForV9(
+          testSlice, cfg.titles, cfg.streamSettings, cfg.levels,
+          streamsForPage(pageIdx), carryOver
+        );
+        const testPlan = buildPagePlan(testContent, cfg);
+        consider(testSlice, testPlan, {
+          kind: candidate.kind,
+          candidate,
+          offset: candidate.offset,
+          movedNotes: splitNotes.before,
+          whole: false,
+          halves,
+          testContent,
+        });
+      }
+
+      if (!best) return null;
+      if (best.whole) {
+        return {
+          finalSlice: best.testSlice,
+          finalContent: best.testContent,
+          finalProbe: best.testPlan,
+          bestN: bestN + 1,
+          splitInfo: null,
+          fill: best.fill,
+          mode: "whole",
+        };
+      }
+      return {
+        finalSlice: best.testSlice,
+        finalContent: best.testContent,
+        finalProbe: best.testPlan,
+        bestN: bestN + 1,
+        splitInfo: {
+          firstHalf: best.halves.firstHalf,
+          secondHalf: best.halves.secondHalf,
+          sliceIdx: bestN,
+          baseN: bestN,
+          _finalSparseRescue: true,
+        },
+        fill: best.fill,
+        mode: "prefix",
+      };
+    };
+
+    const sparseRescue = trySparseIntermediateRescue();
+    if (sparseRescue) {
+      finalSlice = sparseRescue.finalSlice;
+      finalContent = sparseRescue.finalContent;
+      finalProbe = sparseRescue.finalProbe;
+      bestN = sparseRescue.bestN;
+      splitInfo = sparseRescue.splitInfo;
+    }
+
     const finalHasText = !!(
       (finalContent.mainText || '').trim() ||
       (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
@@ -5837,6 +6033,10 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     container.appendChild(pageEl);
 
     const plan = finalProbe;
+    pageEl.dataset.v9PageFill = String(Math.round(planFillRatio(plan) * 10000) / 10000);
+    pageEl.dataset.v9SparseRescue = sparseRescue?.mode || "";
+    pageEl.dataset.v9CarryInChars = String(totalCarrySize(carryOver));
+    pageEl.dataset.v9PendingIn = pendingParagraph ? "1" : "0";
 
     // ⭐ משה 29/09/2026 — נמדד עמוד אחרון עם **אפס שורות**.
     // עמוד בלי שורה אחת אינו עמוד; הוא רק נייר ריק בסוף המסמך.
@@ -5867,7 +6067,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
     // התקדמות מצב: pendingParagraph + cursor מתעדכנים לפי הצריכה
     const hadPending = !!pendingParagraph;
-    const wasDrainMarker = !!pendingParagraph?._drainMarker;
     if (drainAloneMode) {
       // עמוד drain בלי שום פסקה — pending נשאר כמו שהוא, cursor לא זז
       // carry-over יתעדכן מהעמוד; כשיתרוקן ה-pending יוכל להירנדר נקי
@@ -5946,7 +6145,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         _v9OpeningWordAllowed: e._v9OpeningWordAllowed !== false && !e.continues,
         _continues: !!e.continuesAfter,
       }));
-      if (pendingParagraph && !pendingParagraph._drainMarker) queued.push(pendingParagraph);
+      if (pendingParagraph) queued.push(pendingParagraph);
       pendingParagraph = null;
       paragraphs.splice(cursor, 0, ...queued);
       if (__mainStuckCount >= 3 && !plan.mainBox?.lines?.length && totalCarrySize(nextCarry) >= totalCarrySize(carryOver)) {
@@ -5956,19 +6155,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       }
     }
 
-    // משה 2026-05-09: ★ סמן ניקוז (drain marker) — אם בוצע force-take עם הערות שעלו,
-    // יוצרים pendingParagraph ריק (mainText="") שמייצג "המשך הערות הפסקה הקודמת".
-    // זה מונע מקריירי-אובר לזרום לעמוד עם פסקה חדשה (חוסר קישור). העמוד הבא
-    // יהיה drain עם carry-over בלבד, אבל הוא יהיה צמוד לפסקה המקור.
-    const hasOverflowNotes = Object.keys(nextCarry).some(k => nextCarry[k]);
-    if (hasOverflowNotes && !splitInfo && !pendingParagraph && !drainAloneMode) {
-      pendingParagraph = { mainText: '', notes: [], _drainMarker: true };
-    }
-    // אם זה היה drain marker וה-carry-over כבר התרוקן — נקה גם את ה-marker
-    if (wasDrainMarker && pendingParagraph?._drainMarker && !hasOverflowNotes) {
-      pendingParagraph = null;
-    }
-
+    // Carry-over no longer creates an artificial empty pending paragraph.
+    // Note ownership is tracked explicitly by _v9NoteKey/auditV9NoteStarts:
+    // a note must START with its source, but its continuation may share the
+    // next page with new main text. The old drain marker deliberately created
+    // carry-only pages and is therefore obsolete.
     // משה 2026-05-08: הגנה מלולאה אינסופית — אם לא הייתה צריכה (bestN=0, אין split)
     // וגם carry-over לא קטן, נכפה קידום של פסקה כדי לא להיתקע.
     if (bestN === 0 && !splitInfo && !hadPending && cursor < paragraphs.length) {
