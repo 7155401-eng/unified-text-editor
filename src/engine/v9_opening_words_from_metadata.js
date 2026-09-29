@@ -263,6 +263,10 @@ function registerV9OpeningWordsPreRenderDecorator() {
 }
 
 export function applyV9OpeningWordsFromMetadata(container) {
+  if (container?.dataset?.v9MainLayout === "v9-inline-1" ||
+      container?.querySelector?.('[data-v9-layout-final="v9-inline-1"]')) {
+    return { applied: 0, reason: "v9-final-plan-owned" };
+  }
   registerV9OpeningWordsPreRenderDecorator();
   if (!allowV9OpeningWordsPreRenderMutation(container)) return { applied: 0, reason: "pre-render-registered" };
   const settings = getOpeningWordSettings();

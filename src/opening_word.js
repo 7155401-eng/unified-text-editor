@@ -430,9 +430,6 @@ function extractOpeningSegment(text, settings, options = {}) {
       taken += 1;
     }
     if (taken === 0) return null;
-    while (cur < content.length && !isWordStopChar(content[cur])) {
-      cur = nextGraphemeEnd(content, cur);
-    }
     return {
       prefix: content.slice(0, segStart),
       segment: content.slice(segStart, cur),
