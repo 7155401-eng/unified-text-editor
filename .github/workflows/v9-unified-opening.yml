@@ -40,3 +40,24 @@ jobs:
           else
             echo 'Infrastructure check only: implementation and regression tests not added yet.'
           fi
+      - name: Source-only reproducibility bundle
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, zipfile
+          names = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          with zipfile.ZipFile('v9-source.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+              for name in names:
+                  p = pathlib.PurePosixPath(name)
+                  if not name or any(part.startswith('.') for part in p.parts):
+                      continue
+                  if p.suffix not in {'.js', '.mjs', '.cjs', '.json', '.css', '.html', '.ts'}:
+                      continue
+                  if p.parts[0] in {'src', 'scripts', 'tests'} or len(p.parts) == 1:
+                      z.write(name, name)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v9-source-${{ github.sha }}
+          path: v9-source.zip
+          retention-days: 1
+          if-no-files-found: error
