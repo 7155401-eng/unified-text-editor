@@ -5,6 +5,7 @@ import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engin
 import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
+import { runsFromNode } from '../../src/engine_bridge.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
@@ -175,6 +176,24 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       assert(page.querySelectorAll('[data-v9-main-ref]').length===notes.length,'styled number missing');
     } finally {page.remove();saveTextStyles(styles);if(saved)settings['01']=saved;else delete settings['01'];}
   });
+  await test('editor bridge preserves serialized Word bold and font marks',()=>{
+    const fakeText={
+      isText:true,
+      text:'alpha',
+      marks:[
+        {toJSON(){return {type:'textStyle',attrs:{fontFamily:'Word Imported Font',fontSize:'11pt',color:'rgb(12, 34, 56)'}};}},
+        {toJSON(){return {type:'bold',attrs:{}};}}
+      ]
+    };
+    const fakeParagraph={descendants(cb){cb(fakeText);}};
+    const runs=runsFromNode(fakeParagraph);
+    assert(runs.length===1,'bridge did not emit one run');
+    assert(runs[0].marks.bold===true,'serialized bold mark was lost');
+    assert(runs[0].marks.fontFamily==='Word Imported Font','serialized Word font was lost before V9');
+    assert(runs[0].marks.fontSize==='11pt','serialized Word font size was lost before V9');
+    assert(runs[0].marks.color==='rgb(12, 34, 56)','serialized text color was lost before V9');
+  });
+
   await test('main inherited bold style overrides Word font when override is enabled',async()=>{
     const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
     saveTextStyles([
