@@ -4,6 +4,19 @@ import { sliceRuns } from './runs_dom.js';
 // boundary map is retained at ingress; a render never reconstructs source IDs
 // by searching the painted text. These helpers never mutate their inputs.
 const anchorOf = r => Number(r?.anchor ?? r?.absoluteAnchor ?? r?.localAnchor);
+
+// A reference written directly after a word belongs to that word at a split.
+// Explicit forward anchors retain the old right-affinity contract.
+export function referenceInV9Range(ref, start, end, total) {
+  const a = anchorOf(ref);
+  if (!(end > start)) return false;
+  if (ref?.anchorAffinity === 'backward') return (a > start || (start === 0 && a === 0)) && a <= end;
+  return a >= start && (a < end || (end === total && a === end));
+}
+export function rebaseV9Notes(notes, sourceOffset) {
+  return (notes || []).map(n => Number.isFinite(n?._v9ParentAnchor)
+    ? shiftRef(n, Math.max(0, n._v9ParentAnchor - sourceOffset)) : n);
+}
 const lowerBound = (xs, n) => {
   let a = 0, b = xs.length;
   while (a < b) { const m = (a + b) >>> 1; if (xs[m] < n) a = m + 1; else b = m; }
@@ -57,12 +70,25 @@ export function prepareV9SourceParagraph(p, index = 0) {
     const a = anchorOf(r);
     return Number.isFinite(a) ? shiftRef(r, lowerBound(map.starts, a)) : { ...r };
   };
-  const originalRefs = Array.isArray(p.mainRefs) && p.mainRefs.length ? p.mainRefs : (p.notes || []);
+  const notes = (p.notes || []).filter(Boolean).map((r, i) => {
+    const note = r.nested ? { ...r } : remap(r);
+    const a = anchorOf(note);
+    return { ...note, _v9NoteKey: r._v9NoteKey || `${id}:${r.stream || r.streamId || r.streamCode}:${r.uid || r.num || i + 1}`,
+      _v9ParentParagraphId: id, _v9ParentAnchor: a,
+      anchorAffinity: r.anchorAffinity || (a > 0 && !/\s/u.test(map.text[a-1] || ' ') ? 'backward' : 'forward') };
+  });
+  const mainRefs = (Array.isArray(p.mainRefs) && p.mainRefs.length)
+    ? p.mainRefs.filter(r=>r && r.nested !== true).map(r=> {
+        const ref=remap(r);
+        const note=notes.find(n=>!n.nested && ((r.uid && n.uid===r.uid) ||
+          ((n.stream || n.streamId || n.streamCode)===(r.stream || r.streamId || r.streamCode) &&
+          n.num===r.num && anchorOf(n)===anchorOf(ref))));
+        return note && !ref.anchorAffinity ? {...ref,anchorAffinity:note.anchorAffinity} : ref;
+      })
+    : notes.filter(r=>r.nested !== true).map(r=>({...r}));
   const runs = mapRuns(p.mainRuns || p.runs || [], map);
   return {
-    ...p, id, mainText: map.text, mainRuns: runs, runs,
-    mainRefs: originalRefs.filter(r => r && r.nested !== true).map(remap),
-    notes: (p.notes || []).map(r => r?.nested ? { ...r } : remap(r)),
+    ...p, id, mainText: map.text, mainRuns: runs, runs, mainRefs, notes,
     _v9Source: { id, index: index + 1, text: map.text, starts: map.starts, ends: map.ends, rawLength: map.rawLength },
     _v9SourceOffset: 0,
     _v9SourceEnd: map.text.length,
@@ -76,8 +102,7 @@ export function sliceV9Paragraph(p, start, end, overrides = {}) {
     throw new RangeError('V9 fragment bounds must be ordered UTF-16 offsets within the paragraph');
   }
   const refs = (source.mainRefs || []).filter(r => {
-    const a = anchorOf(r);
-    return a >= start && (a < end || (end === n && a === n));
+    return referenceInV9Range(r, start, end, n);
   }).map(r => shiftRef(r, anchorOf(r) - start));
   const runs = sliceRuns(source.mainRuns || [], start, end);
   return {
@@ -111,7 +136,7 @@ export function joinV9ParagraphFragments(a, b, notes) {
   return {
     ...a, mainText: text, mainRuns: runs, runs,
     mainRefs: [...(a.mainRefs || []), ...(b.mainRefs || []).map(r => shiftRef(r, anchorOf(r) + a.mainText.length))],
-    notes: notes || [...(a.notes || []), ...(b.notes || [])],
+    notes: rebaseV9Notes(notes || [...(a.notes || []), ...(b.notes || [])], a._v9SourceOffset),
     _v9SourceEnd: b._v9SourceEnd,
     _continues: !!b._continues,
   };

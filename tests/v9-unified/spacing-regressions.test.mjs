@@ -1,0 +1,81 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
+import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
+import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate } from '../../src/engine/v9_split_policy.js';
+import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
+import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
+import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
+
+const markers=raw=>[...raw.matchAll(/@\d\d/gu)].map(m=>({atInPara:m.index,sym:m[0],code:m[0].slice(1)}));
+for(const raw of ['alpha@01beta gamma',' alpha  @01beta  gamma ','alpha@01@02beta gamma','alpha\t@01\t beta  gamma','אחד@01שניים\nשלוש'])test(`one boundary map preserves bold after markers: ${JSON.stringify(raw)}`,()=>{
+ const text=raw.includes('beta')?'beta':'שניים',at=raw.indexOf(text),input=[{start:at,end:at+text.length,marks:{bold:true,fontSize:9,color:'red'}}];
+ const m=mapMainParagraphSource(raw,input,markers(raw));
+ assert.equal(m.mainTextNet.slice(m.mainRuns[0].start,m.mainRuns[0].end),text);
+ assert.deepEqual(m.mainRuns[0].marks,input[0].marks);
+ assert.ok(!m.mainTextNet.includes('@'));
+ for(const c of m.mainConsumers)assert.ok(c.anchor>=0&&c.anchor<=m.mainTextNet.length);
+ assert.equal(input[0].start,at);
+});
+
+test('backward notes and refs retain previous word at exact split and all aliases rebase',()=>{
+ const t='alpha beta gamma',p=prepareV9SourceParagraph({id:'affinity',mainText:t,notes:[{stream:'01',uid:'a',anchor:5,anchorAffinity:'backward'},{stream:'01',uid:'b',anchor:10,absoluteAnchor:10,localAnchor:10,anchorAffinity:'backward'}]});
+ const st=splitMainTextAtOffset(t,5),ns=splitNotesByAnchor(p.notes,5,t.length,st.suffixBaseOffset),h=splitV9Paragraph(p,st,ns.before,ns.after);
+ assert.deepEqual(h.firstHalf.notes.map(n=>n.uid),['a']);assert.deepEqual(h.firstHalf.mainRefs.map(n=>n.uid),['a']);
+ assert.equal(h.secondHalf.notes[0].anchor,4);assert.equal(h.secondHalf.notes[0].absoluteAnchor,4);assert.equal(h.secondHalf.notes[0].localAnchor,4);
+ const joined=joinV9ParagraphFragments(h.firstHalf,h.secondHalf);
+ assert.equal(joined.mainText,t);assert.equal(joined.notes[1].anchor,10);assert.equal(joined.notes[1].absoluteAnchor,10);
+ assert.deepEqual(joined.mainRefs.map(r=>r.anchor),[5,10]);
+});
+
+test('backward references belong to one adjacent line, forward refs remain right-open',()=>{
+ const p=prepareV9SourceParagraph({mainText:'abcdef',mainRefs:[{uid:'before',anchor:3,anchorAffinity:'backward'},{uid:'after',anchor:3,anchorAffinity:'forward'}]});
+ const a=sliceV9Paragraph(p,0,3),b=sliceV9Paragraph(p,3,6);
+ assert.deepEqual(a.mainRefs.map(r=>r.uid),['before']);assert.deepEqual(b.mainRefs.map(r=>r.uid),['after']);
+});
+
+test('column split cuts original rich text, not normalized string lengths',()=>{
+ const text='one   two\tthree  four',at=text.indexOf('three'),input={text,runs:[{start:at,end:at+5,marks:{bold:true}}]};
+ const [a,b]=splitV9StreamAtWordCount(input,2);
+ assert.equal(a.text+b.text,text);assert.equal(b.text.slice(b.runs[0].start,b.runs[0].end),'three');
+ assert.equal(a.runs.length,0);
+});
+
+test('bidi separators at edges are semantic-only, interior note gap remains',()=>{
+ const text='\u200e  alpha   beta  \u200e';const e={text,runs:[],mainRefs:[]};
+ const p=partForRange(e,0,text.length,text.length);
+ assert.equal(p.text,'alpha   beta');assert.equal(p.leadingText+p.text+p.trailingText,text);
+});
+
+test('invisible-only word cannot consume a justification slot at line boundary',()=>{
+ const text='alpha \u200e beta gamma',ctx={fontSize:10,lineHeight:10,describeOpening:()=>null,measure:p=>({width:p.text.length*5,height:10})};
+ const p=layoutV9MainParagraphs([{id:'edge',text,runs:[],mainRefs:[]}],[{x:0,width:40,y_start:0,y_end:100}],ctx,100);
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
+ assert.deepEqual(p.lines.map(l=>l.render.body.text),['alpha','beta','gamma']);
+ assert.ok(p.lines.every(l=>l.render.wordSpacing===0));
+});
+
+test('note ownership requires a body word, not only a note number',()=>{
+ const nodes=[{kind:'number',text:'[1] '},{kind:'lemma',text:'alpha'},{kind:'rest',text:' beta'}],runs=markV9NoteRuns('[1] alpha beta',[],nodes,{_v9NoteKey:'k'});
+ assert.equal(runs.find(r=>r.marks.v9NoteStart).start,4);
+ const required=[{key:'k'}];
+ assert.equal(auditV9NoteStarts({streamBoxes:[{lines:[{runs:[{start:0,end:4,marks:{v9NoteKey:'k'}}]}]}]},required).length,1);
+ assert.equal(auditV9NoteStarts({streamBoxes:[{lines:[{runs}]}]},required).length,0);
+ assert.equal(scoreV9PageCandidate({unstartedNotes:required},{},{}).accept,false);
+});
+
+for (const [raw, expected] of [['al@01pha','alpha'],['al@01@02pha','alpha'],['alpha,@01beta','alpha,beta'],['alpha @01 beta','alpha beta'],['א@01ב','אב']]) test(`reference removal never invents spaces: ${raw}`,()=>{
+ const mapped=mapMainParagraphSource(raw,[],markers(raw)); assert.equal(mapped.mainTextNet,expected);
+});
+test('nested reference removal preserves adjacent text and explicit whitespace',()=>{
+ const r=mapMainParagraphSource('a@01b  c',[],[{atInPara:1,sym:'@01',code:'01'}],{normalize:false});assert.equal(r.mainTextNet,'ab  c');
+ const visible=mapMainParagraphSource('a@01b',[],[{atInPara:1,sym:'@01',code:'01',replaceWith:'[1]'}],{normalize:false});assert.equal(visible.mainTextNet,'a[1]b');
+});
+
+test('stream conservation verifies both columns and refuses a missing or reordered suffix',()=>{
+ const streams=[{id:'01',rich:{text:'alpha ',runs:[]}},{id:'01',rich:{text:'beta gamma',runs:[]}}];
+ const plan={streamBoxes:[{id:'01',lines:[{text:'alpha '}]},{id:'01',lines:[{text:'beta '}]}],overflow:{streams:{'01':{text:'gamma',runs:[]}}}};
+ assert.deepEqual(verifyV9StreamCoverage(streams,plan),[{stream:'01',inputCharacters:16,plannedCharacters:11,remainingCharacters:5,exact:true}]);
+ plan.overflow.streams['01'].text='';
+ assert.throws(()=>verifyV9StreamCoverage(streams,plan),/V9_STREAM_SOURCE_MISMATCH/);
+});
