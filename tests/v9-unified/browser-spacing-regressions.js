@@ -210,6 +210,39 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     }
   });
 
+  await test('source style fontWeight 700 receives Y while base X bold alone does not',async()=>{
+    const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
+    saveTextStyles([
+      ...styles,
+      {id:'v9-main-base-x-fontweight',name:'Base X',fontFamily:'sans-serif',fontSize:13,fontSizeUnit:'px',bold:true},
+      {id:'v9-main-bold-y-fontweight',name:'Bold Y',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px',bold:true}
+    ]);
+    settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-bold-y-fontweight',boldOverrideForcesDocStyles:true};
+    const page=makePage();
+    try {
+      const input=[
+        {id:'source-bold-style',mainText:'alpha beta',mainRuns:[],style:{fontFamily:'serif',fontSize:'15px',fontWeight:'700'},notes:[]},
+        {id:'base-x-only',mainText:'gamma delta',mainRuns:[],style:{fontFamily:'serif',fontSize:'15px',fontWeight:'400'},notes:[]}
+      ];
+      const result=await buildPages(page,input,{...cfg,pageHeight:300,talmudStreams:[],mainStyleId:'v9-main-base-x-fontweight'});
+      assert(result.complete,'source-style bold fixture incomplete');
+      const boldRow=page.querySelector('[data-v9-paragraph-id="source-bold-style"] .v9-planned-line-text');
+      const plainRow=page.querySelector('[data-v9-paragraph-id="base-x-only"] .v9-planned-line-text');
+      assert(boldRow&&plainRow,'missing source-style rows');
+      const boldSpan=[...boldRow.querySelectorAll('span')].find(el=>el.textContent.trim());
+      const plainSpan=[...plainRow.querySelectorAll('span')].find(el=>el.textContent.trim());
+      assert(boldSpan&&plainSpan,'source paragraph style was not converted to runs');
+      const b=getComputedStyle(boldSpan),p=getComputedStyle(plainSpan);
+      assert(b.fontFamily.toLowerCase().includes('monospace'),`style-defined bold did not receive Y: ${b.fontFamily}`);
+      assert(parseFloat(b.fontSize)>=16.5,`style-defined bold missed Y size: ${b.fontSize}`);
+      assert(!p.fontFamily.toLowerCase().includes('monospace'),`base X bold promoted non-bold source to Y: ${p.fontFamily}`);
+      assert(p.fontFamily.toLowerCase().includes('serif'),`non-bold source font unexpectedly lost: ${p.fontFamily}`);
+    } finally {
+      page.remove();saveTextStyles(styles);
+      if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
+    }
+  });
+
   await test('main bold override checkbox off preserves Word font on explicit bold',async()=>{
     const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
     saveTextStyles([
@@ -298,6 +331,43 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       assert(minFill>=0.50,`very short intermediate page survived: min fill=${minFill.toFixed(3)}, fills=${fills.map(x=>x.toFixed(3)).join(',')}`);
       assert((result.noteAnchorFallbacks||[]).length===0,`anchor fallback in fill fixture: ${JSON.stringify(result.noteAnchorFallbacks)}`);
       return {pages:result.pages.length,minFill:+minFill.toFixed(3)};
+    } finally {
+      page.remove();
+      for(const id of ['01','02']){if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];}
+    }
+  });
+
+  await test('pending main tail plus note carry does not close an almost-empty page',async()=>{
+    const settings=getStreamSettings(),saved={};
+    for(const id of ['01','02']){saved[id]=settings[id];settings[id]={...(settings[id]||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};}
+    const page=makePage();
+    try {
+      const main1=Array(15).fill(neutral).join(' ');
+      const words=[...main1.matchAll(/\S+/gu)],w=words[18];
+      const input=[
+        {id:'pending-carry-a',mainText:main1,notes:[{stream:'01',uid:'pending-carry-note',num:1,anchor:w.index+w[0].length,anchorAffinity:'backward',text:Array(34).fill(neutral).join(' ')}]},
+        {id:'pending-carry-b',mainText:Array(7).fill(neutral).join(' '),notes:[{stream:'02',uid:'pending-carry-note-2',num:2,anchor:30,anchorAffinity:'backward',text:Array(8).fill(neutral).join(' ')}]},
+        {id:'pending-carry-c',mainText:Array(5).fill(neutral).join(' '),notes:[]}
+      ];
+      const result=await buildPages(page,input,{...cfg,pageHeight:280,talmudStreams:['01','02'],maxPages:80});
+      assert(result.complete,'pending+carry fixture incomplete');
+      assert(result.pages.length>=3,'fixture did not create pending/carry pagination');
+      const mainPages=result.pages.map((p,i)=>p.querySelector('[data-v9-paragraph-id="pending-carry-a"]')?i:-1).filter(i=>i>=0);
+      const notePages=result.pages.map((p,i)=>p.querySelector('[data-v9-note-key*="pending-carry-note"]')?i:-1).filter(i=>i>=0);
+      assert(mainPages.length>1,'main paragraph did not create a pending tail');
+      assert(notePages.length>1,'note did not create carry-over');
+      const fills=result.pages.slice(0,-1).map((p)=>{
+        let bottom=0;
+        for(const l of p.querySelectorAll('.v9-line')){
+          const y=parseFloat(l.style.top)||0,h=parseFloat(l.style.height)||0;
+          bottom=Math.max(bottom,y+h);
+        }
+        return bottom/(280-12);
+      });
+      const minFill=Math.min(...fills);
+      assert(minFill>=0.50,`pending/carry produced sparse intermediate page: ${fills.map(x=>x.toFixed(3)).join(',')}`);
+      assert((result.noteAnchorFallbacks||[]).length===0,`anchor fallback in pending/carry fixture: ${JSON.stringify(result.noteAnchorFallbacks)}`);
+      return {pages:result.pages.length,minFill:+minFill.toFixed(3),mainPages,notePages};
     } finally {
       page.remove();
       for(const id of ['01','02']){if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];}
