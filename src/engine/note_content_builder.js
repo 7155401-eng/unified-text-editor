@@ -31,6 +31,7 @@ import {
   getEffectiveStreamSettings,
   styleIdForStreamNumber,
   boldOverrideStyleIdForStream,
+  boldOverrideForcesDocStylesForStream,
   _streamBoolSetting,
 } from "../original_stream_columns.js";
 import { sliceRuns } from "./runs_dom.js";
@@ -82,7 +83,17 @@ export function styleIdToMarks(styleId) {
 // משה 2026-05-15: כאשר זרם הוגדר עם "סגנון מותאם לבולד", כל סימן bold:true
 // ב-runs מוחלף ב-marks של הסגנון הנבחר. בעלי-marks נוספים בריצה (כמו color
 // שצויר ידנית) נשמרים — רק "bold" מתחלף בסגנון. מחזיר עותק; לא מזיק לקלט.
-export function applyBoldOverrideToRuns(runs, overrideMarks) {
+// ⭐⭐⭐ משה 29/09/2026 — „מציג את הפונט המקורי שהיה בוורד ולא מה
+// שנבחר בבולד".
+//
+// ═══ השורש, בשורה אחת ═══
+// השורה `if (newMarks[k] == null)` אמרה: החל את הסגנון שנבחר **רק
+// במקום שאין בו כבר ערך**. קובץ וורד מביא פונט לכל קטע טקסט, ולכן
+// תמיד כבר היה ערך — והסגנון שהמשתמש בחר לא נכנס אף פעם.
+//
+// ⇒ עכשיו יש הכרעה מפורשת: `forceOverDocStyles`. מסומן (ברירת
+//   המחדל) = מה שבחרת מנצח. כבוי = המסמך מנצח, כמו קודם.
+export function applyBoldOverrideToRuns(runs, overrideMarks, forceOverDocStyles = true) {
   if (!Array.isArray(runs) || !overrideMarks) return runs;
   let touched = false;
   const out = runs.map((r) => {
@@ -91,7 +102,7 @@ export function applyBoldOverrideToRuns(runs, overrideMarks) {
     const newMarks = { ...r.marks };
     delete newMarks.bold;
     for (const k of Object.keys(overrideMarks)) {
-      if (newMarks[k] == null) newMarks[k] = overrideMarks[k];
+      if (forceOverDocStyles || newMarks[k] == null) newMarks[k] = overrideMarks[k];
     }
     return { start: r.start, end: r.end, marks: newMarks };
   });
@@ -110,7 +121,11 @@ export function buildNoteContentNodes(streamCode, num, text, runs, opts = {}) {
   // משה 2026-05-15: דריסת בולד (אופציונלית, פר-זרם) — אם המשתמש סימן
   // boldOverrideEnabled ובחר סגנון, כל הופעת בולד תוחלף ב-marks של הסגנון.
   const boldOverrideMarks = styleIdToMarks(boldOverrideStyleIdForStream(streamCode));
-  const origRuns = applyBoldOverrideToRuns(Array.isArray(runs) ? runs : [], boldOverrideMarks);
+  const origRuns = applyBoldOverrideToRuns(
+    Array.isArray(runs) ? runs : [],
+    boldOverrideMarks,
+    boldOverrideForcesDocStylesForStream(streamCode)
+  );
   const raw = String(text || "");
 
   if (leadingSpace) nodes.push({ kind: "space" });

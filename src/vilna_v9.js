@@ -4,7 +4,7 @@ import { streamContextForV9, measureV9CrownHeight, flowV9MeasuredStream, flowV9M
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
-import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle, boldOverrideStyleIdForStream } from "./original_stream_columns.js";
+import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle, boldOverrideStyleIdForStream, boldOverrideForcesDocStylesForStream } from "./original_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
@@ -1205,7 +1205,11 @@ function v9MainBoldOverrideRuns(runs) {
   try {
     const marks = styleIdToMarks(boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE));
     if (!marks) return runs;
-    return applyBoldOverrideToRuns(Array.isArray(runs) ? runs : [], marks);
+    return applyBoldOverrideToRuns(
+      Array.isArray(runs) ? runs : [],
+      marks,
+      boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE)
+    );
   } catch (_) {
     return runs;
   }
@@ -4340,6 +4344,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   let __mainStuckLen = -1;
   let __mainStuckCount = 0;
 
+  // כל מקרה שבו הערה לא הצליחה להישאר באותו עמוד עם המקור שלה נרשם
+  // כאן במקום להפיל את הרינדור. הרשימה נחשפת בסוף, כדי שהתקלה תישאר
+  // גלויה וניתנת לספירה — ולא תיעלם בשקט.
+  const __v9NoteAnchorFallbacks = [];
+
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
     cfg.__v9AllowMainOverlap = __mainStuckCount >= 3;
     if (pendingParagraph?._drainMarker && !hasCarryOver(carryOver)) {
@@ -5541,10 +5550,42 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         finalContent=aggregateForV9(finalSlice,cfg.titles,cfg.streamSettings,cfg.levels,streamsForPage(pageIdx),carryOver);
         finalProbe=buildPagePlan(finalContent,cfg);
       } else {
-        throw new Error('V9_NOTE_ANCHOR_NO_FIT: no complete source line can share a page with its note start');
+        // ⛔⛔⛔⛔ משה 29/09/2026 — „שגיאת רינדור: V9_NOTE_ANCHOR_NO_FIT".
+        //
+        // ═══ מה הכלל הזה בא לשמור ═══
+        // הערה צריכה להתחיל באותו עמוד שבו נמצאת השורה שהיא מוצמדת
+        // אליה. זה כלל **נכון** ולא נוגעים בו.
+        //
+        // ═══ מה היה שבור ═══
+        // כשלא נמצאה שום דרך לקיים אותו בעמוד מסוים, הקוד זרק שגיאה
+        // — והשגיאה הרגה את **כל** הרינדור. כלומר עמוד בעייתי אחד
+        // מתוך מאתיים מחק למשה את המסמך כולו מהמסך.
+        //
+        // ═══ הדימוי ═══
+        // כמו ספרן שמצא ספר אחד לא במקומו, ובתגובה סגר את כל
+        // הספרייה. המחיר גדול פי אלף מהתקלה.
+        //
+        // ⇒ הכלל נשמר, אבל הכישלון מדווח ואינו הורג: בונים את
+        //   העמוד הטוב ביותר שיש, מסמנים בדיוק איזו הערה לא הצליחה
+        //   להישאר עם המקור שלה, וממשיכים. משה יראה מסמך שלם ואת
+        //   ההערה הבודדת שזזה — במקום מסך ריק עם הודעת שגיאה.
+        //   זה בדיוק הכלל שמשה קבע: „במקרה חירום — חפיפה בלי מחיקה".
+        __v9NoteAnchorFallbacks.push({
+          pageIndex: pageIdx,
+          reason: 'no-fit',
+          notes: (finalProbe.unstartedNotes || []).length,
+        });
       }
     }
-    if(finalProbe.unstartedNotes?.length)throw new Error('V9_NOTE_ANCHOR_MISMATCH: refusing to detach a note from its source');
+    if (finalProbe.unstartedNotes?.length) {
+      // אותו היגיון בדיוק: לא מפרקים הערה מהמקור שלה אם אפשר להימנע,
+      // אבל אם כבר קרה — מדווחים וממשיכים, לא הורגים את המסמך.
+      __v9NoteAnchorFallbacks.push({
+        pageIndex: pageIdx,
+        reason: 'mismatch',
+        notes: finalProbe.unstartedNotes.length,
+      });
+    }
     const finalHasText = !!(
       (finalContent.mainText || '').trim() ||
       (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
@@ -5705,9 +5746,16 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     }
   }
 
+  // התקלה נשארת גלויה: מי שרוצה לדעת כמה הערות לא הצליחו להישאר עם
+  // המקור שלהן — הנתון כאן, ולא בהודעת שגיאה שמוחקת את המסמך.
+  if (typeof window !== "undefined") {
+    window.__ravtextLastV9NoteAnchorFallbacks = __v9NoteAnchorFallbacks;
+  }
+
   return { pages, complete: cursor >= paragraphs.length && !pendingParagraph && !hasCarryOver(carryOver),
     remainingParagraphs: [...(pendingParagraph ? [pendingParagraph] : []), ...paragraphs.slice(cursor)],
-    remainingStreams: carryOver, mainLayoutVersion: V9_INLINE_PLAN_VERSION };
+    remainingStreams: carryOver, mainLayoutVersion: V9_INLINE_PLAN_VERSION,
+    noteAnchorFallbacks: __v9NoteAnchorFallbacks };
 }
 
 function hasCarryOver(co) {
@@ -5910,14 +5958,46 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     const wantRightId = talmudStreams[0];
     const wantLeftId  = talmudStreams.length >= 2 ? talmudStreams[1] : null;
     const wantedSet = new Set(talmudStreams.slice(0, 2));
+
+    // ⭐⭐⭐ משה 29/09/2026 — „בהגדרות מוגדר שמה שאינו מהערות של גפ״ת
+    // יהיה הערות 3 ו-4 בסגנון עיצוב משנ״ב, אבל בפועל זה לא עובד".
+    //
+    // ═══ מה שהיה ═══
+    // ברגע שהוגדרו זרמי גפ״ת, הקוד כאן שלח **כל** זרם אחר לתחתית
+    // העמוד — בלי להסתכל אפילו פעם אחת על שדה „פריסה" שלו. כלומר
+    // הבחירה „משנ״ב" לזרמים 3 ו-4 נרשמה בהגדרות ולא נקראה אף פעם.
+    //
+    // ═══ הדימוי ═══
+    // כמו טופס שבו אתה ממלא „אני מעדיף מקום ליד החלון", והפקיד
+    // מושיב את כולם מאחור בלי לפתוח את הטופס.
+    //
+    // ⇒ זרם שהמשתמש סימן לו פריסה שמשמעותה „לצד הטקסט הראשי"
+    //   (משנ״ב / אונקלוס / הערות-צד) נחשב מועמד לצד. הוא יקבל מקום
+    //   בצד כשיש מקום פנוי, ורק אם שני הצדדים כבר תפוסים — יירד
+    //   לתחתית. כך ההגדרה עושה בדיוק את מה שכתוב בה.
+    const SIDE_ROLES = new Set(["mishna", "onkelos", "side_notes"]);
+    const extraSideCandidates = [];
+
     for (const s of allStreams) {
       if (s.id === wantRightId && !rightStream) {
         rightStream = s;
       } else if (s.id === wantLeftId && !leftStream) {
         leftStream = s;
       } else if (!wantedSet.has(s.id)) {
-        footerStreams.push(s);
+        const role = String((streamSettings[s.id] || {}).layoutRole || "");
+        if (SIDE_ROLES.has(role)) extraSideCandidates.push(s);
+        else footerStreams.push(s);
       }
+    }
+
+    // ממלאים צד פנוי לפי סדר הזרמים, ומה שלא נכנס יורד לתחתית.
+    for (const s of extraSideCandidates) {
+      const want = String((streamSettings[s.id] || {}).mishnaSide || "");
+      if (want === "right" && !rightStream) rightStream = s;
+      else if (want === "left" && !leftStream) leftStream = s;
+      else if (!rightStream) rightStream = s;
+      else if (!leftStream) leftStream = s;
+      else footerStreams.push(s);
     }
     return { mainText, mainRuns, mainParagraphs, requiredNoteStarts, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
   }

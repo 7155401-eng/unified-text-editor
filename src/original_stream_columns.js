@@ -116,6 +116,9 @@ const DEFAULT_STREAM_SETTINGS = {
   // מספר [N] מודגש). ערך ריק/לא מסומן = התנהגות רגילה של בולד.
   boldOverrideEnabled: false,
   boldOverrideStyleId: "",
+  // ⭐ משה 29/09/2026 — הסגנון שנבחר גובר על העיצוב שהגיע מהמסמך.
+  // ברירת המחדל מסומנת: מי שבוחר סגנון מצפה שהוא זה שייראה.
+  boldOverrideForcesDocStyles: true,
   // משה 2026-05-15: שדה פריסה פר-זרם (4 אפשרויות):
   //   "gemara"     — כתר 2 טורים מעל הראשי (התנהגות גפ"ת קלאסית)
   //   "mishna"     — צד הראשי (פריסת משנה ברורה — התנהגות ברירת מחדל ברגיל)
@@ -571,6 +574,15 @@ export function boldOverrideStyleIdForStream(code) {
   const s = getEffectiveStreamSettings(code);
   if (!_streamBoolSetting(s.boldOverrideEnabled, false)) return "";
   return _streamTextSetting(s.boldOverrideStyleId, "");
+}
+
+// ⭐ משה 29/09/2026 — „דרוס סגנונות עיצוב פנימיים במסמך".
+// כשמסומן (ברירת המחדל), הסגנון שנבחר גובר על הפונט/הגודל/הצבע
+// שהגיעו עם הטקסט מקובץ הוורד. כשכבוי — המסמך גובר, וזו ההתנהגות
+// שהייתה עד היום.
+export function boldOverrideForcesDocStylesForStream(code) {
+  const s = getEffectiveStreamSettings(code);
+  return _streamBoolSetting(s.boldOverrideForcesDocStyles, true);
 }
 
 export function getEffectiveStreamSettings(code) {
@@ -1106,6 +1118,30 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
       cur.boldOverrideStyleId = value;
       commitRender();
     }));
+
+    // ⭐⭐⭐ משה 29/09/2026 — „במצב מודגש בטקסט הראשי הוא מציג את הפונט
+    // המקורי שהיה בוורד ולא מה שנבחר בבולד; ואם אני בוחר שהכול יהיה
+    // מודגש אז הוא מציג הכול בפונט שהיה בוורד".
+    //
+    // ═══ למה זה קרה ═══
+    // הסגנון שנבחר הוחל **רק במקומות שבהם לא היה כבר ערך**. קובץ
+    // וורד מביא איתו פונט לכל קטע טקסט, ולכן תמיד כבר היה ערך —
+    // והסגנון שנבחר מעולם לא נכנס לתמונה.
+    //
+    // כמו לצבוע קיר רק במקומות שאין בהם צבע: הקיר כבר צבוע כולו,
+    // אז הצבע החדש לא נוגע בשום מקום.
+    //
+    // ⇒ הסימון הזה קובע מי מנצח. מסומן = הסגנון שבחרת גובר על מה
+    //   שהגיע מהמסמך. ברירת המחדל מסומנת, כי זה מה שמשתמש מצפה לו
+    //   כשהוא בוחר סגנון במפורש.
+    block.appendChild(makeCheckbox(
+      "דרוס סגנונות עיצוב פנימיים במסמך",
+      cur.boldOverrideForcesDocStyles !== false,
+      (checked) => {
+        cur.boldOverrideForcesDocStyles = checked;
+        commitRender();
+      }
+    ));
 
     // משה 2026-05-13: שליטה בפס שמעל המפרש לכל זרם בנפרד.
     block.appendChild(makeCheckbox("הצג כותרת זרם", cur.titleShow !== false, (checked) => {
