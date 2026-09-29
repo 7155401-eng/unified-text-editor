@@ -589,7 +589,7 @@ function buildOneLine(tokens, startIdx, widthPx, metrics) {
     //
     // ⬛ הסף קטן במכוון: הוא סוגר את פער המדידה בלבד, ולא דוחס מילים
     //    בכוח לשורה שבאמת מלאה.
-    const fitTolerance = Math.min(widthPx * 0.005, spaceW * 0.4);
+    const fitTolerance = 0;
 
     if (addW <= widthPx + fitTolerance || lineWords.length === 0) {
       lineWords.push(tok.text);
