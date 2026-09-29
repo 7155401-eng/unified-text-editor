@@ -5622,6 +5622,55 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         notes: finalProbe.unstartedNotes.length,
       });
     }
+    // ⭐⭐⭐ משה 29/09/2026 — „יש עמודים עם מעט מאוד תוכן... שופך את
+    // השארית לעמוד חדש במקום למזג את זה עם העמוד הבא".
+    //
+    // ═══ מה נמדד בשני הייצואים שלו (20:23 ו-20:38) ═══
+    // שמונה עמודים עם שורה אחת בלבד. בכל אחד מהם:
+    //     הקופסה     ראשי בלבד
+    //     כותרות     0
+    //     השורה      **סוף פסקה**
+    //     מילים      1, 4, 5
+    // כלומר **זנב של פסקה — לפעמים מילה בודדת — קיבל עמוד משלו**.
+    //
+    // ═══ הדימוי ═══
+    // כמו לסיים לצבוע קיר, לגלות שנשארה נקודה אחת — ולפתוח בשבילה
+    // פחית צבע חדשה בחדר אחר.
+    //
+    // ═══ התיקון, ובתוך V9 עצמו ═══
+    // לא נוסף שום מנוע ולא שום חישוב חיצוני. אני רק **מציע** ל-V9
+    // מועמד אחד: „מה אם הזנב יישאר בעמוד הזה?", ו-V9 בונה אותו
+    // בעצמו (`buildPagePlan`) ומכריע. אם הוא אומר שהכול נכנס בלי
+    // חריגה ובלי לנתק הערה מהמקור — לוקחים. אם לא — לא נוגעים.
+    // כך ההחלטה נשארת של V9, והעמוד נגמר לפני שמתחילים את הבא.
+    if (splitInfo && splitInfo.secondHalf && typeof joinV9ParagraphFragments === "function") {
+      const tailText = String(splitInfo.secondHalf.mainText || '').trim();
+      const tailWords = tailText ? tailText.split(/\s+/).filter(Boolean).length : 0;
+      // „זנב" = שארית קצרה שתיראה כשורה בודדת בעמוד הבא.
+      const V9_ORPHAN_TAIL_MAX_WORDS = 12;
+      if (tailWords > 0 && tailWords <= V9_ORPHAN_TAIL_MAX_WORDS) {
+        try {
+          const joined = joinV9ParagraphFragments(splitInfo.firstHalf, splitInfo.secondHalf);
+          const trySlice = [...finalSlice.slice(0, -1), joined];
+          const tryContent = aggregateForV9(trySlice, cfg.titles, cfg.streamSettings,
+            cfg.levels, streamsForPage(pageIdx), carryOver);
+          const tryProbe = buildPagePlan(tryContent, cfg);
+          const fits = tryProbe
+            && !tryProbe.overflow?.mainText
+            && !(tryProbe.unstartedNotes || []).length
+            && (tryProbe.mainBox?.lines?.length || 0) > 0;
+          if (fits) {
+            finalSlice = trySlice;
+            finalContent = tryContent;
+            finalProbe = tryProbe;
+            splitInfo = null;
+          }
+        } catch (_) {
+          // אם משהו לא הסתדר — משאירים את ההחלטה המקורית של V9.
+        }
+      }
+    }
+
     const finalHasText = !!(
       (finalContent.mainText || '').trim() ||
       (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
