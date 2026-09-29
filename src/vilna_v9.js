@@ -1851,9 +1851,37 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
     if (model && lines.length) {
       const first = lines[0];
       first.openingWord = { model, position: model.position, segment: model.parts?.segment || "" };
-      first.openingHostFullWidth = first.openingHostFullWidth || first.width + (model.metrics?.reserveWidthPx || 0);
-      first.width = first.openingHostFullWidth;
-      first.naturalWidth = (first.naturalWidth || 0) + (model.metrics?.reserveWidthPx || 0);
+      // ⛔⛔⛔⛔ משה 28–29/09/2026 — שורש החפיפות בין הראשי לזרם.
+      //
+      // ⬛ נמדד, ובבירור מוחלט:
+      //      רוחב השורה   202
+      //      רוחב הרצועה  149     ⇒ חריגה של 53 פיקסלים
+      //      השורה: מילת פתיח **ללא חלון** (opw-no-flow)
+      //    53 = בדיוק רוחב האות ועוד המרווח שאחריה.
+      //
+      // ═══ ההיגיון, ולמה הוא נשבר ═══
+      // שורה שנושאת מילת פתיח מקבלת רוחב מורחב, כי האות הגדולה תופסת
+      // חלק ממנו. זה נכון **כשהוחל חלון** — אז המנוע צמצם את הרצועה
+      // מראש, וההרחבה רק מחזירה את מה שהופחת.
+      //
+      // אבל כשלא הוחל חלון (אין מספיק רוחב שימושי — ראה
+      // narrowV9StripsInYRange), הרצועה מעולם לא צומצמה — וההרחבה
+      // מוסיפה 53 פיקסלים שאין להם כיסוי. השורה חורגת מהרצועה שלה
+      // ונכנסת ישר לשטח של הזרם שלצידה.
+      //
+      // כמו להחזיר עודף למי שלא שילם: הרוחב „מוחזר" גם כשמעולם לא
+      // נלקח.
+      //
+      // ⇒ ההרחבה חלה **רק** כשהחלון באמת הוחל. אחרת השורה נשארת
+      //   בדיוק ברוחב הרצועה שלה, כמו כל שורה אחרת.
+      const windowWasApplied = !!first.openingWindow;
+      if (windowWasApplied) {
+        first.openingHostFullWidth = first.openingHostFullWidth || first.width + (model.metrics?.reserveWidthPx || 0);
+        first.width = first.openingHostFullWidth;
+        first.naturalWidth = (first.naturalWidth || 0) + (model.metrics?.reserveWidthPx || 0);
+      } else {
+        first.openingHostFullWidth = first.width;
+      }
       first.runs = [];
     }
     allLines.push(...lines);
@@ -4169,11 +4197,20 @@ function renderPagePlan(plan, pageEl, cfg) {
           // ⇒ אין חלון, אין ירידה: האות נשארת גדולה ובולטת, אבל בגובה
           //   שורה אחת — כלומר השורה חוזרת להיות שורה אמיתית שגובהה
           //   שווה לתוכן שבתוכה.
+          // ⬛ נמדד: **17 מתוך 32** החפיפות שנשארו בתוך הטקסט הראשי הן
+          //    שורות מילת פתיח. כשאין חלון, המנוע לא הקצה לאות מקום
+          //    לרדת אליו — ולכן אין טעם להשאיר אותה בגובה שתי שורות.
+          //    הגדלת הקופסה לא תעזור: השורה הבאה ממוקמת בנפרד ולא תזוז.
+          //    לכן **האות עצמה** חייבת להיכנס בשורה אחת.
+          // ⛔ נמדד ונפסל: להקטין כאן את האות לפי מדידת גובה בזמן
+          // הציור. התוצאה החמירה (33 ⟵ 35), כי `getBoundingClientRect`
+          // בשלב הזה מחזיר מידות של פריסה שעוד לא הושלמה — כלומר
+          // המדידה עצמה לא אמינה כאן. אם בעתיד נרצה לטפל בזה, המקום
+          // הוא בתכנון (גודל האות נקבע לפני הזרימה), לא בציור.
           const dropNF = lineEl.querySelector('.opw-dropped');
           if (dropNF && safeLineHeight > 0) {
             const basePx = parseFloat(lineEl.style.fontSize) || actualFontSize || 0;
             if (basePx > 0) {
-              // הגודל הגדול ביותר שעדיין נכנס בשורה אחת.
               const maxPx = Math.max(basePx, safeLineHeight * 0.92);
               dropNF.style.fontSize = Math.round(maxPx) + 'px';
               dropNF.style.lineHeight = safeLineHeight + 'px';
