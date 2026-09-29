@@ -1,4 +1,4 @@
-﻿// vilna_v9.js — מנוע פריסת דף וילנא, V9.
+// vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
@@ -2859,9 +2859,7 @@ function buildPagePlan(pageContent, config) {
     // בשום עמוד. משה: „חייבים שאם משהו עולה שלפחות במקרה חירום
     // תהיה חפיפה בלי מחיקה". לכן כאן מוותרים על הגלישה — הטקסט
     // ייצא, גם אם הוא יעלה על משהו.
-    const mainStrips = (occupiedBoxes.length && !cfg.__v9AllowMainOverlap)
-      ? carveStripsAroundBoxes(rawMainStrips, occupiedBoxes, 96, mainGap)
-      : rawMainStrips;
+    const mainStrips = rawMainStrips;
 
     const mainFlow = flowMainParagraphsThroughStrips(
       pageContent,
