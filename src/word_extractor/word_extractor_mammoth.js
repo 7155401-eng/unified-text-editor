@@ -559,12 +559,14 @@ function unwrapColorAndSizePlaceholders(html) {
         const safeFont = String(font).replace(/['"<>]/g, "");
         decl.push(`font-family: '${safeFont}';`);
       }
-      if (highlight) {
-        decl.push(`background-color: ${highlight};`);
+      let html = inner;
+      if (decl.length > 0) {
+        html = `<span style="${decl.join(" ")}">${html}</span>`;
       }
-      return decl.length
-        ? `<span style="${decl.join(" ")}">${inner}</span>`
-        : inner;
+      if (highlight) {
+        html = `<mark data-color="${highlight}" style="background-color: ${highlight};">${html}</mark>`;
+      }
+      return html;
     }
   );
   // משה 2026-05-14: ניקוי אגרסיבי של leftovers — לפעמים ‹‹ הופך ל-> או נחתך,
