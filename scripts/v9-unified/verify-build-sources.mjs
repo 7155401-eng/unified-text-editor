@@ -13,9 +13,11 @@ const changes = cwd => git(cwd, ['diff', '--name-only', '-z', '--', 'src', 'scri
 assert.equal(git(baseline, ['rev-parse', 'HEAD']).toString().trim(), baselineSha);
 const current = changes(root), inherited = changes(baseline);
 // Do not hide a source rewrite by ignoring an arbitrary directory. Every
-// mutation must also occur in the pinned unmodified baseline, with byte-identical
-// input and byte-identical output. Refactored files cannot pass this exception.
-assert.deepEqual(current, inherited, 'Build introduced a new source rewrite');
+// remaining mutation must occur in the pinned unmodified baseline, with
+// byte-identical input and output. Refactored files cannot pass this exception.
+// Eliminating a baseline rewrite is allowed; adding a new one is not.
+assert.deepEqual(current.filter(file => !inherited.includes(file)), [],
+  'Build introduced a new source rewrite');
 const evidence = current.map(file => {
   const before = git(root, ['show', `HEAD:${file}`]);
   const baseBefore = git(baseline, ['show', `HEAD:${file}`]);
@@ -26,7 +28,8 @@ const evidence = current.map(file => {
   return { file, before: digest(before), after: digest(after), sameAsBaseline: true };
 });
 const report = { baselineSha, headSha: git(root, ['rev-parse', 'HEAD']).toString().trim(),
-  refactoredSourceUnchanged: true, inheritedBuildRewrites: evidence };
+  refactoredSourceUnchanged: true, inheritedBuildRewrites: evidence,
+  eliminatedBaselineRewrites: inherited.filter(file => !current.includes(file)) };
 fs.mkdirSync('test-results/v9-unified', { recursive: true });
 fs.writeFileSync('test-results/v9-unified/build-source-verification.json', JSON.stringify(report, null, 2));
 fs.writeFileSync('test-results/v9-unified/inherited-build-rewrites.diff', git(root, ['diff', '--', 'src', 'scripts']));
