@@ -6160,8 +6160,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // a note must START with its source, but its continuation may share the
     // next page with new main text. The old drain marker deliberately created
     // carry-only pages and is therefore obsolete.
-    const hasOverflowNotes = Object.keys(nextCarry).some(k => nextCarry[k]);
-
     // משה 2026-05-08: הגנה מלולאה אינסופית — אם לא הייתה צריכה (bestN=0, אין split)
     // וגם carry-over לא קטן, נכפה קידום של פסקה כדי לא להיתקע.
     if (bestN === 0 && !splitInfo && !hadPending && cursor < paragraphs.length) {
