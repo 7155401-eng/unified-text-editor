@@ -5873,6 +5873,150 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       }
     }
 
+    // Final sparse-page guard.
+    //
+    // The real 2026-09-30 snapshot exposed three cases that ordinary gap fill
+    // did not cover: a one-line heading page, a one-line carry-only stream page,
+    // and a short pending tail. Before publishing any intermediate page below
+    // 50% fill, offer V9 the next source paragraph (whole first, then safe
+    // line-boundary prefixes). Note ownership remains authoritative.
+    const trySparseIntermediateRescue = () => {
+      if (!finalProbe || !finalProbe.overflow) return null;
+      if (drainAloneMode) return null;
+      const beforeFill = planFillRatio(finalProbe);
+      if (beforeFill >= 0.50) return null;
+      if (bestN >= totalAvail) return null;
+      if (mainOverflowTextOf(finalProbe)) return null;
+      if (finalProbe.unstartedNotes?.length) return null;
+
+      const nextAvailable = getSlice(bestN + 1);
+      const target = nextAvailable[bestN] || null;
+      const fullText = String(target?.mainText || "");
+      if (!target || !fullText.trim()) return null;
+
+      const baseSlice = [...finalSlice];
+      let best = null;
+
+      const consider = (testSlice, testPlan, info) => {
+        if (!testPlan || !testPlan.overflow) return;
+        if (testPlan.overflow.exceedsPage) return;
+        if (mainOverflowTextOf(testPlan)) return;
+        if (testPlan.unstartedNotes?.length) return;
+        if (hasUnsafeV9StreamOverflow(testPlan)) return;
+        const fill = planFillRatio(testPlan);
+        if (fill <= beforeFill + 0.06) return;
+
+        const candidateScore = scoreV9PageCandidate(
+          testPlan,
+          info.candidate || { kind: info.kind || "sparse-rescue", priority: 900 },
+          v9SplitPolicy,
+          {
+            cfg,
+            movedNotes: info.movedNotes || [],
+            pageIdx,
+            source: "final-sparse-rescue",
+          }
+        );
+        if (!candidateScore.accept && fill < 0.68) return;
+
+        const score = fill + Math.min(0.08, (info.offset || fullText.length) / Math.max(1, fullText.length) * 0.08);
+        if (!best || score > best.score) best = { score, fill, testSlice, testPlan, ...info };
+      };
+
+      // Whole next paragraph — especially important for short headings.
+      {
+        const wholeSlice = [...baseSlice, target];
+        const wholeContent = aggregateForV9(
+          wholeSlice, cfg.titles, cfg.streamSettings, cfg.levels,
+          streamsForPage(pageIdx), carryOver
+        );
+        const wholePlan = buildPagePlan(wholeContent, cfg);
+        consider(wholeSlice, wholePlan, {
+          kind: "whole-paragraph",
+          offset: fullText.length,
+          whole: true,
+          testContent: wholeContent,
+        });
+      }
+
+      // If whole paragraph does not fit, try all useful V9 break candidates,
+      // not only the first 2-3. Sparse pages are expensive enough to justify
+      // the extra bounded search.
+      const candidates = buildParagraphBreakCandidates(
+        fullText,
+        splitMetrics,
+        splitMainWidth,
+        v9SplitPolicy,
+        { source: "final-sparse-rescue" }
+      )
+        .filter(c => c.offset >= 2 && c.offset < fullText.length)
+        .slice(0, 24);
+
+      for (const candidate of candidates) {
+        const splitText = splitMainTextAtOffset(fullText, candidate.offset);
+        if (!splitText.prefixText || !splitText.suffixText) continue;
+        const splitNotes = splitNotesByAnchor(
+          target?.notes || [],
+          splitText.splitOffset,
+          fullText.length,
+          splitText.suffixBaseOffset
+        );
+        const halves = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after);
+        const testSlice = [...baseSlice, halves.firstHalf];
+        const testContent = aggregateForV9(
+          testSlice, cfg.titles, cfg.streamSettings, cfg.levels,
+          streamsForPage(pageIdx), carryOver
+        );
+        const testPlan = buildPagePlan(testContent, cfg);
+        consider(testSlice, testPlan, {
+          kind: candidate.kind,
+          candidate,
+          offset: candidate.offset,
+          movedNotes: splitNotes.before,
+          whole: false,
+          halves,
+          testContent,
+        });
+      }
+
+      if (!best) return null;
+      if (best.whole) {
+        return {
+          finalSlice: best.testSlice,
+          finalContent: best.testContent,
+          finalProbe: best.testPlan,
+          bestN: bestN + 1,
+          splitInfo: null,
+          fill: best.fill,
+          mode: "whole",
+        };
+      }
+      return {
+        finalSlice: best.testSlice,
+        finalContent: best.testContent,
+        finalProbe: best.testPlan,
+        bestN: bestN + 1,
+        splitInfo: {
+          firstHalf: best.halves.firstHalf,
+          secondHalf: best.halves.secondHalf,
+          sliceIdx: bestN,
+          baseN: bestN,
+          _finalSparseRescue: true,
+        },
+        fill: best.fill,
+        mode: "prefix",
+      };
+    };
+
+    const sparseRescue = trySparseIntermediateRescue();
+    if (sparseRescue) {
+      finalSlice = sparseRescue.finalSlice;
+      finalContent = sparseRescue.finalContent;
+      finalProbe = sparseRescue.finalProbe;
+      bestN = sparseRescue.bestN;
+      splitInfo = sparseRescue.splitInfo;
+    }
+
     const finalHasText = !!(
       (finalContent.mainText || '').trim() ||
       (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
