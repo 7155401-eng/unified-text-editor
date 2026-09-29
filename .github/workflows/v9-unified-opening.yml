@@ -25,6 +25,10 @@ concurrency:
   group: v9-unified-opening-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   validate:
     if: github.ref == 'refs/heads/fix/v9-unified-opening-layout' || github.head_ref == 'fix/v9-unified-opening-layout'
@@ -53,13 +57,33 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Browser layout and pagination regression suite
         run: node scripts/v9-unified/run-browser.mjs
-      - name: Build and verify source remains unchanged
+      - name: Fetch pinned baseline for build comparison
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 82936b7ba1720714f6ae73bda95e9791f6873856
+          path: .v9-baseline
+          persist-credentials: false
+      - name: Build unmodified baseline and retain existing source rewrites
+        id: baseline_build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: |
+          cmp package-lock.json .v9-baseline/package-lock.json
+          ln -s "$GITHUB_WORKSPACE/node_modules" .v9-baseline/node_modules
+          (
+            cd .v9-baseline
+            npm run postinstall
+            npm run build
+          ) 2>&1 | tee test-results/v9-unified/baseline-build.log
+      - name: Build refactor and verify no new source rewrites
+        if: ${{ !cancelled() && steps.baseline_build.outcome == 'success' }}
         run: |
           npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
           npm run build 2>&1 | tee test-results/v9-unified/build.log
-          git diff --exit-code -- src scripts
+          node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
+          cp test-results/v9-unified/browser.json test-results/v9-unified/browser-before-build.json
+          node scripts/v9-unified/run-browser.mjs
       - name: Retain validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
