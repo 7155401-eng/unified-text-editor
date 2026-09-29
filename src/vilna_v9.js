@@ -4983,16 +4983,12 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             if (commentaryCount === 0) continue;
             const fill = planFillRatio(tp);
             if (!currentHasNoteOverflow && fill < currentFill - 0.04) continue;
-            const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
+            const noteOverflow = hasV9StreamOverflow(tp);
 
-            // משה 2026-05-17 (v4): noteOverflow = פסילה מוחלטת ב-Gap rescue.
-            // הערות חייבות להישאר באותו עמוד של ההפניה אליהן. מועמד שיוצר
-            // note overflow גורש את ההערות לעמוד הבא — זה ההפך מהמטרה.
-            // קנס קטן של 0.25 לא הספיק כי fill מספיק גבוה יכל לנצח אותו.
-            // עכשיו פסילה מוחלטת בכל המקרים (carryActive כלול), בלי קנסות
-            // נוספים בציון. ההגנה הזו לבד, בלי connector strip הקודם.
-
-            if (noteOverflow) continue;
+            // A note that has already started on its source page may continue.
+            // Reject only a continuation that did not establish legal ownership
+            // (unstarted note / zero commentary progress).
+            if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) continue;
 
             const mainProgressBonus = carryActive ? 0 : Math.min(0.12, (len / Math.max(1, fullText.length)) * 0.12);
 
@@ -5088,15 +5084,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           );
           if (!extensionScore.accept) continue;
 
-          const noteOverflow = Object.keys(tp.overflow.streams || {}).some(k => tp.overflow.streams[k]);
+          const noteOverflow = hasV9StreamOverflow(tp);
 
-          // משה 2026-05-17 (v4): כאן Extension מנסה לסחוב שורה מהעמוד הבא
-          // לעמוד הנוכחי כדי לסתום רווח. אסור שזה ידחוף את ההערות הקיימות
-          // לעמוד הבא — ההערות חייבות להישאר עם הטקסט שאליו הן שייכות.
-          // אם משיכת השורה גורמת ל-note overflow → פסילה מוחלטת, לא קנס.
-          // ככה מודדים שורה-שורה ועוצרים ברגע שהמשיכה הבאה תפגע בהערות.
-
-          if (noteOverflow) continue;
+          // Same ownership rule as the rest of V9: an already-started long note
+          // may continue; only an unsafe/unstarted continuation blocks extension.
+          if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) continue;
 
           const fill = planFillRatio(tp);
 
@@ -5479,8 +5471,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
       if (cfg.finalGapFillEnabled === false) return reject("disabled");
       if (drainAloneMode) return reject("drain-alone");
-      if (hasCarryOver(carryOver)) return reject("carry-over");
-      if (pendingParagraph) return reject("pending-active");
       if (splitInfo) return reject("split-already-active");
       if (!allowParagraphSplit) return reject("split-disabled");
       if (bestN >= totalAvail) return reject("no-next-paragraph");
@@ -5498,7 +5488,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         return reject("not-enough-gap");
       }
 
-      const target = paragraphs[cursor + bestN];
+      const nextAvailable = getSlice(bestN + 1);
+      const target = nextAvailable[bestN] || null;
       const fullText = (target?.mainText || "").trim();
       if (!target || fullText.length < 2) return reject("no-next-paragraph");
 
