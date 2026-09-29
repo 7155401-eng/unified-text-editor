@@ -12,8 +12,8 @@ export function partForRange(entry, start, visibleEnd, consumedEnd = visibleEnd,
   const text = raw.slice(leading);
   const refs = (entry.mainRefs || []).filter(r => {
     const a = refAnchor(r);
-    return a >= start && (a < consumedEnd || (consumedEnd === entry.text.length && a === consumedEnd));
-  }).map(r => ({ ...r, localPos: Math.max(0, Math.min(text.length, refAnchor(r) - start - leading)) }));
+    return consumedEnd > start && a >= start && (a < consumedEnd || (consumedEnd === entry.text.length && a === consumedEnd));
+  }).sort((a, b) => refAnchor(a) - refAnchor(b)).map(r => ({ ...r, localPos: Math.max(0, Math.min(text.length, refAnchor(r) - start - leading)) }));
   return { text, leadingText: raw.slice(0, leading), trailingText: entry.text.slice(visibleEnd, consumedEnd), runs: sliceRuns(entry.runs || [], start + leading, visibleEnd), refs, style };
 }
 
