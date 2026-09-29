@@ -2,6 +2,7 @@ import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.j
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from '../../src/engine/v9_text_measurement.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { buildPages } from '../../src/vilna_v9.js';
+import { runBrowserEdges } from './browser-edge-suite.js';
 
 function assert(value, message) { if (!value) throw new Error(message); }
 const neutral='שָׁלוֹם עולם קטן גדול משפט נוסף לדוגמה עם מילים רבות לבדיקה חוזרת ולבדיקת שורות.';
@@ -69,8 +70,9 @@ export async function runBrowserSuite() {
     const result=await buildPages(page,input,{pageWidth:380,pageHeight:300,padding:12,mainFontSize:13,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:true,target:'word',count:1,font:'inherit',size:150,position:'dropped',dropLines:2,spaceAfter:.3}});
     assert(result.complete,'side-stream paginator incomplete'); const rows=[...page.querySelectorAll('[data-v9-layout-final]')];
     for(const p of input)assert(rows.filter(el=>el.dataset.v9ParagraphId===p.id).map(sourceText).join('')===prepareV9SourceParagraph(p).mainText,'main source lost with side streams');
-    const mainFirst=rows[0],firstSide=page.querySelector('.v9-role-stream');
-    assert(mainFirst&&firstSide,'missing streams');assert(+mainFirst.style.top.replace('px','')<250,'main pushed below page');
+    const mainFirst=rows[0],firstSide=page.querySelector('.v9-role-right, .v9-role-left');
+    assert(mainFirst&&firstSide,'missing side streams');
+    assert(page.querySelectorAll('[data-v9-main-ref]').length===10,'side-note refs lost or duplicated');assert(+mainFirst.style.top.replace('px','')<250,'main pushed below page');
     const out={pages:result.pages.length,rows:rows.length,refs:page.querySelectorAll('[data-v9-main-ref]').length};page.remove();return out;
   });
   await test('font timeout is a failure rather than ready metadata',async()=>{
@@ -78,5 +80,6 @@ export async function runBrowserSuite() {
     let threw=false;try{await waitForV9LayoutFonts([],{mainFontFamily:'serif'},15);}catch(e){threw=e.message.startsWith('V9_FONT_TIMEOUT');}finally{if(descriptor)Object.defineProperty(document,'fonts',descriptor);else delete document.fonts;}
     assert(threw,'timeout returned ready');
   });
+  await runBrowserEdges(test,{assert,makePage,sourceText,paint:renderV9PlannedMainLine,inspectLines});
   return {tests:results.length,passed:results.filter(r=>r.status==='pass').length,failed:results.filter(r=>r.status==='fail').length,results};
 }
