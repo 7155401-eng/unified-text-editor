@@ -1,0 +1,42 @@
+name: V9 unified opening layout validation
+
+on:
+  push:
+    branches: [fix/v9-unified-opening-layout]
+    paths:
+      - '.github/workflows/v9-unified-opening.yml'
+      - 'src/**'
+      - 'tests/v9-unified/**'
+      - 'scripts/v9-unified/**'
+      - 'package*.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v9-unified-opening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/fix/v9-unified-opening-layout'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify protected baseline fix
+        run: |
+          git rev-parse HEAD
+          node --check src/vilna_v9.js
+          node --input-type=module -e "import fs from 'node:fs'; import assert from 'node:assert/strict'; const s=fs.readFileSync('src/vilna_v9.js','utf8'); assert.ok(s.includes('const mainStrips = rawMainStrips;'));"
+      - name: Unified layout unit tests
+        run: |
+          if [ -f tests/v9-unified/unit.test.mjs ]; then
+            node --test tests/v9-unified/*.test.mjs
+          else
+            echo 'Infrastructure check only: implementation and regression tests not added yet.'
+          fi
