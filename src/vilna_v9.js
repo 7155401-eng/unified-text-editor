@@ -6033,6 +6033,10 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     container.appendChild(pageEl);
 
     const plan = finalProbe;
+    pageEl.dataset.v9PageFill = String(Math.round(planFillRatio(plan) * 10000) / 10000);
+    pageEl.dataset.v9SparseRescue = sparseRescue?.mode || "";
+    pageEl.dataset.v9CarryInChars = String(totalCarrySize(carryOver));
+    pageEl.dataset.v9PendingIn = pendingParagraph ? "1" : "0";
 
     // ⭐ משה 29/09/2026 — נמדד עמוד אחרון עם **אפס שורות**.
     // עמוד בלי שורה אחת אינו עמוד; הוא רק נייר ריק בסוף המסמך.
