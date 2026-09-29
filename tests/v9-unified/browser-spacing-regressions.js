@@ -239,6 +239,31 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('long anchored note may continue after starting with its source line',async()=>{
+    const settings=getStreamSettings(),saved=settings['01'];
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const main=Array(12).fill(neutral).join(' '),words=[...main.matchAll(/\S+/gu)],anchorWord=words[4];
+      const noteText=Array(80).fill(neutral).join(' ');
+      const note={stream:'01',uid:'long-anchor-continuation',num:1,
+        anchor:anchorWord.index+anchorWord[0].length,anchorAffinity:'backward',text:noteText};
+      const result=await buildPages(page,[{id:'long-anchor-source',mainText:main,notes:[note]}],
+        {...cfg,pageHeight:240,talmudStreams:['01','02'],maxPages:80});
+      assert(result.complete,'long-note pagination incomplete');
+      assert(result.pages.length>1,'fixture did not force note continuation');
+      assert((result.noteAnchorFallbacks||[]).length===0,
+        `anchor fallback used for a legal continuation: ${JSON.stringify(result.noteAnchorFallbacks)}`);
+      const refPage=result.pages.findIndex(p=>p.querySelector('[data-uid="long-anchor-continuation"]'));
+      const key='long-anchor-source:01:long-anchor-continuation';
+      const startPage=result.pages.findIndex(p=>p.querySelector(`[data-v9-note-start="${key}"]`));
+      assert(refPage>=0&&refPage===startPage,`note start separated from source: ref=${refPage}, start=${startPage}`);
+      const occupied=result.pages.map((p,i)=>p.querySelector(`[data-v9-note-key="${key}"]`)?i:-1).filter(i=>i>=0);
+      assert(occupied.length>1,'note did not actually continue across pages');
+      for(let i=1;i<occupied.length;i++)assert(occupied[i]===occupied[i-1]+1,'note continuation skipped a page');
+    } finally { page.remove();if(saved===undefined)delete settings['01'];else settings['01']=saved; }
+  });
+
   await test('font preflight includes note runs, nested notes and resolved label styles',async()=>{
     const descriptor=Object.getOwnPropertyDescriptor(document,'fonts'),requests=[];
     Object.defineProperty(document,'fonts',{configurable:true,value:{load:font=>{requests.push(font);return Promise.resolve([]);},ready:Promise.resolve()}});
