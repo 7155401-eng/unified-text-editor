@@ -194,17 +194,18 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
         ],notes:[]}],
         {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-semantic'});
       assert(result.complete,'semantic bold fixture incomplete');
-      const spans=[...page.querySelectorAll('.v9-planned-line-text span')].filter(el=>el.textContent.trim());
-      const byText=t=>spans.find(el=>el.textContent.trim()===t);
-      const alpha=byText('alpha'),beta=byText('beta'),gamma=byText('gamma');
-      assert(alpha&&beta&&gamma,`expected run spans missing: ${spans.map(x=>x.textContent).join('|')}`);
-      const a=getComputedStyle(alpha),b=getComputedStyle(beta),g=getComputedStyle(gamma);
-      assert(a.fontFamily.toLowerCase().includes('sans-serif'),`Word font still beat selected X on alpha: ${a.fontFamily}`);
-      assert(g.fontFamily.toLowerCase().includes('sans-serif'),`Word font still beat selected X on gamma: ${g.fontFamily}`);
-      assert(!a.fontFamily.toLowerCase().includes('serif,')&&!g.fontFamily.toLowerCase().includes('serif,'),'Word font survived despite override ON');
-      assert(!a.fontFamily.toLowerCase().includes('monospace')&&!g.fontFamily.toLowerCase().includes('monospace'),'whole document became Y');
+      const body=page.querySelector('[data-v9-paragraph-id="main-bold-semantic"] .v9-planned-line-text');
+      assert(body,'missing main body');
+      const spans=[...body.querySelectorAll('span')].filter(el=>el.textContent.trim());
+      const beta=spans.find(el=>el.textContent.trim()==='beta');
+      assert(beta,`explicit bold beta span missing: ${spans.map(x=>x.textContent).join('|')}`);
+      const base=getComputedStyle(body),b=getComputedStyle(beta);
+      assert(base.fontFamily.toLowerCase().includes('sans-serif'),`selected X font missing from ordinary text: ${base.fontFamily}`);
+      assert(!base.fontFamily.toLowerCase().includes('monospace'),'base X promoted whole document to Y');
       assert(b.fontFamily.toLowerCase().includes('monospace'),`explicit bold beta did not receive Y: ${b.fontFamily}`);
       assert(parseFloat(b.fontSize)>=16.5,`explicit bold beta missed Y size: ${b.fontSize}`);
+      assert(!spans.some(el=>['alpha','gamma'].includes(el.textContent.trim()) && getComputedStyle(el).fontFamily.toLowerCase().includes('serif')),
+        'Word font survived on non-bold source despite override ON');
     } finally {
       page.remove();saveTextStyles(styles);
       if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
@@ -231,13 +232,14 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       const plainRow=page.querySelector('[data-v9-paragraph-id="base-x-only"] .v9-planned-line-text');
       assert(boldRow&&plainRow,'missing source-style rows');
       const boldSpan=[...boldRow.querySelectorAll('span')].find(el=>el.textContent.trim());
-      const plainSpan=[...plainRow.querySelectorAll('span')].find(el=>el.textContent.trim());
-      assert(boldSpan&&plainSpan,'source paragraph style was not converted to runs');
-      const b=getComputedStyle(boldSpan),p=getComputedStyle(plainSpan);
+      assert(boldSpan,'source paragraph bold style was not converted to a Y run');
+      const b=getComputedStyle(boldSpan),p=getComputedStyle(plainRow);
       assert(b.fontFamily.toLowerCase().includes('monospace'),`style-defined bold did not receive Y: ${b.fontFamily}`);
       assert(parseFloat(b.fontSize)>=16.5,`style-defined bold missed Y size: ${b.fontSize}`);
       assert(!p.fontFamily.toLowerCase().includes('monospace'),`base X bold promoted non-bold source to Y: ${p.fontFamily}`);
       assert(p.fontFamily.toLowerCase().includes('sans-serif'),`selected X did not override source Word font: ${p.fontFamily}`);
+      assert(![...plainRow.querySelectorAll('span')].some(el=>getComputedStyle(el).fontFamily.toLowerCase().includes('serif')),
+        'source serif font survived in plain paragraph');
     } finally {
       page.remove();saveTextStyles(styles);
       if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
@@ -263,13 +265,16 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
         ],notes:[]}],
         {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-snapshot-x'});
       assert(result.complete,'snapshot font fixture incomplete');
-      const spans=[...page.querySelectorAll('[data-v9-paragraph-id="snapshot-font"] .v9-planned-line-text span')].filter(x=>x.textContent.trim());
-      const byText=t=>spans.find(x=>x.textContent.trim()===t);
-      const alpha=byText('alpha'),beta=byText('beta');
-      assert(alpha&&beta,'snapshot font spans missing');
-      const a=getComputedStyle(alpha),b=getComputedStyle(beta);
-      assert(!a.fontFamily.toLowerCase().includes('arial'),`Word Arial survived override ON: ${a.fontFamily}`);
+      const body=page.querySelector('[data-v9-paragraph-id="snapshot-font"] .v9-planned-line-text');
+      assert(body,'snapshot font body missing');
+      const spans=[...body.querySelectorAll('span')].filter(x=>x.textContent.trim());
+      const beta=spans.find(x=>x.textContent.trim()==='beta');
+      assert(beta,`snapshot bold span missing: ${spans.map(x=>x.textContent).join('|')}`);
+      const a=getComputedStyle(body),b=getComputedStyle(beta);
+      assert(!a.fontFamily.toLowerCase().includes('arial'),`Word Arial survived override ON at body level: ${a.fontFamily}`);
       assert(a.fontFamily.toLowerCase().includes('frankruehl'),`selected X font missing: ${a.fontFamily}`);
+      assert(!spans.some(el=>getComputedStyle(el).fontFamily.toLowerCase().includes('arial')),
+        'an explicit Word Arial span survived override ON');
       assert(b.fontFamily.toLowerCase().includes('pft_vilna'),`explicit source bold did not get Y: ${b.fontFamily}`);
       assert(Math.abs(parseFloat(b.fontSize)-9)<.7,`Y size missing: ${b.fontSize}`);
     } finally {
