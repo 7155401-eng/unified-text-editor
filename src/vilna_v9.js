@@ -1839,6 +1839,40 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
         return { lines: allLines, overflowText: overflow.text, overflowRuns: overflow.runs, overflowRich: overflow, endY: curY, debug: lastDebug };
       }
       paragraphStrips = prepared.strips;
+
+      // ⛔⛔⛔⛔ משה 29/09/2026 — „גובה שורות חייב להתנהג כמו שהיו כאן
+      // שורות אמיתיות, לא משהו מלאכותי, זה הגורם לבעיות".
+      //
+      // ⬛ נמדד: **17 מתוך 32** החפיפות שנשארו בתוך הטקסט הראשי הן
+      //    שורות מילת פתיח — האות בגובה שתי שורות בקופסה של שורה אחת.
+      //
+      // ═══ מתי זה קורה ═══
+      // אות „נפתחת" יורדת שתי שורות, והמנוע מפנה לה חלון בגובה הזה.
+      // אבל כשלא נשאר רוחב שימושי אחרי הפינוי, המנוע מוותר על החלון —
+      // והאות נשארה גדולה בלי שיהיה לה לאן לרדת.
+      //
+      // ⇒ אם אין חלון, אין ירידה: האות יורדת ל**שורה אחת** כבר כאן,
+      //   בתכנון — לפני שהטקסט זורם. כך המנוע מחשב הכול לפי הגודל
+      //   האמיתי, והשורה חוזרת להיות שורה אמיתית שגובהה שווה לתוכן.
+      //
+      // ⬛ ניסיתי לעשות את אותו דבר בציור, ונמדד שזה מחמיר (33 ⟵ 35):
+      //    שם המידות עדיין לא סופיות. כאן, בתכנון, זה המקום הנכון.
+      const windowReallyApplied = (prepared.strips || [])
+        .some(s => s && s.openingWindow === true);
+      if (!windowReallyApplied && model.style
+          && Number(model.style.dropLines) > 1) {
+        const lineH = Number(mainMetrics?.lineHeight) || 0;
+        const baseFs = Number(cfg.mainFontSize) || 0;
+        model.style.dropLines = 1;
+        // הגודל הגדול ביותר שעדיין נכנס בשורה אחת, ולא קטן מהרגיל.
+        if (lineH > 0 && baseFs > 0) {
+          const maxPct = Math.max(100, Math.floor((lineH * 0.92 / baseFs) * 100));
+          if (Number(model.style.fontSizePercent) > maxPct) {
+            model.style.fontSizePercent = maxPct;
+          }
+        }
+      }
+
       flowInput = makeRichText(model.flow?.remainingText || "", []);
     }
 
