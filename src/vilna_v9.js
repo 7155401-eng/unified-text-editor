@@ -3097,9 +3097,12 @@ function buildPagePlanCore(pageContent, config) {
     }
   }
 
-  // העמוד נחשב חורג אם footerY עבר את הגובה (לא צריך לקרות עם החיתוך)
-  // או אם נחתך משהו (כדי ש-buildPages יקטין פסקאות וייתן לתוכן הבא להיכנס לעמוד הבא).
-  result.overflow.exceedsPage = footerY > cfg.pageHeight || anyFooterTrimmed;
+  // A commentary continuation is not a geometric page overflow. It is valid
+  // for a long note to start beside its main-text anchor and continue on the
+  // next page. Only actual geometry beyond the physical page is "exceedsPage".
+  result.overflow.exceedsPage = footerY > cfg.pageHeight + 0.1;
+  result.overflow.hasStreamContinuation = Object.values(result.overflow.streams || {})
+    .some(entry => !!normalizeRichTextEntry(entry).text);
 
   // ⭐⭐⭐⭐ המעבר האחרון של הראשי — אחרי שכל הקופסאות בעמוד קיימות.
   //
@@ -4580,16 +4583,24 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       return buildPagePlan(aggContent, cfg);
     };
 
-    // משה 2026-05-08: "fits clean" = העמוד לא חורג ויזואלית וגם אף הערה לא נחתכה.
-    // אם הערות נחתכות אבל העמוד לא חורג ויזואלית — זה גורם ל-carry-over של
-    // הערות לעמוד הבא בלי הפסקה שלהן (חוסר קישור הערות-ראשי). אז נדחה.
+    // A plan is clean when main text fits and every required note has actually
+    // STARTED on its anchor page. The remainder of an already-started long note
+    // may legally continue to the next page; rejecting that remainder was the
+    // root of V9_NOTE_ANCHOR_NO_FIT and of severely underfilled pages.
     const fitsClean = (tp) => {
       if (!tp || !tp.overflow) return false;
       if (tp.overflow.exceedsPage) return false;
       if (tp.overflow.mainText) return false;
       if (tp.unstartedNotes?.length) return false;
-      const ovs = tp.overflow.streams || {};
-      for (const k in ovs) if (ovs[k]) return false;
+      const hasStreamContinuation = Object.values(tp.overflow.streams || {})
+        .some(entry => !!normalizeRichTextEntry(entry).text);
+      if (hasStreamContinuation) {
+        const plannedCommentaryLines =
+          (tp.streamBoxes || []).reduce((n, box) => n + (box?.lines?.length || 0), 0) +
+          (tp.footerBoxes || []).reduce((n, box) => n + (box?.lines?.length || 0), 0);
+        // Never accept a continuation-only page that consumed zero commentary.
+        if (plannedCommentaryLines === 0) return false;
+      }
       return true;
     };
 
