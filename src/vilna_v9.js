@@ -4567,11 +4567,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
     cfg.__v9PageIndex = pageIdx;
     cfg.__v9AllowMainOverlap = __mainStuckCount >= 3;
-    if (pendingParagraph?._drainMarker && !hasCarryOver(carryOver)) {
-      pendingParagraph = null;
-      if (cursor >= paragraphs.length) break;
-    }
-
     // אורך הזמינות הכולל = pendingParagraph (אם קיים) + פסקאות שלא נצרכו
     const totalAvail = (pendingParagraph ? 1 : 0) + (paragraphs.length - cursor);
 
@@ -5924,7 +5919,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
     // התקדמות מצב: pendingParagraph + cursor מתעדכנים לפי הצריכה
     const hadPending = !!pendingParagraph;
-    const wasDrainMarker = !!pendingParagraph?._drainMarker;
     if (drainAloneMode) {
       // עמוד drain בלי שום פסקה — pending נשאר כמו שהוא, cursor לא זז
       // carry-over יתעדכן מהעמוד; כשיתרוקן ה-pending יוכל להירנדר נקי
@@ -6003,7 +5997,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         _v9OpeningWordAllowed: e._v9OpeningWordAllowed !== false && !e.continues,
         _continues: !!e.continuesAfter,
       }));
-      if (pendingParagraph && !pendingParagraph._drainMarker) queued.push(pendingParagraph);
+      if (pendingParagraph) queued.push(pendingParagraph);
       pendingParagraph = null;
       paragraphs.splice(cursor, 0, ...queued);
       if (__mainStuckCount >= 3 && !plan.mainBox?.lines?.length && totalCarrySize(nextCarry) >= totalCarrySize(carryOver)) {
@@ -6013,18 +6007,12 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       }
     }
 
-    // משה 2026-05-09: ★ סמן ניקוז (drain marker) — אם בוצע force-take עם הערות שעלו,
-    // יוצרים pendingParagraph ריק (mainText="") שמייצג "המשך הערות הפסקה הקודמת".
-    // זה מונע מקריירי-אובר לזרום לעמוד עם פסקה חדשה (חוסר קישור). העמוד הבא
-    // יהיה drain עם carry-over בלבד, אבל הוא יהיה צמוד לפסקה המקור.
+    // Carry-over no longer creates an artificial empty pending paragraph.
+    // Note ownership is tracked explicitly by _v9NoteKey/auditV9NoteStarts:
+    // a note must START with its source, but its continuation may share the
+    // next page with new main text. The old drain marker deliberately created
+    // carry-only pages and is therefore obsolete.
     const hasOverflowNotes = Object.keys(nextCarry).some(k => nextCarry[k]);
-    if (hasOverflowNotes && !splitInfo && !pendingParagraph && !drainAloneMode) {
-      pendingParagraph = { mainText: '', notes: [], _drainMarker: true };
-    }
-    // אם זה היה drain marker וה-carry-over כבר התרוקן — נקה גם את ה-marker
-    if (wasDrainMarker && pendingParagraph?._drainMarker && !hasOverflowNotes) {
-      pendingParagraph = null;
-    }
 
     // משה 2026-05-08: הגנה מלולאה אינסופית — אם לא הייתה צריכה (bestN=0, אין split)
     // וגם carry-over לא קטן, נכפה קידום של פסקה כדי לא להיתקע.
