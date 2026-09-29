@@ -7,7 +7,14 @@ on:
       - '.github/workflows/v9-unified-opening.yml'
       - 'src/**'
       - 'tests/v9-unified/**'
-      - 'scripts/v9-unified/**'
+      - 'scripts/**'
+      - 'package*.json'
+  pull_request:
+    paths:
+      - '.github/workflows/v9-unified-opening.yml'
+      - 'src/**'
+      - 'tests/v9-unified/**'
+      - 'scripts/**'
       - 'package*.json'
   workflow_dispatch:
 
@@ -20,44 +27,44 @@ concurrency:
 
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-unified-opening-layout'
+    if: github.ref == 'refs/heads/fix/v9-unified-opening-layout' || github.head_ref == 'fix/v9-unified-opening-layout'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Verify protected baseline fix
+      - name: Syntax and deterministic source/geometry tests
         run: |
-          git rev-parse HEAD
+          mkdir -p test-results/v9-unified
+          git rev-parse HEAD | tee test-results/v9-unified/commit.txt
           node --check src/vilna_v9.js
-          node --input-type=module -e "import fs from 'node:fs'; import assert from 'node:assert/strict'; const s=fs.readFileSync('src/vilna_v9.js','utf8'); assert.ok(s.includes('const mainStrips = rawMainStrips;'));"
-      - name: Unified layout unit tests
+          node --check src/vilna_v9_apply.js
+          node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit.tap
+      - name: Install locked dependencies
+        id: deps
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install test browser
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Browser layout and pagination regression suite
+        run: node scripts/v9-unified/run-browser.mjs
+      - name: Build and verify source remains unchanged
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
-          if [ -f tests/v9-unified/unit.test.mjs ]; then
-            node --test tests/v9-unified/*.test.mjs
-          else
-            echo 'Infrastructure check only: implementation and regression tests not added yet.'
-          fi
-      - name: Source-only reproducibility bundle
-        run: |
-          python3 - <<'PY'
-          import pathlib, subprocess, zipfile
-          names = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
-          with zipfile.ZipFile('v9-source.zip', 'w', zipfile.ZIP_DEFLATED) as z:
-              for name in names:
-                  p = pathlib.PurePosixPath(name)
-                  if not name or any(part.startswith('.') for part in p.parts):
-                      continue
-                  if p.suffix not in {'.js', '.mjs', '.cjs', '.json', '.css', '.html', '.ts'}:
-                      continue
-                  if p.parts[0] in {'src', 'scripts', 'tests'} or len(p.parts) == 1:
-                      z.write(name, name)
-          PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
+          npm run build 2>&1 | tee test-results/v9-unified/build.log
+          git diff --exit-code -- src scripts
+          node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: v9-source-${{ github.sha }}
-          path: v9-source.zip
-          retention-days: 1
-          if-no-files-found: error
+          name: v9-validation-${{ github.run_id }}
+          path: test-results/v9-unified/
+          retention-days: 7
+          if-no-files-found: warn
