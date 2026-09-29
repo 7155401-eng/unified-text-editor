@@ -21,6 +21,8 @@ import {
   splitMainTextAtOffset,
   splitNotesByAnchor,
   debugV9SplitDecision,
+  hasV9StreamOverflow,
+  hasUnsafeV9StreamOverflow,
 } from "./engine/v9_split_policy.js";
 import { getOpeningWordSettings } from "./opening_word.js";
 import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main_inline_layout.js";
@@ -4540,15 +4542,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       if (tp.overflow.exceedsPage) return false;
       if (tp.overflow.mainText) return false;
       if (tp.unstartedNotes?.length) return false;
-      const hasStreamContinuation = Object.values(tp.overflow.streams || {})
-        .some(entry => !!normalizeRichTextEntry(entry).text);
-      if (hasStreamContinuation) {
-        const plannedCommentaryLines =
-          (tp.streamBoxes || []).reduce((n, box) => n + (box?.lines?.length || 0), 0) +
-          (tp.footerBoxes || []).reduce((n, box) => n + (box?.lines?.length || 0), 0);
-        // Never accept a continuation-only page that consumed zero commentary.
-        if (plannedCommentaryLines === 0) return false;
-      }
+      if (hasUnsafeV9StreamOverflow(tp)) return false;
       return true;
     };
 
@@ -5229,7 +5223,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       }
     }
 
-    const hasV9NoteRemainder = tp => Object.values(tp?.overflow?.streams || {}).some(r=>!!normalizeRichTextEntry(r).text);
     let overflowTakeN = 0;
     if (!carryActive && !noMidParagraph && bestN_clean < totalAvail) {
       const candidateN = bestN_clean + 1;
@@ -5296,7 +5289,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         const tp = trialAtN(candidateN);
         const fill = planFillRatio(tp);
         const mainCut = normalizeRichTextEntry(tp?.overflow?.mainText || "").text.trim();
-        if (tp && tp.overflow && !mainCut && !tp.unstartedNotes?.length && !hasV9NoteRemainder(tp) && fill >= RESCUE_TARGET_FILL && fill > currentFill + 0.08) {
+        if (tp && tp.overflow && !mainCut && fitsClean(tp) && fill >= RESCUE_TARGET_FILL && fill > currentFill + 0.08) {
           overflowTakeN = candidateN;
           splitInfo = null;
         }
@@ -5568,11 +5561,10 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           continue;
         }
 
-        const noteOverflow = Object.keys(testPlan.overflow.streams || {})
-          .some(k => normalizeRichTextEntry(testPlan.overflow.streams[k]).text.trim());
+        const noteOverflow = hasV9StreamOverflow(testPlan);
 
-        if (noteOverflow) {
-          rejectCandidate(candidate, "note-overflow");
+        if (noteOverflow && hasUnsafeV9StreamOverflow(testPlan)) {
+          rejectCandidate(candidate, "unsafe-note-overflow");
           continue;
         }
 
@@ -5731,7 +5723,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         const content=aggregateForV9(candidateSlice,cfg.titles,cfg.streamSettings,cfg.levels,streamsForPage(pageIdx),carryOver);
         const probe=buildPagePlan(content,cfg);
         if(probe.overflow.mainText || probe.unstartedNotes?.length || !probe.mainBox?.lines?.length)continue;
-        const clean=!hasV9NoteRemainder(probe);
+        const clean=!hasUnsafeV9StreamOverflow(probe);
         const score=i*100000000+n;
         const candLines=Number(probe.mainBox?.lines?.length) || 0;
         const keepsEnough = fillFloor === 0 || candLines >= fillFloor;
