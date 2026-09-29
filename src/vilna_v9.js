@@ -1203,16 +1203,73 @@ function appendV9MainRefSpan(parent, ref) {
 // מעכשיו הראשי נקרא בשם הזרם `main` ומקבל את אותו טיפול בדיוק.
 const V9_MAIN_STREAM_CODE = "main";
 
-function v9MainBoldOverrideRuns(runs) {
+function v9RunIsSourceBold(marks) {
+  if (!marks) return false;
+  if (marks.bold === true) return true;
+  const weight = marks.fontWeight;
+  if (weight === undefined || weight === null || weight === "") return false;
+  const text = String(weight).trim().toLowerCase();
+  if (text === "bold" || text === "bolder") return true;
+  const numeric = Number(text);
+  return Number.isFinite(numeric) && numeric >= 600;
+}
+
+function v9MainBaseTypography(cfg) {
+  const registry = cfg?.mainStyleId ? resolveTextStyle(cfg.mainStyleId) : null;
+  return normalizeTextStyle({
+    ...(registry || {}),
+    ...(cfg?.mainInlineStyle || {}),
+  }) || {};
+}
+
+function v9MainSourceRunsUnderSelectedStyle(runs, cfg) {
+  const list = Array.isArray(runs) ? runs : [];
+  if (!boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE)) return list;
+
+  const base = v9MainBaseTypography(cfg);
+  const controlsFontFamily = !!String(base.fontFamily || "").trim();
+  const controlsFontSize = base.fontSize !== undefined && base.fontSize !== null && base.fontSize !== "";
+  const controlsWeight = base.bold === true || (base.fontWeight !== undefined && base.fontWeight !== null && base.fontWeight !== "");
+  const controlsStyle = base.italic === true || !!base.fontStyle;
+
+  if (!controlsFontFamily && !controlsFontSize && !controlsWeight && !controlsStyle) return list;
+
+  return list.map((run) => {
+    if (!run) return run;
+    const marks = { ...(run.marks || {}) };
+    // Preserve the SEMANTIC fact that Word/source marked this range bold before
+    // removing document typography that the selected main style is meant to
+    // override. This is what lets bold style Y still target only genuine source
+    // bold, while style X controls the ordinary text.
+    const sourceBold = v9RunIsSourceBold(marks);
+
+    if (controlsFontFamily) delete marks.fontFamily;
+    if (controlsFontSize) {
+      delete marks.fontSize;
+      delete marks.fontSizeUnit;
+    }
+    if (controlsWeight) {
+      delete marks.fontWeight;
+      delete marks.bold;
+    }
+    if (controlsStyle) {
+      delete marks.fontStyle;
+      delete marks.italic;
+    }
+    if (sourceBold) marks.bold = true;
+    return { ...run, marks };
+  });
+}
+
+function v9MainBoldOverrideRuns(runs, cfg = null) {
   try {
+    const sourceRuns = v9MainSourceRunsUnderSelectedStyle(runs, cfg);
     const marks = styleIdToMarks(boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE));
-    if (!marks) return runs;
-    // Important: the override is semantic. It applies only to text that is
-    // explicitly bold in the document/run itself. A bold base style for the
-    // main stream must NOT turn the entire document into the selected bold
-    // override style.
+    if (!marks) return sourceRuns;
+    // Only semantic source bold is eligible for style Y. A bold base style X
+    // never promotes ordinary text to Y.
     return applyBoldOverrideToRuns(
-      Array.isArray(runs) ? runs : [],
+      sourceRuns,
       marks,
       boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE)
     );
@@ -1224,7 +1281,7 @@ function v9MainBoldOverrideRuns(runs) {
 function appendV9TextWithMainRefs(parent, line) {
   const refs = Array.isArray(line?.mainRefs) ? line.mainRefs : [];
   const text = String(line?.text || "");
-  const runs = v9MainBoldOverrideRuns(Array.isArray(line?.runs) ? line.runs : []);
+  const runs = v9MainBoldOverrideRuns(Array.isArray(line?.runs) ? line.runs : [], line?._v9Config || null);
   if (!refs.length) {
     appendTextWithRuns(parent, text, runs);
     return;
@@ -1654,9 +1711,9 @@ function createMainInlineContext(cfg) {
       applyStyleToElement(el, cfg.mainStyleId);
       if (cfg.mainInlineStyle) applyTextStyleObjectToElement(el, cfg.mainInlineStyle);
     },
-    // Only explicit bold runs are eligible for the "bold → style Y" rule.
-    // Bold inherited from mainStyleId remains part of style X itself.
-    prepareRuns: v9MainBoldOverrideRuns,
+    prepareRuns(runs) {
+      return v9MainBoldOverrideRuns(runs, cfg);
+    },
     prepareRefs(refs) {
       return refs.map(ref => {
         const holder = document.createElement("span");
