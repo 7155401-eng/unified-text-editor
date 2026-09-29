@@ -4227,12 +4227,43 @@ export async function buildPages(container, paragraphs, config = {}) {
   }
   await waitForV9LayoutFonts(input, { ...cfg, __v9ResolvedFontStyles: fontStyles });
   if (typeof cfg.isCurrent === "function" && !cfg.isCurrent()) return { pages: [], aborted: true };
-  const context = createMainInlineContext(cfg), streamContexts = new Map();
-  try {
-    const result = await buildPagesWithInlineContext(container, input, { ...cfg, __v9InlineContext: context, __v9StreamContexts:streamContexts });
-    if (context.generation !== 0) throw new Error("V9_FONT_CHANGED: fonts changed during layout; rerender is required");
-    return result;
-  } finally { context.dispose(); for(const c of streamContexts.values()) c.dispose(); }
+  // ⛔⛔⛔⛔ משה 29/09/2026 — „שגיאת רינדור: V9_FONT_CHANGED: fonts
+  // changed during layout; rerender is required".
+  //
+  // ═══ מה קורה כאן ═══
+  // גופן יכול לסיים להיטען **באמצע** העימוד. אז המידות שנמדדו בתחילת
+  // הדרך כבר אינן נכונות, והקוד זיהה זאת נכון.
+  //
+  // ═══ מה היה שבור ═══
+  // התגובה הייתה לזרוק שגיאה — כלומר לזרוק לפח מסמך **גמור** ולהציג
+  // למשה מסך ריק עם בקשה שיעשה רינדור מחדש בעצמו.
+  //
+  // כמו טבח שגילה באמצע הבישול שהמאזניים היו מכוילים לא נכון — ובמקום
+  // לבשל שוב, הגיש לסועד פתק שכתוב בו „תבשל בעצמך".
+  //
+  // ⇒ ההודעה עצמה אמרה מה הפתרון: „rerender is required". אז המערכת
+  //   עושה זאת **לבד**, פעם אחת, עכשיו כשהגופנים כבר יציבים. ואם גם
+  //   בפעם השנייה הם זזו — מגישים את מה שנבנה, כי מסמך שנמדד בגופן
+  //   שהשתנה קצת טוב לאין ערוך ממסמך שאינו קיים.
+  const V9_FONT_SETTLE_ATTEMPTS = 2;
+  let lastResult = null;
+  for (let attempt = 1; attempt <= V9_FONT_SETTLE_ATTEMPTS; attempt++) {
+    const context = createMainInlineContext(cfg), streamContexts = new Map();
+    try {
+      if (attempt > 1) container.innerHTML = "";   // בנייה נקייה, בלי כפילות
+      const result = await buildPagesWithInlineContext(container, input,
+        { ...cfg, __v9InlineContext: context, __v9StreamContexts: streamContexts });
+      lastResult = result;
+      if (context.generation === 0) return result;           // הגופנים היו יציבים
+      if (result?.aborted) return result;
+      if (typeof cfg.isCurrent === "function" && !cfg.isCurrent()) return result;
+    } finally {
+      context.dispose();
+      for (const c of streamContexts.values()) c.dispose();
+    }
+  }
+  if (typeof window !== "undefined") window.__ravtextLastV9FontSettleRetry = true;
+  return lastResult || { pages: [] };
 }
 
 async function buildPagesWithInlineContext(container, paragraphs, config) {
@@ -5645,10 +5676,12 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // כך ההחלטה נשארת של V9, והעמוד נגמר לפני שמתחילים את הבא.
     if (splitInfo && splitInfo.secondHalf && typeof joinV9ParagraphFragments === "function") {
       const tailText = String(splitInfo.secondHalf.mainText || '').trim();
-      const tailWords = tailText ? tailText.split(/\s+/).filter(Boolean).length : 0;
-      // „זנב" = שארית קצרה שתיראה כשורה בודדת בעמוד הבא.
-      const V9_ORPHAN_TAIL_MAX_WORDS = 12;
-      if (tailWords > 0 && tailWords <= V9_ORPHAN_TAIL_MAX_WORDS) {
+      // ⛔ 29/09 — כאן היה סף של 12 מילים, וזו הייתה טעות: נמדד עמוד
+      // עם **16 מילים** שנשאר דליל כי הוא חרג מהסף. קבוע שרירותי אינו
+      // תשובה — השאלה היחידה היא „האם זה נכנס", ורק V9 יודע לענות.
+      // ⇒ מציעים לו את המועמד **תמיד**, והוא מכריע. זנב ארוך פשוט לא
+      //   ייכנס, ואז שום דבר לא משתנה.
+      if (tailText) {
         try {
           const joined = joinV9ParagraphFragments(splitInfo.firstHalf, splitInfo.secondHalf);
           const trySlice = [...finalSlice.slice(0, -1), joined];
@@ -5687,6 +5720,19 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     container.appendChild(pageEl);
 
     const plan = finalProbe;
+
+    // ⭐ משה 29/09/2026 — נמדד עמוד אחרון עם **אפס שורות**.
+    // עמוד בלי שורה אחת אינו עמוד; הוא רק נייר ריק בסוף המסמך.
+    // ⬛ הבדיקה נעשית על התוכנית של V9 עצמה, לפני הציור.
+    const plannedLineCount =
+      (plan?.mainBox?.lines?.length || 0) +
+      (plan?.streamBoxes || []).reduce((a, b) => a + (b?.lines?.length || 0), 0) +
+      (plan?.footerBoxes || []).reduce((a, b) => a + (b?.lines?.length || 0), 0);
+    if (plannedLineCount === 0) {
+      pageEl.remove();
+      break;
+    }
+
     renderPagePlan(plan, pageEl, cfg);
     pages.push(pageEl);
     pageEl.dataset.v9StreamCoverage = JSON.stringify(plan.streamCoverage || []);
