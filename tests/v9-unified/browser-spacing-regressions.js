@@ -1,0 +1,189 @@
+import { saveTextStyles, loadTextStyles } from '../../src/style_registry.js';
+import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
+import { createV9TextLayoutContext, waitForV9LayoutFonts } from '../../src/engine/v9_text_measurement.js';
+import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
+import { getStreamSettings } from '../../src/original_stream_columns.js';
+import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
+import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
+
+const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
+const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
+const cfg={pageWidth:380,pageHeight:350,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:false}};
+
+export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
+ function assertNoWordOverlap(page) {
+   const boxes=[];
+   for(const line of page.querySelectorAll('.v9-line')) {
+     const walker=document.createTreeWalker(line,NodeFilter.SHOW_TEXT);let node;
+     while(node=walker.nextNode()){
+       if(node.parentElement.closest('.v9-source-whitespace'))continue;
+       for(const m of node.textContent.matchAll(/[^\s]+/gu)) {
+         if(/^[\u200e\u200f\u2060]+$/u.test(m[0]))continue;
+         const range=document.createRange();range.setStart(node,m.index);range.setEnd(node,m.index+m[0].length);
+         for(const r of range.getClientRects())if(r.width>.5 && r.height>1)boxes.push({r,line});
+       }
+     }
+   }
+   for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){
+     const {r:a,line:la}=boxes[i],{r:b,line:lb}=boxes[j];
+     const dx=Math.min(a.right,b.right)-Math.max(a.left,b.left),dy=Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top);
+     assert(!(dx>1.1 && dy>Math.min(a.height,b.height)*.5),`word overlap ${la.dataset.v9Role}/${lb.dataset.v9Role}, dx=${dx}, dy=${dy}, y=${la.style.top}/${lb.style.top}, page=${JSON.stringify(la.closest('.v9-page')?.dataset)}, a=${JSON.stringify({x:la.style.left,w:la.style.width,h:la.style.height,info:la.dataset})}, b=${JSON.stringify({x:lb.style.left,w:lb.style.width,h:lb.style.height,info:lb.dataset})}`);
+   }
+ }
+ function inspectStream(el,line) {
+   const r=el.getBoundingClientRect(),body=el.querySelector('.v9-planned-stream-text'),range=document.createRange();range.selectNodeContents(body);
+   const ink=range.getBoundingClientRect();
+   assert(body.scrollWidth<=line.width+1,`note width overflow ${body.scrollWidth}>${line.width}`);
+   assert(!ink.height || (ink.top>=r.top-.6 && ink.bottom<=r.top+line.lineHeightPx+.6),`note ink vertical overflow: top=${ink.top-r.top}, bottom=${ink.bottom-r.top}, row=${line.lineHeightPx}`);
+   assert(getComputedStyle(el).whiteSpace==='pre','note painter permits a second CSS row');
+   assert(!el.classList.contains('justify'),'legacy reflow class retained');
+ }
+ await test('rich side text with large inline bold is measured before row placement',()=>{
+   const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text=Array(4).fill(neutral).join(' '),input={text,runs:[{start:4,end:26,marks:{fontSize:23,fontFamily:'monospace',bold:true}},{start:42,end:70,marks:{fontSize:9,bold:true,color:'red'}}]};
+   const p=flowV9MeasuredStream(input,[{x:0,width:160,y_start:0,y_end:600}],c,600),page=makePage();
+   assert(!p.overflowText,'fixture overflow');
+   for(const l of p.lines)inspectStream(renderV9MeasuredStreamLine(l,{role:'right',id:'01'},page,0),l);
+   assert(page.textContent===text,'rich note lost characters');
+   for(let i=1;i<p.lines.length;i++)assert(p.lines[i].y>=p.lines[i-1].y+p.lines[i-1].lineHeightPx-.02,'note rows overlap');
+   const out={rows:p.lines.length};page.remove();c.dispose();return out;
+ });
+ await test('configured inter-note gap has no leading or trailing visible slot',()=>{
+   const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text='\u200e  alpha    beta \u200e gamma delta   \u200e';
+   const p=flowV9MeasuredStream({text,runs:[]},[{x:0,width:63,y_start:0,y_end:400}],c,400),page=makePage();
+   assert(!p.overflowText,'unexpected spacing overflow');
+   for(const l of p.lines){const t=l.render.body.text;assert(!/^[\s\u200e\u200f\u2060]|[\s\u200e\u200f\u2060]$/u.test(t),`visible edge gap ${JSON.stringify(t)}`);inspectStream(renderV9MeasuredStreamLine(l,{id:'01',role:'right'},page,0),l);}
+   assert(page.textContent===text,'source spacing was deleted instead of excluded from measurement');page.remove();c.dispose();
+ });
+ await test('crown uses actual stream pitch plus explicit main gap',()=>{
+   const page=makePage(),t=Array(8).fill(phrase).join(' '),plan=buildSinglePage(page,{mainText:neutral,rightStream:{id:'01',items:[t]},leftStream:{id:'02',items:[t]},footerStreams:[]},{...cfg,sideFontSize:10,crownLines:4,crownMainGapPx:8,streamSettings:{'01':{inlineStyle:{fontSize:11,lineHeight:1.55}},'02':{inlineStyle:{fontSize:11,lineHeight:1.55}}}});
+   const firstMain=plan.mainBox.lines[0],right=plan.streamBoxes.find(b=>b.role==='right'),top=right.lines[0].y;
+   assert(firstMain.y>=top+4*17.05+8-.1,`main before crown+gap: ${firstMain.y}`);
+   assert(firstMain.y<top+4*17.05+9,'excess crown space');
+   assert(right.lines[3].y+right.lines[3].lineHeightPx<=firstMain.y-7.9,'fourth actual crown line overlaps main');
+   page.remove();return {mainTop:firstMain.y,crownBottom:plan.crownBottomY};
+ });
+ await test('full note pagination keeps every new note start with its main reference',async()=>{
+   const settings=getStreamSettings(),saved={};for(const id of ['01','02','03']){saved[id]=settings[id];settings[id]={...settings[id],mainRefEnabled:true};}
+   const page=makePage();
+   try {
+     const text=Array(9).fill(neutral).join(' '),words=[...text.matchAll(/\S+/gu)],notes=[];
+     for(let i=0;i<9;i++) {const stream=['01','02','03'][i%3],w=words[i*10+3];notes.push({stream,num:i+1,uid:`binding-${i}`,anchor:w.index+w[0].length,anchorAffinity:'backward',text:Array(i%3===2?3:2).fill(neutral).join(' ')});}
+     const input=[{id:'binding-source',mainText:text,mainRuns:[{start:80,end:160,marks:{bold:true,color:'red'}}],notes},{id:'after-binding',mainText:neutral,notes:[]}];
+     const result=await buildPages(page,input,{...cfg,pageHeight:280,levels:[['01','02'],['03']],streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}},'03':{cols:2,inlineStyle:{fontSize:11}}}});
+     assert(result.complete,'co-pagination incomplete');assert(result.pages.length>1,'fixture does not paginate');
+     const rows=[...page.querySelectorAll('[data-v9-layout-final]')];
+     for(const p of input)assert(rows.filter(el=>el.dataset.v9ParagraphId===p.id).map(sourceText).join('')===prepareV9SourceParagraph(p).mainText,'main source lost');
+     const starts=new Map(),refs=new Map();
+     result.pages.forEach((p,i)=>{
+       assertNoWordOverlap(p);
+       for(const ref of p.querySelectorAll('[data-v9-main-ref]')){assert(!refs.has(ref.dataset.uid),'duplicate main ref');refs.set(ref.dataset.uid,i);}
+       for(const n of p.querySelectorAll('[data-v9-note-start]')){const id=n.dataset.v9NoteStart;if(starts.has(id))assert(starts.get(id)===i,'note start repeated on another page');else starts.set(id,i);}
+     });
+     for(const n of notes){const key=`binding-source:${n.stream}:${n.uid}`;assert(starts.has(key),`note missing ${key}`);assert(refs.get(n.uid)===starts.get(key),`note ${n.uid}: text page ${refs.get(n.uid)}, note page ${starts.get(key)}`);}
+     return {pages:result.pages.length,notes:notes.length};
+   }finally{page.remove();for(const id of ['01','02','03'])if(saved[id])settings[id]=saved[id];else delete settings[id];}
+ });
+ await test('marker normalization leaves bold covering complete intended word in DOM',async()=>{
+   const raw='alpha@01beta gamma delta',at=raw.indexOf('beta'),m=mapMainParagraphSource(raw,[{start:at,end:at+4,marks:{bold:true,color:'rgb(255, 0, 0)'}}],[{atInPara:5,sym:'@01',code:'01'}]);
+   const page=makePage();await buildPages(page,[{id:'bold-map',mainText:m.mainTextNet,mainRuns:m.mainRuns,notes:[]}],cfg);
+   assert([...page.querySelectorAll('[style*="255, 0, 0"]')].map(e=>e.textContent).join('')==='beta','bold scope drifted after marker');page.remove();
+ });
+  for (const enabled of [false, true]) await test(`hidden mid-word reference has no invented whitespace; visible=${enabled}`,async()=>{
+    const settings=getStreamSettings(),previous=settings['01'];settings['01']={mainRefEnabled:enabled,noteNumEnabled:false,lemmaBold:false};
+    const raw='אל@01פא בית',m=mapMainParagraphSource(raw,[{start:0,end:raw.length,marks:{bold:true}}],[{atInPara:2,sym:'@01',code:'01'}]);
+    const page=makePage();
+    try {
+      assert(m.mainTextNet==='אלפא בית','hidden marker introduced whitespace');
+      const n={stream:'01',num:1,uid:'mid-word',anchor:m.mainConsumers[0].anchor,anchorAffinity:'backward',text:neutral};
+      const result=await buildPages(page,[{id:'marker',mainText:m.mainTextNet,mainRuns:m.mainRuns,notes:[n]}],cfg);
+      assert(result.complete,'marker fixture incomplete');
+      const rows=[...page.querySelectorAll('[data-v9-layout-final]')];
+      assert(rows.map(sourceText).join('')==='אלפא בית','painted source contains placeholder gap');
+      assert(page.querySelectorAll('[data-v9-main-ref]').length===(enabled?1:0),'incorrect label visibility');
+    } finally {page.remove();if(previous)settings['01']=previous;else delete settings['01'];}
+  });
+  for (const onlyOneStream of [true,false]) await test(`every styled note survives all columns and carry-over; single=${onlyOneStream}`,async()=>{
+    const settings=getStreamSettings(),saved={};for(const id of ['01','02','03','04']){saved[id]=settings[id];settings[id]={mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false,noteTextPrefix:'  ',noteTextSuffix:'   ',boldOverrideEnabled:false};}
+    const page=makePage();
+    try {
+      const main=Array(7).fill(neutral).join(' '),words=[...main.matchAll(/\S+/gu)];
+      const notes=Array.from({length:7},(_,i)=>{
+        const text=`START${i} `+Array(i===2?16:3).fill(neutral).join(' ')+` END${i}`;
+        const at=words[i*10+2];
+        return {stream:onlyOneStream?'01':['01','02','03','04'][i%4],uid:`conserve-${i}`,num:i+1,anchor:at.index+at[0].length,anchorAffinity:'backward',text,
+          runs:[{start:0,end:text.length,marks:i===2?{bold:true,color:'rgb(255, 0, 0)'}:{}},
+                {start:8,end:Math.min(63,text.length),marks:{fontSize:17,fontFamily:'monospace'}}]};
+      });
+      const input={id:'conserve',mainText:main,notes};
+      const result=await buildPages(page,[input,{id:'following',mainText:neutral,notes:[]}],{...cfg,pageHeight:320,levels:[['01','02'],['03','04']],streamSettings:{'03':{cols:2},'04':{cols:2}}});
+      assert(result.complete,'incomplete styled-note pagination');
+      const compact=s=>s.replace(/[\s\u200e\u200f\u2060]/gu,'');
+      for(const note of notes) {
+        const key=`conserve:${note.stream}:${note.uid}`;
+        const segments=[...page.querySelectorAll('[data-v9-note-key]')].filter(e=>e.dataset.v9NoteKey===key);
+        assert(compact(segments.map(e=>e.textContent).join(''))===compact(`[${note.num}] `+note.text),`lost/reordered text in ${key}`);
+        if(note.num===3) {
+          const sourceSpans=segments.filter(e=>e.textContent.trim()&&!e.textContent.includes('[3]'));
+          assert(sourceSpans.length>2,'whole-bold fixture did not split');
+          assert(sourceSpans.every(e=>+getComputedStyle(e).fontWeight>=700),'original whole-note bold was changed');
+        }
+        const refPage=result.pages.findIndex(p=>[...p.querySelectorAll('[data-v9-main-ref]')].some(e=>e.dataset.uid===note.uid));
+        const startPage=result.pages.findIndex(p=>[...p.querySelectorAll('[data-v9-note-start]')].some(e=>e.dataset.v9NoteStart===key));
+        assert(refPage===startPage && refPage>=0,`note ${note.uid} not on its source page`);
+        const occupied=result.pages.map((p,i)=>p.querySelector(`[data-v9-note-key="${key}"]`)?i:-1).filter(i=>i>=0);
+        for(let i=1;i<occupied.length;i++)assert(occupied[i]===occupied[i-1]+1,`note continuation skipped a page: ${key}`);
+      }
+      for(const p of result.pages){
+        assertNoWordOverlap(p);
+        const bottom=+p.style.height.replace('px','')-12;
+        for(const l of p.querySelectorAll('.v9-line'))assert(parseFloat(l.style.top)+parseFloat(l.style.height)<=bottom+.1,'line escapes printable page');
+      }
+      return {pages:result.pages.length,notes:notes.length};
+    } finally {page.remove();for(const id of ['01','02','03','04'])if(saved[id])settings[id]=saved[id];else delete settings[id];}
+  });
+  for(const longSide of ['right','left']) await test(`full crown reserves clearance above opposite side title; ${longSide}`,()=>{
+    const page=makePage(),longText=Array(10).fill(phrase).join(' '),shortText='short note';
+    const content={mainText:neutral,rightStream:{id:'01',items:[longSide==='right'?longText:shortText]},leftStream:{id:'02',items:[longSide==='left'?longText:shortText]},footerStreams:[]};
+    const original=JSON.stringify(content),opts={...cfg,pageHeight:537,titles:{'01':'Notes A','02':'Notes B'},crownMainGapPx:8};
+    const plan=buildSinglePage(page,content,opts);
+    assert(plan.crownScenario.name==='one_full_one_short','fixture is not a full crown');
+    assert(JSON.stringify(content)===original,'trial mutated caller content');
+    const shortBox=plan.streamBoxes.find(b=>b.role!==longSide),first=shortBox.lines[0];
+    const shortTitle=[...page.querySelectorAll('.v9-stream-title')].find(t=>t.textContent===opts.titles[shortBox.id]);
+    assert(shortTitle && parseFloat(shortTitle.style.top)>=plan.crownBottomY+8-.1,'painted opposite title touches full crown');
+    assert(first.y-plan.titleHeight>=plan.crownBottomY+8-.1,'side title touches full crown');
+    assert(plan.mainBox.lines[0].y>=plan.crownBottomY+8-.1,'main touches full crown');
+    assertNoWordOverlap(page);page.remove();
+  });
+  await test('styled numbering is measured without inheriting justification expansion',async()=>{
+    const settings=getStreamSettings(),saved=settings['01'],styles=loadTextStyles();
+    saveTextStyles([...styles,{id:'v9-number-regression',name:'Number regression',fontFamily:'monospace',fontSize:15,fontSizeUnit:'pt',superscript:true}]);
+    settings['01']={mainRefEnabled:true,mainRefPrefix:' [ ',mainRefSuffix:' ] ',mainRefStyleId:'v9-number-regression',noteNumEnabled:true,noteNumStyleId:'v9-number-regression',lemmaBold:false};
+    const page=makePage();
+    try {
+      const text=Array(6).fill(neutral).join(' '),words=[...text.matchAll(/\S+/gu)];
+      const notes=Array.from({length:6},(_,i)=>({uid:`styled-number-${i}`,num:i+1,stream:'01',anchor:words[i*10+2].index+words[i*10+2][0].length,anchorAffinity:'backward',text:neutral}));
+      const result=await buildPages(page,[{id:'numbered',mainText:text,notes}],{...cfg,pageHeight:537});
+      assert(result.complete,'numbered pagination incomplete');
+      for(const p of result.pages){
+        assertNoWordOverlap(p);
+        for(const l of p.querySelectorAll('.v9-line')) {
+          const body=l.querySelector('.v9-planned-line-text,.v9-planned-stream-text');
+          assert(body.scrollWidth<=parseFloat(l.style.width)+1,`styled label made row overflow: ${body.scrollWidth}>${l.style.width}`);
+        }
+      }
+      assert(page.querySelectorAll('[data-v9-main-ref]').length===notes.length,'styled number missing');
+    } finally {page.remove();saveTextStyles(styles);if(saved)settings['01']=saved;else delete settings['01'];}
+  });
+  await test('font preflight includes note runs, nested notes and resolved label styles',async()=>{
+    const descriptor=Object.getOwnPropertyDescriptor(document,'fonts'),requests=[];
+    Object.defineProperty(document,'fonts',{configurable:true,value:{load:font=>{requests.push(font);return Promise.resolve([]);},ready:Promise.resolve()}});
+    try {
+      await waitForV9LayoutFonts([{notes:[{runs:[{marks:{fontFamily:'"Note Only"'}}],children:[{runs:[{marks:{fontFamily:'"Nested Only"'}}]}]}]}],
+        {mainFontFamily:'serif',__v9ResolvedFontStyles:[{fontFamily:'"Number Only"'},{fontFamily:'"Bold Only"'}]});
+      for(const family of ['Note Only','Nested Only','Number Only','Bold Only'])
+        assert(requests.some(q=>q.includes(family)),`font missing from preflight: ${family}`);
+    } finally {if(descriptor)Object.defineProperty(document,'fonts',descriptor);else delete document.fonts;}
+  });
+
+}

@@ -212,7 +212,12 @@ function patchSplitMetadata(source) {
         syntheticContinuationFrom: 'right',
         originalStreamWasSplit: true,
       };`;
-  if (source.includes(after)) return source;
+  // The measured flow splits the ORIGINAL rich source rather than normalized
+  // word strings. Its richer objects keep every continuation guard below.
+  const richAfter = after
+    .replace('items: [parts.first],', 'items: [firstRich.text],\n        rich: firstRich,')
+    .replace('items: [parts.second],', 'items: [secondRich.text],\n        rich: secondRich,');
+  if (source.includes(after) || source.includes(richAfter)) return source;
 
   const before = `pageContent.rightStream = { id: single.id, items: [parts.first], runs: firstRuns };
       pageContent.leftStream  = { id: single.id, items: [parts.second], runs: secondRuns };`;

@@ -199,11 +199,14 @@ export function splitNotesByAnchor(notes = [], splitOffset, fullTextLength, suff
   const anchorlessShare = Math.max(0, Math.min(anchorless.length, Math.round(anchorless.length * ratio)));
   const before = [
     ...anchorless.slice(0, anchorlessShare),
-    ...anchored.filter(n => n.anchor < splitOffset),
+    ...anchored.filter(n => n.anchor < splitOffset || (n.anchor === splitOffset && n.anchorAffinity === 'backward')),
   ].sort(compareNotesByAnchor);
   const after = [
     ...anchorless.slice(anchorlessShare),
-    ...anchored.filter(n => n.anchor >= splitOffset).map(n => ({ ...n, anchor: Math.max(0, n.anchor - suffixBaseOffset) })),
+    ...anchored.filter(n => n.anchor > splitOffset || (n.anchor === splitOffset && n.anchorAffinity !== 'backward')).map(n => {
+      const anchor = Math.max(0, n.anchor - suffixBaseOffset);
+      return { ...n, anchor, absoluteAnchor: anchor, localAnchor: anchor };
+    }),
   ].sort(compareNotesByAnchor);
   return { before, after };
 }
@@ -352,6 +355,7 @@ export function isSparseV9Page(plan, policy = {}, meta = {}) {
 }
 
 export function scoreV9PageCandidate(plan, candidate, policy = {}, meta = {}) {
+  if (plan?.unstartedNotes?.length) return {accept:false,score:-Infinity,reason:'note-start-not-on-source-page'};
   if (!plan?.overflow) return { accept: false, score: -Infinity, reason: "no-plan" };
   if (plan.overflow.exceedsPage) return { accept: false, score: -Infinity, reason: "exceeds-page" };
   if (overflowText(plan.overflow.mainText).trim()) return { accept: false, score: -Infinity, reason: "main-overflow" };

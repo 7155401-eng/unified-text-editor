@@ -19,6 +19,9 @@ function appendReference(parent, ref) {
   span.className = 'stream-ref v9-main-ref';
   span.dir = 'ltr'; span.style.cssText = ref.cssText || '';
   span.style.display = 'inline-block'; span.style.unicodeBidi = 'isolate';
+  // A label is one measured inline object. Row justification stretches the
+  // gaps BETWEEN words, never whitespace inside a configured number label.
+  if (!span.style.wordSpacing || span.style.wordSpacing === 'inherit') span.style.wordSpacing = '0px';
   span.textContent = ref.formatted;
   Object.assign(span.dataset, { v9MainRef: '1', stream: String(ref.stream || ref.code || ''),
     num: String(ref.num || ''), uid: String(ref.uid || ''), anchor: String(ref.anchor ?? ''), localPos: String(ref.localPos ?? '') });
@@ -183,7 +186,16 @@ export function renderV9PlannedMainLine(line, pageEl, padding = 0) {
 export async function waitForV9LayoutFonts(paragraphs, cfg, timeoutMs = 15000) {
   if (!document?.fonts) return;
   const families = new Set([cfg.mainFontFamily, cfg.sideFontFamily, cfg.openingWordSettings?.font]);
-  for (const p of paragraphs || []) for (const run of p.mainRuns || p.runs || []) if (run.marks?.fontFamily) families.add(run.marks.fontFamily);
+  const seen = new WeakSet();
+  const collect = entry => {
+    if (!entry || typeof entry !== 'object' || seen.has(entry)) return;
+    seen.add(entry);
+    for (const run of [...(entry.mainRuns || []), ...(entry.runs || [])])
+      if (run.marks?.fontFamily) families.add(run.marks.fontFamily);
+    for (const child of [...(entry.notes || []), ...(entry.children || [])]) collect(child);
+  };
+  for (const entry of paragraphs || []) collect(entry);
+  for (const style of cfg.__v9ResolvedFontStyles || []) if (style?.fontFamily) families.add(style.fontFamily);
   const loads = [];
   for (const f of families) {
     if (!f || f === 'inherit') continue;

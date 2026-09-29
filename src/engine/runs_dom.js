@@ -26,6 +26,8 @@ function hasExplicitFontSize(marks) {
 
 export function applyMarksToSpan(span, marks) {
   if (!marks || typeof marks !== "object") return;
+  if (marks.v9NoteKey) span.dataset.v9NoteKey = marks.v9NoteKey;
+  if (marks.v9NoteStart) span.dataset.v9NoteStart = marks.v9NoteStart;
   if (marks.bold) span.style.fontWeight = "700";
   if (marks.fontWeight) span.style.fontWeight = String(marks.fontWeight);
   if (marks.italic) span.style.fontStyle = "italic";

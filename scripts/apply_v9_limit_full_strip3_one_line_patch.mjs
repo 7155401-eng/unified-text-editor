@@ -73,7 +73,10 @@ function patchSideStreamFlowMetadata(source) {
         lockYStart: s.lockYStart === true,
       })),`;
 
-  if (source.includes(unified)) return source;
+  // The shared measured stream planner also receives x; accepting this richer
+  // mapping must not remove x or lose y_end/lockYStart during a build.
+  const positioned = unified.replace('        y_start:', '        x: s.x,\n        y_start:');
+  if (source.includes(unified) || source.includes(positioned)) return source;
 
   const variants = [
     `strips.map(s => ({ y_start: s.y_start, width: s.width })),`,

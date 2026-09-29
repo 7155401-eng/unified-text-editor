@@ -1,3 +1,4 @@
+import { runSpacingRegressions } from './browser-spacing-regressions.js';
 import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from '../../src/engine/v9_text_measurement.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
@@ -94,5 +95,6 @@ export async function runBrowserSuite() {
     assert(threw,'timeout returned ready');
   });
   await runBrowserEdges(test,{assert,makePage,sourceText,paint:renderV9PlannedMainLine,inspectLines});
+  await runSpacingRegressions(test,{assert,makePage,sourceText,inspectLines});
   return {tests:results.length,passed:results.filter(r=>r.status==='pass').length,failed:results.filter(r=>r.status==='fail').length,results};
 }

@@ -1,3 +1,5 @@
+import { markV9NoteRuns, auditV9NoteStarts, verifyV9StreamCoverage } from "./engine/v9_note_ownership.js";
+import { streamContextForV9, measureV9CrownHeight, flowV9MeasuredStream, flowV9MeasuredColumns, splitV9StreamAtWordCount, renderV9MeasuredStreamLine } from "./engine/v9_stream_inline_layout.js";
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
@@ -394,6 +396,7 @@ function v9LinesThatFit(height, lineHeight) {
 // =====================================================================
 function flowStreamThroughStrips(input, strips, metrics, maxY) {
   const rich = normalizeRichTextEntry(input);
+  if (metrics._v9TextContext) return flowV9MeasuredStream(rich,strips,metrics._v9TextContext,maxY,{continuesAfter:!!metrics._v9ContinuesAfter});
   const lineH = metrics.lineHeight;
   const allLines = [];
 
@@ -1109,6 +1112,7 @@ function v9MainRefsFromParagraph(p, textLen) {
       num,
       uid: raw?.uid || (String(stream) + ":" + String(num) + ":" + String(clamped)),
       anchor: clamped,
+      anchorAffinity: raw.anchorAffinity,
       absoluteAnchor: clamped,
       localAnchor: clamped,
       priority: Number(raw?.priority) || 0,
@@ -1445,7 +1449,10 @@ function buildMainStrips(opts) {
 
   // משה 2026-05-08: כל ה-y חסומים ב-pageBottom. אם פאס 1 נתן endY מעבר לדף
   // (כי naiveMainBottomY היה ענק), חוסמים כדי שה-strips לא ייצרו טווח שלילי.
-  const cap = (v) => (v === Infinity ? Infinity : Math.min(v, pageBottom));
+  // A short side may end INSIDE the crown. Expansion may change width, but
+  // must never create strips above the main start / reserved crown clearance.
+  if (!(pageBottom > mainTopY)) return [];
+  const cap = (v) => (v === Infinity ? Infinity : Math.max(mainTopY, Math.min(v, pageBottom)));
   const right = (rightEndY === undefined || rightEndY === null) ? mainTopY : cap(rightEndY);
   const left  = (leftEndY  === undefined || leftEndY  === null) ? mainTopY : cap(leftEndY);
 
@@ -1671,7 +1678,15 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
 // =====================================================================
 // בונה תוכנית עמוד
 // =====================================================================
-function buildPagePlan(pageContent, config) {
+function buildPagePlan(pageContent, config = {}) {
+  if (config.__v9StreamContexts) return buildPagePlanCore(pageContent,config);
+  const contexts = new Map();
+  try { return buildPagePlanCore(pageContent,{...config,__v9StreamContexts:contexts}); }
+  finally { for (const c of contexts.values()) c.dispose(); }
+}
+function buildPagePlanCore(pageContent, config) {
+  const sourceStreams = [pageContent.rightStream, pageContent.leftStream, ...(pageContent.footerStreams || [])].filter(Boolean);
+  pageContent = { ...pageContent }; // Same-stream splitting is local to this plan.
   const cfg = Object.assign({
     pageWidth: 559,
     pageHeight: 794,
@@ -1764,8 +1779,10 @@ function buildPagePlan(pageContent, config) {
 
   function getSideMetricsForStream(streamId) {
     const st = composeStreamTextStyle(streamId);
-    if (!st) return sideMetrics;
-    return metricsFromTextStyle(st, sideMetrics);
+    const c = streamContextForV9(cfg,streamId,streamSettings[streamId]?.styleId || '',st);
+    const m = new VilnaMetrics({fontFamily:c.typography.fontFamily,fontSize:c.fontSize,
+      lineHeightRatio:c.lineHeight/c.fontSize,fontWeight:c.typography.fontWeight,fontStyle:c.typography.fontStyle});
+    m._v9TextContext=c;return m;
   }
 
   function getSideMetricsForStyle(styleId) {
@@ -1888,7 +1905,15 @@ function buildPagePlan(pageContent, config) {
   if (scenario.name === 'two_long_parallel' ||
       scenario.name === 'one_full_one_short' ||
       scenario.name === 'one_long_split') {
-    crownHeight = cfg.crownLines * sideLineH;
+    const streams=(scenario.name === 'one_full_one_short'
+      ? [scenario.longSide === 'right' ? pageContent.rightStream : pageContent.leftStream]
+      : [pageContent.rightStream,pageContent.leftStream]).filter(Boolean);
+    crownHeight = Math.max(0,...streams.map(stream=> {
+      const metrics=getSideMetricsForStream(stream.id);
+      const width=scenario.name==='one_full_one_short' ? innerWidth : sideHalfWidth;
+      return measureV9CrownHeight(stream.rich || makeRichText(stream.items.join(' '),stream.runs || []),
+        metrics._v9TextContext,width,cfg.crownLines);
+    }));
   }
 
   // משה 2026-05-10: צורה 4 — הזרם הארוך מקבל כתר ברוחב מלא של הדף.
@@ -1898,7 +1923,11 @@ function buildPagePlan(pageContent, config) {
     : null;
 
   const sideTopY = cfg.padding + titleHeight + reservedTop;
-  const mainTopY = sideTopY + crownHeight;
+  const crownMainGap = crownHeight > 0 ? (Number.isFinite(cfg.crownMainGapPx)
+    ? Math.max(0,cfg.crownMainGapPx) : Math.max(4,mainGap)) : 0;
+  const mainTopY = sideTopY + crownHeight + crownMainGap;
+  result.crownBottomY = sideTopY+crownHeight;
+  result.crownMainGap = crownMainGap;
 
   // 3. ראשי — ניבוי אורך נאיבי כדי לחשב את הצדדים. הפלייאוט הסופי ייעשה
   // אחרי שהצדדים נמדדו, כדי לאפשר לראשי להתפשט לתוך מקום של פרשן שנגמר
@@ -2017,15 +2046,14 @@ function buildPagePlan(pageContent, config) {
       // פר-מילה) — וכך הפלט הציג פונט ברירת-מחדל גם כשהמשתמש סימן פונט אחר
       // בעורך. עכשיו ה-runs נחתכים ל-2 חצאים לפי אופסטים ב-allText (כולל
       // leading-trim) ועוברים יחד עם ה-items החדשים.
-      const rawText = single.items.join(' ');
-      const leadingWs = rawText.length - rawText.replace(/^\s+/, "").length;
-      const allRuns = Array.isArray(single.runs) ? single.runs : [];
-      const firstLen = parts.first.length;
-      const firstRuns = sliceRuns(allRuns, leadingWs, leadingWs + firstLen);
-      const secondRuns = sliceRuns(allRuns, leadingWs + firstLen + 1, leadingWs + allText.length);
+      const [firstRich,secondRich] = splitV9StreamAtWordCount(
+        single.rich || makeRichText(single.items.join(' '),single.runs || []),
+        (parts.first.match(/\S+/gu)||[]).length);
+      const firstRuns = firstRich.runs, secondRuns = secondRich.runs;
       pageContent.rightStream = {
         id: single.id,
-        items: [parts.first],
+        items: [firstRich.text],
+        rich: firstRich,
         runs: firstRuns,
         syntheticContinuationAfter: true,
         originalStreamWasSplit: true,
@@ -2033,7 +2061,8 @@ function buildPagePlan(pageContent, config) {
       };
       pageContent.leftStream  = {
         id: single.id,
-        items: [parts.second],
+        items: [secondRich.text],
+        rich: secondRich,
         runs: secondRuns,
         syntheticContinuationFrom: 'right',
         originalStreamWasSplit: true,
@@ -2077,7 +2106,7 @@ function buildPagePlan(pageContent, config) {
       if (fullCrownSide === side) {
         strips.push({
           y_start: sideTopY,
-          y_end: Math.min(mainTopY, pageBottomY),
+          y_end: Math.min(sideTopY + crownHeight, pageBottomY),
           width: innerWidth,
           x: 0,
         });
@@ -2087,7 +2116,7 @@ function buildPagePlan(pageContent, config) {
         // משה 2026-05-08: כל צד 49.5% מראש (sideHalfWidth). מרווח 1% במרכז.
         strips.push({
           y_start: sideTopY,
-          y_end: Math.min(mainTopY, pageBottomY),
+          y_end: Math.min(sideTopY + crownHeight, pageBottomY),
           width: sideHalfWidth,
           x: side === 'right' ? sideRightX : 0,
         });
@@ -2097,8 +2126,9 @@ function buildPagePlan(pageContent, config) {
     if (naiveMainHeight > 0 && effectiveMainBottomY > mainTopY) {
       // משה 2026-05-10: צורה 4 — צד הקצר מדלג על הכתר וצריך מקום לכותרת
       // משלו מתחת לכתר. לכן strip 2 שלו מתחיל ב-mainTopY + titleHeight.
-      const shortStreamGap = (fullCrownSide && fullCrownSide !== side) ? titleHeight : 0;
-      const stripTop = mainTopY + shortStreamGap;
+      const underFullCrown = fullCrownSide && fullCrownSide !== side;
+      const shortStreamGap = underFullCrown && shouldShowStreamTitle(streamData.id) && (cfg.titles || {})[streamData.id] ? titleHeight : 0;
+      const stripTop = underFullCrown ? mainTopY + shortStreamGap : sideTopY + crownHeight;
       // משה 2026-05-08: מרווח mainGap בין הראשי לטור הצד.
       if (side === 'right') {
         strips.push({
@@ -2160,12 +2190,14 @@ function buildPagePlan(pageContent, config) {
     const streamStyleId = streamSettings[streamData.id]?.styleId || "";
     const streamResolvedStyle = composeStreamTextStyle(streamData.id);
     const streamMetrics = getSideMetricsForStream(streamData.id);
+    streamMetrics._v9ContinuesAfter = !!streamData.syntheticContinuationAfter;
     const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0 ? Number(streamResolvedStyle.fontSize) : streamMetrics.fontSize;
     const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
 
     const flowResult = flowStreamThroughStrips(
       streamRich,
       strips.map(s => ({
+        x: s.x,
         y_start: s.y_start,
         y_end: s.y_end,
         width: s.width,
@@ -2180,16 +2212,18 @@ function buildPagePlan(pageContent, config) {
       const strip = strips.find(s => line.y >= s.y_start - 0.1 && line.y < s.y_end - 0.1);
       if (!strip) continue;
       lines.push({
-        x: strip.x,
+        _v9MeasuredStream: line._v9MeasuredStream,
+        render: line.render,
+        x: line._v9MeasuredStream ? line.x : strip.x,
         y: line.y,
-        width: strip.width,
+        width: line._v9MeasuredStream ? line.width : strip.width,
         words: line.words,
         text: line.text,
         isLast: line.isLast,
         forcedBreak: line.forcedBreak,
         naturalWidth: line.naturalWidth,
         fontSize: streamFontSize,
-        lineHeightPx: streamLineH,
+        lineHeightPx: line._v9MeasuredStream ? line.lineHeightPx : streamLineH,
         runs: line.runs || [],
         wordTokens: line.wordTokens || [],
         mainRefs: line.mainRefs || [],
@@ -2717,6 +2751,16 @@ function buildPagePlan(pageContent, config) {
     }
   }
 
+  if (isSameStreamSideSplit && pass2Right?.overflowText && pageContent.leftStream) {
+    const originalLeft = pageContent.leftStream.rich || makeRichText(pageContent.leftStream.items.join(' '), pageContent.leftStream.runs || []);
+    const continuation = concatRichTextParts([pass2Right.overflowRich, originalLeft], '');
+    const leftInput = { ...pageContent.leftStream, rich: continuation, items: [continuation.text], runs: continuation.runs };
+    pass2Left = buildSideStream(leftInput, 'left', { mainBottomY,
+      otherSideEndY: cap(pass2Right.endY), maxFullStrip3Lines: 0, lockFullStrip3Start: true });
+    pass2Right.overflowText = ''; pass2Right.overflowRuns = []; pass2Right.overflowRich = makeRichText('');
+    pass2Right.continues = true;
+  }
+
   if (pass2Right && pass2Left && pass2Right.id === pass2Left.id) {
     pass2Right.isColumnAContinuation = true;
     pass2Right.continues = true;
@@ -2851,52 +2895,16 @@ function buildPagePlan(pageContent, config) {
       const colWidth = footerCols > 1
         ? Math.max(24, (innerWidth - colGap * (footerCols - 1)) / footerCols)
         : innerWidth;
-      const allLines = fsMetrics.layoutLines(text, colWidth);
       const titleY = footerY;
       footerY += titleHeight;
-
-      // כמה שורות נכנסות אחרי הכותרת?
-      const remainingY = pageBottom - footerY;
-      const rowsPerCol = Math.max(1, Math.floor(remainingY / fsLineH));
-      const maxLinesFit = rowsPerCol * footerCols;
-      const footerCut = rebalanceFooterContinuationCut(allLines, maxLinesFit, fsMetrics, colWidth);
-      const linesToRender = footerCut.linesToRender;
-      const overflowWords = footerCut.overflowWords;
-      const footerContinues = overflowWords.length > 0;
-
-      if (overflowWords.length > 0) {
-        const overflowText = overflowWords.join(' ');
-        const sourceRuns = Array.isArray(fs.runs) ? fs.runs : [];
-        const renderedText = linesToRender.flatMap(l => l.words || []).join(' ');
-        const overflowStart = renderedText ? renderedText.length + 1 : 0;
-        const overflowRuns = overflowStart >= 0
-          ? sliceRuns(sourceRuns, overflowStart, overflowStart + overflowText.length)
-          : [];
-        result.overflow.streams[fs.id] = makeRichText(overflowText, overflowRuns);
+      const measured = flowV9MeasuredColumns(fs.rich || makeRichText(text,fs.runs || []),fsMetrics._v9TextContext,
+        {top:footerY,bottom:pageBottom,width:innerWidth,columns:footerCols,gap:colGap});
+      const linesData = measured.lines;
+      const footerContinues = !!measured.overflowRich.text;
+      if (footerContinues) {
+        result.overflow.streams[fs.id] = measured.overflowRich;
         anyFooterTrimmed = true;
       }
-
-      const linesData = [];
-      for (let i = 0; i < linesToRender.length; i++) {
-        const col = Math.floor(i / rowsPerCol);
-        const row = i % rowsPerCol;
-        const rtlCol = footerCols - 1 - Math.min(col, footerCols - 1);
-        const x = footerCols > 1 ? rtlCol * (colWidth + colGap) : 0;
-        linesData.push({
-          x,
-          y: footerY + row * fsLineH,
-          width: colWidth,
-          words: linesToRender[i].words,
-          text: linesToRender[i].words.join(' '),
-          isLast: i === linesToRender.length - 1,
-          naturalWidth: linesToRender[i].width,
-          fontSize: fsFontSize,
-          lineHeightPx: fsLineH,
-        });
-      }
-
-      // משה 2026-05-13: inline runs לרגל הזרם (footer) — אותו רעיון כמו בזרמי צד.
-      attachRunsToLines(linesData, text, Array.isArray(fs.runs) ? fs.runs : []);
 
       result.footerBoxes.push({
         id: fs.id,
@@ -2909,10 +2917,7 @@ function buildPagePlan(pageContent, config) {
         titleHeight: titleHeight,
         continues: footerContinues,
       });
-      const renderedRows = footerCols > 1
-        ? Math.min(rowsPerCol, linesToRender.length)
-        : linesToRender.length;
-      footerY += renderedRows * fsLineH + interStreamGap;
+      footerY = measured.endY + interStreamGap;
     }
   }
 
@@ -2951,6 +2956,8 @@ function buildPagePlan(pageContent, config) {
     }
   }
 
+  result.streamCoverage = verifyV9StreamCoverage(sourceStreams,result);
+  result.unstartedNotes = auditV9NoteStarts(result,pageContent.requiredNoteStarts);
   return result;
 }
 
@@ -3535,6 +3542,10 @@ function renderPagePlan(plan, pageEl, cfg) {
     // ⛔ הסרת הדגל הזו (28/09) היא שגרמה ל-205 בלוקים לגלוש זה על זה.
     for (const line of box.lines) {
       __lineIdx += 1;
+      if (line._v9MeasuredStream) {
+        renderV9MeasuredStreamLine(line,box,pageEl,padding,colorClass || '');
+        continue;
+      }
       if (line.layoutVersion === V9_INLINE_PLAN_VERSION) {
         renderV9PlannedMainLine(line, pageEl, padding);
         continue;
@@ -4191,14 +4202,33 @@ export async function buildPages(container, paragraphs, config = {}) {
   if (!container || !Array.isArray(paragraphs) || !paragraphs.length) return { pages: [] };
   const input = paragraphs.map((p, i) => prepareV9SourceParagraph(p, i));
   const cfg = { ...config, openingWordSettings: config.openingWordSettings || getOpeningWordSettings() };
-  await waitForV9LayoutFonts(input, cfg);
+  // Resolve the fonts used by notes, number labels and bold overrides before
+  // creating either main or stream measurement caches. Source notes stay intact.
+  const fontStyles = [cfg.mainInlineStyle, resolveTextStyle(cfg.mainStyleId)];
+  const streamIds = new Set(['main', ...Object.keys(cfg.streamSettings || {})]);
+  const collectStreams = entry => {
+    if (!entry || typeof entry !== 'object') return;
+    const id = entry.stream || entry.streamId || entry.streamCode;
+    if (id) streamIds.add(String(id));
+    for (const child of [...(entry.notes || []), ...(entry.children || [])]) collectStreams(child);
+  };
+  for (const entry of input) collectStreams(entry);
+  for (const id of streamIds) {
+    for (const settings of [getEffectiveStreamSettings(id), cfg.streamSettings?.[id]]) {
+      if (!settings) continue;
+      fontStyles.push(settings.inlineStyle, settings.manualStyle);
+      for (const [key, value] of Object.entries(settings))
+        if (/styleId$/i.test(key) && typeof value === 'string' && value) fontStyles.push(resolveTextStyle(value));
+    }
+  }
+  await waitForV9LayoutFonts(input, { ...cfg, __v9ResolvedFontStyles: fontStyles });
   if (typeof cfg.isCurrent === "function" && !cfg.isCurrent()) return { pages: [], aborted: true };
-  const context = createMainInlineContext(cfg);
+  const context = createMainInlineContext(cfg), streamContexts = new Map();
   try {
-    const result = await buildPagesWithInlineContext(container, input, { ...cfg, __v9InlineContext: context });
+    const result = await buildPagesWithInlineContext(container, input, { ...cfg, __v9InlineContext: context, __v9StreamContexts:streamContexts });
     if (context.generation !== 0) throw new Error("V9_FONT_CHANGED: fonts changed during layout; rerender is required");
     return result;
-  } finally { context.dispose(); }
+  } finally { context.dispose(); for(const c of streamContexts.values()) c.dispose(); }
 }
 
 async function buildPagesWithInlineContext(container, paragraphs, config) {
@@ -4342,6 +4372,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       if (!tp || !tp.overflow) return false;
       if (tp.overflow.exceedsPage) return false;
       if (tp.overflow.mainText) return false;
+      if (tp.unstartedNotes?.length) return false;
       const ovs = tp.overflow.streams || {};
       for (const k in ovs) if (ovs[k]) return false;
       return true;
@@ -4443,7 +4474,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const notesBeforeAnchor = (len) => {
         const ratio = fullText.length > 0 ? len / fullText.length : 0;
         const anchorlessShare = Math.round(anchorless.length * ratio);
-        const anchoredBefore = anchored.filter(n => n.anchor < len);
+        const anchoredBefore = anchored.filter(n => n.anchor < len || (n.anchor === len && n.anchorAffinity === 'backward'));
         const before = [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
           .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
         return before;
@@ -4466,7 +4497,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
         };
         const splitPlanMeta = (tp, movedNotes) => {
-          if (!tp || !tp.overflow || tp.overflow.mainText) return null;
+          if (!tp || !tp.overflow || tp.overflow.mainText || tp.unstartedNotes?.length) return null;
           const lineCount = planMainLineCount(tp);
           const streamCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
           const footerCount = (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
@@ -4723,7 +4754,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           const notesBeforeAnchor = (len) => {
             const ratio = fullText.length > 0 ? len / fullText.length : 0;
             const anchorlessShare = Math.round(anchorless.length * ratio);
-            const anchoredBefore = anchored.filter(n => n.anchor < len);
+            const anchoredBefore = anchored.filter(n => n.anchor < len || (n.anchor === len && n.anchorAffinity === 'backward'));
             return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
               .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
           };
@@ -4831,7 +4862,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         const notesBeforeAnchor = (len) => {
           const ratio = secondText.length > 0 ? len / secondText.length : 0;
           const anchorlessShare = Math.round(anchorless.length * ratio);
-          const anchoredBefore = anchored.filter(n => n.anchor < len);
+          const anchoredBefore = anchored.filter(n => n.anchor < len || (n.anchor === len && n.anchorAffinity === 'backward'));
           return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
             .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
         };
@@ -4945,7 +4976,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const notesBeforeAnchor = (len) => {
         const ratio = fullText.length > 0 ? len / fullText.length : 0;
         const anchorlessShare = Math.round(anchorless.length * ratio);
-        const anchoredBefore = anchored.filter(n => n.anchor < len);
+        const anchoredBefore = anchored.filter(n => n.anchor < len || (n.anchor === len && n.anchorAffinity === 'backward'));
         return [...anchorless.slice(0, anchorlessShare), ...anchoredBefore]
           .sort((a, b) => (typeof a.anchor === 'number' ? a.anchor : -1) - (typeof b.anchor === 'number' ? b.anchor : -1));
       };
@@ -5024,6 +5055,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       }
     }
 
+    const hasV9NoteRemainder = tp => Object.values(tp?.overflow?.streams || {}).some(r=>!!normalizeRichTextEntry(r).text);
     let overflowTakeN = 0;
     if (!carryActive && !noMidParagraph && bestN_clean < totalAvail) {
       const candidateN = bestN_clean + 1;
@@ -5042,6 +5074,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         tp && tp.overflow &&
         !tp.overflow.mainText &&
         hasNoteOverflow &&
+        !tp.unstartedNotes?.length &&
         !currentHasNoteOverflow &&
         planMainLineCount(tp) <= carryGapMaxMainLines() &&
         planHasCommentaryStart(tp) &&
@@ -5089,7 +5122,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         const tp = trialAtN(candidateN);
         const fill = planFillRatio(tp);
         const mainCut = normalizeRichTextEntry(tp?.overflow?.mainText || "").text.trim();
-        if (tp && tp.overflow && !mainCut && fill >= RESCUE_TARGET_FILL && fill > currentFill + 0.08) {
+        if (tp && tp.overflow && !mainCut && !tp.unstartedNotes?.length && !hasV9NoteRemainder(tp) && fill >= RESCUE_TARGET_FILL && fill > currentFill + 0.08) {
           overflowTakeN = candidateN;
           splitInfo = null;
         }
@@ -5464,6 +5497,54 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       splitInfo = finalGapFill.splitInfo;
       bestN = finalGapFill.bestN;
     }
+    if (!drainAloneMode && finalProbe.unstartedNotes?.length) {
+      let accepted = null;
+      // Prefer a clean boundary; only allow a genuinely started long note to
+      // continue when no clean prefix exists. Never move a complete new note.
+      const candidates=[];
+      for(let i=0;i<finalSlice.length;i++) {
+        const p=finalSlice[i];
+        if(!p._v9Source || !p.mainText)continue;
+        const ends=(finalProbe.mainBox?.lines || []).filter(l=>l.source?.paragraphId===p._v9Source.id)
+          .map(l=>l.source.end-p._v9SourceOffset).filter(n=>n>0 && n<p.mainText.length);
+        // At an orphan anchor move the whole referenced word, not only its ref.
+        for(const note of finalProbe.unstartedNotes.filter(n=>n.paragraphId===p._v9Source.id)) {
+          const at=Math.max(0,Math.min(p.mainText.length,note.anchor-p._v9SourceOffset));
+          const word=/\S+\s*$/u.exec(p.mainText.slice(0,at));
+          if(word?.index>0)ends.push(word.index);
+        }
+        for(const n of [...new Set(ends)].sort((a,b)=>b-a))candidates.push({i,p,n});
+      }
+      for(const {i,p,n} of candidates.reverse()) {
+        const st=splitMainTextAtOffset(p.mainText,n);
+        const ns=splitNotesByAnchor(p.notes || [],n,p.mainText.length,st.suffixBaseOffset);
+        const halves=splitV9Paragraph(p,st,ns.before,ns.after);
+        const candidateSlice=[...finalSlice.slice(0,i),halves.firstHalf];
+        const content=aggregateForV9(candidateSlice,cfg.titles,cfg.streamSettings,cfg.levels,streamsForPage(pageIdx),carryOver);
+        const probe=buildPagePlan(content,cfg);
+        if(probe.overflow.mainText || probe.unstartedNotes?.length || !probe.mainBox?.lines?.length)continue;
+        const clean=!hasV9NoteRemainder(probe);
+        const score=i*100000000+n;
+        if(!accepted || (clean && !accepted.clean) || (clean===accepted.clean && score>accepted.score))
+          accepted={slice:candidateSlice,content,probe,halves,i,clean,score};
+      }
+      if(accepted) {
+        // Preserve the tail of an already split source paragraph.
+        if(splitInfo && accepted.i===finalSlice.length-1 &&
+           accepted.halves.secondHalf._v9Source===splitInfo.secondHalf._v9Source &&
+           accepted.halves.secondHalf._v9SourceEnd===splitInfo.secondHalf._v9SourceOffset)
+          accepted.halves.secondHalf=joinV9ParagraphFragments(accepted.halves.secondHalf,splitInfo.secondHalf);
+        finalSlice=accepted.slice;finalContent=accepted.content;finalProbe=accepted.probe;
+        splitInfo={...accepted.halves,sliceIdx:accepted.i,baseN:accepted.i};bestN=accepted.i+1;
+      } else if(bestN_clean>0) {
+        splitInfo=null;bestN=bestN_clean;finalSlice=getSlice(bestN);
+        finalContent=aggregateForV9(finalSlice,cfg.titles,cfg.streamSettings,cfg.levels,streamsForPage(pageIdx),carryOver);
+        finalProbe=buildPagePlan(finalContent,cfg);
+      } else {
+        throw new Error('V9_NOTE_ANCHOR_NO_FIT: no complete source line can share a page with its note start');
+      }
+    }
+    if(finalProbe.unstartedNotes?.length)throw new Error('V9_NOTE_ANCHOR_MISMATCH: refusing to detach a note from its source');
     const finalHasText = !!(
       (finalContent.mainText || '').trim() ||
       (finalContent.rightStream && (finalContent.rightStream.items || []).join(' ').trim()) ||
@@ -5479,8 +5560,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     pageEl.dataset.realized = '1';
     container.appendChild(pageEl);
 
-    const plan = buildSinglePage(pageEl, finalContent, cfg);
+    const plan = finalProbe;
+    renderPagePlan(plan, pageEl, cfg);
     pages.push(pageEl);
+    pageEl.dataset.v9StreamCoverage = JSON.stringify(plan.streamCoverage || []);
+    pageEl.dataset.v9CrownGap = JSON.stringify({bottom:plan.crownBottomY,gap:plan.crownMainGap});
 
     // עדכון carryOver — טקסטים שנחתכו בעמוד הזה יעברו לעמוד הבא.
     // 2026-05-17: שומרים גם runs, לא רק string.
@@ -5733,6 +5817,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
   const mainOpeningWordAllowed = !!firstMainParagraph && !mainStartsContinued;
 
   const streamMap = new Map(); // sid → rich parts
+  const requiredNoteStarts = [];
 
   function pushStreamRich(map, sid, entry) {
     if (!sid) return;
@@ -5774,9 +5859,15 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
         }
       );
       const { text: formattedText, runs: formattedRuns } = nodesToTextRuns(nodes);
+      if (note._v9NoteKey && !isCont && String(note.text || '').trim()) requiredNoteStarts.push({
+        key:note._v9NoteKey, paragraphId:note._v9ParentParagraphId,
+        anchor:note._v9ParentAnchor, anchorAffinity:note.anchorAffinity, stream:sid,
+        requireMainAnchor:note.nested !== true && !!para.mainText,
+        sourceLength:para._v9Source?.text?.length || para.mainText?.length || 0
+      });
       pushStreamRich(streamMap, sid, {
         text: formattedText,
-        runs: formattedRuns,
+        runs: markV9NoteRuns(formattedText,formattedRuns,nodes,note),
       });
     }
   }
@@ -5828,7 +5919,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
         footerStreams.push(s);
       }
     }
-    return { mainText, mainRuns, mainParagraphs, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
+    return { mainText, mainRuns, mainParagraphs, requiredNoteStarts, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
   }
 
   // Fallback ישן: levels של משנ"ב + mishnaSide. נשאר לתאימות עם מצבי
@@ -5889,7 +5980,7 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     if (footerStreams.length >= 1) leftStream = footerStreams.shift();
   }
 
-  return { mainText, mainRuns, mainParagraphs, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
+  return { mainText, mainRuns, mainParagraphs, requiredNoteStarts, mainRefs: mainParagraphs.flatMap(p => p.mainRefs || []), mainContinues, mainStartsContinued, mainOpeningWordAllowed, rightStream, leftStream, footerStreams, titles };
 }
 
 

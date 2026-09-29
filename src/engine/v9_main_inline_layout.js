@@ -1,5 +1,5 @@
 import { sliceRuns } from './runs_dom.js';
-import { sourceMetadata } from './v9_source_fragments.js';
+import { sourceMetadata, referenceInV9Range } from './v9_source_fragments.js';
 
 export const V9_INLINE_PLAN_VERSION = 'v9-inline-1';
 const EPS = 1 / 64;
@@ -8,13 +8,16 @@ const refAnchor = r => Number(r.anchor ?? r.absoluteAnchor ?? r.localAnchor);
 
 export function partForRange(entry, start, visibleEnd, consumedEnd = visibleEnd, style = entry.typography) {
   const raw = entry.text.slice(start, visibleEnd);
-  const leading = (raw.match(/^[ \t]+/) || [''])[0].length;
-  const text = raw.slice(leading);
+  const leading = (raw.match(/^[ \t\u200e\u200f\u2060]+/u) || [''])[0].length;
+  // Direction controls alone are not words. Edge glue is retained for source
+  // accounting but cannot take part in visual line justification.
+  const visible = raw.slice(leading).replace(/[ \t\u200e\u200f\u2060]+$/u, '');
+  const text = visible;
+  const actualEnd = start + leading + visible.length;
   const refs = (entry.mainRefs || []).filter(r => {
-    const a = refAnchor(r);
-    return consumedEnd > start && a >= start && (a < consumedEnd || (consumedEnd === entry.text.length && a === consumedEnd));
+    return referenceInV9Range(r, start, consumedEnd, entry.text.length);
   }).sort((a, b) => refAnchor(a) - refAnchor(b)).map(r => ({ ...r, localPos: Math.max(0, Math.min(text.length, refAnchor(r) - start - leading)) }));
-  return { text, leadingText: raw.slice(0, leading), trailingText: entry.text.slice(visibleEnd, consumedEnd), runs: sliceRuns(entry.runs || [], start + leading, visibleEnd), refs, style };
+  return { text, leadingText: raw.slice(0, leading), trailingText: entry.text.slice(actualEnd, consumedEnd), runs: sliceRuns(entry.runs || [], start + leading, actualEnd), refs, style };
 }
 
 // Intersect the actual allocated intervals crossed by an entire row. In
@@ -52,14 +55,14 @@ function availableBeside(g, y, height, opening) {
 }
 
 function tokensOf(text) {
-  return [...text.matchAll(/\r\n|[\r\n]|[^\s]+/gu)].map(m => ({
+  return [...text.matchAll(/\r\n|[\r\n]|[^\s]+/gu)].filter(m => !/^[\u200e\u200f\u2060]+$/u.test(m[0])).map(m => ({
     text: m[0], start: m.index, end: m.index + m[0].length,
     type: /[\r\n]/.test(m[0]) ? 'break' : 'word',
   }));
 }
 
 function overflowEntry(entry, start) {
-  const refs = (entry.mainRefs || []).filter(r => refAnchor(r) >= start).map(r => {
+  const refs = (entry.mainRefs || []).filter(r => referenceInV9Range(r, start, entry.text.length, entry.text.length)).map(r => {
     const a = refAnchor(r) - start;
     return { ...r, anchor: a, absoluteAnchor: a, localAnchor: a };
   });
@@ -87,7 +90,7 @@ function freezeLine(line) {
  * `context.measure(part)` and the final painter use the same styled content.
  * No DOM node, browser float, scale, or guessed safety percentage is in a plan.
  */
-export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBottom) {
+export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBottom, options = {}) {
   const strips = rawStrips.map(s => ({ ...s })).sort((a, b) => a.y_start - b.y_start);
   const lines = [], diagnostics = [];
   let y = strips[0]?.y_start || 0;
@@ -216,6 +219,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
       const line = emit(selected.body, cursor, selected.end, g, y, selected.m, selected.forcedBreak, selected.wordTokens);
       line.lineHeightPx = rowH;
       cursor = selected.end; ti = selected.next; y += rowH;
+      if (options.maxLines > 0 && lines.length >= options.maxLines) return finish(ei,cursor,'row-limit');
     }
     if (opening && !openingAttached) {
       emit(partForRange(entry, cursor, entry.text.length), cursor, entry.text.length, { x: opening.x, width: opening.width }, opening.y,

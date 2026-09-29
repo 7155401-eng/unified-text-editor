@@ -1,3 +1,4 @@
+import { mapMainParagraphSource } from './engine/main_source_mapping.js';
 import { afterPaint } from "./engine/background_safe_yield.js";
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
@@ -237,66 +238,8 @@ function hasAnyRunMark(runs) {
 // משה 2026-05-13: מסיר טווחי תווים (markers) מטקסט והתאמת runs לפלט החדש.
 // markers: [{ atInPara, sym }]. מחזיר { text, runs }.
 export function stripMarkersAndAlignRuns(paragraphText, runs, markers) {
-  if (!Array.isArray(markers) || markers.length === 0) {
-    return { text: paragraphText, runs: Array.isArray(runs) ? runs.slice() : [] };
-  }
-  const keep = new Array(paragraphText.length).fill(true);
-  // משה 09/09/2026: סימן יכול גם להיות **מוחלף** ולא רק להימחק — כך
-  // המספר של ההערה המקוננת יושב בתוך הערת האב, בדיוק במקום שבו נכתב
-  // הסימן שלה, במקום להישלח לטקסט הראשי ולהיערם שם.
-  const replaceAt = new Map();
-  for (const m of markers) {
-    const len = (m.sym || "").length;
-    for (let i = m.atInPara; i < m.atInPara + len; i++) {
-      if (i >= 0 && i < paragraphText.length) keep[i] = false;
-    }
-    if (m.replaceWith) replaceAt.set(m.atInPara, String(m.replaceWith));
-  }
-  // ★ משה 27/09/2026 — „נראה שלפעמים אחרי פסיק או נקודה חסר רווח".
-  // נמדד על הייצוא שלו: במקור **0** פסיקים בלי רווח (מול 3,569 תקינים),
-  // ובפלט **25**. כלומר הרווח לא חסר בכתיבה — הוא נעלם בעיבוד.
-  // השורש: סימן זרם שיושב בין שני תווים בלי רווח, כמו „מילה,@01מילה".
-  // כאן נמחקים תווי הסימן בלבד, ולכן שני התווים שמשני צדיו נדבקים זה
-  // לזה והמילים מתאחדות. במקור של משה: 23 מקרים של פסיק+סימן+אות,
-  // 56 של נקודה+סימן+אות, ו-48 של אות+סימן+אות — סך 127.
-  // מעכשיו סימן שנמחק מבין שני תווים שאינם רווח משאיר רווח אחד
-  // במקומו. כשיש כבר רווח באחד הצדדים לא מוסיפים דבר, כדי שלא ייווצר
-  // רווח כפול.
-  const isSpaceAt = (idx) =>
-    idx < 0 || idx >= paragraphText.length || /\s/.test(paragraphText[idx]);
-  const removedStarts = new Set();
-  for (const m of markers) {
-    const len = (m.sym || "").length;
-    if (len > 0) removedStarts.add(m.atInPara);
-  }
-  const bridgeSpaceAt = new Set();
-  for (const m of markers) {
-    const len = (m.sym || "").length;
-    if (len <= 0) continue;
-    if (m.replaceWith) continue;              // סימן שהוחלף בתוכן — לא נוצר חור
-    const before = m.atInPara - 1;
-    const after = m.atInPara + len;
-    if (!isSpaceAt(before) && !isSpaceAt(after)) bridgeSpaceAt.add(m.atInPara);
-  }
-
-  let newText = "";
-  const map = new Array(paragraphText.length + 1).fill(0);
-  for (let i = 0; i < paragraphText.length; i++) {
-    map[i] = newText.length;
-    if (replaceAt.has(i)) newText += replaceAt.get(i);
-    else if (bridgeSpaceAt.has(i)) newText += " ";
-    if (keep[i]) newText += paragraphText[i];
-  }
-  map[paragraphText.length] = newText.length;
-  const newRuns = [];
-  if (Array.isArray(runs)) {
-    for (const r of runs) {
-      const ls = map[Math.max(0, Math.min(paragraphText.length, r.start))];
-      const le = map[Math.max(0, Math.min(paragraphText.length, r.end))];
-      if (ls < le) newRuns.push({ start: ls, end: le, marks: r.marks });
-    }
-  }
-  return { text: newText, runs: newRuns };
+  const mapped = mapMainParagraphSource(paragraphText, runs, markers, { normalize: false });
+  return { text: mapped.mainTextNet, runs: mapped.mainRuns };
 }
 
 // משה 2026-05-15: מיפוי משותף — איזה אופסט בטקסט המנורמל מתאים לאופסט
@@ -851,36 +794,9 @@ export function paneManagerToPackerContent(paneManager) {
   const paragraphsInfo = []; // { paraIdx, mainTextNet, mainRuns, mainConsumers[], blockType, headingLevel }
   for (let pi = 0; pi < mainParagraphs.length; pi++) {
     const para = mainParagraphs[pi];
-    let mainTextNet = "";
-    let prevEnd = 0;
-    const mainConsumers = [];
-    for (const marker of para.markers) {
-      mainTextNet += para.paragraphText.substring(prevEnd, marker.atInPara);
-      const anchor = mainTextNet.length;
-      mainConsumers.push({ stream: marker.code, anchor, sym: marker.sym });
-      prevEnd = marker.atInPara + marker.sym.length;
-    }
-    mainTextNet += para.paragraphText.substring(prevEnd);
-    const beforeNormalize = mainTextNet;
-    mainTextNet = mainTextNet.replace(/  +/g, ' ').trim();
-
-    // משה 2026-05-15: באג ידוע — האופסטים של mainConsumers נשמרו לפני
-    // הקריאה ל-normalize ו-trim. כשהיו רווחים כפולים סביב סימן זרם (כפי
-    // שקורה אחרי `text-pre-marker  text-post-marker`) או רווחים בקצה של
-    // הפסקה, הטקסט התקצר אבל האופסט נשאר על המספרים הישנים — אז [N] בראשי
-    // נדחק לתוך מילה במקום להופיע במיקום הסימן. מתקנים דרך mapPositionAfterNormalize.
-    if (beforeNormalize !== mainTextNet) {
-      for (const c of mainConsumers) {
-        c.anchor = mapPositionAfterNormalize(beforeNormalize, mainTextNet, c.anchor);
-      }
-    }
-
-    // משה 2026-05-13: חישוב mainRuns שמתאים ל-mainTextNet אחרי הסרת markers ו-normalize.
-    let mainRuns = [];
-    if (Array.isArray(para.runs) && para.runs.length) {
-      const stripped = stripMarkersAndAlignRuns(para.paragraphText, para.runs, para.markers);
-      mainRuns = alignRunsAfterTextNormalize(stripped.text, mainTextNet, stripped.runs);
-    }
+    const { mainTextNet, mainRuns, mainConsumers } = mapMainParagraphSource(
+      para.paragraphText, para.runs || [], para.markers || []
+    );
 
     paragraphsInfo.push({
       paraIdx: pi,
@@ -908,7 +824,7 @@ export function paneManagerToPackerContent(paneManager) {
   for (const info of paragraphsInfo) {
     for (const c of info.mainConsumers) {
       if (!consumersByStream[c.stream]) consumersByStream[c.stream] = [];
-      consumersByStream[c.stream].push({ paraIdx: info.paraIdx, anchor: c.anchor, priority: 0 });
+      consumersByStream[c.stream].push({ paraIdx: info.paraIdx, anchor: c.anchor, anchorAffinity: c.anchorAffinity, priority: 0 });
     }
   }
   // Sort once before nested expansion so each main consumer's pane index
@@ -1050,7 +966,7 @@ export function paneManagerToPackerContent(paneManager) {
     for (const code of Object.keys(consumersByStream)) {
       for (const c of consumersByStream[code]) {
         if (c.paraIdx !== info.paraIdx || c.text === null) continue;
-        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, num: c.num, priority: c.priority, nested: !!c.nested });
+        paraNotes.push({ stream: code, text: c.text, runs: c.runs || [], anchor: c.anchor, anchorAffinity: c.anchorAffinity, num: c.num, priority: c.priority, nested: !!c.nested });
       }
     }
     paraNotes.sort((a, b) => (a.anchor - b.anchor) || (a.priority - b.priority));
@@ -1061,6 +977,7 @@ export function paneManagerToPackerContent(paneManager) {
         text: n.text,
         runs: n.runs || [],
         anchor: n.anchor,
+        anchorAffinity: n.anchorAffinity,
         absoluteAnchor: n.anchor,
         localAnchor: n.anchor,
         num: n.num,
@@ -1079,6 +996,7 @@ export function paneManagerToPackerContent(paneManager) {
         num: n.num,
         uid,
         anchor: n.anchor,
+        anchorAffinity: n.anchorAffinity,
         absoluteAnchor: n.anchor,
         localAnchor: n.anchor,
         // משה 09/09/2026: מנוע הפריסה מעדיף את הרשימה הזאת על פני
