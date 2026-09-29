@@ -2,6 +2,7 @@ import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.j
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from '../../src/engine/v9_text_measurement.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { buildPages } from '../../src/vilna_v9.js';
+import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { runBrowserEdges } from './browser-edge-suite.js';
 
 function assert(value, message) { if (!value) throw new Error(message); }
@@ -65,15 +66,27 @@ export async function runBrowserSuite() {
     assert(!page.querySelector('[data-v9-opening-flow-block]'),'legacy flow painter still active');
     const out={pages:result.pages.length,rows:rows.length};page.remove();return out;
   });
-  await test('full V9 with side streams keeps main allocation and source identity',async()=>{
-    const page=makePage(); const input=Array.from({length:5},(_,i)=>({id:`side-${i}`,mainText:neutral+' '+neutral,mainRuns:[{start:10,end:35,marks:{italic:true}}],notes:[{stream:'01',num:i+1,uid:`n1-${i}`,anchor:7,text:'הערת צד ניטרלית לבדיקת פריסה ושמירת תוכן.'},{stream:'02',num:i+1,uid:`n2-${i}`,anchor:12,text:'טקסט נוסף בצד השני עם מילים פשוטות לבדיקה.'}]}));
+  for (const numbersEnabled of [true, false]) await test(`full V9 side streams preserve source and refs enabled=${numbersEnabled}`,async()=>{
+    const settings = getStreamSettings();
+    const saved = { '01': settings['01'], '02': settings['02'] };
+    for (const id of ['01','02']) settings[id] = { ...settings[id], mainRefEnabled: numbersEnabled };
+    const page=makePage();
+    try { const input=Array.from({length:5},(_,i)=>({id:`side-${i}`,mainText:neutral+' '+neutral,mainRuns:[{start:10,end:35,marks:{italic:true}}],notes:[{stream:'01',num:i+1,uid:`n1-${i}`,anchor:7,text:'הערת צד ניטרלית לבדיקת פריסה ושמירת תוכן.'},{stream:'02',num:i+1,uid:`n2-${i}`,anchor:12,text:'טקסט נוסף בצד השני עם מילים פשוטות לבדיקה.'}]}));
     const result=await buildPages(page,input,{pageWidth:380,pageHeight:300,padding:12,mainFontSize:13,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:true,target:'word',count:1,font:'inherit',size:150,position:'dropped',dropLines:2,spaceAfter:.3}});
     assert(result.complete,'side-stream paginator incomplete'); const rows=[...page.querySelectorAll('[data-v9-layout-final]')];
     for(const p of input)assert(rows.filter(el=>el.dataset.v9ParagraphId===p.id).map(sourceText).join('')===prepareV9SourceParagraph(p).mainText,'main source lost with side streams');
     const mainFirst=rows[0],firstSide=page.querySelector('.v9-role-right, .v9-role-left');
     assert(mainFirst&&firstSide,'missing side streams');
-    assert(page.querySelectorAll('[data-v9-main-ref]').length===10,'side-note refs lost or duplicated');assert(+mainFirst.style.top.replace('px','')<250,'main pushed below page');
-    const out={pages:result.pages.length,rows:rows.length,refs:page.querySelectorAll('[data-v9-main-ref]').length};page.remove();return out;
+    const refs = [...page.querySelectorAll('[data-v9-main-ref]')];
+    const expected = numbersEnabled ? input.flatMap(p=>p.notes.map(n=>n.uid)).sort() : [];
+    const actual = refs.map(el=>el.dataset.uid).sort();
+    assert(JSON.stringify(actual)===JSON.stringify(expected),`reference identities: ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`);
+    assert(+mainFirst.style.top.replace('px','')<250,'main pushed below page');
+    return {pages:result.pages.length,rows:rows.length,refs:refs.length};
+    } finally {
+      page.remove();
+      for (const id of ['01','02']) { if (saved[id]===undefined) delete settings[id]; else settings[id]=saved[id]; }
+    }
   });
   await test('font timeout is a failure rather than ready metadata',async()=>{
     const descriptor=Object.getOwnPropertyDescriptor(document,'fonts');Object.defineProperty(document,'fonts',{configurable:true,value:{load:()=>new Promise(()=>{}),ready:new Promise(()=>{})}});
