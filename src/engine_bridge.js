@@ -1,5 +1,5 @@
 import { mapMainParagraphSource } from './engine/main_source_mapping.js';
-import { normalizeEditorMark } from './engine/editor_mark_normalization.js';
+import { editorMarksToRunMarks } from './engine/editor_mark_normalization.js';
 import { afterPaint } from "./engine/background_safe_yield.js";
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
 import { isSmartEngineEnabled, runSmartTune, hashContent } from "./engine/smart_packer.js";
@@ -209,21 +209,7 @@ export function runsFromNode(node) {
     if (!child.isText) return false;
     const text = child.text || "";
     if (!text.length) return false;
-    const marks = {};
-    for (const mark of child.marks || []) {
-      const mAttrs = mark.attrs || {};
-      const name = mark.type?.name;
-      if (name === "textStyle") {
-        if (mAttrs.fontFamily) marks.fontFamily = mAttrs.fontFamily;
-        if (mAttrs.fontSize) marks.fontSize = mAttrs.fontSize;
-        if (mAttrs.color) marks.color = mAttrs.color;
-        if (mAttrs.backgroundColor || mAttrs.bgColor) marks.backgroundColor = mAttrs.backgroundColor || mAttrs.bgColor;
-      } else if (name === "bold") marks.bold = true;
-      else if (name === "italic") marks.italic = true;
-      else if (name === "underline") marks.underline = true;
-      else if (name === "strike") marks.strike = true;
-      else if (name === "highlight") marks.backgroundColor = mAttrs.color || marks.backgroundColor;
-    }
+    const marks = editorMarksToRunMarks(child.marks || []);
     runs.push({ start: offset, end: offset + text.length, marks });
     offset += text.length;
     return false;

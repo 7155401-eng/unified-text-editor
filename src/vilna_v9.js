@@ -1201,63 +1201,18 @@ function appendV9MainRefSpan(parent, ref) {
 // מעכשיו הראשי נקרא בשם הזרם `main` ומקבל את אותו טיפול בדיוק.
 const V9_MAIN_STREAM_CODE = "main";
 
-function v9StyleIsBold(style) {
-  const st = normalizeTextStyle(style || {}) || {};
-  if (st.bold === true) return true;
-  const weight = st.fontWeight;
-  if (typeof weight === "number") return weight >= 600;
-  const text = String(weight || "").trim().toLowerCase();
-  if (text === "bold" || text === "bolder") return true;
-  const numeric = parseInt(text, 10);
-  return Number.isFinite(numeric) && numeric >= 600;
-}
-
-function v9MainBaseTextStyle(cfg) {
-  const registryStyle = cfg?.mainStyleId ? resolveTextStyle(cfg.mainStyleId) : null;
-  return normalizeTextStyle({
-    ...(registryStyle || {}),
-    ...(cfg?.mainInlineStyle || {}),
-  }) || {};
-}
-
-function v9RunExplicitlyCancelsBold(marks) {
-  const m = marks || {};
-  if (m.bold === false) return true;
-  const weight = m.fontWeight;
-  if (typeof weight === "number") return weight < 600;
-  const text = String(weight || "").trim().toLowerCase();
-  if (text === "normal" || text === "lighter") return true;
-  const numeric = parseInt(text, 10);
-  return Number.isFinite(numeric) && numeric < 600;
-}
-
-function v9MergeInheritedBoldOverride(runs, marks, forceDocumentStyles) {
-  return (Array.isArray(runs) ? runs : []).map((run) => {
-    if (!run || v9RunExplicitlyCancelsBold(run.marks)) return run;
-    const nextMarks = { ...(run.marks || {}) };
-    for (const [key, value] of Object.entries(marks || {})) {
-      if (forceDocumentStyles || nextMarks[key] == null) nextMarks[key] = value;
-    }
-    return { ...run, marks: nextMarks };
-  });
-}
-
-function v9MainBoldOverrideRuns(runs, inheritedBold = false) {
+function v9MainBoldOverrideRuns(runs) {
   try {
     const marks = styleIdToMarks(boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE));
     if (!marks) return runs;
-    const forceDocumentStyles = boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE);
-    if (inheritedBold) {
-      // When the main paragraph/style itself is bold, every unqualified child
-      // inherits bold even if the Word run carries only fontFamily/fontSize.
-      // Apply the selected bold style to those runs too, otherwise the child
-      // Word font wins over the chosen bold style.
-      return v9MergeInheritedBoldOverride(runs, marks, forceDocumentStyles);
-    }
+    // Important: the override is semantic. It applies only to text that is
+    // explicitly bold in the document/run itself. A bold base style for the
+    // main stream must NOT turn the entire document into the selected bold
+    // override style.
     return applyBoldOverrideToRuns(
       Array.isArray(runs) ? runs : [],
       marks,
-      forceDocumentStyles
+      boldOverrideForcesDocStylesForStream(V9_MAIN_STREAM_CODE)
     );
   } catch (_) {
     return runs;
@@ -1692,21 +1647,14 @@ function markV9ContinuationParagraph(p) {
 
 // A render-scoped context snapshots styles and measures exactly what is painted.
 function createMainInlineContext(cfg) {
-  const baseTextStyle = v9MainBaseTextStyle(cfg);
-  const inheritedBold = v9StyleIsBold(baseTextStyle);
-  const boldOverrideStyleId = boldOverrideStyleIdForStream(V9_MAIN_STREAM_CODE);
   return createV9TextLayoutContext(cfg, {
     decorateBase(el) {
       applyStyleToElement(el, cfg.mainStyleId);
       if (cfg.mainInlineStyle) applyTextStyleObjectToElement(el, cfg.mainInlineStyle);
-      // "Everything bold" is inherited from the main style, not represented
-      // by per-character runs. The measurement probe and final painter must
-      // therefore receive the selected bold style at the base level as well.
-      if (inheritedBold && boldOverrideStyleId) applyStyleToElement(el, boldOverrideStyleId);
     },
-    prepareRuns(runs) {
-      return v9MainBoldOverrideRuns(runs, inheritedBold);
-    },
+    // Only explicit bold runs are eligible for the "bold → style Y" rule.
+    // Bold inherited from mainStyleId remains part of style X itself.
+    prepareRuns: v9MainBoldOverrideRuns,
     prepareRefs(refs) {
       return refs.map(ref => {
         const holder = document.createElement("span");

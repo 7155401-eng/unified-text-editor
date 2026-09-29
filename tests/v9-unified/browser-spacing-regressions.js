@@ -175,54 +175,58 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       assert(page.querySelectorAll('[data-v9-main-ref]').length===notes.length,'styled number missing');
     } finally {page.remove();saveTextStyles(styles);if(saved)settings['01']=saved;else delete settings['01'];}
   });
-  await test('main inherited bold style overrides Word font when override is enabled',async()=>{
+  await test('base bold style X does not promote whole main text to override Y',async()=>{
     const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
     saveTextStyles([
       ...styles,
-      {id:'v9-main-base-bold-test',name:'Main base bold test',fontFamily:'serif',fontSize:13,fontSizeUnit:'px',bold:true},
-      {id:'v9-main-bold-choice-test',name:'Chosen bold test',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px'}
+      {id:'v9-main-base-bold-semantic',name:'Base X',fontFamily:'sans-serif',fontSize:13,fontSizeUnit:'px',bold:true},
+      {id:'v9-main-bold-choice-semantic',name:'Bold Y',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px',bold:true}
     ]);
-    settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-bold-choice-test',boldOverrideForcesDocStyles:true};
+    settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-bold-choice-semantic',boldOverrideForcesDocStyles:true};
     const page=makePage();
     try {
-      const text='alpha beta gamma delta';
-      const result=await buildPages(page,[{id:'main-bold-base',mainText:text,
-        mainRuns:[{start:0,end:text.length,marks:{fontFamily:'serif'}}],notes:[]}],
-        {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-test'});
-      assert(result.complete,'main bold fixture incomplete');
-      const body=page.querySelector('.v9-planned-line-text');
-      assert(body,'missing main body');
-      const textSpans=[...body.querySelectorAll('span')].filter(el=>el.textContent.trim());
-      assert(textSpans.length>0,'Word-font run was not painted as a span');
-      for(const span of textSpans) {
-        const cs=getComputedStyle(span);
-        assert(cs.fontFamily.toLowerCase().includes('monospace'),`Word font beat chosen bold style: ${cs.fontFamily}`);
-        assert(+cs.fontSize.replace('px','')>=16.5,`chosen bold size missing: ${cs.fontSize}`);
-        assert(+cs.fontWeight>=600 || ['bold','bolder'].includes(cs.fontWeight),`base bold inheritance lost: ${cs.fontWeight}`);
-      }
+      const text='alpha beta gamma';
+      const result=await buildPages(page,[{id:'main-bold-semantic',mainText:text,
+        mainRuns:[
+          {start:0,end:5,marks:{fontFamily:'serif',fontSize:15,fontSizeUnit:'px'}},
+          {start:6,end:10,marks:{fontFamily:'serif',fontSize:15,fontSizeUnit:'px',bold:true}},
+          {start:11,end:16,marks:{fontFamily:'serif',fontSize:15,fontSizeUnit:'px'}}
+        ],notes:[]}],
+        {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-semantic'});
+      assert(result.complete,'semantic bold fixture incomplete');
+      const spans=[...page.querySelectorAll('.v9-planned-line-text span')].filter(el=>el.textContent.trim());
+      const byText=t=>spans.find(el=>el.textContent.trim()===t);
+      const alpha=byText('alpha'),beta=byText('beta'),gamma=byText('gamma');
+      assert(alpha&&beta&&gamma,`expected run spans missing: ${spans.map(x=>x.textContent).join('|')}`);
+      const a=getComputedStyle(alpha),b=getComputedStyle(beta),g=getComputedStyle(gamma);
+      assert(a.fontFamily.toLowerCase().includes('serif'),`non-bold alpha was promoted to Y: ${a.fontFamily}`);
+      assert(g.fontFamily.toLowerCase().includes('serif'),`non-bold gamma was promoted to Y: ${g.fontFamily}`);
+      assert(!a.fontFamily.toLowerCase().includes('monospace')&&!g.fontFamily.toLowerCase().includes('monospace'),'whole document became Y');
+      assert(b.fontFamily.toLowerCase().includes('monospace'),`explicit bold beta did not receive Y: ${b.fontFamily}`);
+      assert(parseFloat(b.fontSize)>=16.5,`explicit bold beta missed Y size: ${b.fontSize}`);
     } finally {
       page.remove();saveTextStyles(styles);
       if(savedMain===undefined) delete settings.main; else settings.main=savedMain;
     }
   });
 
-  await test('main bold override checkbox off preserves Word internal font',async()=>{
+  await test('main bold override checkbox off preserves Word font on explicit bold',async()=>{
     const settings=getStreamSettings(),savedMain=settings.main,styles=loadTextStyles();
     saveTextStyles([
       ...styles,
-      {id:'v9-main-base-bold-test-off',name:'Main base bold test off',fontFamily:'sans-serif',fontSize:13,fontSizeUnit:'px',bold:true},
-      {id:'v9-main-bold-choice-test-off',name:'Chosen bold test off',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px'}
+      {id:'v9-main-base-bold-test-off',name:'Base X off',fontFamily:'sans-serif',fontSize:13,fontSizeUnit:'px',bold:true},
+      {id:'v9-main-bold-choice-test-off',name:'Bold Y off',fontFamily:'monospace',fontSize:17,fontSizeUnit:'px',bold:true}
     ]);
     settings.main={...(settings.main||{}),boldOverrideEnabled:true,boldOverrideStyleId:'v9-main-bold-choice-test-off',boldOverrideForcesDocStyles:false};
     const page=makePage();
     try {
       const text='alpha beta gamma';
       const result=await buildPages(page,[{id:'main-bold-base-off',mainText:text,
-        mainRuns:[{start:0,end:text.length,marks:{fontFamily:'serif',fontSize:15,fontSizeUnit:'px'}}],notes:[]}],
+        mainRuns:[{start:6,end:10,marks:{fontFamily:'serif',fontSize:15,fontSizeUnit:'px',bold:true}}],notes:[]}],
         {...cfg,pageHeight:260,talmudStreams:[],mainStyleId:'v9-main-base-bold-test-off'});
       assert(result.complete,'main bold opt-out fixture incomplete');
-      const span=[...page.querySelectorAll('.v9-planned-line-text span')].find(el=>el.textContent.trim());
-      assert(span,'missing Word styled span');
+      const span=[...page.querySelectorAll('.v9-planned-line-text span')].find(el=>el.textContent.trim()==='beta');
+      assert(span,'missing explicit bold Word span');
       const cs=getComputedStyle(span);
       assert(cs.fontFamily.toLowerCase().includes('serif'),`unchecked override did not preserve Word font: ${cs.fontFamily}`);
       assert(Math.abs(parseFloat(cs.fontSize)-15)<.6,`unchecked override did not preserve Word size: ${cs.fontSize}`);
