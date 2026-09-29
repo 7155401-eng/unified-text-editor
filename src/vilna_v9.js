@@ -451,6 +451,11 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
               naturalWidth: bridgeLine.width,
               isLast: tokenIdx + bridgeLine.tokensConsumed >= tokens.length,
               forcedBreak: bridgeLine.forcedBreak,
+              // ⭐⭐⭐ 29/09 — הרצועה יודעת אם פינו בה מקום לאות הפתיח.
+              // השורה חייבת לשאת את הידיעה הזאת איתה, אחרת כל מי
+              // שיבדוק אותה אחר כך יחשוב שלא פינו כלום.
+              openingWindow: !!strip.openingWindow,
+              openingHostFullWidth: Number(strip.openingHostFullWidth) || 0,
             });
             tokenIdx += bridgeLine.tokensConsumed;
             curY += lineH;
@@ -491,6 +496,8 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
         naturalWidth: line.width,
         isLast: isLastLine,
         forcedBreak: line.forcedBreak,
+        openingWindow: !!strip.openingWindow,
+        openingHostFullWidth: Number(strip.openingHostFullWidth) || 0,
       });
     }
 
@@ -1903,8 +1910,33 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
       //
       // ⬛ ניסיתי לעשות את אותו דבר בציור, ונמדד שזה מחמיר (33 ⟵ 35):
       //    שם המידות עדיין לא סופיות. כאן, בתכנון, זה המקום הנכון.
-      const windowReallyApplied = (prepared.strips || [])
-        .some(s => s && s.openingWindow === true);
+      // ⭐⭐⭐ משה 29/09/2026 — „שורות שעולים זה על זה ומוחקים חלקים".
+      //
+      // ═══ מה נמדד ═══
+      // 192 בלוקי מילת פתיח, כל אחד בגובה שתי שורות בדיוק. גובה
+      // הטקסט בפועל: **2.82 שורות** בממוצע. 172 מהם גלשו החוצה
+      // ונפלו על מה שמתחתיהם.
+      //
+      // ═══ השורש ═══
+      // השאלה „האם פינינו לאות חלון?" נבדקה על **כל** הרצועות של
+      // הפסקה — „האם באיזו רצועה שהיא יש חלון". והתשובה הייתה כן,
+      // גם כשהחלון נפתח ברצועה אחרת לגמרי, לא בזו שהפסקה מתחילה בה.
+      //
+      // ⬛ נמדד: בכל 192 הבלוקים, השורה הראשונה **לא** ישבה ברצועה
+      //    עם חלון (openingNarrowWidth=0 בכולם). כלומר האות נשארה
+      //    בגודל מלא ובגובה שתי שורות, בעוד הטקסט לצידה תוכנן לפי
+      //    הרוחב המלא של הרצועה — בלי להפחית את מקום האות.
+      //
+      // ═══ הדימוי ═══
+      // כמו לפנות מקום לארון בחדר השני, ואז להכניס את הארון לחדר
+      // הזה ולהמשיך לסדר את הרהיטים כאילו הוא לא נמצא כאן.
+      //
+      // ⇒ בודקים את הרצועה שהפסקה **באמת מתחילה בה**. אם שם אין
+      //   חלון — האות יורדת לשורה אחת, וכל המידות מחושבות מחדש.
+      const firstStripForParagraph = (prepared.strips || [])
+        .find(s => s && Number(s.y_end) > curY + 0.1) || (prepared.strips || [])[0];
+      const windowReallyApplied = !!(firstStripForParagraph
+        && firstStripForParagraph.openingWindow === true);
       //
       // ⭐⭐⭐ 29/09 — וכאן היה **שורש 9.51 הפיקסלים**: שיניתי כאן את
       // אחוז הגודל של האות, אבל הרוחב־השמור, הרווח והגובה שלה כבר
@@ -1972,6 +2004,10 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
       //   בדיוק ברוחב הרצועה שלה, כמו כל שורה אחרת.
       const windowWasApplied = !!first.openingWindow;
       if (windowWasApplied) {
+        // ⭐⭐⭐ 29/09 — הרוחב הצר שבו **הטקסט תוכנן** בפועל, לפני
+        // שהשורה מורחבת לרוחב המלא לצורך הציור. בלי לשמור אותו כאן
+        // אי אפשר לדעת אחר כך אילו שתי שורות באמת שייכות לאותו חלון.
+        first.openingNarrowWidth = Number(first.width) || 0;
         first.openingHostFullWidth = first.openingHostFullWidth || first.width + (model.metrics?.reserveWidthPx || 0);
         first.width = first.openingHostFullWidth;
         first.naturalWidth = (first.naturalWidth || 0) + (model.metrics?.reserveWidthPx || 0);
@@ -2859,6 +2895,9 @@ function buildPagePlan(pageContent, config) {
         lineHeightPx: mainMetrics.lineHeight,
         openingWord: line.openingWord || null,
         openingHostFullWidth: line.openingHostFullWidth || null,
+        // הרוחב הצר שבו תוכנן הטקסט לצד האות — הוא שמאפשר לדעת
+        // אילו שתי שורות באמת שייכות לאותו חלון גלישה.
+        openingNarrowWidth: line.openingNarrowWidth || null,
         openingWindow: !!line.openingWindow,
         runs: line.runs || [],
         wordTokens: line.wordTokens || [],
@@ -4166,10 +4205,42 @@ function renderPagePlan(plan, pageEl, cfg) {
         })();
         const nextLine = floatMode ? box.lines[__lineIdx + 1] : null;
         const stepToNext = gapToNext.get(__lineIdx);
+        // ⭐⭐⭐ משה 29/09/2026 — „שורות שעולים זה על זה ומוחקים חלקים".
+        //
+        // ═══ מה נמדד על 192 בלוקי מילת פתיח ═══
+        //     גובה הבלוק              שתי שורות (40.3)
+        //     גובה הטקסט בפועל        **2.82 שורות** בממוצע, עד 3.89
+        //     172 מתוך 192 גלשו החוצה ונפלו על מה שמתחתיהם
+        //
+        // ═══ השורש ═══
+        // הבלוק מאחד את שתי השורות הראשונות ונותן לדפדפן לסדר אותן
+        // סביב האות הגדולה — בדיוק כמו טקסט סביב תמונה. אבל האיחוד
+        // התנה רק שתי דרישות: אותה נקודת התחלה, ושהשורה הבאה אינה
+        // מילת פתיח בעצמה. הוא **לא** בדק שלשתי השורות יש אותו רוחב.
+        //
+        // ⬛ נמדד: שורה 1 תוכננה לרוחב 226, שורה 2 לרוחב עד 356 —
+        //    רצועה רחבה לגמרי, לפעמים כל רוחב העמוד. כלומר אוחדו שתי
+        //    שורות מגיאומטריות שונות.
+        //
+        // ═══ הדימוי ═══
+        // כמו לקחת שורה שנכתבה על דף רחב ולהדביק אותה בתוך עמודה
+        // צרה: הטקסט לא נעלם, הוא פשוט דורש עוד שורה — והשורה
+        // הנוספת הזו נוחתת על מה שכבר מצויר מתחת.
+        //
+        // ⇒ מאחדים **רק** שתי שורות שתוכננו לאותו רוחב צר — הרוחב
+        //   שנשאר לצד האות. אחרת השורה הראשונה מצוירת לבדה (בלי
+        //   זרימה), וזה מצב תקין שנמדד ואינו גולש.
+        const narrowW = Number(line.openingNarrowWidth) || 0;
         const canFlow = !!nextLine
           && !nextLine.openingWord
           && Number.isFinite(stepToNext) && stepToNext > 0
-          && Math.abs((Number(nextLine.x) || 0) - (Number(line.x) || 0)) < 2;
+          && Math.abs((Number(nextLine.x) || 0) - (Number(line.x) || 0)) < 2
+          // שתי השורות חייבות לשבת **באותו חלון** שפונה לאות. שורה
+          // שתוכננה לרוחב אחר תדרוש שורה שלישית בתוך בלוק של שתיים,
+          // והשלישית תיפול על מה שמתחתיו.
+          && narrowW > 0
+          && !!nextLine.openingWindow
+          && Math.abs((Number(nextLine.width) || 0) - narrowW) <= 2;
 
         if (canFlow) {
           // ⛔⛔⛔ משה 28/09/2026 — "איבדת את הטוב שעשית במילת פתיח
@@ -4305,6 +4376,12 @@ function renderPagePlan(plan, pageEl, cfg) {
           lineEl.style.textAlign = 'justify';
           lineEl.style.textAlignLast = 'right';
           lineEl.dataset.v9OpeningFlowBlock = '2';
+          // אבחון: הרוחב שהמנוע נתן לכל אחת משתי השורות שמוזגו לבלוק.
+          // בלי זה אי אפשר לדעת אם הבלוק גולש כי שורה 2 תוכננה רחבה.
+          lineEl.dataset.v9FlowW1 = String(Math.round(Number(line.width) || 0));
+          lineEl.dataset.v9FlowW2 = String(Math.round(Number(nextLine.width) || 0));
+          lineEl.dataset.v9FlowHostFull = String(Math.round(Number(line.openingHostFullWidth) || 0));
+          lineEl.dataset.v9FlowNarrowW = String(Math.round(narrowW));
           const merged = [line.text || '', nextLine.text || '']
             .filter(Boolean).join(' ');
           applyV9OpeningWordModelToLineElement(lineEl, line.openingWord.model, merged);
