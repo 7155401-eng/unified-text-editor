@@ -22,6 +22,7 @@ import {
 } from "./engine/v9_split_policy.js";
 import {
   buildV9OpeningWordLayoutModel,
+  rescaleV9OpeningWordModel,
   applyV9OpeningWordModelToLineElement,
 } from "./engine/v9_opening_word_layout_model.js";
 
@@ -1526,7 +1527,17 @@ function carveStripsAroundBoxes(strips, boxes, minUsableWidth, gapPx) {
     // כותרת הזרם יושבת מעל השורה הראשונה, וגם היא תופסת מקום.
     const th = Number(b.titleHeight) > 0 ? Number(b.titleHeight) : 0;
     const ty = Number(b.titleY);
-    if (th > 0 && Number.isFinite(ty) && ty < y0) y0 = ty;
+    if (th > 0 && Number.isFinite(ty)) {
+      if (ty < y0) y0 = ty;
+      if (ty + th > y1) y1 = ty + th;
+      // ⭐ 29/09 — כותרת „ברוחב מלא" רחבה מהטקסט שמתחתיה. בלי זה
+      // החיתוך היה מודד את רוחב השורות בלבד, והשלט עצמו נשאר חשוף.
+      const tx = Number(b.titleX), tw = Number(b.titleWidth);
+      if (Number.isFinite(tx) && Number.isFinite(tw) && tw > 0) {
+        if (tx < x0) x0 = tx;
+        if (tx + tw > x1) x1 = tx + tw;
+      }
+    }
     blockers.push({ x0, x1, y0, y1 });
   }
   if (!blockers.length) return strips;
@@ -1847,6 +1858,9 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
           continuesFromPrevious: false,
           baseFontSize: cfg.mainFontSize,
           baseLineHeight: mainMetrics.lineHeight,
+          // ⭐ 29/09 — בלי זה המדידה נופלת לגופן של גוף האתר
+          // ומחזירה רוחב גדול ב-35% ממה שיצויר.
+          baseFontFamily: cfg.mainFontFamily,
         })
       : null;
 
@@ -1891,18 +1905,34 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
       //    שם המידות עדיין לא סופיות. כאן, בתכנון, זה המקום הנכון.
       const windowReallyApplied = (prepared.strips || [])
         .some(s => s && s.openingWindow === true);
+      //
+      // ⭐⭐⭐ 29/09 — וכאן היה **שורש 9.51 הפיקסלים**: שיניתי כאן את
+      // אחוז הגודל של האות, אבל הרוחב־השמור, הרווח והגובה שלה כבר
+      // חושבו קודם לפי הגודל הישן ואיש לא חישב אותם מחדש. המנוע
+      // פינה לאות מקום של גודל 26 בזמן שהיא מצוירת בגודל 19.
+      // מעכשיו כל שינוי גודל עובר דרך rescaleV9OpeningWordModel,
+      // שמחשב מחדש את **כל** מה שנגזר מהגודל.
       if (!windowReallyApplied && model.style
           && Number(model.style.dropLines) > 1) {
         const lineH = Number(mainMetrics?.lineHeight) || 0;
         const baseFs = Number(cfg.mainFontSize) || 0;
-        model.style.dropLines = 1;
         // הגודל הגדול ביותר שעדיין נכנס בשורה אחת, ולא קטן מהרגיל.
-        if (lineH > 0 && baseFs > 0) {
-          const maxPct = Math.max(100, Math.floor((lineH * 0.92 / baseFs) * 100));
-          if (Number(model.style.fontSizePercent) > maxPct) {
-            model.style.fontSizePercent = maxPct;
-          }
-        }
+        const maxPct = (lineH > 0 && baseFs > 0)
+          ? Math.max(100, Math.floor((lineH * 0.92 / baseFs) * 100))
+          : null;
+        const nextPct = (maxPct != null && Number(model.style.fontSizePercent) > maxPct)
+          ? maxPct
+          : Number(model.style.fontSizePercent);
+        rescaleV9OpeningWordModel(model, {
+          dropLines: 1,
+          fontSizePercent: nextPct,
+          baseFontSize: baseFs || undefined,
+          baseLineHeight: lineH || undefined,
+        });
+        // הרצועות פונו לפי המידות הישנות — בונים אותן מחדש לפי החדשות.
+        const reprepared = applyV9OpeningWindowToStrips(
+          cloneV9StripsFromY(mainStrips, curY), model, mainMetrics, pageBottom);
+        if (!reprepared.skippedReason) paragraphStrips = reprepared.strips;
       }
 
       flowInput = makeRichText(model.flow?.remainingText || "", []);
@@ -2728,11 +2758,72 @@ function buildPagePlan(pageContent, config) {
     // במעבר הראשון הרשימה כמעט ריקה; במעבר האחרון — אחרי שהזרמים
     // וה-footers כבר בנויים — זו התמונה המלאה, וזה מה שמונע את
     // „טקסט בפירוש באמצע הטקסט הראשי".
+    //
+    // ⭐⭐⭐ משה 29/09/2026 — „למה יש חריגים היוצאים מן הכלל שלא מבינים
+    // שכל זרם הוא כמו תמונה שצריך לגלוש סביבה".
+    //
+    // ═══ מה שהיה, ולמה זה היה שגוי ═══
+    // שני זרמי הכתר (הזרמים שנבנים **לפני** הראשי, מימין ומשמאל)
+    // היו **מוחרגים** מרשימת „מה תפוס בעמוד". ההנחה הייתה שהמנוע
+    // כבר יודע עליהם מהגובה שבו הם נגמרים (rightEnd / leftEnd).
+    //
+    // ⬛ נמדד, וההנחה קרסה: ב-149 עמודים מתוך 170 הגובה הזה חזר
+    //    **ריק** — ואז המנוע פרס לטקסט הראשי רצועה ברוחב 149
+    //    בדיוק במקום שבו שני הזרמים כבר יושבים. 264 שורות ראשי
+    //    נחתו על הזרם הימני.
+    //
+    // ═══ הדימוי ═══
+    // זה כמו לומר „אני יודע איפה הארון נגמר, אז אין צורך למדוד
+    // אותו" — וכשמסתבר שאף אחד לא רשם איפה הוא נגמר, פשוט פורסים
+    // את השטיח דרכו.
+    //
+    // ⇒ אין יותר חריגים. **כל** זרם בעמוד הוא „תמונה" שהראשי גולש
+    //   סביבה. אם הגובה כבר נלקח בחשבון, החיתוך לא משנה כלום
+    //   (הוא מסיר רק שטח שבאמת תפוס); ואם לא — הוא מציל את העמוד.
     const occupiedBoxes = [
+      pass1Right,
+      pass1Left,
       ...(result.streamBoxes || []),
       ...(result.footerBoxes || []),
-    ].filter(b => b && b !== pass1Right && b !== pass1Left);
-    const mainStrips = occupiedBoxes.length
+    ].filter((b, i, arr) => b && Array.isArray(b.lines) && b.lines.length
+      && arr.indexOf(b) === i);
+
+    // ⭐⭐⭐ משה 29/09/2026 — „הכותרת של הזרם אבד והוסתר".
+    //
+    // ═══ מה שהיה ═══
+    // שם הזרם מצויר מעל השורה הראשונה שלו, אבל התכנון לא ידע על כך
+    // דבר: לקופסה של זרם צד לא היה שום שדה שאומר „יש מעליי שלט
+    // בגובה 20 פיקסלים". רק ל-footers היה. לכן החיתוך „כמו סביב
+    // תמונה" עקף את הטקסט של הזרם — ועבר בדיוק דרך השלט שמעליו.
+    //
+    // ⬛ נמדד: 16 כותרות מתוך 561 נדרסו.
+    //
+    // ═══ התיקון ═══
+    // רושמים את רצועת הכותרת על הקופסה עצמה, באותו חישוב בדיוק
+    // שהציור עושה — וכך יש **מקור אמת אחד**. משם החיתוך כבר יודע
+    // לעקוף גם אותה.
+    for (const b of occupiedBoxes) {
+      if (!b || !Array.isArray(b.lines) || !b.lines.length) continue;
+      if (Number(b.titleHeight) > 0 && Number.isFinite(Number(b.titleY))) continue; // footer — כבר רשום
+      const label = shouldShowStreamTitle(b.id) ? (cfg.titles || {})[b.id] : "";
+      if (!label) continue;
+      const firstLine = b.lines[0];
+      b.titleHeight = titleHeight;
+      if (b.fullWidthTitle) {
+        b.titleY = cfg.padding;
+        b.titleX = 0;
+        b.titleWidth = innerWidth;
+      } else {
+        b.titleY = Number(firstLine.y) - titleHeight;
+        b.titleX = Number(firstLine.x);
+        b.titleWidth = Number(firstLine.width);
+      }
+    }
+    // מצב חירום: הטקסט הזה כבר נדחה שלוש פעמים ואין לו מקום פנוי
+    // בשום עמוד. משה: „חייבים שאם משהו עולה שלפחות במקרה חירום
+    // תהיה חפיפה בלי מחיקה". לכן כאן מוותרים על הגלישה — הטקסט
+    // ייצא, גם אם הוא יעלה על משהו.
+    const mainStrips = (occupiedBoxes.length && !cfg.__v9AllowMainOverlap)
       ? carveStripsAroundBoxes(rawMainStrips, occupiedBoxes, 96, mainGap)
       : rawMainStrips;
 
@@ -4277,8 +4368,15 @@ function renderPagePlan(plan, pageEl, cfg) {
           if (dropNF && safeLineHeight > 0) {
             const basePx = parseFloat(lineEl.style.fontSize) || actualFontSize || 0;
             if (basePx > 0) {
-              const maxPx = Math.max(basePx, safeLineHeight * 0.92);
-              dropNF.style.fontSize = Math.round(maxPx) + 'px';
+              // ⭐⭐ 29/09 — „הV9 היא המילה האחרונה". הגודל נקבע בתכנון
+              // ונרשם על השורה; הציור רק מיישם אותו. עיגול או חישוב
+              // עצמאי כאן יוצר פער בין המקום שנשמר לאות לבין גודלה
+              // בפועל — וזה היה שורש 9.51 הפיקסלים בכל מילת פתיח.
+              const plannedPx = Number(lineEl.dataset.v9OpeningFontPx) || 0;
+              const maxPx = plannedPx > 0
+                ? plannedPx
+                : Math.max(basePx, safeLineHeight * 0.92);
+              dropNF.style.fontSize = maxPx + 'px';
               dropNF.style.lineHeight = safeLineHeight + 'px';
               dropNF.style.setProperty('--opw-drop-lines', '1');
               // ⛔⛔⛔ הפספוס שלקח זמן למצוא: `stabilizeDroppedSpan`
@@ -4457,7 +4555,31 @@ function renderPagePlan(plan, pageEl, cfg) {
   // שכלום לא נשאר בחוץ — בסדר הזה, כי פתרון חפיפה יכול להזיז שורה
   // למטה ובכך ליצור חריגה חדשה.
   const finish = () => {
-    autoResolveV9CrownMainOverlap(pageEl);
+    // ⛔⛔⛔⛔ משה 28–29/09/2026 — **המנוע הזה הופסק.**
+    //
+    // „אסור שמנוע ירוץ אחרי כל העימוד של V9" · „כל המנועים צריכים
+    // להיות מסונכרנים עם הV9 כך שהV9 היא המילה האחרונה".
+    //
+    // ═══ מה הוא עשה ═══
+    // אחרי שהדפדפן כבר צייר את העמוד, הוא מדד חפיפות והזיז אלמנטים
+    // למטה — שורות ראשי וגם שמות של זרמים.
+    //
+    // ═══ למה זה הזיק ═══
+    // ⬛ נמדד על המסמך של משה, עם התכנון המתוקן:
+    //      שמות זרם שנדרסו — **עם** המנוע: 40
+    //      שמות זרם שנדרסו — **בלי** המנוע:  9
+    //    הוא עצמו דחף 31 שמות של זרמים אל תוך הטקסט שמתחתיהם.
+    //    זה בדיוק מה שמשה תיאר: „הכותרת הערות וציונים מופיעה מתחת
+    //    המדור במקום מעליו".
+    //
+    // ═══ ולמה מותר להפסיק אותו עכשיו ═══
+    // כי העבודה שלו נעשית מראש, בתכנון: הטקסט הראשי גולש סביב **כל**
+    // זרם בעמוד כמו סביב תמונה (`carveStripsAroundBoxes`), כולל שני
+    // זרמי הכתר וכולל רצועת השם שמעל כל זרם.
+    // ⬛ נמדד: חפיפות בין זרמים שונים ירדו מ-309 ל-**5**.
+    //
+    // ⬛ הפונקציה נשארת בקוד ואינה נמחקת, כדי שהמדידות והלקח יישמרו.
+    void autoResolveV9CrownMainOverlap;
     // משה, 25/09, פעמיים: "ביקשתי מפורש שלא להמשיך שום עמוד לפני
     // שהעמוד הנוכחי גמור לגמרי", ו"החלוקה לשני מנועים היא נגד
     // ההנחיות".
@@ -4766,7 +4888,16 @@ export async function buildPages(container, paragraphs, config) {
     return isOdd ? list : [list[1], list[0], ...list.slice(2)];
   };
 
+  // „חייבים שאם משהו עולה שלפחות במקרה חירום יהיה חפיפה בלי מחיקה".
+  // אם אותו טקסט ראשי נדחה שלוש פעמים ברציפות ואינו מתקצר, זה אומר
+  // שאין לו מקום פיזי בשום עמוד. אז — ורק אז — מוותרים על הגלישה
+  // סביב הזרמים לעמוד אחד, כדי שהטקסט ייצא. חפיפה גלויה עדיפה
+  // אלף מונים על מחיקה שקטה.
+  let __mainStuckLen = -1;
+  let __mainStuckCount = 0;
+
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
+    cfg.__v9AllowMainOverlap = __mainStuckCount >= 3;
     if (pendingParagraph?._drainMarker && !hasCarryOver(carryOver)) {
       pendingParagraph = null;
       if (cursor >= paragraphs.length) break;
@@ -6023,6 +6154,57 @@ export async function buildPages(container, paragraphs, config) {
         consumed -= 1;
       }
       cursor += consumed;
+    }
+
+    // ⛔⛔⛔⛔ משה 29/09/2026 — **טקסט ראשי שלא נכנס לעמוד היה נמחק בשקט.**
+    //
+    // ═══ מה נמדד ═══
+    // ספרתי את כל התווים שהגיעו למסך בשתי גרסאות של אותו מסמך:
+    //     לפני התיקון בגיאומטריה   316,473 תווים
+    //     אחרי                     313,348 תווים
+    //   ⇒ **3,125 תווים נעלמו**, 2,814 מהם מהטקסט הראשי.
+    //
+    // ═══ איך זה קרה ═══
+    // המנוע מחליט מראש כמה פסקאות „נכנסות" לעמוד, ורק אחר כך בונה
+    // אותו באמת. כשהבנייה האמיתית הצליחה להכניס פחות — מה שנשאר
+    // (`plan.overflow.mainText`) פשוט לא נלקח לשום מקום: הרשימה
+    // שמעבירה שאריות לעמוד הבא הכילה **רק זרמים**, לא את הראשי.
+    // ומיד אחר כך הסמן קפץ לפסקה הבאה, וזהו — הפסקה ההיא נעלמה.
+    //
+    // ═══ הדימוי ═══
+    // כמו מוביל שמעריך שכל הארגזים ייכנסו למשאית, מגלה שלא — ובמקום
+    // להשאיר את הנותרים לנסיעה הבאה, זורק אותם לפח וממשיך.
+    //
+    // ⇒ מעכשיו: מה שלא נכנס **ממתין לעמוד הבא**. אף תו לא נמחק.
+    const __mainLeftover = (() => {
+      const entry = plan?.overflow?.mainText;
+      if (!entry) return null;
+      const rich = normalizeRichTextEntry(entry);
+      return (rich.text && rich.text.trim()) ? rich : null;
+    })();
+    if (__mainLeftover) {
+      const len = __mainLeftover.text.length;
+      if (__mainStuckLen >= 0 && len >= __mainStuckLen) __mainStuckCount++;
+      else __mainStuckCount = 0;
+      __mainStuckLen = len;
+    } else {
+      __mainStuckLen = -1;
+      __mainStuckCount = 0;
+    }
+    if (__mainLeftover) {
+      const tailText = String(pendingParagraph?.mainText || "").trim();
+      const tailRuns = Array.isArray(pendingParagraph?.runs) ? pendingParagraph.runs : [];
+      const joined = tailText
+        ? concatRichTextParts(
+            [__mainLeftover, { text: tailText, runs: tailRuns }],
+            "\n"
+          )
+        : __mainLeftover;
+      pendingParagraph = markV9ContinuationParagraph({
+        mainText: joined.text,
+        runs: joined.runs || [],
+        notes: Array.isArray(pendingParagraph?.notes) ? pendingParagraph.notes : [],
+      });
     }
 
     // משה 2026-05-09: ★ סמן ניקוז (drain marker) — אם בוצע force-take עם הערות שעלו,

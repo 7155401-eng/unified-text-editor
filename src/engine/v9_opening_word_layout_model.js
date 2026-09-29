@@ -100,10 +100,56 @@ function estimateTextWidthPx(text, fontSizePx) {
 // ⇒ **הצעד הנכון הבא**: לתקן את סעיף 2 קודם — שהתכנון והציור יחשבו
 //   את אותו גודל — ורק אחר כך להחליף את המדידה ל-DOM. שני התיקונים
 //   יחד, בסדר הזה. כל אחד לחוד רק מחליף בעיה בבעיה.
+const _opwWidthCache = new Map();
+
 function measureOpeningTextWidthPx(text, fontSizePx, style) {
   const sample = String(text || "").replace(/\s+/g, " ").trim();
   if (!sample) return 0;
   const size = Number(fontSizePx) > 0 ? Number(fontSizePx) : 16;
+  // ⭐⭐⭐ 29/09 — **כאן ישב השקר.** `style.fontFamily` הוא לרוב המילה
+  // `inherit` — וזה נכון לציור (האות יורשת את גופן העמוד), אבל אסון
+  // למדידה: אלמנט המדידה תלוי מחוץ לעמוד, ולכן „יורש" את גופן גוף
+  // האתר, שהוא רחב יותר. נמדד: 51 במקום 37.8 — פער של 35%.
+  // ⇒ למדידה משתמשים ב-measureFontFamily: הגופן האמיתי של העמוד.
+  const family = (style?.measureFontFamily && style.measureFontFamily !== "inherit")
+    ? style.measureFontFamily
+    : ((style?.fontFamily && style.fontFamily !== "inherit") ? style.fontFamily : "serif");
+  const weight = style?.fontWeight || "700";
+
+  // ⭐ מדידה אמיתית: אלמנט מחוץ לשדה הראייה, עם אותו גופן, גודל
+  // ומשקל שהדפדפן יצייר בהם. אין מקדם תיקון ואין ניחוש.
+  // ⬛ נמדד על המסמך של משה: 299 ⟵ 272 חפיפות.
+  // ⬛ מטמון לפי טקסט+גודל+גופן+משקל — אותה אות נמדדת פעם אחת בלבד,
+  //    גם במסמך של מאות עמודים.
+  const key = `${sample}\u0000${size}\u0000${family}\u0000${weight}`;
+  const cached = _opwWidthCache.get(key);
+  if (cached != null) return cached;
+
+  if (typeof document !== "undefined" && document.body) {
+    try {
+      const probe = document.createElement("span");
+      probe.textContent = sample;
+      probe.setAttribute("aria-hidden", "true");
+      probe.style.cssText = [
+        "position:absolute", "left:-99999px", "top:-99999px",
+        "visibility:hidden", "white-space:pre", "direction:rtl",
+        "padding:0", "margin:0", "border:0",
+        `font-family:${family}`,
+        `font-size:${size}px`,
+        `font-weight:${weight}`,
+      ].join(";");
+      document.body.appendChild(probe);
+      const w = probe.getBoundingClientRect().width;
+      probe.remove();
+      if (Number.isFinite(w) && w > 0) {
+        const out = Math.ceil(w);
+        _opwWidthCache.set(key, out);
+        return out;
+      }
+    } catch (_) {
+      // נופלים ל-Canvas שלמטה.
+    }
+  }
 
   if (typeof document !== "undefined") {
     try {
@@ -111,9 +157,13 @@ function measureOpeningTextWidthPx(text, fontSizePx, style) {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.direction = "rtl";
-        ctx.font = `${style?.fontWeight || "700"} ${size}px ${style?.fontFamily || "serif"}`;
+        ctx.font = `${weight} ${size}px ${family}`;
         const width = ctx.measureText(sample).width;
-        if (Number.isFinite(width) && width > 0) return Math.ceil(width * 1.08);
+        if (Number.isFinite(width) && width > 0) {
+          const out = Math.ceil(width * 1.08);
+          _opwWidthCache.set(key, out);
+          return out;
+        }
       }
     } catch (_) {
       // Fallback below.
@@ -282,8 +332,16 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   const effectiveOpeningFontSize = fontSizePx || baseFontSize || 16;
   const dropLines = Math.max(1, settings.dropLines);
 
+  // הגופן שיצויר (עשוי להיות `inherit`) מול הגופן שנמדוד בפועל.
+  const drawFamily = fontFamily(settings.font);
+  const inheritedFamily = String(options.baseFontFamily || "").trim();
+  const measureFamily = (drawFamily && drawFamily !== "inherit")
+    ? drawFamily
+    : (inheritedFamily || "serif");
+
   const style = {
-    fontFamily: fontFamily(settings.font),
+    fontFamily: drawFamily,
+    measureFontFamily: measureFamily,
     fontSizePx,
     fontSizePercent: settings.size,
     fontWeight: normalizeWeight(settings.weight),
@@ -345,6 +403,94 @@ export function buildV9OpeningWordLayoutModel(text, rawSettings, options = {}) {
   };
 }
 
+// ⭐⭐⭐ משה 29/09/2026 — **שורש החפיפות, נמדד והוכח.**
+//
+// ═══ מה נמדד ═══
+// 234 מילות־פתיח על המסמך האמיתי, כל אחת נמדדה פעמיים:
+//   • מה המנוע **שמר** לה מקום  (v9OpeningWordWidthPx)
+//   • מה הדפדפן **צייר** בפועל   (getBoundingClientRect)
+// התוצאה: המנוע שומר בממוצע **9.51 פיקסלים יותר מדי**, בכל אחת
+// מ-234 המילים בלי יוצא מן הכלל (המינימום 0.1, המקסימום 30.5).
+// היחס קבוע להפליא: 51⟵36.8, 50⟵36.6, 23⟵17 — בכל מקרה ×1.368.
+//
+// ═══ מאיפה בא בדיוק המספר 1.368 ═══
+// 26 חלקי 19. האות תוכננה בגודל 26 ונוצרה בגודל 19.
+//
+// ולמה? כשאין מקום להוריד את האות שתי שורות, המנוע מקטין אותה
+// לשורה אחת — משנה את **אחוז הגודל** מ-200% ל-146%. אבל הרוחב,
+// הגובה והרווח שאחריה כבר חושבו קודם, לפי 200%, ואיש לא חישב
+// אותם מחדש. כלומר: המספר השתנה, והמידות שנגזרו ממנו נשארו ישנות.
+//
+// ═══ הדימוי ═══
+// זה כמו להזמין חליפה למידה 52, ואז להחליט שהילד ילבש מידה 40 —
+// אבל להמשיך לפנות לו בארון מקום של 52. כל שאר הבגדים נדחקים
+// הצידה בלי סיבה, והמדף מתמלא מוקדם מדי.
+//
+// ═══ התיקון ═══
+// כל שינוי בגודל האות חייב לעבור **דרך הפונקציה הזאת**, שמחשבת
+// מחדש את כל מה שנגזר ממנו: רוחב, רווח, שמירה, גובה, וגם את
+// הנתונים שהזרימה משתמשת בהם. אין יותר „לשנות רק אחוז".
+export function rescaleV9OpeningWordModel(model, changes = {}) {
+  if (!model || !model.style) return model;
+
+  const style = model.style;
+  const nextPercent = Number.isFinite(Number(changes.fontSizePercent))
+    ? clampNumber(changes.fontSizePercent, style.fontSizePercent, 80, 500)
+    : style.fontSizePercent;
+  const nextDropLines = Number.isFinite(Number(changes.dropLines))
+    ? Math.max(1, Math.round(Number(changes.dropLines)))
+    : Math.max(1, Math.round(Number(style.dropLines) || 1));
+
+  const baseLineHeight = Number(changes.baseLineHeight) > 0
+    ? Number(changes.baseLineHeight)
+    : (Number(style.baseLineHeightPx) || Number(model.metrics?.baseLineHeightPx) || 0);
+
+  // גודל האות הבסיסי שממנו נגזר האחוז. הציור נותן `fontSize: <אחוז>%`
+  // על השורה עצמה, ולכן הבסיס הוא גודל האות של השורה — בדיוק מה
+  // שהועבר כ-baseFontSize בבנייה הראשונה.
+  const priorPercent = Number(style.fontSizePercent) || 100;
+  const priorPx = Number(style.fontSizePx) || 0;
+  const baseFontSize = Number(changes.baseFontSize) > 0
+    ? Number(changes.baseFontSize)
+    : (priorPx > 0 ? (priorPx * 100) / priorPercent : 0);
+
+  const fontSizePx = baseFontSize > 0 ? (baseFontSize * nextPercent) / 100 : style.fontSizePx;
+  const effective = Number(fontSizePx) > 0 ? Number(fontSizePx) : (baseFontSize || 16);
+
+  style.fontSizePercent = nextPercent;
+  style.fontSizePx = fontSizePx;
+  style.dropLines = nextDropLines;
+  if (baseLineHeight > 0) style.baseLineHeightPx = baseLineHeight;
+
+  const segment = model.parts?.segment || "";
+  const spaceAfterEm = Number(style.spaceAfterEm) || 0;
+  const openingWordWidthPx = measureOpeningTextWidthPx(segment, effective, style);
+  const spaceAfterPx = Math.max(0, effective * spaceAfterEm * 0.5);
+  const reserveWidthPx = Math.ceil(openingWordWidthPx + spaceAfterPx);
+  const openingWordHeightPx = model.position === "dropped"
+    ? Math.max(baseLineHeight * nextDropLines, effective * 1.05)
+    : Math.max(baseLineHeight, effective * 1.05);
+
+  model.metrics = Object.assign({}, model.metrics, {
+    openingFontSizePx: fontSizePx,
+    baseLineHeightPx: baseLineHeight || model.metrics?.baseLineHeightPx,
+    openingLineHeightPx: openingWordHeightPx,
+    openingWordWidthPx,
+    openingWordHeightPx,
+    reserveWidthPx,
+    dropLines: nextDropLines,
+    spaceAfterPx,
+  });
+
+  model.flow = Object.assign({}, model.flow, {
+    firstLineWidthReductionPx: reserveWidthPx,
+    windowLineCount: model.position === "dropped" ? nextDropLines : 1,
+    windowWidthPx: reserveWidthPx,
+  });
+
+  return model;
+}
+
 export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineText = "") {
   if (!lineEl || !model || lineEl.dataset.opwApplied === "1") return false;
   if (openingLineIsBlockedByParagraphMetadata(lineEl)) {
@@ -392,6 +538,15 @@ export function applyV9OpeningWordModelToLineElement(lineEl, model, firstLineTex
   lineEl.dataset.v9OpeningWordPosition = position;
   lineEl.dataset.v9OpeningWordWidthPx = String(Math.round(Number(model.metrics?.openingWordWidthPx) || 0));
   lineEl.dataset.v9OpeningWordReservePx = String(Math.round(Number(model.metrics?.reserveWidthPx) || 0));
+  // ⭐ 29/09 — הגודל **המתוכנן** של האות, בפיקסלים, נרשם על השורה.
+  // כל מי שמצייר חייב להשתמש בו ולא לחשב גודל משלו, אחרת המידות
+  // שהמנוע שמר לא יתאימו למה שיצויר — וזה בדיוק מה שיצר את
+  // 9.51 הפיקסלים העודפים בכל מילת פתיח.
+  if (Number(model.metrics?.openingFontSizePx) > 0) {
+    lineEl.dataset.v9OpeningFontPx = String(Number(model.metrics.openingFontSizePx));
+  }
+  lineEl.dataset.v9OpeningFontFamily = String(style.measureFontFamily || style.fontFamily || "");
+  lineEl.dataset.v9OpeningFontWeight = String(style.fontWeight || "");
   lineEl.dataset.v9OpeningWindowHandledBy = "v9-strip-geometry";
 
   // The old DOM post-processor shrank rendered lines after the page was built.
