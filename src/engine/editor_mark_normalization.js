@@ -24,6 +24,10 @@ export function editorMarksToRunMarks(marks) {
     if (name === 'textStyle') {
       if (attrs.fontFamily) out.fontFamily = attrs.fontFamily;
       if (attrs.fontSize) out.fontSize = attrs.fontSize;
+      if (attrs.fontSizeUnit) out.fontSizeUnit = attrs.fontSizeUnit;
+      if (attrs.fontWeight !== undefined && attrs.fontWeight !== null && attrs.fontWeight !== '') out.fontWeight = attrs.fontWeight;
+      if (attrs.fontStyle) out.fontStyle = attrs.fontStyle;
+      if (attrs.lineHeight !== undefined && attrs.lineHeight !== null && attrs.lineHeight !== '') out.lineHeight = attrs.lineHeight;
       if (attrs.color) out.color = attrs.color;
       if (attrs.backgroundColor || attrs.bgColor) out.backgroundColor = attrs.backgroundColor || attrs.bgColor;
     } else if (name === 'bold') out.bold = true;
