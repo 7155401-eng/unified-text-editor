@@ -4249,6 +4249,15 @@ function renderPagePlan(plan, pageEl, cfg) {
               dropNF.style.fontSize = Math.round(maxPx) + 'px';
               dropNF.style.lineHeight = safeLineHeight + 'px';
               dropNF.style.setProperty('--opw-drop-lines', '1');
+              // ⛔⛔⛔ הפספוס שלקח זמן למצוא: `stabilizeDroppedSpan`
+              // קובע לאות `min-height` בגובה **שתי שורות** — זה החלון
+              // שמאפשר לשורה השנייה להיכנס פנימה. הקטנתי את הגופן ואת
+              // גובה השורה, אבל הרצפה הזאת נשארה, ולכן האות המשיכה
+              // לתפוס 37.2 פיקסלים בקופסה של 18.6.
+              // ⬛ נמדד: dropFs=17px, dropLh=18.6px — ובכל זאת
+              //    dropH=37.2. רק ביטול הרצפה סוגר את הפער.
+              // כאן אין שורה שנייה להיכנס, ולכן אין צורך בחלון.
+              dropNF.style.minHeight = safeLineHeight + 'px';
             }
           }
 
