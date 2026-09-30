@@ -682,6 +682,40 @@ function makeStyleSelect(labelText, value, onChange) {
   return label;
 }
 
+function collectUsedStreamCodes(pages = [], panes = null) {
+  const used = new Set();
+  for (const page of pages || []) {
+    for (const code of Object.keys(page?.streams || {})) {
+      if (code) used.add(String(code));
+    }
+  }
+  const paneList = panes ?? (typeof window !== "undefined" ? window.paneManager?.panes : null) ?? [];
+  for (const pane of paneList) {
+    if (pane?.streamCode) used.add(String(pane.streamCode));
+  }
+  return [...used].sort();
+}
+
+export function streamSettingsPanelSignature(pages = [], panes = null) {
+  return collectUsedStreamCodes(pages, panes).join(",");
+}
+
+// Custom styles can change while the stream-settings panel is already built.
+// Rebuilding the entire panel is unnecessary and can destroy focus/listeners.
+// Update only style options in-place and preserve the current selected value.
+export function refreshStreamStyleSelectOptions(panel) {
+  if (!panel?.querySelectorAll) return 0;
+  let updated = 0;
+  for (const select of panel.querySelectorAll(".stream-style-select")) {
+    const current = select.value || "";
+    const nextHtml = styleOptionsHtml(current);
+    if (select.innerHTML !== nextHtml) select.innerHTML = nextHtml;
+    select.value = current;
+    updated++;
+  }
+  return updated;
+}
+
 function makeGlobalOverrideControl(key, item, onCommit) {
   const def = GLOBAL_OVERRIDE_DEFS[key];
   const label = document.createElement("label");
@@ -818,7 +852,7 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   }
   if (!panel.dataset.styleRefreshBound) {
     panel.dataset.styleRefreshBound = "1";
-    window.addEventListener("ravtext:styles-changed", () => updateOriginalStreamColumnsPanel(pages, scheduleRender));
+    window.addEventListener("ravtext:styles-changed", () => refreshStreamStyleSelectOptions(panel));
   }
   // ⛔⛔ משה 10/09/2026: „אי אפשר להכניס סימון V בהגדרות של זרם בודד”.
   // נמדד בדפדפן: הסימון נרשם ואף נשמר, אבל תוך חצי שנייה התיבה
@@ -855,11 +889,8 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     }
   } catch (_) {}
 
-  const used = new Set();
-  for (const p of pages) for (const c of Object.keys(p.streams || {})) used.add(c);
-  for (const pane of window.paneManager?.panes || []) {
-    if (pane.streamCode) used.add(pane.streamCode);
-  }
+  const usedCodes = collectUsedStreamCodes(pages);
+  const used = new Set(usedCodes);
 
   // ⛔⛔ משה 10/09/2026: „רק כשיש פופאפ רינדור הבעיה של V קיימת”.
   // כשהרינדור מסתיים הוא מרענן את הפאנל, וזה מוחק את התיבה שמשה
@@ -871,7 +902,7 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   //
   // לכן: אם רשימת הזרמים זהה למה שכבר מצויר — לא נוגעים בפאנל בכלל.
   // בנייה מחדש נעשית רק כשזרם נוסף, נמחק, או שינה קוד.
-  const signature = [...used].sort().join(",");
+  const signature = usedCodes.join(",");
   if (panel.childElementCount > 0 && panel.dataset.builtFor === signature) {
     return;
   }
