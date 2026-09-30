@@ -444,6 +444,65 @@ test('centered hard-break line centers opening plus body as one visual segment',
    `opening x=${line.render.opening.x}, expected 46 for centered composite`);
 });
 
+
+test('second and final opening-window row centers with the opening as one visual segment',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const text='OPEN aa aa aa aa aa aa aa';
+ const p=layoutV9MainParagraphs(
+  [{id:'opening-two-line-last',text,runs:[],mainRefs:[]}],
+  [{x:0,width:100,y_start:0,y_end:100}],ctx,100
+ );
+ assert.equal(p.lines.length,2,`fixture expected two rows, got ${p.lines.length}`);
+ const host=p.lines[0],last=p.lines[1];
+ assert(host.render.opening,'opening glyph missing');
+ assert(last.isLast===true,'second row is not paragraph last row');
+ assert(last.openingWindow===true,'last row no longer overlaps opening window');
+ assert.equal(last.render.alignment,'right','final body was centered independently');
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),text,'source text changed while balancing');
+ const opening=host.render.opening;
+ const bodyLeft=last.x;
+ const bodyRight=last.x+last.naturalWidth;
+ const visualLeft=Math.min(bodyLeft,opening.x);
+ const visualRight=Math.max(bodyRight,opening.x+opening.width);
+ assert(Math.abs((visualLeft+visualRight)/2-50)<.01,
+  `opening+last body center=${(visualLeft+visualRight)/2}, expected 50`);
+ assert(Math.abs(bodyRight+opening.gap-opening.x)<.01,
+  `opening/body are not adjacent: bodyRight=${bodyRight}, gap=${opening.gap}, openingX=${opening.x}`);
+ assert(p.diagnostics.some(d=>d.code==='opening-window-final-composite-centered'),
+  'planner did not record completed opening-window centering');
+});
+
+test('completed opening-window centering fails closed when no safe word partition exists',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   // Every body word is deliberately too wide to redistribute safely.
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*35+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const text='OPEN aa bb';
+ const p=layoutV9MainParagraphs(
+  [{id:'opening-no-safe-center',text,runs:[],mainRefs:[]}],
+  [{x:0,width:80,y_start:0,y_end:100}],ctx,100
+ );
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
+ assert(!p.diagnostics.some(d=>d.code==='opening-window-final-composite-centered'),
+  'unsafe fixture was centered despite no legal partition');
+});
+
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={
