@@ -59,6 +59,26 @@ test('explicit final-gap candidate budget is respected after offset ordering',()
  assert.deepEqual(selected.map(c=>c.offset),[10,20,30]);
 });
 
+
+test('carry rescue line budget samples the earliest safe cuts, not the deepest paragraph offsets',()=>{
+ const candidates=Array.from({length:20},(_,i)=>({
+  kind:'visual-line-end',priority:900,offset:(i+1)*10,source:'carry-rescue'
+ })).reverse();
+ const selected=selectV9GapFillCandidates(candidates,{remainingPx:20,lineHeight:20,maxCandidates:4});
+ assert.deepEqual(selected.map(c=>c.offset),[10,20,30,40]);
+});
+
+test('sparse rescue adaptive search covers the missing physical rows from paragraph start',()=>{
+ const candidates=Array.from({length:50},(_,i)=>({
+  kind:'visual-line-end',priority:900,offset:(i+1)*10,source:'final-sparse-rescue'
+ })).reverse();
+ const selected=selectV9GapFillCandidates(candidates,{remainingPx:100,lineHeight:20});
+ assert.equal(selected[0].offset,10);
+ assert(selected.some(c=>c.offset===50),'five missing rows did not include a five-row prefix');
+ assert(!selected.some(c=>c.offset===500),'adaptive sparse search still starts at the paragraph tail');
+ assert(selected.length>=11 && selected.length<=36,`unexpected adaptive sparse budget: ${selected.length}`);
+});
+
 test('started long-note continuation is legal and remains scoreable',()=>{
  const plan={
    unstartedNotes:[],
