@@ -1748,11 +1748,15 @@ function createMainInlineContext(cfg) {
       return v9MainBoldOverrideRuns(runs, cfg);
     },
     prepareRefs(refs) {
-      return refs.map(ref => {
+      return refs.flatMap(ref => {
         const holder = document.createElement("span");
         appendV9MainRefSpan(holder, ref);
         const span = holder.firstElementChild;
-        return { ...ref, formatted: span?.textContent || "", cssText: span?.style.cssText || "" };
+        // Invisible numbering has no layout object at all. Do not keep an
+        // empty reference that can split inline content or become a latent
+        // break/spacing point in another V9 entry path.
+        if (!span || !span.textContent) return [];
+        return [{ ...ref, formatted: span.textContent, cssText: span.style.cssText || "" }];
       });
     },
     openingStyle: styleIdToMarks,
