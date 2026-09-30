@@ -19,6 +19,7 @@ const FREE_UNMETERED_TOOLS = new Set([
 // on the server and is NOT the legacy local once/day bucket.
 const SERVER_MANAGED_QUOTA_TOOLS = new Set([
   "nikud-merger",
+  "sefaria-downloader",
 ]);
 
 function normalizeToolName(toolName) {
@@ -121,7 +122,7 @@ export function markToolUsed(toolName) {
   return all[key][keyName];
 }
 
-export function showToolBlocked(toolName, niceName, reason) {
+export function showToolBlocked(toolName, niceName, reason, details = {}) {
   if (reason === "login") {
     showToast({
       kind: "info",
@@ -132,10 +133,18 @@ export function showToolBlocked(toolName, niceName, reason) {
       autoCloseMs: 8000,
     });
   } else if (reason === "quota") {
+    const windowSeconds = Number(details.windowSeconds || 0);
+    const weekly = windowSeconds >= 6 * 24 * 60 * 60;
+    const resetAt = Number(details.resetAt || 0);
+    const resetText = resetAt > Date.now() / 1000
+      ? ` איפוס בעוד כ-${Math.max(1, Math.ceil((resetAt - Date.now() / 1000) / 86400))} ימים.`
+      : "";
     showToast({
       kind: "warn",
-      title: "המכסה היומית נוצלה",
-      msg: `${niceName || toolName} זמין פעם אחת בחשבון חינמי. שדרג לפרימיום לשימוש ללא הגבלה.`,
+      title: weekly ? "המכסה השבועית נוצלה" : "המכסה נוצלה",
+      msg: weekly
+        ? `${niceName || toolName} זמין פעם אחת בכל 7 ימים בחשבון חינמי.${resetText} שדרג לפרימיום לשימוש ללא הגבלה.`
+        : `${niceName || toolName} הגיע למכסת החשבון החינמי. שדרג לפרימיום לשימוש ללא הגבלה.`,
       actionText: "לפרימיום",
       action: openPremiumPage,
       secondaryText: "סגור",
