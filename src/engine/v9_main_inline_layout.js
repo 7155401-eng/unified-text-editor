@@ -572,6 +572,10 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         if (base && total <= base.width + EPS) {
           sole.x = base.x + (base.width - total) / 2;
           sole.width = Math.max(0, sole.naturalWidth);
+          sole.openingCompositeCentered = true;
+          sole.openingHostX = base.x;
+          sole.openingHostFullWidth = base.width;
+          sole.openingCompositeWidth = total;
           sole.render.opening = { ...opening, x: sole.x + sole.naturalWidth + (sole.render.body.text ? opening.gap : 0) };
           sole.render.alignment = 'right';
         }
