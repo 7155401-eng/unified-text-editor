@@ -134,13 +134,13 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const tail = paragraphLines.slice(tailOffset);
   if (!tail.length) return null;
 
-  // Opening-word geometry is intentionally immutable here. Its measured window
-  // has its own widths and must never be re-created by a tail balancer.
+  // Opening-word geometry is immutable, but it is NOT a paragraph boundary.
+  // The body text beside the opening, and every narrow window row below it,
+  // participate in the same tail rebalance using each row's real allocated
+  // width. The opening glyph itself stays fixed and is never duplicated.
   if (tail.some(line =>
-    line?.render?.opening ||
-    line?.openingWindow ||
     !Array.isArray(line?.wordTokens) ||
-    line.wordTokens.length === 0
+    (line.wordTokens.length === 0 && !line?.render?.opening)
   )) return null;
 
   const words = tail.flatMap(line => line.wordTokens);
@@ -151,10 +151,16 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
   const sourceBase = number(entry.sourceOffset ?? entry._v9SourceOffset, 0);
   const sourceStart = Number(tail[0]?.source?.start);
-  const segmentStart = Number.isFinite(sourceStart)
+  const sourceSegmentStart = Number.isFinite(sourceStart)
     ? Math.max(0, sourceStart - sourceBase)
-    : words[0].start;
-  const segmentEnd = Math.max(segmentStart, Math.min(entry.text.length, cursor));
+    : (words[0]?.start ?? 0);
+  // When the first row owns a dropped opening, its body starts AFTER the
+  // opening source range. Re-measuring from sourceSegmentStart would duplicate
+  // the opening inside the body span.
+  const bodySegmentStart = tail[0]?.render?.opening
+    ? (words[0]?.start ?? Math.max(sourceSegmentStart, Number(tail[0].render.opening?.part?.text?.length) || 0))
+    : sourceSegmentStart;
+  const segmentEnd = Math.max(bodySegmentStart, Math.min(entry.text.length, cursor));
 
   const boundaries = [];
   let consumedWords = 0;
@@ -166,13 +172,18 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const cache = new Map();
 
   const metricFor = (lineIndex, fromWord, toWord) => {
-    if (!(toWord > fromWord) || fromWord < 0 || toWord > words.length) return null;
+    if (fromWord < 0 || toWord < fromWord || toWord > words.length) return null;
     const key = `${lineIndex}:${fromWord}:${toWord}`;
     if (cache.has(key)) return cache.get(key);
 
-    const start = lineIndex === 0 ? segmentStart : words[fromWord].start;
-    const visibleEnd = words[toWord - 1].end;
-    const consumedEnd = toWord < words.length ? words[toWord].start : segmentEnd;
+    const openingOnly = toWord === fromWord && !!tail[lineIndex]?.render?.opening;
+    if (!(toWord > fromWord) && !openingOnly) return null;
+
+    const start = lineIndex === 0
+      ? bodySegmentStart
+      : (words[fromWord]?.start ?? segmentEnd);
+    const visibleEnd = toWord > fromWord ? words[toWord - 1].end : start;
+    const consumedEnd = toWord < words.length ? (words[toWord]?.start ?? segmentEnd) : segmentEnd;
     const body = partForRange(entry, start, visibleEnd, consumedEnd);
     const measured = context.measure(body);
     const target = number(tail[lineIndex]?.width, 0);
@@ -189,8 +200,9 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     const metric = {
       start, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
       wordTokens: words.slice(fromWord, toWord),
+      openingOnly,
     };
-    metric.pressure = continuationTailPressure(metric);
+    metric.pressure = openingOnly ? 0 : continuationTailPressure(metric);
     cache.set(key, metric);
     return metric;
   };
@@ -221,24 +233,33 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   if (!current) return null;
   const before = current;
 
-  // Greedy minimax: moving a boundary backwards moves one word from an earlier
-  // row into the next row. Repeating the best improving move naturally
-  // propagates the shortage backwards through as much of the paragraph tail as
-  // needed, instead of concentrating it in the final row.
-  for (let pass = 0; pass < words.length; pass++) {
+  // Local minimax search across ALL row boundaries. A page-tail shortage
+  // usually moves words forward (boundary -1), but opening-window rows can
+  // benefit from moving one word back beside the opening (boundary +1).
+  // Both directions are considered; every candidate is re-measured against the
+  // row's actual width, so the opening host and its following narrow row remain
+  // part of one paragraph instead of becoming an artificial sub-paragraph.
+  for (let pass = 0; pass < words.length * 2; pass++) {
     let chosen = null;
     for (let bi = boundaries.length - 1; bi >= 0; bi--) {
       const previous = bi === 0 ? 0 : boundaries[bi - 1];
-      if (boundaries[bi] - previous <= 1) continue;
+      const next = bi + 1 < boundaries.length ? boundaries[bi + 1] : words.length;
 
-      const candidate = boundaries.slice();
-      candidate[bi] -= 1;
-      const evaluated = evaluate(candidate);
-      if (!evaluated) continue;
-      if (evaluated.score + TAIL_REBALANCE_SCORE_EPS >= current.score) continue;
+      for (const delta of [-1, 1]) {
+        const moved = boundaries[bi] + delta;
+        const minWordsHere = tail[bi]?.render?.opening ? 0 : 1;
+        if (moved - previous < minWordsHere) continue;
+        if (next - moved < 1) continue;
 
-      if (!chosen || evaluated.score < chosen.evaluated.score) {
-        chosen = { boundaries: candidate, evaluated };
+        const candidate = boundaries.slice();
+        candidate[bi] = moved;
+        const evaluated = evaluate(candidate);
+        if (!evaluated) continue;
+        if (evaluated.score + TAIL_REBALANCE_SCORE_EPS >= current.score) continue;
+
+        if (!chosen || evaluated.score < chosen.evaluated.score) {
+          chosen = { boundaries: candidate, evaluated };
+        }
       }
     }
     if (!chosen) break;
@@ -259,22 +280,28 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     const rawSpacing = (!isLast && metric.gaps > 0) ? metric.pressure : 0;
     const wordSpacing = Number.isFinite(rawSpacing) ? Math.min(rawSpacing, gentleMax) : 0;
 
+    const ownsOpening = !!old.render?.opening;
+    const sourceRangeStart = ownsOpening ? sourceSegmentStart : metric.start;
+    const lineSourceText = entry.text.slice(sourceRangeStart, metric.end);
+
     lines[absoluteStart + i] = {
       ...old,
-      text: entry.text.slice(metric.start, metric.end),
-      runs: sliceRuns(entry.runs || [], metric.start, metric.end),
-      words: entry.text.slice(metric.start, metric.end).trim().split(/\s+/u).filter(Boolean),
+      text: lineSourceText,
+      runs: sliceRuns(entry.runs || [], sourceRangeStart, metric.end),
+      words: lineSourceText.trim().split(/\s+/u).filter(Boolean),
       wordTokens: metric.wordTokens,
       naturalWidth: metric.measured.width,
       forcedBreak: false,
       isLast,
-      source: sourceMetadata(entry, metric.start, metric.end),
-      sourceText: entry.text.slice(metric.start, metric.end),
+      source: sourceMetadata(entry, sourceRangeStart, metric.end),
+      sourceText: lineSourceText,
       render: {
         ...old.render,
         body: metric.body,
         topInset: metric.measured.topInset || 0,
-        opening: null,
+        // Keep the measured opening object on its original host row. Only the
+        // ordinary body words are redistributed.
+        opening: old.render?.opening || null,
         wordSpacing,
         alignment: isLast ? 'center' : 'right',
       },
