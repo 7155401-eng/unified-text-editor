@@ -2544,7 +2544,7 @@ body.light-theme .pdf-scroll-progress-fill {
    הטקסט שנגלל מתחתיו נראה דרכו. */
 #main-ribbon-toolbar {
   position: sticky;
-  top: 34px;
+  top: var(--ravtext-ribbon-tabs-height, 34px);
   z-index: 29;
   background: var(--panel);
 }
