@@ -49,6 +49,9 @@ const SETTINGS_BLACKLIST_PREFIXES = [
   'ravtext.caricature.',
   'ravtext.torah_transcription.',
   'ravtext.talmudLayout.smartCache.',
+  // Document recovery metadata is browser-local state, never a user setting.
+  'ravtext.doc.serverStale.',
+  'ravtext.panes.state.v1.',
 ];
 
 function isBlacklisted(key) {
