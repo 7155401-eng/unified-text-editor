@@ -883,7 +883,7 @@ export class PaneManager {
     this.container = container;
     this.panes = [];
     this.activePane = null;
-    this._listeners = { change: [], focus: [] };
+    this._listeners = { change: [], focus: [], persist: [] };
     // ★ משה 28/09/2026 — „ובכלל ביקשתי שזה יהיה לחוץ גלילה כברירת
     // מחדל, לא יודע למה לא נעשה".
     //
@@ -1216,6 +1216,10 @@ export class PaneManager {
   _save({ immediate = false } = {}) {
     this._savePending = true;
     if (this._batchDepth > 0) return;
+    // One semantic persistence event for every save request. Editor changes,
+    // pane metadata changes and structural changes all pass through this path,
+    // so server autosync no longer has to guess which UI event means "dirty".
+    this._emit("persist");
     if (this._saveTimer) clearTimeout(this._saveTimer);
     if (immediate) {
       this._saveTimer = null;
