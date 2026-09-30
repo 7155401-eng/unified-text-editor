@@ -1,7 +1,7 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/v9-typography-spacing-regressions]
+    branches: [fix/v9-typography-spacing-regressions, gpt-v9-extension-wordgap-current-main-20261001]
   pull_request:
     branches: [main]
     paths:
@@ -25,7 +25,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/fix/v9-typography-spacing-regressions'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.ref == 'refs/heads/gpt-v9-extension-wordgap-current-main-20261001'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
