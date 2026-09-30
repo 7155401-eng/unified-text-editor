@@ -122,6 +122,15 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
     assert.match(paneSource, /SERVER_STALE_KEY[\s\S]*?status:\s*"local-ahead"/,
       'local save itself must synchronously mark the snapshot ahead of server');
 
+    const serverSource = await import('node:fs/promises').then(({ readFile }) =>
+      readFile(new URL('../../src/server_persistence.js', import.meta.url), 'utf8')
+    );
+    assert.match(
+      serverSource,
+      /function clearServerStaleIfConfirmed\(documentSig\)[\s\S]*?localStorage\.getItem\(DOC_KEY\) === documentSig/,
+      'server confirmation must compare against the current local snapshot before clearing recovery state'
+    );
+
     // A local snapshot becomes authoritative immediately, before the server
     // debounce has any chance to finish.
     storage.setItem('ravtext.panes.state.v1', JSON.stringify(content));
