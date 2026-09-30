@@ -7,7 +7,7 @@ import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.j
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
-import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
+import { wordMainFragmentFromEditorHtml, wordRichFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 import { analyzePageElement } from '../../src/layout_analysis_report.js';
 import { applyV9MainBottomGapToPage } from '../../src/engine/v9_main_bottom_gap.js';
@@ -25,6 +25,34 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(out==='אחד<br><b>שניים</b></span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>שלוש',
      `unexpected Word fragment: ${out}`);
  });
+ await test('B13 rich Word export preserves hard breaks and real block boundaries exactly',()=>{
+   const html='<p>אחד<br><em>שניים</em></p><p><strong>שלוש</strong></p><p>ארבע</p>';
+   const out=wordRichFragmentFromEditorHtml(html);
+   assert(out==='אחד<br><i>שניים</i><br><b>שלוש</b><br>ארבע',
+     `unexpected rich Word fragment: ${out}`);
+   assert((out.match(/<br>/g)||[]).length===3,
+     'expected one source hard break plus two real block boundaries');
+ });
+ await test('B13 top-level inline siblings do not become invented Word line breaks',()=>{
+   const html='alpha <strong>beta</strong><span style="color:red"> gamma</span>';
+   const out=wordRichFragmentFromEditorHtml(html);
+   assert(out==='alpha <b>beta</b><span style="color:red"> gamma</span>',
+     `top-level inline content was split or lost: ${out}`);
+   assert(!out.includes('<br>'),'inline siblings acquired an invented hard break');
+ });
+ await test('B13 intentional empty editor blocks remain blank lines',()=>{
+   const out=wordRichFragmentFromEditorHtml('<p>א</p><p></p><p>ב</p>');
+   assert(out==='א<br><br>ב',`blank editor block was not preserved: ${out}`);
+ });
+ await test('B13 formatting whitespace between top-level blocks does not create lines',()=>{
+   const html='<p>א</p>\n    <p>ב</p>\n<div>ג</div>';
+   const rich=wordRichFragmentFromEditorHtml(html);
+   const main=wordMainFragmentFromEditorHtml(html);
+   assert(rich==='א<br>ב<br>ג',`formatting whitespace created a rich line: ${JSON.stringify(rich)}`);
+   assert(main==='א</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>ב</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>ג',
+     `formatting whitespace created a Word paragraph: ${JSON.stringify(main)}`);
+ });
+
  await test('wrapped ribbon tabs drive the sticky toolbar offset from measured height',async()=>{
    const link=document.createElement('link');
    link.rel='stylesheet';link.href='../../styles.css';

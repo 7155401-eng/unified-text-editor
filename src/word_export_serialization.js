@@ -13,9 +13,10 @@ function escapeAttr(text) {
 
 export function wordInlineNodeHtml(node) {
   if (!node) return "";
-  const NodeCtor = node.ownerDocument?.defaultView?.Node || globalThis.Node;
-  if (NodeCtor && node.nodeType === NodeCtor.TEXT_NODE) return escapeHtml(node.nodeValue || "");
-  if (NodeCtor && node.nodeType !== NodeCtor.ELEMENT_NODE) return "";
+  // template.content may belong to an inert document whose defaultView is null.
+  // Numeric nodeType constants are stable across browser/inert/jsdom documents.
+  if (node.nodeType === 3) return escapeHtml(node.nodeValue || ""); // TEXT_NODE
+  if (node.nodeType !== 1) return ""; // ELEMENT_NODE
 
   const tag = node.tagName?.toLowerCase?.() || "";
   if (tag === "br") return "<br>";
@@ -51,14 +52,12 @@ export function wordInlineNodeHtml(node) {
   }
 }
 
-export function wordMainFragmentFromEditorHtml(editorHtml, doc = globalThis.document) {
-  if (!doc?.createElement) return "";
+function wordEditorBlocksFromHtml(editorHtml, doc = globalThis.document) {
+  if (!doc?.createElement) return [];
   const template = doc.createElement("template");
   template.innerHTML = String(editorHtml || "");
   const blocks = [];
   let inlineBuffer = "";
-  const NodeCtor = doc.defaultView?.Node || globalThis.Node;
-
   const flushInlineBuffer = () => {
     if (!inlineBuffer) return;
     blocks.push(inlineBuffer);
@@ -66,17 +65,33 @@ export function wordMainFragmentFromEditorHtml(editorHtml, doc = globalThis.docu
   };
 
   for (const node of Array.from(template.content.childNodes)) {
-    if (NodeCtor && node.nodeType === NodeCtor.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
+    if (node.nodeType === 1 && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
       flushInlineBuffer();
-      // A hard break inside one editor block stays a hard break in Word.
-      // Only a real editor block boundary becomes a new Word paragraph.
       blocks.push(Array.from(node.childNodes).map(wordInlineNodeHtml).join(""));
     } else {
+      // Pretty-printed HTML commonly contains indentation/newlines between
+      // top-level block tags. Those separators are source formatting, not
+      // editor content, and must not become invented Word line breaks.
+      if (node.nodeType === 3 && !inlineBuffer && !String(node.nodeValue || "").trim()) {
+        continue;
+      }
       const html = wordInlineNodeHtml(node);
       if (html) inlineBuffer += html;
     }
   }
   flushInlineBuffer();
+  return blocks;
+}
 
-  return blocks.join("</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>");
+export function wordRichFragmentFromEditorHtml(editorHtml, doc = globalThis.document) {
+  // Streams/notes use <br> between real editor blocks. Hard <br> nodes that
+  // already exist inside a block remain exactly where they were.
+  return wordEditorBlocksFromHtml(editorHtml, doc).join("<br>");
+}
+
+export function wordMainFragmentFromEditorHtml(editorHtml, doc = globalThis.document) {
+  // A hard break inside one editor block stays a hard break in Word.
+  // Only a real editor block boundary becomes a new Word paragraph.
+  return wordEditorBlocksFromHtml(editorHtml, doc)
+    .join("</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>");
 }
