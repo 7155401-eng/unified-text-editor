@@ -7,6 +7,11 @@ import {
   comparatorDocxFilename,
   validateComparatorFootnoteMerge,
 } from "../../src/comparator_tool/comparator_docx_export.js";
+import {
+  docx_find_streams,
+  docx_extract,
+} from "../../src/comparator_tool/comparator_engine.js";
+import { JSDOM } from "jsdom";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const parser = new DOMParser();
@@ -176,6 +181,67 @@ test("uses order of main references, not stream declaration order, for Word foot
     "@01 one",
     "@02 two-b",
   ]);
+});
+
+test("round-trips through Comparator Word import with stream identities intact", async () => {
+  const built = buildComparatorDocxBytes({
+    mainDelta: { ops: [{ insert: "ראשי @01 אמצע @02 סוף\\n" }] },
+    streams: [
+      { marker: "@01", delta: { ops: [{ insert: "@01 הערה א\\n" }] } },
+      { marker: "@02", delta: { ops: [{ insert: "@02 הערה ב\\n" }] } },
+    ],
+    title: "roundtrip",
+  });
+
+  const dom = new JSDOM("<!doctype html><html><body></body></html>");
+  const previous = {
+    window: globalThis.window,
+    document: globalThis.document,
+    DOMParser: globalThis.DOMParser,
+    NodeFilter: globalThis.NodeFilter,
+    Node: globalThis.Node,
+  };
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.DOMParser = dom.window.DOMParser;
+  globalThis.NodeFilter = dom.window.NodeFilter;
+  globalThis.Node = dom.window.Node;
+  dom.window.JSZip = JSZip;
+
+  try {
+    const ab = built.bytes.buffer.slice(
+      built.bytes.byteOffset,
+      built.bytes.byteOffset + built.bytes.byteLength
+    );
+    const found = await docx_find_streams(ab);
+    const footnoteStreams = found.filter(s => s.source === "footnote");
+    assert.equal(footnoteStreams.length, 2);
+    assert.deepEqual(
+      footnoteStreams.map(s => s.marker).sort(),
+      ["01", "02"]
+    );
+
+    const selected = footnoteStreams
+      .sort((a, b) => String(a.marker).localeCompare(String(b.marker)))
+      .map(s => [s, "@" + s.marker]);
+    const extracted = await docx_extract(ab, selected);
+
+    assert.equal(extracted.main, "ראשי @01 אמצע @02 סוף");
+    assert.deepEqual(
+      extracted.streams.map(([marker, text]) => [marker, text.trim()]),
+      [
+        ["@01", "@01הערה א"],
+        ["@02", "@02הערה ב"],
+      ]
+    );
+  } finally {
+    if (previous.window === undefined) delete globalThis.window; else globalThis.window = previous.window;
+    if (previous.document === undefined) delete globalThis.document; else globalThis.document = previous.document;
+    if (previous.DOMParser === undefined) delete globalThis.DOMParser; else globalThis.DOMParser = previous.DOMParser;
+    if (previous.NodeFilter === undefined) delete globalThis.NodeFilter; else globalThis.NodeFilter = previous.NodeFilter;
+    if (previous.Node === undefined) delete globalThis.Node; else globalThis.Node = previous.Node;
+    dom.window.close();
+  }
 });
 
 test("fails closed when main marker count and stream note count differ", () => {
