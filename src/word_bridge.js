@@ -1,6 +1,7 @@
 import { applyDemoWatermarkToHtml, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { defaultLabelForCode } from "./engine_bridge.js";
 import { mergeDocxStylesIntoRegistry } from "./style_registry.js";
+import { wordInlineNodeHtml, wordMainFragmentFromEditorHtml } from "./word_export_serialization.js";
 
 const DEFAULT_MARKERS = Array.from({ length: 99 }, (_, i) => `@${String(i + 1).padStart(2, "0")}`);
 
@@ -370,57 +371,6 @@ export async function confirmWordImport() {
   onLoadedRef?.();
 }
 
-function escapeHtml(text) {
-  return String(text || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function escapeAttr(text) {
-  return escapeHtml(text).replace(/`/g, "&#96;");
-}
-
-function inlineNodeHtml(node) {
-  if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.nodeValue || "");
-  if (node.nodeType !== Node.ELEMENT_NODE) return "";
-
-  const tag = node.tagName.toLowerCase();
-  if (tag === "br") return "<br>";
-
-  const inner = Array.from(node.childNodes).map(inlineNodeHtml).join("");
-  switch (tag) {
-    case "strong":
-    case "b":
-      return `<b>${inner}</b>`;
-    case "em":
-    case "i":
-      return `<i>${inner}</i>`;
-    case "u":
-      return `<u>${inner}</u>`;
-    case "s":
-    case "strike":
-    case "del":
-      return `<s>${inner}</s>`;
-    case "sup":
-      return `<sup>${inner}</sup>`;
-    case "sub":
-      return `<sub>${inner}</sub>`;
-    case "a": {
-      const href = node.getAttribute("href") || "";
-      return href ? `<a href="${escapeAttr(href)}">${inner}</a>` : inner;
-    }
-    case "span": {
-      const style = node.getAttribute("style") || "";
-      return style ? `<span style="${escapeAttr(style)}">${inner}</span>` : inner;
-    }
-    default:
-      return inner;
-  }
-}
-
 function getRichHtml(editor) {
   if (!editor) return "";
   const template = document.createElement("template");
@@ -428,41 +378,13 @@ function getRichHtml(editor) {
   const lines = [];
   for (const node of Array.from(template.content.childNodes)) {
     if (node.nodeType === Node.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
-      lines.push(Array.from(node.childNodes).map(inlineNodeHtml).join(""));
+      lines.push(Array.from(node.childNodes).map(wordInlineNodeHtml).join(""));
     } else {
       const html = inlineNodeHtml(node);
       if (html) lines.push(html);
     }
   }
   return lines.join("<br>");
-}
-
-export function wordMainFragmentFromEditorHtml(editorHtml) {
-  const template = document.createElement("template");
-  template.innerHTML = String(editorHtml || "");
-  const blocks = [];
-  let inlineBuffer = "";
-
-  const flushInlineBuffer = () => {
-    if (!inlineBuffer) return;
-    blocks.push(inlineBuffer);
-    inlineBuffer = "";
-  };
-
-  for (const node of Array.from(template.content.childNodes)) {
-    if (node.nodeType === Node.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
-      flushInlineBuffer();
-      // Preserve a real hard break inside the source block as <br>. Only the
-      // boundary between editor blocks becomes a new Word paragraph.
-      blocks.push(Array.from(node.childNodes).map(inlineNodeHtml).join(""));
-    } else {
-      const html = inlineNodeHtml(node);
-      if (html) inlineBuffer += html;
-    }
-  }
-  flushInlineBuffer();
-
-  return blocks.join("</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>");
 }
 
 function mainWordHtml(editor) {
