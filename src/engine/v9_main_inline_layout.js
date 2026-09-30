@@ -551,7 +551,10 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
     if (opening) {
       y = Math.max(y, opening.y + opening.height);
       const sole = lines.length === paragraphLineStart + 1 ? lines[paragraphLineStart] : null;
-      if (sole?.render.opening && sole.isLast && !sole.forcedBreak) {
+      if (sole?.render.opening && sole.isLast) {
+        // A hard source break is already centered by V9. If that one-row
+        // paragraph also owns the opening word, center the SAME visual segment
+        // (opening + gap + body) instead of centering the body alone.
         const base = rowGeometry(strips, opening.y, opening.height, pageBottom);
         const total = opening.width + (sole.render.body.text ? opening.gap : 0) + sole.naturalWidth;
         if (base && total <= base.width + EPS) {
