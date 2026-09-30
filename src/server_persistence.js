@@ -202,9 +202,23 @@ export async function loadInitialState(paneManager) {
       : null;
 
   try {
+    const docFetchPromise = fetchStartupJson('/api/documents/current');
+    const settingsFetchPromise = fetchStartupJson('/api/settings').then((settingsFetch) => {
+      if (settingsFetch.timedOut) {
+        console.warn('[persistence] startup settings fetch timed out; continuing with local settings');
+      } else if (settingsFetch.error) {
+        console.warn('[persistence] startup settings fetch failed:', settingsFetch.error);
+      } else if (settingsFetch.data?.settings) {
+        // Settings are independent of the document GET. Seed missing settings
+        // immediately instead of making a fast endpoint wait for a hung one.
+        applyLocalSettings(settingsFetch.data.settings, { preserveExisting: true });
+      }
+      return settingsFetch;
+    });
+
     const [docFetch, settingsFetch] = await Promise.all([
-      fetchStartupJson('/api/documents/current'),
-      fetchStartupJson('/api/settings'),
+      docFetchPromise,
+      settingsFetchPromise,
     ]);
     const docRes = docFetch.data;
     const settingsRes = settingsFetch.data;
@@ -214,15 +228,6 @@ export async function loadInitialState(paneManager) {
       console.warn('[persistence] startup document fetch timed out; continuing with browser-local state');
     } else if (docFetch.error) {
       console.warn('[persistence] startup document fetch failed:', docFetch.error);
-    }
-    if (settingsFetch.timedOut) {
-      console.warn('[persistence] startup settings fetch timed out; continuing with local settings');
-    } else if (settingsFetch.error) {
-      console.warn('[persistence] startup settings fetch failed:', settingsFetch.error);
-    }
-
-    if (settingsRes && settingsRes.settings) {
-      applyLocalSettings(settingsRes.settings, { preserveExisting: true });
     }
 
     if (docRes && docRes.document && docRes.document.content) {
