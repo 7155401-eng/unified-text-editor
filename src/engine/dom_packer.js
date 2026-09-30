@@ -1045,7 +1045,7 @@ function _packYield(){
 
 async function forwardPack(content, geom = DOM_PAGE_GEOM, packOpts = {}) {
   const isCurrent = typeof packOpts.isCurrent === 'function' ? packOpts.isCurrent : null;
-  const isTalmud = shouldMeasureTalmudLayout();
+  const isTalmud = !packOpts.forceRegularLayout && shouldMeasureTalmudLayout();
   const packGeom = isTalmud
     ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - getTalmudHeightSafetyForPage(0)) }
     : geom;
@@ -1806,10 +1806,13 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
   }));
   if (typeof window !== "undefined") window.__MAIN_BLOCK_META__ = _activeContentMeta;
   try {
-    const effectiveGeom = shouldMeasureMishnaWrap()
+    const effectiveGeom = !opts.forceRegularLayout && shouldMeasureMishnaWrap()
       ? { ...geom, maxPageHeight: Math.max(360, geom.maxPageHeight - MISHNA_WRAP_HEIGHT_SAFETY) }
       : geom;
-    const pages = await forwardPack(content, effectiveGeom, { isCurrent: opts.isCurrent });
+    const pages = await forwardPack(content, effectiveGeom, {
+      isCurrent: opts.isCurrent,
+      forceRegularLayout: !!opts.forceRegularLayout,
+    });
     const rebalanceOpts = { ...opts };
     if (typeof rebalanceOpts.maxPasses !== "number") {
       rebalanceOpts.maxPasses = pages.length > 8 ? 1 : 3;
