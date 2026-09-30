@@ -130,6 +130,15 @@ test('row geometry intersects a widening transition, without changing strips',()
   assert.deepEqual(rowGeometry(s,10,10,100),{x:20,width:50});
   assert.deepEqual(rowGeometry(s,20,10,100),{x:0,width:100});
 });
+test('locked widening transition starts a fresh row exactly at the boundary',()=>{
+ const s=[
+  {x:20,width:50,y_start:0,y_end:15},
+  {x:0,width:100,y_start:15,y_end:100,lockYStart:true},
+ ];
+ assert.equal(rowGeometry(s,10,10,100),null,'row crossed a locked widening boundary');
+ assert.deepEqual(rowGeometry(s,15,10,100),{x:0,width:100});
+});
+
 test('row cannot bridge an unallocated gap',()=>{
   assert.equal(rowGeometry([{x:0,width:90,y_start:0,y_end:4},{x:0,width:90,y_start:6,y_end:20}],0,10,20),null);
 });
