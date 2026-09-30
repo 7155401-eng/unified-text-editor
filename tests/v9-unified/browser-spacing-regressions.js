@@ -65,24 +65,24 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
  await test('edge bidi controls remain active around neutral punctuation instead of display-none',()=>{
     const host=document.createElement('span');
     appendV9PlannedPart(host,{
-      leadingText:' \u200f ',
+      leadingText:' \u200f\u061c ',
       text:"('אב",
       trailingText:' \u200e ',
       runs:[],refs:[],style:{}
     });
 
-    assert(host.textContent===" \u200f ('אב \u200e ",
+    assert(host.textContent===" \u200f\u061c ('אב \u200e ",
       `source order changed: ${JSON.stringify(host.textContent)}`);
 
     const hidden=[...host.querySelectorAll('.v9-source-whitespace')]
       .map(el=>el.textContent||'').join('');
-    assert(!hidden.includes('\u200e')&&!hidden.includes('\u200f'),
-      'LRM/RLM were still hidden from the BiDi algorithm');
+    assert(!hidden.includes('\u200e')&&!hidden.includes('\u200f')&&!hidden.includes('\u061c'),
+      'LRM/RLM/ALM were still hidden from the BiDi algorithm');
 
     const activeText=[...host.childNodes]
       .filter(n=>n.nodeType===Node.TEXT_NODE)
       .map(n=>n.nodeValue||'').join('');
-    assert(activeText.includes('\u200f')&&activeText.includes('\u200e'),
+    assert(activeText.includes('\u200f')&&activeText.includes('\u200e')&&activeText.includes('\u061c'),
       'direction controls are not active text nodes');
     host.remove();
   });
