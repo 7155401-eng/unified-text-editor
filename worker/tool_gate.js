@@ -1,7 +1,7 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
 import { getToolPolicy, isFreePreflightUnmetered, isServerManagedMeteredTool, isToolPublic } from './tool_policy.js';
-import { checkToolQuotaAvailability, consumeToolUse } from './tool_quota.js';
+import { consumeToolUse } from './tool_quota.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
@@ -84,8 +84,9 @@ async function authorizeFreePreflight(user, toolName, env) {
   }
 
   if (isServerManagedMeteredTool(toolName)) {
-    const state = await checkToolQuotaAvailability(user, toolName, env);
-    return { ...state, preflightConsumed: false };
+    // Desktop behavior: opening the tool is free. Quota is checked only when
+    // the metered action itself starts (or succeeds, according to policy).
+    return { ok: true, preflightConsumed: false, quotaDeferred: true };
   }
 
   const usageDate = todayKey();
