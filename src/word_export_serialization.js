@@ -51,8 +51,8 @@ export function wordInlineNodeHtml(node) {
   }
 }
 
-export function wordMainFragmentFromEditorHtml(editorHtml, doc = globalThis.document) {
-  if (!doc?.createElement) return "";
+function wordEditorBlocksFromHtml(editorHtml, doc = globalThis.document) {
+  if (!doc?.createElement) return [];
   const template = doc.createElement("template");
   template.innerHTML = String(editorHtml || "");
   const blocks = [];
@@ -68,8 +68,6 @@ export function wordMainFragmentFromEditorHtml(editorHtml, doc = globalThis.docu
   for (const node of Array.from(template.content.childNodes)) {
     if (NodeCtor && node.nodeType === NodeCtor.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
       flushInlineBuffer();
-      // A hard break inside one editor block stays a hard break in Word.
-      // Only a real editor block boundary becomes a new Word paragraph.
       blocks.push(Array.from(node.childNodes).map(wordInlineNodeHtml).join(""));
     } else {
       const html = wordInlineNodeHtml(node);
@@ -77,6 +75,18 @@ export function wordMainFragmentFromEditorHtml(editorHtml, doc = globalThis.docu
     }
   }
   flushInlineBuffer();
+  return blocks;
+}
 
-  return blocks.join("</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>");
+export function wordRichFragmentFromEditorHtml(editorHtml, doc = globalThis.document) {
+  // Streams/notes use <br> between real editor blocks. Hard <br> nodes that
+  // already exist inside a block remain exactly where they were.
+  return wordEditorBlocksFromHtml(editorHtml, doc).join("<br>");
+}
+
+export function wordMainFragmentFromEditorHtml(editorHtml, doc = globalThis.document) {
+  // A hard break inside one editor block stays a hard break in Word.
+  // Only a real editor block boundary becomes a new Word paragraph.
+  return wordEditorBlocksFromHtml(editorHtml, doc)
+    .join("</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>");
 }
