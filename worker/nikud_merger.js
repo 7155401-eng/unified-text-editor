@@ -5,6 +5,8 @@ import {
   checkText,
   summarizeIssues,
 } from './nikud_merger_engine.js';
+import { getUserFromRequest } from './session.js';
+import { checkToolQuota, consumeToolQuota } from './tool_quota_policy.js';
 
 function jsonResponse(body, status = 200) {
   return Response.json(body, {
@@ -13,7 +15,7 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-export async function handleNikudMerger(request) {
+export async function handleNikudMerger(request, env) {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'method_not_allowed', message: 'Use POST' }, 405);
   }
@@ -27,6 +29,24 @@ export async function handleNikudMerger(request) {
 
   const action = String(body?.action || '');
   if (action === 'merge') {
+    const user = await getUserFromRequest(request, env);
+    if (!user) {
+      return jsonResponse({ error: 'login_required', message: 'Login required' }, 401);
+    }
+    const allowance = await checkToolQuota({
+      env,
+      user,
+      toolName: 'nikud-merger',
+      amount: 1,
+    });
+    if (!allowance?.ok) {
+      return jsonResponse({
+        error: 'quota_exceeded',
+        message: allowance?.message || 'Free merge quota exhausted',
+        quota: allowance?.quota || null,
+      }, 429);
+    }
+
     const clean = String(body?.clean || '');
     const sources = Array.isArray(body?.sources) ? body.sources : [];
     const mode = body?.mode || 'word';
@@ -53,7 +73,22 @@ export async function handleNikudMerger(request) {
       matchRatio: result.matchCount / Math.max(1, result.cleanWordCount),
     };
 
-    return jsonResponse({ result });
+    const quota = await consumeToolQuota({
+      env,
+      user,
+      toolName: 'nikud-merger',
+      amount: 1,
+      idempotencyKey: body?.quota_idempotency_key || '',
+    });
+    if (!quota?.ok) {
+      return jsonResponse({
+        error: 'quota_exceeded',
+        message: quota?.message || 'Free merge quota exhausted',
+        quota: quota?.quota || null,
+      }, 429);
+    }
+
+    return jsonResponse({ result, quota: quota?.quota || null });
   }
 
   if (action === 'quality') {
