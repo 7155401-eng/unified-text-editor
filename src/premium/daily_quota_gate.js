@@ -11,6 +11,11 @@ const TOOL_USAGE_KEY = "ravtext.daily.tools";  // { yyyy-mm-dd: { toolName: coun
 // Keep this list intentionally narrow: this fixes text upload/import only.
 const FREE_UNMETERED_TOOLS = new Set([
   "word-extractor",
+  // Desktop source policy: transcription is free; Text Compare Pro had no
+  // RavText usage-quota check. Server policy is authoritative; this client set
+  // only prevents stale once/day localStorage from blocking those tools first.
+  "torah-transcription",
+  "text-compare-pro",
 ]);
 
 function normalizeToolName(toolName) {
