@@ -4998,8 +4998,12 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
+      const currentHasUnsafeNoteOverflow = currentHasNoteOverflow && hasUnsafeV9StreamOverflow(currentPlan);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
-      if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
+      // A note body that already started on this page may legally continue.
+      // Do not block split-extension merely because that safe continuation
+      // exists; block only unstarted/no-progress commentary overflow.
+      if (!currentHasUnsafeNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
