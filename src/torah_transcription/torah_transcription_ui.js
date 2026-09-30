@@ -116,10 +116,69 @@ function suffixLower(name) {
   return i >= 0 ? s.slice(i).toLowerCase() : "";
 }
 
-// אישור / הודעה במקום messagebox
-function showMessage(title, msg) {
+// RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_UI
+function driveFileId(url) {
+  const raw = String(url || "").trim();
   try {
-    window.alert(`${title}\n\n${msg}`);
+    const u = new URL(raw);
+    const id = u.searchParams.get("id");
+    if (id) return id;
+    const m = u.pathname.match(/\/file\/d\/([^/]+)/);
+    if (m) return m[1];
+  } catch (_) {
+    const m = raw.match(/\/file\/d\/([^/]+)/);
+    if (m) return m[1];
+    const q = raw.match(/[?&]id=([^&]+)/);
+    if (q) return q[1];
+  }
+  return "";
+}
+function isGoogleDriveUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return false;
+  return /(^https?:\/\/)?(drive|docs)\.google\.com\//i.test(raw) || !!driveFileId(raw);
+}
+function driveFileName(url, typedName) {
+  const typed = String(typedName || "").trim();
+  if (typed) return basename(typed);
+  const raw = String(url || "").trim();
+  try {
+    const u = new URL(raw);
+    const parts = decodeURIComponent(u.pathname || "").split("/").filter(Boolean);
+    const last = parts[parts.length - 1] || "";
+    if (last && last.includes(".")) return basename(last);
+  } catch (_) {}
+  return "google-drive-file.mp3";
+}
+
+// אישור / הודעה במקום messagebox
+// RAVTEXT_ERROR_DETAILS_FOR_GEMINI_DRIVE_UI
+function redactedErrorDetails(value) {
+  try {
+    const seen = new WeakSet();
+    const text = JSON.stringify(value, (key, item) => {
+      if (/api[_-]?key|access[_-]?code|authorization|token|secret/i.test(key)) return "[REDACTED]";
+      if (typeof item === "object" && item) {
+        if (seen.has(item)) return "[circular]";
+        seen.add(item);
+      }
+      if (typeof item === "string") {
+        return item
+          .replace(/AIza[0-9A-Za-z_\-]{20,}/g, "AIza...[REDACTED]")
+          .replace(/sk-[0-9A-Za-z_\-]{12,}/g, "sk-...[REDACTED]")
+          .slice(0, 5000);
+      }
+      return item;
+    }, 2);
+    return text || "";
+  } catch (_) {
+    return String(value || "");
+  }
+}
+function showMessage(title, msg, details = null) {
+  try {
+    const extra = details ? "\n\nלוג שגיאה מפורט:\n" + redactedErrorDetails(details) : "";
+    window.alert(`${title}\n\n${msg}${extra}`);
   } catch (e) {
     /* swallow */
   }
@@ -156,6 +215,8 @@ export class TranscriptionWindow {
       gemini_only: !!this.config.gemini_only,
       file_path: "",
       file_blob: null,
+      drive_url: "",
+      drive_file_name: "",
       file_name: "",
       mode: "transcription", // transcription / ocr
       n_runs: 3,
@@ -395,7 +456,7 @@ export class TranscriptionWindow {
     pers.appendChild(el(
       "div",
       { class: "tt-label", style: "padding:8px 25px 0 0;" },
-      "מפתח Gemini (תמיד נדרש):"
+      "מפתח Gemini בתשלום (תמיד נדרש):"
     ));
     this.geminiEntry = el("input", {
       type: "password",
@@ -405,6 +466,11 @@ export class TranscriptionWindow {
       value: this.appState.gemini_api_key,
     });
     pers.appendChild(this.geminiEntry);
+    // RAVTEXT_PAID_GEMINI_KEY_NOTICE
+    pers.appendChild(el("div", {
+      class: "tt-note",
+      style: "margin:0 25px 12px; color:#a23b00; font-weight:700; line-height:1.5;"
+    }, "⚠️ נדרש מפתח Gemini מפרויקט Google Cloud עם חיוב פעיל. מפתח של המכסה החינמית בלבד אינו מספיק לעיבוד קבצים גדולים או להרצות חוזרות."));
 
     pers.appendChild(el(
       "div",
@@ -510,6 +576,46 @@ export class TranscriptionWindow {
       this.fileLabel
     );
     row.appendChild(fileRow);
+    // RAVTEXT_UPLOAD_LIMIT_GUIDANCE_PATCH
+    row.appendChild(el("div", {
+      class: "tt-note",
+      style: "margin:8px 25px; line-height:1.5;"
+    }, "העלאה רגילה: גודל ההעלאה תלוי במגבלות השרת. אם קובץ גדול נכשל, נסה קישור Drive ציבורי, קובץ MP3/M4A דחוס, או פיצול לקבצים קטנים."));
+
+    const driveRow = el("div", { class: "tt-card", style: "margin-top:12px;" });
+    driveRow.appendChild(el("div", { class: "tt-h2" }, "קישור Google Drive · מומלץ לקבצים כבדים"));
+    // RAVTEXT_GOOGLE_DRIVE_PUBLIC_LINK_NOTICE_PATCH
+    driveRow.appendChild(el("div", {
+      class: "tt-note",
+      style: "margin:8px 25px; color:#a23b00; font-weight:700; line-height:1.5;"
+    }, "⚠️ לפני שליחה: ב-Google Drive יש להגדיר 'כל מי שיש לו קישור'. ההגדרה חושפת את הקובץ לכל מי שמקבל את הקישור — אין להשתמש בקובץ רגיש."));
+    driveRow.appendChild(el("div", {
+      class: "tt-note",
+      style: "margin:8px 25px; line-height:1.5;"
+    }, "קישור Drive: הקובץ יורד דרך השרת לפני העיבוד. מומלץ עד כ-80MB; מעל כ-100MB הוא עלול להיכשל בגלל מגבלת זיכרון. הקובץ חייב להיות משותף ל'כל מי שיש לו קישור'."));
+    
+    this.driveUrlInput = el("input", {
+      type: "url",
+      class: "tt-input",
+      placeholder: "https://drive.google.com/file/d/.../view",
+      style: "width:calc(100% - 50px); margin:8px 25px;",
+      value: this.appState.drive_url || "",
+    });
+    this.driveNameInput = el("input", {
+      type: "text",
+      class: "tt-input",
+      placeholder: "שם קובץ (אופציונלי; מסייע בזיהוי סוג הקובץ), למשל audio.mp3",
+      style: "width:calc(100% - 50px); margin:0 25px 8px 25px;",
+      value: this.appState.drive_file_name || "",
+    });
+    driveRow.appendChild(this.driveUrlInput);
+    driveRow.appendChild(this.driveNameInput);
+    driveRow.appendChild(el("button", {
+      class: "tt-btn tt-btn-secondary",
+      style: "margin:0 25px 10px 25px; min-width:auto;",
+      onclick: () => this._setDriveUrl(this.driveUrlInput.value, this.driveNameInput.value),
+    }, "📎 השתמש בקישור Google Drive"));
+    row.appendChild(driveRow);
 
     // שורת אזהרה / המרה — נראית רק לקובץ אודיו/וידאו גדול
     this.fileWarnFrame = el("div", { class: "tt-card-warn", style: "display:none;" });
@@ -518,11 +624,39 @@ export class TranscriptionWindow {
     f.appendChild(this.fileWarnFrame);
   }
 
+  _setDriveUrl(url, typedName = "") {
+    const driveUrl = String(url || "").trim();
+    if (!driveUrl) return;
+    if (!isGoogleDriveUrl(driveUrl)) {
+      showMessage("קישור לא תקין", "יש להדביק קישור Google Drive תקין לקובץ.");
+      return;
+    }
+    const name = driveFileName(driveUrl, typedName);
+    this.appState.drive_url = driveUrl;
+    this.appState.drive_file_name = name;
+    this.appState.file_blob = null;
+    this.appState.file_name = name;
+    this.appState.file_path = name;
+    if (this.fileInput) this.fileInput.value = "";
+    if (this.driveUrlInput) this.driveUrlInput.value = driveUrl;
+    if (this.driveNameInput && !this.driveNameInput.value) this.driveNameInput.value = name;
+    if (this.fileLabel) {
+      this.fileLabel.classList.remove("muted");
+      this.fileLabel.textContent = "Google Drive · " + name;
+    }
+    log("drive file selected: " + name);
+    this._refreshFileWarning();
+  }
+
   _setFile(file) {
     // file הוא File object
     this.appState.file_blob = file;
     this.appState.file_name = file.name;
     this.appState.file_path = file.name; // התואמה: בקוד המקורי file_path הוא נתיב; ב-JS השם בלבד
+    this.appState.drive_url = "";
+    this.appState.drive_file_name = "";
+    if (this.driveUrlInput) this.driveUrlInput.value = "";
+    if (this.driveNameInput) this.driveNameInput.value = "";
     const sizeMb = file.size / (1024 * 1024);
     this.fileLabel.classList.remove("muted");
     this.fileLabel.textContent = `${file.name}   ·   ${sizeMb.toFixed(1)} MB`;
@@ -531,6 +665,11 @@ export class TranscriptionWindow {
   }
 
   _refreshFileWarning() {
+    if (this.appState.drive_url) {
+      if (this.fileWarnLabel) this.fileWarnLabel.textContent = "קישור Drive נבחר. ודא שהקובץ פתוח לכל מי שיש לו קישור וששם הקובץ עם סיומת.";
+      if (this.fileWarnFrame) this.fileWarnFrame.style.display = "flex";
+      return;
+    }
     const file = this.appState.file_blob;
     const sizeMb = file ? file.size / (1024 * 1024) : 0;
     const ext = suffixLower(this.appState.file_name);
@@ -654,8 +793,8 @@ export class TranscriptionWindow {
     this.runsSlider = el("input", {
       type: "range",
       class: "tt-slider",
-      min: "3",
-      max: "10",
+      min: "1", // RAVTEXT_FAST_SINGLE_TRANSCRIPTION_PATCH
+        max: "10",
       step: "1",
       value: String(this.appState.n_runs),
       oninput: (ev) => {
@@ -1366,6 +1505,7 @@ export class TranscriptionWindow {
     const lines = [];
     lines.push(`חשבון: ${s.use_premium ? "פרמיום" : "מפתחות אישיים"}`);
     if (s.file_name) lines.push(`קובץ: ${s.file_name}`);
+    if (s.drive_url) lines.push("Google Drive: " + (s.drive_file_name || s.file_name || "קישור"));
     lines.push(`מצב: ${s.mode === "transcription" ? "תמלול רגיל" : "OCR"}`);
     if (s.mode === "transcription") {
       lines.push(`סוג: ${s.torah_mode ? "תורני" : "רגיל"}`);
@@ -1614,7 +1754,7 @@ export class TranscriptionWindow {
         }
       }
     } else if (key === "file") {
-      if (!this.appState.file_blob) return "לא נבחר קובץ.";
+      if (!this.appState.file_blob && !String(this.appState.drive_url || "").trim()) return "לא נבחר קובץ או קישור Google Drive.";
     } else if (key === "judge") {
       const mode = this._getUsageMode();
       if (!useLegacyPremiumMode(mode)) {
@@ -1653,6 +1793,10 @@ export class TranscriptionWindow {
         elevenlabs_api_key: this.appState.elevenlabs_api_key,
         gemini_only: this.appState.gemini_only,
       });
+    } else if (key === "file") {
+      const u = this.driveUrlInput ? (this.driveUrlInput.value || "").trim() : "";
+      const n = this.driveNameInput ? (this.driveNameInput.value || "").trim() : "";
+      if (u) this._setDriveUrl(u, n);
     } else if (key === "options") {
       this.appState.mode = this.modeOcr.checked ? "ocr" : "transcription";
       this.appState.torah_mode = !!this.audioTorah.checked;
@@ -1782,7 +1926,9 @@ export class TranscriptionWindow {
       const use_premium = useLegacyPremiumMode(s.use_premium);
 
       // קביעת prompt_type לפי סוג קובץ + מצב
-      const ftype = detectFileType(s.file_name);
+      const driveUrl = String(s.drive_url || "").trim();
+      const sourceFileName = s.file_name || s.drive_file_name || driveFileName(driveUrl, "");
+      const ftype = detectFileType(sourceFileName);
       let prompt_type;
       if (ftype === "audio" || ftype === "video") {
         prompt_type = s.torah_mode ? "audio_torah" : "audio_regular";
@@ -1801,7 +1947,7 @@ export class TranscriptionWindow {
       };
 
       // במצב OCR עם PDF — בלקוח לא נריאלי לרסטר; שולחים את ה-PDF כמו שהוא ל-GAS
-      const filesToSend = [s.file_blob];
+      const filesToSend = s.file_blob ? [s.file_blob] : [];
 
       log(`prompt_type=${prompt_type} model=${model_gemini} ` +
           `file=${s.file_name} send_count=${filesToSend.length}`);
@@ -1824,6 +1970,8 @@ export class TranscriptionWindow {
           access_code: use_premium ? s.access_code : null,
           api_key: !use_premium ? s.gemini_api_key : null,
           files: filesToSend,
+          drive_url: driveUrl || null,
+          drive_file_name: s.drive_file_name || s.file_name || null,
           ocr_examples: s.ocr_examples.length ? s.ocr_examples : null,
           custom_prompt: s.custom_prompt || null,
           torah_mode: s.torah_mode,
@@ -1863,7 +2011,9 @@ export class TranscriptionWindow {
             model: "elevenlabs-scribe-v1",
             access_code: null,
             api_key: s.elevenlabs_api_key,
-            files: [s.file_blob],
+            files: s.file_blob ? [s.file_blob] : null,
+            drive_url: driveUrl || null,
+            drive_file_name: s.drive_file_name || s.file_name || null,
             torah_mode: s.torah_mode,
             ashkenazi: s.ashkenazi,
             status_callback: _statusCb,
@@ -1880,7 +2030,27 @@ export class TranscriptionWindow {
       log(`external_editions: count=${externals.length}`);
 
       // הכרעת נוסח
-      this.statusLabel.textContent = "הכרעת נוסח...";
+      // RAVTEXT_FAST_SINGLE_TRANSCRIPTION_PATCH
+
+      if (s.n_runs === 1 && elevenlabs_witnesses.length === 0 && externals.length === 0) {
+
+        const edition = witnesses[0] || "";
+
+        this.appState.result = { witnesses, elevenlabs_witnesses: [], externals: [], edition, fast_single: true };
+
+        this.progressFill.style.width = "100%";
+
+        this.statusLabel.textContent = "Fast transcription completed";
+
+        this._showResult();
+
+        return;
+
+      }
+
+
+      this.statusLabel.textContent = "Adjudication...";
+
       this.progressFill.style.width = "85%";
 
       // מודל להכרעה: gemini_only מכריע על המודל הזה ללא קשר לפרמיום
@@ -1959,11 +2129,11 @@ export class TranscriptionWindow {
                  e instanceof GasTimeoutError) {
         logExc("_doRun server/network error", e);
         const fe = friendlyError(String((e && e.error_code ? e.error_code + " " : "") + (e.message || e)));
-        showMessage(fe.title, fe.message);
+        showMessage(fe.title, fe.message, { stage: this.currentStep, error_name: e && e.name, error_code: e && e.error_code, error_message: e && e.message, details: e && e.details, state: this.appState });
       } else {
         logExc("_doRun unexpected error", e);
         const fe = friendlyError(String(e && e.message ? e.message : e));
-        showMessage(fe.title, fe.message);
+        showMessage(fe.title, fe.message, { stage: this.currentStep, error_name: e && e.name, error_code: e && e.error_code, error_message: e && e.message, details: e && e.details, state: this.appState });
       }
     } finally {
       log("_doRun finally — reset UI");
@@ -2080,12 +2250,12 @@ export class TranscriptionWindow {
                  e instanceof GasNetworkError ||
                  e instanceof GasTimeoutError) {
         const fe = friendlyError(String((e && e.error_code ? e.error_code + " " : "") + (e.message || e)));
-        showMessage(fe.title, fe.message);
+        showMessage(fe.title, fe.message, { stage: this.currentStep, error_name: e && e.name, error_code: e && e.error_code, error_message: e && e.message, details: e && e.details, state: this.appState });
         this.torahStyleStatus.textContent = "נכשל — נסה שוב.";
         this.torahStyleProgressFill.style.width = "0%";
       } else {
         const fe = friendlyError(String(e && e.message ? e.message : e));
-        showMessage(fe.title, fe.message);
+        showMessage(fe.title, fe.message, { stage: this.currentStep, error_name: e && e.name, error_code: e && e.error_code, error_message: e && e.message, details: e && e.details, state: this.appState });
         this.torahStyleStatus.textContent = "נכשל — נסה שוב.";
         this.torahStyleProgressFill.style.width = "0%";
       }

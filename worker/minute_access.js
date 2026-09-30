@@ -21,4 +21,74 @@ export async function handleUsageTick(req,env){if(req.method!=='POST')return e('
 export async function handleGiftClaim(req,env){if(req.method!=='POST')return e('method_not_allowed',405);try{const a=await user(req,env);if(a.error)return a.error;await ensure(env);const key=mkey(),n=now();try{await env.DB.prepare('INSERT INTO gift_claims (user_id, year_month, claimed_at) VALUES (?, ?, ?)').bind(a.user.id,key,n).run()}catch(_){return j({granted:false,reason:'already_claimed'})}await env.DB.prepare(`INSERT INTO gift_minute_usage (user_id, year_month, seconds_granted, seconds_used, created_at, claimed_at) VALUES (?, ?, ?, 0, ?, ?) ON CONFLICT(user_id, year_month) DO UPDATE SET seconds_granted = excluded.seconds_granted, created_at = excluded.created_at, claimed_at = COALESCE(gift_minute_usage.claimed_at, excluded.claimed_at)`).bind(a.user.id,key,GIFT_SECONDS_PER_MONTH,n,n).run().catch(()=>{});const r=await row(env,a.user.id),next=pos(r?.balance_seconds)+GIFT_SECONDS_PER_MONTH,keep=sub(r,n),ex=storedExp(r,n);await env.DB.prepare('UPDATE users SET status = ?, plan_type = ?, balance_seconds = ?, expires_at = ? WHERE id = ?').bind('active',keep?'subscription':'hours',next,ex,a.user.id).run();return j({granted:true,addedSeconds:GIFT_SECONDS_PER_MONTH,newBalance:next,freeMinutes:{grantedSeconds:GIFT_SECONDS_PER_MONTH,usedSeconds:0,unusedSeconds:GIFT_SECONDS_PER_MONTH}})}catch(x){return e('gift_claim_failed',500,{detail:em(x)})}}
 export async function handleAdminMinuteAdjust(req,env,url){if(req.method!=='POST')return e('method_not_allowed',405);try{const a=await admin(req,env);if(a.error)return a.error;const mat=url.pathname.match(/^\/api\/admin\/users\/(\d+)\/minutes$/),id=Number(mat&&mat[1]);if(!Number.isFinite(id)||id<=0)return e('Bad id',400);const body=await read(req),dm=Number(body?.deltaMinutes??body?.minutes??body?.delta);if(!Number.isFinite(dm)||dm===0)return e('Bad deltaMinutes',400);const r=await row(env,id);if(!r)return e('Not found',404);const next=Math.max(0,pos(r.balance_seconds)+Math.round(dm*60)),n=now(),keep=sub(r,n),ex=storedExp(r,n);await env.DB.prepare('UPDATE users SET balance_seconds = ?, expires_at = ?, status = ?, plan_type = ? WHERE id = ?').bind(next,ex,keep||next>0?'active':UNPAID_STATUS,keep?'subscription':(next>0?'hours':null),id).run();await env.DB.prepare('INSERT INTO payments (user_id, provider, amount, plan_code, pack_code, txn_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(id,'admin',0,null,`adjust_${dm>0?'+':''}${dm}min`,'',n).run().catch(()=>{});return j({ok:true,user:await row(env,id),deltaMinutes:dm})}catch(x){return e('minute_adjust_failed',500,{detail:em(x)})}}
 export async function handleAdminMinuteUsage(req,env,url){try{const a=await admin(req,env);if(a.error)return a.error;await ensure(env);const p=url.searchParams,search=(p.get('search')||'').trim().toLowerCase(),limit=Math.max(1,Math.min(500,Number(p.get('limit'))||100)),offset=Math.max(0,Number(p.get('offset'))||0),where=[],binds=[];if(search){where.push('LOWER(u.email) LIKE ?');binds.push(`%${search}%`)}const ws=where.length?`WHERE ${where.join(' AND ')}`:'';const cq=await env.DB.prepare(`SELECT COUNT(*) AS c FROM users u ${ws}`).bind(...binds).first(),totalCount=Number(cq?.c||0);const rows=await env.DB.prepare(`WITH gift AS (SELECT user_id,SUM(COALESCE(seconds_granted,0)) AS gift_seconds_granted,SUM(COALESCE(seconds_used,0)) AS gift_seconds_used FROM gift_minute_usage GROUP BY user_id) SELECT u.id,u.email,u.status,u.plan_type,u.balance_seconds,COALESCE(g.gift_seconds_granted,0) AS gift_seconds_granted,COALESCE(g.gift_seconds_used,0) AS gift_seconds_used,CASE WHEN COALESCE(g.gift_seconds_granted,0)-COALESCE(g.gift_seconds_used,0)>0 THEN COALESCE(g.gift_seconds_granted,0)-COALESCE(g.gift_seconds_used,0) ELSE 0 END AS gift_seconds_unused FROM users u LEFT JOIN gift g ON g.user_id=u.id ${ws} ORDER BY u.id DESC LIMIT ? OFFSET ?`).bind(...binds,limit,offset).all();return j({users:rows?.results||[],totalCount,limit,offset})}catch(x){return e('minute_usage_report_failed',500,{detail:em(x)})}}
-export function buildMinuteUsageClientScript(){return`;(function(){var state=window.__RAVTEXT_AUTH__||{};if(!state.loggedIn||!(Number(state.balanceSeconds||0)>0))return;var lastActive=0,hasActivity=false,ticking=false;function markActive(){hasActivity=true;lastActive=Date.now()}['keydown','keyup','mousedown','pointerdown','touchstart','click','input','paste','scroll'].forEach(function(n){window.addEventListener(n,markActive,{passive:true,capture:true})});document.addEventListener('visibilitychange',function(){if(!document.hidden)markActive()},{passive:true});function active(){return hasActivity&&!document.hidden&&document.hasFocus&&document.hasFocus()&&Date.now()-lastActive<120000}async function tick(){if(ticking||!active())return;ticking=true;try{var res=await fetch('/api/payments/usage/tick',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({seconds:60})});if(res.ok){var data=await res.json();window.__RAVTEXT_AUTH__=window.__RAVTEXT_AUTH__||{};if(typeof data.balanceSeconds==='number')window.__RAVTEXT_AUTH__.balanceSeconds=data.balanceSeconds;if(typeof data.paid==='boolean')window.__RAVTEXT_AUTH__.paid=data.paid;if(data.expired||data.paid===false){try{localStorage.removeItem('ravtext.demoMode')}catch(e){}try{delete window.__RAVTEXT_DEMO_MODE__}catch(e){window.__RAVTEXT_DEMO_MODE__=true}window.dispatchEvent(new CustomEvent('ravtext:premium-expired',{detail:data}));setTimeout(function(){location.reload()},250)}}}catch(e){}finally{ticking=false}}setInterval(tick,60000)})();`}
+const RAVTEXT_LARGE_ELEVENLABS_CLIENT_PATCH = `;(function(){
+  if (window.__ravtextElevenLabsLargeUploadPatch) return;
+  window.__ravtextElevenLabsLargeUploadPatch = true;
+  var nativeFetch = window.fetch;
+  if (typeof nativeFetch !== "function" || typeof FormData === "undefined" || typeof Blob === "undefined") return;
+
+  function isAiToolsRequest(input) {
+    var raw = "";
+    try {
+      raw = typeof input === "string" ? input : (input && input.url) || "";
+      var url = new URL(raw, location.href);
+      return url.origin === location.origin && url.pathname === "/api/ai-tools/gas";
+    } catch (_) {
+      return String(raw || "").indexOf("/api/ai-tools/gas") >= 0;
+    }
+  }
+
+  function base64ToBlob(base64, mime) {
+    var clean = String(base64 || "");
+    var comma = clean.indexOf(",");
+    if (comma >= 0) clean = clean.slice(comma + 1);
+    var binary = atob(clean);
+    var size = binary.length;
+    var chunkSize = 32768;
+    var parts = [];
+    for (var offset = 0; offset < size; offset += chunkSize) {
+      var slice = binary.slice(offset, offset + chunkSize);
+      var bytes = new Uint8Array(slice.length);
+      for (var i = 0; i < slice.length; i += 1) bytes[i] = slice.charCodeAt(i);
+      parts.push(bytes);
+    }
+    return new Blob(parts, { type: mime || "application/octet-stream" });
+  }
+
+  window.fetch = function(input, init) {
+    try {
+      var opts = init || {};
+      if (!isAiToolsRequest(input) || !opts || typeof opts.body !== "string") return nativeFetch.apply(this, arguments);
+      var data = JSON.parse(opts.body);
+      var file = data && data.files && data.files[0];
+      if (!data || data.prompt_type !== "elevenlabs_transcribe" || !data.api_key || !file || !file.content_base64) {
+        return nativeFetch.apply(this, arguments);
+      }
+
+      var form = new FormData();
+      form.append("prompt_type", "elevenlabs_transcribe");
+      form.append("api_key", data.api_key);
+      if (data.model) form.append("model", data.model);
+      if (data.language_code) form.append("language_code", data.language_code);
+      if (data.model_id) form.append("model_id", data.model_id);
+
+      var fileName = file.name || data.file_name || "audio";
+      var fileType = file.mime || file.mime_type || file.content_type || file.type || "application/octet-stream";
+      form.append("file_name", fileName);
+      form.append("file", base64ToBlob(file.content_base64, fileType), fileName);
+
+      var headers = new Headers(opts.headers || {});
+      headers.delete("content-type");
+      headers.delete("Content-Type");
+
+      var nextInit = {};
+      for (var key in opts) nextInit[key] = opts[key];
+      nextInit.headers = headers;
+      nextInit.body = form;
+      return nativeFetch.call(this, input, nextInit);
+    } catch (_) {
+      return nativeFetch.apply(this, arguments);
+    }
+  };
+})();`;
+export function buildMinuteUsageClientScript(){return RAVTEXT_LARGE_ELEVENLABS_CLIENT_PATCH+`;(function(){var state=window.__RAVTEXT_AUTH__||{};if(!state.loggedIn||!(Number(state.balanceSeconds||0)>0))return;var lastActive=0,hasActivity=false,ticking=false;function markActive(){hasActivity=true;lastActive=Date.now()}['keydown','keyup','mousedown','pointerdown','touchstart','click','input','paste','scroll'].forEach(function(n){window.addEventListener(n,markActive,{passive:true,capture:true})});document.addEventListener('visibilitychange',function(){if(!document.hidden)markActive()},{passive:true});function active(){return hasActivity&&!document.hidden&&document.hasFocus&&document.hasFocus()&&Date.now()-lastActive<120000}async function tick(){if(ticking||!active())return;ticking=true;try{var res=await fetch('/api/payments/usage/tick',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({seconds:60})});if(res.ok){var data=await res.json();window.__RAVTEXT_AUTH__=window.__RAVTEXT_AUTH__||{};if(typeof data.balanceSeconds==='number')window.__RAVTEXT_AUTH__.balanceSeconds=data.balanceSeconds;if(typeof data.paid==='boolean')window.__RAVTEXT_AUTH__.paid=data.paid;if(data.expired||data.paid===false){try{localStorage.removeItem('ravtext.demoMode')}catch(e){}try{delete window.__RAVTEXT_DEMO_MODE__}catch(e){window.__RAVTEXT_DEMO_MODE__=true}window.dispatchEvent(new CustomEvent('ravtext:premium-expired',{detail:data}));setTimeout(function(){location.reload()},250)}}}catch(e){}finally{ticking=false}}setInterval(tick,60000)})();`}
