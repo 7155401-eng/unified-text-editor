@@ -19,6 +19,12 @@ const FREE_UNMETERED_TOOLS = new Set([
 // on the server and is NOT the legacy local once/day bucket.
 const SERVER_MANAGED_QUOTA_TOOLS = new Set([
   "nikud-merger",
+  "sefaria-downloader",
+  "sefaria-live",
+  "torah-nikud",
+  "haredi-caricature",
+  "comparator-tool",
+  "torah-ocr",
 ]);
 
 function normalizeToolName(toolName) {
@@ -121,7 +127,7 @@ export function markToolUsed(toolName) {
   return all[key][keyName];
 }
 
-export function showToolBlocked(toolName, niceName, reason) {
+export function showToolBlocked(toolName, niceName, reason, details = null) {
   if (reason === "login") {
     showToast({
       kind: "info",
@@ -131,15 +137,16 @@ export function showToolBlocked(toolName, niceName, reason) {
       action: () => { window.location.href = "/api/auth/login"; },
       autoCloseMs: 8000,
     });
-  } else if (reason === "quota") {
+  } else if (reason === "quota" || reason === "in_progress") {
+    const serverMessage = String(details?.message || "").trim();
     showToast({
       kind: "warn",
-      title: "המכסה היומית נוצלה",
-      msg: `${niceName || toolName} זמין פעם אחת בחשבון חינמי. שדרג לפרימיום לשימוש ללא הגבלה.`,
+      title: reason === "in_progress" ? "הפעולה כבר נרשמת" : "המכסה החינמית נוצלה",
+      msg: serverMessage || `${niceName || toolName} אינו זמין כרגע במכסה החינמית. בפרימיום השימוש ללא הגבלה.`,
       actionText: "לפרימיום",
       action: openPremiumPage,
       secondaryText: "סגור",
-      autoCloseMs: 8000,
+      autoCloseMs: 9000,
     });
   }
 }
