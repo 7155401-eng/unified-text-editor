@@ -2948,22 +2948,39 @@ function buildPagePlanCore(pageContent, config) {
     };
 
     // Preserve configured order, but streams in the same secondary Mishnah
-    // level are one geometric unit. Level 03,04 must not become two unrelated
-    // full-width footers stacked one below the other.
+    // level are one geometric unit. In mixed GPT+Mishnah mode, the two GPT
+    // streams keep their reserved sides permanently; non-GPT streams whose
+    // per-stream "פריסה" is explicitly "mishna" are paired HERE in the footer
+    // geometry instead of opportunistically stealing an empty GPT side.
     const footerGroups = [];
     const levelGroups = new Map();
+    let roleMishnaGroup = null;
     for (const fs of pageContent.footerStreams) {
       const level = secondaryLevelIndex(fs.id);
-      if (level < 0) {
-        footerGroups.push({ level: -1, streams: [fs] });
+      if (level >= 1) {
+        if (!levelGroups.has(level)) {
+          const group = { level, streams: [], mishnaLayout: true, source: "levels" };
+          levelGroups.set(level, group);
+          footerGroups.push(group);
+        }
+        levelGroups.get(level).streams.push(fs);
         continue;
       }
-      if (!levelGroups.has(level)) {
-        const group = { level, streams: [] };
-        levelGroups.set(level, group);
-        footerGroups.push(group);
+
+      const layoutRole = String(streamSettings[fs.id]?.layoutRole || "");
+      if (layoutRole === "mishna") {
+        // Pair deterministically in configured footer order. More than two
+        // Mishnah-role streams become additional stable pairs; an odd final
+        // stream keeps the ordinary full-width footer fallback below.
+        if (!roleMishnaGroup || roleMishnaGroup.streams.length >= 2) {
+          roleMishnaGroup = { level: -1, streams: [], mishnaLayout: true, source: "layoutRole" };
+          footerGroups.push(roleMishnaGroup);
+        }
+        roleMishnaGroup.streams.push(fs);
+        continue;
       }
-      levelGroups.get(level).streams.push(fs);
+
+      footerGroups.push({ level: -1, streams: [fs], mishnaLayout: false });
     }
 
     const streamRich = (fs) => fs.rich || makeRichText((fs.items || []).join(" "), fs.runs || []);
@@ -3016,7 +3033,7 @@ function buildPagePlanCore(pageContent, config) {
       // Exact analytical equivalent of the historical Mishnah-wrap level for
       // the common two-stream case: the shorter stream is a fixed float; the
       // longer stream flows beside it and then expands to full width below it.
-      if (group.level >= 1 && metas.length === 2) {
+      if (group.mishnaLayout === true && metas.length === 2) {
         const [a, b] = metas;
         const aLen = streamText(a.fs).length;
         const bLen = streamText(b.fs).length;
