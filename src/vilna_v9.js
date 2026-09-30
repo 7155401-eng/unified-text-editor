@@ -18,6 +18,7 @@ import { buildNoteContentNodes, nodesToTextRuns, styleIdToMarks, applyBoldOverri
 import {
   buildV9SplitPolicy,
   buildParagraphBreakCandidates,
+  wordEndCandidatesForV9,
   selectV9GapFillCandidates,
   scoreV9PageCandidate,
   splitMainTextAtOffset,
@@ -5025,14 +5026,36 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         };
         const extensionRemainingPx = Math.max(0, pageBottomForFill - planBottomY(currentPlan));
         const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+        // Standard candidates are estimated against splitMainWidth, which is
+        // only the nominal main width. On a real V9 page the joined fragment can
+        // end inside a wider/narrower bar-mitzra strip, so a nominal visual line
+        // edge may be a poor actual line edge after the fragment is reflowed.
+        //
+        // Probe additional WORD boundaries, but never trust them by themselves:
+        // every probe is rebuilt through buildPagePlan() below and must pass the
+        // authoritative finalMainLineGuard, note ownership, overflow and source
+        // order checks. This lets the real geometry discover a valid line edge
+        // without weakening the "no mid-line split" policy.
+        const nominalExtensionCandidates = buildParagraphBreakCandidates(
+          secondText,
+          splitMetrics,
+          splitMainWidth,
+          v9SplitPolicy,
+          { source: "extension-rescue" }
+        ).filter(c => c.offset >= 2 && c.offset <= secondText.length);
+
+        const actualGeometryWordProbes = wordEndCandidatesForV9(secondText)
+          .filter(offset => offset >= 2 && offset <= secondText.length)
+          .map(offset => ({
+            kind: "actual-geometry-word-end",
+            offset,
+            priority: 0,
+            source: "extension-rescue-actual-geometry",
+            reason: "probe actual V9 row geometry; acceptance still requires final line guard",
+          }));
+
         const extendCandidates = selectV9GapFillCandidates(
-          buildParagraphBreakCandidates(
-            secondText,
-            splitMetrics,
-            splitMainWidth,
-            v9SplitPolicy,
-            { source: "extension-rescue" }
-          ).filter(c => c.offset >= 2 && c.offset <= secondText.length),
+          [...nominalExtensionCandidates, ...actualGeometryWordProbes],
           {
             remainingPx: extensionRemainingPx,
             lineHeight: extensionLineH,
