@@ -1,6 +1,7 @@
 // Document-wide features: page numbers, headers/footers, watermark.
-// Each feature is a Layout/View toggle that paints overlays on every
-// .page element after each engine render.
+// The overlays are now applied while each page is created. Post-render hooks
+// remain only as synchronization/fallback for existing pages and live setting
+// changes; they are no longer the first moment a page receives its furniture.
 
 const PAGE_NUM_KEY = "ravtext.pageNumbers";
 const HEADER_KEY = "ravtext.pageHeader";
@@ -58,70 +59,86 @@ function toHebrewNumeral(n) {
   return out;
 }
 
-function applyPageNumbers() {
+function applyPageNumberToPage(page, pageIndex) {
   const on = localStorage.getItem(PAGE_NUM_KEY) === "1";
-  pageElements().forEach((page, i) => {
-    let label = page.querySelector(".ravtext-page-number-overlay");
-    if (!on) {
-      if (label) label.remove();
-      return;
+  let label = page.querySelector(":scope > .ravtext-page-number-overlay");
+  if (!on) {
+    label?.remove();
+    return;
+  }
+  if (!label) {
+    label = document.createElement("div");
+    label.className = "ravtext-page-number-overlay";
+    page.appendChild(label);
+  }
+  const idx = Number.isFinite(Number(pageIndex))
+    ? Number(pageIndex)
+    : (Number(page.dataset?.pageIndex) || 0);
+  label.textContent = toHebrewNumeral(idx + 1);
+}
+
+function applyHeaderFooterToPage(page) {
+  const headerText = localStorage.getItem(HEADER_KEY) || "";
+  const footerText = localStorage.getItem(FOOTER_KEY) || "";
+  let header = page.querySelector(":scope > .ravtext-page-header");
+  let footer = page.querySelector(":scope > .ravtext-page-footer");
+  if (headerText) {
+    if (!header) {
+      header = document.createElement("div");
+      header.className = "ravtext-page-header";
+      page.insertBefore(header, page.firstChild);
     }
-    if (!label) {
-      label = document.createElement("div");
-      label.className = "ravtext-page-number-overlay";
-      page.appendChild(label);
+    header.textContent = headerText;
+  } else {
+    header?.remove();
+  }
+  if (footerText) {
+    if (!footer) {
+      footer = document.createElement("div");
+      footer.className = "ravtext-page-footer";
+      page.appendChild(footer);
     }
-    const num = i + 1;
-    label.textContent = toHebrewNumeral(num);
-  });
+    footer.textContent = footerText;
+  } else {
+    footer?.remove();
+  }
+}
+
+function applyWatermarkToPage(page) {
+  const text = localStorage.getItem(WATERMARK_KEY) || "";
+  const opacity = parseFloat(localStorage.getItem(WATERMARK_OPACITY_KEY) || "0.12");
+  let mark = page.querySelector(":scope > .ravtext-watermark");
+  if (!text) {
+    mark?.remove();
+    return;
+  }
+  if (!mark) {
+    mark = document.createElement("div");
+    mark.className = "ravtext-watermark";
+    page.appendChild(mark);
+  }
+  mark.textContent = text;
+  mark.style.opacity = String(opacity);
+}
+
+export function applyDocumentFeaturesToPage(page, pageIndex = null, options = {}) {
+  if (!page || page.classList?.contains("page-placeholder") || page.classList?.contains("ravtext-empty-page")) return;
+  applyPageNumberToPage(page, pageIndex);
+  applyHeaderFooterToPage(page);
+  applyWatermarkToPage(page);
+  if (options.atRender === true) page.dataset.ravtextFeaturesAppliedAtRender = "1";
+}
+
+function applyPageNumbers() {
+  pageElements().forEach((page, i) => applyPageNumberToPage(page, i));
 }
 
 function applyHeaderFooter() {
-  const headerText = localStorage.getItem(HEADER_KEY) || "";
-  const footerText = localStorage.getItem(FOOTER_KEY) || "";
-  pageElements().forEach((page) => {
-    let header = page.querySelector(".ravtext-page-header");
-    let footer = page.querySelector(".ravtext-page-footer");
-    if (headerText) {
-      if (!header) {
-        header = document.createElement("div");
-        header.className = "ravtext-page-header";
-        page.insertBefore(header, page.firstChild);
-      }
-      header.textContent = headerText;
-    } else {
-      header?.remove();
-    }
-    if (footerText) {
-      if (!footer) {
-        footer = document.createElement("div");
-        footer.className = "ravtext-page-footer";
-        page.appendChild(footer);
-      }
-      footer.textContent = footerText;
-    } else {
-      footer?.remove();
-    }
-  });
+  pageElements().forEach((page) => applyHeaderFooterToPage(page));
 }
 
 function applyWatermark() {
-  const text = localStorage.getItem(WATERMARK_KEY) || "";
-  const opacity = parseFloat(localStorage.getItem(WATERMARK_OPACITY_KEY) || "0.12");
-  pageElements().forEach((page) => {
-    let mark = page.querySelector(".ravtext-watermark");
-    if (!text) {
-      mark?.remove();
-      return;
-    }
-    if (!mark) {
-      mark = document.createElement("div");
-      mark.className = "ravtext-watermark";
-      page.appendChild(mark);
-    }
-    mark.textContent = text;
-    mark.style.opacity = String(opacity);
-  });
+  pageElements().forEach((page) => applyWatermarkToPage(page));
 }
 
 function getOrCreateMeasurePage() {
@@ -224,9 +241,7 @@ function rerender() {
 }
 
 function applyAll() {
-  applyPageNumbers();
-  applyHeaderFooter();
-  applyWatermark();
+  pageElements().forEach((page, i) => applyDocumentFeaturesToPage(page, i));
 }
 
 // ★ משה 28/09/2026 — "אין מספרי עמודים כלל", וגם (דחיפות 1): "כשאני
