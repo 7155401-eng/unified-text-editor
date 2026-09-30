@@ -67,3 +67,54 @@ The previous generic menu rhythm was useful for dropdowns, but it made ribbon gr
   background: transparent !important;
   box-shadow: none !important;
 }
+
+/* Collapsed-ribbon specificity guard.
+   styles.css intentionally re-shows non-hidden toolbar groups/separators in
+   ribbon-collapsed mode as a stale-state safety net. When a tab has no active
+   controls, that stronger !important rule can resurrect a separator-only row.
+   These selectors outrank that safety rule, but only for genuinely empty UI. */
+html body.ribbon-collapsed #main-ribbon-toolbar :is(.sep, .divider, .separator):not(.ribbon-hidden),
+html body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar :is(.sep, .divider, .separator):not(.ribbon-hidden) {
+  display: none !important;
+  inline-size: 0 !important;
+  block-size: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html body.ribbon-collapsed #main-ribbon-toolbar .tb-group:not(.ribbon-hidden):empty,
+html body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .tb-group:not(.ribbon-hidden):empty,
+html body.ribbon-collapsed #main-ribbon-toolbar .tb-group:not(.ribbon-hidden):not(:has(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"])),
+html body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .tb-group:not(.ribbon-hidden):not(:has(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"])) {
+  display: none !important;
+  inline-size: 0 !important;
+  block-size: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html body.ribbon-collapsed #main-ribbon-toolbar:not(:has(.tb-group:not(.ribbon-hidden) > :is(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"]))),
+html body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar:not(:has(.tb-group:not(.ribbon-hidden) > :is(button, select, input, textarea, label, a, [role="button"], [contenteditable="true"]))) {
+  display: none !important;
+  min-height: 0 !important;
+  margin-block: 0 !important;
+  padding-block: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
