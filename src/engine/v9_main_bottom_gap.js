@@ -1,16 +1,15 @@
-// v9_main_bottom_gap.js — safe measured post-layout gap for Vilna V9.
+// v9_main_bottom_gap.js — V9 main/footer gap policy + post-render diagnostics.
 //
-// V9 positions every visible line absolutely. Therefore a CSS padding/margin
-// below the main text is unsafe: the pagination algorithm will not know about it.
-// This pass runs inside the V9 render pipeline after the page is built, measures
-// the actual main/footer positions, and shifts only the footer apparatus down —
-// only when there is real free space left inside the page.
+// Visible V9 geometry is planned before paint. This module may resolve the user's
+// requested gap and audit the painted result, but it must not move lines after
+// layout. A post-render Y shift would create a second geometry authority and can
+// manufacture blank rows at narrow→wide commentary knees.
 
 import { applyV9OpeningWordsFromMetadata } from "./v9_opening_words_from_metadata.js";
 import { normalizeV9StretchPolicy } from "./v9_stretch_policy.js";
 
-const DEFAULT_GAP_PX = 16;
-const MAX_GAP_PX = 60;
+export const DEFAULT_V9_MAIN_BOTTOM_GAP_PX = 16;
+export const MAX_V9_MAIN_BOTTOM_GAP_PX = 60;
 const EPS = 0.5;
 
 function px(value, fallback = 0) {
@@ -22,16 +21,16 @@ function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function readGapPx(container, explicitGap) {
+export function resolveV9MainBottomGapPx(container, explicitGap) {
   if (Number.isFinite(Number(explicitGap))) {
-    return clamp(Number(explicitGap), 0, MAX_GAP_PX);
+    return clamp(Number(explicitGap), 0, MAX_V9_MAIN_BOTTOM_GAP_PX);
   }
 
   try {
     const raw = window.localStorage?.getItem("ravtext.talmudLayout.mainBottomGap");
     if (raw !== null && raw !== "") {
       const n = Number.parseFloat(raw);
-      if (Number.isFinite(n)) return clamp(n, 0, MAX_GAP_PX);
+      if (Number.isFinite(n)) return clamp(n, 0, MAX_V9_MAIN_BOTTOM_GAP_PX);
     }
   } catch (_) {}
 
@@ -39,10 +38,10 @@ function readGapPx(container, explicitGap) {
     const cssValue = window.getComputedStyle?.(container)
       ?.getPropertyValue("--ravtext-v9-main-bottom-gap");
     const n = Number.parseFloat(cssValue || "");
-    if (Number.isFinite(n)) return clamp(n, 0, MAX_GAP_PX);
+    if (Number.isFinite(n)) return clamp(n, 0, MAX_V9_MAIN_BOTTOM_GAP_PX);
   } catch (_) {}
 
-  return DEFAULT_GAP_PX;
+  return DEFAULT_V9_MAIN_BOTTOM_GAP_PX;
 }
 
 function topOf(el) {
@@ -74,83 +73,45 @@ function isMainLine(el) {
 }
 
 function applyGapToPage(pageEl, desiredGapPx) {
-  if (!pageEl || desiredGapPx <= 0) return null;
+  if (!pageEl || desiredGapPx < 0) return null;
 
   const mainLines = Array.from(pageEl.querySelectorAll(".v9-line"))
     .filter(isMainLine);
   if (!mainLines.length) return null;
 
   const mainBottom = Math.max(...mainLines.map(el => topOf(el) + heightOf(el)));
-
-  // Footer titles are the stream titles that start after the main text ends.
-  // Side-stream titles are above/around the main area and are intentionally left untouched.
   const footerTitles = Array.from(pageEl.querySelectorAll(".v9-stream-title"))
     .filter(el => topOf(el) >= mainBottom - EPS);
-  if (!footerTitles.length) return null;
+
+  if (!footerTitles.length) {
+    const result = {
+      desired: desiredGapPx,
+      current: null,
+      applied: 0,
+      reason: "no-footer-apparatus",
+      authority: "planner",
+    };
+    pageEl.dataset.v9MainBottomGap = JSON.stringify(result);
+    return result;
+  }
 
   const firstFooterTop = Math.min(...footerTitles.map(topOf));
   const currentGap = firstFooterTop - mainBottom;
-  const requestedShift = desiredGapPx - currentGap;
-  if (requestedShift <= EPS) {
-    pageEl.dataset.v9MainBottomGap = JSON.stringify({
-      desired: desiredGapPx,
-      current: Math.round(currentGap * 100) / 100,
-      applied: 0,
-      reason: "already-enough",
-    });
-    return null;
-  }
-
-  const allPositioned = Array.from(pageEl.querySelectorAll(
-    ".v9-line, .v9-stream-title, .v9-main-separator"
-  ));
-
-  const movable = allPositioned.filter(el => {
-    if (isMainLine(el)) return false;
-    if (el.classList?.contains("v9-main-separator")) return false;
-    return topOf(el) >= firstFooterTop - EPS;
-  });
-  if (!movable.length) return null;
-
-  const pageHeight = px(pageEl.style.height, pageEl.clientHeight || 0);
-  const pagePadding = px(pageEl.style.padding, 12);
-  const bottomLimit = pageHeight > 0 ? pageHeight - pagePadding : Infinity;
-  const movableBottom = Math.max(...movable.map(el => topOf(el) + heightOf(el)));
-  const availableShift = Math.max(0, bottomLimit - movableBottom);
-  const appliedShift = Math.min(requestedShift, availableShift);
-
-  if (appliedShift <= EPS) {
-    pageEl.dataset.v9MainBottomGap = JSON.stringify({
-      desired: desiredGapPx,
-      current: Math.round(currentGap * 100) / 100,
-      applied: 0,
-      reason: "no-room",
-    });
-    return null;
-  }
-
-  for (const el of movable) {
-    setTop(el, topOf(el) + appliedShift);
-  }
-
-  // If there is a main/footer separator, keep it centered between the main and the shifted footer.
-  const sep = pageEl.querySelector(".v9-main-separator");
-  if (sep) {
-    const sepH = heightOf(sep);
-    const shiftedFooterTop = firstFooterTop + appliedShift;
-    setTop(sep, Math.round((mainBottom + shiftedFooterTop) / 2 - sepH / 2));
-  }
-
   const result = {
     desired: desiredGapPx,
-    before: Math.round(currentGap * 100) / 100,
-    applied: Math.round(appliedShift * 100) / 100,
-    after: Math.round((currentGap + appliedShift) * 100) / 100,
+    current: Math.round(currentGap * 100) / 100,
+    applied: 0,
+    after: Math.round(currentGap * 100) / 100,
+    reason: currentGap + EPS >= desiredGapPx ? "planned-enough" : "planner-gap-shortfall",
+    authority: "planner",
   };
+
+  // Diagnostic only. V9 geometry is immutable after render. In particular this
+  // function must NEVER shift a side-stream continuation or footer line: doing
+  // so creates a second vertical grid and can re-introduce blank knee rows.
   pageEl.dataset.v9MainBottomGap = JSON.stringify(result);
   return result;
 }
-
 
 function v9RectRelativeToPage(pageEl, el) {
   const pageRect = pageEl?.getBoundingClientRect?.();
@@ -342,13 +303,12 @@ function applyV9VisualSafetyGap(container, desiredGapPx) {
 // הפונקציה הזו מריצה את אותה עבודה בדיוק על **עמוד אחד**, כדי שאפשר
 // יהיה לקרוא לה ברגע שהעמוד נגמר. העבודה עצמה לא השתנתה — רק העיתוי.
 //
-// ⭐ למה זה בטוח להריץ פעמיים: applyGapToPage מודד את המרווח הקיים
-// ומשווה למבוקש. אם כבר יש מספיק, הוא מסמן „already-enough" ולא נוגע.
-// לכן המעבר הכולל שנשאר בסוף אינו מזיז דבר — הוא רק רשת ביטחון.
+// Geometry is planner-owned. This per-page hook is now diagnostic-only and is
+// safe to call more than once because it never changes element positions.
 export function applyV9MainBottomGapToPage(pageEl, options = {}) {
   if (!pageEl) return null;
   const scope = pageEl.parentElement || pageEl;
-  const desiredGapPx = readGapPx(scope, options.gapPx);
+  const desiredGapPx = resolveV9MainBottomGapPx(scope, options.gapPx);
   // ⚠️ ניסיתי להוסיף לכאן גם את שמירת המרווח הוויזואלי, והחמרתי:
   // העמודים הלא-יציבים קפצו מ-1 ל-12. הסיבה: אותה שמירה **אינה**
   // בטוחה להרצה כפולה — היא מזיזה שורות לפי מדידה, וכשהיא רצה שוב
@@ -361,7 +321,7 @@ export function applyV9MainBottomGapToPage(pageEl, options = {}) {
 
 export function applyV9MainBottomGap(container, options = {}) {
   if (!container || !container.querySelectorAll) return [];
-  const desiredGapPx = readGapPx(container, options.gapPx);
+  const desiredGapPx = resolveV9MainBottomGapPx(container, options.gapPx);
   const pages = Array.from(container.querySelectorAll(".page.v9-page, .v9-page"));
   const results = [];
 

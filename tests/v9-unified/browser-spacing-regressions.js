@@ -9,6 +9,7 @@ import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js'
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
 import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
+import { applyV9MainBottomGapToPage } from '../../src/engine/v9_main_bottom_gap.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
@@ -761,6 +762,70 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     assert(b3.mishnaSource==='layoutRole'&&b4.mishnaSource==='layoutRole','explicit Mishnah source not recorded');
     assert(Math.abs(b3.titleY-b4.titleY)<.1,'explicit Mishnah streams do not start together');
     assert(b3.titleWidth<plan.pageBox.innerWidth*.75,'explicit Mishnah stream is still a full-width footer');
+    page.remove();
+  });
+
+  await test('main-bottom gap is reserved in the V9 plan and post-pass cannot move painted geometry',()=>{
+    const page=makePage();
+    const footerText=Array(5).fill(neutral).join(' ');
+    const requested=28;
+    const plan=buildSinglePage(page,{
+      mainText:Array(3).fill(neutral).join(' '),
+      rightStream:null,leftStream:null,
+      footerStreams:[{id:'03',items:[footerText],runs:[],rich:{text:footerText,runs:[]}}],
+      titles:{'03':'הערות'}
+    },{...cfg,talmudStreams:[],pageHeight:620,mainBottomGapPx:requested,
+      titles:{'03':'הערות'},streamSettings:{'03':{inlineStyle:{fontSize:11}}}});
+
+    assert(plan.mainBox?.lines?.length,'fixture has no main lines');
+    assert(plan.footerBoxes?.length,'fixture has no footer box');
+    assert(plan.mainBottomGapPlan?.boundary==='main',
+      `main did not own footer boundary: ${JSON.stringify(plan.mainBottomGapPlan)}`);
+
+    const mainBottom=Math.max(...plan.mainBox.lines.map(l=>l.y+l.lineHeightPx));
+    const footerTop=plan.footerBoxes[0].titleY;
+    assert(footerTop-mainBottom>=requested-.15,
+      `planned main/footer gap too small: ${footerTop-mainBottom} < ${requested}`);
+
+    const positioned=[...page.querySelectorAll('.v9-line,.v9-stream-title,.v9-main-separator')];
+    const before=positioned.map(el=>el.style.top);
+    const diag=applyV9MainBottomGapToPage(page,{gapPx:50});
+    const after=positioned.map(el=>el.style.top);
+    assert(JSON.stringify(before)===JSON.stringify(after),
+      'post-render main-bottom pass moved V9 geometry');
+    assert(diag?.applied===0&&diag?.authority==='planner',
+      `post-pass is not diagnostic-only: ${JSON.stringify(diag)}`);
+    page.remove();
+  });
+
+  await test('main-bottom gap never adds an extra blank slot after a lower side stream',()=>{
+    const page=makePage();
+    const sideText=Array(10).fill(phrase).join(' ');
+    const footerText=Array(3).fill(neutral).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'אחד שניים שלוש ארבע',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[{id:'03',items:[footerText],runs:[],rich:{text:footerText,runs:[]}}],
+      titles:{'03':'הערות'}
+    },{...cfg,pageHeight:1100,crownLines:2,mainBottomGapPx:50,
+      titles:{'03':'הערות'},streamSettings:{
+        '01':{inlineStyle:{fontSize:11,lineHeight:1.45}},
+        '02':{inlineStyle:{fontSize:12,lineHeight:1.6}},
+        '03':{inlineStyle:{fontSize:11}},
+      }});
+
+    assert(plan.footerBoxes?.length,'fixture has no footer');
+    assert(plan.mainBottomGapPlan?.boundary==='side-stream',
+      `side stream did not own footer boundary: ${JSON.stringify(plan.mainBottomGapPlan)}`);
+    assert(plan.mainBottomGapPlan.planned===plan.mainBottomGapPlan.interStreamGap,
+      `main bottom gap leaked below side stream: ${JSON.stringify(plan.mainBottomGapPlan)}`);
+
+    const sideBottom=Math.max(...plan.streamBoxes.flatMap(b=>(b.lines||[]).map(l=>l.y+l.lineHeightPx)));
+    const footerTop=plan.footerBoxes[0].titleY;
+    const actualGap=footerTop-sideBottom;
+    assert(Math.abs(actualGap-plan.mainBottomGapPlan.interStreamGap)<.2,
+      `side→footer gap changed by mainBottomGap: ${actualGap}`);
     page.remove();
   });
 

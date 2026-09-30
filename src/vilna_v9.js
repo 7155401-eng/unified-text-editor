@@ -2,7 +2,7 @@ import { markV9NoteRuns, auditV9NoteStarts, verifyV9StreamCoverage } from "./eng
 import { streamContextForV9, measureV9CrownHeight, flowV9MeasuredStream, flowV9MeasuredColumns, splitV9StreamAtWordCount, renderV9MeasuredStreamLine } from "./engine/v9_stream_inline_layout.js";
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
-import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
+import { DEFAULT_V9_MAIN_BOTTOM_GAP_PX } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle, boldOverrideStyleIdForStream, boldOverrideForcesDocStylesForStream } from "./original_stream_columns.js";
 import { getMainStreamColumnCount } from "./main_stream_columns.js";
@@ -3029,6 +3029,9 @@ function buildPagePlanCore(pageContent, config) {
   // המודגשות (פס לבן-על-צבע), הם נראים דחוסים מדי ב-8px. 0.55 * titleHeight
   // ≈ 11–13px לזרמים בגודל ברירת מחדל, וגדל אוטומטית כשהפונט גדל.
   const interStreamGap = Math.max(10, Math.round(titleHeight * 0.55));
+  const requestedMainBottomGap = Number.isFinite(Number(cfg.mainBottomGapPx))
+    ? Math.max(0, Math.min(60, Number(cfg.mainBottomGapPx)))
+    : DEFAULT_V9_MAIN_BOTTOM_GAP_PX;
   // ⛔⛔⛔ משה 28/09/2026 — „בעמ' י' ההערות וציונים עלה יותר גבוה
   // ממקומו, הוא אמור להיות מתחת, וכרגע הוא עולה על הטקסט הראשי ומוחק
   // חלק ממנו".
@@ -3062,11 +3065,27 @@ function buildPagePlanCore(pageContent, config) {
     return low;
   };
   const mainRealBottom = realBottomOf(result.mainBox);
-  let footerY = Math.max(
-    ...result.streamBoxes.map(b => realBottomOf(b)),
-    mainBottomY,
-    mainRealBottom
-  ) + interStreamGap;
+  const mainFloor = Math.max(mainBottomY, mainRealBottom);
+  const sideFloor = Math.max(0, ...result.streamBoxes.map(b => realBottomOf(b)));
+  const footerBaseY = Math.max(mainFloor, sideFloor);
+
+  // One geometry authority: reserve the requested main→apparatus gap HERE,
+  // before footer lines are measured. If a side commentary continues below the
+  // main stream, that side stream owns the vertical boundary and keeps the
+  // ordinary inter-stream gap; mainBottomGap must never break its row grid.
+  const mainOwnsFooterBoundary = !!(result.mainBox?.lines?.length)
+    && mainFloor >= sideFloor - 0.5;
+  const firstFooterGap = mainOwnsFooterBoundary
+    ? Math.max(interStreamGap, requestedMainBottomGap)
+    : interStreamGap;
+  let footerY = footerBaseY + firstFooterGap;
+  result.mainBottomGapPlan = {
+    requested: requestedMainBottomGap,
+    interStreamGap,
+    planned: firstFooterGap,
+    boundary: mainOwnsFooterBoundary ? "main" : "side-stream",
+    baseY: footerBaseY,
+  };
   let anyFooterTrimmed = false;
 
   if (pageContent.footerStreams && pageContent.footerStreams.length) {
@@ -4259,54 +4278,9 @@ function renderPagePlan(plan, pageEl, cfg) {
     }
   }
 
-  // השומר רץ **אחרי** שהדפדפן כבר סידר את העמוד, כי רק אז אפשר לשאול
-  // אותו איפה כל דבר באמת יושב. קודם פותרים חפיפות, ואז מוודאים
-  // שכלום לא נשאר בחוץ — בסדר הזה, כי פתרון חפיפה יכול להזיז שורה
-  // למטה ובכך ליצור חריגה חדשה.
-  const finish = () => {
-    // ⛔⛔⛔⛔ משה 28–29/09/2026 — **המנוע הזה הופסק.**
-    //
-    // „אסור שמנוע ירוץ אחרי כל העימוד של V9" · „כל המנועים צריכים
-    // להיות מסונכרנים עם הV9 כך שהV9 היא המילה האחרונה".
-    //
-    // ═══ מה הוא עשה ═══
-    // אחרי שהדפדפן כבר צייר את העמוד, הוא מדד חפיפות והזיז אלמנטים
-    // למטה — שורות ראשי וגם שמות של זרמים.
-    //
-    // ═══ למה זה הזיק ═══
-    // ⬛ נמדד על המסמך של משה, עם התכנון המתוקן:
-    //      שמות זרם שנדרסו — **עם** המנוע: 40
-    //      שמות זרם שנדרסו — **בלי** המנוע:  9
-    //    הוא עצמו דחף 31 שמות של זרמים אל תוך הטקסט שמתחתיהם.
-    //    זה בדיוק מה שמשה תיאר: „הכותרת הערות וציונים מופיעה מתחת
-    //    המדור במקום מעליו".
-    //
-    // ═══ ולמה מותר להפסיק אותו עכשיו ═══
-    // כי העבודה שלו נעשית מראש, בתכנון: הטקסט הראשי גולש סביב **כל**
-    // זרם בעמוד כמו סביב תמונה (`carveStripsAroundBoxes`), כולל שני
-    // זרמי הכתר וכולל רצועת השם שמעל כל זרם.
-    // ⬛ נמדד: חפיפות בין זרמים שונים ירדו מ-309 ל-**5**.
-    //
-    // ⬛ הפונקציה נשארת בקוד ואינה נמחקת, כדי שהמדידות והלקח יישמרו.
-    void autoResolveV9CrownMainOverlap;
-    // משה, 25/09, פעמיים: "ביקשתי מפורש שלא להמשיך שום עמוד לפני
-    // שהעמוד הנוכחי גמור לגמרי", ו"החלוקה לשני מנועים היא נגד
-    // ההנחיות".
-    //
-    // המרווח שמתחת לגמרא הוחל עד היום רק בסוף הרינדור, על כל
-    // העמודים ביחד — כלומר מנוע שני שעובר על הכול שוב. כאן הוא
-    // מוחל על העמוד ברגע שהוא נגמר, וכך העמוד סופי מרגע שצויר.
-    //
-    // ⚠️ הסרתי את זה קודם מתוך חשד שזה מקור "הרווחים המיותרים",
-    // ואז מדדתי: המרווחים היו זהים בדיוק עם ובלי. החשד היה שגוי,
-    // וההסרה הסירה דווקא את התיקון שמשה ביקש. מוחזר.
-    try { applyV9MainBottomGapToPage(pageEl); } catch (_) {}
-  };
-  if (typeof queueMicrotask === "function") {
-    queueMicrotask(finish);
-  } else {
-    setTimeout(finish, 0);
-  }
+  // V9 page geometry is final at paint time. No post-render routine may
+  // change line/title Y coordinates. mainBottomGap is already part of footerY
+  // planning above; later passes may diagnose but never move the page.
 }
 
 // =====================================================================
