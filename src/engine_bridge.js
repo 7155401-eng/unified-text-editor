@@ -7,6 +7,8 @@ import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 import { runPreflight } from "./render_preflight.js";
 import { isNestedNotesEnabled } from "./nested_notes_gate.js";
 import { canNestInside, streamLinksSignature } from "./stream_links.js";
+import { loadSpacingSettings } from "./spacing_settings.js";
+import { applyGlobalLineBreakCode, globalLineBreakSettingsSignature } from "./engine/global_line_break_code.js";
 
 function injectDemoWatermarksIfNeeded(content) {
   if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
@@ -333,6 +335,7 @@ function paneManagerContentSignature(paneManager) {
   // Changing which streams may nest inside which changes the packed content,
   // so it has to invalidate the cached result too.
   const streamLinksSig = streamLinksSignature();
+  const globalBreakSig = globalLineBreakSettingsSignature(loadSpacingSettings());
   const sigParts = paneManager.panes
     .map((p) => [
       p.id,
@@ -344,7 +347,7 @@ function paneManagerContentSignature(paneManager) {
       p.editor ? docKey(p.editor.state.doc) : "0",
     ].join(":"))
     .join("|");
-  return sigParts + "##" + nestedFlag + "##" + demoFlag + "##" + globalStreamOverridesSig + "##" + streamLinksSig;
+  return sigParts + "##" + nestedFlag + "##" + demoFlag + "##" + globalStreamOverridesSig + "##" + streamLinksSig + "##" + globalBreakSig;
 }
 
 function extractMainParagraphs(mainPane, paneManager) {
@@ -358,56 +361,64 @@ function extractMainParagraphs(mainPane, paneManager) {
     symbols.push(sym);
     symbolToCode[sym] = p.streamCode;
   }
-
-  if (symbols.length === 0) {
-    const paragraphs = [];
-    mainPane.editor.state.doc.descendants((node) => {
-      const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
-      if (!allowed.includes(node.type.name)) return;
-      const isTable = node.type.name === "table";
-      const paragraphText = isTable ? textFromNode(node) : textFromNode(node);
-      paragraphs.push({
-        paragraphText,
-        runs: isTable ? [] : runsFromNode(node),
-        markers: [],
-        blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
-        headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
-        style: styleMetaForNode(node),
-        tableRows: isTable ? tableRowsFromNode(node) : null,
-      });
-      return false;
-    });
-    return paragraphs;
-  }
-
   symbols.sort((a, b) => b.length - a.length);
-  const escaped = symbols.map(escapeRegex);
-  const re = new RegExp(`(${escaped.join('|')})`, 'g');
+  const re = symbols.length
+    ? new RegExp(`(${symbols.map(escapeRegex).join("|")})`, "g")
+    : null;
+  const breakSettings = loadSpacingSettings();
 
   const paragraphs = [];
   mainPane.editor.state.doc.descendants((node) => {
-    const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
+    const allowed = ["paragraph", "heading", "codeBlock", "blockquote", "table"];
     if (!allowed.includes(node.type.name)) return;
     const isTable = node.type.name === "table";
-    const paragraphText = textFromNode(node);
+    const rawText = textFromNode(node);
+    const rawRuns = isTable ? [] : runsFromNode(node);
     const markers = [];
-    re.lastIndex = 0;
-    let m;
-    while ((m = re.exec(paragraphText)) !== null) {
-      markers.push({
-        sym: m[0],
-        code: symbolToCode[m[0]],
-        atInPara: m.index,
-      });
+
+    if (re) {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(rawText)) !== null) {
+        markers.push({
+          sym: m[0],
+          code: symbolToCode[m[0]],
+          atInPara: m.index,
+        });
+      }
     }
+
+    // B8: scan apparatus markers first, then replace the configured literal
+    // code. Active stream symbols are protected and marker offsets move through
+    // the same boundary map as rich-text runs.
+    const converted = applyGlobalLineBreakCode({
+      text: rawText,
+      runs: rawRuns,
+      positions: markers.map(m => m.atInPara),
+      settings: breakSettings,
+      protectedLiterals: symbols,
+    });
+    converted.positions.forEach((pos, i) => {
+      if (markers[i]) markers[i].atInPara = pos;
+    });
+
+    let rows = isTable ? tableRowsFromNode(node) : null;
+    if (rows) {
+      rows = rows.map(row => row.map(cell => applyGlobalLineBreakCode({
+        text: cell,
+        settings: breakSettings,
+        protectedLiterals: symbols,
+      }).text));
+    }
+
     paragraphs.push({
-      paragraphText,
-      runs: isTable ? [] : runsFromNode(node),
+      paragraphText: converted.text,
+      runs: converted.runs,
       markers,
       blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
       headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
       style: styleMetaForNode(node),
-      tableRows: isTable ? tableRowsFromNode(node) : null,
+      tableRows: rows,
     });
     return false;
   });
@@ -428,7 +439,7 @@ function extractStreamNotes(streamPane) {
 
 // משה 2026-05-13: גרסה משופרת המחזירה גם runs לכל הערה — לעיצוב אינליין
 // (בולד/הדגשה/צבע פר-מילה) בתצוגה. מבנה החזרה: { notes: string[], runsPerNote: Run[][] }.
-function extractStreamNotesWithRuns(streamPane) {
+function extractStreamNotesWithRuns(streamPane, breakSettings = loadSpacingSettings(), protectedLiterals = []) {
   if (!streamPane || !streamPane.editor) return { notes: [], runsPerNote: [] };
   const sym = streamPane.symbol || `@${streamPane.streamCode}`;
   if (!sym) return { notes: [], runsPerNote: [] };
@@ -538,9 +549,16 @@ function extractStreamNotesWithRuns(streamPane) {
     const clean = cleanNoteInfo(fullText);
     if (!clean.text) return { notes: [], runsPerNote: [] };
 
+    const sourceRuns = sliceRuns(allRuns, 0, clean.sliceEnd, clean.dropLeading);
+    const converted = applyGlobalLineBreakCode({
+      text: clean.text,
+      runs: sourceRuns,
+      settings: breakSettings,
+      protectedLiterals,
+    });
     return {
-      notes: [clean.text],
-      runsPerNote: [sliceRuns(allRuns, 0, clean.sliceEnd, clean.dropLeading)],
+      notes: [converted.text],
+      runsPerNote: [converted.runs],
     };
   }
 
@@ -557,10 +575,15 @@ function extractStreamNotesWithRuns(streamPane) {
     const clean = cleanNoteInfo(rawNote);
     if (!clean.text) continue;
 
-    notes.push(clean.text);
-    runsPerNote.push(
-      sliceRuns(allRuns, start, start + clean.sliceEnd, clean.dropLeading)
-    );
+    const sourceRuns = sliceRuns(allRuns, start, start + clean.sliceEnd, clean.dropLeading);
+    const converted = applyGlobalLineBreakCode({
+      text: clean.text,
+      runs: sourceRuns,
+      settings: breakSettings,
+      protectedLiterals,
+    });
+    notes.push(converted.text);
+    runsPerNote.push(converted.runs);
   }
 
   return { notes, runsPerNote };
@@ -746,22 +769,28 @@ export function paneManagerToPackerContent(paneManager) {
 
   const mainParagraphs = extractMainParagraphs(mainPane, paneManager);
   const streamNotes = {};
-  const streamNotesRuns = {}; // משה 2026-05-13: runs לכל הערה — לעיצוב אינליין
+  const streamNotesRuns = {};
+  const breakSettings = loadSpacingSettings();
   // Build a shared symbol → code map so expandNestedInNote can detect
   // markers embedded in note bodies without re-scanning paneManager each call.
   const paneSymbols = [];
   const paneSymToCode = {};
+  // Collect symbols before note conversion so configured line-break codes
+  // cannot consume either direct or nested stream references.
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
-    const withRuns = extractStreamNotesWithRuns(p);
+    const sym = p.symbol || `@${p.streamCode}`;
+    paneSymbols.push(sym);
+    paneSymToCode[sym] = p.streamCode;
+  }
+  for (const p of paneManager.panes) {
+    if (!p.streamCode) continue;
+    const withRuns = extractStreamNotesWithRuns(p, breakSettings, paneSymbols);
     const titled = applyFirstNoteAsTitle(p.streamCode, withRuns.notes);
     streamNotes[p.streamCode] = titled;
     // אם applyFirstNoteAsTitle הסיר את ההערה הראשונה, גם נסיר את ה-runs המתאימים
     const skipped = withRuns.notes.length - titled.length;
     streamNotesRuns[p.streamCode] = withRuns.runsPerNote.slice(skipped);
-    const sym = p.symbol || `@${p.streamCode}`;
-    paneSymbols.push(sym);
-    paneSymToCode[sym] = p.streamCode;
   }
 
   // === Phase A — for each paragraph, walk main-body markers and record

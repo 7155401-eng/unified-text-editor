@@ -35,6 +35,9 @@ const DEFAULTS = {
   // מסומן כברירת מחדל". מי שרוצה זרימה חופשית של הדפדפן יכול לכבות
   // את ה-checkbox ידנית.
   preventMidLineSplit: true,
+  // B8 — literal code that becomes a hard line break only in the render copy.
+  globalLineBreakCodeEnabled: false,
+  globalLineBreakCode: "",
 };
 
 const FIELDS = [
@@ -54,6 +57,8 @@ const FIELDS = [
   ["noMidLineSplits", "לא לפצל באמצע פיסקאות (קשיח)", "checkbox", 0, 1, 1],
   ["noMidParagraphSoft", "לא לפצל פיסקאות (גמיש, ימלא רווחים)", "checkbox", 0, 1, 1],
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
+  ["globalLineBreakCodeEnabled", "מעבר שורה לפי קוד", "checkbox", 0, 1, 1],
+  ["globalLineBreakCode", "קוד מעבר שורה", "text", 0, 0, 1],
 ];
 
 export function loadSpacingSettings() {
@@ -110,6 +115,7 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
         <input data-spacing-key="${key}" type="${type}" min="${min}" max="${max}" step="${step}">
       </label>
     `).join("")}
+    <span class="stream-label-static" title="הקוד נשאר בעורך; רק עותק הרינדור מחליף אותו בשבירת שורה. סימוני זרם פעילים אינם מוחלפים.">קוד מעבר שורה חל על הראשי ועל כל הזרמים ואינו משנה את המקור.</span>
     <label class="stream-col-input spacing-style-link">
       <span>סגנון:</span>
       <select id="spacing-style-select">${styleOptionsHtml("")}</select>
@@ -137,6 +143,10 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
       if (!input) continue;
       if (input.type === "checkbox") {
         current[key] = !!input.checked;
+        continue;
+      }
+      if (input.type === "text") {
+        current[key] = input.value;
         continue;
       }
       const n = Number(input.value);
@@ -200,6 +210,10 @@ function normalizeSpacing(settings) {
   for (const [key, , , min, max] of FIELDS) {
     if (typeof DEFAULTS[key] === "boolean") {
       out[key] = !!out[key];
+      continue;
+    }
+    if (typeof DEFAULTS[key] === "string") {
+      out[key] = String(out[key] ?? "").replace(/[\r\n]/g, "").trim().slice(0, 64);
       continue;
     }
     const n = Number(out[key]);
