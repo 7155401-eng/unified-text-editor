@@ -380,7 +380,7 @@ function getRichHtml(editor) {
     if (node.nodeType === Node.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
       lines.push(Array.from(node.childNodes).map(wordInlineNodeHtml).join(""));
     } else {
-      const html = inlineNodeHtml(node);
+      const html = wordInlineNodeHtml(node);
       if (html) lines.push(html);
     }
   }
