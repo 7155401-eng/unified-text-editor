@@ -933,6 +933,12 @@ export class PaneManager {
     this._pendingMarkerRefresh = false;
     this._savePending = false;
     this._saveTimer = null;
+    // Monotonic count of real editor updates. Hydration paths use
+    // setContent(..., { emitUpdate:false }), so they do not increment this.
+    // This lets async server startup detect and preserve typing that happened
+    // while its request was in flight, without treating local/server/sample
+    // hydration as a user edit.
+    this._contentRevision = 0;
     this._storageJsonCache = new EditorJsonSnapshotCache();
 
     container.addEventListener("pane-remove-request", (ev) => {
@@ -953,6 +959,8 @@ export class PaneManager {
   }
 
   count() { return this.panes.length; }
+
+  getContentRevision() { return this._contentRevision; }
 
   _beginBatch() {
     this._batchDepth++;
@@ -1011,6 +1019,7 @@ export class PaneManager {
       this._emit("focus");
     };
     const onChange = () => {
+      this._contentRevision++;
       this._save();
       this._emit("change");
     };

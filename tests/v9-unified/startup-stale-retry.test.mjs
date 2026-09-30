@@ -201,3 +201,127 @@ test('known over-limit stale document does not retry on every startup', async ()
     for (const restore of restores.reverse()) restore();
   }
 });
+
+
+test('typing while startup server fetch is in flight wins over the late server copy', async () => {
+  const serverContent = {
+    version: 1,
+    activeId: 'server',
+    panes: [{ id: 'server', paneRole: 'main', content: { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'old server copy' }] },
+    ] } }],
+  };
+  const localContent = {
+    version: 1,
+    activeId: 'local',
+    panes: [{ id: 'local', paneRole: 'main', content: { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'typed while server was slow' }] },
+    ] } }],
+  };
+
+  const storage = fakeStorage();
+  const timers = fakeTimers();
+  const listeners = new Map();
+  const callbacks = new Map();
+  const puts = [];
+  let releaseDocumentGet;
+
+  const windowStub = {
+    __RAVTEXT_AUTH__: { loggedIn: true },
+    addEventListener(type, fn) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(fn);
+    },
+    dispatchEvent() {},
+  };
+
+  const fetchStub = (url, init = {}) => {
+    const method = init.method || 'GET';
+    if (String(url) === '/api/documents/current' && method === 'GET') {
+      return new Promise((resolve) => {
+        releaseDocumentGet = () => resolve({
+          ok: true,
+          status: 200,
+          async json() { return { document: { content: serverContent } }; },
+        });
+      });
+    }
+    if (String(url) === '/api/settings' && method === 'GET') {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        async json() { return { settings: {} }; },
+      });
+    }
+    if (String(url) === '/api/documents/current' && method === 'PUT') {
+      puts.push(JSON.parse(init.body));
+      return Promise.resolve({ ok: true, status: 200, async json() { return {}; } });
+    }
+    throw new Error('unexpected fetch ' + method + ' ' + url);
+  };
+
+  let revision = 0;
+  let loadedServer = false;
+  const paneManager = {
+    getContentRevision() { return revision; },
+    flushSave() {
+      storage.setItem(DOC_KEY, JSON.stringify(localContent));
+    },
+    load() {
+      loadedServer = true;
+      throw new Error('late server copy must not overwrite a newer editor revision');
+    },
+    serializeForPersistence() { return structuredClone(localContent); },
+    on(type, fn) { callbacks.set(type, fn); },
+  };
+
+  const restores = [
+    replaceGlobal('window', windowStub),
+    replaceGlobal('localStorage', storage),
+    replaceGlobal('document', { getElementById: () => null }),
+    replaceGlobal('navigator', { sendBeacon: () => true }),
+    replaceGlobal('fetch', fetchStub),
+    replaceGlobal('setTimeout', timers.setTimeout),
+    replaceGlobal('clearTimeout', timers.clearTimeout),
+    replaceGlobal('CustomEvent', class CustomEvent {
+      constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
+    }),
+  ];
+
+  try {
+    const paneSource = await import('node:fs/promises').then(({ readFile }) =>
+      readFile(new URL('../../src/pane_manager.js', import.meta.url), 'utf8')
+    );
+    assert.match(paneSource, /getContentRevision\(\)/);
+    assert.match(paneSource, /this\._contentRevision\+\+/);
+
+    const mod = await freshModule('startup-edit-vs-server-race');
+    const pending = mod.loadInitialState(paneManager);
+    await settle();
+    assert.equal(typeof releaseDocumentGet, 'function');
+
+    // This models a real TipTap onUpdate while the startup GET is still pending.
+    revision++;
+    releaseDocumentGet();
+    const result = await pending;
+
+    assert.equal(loadedServer, false);
+    assert.equal(result.loaded, false);
+    assert.equal(result.skipped, 'local-edit-during-server-load');
+    assert.deepEqual(JSON.parse(storage.getItem(DOC_KEY)), localContent);
+    assert.equal(JSON.parse(storage.getItem(STALE_KEY)).status, 'local-ahead');
+
+    // Once autosync is finally attached by main.js, recovery must be retried
+    // even if the user never types another key.
+    mod.attachAutoSync(paneManager);
+    assert.deepEqual(timers.delays(), [2000, 10000]);
+    timers.runByDelay(2000);
+    await settle(10);
+
+    assert.equal(puts.length, 1);
+    assert.deepEqual(puts[0].content, localContent);
+    assert.equal(storage.getItem(STALE_KEY), null);
+  } finally {
+    for (const restore of restores.reverse()) restore();
+  }
+});
