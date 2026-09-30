@@ -8,7 +8,8 @@ import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layou
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
 import { applyStyleToElement } from "../style_registry.js";
 import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
-import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma, lemmaSplitIndex, MAIN_STREAM_CODE } from "../original_stream_columns.js";
+import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma, lemmaSplitIndex } from "../original_stream_columns.js";
+import { applyMainStreamColumnsToElement } from "../main_stream_columns.js";
 import { createLayoutContext, publishLayoutContextToCssVars, currentLayoutMeasureSignature } from "./layout_context.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
@@ -333,12 +334,7 @@ function buildMeasurePage(mainSegments, streams) {
   const main = document.createElement("div");
   main.className = "page-main";
   applyMainTextStyleToElement(main);
-  const mainCols = Math.max(1, Math.min(2, parseInt(getEffectiveStreamSettings(MAIN_STREAM_CODE)?.cols || 1, 10) || 1));
-  main.dataset.mainCols = String(mainCols);
-  if (mainCols > 1) {
-    main.style.columnCount = String(mainCols);
-    main.style.columnGap = "var(--ravtext-stream-horizontal-gap, 8px)";
-  }
+  applyMainStreamColumnsToElement(main);
   let lastIdx = null;
   let lastP = null;
   const mainRunCursors = new Map();
