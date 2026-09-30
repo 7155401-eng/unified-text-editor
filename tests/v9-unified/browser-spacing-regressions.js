@@ -730,6 +730,38 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     return {mainBottom,footerTop};
   });
 
+  await test('B5 selected one-line rule suppresses an opening before V9 paints it',async()=>{
+    const host=makePage();
+    try {
+      const settings={
+        enabled:true,target:'word',count:1,font:'serif',size:180,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:0.3,scope:'all',
+        skipHeadings:true,headingMin:80,
+        skipSingleLine:true,skipShortLine:false,skipFewerThanLines:false,minLines:3,shortLineMinFill:0.65
+      };
+      const result=await buildPages(host,[{id:'b5-one-row',mainText:'alpha beta gamma',notes:[]}],
+        {...cfg,pageHeight:300,talmudStreams:[],openingWordSettings:settings});
+      assert(result.complete,'B5 one-row fixture incomplete');
+      assert(host.querySelectorAll('.v9-opening-glyph').length===0,'opening was painted despite selected one-line skip rule');
+    } finally {host.remove();}
+  });
+
+  await test('B5 rules are opt-in and do not remove the same opening by default',async()=>{
+    const host=makePage();
+    try {
+      const settings={
+        enabled:true,target:'word',count:1,font:'serif',size:180,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:0.3,scope:'all',
+        skipHeadings:true,headingMin:80,
+        skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:3,shortLineMinFill:0.65
+      };
+      const result=await buildPages(host,[{id:'b5-default',mainText:'alpha beta gamma',notes:[]}],
+        {...cfg,pageHeight:300,talmudStreams:[],openingWordSettings:settings});
+      assert(result.complete,'B5 default fixture incomplete');
+      assert(host.querySelectorAll('.v9-opening-glyph').length===1,'opt-in B5 policy changed an existing opening by default');
+    } finally {host.remove();}
+  });
+
   await test('font preflight includes note runs, nested notes and resolved label styles',async()=>{
     const descriptor=Object.getOwnPropertyDescriptor(document,'fonts'),requests=[];
     Object.defineProperty(document,'fonts',{configurable:true,value:{load:font=>{requests.push(font);return Promise.resolve([]);},ready:Promise.resolve()}});
