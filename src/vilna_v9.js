@@ -2223,6 +2223,7 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
           x: mainX + mainWidth + mainGap,
+          lockYStart: crownHeight > 0 && Math.abs(stripTop - (sideTopY + crownHeight)) < 0.5,
         });
       } else {
         strips.push({
@@ -2230,6 +2231,7 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, mainX - mainGap),
           x: 0,
+          lockYStart: crownHeight > 0 && Math.abs(stripTop - (sideTopY + crownHeight)) < 0.5,
         });
       }
     }
@@ -2254,6 +2256,8 @@ function buildPagePlanCore(pageContent, config) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
+        // Both side streams widen below main on the same planned Y boundary.
+        lockYStart: true,
       });
     }
     // v9-limit-full-strip3-one-line: full-width continuation is still legal after the other side
