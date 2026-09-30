@@ -9,6 +9,7 @@
 // export.
 
 import { t, getLang, toggleLang } from "./sefaria_i18n.js";
+import { checkToolAllowance, consumeToolUse } from "../tool_runtime_gate.js";
 
 const TANAKH_HEB_TO_EN = {
   "בראשית": "Genesis", "שמות": "Exodus", "ויקרא": "Leviticus",
@@ -663,12 +664,21 @@ export function openSefariaLive(opts) {
       return;
     }
 
+    try {
+      await checkToolAllowance("sefaria-live", { niceName: "כלי משיכת פסוקים" });
+    } catch (_) {
+      progressContainer.style.display = "none";
+      return;
+    }
+
     await processQueue(fetchQueue);
   }
 
   async function processQueue(queue) {
     const userBatch = parseInt(batchInput.value, 10);
     const BATCH = (userBatch > 0) ? userBatch : 6;
+    let quotaConsumed = false;
+
     while (queue.length > 0) {
       const batch = queue.splice(0, BATCH);
       const results = await Promise.all(batch.map(task => fetchAndFormat(task)));
@@ -678,6 +688,21 @@ export function openSefariaLive(opts) {
         const elTarget = document.getElementById(task.id);
         if (!elTarget) continue;
         if (r.success) {
+          // Claim the weekly free use BEFORE exposing the first successful
+          // fetched verse. Failed API calls never consume quota.
+          if (!quotaConsumed) {
+            try {
+              await consumeToolUse("sefaria-live", {
+                niceName: "כלי משיכת פסוקים",
+                kind: "fetch-success",
+              });
+              quotaConsumed = true;
+            } catch (_) {
+              progressBar.style.background = "#F44336";
+              progressText.textContent = "המכסה החינמית אינה מאפשרת פעולה נוספת";
+              return false;
+            }
+          }
           elTarget.outerHTML = r.html;
           stats.success++;
         } else {
@@ -697,6 +722,7 @@ export function openSefariaLive(opts) {
     }
     progressBar.style.background = "#4CAF50";
     progressText.textContent = t("live_progress_done");
+    return quotaConsumed;
   }
 
   async function fetchAndFormat(task) {
