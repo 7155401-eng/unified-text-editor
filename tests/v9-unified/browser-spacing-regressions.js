@@ -668,6 +668,105 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     } finally { page.remove();if(saved===undefined)delete settings['01'];else settings['01']=saved; }
   });
 
+  await test('audit B3: punctuation keeps its real following space in the painted row',()=>{
+    const c=createV9TextLayoutContext({...cfg,mainFontSize:11});
+    const text='alpha, beta. gamma; delta: epsilon';
+    const plan=flowV9MeasuredStream({text,runs:[]},[{x:0,width:500,y_start:0,y_end:100}],c,100);
+    assert(plan.lines.length===1,'fixture unexpectedly wrapped');
+    assert(plan.lines[0].render.body.text===text,
+      `punctuation spacing changed before paint: ${JSON.stringify(plan.lines[0].render.body.text)}`);
+    const page=makePage();
+    const el=renderV9MeasuredStreamLine(plan.lines[0],{id:'01',role:'right'},page,0);
+    assert(el.textContent===text,`punctuation spacing changed in DOM: ${JSON.stringify(el.textContent)}`);
+    page.remove();c.dispose();
+  });
+
+  await test('audit B12: a visible main reference is painted at the original marker boundary',async()=>{
+    const settings=getStreamSettings(),saved=settings['01'];
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const raw='alpha@01 beta';
+      const mapped=mapMainParagraphSource(raw,[],[{atInPara:5,sym:'@01',code:'01'}]);
+      assert(mapped.mainTextNet==='alpha beta','marker mapping changed source text');
+      assert(mapped.mainConsumers[0].anchor===5,'reference anchor is not the original marker boundary');
+      const note={stream:'01',uid:'audit-ref-position',num:1,
+        anchor:mapped.mainConsumers[0].anchor,anchorAffinity:mapped.mainConsumers[0].anchorAffinity,
+        text:'note body'};
+      const result=await buildPages(page,[{id:'audit-ref-source',mainText:mapped.mainTextNet,notes:[note]}],
+        {...cfg,pageHeight:260,talmudStreams:['01','02'],maxPages:10});
+      assert(result.complete,'reference-position fixture incomplete');
+      const ref=page.querySelector('[data-v9-main-ref][data-uid="audit-ref-position"]');
+      assert(ref,'visible main reference missing');
+      const body=ref.closest('.v9-planned-line-text');
+      assert(body,'reference is not inside the planned main line');
+      let before='',after='',seen=false;
+      for(const node of body.childNodes){
+        if(node===ref){seen=true;continue;}
+        if(seen)after+=node.textContent||'';else before+=node.textContent||'';
+      }
+      assert(before.endsWith('alpha'),`reference moved before its source word: ${JSON.stringify(before)}`);
+      assert(after.startsWith(' beta'),`reference moved after following source text: ${JSON.stringify(after)}`);
+    } finally {page.remove();if(saved===undefined)delete settings['01'];else settings['01']=saved;}
+  });
+
+  await test('audit B20: footer commentary never overlaps the last main line on a crowded page',async()=>{
+    const settings=getStreamSettings(),saved=settings['03'];
+    settings['03']={...(settings['03']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const main=Array(8).fill(neutral).join(' '),words=[...main.matchAll(/\S+/gu)];
+      const input=Array.from({length:5},(_,pi)=>({
+        id:`audit-footer-${pi}`,mainText:main,
+        notes:Array.from({length:4},(_,ni)=>{
+          const w=words[Math.min(words.length-1,7+ni*12)];
+          return {stream:'03',uid:`audit-footer-${pi}-${ni}`,num:pi*4+ni+1,
+            anchor:w.index+w[0].length,anchorAffinity:'backward',
+            text:Array(7+ni).fill(neutral).join(' ')};
+        })
+      }));
+      const localCfg={...cfg,pageHeight:300,maxPages:100,talmudStreams:['01','02'],
+        mishnaWrapOn:false,streamSettings:{'03':{inlineStyle:{fontSize:11}}}};
+      const result=await buildPages(page,input,localCfg);
+      assert(result.complete,'footer-overlap fixture incomplete');
+      assert(result.pages.length>1,'footer-overlap fixture did not paginate');
+      for(const [pageIndex,p] of result.pages.entries()){
+        assertNoWordOverlap(p);
+        const mains=[...p.querySelectorAll('.v9-line[data-v9-role="main"]')];
+        const footers=[...p.querySelectorAll('.v9-line[data-v9-box-id="03"]')];
+        for(const m of mains)for(const ft of footers){
+          const mx=parseFloat(m.style.left)||0,mw=parseFloat(m.style.width)||0,my=parseFloat(m.style.top)||0,mh=parseFloat(m.style.height)||0;
+          const fx=parseFloat(ft.style.left)||0,fw=parseFloat(ft.style.width)||0,fy=parseFloat(ft.style.top)||0,fh=parseFloat(ft.style.height)||0;
+          const dx=Math.min(mx+mw,fx+fw)-Math.max(mx,fx);
+          const dy=Math.min(my+mh,fy+fh)-Math.max(my,fy);
+          assert(!(dx>.5&&dy>.5),`main/footer geometry overlap on page ${pageIndex}: dx=${dx}, dy=${dy}`);
+        }
+      }
+    } finally {page.remove();if(saved===undefined)delete settings['03'];else settings['03']=saved;}
+  });
+
+  await test('audit C8: the first wide commentary row pulls source text forward after a narrow strip',()=>{
+    const c=createV9TextLayoutContext({...cfg,mainFontSize:11});
+    const text=Array(8).fill(phrase).join(' ');
+    const pitch=c.lineHeight;
+    const strips=[
+      {x:0,width:76,y_start:0,y_end:pitch*2},
+      {x:0,width:230,y_start:pitch*2,y_end:400}
+    ];
+    const plan=flowV9MeasuredStream({text,runs:[]},strips,c,400);
+    assert(plan.lines.length>4,'strip-transition fixture too short');
+    const firstWide=plan.lines.find(l=>l.y>=pitch*2-.05);
+    assert(firstWide,'missing first row after widening');
+    assert(!firstWide.isLast,'first wide row accidentally became paragraph end');
+    const fill=firstWide.naturalWidth/firstWide.width;
+    assert(firstWide.wordTokens.length>=4,
+      `first wide row did not pull enough words forward: ${firstWide.wordTokens.map(t=>t.text).join(' ')}`);
+    assert(fill>=0.55,`first wide row remained mostly empty: fill=${fill.toFixed(3)}`);
+    assert(plan.lines.map(l=>l.sourceText).join('')===text,'strip transition lost or reordered source text');
+    c.dispose();
+    return {fill:+fill.toFixed(3),words:firstWide.wordTokens.length};
+  });
+
   await test('font preflight includes note runs, nested notes and resolved label styles',async()=>{
     const descriptor=Object.getOwnPropertyDescriptor(document,'fonts'),requests=[];
     Object.defineProperty(document,'fonts',{configurable:true,value:{load:font=>{requests.push(font);return Promise.resolve([]);},ready:Promise.resolve()}});
