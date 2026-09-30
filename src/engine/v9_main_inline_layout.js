@@ -361,6 +361,104 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   return result;
 }
 
+
+function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, strips, entry, context, pageBottom, diagnostics) {
+  if (!opening || paragraphLineStart < 0 || paragraphLineStart >= lines.length) return false;
+  let paragraphLines = lines.slice(paragraphLineStart);
+  if (!paragraphLines.length) return false;
+
+  let last = paragraphLines[paragraphLines.length - 1];
+  if (!(last?.isLast || last?.forcedBreak)) return false;
+  const overlapsOpening =
+    last.y < opening.y + opening.height - EPS &&
+    last.y + last.lineHeightPx > opening.y + EPS;
+  if (!overlapsOpening) return false;
+
+  // A completed paragraph ending inside a dropped-opening window must be
+  // balanced before centering. Otherwise a 6+1 word split leaves one tiny
+  // centered body word while the opening stays at the far right.
+  if (paragraphLines.length > 1) {
+    rebalanceContinuationTail(
+      lines, paragraphLineStart, entry, entry.text.length, context, diagnostics
+    );
+    paragraphLines = lines.slice(paragraphLineStart);
+    last = paragraphLines[paragraphLines.length - 1];
+  }
+
+  const fullRow = rowGeometry(strips, last.y, last.lineHeightPx, pageBottom);
+  if (!fullRow) return false;
+
+  const bodyWidth = Math.max(0, number(last.naturalWidth));
+  const gap = bodyWidth > EPS ? Math.max(0, number(opening.gap)) : 0;
+  const compositeWidth = bodyWidth + gap + opening.width;
+  if (!(compositeWidth <= fullRow.width + EPS)) return false;
+
+  const compositeLeft = fullRow.x + (fullRow.width - compositeWidth) / 2;
+  const candidateOpeningX = compositeLeft + bodyWidth + gap;
+  const candidateOpeningRight = candidateOpeningX + opening.width;
+
+  const windowLines = paragraphLines.filter(line =>
+    line.y < opening.y + opening.height - EPS &&
+    line.y + line.lineHeightPx > opening.y + EPS
+  );
+  if (!windowLines.length) return false;
+
+  // One dropped glyph is shared by all rows in its window. Move it only if
+  // every earlier row still fits to its left on the exact row geometry.
+  for (const line of windowLines) {
+    const g = rowGeometry(strips, line.y, line.lineHeightPx, pageBottom);
+    if (!g) return false;
+    if (candidateOpeningX < g.x - EPS ||
+        candidateOpeningRight > g.x + g.width + EPS) return false;
+    if (line === last) continue;
+    const available = candidateOpeningX - gap - g.x;
+    if (number(line.naturalWidth) > available + EPS) return false;
+  }
+
+  opening.x = candidateOpeningX;
+
+  for (const line of windowLines) {
+    const g = rowGeometry(strips, line.y, line.lineHeightPx, pageBottom);
+    if (!g) continue;
+
+    if (line === last) {
+      line.x = compositeLeft;
+      line.width = bodyWidth;
+      line.render.alignment = 'right';
+      line.render.wordSpacing = 0;
+      line.openingCompositeCentered = true;
+      line.openingHostX = fullRow.x;
+      line.openingHostFullWidth = fullRow.width;
+      line.openingCompositeWidth = compositeWidth;
+      continue;
+    }
+
+    const available = Math.max(0, candidateOpeningX - gap - g.x);
+    const gaps = (line.render?.body?.text?.match(/ /g) || []).length;
+    line.x = g.x;
+    line.width = available;
+    line.render.alignment = 'right';
+    line.render.wordSpacing =
+      !line.isLast && !line.forcedBreak && gaps > 0
+        ? Math.max(0, (available - number(line.naturalWidth)) / gaps)
+        : 0;
+  }
+
+  const host = windowLines.find(line => line.render?.opening);
+  if (host?.render?.opening) {
+    host.render.opening = { ...host.render.opening, x: candidateOpeningX };
+  }
+
+  diagnostics?.push?.({
+    code: 'opening-window-final-composite-centered',
+    paragraphId: entry.id,
+    rows: windowLines.length,
+    compositeWidth,
+    rowWidth: fullRow.width,
+  });
+  return true;
+}
+
 /** Main paragraphs, including their openings, are planned by this ONE flow.
  * `context.measure(part)` and the final painter use the same styled content.
  * No DOM node, browser float, scale, or guessed safety percentage is in a plan.
@@ -561,28 +659,10 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         { width: 0, height: pitch }, false, []);
     }
     if (opening) {
+      centerCompletedOpeningWindowTail(
+        lines, paragraphLineStart, opening, strips, entry, context, pageBottom, diagnostics
+      );
       y = Math.max(y, opening.y + opening.height);
-      const sole = lines.length === paragraphLineStart + 1 ? lines[paragraphLineStart] : null;
-      if (sole?.render.opening && sole.isLast) {
-        // A hard source break is already centered by V9. If that one-row
-        // paragraph also owns the opening word, center the SAME visual segment
-        // (opening + gap + body) instead of centering the body alone.
-        const base = rowGeometry(strips, opening.y, opening.height, pageBottom);
-        const total = opening.width + (sole.render.body.text ? opening.gap : 0) + sole.naturalWidth;
-        if (base && total <= base.width + EPS) {
-          sole.x = base.x + (base.width - total) / 2;
-          sole.width = Math.max(0, sole.naturalWidth);
-          // Read-only diagnostics metadata: records the exact geometry used by
-          // the planner so the report never has to infer opening centering from
-          // post-paint DOM heuristics.
-          sole.openingCompositeCentered = true;
-          sole.openingHostX = base.x;
-          sole.openingHostFullWidth = base.width;
-          sole.openingCompositeWidth = total;
-          sole.render.opening = { ...opening, x: sole.x + sole.naturalWidth + (sole.render.body.text ? opening.gap : 0) };
-          sole.render.alignment = 'right';
-        }
-      }
     }
     // A following original paragraph never inherits an opening window.
     if (entry.continuesAfter) rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
