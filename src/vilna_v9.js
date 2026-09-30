@@ -2342,8 +2342,16 @@ function buildPagePlanCore(pageContent, config) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
-        // Both side streams widen below main on the same planned Y boundary.
-        lockYStart: true,
+        // IMPORTANT: a knee is a WIDTH transition, not a new vertical grid.
+        // Do not lock a row to effectiveMainBottomY. That Y belongs to the
+        // main stream and can fall between two commentary baselines (especially
+        // after crown→main clearance or a custom stream line-height).
+        //
+        // rowGeometry() already intersects every strip crossed by the complete
+        // commentary row. Therefore a row whose normal baseline still straddles
+        // the knee remains narrow; only the following normal row becomes wide.
+        // This preserves one continuous commentary pitch with no blank slot.
+        lockYStart: false,
       });
     }
     // v9-limit-full-strip3-one-line: full-width continuation is still legal after the other side
