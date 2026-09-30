@@ -47,7 +47,7 @@ const POLICIES = Object.freeze({
     limit: 1,
     windowSeconds: WEEK_SEC,
     chargeOn: "success",
-    legacyPreflight: true,
+    legacyPreflight: false,
     source: "desktop-weekly-merge",
   }),
   "sefaria-downloader": Object.freeze({
