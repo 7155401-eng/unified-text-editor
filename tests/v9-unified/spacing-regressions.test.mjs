@@ -456,7 +456,7 @@ test('second and final opening-window row centers with the opening as one visual
    return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
   }
  };
- const text='OPEN aa aa aa aa aa aa aa';
+ const text='OPEN aa aa aa aa aa aa aa aa aa aa aa aa';
  const p=layoutV9MainParagraphs(
   [{id:'opening-two-line-last',text,runs:[],mainRefs:[]}],
   [{x:0,width:100,y_start:0,y_end:100}],ctx,100
@@ -481,16 +481,16 @@ test('second and final opening-window row centers with the opening as one visual
   'planner did not record completed opening-window centering');
 });
 
-test('completed opening-window centering fails closed when no safe word partition exists',()=>{
+test('completed opening-window tail stays adjacent when gentle composite centering is impossible',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
   describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
   measure:p=>{
    const body=String(p.text||'').trim();
    if(body==='OPEN')return {width:20,height:10,topInset:0};
-   // One body word fits each row, but neither row has an inter-word gap
-   // that can absorb the remaining width. Composite centering must therefore
-   // fail closed rather than using letter-spacing/scaleX.
+   // One body word fits each row, but neither row has an inter-word gap that
+   // can absorb the remaining width. The safe fallback is adjacency, not
+   // letter-spacing/scaleX and not independent centering.
    const n=body?body.split(/\s+/u).length:0;
    return {width:n?n*60+(n-1)*2:0,height:10,topInset:0};
   }
@@ -501,8 +501,14 @@ test('completed opening-window centering fails closed when no safe word partitio
   [{x:0,width:80,y_start:0,y_end:100}],ctx,100
  );
  assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
+ const last=p.lines.at(-1);
+ assert.equal(last.render.alignment,'right');
+ assert.equal(last.render.wordSpacing,0);
+ assert(last.openingWindowCenterFallback===true);
  assert(!p.diagnostics.some(d=>d.code==='opening-window-final-composite-centered'),
-  'unsafe fixture was centered despite no legal partition');
+  'sparse fixture was falsely marked exact-centered');
+ assert(p.diagnostics.some(d=>d.code==='opening-window-final-adjacent-fallback'),
+  'sparse fixture did not record the safe adjacency fallback');
 });
 
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
