@@ -1,6 +1,7 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
-import { getToolPolicy, isFreePreflightUnmetered, isToolPublic } from './tool_policy.js';
+import { getToolPolicy, isFreePreflightUnmetered, isServerManagedSuccessTool, isToolPublic } from './tool_policy.js';
+import { checkToolQuotaAvailability } from './tool_quota.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
@@ -77,9 +78,14 @@ async function handleSecureExportHtmlAction(request, env, body) {
   });
 }
 
-async function consumeFreeUse(user, toolName, env) {
+async function authorizeFreePreflight(user, toolName, env) {
   if (isFreePreflightUnmetered(toolName)) {
-    return { ok: true, unmetered: true };
+    return { ok: true, unmetered: true, preflightConsumed: false };
+  }
+
+  if (isServerManagedSuccessTool(toolName)) {
+    const state = await checkToolQuotaAvailability(user, toolName, env);
+    return { ...state, preflightConsumed: false };
   }
 
   const usageDate = todayKey();
@@ -89,7 +95,7 @@ async function consumeFreeUse(user, toolName, env) {
       `INSERT OR IGNORE INTO tool_usage (user_id, tool_name, usage_date, created_at)
        VALUES (?, ?, ?, ?)`
     ).bind(user.id, toolName, usageDate, nowSec).run();
-    if ((inserted?.meta?.changes || 0) > 0) return { ok: true };
+    if ((inserted?.meta?.changes || 0) > 0) return { ok: true, preflightConsumed: true };
     return { ok: false, reason: 'quota' };
   } catch (_) {
     // If the D1 migration is not deployed yet, still enforce on the server
@@ -103,7 +109,7 @@ async function consumeFreeUse(user, toolName, env) {
         cacheUrl,
         new Response('1', { headers: { 'cache-control': 'public, max-age=86400' } })
       );
-      return { ok: true };
+      return { ok: true, preflightConsumed: true };
     } catch {
       return { ok: false, reason: 'quota' };
     }
@@ -151,13 +157,30 @@ export async function handleToolPreflight(request, env) {
   const policy = getToolPolicy(toolName);
 
   if (!user.paid) {
-    const usage = await consumeFreeUse(user, toolName, env);
+    let usage;
+    try {
+      usage = await authorizeFreePreflight(user, toolName, env);
+    } catch (error) {
+      return Response.json(
+        { error: 'quota_unavailable', message: 'Quota service is temporarily unavailable' },
+        { status: 503, headers: { 'cache-control': 'no-store' } }
+      );
+    }
     if (!usage.ok) {
       return Response.json(
-        { error: 'quota_exceeded', message: 'Free accounts can use each tool once per day' },
+        {
+          error: 'quota_exceeded',
+          message: isServerManagedSuccessTool(toolName)
+            ? 'Free quota is currently exhausted for this tool'
+            : 'Free accounts can use each tool once per day',
+          resetAt: usage.resetAt ?? null,
+          remaining: usage.remaining ?? 0,
+          limit: usage.limit ?? policy?.limit ?? null,
+        },
         { status: 429, headers: { 'cache-control': 'no-store' } }
       );
     }
+    body.__usage = usage;
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
@@ -176,6 +199,9 @@ export async function handleToolPreflight(request, env) {
     token,
     expiresAt: (nowSec + TOOL_TOKEN_TTL_SEC) * 1000,
     unmetered: !user?.paid && isFreePreflightUnmetered(toolName),
+    preflightConsumed: !!body?.__usage?.preflightConsumed,
+    remaining: body?.__usage?.remaining ?? null,
+    resetAt: body?.__usage?.resetAt ?? null,
     policy: policy ? {
       freeMode: policy.freeMode,
       premiumMode: policy.premiumMode,
