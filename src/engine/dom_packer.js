@@ -6,7 +6,7 @@
 import { streamColorIndex } from "./schema.js";
 import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layout.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
-import { applyStyleToElement } from "../style_registry.js";
+import { applyStyleToElement, applyStreamContainerStyleToElement } from "../style_registry.js";
 import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
 import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma, lemmaSplitIndex } from "../original_stream_columns.js";
 import { applyMainStreamColumnsToElement } from "../main_stream_columns.js";
@@ -371,7 +371,7 @@ function buildMeasurePage(mainSegments, streams) {
       s.dataset.stream = code;
 
       const settings = getEffectiveStreamSettings(code);
-      applyStyleToElement(s, settings.styleId);
+      applyStreamContainerStyleToElement(s, settings);
       const userCols = settings.cols || 1;
       // משה 2026-05-06: לא להשתמש בהערכת שורות — לבחור עמודות לפי רצון
       // המשתמש בלבד; אם מסתבר שהזרם קצר מדי, ה-CSS כבר מטפל בכך באלגנטיות.
