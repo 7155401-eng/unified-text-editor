@@ -310,9 +310,15 @@ function showSaveProblem(status, chars) {
 }
 
 async function saveDocumentNow(paneManager) {
-  if (!isLoggedIn() || !paneManager || typeof paneManager.serialize !== 'function') return;
+  const canSerialize = paneManager && (
+    typeof paneManager.serializeForPersistence === 'function' ||
+    typeof paneManager.serialize === 'function'
+  );
+  if (!isLoggedIn() || !canSerialize) return;
   try {
-    const content = paneManager.serialize();
+    const content = typeof paneManager.serializeForPersistence === 'function'
+      ? paneManager.serializeForPersistence()
+      : paneManager.serialize();
     const sig = JSON.stringify(content);
     if (sig === _lastDocSig) return;
     const res = await fetch('/api/documents/current', {
@@ -410,7 +416,9 @@ export function attachAutoSync(paneManager) {
   if (typeof window !== 'undefined') {
     window.addEventListener('pagehide', () => {
       try {
-        const content = paneManager.serialize ? paneManager.serialize() : null;
+        const content = typeof paneManager.serializeForPersistence === 'function'
+          ? paneManager.serializeForPersistence()
+          : (paneManager.serialize ? paneManager.serialize() : null);
         if (content && JSON.stringify(content) !== _lastDocSig && navigator.sendBeacon) {
           navigator.sendBeacon(
             '/api/documents/current',

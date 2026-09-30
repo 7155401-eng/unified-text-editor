@@ -25,6 +25,7 @@ import { LineHeight, Indent, BlockSpacing, TextIndent, Insertion, Deletion } fro
 import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js";
 import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
+import { EditorJsonSnapshotCache } from "./editor_json_snapshot_cache.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
@@ -506,7 +507,7 @@ export class Pane {
     if (this.element) { this.element.remove(); this.element = null; }
   }
 
-  serialize() {
+  _serializeWithContent(content) {
     return {
       id: this.id,
       streamCode: this.streamCode,
@@ -516,8 +517,12 @@ export class Pane {
       dir: this.dir,
       markerBarCollapsed: this.markerBarCollapsed,
       collapsed: this.collapsed,
-      content: this.editor ? this.editor.getJSON() : null,
+      content,
     };
+  }
+
+  serialize() {
+    return this._serializeWithContent(this.editor ? this.editor.getJSON() : null);
   }
 
   load(content) {
@@ -897,6 +902,7 @@ export class PaneManager {
     this._pendingMarkerRefresh = false;
     this._savePending = false;
     this._saveTimer = null;
+    this._storageJsonCache = new EditorJsonSnapshotCache();
 
     container.addEventListener("pane-remove-request", (ev) => {
       this.removePane(ev.detail.id);
@@ -1114,6 +1120,20 @@ export class PaneManager {
     };
   }
 
+  // Persistence can be called every few hundred milliseconds. A full
+  // p.serialize() walks each TipTap document with getJSON(), even when only
+  // one pane changed. Reuse JSON for editors whose immutable state.doc object
+  // is unchanged; public serialize() above intentionally remains fresh.
+  serializeForPersistence() {
+    return {
+      version: 1,
+      activeId: this.activePane ? this.activePane.id : null,
+      panes: this.panes.map((p) =>
+        p._serializeWithContent(this._storageJsonCache.get(p.editor))
+      ),
+    };
+  }
+
   load(state) {
     // משחזר חלוניות מ‑state — לא קוטל את הראשית הנוכחית אם קיימת
     this._beginBatch();
@@ -1164,7 +1184,7 @@ export class PaneManager {
       this._savePending = false;
       return;
     }
-    const text = JSON.stringify(this.serialize());
+    const text = JSON.stringify(this.serializeForPersistence());
     try {
       localStorage.setItem(STORAGE_KEY, text);
       this._savePending = false;
