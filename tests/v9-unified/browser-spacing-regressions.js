@@ -432,6 +432,31 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('two continuing side streams widen on the same vertical boundary below main',()=>{
+    const page=makePage();
+    const sideText=Array(34).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'אחד שניים שלוש ארבע חמש',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:760,crownLines:2,streamSettings:{
+      '01':{inlineStyle:{fontSize:11,lineHeight:1.45}},
+      '02':{inlineStyle:{fontSize:12,lineHeight:1.6}},
+    }});
+    const mainBottom=(plan.mainBox?.y||0)+(plan.mainBox?.height||0);
+    const boxes=['right','left'].map(role=>plan.streamBoxes.find(b=>b.role===role));
+    assert(boxes.every(Boolean),'missing side boxes');
+    const firstWide=boxes.map(box=>{
+      const narrow=Math.min(...box.lines.map(l=>l.width));
+      return box.lines.find(l=>l.y>=mainBottom-.1 && l.width>narrow+20);
+    });
+    assert(firstWide.every(Boolean),'fixture did not create wide continuation rows on both sides');
+    assert(Math.abs(firstWide[0].y-firstWide[1].y)<.15,
+      `wide rows start at different heights: ${firstWide[0].y} vs ${firstWide[1].y}`);
+    page.remove();
+  });
+
   await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
     const page=makePage();
     const main=Array(9).fill(neutral).join(' ');
