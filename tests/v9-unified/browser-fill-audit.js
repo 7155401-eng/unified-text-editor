@@ -138,10 +138,15 @@ export async function runV9FillAudit() {
               };
               window.__ravtextAuditV9SplitTrace=true;
               window.__ravtextV9SplitDecisionTrace=[];
+              window.__ravtextAuditV9GapFillTrace=true;
+              window.__ravtextV9GapFillTrace=[];
               const result=await buildPages(host,input,config);
               const splitTrace=[...(window.__ravtextV9SplitDecisionTrace||[])];
+              const gapFillTrace=[...(window.__ravtextV9GapFillTrace||[])];
               window.__ravtextV9SplitDecisionTrace=[];
               window.__ravtextAuditV9SplitTrace=false;
+              window.__ravtextV9GapFillTrace=[];
+              window.__ravtextAuditV9GapFillTrace=false;
               if(!result.complete) throw new Error(`incomplete matrix scenario ${JSON.stringify({crownLines,crownMainGapPx,opening,includeFooter})}`);
               const stats=result.pages.map(pageStats);
               const intermediate=stats.slice(0,-1).filter(x=>Number.isFinite(x.fill));
@@ -160,6 +165,19 @@ export async function runV9FillAudit() {
                 worst:sorted.slice(0,3),
                 anchorFallbacks:(result.noteAnchorFallbacks||[]).length,
                 splitTrace:summarizeSplitTrace(splitTrace),
+                gapFillTrace:gapFillTrace
+                  .filter(g=>Number.isFinite(Number(g?.beforeFill)) && Number(g.beforeFill)<.84)
+                  .map(g=>({
+                    pageIdx:g.pageIdx,
+                    beforeFill:g.beforeFill,
+                    afterFill:g.afterFill,
+                    accepted:g.accepted,
+                    remainingPxBefore:g.remainingPxBefore,
+                    candidateCount:g.candidateCount,
+                    selectedKind:g.selectedKind,
+                    selectedOffset:g.selectedOffset,
+                    rejectedReasons:(g.rejectedReasons||[]).slice(0,20),
+                  })),
               });
             } finally {
               host.remove();
@@ -184,6 +202,13 @@ export async function runV9FillAudit() {
     scenarios:scenarios.length,
     worstGlobal:worstScenarios,
     priorityLoss,
+    worstGapFillRejections:[...scenarios]
+      .flatMap(s=>(s.gapFillTrace||[]).map(g=>({
+        crownLines:s.crownLines,crownMainGapPx:s.crownMainGapPx,opening:s.opening,includeFooter:s.includeFooter,...g
+      })))
+      .filter(g=>!g.accepted)
+      .sort((a,b)=>Number(a.beforeFill)-Number(b.beforeFill))
+      .slice(0,30),
     under82Scenarios:scenarios.filter(s=>s.under82>0).length,
     under68Scenarios:scenarios.filter(s=>s.under68>0).length,
     under55Scenarios:scenarios.filter(s=>s.under55>0).length,
