@@ -1,13 +1,28 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/v9-typography-spacing-regressions]
+    branches: [main, fix/v9-typography-spacing-regressions, refactor/build-source-idempotency-main-20260930]
+    paths:
+      - 'src/**'
+      - 'worker/**'
+      - 'scripts/**'
+      - 'tests/v9-unified/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
+      - '.github/workflows/v9-spacing-regressions.yml'
   pull_request:
     branches: [main]
     paths:
       - 'src/**'
+      - 'worker/**'
       - 'scripts/**'
       - 'tests/v9-unified/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.js'
       - '.github/workflows/v9-spacing-regressions.yml'
   workflow_dispatch:
 permissions:
@@ -20,7 +35,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.ref == 'refs/heads/refactor/build-source-idempotency-main-20260930'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
