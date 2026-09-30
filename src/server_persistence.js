@@ -150,6 +150,46 @@ export function applyLocalSettings(settings, { preserveExisting = false } = {}) 
   }
 }
 
+const STARTUP_FETCH_TIMEOUT_MS = 8000;
+
+async function fetchStartupJson(url) {
+  let timer = null;
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+
+  const request = Promise.resolve()
+    .then(() => controller ? fetch(url, { signal: controller.signal }) : fetch(url))
+    .then(async (response) => ({
+      data: response.ok ? await response.json() : null,
+      timedOut: false,
+      status: response.status || 0,
+      error: null,
+    }))
+    .catch((error) => ({
+      data: null,
+      timedOut: false,
+      status: 0,
+      error,
+    }));
+
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve({
+      data: null,
+      timedOut: true,
+      status: 0,
+      error: null,
+    }), STARTUP_FETCH_TIMEOUT_MS);
+  });
+
+  const result = await Promise.race([request, timeout]);
+  if (timer !== null) clearTimeout(timer);
+
+  if (result.timedOut && controller && !controller.signal.aborted) {
+    try { controller.abort(); } catch {}
+  }
+
+  return result;
+}
+
 export async function loadInitialState(paneManager) {
   if (!isLoggedIn() || !paneManager) return { loaded: false };
 
@@ -162,10 +202,24 @@ export async function loadInitialState(paneManager) {
       : null;
 
   try {
-    const [docRes, settingsRes] = await Promise.all([
-      fetch('/api/documents/current').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/settings').then((r) => (r.ok ? r.json() : null)),
+    const [docFetch, settingsFetch] = await Promise.all([
+      fetchStartupJson('/api/documents/current'),
+      fetchStartupJson('/api/settings'),
     ]);
+    const docRes = docFetch.data;
+    const settingsRes = settingsFetch.data;
+    const startupTimedOut = docFetch.timedOut || settingsFetch.timedOut;
+
+    if (docFetch.timedOut) {
+      console.warn('[persistence] startup document fetch timed out; continuing with browser-local state');
+    } else if (docFetch.error) {
+      console.warn('[persistence] startup document fetch failed:', docFetch.error);
+    }
+    if (settingsFetch.timedOut) {
+      console.warn('[persistence] startup settings fetch timed out; continuing with local settings');
+    } else if (settingsFetch.error) {
+      console.warn('[persistence] startup settings fetch failed:', settingsFetch.error);
+    }
 
     if (settingsRes && settingsRes.settings) {
       applyLocalSettings(settingsRes.settings, { preserveExisting: true });
@@ -206,7 +260,7 @@ export async function loadInitialState(paneManager) {
           console.warn('[persistence] server copy is stale (last save not confirmed ' +
                        `${stale.status}) — keeping the local document`);
           showStaleServerNotice(stale);
-          return { loaded: false, skipped: 'stale-server-copy' };
+          return { loaded: false, skipped: 'stale-server-copy', startupTimedOut };
         }
         // A pagehide beacon has no response channel. If the server now matches
         // the local snapshot, the queued write did in fact arrive and the
@@ -217,14 +271,19 @@ export async function loadInitialState(paneManager) {
         if (typeof paneManager.load === 'function') {
           paneManager.load(content);
           _lastDocSig = JSON.stringify(content);
-          return { loaded: true, source: 'server' };
+          return { loaded: true, source: 'server', startupTimedOut };
         }
       } catch (e) {
         console.warn('[persistence] paneManager.load failed:', e);
       }
     }
 
-    return { loaded: false, hadServerSettings: !!settingsRes?.settings };
+    return {
+      loaded: false,
+      hadServerSettings: !!settingsRes?.settings,
+      startupTimedOut,
+      startupFetchFailed: !!docFetch.error || !!settingsFetch.error,
+    };
   } catch (e) {
     console.warn('[persistence] loadInitialState failed:', e);
     return { loaded: false, error: e.message };
