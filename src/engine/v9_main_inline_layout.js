@@ -134,14 +134,11 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const tail = paragraphLines.slice(tailOffset);
   if (!tail.length) return null;
 
-  // Opening-word geometry is intentionally immutable here. Its measured window
-  // has its own widths and must never be re-created by a tail balancer.
-  if (tail.some(line =>
-    line?.render?.opening ||
-    line?.openingWindow ||
-    !Array.isArray(line?.wordTokens) ||
-    line.wordTokens.length === 0
-  )) return null;
+  // Opening-word geometry is immutable, but its ROWS are part of the
+  // paragraph. The opening glyph itself never moves; the body words beside it
+  // (and on the following narrowed row[s]) participate in the same tail
+  // rebalance using each row's already-measured width.
+  if (tail.some(line => !Array.isArray(line?.wordTokens))) return null;
 
   const words = tail.flatMap(line => line.wordTokens);
   if (!words.length) return null;
@@ -170,13 +167,31 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     const key = `${lineIndex}:${fromWord}:${toWord}`;
     if (cache.has(key)) return cache.get(key);
 
-    const start = lineIndex === 0 ? segmentStart : words[fromWord].start;
+    const oldLine = tail[lineIndex];
+    const hasOpening = !!oldLine?.render?.opening;
+    const sourceStart = lineIndex === 0 ? segmentStart : words[fromWord].start;
+
+    // On the first dropped-opening row, line.source starts at the opening glyph,
+    // while render.body starts AFTER the opening segment. Preserve that split:
+    // source metadata still owns the opening, but body measurement must never
+    // duplicate it.
+    let bodyStart = sourceStart;
+    if (hasOpening) {
+      const firstBodyWord = words[fromWord];
+      if (!firstBodyWord) {
+        cache.set(key, null);
+        return null;
+      }
+      const oldLeading = String(oldLine?.render?.body?.leadingText || '').length;
+      bodyStart = Math.max(segmentStart, firstBodyWord.start - oldLeading);
+    }
+
     const visibleEnd = words[toWord - 1].end;
     const consumedEnd = toWord < words.length ? words[toWord].start : segmentEnd;
-    const body = partForRange(entry, start, visibleEnd, consumedEnd);
+    const body = partForRange(entry, bodyStart, visibleEnd, consumedEnd);
     const measured = context.measure(body);
-    const target = number(tail[lineIndex]?.width, 0);
-    const maxHeight = number(tail[lineIndex]?.lineHeightPx, context.lineHeight);
+    const target = number(oldLine?.width, 0);
+    const maxHeight = number(oldLine?.lineHeightPx, context.lineHeight);
 
     if (!(target > 0) || !measured || measured.width > target + EPS ||
         (measured.height > 0 && maxHeight > 0 && measured.height > maxHeight + EPS)) {
@@ -187,7 +202,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     const gaps = (body.text.match(/ /g) || []).length;
     const deficit = Math.max(0, target - measured.width);
     const metric = {
-      start, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
+      sourceStart, bodyStart, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
       wordTokens: words.slice(fromWord, toWord),
     };
     metric.pressure = continuationTailPressure(metric);
@@ -261,20 +276,22 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
     lines[absoluteStart + i] = {
       ...old,
-      text: entry.text.slice(metric.start, metric.end),
-      runs: sliceRuns(entry.runs || [], metric.start, metric.end),
-      words: entry.text.slice(metric.start, metric.end).trim().split(/\s+/u).filter(Boolean),
+      text: entry.text.slice(metric.sourceStart, metric.end),
+      runs: sliceRuns(entry.runs || [], metric.sourceStart, metric.end),
+      words: entry.text.slice(metric.sourceStart, metric.end).trim().split(/\s+/u).filter(Boolean),
       wordTokens: metric.wordTokens,
       naturalWidth: metric.measured.width,
       forcedBreak: false,
       isLast,
-      source: sourceMetadata(entry, metric.start, metric.end),
-      sourceText: entry.text.slice(metric.start, metric.end),
+      source: sourceMetadata(entry, metric.sourceStart, metric.end),
+      sourceText: entry.text.slice(metric.sourceStart, metric.end),
       render: {
         ...old.render,
         body: metric.body,
         topInset: metric.measured.topInset || 0,
-        opening: null,
+        // The glyph keeps its original measured geometry. Only the body words
+        // beside/below it are redistributed.
+        opening: old.render?.opening || null,
         wordSpacing,
         alignment: isLast ? 'center' : 'right',
       },
