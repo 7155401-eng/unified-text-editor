@@ -5589,13 +5589,29 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const fullText = (target?.mainText || "").trim();
       if (!target || fullText.length < 2) return reject("no-next-paragraph");
 
-      const allCandidates = buildParagraphBreakCandidates(
-        fullText,
-        splitMetrics,
-        splitMainWidth,
-        v9SplitPolicy,
-        { source: "final-gap-fill" }
-      ).filter(c => c.offset >= 2 && c.offset < fullText.length);
+      let actualGeometryCandidates = [];
+      if (String(target?.mainText || "") === fullText) {
+        actualGeometryCandidates = actualV9LineEndCandidates(
+          getSlice(bestN),
+          target,
+          {
+            relativeSourceOffset: Number(target?._v9SourceOffset) || 0,
+            maxLength: fullText.length,
+            source: "final-gap-fill-actual-geometry",
+          }
+        );
+      }
+
+      const allCandidates = [
+        ...buildParagraphBreakCandidates(
+          fullText,
+          splitMetrics,
+          splitMainWidth,
+          v9SplitPolicy,
+          { source: "final-gap-fill" }
+        ),
+        ...actualGeometryCandidates,
+      ].filter(c => c.offset >= 2 && c.offset < fullText.length);
 
       const candidates = selectV9GapFillCandidates(allCandidates, {
         remainingPx: remainingPxBefore,
