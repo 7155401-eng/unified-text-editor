@@ -2947,7 +2947,7 @@ function buildPagePlanCore(pageContent, config) {
     const continuation = concatRichTextParts([pass2Right.overflowRich, originalLeft], '');
     const leftInput = { ...pageContent.leftStream, rich: continuation, items: [continuation.text], runs: continuation.runs };
     pass2Left = buildSideStream(leftInput, 'left', { mainBottomY,
-      otherSideEndY: occupiedSideEndY(pass2Right), maxFullStrip3Lines: 0, lockFullStrip3Start: false });
+      otherSideEndY: occupiedSideEndY(pass2Right), maxFullStrip3Lines: 0 });
     pass2Right.overflowText = ''; pass2Right.overflowRuns = []; pass2Right.overflowRich = makeRichText('');
     pass2Right.continues = true;
   }
