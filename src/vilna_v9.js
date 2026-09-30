@@ -5135,6 +5135,22 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
               sourceText: String(last.sourceText || ""),
               tailRebalanced: last.tailRebalanced === true,
             } : null;
+            auditCandidate.tailLines = (tp?.mainBox?.lines || []).slice(-6).map(line => ({
+              x: Number(line.x) || 0,
+              y: Number(line.y) || 0,
+              width: Number(line.width) || 0,
+              naturalWidth: Number(line.naturalWidth) || 0,
+              wordSpacing: Number(line?.render?.wordSpacing) || 0,
+              text: String(line.text || ""),
+              bodyText: String(line?.render?.body?.text || ""),
+              words: Array.isArray(line.wordTokens) ? line.wordTokens.map(w => w.text) : [],
+              tailRebalanced: line.tailRebalanced === true,
+              targetSpacing: Number(line.tailWordSpacingTarget) || 0,
+              spacingCapped: line.tailWordSpacingCapped === true,
+              sourceStart: Number(line?.source?.start),
+              sourceEnd: Number(line?.source?.end),
+            }));
+            auditCandidate.joinedText = String(firstHalf?.mainText || firstHalf?.text || "");
             __extensionAudit.candidates.push(auditCandidate);
             continue;
           }
