@@ -2958,6 +2958,7 @@ function buildPagePlanCore(pageContent, config) {
     for (const fs of pageContent.footerStreams) {
       const level = secondaryLevelIndex(fs.id);
       if (level >= 1) {
+        roleMishnaGroup = null;
         if (!levelGroups.has(level)) {
           const group = { level, streams: [], mishnaLayout: true, source: "levels" };
           levelGroups.set(level, group);
@@ -2980,6 +2981,7 @@ function buildPagePlanCore(pageContent, config) {
         continue;
       }
 
+      roleMishnaGroup = null;
       footerGroups.push({ level: -1, streams: [fs], mishnaLayout: false });
     }
 
@@ -6415,25 +6417,12 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     const wantLeftId  = talmudStreams.length >= 2 ? talmudStreams[1] : null;
     const wantedSet = new Set(talmudStreams.slice(0, 2));
 
-    // ⛔⛔⛔ משה 29/09/2026 — „מה שאינו מהערות גפ״ת מוגדר כמשנ״ב ולא
-    // עובד". זה עדיין **פתוח**, ולהלן למה הניסיון הראשון בוטל.
-    //
-    // ═══ מה שנכון בדיווח ═══
-    // ברגע שהוגדרו זרמי גפ״ת, הקוד כאן שולח כל זרם אחר לתחתית העמוד
-    // בלי להסתכל על שדה „פריסה" שלו. ההגדרה באמת אינה נקראת.
-    //
-    // ═══ מה שניסיתי, ולמה הוחזר ═══
-    // נתתי לזרם כזה לתפוס צד **כשהצד פנוי**. זו הייתה טעות: שני
-    // הצדדים שייכים לגפ״ת באופן קבוע, ולכן „פנוי" משתנה מעמוד לעמוד
-    // — בעמוד שבו זרם גפ״ת ריק, זרם אחר קפץ לשם ושינה את צורת הדף.
-    // משה דיווח מיד: „עמודים ריקים ברובם".
-    // זה בדיוק הדפוס שהוא כבר תיאר בעבר: „בצד השמאלי התחלפו חמישה
-    // זרמים שונים".
-    //
-    // ⇒ ההקצאה חייבת להיות **קבועה לכל המסמך**, לא הזדמנותית.
-    //   וכשגפ״ת תופס את שני הצדדים, אין מקום פיזי לזרם שלישי בצד —
-    //   כלומר „משנ״ב לזרמים 3 ו-4" מחייב **צורת דף אחרת**, וזו
-    //   החלטה של משה ולא ניחוש שלי. חוזרים להתנהגות היציבה.
+    // משה 29–30/09/2026 — שני צדדי הגפ״ת נשארים שמורים קבוע לזרמים
+    // שנבחרו כאן. זרם אחר לעולם לא "גונב" צד ריק בעמוד שבו אחד מהם חסר.
+    // אם לזרמים האחרים הוגדר layoutRole="mishna", הם נשארים כאן
+    // footerStreams, ובהמשך buildPagePlanCore מקבץ אותם לזוג משנ״ב יציב:
+    // קצר כ-float וארוך זורם לצדו ואחר כך לרוחב מלא. כך פריסת המשנ״ב
+    // פועלת אחרי גפ״ת בלי להחליף את זהות שני צדדי הגפ״ת מעמוד לעמוד.
     for (const s of allStreams) {
       if (s.id === wantRightId && !rightStream) {
         rightStream = s;
