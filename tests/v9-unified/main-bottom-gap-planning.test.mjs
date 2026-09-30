@@ -23,6 +23,7 @@ test('V9 planner owns main-to-footer gap and renderer has no delayed gap microta
   assert(v9.includes('result.mainBottomGapPlan = {'),'planner does not record main-bottom gap geometry');
   assert(v9.includes('const firstFooterGap = mainOwnsFooterBoundary'),'footer gap is not selected in planning');
   assert(!v9.includes('applyV9MainBottomGapToPage'),'V9 renderer still invokes post-render Y mutation');
+  assert(!v9.includes('autoResolveV9CrownMainOverlap'),'dead DOM-measure-and-shift geometry engine survived');
   assert(!v9.includes('queueMicrotask(finish)'),'obsolete delayed geometry microtask survived');
 });
 
