@@ -30,6 +30,22 @@ import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFont
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
 
+function runV9PageDecoratorsDuringRender(page, pageIndex) {
+  if (!page || typeof window === "undefined") return;
+  const registry = window.__ravtextPreRenderPageDecorators;
+  if (!Array.isArray(registry) || registry.length === 0) return;
+  const previousActive = window.__ravtextPreRenderPageDecoratorActive;
+  try {
+    window.__ravtextPreRenderPageDecoratorActive = true;
+    for (const decorate of [...registry].filter(fn => typeof fn === "function")
+      .sort((a, b) => (Number(a.__ravtextPreRenderOrder) || 0) - (Number(b.__ravtextPreRenderOrder) || 0))) {
+      decorate(page, pageIndex);
+    }
+  } finally {
+    window.__ravtextPreRenderPageDecoratorActive = previousActive;
+  }
+}
+
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
 // בטקסט המקור (סדרתי) ומעתיקים את ה-marks שמכסים אותה. נקרא אחרי בניית lines.
@@ -6040,6 +6056,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     }
 
     renderPagePlan(plan, pageEl, cfg);
+    // Document overlays that affect the page (notably page numbers) are painted
+    // while this page is being built, not by an engine-rendered/observer pass later.
+    runV9PageDecoratorsDuringRender(pageEl, pageIdx);
     pages.push(pageEl);
     pageEl.dataset.v9StreamCoverage = JSON.stringify(plan.streamCoverage || []);
     pageEl.dataset.v9CrownGap = JSON.stringify({bottom:plan.crownBottomY,gap:plan.crownMainGap});

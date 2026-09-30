@@ -58,23 +58,44 @@ function toHebrewNumeral(n) {
   return out;
 }
 
-function applyPageNumbers() {
+export function decoratePageNumberBeforeRender(page, pageIndex) {
+  if (!page || page.classList?.contains("page-placeholder") || page.classList?.contains("ravtext-empty-page")) return;
   const on = localStorage.getItem(PAGE_NUM_KEY) === "1";
-  pageElements().forEach((page, i) => {
-    let label = page.querySelector(".ravtext-page-number-overlay");
-    if (!on) {
-      if (label) label.remove();
-      return;
-    }
-    if (!label) {
-      label = document.createElement("div");
-      label.className = "ravtext-page-number-overlay";
-      page.appendChild(label);
-    }
-    const num = i + 1;
-    label.textContent = toHebrewNumeral(num);
-  });
+  let label = page.querySelector(".ravtext-page-number-overlay");
+  if (!on) {
+    label?.remove();
+    return;
+  }
+  const idx = Number.isInteger(pageIndex) && pageIndex >= 0
+    ? pageIndex
+    : Array.from(pageElements()).indexOf(page);
+  if (idx < 0) return;
+  if (!label) {
+    label = document.createElement("div");
+    label.className = "ravtext-page-number-overlay";
+    page.appendChild(label);
+  }
+  label.textContent = toHebrewNumeral(idx + 1);
+  page.dataset.ravtextPageNumberPaint = "during-render";
 }
+
+export function installPageNumberPreRenderDecorator() {
+  if (typeof window === "undefined") return;
+  const registry = Array.isArray(window.__ravtextPreRenderPageDecorators)
+    ? window.__ravtextPreRenderPageDecorators
+    : (window.__ravtextPreRenderPageDecorators = []);
+  if (registry.includes(decoratePageNumberBeforeRender)) return;
+  decoratePageNumberBeforeRender.__ravtextPreRenderOrder = 20;
+  registry.push(decoratePageNumberBeforeRender);
+}
+
+function applyPageNumbers() {
+  pageElements().forEach((page, i) => decoratePageNumberBeforeRender(page, i));
+}
+
+// Register as soon as the module loads: the first engine render can start before
+// the delayed UI wiring runs, and page numbering must already participate in it.
+if (typeof window !== "undefined") installPageNumberPreRenderDecorator();
 
 function applyHeaderFooter() {
   const headerText = localStorage.getItem(HEADER_KEY) || "";
@@ -194,6 +215,7 @@ function scheduleReservedRerender(reason) {
 }
 
 export function prepareDocumentFeatureReserves() {
+  installPageNumberPreRenderDecorator();
   return syncReservedSpace({ rerenderOnChange: false, reason: "pre-pack" });
 }
 
@@ -305,6 +327,7 @@ function installRealizedPageHook() {
 }
 
 export function wireDocumentFeatures() {
+  installPageNumberPreRenderDecorator();
   const pageNumCb = document.getElementById("doc-page-numbers-toggle");
   const headerInput = document.getElementById("doc-header-input");
   const footerInput = document.getElementById("doc-footer-input");
