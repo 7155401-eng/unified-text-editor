@@ -72,9 +72,14 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
   }
 });
 
-test('dom_packer consumes the central spacing snapshot and no longer parses spacing storage itself',()=>{
-  const source = fs.readFileSync(new URL('../../src/engine/dom_packer.js', import.meta.url),'utf8');
-  assert.match(source,/getSpacingSettingsSnapshot/);
-  assert.doesNotMatch(source,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/);
-  assert.doesNotMatch(source,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
+test('layout engines consume the central spacing snapshot and do not parse spacing storage themselves',()=>{
+  for (const rel of [
+    '../../src/engine/dom_packer.js',
+    '../../src/vilna_v9_apply.js',
+  ]) {
+    const source = fs.readFileSync(new URL(rel, import.meta.url),'utf8');
+    assert.match(source,/getSpacingSettingsSnapshot/, rel);
+    assert.doesNotMatch(source,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/, rel);
+    assert.doesNotMatch(source,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/, rel);
+  }
 });
