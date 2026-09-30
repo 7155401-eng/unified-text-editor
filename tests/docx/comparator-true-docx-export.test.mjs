@@ -185,10 +185,10 @@ test("uses order of main references, not stream declaration order, for Word foot
 
 test("round-trips through Comparator Word import with stream identities intact", async () => {
   const built = buildComparatorDocxBytes({
-    mainDelta: { ops: [{ insert: "ראשי @01 אמצע @02 סוף\\n" }] },
+    mainDelta: { ops: [{ insert: "ראשי @01 אמצע @02 סוף\n" }] },
     streams: [
-      { marker: "@01", delta: { ops: [{ insert: "@01 הערה א\\n" }] } },
-      { marker: "@02", delta: { ops: [{ insert: "@02 הערה ב\\n" }] } },
+      { marker: "@01", delta: { ops: [{ insert: "@01 הערה א\n" }] } },
+      { marker: "@02", delta: { ops: [{ insert: "@02 הערה ב\n" }] } },
     ],
     title: "roundtrip",
   });
