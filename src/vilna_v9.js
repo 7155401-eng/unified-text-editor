@@ -1,5 +1,5 @@
 import { markV9NoteRuns, auditV9NoteStarts, verifyV9StreamCoverage } from "./engine/v9_note_ownership.js";
-import { streamContextForV9, measureV9CrownHeight, flowV9MeasuredStream, flowV9MeasuredColumns, splitV9StreamAtWordCount, renderV9MeasuredStreamLine } from "./engine/v9_stream_inline_layout.js";
+import { streamContextForV9, measureV9CrownHeight, measureV9CrownHeightForAnyWindow, flowV9MeasuredStream, flowV9MeasuredColumns, splitV9StreamAtWordCount, renderV9MeasuredStreamLine } from "./engine/v9_stream_inline_layout.js";
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
@@ -1997,8 +1997,11 @@ function buildPagePlanCore(pageContent, config) {
     crownHeight = Math.max(0,...streams.map(stream=> {
       const metrics=getSideMetricsForStream(stream.id);
       const width=scenario.name==='one_full_one_short' ? innerWidth : sideHalfWidth;
-      return measureV9CrownHeight(stream.rich || makeRichText(stream.items.join(' '),stream.runs || []),
-        metrics._v9TextContext,width,cfg.crownLines);
+      const crownInput=stream.rich || makeRichText(stream.items.join(' '),stream.runs || []);
+      const measureCrown=scenario.name==='one_long_split'
+        ? measureV9CrownHeightForAnyWindow
+        : measureV9CrownHeight;
+      return measureCrown(crownInput,metrics._v9TextContext,width,cfg.crownLines);
     }));
   }
 
@@ -2222,6 +2225,7 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
           x: mainX + mainWidth + mainGap,
+          lockYStart: crownHeight > 0 || !!underFullCrown,
         });
       } else {
         strips.push({
@@ -2229,6 +2233,7 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, mainX - mainGap),
           x: 0,
+          lockYStart: crownHeight > 0 || !!underFullCrown,
         });
       }
     }
@@ -2253,6 +2258,10 @@ function buildPagePlanCore(pageContent, config) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
+        // Both side commentaries cross the end of the main text at this exact
+        // Y. Lock the boundary to a row start so variable-height glyphs/niqqud
+        // cannot make one side enter the widened band one row before the other.
+        lockYStart: true,
       });
     }
     // v9-limit-full-strip3-one-line: full-width continuation is still legal after the other side
