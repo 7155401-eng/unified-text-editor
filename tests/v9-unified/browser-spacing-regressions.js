@@ -643,6 +643,33 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     }
   });
 
+  await test('no-mid emergency split searches page-sized prefixes for a paragraph larger than one page',async()=>{
+    const page=makePage();
+    try{
+      const text=Array(28).fill(neutral).join(' ');
+      const input=[{id:'no-mid-long',mainText:text,notes:[]}];
+      const localCfg={...cfg,pageHeight:210,talmudStreams:[],noMidLineSplits:true,maxPages:80};
+      const result=await buildPages(page,input,localCfg);
+      assert(result.complete,'no-mid long paragraph did not complete');
+      assert(result.pages.length>1,'fixture did not require an emergency page split');
+
+      const rows=[...page.querySelectorAll('[data-v9-paragraph-id="no-mid-long"]')];
+      assert(rows.length>2,'emergency split produced too little visible text');
+      assert(rows.map(sourceText).join('')===prepareV9SourceParagraph(input[0]).mainText,
+        'emergency split lost or reordered paragraph source');
+
+      const first=result.pages[0];
+      let bottom=0;
+      for(const l of first.querySelectorAll('.v9-line')){
+        const y=parseFloat(l.style.top)||0,h=parseFloat(l.style.height)||0;
+        bottom=Math.max(bottom,y+h);
+      }
+      const fill=bottom/(localCfg.pageHeight-localCfg.padding);
+      assert(fill>=0.55,`emergency split still chose an oversized/failed cut and left a sparse first page: ${fill.toFixed(3)}`);
+      return {pages:result.pages.length,firstFill:+fill.toFixed(3)};
+    }finally{page.remove();}
+  });
+
   await test('long anchored note may continue after starting with its source line',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
