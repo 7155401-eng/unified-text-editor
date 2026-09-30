@@ -29,7 +29,6 @@ import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
-import { WORD_JOINER, referenceLineGlue } from "./engine/reference_line_glue.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
@@ -1175,10 +1174,9 @@ function v9RefsForWordTokens(mainRefs, wordTokens) {
   );
 }
 
-function appendV9MainRefSpan(parent, ref, glue = null) {
+function appendV9MainRefSpan(parent, ref) {
   const formatted = ref?.formatted || formatStreamNumber(ref.stream || ref.code, ref.num, "main");
   if (!formatted) return false;
-  if (glue?.before) parent.appendChild(document.createTextNode(WORD_JOINER));
   const span = document.createElement("span");
   span.className = "stream-ref v9-main-ref";
   span.textContent = formatted;
@@ -1194,7 +1192,6 @@ function appendV9MainRefSpan(parent, ref, glue = null) {
   const styleId = styleIdForStreamNumber(ref.stream || ref.code, "main");
   if (styleId) applyStyleToElement(span, styleId);
   parent.appendChild(span);
-  if (glue?.after) parent.appendChild(document.createTextNode(WORD_JOINER));
   return true;
 }
 
@@ -1294,7 +1291,7 @@ function appendV9TextWithMainRefs(parent, line) {
   for (const ref of refs) {
     const pos = Math.max(0, Math.min(text.length, Number(ref.localPos) || 0));
     if (pos > cursor) appendTextWithRuns(parent, text.slice(cursor, pos), sliceRuns(runs, cursor, pos));
-    appendV9MainRefSpan(parent, ref, referenceLineGlue(text, pos));
+    appendV9MainRefSpan(parent, ref);
     cursor = Math.max(cursor, pos);
   }
   if (cursor < text.length) appendTextWithRuns(parent, text.slice(cursor), sliceRuns(runs, cursor, text.length));
