@@ -2307,8 +2307,13 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
           x: mainX + mainWidth + mainGap,
-          // End-of-crown is a semantic row boundary.
-          lockYStart: crownHeight > 0 && Math.abs(stripTop - (sideTopY + crownHeight)) < 0.5,
+          // Crown→body changes the available WIDTH, not the stream's vertical
+          // baseline grid. crownHeight is shared between both side streams and
+          // can come from the OTHER stream's larger pitch. Locking this raw Y
+          // therefore creates an artificial blank row in the smaller-pitch
+          // stream. Let rowGeometry intersect both regions for the one row that
+          // straddles the boundary; the following row naturally uses body width.
+          lockYStart: false,
         });
       } else {
         strips.push({
@@ -2316,8 +2321,13 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, mainX - mainGap),
           x: 0,
-          // End-of-crown is a semantic row boundary.
-          lockYStart: crownHeight > 0 && Math.abs(stripTop - (sideTopY + crownHeight)) < 0.5,
+          // Crown→body changes the available WIDTH, not the stream's vertical
+          // baseline grid. crownHeight is shared between both side streams and
+          // can come from the OTHER stream's larger pitch. Locking this raw Y
+          // therefore creates an artificial blank row in the smaller-pitch
+          // stream. Let rowGeometry intersect both regions for the one row that
+          // straddles the boundary; the following row naturally uses body width.
+          lockYStart: false,
         });
       }
     }

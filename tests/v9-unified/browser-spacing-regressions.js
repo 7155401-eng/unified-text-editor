@@ -321,6 +321,42 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    page.remove();
  });
 
+
+ await test('heterogeneous crown pitches do not manufacture a blank row at crown→body transition',()=>{
+   const page=makePage(),t=Array(24).fill(phrase).join(' ');
+   const plan=buildSinglePage(page,{
+     mainText:Array(6).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   },{
+     ...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,
+     streamSettings:{
+       '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+       '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+     }
+   });
+
+   const crownBottom=Number(plan.crownBottomY)||0;
+   for(const role of ['right','left']){
+     const box=plan.streamBoxes.find(b=>b.role===role);
+     assert(box?.lines?.length>4,`missing crown/body rows for ${role}`);
+     const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
+     const crownRows=sorted.filter(l=>l.y+Math.max(1,Number(l.lineHeightPx)||0)<=crownBottom+.15);
+     assert(crownRows.length===4,`${role} crown must contain exactly 4 complete rows, got ${crownRows.length}`);
+     const lastCrown=crownRows[crownRows.length-1];
+     const next=sorted.find(l=>l.y>lastCrown.y+.1);
+     assert(next,`no body row after crown for ${role}`);
+     const pitch=Number(lastCrown.lineHeightPx)||Number(next.lineHeightPx)||1;
+     const dy=next.y-lastCrown.y;
+     assert(dy<=pitch+.2,
+       `${role} crown→body transition inserted vertical gap: dy=${dy}, pitch=${pitch}, crownBottom=${crownBottom}, lastY=${lastCrown.y}, nextY=${next.y}`);
+     assert(dy>=pitch-.2,
+       `${role} crown→body rows overlap/collapse: dy=${dy}, pitch=${pitch}`);
+   }
+   page.remove();
+ });
+
  await test('main stream title reserves geometry below crown and honors titleShow',()=>{
    const settings=getStreamSettings(),saved=settings.main;
    const t=Array(12).fill(phrase).join(' ');
@@ -761,6 +797,83 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
     assertNoWordOverlap(page);
     page.remove();
+  });
+
+
+  await test('cross-geometry: crown gap + knee + dropped opening share one row grid and full visual width',()=>{
+    const openingSettings={
+      enabled:true,target:'word',count:1,font:'serif',size:180,weight:'bold',
+      position:'dropped',dropLines:2,spaceAfter:0.3,scope:'all',
+      skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:3,shortLineMinFill:0.65
+    };
+    const shortSide=Array(8).fill(phrase).join(' ');
+    const longSide=Array(34).fill(phrase).join(' ');
+    let found=null;
+
+    // Search a small deterministic fixture space instead of baking one fragile
+    // word count. The invariant is geometric: find a real page where the second
+    // main paragraph starts after a narrow→wide transition, then audit it.
+    for(let leadRepeats=1;leadRepeats<=14 && !found;leadRepeats++){
+      const page=makePage();
+      const lead=Array(leadRepeats).fill(neutral).join(' ');
+      const openingText='פתיח '+Array(5).fill(neutral).join(' ');
+      const mainText=lead+'\n'+openingText;
+      const plan=buildSinglePage(page,{
+        mainText,
+        mainParagraphs:[
+          {id:'cross-lead',index:1,text:lead,runs:[],mainRefs:[],continues:false},
+          {id:'cross-opening',index:2,text:openingText,runs:[],mainRefs:[],continues:false},
+        ],
+        rightStream:{id:'01',items:[shortSide],runs:[],rich:{text:shortSide,runs:[]}},
+        leftStream:{id:'02',items:[longSide],runs:[],rich:{text:longSide,runs:[]}},
+        footerStreams:[]
+      },{
+        ...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,
+        openingWordSettings:openingSettings,
+        streamSettings:{
+          '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+          '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+        }
+      });
+
+      const lines=plan.mainBox?.lines||[];
+      const op=lines.find(l=>l.source?.paragraphId==='cross-opening' && l.render?.opening);
+      if(!op){page.remove();continue;}
+      const previous=lines.filter(l=>l.y<op.y-.1);
+      if(!previous.length){page.remove();continue;}
+      const narrowBefore=Math.min(...previous.slice(-4).map(l=>Number(l.width)||0));
+      const hostFull=Number(op.openingHostFullWidth)||0;
+      const visualWidth=(Number(op.width)||0)+(Number(op.render.opening?.gap)||0)+(Number(op.render.opening?.width)||0);
+      if(hostFull>narrowBefore+20){
+        found={page,plan,op,narrowBefore,hostFull,visualWidth};
+      }else page.remove();
+    }
+
+    assert(found,'fixture search never produced opening after a real main widening knee');
+    try{
+      const {plan,op,narrowBefore,hostFull,visualWidth}=found;
+      assert(plan.crownMainGap===11,`crown gap drifted: ${plan.crownMainGap}`);
+      assert(hostFull>narrowBefore+20,`opening row did not actually widen: ${narrowBefore} -> ${hostFull}`);
+      assert(Math.abs(visualWidth-hostFull)<.75,
+        `opening occupies only a partial wide row: body=${op.width}, opening=${op.render.opening.width}, gap=${op.render.opening.gap}, visual=${visualWidth}, host=${hostFull}`);
+      assert(op.render.opening.part.text==='פתיח',`unexpected opening segment: ${op.render.opening.part.text}`);
+
+      // Side-stream knees on the same page must also remain one normal pitch.
+      for(const role of ['right','left']){
+        const box=plan.streamBoxes.find(b=>b.role===role);
+        if(!box?.lines?.length) continue;
+        const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
+        for(let i=1;i<sorted.length;i++){
+          if(sorted[i].width>sorted[i-1].width+20){
+            const pitch=Number(sorted[i-1].lineHeightPx)||Number(sorted[i].lineHeightPx)||1;
+            const dy=sorted[i].y-sorted[i-1].y;
+            assert(Math.abs(dy-pitch)<.2,
+              `${role} knee lost row grid in combined fixture: dy=${dy}, pitch=${pitch}`);
+            break;
+          }
+        }
+      }
+    }finally{found.page.remove();}
   });
 
   await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
