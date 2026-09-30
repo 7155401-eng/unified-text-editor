@@ -12,7 +12,9 @@ test('stream pane fast-path recognizes only its own symbol when nested notes are
 test('nested mode expands a stream pane to any numeric @NN marker', () => {
   assert.equal(hasPotentialStreamMarker('before @02 after', '@01', { nestedOn: true }), true);
   assert.equal(hasPotentialStreamMarker('before @123 after', '@01', { nestedOn: true }), true);
-  assert.equal(hasPotentialStreamMarker('before @1234 after', '@01', { nestedOn: true }), false);
+  // Mirrors the existing full-scan regex /@(\d{1,3})/g, which recognizes
+  // the first three digits even when more digits follow.
+  assert.equal(hasPotentialStreamMarker('before @1234 after', '@01', { nestedOn: true }), true);
   assert.equal(hasPotentialStreamMarker('ordinary text', '@01', { nestedOn: true }), false);
 });
 
@@ -20,7 +22,7 @@ test('main panes without a custom symbol always detect numeric stream markers', 
   assert.equal(hasPotentialStreamMarker('x @02 y', null), true);
   assert.equal(hasPotentialStreamMarker('x @2 y', ''), true);
   assert.equal(hasPotentialStreamMarker('x @999 y', null), true);
-  assert.equal(hasPotentialStreamMarker('x @1000 y', null), false);
+  assert.equal(hasPotentialStreamMarker('x @1000 y', null), true);
 });
 
 test('StreamMark gate computes nested mode before large-document fast-path and passes it through', async () => {
