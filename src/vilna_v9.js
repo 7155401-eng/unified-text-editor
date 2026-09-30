@@ -5849,7 +5849,12 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       if (!finalProbe || !finalProbe.overflow) return null;
       if (drainAloneMode) return null;
       const beforeFill = planFillRatio(finalProbe);
-      if (beforeFill >= 0.50) return null;
+      // Experiment: ordinary final-gap-fill can reject a page that already
+      // carries a split. Let the stronger source-aware rescue cover the same
+      // lower bound that the split policy itself calls "acceptable", instead
+      // of leaving a blind 50%-68% band.
+      const sparseTrigger = Math.max(0.50, Number(v9SplitPolicy.minAcceptablePageFill) || 0.68);
+      if (beforeFill >= sparseTrigger) return null;
       if (bestN >= totalAvail) return null;
       if (mainOverflowTextOf(finalProbe)) return null;
       if (finalProbe.unstartedNotes?.length) return null;
