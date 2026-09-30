@@ -355,6 +355,23 @@ function appendMainRefElement(parent, ref) {
   return true;
 }
 
+function mainRefNoSpaceTokenBounds(text, pos) {
+  const value = String(text || "");
+  const at = Math.max(0, Math.min(value.length, Number(pos) || 0));
+  const joinsBefore = at > 0 && !/\\s/u.test(value[at - 1]);
+  const joinsAfter = at < value.length && !/\\s/u.test(value[at]);
+  if (!joinsBefore && !joinsAfter) return null;
+
+  // A reference marker is visually separate DOM, but line breaking must follow
+  // the SOURCE text. If there is no real whitespace around the marker, the
+  // whole source token is one unbreakable word (e.g. ר' + [1] + משה).
+  let start = at;
+  while (start > 0 && !/\\s/u.test(value[start - 1])) start--;
+  let end = at;
+  while (end < value.length && !/\\s/u.test(value[end])) end++;
+  return { start, end };
+}
+
 function appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, paragraphRuns, usedRefs = null) {
   const text = String(segText || "");
   const slicedRuns = [];
@@ -373,21 +390,76 @@ function appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, paragr
     return;
   }
 
-  let lastPos = 0;
-  for (const ref of segRefs) {
+  let cursor = 0;
+  let ri = 0;
+  while (ri < segRefs.length) {
+    const ref = segRefs[ri];
     const localPos = Math.max(0, Math.min(text.length, ref.localPos));
-    if (localPos > lastPos) {
-      const sliceText = text.substring(lastPos, localPos);
-      appendTextWithRuns(p, sliceText, sliceLocalRuns(slicedRuns, lastPos, localPos));
+    const tokenBounds = mainRefNoSpaceTokenBounds(text, localPos);
+
+    if (tokenBounds && tokenBounds.end > tokenBounds.start) {
+      const tokenStart = Math.max(cursor, tokenBounds.start);
+      const tokenEnd = Math.max(tokenStart, tokenBounds.end);
+      if (tokenStart > cursor) {
+        appendTextWithRuns(
+          p,
+          text.substring(cursor, tokenStart),
+          sliceLocalRuns(slicedRuns, cursor, tokenStart)
+        );
+      }
+
+      const token = document.createElement("span");
+      // ln-word makes the smart line balancer treat this whole source token as
+      // one measured word instead of re-splitting its child text nodes.
+      token.className = "ln-word main-ref-unbreakable-token";
+      token.style.whiteSpace = "nowrap";
+
+      let innerCursor = tokenStart;
+      while (ri < segRefs.length) {
+        const groupedRef = segRefs[ri];
+        const groupedPos = Math.max(0, Math.min(text.length, groupedRef.localPos));
+        if (groupedPos > tokenEnd) break;
+        if (groupedPos > innerCursor) {
+          appendTextWithRuns(
+            token,
+            text.substring(innerCursor, groupedPos),
+            sliceLocalRuns(slicedRuns, innerCursor, groupedPos)
+          );
+        }
+        if (appendMainRefElement(token, groupedRef) && usedRefs) {
+          usedRefs.add(groupedRef.key);
+        }
+        innerCursor = Math.max(innerCursor, groupedPos);
+        ri++;
+      }
+      if (innerCursor < tokenEnd) {
+        appendTextWithRuns(
+          token,
+          text.substring(innerCursor, tokenEnd),
+          sliceLocalRuns(slicedRuns, innerCursor, tokenEnd)
+        );
+      }
+      p.appendChild(token);
+      cursor = tokenEnd;
+      continue;
+    }
+
+    if (localPos > cursor) {
+      appendTextWithRuns(
+        p,
+        text.substring(cursor, localPos),
+        sliceLocalRuns(slicedRuns, cursor, localPos)
+      );
     }
     if (appendMainRefElement(p, ref) && usedRefs) {
       usedRefs.add(ref.key);
     }
-    lastPos = Math.max(lastPos, localPos);
+    cursor = Math.max(cursor, localPos);
+    ri++;
   }
-  if (lastPos < text.length) {
-    const sliceText = text.substring(lastPos);
-    appendTextWithRuns(p, sliceText, sliceLocalRuns(slicedRuns, lastPos, text.length));
+
+  if (cursor < text.length) {
+    appendTextWithRuns(p, text.substring(cursor), sliceLocalRuns(slicedRuns, cursor, text.length));
   }
 }
 
