@@ -457,7 +457,7 @@ test('second and final opening-window row does not center its body as if the ope
   }
  };
  const p=layoutV9MainParagraphs(
-  [{id:'opening-two-line-last',text:'OPEN aa aa aa aa aa',runs:[],mainRefs:[]}],
+  [{id:'opening-two-line-last',text:'OPEN aa aa aa aa aa aa aa',runs:[],mainRefs:[]}],
   [{x:0,width:100,y_start:0,y_end:100}],ctx,100
  );
  assert.equal(p.lines.length,2,`fixture expected two text rows, got ${p.lines.length}`);
@@ -490,7 +490,7 @@ test('dropped opening crossing a left-widening knee never traps later rows at ha
    return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
   }
  };
- for(const boundary of [10.25,12.5,15.5,19.75]){
+ for(const boundary of [1.25,3.5,6.75,9.5]){
   const p=layoutV9MainParagraphs(
    [{id:'opening-cross-knee',text:'OPEN '+Array(18).fill('aa').join(' '),runs:[],mainRefs:[]}],
    [
