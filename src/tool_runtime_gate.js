@@ -99,7 +99,18 @@ export async function checkToolAllowance(toolName, { amount = 1, niceName = "", 
 }
 
 export async function getToolQuotaStatus(toolName, { amount = 1 } = {}) {
-  return checkToolAllowance(toolName, { amount, silent: true });
+  try {
+    return await checkToolAllowance(toolName, { amount, silent: true });
+  } catch (err) {
+    if (err?.details) {
+      return {
+        ...err.details,
+        ok: false,
+        reason: err.code || err.details.reason || "quota",
+      };
+    }
+    throw err;
+  }
 }
 
 /**
