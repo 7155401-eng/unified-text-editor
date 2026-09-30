@@ -1,6 +1,7 @@
 import { appendTextWithRuns, sliceRuns } from './runs_dom.js';
 import { extractOpeningSegmentForTest } from '../opening_word.js';
 import { V9_INLINE_PLAN_VERSION } from './v9_main_inline_layout.js';
+import { WORD_JOINER, referenceLineGlue } from './reference_line_glue.js';
 
 const TYPOGRAPHY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'fontFeatureSettings', 'fontKerning', 'lineHeight', 'letterSpacing', 'wordSpacing', 'color', 'backgroundColor', 'textDecoration', 'direction'];
 const FONT_STACKS = {
@@ -13,8 +14,9 @@ const px = (v, fallback = 0) => Number.parseFloat(v) || fallback;
 const clamp = (v, fallback, lo, hi) => Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : fallback;
 const cssApply = (el, style) => { for (const key of TYPOGRAPHY) if (style?.[key] != null) el.style[key] = String(style[key]); };
 
-function appendReference(parent, ref) {
-  if (!ref.formatted) return;
+function appendReference(parent, ref, glue = null) {
+  if (!ref.formatted) return false;
+  if (glue?.before) parent.appendChild(document.createTextNode(WORD_JOINER));
   const span = document.createElement('span');
   span.className = 'stream-ref v9-main-ref';
   span.dir = 'ltr'; span.style.cssText = ref.cssText || '';
@@ -26,6 +28,8 @@ function appendReference(parent, ref) {
   Object.assign(span.dataset, { v9MainRef: '1', stream: String(ref.stream || ref.code || ''),
     num: String(ref.num || ''), uid: String(ref.uid || ''), anchor: String(ref.anchor ?? ''), localPos: String(ref.localPos ?? '') });
   parent.appendChild(span);
+  if (glue?.after) parent.appendChild(document.createTextNode(WORD_JOINER));
+  return true;
 }
 
 function appendSemanticWhitespace(parent, text) {
@@ -44,7 +48,7 @@ export function appendV9PlannedPart(parent, part) {
   for (const ref of part.refs || []) {
     const pos = Math.max(cursor, Math.min(part.text.length, Number(ref.localPos) || 0));
     if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos));
-    appendReference(parent, ref); cursor = pos;
+    appendReference(parent, ref, referenceLineGlue(part.text, pos)); cursor = pos;
   }
   if (cursor < part.text.length) appendTextWithRuns(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length));
   appendSemanticWhitespace(parent, part.trailingText);
