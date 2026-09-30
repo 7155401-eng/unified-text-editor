@@ -30,7 +30,7 @@ import "./add_note_dialog.js";
 import { bootstrapLiveOverflowReserve, resetLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
-import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel } from "./original_stream_columns.js";
+import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel, streamSettingsPanelSignature } from "./original_stream_columns.js";
 import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
 import { wireTalmudLayoutControls } from "./talmud_controls.js";
 import { wireDafLockControls } from "./vilna_daf_ui.js";
@@ -1201,7 +1201,17 @@ if (typeof window !== "undefined") {
   });
 }
 
+let _lastStreamSettingsPanelStructureSig = null;
 function refreshStreamSettingsPanel(pages = []) {
+  const signature = streamSettingsPanelSignature(pages, paneManager.panes);
+  const panel = document.getElementById("stream-columns-panel");
+  if (
+    signature === _lastStreamSettingsPanelStructureSig &&
+    panel?.dataset?.builtFor === signature
+  ) {
+    return;
+  }
+  _lastStreamSettingsPanelStructureSig = signature;
   for (const p of paneManager.panes) {
     if (p.streamCode) ensureOriginalStreamSettings(p.streamCode);
   }
