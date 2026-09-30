@@ -71,18 +71,25 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(getComputedStyle(el).whiteSpace==='pre','note painter permits a second CSS row');
    assert(!el.classList.contains('justify'),'legacy reflow class retained');
  }
- await test('classic source tokens do not break around punctuation without whitespace',()=>{
+ await test('classic source tokens do not break around punctuation without whitespace',async()=>{
+   const link=document.createElement('link');
+   link.rel='stylesheet';link.href='../../styles.css';
+   document.head.appendChild(link);
+   await new Promise((resolve,reject)=>{link.onload=resolve;link.onerror=()=>reject(new Error('styles.css did not load'));});
    const page=makePage();
-   const token=document.createElement('span');
-   token.className='ln-word';
-   token.textContent='אבג[דה]וז';
-   page.appendChild(token);
-   assert(getComputedStyle(token).whiteSpace==='nowrap','classic word token is still breakable around punctuation');
-   token.classList.add('ln-orphan-overflow');
-   const cs=getComputedStyle(token);
-   assert(cs.wordBreak==='normal',`overlong source token re-enabled word-break: ${cs.wordBreak}`);
-   assert(cs.overflowWrap==='normal',`overlong source token re-enabled overflow-wrap: ${cs.overflowWrap}`);
-   page.remove();
+   try {
+     const token=document.createElement('span');
+     token.className='ln-word';
+     token.textContent='אבג[דה]וז';
+     page.appendChild(token);
+     assert(getComputedStyle(token).whiteSpace==='nowrap','classic word token is still breakable around punctuation');
+     token.classList.add('ln-orphan-overflow');
+     const cs=getComputedStyle(token);
+     assert(cs.wordBreak==='normal',`overlong source token re-enabled word-break: ${cs.wordBreak}`);
+     assert(cs.overflowWrap==='normal',`overlong source token re-enabled overflow-wrap: ${cs.overflowWrap}`);
+   } finally {
+     page.remove();link.remove();
+   }
  });
 
  await test('Hebrew niqqud shaping features are preserved from V9 measurement to paint',async()=>{
