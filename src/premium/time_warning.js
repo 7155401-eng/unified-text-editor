@@ -4,7 +4,7 @@
 // בסיום → לוקר מסך עם CTA לעמוד התשלום + מעבר לדמו אם בוחר לסגור.
 
 import { getAccountStatus } from "./payment_api.js";
-import { openPremiumPage } from "./premium_page.js";
+import { openPremiumPage } from "./premium_page_lazy.js";
 
 const POLL_INTERVAL_MS = 60 * 1000; // בדיקת שרת כל דקה
 const TICK_INTERVAL_MS = 5 * 1000;  // טיק מקומי כל 5 שניות
