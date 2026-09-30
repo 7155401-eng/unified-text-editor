@@ -72,6 +72,12 @@ let _lastDocSig = '';
 let _lastSettingsSig = '';
 let _lastFailedSettingsSig = '';
 
+// attachAutoSync may be reached again after a startup retry/error path or by a
+// future re-bootstrap. Duplicate listeners would multiply timers, beacons and
+// settings wrappers, so installation is explicitly object-idempotent.
+const _autoSyncManagers = new WeakSet();
+const _wrappedSettingsStorages = new WeakSet();
+
 function isLoggedIn() {
   const auth = (typeof window !== 'undefined' && window.__RAVTEXT_AUTH__) || null;
   return !!(auth && auth.loggedIn);
@@ -601,6 +607,8 @@ export function scheduleSettingsSync() {
 
 export function attachAutoSync(paneManager) {
   if (!isLoggedIn() || !paneManager) return;
+  if (_autoSyncManagers.has(paneManager)) return;
+  _autoSyncManagers.add(paneManager);
 
   // If startup kept a recovery-authoritative local document instead of a
   // stale server copy, the local-save event may already have fired before
@@ -646,18 +654,34 @@ export function attachAutoSync(paneManager) {
   }
 
   // Settings sync — wrap localStorage.setItem to detect changes to ravtext.* keys.
-  if (typeof localStorage !== 'undefined') {
-    const origSet = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = function (key, value) {
-      origSet(key, value);
-      if (
-        typeof key === 'string' &&
-        key.startsWith(SETTINGS_PREFIX) &&
-        !isBlacklisted(key)
-      ) {
-        scheduleSettingsSync();
+  // Storage methods are host objects in some browsers/webviews and may reject
+  // reassignment. Settings autosync is optional here; a failed wrapper must
+  // never abort document persistence or the pagehide recovery hook below.
+  if (typeof localStorage !== 'undefined' && localStorage) {
+    const storage = localStorage;
+    if (!_wrappedSettingsStorages.has(storage)) {
+      try {
+        const origSet = storage.setItem.bind(storage);
+        const wrappedSetItem = function (key, value) {
+          origSet(key, value);
+          if (
+            typeof key === 'string' &&
+            key.startsWith(SETTINGS_PREFIX) &&
+            !isBlacklisted(key)
+          ) {
+            scheduleSettingsSync();
+          }
+        };
+        storage.setItem = wrappedSetItem;
+        if (storage.setItem === wrappedSetItem) {
+          _wrappedSettingsStorages.add(storage);
+        } else {
+          console.warn('[persistence] localStorage.setItem could not be wrapped; settings autosync wrapper disabled');
+        }
+      } catch (e) {
+        console.warn('[persistence] could not wrap localStorage.setItem for settings autosync:', e);
       }
-    };
+    }
   }
 
   // Save on page hide (best-effort, sendBeacon for reliability).
