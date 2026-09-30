@@ -4993,7 +4993,15 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           ).filter(c => c.offset >= 2 && c.offset < fullText.length);
 
           const limitedRescueCandidates = carryActive
-            ? rescueCandidates.slice(0, carryGapMaxMainLines() + 1)
+            ? selectV9GapFillCandidates(rescueCandidates, {
+                remainingPx: Math.max(0, pageBottomForFill - planBottomY(currentPlan)),
+                lineHeight: (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55),
+                // In carry mode this setting is a real MAIN-LINE budget. The
+                // candidate list is priority/offset-descending by default, so
+                // slicing it directly accidentally inspected the deepest cuts.
+                // Reorder by source offset first, then cap the number of rows.
+                maxCandidates: carryGapMaxMainLines() + 1,
+              })
             : rescueCandidates;
 
           for (const rescueCandidate of limitedRescueCandidates) {
@@ -5968,15 +5976,20 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       // If whole paragraph does not fit, try all useful V9 break candidates,
       // not only the first 2-3. Sparse pages are expensive enough to justify
       // the extra bounded search.
-      const candidates = buildParagraphBreakCandidates(
-        fullText,
-        splitMetrics,
-        splitMainWidth,
-        v9SplitPolicy,
-        { source: "final-sparse-rescue" }
-      )
-        .filter(c => c.offset >= 2 && c.offset < fullText.length)
-        .slice(0, 24);
+      const candidates = selectV9GapFillCandidates(
+        buildParagraphBreakCandidates(
+          fullText,
+          splitMetrics,
+          splitMainWidth,
+          v9SplitPolicy,
+          { source: "final-sparse-rescue" }
+        ).filter(c => c.offset >= 2 && c.offset < fullText.length),
+        {
+          remainingPx: Math.max(0, pageBottomForFill - planBottomY(finalProbe)),
+          lineHeight: (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55),
+          maxCandidates: cfg.finalSparseRescueMaxCandidates,
+        }
+      );
 
       for (const candidate of candidates) {
         const splitText = splitMainTextAtOffset(fullText, candidate.offset);
