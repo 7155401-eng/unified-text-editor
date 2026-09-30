@@ -69,6 +69,12 @@ function wordEditorBlocksFromHtml(editorHtml, doc = globalThis.document) {
       flushInlineBuffer();
       blocks.push(Array.from(node.childNodes).map(wordInlineNodeHtml).join(""));
     } else {
+      // Pretty-printed HTML commonly contains indentation/newlines between
+      // top-level block tags. Those separators are source formatting, not
+      // editor content, and must not become invented Word line breaks.
+      if (node.nodeType === 3 && !inlineBuffer && !String(node.nodeValue || "").trim()) {
+        continue;
+      }
       const html = wordInlineNodeHtml(node);
       if (html) inlineBuffer += html;
     }
