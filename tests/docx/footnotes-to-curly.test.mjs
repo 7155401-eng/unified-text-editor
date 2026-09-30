@@ -4,6 +4,10 @@ import JSZip from "jszip";
 import { DOMParser } from "@xmldom/xmldom";
 import { JSDOM } from "jsdom";
 import { transformFootnotesToCurlyCore } from "../../cloudflare/docx_footnotes_to_curly.js";
+import {
+  handleDocxApi,
+  isDocxFootnotesToCurlyPath,
+} from "../../cloudflare/docx_worker_entry.js";
 import { wireFootnotesToCurlyTool } from "../../src/docx_tools/footnotes_to_curly.js";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -194,6 +198,42 @@ test("image/table/object/hyperlink content aborts before any output is produced"
   }
 });
 
+
+
+
+test("serves the converter through the shared DOCX Worker route", async () => {
+  assert.equal(isDocxFootnotesToCurlyPath("/api/word-footnotes-to-curly"), true);
+
+  const input = await makeDocx({
+    body: `<w:p><w:r><w:t>X</w:t><w:footnoteReference w:id="1"/><w:t>Y</w:t></w:r></w:p>`,
+    notes: `<w:footnote w:id="1"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t>note</w:t></w:r></w:p></w:footnote>`,
+  });
+
+  const request = new Request("https://app.ravtext.com/api/word-footnotes-to-curly", {
+    method: "POST",
+    headers: {
+      "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "x-file-name": encodeURIComponent("route.docx"),
+    },
+    body: input,
+  });
+
+  const response = await handleDocxApi(request, {}, {});
+  assert.equal(response.status, 200);
+  assert.equal(
+    decodeURIComponent(response.headers.get("x-docx-filename") || ""),
+    "route_מסולסלות.docx"
+  );
+
+  const report = JSON.parse(decodeURIComponent(response.headers.get("x-docx-report") || "%7B%7D"));
+  assert.equal(report.referencesConverted, 1);
+
+  const zip = await JSZip.loadAsync(await response.arrayBuffer());
+  assert.equal(zip.file("word/footnotes.xml"), null);
+  const xml = await zip.file("word/document.xml").async("string");
+  const doc = parser.parseFromString(xml, "application/xml");
+  assert.equal(byLocalName(doc, "t").map(n => n.textContent || "").join(""), "X{note}Y");
+});
 
 test("wires exactly one converter button into the Review toolbar", () => {
   const dom = new JSDOM("<!doctype html><body><div class=\"review-toolbar\"></div></body>");
