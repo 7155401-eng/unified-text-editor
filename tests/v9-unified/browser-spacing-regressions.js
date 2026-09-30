@@ -11,6 +11,7 @@ import { wordMainFragmentFromEditorHtml, wordRichFragmentFromEditorHtml } from '
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 import { analyzePageElement } from '../../src/layout_analysis_report.js';
 import { applyV9MainBottomGapToPage } from '../../src/engine/v9_main_bottom_gap.js';
+import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
