@@ -878,8 +878,8 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   panel.dataset.builtFor = signature;
 
   panel.innerHTML = "";
-  if (used.size === 0) return;
-
+  // The main stream has independent layout/style settings and must remain
+  // configurable even in a document with no commentary streams at all.
   const settings = getStreamSettings();
   // ⛔⛔ משה 10/09/2026: „כשהפופאפ של הרינדור לא פעיל הסימון של V עובד”.
   // זה הנתיב. commitRender קורא ל-scheduleRender, וזו rerenderPages —
