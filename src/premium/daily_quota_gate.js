@@ -11,11 +11,14 @@ const TOOL_USAGE_KEY = "ravtext.daily.tools";  // { yyyy-mm-dd: { toolName: coun
 // Keep this list intentionally narrow: this fixes text upload/import only.
 const FREE_UNMETERED_TOOLS = new Set([
   "word-extractor",
-  // Desktop source policy: transcription is free; Text Compare Pro had no
-  // RavText usage-quota check. Server policy is authoritative; this client set
-  // only prevents stale once/day localStorage from blocking those tools first.
   "torah-transcription",
   "text-compare-pro",
+]);
+
+// These are not necessarily free/unlimited; their free quota is authoritative
+// on the server and is NOT the legacy local once/day bucket.
+const SERVER_MANAGED_QUOTA_TOOLS = new Set([
+  "nikud-merger",
 ]);
 
 function normalizeToolName(toolName) {
@@ -24,6 +27,11 @@ function normalizeToolName(toolName) {
 
 export function isFreeUnmeteredTool(toolName) {
   return FREE_UNMETERED_TOOLS.has(normalizeToolName(toolName));
+}
+
+export function isLocalDailyQuotaBypassed(toolName) {
+  const key = normalizeToolName(toolName);
+  return FREE_UNMETERED_TOOLS.has(key) || SERVER_MANAGED_QUOTA_TOOLS.has(key);
 }
 
 function todayKey() {
@@ -79,8 +87,8 @@ export function canUseTool(toolName) {
   if (isPaid()) return { allowed: true };
   if (!isLoggedIn()) return { allowed: false, reason: "login" };
 
-  if (isFreeUnmeteredTool(key)) {
-    return { allowed: true, unmetered: true };
+  if (isLocalDailyQuotaBypassed(key)) {
+    return { allowed: true, unmetered: isFreeUnmeteredTool(key), serverManaged: SERVER_MANAGED_QUOTA_TOOLS.has(key) };
   }
 
   const today = todayUsage();
@@ -95,8 +103,8 @@ export function markToolUsed(toolName) {
   const keyName = normalizeToolName(toolName);
   if (!keyName) return 0;
 
-  // Upload/import is intentionally not counted against the free daily quota.
-  if (isFreeUnmeteredTool(keyName)) {
+  // Unmetered and server-managed tools must never touch the legacy local daily bucket.
+  if (isLocalDailyQuotaBypassed(keyName)) {
     const today = todayUsage();
     return today[keyName] || 0;
   }
