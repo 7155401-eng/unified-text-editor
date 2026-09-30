@@ -8,10 +8,13 @@ import { applyStyleToElement, applyTextStyleObjectToElement } from '../style_reg
 export function streamContextForV9(cfg, id, styleId, inlineStyle) {
   const cache = cfg.__v9StreamContexts;
   if (!cache) throw new Error('Missing render-scoped stream contexts');
-  const key = JSON.stringify([id, styleId, inlineStyle, cfg.sideFontFamily, cfg.sideFontSize, cfg.lineHeightRatio]);
+  const streamLineHeightRatio = Number(cfg.streamLineHeightRatio) > 0
+    ? Number(cfg.streamLineHeightRatio)
+    : (Number(cfg.lineHeightRatio) > 0 ? Number(cfg.lineHeightRatio) : 1.55);
+  const key = JSON.stringify([id, styleId, inlineStyle, cfg.sideFontFamily, cfg.sideFontSize, streamLineHeightRatio]);
   if (cache.has(key)) return cache.get(key);
   const c = createV9TextLayoutContext({ mainFontSize: cfg.sideFontSize || 11,
-    mainFontFamily: cfg.sideFontFamily || 'serif', lineHeightRatio: cfg.lineHeightRatio || 1.55,
+    mainFontFamily: cfg.sideFontFamily || 'serif', lineHeightRatio: streamLineHeightRatio,
     openingWordSettings: {enabled:false} }, {decorateBase(el) {
       applyStyleToElement(el, styleId);
       if (inlineStyle) applyTextStyleObjectToElement(el, inlineStyle);

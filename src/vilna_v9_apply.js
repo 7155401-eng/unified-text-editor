@@ -22,7 +22,7 @@ import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_se
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
 import { getOpeningWordSettings } from "./opening_word.js";
-import { getStoredSpacingSettingsSnapshot } from "./spacing_settings.js";
+import { getSpacingSettingsSnapshot, getStoredSpacingSettingsSnapshot } from "./spacing_settings.js";
 import {
   startVilnaRenderProgress,
   hideVilnaRenderProgressImmediately,
@@ -484,9 +484,12 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       };
     });
 
-    // One raw-aware cached snapshot per V9 render. This preserves the exact
-    // persisted-key fallback semantics while avoiding repeated storage reads.
+    // One raw-aware cached snapshot per V9 render. Persisted-only booleans
+    // retain their historical fallback semantics, while actual geometry values
+    // use the effective defaults exposed by the spacing UI.
     const storedSpacing = getStoredSpacingSettingsSnapshot();
+    const effectiveSpacing = getSpacingSettingsSnapshot();
+    const streamLineHeightRatio = safeV9LineHeightRatio(effectiveSpacing.streamLineHeight);
 
     const v9Config = {
       isCurrent,
@@ -499,6 +502,10 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       mainFontFamily: geom.fontFamily,
       sideFontFamily: geom.fontFamily,
       lineHeightRatio: geom.lineHeightRatio,
+      // Global stream spacing has its own planner pitch. Before this field
+      // existed, the visible "זרמים: גובה שורה" control never reached V9 and
+      // side/crown rows silently reused the MAIN line-height ratio.
+      streamLineHeightRatio,
       padding: 12,
       mainGap: geom.mainGap,
       streamHorizontalGap: geom.streamHorizontalGap,

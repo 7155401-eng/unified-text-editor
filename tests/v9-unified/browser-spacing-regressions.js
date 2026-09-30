@@ -421,6 +421,63 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    assert(right.lines[3].y+right.lines[3].lineHeightPx<=firstMain.y-7.9,'fourth actual crown line overlaps main');
    page.remove();return {mainTop:firstMain.y,crownBottom:plan.crownBottomY};
  });
+ await test('global stream line-height is a real V9 planner pitch, independent from main',()=>{
+   const page=makePage(),t=Array(10).fill(phrase).join(' ');
+   const plan=buildSinglePage(page,{
+     mainText:Array(4).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   },{
+     ...cfg,
+     pageHeight:720,
+     mainFontSize:13,
+     sideFontSize:10,
+     lineHeightRatio:1.55,
+     streamLineHeightRatio:2.05,
+     crownLines:4,
+     streamSettings:{'01':{inlineStyle:{fontSize:10}},'02':{inlineStyle:{fontSize:10}}}
+   });
+   const right=plan.streamBoxes.find(b=>b.role==='right');
+   assert(right?.lines?.length>=2,'stream line-height fixture did not create two rows');
+   const pitch=right.lines[1].y-right.lines[0].y;
+   assert(Math.abs(pitch-20.5)<.2,
+     `stream planner ignored streamLineHeightRatio: pitch=${pitch}, expected 20.5`);
+   assert(Math.abs(Number(right.lines[0].lineHeightPx)-20.5)<.2,
+     `stream painted lineHeightPx=${right.lines[0].lineHeightPx}, expected planner pitch 20.5`);
+   const mainLine=plan.mainBox?.lines?.[0];
+   assert(mainLine,'missing main line');
+   assert(Math.abs(Number(mainLine.lineHeightPx)-20.15)<.25,
+     `stream line-height leaked into main: main lineHeightPx=${mainLine.lineHeightPx}`);
+   page.remove();
+ });
+
+ await test('explicit per-stream line-height overrides the global stream pitch',()=>{
+   const page=makePage(),t=Array(10).fill(phrase).join(' ');
+   const plan=buildSinglePage(page,{
+     mainText:Array(4).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   },{
+     ...cfg,
+     pageHeight:720,
+     sideFontSize:10,
+     streamLineHeightRatio:2.05,
+     crownLines:4,
+     streamSettings:{
+       '01':{inlineStyle:{fontSize:10,lineHeight:1.8}},
+       '02':{inlineStyle:{fontSize:10,lineHeight:1.8}}
+     }
+   });
+   const right=plan.streamBoxes.find(b=>b.role==='right');
+   assert(right?.lines?.length>=2,'explicit stream style fixture did not create two rows');
+   const pitch=right.lines[1].y-right.lines[0].y;
+   assert(Math.abs(pitch-18)<.2,
+     `explicit stream lineHeight did not override global pitch: ${pitch}`);
+   page.remove();
+ });
+
  await test('configured four-row crown paints four complete rows before body transition',()=>{
    const page=makePage(),t=Array(18).fill(phrase).join(' ');
    const plan=buildSinglePage(page,{
