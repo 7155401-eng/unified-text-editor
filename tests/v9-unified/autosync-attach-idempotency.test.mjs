@@ -80,6 +80,33 @@ test('attachAutoSync is idempotent for the same PaneManager and Storage object',
   }
 });
 
+test('two different PaneManagers sharing one Storage do not stack settings wrappers', () => {
+  const storage = fakeStorage();
+  const { window } = windowHarness();
+  const managerA = { on() {}, serializeForPersistenceString() { return '{"a":1}'; }, flushSave() {} };
+  const managerB = { on() {}, serializeForPersistenceString() { return '{"b":1}'; }, flushSave() {} };
+
+  const restores = [
+    replaceGlobal('window', window),
+    replaceGlobal('localStorage', storage),
+    replaceGlobal('navigator', { sendBeacon: () => true }),
+    replaceGlobal('document', { getElementById: () => null }),
+  ];
+
+  try {
+    attachAutoSync(managerA);
+    const onceWrapped = storage.setItem;
+    attachAutoSync(managerB);
+    assert.strictEqual(
+      storage.setItem,
+      onceWrapped,
+      'shared Storage was wrapped again for a second PaneManager'
+    );
+  } finally {
+    for (const restore of restores.reverse()) restore();
+  }
+});
+
 test('unwrappable Storage does not abort document autosync or pagehide recovery', () => {
   const base = fakeStorage();
   const nativeSet = base.setItem.bind(base);
