@@ -4935,10 +4935,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
             const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-            if (noMidParagraph && !movedHasAnchoredNote) {
-            if (auditCandidate) { auditCandidate.reason = "no-mid-paragraph"; extensionAudit.candidates.push(auditCandidate); }
-            continue;
-          }
+            if (noMidParagraph && !movedHasAnchoredNote) continue;
           const splitText = splitMainTextAtOffset(fullText, len);
             const splitNotes = splitNotesByAnchor(
               target?.notes || [],
@@ -5049,7 +5046,10 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           const auditCandidate = extensionAudit ? { offset: len, kind: extendCandidate.kind || "", reason: "" } : null;
           const movedNotes = notesBeforeAnchor(len);
           const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-          if (noMidParagraph && !movedHasAnchoredNote) continue;
+          if (noMidParagraph && !movedHasAnchoredNote) {
+            if (auditCandidate) { auditCandidate.reason = "no-mid-paragraph"; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
           const splitText = splitMainTextAtOffset(secondText, len);
           const splitNotes = splitNotesByAnchor(
             secondNotes,
