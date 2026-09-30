@@ -14,7 +14,7 @@ import {
 import * as i18n from "./nikud_i18n.js";
 import * as theme from "./nikud_theme.js";
 import { HebrewTextBox, FilterPanel, DiffView } from "./nikud_widgets.js";
-import { checkToolAllowance, consumeToolUse } from "../tool_runtime_gate.js";
+import { checkToolAllowance } from "../tool_runtime_gate.js";
 
 
 function el(tag, opts = {}, children = []) {
@@ -426,19 +426,8 @@ export class MergerTab {
         };
         result._sourceStats = mr.statsPerSource;
       }
-      if (!result?.stopped) {
-        try {
-          await consumeToolUse("nikud-merger", {
-            niceName: "מיזוג ניקוד",
-            kind: "merge-success",
-          });
-        } catch (_) {
-          this._onError(i18n.isRtl()
-            ? "המיזוג הסתיים, אך המכסה החינמית אינה מאפשרת למסור תוצאה נוספת."
-            : "The merge finished, but the free quota does not allow another result.");
-          return;
-        }
-      }
+      // The /api/nikud-merger Worker atomically consumes successful
+      // free usage before it returns the result. UI does not double-charge.
       this._onDone(result);
     } catch (err) {
       this._onError(String(err && err.message || err));
