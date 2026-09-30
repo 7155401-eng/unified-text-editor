@@ -72,6 +72,28 @@ let _lastDocSig = '';
 let _lastSettingsSig = '';
 let _lastFailedSettingsSig = '';
 
+// Autosync bootstrap can be retried by the main startup promise chain. Track
+// installation per PaneManager at step granularity so a partial failure can be
+// retried without duplicating listeners that were already installed.
+const _autoSyncInstallStates = new WeakMap();
+const _wrappedSettingsStorages = new WeakSet();
+
+function autoSyncInstallState(paneManager) {
+  let state = _autoSyncInstallStates.get(paneManager);
+  if (!state) {
+    state = {
+      attaching: false,
+      attached: false,
+      initialRetry: false,
+      documentIntent: false,
+      localDocumentSaved: false,
+      pagehide: false,
+    };
+    _autoSyncInstallStates.set(paneManager, state);
+  }
+  return state;
+}
+
 function isLoggedIn() {
   const auth = (typeof window !== 'undefined' && window.__RAVTEXT_AUTH__) || null;
   return !!(auth && auth.loggedIn);
@@ -602,111 +624,145 @@ export function scheduleSettingsSync() {
 export function attachAutoSync(paneManager) {
   if (!isLoggedIn() || !paneManager) return;
 
-  // If startup kept a recovery-authoritative local document instead of a
-  // stale server copy, the local-save event may already have fired before
-  // this async setup completed. Schedule one explicit retry now so recovery
-  // does not depend on network timing or on the user typing another key.
+  const install = autoSyncInstallState(paneManager);
+  if (install.attached || install.attaching) return;
+  install.attaching = true;
+
   try {
-    const stale = staleServerCopy();
-    if (
-      shouldRetryStaleServerCopy(stale) &&
-      typeof localStorage !== 'undefined' &&
-      localStorage.getItem(DOC_KEY)
-    ) {
-      scheduleDocumentSync(paneManager);
-    }
-  } catch {}
-
-  // Document sync follows PaneManager persistence intent, not rendering.
-  // This covers text, structure and pane metadata even when live render is off.
-  if (typeof paneManager.on === 'function') {
-    paneManager.on('persist', () => scheduleDocumentSync(paneManager));
-  } else if (typeof window !== 'undefined') {
-    // Compatibility fallback for an older manager implementation only.
-    window.addEventListener('ravtext:engine-rendered', () => {
-      scheduleDocumentSync(paneManager);
-    });
-  }
-
-  // A successful localStorage snapshot is recovery-authoritative until the
-  // server confirms that exact JSON signature. PaneManager only emits the
-  // generic event; server recovery ownership stays in this module.
-  if (typeof window !== 'undefined') {
-    window.addEventListener('ravtext:local-document-saved', (ev) => {
+    // If startup kept a recovery-authoritative local document instead of a
+    // stale server copy, the local-save event may already have fired before
+    // this async setup completed. Run this once per manager.
+    if (!install.initialRetry) {
       try {
-        const localSig = localStorage.getItem(DOC_KEY);
-        if (localSig && localSig !== _lastDocSig) {
-          markServerStale('local-ahead', ev?.detail?.chars || localSig.length);
-        } else if (localSig && localSig === _lastDocSig) {
-          clearServerStaleIfConfirmed(localSig);
+        const stale = staleServerCopy();
+        if (
+          shouldRetryStaleServerCopy(stale) &&
+          typeof localStorage !== 'undefined' &&
+          localStorage.getItem(DOC_KEY)
+        ) {
+          scheduleDocumentSync(paneManager);
         }
       } catch {}
-      scheduleDocumentSync(paneManager);
-    });
-  }
+      install.initialRetry = true;
+    }
 
-  // Settings sync — wrap localStorage.setItem to detect changes to ravtext.* keys.
-  if (typeof localStorage !== 'undefined') {
-    const origSet = localStorage.setItem.bind(localStorage);
-    localStorage.setItem = function (key, value) {
-      origSet(key, value);
-      if (
-        typeof key === 'string' &&
-        key.startsWith(SETTINGS_PREFIX) &&
-        !isBlacklisted(key)
-      ) {
-        scheduleSettingsSync();
+    // Document sync follows PaneManager persistence intent, not rendering.
+    // Mark the step only after listener registration succeeds. If registration
+    // throws, a later startup retry may safely try this step again.
+    if (!install.documentIntent) {
+      if (typeof paneManager.on === 'function') {
+        paneManager.on('persist', () => scheduleDocumentSync(paneManager));
+      } else if (typeof window !== 'undefined') {
+        // Compatibility fallback for an older manager implementation only.
+        window.addEventListener('ravtext:engine-rendered', () => {
+          scheduleDocumentSync(paneManager);
+        });
       }
-    };
-  }
+      install.documentIntent = true;
+    }
 
-  // Save on page hide (best-effort, sendBeacon for reliability).
-  if (typeof window !== 'undefined') {
-    window.addEventListener('pagehide', () => {
-      try {
-        // Make the browser-local copy authoritative before attempting any
-        // best-effort network write. This also makes stale-server recovery
-        // independent of listener registration order.
-        paneManager.flushSave?.();
+    // A successful localStorage snapshot is recovery-authoritative until the
+    // server confirms that exact JSON signature. This is also step-idempotent:
+    // if a later installation step fails, retry will not duplicate this hook.
+    if (!install.localDocumentSaved && typeof window !== 'undefined') {
+      window.addEventListener('ravtext:local-document-saved', (ev) => {
+        try {
+          const localSig = localStorage.getItem(DOC_KEY);
+          if (localSig && localSig !== _lastDocSig) {
+            markServerStale('local-ahead', ev?.detail?.chars || localSig.length);
+          } else if (localSig && localSig === _lastDocSig) {
+            clearServerStaleIfConfirmed(localSig);
+          }
+        } catch {}
+        scheduleDocumentSync(paneManager);
+      });
+      install.localDocumentSaved = true;
+    }
 
-        const snapshot = createDocumentSnapshot(paneManager);
-        if (snapshot && snapshot.sig !== _lastDocSig) {
-          // sendBeacon has no response channel: mark the server copy
-          // provisionally stale before queueing. On the next load the flag
-          // is cleared automatically if server and local are identical.
-          markServerStale('pagehide-pending', snapshot.sig.length);
-          if (navigator.sendBeacon) {
-            const queued = navigator.sendBeacon(
-              '/api/documents/current?beacon=1',
+    // Settings sync — wrap each concrete Storage object at most once.
+    // Storage methods are host objects in some browsers/webviews and may reject
+    // reassignment. That optional failure must never abort document autosync or
+    // the pagehide recovery hook below.
+    if (typeof localStorage !== 'undefined' && localStorage) {
+      const storage = localStorage;
+      if (!_wrappedSettingsStorages.has(storage)) {
+        try {
+          const origSet = storage.setItem.bind(storage);
+          const wrappedSetItem = function (key, value) {
+            origSet(key, value);
+            if (
+              typeof key === 'string' &&
+              key.startsWith(SETTINGS_PREFIX) &&
+              !isBlacklisted(key)
+            ) {
+              scheduleSettingsSync();
+            }
+          };
+          storage.setItem = wrappedSetItem;
+          if (storage.setItem === wrappedSetItem) {
+            _wrappedSettingsStorages.add(storage);
+          } else {
+            console.warn('[persistence] localStorage.setItem could not be wrapped; settings autosync wrapper disabled');
+          }
+        } catch (e) {
+          console.warn('[persistence] could not wrap localStorage.setItem for settings autosync:', e);
+        }
+      }
+    }
+
+    // Save on page hide (best-effort, sendBeacon for reliability).
+    if (!install.pagehide && typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => {
+        try {
+          // Make the browser-local copy authoritative before attempting any
+          // best-effort network write. This also makes stale-server recovery
+          // independent of listener registration order.
+          paneManager.flushSave?.();
+
+          const snapshot = createDocumentSnapshot(paneManager);
+          if (snapshot && snapshot.sig !== _lastDocSig) {
+            // sendBeacon has no response channel: mark the server copy
+            // provisionally stale before queueing. On the next load the flag
+            // is cleared automatically if server and local are identical.
+            markServerStale('pagehide-pending', snapshot.sig.length);
+            if (navigator.sendBeacon) {
+              const queued = navigator.sendBeacon(
+                '/api/documents/current?beacon=1',
+                new Blob(
+                  [documentPayloadFromContentJson(snapshot.sig)],
+                  { type: 'application/json' }
+                )
+              );
+              if (!queued) {
+                console.warn('[persistence] pagehide document beacon was not queued');
+              }
+            }
+          }
+
+          const settings = collectLocalSettings();
+          const sig = JSON.stringify(settings);
+          const body = JSON.stringify({ settings });
+          if (
+            sig !== _lastSettingsSig &&
+            sig !== _lastFailedSettingsSig &&
+            byteSize(body) <= MAX_SETTINGS_SYNC_BYTES &&
+            navigator.sendBeacon
+          ) {
+            navigator.sendBeacon(
+              '/api/settings?beacon=1',
               new Blob(
-                [documentPayloadFromContentJson(snapshot.sig)],
+                [body],
                 { type: 'application/json' }
               )
             );
-            if (!queued) {
-              console.warn('[persistence] pagehide document beacon was not queued');
-            }
           }
-        }
+        } catch (e) { /* best effort */ }
+      });
+      install.pagehide = true;
+    }
 
-        const settings = collectLocalSettings();
-        const sig = JSON.stringify(settings);
-        const body = JSON.stringify({ settings });
-        if (
-          sig !== _lastSettingsSig &&
-          sig !== _lastFailedSettingsSig &&
-          byteSize(body) <= MAX_SETTINGS_SYNC_BYTES &&
-          navigator.sendBeacon
-        ) {
-          navigator.sendBeacon(
-            '/api/settings?beacon=1',
-            new Blob(
-              [body],
-              { type: 'application/json' }
-            )
-          );
-        }
-      } catch (e) { /* best effort */ }
-    });
+    install.attached = true;
+  } finally {
+    install.attaching = false;
   }
 }
