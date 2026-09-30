@@ -1,7 +1,7 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/v9-typography-spacing-regressions]
+    branches: [refactor/build-source-idempotency-20260930]
   pull_request:
     branches: [main]
     paths:
@@ -11,7 +11,7 @@ on:
       - '.github/workflows/v9-spacing-regressions.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: v9-spacing-${{ github.ref }}
   cancel-in-progress: true
@@ -20,13 +20,13 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.ref == 'refs/heads/refactor/build-source-idempotency-20260930' || github.head_ref == 'refactor/build-source-idempotency-20260930'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          persist-credentials: false
+          persist-credentials: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
@@ -67,6 +67,22 @@ jobs:
           npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
           npm run build 2>&1 | tee test-results/v9-unified/build.log
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
+      - name: Snapshot build-applied source state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- index.html \
+            src/torah_transcription/torah_transcription_gas.js \
+            src/torah_transcription/torah_transcription_ui.js \
+            worker/ai_direct.js worker/ai_tools.js worker/minute_access.js
+          if git diff --cached --quiet; then
+            echo "No build-applied source changes to snapshot"
+          else
+            git diff --cached --stat
+            git commit -m "refactor(build): commit build-applied source state [skip ci]"
+            git push origin HEAD:refactor/build-source-idempotency-20260930
+          fi
+
       - name: Repeat unit and browser regressions after build
         run: |
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
