@@ -117,6 +117,34 @@ test('page-ending continuation rebalances the paragraph tail instead of rubber-s
  assert.ok(p.diagnostics.some(d=>d.code==='paragraph-tail-rebalanced'));
 });
 
+test('opening-word host row and following window row belong to the same tail rebalance',()=>{
+ const text='OPEN aa aa aa aa aa aa';
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{},dropLines:2,gapPx:2}),
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs(
+  [{id:'opening-tail',text,runs:[],mainRefs:[],continuesAfter:true}],
+  [{x:0,width:54,y_start:0,y_end:30}],ctx,30
+ );
+ assert.equal(p.lines.length,3);
+ assert.ok(p.lines[0].render.opening,'opening glyph was lost during tail rebalance');
+ assert.equal(p.lines[0].render.opening.part.text,'OPEN');
+ assert.equal(p.lines[0].openingWindow,true);
+ assert.equal(p.lines[1].openingWindow,true);
+ assert.ok(p.lines.every(l=>l.tailRebalanced===true),'opening/window rows were split out of the paragraph rebalance');
+ assert(!p.lines[0].render.body.text.includes('OPEN'),'opening text was duplicated into the body span');
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
+ assert.ok(Math.max(...p.lines.map(l=>l.render.wordSpacing))<=6.5001,
+  `opening paragraph tail was not gently distributed: ${p.lines.map(l=>l.render.wordSpacing).join(',')}`);
+});
+
 test('continuation tail rebalance starts only after the last explicit source line break',()=>{
  const text='aa aa aa aa\naa aa aa aa aa aa';
  const ctx={
