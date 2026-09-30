@@ -87,6 +87,7 @@ import { wireChapterSplitter } from "./document_chapter_splitter.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import { wireFootnotesToCurlyTool } from "./docx_tools/footnotes_to_curly.js";
 import { wireSplitFootnotesByTagTool } from "./docx_tools/split_footnotes_by_tag.js";
+import { wireFootnoteTrackChangesTool } from "./docx_tools/footnote_track_changes.js";
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
@@ -1143,6 +1144,7 @@ setTimeout(() => {
   wireChapterSplitter(paneManager);
   wireFootnotesToCurlyTool();
   wireSplitFootnotesByTagTool();
+  wireFootnoteTrackChangesTool();
 }, 300);
 setTimeout(() => {
   wireWordCount(paneManager);
@@ -2156,16 +2158,6 @@ document.addEventListener("click", async (ev) => {
     }
 
     // === שלב 11 — ניהול חלוניות ===
-    case "pane-add-intro": {
-      const count = paneManager.getIntroPanes?.().length || paneManager.panes.filter(p => p.paneRole === "intro").length;
-      const pane = paneManager.addPane({
-        paneRole: "intro",
-        label: `הקדמה ${count + 1}`,
-        content: "<p></p>",
-      });
-      pane?.editor?.commands?.focus?.("end");
-      break;
-    }
     case "pane-add": {
       const code = paneManager.nextAvailableStreamCode();
       if (!code) { alert("הגעת ל‑99 חלוניות (מקסימום)."); break; }
@@ -2186,10 +2178,7 @@ document.addEventListener("click", async (ev) => {
     case "pane-remove": {
       const a = paneManager.activePane;
       if (!a) break;
-      if (a.paneRole === "main" || (!a.streamCode && a.paneRole !== "intro")) {
-        alert("חלונית ראשית — לא ניתן למחוק");
-        break;
-      }
+      if (!a.streamCode) { alert("חלונית ראשית — לא ניתן למחוק"); break; }
       if (confirm(`למחוק את חלונית "${a.label}"?`)) {
         paneManager.removePane(a.id);
       }
