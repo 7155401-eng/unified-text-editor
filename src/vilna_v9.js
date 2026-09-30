@@ -5430,7 +5430,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
     const writeFinalGapFillDebug = (info = {}) => {
       if (typeof window === "undefined") return;
-      window.__ravtextLastV9GapFill = {
+      const record = {
         pageIdx,
         beforeFill: Number.isFinite(info.beforeFill) ? info.beforeFill : null,
         afterFill: Number.isFinite(info.afterFill) ? info.afterFill : null,
@@ -5443,6 +5443,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         pulledTextPreview: info.pulledTextPreview || "",
         pulledNotesCount: Number.isFinite(info.pulledNotesCount) ? info.pulledNotesCount : 0,
       };
+      window.__ravtextLastV9GapFill = record;
+      if (window.__ravtextAuditV9GapFillTrace === true) {
+        if (!Array.isArray(window.__ravtextV9GapFillTrace)) window.__ravtextV9GapFillTrace = [];
+        window.__ravtextV9GapFillTrace.push(structuredClone(record));
+      }
     };
 
     const tryFinalGapFillRescue = () => {
