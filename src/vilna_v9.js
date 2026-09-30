@@ -5009,6 +5009,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         secondTextLength: secondText.length,
         carryActive: !!carryActive,
         noMidParagraph: !!noMidParagraph,
+        splitMainWidth,
+        splitMainAreaWidth,
+        splitMainCols,
         entered: false,
         candidateCount: 0,
         candidates: [],
@@ -5120,6 +5123,18 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           if (!extensionScore.accept) {
             auditCandidate.reason = "line-guard";
             auditCandidate.policyReason = extensionScore.reason || "";
+            auditCandidate.guardDebug = extensionScore.debug || null;
+            const last = tp?.mainBox?.lines?.[tp.mainBox.lines.length - 1] || null;
+            auditCandidate.actualLastLine = last ? {
+              x: Number(last.x) || 0,
+              y: Number(last.y) || 0,
+              width: Number(last.width) || 0,
+              naturalWidth: Number(last.naturalWidth) || 0,
+              effectiveWordSpacing: Number(last?.render?.wordSpacing) || 0,
+              text: String(last.text || ""),
+              sourceText: String(last.sourceText || ""),
+              tailRebalanced: last.tailRebalanced === true,
+            } : null;
             __extensionAudit.candidates.push(auditCandidate);
             continue;
           }
