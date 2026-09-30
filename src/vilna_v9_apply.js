@@ -16,7 +16,7 @@
 import { nextFrame } from "./engine/background_safe_yield.js";
 import { buildPages } from "./vilna_v9.js";
 import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna_daf_lock.js";
-import { applyV9MainBottomGap } from "./engine/v9_main_bottom_gap.js";
+import { applyV9MainBottomGap, resolveV9MainBottomGapPx } from "./engine/v9_main_bottom_gap.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
@@ -503,6 +503,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       padding: 12,
       mainGap: geom.mainGap,
       streamHorizontalGap: geom.streamHorizontalGap,
+      // Resolve once before pagination. V9 planning owns this geometry; the
+      // later compatibility pass is diagnostic-only and must never move rows.
+      mainBottomGapPx: resolveV9MainBottomGapPx(container),
       mainStyleId,
       mainInlineStyle,
       mainWidthRatio: readIntSetting("ravtext.talmudLayout.mainWidth", 42, 20, 80) / 100,
@@ -574,9 +577,8 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
 
     annotateV9RenderedSourceMetadata(container, transformedParagraphs);
 
-    // 2026-05-17: רווח מתחת הזרם הראשי חייב להימדד בתוך מסלול V9, לא דרך CSS.
-    // הפאס הזה מזיז רק זרמי תחתית, ורק אם יש מקום אמיתי בדף — כך הוא לא
-    // משנה את חישוב הפגינציה ולא יוצר גלישה נסתרת.
+    // Compatibility diagnostics + non-geometric guards. The requested gap is
+    // already in the V9 plan; this function no longer moves lines/titles.
     applyV9MainBottomGap(container);
 
     // סימון העמודים במצב משנ"ב — אותו סיווג שהמנוע הרגיל נותן, כדי שגם
