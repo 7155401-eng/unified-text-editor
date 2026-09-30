@@ -123,14 +123,16 @@ function patchSideStreamFullStrip(source) {
     // really ends. The one-line cap is reserved only for same-stream split
     // bridge/orphan cases; distinct streams keep the full lower area.
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    const lockFullStrip3Start = maxFullStrip3Lines > 0 || o.lockFullStrip3Start === true;
     if (fullStrip3StartY < pageBottomY && !suppressFullStrip3) {
       strips.push({
         y_start: fullStrip3StartY,
         y_end: pageBottomY,
         width: innerWidth,
         x: 0,
-        lockYStart: lockFullStrip3Start,
+        // v9-knee-row-grid: ending of the other side changes WIDTH only.
+        // The current stream keeps its own row pitch; a crossing row remains
+        // narrow and the next natural row is the first full-width row.
+        lockYStart: false,
       });
     }`;
 
@@ -159,7 +161,7 @@ function patchSideStreamFullStrip(source) {
 
   if (source.includes(original)) return source.replace(original, replacement);
 
-  const existingPatched = /const maxFullStrip3Lines = Number\(o\.maxFullStrip3Lines\) > 0[\s\S]*?lockYStart: (?:maxFullStrip3Lines > 0|lockFullStrip3Start),\s*\}\);\s*\}/;
+  const existingPatched = /const maxFullStrip3Lines = Number\(o\.maxFullStrip3Lines\) > 0[\s\S]*?v9-knee-row-grid:[\s\S]*?lockYStart: false,\s*\}\);\s*\}/;
   if (existingPatched.test(source)) return source.replace(existingPatched, replacement);
 
   fail("strip3 full-width continuation replacement");
@@ -192,7 +194,6 @@ function patchTwoColumnLimits(source) {
       otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0,
-      lockFullStrip3Start: !!pass1Left,
     });`,
     ],
     [
@@ -207,7 +208,6 @@ function patchTwoColumnLimits(source) {
       otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0,
-      lockFullStrip3Start: !!pass1Left,
     });`,
     ],
     [
@@ -219,7 +219,6 @@ function patchTwoColumnLimits(source) {
       mainBottomY,
       otherSideEndY: otherEnd,
       maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0,
-      lockFullStrip3Start: !!(pass2Right || pass1Right),
     });`,
     ],
     [
@@ -232,7 +231,6 @@ function patchTwoColumnLimits(source) {
       mainBottomY,
       otherSideEndY: otherEnd,
       maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0,
-      lockFullStrip3Start: !!(pass2Right || pass1Right),
     });`,
     ],
     [
@@ -245,7 +243,6 @@ function patchTwoColumnLimits(source) {
       mainBottomY,
       otherSideEndY: otherEnd,
       maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0,
-      lockFullStrip3Start: !!(pass2Right || pass1Right),
     });`,
     ],
     [
@@ -259,7 +256,6 @@ function patchTwoColumnLimits(source) {
       otherSideEndY: cap(pass2Left.endY),
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
-      lockFullStrip3Start: !!pass2Left,
     });`,
     ],
     [
@@ -274,7 +270,6 @@ function patchTwoColumnLimits(source) {
       otherSideEndY: cap(pass2Left.endY),
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
-      lockFullStrip3Start: !!pass2Left,
     });`,
     ],
   ];
@@ -339,20 +334,18 @@ function verifyInvariant(source) {
   assertIncludes(source, "y_end: s.y_end", "side strips pass y_end to flow");
   assertIncludes(source, "lockYStart: s.lockYStart === true", "side strips pass lockYStart to flow");
   assertIncludes(source, "const maxFullStrip3Lines = Number(o.maxFullStrip3Lines) > 0", "strip3 line cap exists");
-  assertIncludes(source, "const lockFullStrip3Start = maxFullStrip3Lines > 0 || o.lockFullStrip3Start === true", "full-width start lock is decoupled from one-line cap");
   assertIncludes(source, "v9-knee-row-grid: width changes do not create a new vertical grid.", "half-width widening transition stays on commentary row grid");
+  assertIncludes(source, "v9-knee-row-grid: ending of the other side changes WIDTH only.", "full-width widening transition stays on commentary row grid");
   assertIncludes(source, "lockYStart: false,", "commentary knee must not force an off-grid row start");
+  assertMissing(source, "lockFullStrip3Start:", "legacy full-strip Y lock must not be reintroduced");
   assertIncludes(source, "const isSameStreamSideSplit = isScenario1 ||", "same-stream split flag exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0", "right pass2 cap is same-stream only");
-  assertIncludes(source, "lockFullStrip3Start: !!pass1Left", "right pass2 still locks full-width start when left exists");
   const hasLeftSameStreamCap = source.includes("maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0");
   const hasLeftExpansionMode = source.includes("Column B may expand after column A ends") && source.includes("maxFullStrip3Lines: 0");
   if (!hasLeftSameStreamCap && !hasLeftExpansionMode) {
     fail("left pass2 cap/expansion invariant");
   }
-  assertIncludes(source, "lockFullStrip3Start: !!(pass2Right || pass1Right)", "left pass2 still locks full-width start when right exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0", "final right pass2 cap is same-stream only");
-  assertIncludes(source, "lockFullStrip3Start: !!pass2Left", "final right pass2 still locks full-width start when left exists");
   if (!source.includes("v9-column-continuation-cut") && !source.includes("const isColumnAContinuation = !!box.isColumnAContinuation") && !source.includes("const isSourceContinuationEnd = !!box.syntheticContinuationAfter")) {
     fail("column continuation rendering guard exists");
   }
