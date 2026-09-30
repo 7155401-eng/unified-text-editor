@@ -1,5 +1,38 @@
 import { getToolQuotaPolicy, policyPublicView } from './tool_quota_policy.js';
 
+let _schemaReady = false;
+
+export async function ensureQuotaSchema(env) {
+  if (_schemaReady) return;
+  if (!env?.DB) throw new Error('Quota database is unavailable');
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS tool_quota_state (
+      user_id INTEGER NOT NULL,
+      tool_name TEXT NOT NULL,
+      window_started_at INTEGER NOT NULL DEFAULT 0,
+      uses INTEGER NOT NULL DEFAULT 0,
+      units_used INTEGER NOT NULL DEFAULT 0,
+      session_started_at INTEGER NOT NULL DEFAULT 0,
+      session_last_at INTEGER NOT NULL DEFAULT 0,
+      cooldown_until INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, tool_name)
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS tool_quota_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      tool_name TEXT NOT NULL,
+      event_key TEXT NOT NULL,
+      units INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      UNIQUE (user_id, tool_name, event_key)
+    )`),
+    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_tool_quota_events_user_tool
+      ON tool_quota_events(user_id, tool_name, created_at)`),
+  ]);
+  _schemaReady = true;
+}
+
 function nowSeconds() {
   return Math.floor(Date.now() / 1000);
 }
@@ -24,6 +57,7 @@ function unlimitedStatus(toolName, policy, reason) {
 }
 
 async function readEvents(env, userId, toolName, sinceSec) {
+  await ensureQuotaSchema(env);
   const result = await env.DB.prepare(
     `SELECT event_key, units, created_at
        FROM tool_quota_events
@@ -122,6 +156,7 @@ export async function getToolQuotaStatus(env, user, toolName, { nowSec = nowSeco
 
 async function existingEvent(env, userId, toolName, eventKey) {
   if (!eventKey) return null;
+  await ensureQuotaSchema(env);
   return await env.DB.prepare(
     `SELECT event_key, units, created_at
        FROM tool_quota_events
@@ -131,6 +166,7 @@ async function existingEvent(env, userId, toolName, eventKey) {
 }
 
 async function insertConditionally(env, sql, bindings) {
+  await ensureQuotaSchema(env);
   const result = await env.DB.prepare(sql).bind(...bindings).run();
   return (result?.meta?.changes || 0) > 0;
 }
