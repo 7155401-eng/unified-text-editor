@@ -448,7 +448,7 @@ async function claimReceipt(env, userId, toolName, idempotencyKey, amount, nowSe
   if ((inserted?.meta?.changes || 0) > 0) return { claimed: true, key };
 
   const row = await env.DB.prepare(`
-    SELECT status, response_json
+    SELECT status, response_json, created_at
     FROM tool_quota_receipts
     WHERE user_id = ? AND tool_name = ? AND idempotency_key = ?
   `).bind(userId, toolName, key).first();
@@ -458,6 +458,21 @@ async function claimReceipt(env, userId, toolName, idempotencyKey, amount, nowSe
       return { claimed: false, key, replay: { ...JSON.parse(row.response_json), idempotent: true } };
     } catch (_) {}
   }
+
+  // A consume receipt covers only the short D1 accounting step (provider work
+  // happens before consume). If a Worker dies after claiming but before
+  // finishing, allow one caller to atomically reclaim an old pending receipt.
+  const staleBefore = nowSec - 30;
+  if (row?.status === "pending" && int(row.created_at) <= staleBefore) {
+    const reclaimed = await env.DB.prepare(`
+      UPDATE tool_quota_receipts
+      SET created_at = ?, amount = ?
+      WHERE user_id = ? AND tool_name = ? AND idempotency_key = ?
+        AND status = 'pending' AND created_at <= ?
+    `).bind(nowSec, amount, userId, toolName, key, staleBefore).run();
+    if ((reclaimed?.meta?.changes || 0) > 0) return { claimed: true, key, reclaimed: true };
+  }
+
   return { claimed: false, key, pending: true };
 }
 
