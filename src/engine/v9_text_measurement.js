@@ -62,6 +62,9 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
   probe.style.fontFamily = cfg.mainFontFamily || 'serif';
   probe.style.fontSize = `${cfg.mainFontSize || 13}px`;
   probe.style.lineHeight = `${(cfg.mainFontSize || 13) * (cfg.lineHeightRatio || 1.55)}px`;
+  probe.style.fontFeatureSettings = '"kern" 1, "liga" 1, "mark" 1, "mkmk" 1';
+  probe.style.fontKerning = 'normal';
+  probe.style.textRendering = 'optimizeLegibility';
   hooks.decorateBase?.(probe);
   root.appendChild(probe); document.body.appendChild(root);
   const computed = getComputedStyle(probe);
