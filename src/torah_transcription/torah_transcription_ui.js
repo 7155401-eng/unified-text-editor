@@ -11,6 +11,7 @@ import {
 } from "./torah_transcription_gas.js";
 import { friendlyError } from "./torah_transcription_errors.js";
 import { hasCurrentAppLicense } from "../current_license.js";
+import { checkToolAllowance, consumeToolUse } from "../tool_runtime_gate.js";
 import {
   getSyncedClaudeApiKey,
   getSyncedGeminiApiKey,
@@ -1765,6 +1766,19 @@ export class TranscriptionWindow {
     log("_doRun start");
     try {
       const s = this.appState;
+
+      if (s.mode === "ocr") {
+        try {
+          await checkToolAllowance("torah-ocr", {
+            niceName: "OCR (סריקת תמונה)",
+          });
+        } catch (_) {
+          this.statusLabel.textContent = "המכסה החינמית אינה זמינה כעת.";
+          this.progressFill.style.width = "0%";
+          return;
+        }
+      }
+
       const use_premium = useLegacyPremiumMode(s.use_premium);
 
       // קביעת prompt_type לפי סוג קובץ + מצב
@@ -1910,6 +1924,20 @@ export class TranscriptionWindow {
         preferred_engine: preferred_engine_for_judge,
       });
       const edition = edition_resp.result || "";
+      if (!edition) throw new GasServerError("empty_result", "לא התקבלה תוצאה סופית");
+
+      if (s.mode === "ocr") {
+        try {
+          await consumeToolUse("torah-ocr", {
+            niceName: "OCR (סריקת תמונה)",
+            kind: "ocr-success",
+          });
+        } catch (_) {
+          this.statusLabel.textContent = "ה־OCR הסתיים, אך המכסה החינמית אינה מאפשרת למסור תוצאה נוספת.";
+          this.progressFill.style.width = "0%";
+          return;
+        }
+      }
 
       this.appState.result = {
         witnesses,
