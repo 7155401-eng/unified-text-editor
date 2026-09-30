@@ -11,7 +11,7 @@ on:
       - '.github/workflows/v9-spacing-regressions.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: v9-spacing-${{ github.ref }}
   cancel-in-progress: true
@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          persist-credentials: false
+          persist-credentials: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
@@ -76,6 +76,18 @@ jobs:
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
           cp test-results/v9-unified/browser.json test-results/v9-unified/browser-before-build.json
           node scripts/v9-unified/run-browser.mjs
+      - name: Capture exact build-generated source state
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- index.html src/torah_transcription/torah_transcription_gas.js src/torah_transcription/torah_transcription_ui.js worker/ai_direct.js worker/ai_tools.js worker/minute_access.js
+          if git diff --cached --quiet; then
+            echo "No build-generated source changes to capture."
+          else
+            git commit -m "chore(audit): capture build-generated source state [skip ci]"
+            git push origin HEAD:audit/full-build-rewrites-20260930
+          fi
       - name: Retain validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
