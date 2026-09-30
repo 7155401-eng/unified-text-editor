@@ -7,12 +7,107 @@ import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.j
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
 import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
+import { appendTextWithRuns } from '../../src/engine/runs_dom.js';
+import { applyLineBalanceToPage } from '../../src/smart_line_breaker.js';
+import { loadInitialState } from '../../src/server_persistence.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
 const cfg={pageWidth:380,pageHeight:350,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:false}};
 
 export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
+ await test('Hebrew base letter and niqqud stay in one shaping span across run boundaries',()=>{
+   const host=document.createElement('div');
+   appendTextWithRuns(host,'ךָ',[
+     {start:0,end:1,marks:{bold:true}},
+     {start:1,end:2,marks:{color:'rgb(255, 0, 0)'}}
+   ]);
+   assert(host.textContent==='ךָ','niqqud source changed');
+   assert(host.childNodes.length===1,'base letter and niqqud were split into separate DOM runs');
+   const span=host.firstChild;
+   assert(span?.nodeType===Node.ELEMENT_NODE,'combined grapheme was not rendered as one styled span');
+   assert(parseFloat(getComputedStyle(span).fontWeight)>=600,'base styling was lost while merging the grapheme');
+   assert(!!span.style.color,'niqqud styling was lost while merging the grapheme');
+ });
+ await test('classic line balancer never breaks a non-whitespace token at punctuation',()=>{
+   const page=document.createElement('div'); page.className='page';
+   const main=document.createElement('div'); main.className='page-main';
+   const p=document.createElement('p');
+   p.style.cssText='width:42px;font-size:20px;text-align:justify;';
+   p.textContent='אבג[דהו]זחט'; main.append(p); page.append(main); document.body.append(page);
+   try {
+     applyLineBalanceToPage(page);
+     const word=p.querySelector('.ln-word');
+     assert(word&&word.textContent==='אבג[דהו]זחט','punctuation token was fragmented');
+     assert(getComputedStyle(word).whiteSpace==='nowrap','non-whitespace token permits internal wrapping');
+     const range=document.createRange(); range.selectNodeContents(word);
+     assert(range.getClientRects().length<=1,'token wrapped into more than one visual row');
+   } finally { page.remove(); }
+ });
+ await test('unsynced local layout settings survive a reload over an older server copy',async()=>{
+   const key='ravtext.talmudLayout.crownLines', dirty='ravtext.settings.localDirty.v1';
+   const savedValue=localStorage.getItem(key), savedDirty=localStorage.getItem(dirty);
+   const savedAuth=window.__RAVTEXT_AUTH__, savedFetch=window.fetch;
+   try {
+     localStorage.setItem(key,'7'); localStorage.setItem(dirty,'1');
+     window.__RAVTEXT_AUTH__={loggedIn:true};
+     window.fetch=globalThis.fetch=async(url)=>({
+       ok:true,
+       json:async()=>String(url).includes('/api/settings')
+         ? {settings:{[key]:'4'}}
+         : {document:null}
+     });
+     await loadInitialState({load(){ throw new Error('document load should not run'); }});
+     assert(localStorage.getItem(key)==='7','older server setting overwrote newer local layout');
+   } finally {
+     if(savedValue===null)localStorage.removeItem(key);else localStorage.setItem(key,savedValue);
+     if(savedDirty===null)localStorage.removeItem(dirty);else localStorage.setItem(dirty,savedDirty);
+     window.__RAVTEXT_AUTH__=savedAuth; window.fetch=globalThis.fetch=savedFetch;
+   }
+ });
+ await test('one-long-split reserves requested crown rows for both typography halves',()=>{
+   const page=makePage();
+   const words=Array(34).fill(phrase);
+   const text=words.join(' ');
+   const tallAt=Math.floor(text.length*0.55);
+   const rich={text,runs:[{start:tallAt,end:text.length,marks:{fontSize:24,fontSizeUnit:'px'}}]};
+   const plan=buildSinglePage(page,{
+     mainText:Array(5).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[text],runs:rich.runs,rich},
+     leftStream:null,footerStreams:[]
+   },{...cfg,pageHeight:760,crownLines:4,balanceSingleStreamSides:true});
+   assert(plan.crownScenario?.name==='one_long_split','fixture did not enter one_long_split');
+   const crownTop=Math.min(...plan.streamBoxes.filter(b=>b.id==='01').flatMap(b=>b.lines.map(l=>l.y)));
+   for(const role of ['right','left']){
+     const box=plan.streamBoxes.find(b=>b.role===role&&b.id==='01');
+     assert(box,'missing split commentary side '+role);
+     const crownRows=box.lines.filter(l=>l.y>=crownTop-.1&&l.y+l.lineHeightPx<=plan.crownBottomY+.15);
+     assert(crownRows.length>=4,role+' crown has only '+crownRows.length+' rows');
+   }
+   page.remove();
+ });
+ await test('both commentary sides enter the below-main wider band on the same baseline',()=>{
+   const page=makePage(), text=Array(26).fill(phrase).join(' ');
+   const richR={text,runs:[{start:0,end:Math.min(150,text.length),marks:{fontSize:19,fontSizeUnit:'px'}}]};
+   const richL={text,runs:[]};
+   const plan=buildSinglePage(page,{
+     mainText:Array(5).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[text],runs:richR.runs,rich:richR},
+     leftStream:{id:'02',items:[text],runs:[],rich:richL},footerStreams:[]
+   },{...cfg,pageHeight:760,crownLines:2,streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}}}});
+   const mainBottom=plan.mainBox?.endY||0;
+   const ys=[];
+   for(const role of ['right','left']){
+     const box=plan.streamBoxes.find(b=>b.role===role);
+     const candidates=(box?.lines||[]).filter(l=>l.y>=mainBottom-.15);
+     assert(candidates.length,'missing below-main commentary for '+role);
+     const first=candidates[0];
+     assert(Math.abs(first.y-mainBottom)<.2,role+' starts wider band at '+first.y+' instead of '+mainBottom);
+     ys.push(first.y);
+   }
+   assert(Math.abs(ys[0]-ys[1])<.1,'side commentaries enter wider band at different heights: '+ys.join('/'));
+   page.remove();
+ });
  await test('Word round-trip keeps hard breaks inside a paragraph distinct from paragraph boundaries',()=>{
    const html='<p>אחד<br><strong>שניים</strong></p><p>שלוש</p>';
    const out=wordMainFragmentFromEditorHtml(html);
