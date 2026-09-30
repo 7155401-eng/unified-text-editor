@@ -221,26 +221,30 @@ export function evaluateQuotaState(policy, stateLike, {
   }
 
   if (policy.mode === "session") {
-    const idle = Math.max(1, int(policy.sessionIdleSeconds, SESSION_IDLE_SECONDS));
+    const duration = Math.max(1, int(policy.sessionIdleSeconds, SESSION_IDLE_SECONDS));
     const windowSec = Math.max(1, int(policy.windowSeconds, WEEK_SECONDS));
     const limit = Math.max(1, int(policy.limit, 1));
-    // Comparator parity: 15 minutes are measured from the FIRST action in
-    // the session. Activity inside the window does not extend it.
-    const active = state.last_activity > 0 && now - state.last_activity < idle;
+
+    // Desktop comparator parity:
+    // - opening a NEW process is free only while the weekly use is still unused;
+    // - the first real action consumes that weekly use;
+    // - the 15-minute lifetime belongs to that already-open process only.
+    // Therefore server preflight must NOT let a newly-opened window reuse an
+    // active 15-minute session from another window.
     const reset = !state.window_start || now - state.window_start >= windowSec;
     const used = reset ? 0 : state.uses;
     const remaining = Math.max(0, limit - used);
-    const allowed = active || remaining > 0;
+    const allowed = remaining > 0;
     return {
       allowed,
       reason: allowed ? "" : "quota",
-      activeSession: active,
+      activeSession: false,
       reset,
       used,
-      remaining: active ? remaining : remaining,
+      remaining,
       limit,
       retryAfterSeconds: allowed ? 0 : retryAfterRolling(state, policy, now),
-      sessionIdleSeconds: idle,
+      sessionIdleSeconds: duration,
     };
   }
 
@@ -548,7 +552,6 @@ async function atomicConsumeCooldown(env, userId, toolName, policy, nowSec) {
 async function atomicConsumeSession(env, userId, toolName, policy, nowSec) {
   await insertEmptyState(env, userId, toolName, nowSec);
   const windowSec = Math.max(1, int(policy.windowSeconds, WEEK_SECONDS));
-  const idle = Math.max(1, int(policy.sessionIdleSeconds, SESSION_IDLE_SECONDS));
   const limit = Math.max(1, int(policy.limit, 1));
 
   return env.DB.prepare(`
@@ -558,33 +561,20 @@ async function atomicConsumeSession(env, userId, toolName, policy, nowSec) {
           ELSE window_start
         END,
         uses = CASE
-          WHEN last_activity > 0 AND ? - last_activity < ? THEN uses
           WHEN window_start = 0 OR ? - window_start >= ? THEN 1
           ELSE uses + 1
         END,
-        last_activity = CASE
-          WHEN last_activity > 0 AND ? - last_activity < ? THEN last_activity
-          ELSE ?
-        END,
+        last_activity = ?,
         last_success = ?,
         updated_at = ?
     WHERE user_id = ? AND tool_name = ?
-      AND (
-        (last_activity > 0 AND ? - last_activity < ?)
-        OR window_start = 0
-        OR ? - window_start >= ?
-        OR uses < ?
-      )
+      AND (window_start = 0 OR ? - window_start >= ? OR uses < ?)
   `).bind(
     nowSec, windowSec, nowSec,
-    nowSec, idle,
     nowSec, windowSec,
-    nowSec, idle, nowSec,
-    nowSec, nowSec,
+    nowSec, nowSec, nowSec,
     userId, toolName,
-    nowSec, idle,
-    nowSec, windowSec,
-    limit
+    nowSec, windowSec, limit
   ).run();
 }
 
