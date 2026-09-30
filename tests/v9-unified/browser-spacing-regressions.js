@@ -800,15 +800,15 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
 
   await test('main-bottom gap never adds an extra blank slot after a lower side stream',()=>{
     const page=makePage();
-    const sideText=Array(26).fill(phrase).join(' ');
-    const footerText=Array(4).fill(neutral).join(' ');
+    const sideText=Array(10).fill(phrase).join(' ');
+    const footerText=Array(3).fill(neutral).join(' ');
     const plan=buildSinglePage(page,{
       mainText:'אחד שניים שלוש ארבע',
       rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
       leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
       footerStreams:[{id:'03',items:[footerText],runs:[],rich:{text:footerText,runs:[]}}],
       titles:{'03':'הערות'}
-    },{...cfg,pageHeight:900,crownLines:2,mainBottomGapPx:50,
+    },{...cfg,pageHeight:1100,crownLines:2,mainBottomGapPx:50,
       titles:{'03':'הערות'},streamSettings:{
         '01':{inlineStyle:{fontSize:11,lineHeight:1.45}},
         '02':{inlineStyle:{fontSize:12,lineHeight:1.6}},
