@@ -242,8 +242,36 @@ export function mountComparatorUI(rootEl, options = {}) {
     lastCursorPositions: {},
     activeQuillEditor: null,
     mainToolbarModule: null,
-    pendingCloseAfterSave: false
+    pendingCloseAfterSave: false,
+    quotaBlocked: false,
+    sessionActionPending: null,
   };
+  function lockComparatorForQuota() {
+    if (state.quotaBlocked) return;
+    state.quotaBlocked = true;
+    Object.values(state.eds).forEach(q => {
+      try { q.enable(false); } catch (_) {}
+    });
+    rootEl.querySelectorAll('button, input[type="button"], input[type="submit"]').forEach(el => {
+      try {
+        el.disabled = true;
+        el.style.opacity = '0.45';
+        el.title = 'המכסה החינמית של עורך רב טקסט הסתיימה.';
+      } catch (_) {}
+    });
+  }
+
+  function noteComparatorUserAction() {
+    if (state.quotaBlocked || typeof options.onSessionAction !== 'function') return;
+    if (state.sessionActionPending) return;
+    state.sessionActionPending = Promise.resolve(options.onSessionAction())
+      .then(ok => {
+        if (ok === false) lockComparatorForQuota();
+      })
+      .catch(() => lockComparatorForQuota())
+      .finally(() => { state.sessionActionPending = null; });
+  }
+
   // load saved transfer settings
   const savedTransfer = getTransferSettings();
   state.transferTargetStream = savedTransfer.targetStream;
@@ -334,7 +362,7 @@ export function mountComparatorUI(rootEl, options = {}) {
     }
 
     q.on('text-change', function (delta, oldDelta, source) {
-      // (quota check removed — browser context uses different gating)
+      if (source === 'user') noteComparatorUserAction();
       clearTimeout(q._hlTimer);
       q._hlTimer = setTimeout(function () { highlightMarkers(id); }, 200);
     });
