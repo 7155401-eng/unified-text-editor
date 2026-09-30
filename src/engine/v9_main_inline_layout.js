@@ -363,16 +363,20 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
 
 function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, strips, entry, context, pageBottom, diagnostics) {
-  if (!opening || paragraphLineStart < 0 || paragraphLineStart >= lines.length) return false;
+  const reject = (reason, extra = {}) => {
+    diagnostics?.push?.({ code: 'opening-window-center-reject', reason, paragraphId: entry?.id, ...extra });
+    return false;
+  };
+  if (!opening || paragraphLineStart < 0 || paragraphLineStart >= lines.length) return reject('invalid-entry');
   let paragraphLines = lines.slice(paragraphLineStart);
-  if (!paragraphLines.length) return false;
+  if (!paragraphLines.length) return reject('no-lines');
 
   let last = paragraphLines[paragraphLines.length - 1];
-  if (!(last?.isLast || last?.forcedBreak)) return false;
+  if (!(last?.isLast || last?.forcedBreak)) return reject('not-final',{isLast:last?.isLast,forcedBreak:last?.forcedBreak});
   const overlapsOpening =
     last.y < opening.y + opening.height - EPS &&
     last.y + last.lineHeightPx > opening.y + EPS;
-  if (!overlapsOpening) return false;
+  if (!overlapsOpening) return reject('no-overlap',{lastY:last?.y,lastH:last?.lineHeightPx,openingY:opening?.y,openingH:opening?.height});
 
   // A completed paragraph ending inside a dropped-opening window must be
   // balanced before centering. Otherwise a 6+1 word split leaves one tiny
@@ -386,12 +390,12 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
   }
 
   const fullRow = rowGeometry(strips, last.y, last.lineHeightPx, pageBottom);
-  if (!fullRow) return false;
+  if (!fullRow) return reject('no-full-row');
 
   const bodyWidth = Math.max(0, number(last.naturalWidth));
   const gap = bodyWidth > EPS ? Math.max(0, number(opening.gap)) : 0;
   const compositeWidth = bodyWidth + gap + opening.width;
-  if (!(compositeWidth <= fullRow.width + EPS)) return false;
+  if (!(compositeWidth <= fullRow.width + EPS)) return reject('composite-too-wide',{compositeWidth,rowWidth:fullRow.width});
 
   const compositeLeft = fullRow.x + (fullRow.width - compositeWidth) / 2;
   const candidateOpeningX = compositeLeft + bodyWidth + gap;
@@ -401,18 +405,18 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
     line.y < opening.y + opening.height - EPS &&
     line.y + line.lineHeightPx > opening.y + EPS
   );
-  if (!windowLines.length) return false;
+  if (!windowLines.length) return reject('no-window-lines');
 
   // One dropped glyph is shared by all rows in its window. Move it only if
   // every earlier row still fits to its left on the exact row geometry.
   for (const line of windowLines) {
     const g = rowGeometry(strips, line.y, line.lineHeightPx, pageBottom);
-    if (!g) return false;
+    if (!g) return reject('window-row-no-geometry',{y:line.y});
     if (candidateOpeningX < g.x - EPS ||
-        candidateOpeningRight > g.x + g.width + EPS) return false;
+        candidateOpeningRight > g.x + g.width + EPS) return reject('opening-outside-row',{y:line.y,candidateOpeningX,candidateOpeningRight,rowX:g.x,rowWidth:g.width});
     if (line === last) continue;
     const available = candidateOpeningX - gap - g.x;
-    if (number(line.naturalWidth) > available + EPS) return false;
+    if (number(line.naturalWidth) > available + EPS) return reject('earlier-row-too-wide',{y:line.y,naturalWidth:line.naturalWidth,available});
   }
 
   opening.x = candidateOpeningX;
