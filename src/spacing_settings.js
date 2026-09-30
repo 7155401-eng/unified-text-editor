@@ -61,18 +61,45 @@ const FIELDS = [
   ["globalLineBreakCode", "קוד מעבר שורה", "text", 0, 0, 1],
 ];
 
-export function loadSpacingSettings() {
+let _spacingCacheRaw = null;
+let _spacingCacheSnapshot = null;
+
+function readSpacingStorageRaw() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
-    return normalizeSpacing({ ...DEFAULTS, ...saved });
+    if (typeof localStorage === "undefined") return "";
+    return localStorage.getItem(STORAGE_KEY) || "";
   } catch {
-    return normalizeSpacing(DEFAULTS);
+    return "";
   }
+}
+
+function spacingSnapshotFromRaw(raw) {
+  try {
+    const saved = JSON.parse(raw || "{}") || {};
+    return Object.freeze(normalizeSpacing({ ...DEFAULTS, ...saved }));
+  } catch {
+    return Object.freeze(normalizeSpacing(DEFAULTS));
+  }
+}
+
+export function getSpacingSettingsSnapshot() {
+  const raw = readSpacingStorageRaw();
+  if (_spacingCacheSnapshot && raw === _spacingCacheRaw) return _spacingCacheSnapshot;
+  _spacingCacheRaw = raw;
+  _spacingCacheSnapshot = spacingSnapshotFromRaw(raw);
+  return _spacingCacheSnapshot;
+}
+
+export function loadSpacingSettings() {
+  return { ...getSpacingSettingsSnapshot() };
 }
 
 export function saveSpacingSettings(settings) {
   const next = normalizeSpacing(settings);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  const raw = JSON.stringify(next);
+  localStorage.setItem(STORAGE_KEY, raw);
+  _spacingCacheRaw = raw;
+  _spacingCacheSnapshot = Object.freeze({ ...next });
   return next;
 }
 
