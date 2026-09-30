@@ -1,0 +1,70 @@
+name: Temporary reported V9 bugs current-main audit
+
+on:
+  push:
+    branches:
+      - audit/reported-v9-bugs-latest-main-20261001
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Source and unit regressions
+        run: |
+          mkdir -p test-results/reported-v9
+          git rev-parse HEAD | tee test-results/reported-v9/commit.txt
+          node --check src/vilna_v9.js
+          node --check src/engine/v9_main_inline_layout.js
+          node --check src/engine/v9_text_measurement.js
+          node --test tests/v9-unified/*.test.mjs | tee test-results/reported-v9/unit.tap
+      - name: Verify reported-bug guards exist
+        run: |
+          grep -F "off-grid narrow→wide boundaries preserve one continuous row grid across many offsets" tests/v9-unified/spacing-regressions.test.mjs
+          grep -F "opening that starts after a knee occupies the complete wide visual row" tests/v9-unified/spacing-regressions.test.mjs
+          grep -F "single-line opening after a widening knee centers the complete visual segment in the wide row" tests/v9-unified/spacing-regressions.test.mjs
+          grep -F "centered hard-break line centers opening plus body as one visual segment" tests/v9-unified/spacing-regressions.test.mjs
+          grep -F "V9 split DOM matches native Chromium BiDi placement for apostrophe + parentheses" tests/v9-unified/browser-spacing-regressions.js
+          grep -F "hung startup document GET is aborted, timeout stays read-only, and autosync can attach" tests/v9-unified/startup-stale-retry.test.mjs
+          grep -F "lockYStart: false" src/vilna_v9.js
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Browser regressions
+        run: node scripts/v9-unified/run-browser.mjs
+      - name: Integration quota and DOCX guards
+        run: |
+          node --test tests/integration/*.test.mjs
+          node --test tests/quota/*.test.mjs
+          node --test tests/docx/*.test.mjs
+      - name: Build twice and preserve source
+        run: |
+          git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+      - name: Repeat critical regressions after build
+        run: |
+          node --test tests/v9-unified/*.test.mjs | tee test-results/reported-v9/unit-after-build.tap
+          node scripts/v9-unified/run-browser.mjs
+      - name: Retain evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reported-v9-current-main-${{ github.run_id }}
+          path: test-results/reported-v9/
+          retention-days: 7
