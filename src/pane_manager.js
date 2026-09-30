@@ -26,6 +26,7 @@ import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js
 import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
 import { EditorJsonSnapshotCache } from "./editor_json_snapshot_cache.js";
+import { PersistenceTextSnapshotCache } from "./persistence_text_snapshot_cache.js";
 import { FrameCoalescer } from "./frame_coalescer.js";
 
 const MAX_PANES = 99;
@@ -939,7 +940,9 @@ export class PaneManager {
     // while its request was in flight, without treating local/server/sample
     // hydration as a user edit.
     this._contentRevision = 0;
+    this._persistenceRevision = 0;
     this._storageJsonCache = new EditorJsonSnapshotCache();
+    this._storageTextCache = new PersistenceTextSnapshotCache();
 
     container.addEventListener("pane-remove-request", (ev) => {
       this.removePane(ev.detail.id);
@@ -1174,6 +1177,19 @@ export class PaneManager {
     };
   }
 
+  serializeForPersistenceString() {
+    const activeId = this.activePane ? this.activePane.id : null;
+    const docs = this.panes.map((p) => p.editor?.state?.doc ?? null);
+    return this._storageTextCache.get(
+      {
+        revision: this._persistenceRevision,
+        activeId,
+        docs,
+      },
+      () => this.serializeForPersistence()
+    );
+  }
+
   load(state) {
     // משחזר חלוניות מ‑state — לא קוטל את הראשית הנוכחית אם קיימת
     this._beginBatch();
@@ -1224,7 +1240,7 @@ export class PaneManager {
       this._savePending = false;
       return;
     }
-    const text = JSON.stringify(this.serializeForPersistence());
+    const text = this.serializeForPersistenceString();
     try {
       localStorage.setItem(STORAGE_KEY, text);
       this._savePending = false;
@@ -1264,6 +1280,7 @@ export class PaneManager {
   }
 
   _save({ immediate = false } = {}) {
+    this._persistenceRevision++;
     this._savePending = true;
     if (this._batchDepth > 0) return;
 
@@ -1328,6 +1345,7 @@ export class PaneManager {
   }
 
   clearStorage() {
+    this._storageTextCache.invalidate();
     if (this._saveTimer) {
       clearTimeout(this._saveTimer);
       this._saveTimer = null;
