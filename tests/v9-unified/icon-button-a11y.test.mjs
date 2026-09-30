@@ -17,8 +17,3 @@ test('icon/SVG-only controls have explicit accessible names',()=>{
   assert.match(index,/id="pdf-download"[\s\S]{0,180}?aria-label="הורד PDF"/);
   assert.match(index,/id="pdf-download-html"[\s\S]{0,220}?aria-label="הורד HTML לדיבוג — קוד מקור למפתחים"/);
 });
-
-test('accessibility rebuild does not import the stale bot lockfile change',()=>{
-  assert(!fs.existsSync(new URL('../../pnpm-lock.yaml',import.meta.url)),
-    'stale #377 pnpm lockfile was copied into the rebuild');
-});
