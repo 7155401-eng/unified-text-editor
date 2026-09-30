@@ -1,8 +1,6 @@
 name: Cross-bot regression guard
 
 on:
-  push:
-    branches: [gpt-v9-extension-wordgap-current-main-20261001]
   pull_request:
     branches: [main]
     paths:
