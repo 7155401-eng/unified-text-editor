@@ -86,6 +86,14 @@ function _clearStorageAlarm() {
   try { document.body?.classList.remove("ravtext-storage-full"); } catch {}
 }
 
+function _announceLocalDocumentSaved(chars) {
+  try {
+    window.dispatchEvent(new CustomEvent("ravtext:local-document-saved", {
+      detail: { chars: Number(chars) || 0 },
+    }));
+  } catch {}
+}
+
 function escapeSelectorValue(value) {
   if (typeof window !== "undefined" && window.CSS && typeof window.CSS.escape === "function") {
     return window.CSS.escape(String(value));
@@ -1189,6 +1197,7 @@ export class PaneManager {
       localStorage.setItem(STORAGE_KEY, text);
       this._savePending = false;
       _clearStorageAlarm();
+      _announceLocalDocumentSaved(text.length);
     } catch (e) {
       // משה 2026-09-20: כאן נעלמה עבודה בשקט. כשאין מקום — בדפדפן או
       // בדיסק עצמו — הכתיבה נכשלת, איש אינו יודע, והמסמך קיים רק
@@ -1205,6 +1214,7 @@ export class PaneManager {
           localStorage.setItem(STORAGE_KEY, text);
           this._savePending = false;
           _clearStorageAlarm();
+          _announceLocalDocumentSaved(text.length);
           console.warn(`[paneManager] saved after freeing ${freed} chars`);
           return;
         } catch (e2) { /* עדיין אין מקום */ }
