@@ -1,4 +1,4 @@
-import { canUseTool, isPaidAccount, markToolUsed, showToolBlocked } from "./premium/daily_quota_gate.js";
+import { isPaidAccount, markToolUsed, showToolBlocked } from "./premium/daily_quota_gate.js";
 
 const ENDPOINT = "/api/tools/preflight";
 const CACHE_SKEW_MS = 15000;
@@ -13,14 +13,9 @@ export async function assertToolAllowed(toolName) {
     return cached;
   }
 
-  const localCheck = canUseTool(key);
-  if (!localCheck.allowed) {
-    showToolBlocked(key, key, localCheck.reason);
-    const err = new Error(localCheck.reason === "login" ? "LOGIN_REQUIRED" : "TOOL_QUOTA_EXCEEDED");
-    err.code = localCheck.reason;
-    throw err;
-  }
-
+  // The Worker is authoritative. localStorage quota state is only a UI cache:
+  // using it as a pre-flight authority caused stale/double blocking and made it
+  // impossible to migrate weekly/unit/session policies safely.
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -46,7 +41,12 @@ export async function assertToolAllowed(toolName) {
     throw new Error("Tool preflight did not return a token");
   }
   _tokens.set(key, data);
-  if (!isPaidAccount()) markToolUsed(key);
+  // Keep the old local counter only as a display cache for tools that still
+  // run on the legacy once/day server policy. Migrated policies are accounted
+  // exclusively by their real server action.
+  if (!isPaidAccount() && !data.unmetered && data?.policy?.migrated === false) {
+    markToolUsed(key);
+  }
   return data;
 }
 
