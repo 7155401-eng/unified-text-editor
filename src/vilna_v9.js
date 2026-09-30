@@ -2017,9 +2017,19 @@ function buildPagePlanCore(pageContent, config) {
   const sideTopY = cfg.padding + titleHeight + reservedTop;
   const crownMainGap = crownHeight > 0 ? (Number.isFinite(cfg.crownMainGapPx)
     ? Math.max(0,cfg.crownMainGapPx) : Math.max(4,mainGap)) : 0;
-  const mainTopY = sideTopY + crownHeight + crownMainGap;
+
+  // The main stream title is real page geometry, not a post-render overlay.
+  // Reserve one title row in the plan so a visible main title cannot overlap
+  // the bottom of the crown.
+  const mainTitleText = shouldShowStreamTitle(V9_MAIN_STREAM_CODE)
+    ? String((cfg.titles || {}).main || "").trim()
+    : "";
+  const mainTitleReserve = (mainTitleText && pageContent.mainText) ? titleHeight : 0;
+
+  const mainTopY = sideTopY + crownHeight + crownMainGap + mainTitleReserve;
   result.crownBottomY = sideTopY+crownHeight;
   result.crownMainGap = crownMainGap;
+  result.mainTitleReserve = mainTitleReserve;
 
   // 3. ראשי — ניבוי אורך נאיבי כדי לחשב את הצדדים. הפלייאוט הסופי ייעשה
   // אחרי שהצדדים נמדדו, כדי לאפשר לראשי להתפשט לתוך מקום של פרשן שנגמר
@@ -2228,6 +2238,8 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, innerWidth - (mainX + mainWidth) - mainGap),
           x: mainX + mainWidth + mainGap,
+          // End-of-crown is a semantic row boundary.
+          lockYStart: crownHeight > 0 && Math.abs(stripTop - (sideTopY + crownHeight)) < 0.5,
         });
       } else {
         strips.push({
@@ -2235,6 +2247,8 @@ function buildPagePlanCore(pageContent, config) {
           y_end: effectiveMainBottomY,
           width: Math.max(0, mainX - mainGap),
           x: 0,
+          // End-of-crown is a semantic row boundary.
+          lockYStart: crownHeight > 0 && Math.abs(stripTop - (sideTopY + crownHeight)) < 0.5,
         });
       }
     }
@@ -2259,6 +2273,8 @@ function buildPagePlanCore(pageContent, config) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
+        // Both side streams widen below main on the same planned Y boundary.
+        lockYStart: true,
       });
     }
     // v9-limit-full-strip3-one-line: full-width continuation is still legal after the other side
