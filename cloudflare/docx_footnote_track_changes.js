@@ -267,7 +267,9 @@ function convertDeletedTextNodes(doc, root) {
     const newName = localName(old) === "delText" ? "t" : "instrText";
     const replacement = createW(doc, newName);
     copyAttributes(old, replacement);
-    while (old.firstChild) replacement.appendChild(old.firstChild.cloneNode(true));
+    for (let child = old.firstChild; child; child = child.nextSibling) {
+      replacement.appendChild(child.cloneNode(true));
+    }
     old.parentNode?.replaceChild(replacement, old);
   }
 }
