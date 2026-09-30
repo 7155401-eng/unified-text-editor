@@ -26,8 +26,10 @@ import {
   DictaServerError, DictaNetworkError, DictaTimeoutError, DictaCancelledError,
 } from "./torah_nikud_dicta.js";
 import {
-  DAILY_FREE_CHARS, usedToday, canSend, recordUsage,
-} from "./torah_nikud_quota.js";
+  checkToolAllowance,
+  consumeToolUse,
+  getToolQuotaStatus,
+} from "../tool_runtime_gate.js";
 import { hasCurrentAppLicense } from "../current_license.js";
 import {
   getSyncedClaudeApiKey,
@@ -72,19 +74,6 @@ function pushRecent(name) {
   saveRecent(list.slice(0, 8));
 }
 function clearRecent() { saveRecent([]); }
-
-function isPaidUser() {
-  // Original Python uses license_manager.addons_allowed(). In the browser
-  // we cannot verify the license cryptographically — assume free unless
-  // explicitly flagged. Consumers can override via window.tnkIsPaid().
-  try {
-    if (hasCurrentAppLicense()) return true;
-    if (typeof window !== "undefined" && typeof window.tnkIsPaid === "function") {
-      return !!window.tnkIsPaid();
-    }
-  } catch (e) { /* noop */ }
-  return false;
-}
 
 function useLegacyPremiumMode(apiMode) {
   return !hasCurrentAppLicense() && apiMode === "premium";
@@ -503,13 +492,21 @@ function refreshLiveCounter() {
   if (tb && lc) lc.textContent = t(lang, "char_count_live", { n: tb.value.length });
 }
 
-function refreshQuotaBar() {
+async function refreshQuotaBar() {
   const bar = $("tnk-quota-bar");
   if (!bar) return;
-  if (isPaidUser()) {
-    bar.textContent = t(lang, "quota_paid");
-  } else {
-    bar.textContent = t(lang, "quota_free", { used: usedToday(), limit: DAILY_FREE_CHARS });
+
+  try {
+    const status = await getToolQuotaStatus("torah-nikud", { amount: 1 });
+    if (status?.unlimited) {
+      bar.textContent = t(lang, "quota_paid");
+      return;
+    }
+    const used = Math.max(0, Number(status?.used) || 0);
+    const limit = Math.max(1, Number(status?.limit) || 500);
+    bar.textContent = t(lang, "quota_free", { used, limit });
+  } catch (_) {
+    bar.textContent = t(lang, "quota_free", { used: 0, limit: 500 });
   }
 }
 
@@ -673,11 +670,9 @@ async function vocalize(params) {
       });
       const vocalized = resp.text || resp.result || resp.vocalized || "";
       if (!vocalized) return { ok: false, error: "השרת החזיר ריק" };
-      if (!isPaidUser()) recordUsage(text.length);
       return {
         ok: true, edition: vocalized,
         witnesses: [], externals: [],
-        quota_used: usedToday(),
       };
     }
 
@@ -744,12 +739,10 @@ async function vocalize(params) {
     });
     const edition = data.text || data.result || data.vocalized || "";
     if (!edition) return { ok: false, error: "הדיין החזיר ריק" };
-    if (!isPaidUser()) recordUsage(text.length);
     return {
       ok: true, edition: edition,
       witnesses: witnesses,
       externals: extEditions.map(e => ({ name: e.name, text: e.text })),
-      quota_used: usedToday(),
     };
   } catch (e) {
     if (e instanceof GasCancelledError || e instanceof DictaCancelledError) {
@@ -900,8 +893,16 @@ function wireEvents() {
   $("tnk-btn-approve-send").addEventListener("click", async () => {
     const text = $("tnk-text-box").value.trim();
     if (!text) { alert(t(lang, "no_text_to_send")); return; }
-    const can = canSend(text.length, isPaidUser());
-    if (!can.ok) { alert(can.reason); return; }
+
+    try {
+      await checkToolAllowance("torah-nikud", {
+        amount: text.length,
+        niceName: "ניקוד מדויק",
+      });
+    } catch (_) {
+      await refreshQuotaBar();
+      return;
+    }
 
     // Reset prior tabs
     $$("#tnk-tabs .tab:not([data-tab='edition'])").forEach(el => el.remove());
@@ -944,6 +945,21 @@ function wireEvents() {
       showAiError(result.error);
       return;
     }
+
+    try {
+      await consumeToolUse("torah-nikud", {
+        amount: text.length,
+        niceName: "ניקוד מדויק",
+        kind: "nikud-success",
+      });
+    } catch (_) {
+      $("tnk-progress-fill").style.width = "0%";
+      $("tnk-edition-box").value = "";
+      setStatus(t(lang, "status_ready"));
+      await refreshQuotaBar();
+      return;
+    }
+
     $("tnk-progress-fill").style.width = "100%";
     $("tnk-edition-box").value = result.edition;
     (result.externals || []).forEach((e, i) => {
