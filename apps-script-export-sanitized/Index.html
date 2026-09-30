@@ -194,26 +194,93 @@
   <script>
     var allCustomers = [];
 
+    function textValue(value) {
+      return value == null ? '' : String(value);
+    }
+
+    function errorMessage(err) {
+      if (err && err.message != null) return String(err.message);
+      return err == null ? 'שגיאה לא ידועה' : String(err);
+    }
+
+    function clearNode(node) {
+      while (node && node.firstChild) node.removeChild(node.firstChild);
+    }
+
+    function setText(id, value) {
+      var node = document.getElementById(id);
+      if (!node) return null;
+      clearNode(node);
+      node.textContent = textValue(value);
+      return node;
+    }
+
+    function renderBox(id, className, value) {
+      var host = document.getElementById(id);
+      if (!host) return null;
+      clearNode(host);
+      var box = document.createElement('div');
+      box.className = className;
+      box.textContent = textValue(value);
+      host.appendChild(box);
+      return box;
+    }
+
+    function renderError(id, err) {
+      return renderBox(id, 'alert', 'שגיאה: ' + errorMessage(err));
+    }
+
+    function appendCell(row, value, className) {
+      var cell = document.createElement('td');
+      if (className) cell.className = className;
+      cell.textContent = textValue(value);
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function appendHeader(row, value) {
+      var cell = document.createElement('th');
+      cell.textContent = textValue(value);
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function appendActionButton(parent, label, className, handler) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      if (className) button.className = className;
+      button.addEventListener('click', handler);
+      parent.appendChild(button);
+      return button;
+    }
+
+    function numericMoney(value) {
+      var n = parseInt(value || 0, 10);
+      if (!Number.isFinite(n)) n = 0;
+      return (n / 100).toFixed(2);
+    }
+
     function showTab(tabName) {
       document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
       document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
-      event.target.classList.add('active');
-      document.getElementById('panel-' + tabName).classList.add('active');
+      if (typeof event !== 'undefined' && event && event.target) event.target.classList.add('active');
+      var panel = document.getElementById('panel-' + tabName);
+      if (panel) panel.classList.add('active');
 
       if (tabName === 'customers') loadCustomers();
       if (tabName === 'keys') loadKeys();
     }
 
     function loadCustomers() {
-      document.getElementById('customers-table').innerHTML = 'טוען...';
+      setText('customers-table', 'טוען...');
       google.script.run
         .withSuccessHandler(function(customers) {
-          allCustomers = customers;
-          renderCustomersTable(customers);
+          allCustomers = Array.isArray(customers) ? customers : [];
+          renderCustomersTable(allCustomers);
         })
         .withFailureHandler(function(err) {
-          document.getElementById('customers-table').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+          renderError('customers-table', err);
         })
         .admin_listCustomers();
     }
@@ -229,37 +296,60 @@
     }
 
     function renderCustomersTable(customers) {
+      var host = document.getElementById('customers-table');
+      clearNode(host);
       if (!customers || customers.length === 0) {
-        document.getElementById('customers-table').innerHTML = '<p>אין לקוחות עדיין.</p>';
+        var empty = document.createElement('p');
+        empty.textContent = 'אין לקוחות עדיין.';
+        host.appendChild(empty);
         return;
       }
-      var html = '<table><thead><tr>' +
-        '<th>ID</th><th>שם</th><th>מייל</th><th>סטטוס</th>' +
-        '<th>יתרה (ש"ח)</th><th>נצרך (ש"ח)</th>' +
-        '<th>פעולות</th></tr></thead><tbody>';
 
-      customers.forEach(function(c) {
-        var balance = (parseInt(c.balance_agorot || 0) / 100).toFixed(2);
-        var used = (parseInt(c.total_used_agorot || 0) / 100).toFixed(2);
-        var balanceClass = parseInt(c.balance_agorot || 0) < 1000 ? 'balance-low' : 'balance-ok';
-        var statusClass = c.status === 'active' ? 'status-active' : 'status-blocked';
+      var table = document.createElement('table');
+      var thead = document.createElement('thead');
+      var headerRow = document.createElement('tr');
+      ['ID', 'שם', 'מייל', 'סטטוס', 'יתרה (ש"ח)', 'נצרך (ש"ח)', 'פעולות']
+        .forEach(function(label) { appendHeader(headerRow, label); });
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
 
-        html += '<tr>' +
-          '<td>' + (c.customer_id || '') + '</td>' +
-          '<td>' + (c.name || '') + '</td>' +
-          '<td>' + (c.email || '') + '</td>' +
-          '<td class="' + statusClass + '">' + c.status + '</td>' +
-          '<td class="' + balanceClass + '">' + balance + '</td>' +
-          '<td>' + used + '</td>' +
-          '<td>' +
-            '<button onclick="addPointsAction(\'' + c.customer_id + '\')">+ נקודות</button>' +
-            '<button class="danger" onclick="toggleStatus(\'' + c.customer_id + '\', \'' + c.status + '\')">' +
-              (c.status === 'active' ? 'חסום' : 'שחרר') + '</button>' +
-            '<button onclick="regenerateCode(\'' + c.customer_id + '\')">קוד חדש</button>' +
-          '</td></tr>';
+      var tbody = document.createElement('tbody');
+      customers.forEach(function(customer) {
+        var c = customer || {};
+        var customerId = textValue(c.customer_id);
+        var currentStatus = textValue(c.status);
+        var balanceAgorot = parseInt(c.balance_agorot || 0, 10);
+        if (!Number.isFinite(balanceAgorot)) balanceAgorot = 0;
+        var balanceClass = balanceAgorot < 1000 ? 'balance-low' : 'balance-ok';
+        var statusClass = currentStatus === 'active' ? 'status-active' : 'status-blocked';
+
+        var row = document.createElement('tr');
+        appendCell(row, customerId);
+        appendCell(row, c.name);
+        appendCell(row, c.email);
+        appendCell(row, currentStatus, statusClass);
+        appendCell(row, numericMoney(c.balance_agorot), balanceClass);
+        appendCell(row, numericMoney(c.total_used_agorot));
+
+        var actions = document.createElement('td');
+        appendActionButton(actions, '+ נקודות', '', function() {
+          addPointsAction(customerId);
+        });
+        appendActionButton(
+          actions,
+          currentStatus === 'active' ? 'חסום' : 'שחרר',
+          'danger',
+          function() { toggleStatus(customerId, currentStatus); }
+        );
+        appendActionButton(actions, 'קוד חדש', '', function() {
+          regenerateCode(customerId);
+        });
+        row.appendChild(actions);
+        tbody.appendChild(row);
       });
-      html += '</tbody></table>';
-      document.getElementById('customers-table').innerHTML = html;
+
+      table.appendChild(tbody);
+      host.appendChild(table);
     }
 
     function createCustomerAction() {
@@ -270,17 +360,25 @@
 
       google.script.run
         .withSuccessHandler(function(result) {
-          document.getElementById('new-customer-result').innerHTML =
-            '<div class="new-code">לקוח נוצר! זה הקוד האישי - העתק עכשיו!<br>' +
-            '<strong>' + result.access_code + '</strong><br>' +
-            'הקוד לא יוצג שוב!</div>';
+          var host = document.getElementById('new-customer-result');
+          clearNode(host);
+          var box = document.createElement('div');
+          box.className = 'new-code';
+          box.appendChild(document.createTextNode('לקוח נוצר! זה הקוד האישי - העתק עכשיו!'));
+          box.appendChild(document.createElement('br'));
+          var strong = document.createElement('strong');
+          strong.textContent = textValue(result && result.access_code);
+          box.appendChild(strong);
+          box.appendChild(document.createElement('br'));
+          box.appendChild(document.createTextNode('הקוד לא יוצג שוב!'));
+          host.appendChild(box);
+
           document.getElementById('new-name').value = '';
           document.getElementById('new-email').value = '';
           document.getElementById('new-phone').value = '';
         })
         .withFailureHandler(function(err) {
-          document.getElementById('new-customer-result').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+          renderError('new-customer-result', err);
         })
         .admin_addCustomer(name, email, phone);
     }
@@ -292,7 +390,7 @@
 
       google.script.run
         .withSuccessHandler(function() { alert('נוסף בהצלחה'); loadCustomers(); })
-        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + errorMessage(err)); })
         .admin_addPoints(customerId, shekels, note);
     }
 
@@ -301,7 +399,7 @@
       if (!confirm('לשנות סטטוס ל-' + newStatus + '?')) return;
       google.script.run
         .withSuccessHandler(function() { loadCustomers(); })
-        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + errorMessage(err)); })
         .admin_setStatus(customerId, newStatus);
     }
 
@@ -309,55 +407,102 @@
       if (!confirm('ליצור קוד חדש? (הקוד הישן לא יעבוד יותר)')) return;
       google.script.run
         .withSuccessHandler(function(result) {
-          alert('קוד חדש: ' + result.new_access_code + '\n\nשמור אותו - הוא לא יוצג שוב!');
+          alert(
+            'קוד חדש: ' + textValue(result && result.new_access_code) +
+            '\n\nשמור אותו - הוא לא יוצג שוב!'
+          );
           loadCustomers();
         })
-        .withFailureHandler(function(err) { alert('שגיאה: ' + err.message); })
+        .withFailureHandler(function(err) { alert('שגיאה: ' + errorMessage(err)); })
         .admin_regenerateCode(customerId);
     }
 
+    function appendReportRow(table, label, value, emphasize) {
+      var row = document.createElement('tr');
+      appendHeader(row, label);
+      var cell = document.createElement('td');
+      if (emphasize) {
+        var strong = document.createElement('strong');
+        strong.textContent = textValue(value);
+        cell.appendChild(strong);
+      } else {
+        cell.textContent = textValue(value);
+      }
+      row.appendChild(cell);
+      table.appendChild(row);
+    }
+
     function loadReport() {
-      var year = parseInt(document.getElementById('report-year').value);
-      var month = parseInt(document.getElementById('report-month').value);
-      document.getElementById('report-result').innerHTML = 'טוען...';
+      var year = parseInt(document.getElementById('report-year').value, 10);
+      var month = parseInt(document.getElementById('report-month').value, 10);
+      setText('report-result', 'טוען...');
 
       google.script.run
-        .withSuccessHandler(function(report) {
-          var html = '<table>' +
-            '<tr><th>קריאות</th><td>' + report.calls_count + '</td></tr>' +
-            '<tr><th>הכנסות</th><td>' + report.total_revenue_shekels + ' ש"ח</td></tr>' +
-            '<tr><th>הוצאות (בינה)</th><td>' + report.total_cost_shekels + ' ש"ח</td></tr>' +
-            '<tr><th>רווח</th><td><strong>' + report.profit_shekels + ' ש"ח</strong></td></tr>' +
-            '</table>';
+        .withSuccessHandler(function(reportValue) {
+          var report = reportValue || {};
+          var host = document.getElementById('report-result');
+          clearNode(host);
 
-          if (report.top_customers && report.top_customers.length > 0) {
-            html += '<h3>10 הלקוחות הכי פעילים</h3><table><thead><tr>' +
-              '<th>ID</th><th>קריאות</th><th>הכנסה (ש"ח)</th></tr></thead><tbody>';
-            report.top_customers.forEach(function(tc) {
-              html += '<tr><td>' + tc.customer_id + '</td><td>' + tc.calls +
-                '</td><td>' + (tc.revenue_agorot / 100).toFixed(2) + '</td></tr>';
+          var summary = document.createElement('table');
+          appendReportRow(summary, 'קריאות', report.calls_count);
+          appendReportRow(summary, 'הכנסות', textValue(report.total_revenue_shekels) + ' ש"ח');
+          appendReportRow(summary, 'הוצאות (בינה)', textValue(report.total_cost_shekels) + ' ש"ח');
+          appendReportRow(summary, 'רווח', textValue(report.profit_shekels) + ' ש"ח', true);
+          host.appendChild(summary);
+
+          if (Array.isArray(report.top_customers) && report.top_customers.length > 0) {
+            var heading = document.createElement('h3');
+            heading.textContent = '10 הלקוחות הכי פעילים';
+            host.appendChild(heading);
+
+            var table = document.createElement('table');
+            var thead = document.createElement('thead');
+            var headRow = document.createElement('tr');
+            ['ID', 'קריאות', 'הכנסה (ש"ח)']
+              .forEach(function(label) { appendHeader(headRow, label); });
+            thead.appendChild(headRow);
+            table.appendChild(thead);
+
+            var tbody = document.createElement('tbody');
+            report.top_customers.forEach(function(item) {
+              var tc = item || {};
+              var row = document.createElement('tr');
+              appendCell(row, tc.customer_id);
+              appendCell(row, tc.calls);
+              appendCell(row, numericMoney(tc.revenue_agorot));
+              tbody.appendChild(row);
             });
-            html += '</tbody></table>';
+            table.appendChild(tbody);
+            host.appendChild(table);
           }
-
-          document.getElementById('report-result').innerHTML = html;
         })
         .withFailureHandler(function(err) {
-          document.getElementById('report-result').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+          renderError('report-result', err);
         })
         .admin_getMonthlyReport(year, month);
     }
 
     function loadKeys() {
       google.script.run
-        .withSuccessHandler(function(status) {
-          document.getElementById('keys-status').innerHTML =
-            '<table>' +
-            '<tr><th>Gemini</th><td>' + (status.has_gemini ? '✓ מוגדר' : '✗ חסר') + '</td></tr>' +
-            '<tr><th>Claude</th><td>' + (status.has_claude ? '✓ מוגדר' : '✗ חסר') + '</td></tr>' +
-            '<tr><th>OpenAI</th><td>' + (status.has_openai ? '✓ מוגדר' : '✗ חסר') + '</td></tr>' +
-            '</table>';
+        .withSuccessHandler(function(statusValue) {
+          var status = statusValue || {};
+          var host = document.getElementById('keys-status');
+          clearNode(host);
+          var table = document.createElement('table');
+          [
+            ['Gemini', !!status.has_gemini],
+            ['Claude', !!status.has_claude],
+            ['OpenAI', !!status.has_openai]
+          ].forEach(function(item) {
+            var row = document.createElement('tr');
+            appendHeader(row, item[0]);
+            appendCell(row, item[1] ? '✓ מוגדר' : '✗ חסר');
+            table.appendChild(row);
+          });
+          host.appendChild(table);
+        })
+        .withFailureHandler(function(err) {
+          renderError('keys-status', err);
         })
         .admin_getServerKeys();
     }
@@ -369,14 +514,12 @@
 
       google.script.run
         .withSuccessHandler(function() {
-          document.getElementById('key-save-result').innerHTML =
-            '<div class="new-code">המפתח נשמר בהצלחה</div>';
+          renderBox('key-save-result', 'new-code', 'המפתח נשמר בהצלחה');
           document.getElementById('new-api-key').value = '';
           loadKeys();
         })
         .withFailureHandler(function(err) {
-          document.getElementById('key-save-result').innerHTML =
-            '<div class="alert">שגיאה: ' + err.message + '</div>';
+          renderError('key-save-result', err);
         })
         .admin_setServerKey(provider, apiKey);
     }
