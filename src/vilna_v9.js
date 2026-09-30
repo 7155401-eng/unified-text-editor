@@ -2359,9 +2359,9 @@ function buildPagePlanCore(pageContent, config) {
         y_end: pageBottomY,
         width: innerWidth,
         x: 0,
-        // v9-knee-row-grid: the other-side end is a width boundary,
-        // not a baseline. A crossing row stays narrow and the following
-        // natural row is the first full-width row.
+        // v9-knee-row-grid: ending of the other side changes WIDTH only.
+        // The current stream keeps its own row pitch; a crossing row remains
+        // narrow and the next natural row is the first full-width row.
         lockYStart: false,
       });
     }
