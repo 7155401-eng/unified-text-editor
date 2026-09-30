@@ -13,6 +13,7 @@ import {
 import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
+import { WORD_JOINER, referenceLineGlue } from "./reference_line_glue.js";
 
 // משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
 // ב-note_content_builder.js. הפונקציה הזו ממירה את ה-nodes ל-DOM (עם
@@ -329,9 +330,10 @@ function refsForMainSegment(segText, segStart, segEnd, paraRefs, usedRefs = null
   return refs;
 }
 
-function appendMainRefElement(parent, ref) {
+function appendMainRefElement(parent, ref, glue = null) {
   const formatted = formatStreamNumber(ref.code, ref.num, "main");
   if (!formatted) return false;
+  if (glue?.before) parent.appendChild(document.createTextNode(WORD_JOINER));
   const rawBold = shouldBoldStreamNumber(ref.code, "main");
   // משה 2026-05-15: דריסת בולד פר-זרם — אם מסומן, ה-[N] בראשי מקבל את
   // הסגנון הנבחר במקום font-weight:700 (אותו מנגנון כמו בהערה).
@@ -352,6 +354,7 @@ function appendMainRefElement(parent, ref) {
   const refStyleId = styleIdForStreamNumber(ref.code, "main");
   if (refStyleId) applyStyleToElement(el, refStyleId);
   parent.appendChild(el);
+  if (glue?.after) parent.appendChild(document.createTextNode(WORD_JOINER));
   return true;
 }
 
@@ -380,7 +383,7 @@ function appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, paragr
       const sliceText = text.substring(lastPos, localPos);
       appendTextWithRuns(p, sliceText, sliceLocalRuns(slicedRuns, lastPos, localPos));
     }
-    if (appendMainRefElement(p, ref) && usedRefs) {
+    if (appendMainRefElement(p, ref, referenceLineGlue(text, localPos)) && usedRefs) {
       usedRefs.add(ref.key);
     }
     lastPos = Math.max(lastPos, localPos);
