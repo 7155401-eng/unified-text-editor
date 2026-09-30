@@ -109,12 +109,27 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
       'autosync must subscribe directly to PaneManager persistence requests');
     assert.equal((listeners.get('ravtext:engine-rendered') || []).length, 0,
       'modern PaneManager must not depend on engine rendering for autosave');
+    assert.equal((listeners.get('ravtext:local-document-saved') || []).length, 1,
+      'autosync must observe confirmed local snapshots for crash recovery');
 
     const paneSource = await import('node:fs/promises').then(({ readFile }) =>
       readFile(new URL('../../src/pane_manager.js', import.meta.url), 'utf8')
     );
     assert.match(paneSource, /this\._emit\("persist"\)/,
       'PaneManager save path must emit the semantic persist signal');
+    assert.match(paneSource, /ravtext:local-document-saved/,
+      'successful localStorage writes must announce the recoverable snapshot');
+
+    // A local snapshot becomes authoritative immediately, before the server
+    // debounce has any chance to finish.
+    storage.setItem('ravtext.panes.state.v1', JSON.stringify(content));
+    listeners.get('ravtext:local-document-saved')[0]({
+      detail: { chars: JSON.stringify(content).length },
+    });
+    assert.equal(
+      JSON.parse(storage.getItem('ravtext.doc.serverStale.v1')).status,
+      'local-ahead'
+    );
 
     // Continuous edits keep moving the 2s trailing debounce, but the original
     // 10s maximum wait remains active and cannot be postponed forever.
@@ -129,6 +144,8 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
     assert.equal(fetchCalls[0].url, '/api/documents/current');
     assert.equal(fetchCalls[0].init.method, 'PUT');
     assert.equal(fetchCalls[0].parsed.content.panes[0].content.text, 'A');
+    assert.equal(storage.getItem('ravtext.doc.serverStale.v1'), null,
+      'confirmation of the exact local snapshot should clear local-ahead');
 
     // Start a slow save for B.
     content = { version: 1, panes: [{ id: 'main', content: { text: 'B' } }] };
