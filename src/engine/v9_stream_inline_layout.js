@@ -44,6 +44,36 @@ export function measureV9CrownHeight(input, context, width, rows) {
   return plan.endY;
 }
 
+// For a split commentary stream, the second column begins later in the same
+// source and can have different inline typography (larger font, niqqud, etc.).
+// Reserve enough vertical space for the tallest window of N consecutive rows,
+// not only the first N rows of the unsplit stream. This keeps "crown = 4 rows"
+// true for both split columns.
+export function measureV9CrownHeightForAnyWindow(input, context, width, rows) {
+  const count=Math.max(0,Math.floor(Number(rows)||0));
+  const rich=normalizeRichTextEntry(input);
+  if (!(count>0) || !rich.text) return 0;
+  const plan=flowV9MeasuredStream(
+    rich,
+    [{x:0,width,y_start:0,y_end:Number.MAX_SAFE_INTEGER}],
+    context,
+    Number.MAX_SAFE_INTEGER
+  );
+  const heights=(plan.lines||[]).map(line=>Math.max(
+    Number(context?.lineHeight)||0,
+    Number(line?.lineHeightPx)||0
+  )).filter(h=>h>0);
+  if (!heights.length) return 0;
+  if (heights.length<=count) return heights.reduce((a,b)=>a+b,0);
+  let sum=0,max=0;
+  for(let i=0;i<heights.length;i++){
+    sum+=heights[i];
+    if(i>=count)sum-=heights[i-count];
+    if(i>=count-1&&sum>max)max=sum;
+  }
+  return max;
+}
+
 // The historical column balancer supplies a word count, not source offsets.
 // Recover the split in the ORIGINAL string before slicing style ranges.
 export function splitV9StreamAtWordCount(input, wordCount) {
