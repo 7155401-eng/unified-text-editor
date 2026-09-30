@@ -34,6 +34,46 @@ function scenarioInput(includeFooter) {
   });
 }
 
+function summarizeSplitTrace(trace=[]) {
+  let decisionCount=0;
+  let maxLostFill=0;
+  let worst=null;
+
+  for(const item of trace){
+    const candidates=Array.isArray(item?.candidates)?item.candidates:[];
+    const accepted=candidates.filter(c=>
+      c?.meta &&
+      c?.policyScore?.accept!==false &&
+      c?.meta?.hasNoteOverflow!==true &&
+      Number.isFinite(Number(c?.meta?.fill))
+    );
+    if(!accepted.length) continue;
+    decisionCount++;
+
+    const topPriority=Math.max(...accepted.map(c=>Number(c.priority)||0));
+    const selectedPool=accepted.filter(c=>(Number(c.priority)||0)===topPriority);
+    const selected=selectedPool.sort((a,b)=>(Number(b.meta.score)||-Infinity)-(Number(a.meta.score)||-Infinity))[0];
+    const bestFill=[...accepted].sort((a,b)=>Number(b.meta.fill)-Number(a.meta.fill))[0];
+    const selectedFill=Number(selected?.meta?.fill);
+    const bestFillValue=Number(bestFill?.meta?.fill);
+    const lost=Number.isFinite(selectedFill)&&Number.isFinite(bestFillValue)
+      ? Math.max(0,bestFillValue-selectedFill)
+      : 0;
+
+    if(lost>maxLostFill){
+      maxLostFill=lost;
+      worst={
+        pageIdx:item?.pageIdx??null,
+        selectedPriority:topPriority,
+        selected:{kind:selected?.kind,offset:selected?.offset,fill:selectedFill,score:selected?.meta?.score},
+        bestFill:{kind:bestFill?.kind,offset:bestFill?.offset,priority:bestFill?.priority,fill:bestFillValue,score:bestFill?.meta?.score},
+        lostFill:+lost.toFixed(4),
+      };
+    }
+  }
+  return {decisionCount,maxLostFill:+maxLostFill.toFixed(4),worst};
+}
+
 function pageStats(page,index) {
   const fill=Number(page.dataset.v9PageFill);
   const lines=[...page.querySelectorAll('.v9-line')];
@@ -96,7 +136,12 @@ export async function runV9FillAudit() {
                   ? {enabled:true,target:'word',count:1,position:'dropped',size:150,font:'inherit',dropLines:2,spaceAfter:.3,scope:'all'}
                   : {enabled:false},
               };
+              window.__ravtextAuditV9SplitTrace=true;
+              window.__ravtextV9SplitDecisionTrace=[];
               const result=await buildPages(host,input,config);
+              const splitTrace=[...(window.__ravtextV9SplitDecisionTrace||[])];
+              window.__ravtextV9SplitDecisionTrace=[];
+              window.__ravtextAuditV9SplitTrace=false;
               if(!result.complete) throw new Error(`incomplete matrix scenario ${JSON.stringify({crownLines,crownMainGapPx,opening,includeFooter})}`);
               const stats=result.pages.map(pageStats);
               const intermediate=stats.slice(0,-1).filter(x=>Number.isFinite(x.fill));
@@ -114,6 +159,7 @@ export async function runV9FillAudit() {
                 under55:fills.filter(x=>x<.55).length,
                 worst:sorted.slice(0,3),
                 anchorFallbacks:(result.noteAnchorFallbacks||[]).length,
+                splitTrace:summarizeSplitTrace(splitTrace),
               });
             } finally {
               host.remove();
@@ -129,11 +175,15 @@ export async function runV9FillAudit() {
     }
   }
 
-  const all=scenarios.flatMap(s=>s.worst.map(w=>({scenario:s,page:w})));
   const worstScenarios=[...scenarios].sort((a,b)=>a.minFill-b.minFill).slice(0,12);
+  const priorityLoss=[...scenarios]
+    .filter(s=>Number(s.splitTrace?.maxLostFill)>0)
+    .sort((a,b)=>Number(b.splitTrace.maxLostFill)-Number(a.splitTrace.maxLostFill))
+    .slice(0,12);
   return {
     scenarios:scenarios.length,
     worstGlobal:worstScenarios,
+    priorityLoss,
     under82Scenarios:scenarios.filter(s=>s.under82>0).length,
     under68Scenarios:scenarios.filter(s=>s.under68>0).length,
     under55Scenarios:scenarios.filter(s=>s.under55>0).length,
