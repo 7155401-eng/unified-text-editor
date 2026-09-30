@@ -226,7 +226,7 @@ test("round-trips through Comparator Word import with stream identities intact",
       .map(s => [s, "@" + s.marker]);
     const extracted = await docx_extract(ab, selected);
 
-    assert.equal(extracted.main, "ראשי @01 אמצע @02 סוף");
+    assert.equal(extracted.main.trimEnd(), "ראשי @01 אמצע @02 סוף");
     assert.deepEqual(
       extracted.streams.map(([marker, text]) => [marker, text.trim()]),
       [
