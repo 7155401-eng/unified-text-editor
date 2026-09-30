@@ -76,7 +76,9 @@ export async function assertToolAllowed(toolName) {
   });
 
   if (!data?.ok || !data?.token) throw new Error("Tool preflight did not return a token");
-  _tokens.set(key, data);
+  // A preflight-charged tool (currently css-ai compatibility) must never reuse
+  // a token to bypass the next server quota check.
+  if (data?.policy?.chargeOn !== "preflight") _tokens.set(key, data);
   return data;
 }
 
@@ -126,7 +128,7 @@ export async function consumeToolUse(toolName, {
   const key = String(toolName || "").trim();
   if (!key) throw new Error("Missing tool name");
   assertLocalLogin(key);
-  return postGate({
+  const result = await postGate({
     action: "consume",
     toolName: key,
     niceName,
@@ -136,6 +138,11 @@ export async function consumeToolUse(toolName, {
     timestamp: Date.now(),
     timeZoneOffsetMinutes: timezoneOffsetMinutes(),
   });
+  // Once real usage is recorded, every future open/check must ask the Worker
+  // again. This is essential for Comparator's "close + reopen = new session"
+  // semantics and prevents stale preflight authorization after success.
+  _tokens.delete(key);
+  return result;
 }
 
 export async function guardToolAction(toolName, action, options = {}) {
