@@ -8,6 +8,7 @@
 // 3. כל שינוי בעורך → debounce 2 שניות → שמירה ל-/api/documents/current + /api/settings
 
 const DEBOUNCE_MS = 2000;
+const DOC_SYNC_MAX_WAIT_MS = 10000;
 const SETTINGS_PREFIX = 'ravtext.';
 // משה 2026-05-17: הגנת נפח לסנכרון הגדרות. /api/settings לא אמור לקבל את
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
@@ -63,6 +64,11 @@ function isBlacklisted(key) {
 }
 
 let _docDebounceTimer = null;
+let _docMaxWaitTimer = null;
+let _docPendingManager = null;
+// Serialize document writes. Without this, a slow older PUT can complete after
+// a newer PUT and overwrite the server with stale content.
+let _docSaveChain = Promise.resolve();
 let _settingsDebounceTimer = null;
 let _lastDocSig = '';
 let _lastSettingsSig = '';
@@ -385,10 +391,43 @@ async function saveSettingsNow() {
   }
 }
 
-export function scheduleDocumentSync(paneManager) {
-  if (!isLoggedIn()) return;
+function clearDocumentSyncTimers() {
   if (_docDebounceTimer) clearTimeout(_docDebounceTimer);
-  _docDebounceTimer = setTimeout(() => saveDocumentNow(paneManager), DEBOUNCE_MS);
+  if (_docMaxWaitTimer) clearTimeout(_docMaxWaitTimer);
+  _docDebounceTimer = null;
+  _docMaxWaitTimer = null;
+}
+
+function queueDocumentSave(paneManager) {
+  if (!paneManager) return _docSaveChain;
+  const run = () => saveDocumentNow(paneManager);
+  // Use the same run on rejection so one unexpected failure cannot poison all
+  // future autosaves. saveDocumentNow already handles ordinary network errors.
+  _docSaveChain = _docSaveChain.then(run, run);
+  return _docSaveChain;
+}
+
+function flushScheduledDocumentSync() {
+  const paneManager = _docPendingManager;
+  _docPendingManager = null;
+  clearDocumentSyncTimers();
+  if (paneManager) queueDocumentSave(paneManager);
+}
+
+export function scheduleDocumentSync(paneManager) {
+  if (!isLoggedIn() || !paneManager) return;
+  _docPendingManager = paneManager;
+
+  // Normal case: save two seconds after the user pauses.
+  if (_docDebounceTimer) clearTimeout(_docDebounceTimer);
+  _docDebounceTimer = setTimeout(flushScheduledDocumentSync, DEBOUNCE_MS);
+
+  // Continuous typing must not postpone server persistence forever. The first
+  // edit in a burst starts a non-sliding deadline; later edits only move the
+  // trailing debounce, not this maximum wait.
+  if (!_docMaxWaitTimer) {
+    _docMaxWaitTimer = setTimeout(flushScheduledDocumentSync, DOC_SYNC_MAX_WAIT_MS);
+  }
 }
 
 export function scheduleSettingsSync() {
@@ -400,9 +439,13 @@ export function scheduleSettingsSync() {
 export function attachAutoSync(paneManager) {
   if (!isLoggedIn() || !paneManager) return;
 
-  // Document sync — listen for the engine-rendered event which fires on each
-  // (debounced) editor change after pagination completes.
-  if (typeof window !== 'undefined') {
+  // Document sync follows source changes, not rendering. Live rendering is
+  // optional and disabled by default, so tying persistence to engine-rendered
+  // can silently disable autosave during ordinary editing.
+  if (typeof paneManager.on === 'function') {
+    paneManager.on('change', () => scheduleDocumentSync(paneManager));
+  } else if (typeof window !== 'undefined') {
+    // Compatibility fallback for an older manager implementation only.
     window.addEventListener('ravtext:engine-rendered', () => {
       scheduleDocumentSync(paneManager);
     });
