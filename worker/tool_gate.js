@@ -1,7 +1,7 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
 import { getToolPolicy, isFreePreflightUnmetered, isServerManagedSuccessTool, isToolPublic } from './tool_policy.js';
-import { checkToolQuotaAvailability } from './tool_quota.js';
+import { checkToolQuotaAvailability, consumeSuccessfulToolUse } from './tool_quota.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
@@ -138,6 +138,61 @@ export async function handleToolPreflight(request, env) {
     return handleSecureExportHtmlAction(request, env, body);
   }
 
+  if (body?.action === 'consume_success') {
+    const toolName = String(body?.toolName || '').trim();
+    if (!isToolPublic(toolName) || !isServerManagedSuccessTool(toolName)) {
+      return Response.json(
+        { error: 'unsupported_success_metering', message: 'Tool does not use server success metering' },
+        { status: 403, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+
+    const user = await getUserFromRequest(request, env);
+    if (!user) {
+      return Response.json(
+        { error: 'login_required', message: 'Login is required for this tool' },
+        { status: 401, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+
+    let usage;
+    try {
+      usage = await consumeSuccessfulToolUse(user, toolName, env, {
+        units: Math.max(1, Number(body?.units) || 1),
+        idempotencyKey: body?.idempotencyKey,
+      });
+    } catch (_) {
+      return Response.json(
+        { error: 'quota_unavailable', message: 'Quota service is temporarily unavailable' },
+        { status: 503, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+
+    if (!usage.ok) {
+      const policy = getToolPolicy(toolName);
+      return Response.json(
+        {
+          error: 'quota_exceeded',
+          message: 'Free quota is currently exhausted for this tool',
+          resetAt: usage.resetAt ?? null,
+          remaining: usage.remaining ?? 0,
+          limit: usage.limit ?? policy?.limit ?? null,
+          windowSeconds: policy?.windowSeconds ?? null,
+        },
+        { status: 429, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+
+    return Response.json({
+      ok: true,
+      toolName,
+      unlimited: !!usage.unlimited,
+      idempotent: !!usage.idempotent,
+      remaining: usage.remaining ?? null,
+      resetAt: usage.resetAt ?? null,
+    }, { headers: { 'cache-control': 'no-store' } });
+  }
+
   const toolName = String(body?.toolName || '').trim();
   if (!isToolPublic(toolName)) {
     return Response.json(
@@ -176,6 +231,7 @@ export async function handleToolPreflight(request, env) {
           resetAt: usage.resetAt ?? null,
           remaining: usage.remaining ?? 0,
           limit: usage.limit ?? policy?.limit ?? null,
+          windowSeconds: policy?.windowSeconds ?? null,
         },
         { status: 429, headers: { 'cache-control': 'no-store' } }
       );
