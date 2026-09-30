@@ -89,6 +89,93 @@ function scrubForLog(body) {
   return clone;
 }
 
+
+// RAVTEXT_LARGE_ELEVENLABS_MULTIPART_PATCH: accept large ElevenLabs uploads as multipart instead of base64 JSON.
+function ravtextTrimUpstream(value, max = 2000) {
+  const text = String(value || '');
+  return text.length <= max ? text : text.slice(0, max) + '…';
+}
+
+function ravtextElevenLabsError(status, text) {
+  const detail = ravtextTrimUpstream(text || '');
+  if (status === 401 || status === 403) {
+    return jsonResponse({ error: 'invalid_api_key', message: detail || 'ElevenLabs: מפתח לא תקין' }, 401);
+  }
+  if (status === 429) {
+    return jsonResponse({ error: 'ai_quota_exceeded', message: detail || 'ElevenLabs: חריגה ממכסה' }, 429);
+  }
+  if (status === 413) {
+    return jsonResponse({
+      error: 'file_too_large',
+      message: detail || 'הקובץ גדול מדי להעברה דרך השרת. נסה להעלות MP3/M4A דחוס או לפצל את הקובץ.',
+    }, 413);
+  }
+  return jsonResponse({ error: 'server_error', message: 'ElevenLabs error ' + status + ': ' + detail }, status || 502);
+}
+
+async function handleElevenLabsMultipartUpload(request) {
+  let formIn;
+  try {
+    formIn = await request.formData();
+  } catch {
+    return jsonResponse({ error: 'invalid_form', message: 'Invalid multipart request body' }, 400);
+  }
+
+  const promptType = String(formIn.get('prompt_type') || '');
+  if (promptType !== 'elevenlabs_transcribe') {
+    return jsonResponse({ error: 'forbidden_prompt_type', message: 'Unsupported multipart tool request' }, 400);
+  }
+
+  const apiKey = String(formIn.get('api_key') || '').trim();
+  const upload = formIn.get('file');
+  if (!apiKey) return jsonResponse({ error: 'bad_request', message: 'Missing API key' }, 400);
+  if (!upload || typeof upload.arrayBuffer !== 'function') {
+    return jsonResponse({ error: 'bad_request', message: 'Missing audio file' }, 400);
+  }
+
+  const rawModel = String(formIn.get('model') || '');
+  const modelId = rawModel.indexOf('elevenlabs-') === 0
+    ? rawModel.slice('elevenlabs-'.length)
+    : String(formIn.get('model_id') || 'scribe_v1');
+  const languageCode = String(formIn.get('language_code') || 'heb');
+  const fileName = upload.name || String(formIn.get('file_name') || 'audio');
+
+  const upstreamForm = new FormData();
+  upstreamForm.append('model_id', modelId || 'scribe_v1');
+  upstreamForm.append('language_code', languageCode || 'heb');
+  upstreamForm.append('file', upload, fileName);
+
+  let upstream;
+  try {
+    upstream = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+      method: 'POST',
+      headers: { 'xi-api-key': apiKey },
+      body: upstreamForm,
+    });
+  } catch (err) {
+    return jsonResponse({
+      error: 'server_error',
+      message: 'ElevenLabs רשת: ' + (err && err.message ? err.message : String(err)),
+    }, 502);
+  }
+
+  const text = await upstream.text();
+  if (!upstream.ok) return ravtextElevenLabsError(upstream.status, text);
+
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return jsonResponse({ error: 'server_error', message: 'תשובה לא תקינה מ-ElevenLabs' }, 502);
+  }
+
+  const transcribed = data.text || data.transcript || data.transcription || '';
+  if (!transcribed) {
+    return jsonResponse({ error: 'server_error', message: 'ElevenLabs לא החזיר טקסט' }, 502);
+  }
+  return jsonResponse({ result: transcribed });
+}
+
 export async function handleAiTools(request, env) {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'method_not_allowed', message: 'Use POST' }, 405);
@@ -96,6 +183,11 @@ export async function handleAiTools(request, env) {
 
   if (!readSameOrigin(request)) {
     return jsonResponse({ error: 'forbidden', message: 'Bad origin' }, 403);
+  }
+
+  const ravtextContentType = request.headers.get('content-type') || '';
+  if (ravtextContentType.toLowerCase().includes('multipart/form-data')) {
+    return handleElevenLabsMultipartUpload(request);
   }
 
   let bodyText = '';

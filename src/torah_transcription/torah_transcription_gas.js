@@ -18,12 +18,13 @@ function _log(msg, level = "INFO") {
 // ===== Exceptions =====
 
 export class GasServerError extends Error {
-  constructor(errorCode, message = "", balanceAgorot = 0) {
+  constructor(errorCode, message = "", balanceAgorot = 0, details = null) {
     super(message || errorCode);
     this.name = "GasServerError";
     this.error_code = errorCode;
     this.message = message || errorCode;
     this.balance_agorot = balanceAgorot;
+    this.details = details; // RAVTEXT_ERROR_DETAILS_FOR_GEMINI_DRIVE_GAS
   }
 }
 
@@ -135,6 +136,8 @@ export class GasClient {
     access_code = null,
     api_key = null,
     files = null,            // [{name, mime, blob}] OR [File]
+    drive_url = null,        // RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_GAS_COMPAT
+    drive_file_name = null,
     text_payload = null,
     ocr_examples = null,     // [{handwriting: File, typed: File}]
     custom_prompt = null,
@@ -176,6 +179,10 @@ export class GasClient {
       requestBody.api_key = api_key;
     }
 
+    if (drive_url) {
+      requestBody.drive_url = String(drive_url).trim();
+      if (drive_file_name) requestBody.drive_file_name = _basename(drive_file_name);
+    }
     if (filesData.length) {
       requestBody.files = filesData;
     }
@@ -220,12 +227,13 @@ export class GasClient {
 
     // מסיר את השדות הכבדים מהלוג כדי לא לכתוב megabytes של base64
     try {
-      const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code"]);
+      const heavy = new Set(["files", "ocr_examples", "text", "api_key", "access_code", "drive_url"]);
       const logBody = {};
       for (const [k, v] of Object.entries(requestBody)) {
         if (!heavy.has(k)) logBody[k] = v;
       }
       logBody._files_count = (requestBody.files || []).length;
+      logBody._has_drive_url = !!requestBody.drive_url;
       logBody._text_chars = (requestBody.text || "").length;
       logBody._has_api_key = !!requestBody.api_key;
       logBody._has_access_code = !!requestBody.access_code;
@@ -332,7 +340,12 @@ export class GasClient {
         throw new GasServerError(
           err,
           data.message || "",
-          data.balance_agorot || 0
+          data.balance_agorot || 0,
+          {
+            http_status: response.status,
+            response_body: data,
+            response_body_chars: text.length,
+          }
         );
       }
 
