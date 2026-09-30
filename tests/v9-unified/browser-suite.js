@@ -56,12 +56,15 @@ export async function runBrowserSuite() {
         const opening=(p.runs||[]).some(r=>Number(r?.marks?.fontSize)===20);
         if(opening)return {width:20,height:20,topInset:0};
         const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;
-        return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+        // Deliberately conservative versus Chromium's 10px monospace metrics:
+        // 4 words fit the 76px opening rows, 5 do not.
+        return {width:n?n*14+(n-1)*6:0,height:10,topInset:0};
       }
     };
     const p=layoutV9MainParagraphs(
-      [{id:'tail-opening-dom',text,runs:[],mainRefs:[],continuesAfter:true}],
-      [{x:0,width:70,y_start:0,y_end:30}],c,30
+      [{id:'tail-opening-dom',text,runs:[],mainRefs:[],continuesAfter:true,
+        typography:{fontFamily:'monospace',fontSize:10,lineHeight:'10px',direction:'rtl'}}],
+      [{x:0,width:100,y_start:0,y_end:30}],c,30
     );
     assert(JSON.stringify(p.lines.map(l=>l.wordTokens.length))===JSON.stringify([3,3,4]),'opening tail was not globally redistributed');
     const page=makePage();p.lines.forEach(l=>renderV9PlannedMainLine(l,page,0));inspectLines(page,p.lines);
