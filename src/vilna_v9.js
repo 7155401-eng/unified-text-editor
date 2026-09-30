@@ -5086,16 +5086,22 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
           return [...anchorlessFrom, ...anchoredFrom];
         };
-        const extendCandidates = buildParagraphBreakCandidates(
-          secondText,
-          splitMetrics,
-          splitMainWidth,
-          v9SplitPolicy,
-          { source: "extension-rescue" }
-        )
-          .filter(c => c.offset >= 2 && c.offset <= secondText.length)
-          .slice(0, 2)
-          .sort((a, b) => a.offset - b.offset);
+        const extensionRemainingPx = Math.max(0, pageBottomForFill - planBottomY(currentPlan));
+        const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+        const extendCandidates = selectV9GapFillCandidates(
+          buildParagraphBreakCandidates(
+            secondText,
+            splitMetrics,
+            splitMainWidth,
+            v9SplitPolicy,
+            { source: "extension-rescue" }
+          ).filter(c => c.offset >= 2 && c.offset <= secondText.length),
+          {
+            remainingPx: extensionRemainingPx,
+            lineHeight: extensionLineH,
+            maxCandidates: cfg.extensionGapFillMaxCandidates,
+          }
+        );
         let bestExtended = null;
         let bestExtendedScore = currentFill;
         for (const extendCandidate of extendCandidates) {
@@ -5199,25 +5205,25 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       };
 
       if (fullText.length >= MIN_EMERGENCY_SPLIT) {
-        const emergencyCandidate = buildParagraphBreakCandidates(
-          fullText,
-          splitMetrics,
-          splitMainWidth,
-          v9SplitPolicy,
-          { source: "emergency", emergency: true }
-        ).find(c => c.offset >= MIN_EMERGENCY_SPLIT && c.offset < fullText.length);
-
-        const fallbackLen = emergencyCandidate?.offset || null;
-        if (fallbackLen) {
-          const movedNotes = notesBeforeAnchor(fallbackLen);
-          if (typeof console !== "undefined") {
-            console.warn(
-              "[v9] emergency paragraph split: paragraph is larger than one page; " +
-              (emergencyCandidate
-                ? ("using " + emergencyCandidate.kind + " split.")
-                : "no legal emergency split point.")
-            );
+        const emergencyCandidates = selectV9GapFillCandidates(
+          buildParagraphBreakCandidates(
+            fullText,
+            splitMetrics,
+            splitMainWidth,
+            v9SplitPolicy,
+            { source: "emergency", emergency: true }
+          ).filter(c => c.offset >= MIN_EMERGENCY_SPLIT && c.offset < fullText.length),
+          {
+            remainingPx: Math.max(0, pageBottomForFill - cfg.padding),
+            lineHeight: (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55),
+            maxCandidates: cfg.emergencySplitMaxCandidates,
           }
+        );
+
+        let bestEmergency = null;
+        for (const emergencyCandidate of emergencyCandidates) {
+          const fallbackLen = emergencyCandidate.offset;
+          const movedNotes = notesBeforeAnchor(fallbackLen);
           const splitText = splitMainTextAtOffset(fullText, fallbackLen);
           const splitNotes = splitNotesByAnchor(
             target?.notes || [],
@@ -5226,7 +5232,13 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             splitText.suffixBaseOffset
           );
 
-          const firstHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after, { _emergencySplit: true }).firstHalf;
+          const firstHalf = splitV9Paragraph(
+            target,
+            splitText,
+            splitNotes.before,
+            splitNotes.after,
+            { _emergencySplit: true }
+          ).firstHalf;
           const secondHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).secondHalf;
           const emergencyPlan = buildPagePlan(
             aggregateForV9([firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
@@ -5245,20 +5257,37 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             }
           );
 
-          if (emergencyScore.accept) {
-            splitInfo = {
+          if (!emergencyScore.accept) continue;
+          if (!bestEmergency || emergencyScore.fill > bestEmergency.score.fill) {
+            bestEmergency = {
+              score: emergencyScore,
+              candidate: emergencyCandidate,
               firstHalf,
               secondHalf,
-              sliceIdx,
-              baseN,
             };
           }
+        }
+
+        if (bestEmergency) {
+          if (typeof console !== "undefined") {
+            console.warn(
+              "[v9] emergency paragraph split: paragraph is larger than one page; " +
+              "using " + bestEmergency.candidate.kind + " split."
+            );
+          }
+          splitInfo = {
+            firstHalf: bestEmergency.firstHalf,
+            secondHalf: bestEmergency.secondHalf,
+            sliceIdx,
+            baseN,
+          };
         } else if (typeof console !== "undefined") {
           console.warn(
             "[v9] no-mid-paragraph: first paragraph does not fit, but no legal emergency split point was found."
           );
         }
       }
+
     }
 
     let overflowTakeN = 0;
