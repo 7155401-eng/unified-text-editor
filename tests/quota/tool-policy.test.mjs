@@ -40,7 +40,7 @@ test("source-free tools are unmetered at preflight", () => {
 test("metered parity targets remain on legacy enforcement until success/session accounting lands", () => {
   const targets = {
     "comparator-tool": ["session", "first-session-action"],
-    "nikud-merger": ["count", "success"],
+
     "sefaria-downloader": ["count", "success"],
     "sefaria-live": ["count", "success"],
     "torah-nikud": ["units", "success"],
@@ -54,6 +54,16 @@ test("metered parity targets remain on legacy enforcement until success/session 
     assert.equal(p.migrationState, "legacy-preflight-daily", name);
     assert.equal(isFreePreflightUnmetered(name), false, name);
   }
+});
+
+test("nikud merger is migrated to server success metering", () => {
+  const p = TOOL_POLICIES["nikud-merger"];
+  assert.equal(p.freeMode, "count");
+  assert.equal(p.limit, 1);
+  assert.equal(p.windowSeconds, 7 * 24 * 60 * 60);
+  assert.equal(p.chargeOn, "success");
+  assert.equal(p.premiumMode, "unlimited");
+  assert.equal(p.migrationState, "success-metered-ready");
 });
 
 test("desktop parity constants are pinned", () => {
