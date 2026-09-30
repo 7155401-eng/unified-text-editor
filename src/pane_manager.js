@@ -298,12 +298,19 @@ function buildEditorExtensions() {
 
 const MARKER_BAR_DEFAULT_KEY = "ravtext.markerBar.defaultCollapsed.v1";
 
+function normalizePaneKind(kind, streamCode) {
+  if (streamCode) return "stream";
+  return kind === "intro" ? "intro" : "main";
+}
+
+
 export class Pane {
-  constructor({ id, streamCode, symbol, label, dir, markerBarCollapsed, collapsed, content, onFocus, onChange }) {
+  constructor({ id, paneKind, streamCode, symbol, label, dir, markerBarCollapsed, collapsed, content, onFocus, onChange }) {
     this.id = id || nextPaneId();
     this.streamCode = streamCode;
+    this.paneKind = normalizePaneKind(paneKind, streamCode);
     this.symbol = symbol || (streamCode ? `@${streamCode}` : "");
-    this.label = label || (streamCode ? `זרם ${streamCode}` : "ראשי");
+    this.label = label || (this.paneKind === "intro" ? "הקדמה" : streamCode ? `זרם ${streamCode}` : "ראשי");
     this.dir = dir || "rtl";
     this.onFocus = onFocus || (() => {});
     this.onChange = onChange || (() => {});
@@ -325,10 +332,10 @@ export class Pane {
   mount(parent) {
     this.element = document.createElement("section");
     this.element.className = "pane";
-    if (!this.streamCode) {
-      this.element.classList.add("main-pane");
-    }
+    if (this.paneKind === "main") this.element.classList.add("main-pane");
+    if (this.paneKind === "intro") this.element.classList.add("intro-pane");
     this.element.dataset.paneId = this.id;
+    this.element.dataset.paneKind = this.paneKind;
 
     const header = document.createElement("div");
     header.className = "pane-header";
@@ -341,6 +348,10 @@ export class Pane {
       chip.style.backgroundColor = c.bg;
       chip.style.color = c.fg;
       chip.textContent = this.streamCode;
+    } else if (this.paneKind === "intro") {
+      chip.style.backgroundColor = "#e8e0ff";
+      chip.style.color = "#3b2a6f";
+      chip.textContent = "הקדמה";
     } else {
       chip.style.backgroundColor = "#D4AF37";
       chip.style.color = "#000";
@@ -402,7 +413,7 @@ export class Pane {
     this._markerToggle = markerToggle;
     header.appendChild(markerToggle);
 
-    if (this.streamCode) {
+    if (this.streamCode || this.paneKind === "intro") {
       const close = document.createElement("button");
       close.className = "pane-close";
       close.textContent = "✕";
@@ -447,6 +458,8 @@ export class Pane {
         ? this.initialContent
         : this.streamCode
         ? `<p>תוכן זרם ${this.streamCode}…</p>`
+        : this.paneKind === "intro"
+        ? "<p>טקסט הקדמה…</p>"
         : "<p>תוכן ראשי. לחץ \"טען דוגמה\" או הקלד.</p>",
       onFocus: () => this.onFocus(this),
       onUpdate: () => {
@@ -503,6 +516,7 @@ export class Pane {
   serialize() {
     return {
       id: this.id,
+      paneKind: this.paneKind,
       streamCode: this.streamCode,
       symbol: this.symbol,
       label: this.label,
@@ -935,6 +949,7 @@ export class PaneManager {
       return null;
     }
 
+    opts.paneKind = normalizePaneKind(opts.paneKind, opts.streamCode);
     if (opts.streamCode && !opts.symbol) {
       opts.symbol = `@${opts.streamCode}`;
     }
@@ -994,8 +1009,8 @@ export class PaneManager {
     const idx = this.panes.findIndex(p => p.id === id);
     if (idx === -1) return false;
     const pane = this.panes[idx];
-    if (!pane.streamCode && this.panes.length === 1) {
-      alert("אסור למחוק את החלונית האחרונה.");
+    if (pane.paneKind === "main") {
+      alert("חלונית ראשית — לא ניתן למחוק.");
       return false;
     }
 
@@ -1051,7 +1066,13 @@ export class PaneManager {
   }
 
   getMainPane() {
-    return this.panes.find(p => !p.streamCode) || this.panes[0];
+    return this.panes.find(p => p.paneKind === "main")
+      || this.panes.find(p => !p.streamCode && p.paneKind !== "intro")
+      || this.panes[0];
+  }
+
+  getIntroPanes() {
+    return this.panes.filter(p => p.paneKind === "intro");
   }
 
   getActiveSymbols() {
@@ -1121,6 +1142,7 @@ export class PaneManager {
       for (const ps of state.panes || []) {
         this.addPane({
           id: ps.id,
+          paneKind: ps.paneKind,
           streamCode: ps.streamCode,
           symbol: ps.symbol,
           label: ps.label,
