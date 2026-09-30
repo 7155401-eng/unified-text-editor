@@ -408,16 +408,39 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
     return true;
   }
 
+  const fallbackAdjacentLastBody = (reason, extra = {}) => {
+    // No legal gentle composite balance exists. The unsafe historical behavior
+    // is to center the LAST BODY by itself inside the leftover window, visually
+    // detaching it from the shared opening glyph. Keep source/geometry untouched
+    // and only cancel that independent centering: RTL right alignment makes the
+    // body remain adjacent to the opening without stretching or moving it.
+    last.render.alignment = 'right';
+    last.render.wordSpacing = 0;
+    last.openingWindowCenterFallback = true;
+    diagnostics?.push?.({
+      code: 'opening-window-final-adjacent-fallback',
+      paragraphId: entry.id,
+      reason,
+      rows: windowLines.length,
+      ...extra,
+    });
+    return true;
+  };
+
   // Multi-row dropped opening: the glyph belongs to EVERY row in its drop
   // window. Moving it to center only the last row would steal width from an
   // earlier row and can recreate the "wide row became half width" regression.
   // Keep the opening fixed and rebalance word boundaries across all window rows
   // so the final body fills the remaining left-hand window with gentle spacing.
-  if (windowLines.some(line => !Array.isArray(line.wordTokens))) return false;
+  if (windowLines.some(line => !Array.isArray(line.wordTokens))) {
+    return fallbackAdjacentLastBody('missing-word-tokens');
+  }
   const words = windowLines.flatMap(line => line.wordTokens);
-  if (!words.length) return false;
+  if (!words.length) return fallbackAdjacentLastBody('no-body-words');
   for (let i = 1; i < words.length; i++) {
-    if (!(words[i].start >= words[i - 1].end)) return false;
+    if (!(words[i].start >= words[i - 1].end)) {
+      return fallbackAdjacentLastBody('non-monotonic-word-offsets');
+    }
   }
 
   const sourceBase = number(entry.sourceOffset ?? entry._v9SourceOffset, 0);
@@ -438,14 +461,14 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
   const rowGeometries = windowLines.map(line =>
     rowGeometry(strips, line.y, line.lineHeightPx, pageBottom)
   );
-  if (rowGeometries.some(g => !g)) return false;
+  if (rowGeometries.some(g => !g)) return fallbackAdjacentLastBody('missing-row-geometry');
 
   // The existing opening position is authoritative. Each row's usable body
   // width is the contiguous RTL interval to its left.
   const targets = rowGeometries.map(g =>
     Math.max(0, Math.min(g.x + g.width, opening.x - opening.gap) - g.x)
   );
-  if (targets.some(w => !(w > EPS))) return false;
+  if (targets.some(w => !(w > EPS))) return fallbackAdjacentLastBody('no-body-window');
 
   const cache = new Map();
   const metricFor = (lineIndex, fromWord, toWord) => {
@@ -485,7 +508,7 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
   };
 
   const lineCount = windowLines.length;
-  if (words.length < lineCount) return false;
+  if (words.length < lineCount) return fallbackAdjacentLastBody('too-few-words');
 
   // Dynamic programming over ordered word boundaries. Score the worst required
   // word-space expansion first, then total squared pressure. This is the same
@@ -513,22 +536,18 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
       }
     }
     states = nextStates;
-    if (!states.size) return false;
+    if (!states.size) return fallbackAdjacentLastBody('no-legal-partition');
   }
 
   const best = states.get(words.length);
-  if (!best) return false;
+  if (!best) return fallbackAdjacentLastBody('no-complete-partition');
 
   const gentleMax = continuationTailGentleSpacing(context);
   if (best.maxPressure > gentleMax + EPS) {
-    diagnostics?.push?.({
-      code: 'opening-window-final-center-needs-excessive-spacing',
-      paragraphId: entry.id,
-      rows: lineCount,
+    return fallbackAdjacentLastBody('excessive-word-spacing', {
       requiredWordSpacing: best.maxPressure,
       gentleCap: gentleMax,
     });
-    return false;
   }
 
   for (let li = 0; li < lineCount; li++) {
@@ -568,8 +587,7 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
     };
   }
 
-  const newLast = lines[lines.indexOf(last)] || null;
-  // lines.indexOf(last) may be -1 after replacements; find by paragraph/source end.
+  // Find the rebuilt final row by semantic identity, not stale object identity.
   const balancedLast = lines.slice(paragraphLineStart).find(line =>
     line.isLast &&
     line.y < opening.y + opening.height - EPS &&
