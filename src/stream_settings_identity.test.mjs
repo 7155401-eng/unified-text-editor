@@ -23,7 +23,7 @@ globalThis.window = globalThis.window || {
 };
 
 const mod = await import("./original_stream_columns.js");
-const { ensureOriginalStreamSettings, getStreamSettings, getEffectiveStreamSettings } = mod;
+const { ensureOriginalStreamSettings, getStreamSettings, getEffectiveStreamSettings, lemmaSplitIndex } = mod;
 
 let pass = 0, fail = 0;
 function assert(cond, name, extra) {
@@ -78,6 +78,26 @@ test("זרם חדש מקבל את ברירות המחדל", () => {
   // `cur.noteNumEnabled !== false`, כלומר חסר = דלוק. זו התנהגות תקינה.
   assert(s.noteNumEnabled !== false, "„מספר בהערה” דלוק כברירת מחדל");
   assert(Object.keys(s).length > 3, "יש ברירות מחדל", `keys=${Object.keys(s).length}`);
+});
+
+test("הערה קצרה שמסתיימת בנקודה אינה מודגשת כולה", () => {
+  const s = ensureOriginalStreamSettings("18");
+  s.lemmaUntilDot = true;
+  s.lemmaBold = true;
+  const text = "מילה ראשונה ועוד כמה מילים.";
+  const cut = lemmaSplitIndex("18", text);
+  assert(cut === text.indexOf(" "), "נופל למילה הראשונה בלבד",
+    `cut=${cut}, expected=${text.indexOf(" ")}`);
+});
+
+test("דיבור המתחיל אמיתי עם תוכן משמעותי אחריו נשאר עד הנקודה", () => {
+  const s = ensureOriginalStreamSettings("19");
+  s.lemmaUntilDot = true;
+  s.lemmaBold = true;
+  const text = "דיבור קצר. כאן נשאר תוכן משמעותי וארוך מספיק לאחר נקודת הדיבור המתחיל.";
+  const cut = lemmaSplitIndex("19", text);
+  assert(cut === text.indexOf(".") + 1, "החיתוך נשאר אחרי הנקודה",
+    `cut=${cut}, expected=${text.indexOf(".") + 1}`);
 });
 
 test("שני זרמים אינם דורסים זה את זה", () => {
