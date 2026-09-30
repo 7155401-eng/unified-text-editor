@@ -5,9 +5,14 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'index.html'
       - 'src/**'
+      - 'worker/**'
       - 'scripts/**'
       - 'tests/v9-unified/**'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/v9-spacing-regressions.yml'
   workflow_dispatch:
 permissions:
@@ -20,7 +25,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/fix/v9-typography-spacing-regressions'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -61,12 +66,21 @@ jobs:
         run: |
           cmp package-lock.json .v9-baseline/package-lock.json
           ln -s "$GITHUB_WORKSPACE/node_modules" .v9-baseline/node_modules
-          (cd .v9-baseline; npm run postinstall && npm run build) 2>&1 | tee test-results/v9-unified/baseline-build.log
+          (cd .v9-baseline; npm run postinstall --if-present && npm run build) 2>&1 | tee test-results/v9-unified/baseline-build.log
       - name: Full build and source rewrite integrity
         run: |
-          npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
+          assert_source_clean() {
+            echo "=== tracked source state: $1 ==="
+            git diff --name-status -- index.html src worker scripts vite.config.js package.json package-lock.json
+            git diff --exit-code -- index.html src worker scripts vite.config.js package.json package-lock.json
+          }
+          npm run postinstall --if-present 2>&1 | tee test-results/v9-unified/postinstall.log
+          assert_source_clean "after postinstall"
           npm run build 2>&1 | tee test-results/v9-unified/build.log
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
+          assert_source_clean "after first build"
+          npm run build 2>&1 | tee test-results/v9-unified/build-second.log
+          assert_source_clean "after second build"
       - name: Repeat unit and browser regressions after build
         run: |
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
