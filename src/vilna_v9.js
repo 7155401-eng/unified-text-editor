@@ -1126,10 +1126,14 @@ function v9MainRefsFromParagraph(p, textLen) {
     const clamped = Math.max(0, Math.min(limit, anchor));
     const num = typeof raw?.num === "number" && raw.num > 0 ? raw.num : 0;
     if (!num) continue;
+    let formatted = "";
+    try { formatted = formatStreamNumber(stream, num, "main") || ""; } catch (_) { formatted = ""; }
+    if (!formatted) continue;
     out.push({
       stream,
       code: stream,
       num,
+      formatted,
       uid: raw?.uid || (String(stream) + ":" + String(num) + ":" + String(clamped)),
       anchor: clamped,
       anchorAffinity: raw.anchorAffinity,
@@ -1733,11 +1737,12 @@ function createMainInlineContext(cfg) {
       return v9MainBoldOverrideRuns(runs, cfg);
     },
     prepareRefs(refs) {
-      return refs.map(ref => {
+      return refs.flatMap(ref => {
         const holder = document.createElement("span");
         appendV9MainRefSpan(holder, ref);
         const span = holder.firstElementChild;
-        return { ...ref, formatted: span?.textContent || "", cssText: span?.style.cssText || "" };
+        if (!span || !span.textContent) return [];
+        return [{ ...ref, formatted: span.textContent, cssText: span.style.cssText || "" }];
       });
     },
     openingStyle: styleIdToMarks,
