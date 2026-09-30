@@ -43,6 +43,7 @@ export const TOOL_POLICIES = Object.freeze({
     windowSeconds: 7 * 24 * 60 * 60,
     premiumMode: "unlimited",
     chargeOn: "success",
+    eventKind: "success",
     migrationState: "success-metered-ready",
   }),
   "sefaria-downloader": Object.freeze({
@@ -50,8 +51,11 @@ export const TOOL_POLICIES = Object.freeze({
     limit: 1,
     windowSeconds: 7 * 24 * 60 * 60,
     premiumMode: "unlimited",
-    chargeOn: "success",
-    migrationState: "success-metered-ready",
+    // Desktop source checks + records immediately after the user confirms export,
+    // before the export thread starts. Preserve that exact contract.
+    chargeOn: "confirmed-action",
+    eventKind: "confirmed-action",
+    migrationState: "action-metered-ready",
   }),
   "sefaria-live": Object.freeze({
     freeMode: "count",
@@ -114,4 +118,12 @@ export function publicToolNames() {
 export function isServerManagedSuccessTool(toolName) {
   const p = getToolPolicy(toolName);
   return !!p && p.migrationState === "success-metered-ready" && p.chargeOn === "success";
+}
+
+export function isServerManagedMeteredTool(toolName) {
+  const p = getToolPolicy(toolName);
+  return !!p && (
+    p.migrationState === "success-metered-ready" ||
+    p.migrationState === "action-metered-ready"
+  );
 }
