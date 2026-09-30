@@ -11,10 +11,13 @@ import {
 } from './comparator_i18n.js';
 import {
   docx_find_streams,
-  docx_extract,
-  buildWordExportHtml,
-  downloadDocFile
+  docx_extract
 } from './comparator_engine.js';
+import {
+  buildComparatorDocxBytes,
+  comparatorDocxFilename,
+  downloadComparatorDocx
+} from './comparator_docx_export.js';
 import {
   getLangPref,
   setLangPref,
@@ -22,8 +25,7 @@ import {
   setThemePref,
   getFontSize,
   setFontSize,
-  getLastFileName,
-  suggestSaveFilename
+  getLastFileName
 } from './comparator_storage.js';
 
 const MC = COMPARATOR_MARKER_COLORS;
@@ -51,7 +53,7 @@ function buildIntegratedHTML(initialLang) {
 </div>
 <div class="tb-group">
  <span class="tb-title" data-i18n="t_files">${tr.t_files}</span>
- <button class="btn blue" data-action="doExport" data-i18n="export">${tr.export}</button>
+ <button class="btn blue" data-action="doExport" data-i18n="export" title="⚡ מיזוג מהיר ל-DOCX עם הערות Word אמיתיות">${tr.export}</button>
  <button class="btn blue" data-action="doImport" data-i18n="import">${tr.import}</button>
 </div>
 <div class="tb-group">
@@ -723,47 +725,35 @@ export function mountComparatorIntegratedUI(rootEl, options = {}) {
     return html;
   }
 
-  function doExport() {
-    let mainRich = getRichHtml(state.eds[1]);
-    let raw_lines = mainRich.split('<br>');
-    let mc = raw_lines.join('</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>');
-    const symConfigs = [];
-    Object.keys(state.eds).forEach(id => {
-      if (id == 1) return;
-      const sym = getSym(id);
-      if (!sym) return;
-      const noteRich = getRichHtml(state.eds[id]);
-      const parts = noteRich.split(sym);
-      if (parts.length > 0 && parts[0].trim() === '') parts.shift();
-      symConfigs.push({ symbol: sym, prefix: `[${id - 1}] `, parts: parts, counter: 0 });
-    });
+  async function doExport() {
+    try {
+      const streams = Object.keys(state.eds)
+        .filter(id => id != 1)
+        .map(id => ({
+          marker: getSym(id),
+          delta: state.eds[id].getContents(),
+        }))
+        .filter(s => s.marker);
 
-    let fnHTML = '';
-    let nc = 1;
-
-    if (symConfigs.length > 0) {
-      symConfigs.sort((a, b) => b.symbol.length - a.symbol.length);
-      const regexStr = symConfigs.map(c => c.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-      const regex = new RegExp(`(${regexStr})`, 'g');
-      mc = mc.replace(regex, (match) => {
-        const cfg = symConfigs.find(c => c.symbol === match);
-        if (cfg && cfg.counter < cfg.parts.length) {
-          let note = cfg.parts[cfg.counter].trim().replace(/<br>/g, ' ');
-          cfg.counter++;
-          const id = nc;
-          nc++;
-          const refMarker = `<a style='mso-footnote-id:ftn${id}; vertical-align:super; font-size:80%;' href='#_ftn${id}' name='_ftnref${id}'><span class='MsoFootnoteReference'><span style='mso-special-character:footnote'></span></span></a>`;
-          fnHTML += `<div style='mso-element:footnote' id='ftn${id}'><p class="MsoFootnoteText"><a style='mso-footnote-id:ftn${id}' href='#_ftnref${id}' name='_ftn${id}'><span class='MsoFootnoteReference'><span style='mso-special-character:footnote'></span></span></a><span dir="rtl" lang="HE"> <b>${cfg.prefix}</b> ${note}</span></p></div>`;
-          return refMarker;
-        }
-        return match;
+      const built = buildComparatorDocxBytes({
+        mainDelta: state.eds[1].getContents(),
+        streams,
+        title: (getLastFileName() || "רב טקסט").replace(/\.[^.]+$/u, ""),
       });
-    }
+      const filename = comparatorDocxFilename(getLastFileName());
+      downloadComparatorDocx(built.bytes, filename);
 
-    const docHtml = buildWordExportHtml(mc, fnHTML);
-    const filename = suggestSaveFilename(getLastFileName());
-    downloadDocFile(filename, docHtml);
-    alert(state.tr[state.currentLang].alertSaved + filename);
+      const summary = built.report.streams
+        .map(s => `${s.marker}: ${s.notes}`)
+        .join(" | ");
+
+      alert(
+        `${state.tr[state.currentLang].alertSaved}${filename}\n\n` +
+        `מיזוג מהיר: ${built.report.footnotes} הערות Word אמיתיות.\n${summary}`
+      );
+    } catch (error) {
+      alert(`הייצוא נעצר:\n\n${error?.message || error}`);
+    }
   }
 
   function jumpMarker(dir) {
