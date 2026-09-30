@@ -242,8 +242,43 @@ export function mountComparatorUI(rootEl, options = {}) {
     lastCursorPositions: {},
     activeQuillEditor: null,
     mainToolbarModule: null,
-    pendingCloseAfterSave: false
+    pendingCloseAfterSave: false,
+    quotaBlocked: !!options.quotaReadOnly,
+    sessionActionPending: null,
   };
+  function lockComparatorForQuota() {
+    state.quotaBlocked = true;
+    Object.values(state.eds).forEach(q => {
+      try { q.enable(false); } catch (_) {}
+    });
+    rootEl.querySelectorAll('button, input[type="button"], input[type="submit"]').forEach(el => {
+      try {
+        el.disabled = true;
+        el.style.opacity = '0.45';
+        el.title = 'המכסה החינמית של עורך רב טקסט הסתיימה.';
+      } catch (_) {}
+    });
+  }
+
+  async function noteComparatorUserAction() {
+    if (state.quotaBlocked) return false;
+    if (typeof options.onSessionAction !== 'function') return true;
+    if (state.sessionActionPending) return state.sessionActionPending;
+
+    state.sessionActionPending = Promise.resolve(options.onSessionAction())
+      .then(ok => {
+        if (ok === false) lockComparatorForQuota();
+        return ok !== false;
+      })
+      .catch(() => {
+        lockComparatorForQuota();
+        return false;
+      })
+      .finally(() => { state.sessionActionPending = null; });
+
+    return state.sessionActionPending;
+  }
+
   // load saved transfer settings
   const savedTransfer = getTransferSettings();
   state.transferTargetStream = savedTransfer.targetStream;
@@ -334,7 +369,7 @@ export function mountComparatorUI(rootEl, options = {}) {
     }
 
     q.on('text-change', function (delta, oldDelta, source) {
-      // (quota check removed — browser context uses different gating)
+      if (source === 'user') noteComparatorUserAction();
       clearTimeout(q._hlTimer);
       q._hlTimer = setTimeout(function () { highlightMarkers(id); }, 200);
     });
@@ -1489,9 +1524,11 @@ export function mountComparatorUI(rootEl, options = {}) {
     }
   };
 
-  rootEl.addEventListener('click', (ev) => {
+  rootEl.addEventListener('click', async (ev) => {
     const trg = ev.target.closest('[data-action]');
     if (!trg) return;
+    const allowed = await noteComparatorUserAction();
+    if (!allowed) return;
     const name = trg.getAttribute('data-action');
     const arg = trg.getAttribute('data-arg');
     const fn = actions[name];
@@ -1527,6 +1564,7 @@ export function mountComparatorUI(rootEl, options = {}) {
     interceptToolbarButtons();
     addToolbarTooltips();
   }, 100);
+  if (state.quotaBlocked) setTimeout(lockComparatorForQuota, 0);
 
   // Floating language button (verbatim — _inject_lang_btn)
   const langFloating = document.createElement('button');
