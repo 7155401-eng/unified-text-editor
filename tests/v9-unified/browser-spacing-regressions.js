@@ -44,6 +44,14 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    const out=wordRichFragmentFromEditorHtml('<p>א</p><p></p><p>ב</p>');
    assert(out==='א<br><br>ב',`blank editor block was not preserved: ${out}`);
  });
+ await test('B13 formatting whitespace between top-level blocks does not create lines',()=>{
+   const html='<p>א</p>\n    <p>ב</p>\n<div>ג</div>';
+   const rich=wordRichFragmentFromEditorHtml(html);
+   const main=wordMainFragmentFromEditorHtml(html);
+   assert(rich==='א<br>ב<br>ג',`formatting whitespace created a rich line: ${JSON.stringify(rich)}`);
+   assert(main==='א</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>ב</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>ג',
+     `formatting whitespace created a Word paragraph: ${JSON.stringify(main)}`);
+ });
 
  await test('wrapped ribbon tabs drive the sticky toolbar offset from measured height',async()=>{
    const link=document.createElement('link');
