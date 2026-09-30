@@ -26,6 +26,7 @@ import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js
 import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
 import { EditorJsonSnapshotCache } from "./editor_json_snapshot_cache.js";
+import { FrameCoalescer } from "./frame_coalescer.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
@@ -322,6 +323,7 @@ export class Pane {
     this.collapsed = !!collapsed;
     this._collapseToggle = null;
     this._manager = null;
+    this._scrollSyncFrame = new FrameCoalescer();
   }
 
   mount(parent) {
@@ -503,6 +505,7 @@ export class Pane {
       clearTimeout(this._markerTimer);
       this._markerTimer = null;
     }
+    this._scrollSyncFrame.cancel();
     if (this.editor) { this.editor.destroy(); this.editor = null; }
     if (this.element) { this.element.remove(); this.element = null; }
   }
@@ -540,27 +543,55 @@ export class Pane {
   }
 
   _onScroll() {
-    // ★ בלם 2 (ראה ההסבר המלא ליד setPaneScrollTop): אם הגלילה הזו
-    // היא זו שאנחנו עצמנו ביצענו — בולעים אותה כאן ולא מסנכרנים הלאה.
-    // זה מה שמונע את הרעידה, והוא לא תלוי בשום שעון.
+    // Programmatic sync scrolls are swallowed immediately, before scheduling
+    // any expensive marker geometry work.
     if (this._syncSelfScroll) {
       this._syncSelfScroll = false;
       return;
     }
     const mgr = this._manager;
-    if (!mgr || !mgr.syncEnabled || mgr.syncBusy) return;
-    mgr.syncBusy = true;
-    const body = this._body;
-    const anchor = visibleMarkerAnchor(body);
-    if (anchor) mgr._lastSyncAnchor = anchor;
-    const syncAnchor = anchor || mgr._lastSyncAnchor;
-    for (const other of mgr.panes) {
-      if (other === this || !other._body) continue;
-      if (syncAnchor && scrollPaneToAnchor(other, syncAnchor)) continue;
-      syncPaneByFraction(this, body, other, other._body);
+    if (!mgr || !mgr.syncEnabled) return;
+
+    // Native scroll events can fire many times in one frame. The semantic
+    // anchor scan below performs DOM queries + layout reads, so coalesce them
+    // to at most one pass per pane per animation frame.
+    this._scrollSyncFrame.schedule(() => this._runScrollSync());
+  }
+
+  _runScrollSync() {
+    // Re-check after the frame boundary: another pane may have synchronized
+    // this one while its user-scroll callback was waiting.
+    if (this._syncSelfScroll) {
+      this._syncSelfScroll = false;
+      return;
     }
-    // רשת ביטחון בלבד. הבלם האמיתי הוא שני הבלמים שלמעלה.
-    setTimeout(() => { mgr.syncBusy = false; }, 50);
+    const mgr = this._manager;
+    if (!mgr || !mgr.syncEnabled) return;
+
+    // A previous pane may still own the short sync lock. Do not run the
+    // expensive geometry scan while busy, but also do not drop the user's
+    // latest scroll position: retry on the next frame.
+    if (mgr.syncBusy) {
+      this._scrollSyncFrame.schedule(() => this._runScrollSync());
+      return;
+    }
+
+    mgr.syncBusy = true;
+    try {
+      const body = this._body;
+      const anchor = visibleMarkerAnchor(body);
+      if (anchor) mgr._lastSyncAnchor = anchor;
+      const syncAnchor = anchor || mgr._lastSyncAnchor;
+      for (const other of mgr.panes) {
+        if (other === this || !other._body) continue;
+        if (syncAnchor && scrollPaneToAnchor(other, syncAnchor)) continue;
+        syncPaneByFraction(this, body, other, other._body);
+      }
+    } finally {
+      // רשת ביטחון בלבד. הבלם האמיתי הוא שני הבלמים שלמעלה.
+      // Always release even if a detached DOM node throws during geometry.
+      setTimeout(() => { mgr.syncBusy = false; }, 50);
+    }
   }
 
   _applyCollapsedState() {
