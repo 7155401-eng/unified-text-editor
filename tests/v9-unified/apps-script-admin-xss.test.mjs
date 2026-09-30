@@ -12,6 +12,10 @@ const end = html.indexOf('</script>', start);
 assert.ok(start >= 0 && end > start, 'admin inline script not found');
 const script = html.slice(start + '<script>'.length, end);
 
+test('Apps Script admin inline JavaScript parses successfully', () => {
+  assert.doesNotThrow(() => new Function(script));
+});
+
 test('Apps Script admin never renders server/customer data through innerHTML', () => {
   assert.doesNotMatch(script, /\.innerHTML\b/u);
   assert.doesNotMatch(script, /<td>['"]?\s*\+\s*(?:c|tc|report|result|err)\b/u);
