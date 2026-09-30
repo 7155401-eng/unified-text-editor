@@ -1,32 +1,9 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
+import { getToolPolicy, isFreePreflightUnmetered, isToolPublic } from './tool_policy.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
-
-const PUBLIC_TOOLS = new Set([
-  'nikud-merger',
-  'word-extractor',
-  'text-compare-pro',
-  'comparator-tool',
-  'sefaria-downloader',
-  'sefaria-live',
-  'torah-transcription',
-  'torah-nikud',
-  'haredi-caricature',
-  'css-ai',
-  'torah-tools',
-]);
-
-// Text upload/import through Word extractor is a core free-account workflow.
-// It should still require a logged-in free account, but it must not consume the daily quota.
-const FREE_UNMETERED_TOOLS = new Set([
-  'word-extractor',
-]);
-
-function isFreeUnmeteredTool(toolName) {
-  return FREE_UNMETERED_TOOLS.has(String(toolName || '').trim());
-}
 
 function b64url(bytes) {
   const bin = String.fromCharCode(...new Uint8Array(bytes));
@@ -101,7 +78,7 @@ async function handleSecureExportHtmlAction(request, env, body) {
 }
 
 async function consumeFreeUse(user, toolName, env) {
-  if (isFreeUnmeteredTool(toolName)) {
+  if (isFreePreflightUnmetered(toolName)) {
     return { ok: true, unmetered: true };
   }
 
@@ -156,7 +133,7 @@ export async function handleToolPreflight(request, env) {
   }
 
   const toolName = String(body?.toolName || '').trim();
-  if (!PUBLIC_TOOLS.has(toolName)) {
+  if (!isToolPublic(toolName)) {
     return Response.json(
       { error: 'unknown_tool', message: 'Tool is not allowed' },
       { status: 403, headers: { 'cache-control': 'no-store' } }
@@ -170,6 +147,8 @@ export async function handleToolPreflight(request, env) {
       { status: 401, headers: { 'cache-control': 'no-store' } }
     );
   }
+
+  const policy = getToolPolicy(toolName);
 
   if (!user.paid) {
     const usage = await consumeFreeUse(user, toolName, env);
@@ -196,7 +175,18 @@ export async function handleToolPreflight(request, env) {
     toolName,
     token,
     expiresAt: (nowSec + TOOL_TOKEN_TTL_SEC) * 1000,
-    unmetered: !user?.paid && isFreeUnmeteredTool(toolName),
+    unmetered: !user?.paid && isFreePreflightUnmetered(toolName),
+    policy: policy ? {
+      freeMode: policy.freeMode,
+      premiumMode: policy.premiumMode,
+      chargeOn: policy.chargeOn,
+      migrationState: policy.migrationState,
+      limit: policy.limit ?? null,
+      windowSeconds: policy.windowSeconds ?? null,
+      sessionIdleSeconds: policy.sessionIdleSeconds ?? null,
+      unit: policy.unit ?? null,
+      window: policy.window ?? null,
+    } : null,
   }, {
     headers: { 'cache-control': 'no-store' },
   });
