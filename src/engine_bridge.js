@@ -339,6 +339,7 @@ function paneManagerContentSignature(paneManager) {
   const sigParts = paneManager.panes
     .map((p) => [
       p.id,
+      p.paneRole || (p.streamCode ? "stream" : "main"),
       p.streamCode || "",
       p.symbol || "",
       p.label || "",
@@ -350,7 +351,7 @@ function paneManagerContentSignature(paneManager) {
   return sigParts + "##" + nestedFlag + "##" + demoFlag + "##" + globalStreamOverridesSig + "##" + streamLinksSig + "##" + globalBreakSig;
 }
 
-function extractMainParagraphs(mainPane, paneManager) {
+function extractMainParagraphs(mainPane, paneManager, sourceMeta = {}) {
   if (!mainPane || !mainPane.editor) return [];
 
   const symbols = [];
@@ -419,6 +420,9 @@ function extractMainParagraphs(mainPane, paneManager) {
       headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
       style: styleMetaForNode(node),
       tableRows: rows,
+      paneRole: sourceMeta.paneRole || mainPane.paneRole || "main",
+      paneId: mainPane.id || "",
+      paneLabel: mainPane.label || "",
     });
     return false;
   });
@@ -767,7 +771,17 @@ export function paneManagerToPackerContent(paneManager) {
   const mainPane = paneManager.getMainPane();
   if (!mainPane) return [];
 
-  const mainParagraphs = extractMainParagraphs(mainPane, paneManager);
+  // Intro panes are independent editors, but their paragraphs belong before
+  // the main body in the packed document. They participate in the same source
+  // mapping and note-anchor pipeline, so rich text and optional stream markers
+  // behave exactly like the main editor instead of using a second renderer.
+  const introPanes = typeof paneManager.getIntroPanes === "function"
+    ? paneManager.getIntroPanes()
+    : paneManager.panes.filter(p => p.paneRole === "intro");
+  const mainParagraphs = [
+    ...introPanes.flatMap(p => extractMainParagraphs(p, paneManager, { paneRole: "intro" })),
+    ...extractMainParagraphs(mainPane, paneManager, { paneRole: "main" }),
+  ];
   const streamNotes = {};
   const streamNotesRuns = {};
   const breakSettings = loadSpacingSettings();
@@ -812,6 +826,9 @@ export function paneManagerToPackerContent(paneManager) {
       headingLevel: para.headingLevel,
       style: para.style || {},
       tableRows: para.tableRows || null,
+      paneRole: para.paneRole || "main",
+      paneId: para.paneId || "",
+      paneLabel: para.paneLabel || "",
     });
   }
 
@@ -1023,6 +1040,9 @@ export function paneManagerToPackerContent(paneManager) {
         ...(info.blockType === "table" ? { blockType: "table", tableRows: info.tableRows || [] } : {}),
         headingLevel: info.blockType === "heading" ? Math.max(1, Math.min(6, info.headingLevel || 1)) : null,
         style: info.style || {},
+        paneRole: info.paneRole || "main",
+        paneId: info.paneId || "",
+        paneLabel: info.paneLabel || "",
       });
     }
   }
