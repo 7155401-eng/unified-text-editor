@@ -1448,6 +1448,8 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
         .map(p=>Number(p.dataset.v9PageFill))
         .filter(Number.isFinite);
       const minFill=fills.length?Math.min(...fills):1;
+      // Audit #944 measured ~0.8271 after enabling only extension-rescue
+      // emergency word-gap candidates. Keep 0.80 as a non-pixel-tight floor.
       assert(minFill>=0.80,
         `safe extension word gaps no longer fill sparse active-split page: minFill=${minFill}`);
       for(const p of input){
