@@ -5843,6 +5843,13 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     const trySparseIntermediateRescue = () => {
       if (!finalProbe || !finalProbe.overflow) return null;
       if (drainAloneMode) return null;
+
+      // Source-order invariant: when the current page already contains the
+      // first half of a split source paragraph, its secondHalf is the NEXT
+      // source content. Pulling a later paragraph here would leapfrog that
+      // pending tail and can lose/reorder source when pagination state advances.
+      // Active splits are handled only by extension-rescue / tail rejoin above.
+      if (splitInfo) return null;
       const beforeFill = planFillRatio(finalProbe);
       if (beforeFill >= 0.50) return null;
       if (bestN >= totalAvail) return null;
