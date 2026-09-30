@@ -13,9 +13,10 @@ function escapeAttr(text) {
 
 export function wordInlineNodeHtml(node) {
   if (!node) return "";
-  const NodeCtor = node.ownerDocument?.defaultView?.Node || globalThis.Node;
-  if (NodeCtor && node.nodeType === NodeCtor.TEXT_NODE) return escapeHtml(node.nodeValue || "");
-  if (NodeCtor && node.nodeType !== NodeCtor.ELEMENT_NODE) return "";
+  // template.content may belong to an inert document whose defaultView is null.
+  // Numeric nodeType constants are stable across browser/inert/jsdom documents.
+  if (node.nodeType === 3) return escapeHtml(node.nodeValue || ""); // TEXT_NODE
+  if (node.nodeType !== 1) return ""; // ELEMENT_NODE
 
   const tag = node.tagName?.toLowerCase?.() || "";
   if (tag === "br") return "<br>";
@@ -57,8 +58,6 @@ function wordEditorBlocksFromHtml(editorHtml, doc = globalThis.document) {
   template.innerHTML = String(editorHtml || "");
   const blocks = [];
   let inlineBuffer = "";
-  const NodeCtor = doc.defaultView?.Node || globalThis.Node;
-
   const flushInlineBuffer = () => {
     if (!inlineBuffer) return;
     blocks.push(inlineBuffer);
@@ -66,7 +65,7 @@ function wordEditorBlocksFromHtml(editorHtml, doc = globalThis.document) {
   };
 
   for (const node of Array.from(template.content.childNodes)) {
-    if (NodeCtor && node.nodeType === NodeCtor.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
+    if (node.nodeType === 1 && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
       flushInlineBuffer();
       blocks.push(Array.from(node.childNodes).map(wordInlineNodeHtml).join(""));
     } else {
