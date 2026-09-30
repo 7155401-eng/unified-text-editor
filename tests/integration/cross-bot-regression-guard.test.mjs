@@ -16,7 +16,8 @@ test("V9 session invariants remain present in canonical source", async () => {
 
   assert.match(layout, /function rebalanceContinuationTail\b/);
   assert.match(layout, /droppedOpeningCrossesRightEdgeTransition/);
-  assert.match(layout, /sole\?\.render\.opening\s*&&\s*sole\.isLast/);
+  assert.match(layout, /centerCompletedOpeningWindowTail/);
+  assert.match(layout, /allowCompletedLast/);
   assert.match(layout, /opening-word host row|Opening-word geometry is immutable|opening glyph/i);
 
   assert.match(measurement, /LRM\/RLM\/WORD JOINER are zero-width source controls/);
