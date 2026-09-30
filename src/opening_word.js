@@ -1,12 +1,15 @@
 const STORAGE_KEY = "ravtext.openingWord.v1";
 
+export const OPENING_WORD_DEFAULT_SIZE = 150;
+export const STREAM_OPENING_WORD_DEFAULT_SIZE = 115;
+
 const DEFAULTS = {
   enabled: false,
   target: "word",
   count: 1,
   style: "",
   font: "David",
-  size: 200,
+  size: OPENING_WORD_DEFAULT_SIZE,
   weight: "bold",
   position: "dropped",
   dropLines: 2,
@@ -28,7 +31,7 @@ const STREAM_DEFAULTS = {
   opwCount: 1,
   opwStyle: "",
   opwFont: "David",
-  opwSize: 135,
+  opwSize: STREAM_OPENING_WORD_DEFAULT_SIZE,
   opwWeight: "bold",
   opwPosition: "dropped",
   opwDropLines: 1,
