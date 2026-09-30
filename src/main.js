@@ -82,7 +82,6 @@ import { tryUseTool } from "./premium/daily_quota_gate.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
 import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter, addColumnBefore, deleteColumn, deleteTable } from "./tables_module.js";
 import { wireDocumentFeatures } from "./document_features.js";
-import { wireChapterSplitter } from "./document_chapter_splitter.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
 import { wireFootnotesToCurlyTool } from "./docx_tools/footnotes_to_curly.js";
 import { wireSplitFootnotesByTagTool } from "./docx_tools/split_footnotes_by_tag.js";
@@ -1154,7 +1153,6 @@ setTimeout(() => wireWordLikeTools(paneManager), 250);
 setTimeout(() => {
   wireDocumentFeatures();
   wireTrackChanges(paneManager);
-  wireChapterSplitter(paneManager);
   wireFootnotesToCurlyTool();
   wireSplitFootnotesByTagTool();
   wireFootnoteTrackChangesTool();

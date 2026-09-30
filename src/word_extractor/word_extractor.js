@@ -22,6 +22,24 @@ let _previewObserver = null;
 let _captureInstalled = false;
 let _pendingEnhancement = null;
 let _hiddenRowsRefreshSeq = 0;
+let _chapterSplitterModulePromise = null;
+
+async function ensureChapterSplitter(paneManager) {
+  try {
+    if (!_chapterSplitterModulePromise) {
+      _chapterSplitterModulePromise = import("../document_chapter_splitter.js");
+    }
+    const { wireChapterSplitter } = await _chapterSplitterModulePromise;
+    if (typeof wireChapterSplitter === "function") wireChapterSplitter(paneManager);
+    return true;
+  } catch (err) {
+    // Chapter splitting is an optional extension of the Word importer.
+    // Never block normal Word import if its on-demand chunk failed to load.
+    _chapterSplitterModulePromise = null;
+    console.warn("[word_extractor] chapter splitter lazy load failed:", err);
+    return false;
+  }
+}
 
 function escapeHtml(value) {
   return String(value == null ? "" : value)
@@ -783,12 +801,14 @@ export function setupWordExtractor(paneManager, onLoaded) {
 
 export async function openImport() {
   await assertToolAllowed("word-extractor");
+  await ensureChapterSplitter(_paneManagerRef);
   return openWordExtractorDialogWithOverwriteStyles(_paneManagerRef, _onLoadedRef);
 }
 
 export async function openWordExtractor(paneManager, onLoaded) {
   await assertToolAllowed("word-extractor");
   setupWordExtractor(paneManager, onLoaded);
+  await ensureChapterSplitter(paneManager);
   return openWordExtractorDialogWithOverwriteStyles(paneManager, onLoaded);
 }
 
