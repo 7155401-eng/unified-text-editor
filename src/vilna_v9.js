@@ -2,7 +2,7 @@ import { markV9NoteRuns, auditV9NoteStarts, verifyV9StreamCoverage } from "./eng
 import { streamContextForV9, measureV9CrownHeight, flowV9MeasuredStream, flowV9MeasuredColumns, splitV9StreamAtWordCount, renderV9MeasuredStreamLine } from "./engine/v9_stream_inline_layout.js";
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
-import { DEFAULT_V9_MAIN_BOTTOM_GAP_PX } from "./engine/v9_main_bottom_gap.js";
+import { DEFAULT_V9_MAIN_BOTTOM_GAP_PX } from "./engine/v9_main_bottom_gap_policy.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle, boldOverrideStyleIdForStream, boldOverrideForcesDocStylesForStream } from "./original_stream_columns.js";
 import { getMainStreamColumnCount } from "./main_stream_columns.js";
