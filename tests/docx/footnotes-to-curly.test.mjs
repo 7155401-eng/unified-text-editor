@@ -2,7 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import JSZip from "jszip";
 import { DOMParser } from "@xmldom/xmldom";
-import { transformFootnotesToCurly } from "../../src/docx_tools/footnotes_to_curly.js";
+import { JSDOM } from "jsdom";
+import {
+  transformFootnotesToCurly,
+  wireFootnotesToCurlyTool,
+} from "../../src/docx_tools/footnotes_to_curly.js";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const REL = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -190,5 +194,28 @@ test("image/table/object/hyperlink content aborts before any output is produced"
       err => err?.code === "UNSUPPORTED_FOOTNOTE_CONTENT"
         && err.items?.some(item => item.kind === unsafe)
     );
+  }
+});
+
+
+test("wires exactly one converter button into the Review toolbar", () => {
+  const dom = new JSDOM("<!doctype html><body><div class=\"review-toolbar\"></div></body>");
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = dom.window.document;
+  globalThis.window = dom.window;
+  try {
+    wireFootnotesToCurlyTool();
+    wireFootnotesToCurlyTool();
+    const buttons = dom.window.document.querySelectorAll("#footnotes-to-curly-btn");
+    assert.equal(buttons.length, 1);
+    assert.equal(buttons[0].textContent, "הערות → {מסולסלות}");
+    assert.equal(buttons[0].closest(".review-toolbar") !== null, true);
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    dom.window.close();
   }
 });
