@@ -88,7 +88,7 @@ Initial repository audit did not find a dedicated equivalent for the following o
 5. Bot-assisted text comparison after combining notes with source.
 6. Link-transplant form/workflow — **marker transplant still missing**. No old source implementation or input/output contract was found; do not invent an automatic transplant heuristic without a concrete fixture/spec.
 7. Dedicated local Word add-in installer equivalent. This cannot be copied as a browser installer; translate to an Office Add-in/web bridge or a small signed desktop companion only if still required.
-8. Advanced visual PDF analyzer/report/tweaker workflows from `pdf_analyzer.py`, `pdf_report.py`, `pdf_viewer.py` where current browser preview/debug export does not cover the same job.
+8. ✅ Analyzer/report parity is implemented as `src/layout_analysis_report.js`: it measures the authoritative final page DOM before RavText's PDF/export layer (bottom whitespace in row units, overflow, ink overlaps, knee pitch continuity, two-column balance/density, short-line metrics and opening-word composite centering) and exposes a downloadable JSON report from Render → Diagnostics. The remaining parity item here is the **editing/tweaker** workflow, not read-only analysis/viewing.
 
 The old "luxury Hasidic image bot" was itself marked **in development**, so it is not a parity blocker unless product scope explicitly promotes it.
 
@@ -209,8 +209,8 @@ Therefore **do not port another link engine**. Any future work here should be a 
 
 ### Batch D — visual/page tools
 
-1. Page tweaker parity audit.
-2. PDF analyzer/report functionality missing from the browser preview.
+1. Page tweaker parity audit — the desktop addon stored explicit per-page edits; do not translate its TeX mutation mechanism literally into a second post-layout geometry engine.
+2. ✅ Final-layout analyzer/report — implemented on the final RavText DOM with downloadable JSON and permanent integration/Chromium regressions. The existing browser preview already covers the old viewer/navigation role. Arbitrary third-party PDF parsing remains separate from RavText layout diagnostics.
 3. Translate useful `torahtools` switches into V9 configuration; do not embed the old LaTeX package as the new layout authority.
 
 ### Batch E — Word integration
