@@ -21,7 +21,7 @@ import { parseRawTextToHTML } from "./stream_parser.js";
 import { splitMarkersOnServer, mergeBackOnServer, inlineMergeOnServer, inlineSplitOnServer, loadSyncScrollEnabledFromServer, saveSyncScrollEnabledToServer } from "./main_text_tools_client.js";
 import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
-import { wireLayoutAnalysisReport } from "./layout_analysis_report.js";
+import { wireLayoutAnalysisReport } from "./layout_analysis_lazy_wire.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { installFinalLayoutGuard } from "./engine/final_layout_guard.js";
 import "./stream_button_labels.js";
