@@ -49,6 +49,27 @@ function nextSlot(strips, y, height, pageBottom) {
   return null;
 }
 
+function droppedOpeningCrossesRightEdgeTransition(strips, y, height, pitch, pageBottom) {
+  if (!(height > pitch + EPS) || !(pitch > 0)) return false;
+  let expectedRight = null;
+  const end = Math.min(pageBottom, y + height);
+
+  // Sample every actual text row crossed by the opening. A widening to the
+  // LEFT is safe in RTL because the opening stays on one right edge and the
+  // following row may use the newly freed left space. A changed RIGHT edge is
+  // not safe: the same glyph would sit in the middle of the widened row and
+  // trap that row in the old narrow geometry.
+  for (let rowY = y; rowY < end - EPS; rowY += pitch) {
+    const rowH = Math.min(pitch, end - rowY);
+    const g = rowGeometry(strips, rowY, rowH, pageBottom);
+    if (!g) continue;
+    const right = g.x + g.width;
+    if (expectedRight == null) expectedRight = right;
+    else if (Math.abs(right - expectedRight) > EPS) return true;
+  }
+  return false;
+}
+
 function availableBeside(g, y, height, opening) {
   if (!opening || y >= opening.y + opening.height - EPS || y + height <= opening.y + EPS) return g;
   const right = Math.min(g.x + g.width, opening.x - opening.gap);
@@ -402,14 +423,33 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         const slot = nextSlot(strips, y, height, pageBottom);
         if (!slot) return finish(ei, 0, 'opening-does-not-fit-page');
         if (m.width > slot.width + EPS) return finish(ei, 0, 'opening-wider-than-allocated-region');
-        y = slot.y;
-        opening = { part, x: slot.x + slot.width - m.width, y, width: m.width, height,
-          gap: descriptor.gapPx, topInset: m.topInset || 0, dropLines: descriptor.dropLines };
-        cursor = descriptor.end;
-        // Letter openings can end inside the first word; keep the suffix token
-        // and its original offsets rather than discarding the remainder.
-        while (ti < tokens.length && tokens[ti].end <= cursor) ti++;
-        if (tokens[ti] && tokens[ti].start < cursor) tokens[ti] = { ...tokens[ti], start: cursor, text: entry.text.slice(cursor, tokens[ti].end) };
+
+        if (droppedOpeningCrossesRightEdgeTransition(strips, slot.y, height, pitch, pageBottom)) {
+          // A single dropped glyph cannot occupy two different right edges.
+          // Keeping it dropped would strand the later widened row at the old
+          // narrow width. Preserve the configured opening style as an inline
+          // raised range and let normal row planning widen on the next grid row.
+          entry.runs = [...entry.runs, {
+            start: descriptor.start,
+            end: descriptor.end,
+            marks: descriptor.marks,
+          }];
+          diagnostics.push({
+            code: 'opening-raised-at-right-edge-transition',
+            paragraphId: entry.id,
+            y: slot.y,
+            dropLines: descriptor.dropLines,
+          });
+        } else {
+          y = slot.y;
+          opening = { part, x: slot.x + slot.width - m.width, y, width: m.width, height,
+            gap: descriptor.gapPx, topInset: m.topInset || 0, dropLines: descriptor.dropLines };
+          cursor = descriptor.end;
+          // Letter openings can end inside the first word; keep the suffix token
+          // and its original offsets rather than discarding the remainder.
+          while (ti < tokens.length && tokens[ti].end <= cursor) ti++;
+          if (tokens[ti] && tokens[ti].start < cursor) tokens[ti] = { ...tokens[ti], start: cursor, text: entry.text.slice(cursor, tokens[ti].end) };
+        }
       }
     }
     const emit = (body, start, end, geometry, rowY, m, forcedBreak, wordTokens) => {
@@ -511,7 +551,10 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
     if (opening) {
       y = Math.max(y, opening.y + opening.height);
       const sole = lines.length === paragraphLineStart + 1 ? lines[paragraphLineStart] : null;
-      if (sole?.render.opening && sole.isLast && !sole.forcedBreak) {
+      if (sole?.render.opening && sole.isLast) {
+        // A hard source break is already centered by V9. If that one-row
+        // paragraph also owns the opening word, center the SAME visual segment
+        // (opening + gap + body) instead of centering the body alone.
         const base = rowGeometry(strips, opening.y, opening.height, pageBottom);
         const total = opening.width + (sole.render.body.text ? opening.gap : 0) + sole.naturalWidth;
         if (base && total <= base.width + EPS) {
