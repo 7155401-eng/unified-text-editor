@@ -658,7 +658,41 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
-  await test('two continuing side streams widen on the same vertical boundary below main',()=>{
+  await test('commentary knee never inserts a blank row when crown→main gap is off the stream grid',()=>{
+    const page=makePage();
+    const sideText=Array(38).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:Array(3).fill(neutral).join(' '),
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,streamSettings:{
+      '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+      '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+    }});
+    assert(plan.crownMainGap===11,`fixture lost crown→main gap: ${plan.crownMainGap}`);
+    for(const role of ['right','left']){
+      const box=plan.streamBoxes.find(b=>b.role===role);
+      assert(box&&box.lines.length>4,`missing ${role} commentary rows`);
+      const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
+      let transition=null;
+      for(let i=1;i<sorted.length;i++){
+        if(sorted[i].width>sorted[i-1].width+20){
+          transition={prev:sorted[i-1],wide:sorted[i]};
+          break;
+        }
+      }
+      assert(transition,`${role} fixture did not create a knee`);
+      const pitch=Number(transition.prev.lineHeightPx)||Number(transition.wide.lineHeightPx)||1;
+      const dy=transition.wide.y-transition.prev.y;
+      assert(Math.abs(dy-pitch)<.2,
+        `${role} knee changed the row pitch: dy=${dy}, pitch=${pitch}`);
+    }
+    assertNoWordOverlap(page);
+    page.remove();
+  });
+
+  await test('side streams widen on their own row grids without forcing a shared off-grid boundary',()=>{
     const page=makePage();
     const sideText=Array(34).fill(phrase).join(' ');
     const plan=buildSinglePage(page,{
@@ -673,14 +707,19 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     const mainBottom=(plan.mainBox?.y||0)+(plan.mainBox?.height||0);
     const boxes=['right','left'].map(role=>plan.streamBoxes.find(b=>b.role===role));
     assert(boxes.every(Boolean),'missing side boxes');
-    const firstWide=boxes.map(box=>{
-      const prior=box.lines.filter(l=>l.y<mainBottom-.1);
-      const narrow=prior.length ? Math.min(...prior.map(l=>l.width)) : Math.min(...box.lines.map(l=>l.width));
-      return box.lines.find(l=>l.y>=mainBottom-.1 && l.width>narrow+20);
-    });
-    assert(firstWide.every(Boolean),'fixture did not create wide continuation rows on both sides');
-    assert(Math.abs(firstWide[0].y-firstWide[1].y)<.15,
-      `wide rows start at different heights: ${firstWide[0].y} vs ${firstWide[1].y}`);
+    for(const box of boxes){
+      const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
+      const prior=sorted.filter(l=>l.y<mainBottom-.1);
+      const narrow=prior.length ? Math.min(...prior.map(l=>l.width)) : Math.min(...sorted.map(l=>l.width));
+      const wideIndex=sorted.findIndex(l=>l.y>=mainBottom-.1 && l.width>narrow+20);
+      assert(wideIndex>0,`fixture did not create a wide continuation row for ${box.role}`);
+      const prev=sorted[wideIndex-1],wide=sorted[wideIndex];
+      const pitch=Number(prev.lineHeightPx)||Number(wide.lineHeightPx)||1;
+      const dy=wide.y-prev.y;
+      assert(Math.abs(dy-pitch)<.2,
+        `${box.role} widened off its own row grid: dy=${dy}, pitch=${pitch}`);
+    }
+    assertNoWordOverlap(page);
     page.remove();
   });
 
