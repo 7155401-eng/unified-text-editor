@@ -34,6 +34,10 @@ test('desktop parity: nikud merger and Sefaria target one successful use per wee
     assert.equal(p.windowSeconds,WEEK_SEC,name);
     assert.equal(p.chargeOn,'success',name);
   }
+  assert.equal(usesLegacyPreflightQuota('nikud-merger'),false);
+  assert.equal(policyPublicView('nikud-merger').migrated,true);
+  assert.equal(usesLegacyPreflightQuota('sefaria-downloader'),true);
+  assert.equal(usesLegacyPreflightQuota('sefaria-live'),true);
 });
 
 test('desktop parity: Torah nikud is 500 chars per day and caricature is 24h cooldown',()=>{
