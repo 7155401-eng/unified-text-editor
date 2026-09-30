@@ -3,10 +3,8 @@ import assert from "node:assert/strict";
 import JSZip from "jszip";
 import { DOMParser } from "@xmldom/xmldom";
 import { JSDOM } from "jsdom";
-import {
-  transformFootnotesToCurly,
-  wireFootnotesToCurlyTool,
-} from "../../src/docx_tools/footnotes_to_curly.js";
+import { transformFootnotesToCurlyCore } from "../../cloudflare/docx_footnotes_to_curly.js";
+import { wireFootnotesToCurlyTool } from "../../src/docx_tools/footnotes_to_curly.js";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const REL = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -62,8 +60,7 @@ function byLocalName(doc, name) {
 }
 
 async function unpackResult(result) {
-  const ab = await result.blob.arrayBuffer();
-  const zip = await JSZip.loadAsync(ab);
+  const zip = await JSZip.loadAsync(result.bytes);
   const xml = await zip.file("word/document.xml").async("string");
   return { zip, xml, doc: parser.parseFromString(xml, "application/xml") };
 }
@@ -91,7 +88,7 @@ test("converts a mixed main run and preserves rich footnote formatting", async (
       </w:footnote>`,
   });
 
-  const result = await transformFootnotesToCurly(input, { filename: "source.docx" });
+  const result = await transformFootnotesToCurlyCore(input, { filename: "source.docx" });
   assert.equal(result.filename, "source_מסולסלות.docx");
   assert.equal(result.report.referencesConverted, 1);
   assert.equal(result.report.uniqueFootnotesConverted, 1);
@@ -127,7 +124,7 @@ test("multi-paragraph footnote becomes one curly block with explicit line break"
       </w:footnote>`,
   });
 
-  const result = await transformFootnotesToCurly(input, { filename: "multi.docx" });
+  const result = await transformFootnotesToCurlyCore(input, { filename: "multi.docx" });
   const { doc } = await unpackResult(result);
   assert.equal(byLocalName(doc, "t").map(n => n.textContent || "").join(""), "A{ראשוןשני}B");
   assert.equal(byLocalName(doc, "br").length, 1, "paragraph boundary was not preserved as a line break");
@@ -143,7 +140,7 @@ test("converts repeated references deterministically without losing body order",
       <w:footnote w:id="2"><w:p><w:r><w:footnoteRef/></w:r><w:r><w:t>שתים</w:t></w:r></w:p></w:footnote>`,
   });
 
-  const result = await transformFootnotesToCurly(input, { filename: "two.docx" });
+  const result = await transformFootnotesToCurlyCore(input, { filename: "two.docx" });
   const { doc } = await unpackResult(result);
   assert.equal(byLocalName(doc, "t").map(n => n.textContent || "").join(""), "א{אחת}בג{שתים}ד");
   assert.equal(result.report.referencesConverted, 2);
@@ -157,7 +154,7 @@ test("missing referenced footnote aborts instead of deleting note infrastructure
   });
 
   await assert.rejects(
-    () => transformFootnotesToCurly(input, { filename: "missing.docx" }),
+    () => transformFootnotesToCurlyCore(input, { filename: "missing.docx" }),
     err => err?.code === "MISSING_FOOTNOTES" && err.missingIds?.includes("2")
   );
 });
@@ -171,7 +168,7 @@ test("unreferenced positive footnote aborts instead of being silently deleted", 
   });
 
   await assert.rejects(
-    () => transformFootnotesToCurly(input, { filename: "orphan.docx" }),
+    () => transformFootnotesToCurlyCore(input, { filename: "orphan.docx" }),
     err => err?.code === "UNREFERENCED_FOOTNOTES" && err.orphanIds?.includes("2")
   );
 });
@@ -190,7 +187,7 @@ test("image/table/object/hyperlink content aborts before any output is produced"
     });
 
     await assert.rejects(
-      () => transformFootnotesToCurly(input, { filename: `unsafe-${unsafe}.docx` }),
+      () => transformFootnotesToCurlyCore(input, { filename: `unsafe-${unsafe}.docx` }),
       err => err?.code === "UNSUPPORTED_FOOTNOTE_CONTENT"
         && err.items?.some(item => item.kind === unsafe)
     );
