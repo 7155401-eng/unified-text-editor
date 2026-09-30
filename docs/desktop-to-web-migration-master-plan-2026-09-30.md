@@ -48,9 +48,10 @@ The migration contract is:
 | Page size, spacing, document style | `page_size.js`, `page_settings.js`, `spacing_settings.js`, `document_style_settings.js` | PRESENT | Cross-walk every desktop setting. |
 | Headers/page numbers/document features | `document_features.js` | PRESENT / ACCEPTANCE NEEDED | Verify odd/even/header/footer behavior against desktop. |
 | Word import/export bridge | `word_bridge.js`, `word_export_serialization.js` | PRESENT | This is web Word round-trip, not the old local installer. |
-| Word footnotes → inline curly braces | `src/docx_tools/footnotes_to_curly.js` | IMPLEMENTED FROM CATALOG CONTRACT | Old repo catalog marked this capability `external-only` with no UI/pipeline implementation to port. Web implementation transforms DOCX directly, preserves rich note runs, and fails closed on orphan notes, hyperlinks, images, tables or objects. |\n| Split Word footnotes by tag | `src/docx_tools/split_footnotes_by_tag.js` + shared DOCX Worker | IMPLEMENTED FROM CATALOG CONTRACT | Old repo had only the external catalog card. Web implementation splits before literal user-selected tags, preserves tags and rich paragraph/run formatting, expands adjacent body references safely, allocates collision-free footnote IDs, and fails closed on unsupported structures. |
+| Word footnotes → inline curly braces | `src/docx_tools/footnotes_to_curly.js` | IMPLEMENTED FROM CATALOG CONTRACT | Old repo catalog marked this capability `external-only` with no UI/pipeline implementation to port. Web implementation transforms DOCX directly, preserves rich note runs, and fails closed on orphan notes, hyperlinks, images, tables or objects. |
+| Split Word footnotes by tag | `src/docx_tools/split_footnotes_by_tag.js` + shared DOCX Worker | IMPLEMENTED FROM CATALOG CONTRACT | Old repo had only the external catalog card. Web implementation splits before literal user-selected tags, preserves tags and rich paragraph/run formatting, expands adjacent body references safely, allocates collision-free footnote IDs, and fails closed on unsupported structures. |
 | Fast merge of split main text + note streams back to Word footnotes | `src/comparator_tool/comparator_docx_export.js` + Comparator UIs | IMPLEMENTED FROM CATALOG CONTRACT | Old repo explicitly reverted this catalog item to `external` because no implementation file existed. Web implementation reuses the Comparator’s existing split main/stream model, validates exact marker↔note counts, exports a true `.docx` with real Word footnotes and `@NN` stream identity, preserves Quill inline formatting, and round-trips through the Comparator importer. |
-| Stream links / nested notes | `stream_links.js`, `stream_links_ui.js`, nested-note modules | PRESENT | Compare against old link-related tools before declaring replacements. |
+| Stream links / nested notes | `stream_links.js`, `stream_links_ui.js`, `engine_bridge.js`, `link_mismatch_reporter.js` | PRESENT / LINK-TOPOLOGY PARITY VERIFIED | Current web already owns the relationship layer: per-child allowed parent streams, nested-note extraction, child numbering in the parent note, cache invalidation, orphan/mismatch reporting, and UI for choosing parents. This covers “where a link may attach”, but it does **not** generate new @XX markers or transplant markers between texts. |
 | Track changes / footnotes / TOC | `footnotes_toc_track.js` + `src/docx_tools/footnote_track_changes.js` + shared DOCX Worker | PRESENT / FOOTNOTE-ONLY WORD REVISIONS IMPLEMENTED | Review UI can accept or reject real Word tracked changes inside `word/footnotes.xml` only while leaving `word/document.xml` byte-identical. Text insert/delete/move and standard property snapshots are supported; structural paragraph/table revisions fail closed. |
 | Autosave / persistence | server storage + browser persistence | PRESENT | Desktop filesystem paths are not relevant; verify recovery behavior instead. |
 
@@ -82,10 +83,10 @@ Initial repository audit did not find a dedicated equivalent for the following o
 
 1. Visual page tweaker/editor equivalent to `page_tweaker_ui.py`.
 2. Text-to-speech (TTS) module.
-3. Automatic link combiner.
-4. Dedicated "add links to commentary" workflow — compare with current stream-links before porting.
+3. Automatic link combiner — **partially covered**: current `stream_links` already combines link *relationships/topology* and nested-note consumption, but does not synthesize missing @XX markers. The old card was `external-only` and contains no algorithm to port.
+4. Dedicated "add links to commentary" workflow — **marker-generation workflow still missing**. Current stream-links tells the engine where existing markers are allowed to resolve; it does not decide where new markers belong. The old card was `external-only` with no source implementation.
 5. Bot-assisted text comparison after combining notes with source.
-6. Link-transplant form/workflow.
+6. Link-transplant form/workflow — **marker transplant still missing**. No old source implementation or input/output contract was found; do not invent an automatic transplant heuristic without a concrete fixture/spec.
 7. Dedicated local Word add-in installer equivalent. This cannot be copied as a browser installer; translate to an Office Add-in/web bridge or a small signed desktop companion only if still required.
 8. Advanced visual PDF analyzer/report/tweaker workflows from `pdf_analyzer.py`, `pdf_report.py`, `pdf_viewer.py` where current browser preview/debug export does not cover the same job.
 
@@ -181,10 +182,23 @@ Port in this order because they reuse Word parsing already present:
 2. ✅ footnote splitter by tag — implemented on the same DOCX Worker. User supplies one or more literal tags; split happens before each tag while retaining tag text, rich run/paragraph styling and body text order. Unsafe structures fail closed;
 3. ✅ fast footnote merge — implemented as true DOCX export from the Comparator’s split main/stream state. The old catalog had no implementation and no defined external “split Word” file format, so no new incompatible file format was invented;
 4. ✅ accept/reject footnote-only changes — implemented as a safe direct DOCX transform. Only `word/footnotes.xml` is changed; body revisions remain untouched. Simple text/move revisions and standard property-change snapshots are supported; structural paragraph/table revisions fail closed;
-5. link-transplant form;
-6. dedicated commentary-link workflow.
+5. ⚠ link-transplant form — relationship topology already exists in `stream_links`; only marker transplantation is missing. Old source is external-only, so a real fixture/spec is required before implementation;
+6. ⚠ dedicated commentary-link workflow — nested-note/link resolution already exists; only automatic marker generation is missing, with no old algorithm available to port.
 
 Each should use `word_export_serialization.js` / the existing DOCX worker paths rather than introduce a second DOCX parser.
+
+#### Link-tool re-audit (2026-09-30)
+
+The old catalog names **“automatic link combiner”**, **“add links to commentary”** and **“link transplant form”** were all marked `external-only`; repository/history searches found no implementation file or stable input/output format.
+
+The current web engine already provides the non-destructive core that those tools would need:
+
+- `stream_links.js`: persisted child → allowed-parent topology and cache signature;
+- `stream_links_ui.js`: per-stream parent selection with “main always allowed” semantics;
+- `engine_bridge.js`: recursive nested-note extraction using `canNestInside()`, shared note counters, exact nested marker position and replacement by the child number;
+- `link_mismatch_reporter.js`: counts markers in main + allowed parent streams, reports orphan markers and marker/note count mismatch.
+
+Therefore **do not port another link engine**. Any future work here should be a thin marker-generation/transplant workflow on top of the existing topology, with a user-supplied deterministic matching contract and a dry-run report before mutation.
 
 ### Batch C — OCR / TTS / AI tools
 
