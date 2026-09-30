@@ -35,12 +35,19 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
 
   try {
     const first = mod.getSpacingSettingsSnapshot();
+    const storedFirst = mod.getStoredSpacingSettingsSnapshot();
     assert.equal(first.noMidLineSplits,true);
     assert.equal(first.noMidParagraphSoft,false);
     assert(Object.isFrozen(first),'hot-path snapshot must be immutable');
+    assert(Object.isFrozen(storedFirst),'stored snapshot must be immutable');
+    assert.equal(Object.prototype.hasOwnProperty.call(storedFirst,'preventMidLineSplit'),false,
+      'stored snapshot invented a UI default that was never persisted');
+    assert.equal(first.preventMidLineSplit,true,
+      'effective snapshot lost the UI default');
 
     for(let i=0;i<1000;i++) {
       assert.strictEqual(mod.getSpacingSettingsSnapshot(), first);
+      assert.strictEqual(mod.getStoredSpacingSettingsSnapshot(), storedFirst);
     }
     assert.equal(parseCount,1,'unchanged storage was reparsed inside the hot path');
 
@@ -72,14 +79,14 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
   }
 });
 
-test('layout engines consume the central spacing snapshot and do not parse spacing storage themselves',()=>{
-  for (const rel of [
-    '../../src/engine/dom_packer.js',
-    '../../src/vilna_v9_apply.js',
-  ]) {
-    const source = fs.readFileSync(new URL(rel, import.meta.url),'utf8');
-    assert.match(source,/getSpacingSettingsSnapshot/, rel);
-    assert.doesNotMatch(source,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/, rel);
-    assert.doesNotMatch(source,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/, rel);
-  }
+test('layout engines consume central spacing snapshots and do not parse spacing storage themselves',()=>{
+  const domPacker = fs.readFileSync(new URL('../../src/engine/dom_packer.js', import.meta.url),'utf8');
+  assert.match(domPacker,/getSpacingSettingsSnapshot/);
+  assert.doesNotMatch(domPacker,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/);
+  assert.doesNotMatch(domPacker,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
+
+  const v9Apply = fs.readFileSync(new URL('../../src/vilna_v9_apply.js', import.meta.url),'utf8');
+  assert.match(v9Apply,/getStoredSpacingSettingsSnapshot/);
+  assert.doesNotMatch(v9Apply,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/);
+  assert.doesNotMatch(v9Apply,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
 });
