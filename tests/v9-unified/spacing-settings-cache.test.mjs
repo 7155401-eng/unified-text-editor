@@ -35,12 +35,19 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
 
   try {
     const first = mod.getSpacingSettingsSnapshot();
+    const storedFirst = mod.getStoredSpacingSettingsSnapshot();
     assert.equal(first.noMidLineSplits,true);
     assert.equal(first.noMidParagraphSoft,false);
     assert(Object.isFrozen(first),'hot-path snapshot must be immutable');
+    assert(Object.isFrozen(storedFirst),'stored snapshot must be immutable');
+    assert.equal(Object.prototype.hasOwnProperty.call(storedFirst,'preventMidLineSplit'),false,
+      'stored snapshot invented a UI default that was never persisted');
+    assert.equal(first.preventMidLineSplit,true,
+      'effective snapshot lost the UI default');
 
     for(let i=0;i<1000;i++) {
       assert.strictEqual(mod.getSpacingSettingsSnapshot(), first);
+      assert.strictEqual(mod.getStoredSpacingSettingsSnapshot(), storedFirst);
     }
     assert.equal(parseCount,1,'unchanged storage was reparsed inside the hot path');
 
@@ -72,9 +79,19 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
   }
 });
 
-test('dom_packer consumes the central spacing snapshot and no longer parses spacing storage itself',()=>{
-  const source = fs.readFileSync(new URL('../../src/engine/dom_packer.js', import.meta.url),'utf8');
-  assert.match(source,/getSpacingSettingsSnapshot/);
-  assert.doesNotMatch(source,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/);
-  assert.doesNotMatch(source,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
+test('layout engines consume central spacing snapshots and do not parse spacing storage themselves',()=>{
+  const domPacker = fs.readFileSync(new URL('../../src/engine/dom_packer.js', import.meta.url),'utf8');
+  assert.match(domPacker,/getSpacingSettingsSnapshot/);
+  assert.doesNotMatch(domPacker,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/);
+  assert.doesNotMatch(domPacker,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
+
+  const v9Apply = fs.readFileSync(new URL('../../src/vilna_v9_apply.js', import.meta.url),'utf8');
+  assert.match(v9Apply,/const storedSpacing = getStoredSpacingSettingsSnapshot\(\)/);
+  assert.equal((v9Apply.match(/getStoredSpacingSettingsSnapshot\(\)/g)||[]).length,1,
+    'V9 must snapshot persisted spacing only once per render path');
+  assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidParagraphSoft", false\)/);
+  assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidLineSplits", false\)/);
+  assert.match(v9Apply,/readSpacingBool\(storedSpacing, "preventMidLineSplit", false\)/);
+  assert.doesNotMatch(v9Apply,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/);
+  assert.doesNotMatch(v9Apply,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
 });
