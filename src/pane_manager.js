@@ -883,7 +883,7 @@ export class PaneManager {
     this.container = container;
     this.panes = [];
     this.activePane = null;
-    this._listeners = { change: [], focus: [] };
+    this._listeners = { change: [], focus: [], persist: [] };
     // ★ משה 28/09/2026 — „ובכלל ביקשתי שזה יהיה לחוץ גלילה כברירת
     // מחדל, לא יודע למה לא נעשה".
     //
@@ -1189,6 +1189,11 @@ export class PaneManager {
       localStorage.setItem(STORAGE_KEY, text);
       this._savePending = false;
       _clearStorageAlarm();
+      try {
+        window.dispatchEvent(new CustomEvent("ravtext:local-document-saved", {
+          detail: { chars: text.length },
+        }));
+      } catch {}
     } catch (e) {
       // משה 2026-09-20: כאן נעלמה עבודה בשקט. כשאין מקום — בדפדפן או
       // בדיסק עצמו — הכתיבה נכשלת, איש אינו יודע, והמסמך קיים רק
@@ -1205,6 +1210,11 @@ export class PaneManager {
           localStorage.setItem(STORAGE_KEY, text);
           this._savePending = false;
           _clearStorageAlarm();
+          try {
+            window.dispatchEvent(new CustomEvent("ravtext:local-document-saved", {
+              detail: { chars: text.length },
+            }));
+          } catch {}
           console.warn(`[paneManager] saved after freeing ${freed} chars`);
           return;
         } catch (e2) { /* עדיין אין מקום */ }
@@ -1216,6 +1226,12 @@ export class PaneManager {
   _save({ immediate = false } = {}) {
     this._savePending = true;
     if (this._batchDepth > 0) return;
+
+    // Server autosync follows persistence intent, not rendering. Every text,
+    // structure or pane-metadata change funnels through _save(), so this one
+    // semantic signal covers edits even when live rendering is disabled.
+    this._emit("persist");
+
     if (this._saveTimer) clearTimeout(this._saveTimer);
     if (immediate) {
       this._saveTimer = null;
