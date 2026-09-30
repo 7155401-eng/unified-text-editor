@@ -63,7 +63,14 @@ function _getWorker() {
     _worker = new Worker(new URL('./word_extractor.worker.js', import.meta.url), { type: 'module' });
     _worker.onmessage = (ev) => {
       if (ev.data.type === 'progress') {
-        setStatus(ev.data.message || 'מעבד...', false, ev.data.progress);
+        // Ignore stale progress from an operation that has already completed or
+        // was superseded; otherwise an old worker can repaint the current modal.
+        if (!_workerPending.has(ev.data.id)) return;
+        setStatus(
+          ev.data.message || 'מעבד...',
+          false,
+          ev.data.indeterminate ? 'indeterminate' : ev.data.progress
+        );
         return;
       }
       const { id, ok, result, error } = ev.data;
@@ -487,21 +494,29 @@ function setStatus(text, isError, progressVal = null) {
   const m = document.getElementById(MODAL_ID); if (!m) return;
   const el = m.querySelector('.we-status');
   const prog = m.querySelector('#import-progress');
-  if (!text) { 
-    el.hidden = true; 
-    el.textContent = ''; 
-    if (prog) prog.hidden = true;
-    return; 
+  if (!text) {
+    el.hidden = true;
+    el.textContent = '';
+    if (prog) {
+      prog.hidden = true;
+      prog.value = 0;
+    }
+    return;
   }
   el.hidden = false;
   el.textContent = text;
   el.classList.toggle('we-error', !!isError);
   if (prog) {
-    if (progressVal !== null) {
+    if (progressVal === 'indeterminate') {
       prog.hidden = false;
-      prog.value = progressVal;
+      prog.removeAttribute('value');
+    } else if (Number.isFinite(Number(progressVal))) {
+      prog.hidden = false;
+      const value = Math.max(0, Math.min(100, Number(progressVal)));
+      prog.setAttribute('value', String(value));
     } else {
       prog.hidden = true;
+      prog.value = 0;
     }
   }
 }
@@ -513,11 +528,11 @@ async function onFileChange(ev) {
   _state.fileName = file.name;
   const m = document.getElementById(MODAL_ID);
   m.querySelector('.we-filename').textContent = file.name;
-  setStatus(t('scanning'));
+  setStatus(t('scanning'), false, 'indeterminate');
 
   try {
     _state.zipBuf = await file.arrayBuffer();
-    setStatus('סורק את המסמך... (הדפדפן לא קופא)');
+    setStatus('סורק את המסמך... (הדפדפן לא קופא)', false, 'indeterminate');
 
     // בדיקת cache לפי hash של הקובץ — אם כבר עיבדנו את הקובץ הזה, נחזיר מיד
     const t0Scan = Date.now();
@@ -833,7 +848,7 @@ async function onConfirm() {
     setStatus(`${t('seriesAlreadyUsed')} (${dups.join(', ')})`, true);
     return;
   }
-  setStatus(t('scanning'));
+  setStatus('מכין את הייבוא...', false, 'indeterminate');
 
   try {
     // משה 2026-05-14: קריאת אפשרויות נוספות
@@ -891,6 +906,7 @@ async function onConfirm() {
     // משה 2026-05-10: ראשית — מפת HTML של הערות מ-mammoth (תמונות/רשימות/טבלאות).
     // נופלים ל-_dnotes_html שב-engine אם mammoth נכשל.
     let notesHtmlMap = {};
+    setStatus('קורא עיצוב ותוכן מההערות...', false, 'indeterminate');
     try {
       const dynamicMap0 = buildDynamicStyleMap(_state.stylesFull || {});
       notesHtmlMap = await extractNotesHtmlMap(_state.zipBuf.slice(0), { styleMap: dynamicMap0 });
@@ -911,7 +927,7 @@ async function onConfirm() {
         mainLen: result.main?.length ?? 0,
       });
     } else {
-      setStatus('מחלץ הערות... (הדפדפן לא קופא)');
+      setStatus('מחלץ הערות... (הדפדפן לא קופא)', false, 'indeterminate');
       // עיבוד ב-Web Worker — הדפדפן ממשיך לעבוד בזמן החילוץ
       result = await workerExtract(_state.zipBuf.slice(0), simpleSelected, {
         notesHtmlMap,
@@ -928,6 +944,7 @@ async function onConfirm() {
     // משה 2026-05-09: שלב 1+2 — mammoth מספק HTML מעוצב לגוף עם סמלי הזרמים שלנו.
     // הזרמים עצמם ממשיכים להגיע מ-docx_extract_simple. הגוף = mammoth, זרמים = result.streams.
     let bodyHtml = null;
+    setStatus('משמר את עיצוב גוף המסמך...', false, 'indeterminate');
     try {
       // משה 2026-05-09: שלב 4 — styleMap דינמי לפי קטלוג הסגנונות, ו-CSS שמוזרק לעמוד.
       const dynamicMap = buildDynamicStyleMap(_state.stylesFull || {});
