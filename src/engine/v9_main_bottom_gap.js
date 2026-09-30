@@ -64,10 +64,6 @@ function bottomOf(el) {
   return topOf(el) + heightOf(el);
 }
 
-function setTop(el, top) {
-  el.style.top = `${Math.round(top * 100) / 100}px`;
-}
-
 function isMainLine(el) {
   return el?.dataset?.v9Role === "main" || el?.classList?.contains("v9-role-main");
 }
