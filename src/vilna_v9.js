@@ -5011,6 +5011,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         noMidParagraph: !!noMidParagraph,
         entered: false,
         candidateCount: 0,
+        candidates: [],
         selected: null,
         guardReason: "",
       };
@@ -5059,9 +5060,24 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         let bestExtendedScore = currentFill;
         for (const extendCandidate of extendCandidates) {
           const len = extendCandidate.offset;
+          const auditCandidate = {
+            offset: len,
+            kind: extendCandidate.kind || "",
+            movedNotes: 0,
+            movedAnchored: 0,
+            fill: null,
+            score: null,
+            reason: "",
+          };
           const movedNotes = notesBeforeAnchor(len);
+          auditCandidate.movedNotes = movedNotes.length;
           const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-          if (noMidParagraph && !movedHasAnchoredNote) continue;
+          auditCandidate.movedAnchored = movedNotes.filter(n => typeof n.anchor === "number").length;
+          if (noMidParagraph && !movedHasAnchoredNote) {
+            auditCandidate.reason = "no-anchored-note";
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
           const splitText = splitMainTextAtOffset(secondText, len);
           const splitNotes = splitNotesByAnchor(
             secondNotes,
@@ -5071,7 +5087,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           );
 
           const prefix = splitText.prefixText;
-          if (!prefix) continue;
+          if (!prefix) {
+            auditCandidate.reason = "empty-prefix";
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
 
           const extension = splitV9Paragraph(splitInfo.secondHalf, splitText, splitNotes.before, splitNotes.after);
           const firstHalf = joinV9ParagraphFragments(splitInfo.firstHalf, extension.firstHalf,
@@ -5079,7 +5099,17 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           const secondHalf = extension.secondHalf;
           const slice = [...getSlice(splitInfo.baseN), firstHalf];
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
-          if (!tp || !tp.overflow || tp.overflow.mainText) continue;
+          if (!tp || !tp.overflow) {
+            auditCandidate.reason = "missing-plan";
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
+          if (tp.overflow.mainText) {
+            auditCandidate.reason = "main-overflow";
+            auditCandidate.mainOverflowLength = normalizeRichTextEntry(tp.overflow.mainText).text.length;
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
 
           const extensionScore = scoreV9PageCandidate(
             tp,
@@ -5087,31 +5117,49 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             v9SplitPolicy,
             { cfg, movedNotes: splitNotes.before, pageIdx, source: "extension-rescue" }
           );
-          if (!extensionScore.accept) continue;
+          if (!extensionScore.accept) {
+            auditCandidate.reason = "line-guard";
+            auditCandidate.policyReason = extensionScore.reason || "";
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
 
           const noteOverflow = hasV9StreamOverflow(tp);
+          auditCandidate.noteOverflow = !!noteOverflow;
 
           // Same ownership rule as the rest of V9: an already-started long note
           // may continue; only an unsafe/unstarted continuation blocks extension.
-          if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) continue;
+          if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) {
+            auditCandidate.reason = "unsafe-note-overflow";
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
 
           const fill = planFillRatio(tp);
+          auditCandidate.fill = fill;
 
-          if (fill < currentFill - 0.04) continue;
+          if (fill < currentFill - 0.04) {
+            auditCandidate.reason = "fill-regression";
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
 
           const movedAnchoredCount = movedNotes.filter(n => typeof n.anchor === "number").length;
-
           const partialNextNoteFillBonus = Math.min(0.12, movedAnchoredCount * 0.04 + movedNotes.length * 0.02);
-
           const score =
-
             fill +
-
             partialNextNoteFillBonus +
-
             (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08));
+          auditCandidate.score = score;
 
-          if (score < bestExtendedScore) continue;
+          if (score < bestExtendedScore) {
+            auditCandidate.reason = "score-below-best";
+            auditCandidate.bestScoreAtCheck = bestExtendedScore;
+            __extensionAudit.candidates.push(auditCandidate);
+            continue;
+          }
+          auditCandidate.reason = "best-so-far";
+          __extensionAudit.candidates.push(auditCandidate);
           bestExtendedScore = score;
           bestExtended = { firstHalf, secondHalf };
         }
