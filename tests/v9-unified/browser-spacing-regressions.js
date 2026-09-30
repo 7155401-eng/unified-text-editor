@@ -71,6 +71,33 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(getComputedStyle(el).whiteSpace==='pre','note painter permits a second CSS row');
    assert(!el.classList.contains('justify'),'legacy reflow class retained');
  }
+ await test('classic source tokens do not break around punctuation without whitespace',()=>{
+   const page=makePage();
+   const token=document.createElement('span');
+   token.className='ln-word';
+   token.textContent='אבג[דה]וז';
+   page.appendChild(token);
+   assert(getComputedStyle(token).whiteSpace==='nowrap','classic word token is still breakable around punctuation');
+   token.classList.add('ln-orphan-overflow');
+   const cs=getComputedStyle(token);
+   assert(cs.wordBreak==='normal',`overlong source token re-enabled word-break: ${cs.wordBreak}`);
+   assert(cs.overflowWrap==='normal',`overlong source token re-enabled overflow-wrap: ${cs.overflowWrap}`);
+   page.remove();
+ });
+
+ await test('Hebrew niqqud shaping features are preserved from V9 measurement to paint',async()=>{
+   const page=makePage();
+   const result=await buildPages(page,[{id:'niqqud-shaping',mainText:'מֶלֶךְ כָּךְ שָׁלוֹם',notes:[]}],
+     {...cfg,talmudStreams:[],pageHeight:240,maxPages:10});
+   assert(result.complete,'niqqud shaping fixture incomplete');
+   const line=page.querySelector('[data-v9-paragraph-id="niqqud-shaping"]');
+   assert(line,'niqqud shaping line missing');
+   const features=getComputedStyle(line).fontFeatureSettings || '';
+   assert(/["']?mark["']?/i.test(features),`OpenType mark feature missing: ${features}`);
+   assert(/["']?mkmk["']?/i.test(features),`OpenType mkmk feature missing: ${features}`);
+   page.remove();
+ });
+
  await test('rich side text with large inline bold is measured before row placement',()=>{
    const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text=Array(4).fill(neutral).join(' '),input={text,runs:[{start:4,end:26,marks:{fontSize:23,fontFamily:'monospace',bold:true}},{start:42,end:70,marks:{fontSize:9,bold:true,color:'red'}}]};
    const p=flowV9MeasuredStream(input,[{x:0,width:160,y_start:0,y_end:600}],c,600),page=makePage();
