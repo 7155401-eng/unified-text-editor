@@ -16,8 +16,12 @@ test('Apps Script admin inline JavaScript parses successfully', () => {
   assert.doesNotThrow(() => new Function(script));
 });
 
-test('Apps Script admin never renders server/customer data through innerHTML', () => {
+test('Apps Script admin has no dynamic-HTML or string-evaluation sink', () => {
   assert.doesNotMatch(script, /\.innerHTML\b/u);
+  assert.doesNotMatch(script, /\.outerHTML\b/u);
+  assert.doesNotMatch(script, /insertAdjacentHTML\s*\(/u);
+  assert.doesNotMatch(script, /document\.write(?:ln)?\s*\(/u);
+  assert.doesNotMatch(script, /\beval\s*\(/u);
   assert.doesNotMatch(script, /<td>['"]?\s*\+\s*(?:c|tc|report|result|err)\b/u);
   assert.doesNotMatch(script, /err\.message\s*\+\s*['"][^'"]*<\/div>/u);
 });
