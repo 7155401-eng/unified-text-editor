@@ -93,6 +93,10 @@ function applyPageNumbers() {
   pageElements().forEach((page, i) => decoratePageNumberBeforeRender(page, i));
 }
 
+// Register as soon as the module loads: the first engine render can start before
+// the delayed UI wiring runs, and page numbering must already participate in it.
+if (typeof window !== "undefined") installPageNumberPreRenderDecorator();
+
 function applyHeaderFooter() {
   const headerText = localStorage.getItem(HEADER_KEY) || "";
   const footerText = localStorage.getItem(FOOTER_KEY) || "";
