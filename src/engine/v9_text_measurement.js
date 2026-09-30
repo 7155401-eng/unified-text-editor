@@ -1,5 +1,5 @@
 import { appendTextWithRuns, sliceRuns } from './runs_dom.js';
-import { extractOpeningSegmentForTest } from '../opening_word.js';
+import { extractOpeningSegmentForTest, getOpeningWordSkipPolicy } from '../opening_word.js';
 import { V9_INLINE_PLAN_VERSION } from './v9_main_inline_layout.js';
 
 const TYPOGRAPHY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'fontFeatureSettings', 'fontKerning', 'lineHeight', 'letterSpacing', 'wordSpacing', 'color', 'backgroundColor', 'textDecoration', 'direction'];
@@ -108,7 +108,8 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
         fontWeight: s.weight === 'normal' ? '400' : s.weight === 'heavy' ? '900' : '700', lineHeight: '1' };
       return { start, end, marks, position: s.position === 'raised' ? 'raised' : 'dropped',
         dropLines: Math.round(clamp(s.dropLines, 2, 1, 8)),
-        gapPx: openingSize * clamp(s.spaceAfter, 0.3, 0, 4) };
+        gapPx: openingSize * clamp(s.spaceAfter, 0.3, 0, 4),
+        skipPolicy: getOpeningWordSkipPolicy(s) };
     },
     measure(part) {
       if (disposed) throw new Error('Disposed V9 measurement context');
