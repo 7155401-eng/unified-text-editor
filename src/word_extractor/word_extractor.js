@@ -788,6 +788,7 @@ export async function openImport() {
 
 export async function openWordExtractor(paneManager, onLoaded) {
   await assertToolAllowed("word-extractor");
+  setupWordExtractor(paneManager, onLoaded);
   return openWordExtractorDialogWithOverwriteStyles(paneManager, onLoaded);
 }
 
