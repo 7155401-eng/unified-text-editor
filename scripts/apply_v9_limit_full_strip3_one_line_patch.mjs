@@ -112,8 +112,7 @@ function patchSideStreamFullStrip(source) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
-        // The side-commentary widening boundary is semantic: both columns
-        // start their wider rows on the same Y, never with a straddling row.
+        // Both side streams widen below main on the same planned Y boundary.
         lockYStart: true,
       });
     }
