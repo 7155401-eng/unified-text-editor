@@ -35,6 +35,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Locked dependencies
+        id: deps
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
       - name: Syntax and unit regressions on committed source
         run: |
           mkdir -p test-results/v9-unified
@@ -45,11 +50,6 @@ jobs:
           test ! -f .github/workflows/v9-apply-candidate-once.yml
           test ! -f .github/v9-candidate-edits-1.b64
           test ! -f .github/v9-build-compat-edits.json
-      - name: Locked dependencies
-        id: deps
-        env:
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: npm ci --ignore-scripts
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: Browser regressions before build

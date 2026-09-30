@@ -325,3 +325,180 @@ test('typing while startup server fetch is in flight wins over the late server c
     for (const restore of restores.reverse()) restore();
   }
 });
+
+
+test('hung startup document GET is aborted, timeout stays read-only, and autosync can attach', async () => {
+  const localContent = {
+    version: 1,
+    activeId: 'local',
+    panes: [{ id: 'local', paneRole: 'main', content: { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'browser local copy' }] },
+    ] } }],
+  };
+  const storage = fakeStorage({ [DOC_KEY]: JSON.stringify(localContent) });
+  const timers = fakeTimers();
+  const callbacks = new Map();
+  const puts = [];
+  let documentAborted = false;
+  let loadedServer = false;
+
+  const fetchStub = (url, init = {}) => {
+    const method = init.method || 'GET';
+    if (String(url) === '/api/documents/current' && method === 'GET') {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener?.('abort', () => {
+          documentAborted = init.signal.aborted === true;
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        }, { once: true });
+      });
+    }
+    if (String(url) === '/api/settings' && method === 'GET') {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        async json() { return { settings: { 'ravtext.test.seed': 'server-setting' } }; },
+      });
+    }
+    if (String(url) === '/api/documents/current' && method === 'PUT') {
+      puts.push(JSON.parse(init.body));
+      return Promise.resolve({ ok: true, status: 200, async json() { return {}; } });
+    }
+    throw new Error('unexpected fetch ' + method + ' ' + url);
+  };
+
+  const restores = [
+    replaceGlobal('window', {
+      __RAVTEXT_AUTH__: { loggedIn: true },
+      addEventListener() {},
+      dispatchEvent() {},
+    }),
+    replaceGlobal('localStorage', storage),
+    replaceGlobal('document', { getElementById: () => null }),
+    replaceGlobal('navigator', { sendBeacon: () => true }),
+    replaceGlobal('fetch', fetchStub),
+    replaceGlobal('setTimeout', timers.setTimeout),
+    replaceGlobal('clearTimeout', timers.clearTimeout),
+    replaceGlobal('CustomEvent', class CustomEvent {
+      constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
+    }),
+  ];
+
+  const paneManager = {
+    getContentRevision() { return 0; },
+    load() { loadedServer = true; },
+    serializeForPersistence() { return structuredClone(localContent); },
+    on(type, fn) { callbacks.set(type, fn); },
+    flushSave() {},
+  };
+
+  try {
+    const mod = await freshModule('startup-document-timeout-abort');
+    const pending = mod.loadInitialState(paneManager);
+    await settle();
+
+    assert.equal(storage.getItem('ravtext.test.seed'), 'server-setting',
+      'fast settings endpoint should still seed its value');
+    assert.deepEqual(timers.delays(), [8000]);
+
+    timers.runByDelay(8000);
+    const result = await pending;
+    await settle();
+
+    assert.equal(result.loaded, false);
+    assert.equal(result.startupTimedOut, true);
+    assert.equal(documentAborted, true, 'timed-out GET was not aborted');
+    assert.equal(loadedServer, false);
+    assert.equal(storage.getItem(STALE_KEY), null,
+      'read timeout alone must not claim the server document is stale');
+
+    mod.attachAutoSync(paneManager);
+    assert.equal(typeof callbacks.get('persist'), 'function');
+    assert.deepEqual(timers.delays(), [],
+      'timeout alone must not blindly upload browser-local state');
+
+    callbacks.get('persist')();
+    assert.deepEqual(timers.delays(), [2000, 10000]);
+    timers.runByDelay(2000);
+    await settle();
+    assert.equal(puts.length, 1);
+    assert.deepEqual(puts[0].content, localContent);
+  } finally {
+    for (const restore of restores.reverse()) restore();
+  }
+});
+
+test('hung settings GET does not discard a valid startup document response', async () => {
+  const serverContent = {
+    version: 1,
+    activeId: 'server',
+    panes: [{ id: 'server', paneRole: 'main', content: { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'valid server copy' }] },
+    ] } }],
+  };
+  const storage = fakeStorage();
+  const timers = fakeTimers();
+  let settingsAborted = false;
+  let loaded = null;
+
+  const fetchStub = (url, init = {}) => {
+    if (String(url) === '/api/documents/current') {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        async json() { return { document: { content: serverContent } }; },
+      });
+    }
+    if (String(url) === '/api/settings') {
+      return new Promise((_resolve, reject) => {
+        init.signal?.addEventListener?.('abort', () => {
+          settingsAborted = init.signal.aborted === true;
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        }, { once: true });
+      });
+    }
+    throw new Error('unexpected fetch ' + url);
+  };
+
+  const restores = [
+    replaceGlobal('window', {
+      __RAVTEXT_AUTH__: { loggedIn: true },
+      addEventListener() {},
+      dispatchEvent() {},
+    }),
+    replaceGlobal('localStorage', storage),
+    replaceGlobal('document', { getElementById: () => null }),
+    replaceGlobal('fetch', fetchStub),
+    replaceGlobal('setTimeout', timers.setTimeout),
+    replaceGlobal('clearTimeout', timers.clearTimeout),
+    replaceGlobal('CustomEvent', class CustomEvent {
+      constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
+    }),
+  ];
+
+  try {
+    const mod = await freshModule('startup-settings-timeout-document-survives');
+    const pending = mod.loadInitialState({
+      getContentRevision() { return 0; },
+      load(content) { loaded = structuredClone(content); },
+      flushSave() {},
+    });
+    await settle();
+
+    assert.deepEqual(timers.delays(), [8000]);
+    timers.runByDelay(8000);
+    const result = await pending;
+    await settle();
+
+    assert.equal(settingsAborted, true);
+    assert.equal(result.loaded, true);
+    assert.equal(result.source, 'server');
+    assert.equal(result.startupTimedOut, true);
+    assert.deepEqual(loaded, serverContent);
+  } finally {
+    for (const restore of restores.reverse()) restore();
+  }
+});
