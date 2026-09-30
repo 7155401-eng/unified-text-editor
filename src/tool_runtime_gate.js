@@ -15,7 +15,7 @@ function newIdempotencyKey(toolName, kind = "success") {
   return `${toolName}:${kind}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
 }
 
-async function postGate(payload) {
+async function postGate(payload, { silent = false } = {}) {
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -29,7 +29,7 @@ async function postGate(payload) {
     const reason = res.status === 401
       ? "login"
       : (data?.reason || (res.status === 429 ? "quota" : (res.status === 409 ? "in_progress" : "error")));
-    if (reason === "login" || reason === "quota" || reason === "in_progress") {
+    if (!silent && (reason === "login" || reason === "quota" || reason === "in_progress")) {
       showToolBlocked(payload.toolName, payload.niceName || payload.toolName, reason, data);
     }
     const err = new Error(
@@ -84,7 +84,7 @@ export async function assertToolAllowed(toolName) {
  * Check a real action immediately before starting it, without consuming quota.
  * amount is used by unit policies such as Torah nikud characters/day.
  */
-export async function checkToolAllowance(toolName, { amount = 1, niceName = "" } = {}) {
+export async function checkToolAllowance(toolName, { amount = 1, niceName = "", silent = false } = {}) {
   const key = String(toolName || "").trim();
   if (!key) throw new Error("Missing tool name");
   assertLocalLogin(key);
@@ -95,7 +95,11 @@ export async function checkToolAllowance(toolName, { amount = 1, niceName = "" }
     amount,
     timestamp: Date.now(),
     timeZoneOffsetMinutes: timezoneOffsetMinutes(),
-  });
+  }, { silent });
+}
+
+export async function getToolQuotaStatus(toolName, { amount = 1 } = {}) {
+  return checkToolAllowance(toolName, { amount, silent: true });
 }
 
 /**
