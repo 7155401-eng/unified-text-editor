@@ -89,6 +89,21 @@ function syncRibbonTabs() {
 // האמיתי, ורק אם התוכן לא נכנס — מצמצמים את הריווח בשתי דרגות.
 // הבדיקה רצה בטעינה, בשינוי גודל חלון ובבנייה מחדש של הלשוניות בלבד —
 // לא בכל סבב סנכרון, כדי שלא תיווצר לולאה.
+function syncRibbonStickyOffset(bar) {
+  if (!bar || typeof document === "undefined") return 34;
+  const rect = bar.getBoundingClientRect?.();
+  const measured = Math.max(
+    1,
+    Math.ceil(Number(rect?.height) || Number(bar.offsetHeight) || 34)
+  );
+  const root = document.documentElement;
+  const next = measured + "px";
+  if (root?.style?.getPropertyValue("--ravtext-ribbon-tabs-height") !== next) {
+    root?.style?.setProperty("--ravtext-ribbon-tabs-height", next);
+  }
+  return measured;
+}
+
 export function fitRibbonTabs() {
   const bar = document.getElementById("ribbon-tabs");
   if (!bar) return;
@@ -101,6 +116,7 @@ export function fitRibbonTabs() {
     if (bar.scrollWidth > bar.clientWidth) bar.classList.add("rt-compact-3");
   }
   bar.classList.toggle("has-overflow", bar.scrollWidth > bar.clientWidth);
+  syncRibbonStickyOffset(bar);
   if (bar.className === had) return;
 }
 
@@ -141,12 +157,22 @@ function attachObserver() {
   if (!toolbar || !tabsBar || typeof MutationObserver === "undefined") return false;
 
   observer?.disconnect();
-  observer = new MutationObserver(queueSync);
+  observer = new MutationObserver(() => {
+    queueSync();
+    queueFit();
+  });
   observer.observe(tabsBar, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "aria-selected"] });
   observer.observe(toolbar, { attributes: true, childList: true, subtree: true, attributeFilter: ["class", "hidden", "style", "data-ribbon-tab"] });
   document.querySelectorAll(".ribbon-panel").forEach((panel) => {
     observer.observe(panel, { attributes: true, attributeFilter: ["class", "hidden", "style", "data-ribbon-tab"] });
   });
+
+  if (typeof ResizeObserver !== "undefined" && !tabsBar.__ravtextRibbonResizeObserved) {
+    const ro = new ResizeObserver(queueFit);
+    ro.observe(tabsBar);
+    tabsBar.__ravtextRibbonResizeObserved = true;
+    tabsBar.__ravtextRibbonResizeObserver = ro;
+  }
   return true;
 }
 
