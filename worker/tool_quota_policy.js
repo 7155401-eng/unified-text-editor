@@ -224,6 +224,8 @@ export function evaluateQuotaState(policy, stateLike, {
     const idle = Math.max(1, int(policy.sessionIdleSeconds, SESSION_IDLE_SECONDS));
     const windowSec = Math.max(1, int(policy.windowSeconds, WEEK_SECONDS));
     const limit = Math.max(1, int(policy.limit, 1));
+    // Comparator parity: 15 minutes are measured from the FIRST action in
+    // the session. Activity inside the window does not extend it.
     const active = state.last_activity > 0 && now - state.last_activity < idle;
     const reset = !state.window_start || now - state.window_start >= windowSec;
     const used = reset ? 0 : state.uses;
@@ -560,7 +562,10 @@ async function atomicConsumeSession(env, userId, toolName, policy, nowSec) {
           WHEN window_start = 0 OR ? - window_start >= ? THEN 1
           ELSE uses + 1
         END,
-        last_activity = ?,
+        last_activity = CASE
+          WHEN last_activity > 0 AND ? - last_activity < ? THEN last_activity
+          ELSE ?
+        END,
         last_success = ?,
         updated_at = ?
     WHERE user_id = ? AND tool_name = ?
@@ -574,7 +579,8 @@ async function atomicConsumeSession(env, userId, toolName, policy, nowSec) {
     nowSec, windowSec, nowSec,
     nowSec, idle,
     nowSec, windowSec,
-    nowSec, nowSec, nowSec,
+    nowSec, idle, nowSec,
+    nowSec, nowSec,
     userId, toolName,
     nowSec, idle,
     nowSec, windowSec,
