@@ -15,3 +15,11 @@ export function hasPotentialStreamMarker(text, userSymbol, { nestedOn = false } 
 
   return false;
 }
+
+export function streamMarkerContextRadius(userSymbol) {
+  // Numeric markers need at most four source characters (@ + 3 digits).
+  // Custom pane symbols are user-editable and can be longer, so the changed
+  // range must include the whole symbol or a newly completed symbol can be
+  // missed by the large-document fast path.
+  return Math.max(8, String(userSymbol || "").length + 1);
+}
