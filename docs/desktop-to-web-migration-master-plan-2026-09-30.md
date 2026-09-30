@@ -211,7 +211,7 @@ Therefore **do not port another link engine**. Any future work here should be a 
 
 1. Page tweaker parity audit — the desktop addon stored explicit per-page edits; do not translate its TeX mutation mechanism literally into a second post-layout geometry engine.
 2. ✅ Final-layout analyzer/report — implemented on the final RavText DOM with downloadable JSON and permanent integration/Chromium regressions. The existing browser preview already covers the old viewer/navigation role. Arbitrary third-party PDF parsing remains separate from RavText layout diagnostics.
-3. Translate useful `torahtools` switches into V9 configuration; do not embed the old LaTeX package as the new layout authority.
+3. ✅ `torahtools` parity audit complete — see `docs/torahtools-v9-parity.md`. Useful user capabilities are already owned by page/stream settings, V9 split/continuation/gap-fill policy and the final-layout report. TeX-only warning suppression, box overhang and globally-loose/flush-bottom experiments are explicitly retired and guarded against reintroduction.
 
 ### Batch E — Word integration
 
