@@ -579,10 +579,13 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // משנה את חישוב הפגינציה ולא יוצר גלישה נסתרת.
     applyV9MainBottomGap(container);
 
-    // סימון העמודים במצב משנ"ב — אותו סיווג שהמנוע הרגיל נותן, כדי שגם
-    // כאן יחולו כללי העיצוב של התבנית ושיהיה אפשר לראות שהמצב באמת פעיל.
+    // סימון העמודים במצב משנ"ב — גם מתג משנ"ב הגלובלי וגם בחירת
+    // "פריסה = משנה ברורה" פר-זרם נחשבים מצב פעיל. הגיאומטריה הפר-זרמית
+    // מטופלת ב-V9 בלי לשחרר את שני צדדי הגפ"ת הקבועים.
+    const perStreamMishnaOn = Object.values(streamSettings || {})
+      .some((s) => String(s?.layoutRole || "") === "mishna");
     for (const pageEl of container.querySelectorAll(".page")) {
-      pageEl.classList.toggle("mishna-wrap-page", mishnaWrapOn);
+      pageEl.classList.toggle("mishna-wrap-page", mishnaWrapOn || perStreamMishnaOn);
     }
 
 
