@@ -14,6 +14,7 @@ import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
 import { mainRefNoSpaceTokenBounds } from "./reference_line_break.js";
+import { applyDocumentFeaturesToPage } from "../document_features.js";
 
 // משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
 // ב-note_content_builder.js. הפונקציה הזו ממירה את ה-nodes ל-DOM (עם
@@ -861,6 +862,7 @@ export function renderPages(packerOutput, container) {
       const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
       real.dataset.pageIndex = String(i);
       real.dataset.realized = "1";
+      applyDocumentFeaturesToPage(real, i, { atRender: true });
       __ravtextRunPreRenderPageDecorators(real, i);
       allFrag.appendChild(real);
       realPages.push(real);
@@ -904,6 +906,7 @@ export function renderPages(packerOutput, container) {
     real.dataset.pageIndex = String(i);
     real.dataset.realized = "1";
     if (ph.style.zoom) real.style.zoom = ph.style.zoom;
+    applyDocumentFeaturesToPage(real, i, { atRender: true });
     __ravtextRunPreRenderPageDecorators(real, i);
     ph.parentNode.replaceChild(real, ph);
     placeholders[i] = real;
