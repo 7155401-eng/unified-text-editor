@@ -9,7 +9,7 @@
 import './comparator.css';
 import { mountComparatorUI } from './comparator_ui.js';
 import { mountComparatorIntegratedUI } from './comparator_integrated.js';
-import { assertToolAllowed } from '../tool_runtime_gate.js';
+import { assertToolAllowed, consumeToolUse } from '../tool_runtime_gate.js';
 import { openToolStartupOverlay } from '../tool_startup_overlay.js';
 
 // Resolve vendor path against the document base URL so it works in dev
@@ -109,7 +109,7 @@ export async function openComparator(options = {}) {
   try {
     await Promise.resolve(); // let the loading UI paint immediately after click
     loader.set(18, 'בודק הרשאה…');
-    await assertToolAllowed('comparator-tool');
+    const preflight = await assertToolAllowed('comparator-tool');
 
     loader.set(36, 'טוען ספריות השוואה…');
     await ensureVendor((pct, msg) => loader.set(pct, msg));
@@ -142,16 +142,50 @@ export async function openComparator(options = {}) {
 
     const body = overlay.querySelector('.comparator-host-body');
 
+    let sessionStartedAt = 0;
+    let sessionBlocked = !!preflight?.quotaReadOnly;
+    let sessionPending = null;
+    const sessionDurationMs = 15 * 60 * 1000;
+
+    const onSessionAction = async () => {
+      if (sessionBlocked) return false;
+      const now = Date.now();
+      if (sessionStartedAt && now - sessionStartedAt < sessionDurationMs) return true;
+      if (sessionPending) return sessionPending;
+
+      sessionPending = (async () => {
+        try {
+          await consumeToolUse('comparator-tool', {
+            niceName: 'עורך רב טקסט',
+            kind: sessionStartedAt ? 'session-timeout-recheck' : 'session-first-action',
+          });
+          sessionStartedAt = Date.now();
+          return true;
+        } catch (_) {
+          sessionBlocked = true;
+          return false;
+        } finally {
+          sessionPending = null;
+        }
+      })();
+
+      return sessionPending;
+    };
+
     let api;
     if (variant === 'integrated') {
       api = mountComparatorIntegratedUI(body, {
         lang: options.lang,
-        onClose: _closeActive
+        onClose: _closeActive,
+        onSessionAction,
+        quotaReadOnly: !!preflight?.quotaReadOnly,
       });
     } else {
       api = mountComparatorUI(body, {
         lang: options.lang,
-        onClose: _closeActive
+        onClose: _closeActive,
+        onSessionAction,
+        quotaReadOnly: !!preflight?.quotaReadOnly,
       });
     }
 
