@@ -1,6 +1,6 @@
 import { saveTextStyles, loadTextStyles } from '../../src/style_registry.js';
 import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
-import { createV9TextLayoutContext, waitForV9LayoutFonts } from '../../src/engine/v9_text_measurement.js';
+import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart } from '../../src/engine/v9_text_measurement.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
 import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
 import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
@@ -62,7 +62,32 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    }
  });
 
- await test('V9 paints page numbers during page construction without a post-render event',async()=>{
+ await test('edge bidi controls remain active around neutral punctuation instead of display-none',()=>{
+    const host=document.createElement('span');
+    appendV9PlannedPart(host,{
+      leadingText:' \u200f ',
+      text:"('אב",
+      trailingText:' \u200e ',
+      runs:[],refs:[],style:{}
+    });
+
+    assert(host.textContent===" \u200f ('אב \u200e ",
+      `source order changed: ${JSON.stringify(host.textContent)}`);
+
+    const hidden=[...host.querySelectorAll('.v9-source-whitespace')]
+      .map(el=>el.textContent||'').join('');
+    assert(!hidden.includes('\u200e')&&!hidden.includes('\u200f'),
+      'LRM/RLM were still hidden from the BiDi algorithm');
+
+    const activeText=[...host.childNodes]
+      .filter(n=>n.nodeType===Node.TEXT_NODE)
+      .map(n=>n.nodeValue||'').join('');
+    assert(activeText.includes('\u200f')&&activeText.includes('\u200e'),
+      'direction controls are not active text nodes');
+    host.remove();
+  });
+
+  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
    const savedRegistry=window.__ravtextPreRenderPageDecorators;
