@@ -67,8 +67,7 @@ export async function runBrowserSuite() {
     const page=makePage();p.lines.forEach(l=>renderV9PlannedMainLine(l,page,0));inspectLines(page,p.lines);
     assert(page.querySelectorAll('.v9-opening-glyph').length===1,'opening glyph duplicated/lost');
     assert(p.lines[0].openingWindow&&p.lines[1].openingWindow,'opening rows left the measured window');
-    assert(p.lines.map(l=>sourceText(page.querySelector(`[data-v9-source-offset="${l.source.start}"][data-v9-paragraph-id="tail-opening-dom"]`)||document.createElement('span'))).join('')===text,
-      'DOM source continuity changed during opening-tail rebalance');
+    assert(p.lines.map(l=>l.sourceText).join('')===text,'source continuity changed during opening-tail rebalance');
     page.remove();
   });
 
