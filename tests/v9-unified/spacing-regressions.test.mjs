@@ -470,7 +470,9 @@ test('second and final opening-window row centers with the opening as one visual
  assert.equal(p.lines.map(l=>l.sourceText).join(''),text,'source text changed while balancing');
  const opening=host.render.opening;
  const bodyLeft=last.x;
- const bodyRight=last.x+last.naturalWidth;
+ const bodyGaps=(last.render.body.text.match(/ /g)||[]).length;
+ const bodyVisualWidth=last.naturalWidth+bodyGaps*last.render.wordSpacing;
+ const bodyRight=bodyLeft+bodyVisualWidth;
  const visualLeft=Math.min(bodyLeft,opening.x);
  const visualRight=Math.max(bodyRight,opening.x+opening.width);
  assert(Math.abs((visualLeft+visualRight)/2-50)<.01,
@@ -488,14 +490,14 @@ test('completed opening-window tail stays adjacent when gentle composite centeri
   measure:p=>{
    const body=String(p.text||'').trim();
    if(body==='OPEN')return {width:20,height:10,topInset:0};
-   // One body word fits each row, but neither row has an inter-word gap that
-   // can absorb the remaining width. The safe fallback is adjacency, not
-   // letter-spacing/scaleX and not independent centering.
+   // Two 25px words fit the first 58px body window, leaving one word on
+   // the second row. Every legal 2-row partition therefore has at least one
+   // single-word row with no gap to stretch — exact composite fill is impossible.
    const n=body?body.split(/\s+/u).length:0;
-   return {width:n?n*60+(n-1)*2:0,height:10,topInset:0};
+   return {width:n?n*25+(n-1)*2:0,height:10,topInset:0};
   }
  };
- const text='OPEN aa bb';
+ const text='OPEN aa bb cc';
  const p=layoutV9MainParagraphs(
   [{id:'opening-no-safe-center',text,runs:[],mainRefs:[]}],
   [{x:0,width:80,y_start:0,y_end:100}],ctx,100
