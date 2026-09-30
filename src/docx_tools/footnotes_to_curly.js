@@ -100,7 +100,7 @@ function footnoteParagraphs(noteEl) {
 }
 
 function unsupportedFootnoteContent(noteEl) {
-  const forbidden = new Set(["drawing", "pict", "object", "altChunk", "tbl"]);
+  const forbidden = new Set(["drawing", "pict", "object", "altChunk", "tbl", "hyperlink"]);
   const stack = [noteEl];
   while (stack.length) {
     const node = stack.pop();
@@ -261,6 +261,17 @@ export async function transformFootnotesToCurly(input, { filename = "" } = {}) {
     const err = new Error(`חסרות הערות עבור ההפניות: ${missingIds.join(", ")}. המסמך לא שונה.`);
     err.code = "MISSING_FOOTNOTES";
     err.missingIds = missingIds;
+    throw err;
+  }
+
+  const referencedSet = new Set(referencedIds);
+  const orphanIds = [...notes.keys()].filter(id => !referencedSet.has(id));
+  if (orphanIds.length) {
+    const err = new Error(
+      `קיימות הערות שוליים ללא הפניה בגוף המסמך: ${orphanIds.join(", ")}. המסמך לא שונה כדי למנוע אובדן מידע.`
+    );
+    err.code = "UNREFERENCED_FOOTNOTES";
+    err.orphanIds = orphanIds;
     throw err;
   }
 
