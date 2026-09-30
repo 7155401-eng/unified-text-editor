@@ -5,12 +5,36 @@ import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engin
 import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
+import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
 const cfg={pageWidth:380,pageHeight:350,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:false}};
 
 export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
+ await test('V9 paints page numbers during page construction without a post-render event',async()=>{
+   const savedSetting=localStorage.getItem('ravtext.pageNumbers');
+   const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
+   const savedRegistry=window.__ravtextPreRenderPageDecorators;
+   const host=makePage();
+   try {
+     localStorage.setItem('ravtext.pageNumbers','1');
+     window.__ravtextPreRenderPageDecorators=[];
+     installPageNumberPreRenderDecorator();
+     const result=await buildPages(host,[{id:'page-number-during-render',mainText:Array(4).fill(neutral).join(' '),notes:[]}],
+       {...cfg,pageHeight:300,talmudStreams:[],maxPages:10});
+     assert(result.complete,'page-number fixture incomplete');
+     assert(result.pages.length>0,'page-number fixture produced no page');
+     const first=result.pages[0],label=first.querySelector('.ravtext-page-number-overlay');
+     assert(label,'page number was left to the later engine-rendered/observer pass');
+     assert(label.textContent==='א',`unexpected first page label: ${label.textContent}`);
+     assert(first.dataset.ravtextPageNumberPaint==='during-render','page number was not painted by the render-time decorator');
+   } finally {
+     host.remove();
+     if(savedSetting===null)localStorage.removeItem('ravtext.pageNumbers');else localStorage.setItem('ravtext.pageNumbers',savedSetting);
+     if(hadRegistry)window.__ravtextPreRenderPageDecorators=savedRegistry;else delete window.__ravtextPreRenderPageDecorators;
+   }
+ });
  function assertNoWordOverlap(page) {
    const boxes=[];
    for(const line of page.querySelectorAll('.v9-line')) {
