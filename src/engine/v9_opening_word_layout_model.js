@@ -1,4 +1,4 @@
-import { extractOpeningSegmentForTest, getOpeningWordSettings } from "../opening_word.js";
+import { extractOpeningSegmentForTest, getOpeningWordSettings, OPENING_WORD_DEFAULT_SIZE } from "../opening_word.js";
 
 function clampNumber(value, fallback, min, max) {
   const n = Number(value);
@@ -28,7 +28,7 @@ function normalizeSettingsForV9(raw) {
     count: clampNumber(settings.count, 1, 1, 12),
     style: settings.style || "",
     font: settings.font || "David",
-    size: clampNumber(settings.size, 200, 80, 500),
+    size: clampNumber(settings.size, OPENING_WORD_DEFAULT_SIZE, 80, 500),
     weight: settings.weight || "bold",
     position: settings.position || "dropped",
     dropLines: clampNumber(settings.dropLines, 2, 1, 8),
