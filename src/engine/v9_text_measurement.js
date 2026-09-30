@@ -197,6 +197,20 @@ export function renderV9PlannedMainLine(line, pageEl, padding = 0) {
     v9OpeningWindowApplied: line.openingWindow ? '1' : '0', v9StretchPolicy: 'planned-in-v9' });
   if (line.forcedBreak) el.dataset.v9ForcedBreak = '1';
   if (line.isLast) el.dataset.v9ParaLast = '1';
+  if (line.openingHostFullWidth > 0) el.dataset.v9OpeningHostFullWidthPx = String(line.openingHostFullWidth);
+  if (Number.isFinite(Number(line.openingHostX))) {
+    el.dataset.v9OpeningHostXPx = String(line.openingHostX);
+    el.dataset.v9OpeningHostLeftPx = String(padding + Number(line.openingHostX));
+  }
+  if (line.openingCompositeWidth > 0) el.dataset.v9OpeningCompositeWidthPx = String(line.openingCompositeWidth);
+  if (line.openingCompositeCentered) {
+    el.dataset.v9OpeningCompositeCentered = '1';
+    if (line.openingHostFullWidth > 0 && Number.isFinite(Number(line.openingHostX))) {
+      el.dataset.v9OpeningExpectedCenterPx = String(
+        padding + Number(line.openingHostX) + Number(line.openingHostFullWidth) / 2
+      );
+    }
+  }
   const opening = line.render.opening;
   if (opening) {
     const glyph = document.createElement('span');
