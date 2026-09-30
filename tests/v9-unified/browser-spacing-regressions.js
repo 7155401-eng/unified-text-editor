@@ -8,6 +8,8 @@ import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.j
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
 import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
+import { domPack } from '../../src/engine/dom_packer.js';
+import { renderPackedPagesToElements } from '../../src/engine/renderer.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
@@ -22,6 +24,41 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(out==='אחד<br><b>שניים</b></span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>שלוש',
      `unexpected Word fragment: ${out}`);
  });
+ await test('B7 normal front-matter pages keep rich metadata and physical indices',async()=>{
+   const packed=await domPack([
+     {
+       mainText:'Intro alpha beta gamma',
+       mainRuns:[{start:6,end:11,marks:{bold:true}}],
+       notes:[],
+       mainRefs:[],
+       blockType:'paragraph',
+       style:{textAlign:'center'}
+     }
+   ],{pageWidth:380,pageHeight:300,maxPageHeight:270},{forceRegularLayout:true});
+   assert(packed.length===1,`front-matter fixture produced ${packed.length} pages`);
+   packed[0].frontMatter={paneId:'intro-1',label:'Intro 1',groupIndex:0};
+   const els=renderPackedPagesToElements(packed,{pageIndexOffset:2});
+   assert(els.length===1,'front-matter renderer returned no page');
+   const page=els[0];
+   assert(page.classList.contains('front-matter-page'),'front-matter page class missing');
+   assert(page.dataset.pageIndex==='2',`front-matter physical page index is ${page.dataset.pageIndex}`);
+   assert(page.dataset.frontMatterPaneId==='intro-1','front-matter pane id missing');
+   assert(page.querySelector('.page-main'),'front-matter page lost main content container');
+   assert(page.textContent.includes('Intro alpha beta gamma'),'front-matter text missing after render');
+ });
+
+ await test('B7 V9 book starts after the physical front-matter offset',async()=>{
+   const host=makePage();
+   try {
+     const result=await buildPages(host,[{id:'b7-book',mainText:Array(3).fill(neutral).join(' '),notes:[]}],
+       {...cfg,pageHeight:300,talmudStreams:[],maxPages:10,pageIndexOffset:3});
+     assert(result.complete,'B7 V9 offset fixture incomplete');
+     assert(result.pages.length>0,'B7 V9 offset fixture produced no page');
+     assert(result.pages[0].dataset.pageIndex==='3',
+       `V9 book ignored front-matter offset: ${result.pages[0].dataset.pageIndex}`);
+   } finally {host.remove();}
+ });
+
  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
