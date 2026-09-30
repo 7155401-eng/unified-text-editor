@@ -30,6 +30,9 @@ export function rowGeometry(strips, y, height, pageBottom) {
   for (const s of strips) {
     if (s.y_end <= cursor + EPS) continue;
     if (s.y_start > cursor + EPS) return null;
+    if (s.lockYStart === true && y < s.y_start - EPS && y + height > s.y_start + EPS) {
+      return null;
+    }
     left = Math.max(left, s.x);
     right = Math.min(right, s.x + s.width);
     cursor = Math.min(y + height, s.y_end);
