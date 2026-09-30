@@ -1,0 +1,26 @@
+name: Temporary opening/knee sweep
+
+on:
+  push:
+    branches:
+      - audit/fix-v9-opening-knee-sweep-20261001
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: V9 unit sweep
+        run: node --test tests/v9-unified/spacing-regressions.test.mjs
