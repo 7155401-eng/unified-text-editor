@@ -97,6 +97,44 @@ test('invisible-only word cannot consume a justification slot at line boundary',
  assert.ok(p.lines.every(l=>l.render.wordSpacing===0));
 });
 
+
+test('page-ending continuation rebalances the paragraph tail instead of rubber-stretching one row',()=>{
+ const text=Array(10).fill('aa').join(' ');
+ const ctx={
+  fontSize:10,lineHeight:10,describeOpening:()=>null,
+  measure:p=>{const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};}
+ };
+ const p=layoutV9MainParagraphs(
+  [{id:'tail-balance',text,runs:[],mainRefs:[],continuesAfter:true}],
+  [{x:0,width:54,y_start:0,y_end:30}],ctx,30
+ );
+ assert.equal(p.lines.length,3);
+ assert.deepEqual(p.lines.map(l=>l.wordTokens.length),[4,3,3]);
+ assert.ok(p.lines.every(l=>l.tailRebalanced===true));
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
+ assert.ok(Math.max(...p.lines.map(l=>l.render.wordSpacing))<=6.5001,
+  `tail spacing was not gently capped: ${p.lines.map(l=>l.render.wordSpacing).join(',')}`);
+ assert.ok(p.diagnostics.some(d=>d.code==='paragraph-tail-rebalanced'));
+});
+
+test('continuation tail rebalance starts only after the last explicit source line break',()=>{
+ const text='aa aa aa aa\naa aa aa aa aa aa';
+ const ctx={
+  fontSize:10,lineHeight:10,describeOpening:()=>null,
+  measure:p=>{const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};}
+ };
+ const p=layoutV9MainParagraphs(
+  [{id:'tail-after-break',text,runs:[],mainRefs:[],continuesAfter:true}],
+  [{x:0,width:54,y_start:0,y_end:30}],ctx,30
+ );
+ assert.equal(p.lines.length,3);
+ assert.equal(p.lines[0].forcedBreak,true);
+ assert.notEqual(p.lines[0].tailRebalanced,true);
+ assert.deepEqual(p.lines.slice(1).map(l=>l.wordTokens.length),[3,3]);
+ assert.ok(p.lines.slice(1).every(l=>l.tailRebalanced===true));
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
+});
+
 test('note ownership requires a body word, not only a note number',()=>{
  const nodes=[{kind:'number',text:'[1] '},{kind:'lemma',text:'alpha'},{kind:'rest',text:' beta'}],runs=markV9NoteRuns('[1] alpha beta',[],nodes,{_v9NoteKey:'k'});
  assert.equal(runs.find(r=>r.marks.v9NoteStart).start,4);
