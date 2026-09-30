@@ -256,6 +256,76 @@ test('dropped opening does not keep a widened row trapped in the previous narrow
 });
 
 
+
+test('dropped opening uses newly freed left width across an RTL fixed-right-edge knee',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:e=>e.id==='left-knee-opening'
+    ? {position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}
+    : null,
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs([
+  {id:'lead-left-knee',text:'pre',runs:[],mainRefs:[]},
+  {id:'left-knee-opening',text:'OPEN aa aa aa aa aa aa aa aa aa aa aa aa',runs:[],mainRefs:[]},
+ ],[
+  {x:50,width:50,y_start:0,y_end:15},
+  {x:0,width:100,y_start:15,y_end:100},
+ ],ctx,100);
+
+ const host=p.lines.find(l=>l.render?.opening);
+ assert(host,'dropped opening disappeared at fixed-right-edge widening');
+ assert(Math.abs(host.y-10)<.01,`fixture opening y=${host.y}, expected 10`);
+ assert(!p.diagnostics.some(d=>d.code==='opening-raised-at-right-edge-transition'),
+  'fixed RTL right edge was incorrectly treated as unsafe');
+
+ const secondWindow=p.lines.find(l=>l.y>=20-.01&&l.y<30-.01);
+ assert(secondWindow,'fixture has no second opening-window row');
+ assert(secondWindow.openingWindow===true,'second row lost opening-window metadata');
+ assert(secondWindow.width>60,
+  `newly freed left width was not used: width=${secondWindow.width}`);
+
+ const afterOpening=p.lines.find(l=>l.y>=30-.01);
+ assert(afterOpening,'fixture has no row after opening window');
+ assert(afterOpening.width>=99,
+  `row after opening stayed trapped at old narrow width: ${afterOpening.width}`);
+});
+
+test('opening that starts after a knee occupies the complete wide visual row',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:e=>e.id==='opening-after-left-knee'
+    ? {position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}
+    : null,
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs([
+  {id:'lead-two-rows',text:'aa aa aa aa aa aa',runs:[],mainRefs:[]},
+  {id:'opening-after-left-knee',text:'OPEN aa aa aa aa aa aa aa aa',runs:[],mainRefs:[]},
+ ],[
+  {x:50,width:50,y_start:0,y_end:15},
+  {x:0,width:100,y_start:15,y_end:100},
+ ],ctx,100);
+
+ const host=p.lines.find(l=>l.render?.opening);
+ assert(host,'opening after knee was unexpectedly raised or lost');
+ assert(host.y>=20-.01,`opening did not start in wide region: y=${host.y}`);
+ const totalVisual=host.width+host.render.opening.gap+host.render.opening.width;
+ assert(Math.abs(totalVisual-100)<.01,
+  `wide host row was effectively half-width: body=${host.width}, opening=${host.render.opening.width}, gap=${host.render.opening.gap}, total=${totalVisual}`);
+ assert(host.x<1,`wide host body did not start at full left edge: x=${host.x}`);
+});
+
 test('centered hard-break line centers opening plus body as one visual segment',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
