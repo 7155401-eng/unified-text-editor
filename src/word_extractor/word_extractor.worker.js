@@ -17,15 +17,21 @@ import {
   ensureDOMParser,
 } from "./word_extractor_engine.js";
 
+function progress(message, value) {
+  self.postMessage({ type: "progress", message, progress: value });
+}
+
 self.onmessage = async (ev) => {
   const { type, id, payload } = ev.data;
   const t0 = Date.now();
 
   try {
+    progress(type === "scan" ? "מכין מנוע סריקה..." : "מכין מנוע חילוץ...", type === "scan" ? 28 : 45);
     await ensureDOMParser();
     let result = null;
 
     if (type === "scan") {
+      progress("קורא מבנה, סגנונות והערות...", 38);
       const buf = payload.buf;
       const [titles, headerFooter, sections, styles, sources, stylesFull] = await Promise.all([
         extract_doc_titles(buf.slice(0)),
@@ -36,14 +42,17 @@ self.onmessage = async (ev) => {
         find_all_styles_full(buf.slice(0)),
       ]);
 
+      progress("מסיים את סריקת המסמך...", 78);
       result = { titles, headerFooter, sections, styles, sources, stylesFull };
       result._workerMs = Date.now() - t0;
     } else if (type === "extract") {
+      progress("מפריד טקסט ראשי והערות...", 50);
       result = await docx_extract_simple(
         payload.buf,
         payload.simpleSelected,
         payload.options || {}
       );
+      progress("מסיים חילוץ והכנת זרמים...", 66);
       result._workerMs = Date.now() - t0;
     } else {
       throw new Error(`Unknown worker message type: ${type}`);
