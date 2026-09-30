@@ -4457,6 +4457,61 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   // (טקסט בלבד, ללא הערות — הן כבר ניתנו) נשמר ל-pendingParagraph לעמוד הבא.
   let pendingParagraph = null;
 
+  // Split candidates must come from the same geometry that will paint them.
+  // A static splitMainWidth describes the narrow central column, but a real V9
+  // row may widen later on the page after a knee. Using only static-width line
+  // ends can therefore propose a "full line" that is barely half of the actual
+  // wide row, while the next static candidate already overflows the page.
+  //
+  // This probe is bounded to underfilled split/final-gap rescue. It never
+  // commits geometry; it only exposes source offsets of rows V9 itself planned.
+  const actualV9LineEndCandidates = (baseSlice, fragment, {
+    relativeSourceOffset = null,
+    maxLength = null,
+    source = "actual-v9-geometry",
+  } = {}) => {
+    try {
+      if (!fragment?._v9Source || !String(fragment.mainText || "")) return [];
+      const probeContent = aggregateForV9(
+        [...(baseSlice || []), fragment],
+        cfg.titles,
+        cfg.streamSettings,
+        cfg.levels,
+        streamsForPage(pageIdx),
+        carryOver
+      );
+      const probe = buildPagePlan(probeContent, cfg);
+      const sourceId = String(fragment._v9Source?.id || fragment.id || "");
+      const relativeBase = Number.isFinite(Number(relativeSourceOffset))
+        ? Number(relativeSourceOffset)
+        : (Number(fragment._v9SourceOffset) || 0);
+      const limit = Number.isFinite(Number(maxLength))
+        ? Math.max(0, Number(maxLength))
+        : String(fragment.mainText || "").length;
+      const out = [];
+      for (const line of (probe?.mainBox?.lines || [])) {
+        if (String(line?.source?.paragraphId || "") !== sourceId) continue;
+        const absoluteEnd = Number(line?.source?.end);
+        if (!Number.isFinite(absoluteEnd)) continue;
+        const offset = absoluteEnd - relativeBase;
+        if (!(offset > 0 && offset < limit)) continue;
+        out.push({
+          kind: "visual-line-end",
+          offset,
+          priority: 900,
+          source,
+          reason: "line end from actual V9 strip geometry",
+          _v9ActualGeometry: true,
+        });
+      }
+      return out;
+    } catch (_) {
+      // Geometry-derived candidates are an enhancement. Existing static
+      // candidates remain available if a diagnostic probe cannot be built.
+      return [];
+    }
+  };
+
   // ★ משה 28/09/2026 — "בהגדרות מצוין פנימי/חיצוני... בעמוד אי-זוגי הוא
   // היה צריך להיות ימני ובעמוד זוגי הוא היה צריך להיות שמאלי!!"
   // ההגדרה נשמרה ומעולם לא נקראה — חיפוש חישוב זוגיות עמוד בכל הקובץ
@@ -4998,11 +5053,16 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
-      const currentHasUnsafeNoteOverflow = currentHasNoteOverflow && hasUnsafeV9StreamOverflow(currentPlan);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
-      // Safe note carry may continue after its body has started on this page.
-      // Only unstarted/no-progress commentary overflow blocks split extension.
-      if (!currentHasUnsafeNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
+
+      // Never decide from the OLD partial plan that extension is impossible.
+      // Extending the same source paragraph can move the main-text anchor that
+      // an unstarted note is waiting for onto this page, turning an unsafe
+      // current overflow into a legal started-note continuation. Every proposed
+      // extension below is rebuilt from source and independently validated by
+      // scoreV9PageCandidate()/hasUnsafeV9StreamOverflow(), so skipping the
+      // search here only creates white space; it adds no safety.
+      if (currentFill < rescueMinFillRatio && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
@@ -5025,14 +5085,39 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         };
         const extensionRemainingPx = Math.max(0, pageBottomForFill - planBottomY(currentPlan));
         const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+
+        let actualGeometryCandidates = [];
+        try {
+          const reconstructed = joinV9ParagraphFragments(splitInfo.firstHalf, splitInfo.secondHalf);
+          // The second half is normally canonical with no edge trim. If it ever
+          // is not, fall back to the static candidates rather than invent an
+          // offset in a different string domain.
+          if (String(splitInfo.secondHalf?.mainText || "") === secondText) {
+            actualGeometryCandidates = actualV9LineEndCandidates(
+              getSlice(splitInfo.baseN),
+              reconstructed,
+              {
+                relativeSourceOffset: Number(splitInfo.secondHalf?._v9SourceOffset) || 0,
+                maxLength: secondText.length,
+                source: "extension-rescue-actual-geometry",
+              }
+            );
+          }
+        } catch (_) {
+          actualGeometryCandidates = [];
+        }
+
         const extendCandidates = selectV9GapFillCandidates(
-          buildParagraphBreakCandidates(
-            secondText,
-            splitMetrics,
-            splitMainWidth,
-            v9SplitPolicy,
-            { source: "extension-rescue" }
-          ).filter(c => c.offset >= 2 && c.offset <= secondText.length),
+          [
+            ...buildParagraphBreakCandidates(
+              secondText,
+              splitMetrics,
+              splitMainWidth,
+              v9SplitPolicy,
+              { source: "extension-rescue" }
+            ),
+            ...actualGeometryCandidates,
+          ].filter(c => c.offset >= 2 && c.offset <= secondText.length),
           {
             remainingPx: extensionRemainingPx,
             lineHeight: extensionLineH,
@@ -5504,13 +5589,29 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const fullText = (target?.mainText || "").trim();
       if (!target || fullText.length < 2) return reject("no-next-paragraph");
 
-      const allCandidates = buildParagraphBreakCandidates(
-        fullText,
-        splitMetrics,
-        splitMainWidth,
-        v9SplitPolicy,
-        { source: "final-gap-fill" }
-      ).filter(c => c.offset >= 2 && c.offset < fullText.length);
+      let actualGeometryCandidates = [];
+      if (String(target?.mainText || "") === fullText) {
+        actualGeometryCandidates = actualV9LineEndCandidates(
+          getSlice(bestN),
+          target,
+          {
+            relativeSourceOffset: Number(target?._v9SourceOffset) || 0,
+            maxLength: fullText.length,
+            source: "final-gap-fill-actual-geometry",
+          }
+        );
+      }
+
+      const allCandidates = [
+        ...buildParagraphBreakCandidates(
+          fullText,
+          splitMetrics,
+          splitMainWidth,
+          v9SplitPolicy,
+          { source: "final-gap-fill" }
+        ),
+        ...actualGeometryCandidates,
+      ].filter(c => c.offset >= 2 && c.offset < fullText.length);
 
       const candidates = selectV9GapFillCandidates(allCandidates, {
         remainingPx: remainingPxBefore,
