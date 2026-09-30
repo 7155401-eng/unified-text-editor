@@ -71,6 +71,33 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(getComputedStyle(el).whiteSpace==='pre','note painter permits a second CSS row');
    assert(!el.classList.contains('justify'),'legacy reflow class retained');
  }
+ await test('classic source tokens do not break around punctuation without whitespace',()=>{
+   const page=makePage();
+   const token=document.createElement('span');
+   token.className='ln-word';
+   token.textContent='אבג[דה]וז';
+   page.appendChild(token);
+   assert(getComputedStyle(token).whiteSpace==='nowrap','classic word token is still breakable around punctuation');
+   token.classList.add('ln-orphan-overflow');
+   const cs=getComputedStyle(token);
+   assert(cs.wordBreak==='normal',`overlong source token re-enabled word-break: ${cs.wordBreak}`);
+   assert(cs.overflowWrap==='normal',`overlong source token re-enabled overflow-wrap: ${cs.overflowWrap}`);
+   page.remove();
+ });
+
+ await test('Hebrew niqqud shaping features are preserved from V9 measurement to paint',async()=>{
+   const page=makePage();
+   const result=await buildPages(page,[{id:'niqqud-shaping',mainText:'מֶלֶךְ כָּךְ שָׁלוֹם',notes:[]}],
+     {...cfg,talmudStreams:[],pageHeight:240,maxPages:10});
+   assert(result.complete,'niqqud shaping fixture incomplete');
+   const line=page.querySelector('[data-v9-paragraph-id="niqqud-shaping"]');
+   assert(line,'niqqud shaping line missing');
+   const features=getComputedStyle(line).fontFeatureSettings || '';
+   assert(/["']?mark["']?/i.test(features),`OpenType mark feature missing: ${features}`);
+   assert(/["']?mkmk["']?/i.test(features),`OpenType mkmk feature missing: ${features}`);
+   page.remove();
+ });
+
  await test('rich side text with large inline bold is measured before row placement',()=>{
    const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text=Array(4).fill(neutral).join(' '),input={text,runs:[{start:4,end:26,marks:{fontSize:23,fontFamily:'monospace',bold:true}},{start:42,end:70,marks:{fontSize:9,bold:true,color:'red'}}]};
    const p=flowV9MeasuredStream(input,[{x:0,width:160,y_start:0,y_end:600}],c,600),page=makePage();
@@ -95,6 +122,61 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(right.lines[3].y+right.lines[3].lineHeightPx<=firstMain.y-7.9,'fourth actual crown line overlaps main');
    page.remove();return {mainTop:firstMain.y,crownBottom:plan.crownBottomY};
  });
+ await test('configured four-row crown paints four complete rows before body transition',()=>{
+   const page=makePage(),t=Array(18).fill(phrase).join(' ');
+   const plan=buildSinglePage(page,{
+     mainText:Array(5).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   },{...cfg,pageHeight:720,crownLines:4,streamSettings:{
+     '01':{inlineStyle:{fontSize:11,lineHeight:1.55}},
+     '02':{inlineStyle:{fontSize:11,lineHeight:1.55}}
+   }});
+   const crownBottom=plan.crownBottomY;
+   for(const role of ['right','left']){
+     const box=plan.streamBoxes.find(b=>b.role===role);
+     assert(box,'missing crown side '+role);
+     const crownRows=box.lines.filter(l=>l.y+Math.max(1,l.lineHeightPx||0)<=crownBottom+.15);
+     assert(crownRows.length>=4,`${role} crown painted only ${crownRows.length} complete rows`);
+   }
+   page.remove();
+ });
+
+ await test('main stream title reserves geometry below crown and honors titleShow',()=>{
+   const settings=getStreamSettings(),saved=settings.main;
+   const t=Array(12).fill(phrase).join(' ');
+   const content={
+     mainText:Array(4).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   };
+   try {
+     settings.main={...(settings.main||{}),titleShow:true};
+     const shown=makePage();
+     const plan=buildSinglePage(shown,content,{...cfg,pageHeight:720,crownLines:4,crownMainGapPx:8,titles:{main:'MAIN TITLE'}});
+     const title=[...shown.querySelectorAll('.v9-stream-title')].find(e=>e.textContent==='MAIN TITLE');
+     assert(title,'main title was not painted');
+     assert(plan.mainTitleReserve===plan.titleHeight,`main title reserve missing: ${plan.mainTitleReserve}/${plan.titleHeight}`);
+     const titleTop=parseFloat(title.style.top)||0;
+     const firstMain=plan.mainBox.lines[0];
+     assert(titleTop>=plan.crownBottomY+plan.crownMainGap-.15,
+       `main title overlaps crown: titleY=${titleTop}, crownBottom=${plan.crownBottomY}`);
+     assert(titleTop+plan.titleHeight<=firstMain.y+.15,'main title overlaps first main row');
+     shown.remove();
+
+     settings.main={...(settings.main||{}),titleShow:false};
+     const hidden=makePage();
+     const hiddenPlan=buildSinglePage(hidden,content,{...cfg,pageHeight:720,crownLines:4,crownMainGapPx:8,titles:{main:'MAIN TITLE'}});
+     assert(![...hidden.querySelectorAll('.v9-stream-title')].some(e=>e.textContent==='MAIN TITLE'),'hidden main title was still painted');
+     assert(hiddenPlan.mainTitleReserve===0,'hidden main title still reserved vertical space');
+     hidden.remove();
+   } finally {
+     if(saved===undefined) delete settings.main; else settings.main=saved;
+   }
+ });
+
  await test('full note pagination keeps every new note start with its main reference',async()=>{
    const settings=getStreamSettings(),saved={};for(const id of ['01','02','03']){saved[id]=settings[id];settings[id]={...settings[id],mainRefEnabled:true};}
    const page=makePage();
@@ -435,6 +517,32 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     const narrow=Math.min(...before.map(l=>l.width));
     const widened=Math.max(...after.map(l=>l.width));
     assert(widened>narrow+25,`commentary did not widen below main: ${narrow} -> ${widened}`);
+    page.remove();
+  });
+
+  await test('two continuing side streams widen on the same vertical boundary below main',()=>{
+    const page=makePage();
+    const sideText=Array(34).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'אחד שניים שלוש ארבע חמש',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:760,crownLines:2,streamSettings:{
+      '01':{inlineStyle:{fontSize:11,lineHeight:1.45}},
+      '02':{inlineStyle:{fontSize:12,lineHeight:1.6}},
+    }});
+    const mainBottom=(plan.mainBox?.y||0)+(plan.mainBox?.height||0);
+    const boxes=['right','left'].map(role=>plan.streamBoxes.find(b=>b.role===role));
+    assert(boxes.every(Boolean),'missing side boxes');
+    const firstWide=boxes.map(box=>{
+      const prior=box.lines.filter(l=>l.y<mainBottom-.1);
+      const narrow=prior.length ? Math.min(...prior.map(l=>l.width)) : Math.min(...box.lines.map(l=>l.width));
+      return box.lines.find(l=>l.y>=mainBottom-.1 && l.width>narrow+20);
+    });
+    assert(firstWide.every(Boolean),'fixture did not create wide continuation rows on both sides');
+    assert(Math.abs(firstWide[0].y-firstWide[1].y)<.15,
+      `wide rows start at different heights: ${firstWide[0].y} vs ${firstWide[1].y}`);
     page.remove();
   });
 
