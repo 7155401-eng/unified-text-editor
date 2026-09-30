@@ -29,6 +29,7 @@ import { EditorJsonSnapshotCache } from "./editor_json_snapshot_cache.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
+const SERVER_STALE_KEY = "ravtext.doc.serverStale.v1";
 // משה 2026-09-20: הסף היה 900,000 תווים, ומסמך אמיתי (מדרש הלל אחרי
 // ניקוי הציונים — 1,179,540 תווים) נדחה בעלייה: האתר זרק אותו לצד
 // וחזר למסמך הדוגמה, בלי שהמשתמש ידע למה. זה נראה כאילו האתר "שוכח".
@@ -87,9 +88,20 @@ function _clearStorageAlarm() {
 }
 
 function _announceLocalDocumentSaved(chars) {
+  const n = Number(chars) || 0;
+  // Write the recovery marker here, synchronously with the successful local
+  // snapshot. The server autosync listener is attached asynchronously at
+  // startup, so relying on the event alone leaves an early-crash window.
+  try {
+    localStorage.setItem(SERVER_STALE_KEY, JSON.stringify({
+      status: "local-ahead",
+      chars: n,
+      at: Date.now(),
+    }));
+  } catch {}
   try {
     window.dispatchEvent(new CustomEvent("ravtext:local-document-saved", {
-      detail: { chars: Number(chars) || 0 },
+      detail: { chars: n },
     }));
   } catch {}
 }
