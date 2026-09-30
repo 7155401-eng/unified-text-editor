@@ -5,6 +5,7 @@ import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle, boldOverrideStyleIdForStream, boldOverrideForcesDocStylesForStream } from "./original_stream_columns.js";
+import { getMainStreamColumnCount } from "./main_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
@@ -1750,10 +1751,7 @@ function createMainInlineContext(cfg) {
 }
 
 function resolveV9MainColumnCount(cfg = {}) {
-  const explicit = Number(cfg.mainCols);
-  const stored = Number(getEffectiveStreamSettings(V9_MAIN_STREAM_CODE)?.cols || 1);
-  const requested = Number.isFinite(explicit) && explicit > 0 ? explicit : stored;
-  return requested >= 2 ? 2 : 1;
+  return getMainStreamColumnCount(cfg.mainCols);
 }
 
 function resolveV9MainColumnGap(cfg = {}) {
