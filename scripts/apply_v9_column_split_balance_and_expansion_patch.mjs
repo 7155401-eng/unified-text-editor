@@ -159,6 +159,14 @@ function patchSameStreamLeftExpansion(source) {
       maxFullStrip3Lines: 0,
       lockFullStrip3Start: !!(pass2Right || pass1Right),
     });`;
+  const currentNoLock = `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      mainBottomY,
+      otherSideEndY: otherEnd,
+      // Column B may expand after column A ends. The old one-line cap solved
+      // centered orphan rows, but after source-continuation rendering exists it
+      // incorrectly prevents the surviving second column from using full width.
+      maxFullStrip3Lines: 0,
+    });`;
   const after = `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
@@ -168,7 +176,12 @@ function patchSameStreamLeftExpansion(source) {
       // The width transition itself does NOT create a new Y baseline.
       maxFullStrip3Lines: 0,
     });`;
-  if (source.includes(after)) return source;
+
+  // Current main may carry an older explanatory comment but already has the
+  // correct semantic invariant: no one-line cap and no Y lock. Treat that as
+  // canonical enough for a no-op build; comments must never make prebuild
+  // rewrite valid geometry code.
+  if (source.includes(currentNoLock) || source.includes(after)) return source;
   if (source.includes(legacyAfter)) return source.replace(legacyAfter, after);
   if (!source.includes(before)) fail("missing same-stream left expansion anchor");
   return source.replace(before, after);
