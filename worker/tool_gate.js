@@ -1,7 +1,7 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
-import { getToolPolicy, isFreePreflightUnmetered, isServerManagedSuccessTool, isToolPublic } from './tool_policy.js';
-import { checkToolQuotaAvailability, consumeSuccessfulToolUse } from './tool_quota.js';
+import { getToolPolicy, isFreePreflightUnmetered, isServerManagedMeteredTool, isToolPublic } from './tool_policy.js';
+import { checkToolQuotaAvailability, consumeToolUse } from './tool_quota.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
@@ -83,7 +83,7 @@ async function authorizeFreePreflight(user, toolName, env) {
     return { ok: true, unmetered: true, preflightConsumed: false };
   }
 
-  if (isServerManagedSuccessTool(toolName)) {
+  if (isServerManagedMeteredTool(toolName)) {
     const state = await checkToolQuotaAvailability(user, toolName, env);
     return { ...state, preflightConsumed: false };
   }
@@ -138,9 +138,9 @@ export async function handleToolPreflight(request, env) {
     return handleSecureExportHtmlAction(request, env, body);
   }
 
-  if (body?.action === 'consume_success') {
+  if (body?.action === 'consume_use' || body?.action === 'consume_success') {
     const toolName = String(body?.toolName || '').trim();
-    if (!isToolPublic(toolName) || !isServerManagedSuccessTool(toolName)) {
+    if (!isToolPublic(toolName) || !isServerManagedMeteredTool(toolName)) {
       return Response.json(
         { error: 'unsupported_success_metering', message: 'Tool does not use server success metering' },
         { status: 403, headers: { 'cache-control': 'no-store' } }
@@ -157,7 +157,7 @@ export async function handleToolPreflight(request, env) {
 
     let usage;
     try {
-      usage = await consumeSuccessfulToolUse(user, toolName, env, {
+      usage = await consumeToolUse(user, toolName, env, {
         units: Math.max(1, Number(body?.units) || 1),
         idempotencyKey: body?.idempotencyKey,
       });
@@ -225,7 +225,7 @@ export async function handleToolPreflight(request, env) {
       return Response.json(
         {
           error: 'quota_exceeded',
-          message: isServerManagedSuccessTool(toolName)
+          message: isServerManagedMeteredTool(toolName)
             ? 'Free quota is currently exhausted for this tool'
             : 'Free accounts can use each tool once per day',
           resetAt: usage.resetAt ?? null,
