@@ -55,7 +55,7 @@ jobs:
       - name: Fetch exact baseline for build comparison
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: 82936b7ba1720714f6ae73bda95e9791f6873856
+          ref: 375b01bd8243486b1f02f9f25211c9e9bb650be3
           path: .v9-baseline
           persist-credentials: false
       - name: Build baseline with the same locked dependencies
