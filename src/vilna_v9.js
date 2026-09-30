@@ -4998,8 +4998,15 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
+      const currentHasUnsafeNoteOverflow = currentHasNoteOverflow && hasUnsafeV9StreamOverflow(currentPlan);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
-      if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
+
+      // A started long note is legal carry-over, not a reason to freeze the
+      // current paragraph split. The loop below already re-checks every
+      // candidate with hasUnsafeV9StreamOverflow(tp); blocking ALL commentary
+      // overflow here made that safety check unreachable and left 45% of some
+      // pages blank. Only ownership-unsafe overflow may block split extension.
+      if (!currentHasUnsafeNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
