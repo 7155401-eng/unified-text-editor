@@ -30,10 +30,33 @@ function appendReference(parent, ref) {
 
 function appendSemanticWhitespace(parent, text) {
   if (!text) return;
-  const span = document.createElement('span');
-  span.className = 'v9-source-whitespace'; span.style.display = 'none';
-  span.textContent = text;
-  parent.appendChild(span);
+
+  // LRM/RLM/WORD JOINER are zero-width source controls, not ordinary spacing.
+  // Hiding them with display:none removes them from the Unicode BiDi algorithm
+  // and can visually mirror neutral punctuation such as parentheses near ASCII
+  // apostrophes/numbers. Keep those controls in the rendered character stream
+  // while hiding only real edge whitespace. Preserve original order exactly.
+  const isControl = ch => ch === '\u200e' || ch === '\u200f' || ch === '\u2060';
+  let hidden = '';
+  const flushHidden = () => {
+    if (!hidden) return;
+    const span = document.createElement('span');
+    span.className = 'v9-source-whitespace';
+    span.style.display = 'none';
+    span.textContent = hidden;
+    parent.appendChild(span);
+    hidden = '';
+  };
+
+  for (const ch of String(text)) {
+    if (isControl(ch)) {
+      flushHidden();
+      parent.appendChild(document.createTextNode(ch));
+    } else {
+      hidden += ch;
+    }
+  }
+  flushHidden();
 }
 
 // Shared by the measurement probe and final paint. Reference labels and styles
