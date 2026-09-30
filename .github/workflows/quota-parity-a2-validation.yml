@@ -1,0 +1,52 @@
+name: Temporary quota parity batch A2 validation
+
+on:
+  push:
+    branches:
+      - feat/quota-parity-batch-a2-20260930
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check worker/tool_policy.js
+          node --check worker/tool_quota.js
+          node --check worker/tool_gate.js
+          node --check worker/caricature.js
+          node --check src/tool_runtime_gate.js
+          node --check src/premium/daily_quota_gate.js
+          node --check src/sefaria/sefaria_docx_builder.js
+          node --check src/sefaria/sefaria_downloader_modal.js
+          node --check src/sefaria/sefaria_live_modal.js
+          node --check src/torah_nikud/torah_nikud_ui.js
+          node --check src/haredi_caricature/caricature_gas.js
+          node --check src/haredi_caricature/caricature_ui.js
+          node --check src/comparator_tool/comparator.js
+          node --check src/comparator_tool/comparator_ui.js
+          node --check src/comparator_tool/comparator_integrated.js
+          node --check src/torah_transcription/torah_transcription.js
+          node --check src/torah_transcription/torah_transcription_ui.js
+      - name: Quota tests
+        run: node --test tests/quota/*.test.mjs
+      - name: V9 unit regressions
+        run: node --test tests/v9-unified/*.test.mjs
+      - name: Full build
+        run: npm run build
+      - name: Quota tests after build patches
+        run: node --test tests/quota/*.test.mjs
