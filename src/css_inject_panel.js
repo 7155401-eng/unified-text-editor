@@ -198,7 +198,7 @@ function buildPanel() {
   panel.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border,#d0d0d4);padding-bottom:6px;">
       <strong style="font-size:14px;color:var(--word-blue,#2B579A);">CSS מותאם · AI</strong>
-      <button id="ci-close" class="ci-btn" style="padding:2px 8px;">×</button>
+      <button id="ci-close" class="ci-btn" style="padding:2px 8px;" aria-label="סגור חלון CSS מותאם">×</button>
     </div>
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
       <span style="min-width:50px;color:var(--muted,#666);">היקף:</span>
