@@ -309,7 +309,9 @@ function showSaveProblem(status, chars) {
       `אבל לא יישמר לפעם הבאה — כדאי לפצל אותו לשני מסמכים.`
     : status === 401 || status === 403
       ? 'החיבור לחשבון פג — המסמך לא נשמר. כדאי להתחבר מחדש.'
-      : `המסמך לא נשמר בשרת (תקלה ${status}). הוא נשאר אצלך בדפדפן.`;
+      : status === 'network-error'
+        ? 'לא התקבל אישור מהשרת שהמסמך נשמר. העותק המקומי נשאר הקובע עד שהשמירה לשרת תאושר.'
+        : `המסמך לא נשמר בשרת (תקלה ${status}). הוא נשאר אצלך בדפדפן.`;
   try {
     const el = document.getElementById('status');
     if (el) el.textContent = msg;
@@ -326,11 +328,17 @@ async function saveDocumentNow(paneManager) {
     typeof paneManager.serialize === 'function'
   );
   if (!isLoggedIn() || !canSerialize) return;
+
+  // Keep the attempted signature outside the fetch try/catch. A thrown network
+  // error has the same recovery meaning as an HTTP failure: we do not have
+  // confirmation that the server owns this newer snapshot.
+  let attemptedSig = '';
   try {
     const content = typeof paneManager.serializeForPersistence === 'function'
       ? paneManager.serializeForPersistence()
       : paneManager.serialize();
     const sig = JSON.stringify(content);
+    attemptedSig = sig;
     if (sig === _lastDocSig) return;
     const res = await fetch('/api/documents/current', {
       method: 'PUT',
@@ -353,6 +361,11 @@ async function saveDocumentNow(paneManager) {
     }
   } catch (e) {
     console.warn('[persistence] saveDocumentNow error:', e);
+    if (attemptedSig && attemptedSig !== _lastDocSig) {
+      _lastSaveError = 'network-error';
+      markServerStale('network-error', attemptedSig.length);
+      showSaveProblem('network-error', attemptedSig.length);
+    }
   }
 }
 
