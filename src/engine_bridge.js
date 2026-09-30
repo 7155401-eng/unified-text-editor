@@ -769,7 +769,8 @@ export function paneManagerToPackerContent(paneManager) {
 
   const mainParagraphs = extractMainParagraphs(mainPane, paneManager);
   const streamNotes = {};
-  const streamNotesRuns = {}; // משה 2026-05-13: runs לכל הערה — לעיצוב אינליין
+  const streamNotesRuns = {};
+  const breakSettings = loadSpacingSettings(); // משה 2026-05-13: runs לכל הערה — לעיצוב אינליין
   // Build a shared symbol → code map so expandNestedInNote can detect
   // markers embedded in note bodies without re-scanning paneManager each call.
   const paneSymbols = [];
