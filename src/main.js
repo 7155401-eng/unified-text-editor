@@ -229,7 +229,12 @@ window.__loadCustomSample = async (rawText) => {
   paneManagerFromEngineDoc(paneManager, doc);
   rerenderPages();
 };
-window.addEventListener("beforeunload", () => paneManager.flushSave());
+const flushLocalPaneState = () => paneManager.flushSave();
+window.addEventListener("beforeunload", flushLocalPaneState);
+window.addEventListener("pagehide", flushLocalPaneState);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushLocalPaneState();
+});
 
 // צוות האתר 2026-05-07: סנכרון תכולה והגדרות לשרת למשתמשים מחוברים.
 // loadInitialState עוצר אם המשתמש אנונימי. אם יש תכולה שמורה — היא מחליפה את הברירת־מחדל.
