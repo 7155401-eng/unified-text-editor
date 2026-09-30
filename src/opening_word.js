@@ -251,6 +251,11 @@ export function wireOpeningWordControls(onChange) {
     scope: getValue("opw-scope"),
     skipHeadings: getValue("opw-skip-headings"),
     headingMin: getValue("opw-heading-min"),
+    skipShortLine: getValue("opw-skip-short-line"),
+    shortLineMinFill: getValue("opw-short-line-min-fill"),
+    skipSingleLine: getValue("opw-skip-single-line"),
+    skipFewerThanLines: getValue("opw-skip-fewer-lines"),
+    minLines: getValue("opw-min-lines"),
   };
 
   const initial = getOpeningWordSettings();
@@ -267,6 +272,11 @@ export function wireOpeningWordControls(onChange) {
   setControlValue(controls.scope, initial.scope);
   setControlValue(controls.skipHeadings, initial.skipHeadings);
   setControlValue(controls.headingMin, initial.headingMin);
+  setControlValue(controls.skipShortLine, initial.skipShortLine);
+  setControlValue(controls.shortLineMinFill, Math.round(initial.shortLineMinFill * 100));
+  setControlValue(controls.skipSingleLine, initial.skipSingleLine);
+  setControlValue(controls.skipFewerThanLines, initial.skipFewerThanLines);
+  setControlValue(controls.minLines, initial.minLines);
 
   const commit = () => {
     saveOpeningWordSettings({
@@ -283,6 +293,17 @@ export function wireOpeningWordControls(onChange) {
       scope: readControlValue(controls.scope, initial.scope),
       skipHeadings: readControlValue(controls.skipHeadings, initial.skipHeadings),
       headingMin: readControlValue(controls.headingMin, initial.headingMin),
+      skipShortLine: readControlValue(controls.skipShortLine, initial.skipShortLine),
+      shortLineMinFill: clampNumber(
+        Number(readControlValue(controls.shortLineMinFill, Math.round(initial.shortLineMinFill * 100))) / 100,
+        initial.shortLineMinFill, 0.1, 1
+      ),
+      skipSingleLine: readControlValue(controls.skipSingleLine, initial.skipSingleLine),
+      skipFewerThanLines: readControlValue(controls.skipFewerThanLines, initial.skipFewerThanLines),
+      minLines: Math.round(clampNumber(
+        readControlValue(controls.minLines, initial.minLines),
+        initial.minLines, 2, 12
+      )),
     });
     onChange && onChange();
   };
