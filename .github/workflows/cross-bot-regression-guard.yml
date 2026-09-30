@@ -41,6 +41,10 @@ jobs:
         run: node --test tests/integration/*.test.mjs
       - name: V9 unit/source regressions
         run: node --test tests/v9-unified/*.test.mjs
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: V9 browser regressions
+        run: node scripts/v9-unified/run-browser.mjs
       - name: Quota regressions
         run: node --test tests/quota/*.test.mjs
       - name: DOCX regressions
@@ -58,3 +62,4 @@ jobs:
           node --test tests/integration/*.test.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
+          node scripts/v9-unified/run-browser.mjs
