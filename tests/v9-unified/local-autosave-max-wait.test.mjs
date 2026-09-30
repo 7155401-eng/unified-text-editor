@@ -37,7 +37,11 @@ function installFakeClock() {
     now = target;
   }
 
-  return { setTimeoutFake, clearTimeoutFake, advance, pending: () => timers.size };
+  function clearAll() {
+    timers.clear();
+  }
+
+  return { setTimeoutFake, clearTimeoutFake, advance, clearAll, pending: () => timers.size };
 }
 
 test('continuous typing cannot postpone local persistence beyond five seconds', async () => {
@@ -71,9 +75,10 @@ test('continuous typing cannot postpone local persistence beyond five seconds', 
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
 
+  let manager = null;
   try {
     const { PaneManager } = await import('../../src/pane_manager.js');
-    const manager = new PaneManager(dom.window.document.getElementById('panes'));
+    manager = new PaneManager(dom.window.document.getElementById('panes'));
     const originalWrite = manager._writeStorageNow.bind(manager);
     let writes = 0;
     manager._writeStorageNow = () => {
@@ -105,6 +110,16 @@ test('continuous typing cannot postpone local persistence beyond five seconds', 
     clock.advance(1);
     assert.equal(writes, 2);
   } finally {
+    // PaneManager and imported editor helpers may have scheduled zero-delay /
+    // animation-frame work through the fake clock. Do not restore/remove the
+    // JSDOM globals while those callbacks are still pending: Node's test runner
+    // correctly treats that as leaked async activity after the test.
+    try { manager?._clearSaveTimers?.(); } catch (_) {}
+    try {
+      for (const pane of manager?.panes || []) pane?.destroy?.();
+    } catch (_) {}
+    clock.clearAll();
+
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);
       else delete globalThis[key];
