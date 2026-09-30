@@ -882,6 +882,55 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     } finally { page.remove();if(saved===undefined)delete settings['01'];else settings['01']=saved; }
   });
 
+  await test('B10: configured Talmud sides keep ownership when the left stream is empty',async()=>{
+    const page=makePage();
+    const settings=getStreamSettings();
+    const saved={};
+    for(const id of ['01','02','03']) {
+      saved[id]=settings[id];
+      settings[id]={...(settings[id]||{}),titleShow:true,mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    }
+    try {
+      const main=Array(7).fill(neutral).join(' ');
+      const words=[...main.matchAll(/\S+/gu)];
+      const at1=words[8],at3=words[30];
+      const input=[{
+        id:'b10-fixed-sides',
+        mainText:main,
+        notes:[
+          {stream:'01',uid:'b10-right',num:1,anchor:at1.index+at1[0].length,anchorAffinity:'backward',text:Array(4).fill(phrase).join(' ')},
+          {stream:'03',uid:'b10-footer',num:1,anchor:at3.index+at3[0].length,anchorAffinity:'backward',text:Array(4).fill(phrase).join(' ')}
+        ]
+      }];
+      const localCfg={...cfg,pageHeight:537,talmudStreams:['01','02'],
+        titles:{...(cfg.titles||{}),'01':'RIGHT','02':'LEFT','03':'FOOTER-03'},
+        streamSettings:{
+          ...(cfg.streamSettings||{}),
+          '01':{inlineStyle:{fontSize:11}},
+          '02':{inlineStyle:{fontSize:11}},
+          '03':{inlineStyle:{fontSize:11}}
+        }};
+      const result=await buildPages(page,input,localCfg);
+      assert(result.complete,'B10 fixture did not complete');
+      assert(!page.querySelector('[data-v9-box-id="02"]'),'empty configured left side unexpectedly rendered content');
+      const footerLines=[...page.querySelectorAll('[data-v9-box-id="03"]')];
+      assert(footerLines.length,'footer stream 03 was not rendered');
+      const innerWidth=localCfg.pageWidth-2*localCfg.padding;
+      assert(footerLines.some(el=>(parseFloat(el.style.width)||0)>=innerWidth*.9),
+        'stream 03 opportunistically occupied the empty left Talmud side instead of staying a footer');
+      const title=[...page.querySelectorAll('.v9-stream-title')].find(el=>el.textContent==='FOOTER-03');
+      assert(title,'footer title missing');
+      assert((parseFloat(title.style.width)||0)>=innerWidth*.9,
+        'footer title width proves stream 03 jumped into a side column');
+      return {pages:result.pages.length,footerWidth:parseFloat(title.style.width)||0,innerWidth};
+    } finally {
+      page.remove();
+      for(const id of ['01','02','03']) {
+        if(saved[id]===undefined) delete settings[id]; else settings[id]=saved[id];
+      }
+    }
+  });
+
   await test('B20/C7: footer streams never cover the last main-text row',()=>{
     const page=makePage();
     const main=Array(8).fill(neutral).join(' ');
