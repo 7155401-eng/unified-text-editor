@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
-import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates } from '../../src/engine/v9_split_policy.js';
+import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates,getLastMainLineInfo } from '../../src/engine/v9_split_policy.js';
 import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
 import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
@@ -84,9 +84,10 @@ test('planned tail redistribution counts toward the final line guard',()=>{
    candidate,policy,{cfg:{pageHeight:200,padding:0}}
  );
  assert.equal(accepted.accept,true,accepted.reason);
- assert(accepted.debug.finalMainLine.effectiveFillRatio>=.82,
-   `effective fill was ignored: ${accepted.debug.finalMainLine.effectiveFillRatio}`);
- assert.equal(accepted.debug.finalMainLine.isTailRebalancedLineEdge,true);
+ const info=getLastMainLineInfo(mkPlan({...baseLine,tailRebalanced:true}),policy);
+ assert(info.lastMainLineEffectiveFillRatio>=.82,
+   `effective fill was ignored: ${info.lastMainLineEffectiveFillRatio}`);
+ assert.equal(info.isTailRebalancedLineEdge,true);
 });
 
 test('tail redistribution still fails the guard when gentle spacing is insufficient',()=>{
