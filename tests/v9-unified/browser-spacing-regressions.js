@@ -202,6 +202,46 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    }
  });
 
+ await test('collapsed ribbon hides separator-only level but preserves real active controls',async()=>{
+   const links=[];
+   const loadCss=(href)=>new Promise((resolve,reject)=>{
+     const link=document.createElement('link');
+     link.rel='stylesheet';link.href=href;link.onload=()=>resolve(link);
+     link.onerror=()=>reject(new Error('failed to load '+href));
+     document.head.appendChild(link);links.push(link);
+   });
+   const previousClasses=document.body.className;
+   const toolbar=document.createElement('div');
+   toolbar.id='main-ribbon-toolbar';
+   toolbar.className='ribbon-toolbar';
+   const sep=document.createElement('span');sep.className='sep';
+   const hiddenGroup=document.createElement('span');hiddenGroup.className='tb-group ribbon-hidden';
+   const hiddenButton=document.createElement('button');hiddenButton.textContent='hidden';
+   hiddenGroup.appendChild(hiddenButton);
+   toolbar.append(sep,hiddenGroup);
+   document.body.appendChild(toolbar);
+   try{
+     await loadCss('../../styles.css');
+     await loadCss('../../theme-base-refresh.css');
+     for(const peek of [false,true]){
+       document.body.className=(previousClasses+' ribbon-collapsed'+(peek?' ribbon-peek':'')).trim();
+       assert(getComputedStyle(sep).display==='none',
+         `separator resurrected in collapsed${peek?'+peek':''} mode: ${getComputedStyle(sep).display}`);
+       assert(getComputedStyle(toolbar).display==='none',
+         `separator-only toolbar still occupies a level in collapsed${peek?'+peek':''} mode`);
+
+       const activeGroup=document.createElement('span');activeGroup.className='tb-group';
+       const activeButton=document.createElement('button');activeButton.textContent='active';
+       activeGroup.appendChild(activeButton);toolbar.appendChild(activeGroup);
+       assert(getComputedStyle(toolbar).display!=='none','real active toolbar was hidden by empty-level cleanup');
+       assert(getComputedStyle(activeGroup).display!=='none','real active group was hidden by empty-level cleanup');
+       activeGroup.remove();
+     }
+   }finally{
+     toolbar.remove();links.forEach(link=>link.remove());document.body.className=previousClasses;
+   }
+ });
+
  await test('classic source tokens do not break around punctuation without whitespace',async()=>{
    const link=document.createElement('link');
    link.rel='stylesheet';link.href='../../styles.css';
