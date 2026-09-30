@@ -513,22 +513,25 @@ async function onFileChange(ev) {
   _state.fileName = file.name;
   const m = document.getElementById(MODAL_ID);
   m.querySelector('.we-filename').textContent = file.name;
-  setStatus(t('scanning'));
+  setStatus('קורא את קובץ ה-Word...', false, 5);
 
   try {
     _state.zipBuf = await file.arrayBuffer();
-    setStatus('סורק את המסמך... (הדפדפן לא קופא)');
+    setStatus('מחשב חתימת קובץ ובודק cache...', false, 12);
 
     // בדיקת cache לפי hash של הקובץ — אם כבר עיבדנו את הקובץ הזה, נחזיר מיד
     const t0Scan = Date.now();
     const hash = await fileHash(_state.zipBuf);
     _state.fileHash = hash;
+    setStatus('בודק אם המסמך כבר נסרק...', false, 18);
     let scanResult = hash ? await idbGet(IDB_STORE_SCAN, hash) : null;
 
     if (scanResult) {
+      setStatus('נמצאה סריקה קודמת — טוען תוצאות...', false, 82);
       serverLog('we_scan_cache_hit', { hash, sources: scanResult.sources?.length ?? 0, fileName: file.name });
     } else {
       // עיבוד ב-Web Worker — הדפדפן ממשיך לעבוד בזמן הסריקה
+      setStatus('סורק את מבנה המסמך...', false, 25);
       scanResult = await workerScan(_state.zipBuf.slice(0));
       if (hash) idbSet(IDB_STORE_SCAN, hash, scanResult);
     }
@@ -542,9 +545,11 @@ async function onFileChange(ev) {
     _state.stylesFull = stylesFull;
     _state.sources = sources;
     _state.streams = buildDefaultStreamMapping(sources);
+    setStatus('בונה תצוגה והגדרות זרמים...', false, 94);
     renderMeta();
     renderStreamsTable();
-    setStatus('');
+    setStatus('הסריקה הושלמה', false, 100);
+    setTimeout(() => setStatus(''), 250);
     // משה 2026-05-31: chapter_splitter מאזין לזה כדי להריץ סריקת כותרות
     // אחרי שה-Word Extractor סיים — לא במקביל. בלי האירוע, חתימה (hash)
     // + העתקת arrayBuffer + worker postMessage חוסמים את ה-main thread,
@@ -833,7 +838,7 @@ async function onConfirm() {
     setStatus(`${t('seriesAlreadyUsed')} (${dups.join(', ')})`, true);
     return;
   }
-  setStatus(t('scanning'));
+  setStatus('מתחיל ייבוא...', false, 5);
 
   try {
     // משה 2026-05-14: קריאת אפשרויות נוספות
@@ -892,6 +897,7 @@ async function onConfirm() {
     // נופלים ל-_dnotes_html שב-engine אם mammoth נכשל.
     let notesHtmlMap = {};
     try {
+      setStatus('מכין הערות מעוצבות...', false, 20);
       const dynamicMap0 = buildDynamicStyleMap(_state.stylesFull || {});
       notesHtmlMap = await extractNotesHtmlMap(_state.zipBuf.slice(0), { styleMap: dynamicMap0 });
     } catch (notesErr) {
@@ -903,15 +909,17 @@ async function onConfirm() {
       ? _state.fileHash + '-' + JSON.stringify(simpleSelected) + (skipEmptyNotes ? '-s' : '') + '-' + markerMatchMode
       : null;
     const t0Extract = Date.now();
+    setStatus('בודק cache של הייבוא...', false, 34);
     let result = selKey ? await idbGet(IDB_STORE_EXTRACT, selKey) : null;
 
     if (result) {
+      setStatus('נמצא ייבוא קודם — טוען אותו...', false, 68);
       serverLog('we_extract_cache_hit', {
         hash: _state.fileHash, streams: result.streams?.length ?? 0,
         mainLen: result.main?.length ?? 0,
       });
     } else {
-      setStatus('מחלץ הערות... (הדפדפן לא קופא)');
+      setStatus('מחלץ הערות... (הדפדפן לא קופא)', false, 42);
       // עיבוד ב-Web Worker — הדפדפן ממשיך לעבוד בזמן החילוץ
       result = await workerExtract(_state.zipBuf.slice(0), simpleSelected, {
         notesHtmlMap,
@@ -920,6 +928,7 @@ async function onConfirm() {
       });
       if (selKey) idbSet(IDB_STORE_EXTRACT, selKey, result);
     }
+    setStatus('הערות חולצו — בונה טקסט מעוצב...', false, 72);
     serverLog('we_extract_done', {
       hash: _state.fileHash, fileName: _state.fileName,
       streams: result.streams?.length ?? 0, mainLen: result.main?.length ?? 0,
@@ -929,6 +938,7 @@ async function onConfirm() {
     // הזרמים עצמם ממשיכים להגיע מ-docx_extract_simple. הגוף = mammoth, זרמים = result.streams.
     let bodyHtml = null;
     try {
+      setStatus('מעבד עיצוב Word וטקסט ראשי...', false, 78);
       // משה 2026-05-09: שלב 4 — styleMap דינמי לפי קטלוג הסגנונות, ו-CSS שמוזרק לעמוד.
       const dynamicMap = buildDynamicStyleMap(_state.stylesFull || {});
       const css = buildStylesCss(_state.stylesFull || {});
@@ -974,6 +984,7 @@ async function onConfirm() {
     }
     // משה 2026-05-10: מסמכים נפרדים — לכל external רץ mammoth, מחליף את ה-marker
     // בגוף ובגוף ה-HTML בסמל הסדרה, ומוסיף את התוכן כזרם נפרד.
+    setStatus('משלים קבוצות וסמלים...', false, 86);
     syncExternalsState();
     if (_state.externals && _state.externals.length) {
       // result.streamsHtml הופך לחובה אם יש externals — נוסיף HTML גם לזרמים שכבר קיימים
@@ -1016,8 +1027,9 @@ async function onConfirm() {
     // משה 2026-05-09: מצב ייבוא — דרוס/הוסף בסוף
     const modeEl = document.querySelector('.we-mode-append');
     const importMode = (modeEl && modeEl.checked) ? 'append' : 'replace';
+    setStatus('מכניס את התוכן לחלוניות...', false, 94);
     distributeToPanesSimple(result, bodyHtml, importMode);
-    setStatus('');
+    setStatus('הייבוא הושלם', false, 100);
     closeModal();
     // ★ משה 28/09/2026 — "בסיום יבוא פופאפ הודעת הצלחה ביבוא" (דחיפות 6).
     // עד עכשיו הדיאלוג פשוט נסגר בלי מילה, ולא היה שום סימן שהייבוא
