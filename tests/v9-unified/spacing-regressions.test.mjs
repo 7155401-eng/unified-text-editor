@@ -488,9 +488,11 @@ test('completed opening-window centering fails closed when no safe word partitio
   measure:p=>{
    const body=String(p.text||'').trim();
    if(body==='OPEN')return {width:20,height:10,topInset:0};
-   // Every body word is deliberately too wide to redistribute safely.
+   // One body word fits each row, but neither row has an inter-word gap
+   // that can absorb the remaining width. Composite centering must therefore
+   // fail closed rather than using letter-spacing/scaleX.
    const n=body?body.split(/\s+/u).length:0;
-   return {width:n?n*35+(n-1)*2:0,height:10,topInset:0};
+   return {width:n?n*60+(n-1)*2:0,height:10,topInset:0};
   }
  };
  const text='OPEN aa bb';
