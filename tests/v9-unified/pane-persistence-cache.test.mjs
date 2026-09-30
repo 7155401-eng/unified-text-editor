@@ -60,10 +60,11 @@ test('persistence path uses cached pane JSON while public serialize remains fres
 
   assert.match(pane, /serialize\(\)[\s\S]*?this\.panes\.map\(p => p\.serialize\(\)\)/);
   assert.match(pane, /serializeForPersistence\(\)[\s\S]*?_storageJsonCache\.get\(p\.editor\)/);
-  assert.match(pane, /JSON\.stringify\(this\.serializeForPersistence\(\)\)/);
+  assert.match(pane, /serializeForPersistenceString\(\)[\s\S]*?_storageTextCache\.get/);
+  assert.match(pane, /const text = this\.serializeForPersistenceString\(\)/);
 
-  assert.match(server, /typeof paneManager\.serializeForPersistence === 'function'[\s\S]*?paneManager\.serializeForPersistence\(\)/);
-  assert.match(server, /pagehide[\s\S]*?serializeForPersistence/);
+  assert.match(server, /typeof paneManager\.serializeForPersistenceString === 'function'[\s\S]*?paneManager\.serializeForPersistenceString\(\)/);
+  assert.match(server, /pagehide[\s\S]*?createDocumentSnapshot\(paneManager\)/);
 
   assert.match(main, /beforeunload", flushLocalPaneState/);
   assert.match(main, /pagehide", flushLocalPaneState/);
