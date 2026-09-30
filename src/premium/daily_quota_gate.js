@@ -11,6 +11,9 @@ const TOOL_USAGE_KEY = "ravtext.daily.tools";  // { yyyy-mm-dd: { toolName: coun
 // Keep this list intentionally narrow: this fixes text upload/import only.
 const FREE_UNMETERED_TOOLS = new Set([
   "word-extractor",
+  // Desktop source explicitly launched transcription as "free always".
+  // Do not consume the generic web once/day allowance merely by opening it.
+  "torah-transcription",
 ]);
 
 function normalizeToolName(toolName) {
