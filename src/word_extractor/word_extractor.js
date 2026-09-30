@@ -788,6 +788,9 @@ export async function openImport() {
 
 export async function openWordExtractor(paneManager, onLoaded) {
   await assertToolAllowed("word-extractor");
+  // Own the host-reference contract here so every direct caller gets the same
+  // enhancement behavior. Startup no longer needs to import this heavy module.
+  setupWordExtractor(paneManager, onLoaded);
   return openWordExtractorDialogWithOverwriteStyles(paneManager, onLoaded);
 }
 
