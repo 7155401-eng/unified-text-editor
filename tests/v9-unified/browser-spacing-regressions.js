@@ -897,6 +897,48 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     }finally{page.remove();}
   });
 
+  await test('footer note starts on the same page as its main reference under carry pressure',async()=>{
+    const settings=getStreamSettings(),saved=settings['03'];
+    settings['03']={...(settings['03']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const host=makePage();
+    try{
+      const mainA=Array(9).fill(neutral).join(' ');
+      const mainB=Array(5).fill(neutral).join(' ');
+      const wordsA=[...mainA.matchAll(/\S+/gu)];
+      const wordsB=[...mainB.matchAll(/\S+/gu)];
+      const aWord=wordsA[5],bWord=wordsB[3];
+      const input=[
+        {id:'footer-anchor-a',mainText:mainA,notes:[{
+          stream:'03',uid:'footer-carry-1',num:1,
+          anchor:aWord.index+aWord[0].length,anchorAffinity:'backward',
+          text:Array(42).fill(neutral).join(' ')
+        }]},
+        {id:'footer-anchor-b',mainText:mainB,notes:[{
+          stream:'03',uid:'footer-next-2',num:2,
+          anchor:bWord.index+bWord[0].length,anchorAffinity:'backward',
+          text:Array(8).fill(neutral).join(' ')
+        }]},
+        {id:'footer-anchor-c',mainText:Array(3).fill(neutral).join(' '),notes:[]}
+      ];
+      const result=await buildPages(host,input,{...cfg,pageHeight:220,talmudStreams:['01','02'],maxPages:100});
+      assert(result.complete,'footer anchor fixture incomplete');
+      assert(result.pages.length>1,'footer anchor fixture did not create carry pressure');
+      assert((result.noteAnchorFallbacks||[]).length===0,
+        `footer anchor fallback: ${JSON.stringify(result.noteAnchorFallbacks||[])}`);
+      for(const note of input.flatMap(p=>p.notes||[])){
+        const sourceId=note.uid==='footer-carry-1'?'footer-anchor-a':'footer-anchor-b';
+        const key=`${sourceId}:03:${note.uid}`;
+        const refPage=result.pages.findIndex(p=>[...p.querySelectorAll('[data-v9-main-ref]')].some(e=>e.dataset.uid===note.uid));
+        const startPage=result.pages.findIndex(p=>p.querySelector(`[data-v9-note-start="${key}"]`));
+        assert(refPage>=0&&refPage===startPage,
+          `footer note/reference page mismatch: ${JSON.stringify({uid:note.uid,refPage,startPage})}`);
+      }
+    } finally {
+      host.remove();
+      if(saved===undefined)delete settings['03'];else settings['03']=saved;
+    }
+  });
+
   await test('long anchored note may continue after starting with its source line',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
