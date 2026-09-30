@@ -9,27 +9,41 @@ const DEFAULT_MARGINS = {
 };
 
 let runtimeMargins = null;
+let runtimeMarginsRaw = undefined;
+let runtimeMarginsEphemeral = false;
 let runtimeOutputBackground = null;
+let runtimeOutputBackgroundRaw = undefined;
+let runtimeOutputBackgroundEphemeral = false;
 
 function storageDisabled() {
   return typeof window !== "undefined" && window.__RAVTEXT_STORAGE_DISABLED__ === true;
 }
 
-function readJson(key, fallback) {
+function readStorageRaw(key) {
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
+    if (typeof localStorage === "undefined") return { ok: false, raw: null };
+    return { ok: true, raw: localStorage.getItem(key) };
   } catch {
-    return fallback;
+    return { ok: false, raw: null };
   }
 }
 
-function writeJson(key, value) {
-  if (storageDisabled()) return;
+function writeStorageRaw(key, raw, warningLabel) {
+  if (storageDisabled()) return false;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, raw);
+    return true;
   } catch (err) {
-    console.warn("[page-settings] save failed:", err);
+    console.warn(warningLabel, err);
+    return false;
+  }
+}
+
+function parseJsonRaw(raw, fallback) {
+  try {
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
   }
 }
 
@@ -40,14 +54,24 @@ function clampPx(value, fallback) {
 }
 
 export function getPageMargins() {
-  if (runtimeMargins) return { ...runtimeMargins };
-  const saved = readJson(PAGE_SETTINGS_KEY, {});
-  return {
+  if (runtimeMargins && runtimeMarginsEphemeral) return { ...runtimeMargins };
+
+  const stored = readStorageRaw(PAGE_SETTINGS_KEY);
+  if (runtimeMargins && stored.ok && stored.raw === runtimeMarginsRaw) {
+    return { ...runtimeMargins };
+  }
+  if (!stored.ok && runtimeMargins) return { ...runtimeMargins };
+
+  const saved = parseJsonRaw(stored.raw, {});
+  runtimeMargins = {
     top: clampPx(saved.top, DEFAULT_MARGINS.top),
     right: clampPx(saved.right, DEFAULT_MARGINS.right),
     bottom: clampPx(saved.bottom, DEFAULT_MARGINS.bottom),
     left: clampPx(saved.left, DEFAULT_MARGINS.left),
   };
+  runtimeMarginsRaw = stored.ok ? stored.raw : undefined;
+  runtimeMarginsEphemeral = false;
+  return { ...runtimeMargins };
 }
 
 export function setPageMargins(next) {
@@ -58,7 +82,12 @@ export function setPageMargins(next) {
     bottom: clampPx(next.bottom, current.bottom),
     left: clampPx(next.left, current.left),
   };
-  writeJson(PAGE_SETTINGS_KEY, runtimeMargins);
+
+  const raw = JSON.stringify(runtimeMargins);
+  const persisted = writeStorageRaw(PAGE_SETTINGS_KEY, raw, "[page-settings] save failed:");
+  runtimeMarginsEphemeral = !persisted;
+  runtimeMarginsRaw = persisted ? raw : undefined;
+
   applyPageSettings();
   return { ...runtimeMargins };
 }
@@ -78,23 +107,32 @@ export function applyPageSettings(pagesContainer = null) {
 }
 
 export function isOutputBackgroundEnabled() {
-  if (runtimeOutputBackground !== null) return runtimeOutputBackground;
-  try {
-    return localStorage.getItem(OUTPUT_BACKGROUND_KEY) === "1";
-  } catch {
-    return false;
+  if (runtimeOutputBackground !== null && runtimeOutputBackgroundEphemeral) {
+    return runtimeOutputBackground;
   }
+
+  const stored = readStorageRaw(OUTPUT_BACKGROUND_KEY);
+  if (runtimeOutputBackground !== null && stored.ok && stored.raw === runtimeOutputBackgroundRaw) {
+    return runtimeOutputBackground;
+  }
+  if (!stored.ok && runtimeOutputBackground !== null) return runtimeOutputBackground;
+
+  runtimeOutputBackground = stored.ok ? stored.raw === "1" : false;
+  runtimeOutputBackgroundRaw = stored.ok ? stored.raw : undefined;
+  runtimeOutputBackgroundEphemeral = false;
+  return runtimeOutputBackground;
 }
 
 export function setOutputBackgroundEnabled(enabled) {
   runtimeOutputBackground = !!enabled;
-  if (!storageDisabled()) {
-    try {
-      localStorage.setItem(OUTPUT_BACKGROUND_KEY, runtimeOutputBackground ? "1" : "0");
-    } catch (err) {
-      console.warn("[page-settings] output background save failed:", err);
-    }
-  }
+  const raw = runtimeOutputBackground ? "1" : "0";
+  const persisted = writeStorageRaw(
+    OUTPUT_BACKGROUND_KEY,
+    raw,
+    "[page-settings] output background save failed:"
+  );
+  runtimeOutputBackgroundEphemeral = !persisted;
+  runtimeOutputBackgroundRaw = persisted ? raw : undefined;
   return runtimeOutputBackground;
 }
 
