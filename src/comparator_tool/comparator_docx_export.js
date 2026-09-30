@@ -237,7 +237,9 @@ function paragraphRanges(model, start = 0, end = model.text.length) {
     });
     pStart = i + 1;
   }
-  ranges.push({ start: pStart, end, attrs: {} });
+  if (pStart < end || ranges.length === 0 || model.text[end - 1] !== "\n") {
+    ranges.push({ start: pStart, end, attrs: {} });
+  }
   return ranges;
 }
 
