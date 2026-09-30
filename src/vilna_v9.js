@@ -17,6 +17,7 @@ import { buildNoteContentNodes, nodesToTextRuns, styleIdToMarks, applyBoldOverri
 import {
   buildV9SplitPolicy,
   buildParagraphBreakCandidates,
+  selectV9GapFillCandidates,
   scoreV9PageCandidate,
   splitMainTextAtOffset,
   splitNotesByAnchor,
@@ -5526,7 +5527,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const triggerRatio = Number.isFinite(Number(cfg.finalGapFillTriggerRatio)) ? Number(cfg.finalGapFillTriggerRatio) : 0.84;
       const minRemainingLines = Number.isFinite(Number(cfg.finalGapFillMinRemainingLines)) ? Number(cfg.finalGapFillMinRemainingLines) : 2.5;
       const minGain = Number.isFinite(Number(cfg.finalGapFillMinGain)) ? Number(cfg.finalGapFillMinGain) : 0.04;
-      const maxCandidates = Math.max(1, parseInt(cfg.finalGapFillMaxCandidates, 10) || 3);
       const lineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
 
       if (beforeFill >= triggerRatio || remainingPxBefore < lineH * minRemainingLines) {
@@ -5538,15 +5538,19 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const fullText = (target?.mainText || "").trim();
       if (!target || fullText.length < 2) return reject("no-next-paragraph");
 
-      const candidates = buildParagraphBreakCandidates(
+      const allCandidates = buildParagraphBreakCandidates(
         fullText,
         splitMetrics,
         splitMainWidth,
         v9SplitPolicy,
         { source: "final-gap-fill" }
-      )
-        .filter(c => c.offset >= 2 && c.offset < fullText.length)
-        .slice(0, maxCandidates);
+      ).filter(c => c.offset >= 2 && c.offset < fullText.length);
+
+      const candidates = selectV9GapFillCandidates(allCandidates, {
+        remainingPx: remainingPxBefore,
+        lineHeight: lineH,
+        maxCandidates: cfg.finalGapFillMaxCandidates,
+      });
 
       if (!candidates.length) {
         return reject("no-candidates", { candidateCount: 0 });
