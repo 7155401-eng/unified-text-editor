@@ -18,6 +18,7 @@ test("policy registry contains every public tool previously exposed by preflight
     "sefaria-live",
     "torah-transcription",
     "torah-nikud",
+    "torah-ocr",
     "haredi-caricature",
     "css-ai",
     "torah-tools",
@@ -37,21 +38,21 @@ test("source-free tools are unmetered at preflight", () => {
   }
 });
 
-test("metered parity targets remain on legacy enforcement until success/session accounting lands", () => {
+test("audited metered parity targets use server-authoritative enforcement", () => {
   const targets = {
-    "comparator-tool": ["session", "first-session-action"],
-
-    "sefaria-downloader": ["count", "success"],
-    "sefaria-live": ["count", "success"],
-    "torah-nikud": ["units", "success"],
-    "haredi-caricature": ["cooldown", "success"],
+    "comparator-tool": ["session", "first-session-action", "session-metered-ready"],
+    "sefaria-downloader": ["count", "success", "success-metered-ready"],
+    "sefaria-live": ["count", "success", "success-metered-ready"],
+    "torah-nikud": ["units", "success", "units-metered-ready"],
+    "haredi-caricature": ["cooldown", "success", "cooldown-metered-ready"],
+    "torah-ocr": ["count", "success", "success-metered-ready"],
   };
-  for (const [name, [mode, chargeOn]] of Object.entries(targets)) {
+  for (const [name, [mode, chargeOn, state]] of Object.entries(targets)) {
     const p = TOOL_POLICIES[name];
     assert.equal(p.freeMode, mode, name);
     assert.equal(p.chargeOn, chargeOn, name);
     assert.equal(p.premiumMode, "unlimited", name);
-    assert.equal(p.migrationState, "legacy-preflight-daily", name);
+    assert.equal(p.migrationState, state, name);
     assert.equal(isFreePreflightUnmetered(name), false, name);
   }
 });
@@ -75,4 +76,5 @@ test("desktop parity constants are pinned", () => {
   assert.equal(TOOL_POLICIES["torah-nikud"].limit, 500);
   assert.equal(TOOL_POLICIES["torah-nikud"].unit, "characters");
   assert.equal(TOOL_POLICIES["haredi-caricature"].windowSeconds, 24 * 60 * 60);
+  assert.equal(TOOL_POLICIES["torah-ocr"].windowSeconds, 7 * 24 * 60 * 60);
 });

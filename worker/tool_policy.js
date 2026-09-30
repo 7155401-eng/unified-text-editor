@@ -35,7 +35,7 @@ export const TOOL_POLICIES = Object.freeze({
     sessionIdleSeconds: 15 * 60,
     premiumMode: "unlimited",
     chargeOn: "first-session-action",
-    migrationState: "legacy-preflight-daily",
+    migrationState: "session-metered-ready",
   }),
   "nikud-merger": Object.freeze({
     freeMode: "count",
@@ -51,7 +51,7 @@ export const TOOL_POLICIES = Object.freeze({
     windowSeconds: 7 * 24 * 60 * 60,
     premiumMode: "unlimited",
     chargeOn: "success",
-    migrationState: "legacy-preflight-daily",
+    migrationState: "success-metered-ready",
   }),
   "sefaria-live": Object.freeze({
     freeMode: "count",
@@ -59,7 +59,7 @@ export const TOOL_POLICIES = Object.freeze({
     windowSeconds: 7 * 24 * 60 * 60,
     premiumMode: "unlimited",
     chargeOn: "success",
-    migrationState: "legacy-preflight-daily",
+    migrationState: "success-metered-ready",
   }),
   "torah-nikud": Object.freeze({
     freeMode: "units",
@@ -68,7 +68,7 @@ export const TOOL_POLICIES = Object.freeze({
     window: "local-day",
     premiumMode: "unlimited",
     chargeOn: "success",
-    migrationState: "legacy-preflight-daily",
+    migrationState: "units-metered-ready",
   }),
   "haredi-caricature": Object.freeze({
     freeMode: "cooldown",
@@ -76,7 +76,16 @@ export const TOOL_POLICIES = Object.freeze({
     windowSeconds: 24 * 60 * 60,
     premiumMode: "unlimited",
     chargeOn: "success",
-    migrationState: "legacy-preflight-daily",
+    migrationState: "cooldown-metered-ready",
+  }),
+
+  "torah-ocr": Object.freeze({
+    freeMode: "count",
+    limit: 1,
+    windowSeconds: 7 * 24 * 60 * 60,
+    premiumMode: "unlimited",
+    chargeOn: "success",
+    migrationState: "success-metered-ready",
   }),
 
   // Source policy is not yet audited deeply enough. Preserve current behavior.
@@ -114,4 +123,15 @@ export function publicToolNames() {
 export function isServerManagedSuccessTool(toolName) {
   const p = getToolPolicy(toolName);
   return !!p && p.migrationState === "success-metered-ready" && p.chargeOn === "success";
+}
+
+export function isServerManagedMeteredTool(toolName) {
+  const p = getToolPolicy(toolName);
+  if (!p) return false;
+  return [
+    "success-metered-ready",
+    "units-metered-ready",
+    "cooldown-metered-ready",
+    "session-metered-ready",
+  ].includes(p.migrationState);
 }

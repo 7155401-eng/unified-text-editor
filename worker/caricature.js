@@ -1,4 +1,5 @@
 import { getUserFromRequest } from './session.js';
+import { checkToolQuotaAvailability, consumeToolQuota } from './tool_quota.js';
 
 const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbyvt7yUPa2jNiTtTzKli8R8GmNI_plIeOwwFuTgu733es5mFfhEKcTcInP3yzFnlQQCvw/exec';
 const DEFAULT_IMAGE_MODEL = 'gemini-3-pro-image-preview';
@@ -258,7 +259,7 @@ async function callGeminiImage({ apiKey, model, prompt, cfg }) {
   };
 }
 
-async function handleDirectGemini(request, env, cfg, bodyJson, startedMs) {
+async function handleDirectGemini(request, env, cfg, bodyJson, startedMs, quotaUser) {
   const sceneText = normalizeText(bodyJson?.scene_text);
   if (!sceneText) {
     const out = { error: 'empty_scene_text', message: 'לא התקבל טקסט הוראה בשדה scene_text' };
@@ -308,10 +309,29 @@ async function handleDirectGemini(request, env, cfg, bodyJson, startedMs) {
     return jsonResponse(out, 200);
   }
 
+  const quota = await consumeToolQuota(quotaUser, 'haredi-caricature', env, {
+    units: 1,
+    idempotencyKey: bodyJson?.quota_idempotency_key || bodyJson?.request_id || '',
+  });
+  if (!quota?.ok) {
+    const blocked = {
+      error: 'quota_exceeded',
+      message: 'המכסה החינמית ליצירת תמונה נוצלה. בפרימיום השימוש ללא הגבלה.',
+      resetAt: quota?.resetAt ?? null,
+    };
+    await logCaricatureUsage(env, request, bodyJson, summarizeResult(blocked, 429, Date.now() - startedMs), startedMs);
+    return jsonResponse(blocked, 429);
+  }
+
   const out = {
     images,
     model: cfg.imageModel,
     count: images.length,
+    quota: {
+      unlimited: !!quota.unlimited,
+      remaining: quota.remaining ?? null,
+      resetAt: quota.resetAt ?? null,
+    },
     ...(cfg.debug ? { prompt_preview: clip(basePrompt, 1200) } : {}),
   };
   await logCaricatureUsage(env, request, bodyJson, summarizeResult(out, 200, Date.now() - startedMs), startedMs);
@@ -382,6 +402,20 @@ export async function handleCaricature(request, env) {
     return jsonResponse({ error: 'bad_request_body', message: 'Could not read request body' }, 400);
   }
 
+  const user = await getUserFromRequest(request, env);
+  if (!user) {
+    return jsonResponse({ error: 'login_required', message: 'יש להתחבר כדי להשתמש בכלי.' }, 401);
+  }
+
+  const allowance = await checkToolQuotaAvailability(user, 'haredi-caricature', env);
+  if (!allowance?.ok) {
+    return jsonResponse({
+      error: 'quota_exceeded',
+      message: 'המכסה החינמית ליצירת תמונה נוצלה. בפרימיום השימוש ללא הגבלה.',
+      resetAt: allowance?.resetAt ?? null,
+    }, 429);
+  }
+
   const cfg = await getCaricatureConfig(env);
-  return handleDirectGemini(request, env, cfg, bodyJson, startedMs);
+  return handleDirectGemini(request, env, cfg, bodyJson, startedMs, user);
 }

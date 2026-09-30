@@ -148,7 +148,7 @@ export function wireTorahTranscription(paneManager) {
   ocrBtn.textContent = "🖼 OCR (סריקת תמונה)";
   ocrBtn.title = "זיהוי טקסט בכתב יד / דפוס מתמונה דרך Gemini";
   ocrBtn.addEventListener("click", async () => {
-    await assertToolAllowed("torah-transcription");
+    await assertToolAllowed("torah-ocr");
     await openTranscriptionWindow(paneManager, { initialMode: "ocr" });
   });
   group.appendChild(ocrBtn);
@@ -173,7 +173,7 @@ export function wireTorahTranscription(paneManager) {
  * opts: { initialMode?: "transcription"|"ocr", jumpToStep?: string, initialText?: string }
  */
 export async function openTranscriptionWindow(paneManager, opts = {}) {
-  await assertToolAllowed("torah-transcription");
+  await assertToolAllowed(opts.initialMode === "ocr" ? "torah-ocr" : "torah-transcription");
   installElevenLabsKeyGuard();
   const win = new TranscriptionWindow({
     initialMode: opts.initialMode || null,

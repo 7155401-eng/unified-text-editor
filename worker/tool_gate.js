@@ -1,7 +1,12 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
-import { getToolPolicy, isFreePreflightUnmetered, isServerManagedSuccessTool, isToolPublic } from './tool_policy.js';
-import { checkToolQuotaAvailability } from './tool_quota.js';
+import {
+  getToolPolicy,
+  isFreePreflightUnmetered,
+  isServerManagedMeteredTool,
+  isToolPublic,
+} from './tool_policy.js';
+import { checkToolQuotaAvailability, consumeToolQuota } from './tool_quota.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
@@ -78,14 +83,85 @@ async function handleSecureExportHtmlAction(request, env, body) {
   });
 }
 
-async function authorizeFreePreflight(user, toolName, env) {
+function quotaOptions(request, body) {
+  const amount = Number(body?.amount ?? body?.units ?? 1);
+  const fallbackOffset = Number(body?.timeZoneOffsetMinutes ?? body?.timezoneOffsetMinutes ?? 0);
+  return {
+    units: Number.isFinite(amount) && amount > 0 ? Math.floor(amount) : 1,
+    amount: Number.isFinite(amount) && amount > 0 ? Math.floor(amount) : 1,
+    timeZone: String(request?.cf?.timezone || '').trim(),
+    timezoneOffsetMinutes: Number.isFinite(fallbackOffset) ? Math.trunc(fallbackOffset) : 0,
+  };
+}
+
+function quotaMessage(toolName, policy, state = {}) {
+  if (!policy) return 'המכסה החינמית אינה זמינה כרגע.';
+  const remaining = Math.max(0, Number(state.remaining) || 0);
+  if (policy.freeMode === 'units') {
+    return `${toolName}: בחשבון חינמי ניתן להשתמש עד ${policy.limit} ${policy.unit === 'characters' ? 'תווים' : 'יחידות'} ביום. נשארו ${remaining}.`;
+  }
+  if (policy.freeMode === 'session') {
+    return `${toolName}: בחשבון חינמי ניתן לפתוח סשן עבודה אחד של 15 דקות בכל 7 ימים. בפרימיום השימוש ללא הגבלה.`;
+  }
+  if (policy.freeMode === 'cooldown') {
+    return `${toolName}: בחשבון חינמי ניתן לבצע פעולה מוצלחת אחת בכל 24 שעות. בפרימיום השימוש ללא הגבלה.`;
+  }
+  if (policy.freeMode === 'count' && Number(policy.windowSeconds) === 7 * 24 * 60 * 60) {
+    return `${toolName}: בחשבון חינמי ניתן לבצע פעולה מוצלחת אחת בכל 7 ימים. בפרימיום השימוש ללא הגבלה.`;
+  }
+  return `${toolName}: המכסה החינמית נוצלה. בפרימיום השימוש ללא הגבלה.`;
+}
+
+function serverQuotaPayload(toolName, policy, state = {}) {
+  return {
+    ok: !!state.ok,
+    toolName,
+    reason: state.reason || '',
+    unlimited: !!state.unlimited,
+    used: state.used ?? null,
+    limit: state.limit ?? policy?.limit ?? null,
+    remaining: state.remaining ?? null,
+    resetAt: state.resetAt ?? null,
+    requested: state.requested ?? null,
+    sessionIdleSeconds: state.sessionIdleSeconds ?? policy?.sessionIdleSeconds ?? null,
+    message: quotaMessage(toolName, policy, state),
+    policy: policy ? {
+      freeMode: policy.freeMode,
+      premiumMode: policy.premiumMode,
+      chargeOn: policy.chargeOn,
+      migrationState: policy.migrationState,
+      limit: policy.limit ?? null,
+      windowSeconds: policy.windowSeconds ?? null,
+      sessionIdleSeconds: policy.sessionIdleSeconds ?? null,
+      unit: policy.unit ?? null,
+      window: policy.window ?? null,
+    } : null,
+  };
+}
+
+async function authorizeFreePreflight(user, toolName, env, request, body) {
   if (isFreePreflightUnmetered(toolName)) {
     return { ok: true, unmetered: true, preflightConsumed: false };
   }
 
-  if (isServerManagedSuccessTool(toolName)) {
-    const state = await checkToolQuotaAvailability(user, toolName, env);
-    return { ...state, preflightConsumed: false };
+  if (isServerManagedMeteredTool(toolName)) {
+    const state = await checkToolQuotaAvailability(user, toolName, env, quotaOptions(request, body));
+    const policy = getToolPolicy(toolName);
+
+    // Desktop Comparator parity: opening the window is free. If the weekly
+    // session was already consumed, open it read-only instead of blocking the
+    // window itself. Real actions still use check/consume and remain blocked.
+    if (policy?.freeMode === 'session') {
+      return {
+        ...state,
+        ok: true,
+        quotaAvailable: !!state.ok,
+        quotaReadOnly: !state.ok,
+        preflightConsumed: false,
+      };
+    }
+
+    return { ...state, quotaAvailable: !!state.ok, preflightConsumed: false };
   }
 
   const usageDate = todayKey();
@@ -98,8 +174,6 @@ async function authorizeFreePreflight(user, toolName, env) {
     if ((inserted?.meta?.changes || 0) > 0) return { ok: true, preflightConsumed: true };
     return { ok: false, reason: 'quota' };
   } catch (_) {
-    // If the D1 migration is not deployed yet, still enforce on the server
-    // with Cloudflare's edge cache instead of trusting browser storage.
     const cache = caches.default;
     const cacheUrl = `https://tool-usage.invalid/${encodeURIComponent(`${user.id}:${toolName}:${usageDate}`)}`;
     try {
@@ -155,32 +229,71 @@ export async function handleToolPreflight(request, env) {
   }
 
   const policy = getToolPolicy(toolName);
+  const action = String(body?.action || 'preflight').trim().toLowerCase();
 
-  if (!user.paid) {
-    let usage;
+  if (action === 'check' || action === 'consume') {
+    if (!isServerManagedMeteredTool(toolName)) {
+      return Response.json(
+        { error: 'unsupported_policy_action', message: 'This tool is not server-metered yet' },
+        { status: 400, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+
+    let state;
     try {
-      usage = await authorizeFreePreflight(user, toolName, env);
-    } catch (error) {
+      state = action === 'consume'
+        ? await consumeToolQuota(user, toolName, env, {
+            ...quotaOptions(request, body),
+            idempotencyKey: body?.idempotencyKey || body?.idempotency_key || '',
+          })
+        : await checkToolQuotaAvailability(user, toolName, env, quotaOptions(request, body));
+    } catch (_) {
+      return Response.json(
+        { error: 'quota_unavailable', message: 'Quota service is temporarily unavailable' },
+        { status: 503, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+
+    const payload = serverQuotaPayload(toolName, policy, state);
+    if (!state.ok) {
+      return Response.json(
+        { error: state.reason === 'quota' ? 'quota_exceeded' : (state.reason || 'quota_error'), ...payload },
+        { status: state.reason === 'quota' ? 429 : 400, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+    return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
+  }
+
+  if (action !== 'preflight') {
+    return Response.json(
+      { error: 'unknown_action', message: 'Use preflight, check or consume' },
+      { status: 400, headers: { 'cache-control': 'no-store' } }
+    );
+  }
+
+  let usage = { ok: true };
+  if (!user.paid && !user.is_admin) {
+    try {
+      usage = await authorizeFreePreflight(user, toolName, env, request, body);
+    } catch (_) {
       return Response.json(
         { error: 'quota_unavailable', message: 'Quota service is temporarily unavailable' },
         { status: 503, headers: { 'cache-control': 'no-store' } }
       );
     }
     if (!usage.ok) {
+      const payload = serverQuotaPayload(toolName, policy, usage);
       return Response.json(
         {
           error: 'quota_exceeded',
-          message: isServerManagedSuccessTool(toolName)
-            ? 'Free quota is currently exhausted for this tool'
-            : 'Free accounts can use each tool once per day',
-          resetAt: usage.resetAt ?? null,
-          remaining: usage.remaining ?? 0,
-          limit: usage.limit ?? policy?.limit ?? null,
+          ...payload,
+          message: isServerManagedMeteredTool(toolName)
+            ? payload.message
+            : 'Free accounts can use this legacy tool once per day',
         },
         { status: 429, headers: { 'cache-control': 'no-store' } }
       );
     }
-    body.__usage = usage;
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
@@ -199,9 +312,11 @@ export async function handleToolPreflight(request, env) {
     token,
     expiresAt: (nowSec + TOOL_TOKEN_TTL_SEC) * 1000,
     unmetered: !user?.paid && isFreePreflightUnmetered(toolName),
-    preflightConsumed: !!body?.__usage?.preflightConsumed,
-    remaining: body?.__usage?.remaining ?? null,
-    resetAt: body?.__usage?.resetAt ?? null,
+    preflightConsumed: !!usage?.preflightConsumed,
+    remaining: usage?.remaining ?? null,
+    resetAt: usage?.resetAt ?? null,
+    quotaAvailable: usage?.quotaAvailable ?? usage?.ok ?? true,
+    quotaReadOnly: !!usage?.quotaReadOnly,
     policy: policy ? {
       freeMode: policy.freeMode,
       premiumMode: policy.premiumMode,

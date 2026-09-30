@@ -15,7 +15,8 @@
 import { tr } from "./caricature_i18n.js";
 import { ASPECTS, CARICATURE_STYLE_LABELS, QUICK_SCENES } from "./caricature_presets.js";
 import { generateCaricatures, isConfigured, loadUserApiKeys, outputDir, saveImage, saveUserApiKey } from "./caricature_gas.js";
-import { canGenerate, humanize, markUsed } from "./caricature_quota.js";
+import { humanize } from "./caricature_quota.js";
+import { checkToolAllowance, getToolQuotaStatus } from "../tool_runtime_gate.js";
 import { attachContextMenu, setDirection } from "./caricature_widgets.js";
 
 // IndexedDB key for gallery (persistent in browser).
@@ -605,18 +606,24 @@ export class CaricatureWindow {
   }
 
   // ── Quota ──────────────────────────────────────────────────
-  _refreshQuota() {
-    const { ok, wait } = canGenerate(this.licensed);
+  async _refreshQuota() {
     this.quotaBar.classList.remove("ok", "acc", "wait");
-    if (this.licensed) {
-      this.quotaBar.textContent = tr("quota_unlimited", this.lang);
-      this.quotaBar.classList.add("ok");
-    } else if (ok) {
+    try {
+      const status = await getToolQuotaStatus("haredi-caricature");
+      if (status?.unlimited) {
+        this.quotaBar.textContent = tr("quota_unlimited", this.lang);
+        this.quotaBar.classList.add("ok");
+      } else if (status?.ok) {
+        this.quotaBar.textContent = tr("quota_ready", this.lang);
+        this.quotaBar.classList.add("acc");
+      } else {
+        const waitSec = Math.max(0, Number(status?.resetAt || 0) - Date.now() / 1000);
+        this.quotaBar.textContent = tr("quota_wait", this.lang, { wait: humanize(waitSec) });
+        this.quotaBar.classList.add("wait");
+      }
+    } catch (_) {
       this.quotaBar.textContent = tr("quota_ready", this.lang);
       this.quotaBar.classList.add("acc");
-    } else {
-      this.quotaBar.textContent = tr("quota_wait", this.lang, { wait: humanize(wait) });
-      this.quotaBar.classList.add("wait");
     }
   }
 
@@ -713,12 +720,16 @@ export class CaricatureWindow {
   // ── Generate ──────────────────────────────────────────────
   async _onGenerate() {
     if (this._busy) return;
-    const { ok, wait } = canGenerate(this.licensed);
-    if (!ok) {
-      alert(tr("quota_block_title", this.lang) + "\n\n" +
-            tr("quota_block_msg", this.lang, { wait: humanize(wait) }));
+
+    try {
+      await checkToolAllowance("haredi-caricature", {
+        niceName: this.lang === "he" ? "בוט הקריקטורות" : "Caricature bot",
+      });
+    } catch (_) {
+      await this._refreshQuota();
       return;
     }
+
     if (!isConfigured()) {
       alert(this.lang === "he"
         ? "כתובת ה-Apps Script של בוט הקריקטורות לא הוגדרה.\nפנה לתמיכה כדי לקבל את הכתובת."
@@ -783,7 +794,6 @@ export class CaricatureWindow {
       return;
     }
 
-    if (!this.licensed) markUsed();
     this._refreshQuota();
 
     // Save each image and persist into IndexedDB for gallery

@@ -11,7 +11,8 @@ import * as meta from "./sefaria_book_metadata.js";
 import * as api from "./sefaria_api_client.js";
 import * as presets from "./sefaria_preset_manager.js";
 import { extractDh, findDhPosition } from "./sefaria_dh.js";
-import { buildAndDownloadDocx } from "./sefaria_docx_builder.js";
+import { buildDocxBlob, downloadDocxBlob } from "./sefaria_docx_builder.js";
+import { checkToolAllowance, consumeToolUse } from "../tool_runtime_gate.js";
 import { t, getLang, toggleLang } from "./sefaria_i18n.js";
 
 // ────────────────────────────────────────────────────────────────────
@@ -891,6 +892,12 @@ export function openSefariaDownloader(opts) {
     const yes = await confirmExportModal(ref, selected);
     if (!yes) return;
 
+    try {
+      await checkToolAllowance("sefaria-downloader", { niceName: "הורדת ספר מספריא" });
+    } catch (_) {
+      return;
+    }
+
     cancelFlag = false;
     exportInProgress = true;
     cancelBtn.disabled = false;
@@ -1012,7 +1019,16 @@ export function openSefariaDownloader(opts) {
     const ts = Math.floor(Date.now() / 1000);
     const filename = `${safeBook}_${ts}.docx`;
     const docTitle = `${meta.getHebrewName(currentBook)} — מאגר התורה`;
-    const { blob } = buildAndDownloadDocx(units, streamsMeta, docTitle, filename);
+    const { blob } = buildDocxBlob(units, streamsMeta, docTitle, filename);
+
+    // The export is fully built but still private. Claim the weekly free use
+    // atomically before delivering the file or loading it into the editor.
+    await consumeToolUse("sefaria-downloader", {
+      niceName: "הורדת ספר מספריא",
+      kind: "export-success",
+    });
+
+    downloadDocxBlob(blob, filename);
 
     presets.pushRecent(currentBook, ref);
     refreshRecent();

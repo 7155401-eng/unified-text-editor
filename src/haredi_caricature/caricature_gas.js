@@ -149,6 +149,9 @@ export async function generateCaricatures({
     count: Math.max(1, Math.min(parseInt(count, 10) || 1, 4)),
     negative: negative || "",
     polish: Boolean(polish),
+    quota_idempotency_key: (() => {
+      try { return globalThis.crypto?.randomUUID?.() || ""; } catch (_) { return ""; }
+    })(),
   };
   console.log("[caricature] sending payload scene_text length:", cleanSceneText.length);
   const apiKey = userApiKey();
