@@ -5,6 +5,7 @@
 
 import mammoth from "mammoth/mammoth.browser.js";
 import JSZip from "jszip";
+import { resolveWordNoteRouting } from "./word_note_routing.js";
 
 // =====================================================================
 // extractBodyHtmlWithSymbols
@@ -33,29 +34,17 @@ export async function extractBodyHtmlWithSymbols(arrayBuffer, selected, options 
     else if (src === "comment") { if (mk) cm_m[mk] = sym; else cm_n = sym; }
   }
 
-  // משה 2026-05-31: יישור עם docx_extract_simple — אם skipEmptyNotes פעיל
-  // (ברירת מחדל), הערה שלאחר ניקוי הסימן ריקה לא מקבלת קישור בגוף, בדיוק
-  // כמו בזרם. בלי זה — mammoth שמה קישור "no-marker" (למשל @06) על 7 הערות
-  // ריקות, ה-engine מדלגת עליהן, וה-reporter מציג אזהרת "קישורים מיותרים".
+  // The body-reference decision must be identical to docx_extract_simple.
+  // In particular, markerMatchMode="starts" must not insert a body symbol for
+  // a marker found later inside the note text.
   const skipEmptyNotes = options.skipEmptyNotes !== false;
+  const markerMatchMode = options.markerMatchMode || "contains";
 
   function resolve(noteText, m2s, nsym) {
-    const raw = String(noteText || "");
-    if (skipEmptyNotes && !raw.trim()) return null;
-    const m = raw.match(/@(\d+)/);
-    if (m && m[1] in m2s) {
-      if (skipEmptyNotes) {
-        const stripped = raw.replace(new RegExp("^\\s*@" + m[1] + "\\s*:?\\s*"), "").trim();
-        if (raw.replace(new RegExp("@" + m[1] + "\\s*:?\\s*"), "").trim() === ""
-            && stripped === "") return null;
-      }
-      return m2s[m[1]];
-    }
-    if (nsym && !m) {
-      if (skipEmptyNotes && !raw.trim()) return null;
-      return nsym;
-    }
-    return null;
+    return resolveWordNoteRouting(noteText, m2s, nsym, {
+      skipEmptyNotes,
+      markerMatchMode,
+    }).symbol;
   }
 
   // 3) קריאת document.xml והחלפת footnoteReference/endnoteReference/commentReference בסמלים.
