@@ -7,6 +7,8 @@ import { isDemoMode, DEMO_WATERMARK_POOL } from "./demo_mode.js";
 import { runPreflight } from "./render_preflight.js";
 import { isNestedNotesEnabled } from "./nested_notes_gate.js";
 import { canNestInside, streamLinksSignature } from "./stream_links.js";
+import { loadSpacingSettings } from "./spacing_settings.js";
+import { applyGlobalLineBreakCode, globalLineBreakSettingsSignature } from "./engine/global_line_break_code.js";
 
 function injectDemoWatermarksIfNeeded(content) {
   if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
