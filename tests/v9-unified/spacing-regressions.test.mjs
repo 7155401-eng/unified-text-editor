@@ -444,6 +444,40 @@ test('centered hard-break line centers opening plus body as one visual segment',
    `opening x=${line.render.opening.x}, expected 46 for centered composite`);
 });
 
+
+test('probe: two-line paragraph ending inside dropped-opening window exposes composite-centering geometry',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs(
+  [{id:'two-line-opening-center',text:'OPEN aa aa aa aa aa aa aa aa',runs:[],mainRefs:[]}],
+  [{x:0,width:100,y_start:0,y_end:100}],ctx,100
+ );
+ assert.equal(p.lines.length,2,'fixture is not a two-line paragraph');
+ const first=p.lines[0],last=p.lines[1];
+ assert(first.render.opening,'opening missing');
+ assert(last.isLast===true,'second row is not last');
+ assert(last.y<first.render.opening.y+first.render.opening.height,
+  'last row no longer overlaps opening window');
+ // Preserve geometry for diagnosis. If the planner centers only the body,
+ // the composite opening+last-row body cannot share the host center.
+ const hostCenter=50;
+ const opening=first.render.opening;
+ const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
+ const compositeLeft=Math.min(bodyLeft,opening.x);
+ const compositeRight=Math.max(bodyLeft+last.naturalWidth,opening.x+opening.width);
+ const compositeCenter=(compositeLeft+compositeRight)/2;
+ assert(Math.abs(compositeCenter-hostCenter)<0.75,
+  `two-line opening composite is off-center: center=${compositeCenter}, host=${hostCenter}, bodyLeft=${bodyLeft}, openingX=${opening.x}`);
+});
+
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={
