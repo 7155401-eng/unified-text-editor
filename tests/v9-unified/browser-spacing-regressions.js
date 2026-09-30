@@ -377,6 +377,28 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('legacy audit: side commentaries widen after a short main text ends',()=>{
+    const page=makePage();
+    const sideText=Array(22).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'אחד שניים שלוש ארבע',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:720,crownLines:2,streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}}}});
+    const main=plan.mainBox;
+    const right=plan.streamBoxes.find(b=>b.role==='right');
+    assert(main&&right&&right.lines.length>3,'fixture did not produce main plus side commentary');
+    const mainBottom=(main.y||0)+(main.height||0);
+    const before=right.lines.filter(l=>l.y<mainBottom-.1);
+    const after=right.lines.filter(l=>l.y>=mainBottom-.1);
+    assert(before.length&&after.length,'fixture does not cross the end of the main text');
+    const narrow=Math.min(...before.map(l=>l.width));
+    const widened=Math.max(...after.map(l=>l.width));
+    assert(widened>narrow+25,`commentary did not widen below main: ${narrow} -> ${widened}`);
+    page.remove();
+  });
+
   await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
     const page=makePage();
     const main=Array(9).fill(neutral).join(' ');
