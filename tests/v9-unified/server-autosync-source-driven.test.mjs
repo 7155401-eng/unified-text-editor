@@ -119,6 +119,8 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
       'PaneManager save path must emit the semantic persist signal');
     assert.match(paneSource, /ravtext:local-document-saved/,
       'successful localStorage writes must announce the recoverable snapshot');
+    assert.match(paneSource, /SERVER_STALE_KEY[\s\S]*?status:\s*"local-ahead"/,
+      'local save itself must synchronously mark the snapshot ahead of server');
 
     // A local snapshot becomes authoritative immediately, before the server
     // debounce has any chance to finish.
