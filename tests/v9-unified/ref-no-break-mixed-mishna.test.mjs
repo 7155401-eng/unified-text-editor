@@ -1,19 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WORD_JOINER, referenceLineGlue } from "../../src/engine/reference_line_glue.js";
+import { referenceNoBreakRange } from "../../src/engine/reference_line_glue.js";
 import { groupV9FooterStreams } from "../../src/engine/v9_footer_grouping.js";
 
 const streams = (...ids) => ids.map((id) => ({ id, items: [id] }));
 
-test("no-space main reference uses invisible no-break glue on both sides", () => {
-  assert.equal(WORD_JOINER, "\u2060");
-  assert.deepEqual(referenceLineGlue("אב'גד", 3), { before: true, after: true });
+test("no-space main reference returns the whole source word as an atomic range", () => {
+  assert.deepEqual(referenceNoBreakRange("אב'גד", 3), { start: 0, end: 5 });
+  assert.deepEqual(referenceNoBreakRange("אלפא בית", 2), { start: 0, end: 4 });
 });
 
-test("real whitespace stays a legal line-break boundary", () => {
-  assert.deepEqual(referenceLineGlue("אב' גד", 3), { before: true, after: false });
-  assert.deepEqual(referenceLineGlue("אב 'גד", 3), { before: false, after: true });
-  assert.deepEqual(referenceLineGlue("אב  גד", 3), { before: false, after: false });
+test("real whitespace stays a legal line-break boundary and changes no source text", () => {
+  assert.equal(referenceNoBreakRange("אב' גד", 3), null);
+  assert.equal(referenceNoBreakRange("אב 'גד", 3), null);
+  const text = "אב'גד";
+  referenceNoBreakRange(text, 3);
+  assert.equal(text, "אב'גד");
 });
 
 test("two explicit Mishnah streams form one footer flow pair", () => {
