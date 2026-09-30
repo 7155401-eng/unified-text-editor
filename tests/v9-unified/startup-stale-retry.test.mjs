@@ -325,3 +325,122 @@ test('typing while startup server fetch is in flight wins over the late server c
     for (const restore of restores.reverse()) restore();
   }
 });
+
+
+test('hung startup document GET times out, cannot load late, and does not block autosync attachment', async () => {
+  const localContent = {
+    version: 1,
+    activeId: 'local',
+    panes: [{ id: 'local', paneRole: 'main', content: { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'browser local copy' }] },
+    ] } }],
+  };
+  const lateServerContent = {
+    version: 1,
+    activeId: 'server',
+    panes: [{ id: 'server', paneRole: 'main', content: { type: 'doc', content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'late server copy' }] },
+    ] } }],
+  };
+
+  const storage = fakeStorage({ [DOC_KEY]: JSON.stringify(localContent) });
+  const timers = fakeTimers();
+  const listeners = new Map();
+  const callbacks = new Map();
+  const puts = [];
+  let releaseDocumentGet;
+  let loadedServer = false;
+
+  const windowStub = {
+    __RAVTEXT_AUTH__: { loggedIn: true },
+    addEventListener(type, fn) {
+      if (!listeners.has(type)) listeners.set(type, []);
+      listeners.get(type).push(fn);
+    },
+    dispatchEvent() {},
+  };
+
+  const fetchStub = (url, init = {}) => {
+    const method = init.method || 'GET';
+    if (String(url) === '/api/documents/current' && method === 'GET') {
+      return new Promise((resolve) => {
+        releaseDocumentGet = () => resolve({
+          ok: true,
+          status: 200,
+          async json() { return { document: { content: lateServerContent } }; },
+        });
+      });
+    }
+    if (String(url) === '/api/settings' && method === 'GET') {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        async json() { return { settings: {} }; },
+      });
+    }
+    if (String(url) === '/api/documents/current' && method === 'PUT') {
+      puts.push(JSON.parse(init.body));
+      return Promise.resolve({ ok: true, status: 200, async json() { return {}; } });
+    }
+    throw new Error('unexpected fetch ' + method + ' ' + url);
+  };
+
+  const paneManager = {
+    getContentRevision() { return 0; },
+    load() { loadedServer = true; },
+    serializeForPersistence() { return structuredClone(localContent); },
+    on(type, fn) { callbacks.set(type, fn); },
+    flushSave() {},
+  };
+
+  const restores = [
+    replaceGlobal('window', windowStub),
+    replaceGlobal('localStorage', storage),
+    replaceGlobal('document', { getElementById: () => null }),
+    replaceGlobal('navigator', { sendBeacon: () => true }),
+    replaceGlobal('fetch', fetchStub),
+    replaceGlobal('setTimeout', timers.setTimeout),
+    replaceGlobal('clearTimeout', timers.clearTimeout),
+    replaceGlobal('CustomEvent', class CustomEvent {
+      constructor(type, init = {}) { this.type = type; this.detail = init.detail; }
+    }),
+  ];
+
+  try {
+    const mod = await freshModule('startup-document-timeout');
+    const pending = mod.loadInitialState(paneManager);
+    await settle();
+
+    assert.equal(typeof releaseDocumentGet, 'function');
+    assert.deepEqual(timers.delays(), [8000]);
+
+    timers.runByDelay(8000);
+    const result = await pending;
+    assert.equal(result.loaded, false);
+    assert.equal(result.startupTimedOut, true);
+    assert.equal(loadedServer, false);
+    assert.equal(storage.getItem(STALE_KEY), null,
+      'a read timeout alone must not claim that the server is stale');
+
+    // The late GET is now detached from startup control flow. Resolving it
+    // later must not apply its document.
+    releaseDocumentGet();
+    await settle(10);
+    assert.equal(loadedServer, false);
+
+    mod.attachAutoSync(paneManager);
+    assert.equal(typeof callbacks.get('persist'), 'function');
+    assert.deepEqual(timers.delays(), [],
+      'timeout alone must not blindly upload an older local snapshot');
+
+    // A subsequent real persistence intent uses the ordinary bounded autosync.
+    callbacks.get('persist')();
+    assert.deepEqual(timers.delays(), [2000, 10000]);
+    timers.runByDelay(2000);
+    await settle(10);
+    assert.equal(puts.length, 1);
+    assert.deepEqual(puts[0].content, localContent);
+  } finally {
+    for (const restore of restores.reverse()) restore();
+  }
+});
