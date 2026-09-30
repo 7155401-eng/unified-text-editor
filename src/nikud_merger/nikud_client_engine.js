@@ -185,6 +185,7 @@ export async function mergeAllSources(clean, sources, opts = {}) {
       sources,
       mode: opts.mode || "word",
       filter_config: opts.config && opts.config.toDict ? opts.config.toDict() : opts.config,
+      quota_idempotency_key: quotaIdempotencyKey(),
     }),
   });
   if (!response.ok) throw new Error(`Nikud merger failed: HTTP ${response.status}`);
