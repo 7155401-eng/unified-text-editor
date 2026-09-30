@@ -5030,8 +5030,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             secondText,
             splitMetrics,
             splitMainWidth,
-            v9SplitPolicy,
-            { source: "extension-rescue" }
+            { ...v9SplitPolicy, allowWordGapOnlyInEmergency: true },
+            // Extension rescue is already guarded by full page-plan scoring,
+            // note ownership, main overflow and unsafe stream-overflow checks.
+            // Let it inspect additional REAL-WHITESPACE word gaps only here.
+            { source: "extension-rescue", emergency: true }
           ).filter(c => c.offset >= 2 && c.offset <= secondText.length),
           {
             remainingPx: extensionRemainingPx,
