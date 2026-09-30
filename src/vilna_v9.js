@@ -1848,6 +1848,7 @@ function buildPagePlanCore(pageContent, config) {
     mainFontSize: 13,
     sideFontSize: 11,
     lineHeightRatio: 1.55,
+    streamLineHeightRatio: null,
     mainFontFamily: 'serif',
     sideFontFamily: 'serif',
     crownLines: 4,
@@ -1863,6 +1864,10 @@ function buildPagePlanCore(pageContent, config) {
   }, config || {});
 
   const streamSettings = cfg.streamSettings || {};
+  const streamLineHeightRatio = Number(cfg.streamLineHeightRatio) > 0
+    ? Number(cfg.streamLineHeightRatio)
+    : cfg.lineHeightRatio;
+  cfg.streamLineHeightRatio = streamLineHeightRatio;
   const mainColumnCount = resolveV9MainColumnCount(cfg);
   const mainColumnGap = resolveV9MainColumnGap(cfg);
   cfg.mainCols = mainColumnCount;
@@ -1896,7 +1901,7 @@ function buildPagePlanCore(pageContent, config) {
   const sideMetrics = new VilnaMetrics({
     fontFamily: cfg.sideFontFamily,
     fontSize: cfg.sideFontSize,
-    lineHeightRatio: cfg.lineHeightRatio,
+    lineHeightRatio: streamLineHeightRatio,
   });
 
   // משה 2026-05-13: cache של VilnaMetrics לפי styleId. כשמשתמש מחיל סגנון אישי
@@ -1929,7 +1934,7 @@ function buildPagePlanCore(pageContent, config) {
     return new VilnaMetrics({
       fontFamily: st.fontFamily || cfg.sideFontFamily,
       fontSize: Number(st.fontSize) > 0 ? Number(st.fontSize) : cfg.sideFontSize,
-      lineHeightRatio: Number(st.lineHeight) > 0 ? Number(st.lineHeight) : cfg.lineHeightRatio,
+      lineHeightRatio: Number(st.lineHeight) > 0 ? Number(st.lineHeight) : streamLineHeightRatio,
       fontWeight: st.bold ? "700" : "normal",
       fontStyle: st.italic ? "italic" : "normal",
     });
@@ -1960,7 +1965,7 @@ function buildPagePlanCore(pageContent, config) {
     const metrics = new VilnaMetrics({
       fontFamily: style.fontFamily || cfg.sideFontFamily,
       fontSize: Number(style.fontSize) > 0 ? Number(style.fontSize) : cfg.sideFontSize,
-      lineHeightRatio: Number(style.lineHeight) > 0 ? Number(style.lineHeight) : cfg.lineHeightRatio,
+      lineHeightRatio: Number(style.lineHeight) > 0 ? Number(style.lineHeight) : streamLineHeightRatio,
       fontWeight: style.bold ? '700' : 'normal',
       fontStyle: style.italic ? 'italic' : 'normal',
     });
