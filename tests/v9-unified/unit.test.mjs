@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { canonicalMainText, prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from '../../src/engine/v9_source_fragments.js';
 import { layoutV9MainParagraphs, rowGeometry, partForRange } from '../../src/engine/v9_main_inline_layout.js';
-import { extractOpeningSegmentForTest } from '../../src/opening_word.js';
+import { extractOpeningSegmentForTest, openingWordSkipReason } from '../../src/opening_word.js';
 import { splitMainTextAtOffset, buildV9SplitPolicy, buildParagraphBreakCandidates } from '../../src/engine/v9_split_policy.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 
@@ -83,6 +83,28 @@ test('C8: widening from a narrow strip repacks the first wide row with following
     `first wide row remains visibly underfilled: ${firstWide.naturalWidth}/${firstWide.width}`);
 });
 
+test('opening skip policy is opt-in and uses measured layout facts', () => {
+  assert.equal(openingWordSkipReason({}, {lineCount:1,complete:true,firstLineFill:0.2}), '');
+  assert.equal(openingWordSkipReason({skipSingleLine:true}, {lineCount:1,complete:true,firstLineFill:1}), 'single-line');
+  assert.equal(openingWordSkipReason({skipFewerThanLines:true,minLines:3}, {lineCount:2,complete:true,firstLineFill:1}), 'fewer-than-lines');
+  assert.equal(openingWordSkipReason({skipFewerThanLines:true,minLines:3}, {lineCount:2,complete:false,firstLineFill:1}), '');
+  assert.equal(openingWordSkipReason({skipShortLine:true,shortLineMinFill:0.7}, {lineCount:4,complete:true,firstLineFill:0.69}), 'short-line');
+});
+test('V9 preview omits an opening on an opted-in one-row paragraph', () => {
+  const opening={...opw,skipPolicy:{skipSingleLine:true,skipShortLine:false,skipFewerThanLines:false,minLines:3,shortLineMinFill:0.65}};
+  const r=plan('abc def ghi',opening,[{x:0,width:160,y_start:0,y_end:100}],100);
+  assert.equal(r.lines.length,1);
+  assert.equal(r.lines[0].render.opening,null);
+  assert.ok(r.diagnostics.some(d=>d.code==='opening-skipped-policy'&&d.reason==='single-line'));
+});
+
+test('V9 preview omits an opening when a complete paragraph has fewer than N rows', () => {
+  const opening={...opw,skipPolicy:{skipSingleLine:false,skipShortLine:false,skipFewerThanLines:true,minLines:3,shortLineMinFill:0.65}};
+  const r=plan('aaa bbb ccc ddd eee fff',opening,[{x:0,width:70,y_start:0,y_end:100}],100);
+  assert.equal(r.lines.length,2);
+  assert.ok(r.lines.every(l=>!l.render.opening));
+  assert.ok(r.diagnostics.some(d=>d.code==='opening-skipped-policy'&&d.reason==='fewer-than-lines'));
+});
 test('canonical mapping retains explicit breaks, removes markers once', () => {
   const raw = '  @01alpha  beta\r\n gamma\t delta  ';
   const m = canonicalMainText(raw);
