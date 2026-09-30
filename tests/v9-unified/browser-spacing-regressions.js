@@ -321,6 +321,42 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    page.remove();
  });
 
+
+ await test('heterogeneous crown pitches do not manufacture a blank row at crown→body transition',()=>{
+   const page=makePage(),t=Array(24).fill(phrase).join(' ');
+   const plan=buildSinglePage(page,{
+     mainText:Array(6).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   },{
+     ...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,
+     streamSettings:{
+       '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+       '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+     }
+   });
+
+   const crownBottom=Number(plan.crownBottomY)||0;
+   for(const role of ['right','left']){
+     const box=plan.streamBoxes.find(b=>b.role===role);
+     assert(box?.lines?.length>4,`missing crown/body rows for ${role}`);
+     const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
+     const crownRows=sorted.filter(l=>l.y+Math.max(1,Number(l.lineHeightPx)||0)<=crownBottom+.15);
+     assert(crownRows.length>=4,`${role} has only ${crownRows.length} complete crown rows`);
+     const lastCrown=crownRows[crownRows.length-1];
+     const next=sorted.find(l=>l.y>lastCrown.y+.1);
+     assert(next,`no body row after crown for ${role}`);
+     const pitch=Number(lastCrown.lineHeightPx)||Number(next.lineHeightPx)||1;
+     const dy=next.y-lastCrown.y;
+     assert(dy<=pitch+.2,
+       `${role} crown→body transition inserted vertical gap: dy=${dy}, pitch=${pitch}, crownBottom=${crownBottom}, lastY=${lastCrown.y}, nextY=${next.y}`);
+     assert(dy>=pitch-.2,
+       `${role} crown→body rows overlap/collapse: dy=${dy}, pitch=${pitch}`);
+   }
+   page.remove();
+ });
+
  await test('main stream title reserves geometry below crown and honors titleShow',()=>{
    const settings=getStreamSettings(),saved=settings.main;
    const t=Array(12).fill(phrase).join(' ');
