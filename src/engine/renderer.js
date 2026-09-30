@@ -13,6 +13,7 @@ import {
 import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
+import { mainRefNoSpaceTokenBounds } from "./reference_line_break.js";
 
 // משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
 // ב-note_content_builder.js. הפונקציה הזו ממירה את ה-nodes ל-DOM (עם
@@ -353,23 +354,6 @@ function appendMainRefElement(parent, ref) {
   if (refStyleId) applyStyleToElement(el, refStyleId);
   parent.appendChild(el);
   return true;
-}
-
-function mainRefNoSpaceTokenBounds(text, pos) {
-  const value = String(text || "");
-  const at = Math.max(0, Math.min(value.length, Number(pos) || 0));
-  const joinsBefore = at > 0 && !/\s/u.test(value[at - 1]);
-  const joinsAfter = at < value.length && !/\s/u.test(value[at]);
-  if (!joinsBefore && !joinsAfter) return null;
-
-  // A reference marker is visually separate DOM, but line breaking must follow
-  // the SOURCE text. If there is no real whitespace around the marker, the
-  // whole source token is one unbreakable word (e.g. ר' + [1] + משה).
-  let start = at;
-  while (start > 0 && !/\s/u.test(value[start - 1])) start--;
-  let end = at;
-  while (end < value.length && !/\s/u.test(value[end])) end++;
-  return { start, end };
 }
 
 function appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, paragraphRuns, usedRefs = null) {
