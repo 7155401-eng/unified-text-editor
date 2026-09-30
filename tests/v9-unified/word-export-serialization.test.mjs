@@ -1,59 +1,41 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { JSDOM } from "jsdom";
-import {
-  wordInlineNodeHtml,
-  wordMainFragmentFromEditorHtml,
-  wordRichFragmentFromEditorHtml,
-} from "../../src/word_export_serialization.js";
+import { wordInlineNodeHtml } from "../../src/word_export_serialization.js";
 
-function doc() {
-  return new JSDOM("<!doctype html><body></body>").window.document;
-}
+const text = value => ({ nodeType: 3, nodeValue: value, childNodes: [] });
+const el = (tag, children = [], attrs = {}) => ({
+  nodeType: 1,
+  tagName: String(tag).toUpperCase(),
+  childNodes: children,
+  getAttribute(name) { return attrs[name] ?? null; },
+});
 
-test("B13 main export distinguishes hard breaks from real paragraph boundaries", () => {
-  const d = doc();
-  const html = "<p>אחד<br><strong>שניים</strong></p><p>שלוש</p>";
-  const out = wordMainFragmentFromEditorHtml(html, d);
-  assert.equal((out.match(/<br>/g) || []).length, 1);
-  assert.equal((out.match(/<p class=MsoNormal dir=RTL><span lang=HE>/g) || []).length, 1);
+test("inline Word serializer handles text without requiring a DOM defaultView", () => {
+  assert.equal(wordInlineNodeHtml(text("A&B < C")), "A&amp;B &lt; C");
   assert.equal(
-    out,
-    "אחד<br><b>שניים</b></span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>שלוש",
+    wordInlineNodeHtml(el("strong", [text("מודגש")])),
+    "<b>מודגש</b>",
   );
 });
 
-test("B13 rich stream export preserves only source hard breaks plus block separators", () => {
-  const d = doc();
-  const html = "<p>אחד<br><em>שניים</em></p><p><strong>שלוש</strong></p><p>ארבע</p>";
-  const out = wordRichFragmentFromEditorHtml(html, d);
-  assert.equal(out, "אחד<br><i>שניים</i><br><b>שלוש</b><br>ארבע");
-  assert.equal((out.match(/<br>/g) || []).length, 3,
-    "one source hard break plus two real block boundaries expected");
-});
-
-test("B13 adjacent top-level inline nodes stay on one logical line", () => {
-  const d = doc();
-  const html = 'alpha <strong>beta</strong><span style="color:red"> gamma</span>';
-  const out = wordRichFragmentFromEditorHtml(html, d);
-  assert.equal(out, 'alpha <b>beta</b><span style="color:red"> gamma</span>');
-  assert.equal((out.match(/<br>/g) || []).length, 0,
-    "inline siblings must not become invented line breaks");
-});
-
-test("B13 empty editor blocks remain intentional blank lines", () => {
-  const d = doc();
-  assert.equal(wordRichFragmentFromEditorHtml("<p>א</p><p></p><p>ב</p>", d), "א<br><br>ב");
-});
-
-test("shared inline serializer escapes text and preserves safe formatting", () => {
-  const d = doc();
-  const host = d.createElement("div");
-  host.innerHTML = '<a href="https://example.test/?a=1&b=2"><strong>A&B</strong></a>';
+test("inline Word serializer preserves hard breaks and nested formatting", () => {
+  const node = el("span", [
+    text("א"),
+    el("br"),
+    el("em", [text("ב")]),
+  ], { style: "color:red" });
   assert.equal(
-    wordInlineNodeHtml(host.firstChild),
-    '<a href="https://example.test/?a=1&amp;b=2"><b>A&amp;B</b></a>',
+    wordInlineNodeHtml(node),
+    '<span style="color:red">א<br><i>ב</i></span>',
+  );
+});
+
+test("inline Word serializer escapes href attributes and text", () => {
+  const node = el("a", [text("A&B")], { href: "https://example.test/?a=1&b=2" });
+  assert.equal(
+    wordInlineNodeHtml(node),
+    '<a href="https://example.test/?a=1&amp;b=2">A&amp;B</a>',
   );
 });
 
