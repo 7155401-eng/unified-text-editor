@@ -86,6 +86,217 @@ function freezeLine(line) {
   return visit(line);
 }
 
+
+const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
+const TAIL_REBALANCE_SCORE_EPS = 0.001;
+
+function continuationTailGentleSpacing(context) {
+  const fontSize = number(context?.fontSize, 13);
+  return Math.max(3.6, Math.min(TAIL_REBALANCE_MAX_WORD_SPACING_PX, fontSize * 0.65));
+}
+
+function continuationTailPressure(metric) {
+  if (!metric) return Number.POSITIVE_INFINITY;
+  if (metric.deficit <= EPS) return 0;
+  if (metric.gaps > 0) return metric.deficit / metric.gaps;
+  return 1000 + metric.deficit;
+}
+
+/**
+ * A page cut is not a paragraph end.
+ *
+ * The historical renderer tried to hide a short page-ending line by stretching
+ * that one row (word spacing, then letter spacing, then scaleX). That creates
+ * the conspicuous "rubber last line" failure.
+ *
+ * Rebalance only the final paragraph segment on this page: from the real
+ * paragraph start, or from the source line break immediately before it. The
+ * already-consumed words stay on the same page; only boundaries between the
+ * existing rows may move backwards, one word at a time. This preserves page
+ * ownership, note anchors, vertical geometry and source order while spreading
+ * the required justification across the whole tail.
+ */
+function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics) {
+  if (!Array.isArray(lines) || !entry || !context || !(cursor > 0)) return null;
+
+  const paragraphLines = lines.slice(paragraphLineStart);
+  if (!paragraphLines.length) return null;
+  const last = paragraphLines[paragraphLines.length - 1];
+  if (last?.forcedBreak || last?.isLast) return null;
+
+  let tailOffset = 0;
+  for (let i = paragraphLines.length - 1; i >= 0; i--) {
+    if (paragraphLines[i]?.forcedBreak) {
+      tailOffset = i + 1;
+      break;
+    }
+  }
+  const tail = paragraphLines.slice(tailOffset);
+  if (!tail.length) return null;
+
+  // Opening-word geometry is intentionally immutable here. Its measured window
+  // has its own widths and must never be re-created by a tail balancer.
+  if (tail.some(line =>
+    line?.render?.opening ||
+    line?.openingWindow ||
+    !Array.isArray(line?.wordTokens) ||
+    line.wordTokens.length === 0
+  )) return null;
+
+  const words = tail.flatMap(line => line.wordTokens);
+  if (!words.length) return null;
+  for (let i = 1; i < words.length; i++) {
+    if (!(words[i].start >= words[i - 1].end)) return null;
+  }
+
+  const sourceBase = number(entry.sourceOffset ?? entry._v9SourceOffset, 0);
+  const sourceStart = Number(tail[0]?.source?.start);
+  const segmentStart = Number.isFinite(sourceStart)
+    ? Math.max(0, sourceStart - sourceBase)
+    : words[0].start;
+  const segmentEnd = Math.max(segmentStart, Math.min(entry.text.length, cursor));
+
+  const boundaries = [];
+  let consumedWords = 0;
+  for (let i = 0; i < tail.length - 1; i++) {
+    consumedWords += tail[i].wordTokens.length;
+    boundaries.push(consumedWords);
+  }
+  const initialBoundaries = boundaries.slice();
+  const cache = new Map();
+
+  const metricFor = (lineIndex, fromWord, toWord) => {
+    if (!(toWord > fromWord) || fromWord < 0 || toWord > words.length) return null;
+    const key = `${lineIndex}:${fromWord}:${toWord}`;
+    if (cache.has(key)) return cache.get(key);
+
+    const start = lineIndex === 0 ? segmentStart : words[fromWord].start;
+    const visibleEnd = words[toWord - 1].end;
+    const consumedEnd = toWord < words.length ? words[toWord].start : segmentEnd;
+    const body = partForRange(entry, start, visibleEnd, consumedEnd);
+    const measured = context.measure(body);
+    const target = number(tail[lineIndex]?.width, 0);
+    const maxHeight = number(tail[lineIndex]?.lineHeightPx, context.lineHeight);
+
+    if (!(target > 0) || !measured || measured.width > target + EPS ||
+        (measured.height > 0 && maxHeight > 0 && measured.height > maxHeight + EPS)) {
+      cache.set(key, null);
+      return null;
+    }
+
+    const gaps = (body.text.match(/ /g) || []).length;
+    const deficit = Math.max(0, target - measured.width);
+    const metric = {
+      start, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
+      wordTokens: words.slice(fromWord, toWord),
+    };
+    metric.pressure = continuationTailPressure(metric);
+    cache.set(key, metric);
+    return metric;
+  };
+
+  const evaluate = (candidateBoundaries) => {
+    const metrics = [];
+    let from = 0;
+    let maxPressure = 0;
+    let sumSquares = 0;
+    for (let i = 0; i < tail.length; i++) {
+      const to = i < candidateBoundaries.length ? candidateBoundaries[i] : words.length;
+      const metric = metricFor(i, from, to);
+      if (!metric) return null;
+      metrics.push(metric);
+      maxPressure = Math.max(maxPressure, metric.pressure);
+      sumSquares += metric.pressure * metric.pressure;
+      from = to;
+    }
+    return {
+      metrics,
+      maxPressure,
+      sumSquares,
+      score: maxPressure * 100000 + sumSquares,
+    };
+  };
+
+  let current = evaluate(boundaries);
+  if (!current) return null;
+  const before = current;
+
+  // Greedy minimax: moving a boundary backwards moves one word from an earlier
+  // row into the next row. Repeating the best improving move naturally
+  // propagates the shortage backwards through as much of the paragraph tail as
+  // needed, instead of concentrating it in the final row.
+  for (let pass = 0; pass < words.length; pass++) {
+    let chosen = null;
+    for (let bi = boundaries.length - 1; bi >= 0; bi--) {
+      const previous = bi === 0 ? 0 : boundaries[bi - 1];
+      if (boundaries[bi] - previous <= 1) continue;
+
+      const candidate = boundaries.slice();
+      candidate[bi] -= 1;
+      const evaluated = evaluate(candidate);
+      if (!evaluated) continue;
+      if (evaluated.score + TAIL_REBALANCE_SCORE_EPS >= current.score) continue;
+
+      if (!chosen || evaluated.score < chosen.evaluated.score) {
+        chosen = { boundaries: candidate, evaluated };
+      }
+    }
+    if (!chosen) break;
+    boundaries.splice(0, boundaries.length, ...chosen.boundaries);
+    current = chosen.evaluated;
+  }
+
+  const gentleMax = continuationTailGentleSpacing(context);
+  const changed = boundaries.some((v, i) => v !== initialBoundaries[i]);
+  const needsCap = current.metrics.some(m => m.gaps > 0 && m.pressure > gentleMax + EPS);
+  if (!changed && !needsCap) return null;
+
+  const absoluteStart = paragraphLineStart + tailOffset;
+  for (let i = 0; i < tail.length; i++) {
+    const old = tail[i];
+    const metric = current.metrics[i];
+    const isLast = metric.end >= entry.text.length && !entry.continuesAfter;
+    const rawSpacing = (!isLast && metric.gaps > 0) ? metric.pressure : 0;
+    const wordSpacing = Number.isFinite(rawSpacing) ? Math.min(rawSpacing, gentleMax) : 0;
+
+    lines[absoluteStart + i] = {
+      ...old,
+      text: entry.text.slice(metric.start, metric.end),
+      runs: sliceRuns(entry.runs || [], metric.start, metric.end),
+      words: entry.text.slice(metric.start, metric.end).trim().split(/\s+/u).filter(Boolean),
+      wordTokens: metric.wordTokens,
+      naturalWidth: metric.measured.width,
+      forcedBreak: false,
+      isLast,
+      source: sourceMetadata(entry, metric.start, metric.end),
+      sourceText: entry.text.slice(metric.start, metric.end),
+      render: {
+        ...old.render,
+        body: metric.body,
+        topInset: metric.measured.topInset || 0,
+        opening: null,
+        wordSpacing,
+        alignment: isLast ? 'center' : 'right',
+      },
+      tailRebalanced: true,
+      tailWordSpacingTarget: Number.isFinite(rawSpacing) ? rawSpacing : null,
+      tailWordSpacingCapped: Number.isFinite(rawSpacing) && rawSpacing > gentleMax + EPS,
+    };
+  }
+
+  const result = {
+    code: 'paragraph-tail-rebalanced',
+    paragraphId: String(entry.id || ''),
+    lineCount: tail.length,
+    changedBoundaries: changed,
+    maxWordSpacingBefore: before.maxPressure,
+    maxWordSpacingAfter: current.maxPressure,
+    gentleCap: gentleMax,
+  };
+  diagnostics?.push?.(result);
+  return result;
+}
+
 /** Main paragraphs, including their openings, are planned by this ONE flow.
  * `context.measure(part)` and the final painter use the same styled content.
  * No DOM node, browser float, scale, or guessed safety percentage is in a plan.
@@ -166,6 +377,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
             { width: 0, height: pitch }, false, []);
           y = Math.max(y, opening.y + opening.height);
         }
+        rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
         return finish(ei, cursor, 'page-full');
       }
       y = slot.y;
@@ -214,6 +426,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         }
         const next = strips.find(s => s.y_start > y + EPS && s.y_start < pageBottom && s.width > (slot?.width || 0));
         if (next) { y = next.y_start; continue; }
+        rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
         return finish(ei, cursor, 'unbreakable-content-or-no-row-space');
       }
       const line = emit(selected.body, cursor, selected.end, g, y, selected.m, selected.forcedBreak, selected.wordTokens);
@@ -240,6 +453,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
       }
     }
     // A following original paragraph never inherits an opening window.
+    if (entry.continuesAfter) rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
 
   }
   return finish();
