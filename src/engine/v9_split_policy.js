@@ -467,6 +467,12 @@ export function scoreV9PageCandidate(plan, candidate, policy = {}, meta = {}) {
 }
 
 export function debugV9SplitDecision(payload) {
-  if (typeof window !== "undefined") window.__ravtextLastV9SplitDecision = payload;
+  if (typeof window !== "undefined") {
+    window.__ravtextLastV9SplitDecision = payload;
+    if (window.__ravtextAuditV9SplitTrace === true) {
+      if (!Array.isArray(window.__ravtextV9SplitDecisionTrace)) window.__ravtextV9SplitDecisionTrace = [];
+      window.__ravtextV9SplitDecisionTrace.push(structuredClone(payload));
+    }
+  }
   return payload;
 }
