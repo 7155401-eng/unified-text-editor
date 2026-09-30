@@ -1,7 +1,7 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/v9-typography-spacing-regressions]
+    branches: [fix/word-note-routing-v2-20260930]
   pull_request:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.ref == 'refs/heads/fix/word-note-routing-v2-20260930' || github.head_ref == 'fix/word-note-routing-v2-20260930'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -36,6 +36,9 @@ jobs:
           git rev-parse HEAD | tee test-results/v9-unified/commit.txt
           node --check src/vilna_v9.js
           node --check src/engine_bridge.js
+          node --check src/word_extractor/word_extractor_dialog.js
+          node --check src/word_extractor/word_extractor_engine.js
+          node --check src/word_extractor/word_extractor_mammoth.js
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit.tap
           test ! -f .github/workflows/v9-apply-candidate-once.yml
           test ! -f .github/v9-candidate-edits-1.b64
