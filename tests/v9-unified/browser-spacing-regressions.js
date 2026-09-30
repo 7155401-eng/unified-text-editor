@@ -5,7 +5,6 @@ import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engin
 import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
-import { renderPages } from '../../src/engine/renderer.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
@@ -103,42 +102,31 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       assert(page.querySelectorAll('[data-v9-main-ref]').length===(enabled?1:0),'incorrect label visibility');
     } finally {page.remove();if(previous)settings['01']=previous;else delete settings['01'];}
   });
-  await test('classic renderer keeps apostrophe + reference + following word atomic when source has no space',()=>{
+  await test('apostrophe + visible reference + following word stays on one V9 line without source whitespace',async()=>{
     const settings=getStreamSettings(),previous=settings['01'];
-    settings['01']={...(settings['01']||{}),mainRefEnabled:true};
-    const host=document.createElement('div'),prevSync=window.__FORCE_SYNC_RENDER__;
-    document.getElementById('test-root').append(host);
-    window.__FORCE_SYNC_RENDER__=true;
-    const renderFixture=(source,anchor,uid)=>{
-      host.replaceChildren();
-      renderPages([{
-        main:[[0,source,0,source.length,{
-          fullMainText:source,mainRuns:[],
-          mainRefs:[{stream:'01',code:'01',num:1,uid,anchor,absoluteAnchor:anchor}]
-        }]],
-        streams:{}
-      }],host);
-      return host.querySelector('.main-ref-unbreakable-token');
-    };
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:false,lemmaBold:false};
+    const page=makePage();
     try {
-      const joined=renderFixture("ר'משה",2,'classic-no-space');
-      assert(joined,'no-space source token was not made atomic');
-      assert(joined.style.whiteSpace==='nowrap','atomic token is still CSS-breakable');
-      assert(joined.querySelector('.stream-ref'),'reference escaped atomic token');
-      const clone=joined.cloneNode(true);
-      clone.querySelectorAll('.stream-ref').forEach(el=>el.remove());
-      assert(clone.textContent==="ר'משה",'atomic wrapper did not preserve the complete no-space source token');
-
-      // A real source space remains a legal boundary: the wrapper starts only
-      // after that space and therefore does not glue the preceding token.
-      const spaced=renderFixture("ר' משה",3,'classic-real-space');
-      assert(spaced,'reference+word after a real space should still form an atomic suffix');
-      const spacedClone=spaced.cloneNode(true);
-      spacedClone.querySelectorAll('.stream-ref').forEach(el=>el.remove());
-      assert(spacedClone.textContent==='משה','real whitespace was incorrectly swallowed into the no-break token');
+      const source="alpha beta gamma ר'משה delta epsilon zeta eta theta";
+      const anchor=source.indexOf('משה');
+      const note={stream:'01',num:1,uid:'apostrophe-no-space',anchor,anchorAffinity:'backward',text:'short note'};
+      const result=await buildPages(page,[{id:'apostrophe-source',mainText:source,notes:[note]}],
+        {...cfg,pageWidth:220,pageHeight:280,mainWidthRatio:.42});
+      assert(result.complete,'apostrophe reference fixture incomplete');
+      const rows=[...page.querySelectorAll('[data-v9-layout-final]')]
+        .filter(el=>el.dataset.v9ParagraphId==='apostrophe-source');
+      const touching=rows.map(el=>({el,text:sourceText(el)}))
+        .filter(x=>x.text.includes("ר'")||x.text.includes('משה'));
+      assert(touching.length===1,
+        `no-space source token split across V9 lines: ${touching.map(x=>JSON.stringify(x.text)).join(' | ')}`);
+      assert(touching[0].text.includes("ר'משה"),
+        `apostrophe/reference word was split: ${JSON.stringify(touching[0].text)}`);
+      const ref=page.querySelector('[data-v9-main-ref][data-uid="apostrophe-no-space"]');
+      assert(ref,'visible apostrophe reference missing');
+      assert(ref.closest('[data-v9-layout-final]')===touching[0].el,
+        'reference moved away from its no-space source token');
     } finally {
-      window.__FORCE_SYNC_RENDER__=prevSync;
-      host.remove();
+      page.remove();
       if(previous===undefined) delete settings['01']; else settings['01']=previous;
     }
   });
