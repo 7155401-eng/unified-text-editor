@@ -349,7 +349,11 @@ async function seedFromLegacyUsage(env, userId, toolName, policy, nowSec) {
     `).bind(userId, toolName).first();
   } catch (_) {}
 
-  if (!legacy || policy.mode === "unmetered" || policy.mode === "units") {
+  // Legacy web tool_usage was charged on OPEN, not on successful work.
+  // Reinterpreting those rows as a successful weekly merge/export/OCR would
+  // block users who merely opened a dialog. Only policies that intentionally
+  // remain preflight-charged may inherit the old record.
+  if (!legacy || policy.mode === "unmetered" || policy.mode === "units" || policy.chargeOn !== "preflight") {
     await insertEmptyState(env, userId, toolName, nowSec);
     return readState(env, userId, toolName);
   }
