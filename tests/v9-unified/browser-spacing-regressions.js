@@ -377,6 +377,61 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('legacy audit: one long commentary stream really occupies both sides',()=>{
+    const page=makePage();
+    const main=Array(5).fill(neutral).join(' ');
+    const commentary=Array(24).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:main,
+      rightStream:{id:'01',items:[commentary],runs:[],rich:{text:commentary,runs:[]}},
+      leftStream:null,
+      footerStreams:[]
+    },{...cfg,pageHeight:720,crownLines:4,balanceSingleStreamSides:true});
+    assert(plan.crownScenario?.name==='one_long_split',`fixture did not enter one_long_split: ${plan.crownScenario?.name}`);
+    const right=plan.streamBoxes.find(b=>b.role==='right'&&b.id==='01');
+    const left=plan.streamBoxes.find(b=>b.role==='left'&&b.id==='01');
+    assert(right&&left,'single commentary was not split across both sides');
+    assert(right.lines.length>0&&left.lines.length>0,'one side of the split commentary is empty');
+    const pitch=Math.max(right.lines[0]?.lineHeightPx||0,left.lines[0]?.lineHeightPx||0,1);
+    assert(Math.abs((right.endY||0)-(left.endY||0))<=pitch*1.6,
+      `single-stream sides end at very different heights: ${right.endY}/${left.endY}`);
+    page.remove();
+  });
+
+  await test('legacy audit: one short commentary with no main text uses the free full width',()=>{
+    const page=makePage();
+    const commentary='alpha beta gamma delta';
+    const plan=buildSinglePage(page,{
+      mainText:'',
+      rightStream:{id:'01',items:[commentary],runs:[],rich:{text:commentary,runs:[]}},
+      leftStream:null,
+      footerStreams:[]
+    },{...cfg,pageHeight:300,crownLines:4});
+    assert(plan.mainBox===null,'empty main text created a phantom main box');
+    assert(plan.crownScenario?.name==='one_short_no_crown',`unexpected no-main scenario: ${plan.crownScenario?.name}`);
+    const box=plan.streamBoxes.find(b=>b.id==='01');
+    assert(box&&box.lines.length>0,'no-main commentary disappeared');
+    assert(box.lines[0].width>=plan.pageBox.innerWidth-1,
+      `no-main commentary still reserves an empty central column: ${box.lines[0].width}/${plan.pageBox.innerWidth}`);
+    page.remove();
+  });
+
+  await test('legacy audit: a footer title is never published without at least one content row',()=>{
+    const page=makePage();
+    const footer='alpha beta gamma delta epsilon';
+    const plan=buildSinglePage(page,{
+      mainText:Array(14).fill(neutral).join(' '),
+      rightStream:null,
+      leftStream:null,
+      footerStreams:[{id:'03',items:[footer],runs:[],rich:{text:footer,runs:[]}}]
+    },{...cfg,pageHeight:125,talmudStreams:[],streamSettings:{'03':{inlineStyle:{fontSize:11}}}});
+    const box=plan.footerBoxes.find(b=>b.id==='03');
+    assert(!box,'footer title/content box was created even though no content row fits');
+    assert(plan.overflow?.streams?.['03']?.text===footer,'footer content was not carried intact to overflow');
+    assert(page.querySelectorAll('.v9-stream-title').length===0,'orphan stream title was painted');
+    page.remove();
+  });
+
   await test('short heading is not published as a one-line intermediate page',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
