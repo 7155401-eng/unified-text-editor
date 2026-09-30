@@ -136,6 +136,23 @@ function payloadTextForElement(el) {
   }
 }
 
+function semanticFootnoteText(noteEl) {
+  let out = "";
+  const walk = (node) => {
+    for (const child of elements(node)) {
+      const ln = localName(child);
+      if (ln === "footnoteRef") continue;
+      if (["t", "tab", "br", "cr", "noBreakHyphen", "softHyphen"].includes(ln)) {
+        out += payloadTextForElement(child);
+        continue;
+      }
+      walk(child);
+    }
+  };
+  walk(noteEl);
+  return out;
+}
+
 function unsupportedFootnoteContent(noteEl) {
   const forbidden = new Set([
     "drawing", "pict", "object", "altChunk", "tbl", "hyperlink",
@@ -479,7 +496,7 @@ export async function transformSplitFootnotesByTagCore(arrayBuffer, {
     // the safe run model intentionally ignores; silently treating that as
     // "no match" would hide data from the user. If raw text implies a split,
     // require the entire note structure to be safe before modelling it.
-    const rawText = String(note.textContent || "");
+    const rawText = semanticFootnoteText(note);
     const rawSplit = splitRangesByTags(rawText, normalizedTags);
     if (rawSplit.ranges.length <= 1) {
       rawSplit.matches.forEach(m => { matchesByTag[m.tag] = (matchesByTag[m.tag] || 0) + 1; });
