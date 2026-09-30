@@ -67,6 +67,16 @@ function _freeDisposableStorage() {
   return freed;
 }
 
+function _announceLocalDocumentSaved(chars) {
+  try {
+    if (typeof window !== "undefined" && typeof CustomEvent !== "undefined") {
+      window.dispatchEvent(new CustomEvent("ravtext:local-document-saved", {
+        detail: { chars: Math.max(0, Number(chars) || 0), at: Date.now() },
+      }));
+    }
+  } catch {}
+}
+
 function _raiseStorageAlarm(chars) {
   const msg = `המסמך (${Math.round(chars / 1000)} אלף תווים) לא נשמר בדפדפן — ` +
     `אין מקום פנוי. הוא קיים כרגע רק על המסך: רענון יאבד אותו. ` +
@@ -883,7 +893,7 @@ export class PaneManager {
     this.container = container;
     this.panes = [];
     this.activePane = null;
-    this._listeners = { change: [], focus: [] };
+    this._listeners = { change: [], focus: [], persist: [] };
     // ★ משה 28/09/2026 — „ובכלל ביקשתי שזה יהיה לחוץ גלילה כברירת
     // מחדל, לא יודע למה לא נעשה".
     //
@@ -1189,6 +1199,7 @@ export class PaneManager {
       localStorage.setItem(STORAGE_KEY, text);
       this._savePending = false;
       _clearStorageAlarm();
+      _announceLocalDocumentSaved(text.length);
     } catch (e) {
       // משה 2026-09-20: כאן נעלמה עבודה בשקט. כשאין מקום — בדפדפן או
       // בדיסק עצמו — הכתיבה נכשלת, איש אינו יודע, והמסמך קיים רק
@@ -1205,6 +1216,7 @@ export class PaneManager {
           localStorage.setItem(STORAGE_KEY, text);
           this._savePending = false;
           _clearStorageAlarm();
+          _announceLocalDocumentSaved(text.length);
           console.warn(`[paneManager] saved after freeing ${freed} chars`);
           return;
         } catch (e2) { /* עדיין אין מקום */ }
@@ -1216,6 +1228,12 @@ export class PaneManager {
   _save({ immediate = false } = {}) {
     this._savePending = true;
     if (this._batchDepth > 0) return;
+
+    // Semantic persistence signal: server autosync follows the source document,
+    // not pagination/render completion. Every real save request (typing, pane
+    // metadata, add/remove/reorder) passes through this one path.
+    this._emit("persist");
+
     if (this._saveTimer) clearTimeout(this._saveTimer);
     if (immediate) {
       this._saveTimer = null;
