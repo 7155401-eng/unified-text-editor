@@ -195,8 +195,14 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   // When the first row owns a dropped opening, its body starts AFTER the
   // opening source range. Re-measuring from sourceSegmentStart would duplicate
   // the opening inside the body span.
+  const firstBodyLeadingLength = String(tail[0]?.render?.body?.leadingText || "").length;
   const bodySegmentStart = tail[0]?.render?.opening
-    ? (words[0]?.start ?? Math.max(sourceSegmentStart, Number(tail[0].render.opening?.part?.text?.length) || 0))
+    ? Math.max(
+        sourceSegmentStart,
+        Number.isFinite(Number(words[0]?.start))
+          ? Number(words[0].start) - firstBodyLeadingLength
+          : Number(tail[0].render.opening?.part?.text?.length) || 0
+      )
     : sourceSegmentStart;
   const segmentEnd = Math.max(bodySegmentStart, Math.min(entry.text.length, cursor));
 
@@ -363,6 +369,14 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 }
 
 
+function openingStartsImmediatelyAfterWideningKnee(strips, openingY, pitch, pageBottom) {
+  if (!(pitch > 0) || !(openingY > pitch - EPS)) return false;
+  const current = rowGeometry(strips, openingY, pitch, pageBottom);
+  const previous = rowGeometry(strips, openingY - pitch, pitch, pageBottom);
+  if (!current || !previous) return false;
+  return current.width > previous.width + EPS;
+}
+
 function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, strips, entry, context, pageBottom, diagnostics) {
   if (!opening || paragraphLineStart < 0 || paragraphLineStart >= lines.length) return false;
 
@@ -375,6 +389,16 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
     last.y < opening.y + opening.height - EPS &&
     last.y + last.lineHeightPx > opening.y + EPS;
   if (!overlapsOpening) return false;
+
+  // When a multi-row opening begins immediately after a narrow→wide knee, the
+  // opening's right-edge position is what lets the first wide host row consume
+  // the complete new width. Moving that shared glyph left to center a later
+  // short row would shrink the already-correct wide host. Preserve the current
+  // knee behavior; the one-row case is still safe to center as a composite.
+  if (paragraphLines.length > 1 &&
+      openingStartsImmediatelyAfterWideningKnee(strips, opening.y, context.lineHeight, pageBottom)) {
+    return false;
+  }
 
   // A completed paragraph can end 6+1 beside a dropped opening. The normal
   // continuation rebalancer intentionally refuses true paragraph ends, so opt
