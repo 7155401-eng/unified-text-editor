@@ -71,7 +71,7 @@ import { wireTorahTools } from "./torah_tools.js";
 import { installTorahGuestGuard } from "./torah_guest_guard.js";
 import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
-import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
+import { wireTextComparePro } from "./text_compare_pro/text_compare_lazy_wire.js";
 import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import { wireSefariaTools } from "./sefaria/sefaria.js";
 // משה 2026-05-10: שחזור 3 כלי AI לעורך — טרנסקריפציה, ניקוד תורני, קריקטורה
