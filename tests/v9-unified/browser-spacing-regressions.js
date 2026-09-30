@@ -119,9 +119,28 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
 
   await test('V9 split DOM matches native Chromium BiDi placement for apostrophe + parentheses',()=>{
     const samples=[
-      {leading:'\u200f',text:"('אב",trailing:'\u200e'},
-      {leading:'\u200f',text:"אב')",trailing:'\u200e'},
-      {leading:'\u061c\u200f',text:"('אב'",trailing:'\u200e'},
+      {leading:'\u200f',text:"('אב",trailing:'\u200e',runs:[]},
+      {leading:'\u200f',text:"אב')",trailing:'\u200e',runs:[]},
+      {leading:'\u061c\u200f',text:"('אב'",trailing:'\u200e',runs:[]},
+
+      // No explicit direction marks: neutral apostrophe/brackets must still be
+      // laid out exactly like one native RTL text node.
+      {leading:'',text:"אב'(גד)",trailing:'',runs:[]},
+      {leading:'',text:"אב')גד(",trailing:'',runs:[]},
+      {leading:'',text:"אב' (גד)",trailing:'',runs:[]},
+      {leading:'',text:"אב'123(גד)",trailing:'',runs:[]},
+
+      // Styling creates separate DOM spans. Span boundaries must not become
+      // BiDi isolation boundaries or change bracket mirroring/order.
+      {leading:'',text:"אב'(גד)",trailing:'',runs:[
+        {start:2,end:3,marks:{color:'rgb(1, 2, 3)'}},
+        {start:3,end:4,marks:{color:'rgb(4, 5, 6)'}},
+      ]},
+      {leading:'',text:"('אב')",trailing:'',runs:[
+        {start:0,end:1,marks:{color:'rgb(1, 2, 3)'}},
+        {start:1,end:2,marks:{color:'rgb(4, 5, 6)'}},
+        {start:4,end:5,marks:{color:'rgb(7, 8, 9)'}},
+      ]},
     ];
 
     const rectsForVisibleChars=(el)=>{
@@ -151,7 +170,7 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
         el.style.cssText='position:absolute;top:0;display:inline-block;white-space:pre;direction:rtl;font:24px serif;';
       }
       built.style.left='0px';native.style.left='300px';
-      appendV9PlannedPart(built,{...sample,runs:[],refs:[],style:{}});
+      appendV9PlannedPart(built,{...sample,runs:sample.runs||[],refs:[],style:{}});
       native.textContent=sample.leading+sample.text+sample.trailing;
       document.body.append(built,native);
       try{
