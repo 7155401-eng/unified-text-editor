@@ -377,6 +377,111 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('legacy audit: side commentaries widen after a short main text ends',()=>{
+    const page=makePage();
+    const sideText=Array(22).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'אחד שניים שלוש ארבע',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:720,crownLines:2,streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}}}});
+    const main=plan.mainBox;
+    const right=plan.streamBoxes.find(b=>b.role==='right');
+    assert(main&&right&&right.lines.length>3,'fixture did not produce main plus side commentary');
+    const mainBottom=(main.y||0)+(main.height||0);
+    const before=right.lines.filter(l=>l.y<mainBottom-.1);
+    const after=right.lines.filter(l=>l.y>=mainBottom-.1);
+    assert(before.length&&after.length,'fixture does not cross the end of the main text');
+    const narrow=Math.min(...before.map(l=>l.width));
+    const widened=Math.max(...after.map(l=>l.width));
+    assert(widened>narrow+25,`commentary did not widen below main: ${narrow} -> ${widened}`);
+    page.remove();
+  });
+
+  await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
+    const page=makePage();
+    const main=Array(9).fill(neutral).join(' ');
+    const words=[...main.matchAll(/\S+/gu)];
+    const input=Array.from({length:5},(_,pi)=>({
+      id:`legacy-overflow-${pi}`,mainText:main,
+      notes:Array.from({length:6},(_,ni)=>{
+        const w=words[Math.min(words.length-1,ni*8+3)];
+        return {stream:['01','02','03'][ni%3],uid:`legacy-overflow-${pi}-${ni}`,num:ni+1,
+          anchor:w.index+w[0].length,anchorAffinity:'backward',text:Array(4+(ni%3)).fill(neutral).join(' ')};
+      })
+    }));
+    const localCfg={...cfg,pageHeight:280,maxPages:120,levels:[['01','02'],['03']],mishnaWrapOn:true,
+      streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}},'03':{cols:2,inlineStyle:{fontSize:11}}}};
+    const result=await buildPages(page,input,localCfg);
+    assert(result.complete,'heavy mixed pagination did not complete');
+    for(const [pageIndex,p] of result.pages.entries()){
+      for(const line of p.querySelectorAll('.v9-line')){
+        const top=parseFloat(line.style.top)||0;
+        const height=parseFloat(line.style.height)||line.getBoundingClientRect().height||0;
+        assert(top+height<=localCfg.pageHeight+0.75,
+          `row crosses page bottom on page ${pageIndex}: ${top}+${height} > ${localCfg.pageHeight}`);
+      }
+    }
+    page.remove();
+    return {pages:result.pages.length};
+  });
+
+  await test('legacy audit: one long commentary stream really occupies both sides',()=>{
+    const page=makePage();
+    const main=Array(5).fill(neutral).join(' ');
+    const commentary=Array(24).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:main,
+      rightStream:{id:'01',items:[commentary],runs:[],rich:{text:commentary,runs:[]}},
+      leftStream:null,
+      footerStreams:[]
+    },{...cfg,pageHeight:720,crownLines:4,balanceSingleStreamSides:true});
+    assert(plan.crownScenario?.name==='one_long_split',`fixture did not enter one_long_split: ${plan.crownScenario?.name}`);
+    const right=plan.streamBoxes.find(b=>b.role==='right'&&b.id==='01');
+    const left=plan.streamBoxes.find(b=>b.role==='left'&&b.id==='01');
+    assert(right&&left,'single commentary was not split across both sides');
+    assert(right.lines.length>0&&left.lines.length>0,'one side of the split commentary is empty');
+    const pitch=Math.max(right.lines[0]?.lineHeightPx||0,left.lines[0]?.lineHeightPx||0,1);
+    assert(Math.abs((right.endY||0)-(left.endY||0))<=pitch*1.6,
+      `single-stream sides end at very different heights: ${right.endY}/${left.endY}`);
+    page.remove();
+  });
+
+  await test('legacy audit: one short commentary with no main text uses the free full width',()=>{
+    const page=makePage();
+    const commentary='alpha beta gamma delta';
+    const plan=buildSinglePage(page,{
+      mainText:'',
+      rightStream:{id:'01',items:[commentary],runs:[],rich:{text:commentary,runs:[]}},
+      leftStream:null,
+      footerStreams:[]
+    },{...cfg,pageHeight:300,crownLines:4});
+    assert(plan.mainBox===null,'empty main text created a phantom main box');
+    assert(plan.crownScenario?.name==='one_short_no_crown',`unexpected no-main scenario: ${plan.crownScenario?.name}`);
+    const box=plan.streamBoxes.find(b=>b.id==='01');
+    assert(box&&box.lines.length>0,'no-main commentary disappeared');
+    assert(box.lines[0].width>=plan.pageBox.innerWidth-1,
+      `no-main commentary still reserves an empty central column: ${box.lines[0].width}/${plan.pageBox.innerWidth}`);
+    page.remove();
+  });
+
+  await test('legacy audit: a footer title is never published without at least one content row',()=>{
+    const page=makePage();
+    const footer='alpha beta gamma delta epsilon';
+    const plan=buildSinglePage(page,{
+      mainText:Array(14).fill(neutral).join(' '),
+      rightStream:null,
+      leftStream:null,
+      footerStreams:[{id:'03',items:[footer],runs:[],rich:{text:footer,runs:[]}}]
+    },{...cfg,pageHeight:125,talmudStreams:[],streamSettings:{'03':{inlineStyle:{fontSize:11}}}});
+    const box=plan.footerBoxes.find(b=>b.id==='03');
+    assert(!box,'footer title/content box was created even though no content row fits');
+    assert(plan.overflow?.streams?.['03']?.text===footer,'footer content was not carried intact to overflow');
+    assert(page.querySelectorAll('.v9-stream-title').length===0,'orphan stream title was painted');
+    page.remove();
+  });
+
   await test('short heading is not published as a one-line intermediate page',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
