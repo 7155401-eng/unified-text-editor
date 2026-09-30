@@ -1,7 +1,7 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/v9-typography-spacing-regressions]
+    branches: [fix/v9-build-baseline-repin-20260930]
   pull_request:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.ref == 'refs/heads/fix/v9-build-baseline-repin-20260930' || github.head_ref == 'fix/v9-build-baseline-repin-20260930'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -52,7 +52,7 @@ jobs:
       - name: Fetch exact baseline for build comparison
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: 82936b7ba1720714f6ae73bda95e9791f6873856
+          ref: 89b6f5980c63fdf0146daa79710ee9e2c1ad89b6
           path: .v9-baseline
           persist-credentials: false
       - name: Build baseline with the same locked dependencies
