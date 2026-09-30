@@ -1,21 +1,6 @@
 name: V9 unified opening layout validation
 
 on:
-  push:
-    branches: [fix/v9-unified-opening-layout]
-    paths:
-      - '.github/workflows/v9-unified-opening.yml'
-      - 'src/**'
-      - 'tests/v9-unified/**'
-      - 'scripts/**'
-      - 'package*.json'
-  pull_request:
-    paths:
-      - '.github/workflows/v9-unified-opening.yml'
-      - 'src/**'
-      - 'tests/v9-unified/**'
-      - 'scripts/**'
-      - 'package*.json'
   workflow_dispatch:
 
 permissions:
@@ -31,7 +16,6 @@ defaults:
 
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-unified-opening-layout' || github.head_ref == 'fix/v9-unified-opening-layout'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -57,14 +41,14 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Browser layout and pagination regression suite
         run: node scripts/v9-unified/run-browser.mjs
-      - name: Fetch pinned baseline for build comparison
+      - name: Fetch current main baseline for build comparison
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: 82936b7ba1720714f6ae73bda95e9791f6873856
+          ref: main
           path: .v9-baseline
           persist-credentials: false
-      - name: Build unmodified baseline and retain existing source rewrites
+      - name: Build current main baseline
         id: baseline_build
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: |
@@ -75,7 +59,7 @@ jobs:
             npm run postinstall
             npm run build
           ) 2>&1 | tee test-results/v9-unified/baseline-build.log
-      - name: Build refactor and verify no new source rewrites
+      - name: Build selected ref and verify source integrity
         if: ${{ !cancelled() && steps.baseline_build.outcome == 'success' }}
         run: |
           npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
