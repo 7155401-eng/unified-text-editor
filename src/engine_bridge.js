@@ -1,4 +1,4 @@
-import { mapMainParagraphSource } from './engine/main_source_mapping.js';
+import { mapMainParagraphSource, isCollapsibleHorizontalSpace } from './engine/main_source_mapping.js';
 import { editorMarksToRunMarks, normalizeEditorMark } from './engine/editor_mark_normalization.js';
 import { afterPaint } from "./engine/background_safe_yield.js";
 import { domPack, getDomPageGeom } from "./engine/dom_packer.js";
@@ -227,7 +227,7 @@ function buildNormalizeMap(oldText) {
   let lastWasSpace = false;
   for (let i = 0; i < oldText.length; i++) {
     const ch = oldText[i];
-    const isSpace = ch === ' ' || ch === '\t';
+    const isSpace = isCollapsibleHorizontalSpace(ch);
     if (isSpace && lastWasSpace) {
       map[i] = result.length;
       continue;
@@ -266,7 +266,7 @@ export function alignRunsAfterTextNormalize(oldText, newText, runs) {
   let lastWasSpace = false;
   for (let i = 0; i < oldText.length; i++) {
     const ch = oldText[i];
-    const isSpace = ch === ' ' || ch === '\t';
+    const isSpace = isCollapsibleHorizontalSpace(ch);
     if (isSpace && lastWasSpace) {
       map[i] = result.length; // ייבלע — אופסט אחרי הוא היכן שיהיה
       continue;
@@ -923,7 +923,9 @@ export function paneManagerToPackerContent(paneManager) {
         if (localMarkers.length) {
           const stripped = stripMarkersAndAlignRuns(c.text, c.runs || [], localMarkers);
           const beforeNormalize = stripped.text;
-          const normalized = beforeNormalize.replace(/  +/g, ' ').trim();
+          const normalized = beforeNormalize
+            .replace(/[ \t\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+/gu, ' ')
+            .trim();
           c.text = normalized;
           c.runs = alignRunsAfterTextNormalize(beforeNormalize, normalized, stripped.runs);
         }
