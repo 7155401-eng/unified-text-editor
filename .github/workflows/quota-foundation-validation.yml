@@ -1,0 +1,50 @@
+name: Temporary quota foundation validation
+
+on:
+  push:
+    branches:
+      - feat/tool-quota-policy-foundation-20260930
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Syntax and policy tests
+        run: |
+          node --check worker/tool_quota_policy.js
+          node --check worker/tool_quota_store.js
+          node --check worker/tool_gate.js
+          node --check src/premium/daily_quota_gate.js
+          node --test tests/tool_quota_policy.test.mjs
+      - name: Validate migration in SQLite
+        run: |
+          python3 - <<'PY'
+          import sqlite3, pathlib
+          db=sqlite3.connect(":memory:")
+          db.executescript(pathlib.Path("migrations/0010_tool_quota_state.sql").read_text())
+          names={r[0] for r in db.execute("select name from sqlite_master where type='table'")}
+          assert "tool_quota_state" in names
+          assert "tool_quota_events" in names
+          db.execute("insert into tool_quota_events(user_id,tool_name,event_key,units,created_at) values(1,'x','a',1,1)")
+          try:
+              db.execute("insert into tool_quota_events(user_id,tool_name,event_key,units,created_at) values(1,'x','a',1,2)")
+              raise AssertionError("idempotency uniqueness missing")
+          except sqlite3.IntegrityError:
+              pass
+          PY
+      - name: Install and build
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: |
+          npm ci --ignore-scripts
+          npm run build
