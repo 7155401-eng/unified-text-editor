@@ -77,4 +77,13 @@ test('pane scroll sync is frame-coalesced and destruction cancels pending work',
     'programmatic scroll must be swallowed before scheduling geometry work');
   assert.doesNotMatch(onScroll, /visibleMarkerAnchor\(/,
     'expensive semantic marker scan must run only in the coalesced callback');
+
+  const runSync = source.slice(
+    source.indexOf('  _runScrollSync() {'),
+    source.indexOf('  _applyCollapsedState() {')
+  );
+  assert.match(runSync, /if \(mgr\.syncBusy\)[\s\S]*?_scrollSyncFrame\.schedule\(/,
+    'busy sync lock must defer rather than drop the latest user scroll');
+  assert.match(runSync, /try \{[\s\S]*?visibleMarkerAnchor\([\s\S]*?\} finally \{/,
+    'sync lock release must be protected by finally around geometry work');
 });
