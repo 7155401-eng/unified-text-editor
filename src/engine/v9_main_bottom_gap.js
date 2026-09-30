@@ -7,41 +7,18 @@
 
 import { applyV9OpeningWordsFromMetadata } from "./v9_opening_words_from_metadata.js";
 import { normalizeV9StretchPolicy } from "./v9_stretch_policy.js";
+import { resolveV9MainBottomGapPx } from "./v9_main_bottom_gap_policy.js";
+export {
+  DEFAULT_V9_MAIN_BOTTOM_GAP_PX,
+  MAX_V9_MAIN_BOTTOM_GAP_PX,
+  resolveV9MainBottomGapPx,
+} from "./v9_main_bottom_gap_policy.js";
 
-export const DEFAULT_V9_MAIN_BOTTOM_GAP_PX = 16;
-export const MAX_V9_MAIN_BOTTOM_GAP_PX = 60;
 const EPS = 0.5;
 
 function px(value, fallback = 0) {
   const n = Number.parseFloat(String(value || ""));
   return Number.isFinite(n) ? n : fallback;
-}
-
-function clamp(n, min, max) {
-  return Math.max(min, Math.min(max, n));
-}
-
-export function resolveV9MainBottomGapPx(container, explicitGap) {
-  if (Number.isFinite(Number(explicitGap))) {
-    return clamp(Number(explicitGap), 0, MAX_V9_MAIN_BOTTOM_GAP_PX);
-  }
-
-  try {
-    const raw = window.localStorage?.getItem("ravtext.talmudLayout.mainBottomGap");
-    if (raw !== null && raw !== "") {
-      const n = Number.parseFloat(raw);
-      if (Number.isFinite(n)) return clamp(n, 0, MAX_V9_MAIN_BOTTOM_GAP_PX);
-    }
-  } catch (_) {}
-
-  try {
-    const cssValue = window.getComputedStyle?.(container)
-      ?.getPropertyValue("--ravtext-v9-main-bottom-gap");
-    const n = Number.parseFloat(cssValue || "");
-    if (Number.isFinite(n)) return clamp(n, 0, MAX_V9_MAIN_BOTTOM_GAP_PX);
-  } catch (_) {}
-
-  return DEFAULT_V9_MAIN_BOTTOM_GAP_PX;
 }
 
 function topOf(el) {
