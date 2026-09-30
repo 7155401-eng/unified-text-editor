@@ -126,6 +126,61 @@ test('pagehide flushes local state, marks server pending, and uses explicit beac
   }
 });
 
+test('network exception during normal document sync marks server stale', async () => {
+  const storage = fakeStorage();
+  const h = browserHarness({
+    storage,
+    fetchImpl: async (url) => {
+      if (String(url).includes('/api/documents/current')) {
+        throw new TypeError('network down');
+      }
+      return { ok: true, async json() { return { settings: {} }; } };
+    },
+  });
+
+  const previousSetTimeout = globalThis.setTimeout;
+  const previousClearTimeout = globalThis.clearTimeout;
+  globalThis.setTimeout = (fn) => {
+    queueMicrotask(fn);
+    return 1;
+  };
+  globalThis.clearTimeout = () => {};
+
+  const content = {
+    version: 1,
+    activeId: 'network-case',
+    panes: [{
+      id: 'network-case',
+      paneRole: 'main',
+      content: {
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [{ type: 'text', text: 'unsent-newer-text' }] }],
+      },
+    }],
+  };
+  const paneManager = {
+    serializeForPersistence() { return content; },
+    flushSave() {},
+  };
+
+  try {
+    attachAutoSync(paneManager);
+    h.fire('ravtext:engine-rendered');
+    await new Promise(resolve => queueMicrotask(resolve));
+    await new Promise(resolve => queueMicrotask(resolve));
+
+    const staleRaw = storage.getItem(STALE_KEY);
+    assert.ok(staleRaw, 'network exception did not mark the server copy stale');
+    const stale = JSON.parse(staleRaw);
+    assert.equal(stale.status, 'network-error');
+    assert.ok(stale.chars >= JSON.stringify(content).length);
+  } finally {
+    globalThis.setTimeout = previousSetTimeout;
+    globalThis.clearTimeout = previousClearTimeout;
+    h.restore();
+  }
+});
+
 test('pending pagehide protects newer local document from stale server copy', async () => {
   const localContent = {
     version: 1,
