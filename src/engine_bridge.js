@@ -439,7 +439,7 @@ function extractStreamNotes(streamPane) {
 
 // משה 2026-05-13: גרסה משופרת המחזירה גם runs לכל הערה — לעיצוב אינליין
 // (בולד/הדגשה/צבע פר-מילה) בתצוגה. מבנה החזרה: { notes: string[], runsPerNote: Run[][] }.
-function extractStreamNotesWithRuns(streamPane) {
+function extractStreamNotesWithRuns(streamPane, breakSettings = loadSpacingSettings(), protectedLiterals = []) {
   if (!streamPane || !streamPane.editor) return { notes: [], runsPerNote: [] };
   const sym = streamPane.symbol || `@${streamPane.streamCode}`;
   if (!sym) return { notes: [], runsPerNote: [] };
@@ -549,9 +549,16 @@ function extractStreamNotesWithRuns(streamPane) {
     const clean = cleanNoteInfo(fullText);
     if (!clean.text) return { notes: [], runsPerNote: [] };
 
+    const sourceRuns = sliceRuns(allRuns, 0, clean.sliceEnd, clean.dropLeading);
+    const converted = applyGlobalLineBreakCode({
+      text: clean.text,
+      runs: sourceRuns,
+      settings: breakSettings,
+      protectedLiterals,
+    });
     return {
-      notes: [clean.text],
-      runsPerNote: [sliceRuns(allRuns, 0, clean.sliceEnd, clean.dropLeading)],
+      notes: [converted.text],
+      runsPerNote: [converted.runs],
     };
   }
 
@@ -568,10 +575,15 @@ function extractStreamNotesWithRuns(streamPane) {
     const clean = cleanNoteInfo(rawNote);
     if (!clean.text) continue;
 
-    notes.push(clean.text);
-    runsPerNote.push(
-      sliceRuns(allRuns, start, start + clean.sliceEnd, clean.dropLeading)
-    );
+    const sourceRuns = sliceRuns(allRuns, start, start + clean.sliceEnd, clean.dropLeading);
+    const converted = applyGlobalLineBreakCode({
+      text: clean.text,
+      runs: sourceRuns,
+      settings: breakSettings,
+      protectedLiterals,
+    });
+    notes.push(converted.text);
+    runsPerNote.push(converted.runs);
   }
 
   return { notes, runsPerNote };
