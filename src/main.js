@@ -71,7 +71,6 @@ import { wireTorahTools } from "./torah_tools.js";
 import { installTorahGuestGuard } from "./torah_guest_guard.js";
 import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
-import { openWordExtractor, setupWordExtractor } from "./word_extractor/word_extractor.js";
 import { wireTextComparePro } from "./text_compare_pro/text_compare_pro.js";
 import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import { wireSefariaTools } from "./sefaria/sefaria.js";
@@ -280,7 +279,6 @@ loadSyncScrollEnabledFromServer().then((enabled) => {
 }).catch(() => {});
 setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
-setupWordExtractor(paneManager, rerenderPages);
 wireTextComparePro(paneManager);
 wireComparatorButton(paneManager);
 wireSefariaTools(paneManager);
@@ -2003,7 +2001,8 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "word-import-streams": {
-      openWordExtractor(paneManager, rerenderPages);
+      const { openWordExtractor } = await import("./word_extractor/word_extractor.js");
+      await openWordExtractor(paneManager, rerenderPages);
       break;
     }
     case "word-export": {
