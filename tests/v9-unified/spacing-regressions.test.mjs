@@ -472,6 +472,42 @@ test('second and final opening-window row does not center its body as if the ope
   `opening+last-row visual center=${(visualLeft+visualRight)/2}, expected 50`);
 });
 
+test('dropped opening crossing a left-widening knee never traps later rows at half width',()=>{
+ const pitch=10;
+ const ctx={
+  fontSize:10,lineHeight:pitch,
+  describeOpening:e=>e.id==='opening-cross-knee'
+    ? {position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}
+    : null,
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ for(const boundary of [1.25,3.5,6.75,9.5]){
+  const p=layoutV9MainParagraphs(
+   [{id:'opening-cross-knee',text:'OPEN '+Array(18).fill('aa').join(' '),runs:[],mainRefs:[]}],
+   [
+    {x:50,width:50,y_start:0,y_end:boundary,lockYStart:false},
+    {x:0,width:100,y_start:boundary,y_end:120,lockYStart:false},
+   ],ctx,120
+  );
+  const host=p.lines.find(l=>l.render?.opening);
+  assert(host,`boundary ${boundary}: opening disappeared`);
+  const windowRows=p.lines.filter(l=>l.openingWindow);
+  assert(windowRows.length>=2,`boundary ${boundary}: expected two opening-window rows`);
+  const second=windowRows[1];
+  assert(second.width>70,
+    `boundary ${boundary}: second opening row remained half width: width=${second.width}`);
+  const after=p.lines.find(l=>l.y>=host.render.opening.y+host.render.opening.height-.01);
+  assert(after,`boundary ${boundary}: missing row after opening`);
+  assert(after.width>=99,
+    `boundary ${boundary}: row after opening remained half width: width=${after.width}`);
+ }
+});
+
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={
