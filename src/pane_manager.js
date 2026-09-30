@@ -27,10 +27,13 @@ import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
 import { EditorJsonSnapshotCache } from "./editor_json_snapshot_cache.js";
 import { PersistenceTextSnapshotCache } from "./persistence_text_snapshot_cache.js";
+import { BoundedDebouncer } from "./bounded_debouncer.js";
 import { FrameCoalescer } from "./frame_coalescer.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
+const LOCAL_SAVE_DEBOUNCE_MS = 350;
+const LOCAL_SAVE_MAX_WAIT_MS = 5000;
 // משה 2026-09-20: הסף היה 900,000 תווים, ומסמך אמיתי (מדרש הלל אחרי
 // ניקוי הציונים — 1,179,540 תווים) נדחה בעלייה: האתר זרק אותו לצד
 // וחזר למסמך הדוגמה, בלי שהמשתמש ידע למה. זה נראה כאילו האתר "שוכח".
@@ -933,7 +936,15 @@ export class PaneManager {
     this._pendingChange = false;
     this._pendingMarkerRefresh = false;
     this._savePending = false;
-    this._saveTimer = null;
+    this._localSaveScheduler = new BoundedDebouncer(
+      () => {
+        if (this._savePending) this._writeStorageNow();
+      },
+      {
+        delayMs: LOCAL_SAVE_DEBOUNCE_MS,
+        maxWaitMs: LOCAL_SAVE_MAX_WAIT_MS,
+      }
+    );
     // Monotonic count of real editor updates. Hydration paths use
     // setContent(..., { emitUpdate:false }), so they do not increment this.
     // This lets async server startup detect and preserve typing that happened
@@ -1236,6 +1247,9 @@ export class PaneManager {
   }
 
   _writeStorageNow() {
+    // Any completed save attempt satisfies both the short idle debounce and
+    // the hard crash-safety deadline. Cancel stale callbacks before writing.
+    this._localSaveScheduler?.cancel();
     if (isStorageDisabled()) {
       this._savePending = false;
       return;
@@ -1289,23 +1303,20 @@ export class PaneManager {
     // semantic signal covers edits even when live rendering is disabled.
     this._emit("persist");
 
-    if (this._saveTimer) clearTimeout(this._saveTimer);
     if (immediate) {
-      this._saveTimer = null;
+      this._localSaveScheduler.cancel();
       this._writeStorageNow();
       return;
     }
-    this._saveTimer = setTimeout(() => {
-      this._saveTimer = null;
-      this._writeStorageNow();
-    }, 350);
+
+    // Normal pauses still save after 350ms. Under continuous typing, the
+    // scheduler's non-sliding 5s deadline forces a browser-local snapshot so
+    // a sudden tab/process crash cannot lose an arbitrarily long edit burst.
+    this._localSaveScheduler.schedule();
   }
 
   flushSave() {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
+    this._localSaveScheduler.cancel();
     if (this._savePending) this._writeStorageNow();
   }
 
@@ -1346,10 +1357,7 @@ export class PaneManager {
 
   clearStorage() {
     this._storageTextCache.invalidate();
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
+    this._localSaveScheduler.cancel();
     this._savePending = false;
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
