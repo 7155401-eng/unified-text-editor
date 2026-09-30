@@ -4,9 +4,7 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "prosemirror-state";
 import { defaultLabelForCode } from "./engine_bridge.js";
-import { hasPotentialStreamMarker, streamMarkerContextRadius } from "./stream_mark_scan_policy.js";
-
-const AUTO_MARK_FULL_SCAN_LIMIT = 20000;
+import { hasPotentialStreamMarker, streamMarkerContextRadius, streamMarkerScanMode } from "./stream_mark_scan_policy.js";
 
 export const STREAM_PALETTE = [
   { bg: "#FEE2E2", fg: "#7F1D1D", name: "אדום" },
@@ -176,21 +174,32 @@ export const StreamMark = Mark.create({
           const userSymbol = storage.symbol;
           const userStreamCode = storage.streamCode;
 
-          // Nested mode expands the set of markers a stream pane recognizes,
-          // so the fast-path gate must know about it before deciding whether
-          // a full scan is unnecessary.
+          const forceScan = transactions.some(t => t.getMeta("forceStreamMarkScan"));
+          const docChanged = transactions.some(t => t.docChanged);
+          const scanMode = streamMarkerScanMode({
+            forceScan,
+            docChanged,
+            transactionMapCounts: transactions.map(t => t.mapping.maps.length),
+          });
+          if (scanMode === "none") return null;
+
+          // Nested mode is only needed once a document scan is actually
+          // possible. Selection/focus-only transactions return above without
+          // touching synchronous storage.
           let nestedOn = false;
           try {
             nestedOn = typeof window !== "undefined" &&
               window.localStorage?.getItem("ravtext.nestedNotes") === "1";
           } catch (_) {}
 
-          const forceScan = transactions.some(t => t.getMeta("forceStreamMarkScan"));
-          const docChanged = transactions.some(t => t.docChanged);
-          if (!docChanged && !forceScan) return null;
+          // Normal typing/backspace is one transaction with one StepMap, so
+          // its changed coordinates are safe to compare directly against the
+          // old/new documents. If that small context cannot contain a stream
+          // marker (and did not previously carry one), skip the full document
+          // walk regardless of total document size. Multi-step transforms keep
+          // the conservative full scan.
           if (
-            !forceScan &&
-            newState.doc.content.size > AUTO_MARK_FULL_SCAN_LIMIT &&
+            scanMode === "changed-range" &&
             !transactionsTouchPotentialMarker(
               transactions,
               oldState,
