@@ -11,8 +11,8 @@ import * as meta from "./sefaria_book_metadata.js";
 import * as api from "./sefaria_api_client.js";
 import * as presets from "./sefaria_preset_manager.js";
 import { extractDh, findDhPosition } from "./sefaria_dh.js";
-import { buildDocxBlob, downloadDocxBlob } from "./sefaria_docx_builder.js";
-import { consumeToolSuccess, createToolActionIdempotencyKey } from "../tool_runtime_gate.js";
+import { buildAndDownloadDocx } from "./sefaria_docx_builder.js";
+import { consumeToolUse, createToolActionIdempotencyKey } from "../tool_runtime_gate.js";
 import { t, getLang, toggleLang } from "./sefaria_i18n.js";
 
 // ────────────────────────────────────────────────────────────────────
@@ -892,15 +892,27 @@ export function openSefariaDownloader(opts) {
     const yes = await confirmExportModal(ref, selected);
     if (!yes) return;
 
+    // Desktop parity: the free weekly use is recorded after the user confirms
+    // the export and before the export work starts. Merely opening the tool,
+    // browsing books, or cancelling the confirmation never consumes quota.
+    try {
+      await consumeToolUse("sefaria-downloader", {
+        idempotencyKey: createToolActionIdempotencyKey("sefaria-downloader"),
+        niceName: "הורדת ספר ממאגר התורה",
+      });
+    } catch (e) {
+      setStatus("❌ " + (e && e.message ? e.message : String(e)), "warn");
+      return;
+    }
+
     cancelFlag = false;
     exportInProgress = true;
     cancelBtn.disabled = false;
     exportLoadBtn.disabled = true;
     exportOnlyBtn.disabled = true;
 
-    const quotaActionKey = createToolActionIdempotencyKey("sefaria-downloader");
     try {
-      await doExport(ref, selected, loadIntoEditor, quotaActionKey);
+      await doExport(ref, selected, loadIntoEditor);
     } catch (e) {
       setStatus("❌ " + (e && e.message ? e.message : String(e)), "warn");
       modalInfo(t("err_export"), t("err_export_done_template", { err: e && e.message ? e.message : String(e), path: "log" }), "error");
@@ -924,7 +936,7 @@ export function openSefariaDownloader(opts) {
     return modalYesNo(t("confirm_title"), msg);
   }
 
-  async function doExport(ref, selected, loadIntoEditor, quotaActionKey) {
+  async function doExport(ref, selected, loadIntoEditor) {
     setStatus(t("status_loading_book_text", { ref }), "gold");
     setProgress(0.05);
     if (cancelFlag) return cancelled();
@@ -1014,14 +1026,7 @@ export function openSefariaDownloader(opts) {
     const ts = Math.floor(Date.now() / 1000);
     const filename = `${safeBook}_${ts}.docx`;
     const docTitle = `${meta.getHebrewName(currentBook)} — מאגר התורה`;
-    // Build completely first. Free quota is claimed only after the export is
-    // actually buildable, but before any file/result is delivered.
-    const { blob } = buildDocxBlob(units, streamsMeta, docTitle, filename);
-    await consumeToolSuccess("sefaria-downloader", {
-      idempotencyKey: quotaActionKey,
-      niceName: "הורדת ספר ממאגר התורה",
-    });
-    downloadDocxBlob(blob, filename);
+    const { blob } = buildAndDownloadDocx(units, streamsMeta, docTitle, filename);
 
     presets.pushRecent(currentBook, ref);
     refreshRecent();
