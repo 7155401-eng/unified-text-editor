@@ -100,7 +100,13 @@ function footnoteParagraphs(noteEl) {
 }
 
 function unsupportedFootnoteContent(noteEl) {
-  const forbidden = new Set(["drawing", "pict", "object", "altChunk", "tbl", "hyperlink"]);
+  const forbidden = new Set([
+    "drawing", "pict", "object", "altChunk", "tbl", "hyperlink",
+    // These carry semantics that cannot be preserved by merely copying visible
+    // runs into the main document. Fail closed rather than flattening silently.
+    "fldSimple", "instrText", "fldChar", "sym", "sdt", "smartTag", "customXml",
+    "ins", "del", "moveFrom", "moveTo",
+  ]);
   const stack = [noteEl];
   while (stack.length) {
     const node = stack.pop();
