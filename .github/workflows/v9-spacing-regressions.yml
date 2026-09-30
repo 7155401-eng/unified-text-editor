@@ -52,7 +52,9 @@ jobs:
       - name: Fetch exact baseline for build comparison
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: 82936b7ba1720714f6ae73bda95e9791f6873856
+          # Compare against the actual PR base, not a historical hard-coded commit.
+          # For the dedicated push branch, current main is the correct baseline.
+          ref: ${{ github.event.pull_request.base.sha || 'main' }}
           path: .v9-baseline
           persist-credentials: false
       - name: Build baseline with the same locked dependencies
