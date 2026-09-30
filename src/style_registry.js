@@ -22,44 +22,82 @@ function roundTwo(value) {
   return n == null ? null : Math.round(n * 100) / 100;
 }
 
-// ⚡ Bolt Optimization:
-// Memory cache for custom text styles.
-// What: Caches the parsed result of localStorage to prevent expensive JSON.parse() calls.
-// Why: loadTextStyles is called frequently during rendering and UI updates.
-// Impact: Reduces loadTextStyles execution time from ~6.6ms to ~0.05ms per 1000 calls.
-let cachedStyles = null;
+// Parsed custom-style cache keyed by the exact persisted raw string.
+//
+// The old Bolt cache was invalidated only by the browser "storage" event.
+// That event is not fired for writes made by this same tab, so direct
+// localStorage hydration/import code could leave style rendering stale.
+// We still read the tiny raw string on access, but JSON.parse happens only
+// when that exact string changes.
+const STYLE_CACHE_UNREAD = Symbol("style-cache-unread");
+let cachedStylesRaw = STYLE_CACHE_UNREAD;
+let cachedStylesSnapshot = Object.freeze([]);
+
+function cloneStyle(style) {
+  return style && typeof style === "object" ? { ...style } : style;
+}
+
+function makeStyleSnapshot(styles) {
+  return Object.freeze(safeArray(styles).map(style => Object.freeze(cloneStyle(style))));
+}
+
+function readStyleSnapshot() {
+  let raw;
+  try {
+    raw = typeof localStorage !== "undefined"
+      ? localStorage.getItem(CUSTOM_STYLES_KEY)
+      : null;
+  } catch {
+    // Keep historical behavior: unavailable storage behaves like no saved
+    // custom styles, without poisoning a later successful read.
+    cachedStylesRaw = STYLE_CACHE_UNREAD;
+    cachedStylesSnapshot = Object.freeze([]);
+    return cachedStylesSnapshot;
+  }
+
+  if (raw === cachedStylesRaw) return cachedStylesSnapshot;
+
+  try {
+    cachedStylesSnapshot = makeStyleSnapshot(JSON.parse(raw || "[]"));
+  } catch {
+    // Cache malformed raw too: repeated render calls should not repeatedly
+    // parse the same broken payload. A later raw change invalidates naturally.
+    cachedStylesSnapshot = Object.freeze([]);
+  }
+  cachedStylesRaw = raw;
+  return cachedStylesSnapshot;
+}
 
 if (typeof window !== "undefined") {
-  // Listen for changes from other tabs to keep cache in sync
   window.addEventListener("storage", (e) => {
     if (e.key === CUSTOM_STYLES_KEY) {
-      cachedStyles = null;
+      cachedStylesRaw = STYLE_CACHE_UNREAD;
     }
   });
 }
 
 export function loadTextStyles() {
-  // Return cached reference to avoid synchronous I/O and JSON parsing bottleneck
-  if (cachedStyles !== null) return cachedStyles;
-  try {
-    cachedStyles = safeArray(JSON.parse(localStorage.getItem(CUSTOM_STYLES_KEY) || "[]"));
-    return cachedStyles;
-  } catch {
-    return [];
-  }
+  // Historical UI contract: callers receive a mutable list and may push,
+  // replace or filter before calling saveTextStyles().
+  return readStyleSnapshot().map(cloneStyle);
 }
 
 export function saveTextStyles(styles) {
-  // Update cache synchronously to prevent subsequent reads from hitting localStorage again
-  cachedStyles = safeArray(styles);
-  localStorage.setItem(CUSTOM_STYLES_KEY, JSON.stringify(cachedStyles));
+  const clean = safeArray(styles).map(cloneStyle);
+  const raw = JSON.stringify(clean);
+  // Seed the cache only after persistence succeeds. If setItem throws, the
+  // previous persisted snapshot remains authoritative.
+  localStorage.setItem(CUSTOM_STYLES_KEY, raw);
+  cachedStylesRaw = raw;
+  cachedStylesSnapshot = makeStyleSnapshot(clean);
   window.dispatchEvent(new CustomEvent("ravtext:styles-changed"));
 }
 
 export function resolveTextStyle(styleIdOrName) {
   if (!styleIdOrName) return null;
-  const styles = loadTextStyles();
-  return styles.find(s => s.id === styleIdOrName || s.name === styleIdOrName) || null;
+  const found = readStyleSnapshot().find(s => s.id === styleIdOrName || s.name === styleIdOrName);
+  // Preserve the old mutable-object contract without exposing cache internals.
+  return found ? cloneStyle(found) : null;
 }
 
 export function normalizeTextStyle(rawStyle) {
