@@ -445,17 +445,37 @@ export function mountComparatorUI(rootEl, options = {}) {
   function updateBar(edId, syms, counts) {
     const bar = rootEl.querySelector('#markers-' + edId);
     if (!bar) return;
-    bar.innerHTML = '';
+    bar.replaceChildren();
+
     syms.forEach((s, ci) => {
-      const n = counts[s.sym] || 0;
+      const sym = String(s?.sym ?? '');
+      const n = counts[sym] || 0;
       if (n === 0) return;
-      let html = '<span class="mc mc-' + ci + '"><span class="sym-label-bar">' + s.sym + '</span>';
+
+      // Symbol text can originate from imported/configured document data.
+      // Keep it out of HTML parsing entirely: textContent/dataset preserve the
+      // exact symbol without creating markup or executable attributes.
+      const group = document.createElement('span');
+      group.className = 'mc mc-' + ci;
+
+      const label = document.createElement('span');
+      label.className = 'sym-label-bar';
+      label.textContent = sym;
+      group.appendChild(label);
+
       for (let i = 1; i <= n; i++) {
-        const safeSym = s.sym.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        html += '<span class="badge" data-action="jumpToNth" data-edid="' + edId + '" data-sym="' + safeSym + '" data-nth="' + i + '" title="' + i + '">' + i + '</span>';
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.dataset.action = 'jumpToNth';
+        badge.dataset.edid = String(edId);
+        badge.dataset.sym = sym;
+        badge.dataset.nth = String(i);
+        badge.title = String(i);
+        badge.textContent = String(i);
+        group.appendChild(badge);
       }
-      html += '</span>';
-      bar.innerHTML += html;
+
+      bar.appendChild(group);
     });
   }
 
