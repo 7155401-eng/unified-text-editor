@@ -1,6 +1,6 @@
 import { saveTextStyles, loadTextStyles } from '../../src/style_registry.js';
 import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
-import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart } from '../../src/engine/v9_text_measurement.js';
+import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart, renderV9PlannedMainLine } from '../../src/engine/v9_text_measurement.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
 import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
 import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
@@ -1141,6 +1141,51 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
         }
       }
     }finally{found.page.remove();}
+  });
+
+  await test('opening-window final row centers actual opening+body ink, not only planner slots',()=>{
+    const context=createV9TextLayoutContext({
+      mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
+      openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:0.2,scope:'all',
+        skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1}
+    });
+    const page=makePage();
+    try{
+      let plan=null;
+      for(let words=4;words<=18;words++){
+        const text='פתיח '+Array(words).fill('אב').join(' ');
+        const entry=context.prepareEntry({id:'ink-center',index:1,text,runs:[],mainRefs:[],continues:false});
+        const candidate=layoutV9MainParagraphs([entry],[{x:0,width:100,y_start:0,y_end:100}],context,100);
+        if(candidate.lines.length===2 && candidate.lines[1].isLast && candidate.lines[1].openingWindow){plan=candidate;break;}
+      }
+      assert(plan,'fixture search did not produce a two-row paragraph ending inside the opening window');
+
+      page.style.position='relative';
+      page.style.width='100px';
+      page.style.height='100px';
+      page.style.padding='0';
+      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+
+      const rows=[...page.querySelectorAll('.v9-final-main-line')];
+      const lastEl=rows.at(-1);
+      const opening=page.querySelector('.v9-opening-glyph');
+      const body=lastEl?.querySelector('.v9-planned-line-text');
+      assert(lastEl&&opening&&body,'rendered opening fixture is incomplete');
+
+      const pageRect=page.getBoundingClientRect();
+      const openingRect=opening.getBoundingClientRect();
+      const range=document.createRange();
+      range.selectNodeContents(body);
+      const bodyRect=range.getBoundingClientRect();
+      const left=Math.min(openingRect.left,bodyRect.left)-pageRect.left;
+      const right=Math.max(openingRect.right,bodyRect.right)-pageRect.left;
+      const center=(left+right)/2;
+
+      assert(Math.abs(center-50)<=1.25,
+        'actual opening+body ink is off center: left='+left.toFixed(2)+' right='+right.toFixed(2)+' center='+center.toFixed(2)+'; '+
+        'line='+JSON.stringify(plan.lines.map(l=>({x:l.x,width:l.width,natural:l.naturalWidth,align:l.render.alignment,text:l.render.body.text,opening:l.render.opening&&{x:l.render.opening.x,width:l.render.opening.width}}))));
+    }finally{context.dispose();page.remove();}
   });
 
   await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
