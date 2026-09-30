@@ -853,9 +853,9 @@ export function renderPages(packerOutput, container, options = {}) {
       realPages.push(real);
     }
     container.appendChild(allFrag);
-    container.__getPageElement = (i) => realPages[i] || null;
+    container.__getPageElement = (i) => realPages[i - pageIndexOffset] || null;
     container.__realizePage = () => {};
-    container.__pageCount = packerOutput.length;
+    container.__pageCount = pageIndexOffset + packerOutput.length;
     return;
   }
 
