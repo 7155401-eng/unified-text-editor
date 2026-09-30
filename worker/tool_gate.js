@@ -146,7 +146,22 @@ async function authorizeFreePreflight(user, toolName, env, request, body) {
 
   if (isServerManagedMeteredTool(toolName)) {
     const state = await checkToolQuotaAvailability(user, toolName, env, quotaOptions(request, body));
-    return { ...state, preflightConsumed: false };
+    const policy = getToolPolicy(toolName);
+
+    // Desktop Comparator parity: opening the window is free. If the weekly
+    // session was already consumed, open it read-only instead of blocking the
+    // window itself. Real actions still use check/consume and remain blocked.
+    if (policy?.freeMode === 'session') {
+      return {
+        ...state,
+        ok: true,
+        quotaAvailable: !!state.ok,
+        quotaReadOnly: !state.ok,
+        preflightConsumed: false,
+      };
+    }
+
+    return { ...state, quotaAvailable: !!state.ok, preflightConsumed: false };
   }
 
   const usageDate = todayKey();
@@ -300,6 +315,8 @@ export async function handleToolPreflight(request, env) {
     preflightConsumed: !!usage?.preflightConsumed,
     remaining: usage?.remaining ?? null,
     resetAt: usage?.resetAt ?? null,
+    quotaAvailable: usage?.quotaAvailable ?? usage?.ok ?? true,
+    quotaReadOnly: !!usage?.quotaReadOnly,
     policy: policy ? {
       freeMode: policy.freeMode,
       premiumMode: policy.premiumMode,
