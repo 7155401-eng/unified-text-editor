@@ -5030,8 +5030,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             secondText,
             splitMetrics,
             splitMainWidth,
-            v9SplitPolicy,
-            { source: "extension-rescue" }
+            { ...v9SplitPolicy, allowWordGapOnlyInEmergency: true },
+            { source: "extension-rescue", emergency: true }
           ).filter(c => c.offset >= 2 && c.offset <= secondText.length),
           {
             remainingPx: extensionRemainingPx,
