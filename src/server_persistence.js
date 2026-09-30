@@ -121,7 +121,7 @@ function collectLocalSettings() {
   return out;
 }
 
-function applyLocalSettings(settings, { preserveExisting = false } = {}) {
+export function applyLocalSettings(settings, { preserveExisting = false } = {}) {
   if (typeof localStorage === 'undefined' || !settings || typeof settings !== 'object') return;
   try {
     for (const [key, value] of Object.entries(settings)) {
