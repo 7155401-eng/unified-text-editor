@@ -236,29 +236,67 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   if (!current) return null;
   const before = current;
 
-  // Greedy minimax: moving a boundary backwards moves one word from an earlier
-  // row into the next row. Repeating the best improving move naturally
-  // propagates the shortage backwards through as much of the paragraph tail as
-  // needed, instead of concentrating it in the final row.
-  for (let pass = 0; pass < words.length; pass++) {
-    let chosen = null;
-    for (let bi = boundaries.length - 1; bi >= 0; bi--) {
-      const previous = bi === 0 ? 0 : boundaries[bi - 1];
-      if (boundaries[bi] - previous <= 1) continue;
+  // Whole-tail minimax, not a one-step greedy repair. A locally neutral move
+  // can be required before the NEXT boundary can move and lower the final-row
+  // pressure. Search a bounded window behind every original line boundary and
+  // choose the globally best distribution for this page segment.
+  //
+  // Boundaries may only move BACKWARDS: words already assigned to this page
+  // stay on this page, and no word is pulled from the following page.
+  const maxBoundaryShift = Math.min(12, Math.max(3, tail.length + 2));
+  let states = new Map();
+  states.set(0, {
+    from: 0,
+    boundaries: [],
+    metrics: [],
+    maxPressure: 0,
+    sumSquares: 0,
+    score: 0,
+  });
 
-      const candidate = boundaries.slice();
-      candidate[bi] -= 1;
-      const evaluated = evaluate(candidate);
-      if (!evaluated) continue;
-      if (evaluated.score + TAIL_REBALANCE_SCORE_EPS >= current.score) continue;
+  for (let lineIndex = 0; lineIndex < tail.length; lineIndex++) {
+    const finalLine = lineIndex === tail.length - 1;
+    const originalEnd = finalLine ? words.length : initialBoundaries[lineIndex];
+    const nextStates = new Map();
 
-      if (!chosen || evaluated.score < chosen.evaluated.score) {
-        chosen = { boundaries: candidate, evaluated };
+    for (const state of states.values()) {
+      const minEnd = finalLine
+        ? words.length
+        : Math.max(state.from + 1, originalEnd - maxBoundaryShift);
+      const maxEnd = finalLine ? words.length : originalEnd;
+
+      for (let to = minEnd; to <= maxEnd; to++) {
+        if (!(to > state.from)) continue;
+        const metric = metricFor(lineIndex, state.from, to);
+        if (!metric) continue;
+
+        const maxPressure = Math.max(state.maxPressure, metric.pressure);
+        const sumSquares = state.sumSquares + metric.pressure * metric.pressure;
+        const score = maxPressure * 100000 + sumSquares;
+        const candidate = {
+          from: to,
+          boundaries: finalLine ? state.boundaries : [...state.boundaries, to],
+          metrics: [...state.metrics, metric],
+          maxPressure,
+          sumSquares,
+          score,
+        };
+        const prior = nextStates.get(to);
+        if (!prior || candidate.score + TAIL_REBALANCE_SCORE_EPS < prior.score) {
+          nextStates.set(to, candidate);
+        }
       }
     }
-    if (!chosen) break;
-    boundaries.splice(0, boundaries.length, ...chosen.boundaries);
-    current = chosen.evaluated;
+    states = nextStates;
+    if (!states.size) break;
+  }
+
+  const best = [...states.values()]
+    .filter(state => state.from === words.length && state.metrics.length === tail.length)
+    .sort((a, b) => a.score - b.score)[0] || null;
+  if (best && best.score + TAIL_REBALANCE_SCORE_EPS < current.score) {
+    boundaries.splice(0, boundaries.length, ...best.boundaries);
+    current = best;
   }
 
   const gentleMax = continuationTailGentleSpacing(context);
