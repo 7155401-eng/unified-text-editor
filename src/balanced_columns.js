@@ -1,4 +1,4 @@
-import { getEffectiveStreamSettings } from "./original_stream_columns.js";
+import { getEffectiveStreamSettings, MAIN_STREAM_CODE } from "./original_stream_columns.js";
 
 function getStreamSettings(code) {
   return getEffectiveStreamSettings(code);
@@ -6,7 +6,9 @@ function getStreamSettings(code) {
 
 function hasTwoColumnStreams() {
   const settings = (typeof window !== "undefined" && window.__STREAM_SETTINGS__) || {};
-  return Object.keys(settings).some((code) => (getStreamSettings(code)?.cols || 1) === 2);
+  return Object.keys(settings).some((code) =>
+    code !== MAIN_STREAM_CODE && (getStreamSettings(code)?.cols || 1) === 2
+  );
 }
 
 function streamTextWithoutTitle(streamEl) {
