@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { transformFootnotesToCurlyCore } from "./docx_footnotes_to_curly.js";
 
 const SERVICE = "ravtext-cloudflare-docx-advanced-worker";
 const VERSION = "2026-05-26-server-extract";
@@ -24,7 +25,7 @@ function corsHeaders(id = "") {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
     "access-control-allow-headers": "content-type, x-file-name, x-docx-request-id",
-    "access-control-expose-headers": "x-docx-api, x-docx-version, x-docx-request-id",
+    "access-control-expose-headers": "x-docx-api, x-docx-version, x-docx-request-id, x-docx-filename, x-docx-report",
     "access-control-max-age": "86400",
     "x-docx-api": SERVICE,
     "x-docx-version": VERSION,
@@ -510,6 +511,10 @@ function isDocxExtractPath(path) {
   return path === "/api/word-chapters-extract" || path === "/api/word-chapters/extract";
 }
 
+function isDocxFootnotesToCurlyPath(path) {
+  return path === "/api/word-footnotes-to-curly";
+}
+
 function isClientLogPath(path) {
   return path === "/api/client-log";
 }
@@ -575,6 +580,41 @@ async function handleDocxApi(request, env, ctx) {
     log("log", "request_body_loaded", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
     dbLog(env, ctx, "info", "docx_request_start", { requestId: id, path: url.pathname, bytes: arrayBuffer.byteLength });
 
+    if (arrayBuffer.byteLength > MAX_DOCX_BYTES) {
+      throw Object.assign(
+        new Error(`DOCX גדול מדי. מגבלה: ${MAX_DOCX_BYTES} bytes.`),
+        { status: 413, code: "DOCX_TOO_LARGE" }
+      );
+    }
+
+    if (isDocxFootnotesToCurlyPath(url.pathname)) {
+      let sourceName = request.headers.get("x-file-name") || "document.docx";
+      try { sourceName = decodeURIComponent(sourceName); } catch (_) {}
+
+      const transformed = await transformFootnotesToCurlyCore(arrayBuffer, {
+        filename: sourceName,
+      });
+      const report = transformed.report || {};
+
+      dbLog(env, ctx, "info", "docx_footnotes_to_curly_success", {
+        requestId: id,
+        referencesConverted: report.referencesConverted || 0,
+        uniqueFootnotesConverted: report.uniqueFootnotesConverted || 0,
+      });
+
+      return new Response(transformed.bytes, {
+        status: 200,
+        headers: {
+          ...corsHeaders(id),
+          "cache-control": "no-store",
+          "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(transformed.filename)}`,
+          "x-docx-filename": encodeURIComponent(transformed.filename),
+          "x-docx-report": encodeURIComponent(JSON.stringify(report)),
+        },
+      });
+    }
+
     if (isDocxExtractPath(url.pathname)) {
       const level = url.searchParams.get("level");
       const index = url.searchParams.get("index");
@@ -599,6 +639,11 @@ async function handleDocxApi(request, env, ctx) {
       serverSide: true,
       requestId: id,
       error: error?.message || String(error || "Server error"),
+      message: error?.message || String(error || "Server error"),
+      code: error?.code || "DOCX_REQUEST_FAILED",
+      missingIds: error?.missingIds || undefined,
+      orphanIds: error?.orphanIds || undefined,
+      items: error?.items || undefined,
     }, error?.status || 500, id);
   }
 }
@@ -615,7 +660,7 @@ export default {
       return handleStreamsScan(request, env, ctx);
     }
 
-    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname)) {
+    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname) || isDocxFootnotesToCurlyPath(url.pathname)) {
       return handleDocxApi(request, env, ctx);
     }
 
@@ -627,4 +672,4 @@ export default {
   },
 };
 
-export { handleDocxApi, isDocxImportPath, isDocxExtractPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };
+export { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };

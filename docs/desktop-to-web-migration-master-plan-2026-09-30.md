@@ -48,6 +48,7 @@ The migration contract is:
 | Page size, spacing, document style | `page_size.js`, `page_settings.js`, `spacing_settings.js`, `document_style_settings.js` | PRESENT | Cross-walk every desktop setting. |
 | Headers/page numbers/document features | `document_features.js` | PRESENT / ACCEPTANCE NEEDED | Verify odd/even/header/footer behavior against desktop. |
 | Word import/export bridge | `word_bridge.js`, `word_export_serialization.js` | PRESENT | This is web Word round-trip, not the old local installer. |
+| Word footnotes → inline curly braces | `src/docx_tools/footnotes_to_curly.js` | IMPLEMENTED FROM CATALOG CONTRACT | Old repo catalog marked this capability `external-only` with no UI/pipeline implementation to port. Web implementation transforms DOCX directly, preserves rich note runs, and fails closed on orphan notes, hyperlinks, images, tables or objects. |
 | Stream links / nested notes | `stream_links.js`, `stream_links_ui.js`, nested-note modules | PRESENT | Compare against old link-related tools before declaring replacements. |
 | Track changes / footnotes / TOC | `footnotes_toc_track.js` | PRESENT | Check note-only accept/reject semantics separately. |
 | Autosave / persistence | server storage + browser persistence | PRESENT | Desktop filesystem paths are not relevant; verify recovery behavior instead. |
@@ -81,15 +82,14 @@ Initial repository audit did not find a dedicated equivalent for the following o
 1. Visual page tweaker/editor equivalent to `page_tweaker_ui.py`.
 2. Text-to-speech (TTS) module.
 3. Automatic link combiner.
-4. Convert Word footnotes to curly-brace inline text.
-5. Split footnotes by tag.
-6. Dedicated "add links to commentary" workflow — compare with current stream-links before porting.
-7. Bot-assisted text comparison after combining notes with source.
-8. Accept/reject changes only inside footnotes — compare with current generic Track Changes first.
-9. Fast merge of footnotes from a split Word document.
-10. Link-transplant form/workflow.
-11. Dedicated local Word add-in installer equivalent. This cannot be copied as a browser installer; translate to an Office Add-in/web bridge or a small signed desktop companion only if still required.
-12. Advanced visual PDF analyzer/report/tweaker workflows from `pdf_analyzer.py`, `pdf_report.py`, `pdf_viewer.py` where current browser preview/debug export does not cover the same job.
+4. Split footnotes by tag.
+5. Dedicated "add links to commentary" workflow — compare with current stream-links before porting.
+6. Bot-assisted text comparison after combining notes with source.
+7. Accept/reject changes only inside footnotes — compare with current generic Track Changes first.
+8. Fast merge of footnotes from a split Word document.
+9. Link-transplant form/workflow.
+10. Dedicated local Word add-in installer equivalent. This cannot be copied as a browser installer; translate to an Office Add-in/web bridge or a small signed desktop companion only if still required.
+11. Advanced visual PDF analyzer/report/tweaker workflows from `pdf_analyzer.py`, `pdf_report.py`, `pdf_viewer.py` where current browser preview/debug export does not cover the same job.
 
 The old "luxury Hasidic image bot" was itself marked **in development**, so it is not a parity blocker unless product scope explicitly promotes it.
 
@@ -179,7 +179,7 @@ Requirements:
 
 Port in this order because they reuse Word parsing already present:
 
-1. footnotes → curly braces;
+1. ✅ footnotes → curly braces — implemented as a safe direct DOCX transform. The old catalog entry was external-only, so this is a semantic implementation rather than a literal port;
 2. footnote splitter by tag;
 3. fast footnote merge;
 4. accept/reject footnote-only changes;

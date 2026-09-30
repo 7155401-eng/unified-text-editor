@@ -85,6 +85,7 @@ import { insertTablePrompt, addRowAfter, addRowBefore, deleteRow, addColumnAfter
 import { wireDocumentFeatures } from "./document_features.js";
 import { wireChapterSplitter } from "./document_chapter_splitter.js";
 import { insertFootnote, insertTOC, wireTrackChanges } from "./footnotes_toc_track.js";
+import { wireFootnotesToCurlyTool } from "./docx_tools/footnotes_to_curly.js";
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
@@ -1139,6 +1140,7 @@ setTimeout(() => {
   wireDocumentFeatures();
   wireTrackChanges(paneManager);
   wireChapterSplitter(paneManager);
+  wireFootnotesToCurlyTool();
 }, 300);
 setTimeout(() => {
   wireWordCount(paneManager);
