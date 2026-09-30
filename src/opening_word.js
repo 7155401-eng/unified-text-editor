@@ -587,6 +587,44 @@ function firstVisualLineWidth(el) {
   }
 }
 
+function openingElementLayoutFacts(el, text) {
+  if (!el || typeof getComputedStyle !== "function") {
+    return { lineCount: 0, complete: true, firstLineFill: NaN };
+  }
+  const cs = getComputedStyle(el);
+  const hostRect = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : null;
+  const hostWidth = (hostRect && hostRect.width) || numberOrZero(cs.width);
+  let rects = [];
+  if (typeof document !== "undefined" && typeof document.createRange === "function") {
+    const range = document.createRange();
+    try {
+      range.selectNodeContents(el);
+      rects = Array.from(range.getClientRects()).filter(rect => rect.width || rect.height);
+    } finally {
+      if (typeof range.detach === "function") range.detach();
+    }
+  }
+  const lines = [];
+  for (const rect of rects) {
+    let line = lines.find(item => Math.abs(item.top - rect.top) < 2);
+    if (!line) {
+      line = { top: rect.top, left: rect.left, right: rect.right };
+      lines.push(line);
+    } else {
+      line.left = Math.min(line.left, rect.left);
+      line.right = Math.max(line.right, rect.right);
+    }
+  }
+  lines.sort((a, b) => a.top - b.top);
+  const measuredFirst = lines.length ? Math.max(0, lines[0].right - lines[0].left) : 0;
+  const firstWidth = measuredFirst || firstVisualLineWidth(el) || measureSingleLineTextWidth(text, el, cs);
+  return {
+    lineCount: lines.length || (firstWidth > 0 ? 1 : 0),
+    complete: true,
+    firstLineFill: hostWidth > 0 && firstWidth > 0 ? Math.min(1, firstWidth / hostWidth) : NaN,
+  };
+}
+
 function measureSingleLineTextWidth(text, refEl, cs) {
   if (typeof document === "undefined" || !document.body || typeof getComputedStyle !== "function") return 0;
   const style = cs || getComputedStyle(refEl);
@@ -689,6 +727,11 @@ function applyToTextElement(el, settings, options = {}) {
   if (options.skipHeadingElements && isHeadingElement(el)) return false;
   const text = el.textContent || "";
   if (!text.trim()) return false;
+  const policyReason = openingWordSkipReason(settings, openingElementLayoutFacts(el, text));
+  if (policyReason) {
+    el.dataset.opwSkippedReason = policyReason;
+    return false;
+  }
   const prefixMatch = options.skipDisplayNumber ? text.match(/^\s*\[\d+\]\s*/) : null;
   const displayPrefix = prefixMatch ? prefixMatch[0] : "";
   const coreText = displayPrefix ? text.slice(displayPrefix.length) : text;
