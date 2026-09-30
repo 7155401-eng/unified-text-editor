@@ -3,12 +3,36 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   attachAutoSync,
+  documentPayloadFromContentJson,
   loadInitialState,
 } from '../../src/server_persistence.js';
 import { isStorageBeaconWrite } from '../../worker/storage.js';
 
 const DOC_KEY = 'ravtext.panes.state.v1';
 const STALE_KEY = 'ravtext.doc.serverStale.v1';
+
+test('document request envelope reuses the already-serialized content JSON exactly', () => {
+  const content = {
+    version: 1,
+    activeId: 'ראשי-"1"',
+    panes: [{
+      id: 'main',
+      paneRole: 'main',
+      content: {
+        type: 'doc',
+        content: [{
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'אב"ג \\ newline?\nכן' }],
+        }],
+      },
+    }],
+  };
+  const sig = JSON.stringify(content);
+  const payload = documentPayloadFromContentJson(sig);
+
+  assert.equal(payload, `{"content":${sig},"title":""}`);
+  assert.deepEqual(JSON.parse(payload), { content, title: '' });
+});
 
 function fakeStorage(initial = {}) {
   const data = new Map(Object.entries(initial));

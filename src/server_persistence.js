@@ -388,8 +388,12 @@ export function protectLocalDocumentAfterImport(chars = 0) {
 /** האם מה שנשמר בדפדפן זהה למה שיושב עכשיו בחלוניות. */
 export function localDocumentIsSaved(paneManager) {
   try {
-    if (!paneManager || typeof paneManager.serialize !== 'function') return false;
-    const wanted = JSON.stringify(paneManager.serialize());
+    if (!paneManager) return false;
+    const content = typeof paneManager.serializeForPersistence === 'function'
+      ? paneManager.serializeForPersistence()
+      : (typeof paneManager.serialize === 'function' ? paneManager.serialize() : null);
+    if (!content) return false;
+    const wanted = JSON.stringify(content);
     return localStorage.getItem(DOC_KEY) === wanted;
   } catch { return false; }
 }
@@ -452,6 +456,11 @@ function showSaveProblem(status, chars) {
   } catch {}
 }
 
+export function documentPayloadFromContentJson(contentJson) {
+  const json = String(contentJson ?? 'null');
+  return `{"content":${json},"title":""}`;
+}
+
 function createDocumentSnapshot(paneManager) {
   const canSerialize = paneManager && (
     typeof paneManager.serializeForPersistence === 'function' ||
@@ -478,7 +487,7 @@ async function saveDocumentSnapshot(snapshot) {
     const res = await fetch('/api/documents/current', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ content, title: '' }),
+      body: documentPayloadFromContentJson(sig),
     });
     if (res.ok) {
       _lastDocSig = sig;
@@ -664,7 +673,7 @@ export function attachAutoSync(paneManager) {
               const queued = navigator.sendBeacon(
                 '/api/documents/current?beacon=1',
                 new Blob(
-                  [JSON.stringify({ content, title: '' })],
+                  [documentPayloadFromContentJson(docSig)],
                   { type: 'application/json' }
                 )
               );
