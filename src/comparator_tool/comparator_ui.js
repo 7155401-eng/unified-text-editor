@@ -1015,6 +1015,12 @@ export function mountComparatorUI(rootEl, options = {}) {
   // ────────────────────────────────────────────────────────────────────
   async function doExport() {
     try {
+      if (state.merged) {
+        throw Object.assign(
+          new Error("לפני הייצוא יש ללחוץ „פרק חזרה לחלוניות”. ייצוא DOCX נעשה מהמצב המפוצל כדי למנוע שכפול של טקסט ההערות."),
+          { code: "EXPORT_REQUIRES_SPLIT_VIEW" }
+        );
+      }
       const streams = Object.keys(state.eds)
         .filter(id => id != 1)
         .map(id => ({
