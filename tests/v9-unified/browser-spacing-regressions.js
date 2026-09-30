@@ -2,7 +2,8 @@ import { saveTextStyles, loadTextStyles } from '../../src/style_registry.js';
 import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
 import { createV9TextLayoutContext, waitForV9LayoutFonts } from '../../src/engine/v9_text_measurement.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
-import { getStreamSettings } from '../../src/original_stream_columns.js';
+import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
+import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
@@ -71,6 +72,71 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(getComputedStyle(el).whiteSpace==='pre','note painter permits a second CSS row');
    assert(!el.classList.contains('justify'),'legacy reflow class retained');
  }
+ await test('main stream layout exposes a 1/2-column control',()=>{
+   const existing=document.getElementById('stream-columns-panel');
+   const panel=existing || document.createElement('div');
+   if(!existing){panel.id='stream-columns-panel';document.body.appendChild(panel);}
+   try {
+     updateOriginalStreamColumnsPanel([],()=>{});
+     const mainBlock=panel.querySelector('[data-stream-code="main"]');
+     assert(mainBlock,'main stream settings block missing');
+     const colsLabel=[...mainBlock.querySelectorAll('label')].find(el=>
+       String(el.querySelector(':scope > span')?.textContent||'').replace(/:$/,'').trim()==='טורים');
+     assert(colsLabel,'main stream columns control is hidden');
+     const input=colsLabel.querySelector('input[type="number"]');
+     assert(input,'main stream columns input missing');
+     assert(input.min==='1'&&input.max==='2',`main columns range is ${input.min}..${input.max}, expected 1..2`);
+   } finally {
+     panel.replaceChildren();
+     if(!existing)panel.remove();
+   }
+ });
+
+ await test('shared production helper applies main stream two-column layout',()=>{
+   const settings=getStreamSettings(),saved=settings.main;
+   const main=document.createElement('div');document.body.appendChild(main);
+   try {
+     settings.main={...(settings.main||{}),cols:2};
+     const count=applyMainStreamColumnsToElement(main);
+     assert(count===2,`resolved main columns=${count}`);
+     assert(main.dataset.mainCols==='2',`main cols dataset=${main.dataset.mainCols}`);
+     assert(getComputedStyle(main).columnCount==='2',`main columnCount=${getComputedStyle(main).columnCount}`);
+   } finally {
+     main.remove();
+     if(saved===undefined)delete settings.main;else settings.main=saved;
+   }
+ });
+
+ await test('V9 main stream flows right column then left without source loss',()=>{
+   const settings=getStreamSettings(),saved=settings.main;
+   const page=makePage();
+   try {
+     settings.main={...(settings.main||{}),cols:2,titleShow:true};
+     const text=Array(28).fill(neutral).join(' ');
+     const plan=buildSinglePage(page,{mainText:text,footerStreams:[]},
+       {...cfg,pageHeight:280,talmudStreams:[],mainWidthRatio:.82,titles:{main:'MAIN TWO COLS'}});
+     assert(plan.mainBox?.columns===2,`V9 main columns=${plan.mainBox?.columns}`);
+     const right=plan.mainBox.lines.filter(l=>l.mainColumn==='right');
+     const left=plan.mainBox.lines.filter(l=>l.mainColumn==='left');
+     assert(right.length>0,'right main column is empty');
+     assert(left.length>0,'left main column was never used');
+     assert(Math.min(...right.map(l=>l.x))>Math.min(...left.map(l=>l.x)),
+       'RTL reading order did not place first column on the right');
+     const firstLeft=plan.mainBox.lines.findIndex(l=>l.mainColumn==='left');
+     const lastRight=plan.mainBox.lines.map(l=>l.mainColumn).lastIndexOf('right');
+     assert(firstLeft>lastRight,'main column source order interleaved instead of right then left');
+     const painted=plan.mainBox.lines.map(l=>l.sourceText||'').join('');
+     assert(painted+(plan.overflow?.mainText||'')===text,'two-column V9 lost or reordered main source');
+     const title=[...page.querySelectorAll('.v9-stream-title')].find(el=>el.textContent==='MAIN TWO COLS');
+     assert(title,'two-column main title missing');
+     assert(Math.abs(parseFloat(title.style.width)-plan.mainBox.width)<.2,
+       `main title width ${title.style.width} does not span main area ${plan.mainBox.width}`);
+   } finally {
+     page.remove();
+     if(saved===undefined)delete settings.main;else settings.main=saved;
+   }
+ });
+
  await test('classic source tokens do not break around punctuation without whitespace',async()=>{
    const link=document.createElement('link');
    link.rel='stylesheet';link.href='../../styles.css';

@@ -878,8 +878,8 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
   panel.dataset.builtFor = signature;
 
   panel.innerHTML = "";
-  if (used.size === 0) return;
-
+  // The main stream has independent layout/style settings and must remain
+  // configurable even in a document with no commentary streams at all.
   const settings = getStreamSettings();
   // ⛔⛔ משה 10/09/2026: „כשהפופאפ של הרינדור לא פעיל הסימון של V עובד”.
   // זה הנתיב. commitRender קורא ל-scheduleRender, וזו rerenderPages —
@@ -1026,12 +1026,13 @@ export function updateOriginalStreamColumnsPanel(pages, scheduleRender) {
     const colsInput = document.createElement("input");
     colsInput.type = "number";
     colsInput.min = "1";
-    colsInput.max = "6";
+    colsInput.max = isMain ? "2" : "6";
     colsInput.value = cur.cols || 1;
     colsInput.addEventListener("change", () => {
       let n = parseInt(colsInput.value, 10);
       if (!Number.isFinite(n) || n < 1) n = 1;
-      if (n > 6) n = 6;
+      const maxCols = isMain ? 2 : 6;
+      if (n > maxCols) n = maxCols;
       colsInput.value = n;
       cur.cols = n;
       commitRender();
@@ -1486,6 +1487,7 @@ const MAIN_STREAM_ALLOWED_LABELS = [
   "כותרת",
   "הצג כותרת זרם",
   "סגנון כותרת",
+  "טורים",
 ];
 
 function pruneMainStreamBlock(block) {

@@ -10,6 +10,7 @@ import {
   boldOverrideStyleIdForStream,
   _streamBoolSetting,
 } from "../original_stream_columns.js";
+import { applyMainStreamColumnsToElement } from "../main_stream_columns.js";
 import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
@@ -630,6 +631,7 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
   const main = document.createElement("div");
   main.className = "page-main";
   applyMainTextStyleToElement(main);
+  applyMainStreamColumnsToElement(main);
   let lastIdx = null;
   let lastP = null;
   for (const tup of pageData.main) {

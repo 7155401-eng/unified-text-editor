@@ -5,6 +5,7 @@ import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe
 import { applyV9MainBottomGapToPage } from "./engine/v9_main_bottom_gap.js";
 import { applyStyleToElement, resolveTextStyle, applyTextStyleObjectToElement, normalizeTextStyle } from "./style_registry.js";
 import { applyBarStyleToElement, formatStreamNumber, styleIdForStreamNumber, getEffectiveStreamSettings, shouldShowStreamTitle, boldOverrideStyleIdForStream, boldOverrideForcesDocStylesForStream } from "./original_stream_columns.js";
+import { getMainStreamColumnCount } from "./main_stream_columns.js";
 import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
@@ -1749,6 +1750,30 @@ function createMainInlineContext(cfg) {
   });
 }
 
+function resolveV9MainColumnCount(cfg = {}) {
+  return getMainStreamColumnCount(cfg.mainCols);
+}
+
+function resolveV9MainColumnGap(cfg = {}) {
+  const explicit = Number(cfg.mainColumnGap);
+  if (Number.isFinite(explicit) && explicit >= 0) return explicit;
+  const shared = Number(cfg.streamHorizontalGap);
+  return Number.isFinite(shared) && shared >= 0 ? shared : 8;
+}
+
+function splitV9MainStripsIntoColumns(mainStrips, gapPx) {
+  const right = [], left = [];
+  for (const strip of Array.isArray(mainStrips) ? mainStrips : []) {
+    const width = Math.max(0, Number(strip.width) || 0);
+    const gap = Math.min(Math.max(0, gapPx), Math.max(0, width - 2));
+    const columnWidth = Math.max(1, (width - gap) / 2);
+    const base = { ...strip, width: columnWidth };
+    left.push({ ...base, x: Number(strip.x) || 0, mainColumn: "left" });
+    right.push({ ...base, x: (Number(strip.x) || 0) + columnWidth + gap, mainColumn: "right" });
+  }
+  return { right, left };
+}
+
 function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, cfg, pageBottom) {
   const ownContext = !cfg.__v9InlineContext;
   const effectiveConfig = { ...cfg, openingWordSettings: cfg.openingWordSettings || getOpeningWordSettings() };
@@ -1763,7 +1788,44 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
       text: String(entry.text ?? entry.rich?.text ?? ""),
       runs: entry.runs || entry.rich?.runs || [],
     }));
-    return layoutV9MainParagraphs(entries, mainStrips, context, pageBottom);
+    const mainCols = resolveV9MainColumnCount(cfg);
+    if (mainCols <= 1) {
+      const single = layoutV9MainParagraphs(entries, mainStrips, context, pageBottom);
+      return { ...single, mainColumnCount: 1, mainColumnGap: 0 };
+    }
+
+    const columnGap = resolveV9MainColumnGap(cfg);
+    const columnStrips = splitV9MainStripsIntoColumns(mainStrips, columnGap);
+    const rightFlow = layoutV9MainParagraphs(entries, columnStrips.right, context, pageBottom);
+    const rightLines = (rightFlow.lines || []).map(line => ({ ...line, mainColumn: "right" }));
+
+    let leftFlow = {
+      lines: [],
+      endY: columnStrips.left[0]?.y_start || mainStrips[0]?.y_start || 0,
+      overflowText: "",
+      overflowParagraphs: [],
+      diagnostics: [],
+      overflowReason: "",
+      debug: null,
+    };
+
+    if (Array.isArray(rightFlow.overflowParagraphs) && rightFlow.overflowParagraphs.length) {
+      leftFlow = layoutV9MainParagraphs(rightFlow.overflowParagraphs, columnStrips.left, context, pageBottom);
+    }
+    const leftLines = (leftFlow.lines || []).map(line => ({ ...line, mainColumn: "left" }));
+    const stillOverflowing = Array.isArray(leftFlow.overflowParagraphs) && leftFlow.overflowParagraphs.length > 0;
+
+    return {
+      lines: [...rightLines, ...leftLines],
+      endY: Math.max(Number(rightFlow.endY) || 0, Number(leftFlow.endY) || 0),
+      overflowText: leftFlow.overflowText || "",
+      overflowParagraphs: leftFlow.overflowParagraphs || [],
+      diagnostics: [...(rightFlow.diagnostics || []), ...(leftFlow.diagnostics || [])],
+      overflowReason: stillOverflowing ? (leftFlow.overflowReason || rightFlow.overflowReason || "two-column-page-full") : "",
+      debug: rightFlow.debug || leftFlow.debug || null,
+      mainColumnCount: 2,
+      mainColumnGap: columnGap,
+    };
   } finally { if (ownContext) context.dispose(); }
 }
 
@@ -1801,6 +1863,10 @@ function buildPagePlanCore(pageContent, config) {
   }, config || {});
 
   const streamSettings = cfg.streamSettings || {};
+  const mainColumnCount = resolveV9MainColumnCount(cfg);
+  const mainColumnGap = resolveV9MainColumnGap(cfg);
+  cfg.mainCols = mainColumnCount;
+  cfg.mainColumnGap = mainColumnGap;
   const reservedTop = cfg.reservedTop || 0;
   const reservedBottom = cfg.reservedBottom || 0;
   const effectivePageBottom = cfg.pageHeight - cfg.padding - reservedBottom;
@@ -2036,7 +2102,10 @@ function buildPagePlanCore(pageContent, config) {
   // (בר־מצרא, מצב 2 בדינמיקת הגוף).
   let naiveMainHeight = 0;
   if (pageContent.mainText) {
-    const naiveLines = mainMetrics.layoutLines(pageContent.mainText, mainWidth);
+    const naiveWidth = mainColumnCount > 1
+      ? Math.max(1, (mainWidth - mainColumnGap) / mainColumnCount)
+      : mainWidth;
+    const naiveLines = mainMetrics.layoutLines(pageContent.mainText, naiveWidth);
     naiveMainHeight = naiveLines.length * mainMetrics.lineHeight;
   }
 
@@ -2728,7 +2797,9 @@ function buildPagePlanCore(pageContent, config) {
       role: 'main',
       x: mainX,
       y: mainTopY,
-      width: mainWidth, // רוחב בסיסי; שורות יחידות עשויות להיות רחבות יותר
+      width: mainWidth, // רוחב כולל של אזור הראשי; ב-2 טורים כל line מחזיק את רוחב הטור שלו
+      columns: mainColumnCount,
+      columnGap: mainColumnCount > 1 ? mainColumnGap : 0,
       height: actualMainHeight,
       endY: mainFlow.endY,
       lines: mainLines,
@@ -4022,6 +4093,7 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (line.mainColumn) lineEl.dataset.v9MainColumn = String(line.mainColumn);
       // ★ משה 28/09/2026 — סימון לשורה שכבר צומצמה בזרימה עבור מילת הפתיח.
       // בלעדיו, המדידה מה-DOM שרצה אחרי הציור מצמצמת אותה **פעם שנייה**,
       // והנסיגה יוצאת כפולה מרוחב האות (נמדד: פער 106 מול אות ברוחב 49).
@@ -4097,7 +4169,9 @@ function renderPagePlan(plan, pageEl, cfg) {
       // רק אם השורה נשארת בתוך הדף ולא נכנסת לשטח שמעליה.
       if (titleY >= padding - 0.5) {
         const mainSettings = getEffectiveStreamSettings(V9_MAIN_STREAM_CODE) || {};
-        drawTitle(mainTitle, firstLine.x, titleY, firstLine.width, '',
+        const titleX = plan.mainBox.columns > 1 ? plan.mainBox.x : firstLine.x;
+        const titleWidth = plan.mainBox.columns > 1 ? plan.mainBox.width : firstLine.width;
+        drawTitle(mainTitle, titleX, titleY, titleWidth, '',
                   mainSettings.titleStyleId || '', V9_MAIN_STREAM_CODE);
       }
     }
@@ -4540,7 +4614,12 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     lineHeightRatio: cfg.lineHeightRatio,
   });
   const splitInnerWidth = cfg.pageWidth - 2 * cfg.padding;
-  const splitMainWidth = Math.floor(splitInnerWidth * cfg.mainWidthRatio);
+  const splitMainAreaWidth = Math.floor(splitInnerWidth * cfg.mainWidthRatio);
+  const splitMainCols = resolveV9MainColumnCount(cfg);
+  const splitMainColumnGap = resolveV9MainColumnGap(cfg);
+  const splitMainWidth = splitMainCols > 1
+    ? Math.max(1, Math.floor((splitMainAreaWidth - splitMainColumnGap) / splitMainCols))
+    : splitMainAreaWidth;
 
   // משה 2026-05-08: carry-over של טקסט שנחתך מעמוד לעמוד הבא.
   // streamId → string. בכל עמוד, הטקסט נשמר ב-overflow.streams ומועבר
