@@ -775,6 +775,14 @@ export function paneManagerToPackerContent(paneManager) {
   // markers embedded in note bodies without re-scanning paneManager each call.
   const paneSymbols = [];
   const paneSymToCode = {};
+  // Collect symbols before note conversion so configured line-break codes
+  // cannot consume either direct or nested stream references.
+  for (const p of paneManager.panes) {
+    if (!p.streamCode) continue;
+    const sym = p.symbol || `@${p.streamCode}`;
+    paneSymbols.push(sym);
+    paneSymToCode[sym] = p.streamCode;
+  }
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
     const withRuns = extractStreamNotesWithRuns(p);
