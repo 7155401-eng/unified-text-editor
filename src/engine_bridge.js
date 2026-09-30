@@ -308,6 +308,143 @@ function tableRowsFromNode(node) {
   return rows;
 }
 
+
+function activeStreamSymbols(paneManager) {
+  return (paneManager?.panes || [])
+    .filter(p => p.streamCode)
+    .map(p => String(p.symbol || `@${p.streamCode}`).trim())
+    .filter(Boolean);
+}
+
+function introParagraphsFromPane(pane, paneManager) {
+  if (!pane?.editor) return [];
+  const breakSettings = loadSpacingSettings();
+  const protectedLiterals = activeStreamSymbols(paneManager);
+  const paragraphs = [];
+
+  pane.editor.state.doc.descendants((node) => {
+    const allowed = ["paragraph", "heading", "codeBlock", "blockquote", "table"];
+    if (!allowed.includes(node.type.name)) return;
+
+    const isTable = node.type.name === "table";
+    const converted = applyGlobalLineBreakCode({
+      text: textFromNode(node),
+      runs: isTable ? [] : runsFromNode(node),
+      settings: breakSettings,
+      protectedLiterals,
+    });
+
+    let tableRows = null;
+    if (isTable) {
+      tableRows = tableRowsFromNode(node).map(row => row.map(cell =>
+        applyGlobalLineBreakCode({
+          text: cell,
+          settings: breakSettings,
+          protectedLiterals,
+        }).text
+      ));
+    }
+
+    if (converted.text || isTable) {
+      paragraphs.push({
+        mainText: converted.text,
+        mainRuns: converted.runs,
+        notes: [],
+        mainRefs: [],
+        blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
+        headingLevel: node.type.name === "heading" ? Math.max(1, Math.min(6, node.attrs?.level || 1)) : null,
+        style: styleMetaForNode(node) || {},
+        tableRows,
+      });
+    }
+    return false;
+  });
+
+  return paragraphs;
+}
+
+export function paneManagerToFrontMatterGroups(paneManager) {
+  const panes = typeof paneManager?.getIntroPanes === "function"
+    ? paneManager.getIntroPanes()
+    : (paneManager?.panes || []).filter(p => p.paneKind === "intro");
+
+  return panes.map((pane, index) => ({
+    paneId: pane.id,
+    label: pane.label || `הקדמה ${index + 1}`,
+    content: introParagraphsFromPane(pane, paneManager),
+  })).filter(group => group.content.length > 0);
+}
+
+async function packFrontMatterGroups(paneManager, pageGeom, isCurrent) {
+  const groups = paneManagerToFrontMatterGroups(paneManager);
+  const packedGroups = [];
+  let totalPages = 0;
+
+  for (const group of groups) {
+    if (typeof isCurrent === "function" && !isCurrent()) {
+      return { groups: [], totalPages: 0, aborted: true };
+    }
+    const pages = await domPack(group.content, pageGeom, {
+      isCurrent,
+      forceRegularLayout: true,
+    });
+    for (const page of pages) {
+      page.frontMatter = {
+        paneId: group.paneId,
+        label: group.label,
+        groupIndex: packedGroups.length,
+      };
+    }
+    packedGroups.push({ ...group, pages });
+    totalPages += pages.length;
+  }
+
+  return { groups: packedGroups, totalPages, aborted: false };
+}
+
+function frontMatterElements(packed, pageIndexOffset = 0) {
+  const elements = [];
+  let offset = Math.max(0, Math.floor(Number(pageIndexOffset) || 0));
+  for (const group of packed?.groups || []) {
+    const groupEls = renderPackedPagesToElements(group.pages || [], { pageIndexOffset: offset });
+    elements.push(...groupEls);
+    offset += groupEls.length;
+  }
+  return elements;
+}
+
+function prependFrontMatterPages(container, packed) {
+  if (!container || !packed?.totalPages) return [];
+  const introElements = frontMatterElements(packed, 0);
+  if (!introElements.length) return [];
+
+  const previousGet = typeof container.__getPageElement === "function"
+    ? container.__getPageElement.bind(container)
+    : null;
+  const previousRealize = typeof container.__realizePage === "function"
+    ? container.__realizePage.bind(container)
+    : null;
+  const priorCount = Number(container.__pageCount) || 0;
+
+  const frag = document.createDocumentFragment();
+  for (const el of introElements) frag.appendChild(el);
+  container.insertBefore(frag, container.firstChild);
+
+  container.__getPageElement = (i) => {
+    const idx = Number(i);
+    if (idx >= 0 && idx < introElements.length) return introElements[idx] || null;
+    if (previousGet) return previousGet(idx);
+    return container.querySelector(`.page[data-page-index="${idx}"]`);
+  };
+  container.__realizePage = (i) => {
+    const idx = Number(i);
+    if (idx < introElements.length) return;
+    previousRealize?.(idx);
+  };
+  container.__pageCount = Math.max(priorCount, introElements.length + container.querySelectorAll(".page:not(.front-matter-page)").length);
+  return introElements;
+}
+
 let _docKeyCounter = 0;
 const _docKeys = new WeakMap();
 let _packerContentCache = { sig: "", value: null };
