@@ -6,7 +6,7 @@ import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
-import { wordMainFragmentFromEditorHtml } from '../../src/word_bridge.js';
+import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
