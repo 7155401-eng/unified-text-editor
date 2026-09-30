@@ -66,7 +66,7 @@ jobs:
         run: |
           cmp package-lock.json .v9-baseline/package-lock.json
           ln -s "$GITHUB_WORKSPACE/node_modules" .v9-baseline/node_modules
-          (cd .v9-baseline; npm run postinstall && npm run build) 2>&1 | tee test-results/v9-unified/baseline-build.log
+          (cd .v9-baseline; npm run postinstall --if-present && npm run build) 2>&1 | tee test-results/v9-unified/baseline-build.log
       - name: Full build and source rewrite integrity
         run: |
           assert_source_clean() {
@@ -74,7 +74,7 @@ jobs:
             git diff --name-status -- index.html src worker scripts vite.config.js package.json package-lock.json
             git diff --exit-code -- index.html src worker scripts vite.config.js package.json package-lock.json
           }
-          npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
+          npm run postinstall --if-present 2>&1 | tee test-results/v9-unified/postinstall.log
           assert_source_clean "after postinstall"
           npm run build 2>&1 | tee test-results/v9-unified/build.log
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
