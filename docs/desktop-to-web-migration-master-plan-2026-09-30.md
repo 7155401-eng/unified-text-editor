@@ -32,13 +32,14 @@ The migration contract is:
 |---|---|---|---|
 | Word extraction: sizes, colors, footnotes/endnotes/comments, HTML, styles, headers/footers, parallel streams | `src/word_extractor/*` | VERIFIED PORT | Keep smoke/unit parity tests authoritative. |
 | Nikud merger | `src/nikud_merger/*` + Worker engine | VERIFIED PORT / QUOTA PARITY ACTIVE | Server-authoritative rolling 7-day quota: one successful merge for Free; Premium/Admin unlimited; retries are idempotent. |
-| Torah nikud | `src/torah_nikud/*` | VERIFIED/PRESENT | Remove duplicate once/day preflight restriction; move 500-char/day accounting to server. |
-| Sefaria downloader | `src/sefaria/*` | VERIFIED PORT | Restore one-book-per-week free policy on successful download. |
-| Sefaria live verse tool | `src/sefaria/*` | VERIFIED PORT | Restore one-use-per-week free policy on successful fetch. |
+| Torah nikud | `src/torah_nikud/*` | VERIFIED/PRESENT / QUOTA PARITY ACTIVE | Server-authoritative 500 characters per local calendar day; only a successful final result consumes units; Premium/Admin unlimited. |
+| Sefaria downloader | `src/sefaria/*` | VERIFIED PORT / QUOTA PARITY ACTIVE | One successful book export per rolling 7 days for Free; output is built first, quota is consumed atomically before delivery; Premium/Admin unlimited. |
+| Sefaria live verse tool | `src/sefaria/*` | VERIFIED PORT / QUOTA PARITY ACTIVE | One successful fetch operation per rolling 7 days; quota is consumed only when the first verse actually succeeds. |
 | Text Compare Pro | `src/text_compare_pro/*` | PRESENT | Deep parity audit of tabs/history/settings and old storage semantics. |
-| RavText comparator/editor | `src/comparator_tool/*` | PRESENT | Restore weekly + 15-minute-session semantics. |
-| AI transcription | `src/torah_transcription/*` | PRESENT | Old launcher states this tool is free; current generic daily preflight is not parity. |
-| Caricature tool | `src/haredi_caricature/*` + `worker/caricature.js` | PRESENT | Enforce generation quota on successful generation, not tool opening. Old executable quota module says 24 hours; an app_ui comment says 48 hours — executable quota is the current source of truth unless product decision changes it. |
+| RavText comparator/editor | `src/comparator_tool/*` | PRESENT / QUOTA PARITY ACTIVE | Window opens freely; first real user action starts the one weekly 15-minute process-scoped session; reopening after use is read-only; Premium/Admin unlimited. |
+| AI transcription | `src/torah_transcription/*` | PRESENT / QUOTA PARITY ACTIVE | Transcription remains unmetered for logged-in Free users as in the old launcher; Premium also unlimited. |
+| Torah OCR | `src/torah_transcription/*` (OCR mode) | PRESENT / QUOTA PARITY ACTIVE | OCR was already embedded in the web transcription window; one successful final OCR job per rolling 7 days for Free; Premium/Admin unlimited. |
+| Caricature tool | `src/haredi_caricature/*` + `worker/caricature.js` | PRESENT / QUOTA PARITY ACTIVE | Worker-enforced cooldown: one successful generation per 24 hours for Free; failed generations do not consume quota; Premium/Admin unlimited. |
 | Opening word / dropped initial | `src/opening_word.js`, V9 inline layout modules | PRESENT | Continue V9 acceptance fixtures. |
 | Mishnah/Gemara/Vilna layouts | `src/vilna_v9.js`, `src/mishna_wrap_layout.js`, `src/talmud_controls.js` | PRESENT | Continue pagination/spacing regression hardening. |
 | Main/stream columns | `src/balanced_columns.js`, stream settings/V9 | PRESENT / ACCEPTANCE NEEDED | Compare all desktop 1/2/3-column cases and min-lines behavior. |
@@ -78,18 +79,17 @@ For each item, create a fixture from the desktop behavior, define the expected w
 Initial repository audit did not find a dedicated equivalent for the following old catalog/menu capabilities. Before implementing, run one more symbol/content search to ensure the behavior was not folded into another module.
 
 1. Visual page tweaker/editor equivalent to `page_tweaker_ui.py`.
-2. Torah OCR / image-PDF manuscript conversion tool (old catalog: one free use per week).
-3. Text-to-speech (TTS) module.
-4. Automatic link combiner.
-5. Convert Word footnotes to curly-brace inline text.
-6. Split footnotes by tag.
-7. Dedicated "add links to commentary" workflow — compare with current stream-links before porting.
-8. Bot-assisted text comparison after combining notes with source.
-9. Accept/reject changes only inside footnotes — compare with current generic Track Changes first.
-10. Fast merge of footnotes from a split Word document.
-11. Link-transplant form/workflow.
-12. Dedicated local Word add-in installer equivalent. This cannot be copied as a browser installer; translate to an Office Add-in/web bridge or a small signed desktop companion only if still required.
-13. Advanced visual PDF analyzer/report/tweaker workflows from `pdf_analyzer.py`, `pdf_report.py`, `pdf_viewer.py` where current browser preview/debug export does not cover the same job.
+2. Text-to-speech (TTS) module.
+3. Automatic link combiner.
+4. Convert Word footnotes to curly-brace inline text.
+5. Split footnotes by tag.
+6. Dedicated "add links to commentary" workflow — compare with current stream-links before porting.
+7. Bot-assisted text comparison after combining notes with source.
+8. Accept/reject changes only inside footnotes — compare with current generic Track Changes first.
+9. Fast merge of footnotes from a split Word document.
+10. Link-transplant form/workflow.
+11. Dedicated local Word add-in installer equivalent. This cannot be copied as a browser installer; translate to an Office Add-in/web bridge or a small signed desktop companion only if still required.
+12. Advanced visual PDF analyzer/report/tweaker workflows from `pdf_analyzer.py`, `pdf_report.py`, `pdf_viewer.py` where current browser preview/debug export does not cover the same job.
 
 The old "luxury Hasidic image bot" was itself marked **in development**, so it is not a parity blocker unless product scope explicitly promotes it.
 
@@ -147,7 +147,7 @@ Requirements:
 - Quota consumption is transactional on the Worker after success.
 - Retried requests use an idempotency key so one logical action is not charged twice.
 - Unit quotas (Torah nikud) are stored server-side.
-- Session quotas (Comparator) record a session start and last activity.
+- Comparator records one weekly session start. The 15-minute window is fixed from the first real action in that already-open window; later activity does not extend it.
 - UI quota bars read server state; `localStorage` is display/cache only.
 - Keep `tool_usage` migration compatibility while moving to a generalized event/bucket table.
 - Admin accounts remain unlimited unless a deliberate test override is enabled.
@@ -165,7 +165,15 @@ Requirements:
 
 ### Batch A2 progress
 
-- ✅ Nikud merger: migrated from generic once/day preflight charging to a rolling 7-day server quota recorded only after a successful merge. Opening the tool and quality checks do not consume quota. Premium/Admin are unlimited; idempotency prevents retry double-charging.
+- ✅ Nikud merger: rolling 7-day server quota recorded only after a successful merge; Premium/Admin unlimited; idempotent retries.
+- ✅ Sefaria downloader: one successful export per rolling 7 days; build-before-charge, delivery-after-charge.
+- ✅ Sefaria live: one successful fetch operation per rolling 7 days; failures and text analysis do not consume quota.
+- ✅ Torah nikud: 500 input characters per local calendar day, stored in the shared server event ledger; successful final result only.
+- ✅ Caricature: one successful generation per 24 hours, enforced inside `worker/caricature.js` so direct API calls cannot bypass the cooldown.
+- ✅ Comparator/editor: opening remains free; first real action consumes the weekly session; the process window is fixed at 15 minutes and does not extend on activity; reopening after use is read-only.
+- ✅ AI transcription: unmetered Free/Premium parity restored.
+- ✅ Torah OCR: existing OCR mode identified and moved to one successful final job per rolling 7 days.
+- ✅ Premium/Admin bypass tests, real-SQLite exhaustion/reset/idempotency tests, build test and post-build quota tests are included.
 
 ### Batch B — missing high-value document tools
 
@@ -182,7 +190,7 @@ Each should use `word_export_serialization.js` / the existing DOCX worker paths 
 
 ### Batch C — OCR / TTS / AI tools
 
-1. Torah OCR with weekly free policy.
+1. ✅ Torah OCR: existing integrated OCR mode found and weekly free policy restored.
 2. TTS as its own provider-backed server action.
 3. bot-assisted text compare.
 4. only then any new image-generation tool that was not production-ready in the desktop app.
