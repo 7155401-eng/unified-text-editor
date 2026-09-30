@@ -31,7 +31,7 @@ The migration contract is:
 | Desktop capability | Web target | Status | Required follow-up |
 |---|---|---|---|
 | Word extraction: sizes, colors, footnotes/endnotes/comments, HTML, styles, headers/footers, parallel streams | `src/word_extractor/*` | VERIFIED PORT | Keep smoke/unit parity tests authoritative. |
-| Nikud merger | `src/nikud_merger/*` + Worker engine | VERIFIED PORT | Fix quota parity; server-authoritative weekly allowance. |
+| Nikud merger | `src/nikud_merger/*` + Worker engine | VERIFIED PORT / QUOTA PARITY ACTIVE | Server-authoritative rolling 7-day quota: one successful merge for Free; Premium/Admin unlimited; retries are idempotent. |
 | Torah nikud | `src/torah_nikud/*` | VERIFIED/PRESENT | Remove duplicate once/day preflight restriction; move 500-char/day accounting to server. |
 | Sefaria downloader | `src/sefaria/*` | VERIFIED PORT | Restore one-book-per-week free policy on successful download. |
 | Sefaria live verse tool | `src/sefaria/*` | VERIFIED PORT | Restore one-use-per-week free policy on successful fetch. |
@@ -117,7 +117,7 @@ Verified desktop rules:
 |---|---|---|---|
 | Word extractor/import core | core workflow; no addon usage quota | unlimited | no quota |
 | Comparator/editor | 1 use / 7 days; a use is a 15-minute active session | unlimited | first real edit/action starting a session, not opening the window |
-| Nikud merger | 1 successful merge / 7 days | unlimited | successful merge |
+| Nikud merger | 1 successful merge / 7 days | unlimited | ✅ server-authoritative on successful merge (Batch A2) |
 | Sefaria downloader | 1 successful book export / 7 days | unlimited | successful export |
 | Sefaria live | 1 successful fetch / 7 days | unlimited | successful fetch |
 | Torah nikud | 500 characters / local day | unlimited | successful nikud response; charge actual input characters |
@@ -162,6 +162,10 @@ Requirements:
 3. Stop charging tool-open events where desktop charged only successful actions.
 4. Remove client-only authoritative quota logic after server parity is live.
 5. Add Premium-unlimited tests for every tool.
+
+### Batch A2 progress
+
+- ✅ Nikud merger: migrated from generic once/day preflight charging to a rolling 7-day server quota recorded only after a successful merge. Opening the tool and quality checks do not consume quota. Premium/Admin are unlimited; idempotency prevents retry double-charging.
 
 ### Batch B — missing high-value document tools
 
