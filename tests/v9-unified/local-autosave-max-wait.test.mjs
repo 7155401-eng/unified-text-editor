@@ -49,6 +49,20 @@ test('continuous typing cannot postpone local persistence beyond five seconds', 
     url: 'https://example.test/',
   });
   const clock = installFakeClock();
+  const observers = [];
+  class TrackingMutationObserver extends dom.window.MutationObserver {
+    constructor(callback) {
+      super(callback);
+      observers.push(this);
+    }
+  }
+
+  // Keep window-qualified timers on the deterministic clock as well; imported
+  // PaneManager UI helpers use both global and window scheduling APIs.
+  dom.window.setTimeout = clock.setTimeoutFake;
+  dom.window.clearTimeout = clock.clearTimeoutFake;
+  dom.window.requestAnimationFrame = (fn) => clock.setTimeoutFake(() => fn(0), 16);
+  dom.window.cancelAnimationFrame = clock.clearTimeoutFake;
 
   const previous = new Map();
   const replacements = {
@@ -60,7 +74,7 @@ test('continuous typing cannot postpone local persistence beyond five seconds', 
     Node: dom.window.Node,
     Element: dom.window.Element,
     HTMLElement: dom.window.HTMLElement,
-    MutationObserver: dom.window.MutationObserver,
+    MutationObserver: TrackingMutationObserver,
     addEventListener: dom.window.addEventListener.bind(dom.window),
     removeEventListener: dom.window.removeEventListener.bind(dom.window),
     getComputedStyle: dom.window.getComputedStyle.bind(dom.window),
@@ -118,7 +132,12 @@ test('continuous typing cannot postpone local persistence beyond five seconds', 
     try {
       for (const pane of manager?.panes || []) pane?.destroy?.();
     } catch (_) {}
+    for (const observer of observers) {
+      try { observer.disconnect(); } catch (_) {}
+    }
     clock.clearAll();
+    await Promise.resolve();
+    await Promise.resolve();
 
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);
