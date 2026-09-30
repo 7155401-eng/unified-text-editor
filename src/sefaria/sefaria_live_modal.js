@@ -189,6 +189,13 @@ function readTheme() {
   } catch (_) { return "light"; }
 }
 
+export function normalizeSefariaLivePrefill(value, isVip = false, limit = 500) {
+  const text = String(value ?? "");
+  const max = Math.max(1, Number(limit) || 500);
+  if (isVip || text.length <= max) return { text, truncated: false, limit: max };
+  return { text: text.slice(0, max), truncated: true, limit: max };
+}
+
 // ────────────────────────────────────────────────────────
 // Main exported function — opens the live verse picker modal.
 //
@@ -375,7 +382,18 @@ export function openSefariaLive(opts) {
     placeholder: isVip ? t("ph_vip") : t("ph_lock"),
     maxLength: isVip ? null : 500,
   });
-  if (opts.prefillText) inputArea.value = opts.prefillText;
+  if (opts.prefillText) {
+    // HTML maxlength does not constrain programmatic textarea.value assignment.
+    // Keep the existing Free 500-character input contract for automatic prefill
+    // too, while Premium remains unrestricted.
+    const prefill = normalizeSefariaLivePrefill(opts.prefillText, isVip, 500);
+    inputArea.value = prefill.text;
+    if (prefill.truncated) {
+      try {
+        window.alert("הטקסט נחתך לאחר 500 תווים בהתאם להגבלת הקלט בחשבון חינמי");
+      } catch (_) {}
+    }
+  }
   inputPane.appendChild(inputArea);
 
   // Output pane
