@@ -1311,6 +1311,7 @@ function resetToSingleMainPane() {
     panes: [
       {
         id: "sample-main",
+        paneKind: "main",
         streamCode: null,
         symbol: "",
         label: "ראשי",
@@ -2156,6 +2157,20 @@ document.addEventListener("click", async (ev) => {
     }
 
     // === שלב 11 — ניהול חלוניות ===
+    case "intro-add": {
+      const introCount = paneManager.getIntroPanes ? paneManager.getIntroPanes().length : paneManager.panes.filter(p => p.paneKind === "intro").length;
+      const pane = paneManager.addPane({
+        paneKind: "intro",
+        streamCode: null,
+        symbol: "",
+        label: `הקדמה ${introCount + 1}`,
+      });
+      if (pane?.editor) {
+        pane.editor.commands.setContent("<p>טקסט הקדמה…</p>");
+        pane.editor.commands.focus("end");
+      }
+      break;
+    }
     case "pane-add": {
       const code = paneManager.nextAvailableStreamCode();
       if (!code) { alert("הגעת ל‑99 חלוניות (מקסימום)."); break; }
@@ -2176,7 +2191,10 @@ document.addEventListener("click", async (ev) => {
     case "pane-remove": {
       const a = paneManager.activePane;
       if (!a) break;
-      if (!a.streamCode) { alert("חלונית ראשית — לא ניתן למחוק"); break; }
+      if (a.paneKind === "main" || (!a.paneKind && !a.streamCode)) {
+        alert("חלונית ראשית — לא ניתן למחוק");
+        break;
+      }
       if (confirm(`למחוק את חלונית "${a.label}"?`)) {
         paneManager.removePane(a.id);
       }
