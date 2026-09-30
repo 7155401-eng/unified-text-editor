@@ -180,6 +180,45 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    for(let i=1;i<p.lines.length;i++)assert(p.lines[i].y>=p.lines[i-1].y+p.lines[i-1].lineHeightPx-.02,'note rows overlap');
    const out={rows:p.lines.length};page.remove();c.dispose();return out;
  });
+ await test('B3 probe: punctuation-adjacent spaces remain visibly present inside V9 lines',async()=>{
+   const settings=getStreamSettings(),saved=settings.main;
+   const host=makePage();
+   const visibleText=(el)=>{
+     const clone=el.cloneNode(true);
+     clone.querySelectorAll('[data-v9-main-ref],.v9-source-whitespace').forEach(n=>n.remove());
+     return clone.textContent||'';
+   };
+   const trimEdgeGlue=(s)=>String(s||'').replace(/^[ \t\u200e\u200f\u2060]+|[ \t\u200e\u200f\u2060]+$/gu,'');
+   try {
+     for(const cols of [1,2]){
+       settings.main={...(settings.main||{}),cols};
+       host.replaceChildren();
+       const unit='alpha, beta. gamma; delta: epsilon? zeta! אחד, שניים. שלושה; ארבעה: חמישה? שישה!';
+       const text=Array(18).fill(unit).join(' ');
+       const runs=[];
+       for(let i=0;i<text.length;i+=37){
+         runs.push({start:i,end:Math.min(text.length,i+19),marks:{bold:(i/37)%2===0,color:(i/37)%3===0?'red':undefined}});
+       }
+       const result=await buildPages(host,[{id:`punct-space-${cols}`,mainText:text,mainRuns:runs,notes:[]}],
+         {...cfg,pageHeight:260,talmudStreams:[],maxPages:80,openingWordSettings:{enabled:false}});
+       assert(result.complete,`B3 fixture incomplete cols=${cols}`);
+       const rows=[...host.querySelectorAll(`[data-v9-paragraph-id="punct-space-${cols}"]`)];
+       assert(rows.length>5,`B3 fixture too small cols=${cols}`);
+       for(const row of rows){
+         const expected=trimEdgeGlue(sourceText(row));
+         const visible=visibleText(row);
+         assert(visible===expected,
+           `B3 visible spacing mismatch cols=${cols}: source=${JSON.stringify(expected)} visible=${JSON.stringify(visible)}`);
+         assert(!/[,.;:?!][^\s,.;:?!]/u.test(visible),
+           `B3 punctuation lost following whitespace inside one visible row: ${JSON.stringify(visible)}`);
+       }
+     }
+   } finally {
+     host.remove();
+     if(saved===undefined)delete settings.main;else settings.main=saved;
+   }
+ });
+
  await test('configured inter-note gap has no leading or trailing visible slot',()=>{
    const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text='\u200e  alpha    beta \u200e gamma delta   \u200e';
    const p=flowV9MeasuredStream({text,runs:[]},[{x:0,width:63,y_start:0,y_end:400}],c,400),page=makePage();
