@@ -128,21 +128,34 @@ export async function consumeToolUse(toolName, {
   const key = String(toolName || "").trim();
   if (!key) throw new Error("Missing tool name");
   assertLocalLogin(key);
-  const result = await postGate({
-    action: "consume",
-    toolName: key,
-    niceName,
-    amount,
-    idempotencyKey: idempotencyKey || newIdempotencyKey(key, kind),
-    eventKind: kind,
-    timestamp: Date.now(),
-    timeZoneOffsetMinutes: timezoneOffsetMinutes(),
-  });
-  // Once real usage is recorded, every future open/check must ask the Worker
-  // again. This is essential for Comparator's "close + reopen = new session"
-  // semantics and prevents stale preflight authorization after success.
-  _tokens.delete(key);
-  return result;
+  const stableKey = idempotencyKey || newIdempotencyKey(key, kind);
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await postGate({
+        action: "consume",
+        toolName: key,
+        niceName,
+        amount,
+        idempotencyKey: stableKey,
+        eventKind: kind,
+        timestamp: Date.now(),
+        timeZoneOffsetMinutes: timezoneOffsetMinutes(),
+      }, { silent: attempt > 0 });
+
+      // Once real usage is recorded, every future open/check must ask the
+      // Worker again. This is essential for Comparator close+reopen semantics.
+      _tokens.delete(key);
+      return result;
+    } catch (err) {
+      lastError = err;
+      if (err?.code === "quota" || err?.code === "login") throw err;
+      const retryable = !err?.code || err.code === "in_progress" || err.status >= 500;
+      if (!retryable || attempt === 2) throw err;
+      await new Promise(resolve => setTimeout(resolve, 180 * (attempt + 1)));
+    }
+  }
+  throw lastError || new Error("Tool quota consume failed");
 }
 
 export async function guardToolAction(toolName, action, options = {}) {
