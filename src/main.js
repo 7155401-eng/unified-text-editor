@@ -2168,17 +2168,6 @@ document.addEventListener("click", async (ev) => {
       pane?.editor?.commands?.focus?.("end");
       break;
     }
-    case "pane-add-intro": {
-      const pane = paneManager.addPane({
-        paneRole: "intro",
-        label: "הקדמה",
-      });
-      if (pane?.editor) {
-        pane.editor.commands.setContent("<p>טקסט הקדמה…</p>");
-        pane.editor.commands.focus();
-      }
-      break;
-    }
     case "pane-add": {
       const code = paneManager.nextAvailableStreamCode();
       if (!code) { alert("הגעת ל‑99 חלוניות (מקסימום)."); break; }
