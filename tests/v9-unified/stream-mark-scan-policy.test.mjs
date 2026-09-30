@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import {
   hasPotentialStreamMarker,
   streamMarkerContextRadius,
+  streamMarkerScanMode,
 } from '../../src/stream_mark_scan_policy.js';
 
 test('stream pane fast-path recognizes only its own symbol when nested notes are off', () => {
@@ -35,15 +36,59 @@ test('changed-range context always covers the complete custom symbol', () => {
   assert.equal(streamMarkerContextRadius('CUSTOM-LONG-MARKER'), 'CUSTOM-LONG-MARKER'.length + 1);
 });
 
-test('StreamMark gate computes nested mode before large-document fast-path and passes it through', async () => {
+test('scan policy uses changed-range fast path only for a simple one-step document edit', () => {
+  assert.equal(streamMarkerScanMode({
+    forceScan: false,
+    docChanged: false,
+    transactionMapCounts: [1],
+  }), 'none');
+
+  assert.equal(streamMarkerScanMode({
+    forceScan: true,
+    docChanged: false,
+    transactionMapCounts: [],
+  }), 'full');
+
+  assert.equal(streamMarkerScanMode({
+    forceScan: false,
+    docChanged: true,
+    transactionMapCounts: [1],
+  }), 'changed-range');
+
+  // Complex commands remain conservative: their intermediate mapping
+  // coordinates need not be directly comparable to oldState/newState.
+  assert.equal(streamMarkerScanMode({
+    forceScan: false,
+    docChanged: true,
+    transactionMapCounts: [2],
+  }), 'full');
+  assert.equal(streamMarkerScanMode({
+    forceScan: false,
+    docChanged: true,
+    transactionMapCounts: [1, 1],
+  }), 'full');
+});
+
+test('StreamMark ordinary typing fast path is document-size independent and storage is read only after scan eligibility', async () => {
   const source = await readFile(new URL('../../src/stream_mark.js', import.meta.url), 'utf8');
 
-  const nestedPos = source.indexOf('let nestedOn = false;');
-  const gatePos = source.indexOf('newState.doc.content.size > AUTO_MARK_FULL_SCAN_LIMIT');
-  assert.ok(nestedPos >= 0, 'nested-mode computation missing');
-  assert.ok(gatePos >= 0, 'large-document scan gate missing');
-  assert.ok(nestedPos < gatePos, 'nested mode must be known before the large-document gate runs');
+  assert.doesNotMatch(source, /AUTO_MARK_FULL_SCAN_LIMIT/);
+  assert.doesNotMatch(source, /newState\.doc\.content\.size\s*>/);
 
+  const modePos = source.indexOf('const scanMode = streamMarkerScanMode');
+  const nonePos = source.indexOf('if (scanMode === "none") return null;');
+  const nestedPos = source.indexOf('let nestedOn = false;');
+  const gatePos = source.indexOf('scanMode === "changed-range"');
+
+  assert.ok(modePos >= 0, 'scan-mode computation missing');
+  assert.ok(nonePos > modePos, 'no-scan fast return missing');
+  assert.ok(nestedPos > nonePos, 'nested storage read must happen only after scan eligibility');
+  assert.ok(gatePos > nestedPos, 'changed-range gate missing');
+
+  assert.match(
+    source,
+    /transactionMapCounts:\s*transactions\.map\(t => t\.mapping\.maps\.length\)/
+  );
   assert.match(
     source,
     /transactionsTouchPotentialMarker\([\s\S]*?userSymbol,[\s\S]*?markType,[\s\S]*?nestedOn[\s\S]*?\)/
