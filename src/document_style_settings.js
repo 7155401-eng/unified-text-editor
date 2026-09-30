@@ -6,17 +6,42 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
-export function loadDocumentStyleSettings() {
+let _documentStyleCacheRaw = null;
+let _documentStyleCacheSnapshot = null;
+
+function readDocumentStyleStorageRaw() {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    if (typeof localStorage === "undefined") return "";
+    return localStorage.getItem(STORAGE_KEY) || "";
   } catch {
-    return { ...DEFAULTS };
+    return "";
   }
+}
+
+function parseDocumentStyleSnapshot(raw) {
+  try {
+    return Object.freeze({ ...DEFAULTS, ...(JSON.parse(raw || "{}") || {}) });
+  } catch {
+    return Object.freeze({ ...DEFAULTS });
+  }
+}
+
+export function loadDocumentStyleSettings() {
+  const raw = readDocumentStyleStorageRaw();
+  if (!_documentStyleCacheSnapshot || raw !== _documentStyleCacheRaw) {
+    _documentStyleCacheRaw = raw;
+    _documentStyleCacheSnapshot = parseDocumentStyleSnapshot(raw);
+  }
+  // Keep the historical mutable-copy return contract.
+  return { ..._documentStyleCacheSnapshot };
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  const raw = JSON.stringify(next);
+  localStorage.setItem(STORAGE_KEY, raw);
+  _documentStyleCacheRaw = raw;
+  _documentStyleCacheSnapshot = Object.freeze({ ...next });
   return next;
 }
 
