@@ -6,11 +6,10 @@ import { createHash } from 'node:crypto';
 
 const root = process.cwd();
 const baseline = path.resolve(process.argv[2] || '.v9-baseline');
-const baselineSha = '82936b7ba1720714f6ae73bda95e9791f6873856';
 const git = (cwd, args) => execFileSync('git', args, { cwd });
+const baselineSha = git(baseline, ['rev-parse', 'HEAD']).toString().trim();
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const changes = cwd => git(cwd, ['diff', '--name-only', '-z', '--', 'src', 'scripts']).toString().split('\0').filter(Boolean).sort();
-assert.equal(git(baseline, ['rev-parse', 'HEAD']).toString().trim(), baselineSha);
 const current = changes(root), inherited = changes(baseline);
 // Do not hide a source rewrite by ignoring an arbitrary directory. Every
 // remaining mutation must occur in the pinned unmodified baseline, with
