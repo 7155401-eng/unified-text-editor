@@ -49,6 +49,7 @@ The migration contract is:
 | Headers/page numbers/document features | `document_features.js` | PRESENT / ACCEPTANCE NEEDED | Verify odd/even/header/footer behavior against desktop. |
 | Word import/export bridge | `word_bridge.js`, `word_export_serialization.js` | PRESENT | This is web Word round-trip, not the old local installer. |
 | Word footnotes → inline curly braces | `src/docx_tools/footnotes_to_curly.js` | IMPLEMENTED FROM CATALOG CONTRACT | Old repo catalog marked this capability `external-only` with no UI/pipeline implementation to port. Web implementation transforms DOCX directly, preserves rich note runs, and fails closed on orphan notes, hyperlinks, images, tables or objects. |\n| Split Word footnotes by tag | `src/docx_tools/split_footnotes_by_tag.js` + shared DOCX Worker | IMPLEMENTED FROM CATALOG CONTRACT | Old repo had only the external catalog card. Web implementation splits before literal user-selected tags, preserves tags and rich paragraph/run formatting, expands adjacent body references safely, allocates collision-free footnote IDs, and fails closed on unsupported structures. |
+| Fast merge of split main text + note streams back to Word footnotes | `src/comparator_tool/comparator_docx_export.js` + Comparator UIs | IMPLEMENTED FROM CATALOG CONTRACT | Old repo explicitly reverted this catalog item to `external` because no implementation file existed. Web implementation reuses the Comparator’s existing split main/stream model, validates exact marker↔note counts, exports a true `.docx` with real Word footnotes and `@NN` stream identity, preserves Quill inline formatting, and round-trips through the Comparator importer. |
 | Stream links / nested notes | `stream_links.js`, `stream_links_ui.js`, nested-note modules | PRESENT | Compare against old link-related tools before declaring replacements. |
 | Track changes / footnotes / TOC | `footnotes_toc_track.js` | PRESENT | Check note-only accept/reject semantics separately. |
 | Autosave / persistence | server storage + browser persistence | PRESENT | Desktop filesystem paths are not relevant; verify recovery behavior instead. |
@@ -85,7 +86,7 @@ Initial repository audit did not find a dedicated equivalent for the following o
 4. Dedicated "add links to commentary" workflow — compare with current stream-links before porting.
 5. Bot-assisted text comparison after combining notes with source.
 6. Accept/reject changes only inside footnotes — compare with current generic Track Changes first.
-7. Fast merge of footnotes from a split Word document.
+
 8. Link-transplant form/workflow.
 9. Dedicated local Word add-in installer equivalent. This cannot be copied as a browser installer; translate to an Office Add-in/web bridge or a small signed desktop companion only if still required.
 10. Advanced visual PDF analyzer/report/tweaker workflows from `pdf_analyzer.py`, `pdf_report.py`, `pdf_viewer.py` where current browser preview/debug export does not cover the same job.
@@ -180,7 +181,7 @@ Port in this order because they reuse Word parsing already present:
 
 1. ✅ footnotes → curly braces — implemented as a safe direct DOCX transform. The old catalog entry was external-only, so this is a semantic implementation rather than a literal port;
 2. ✅ footnote splitter by tag — implemented on the same DOCX Worker. User supplies one or more literal tags; split happens before each tag while retaining tag text, rich run/paragraph styling and body text order. Unsafe structures fail closed;
-3. fast footnote merge;
+3. ✅ fast footnote merge — implemented as true DOCX export from the Comparator’s split main/stream state. The old catalog had no implementation and no defined external “split Word” file format, so no new incompatible file format was invented;
 4. accept/reject footnote-only changes;
 5. link-transplant form;
 6. dedicated commentary-link workflow.
