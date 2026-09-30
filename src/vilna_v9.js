@@ -5094,6 +5094,21 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
               auditCandidate.tailWordSpacing = Number(lastMainLine?.render?.wordSpacing) || 0;
               auditCandidate.lastNaturalWidth = Number(lastMainLine?.naturalWidth) || 0;
               auditCandidate.lastWidth = Number(lastMainLine?.width) || 0;
+              auditCandidate.tailLines = (tp?.mainBox?.lines || []).slice(-8).map(line => {
+                const natural = Number(line?.naturalWidth) || 0;
+                const width = Number(line?.width) || 0;
+                const spacing = Number(line?.render?.wordSpacing) || 0;
+                const gaps = (String(line?.render?.body?.text ?? line?.text ?? "").match(/ /g) || []).length;
+                return {
+                  text: String(line?.text || ""),
+                  words: Array.isArray(line?.wordTokens) ? line.wordTokens.length : 0,
+                  naturalWidth: natural,
+                  width,
+                  wordSpacing: spacing,
+                  effectiveFill: width > 0 ? (natural + spacing * gaps) / width : 1,
+                  tailRebalanced: line?.tailRebalanced === true,
+                };
+              });
               extensionAudit.candidates.push(auditCandidate);
             }
             continue;
