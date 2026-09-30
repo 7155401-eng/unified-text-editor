@@ -954,19 +954,20 @@ export class PaneManager {
     }
 
     const streamPaneCount = this.panes.filter(p => p.streamCode).length;
+    const firstIntroElement = this.panes.find(p => p.paneKind === "intro")?.element || null;
     if (opts.streamCode && streamPaneCount === 0) {
       const mainPane = this.getMainPane();
       if (mainPane?.element && !this.container.querySelector(".main-stream-resizer")) {
         const mainResizer = document.createElement("div");
         mainResizer.className = "main-stream-resizer";
-        this.container.appendChild(mainResizer);
+        this.container.insertBefore(mainResizer, firstIntroElement);
         initMainStreamResizer(mainResizer);
       }
     }
     if (opts.streamCode && streamPaneCount >= 1) {
       const resizer = document.createElement("div");
       resizer.className = "resizer";
-      this.container.appendChild(resizer);
+      this.container.insertBefore(resizer, firstIntroElement);
       initResizer(resizer);
     }
 
@@ -981,6 +982,9 @@ export class PaneManager {
     const pane = new Pane({ ...opts, onFocus, onChange });
     pane._manager = this;
     pane.mount(this.container);
+    if (opts.streamCode && firstIntroElement?.parentNode === this.container) {
+      this.container.insertBefore(pane.element, firstIntroElement);
+    }
     this.panes.push(pane);
     if (!this.activePane) this.activePane = pane;
 
