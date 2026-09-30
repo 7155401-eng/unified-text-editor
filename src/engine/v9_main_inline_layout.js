@@ -153,13 +153,13 @@ function continuationTailPressure(metric) {
  * ownership, note anchors, vertical geometry and source order while spreading
  * the required justification across the whole tail.
  */
-function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics) {
+function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics, options = {}) {
   if (!Array.isArray(lines) || !entry || !context || !(cursor > 0)) return null;
 
   const paragraphLines = lines.slice(paragraphLineStart);
   if (!paragraphLines.length) return null;
   const last = paragraphLines[paragraphLines.length - 1];
-  if (last?.forcedBreak || last?.isLast) return null;
+  if (last?.forcedBreak || (last?.isLast && options.allowCompleted !== true)) return null;
 
   let tailOffset = 0;
   for (let i = paragraphLines.length - 1; i >= 0; i--) {
@@ -383,7 +383,8 @@ function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, st
   // centered body word while the opening stays at the far right.
   if (paragraphLines.length > 1) {
     rebalanceContinuationTail(
-      lines, paragraphLineStart, entry, entry.text.length, context, diagnostics
+      lines, paragraphLineStart, entry, entry.text.length, context, diagnostics,
+      { allowCompleted: true }
     );
     paragraphLines = lines.slice(paragraphLineStart);
     last = paragraphLines[paragraphLines.length - 1];
