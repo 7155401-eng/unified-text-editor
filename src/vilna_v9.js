@@ -1126,10 +1126,25 @@ function v9MainRefsFromParagraph(p, textLen) {
     const clamped = Math.max(0, Math.min(limit, anchor));
     const num = typeof raw?.num === "number" && raw.num > 0 ? raw.num : 0;
     if (!num) continue;
+
+    // A hidden main reference must not exist as an empty inline object.
+    // Previously every note became a V9 mainRef and only later was formatted
+    // to an empty string when mainRefEnabled=false. It painted nothing, but it
+    // still split the planned inline content at that anchor. Filter it before
+    // measurement so hidden numbering has zero visual/structural footprint.
+    let formatted = "";
+    try {
+      formatted = formatStreamNumber(stream, num, "main") || "";
+    } catch (_) {
+      formatted = "";
+    }
+    if (!formatted) continue;
+
     out.push({
       stream,
       code: stream,
       num,
+      formatted,
       uid: raw?.uid || (String(stream) + ":" + String(num) + ":" + String(clamped)),
       anchor: clamped,
       anchorAffinity: raw.anchorAffinity,
