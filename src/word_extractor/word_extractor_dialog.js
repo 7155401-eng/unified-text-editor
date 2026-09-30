@@ -934,7 +934,9 @@ async function onConfirm() {
       const css = buildStylesCss(_state.stylesFull || {});
       if (css) injectStylesCss(css);
       const mres = await extractBodyHtmlWithSymbols(
-        _state.zipBuf.slice(0), simpleSelected, { styleMap: dynamicMap, skipEmptyNotes }
+        _state.zipBuf.slice(0),
+        simpleSelected,
+        { styleMap: dynamicMap, skipEmptyNotes, markerMatchMode }
       );
       bodyHtml = mres.html;
     } catch (mammothErr) {
