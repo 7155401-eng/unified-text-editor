@@ -1,7 +1,7 @@
 import { applyDemoWatermarkToHtml, ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { defaultLabelForCode } from "./engine_bridge.js";
 import { mergeDocxStylesIntoRegistry } from "./style_registry.js";
-import { wordInlineNodeHtml, wordMainFragmentFromEditorHtml } from "./word_export_serialization.js";
+import { wordMainFragmentFromEditorHtml, wordRichFragmentFromEditorHtml } from "./word_export_serialization.js";
 
 const DEFAULT_MARKERS = Array.from({ length: 99 }, (_, i) => `@${String(i + 1).padStart(2, "0")}`);
 
@@ -373,18 +373,7 @@ export async function confirmWordImport() {
 
 function getRichHtml(editor) {
   if (!editor) return "";
-  const template = document.createElement("template");
-  template.innerHTML = editor.getHTML();
-  const lines = [];
-  for (const node of Array.from(template.content.childNodes)) {
-    if (node.nodeType === Node.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
-      lines.push(Array.from(node.childNodes).map(wordInlineNodeHtml).join(""));
-    } else {
-      const html = inlineNodeHtml(node);
-      if (html) lines.push(html);
-    }
-  }
-  return lines.join("<br>");
+  return wordRichFragmentFromEditorHtml(editor.getHTML());
 }
 
 function mainWordHtml(editor) {
