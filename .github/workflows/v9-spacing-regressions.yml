@@ -1,7 +1,7 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/v9-typography-spacing-regressions]
+    branches: [fix/word-import-progress-v2-20260930]
   pull_request:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.ref == 'refs/heads/fix/word-import-progress-v2-20260930' || github.head_ref == 'fix/word-import-progress-v2-20260930'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -36,6 +36,9 @@ jobs:
           git rev-parse HEAD | tee test-results/v9-unified/commit.txt
           node --check src/vilna_v9.js
           node --check src/engine_bridge.js
+          node --check src/word_extractor/word_extractor.worker.js
+          node --check src/word_extractor/word_extractor_dialog.js
+          node src/word_extractor/smoke_test.mjs | tee test-results/v9-unified/word-smoke.log
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit.tap
           test ! -f .github/workflows/v9-apply-candidate-once.yml
           test ! -f .github/v9-candidate-edits-1.b64
@@ -67,6 +70,7 @@ jobs:
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
       - name: Repeat unit and browser regressions after build
         run: |
+          node src/word_extractor/smoke_test.mjs | tee test-results/v9-unified/word-smoke-after-build.log
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
           cp test-results/v9-unified/browser.json test-results/v9-unified/browser-before-build.json
           node scripts/v9-unified/run-browser.mjs
