@@ -28,6 +28,12 @@ export function rowGeometry(strips, y, height, pageBottom) {
   let cursor = y, left = -Infinity, right = Infinity;
   for (const s of strips) {
     if (s.y_end <= cursor + EPS) continue;
+    // A widening boundary marked lockYStart is a real row boundary. Do not let
+    // a variable-height row straddle it: both commentary sides must enter the
+    // widened band on the same baseline.
+    if (s.lockYStart === true &&
+        s.y_start > y + EPS &&
+        s.y_start < y + height - EPS) return null;
     if (s.y_start > cursor + EPS) return null;
     left = Math.max(left, s.x);
     right = Math.min(right, s.x + s.width);
