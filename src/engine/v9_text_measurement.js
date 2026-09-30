@@ -1,6 +1,7 @@
 import { appendTextWithRuns, sliceRuns } from './runs_dom.js';
 import { extractOpeningSegmentForTest, getOpeningWordSkipPolicy } from '../opening_word.js';
 import { V9_INLINE_PLAN_VERSION } from './v9_main_inline_layout.js';
+import { isV9StandaloneDirectionControl } from './v9_bidi_controls.js';
 
 const TYPOGRAPHY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'fontFeatureSettings', 'fontKerning', 'lineHeight', 'letterSpacing', 'wordSpacing', 'color', 'backgroundColor', 'textDecoration', 'direction'];
 const FONT_STACKS = {
@@ -36,7 +37,6 @@ function appendSemanticWhitespace(parent, text) {
   // and can visually mirror neutral punctuation such as parentheses near ASCII
   // apostrophes/numbers. Keep those controls in the rendered character stream
   // while hiding only real edge whitespace. Preserve original order exactly.
-  const isControl = ch => ch === '\u200e' || ch === '\u200f' || ch === '\u2060';
   let hidden = '';
   const flushHidden = () => {
     if (!hidden) return;
@@ -49,7 +49,7 @@ function appendSemanticWhitespace(parent, text) {
   };
 
   for (const ch of String(text)) {
-    if (isControl(ch)) {
+    if (isV9StandaloneDirectionControl(ch)) {
       flushHidden();
       parent.appendChild(document.createTextNode(ch));
     } else {
