@@ -74,7 +74,7 @@ export async function guardToolAction(toolName, action) {
 }
 
 
-export async function consumeToolSuccess(toolName, options = {}) {
+export async function consumeToolUse(toolName, options = {}) {
   const key = String(toolName || "").trim();
   if (!key) throw new Error("Missing tool name");
 
@@ -95,7 +95,7 @@ export async function consumeToolSuccess(toolName, options = {}) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      action: "consume_success",
+      action: "consume_use",
       toolName: key,
       units: Math.max(1, Number(options.units) || 1),
       idempotencyKey,
@@ -114,8 +114,13 @@ export async function consumeToolSuccess(toolName, options = {}) {
       showToolBlocked(key, options.niceName || key, "quota", data);
       throw quotaError(data);
     }
-    throw new Error(data?.message || `Tool success consume failed: HTTP ${res.status}`);
+    throw new Error(data?.message || `Tool quota consume failed: HTTP ${res.status}`);
   }
 
   return { ...data, idempotencyKey };
+}
+
+
+export async function consumeToolSuccess(toolName, options = {}) {
+  return consumeToolUse(toolName, options);
 }
