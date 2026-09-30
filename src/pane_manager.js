@@ -30,6 +30,8 @@ import { FrameCoalescer } from "./frame_coalescer.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
+const LOCAL_SAVE_DEBOUNCE_MS = 350;
+const LOCAL_SAVE_MAX_WAIT_MS = 5000;
 // משה 2026-09-20: הסף היה 900,000 תווים, ומסמך אמיתי (מדרש הלל אחרי
 // ניקוי הציונים — 1,179,540 תווים) נדחה בעלייה: האתר זרק אותו לצד
 // וחזר למסמך הדוגמה, בלי שהמשתמש ידע למה. זה נראה כאילו האתר "שוכח".
@@ -933,6 +935,7 @@ export class PaneManager {
     this._pendingMarkerRefresh = false;
     this._savePending = false;
     this._saveTimer = null;
+    this._saveMaxWaitTimer = null;
     // Monotonic count of real editor updates. Hydration paths use
     // setContent(..., { emitUpdate:false }), so they do not increment this.
     // This lets async server startup detect and preserve typing that happened
@@ -1219,7 +1222,22 @@ export class PaneManager {
     }
   }
 
+  _clearSaveTimers() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+    if (this._saveMaxWaitTimer) {
+      clearTimeout(this._saveMaxWaitTimer);
+      this._saveMaxWaitTimer = null;
+    }
+  }
+
   _writeStorageNow() {
+    // Any completed save attempt satisfies both the short debounce and the
+    // hard crash-safety deadline. Clear both so no stale callback can write
+    // the same snapshot again after this call returns.
+    this._clearSaveTimers();
     if (isStorageDisabled()) {
       this._savePending = false;
       return;
@@ -1274,21 +1292,29 @@ export class PaneManager {
 
     if (this._saveTimer) clearTimeout(this._saveTimer);
     if (immediate) {
-      this._saveTimer = null;
       this._writeStorageNow();
       return;
     }
+
+    // Normal case: save shortly after the user pauses.
     this._saveTimer = setTimeout(() => {
       this._saveTimer = null;
-      this._writeStorageNow();
-    }, 350);
+      if (this._savePending) this._writeStorageNow();
+    }, LOCAL_SAVE_DEBOUNCE_MS);
+
+    // Crash-safety case: continuous typing must not postpone the browser-local
+    // snapshot forever. This timer is intentionally non-sliding until a real
+    // write happens, after which the next edit starts a fresh deadline.
+    if (!this._saveMaxWaitTimer) {
+      this._saveMaxWaitTimer = setTimeout(() => {
+        this._saveMaxWaitTimer = null;
+        if (this._savePending) this._writeStorageNow();
+      }, LOCAL_SAVE_MAX_WAIT_MS);
+    }
   }
 
   flushSave() {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
+    this._clearSaveTimers();
     if (this._savePending) this._writeStorageNow();
   }
 
@@ -1328,10 +1354,7 @@ export class PaneManager {
   }
 
   clearStorage() {
-    if (this._saveTimer) {
-      clearTimeout(this._saveTimer);
-      this._saveTimer = null;
-    }
+    this._clearSaveTimers();
     this._savePending = false;
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
