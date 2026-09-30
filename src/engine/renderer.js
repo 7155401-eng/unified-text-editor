@@ -9,6 +9,7 @@ import {
   styleIdForStreamNumber,
   boldOverrideStyleIdForStream,
   _streamBoolSetting,
+  MAIN_STREAM_CODE,
 } from "../original_stream_columns.js";
 import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
@@ -630,6 +631,12 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
   const main = document.createElement("div");
   main.className = "page-main";
   applyMainTextStyleToElement(main);
+  const mainCols = Math.max(1, Math.min(2, parseInt(getEffectiveStreamSettings(MAIN_STREAM_CODE)?.cols || 1, 10) || 1));
+  main.dataset.mainCols = String(mainCols);
+  if (mainCols > 1) {
+    main.style.columnCount = String(mainCols);
+    main.style.columnGap = "var(--ravtext-stream-horizontal-gap, 8px)";
+  }
   let lastIdx = null;
   let lastP = null;
   for (const tup of pageData.main) {
