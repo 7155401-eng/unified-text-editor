@@ -437,9 +437,37 @@ function getRichHtml(editor) {
   return lines.join("<br>");
 }
 
+export function wordMainFragmentFromEditorHtml(editorHtml) {
+  const template = document.createElement("template");
+  template.innerHTML = String(editorHtml || "");
+  const blocks = [];
+  let inlineBuffer = "";
+
+  const flushInlineBuffer = () => {
+    if (!inlineBuffer) return;
+    blocks.push(inlineBuffer);
+    inlineBuffer = "";
+  };
+
+  for (const node of Array.from(template.content.childNodes)) {
+    if (node.nodeType === Node.ELEMENT_NODE && /^(p|div|li|h[1-6])$/i.test(node.tagName)) {
+      flushInlineBuffer();
+      // Preserve a real hard break inside the source block as <br>. Only the
+      // boundary between editor blocks becomes a new Word paragraph.
+      blocks.push(Array.from(node.childNodes).map(inlineNodeHtml).join(""));
+    } else {
+      const html = inlineNodeHtml(node);
+      if (html) inlineBuffer += html;
+    }
+  }
+  flushInlineBuffer();
+
+  return blocks.join("</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>");
+}
+
 function mainWordHtml(editor) {
-  const mainRich = getRichHtml(editor);
-  return mainRich.split("<br>").join("</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>");
+  if (!editor) return "";
+  return wordMainFragmentFromEditorHtml(editor.getHTML());
 }
 
 function notePartsFromPane(pane) {
