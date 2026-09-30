@@ -105,16 +105,22 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
   try {
     attachAutoSync(paneManager);
 
-    assert.equal(typeof callbacks.get('change'), 'function',
-      'autosync must subscribe directly to PaneManager change');
+    assert.equal(typeof callbacks.get('persist'), 'function',
+      'autosync must subscribe directly to PaneManager persistence requests');
     assert.equal((listeners.get('ravtext:engine-rendered') || []).length, 0,
       'modern PaneManager must not depend on engine rendering for autosave');
 
+    const paneSource = await import('node:fs/promises').then(({ readFile }) =>
+      readFile(new URL('../../src/pane_manager.js', import.meta.url), 'utf8')
+    );
+    assert.match(paneSource, /this\._emit\("persist"\)/,
+      'PaneManager save path must emit the semantic persist signal');
+
     // Continuous edits keep moving the 2s trailing debounce, but the original
     // 10s maximum wait remains active and cannot be postponed forever.
-    callbacks.get('change')();
-    callbacks.get('change')();
-    callbacks.get('change')();
+    callbacks.get('persist')();
+    callbacks.get('persist')();
+    callbacks.get('persist')();
     assert.deepEqual(timers.delays(), [2000, 10000]);
 
     timers.runOneByDelay(10000);
@@ -126,7 +132,7 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
 
     // Start a slow save for B.
     content = { version: 1, panes: [{ id: 'main', content: { text: 'B' } }] };
-    callbacks.get('change')();
+    callbacks.get('persist')();
     timers.runOneByDelay(2000);
     await settle();
     assert.equal(fetchCalls.length, 2);
@@ -135,7 +141,7 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
     // While B is in flight, C becomes current and its debounce expires.
     // It must queue behind B instead of issuing an overlapping PUT.
     content = { version: 1, panes: [{ id: 'main', content: { text: 'C' } }] };
-    callbacks.get('change')();
+    callbacks.get('persist')();
     timers.runOneByDelay(2000);
     await settle();
     assert.equal(fetchCalls.length, 2,
