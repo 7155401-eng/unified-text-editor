@@ -1347,6 +1347,62 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  // Surgically ported from audit/remaining-sep-layout-regressions-20260930 after
+  // confirming current main had no equivalent B12/C8 regression coverage.
+  await test('audit B12: a visible main reference is painted at the original marker boundary',async()=>{
+    const settings=getStreamSettings(),saved=settings['01'];
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const raw='alpha@01 beta';
+      const mapped=mapMainParagraphSource(raw,[],[{atInPara:5,sym:'@01',code:'01'}]);
+      assert(mapped.mainTextNet==='alpha beta','marker mapping changed source text');
+      assert(mapped.mainConsumers[0].anchor===5,'reference anchor is not the original marker boundary');
+      const note={stream:'01',uid:'audit-ref-position',num:1,
+        anchor:mapped.mainConsumers[0].anchor,anchorAffinity:mapped.mainConsumers[0].anchorAffinity,
+        text:'note body'};
+      const result=await buildPages(page,[{id:'audit-ref-source',mainText:mapped.mainTextNet,notes:[note]}],
+        {...cfg,pageHeight:260,talmudStreams:['01','02'],maxPages:10});
+      assert(result.complete,'reference-position fixture incomplete');
+      const ref=page.querySelector('[data-v9-main-ref][data-uid="audit-ref-position"]');
+      assert(ref,'visible main reference missing');
+      const body=ref.closest('.v9-planned-line-text');
+      assert(body,'reference is not inside the planned main line');
+      let before='',after='',seen=false;
+      for(const node of body.childNodes){
+        if(node===ref){seen=true;continue;}
+        if(seen)after+=node.textContent||'';else before+=node.textContent||'';
+      }
+      assert(before.endsWith('alpha'),`reference moved before its source word: ${JSON.stringify(before)}`);
+      assert(after.startsWith(' beta'),`reference moved after following source text: ${JSON.stringify(after)}`);
+    } finally {
+      page.remove();
+      if(saved===undefined) delete settings['01']; else settings['01']=saved;
+    }
+  });
+
+  await test('audit C8: the first wide commentary row pulls source text forward after a narrow strip',()=>{
+    const ctx=createV9TextLayoutContext({...cfg,mainFontSize:11});
+    const text=Array(8).fill(phrase).join(' ');
+    const pitch=ctx.lineHeight;
+    const strips=[
+      {x:0,width:76,y_start:0,y_end:pitch*2},
+      {x:0,width:230,y_start:pitch*2,y_end:400}
+    ];
+    const plan=flowV9MeasuredStream({text,runs:[]},strips,ctx,400);
+    assert(plan.lines.length>4,'strip-transition fixture too short');
+    const firstWide=plan.lines.find(l=>l.y>=pitch*2-.05);
+    assert(firstWide,'missing first row after widening');
+    assert(!firstWide.isLast,'first wide row accidentally became paragraph end');
+    const fill=firstWide.naturalWidth/firstWide.width;
+    assert(firstWide.wordTokens.length>=4,
+      `first wide row did not pull enough words forward: ${firstWide.wordTokens.map(t=>t.text).join(' ')}`);
+    assert(fill>=0.55,`first wide row remained mostly empty: fill=${fill.toFixed(3)}`);
+    assert(plan.lines.map(l=>l.sourceText).join('')===text,'strip transition lost or reordered source text');
+    ctx.dispose();
+    return {fill:+fill.toFixed(3),words:firstWide.wordTokens.length};
+  });
+
   await test('B20/C7: footer streams never cover the last main-text row',()=>{
     const page=makePage();
     const main=Array(8).fill(neutral).join(' ');
