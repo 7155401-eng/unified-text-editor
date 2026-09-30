@@ -33,6 +33,7 @@ import {
   getLastFileName,
   setLastFileName
 } from './comparator_storage.js';
+import { renderComparatorMarkerBar } from './comparator_marker_bar.js';
 
 const MC = COMPARATOR_MARKER_COLORS;
 const dm = COMPARATOR_DEFAULT_MARKERS;
@@ -444,39 +445,7 @@ export function mountComparatorUI(rootEl, options = {}) {
 
   function updateBar(edId, syms, counts) {
     const bar = rootEl.querySelector('#markers-' + edId);
-    if (!bar) return;
-    bar.replaceChildren();
-
-    syms.forEach((s, ci) => {
-      const sym = String(s?.sym ?? '');
-      const n = counts[sym] || 0;
-      if (n === 0) return;
-
-      // Symbol text can originate from imported/configured document data.
-      // Keep it out of HTML parsing entirely: textContent/dataset preserve the
-      // exact symbol without creating markup or executable attributes.
-      const group = document.createElement('span');
-      group.className = 'mc mc-' + ci;
-
-      const label = document.createElement('span');
-      label.className = 'sym-label-bar';
-      label.textContent = sym;
-      group.appendChild(label);
-
-      for (let i = 1; i <= n; i++) {
-        const badge = document.createElement('span');
-        badge.className = 'badge';
-        badge.dataset.action = 'jumpToNth';
-        badge.dataset.edid = String(edId);
-        badge.dataset.sym = sym;
-        badge.dataset.nth = String(i);
-        badge.title = String(i);
-        badge.textContent = String(i);
-        group.appendChild(badge);
-      }
-
-      bar.appendChild(group);
-    });
+    renderComparatorMarkerBar(bar, edId, syms, counts);
   }
 
   function jumpToNth(edId, sym, nth) {
