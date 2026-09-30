@@ -28,7 +28,7 @@ import "./stream_button_labels.js";
 import "./stream_visibility.js";
 import { addNoteToStream, paneForCode } from "./stream_note_insert.js";
 import "./add_note_dialog.js";
-import { bootstrapLiveOverflowReserve, resetLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
+import { resetLiveOverflowReserve } from "./engine/live_overflow_corrector.js";
 import { loadEditableDefaultSample, loadSampleByName } from "./sample_loader.js";
 import { parseAuto, parseInternalFormat } from "./engine/parser.js";
 import { ensureOriginalStreamSettings, updateOriginalStreamColumnsPanel, streamSettingsPanelSignature } from "./original_stream_columns.js";
@@ -248,9 +248,12 @@ loadInitialState(paneManager).then((res) => {
 const pagesContainer = document.querySelector("#pages-container");
 
 // Final render guard:
-// משה 2026-05-14: bootstrap ה-reserve הדינמי מ-session לפני הפעלת ה-engine,
-// כדי שה-pack הראשון כבר ייקח אותה בחשבון. גם משחזר מצב טוב בין רענונים.
-bootstrapLiveOverflowReserve();
+// The old live-overflow corrector is disabled. Never restore its historical
+// session reserve at startup: a leftover value would silently shrink the first
+// pack even though no active mechanism owns or refreshes that reserve.
+// Start every load from neutral geometry; later user/document changes already
+// call the same reset function.
+resetLiveOverflowReserve();
 
 // מודד את הדף אחרי הרינדור הסופי. אם יש גלישה,
 // מגדיל כרית עימוד ומרנדר מחדש, בלי להסתיר טקסט.
