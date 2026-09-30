@@ -359,11 +359,15 @@ export async function readMetadata(fileOrBlob) {
   }
 }
 
-// Convenience: build + trigger browser download.
-export function buildAndDownloadDocx(units, streamsMeta, docTitle, customFilename) {
+export function buildDocxBlob(units, streamsMeta, docTitle, customFilename) {
   const { bytes, filename } = buildDocxBytes(units, streamsMeta, docTitle);
   const fname = customFilename || filename;
   const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  return { filename: fname, blob };
+}
+
+export function downloadDocxBlob(blob, filename) {
+  const fname = filename || "sefaria.docx";
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -374,5 +378,12 @@ export function buildAndDownloadDocx(units, streamsMeta, docTitle, customFilenam
     try { document.body.removeChild(a); } catch (_) {}
     try { URL.revokeObjectURL(url); } catch (_) {}
   }, 200);
-  return { filename: fname, blob };
+  return fname;
+}
+
+// Convenience: build + trigger browser download.
+export function buildAndDownloadDocx(units, streamsMeta, docTitle, customFilename) {
+  const built = buildDocxBlob(units, streamsMeta, docTitle, customFilename);
+  downloadDocxBlob(built.blob, built.filename);
+  return built;
 }
