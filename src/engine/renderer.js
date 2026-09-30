@@ -619,6 +619,12 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
   const page = document.createElement("div");
   page.className = "page";
   page.setAttribute("dir", "rtl");
+  if (pageData?.frontMatter) {
+    page.classList.add("front-matter-page");
+    page.dataset.frontMatter = "1";
+    if (pageData.frontMatter.paneId) page.dataset.frontMatterPaneId = String(pageData.frontMatter.paneId);
+    if (pageData.frontMatter.label) page.dataset.frontMatterLabel = String(pageData.frontMatter.label);
+  }
   const pageHasMain = (pageData.main || []).length > 0;
 
   const paraRefsIndex = buildParaNotesIndex(pageData);
@@ -816,8 +822,9 @@ function __ravtextRunPreRenderPageDecorators(page, pageIndex) {
   }
 }
 
-export function renderPages(packerOutput, container) {
+export function renderPages(packerOutput, container, options = {}) {
   packerOutput = (packerOutput || []).filter(pageDataHasRealContent);
+  const pageIndexOffset = Math.max(0, Math.floor(Number(options.pageIndexOffset) || 0));
   if (container.__pageObserver && typeof container.__pageObserver.disconnect === "function") {
     container.__pageObserver.disconnect();
   }
@@ -837,9 +844,11 @@ export function renderPages(packerOutput, container) {
     const realPages = [];
     for (let i = 0; i < packerOutput.length; i++) {
       const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
-      real.dataset.pageIndex = String(i);
+      const physicalIndex = pageIndexOffset + i;
+      real.dataset.pageIndex = String(physicalIndex);
+      real.dataset.renderIndex = String(i);
       real.dataset.realized = "1";
-      __ravtextRunPreRenderPageDecorators(real, i);
+      __ravtextRunPreRenderPageDecorators(real, physicalIndex);
       allFrag.appendChild(real);
       realPages.push(real);
     }
@@ -863,10 +872,12 @@ export function renderPages(packerOutput, container) {
     ph.className = "page page-placeholder";
     ph.style.width = PAGE_W + "px";
     ph.style.height = PAGE_H + "px";
-    ph.dataset.pageIndex = String(i);
+    const physicalIndex = pageIndexOffset + i;
+    ph.dataset.pageIndex = String(physicalIndex);
+    ph.dataset.renderIndex = String(i);
     const label = document.createElement("div");
     label.className = "page-placeholder-label";
-    label.textContent = `עמוד ${i + 1}`;
+    label.textContent = `עמוד ${physicalIndex + 1}`;
     ph.appendChild(label);
     frag.appendChild(ph);
     placeholders.push(ph);
@@ -879,10 +890,12 @@ export function renderPages(packerOutput, container) {
     if (!ph || !ph.parentNode || ph.dataset.realized === "1") return;
     if (observer) observer.unobserve(ph);
     const real = createPageElement(packerOutput[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
-    real.dataset.pageIndex = String(i);
+    const physicalIndex = pageIndexOffset + i;
+    real.dataset.pageIndex = String(physicalIndex);
+    real.dataset.renderIndex = String(i);
     real.dataset.realized = "1";
     if (ph.style.zoom) real.style.zoom = ph.style.zoom;
-    __ravtextRunPreRenderPageDecorators(real, i);
+    __ravtextRunPreRenderPageDecorators(real, physicalIndex);
     ph.parentNode.replaceChild(real, ph);
     placeholders[i] = real;
     if (typeof container.__processRealizedPage === "function") {
@@ -897,7 +910,7 @@ export function renderPages(packerOutput, container) {
     observer = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
-        const idx = parseInt(entry.target.dataset.pageIndex || "0", 10);
+        const idx = parseInt(entry.target.dataset.renderIndex || "0", 10);
         realize(idx);
         if (idx + 1 < placeholders.length) realize(idx + 1);
       }
@@ -911,7 +924,26 @@ export function renderPages(packerOutput, container) {
     for (let i = 2; i < Math.min(placeholders.length, 5); i++) realize(i);
   }
 
-  container.__getPageElement = (i) => placeholders[i] || null;
-  container.__realizePage = realize;
-  container.__pageCount = packerOutput.length;
+  container.__getPageElement = (i) => placeholders[i - pageIndexOffset] || null;
+  container.__realizePage = (i) => realize(i - pageIndexOffset);
+  container.__pageCount = pageIndexOffset + packerOutput.length;
+}
+
+export function renderPackedPagesToElements(packerOutput, options = {}) {
+  const pages = (packerOutput || []).filter(pageDataHasRealContent);
+  const pageIndexOffset = Math.max(0, Math.floor(Number(options.pageIndexOffset) || 0));
+  const paraLastPage = computeLastPageByParaIdx(pages);
+  const paraFirstPage = computeFirstPageByParaIdx(pages);
+  const streamNumLastPage = computeLastPageByStreamNum(pages);
+  const out = [];
+  for (let i = 0; i < pages.length; i++) {
+    const el = createPageElement(pages[i], paraLastPage, i, streamNumLastPage, paraFirstPage);
+    const physicalIndex = pageIndexOffset + i;
+    el.dataset.pageIndex = String(physicalIndex);
+    el.dataset.renderIndex = String(i);
+    el.dataset.realized = "1";
+    __ravtextRunPreRenderPageDecorators(el, physicalIndex);
+    out.push(el);
+  }
+  return out;
 }
