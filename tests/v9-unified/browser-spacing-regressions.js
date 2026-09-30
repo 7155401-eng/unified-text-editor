@@ -8,6 +8,7 @@ import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.j
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
 import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
+import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
@@ -22,6 +23,45 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(out==='אחד<br><b>שניים</b></span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>שלוש',
      `unexpected Word fragment: ${out}`);
  });
+ await test('wrapped ribbon tabs drive the sticky toolbar offset from measured height',async()=>{
+   const link=document.createElement('link');
+   link.rel='stylesheet';link.href='../../styles.css';
+   document.head.appendChild(link);
+   await new Promise((resolve,reject)=>{link.onload=resolve;link.onerror=()=>reject(new Error('styles.css did not load'));});
+
+   const previousVar=document.documentElement.style.getPropertyValue('--ravtext-ribbon-tabs-height');
+   const bar=document.createElement('div');
+   bar.id='ribbon-tabs';bar.className='ribbon-tabs';
+   const toolbar=document.createElement('div');
+   toolbar.id='main-ribbon-toolbar';
+   document.body.append(bar,toolbar);
+   try {
+     Object.defineProperty(bar,'clientWidth',{configurable:true,get:()=>100});
+     Object.defineProperty(bar,'scrollWidth',{configurable:true,get:()=>{
+       if(bar.classList.contains('rt-compact-3'))return 100;
+       if(bar.classList.contains('rt-compact-2'))return 180;
+       if(bar.classList.contains('rt-compact'))return 220;
+       return 300;
+     }});
+     bar.getBoundingClientRect=()=>({
+       x:0,y:0,left:0,top:0,right:100,bottom:bar.classList.contains('rt-compact-3')?68:34,
+       width:100,height:bar.classList.contains('rt-compact-3')?68:34,
+       toJSON(){return this;}
+     });
+
+     fitRibbonTabs();
+     assert(bar.classList.contains('rt-compact-3'),'fixture did not enter wrapped two-row ribbon mode');
+     assert(document.documentElement.style.getPropertyValue('--ravtext-ribbon-tabs-height')==='68px',
+       `sticky offset var=${document.documentElement.style.getPropertyValue('--ravtext-ribbon-tabs-height')}`);
+     assert(getComputedStyle(toolbar).top==='68px',
+       `sticky toolbar top=${getComputedStyle(toolbar).top}, expected 68px`);
+   } finally {
+     bar.remove();toolbar.remove();link.remove();
+     if(previousVar)document.documentElement.style.setProperty('--ravtext-ribbon-tabs-height',previousVar);
+     else document.documentElement.style.removeProperty('--ravtext-ribbon-tabs-height');
+   }
+ });
+
  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
