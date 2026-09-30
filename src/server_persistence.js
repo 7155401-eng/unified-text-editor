@@ -246,6 +246,14 @@ function staleServerCopy() {
   } catch { return null; }
 }
 
+function shouldRetryStaleServerCopy(stale) {
+  if (!stale) return false;
+  // A known over-limit document will deterministically fail again until the
+  // user changes/splits it. Every other stale reason is worth one startup
+  // retry because the network/session may have recovered.
+  return stale.status !== 413 && stale.status !== '413';
+}
+
 /** האם מה ששמור בדפדפן שונה ממה שהשרת מחזיר — כלומר יש עבודה שלא עלתה. */
 function hasNewerLocalDocument(serverContent) {
   try {
@@ -264,8 +272,10 @@ function hasNewerLocalDocument(serverContent) {
 // ההגנה הקיימת פועלת רק כשהשמירה לשרת **נכשלה** — ואחרי יבוא היא לא
 // נכשלה, היא פשוט טרם קרתה.
 //
-// לכן היבוא מסמן במפורש: "העותק המקומי הוא הקובע". הסימון נצרך פעם אחת
-// בטעינה הבאה, ואז נמחק — כדי שלא יישאר תקוע לנצח.
+// לכן היבוא מסמן במפורש: "העותק המקומי הוא הקובע". הסימון נשאר
+// עד שהשרת מאשר בדיוק את אותו snapshot מקומי. אם אירוע השמירה המקומית
+// קרה לפני ש-auto-sync הספיק להירשם, attachAutoSync יוזם retry בעצמו.
+// כך אין חלון שבו רענון שני יכול להחזיר את עותק השרת הישן.
 export function protectLocalDocumentAfterImport(chars = 0) {
   try {
     localStorage.setItem(STALE_KEY, JSON.stringify({
@@ -287,9 +297,14 @@ function showStaleServerNotice(stale) {
   if (stale.status === 'local-import') {
     try {
       const el = document.getElementById('status');
-      if (el) el.textContent = 'נטען מה שיובא זה עתה. הגרסה שבשרת לא דרסה אותו.';
+      if (el) {
+        el.textContent =
+          'נטען מה שיובא זה עתה. הגרסה שבשרת לא דרסה אותו, והעותק המקומי יישלח שוב לשרת.';
+      }
     } catch {}
-    clearServerStale();          // הגנה חד-פעמית — לא נשארת תקועה
+    // Do NOT clear the recovery marker here. The server has not confirmed
+    // this imported snapshot yet. attachAutoSync() retries it after listeners
+    // are installed, and the marker is cleared only by exact confirmation.
     return;
   }
   const size = `${Math.round((stale.chars || 0) / 1000)} אלף תווים`;
@@ -466,6 +481,21 @@ export function scheduleSettingsSync() {
 
 export function attachAutoSync(paneManager) {
   if (!isLoggedIn() || !paneManager) return;
+
+  // If startup kept a recovery-authoritative local document instead of a
+  // stale server copy, the local-save event may already have fired before
+  // this async setup completed. Schedule one explicit retry now so recovery
+  // does not depend on network timing or on the user typing another key.
+  try {
+    const stale = staleServerCopy();
+    if (
+      shouldRetryStaleServerCopy(stale) &&
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem(DOC_KEY)
+    ) {
+      scheduleDocumentSync(paneManager);
+    }
+  } catch {}
 
   // Document sync follows PaneManager persistence intent, not rendering.
   // This covers text, structure and pane metadata even when live render is off.
