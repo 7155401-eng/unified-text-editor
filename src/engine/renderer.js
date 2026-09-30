@@ -13,6 +13,7 @@ import {
 import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
+import { referenceNoBreakRange } from "./reference_line_glue.js";
 
 // משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
 // ב-note_content_builder.js. הפונקציה הזו ממירה את ה-nodes ל-DOM (עם
@@ -373,22 +374,53 @@ function appendMainSegmentContent(p, segText, segStart, segEnd, paraRefs, paragr
     return;
   }
 
+  const appendSlice = (parent, start, end) => {
+    if (end <= start) return;
+    appendTextWithRuns(
+      parent,
+      text.substring(start, end),
+      sliceLocalRuns(slicedRuns, start, end)
+    );
+  };
+
   let lastPos = 0;
-  for (const ref of segRefs) {
+  for (let i = 0; i < segRefs.length; i++) {
+    const ref = segRefs[i];
     const localPos = Math.max(0, Math.min(text.length, ref.localPos));
-    if (localPos > lastPos) {
-      const sliceText = text.substring(lastPos, localPos);
-      appendTextWithRuns(p, sliceText, sliceLocalRuns(slicedRuns, lastPos, localPos));
+    const noBreak = referenceNoBreakRange(text, localPos);
+
+    if (noBreak && noBreak.start >= lastPos) {
+      appendSlice(p, lastPos, noBreak.start);
+
+      const cluster = document.createElement("span");
+      cluster.className = "stream-ref-nobreak-cluster";
+      cluster.style.display = "inline-block";
+      cluster.style.whiteSpace = "nowrap";
+
+      let clusterPos = noBreak.start;
+      let j = i;
+      for (; j < segRefs.length; j++) {
+        const clusteredRef = segRefs[j];
+        const clusteredPos = Math.max(0, Math.min(text.length, clusteredRef.localPos));
+        if (clusteredPos >= noBreak.end) break;
+        if (clusteredPos < noBreak.start) continue;
+        appendSlice(cluster, clusterPos, clusteredPos);
+        if (appendMainRefElement(cluster, clusteredRef) && usedRefs) usedRefs.add(clusteredRef.key);
+        clusterPos = Math.max(clusterPos, clusteredPos);
+      }
+      appendSlice(cluster, clusterPos, noBreak.end);
+      p.appendChild(cluster);
+
+      lastPos = noBreak.end;
+      i = j - 1;
+      continue;
     }
-    if (appendMainRefElement(p, ref) && usedRefs) {
-      usedRefs.add(ref.key);
-    }
+
+    if (localPos > lastPos) appendSlice(p, lastPos, localPos);
+    if (appendMainRefElement(p, ref) && usedRefs) usedRefs.add(ref.key);
     lastPos = Math.max(lastPos, localPos);
   }
-  if (lastPos < text.length) {
-    const sliceText = text.substring(lastPos);
-    appendTextWithRuns(p, sliceText, sliceLocalRuns(slicedRuns, lastPos, text.length));
-  }
+  appendSlice(p, lastPos, text.length);
 }
 
 function insertMainSegmentRefs(p, segText, segStart, segEnd, paraRefs, usedRefs = null) {

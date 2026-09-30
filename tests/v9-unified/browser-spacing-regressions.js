@@ -342,6 +342,41 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('two fixed Talmud streams plus two explicit Mishnah streams keep 2+2 geometry',()=>{
+    const page=makePage();
+    const sideText=Array(8).fill(phrase).join(' ');
+    const short='alpha beta gamma delta';
+    const long=Array(14).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'main text',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[
+        {id:'03',items:[short],runs:[],rich:{text:short,runs:[]}},
+        {id:'04',items:[long],runs:[],rich:{text:long,runs:[]}}
+      ]
+    },{
+      ...cfg,pageHeight:900,mishnaWrapOn:false,levels:[],
+      streamSettings:{
+        '01':{inlineStyle:{fontSize:11}},
+        '02':{inlineStyle:{fontSize:11}},
+        '03':{layoutRole:'mishna',mishnaSide:'right',inlineStyle:{fontSize:11}},
+        '04':{layoutRole:'mishna',inlineStyle:{fontSize:11}}
+      }
+    });
+    const right=plan.streamBoxes.find(b=>b.id==='01');
+    const left=plan.streamBoxes.find(b=>b.id==='02');
+    const b3=plan.footerBoxes.find(b=>b.id==='03');
+    const b4=plan.footerBoxes.find(b=>b.id==='04');
+    assert(right&&left,'fixed Talmud side streams were displaced');
+    assert(b3&&b4,'explicit Mishnah footer pair missing');
+    assert(b3.mishnaRole==='float'&&b4.mishnaRole==='flow',`wrong explicit Mishnah roles: ${b3.mishnaRole}/${b4.mishnaRole}`);
+    assert(b3.mishnaSource==='layoutRole'&&b4.mishnaSource==='layoutRole','explicit Mishnah source not recorded');
+    assert(Math.abs(b3.titleY-b4.titleY)<.1,'explicit Mishnah streams do not start together');
+    assert(b3.titleWidth<plan.pageBox.innerWidth*.75,'explicit Mishnah stream is still a full-width footer');
+    page.remove();
+  });
+
   await test('short heading is not published as a one-line intermediate page',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};

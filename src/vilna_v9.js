@@ -28,6 +28,7 @@ import { getOpeningWordSettings } from "./opening_word.js";
 import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main_inline_layout.js";
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
+import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
@@ -2939,32 +2940,18 @@ function buildPagePlanCore(pageContent, config) {
   let anyFooterTrimmed = false;
 
   if (pageContent.footerStreams && pageContent.footerStreams.length) {
-    const secondaryLevelIndex = (streamId) => {
-      if (!cfg.mishnaWrapOn || !Array.isArray(cfg.levels)) return -1;
-      for (let i = 1; i < cfg.levels.length; i++) {
-        if ((cfg.levels[i] || []).map(String).includes(String(streamId))) return i;
-      }
-      return -1;
-    };
-
-    // Preserve configured order, but streams in the same secondary Mishnah
-    // level are one geometric unit. Level 03,04 must not become two unrelated
-    // full-width footers stacked one below the other.
-    const footerGroups = [];
-    const levelGroups = new Map();
-    for (const fs of pageContent.footerStreams) {
-      const level = secondaryLevelIndex(fs.id);
-      if (level < 0) {
-        footerGroups.push({ level: -1, streams: [fs] });
-        continue;
-      }
-      if (!levelGroups.has(level)) {
-        const group = { level, streams: [] };
-        levelGroups.set(level, group);
-        footerGroups.push(group);
-      }
-      levelGroups.get(level).streams.push(fs);
-    }
+    // The two configured Gapt/Talmud streams keep permanent ownership of the
+    // side columns. Footer streams configured as a secondary Mishnah level —
+    // or exactly two footer streams explicitly marked layoutRole="mishna" —
+    // use the existing Mishnah float+flow geometry below the main/Talmud area.
+    // This restores mixed 2+2 documents without allowing a footer stream to
+    // opportunistically replace an empty Talmud side on individual pages.
+    const footerGroups = groupV9FooterStreams(
+      pageContent.footerStreams,
+      streamSettings,
+      cfg.levels,
+      cfg.mishnaWrapOn
+    );
 
     const streamRich = (fs) => fs.rich || makeRichText((fs.items || []).join(" "), fs.runs || []);
     const streamText = (fs) => normalizeRichTextEntry(streamRich(fs)).text;
@@ -3016,7 +3003,7 @@ function buildPagePlanCore(pageContent, config) {
       // Exact analytical equivalent of the historical Mishnah-wrap level for
       // the common two-stream case: the shorter stream is a fixed float; the
       // longer stream flows beside it and then expands to full width below it.
-      if (group.level >= 1 && metas.length === 2) {
+      if (group.mishnaFlow === true && metas.length === 2) {
         const [a, b] = metas;
         const aLen = streamText(a.fs).length;
         const bLen = streamText(b.fs).length;
@@ -3070,12 +3057,14 @@ function buildPagePlanCore(pageContent, config) {
         );
 
         pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
-          mishnaLevel: group.level + 1,
+          mishnaLevel: group.level >= 1 ? group.level + 1 : null,
           mishnaRole: "float",
+          mishnaSource: group.source || "levels",
         });
         pushFooterBox(flowMeta, flowMeasured, titleY, narrowX, narrowWidth, {
-          mishnaLevel: group.level + 1,
+          mishnaLevel: group.level >= 1 ? group.level + 1 : null,
           mishnaRole: "flow",
+          mishnaSource: group.source || "levels",
         });
         footerY = Math.max(floatMeasured.endY || bodyTop, flowMeasured.endY || bodyTop) + interStreamGap;
         continue;
@@ -6398,25 +6387,10 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
     const wantLeftId  = talmudStreams.length >= 2 ? talmudStreams[1] : null;
     const wantedSet = new Set(talmudStreams.slice(0, 2));
 
-    // ⛔⛔⛔ משה 29/09/2026 — „מה שאינו מהערות גפ״ת מוגדר כמשנ״ב ולא
-    // עובד". זה עדיין **פתוח**, ולהלן למה הניסיון הראשון בוטל.
-    //
-    // ═══ מה שנכון בדיווח ═══
-    // ברגע שהוגדרו זרמי גפ״ת, הקוד כאן שולח כל זרם אחר לתחתית העמוד
-    // בלי להסתכל על שדה „פריסה" שלו. ההגדרה באמת אינה נקראת.
-    //
-    // ═══ מה שניסיתי, ולמה הוחזר ═══
-    // נתתי לזרם כזה לתפוס צד **כשהצד פנוי**. זו הייתה טעות: שני
-    // הצדדים שייכים לגפ״ת באופן קבוע, ולכן „פנוי" משתנה מעמוד לעמוד
-    // — בעמוד שבו זרם גפ״ת ריק, זרם אחר קפץ לשם ושינה את צורת הדף.
-    // משה דיווח מיד: „עמודים ריקים ברובם".
-    // זה בדיוק הדפוס שהוא כבר תיאר בעבר: „בצד השמאלי התחלפו חמישה
-    // זרמים שונים".
-    //
-    // ⇒ ההקצאה חייבת להיות **קבועה לכל המסמך**, לא הזדמנותית.
-    //   וכשגפ״ת תופס את שני הצדדים, אין מקום פיזי לזרם שלישי בצד —
-    //   כלומר „משנ״ב לזרמים 3 ו-4" מחייב **צורת דף אחרת**, וזו
-    //   החלטה של משה ולא ניחוש שלי. חוזרים להתנהגות היציבה.
+    // Mixed layout rule: these two IDs alone own the Gapt/Talmud side columns.
+    // Other streams remain footers here. Their per-stream layoutRole is applied
+    // later by groupV9FooterStreams, where two explicit "mishna" streams become
+    // a Mishnah float+flow pair below the fixed side columns.
     for (const s of allStreams) {
       if (s.id === wantRightId && !rightStream) {
         rightStream = s;
