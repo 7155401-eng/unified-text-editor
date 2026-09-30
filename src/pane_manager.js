@@ -566,19 +566,32 @@ export class Pane {
       return;
     }
     const mgr = this._manager;
-    if (!mgr || !mgr.syncEnabled || mgr.syncBusy) return;
-    mgr.syncBusy = true;
-    const body = this._body;
-    const anchor = visibleMarkerAnchor(body);
-    if (anchor) mgr._lastSyncAnchor = anchor;
-    const syncAnchor = anchor || mgr._lastSyncAnchor;
-    for (const other of mgr.panes) {
-      if (other === this || !other._body) continue;
-      if (syncAnchor && scrollPaneToAnchor(other, syncAnchor)) continue;
-      syncPaneByFraction(this, body, other, other._body);
+    if (!mgr || !mgr.syncEnabled) return;
+
+    // A previous pane may still own the short sync lock. Do not run the
+    // expensive geometry scan while busy, but also do not drop the user's
+    // latest scroll position: retry on the next frame.
+    if (mgr.syncBusy) {
+      this._scrollSyncFrame.schedule(() => this._runScrollSync());
+      return;
     }
-    // רשת ביטחון בלבד. הבלם האמיתי הוא שני הבלמים שלמעלה.
-    setTimeout(() => { mgr.syncBusy = false; }, 50);
+
+    mgr.syncBusy = true;
+    try {
+      const body = this._body;
+      const anchor = visibleMarkerAnchor(body);
+      if (anchor) mgr._lastSyncAnchor = anchor;
+      const syncAnchor = anchor || mgr._lastSyncAnchor;
+      for (const other of mgr.panes) {
+        if (other === this || !other._body) continue;
+        if (syncAnchor && scrollPaneToAnchor(other, syncAnchor)) continue;
+        syncPaneByFraction(this, body, other, other._body);
+      }
+    } finally {
+      // רשת ביטחון בלבד. הבלם האמיתי הוא שני הבלמים שלמעלה.
+      // Always release even if a detached DOM node throws during geometry.
+      setTimeout(() => { mgr.syncBusy = false; }, 50);
+    }
   }
 
   _applyCollapsedState() {
