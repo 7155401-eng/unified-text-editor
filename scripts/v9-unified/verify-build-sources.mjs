@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 
 const root = process.cwd();
 const baseline = path.resolve(process.argv[2] || '.v9-baseline');
-const baselineSha = '375b01bd8243486b1f02f9f25211c9e9bb650be3';
+const baselineSha = '82936b7ba1720714f6ae73bda95e9791f6873856';
 const git = (cwd, args) => execFileSync('git', args, { cwd });
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const changes = cwd => git(cwd, ['diff', '--name-only', '-z', '--', 'src', 'scripts']).toString().split('\0').filter(Boolean).sort();
