@@ -5089,6 +5089,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             if (auditCandidate) {
               auditCandidate.reason = "policy-rejected";
               auditCandidate.policyReason = extensionScore.reason || "";
+              auditCandidate.policyDebug = extensionScore.debug?.finalMainLine || null;
+              auditCandidate.movedAnchoredNotes = splitNotes.before.filter(n => typeof n.anchor === "number").length;
               extensionAudit.candidates.push(auditCandidate);
             }
             continue;
