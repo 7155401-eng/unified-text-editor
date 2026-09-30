@@ -189,8 +189,7 @@ function readIntSetting(key, fallback, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function readSpacingBool(key, fallback = false) {
-  const settings = getStoredSpacingSettingsSnapshot();
+function readSpacingBool(settings, key, fallback = false) {
   return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
 }
 
@@ -485,6 +484,10 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       };
     });
 
+    // One raw-aware cached snapshot per V9 render. This preserves the exact
+    // persisted-key fallback semantics while avoiding repeated storage reads.
+    const storedSpacing = getStoredSpacingSettingsSnapshot();
+
     const v9Config = {
       isCurrent,
       pageWidth: geom.pageWidth,
@@ -528,8 +531,8 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
           return ["auto", "right-left", "inner-outer"].includes(v) ? v : "inner-outer";
         } catch (_) { return "inner-outer"; }
       })(),
-      noMidParagraphSoft: readSpacingBool("noMidParagraphSoft", false),
-      noMidLineSplits: readSpacingBool("noMidLineSplits", false),
+      noMidParagraphSoft: readSpacingBool(storedSpacing, "noMidParagraphSoft", false),
+      noMidLineSplits: readSpacingBool(storedSpacing, "noMidLineSplits", false),
       // ★★ משה 15/09/2026 — "אם יש שם חסימה לא הגיונית פתח אותה".
       // נמדד: בעמוד בגובה 981 הגמרא נגמרה ב-576 ורש"י ב-309, ואף אחד
       // מהם לא גלש — ובכל זאת נפתח עמוד שני והעמוד נשאר מלא ב-59%.
@@ -537,7 +540,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       // לחתוך אותה — אז היא הועפה כולה לעמוד הבא, ו-41% מהעמוד נשאר לבן.
       // בספר אמיתי פסקה נחתכת בסוף העמוד וממשיכה בעמוד הבא; זו הנורמה,
       // לא חריג. לכן ברירת המחדל מתהפכת: מותר לחתוך.
-      preventMidLineSplit: readSpacingBool("preventMidLineSplit", false),
+      preventMidLineSplit: readSpacingBool(storedSpacing, "preventMidLineSplit", false),
       openingWordSettings: preflight.openingWordSettings,
     };
 
