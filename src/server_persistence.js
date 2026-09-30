@@ -8,6 +8,7 @@
 // 3. כל שינוי בעורך → debounce 2 שניות → שמירה ל-/api/documents/current + /api/settings
 
 const DEBOUNCE_MS = 2000;
+const DOC_SYNC_MAX_WAIT_MS = 10000;
 const SETTINGS_PREFIX = 'ravtext.';
 // משה 2026-05-17: הגנת נפח לסנכרון הגדרות. /api/settings לא אמור לקבל את
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
