@@ -343,7 +343,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
      assert(box?.lines?.length>4,`missing crown/body rows for ${role}`);
      const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
      const crownRows=sorted.filter(l=>l.y+Math.max(1,Number(l.lineHeightPx)||0)<=crownBottom+.15);
-     assert(crownRows.length>=4,`${role} has only ${crownRows.length} complete crown rows`);
+     assert(crownRows.length===4,`${role} crown must contain exactly 4 complete rows, got ${crownRows.length}`);
      const lastCrown=crownRows[crownRows.length-1];
      const next=sorted.find(l=>l.y>lastCrown.y+.1);
      assert(next,`no body row after crown for ${role}`);
