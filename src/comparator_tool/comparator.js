@@ -9,7 +9,7 @@
 import './comparator.css';
 import { mountComparatorUI } from './comparator_ui.js';
 import { mountComparatorIntegratedUI } from './comparator_integrated.js';
-import { assertToolAllowed } from '../tool_runtime_gate.js';
+import { assertToolAllowed, consumeToolUse } from '../tool_runtime_gate.js';
 import { openToolStartupOverlay } from '../tool_startup_overlay.js';
 
 // Resolve vendor path against the document base URL so it works in dev
@@ -142,16 +142,44 @@ export async function openComparator(options = {}) {
 
     const body = overlay.querySelector('.comparator-host-body');
 
+    // Desktop parity: opening the comparator is free. The first human edit
+    // consumes the one weekly session and starts a fixed 15-minute window.
+    // Edits inside that window do not extend it. Premium/admin consumption is
+    // a no-op server-side and can start a new 15-minute client window forever.
+    let comparatorSessionStartedAt = 0;
+    let comparatorSessionBlocked = false;
+    const comparatorSessionMs = 15 * 60 * 1000;
+    const onSessionAction = async () => {
+      if (comparatorSessionBlocked) return false;
+      const now = Date.now();
+      if (comparatorSessionStartedAt && now - comparatorSessionStartedAt < comparatorSessionMs) {
+        return true;
+      }
+      try {
+        await consumeToolUse('comparator-tool', {
+          niceName: 'עורך רב טקסט',
+          kind: comparatorSessionStartedAt ? 'session-timeout-recheck' : 'session-first-action',
+        });
+        comparatorSessionStartedAt = now;
+        return true;
+      } catch (_) {
+        comparatorSessionBlocked = true;
+        return false;
+      }
+    };
+
     let api;
     if (variant === 'integrated') {
       api = mountComparatorIntegratedUI(body, {
         lang: options.lang,
-        onClose: _closeActive
+        onClose: _closeActive,
+        onSessionAction,
       });
     } else {
       api = mountComparatorUI(body, {
         lang: options.lang,
-        onClose: _closeActive
+        onClose: _closeActive,
+        onSessionAction,
       });
     }
 
