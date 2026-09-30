@@ -1,6 +1,7 @@
 import { appendTextWithRuns, sliceRuns } from './runs_dom.js';
 import { extractOpeningSegmentForTest, getOpeningWordSkipPolicy } from '../opening_word.js';
 import { V9_INLINE_PLAN_VERSION } from './v9_main_inline_layout.js';
+import { isV9StandaloneDirectionControl } from './v9_bidi_controls.js';
 
 const TYPOGRAPHY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'fontFeatureSettings', 'fontKerning', 'lineHeight', 'letterSpacing', 'wordSpacing', 'color', 'backgroundColor', 'textDecoration', 'direction'];
 const FONT_STACKS = {
@@ -36,7 +37,6 @@ function appendSemanticWhitespace(parent, text) {
   // and can visually mirror neutral punctuation such as parentheses near ASCII
   // apostrophes/numbers. Keep those controls in the rendered character stream
   // while hiding only real edge whitespace. Preserve original order exactly.
-  const isControl = ch => ch === '\u200e' || ch === '\u200f' || ch === '\u2060';
   let hidden = '';
   const flushHidden = () => {
     if (!hidden) return;
@@ -49,7 +49,7 @@ function appendSemanticWhitespace(parent, text) {
   };
 
   for (const ch of String(text)) {
-    if (isControl(ch)) {
+    if (isV9StandaloneDirectionControl(ch)) {
       flushHidden();
       parent.appendChild(document.createTextNode(ch));
     } else {
@@ -71,6 +71,19 @@ export function appendV9PlannedPart(parent, part) {
   }
   if (cursor < part.text.length) appendTextWithRuns(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length));
   appendSemanticWhitespace(parent, part.trailingText);
+}
+
+export function v9MeasurementCacheKey(part) {
+  // Edge direction marks participate in Unicode BiDi even though they have
+  // zero visible width. They therefore belong to the measurement identity.
+  return JSON.stringify([
+    part?.leadingText || '',
+    part?.text || '',
+    part?.trailingText || '',
+    part?.runs || [],
+    part?.refs || [],
+    part?.style || {},
+  ]);
 }
 
 export function createV9TextLayoutContext(cfg, hooks = {}) {
@@ -139,7 +152,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     },
     measure(part) {
       if (disposed) throw new Error('Disposed V9 measurement context');
-      const key = JSON.stringify([part.text, part.runs, part.refs, part.style]);
+      const key = v9MeasurementCacheKey(part);
       const found = cache.get(key); if (found) return found;
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';

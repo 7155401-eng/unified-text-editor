@@ -65,26 +65,78 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
  await test('edge bidi controls remain active around neutral punctuation instead of display-none',()=>{
     const host=document.createElement('span');
     appendV9PlannedPart(host,{
-      leadingText:' \u200f ',
+      leadingText:' \u200f\u061c ',
       text:"('אב",
       trailingText:' \u200e ',
       runs:[],refs:[],style:{}
     });
 
-    assert(host.textContent===" \u200f ('אב \u200e ",
+    assert(host.textContent===" \u200f\u061c ('אב \u200e ",
       `source order changed: ${JSON.stringify(host.textContent)}`);
 
     const hidden=[...host.querySelectorAll('.v9-source-whitespace')]
       .map(el=>el.textContent||'').join('');
-    assert(!hidden.includes('\u200e')&&!hidden.includes('\u200f'),
-      'LRM/RLM were still hidden from the BiDi algorithm');
+    assert(!hidden.includes('\u200e')&&!hidden.includes('\u200f')&&!hidden.includes('\u061c'),
+      'LRM/RLM/ALM were still hidden from the BiDi algorithm');
 
     const activeText=[...host.childNodes]
       .filter(n=>n.nodeType===Node.TEXT_NODE)
       .map(n=>n.nodeValue||'').join('');
-    assert(activeText.includes('\u200f')&&activeText.includes('\u200e'),
+    assert(activeText.includes('\u200f')&&activeText.includes('\u200e')&&activeText.includes('\u061c'),
       'direction controls are not active text nodes');
     host.remove();
+  });
+
+  await test('V9 split DOM matches native Chromium BiDi placement for apostrophe + parentheses',()=>{
+    const samples=[
+      {leading:'\u200f',text:"('אב",trailing:'\u200e'},
+      {leading:'\u200f',text:"אב')",trailing:'\u200e'},
+      {leading:'\u061c\u200f',text:"('אב'",trailing:'\u200e'},
+    ];
+
+    const rectsForVisibleChars=(el)=>{
+      const rootRect=el.getBoundingClientRect();
+      const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
+      const out=[];
+      let node;
+      while((node=walker.nextNode())){
+        if(node.parentElement?.classList?.contains('v9-source-whitespace'))continue;
+        const value=node.nodeValue||'';
+        for(let i=0;i<value.length;i++){
+          const ch=value[i];
+          if(['\u061c','\u200e','\u200f','\u2060'].includes(ch))continue;
+          const range=document.createRange();
+          range.setStart(node,i);range.setEnd(node,i+1);
+          const r=range.getBoundingClientRect();
+          out.push({ch,left:r.left-rootRect.left,right:r.right-rootRect.left,width:r.width});
+        }
+      }
+      return out;
+    };
+
+    for(const sample of samples){
+      const built=document.createElement('span');
+      const native=document.createElement('span');
+      for(const el of [built,native]){
+        el.style.cssText='position:absolute;top:0;display:inline-block;white-space:pre;direction:rtl;font:24px serif;';
+      }
+      built.style.left='0px';native.style.left='300px';
+      appendV9PlannedPart(built,{...sample,runs:[],refs:[],style:{}});
+      native.textContent=sample.leading+sample.text+sample.trailing;
+      document.body.append(built,native);
+      try{
+        const actual=rectsForVisibleChars(built),expected=rectsForVisibleChars(native);
+        assert(actual.map(x=>x.ch).join('')===expected.map(x=>x.ch).join(''),
+          `logical punctuation changed for ${JSON.stringify(sample)}`);
+        assert(actual.length===expected.length,`character count differs for ${JSON.stringify(sample)}`);
+        for(let i=0;i<actual.length;i++){
+          assert(Math.abs(actual[i].left-expected[i].left)<.75,
+            `BiDi left differs for ${JSON.stringify(sample)} char ${actual[i].ch}: ${actual[i].left} vs ${expected[i].left}`);
+          assert(Math.abs(actual[i].right-expected[i].right)<.75,
+            `BiDi right differs for ${JSON.stringify(sample)} char ${actual[i].ch}: ${actual[i].right} vs ${expected[i].right}`);
+        }
+      }finally{built.remove();native.remove();}
+    }
   });
 
   await test('V9 paints page numbers during page construction without a post-render event',async()=>{

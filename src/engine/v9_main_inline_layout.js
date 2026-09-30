@@ -1,6 +1,7 @@
 import { sliceRuns } from './runs_dom.js';
 import { sourceMetadata, referenceInV9Range } from './v9_source_fragments.js';
 import { openingWordSkipReason } from '../opening_word.js';
+import { isV9StandaloneDirectionControlOnly, splitV9EdgeGlue } from './v9_bidi_controls.js';
 
 export const V9_INLINE_PLAN_VERSION = 'v9-inline-1';
 const EPS = 1 / 64;
@@ -9,16 +10,25 @@ const refAnchor = r => Number(r.anchor ?? r.absoluteAnchor ?? r.localAnchor);
 
 export function partForRange(entry, start, visibleEnd, consumedEnd = visibleEnd, style = entry.typography) {
   const raw = entry.text.slice(start, visibleEnd);
-  const leading = (raw.match(/^[ \t\u200e\u200f\u2060]+/u) || [''])[0].length;
+  const edge = splitV9EdgeGlue(raw);
   // Direction controls alone are not words. Edge glue is retained for source
   // accounting but cannot take part in visual line justification.
-  const visible = raw.slice(leading).replace(/[ \t\u200e\u200f\u2060]+$/u, '');
-  const text = visible;
-  const actualEnd = start + leading + visible.length;
+  const text = edge.visible;
+  const actualEnd = start + edge.visibleEnd;
   const refs = (entry.mainRefs || []).filter(r => {
     return referenceInV9Range(r, start, consumedEnd, entry.text.length);
-  }).sort((a, b) => refAnchor(a) - refAnchor(b)).map(r => ({ ...r, localPos: Math.max(0, Math.min(text.length, refAnchor(r) - start - leading)) }));
-  return { text, leadingText: raw.slice(0, leading), trailingText: entry.text.slice(actualEnd, consumedEnd), runs: sliceRuns(entry.runs || [], start + leading, actualEnd), refs, style };
+  }).sort((a, b) => refAnchor(a) - refAnchor(b)).map(r => ({
+    ...r,
+    localPos: Math.max(0, Math.min(text.length, refAnchor(r) - start - edge.leadingLength)),
+  }));
+  return {
+    text,
+    leadingText: edge.leadingText,
+    trailingText: entry.text.slice(actualEnd, consumedEnd),
+    runs: sliceRuns(entry.runs || [], start + edge.leadingLength, actualEnd),
+    refs,
+    style,
+  };
 }
 
 // Intersect the actual allocated intervals crossed by an entire row. In
@@ -80,7 +90,9 @@ function availableBeside(g, y, height, opening) {
 }
 
 function tokensOf(text) {
-  return [...text.matchAll(/\r\n|[\r\n]|[^\s]+/gu)].filter(m => !/^[\u200e\u200f\u2060]+$/u.test(m[0])).map(m => ({
+  return [...text.matchAll(/\r\n|[\r\n]|[^\s]+/gu)]
+    .filter(m => !isV9StandaloneDirectionControlOnly(m[0]))
+    .map(m => ({
     text: m[0], start: m.index, end: m.index + m[0].length,
     type: /[\r\n]/.test(m[0]) ? 'break' : 'word',
   }));
