@@ -153,6 +153,24 @@ export function renderAsPlain(result, acceptAll = true) {
   return parts.join("");
 }
 
+function nikudEventKey(explicit = "") {
+  if (explicit) return String(explicit);
+  try { return crypto.randomUUID(); }
+  catch (_) { return `nikud-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+}
+
+async function parseNikudMergerResponse(response) {
+  let data = null;
+  try { data = await response.json(); } catch (_) {}
+  if (!response.ok) {
+    const err = new Error(data?.message || `Nikud merger failed: HTTP ${response.status}`);
+    err.code = data?.error || (response.status === 429 ? "quota_exceeded" : "nikud_merge_failed");
+    err.quota = data?.quota || null;
+    throw err;
+  }
+  return data || {};
+}
+
 export async function merge(clean, vocalizedText, opts = {}) {
   const response = await fetch("/api/nikud-merger", {
     method: "POST",
@@ -163,10 +181,10 @@ export async function merge(clean, vocalizedText, opts = {}) {
       sources: [["Source 1", vocalizedText]],
       mode: opts.mode || "word",
       filter_config: opts.config && opts.config.toDict ? opts.config.toDict() : opts.config,
+      event_key: nikudEventKey(opts.eventKey),
     }),
   });
-  if (!response.ok) throw new Error(`Nikud merger failed: HTTP ${response.status}`);
-  const data = await response.json();
+  const data = await parseNikudMergerResponse(response);
   return data.result;
 }
 
@@ -180,10 +198,10 @@ export async function mergeAllSources(clean, sources, opts = {}) {
       sources,
       mode: opts.mode || "word",
       filter_config: opts.config && opts.config.toDict ? opts.config.toDict() : opts.config,
+      event_key: nikudEventKey(opts.eventKey),
     }),
   });
-  if (!response.ok) throw new Error(`Nikud merger failed: HTTP ${response.status}`);
-  const data = await response.json();
+  const data = await parseNikudMergerResponse(response);
   return data.result;
 }
 
