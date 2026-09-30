@@ -6220,7 +6220,10 @@ function stripStreamMarkers(text) {
   return text
     .replace(/\{@\d+[^}]*\}/g, '')
     .replace(/@\d+/g, '')
-    .replace(/[\t ]+/g, ' ')
+    // Word reference runs may carry NBSP/thin/narrow spaces. Once the label
+    // itself is gone these are not a reserved number slot; collapse them just
+    // like ordinary spaces, without touching real line breaks.
+    .replace(/[ \t\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+/gu, ' ')
     .replace(/ *\n */g, '\n')
     .trim();
 }
