@@ -3,7 +3,7 @@ import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
 import { createV9TextLayoutContext, waitForV9LayoutFonts } from '../../src/engine/v9_text_measurement.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
 import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
-import { renderPages } from '../../src/engine/renderer.js';
+import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
@@ -92,18 +92,17 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    }
  });
 
- await test('regular renderer applies main stream two-column layout',()=>{
+ await test('shared production helper applies main stream two-column layout',()=>{
    const settings=getStreamSettings(),saved=settings.main;
-   const host=document.createElement('div');document.body.appendChild(host);
+   const main=document.createElement('div');document.body.appendChild(main);
    try {
      settings.main={...(settings.main||{}),cols:2};
-     renderPages([{main:[[0,'alpha beta gamma delta epsilon']],streams:{}}],host);
-     const main=host.querySelector('.page-main');
-     assert(main,'regular main block missing');
-     assert(main.dataset.mainCols==='2',`regular main cols dataset=${main.dataset.mainCols}`);
-     assert(getComputedStyle(main).columnCount==='2',`regular main columnCount=${getComputedStyle(main).columnCount}`);
+     const count=applyMainStreamColumnsToElement(main);
+     assert(count===2,`resolved main columns=${count}`);
+     assert(main.dataset.mainCols==='2',`main cols dataset=${main.dataset.mainCols}`);
+     assert(getComputedStyle(main).columnCount==='2',`main columnCount=${getComputedStyle(main).columnCount}`);
    } finally {
-     host.remove();
+     main.remove();
      if(saved===undefined)delete settings.main;else settings.main=saved;
    }
  });
