@@ -4,22 +4,23 @@
 const ENDPOINT = '/api/render/preflight';
 
 // Backward-compatibility shim for older cached V9 render code.
-// The current V9 path applies the real spacing through applyV9MainBottomGap.
-// Older bundles may still call applyV9VisualSafetyGap from global scope; keep
-// that call from crashing while the modern gap pass remains authoritative.
+//
+// IMPORTANT: modern V9 has one geometry authority (the planner). A cached old
+// bundle may still call a global applyV9VisualSafetyGap(), but the compatibility
+// surface must NEVER forward that call into any post-layout gap/opening/stretch
+// engine. It is deliberately diagnostic-only.
 function installLegacyV9VisualSafetyGapShim() {
   try {
     const root = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : null);
     if (!root || typeof root.applyV9VisualSafetyGap === 'function') return;
 
-    root.applyV9VisualSafetyGap = function applyV9VisualSafetyGap(container, options = {}) {
-      if (typeof root.applyV9MainBottomGap === 'function') {
-        return root.applyV9MainBottomGap(container, options);
-      }
+    root.applyV9VisualSafetyGap = function applyV9VisualSafetyGap(container) {
       try {
         const target = container && container.querySelectorAll ? container : document;
         for (const pageEl of Array.from(target.querySelectorAll?.('.page.v9-page, .v9-page') || [])) {
-          if (pageEl?.dataset) pageEl.dataset.v9VisualSafetyGapShim = '1';
+          if (pageEl?.dataset) {
+            pageEl.dataset.v9VisualSafetyGapShim = 'legacy-call-suppressed';
+          }
         }
       } catch (_) {
         // Compatibility only: never let a legacy visual-safety call break render.
