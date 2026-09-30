@@ -447,11 +447,11 @@ export function scheduleSettingsSync() {
 export function attachAutoSync(paneManager) {
   if (!isLoggedIn() || !paneManager) return;
 
-  // Document sync follows source changes, not rendering. Live rendering is
-  // optional and disabled by default, so tying persistence to engine-rendered
-  // can silently disable autosave during ordinary editing.
+  // Document sync follows PaneManager's semantic persistence signal, not
+  // rendering. This covers text edits, structural changes and pane metadata
+  // changes even when live rendering is disabled (the default).
   if (typeof paneManager.on === 'function') {
-    paneManager.on('change', () => scheduleDocumentSync(paneManager));
+    paneManager.on('persist', () => scheduleDocumentSync(paneManager));
   } else if (typeof window !== 'undefined') {
     // Compatibility fallback for an older manager implementation only.
     window.addEventListener('ravtext:engine-rendered', () => {
