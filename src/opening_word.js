@@ -14,6 +14,12 @@ const DEFAULTS = {
   scope: "all",
   skipHeadings: true,
   headingMin: 80,
+  // B5 — optional eligibility rules. Defaults preserve existing documents.
+  skipShortLine: false,
+  shortLineMinFill: 0.65,
+  skipSingleLine: false,
+  skipFewerThanLines: false,
+  minLines: 3,
 };
 
 const STREAM_DEFAULTS = {
@@ -118,7 +124,42 @@ function normalizeSettings(raw = {}) {
     scope: normalizeScope(raw.scope),
     skipHeadings: raw.skipHeadings !== false,
     headingMin: clampNumber(raw.headingMin, DEFAULTS.headingMin, 0, 500),
+    skipShortLine: !!raw.skipShortLine,
+    shortLineMinFill: clampNumber(raw.shortLineMinFill, DEFAULTS.shortLineMinFill, 0.1, 1),
+    skipSingleLine: !!raw.skipSingleLine,
+    skipFewerThanLines: !!raw.skipFewerThanLines,
+    minLines: Math.round(clampNumber(raw.minLines, DEFAULTS.minLines, 2, 12)),
   };
+}
+
+export function getOpeningWordSkipPolicy(raw = {}) {
+  const settings = normalizeSettings(raw);
+  return {
+    skipShortLine: settings.skipShortLine,
+    shortLineMinFill: settings.shortLineMinFill,
+    skipSingleLine: settings.skipSingleLine,
+    skipFewerThanLines: settings.skipFewerThanLines,
+    minLines: settings.minLines,
+  };
+}
+
+// Layout facts are measured before applying an opening word.
+// If complete is false, line-count rules must not mistake a long paragraph
+// for a short one merely because the current page ended.
+export function openingWordSkipReason(raw = {}, layout = {}) {
+  const policy = getOpeningWordSkipPolicy(raw);
+  const lineCount = Math.max(0, Math.floor(Number(layout.lineCount) || 0));
+  const complete = layout.complete !== false;
+  const fill = Number(layout.firstLineFill);
+
+  if (policy.skipSingleLine && complete && lineCount === 1) return "single-line";
+  if (policy.skipFewerThanLines && complete && lineCount > 0 && lineCount < policy.minLines) {
+    return "fewer-than-lines";
+  }
+  if (policy.skipShortLine && Number.isFinite(fill) && fill < policy.shortLineMinFill) {
+    return "short-line";
+  }
+  return "";
 }
 
 export function normalizeStreamOpeningWordSettings(raw = {}) {
@@ -210,6 +251,11 @@ export function wireOpeningWordControls(onChange) {
     scope: getValue("opw-scope"),
     skipHeadings: getValue("opw-skip-headings"),
     headingMin: getValue("opw-heading-min"),
+    skipShortLine: getValue("opw-skip-short-line"),
+    shortLineMinFill: getValue("opw-short-line-min-fill"),
+    skipSingleLine: getValue("opw-skip-single-line"),
+    skipFewerThanLines: getValue("opw-skip-fewer-lines"),
+    minLines: getValue("opw-min-lines"),
   };
 
   const initial = getOpeningWordSettings();
@@ -226,6 +272,11 @@ export function wireOpeningWordControls(onChange) {
   setControlValue(controls.scope, initial.scope);
   setControlValue(controls.skipHeadings, initial.skipHeadings);
   setControlValue(controls.headingMin, initial.headingMin);
+  setControlValue(controls.skipShortLine, initial.skipShortLine);
+  setControlValue(controls.shortLineMinFill, Math.round(initial.shortLineMinFill * 100));
+  setControlValue(controls.skipSingleLine, initial.skipSingleLine);
+  setControlValue(controls.skipFewerThanLines, initial.skipFewerThanLines);
+  setControlValue(controls.minLines, initial.minLines);
 
   const commit = () => {
     saveOpeningWordSettings({
@@ -242,6 +293,17 @@ export function wireOpeningWordControls(onChange) {
       scope: readControlValue(controls.scope, initial.scope),
       skipHeadings: readControlValue(controls.skipHeadings, initial.skipHeadings),
       headingMin: readControlValue(controls.headingMin, initial.headingMin),
+      skipShortLine: readControlValue(controls.skipShortLine, initial.skipShortLine),
+      shortLineMinFill: clampNumber(
+        Number(readControlValue(controls.shortLineMinFill, Math.round(initial.shortLineMinFill * 100))) / 100,
+        initial.shortLineMinFill, 0.1, 1
+      ),
+      skipSingleLine: readControlValue(controls.skipSingleLine, initial.skipSingleLine),
+      skipFewerThanLines: readControlValue(controls.skipFewerThanLines, initial.skipFewerThanLines),
+      minLines: Math.round(clampNumber(
+        readControlValue(controls.minLines, initial.minLines),
+        initial.minLines, 2, 12
+      )),
     });
     onChange && onChange();
   };
@@ -525,6 +587,44 @@ function firstVisualLineWidth(el) {
   }
 }
 
+function openingElementLayoutFacts(el, text) {
+  if (!el || typeof getComputedStyle !== "function") {
+    return { lineCount: 0, complete: true, firstLineFill: NaN };
+  }
+  const cs = getComputedStyle(el);
+  const hostRect = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : null;
+  const hostWidth = (hostRect && hostRect.width) || numberOrZero(cs.width);
+  let rects = [];
+  if (typeof document !== "undefined" && typeof document.createRange === "function") {
+    const range = document.createRange();
+    try {
+      range.selectNodeContents(el);
+      rects = Array.from(range.getClientRects()).filter(rect => rect.width || rect.height);
+    } finally {
+      if (typeof range.detach === "function") range.detach();
+    }
+  }
+  const lines = [];
+  for (const rect of rects) {
+    let line = lines.find(item => Math.abs(item.top - rect.top) < 2);
+    if (!line) {
+      line = { top: rect.top, left: rect.left, right: rect.right };
+      lines.push(line);
+    } else {
+      line.left = Math.min(line.left, rect.left);
+      line.right = Math.max(line.right, rect.right);
+    }
+  }
+  lines.sort((a, b) => a.top - b.top);
+  const measuredFirst = lines.length ? Math.max(0, lines[0].right - lines[0].left) : 0;
+  const firstWidth = measuredFirst || firstVisualLineWidth(el) || measureSingleLineTextWidth(text, el, cs);
+  return {
+    lineCount: lines.length || (firstWidth > 0 ? 1 : 0),
+    complete: true,
+    firstLineFill: hostWidth > 0 && firstWidth > 0 ? Math.min(1, firstWidth / hostWidth) : NaN,
+  };
+}
+
 function measureSingleLineTextWidth(text, refEl, cs) {
   if (typeof document === "undefined" || !document.body || typeof getComputedStyle !== "function") return 0;
   const style = cs || getComputedStyle(refEl);
@@ -627,6 +727,11 @@ function applyToTextElement(el, settings, options = {}) {
   if (options.skipHeadingElements && isHeadingElement(el)) return false;
   const text = el.textContent || "";
   if (!text.trim()) return false;
+  const policyReason = openingWordSkipReason(settings, openingElementLayoutFacts(el, text));
+  if (policyReason) {
+    el.dataset.opwSkippedReason = policyReason;
+    return false;
+  }
   const prefixMatch = options.skipDisplayNumber ? text.match(/^\s*\[\d+\]\s*/) : null;
   const displayPrefix = prefixMatch ? prefixMatch[0] : "";
   const coreText = displayPrefix ? text.slice(displayPrefix.length) : text;

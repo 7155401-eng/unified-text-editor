@@ -1357,6 +1357,39 @@
               value="80"
             />
           </label>
+          <label class="toolbar-checkbox" title="אם השורה הראשונה ממלאת פחות מהאחוז שנבחר — לא תופעל בה מילת פתיח">
+            <input type="checkbox" id="opw-skip-short-line" />
+            <span>דלג על שורה קצרה</span>
+          </label>
+          <label class="opw-control">
+            <span>מילוי מינ׳ %:</span>
+            <input
+              type="number"
+              id="opw-short-line-min-fill"
+              min="10"
+              max="100"
+              step="5"
+              value="65"
+            />
+          </label>
+          <label class="toolbar-checkbox">
+            <input type="checkbox" id="opw-skip-single-line" />
+            <span>דלג על פסקה של שורה אחת</span>
+          </label>
+          <label class="toolbar-checkbox">
+            <input type="checkbox" id="opw-skip-fewer-lines" />
+            <span>דלג בפחות ממספר שורות</span>
+          </label>
+          <label class="opw-control">
+            <span>מינ׳ שורות:</span>
+            <input
+              type="number"
+              id="opw-min-lines"
+              min="2"
+              max="12"
+              value="3"
+            />
+          </label>
           <!-- משה, מטלה 19 („הסרת כפילויות"): המתג הזה נשא בדיוק את
                אותו מזהה כמו המתג „גפ"ת: צורת הדף" שלמעלה. מזהה חייב
                להיות יחיד בדף, ולכן הדפדפן החזיר תמיד את הראשון —
