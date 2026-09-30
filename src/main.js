@@ -91,7 +91,6 @@ import { wireFootnoteTrackChangesTool } from "./docx_tools/footnote_track_change
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
-import { openStylesIODialog } from "./styles_io.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 try {
@@ -2015,7 +2014,23 @@ document.addEventListener("click", async (ev) => {
       break;
     }
     case "styles-io": {
-      openStylesIODialog();
+      const btnEl = btn;
+      try {
+        if (btnEl) {
+          btnEl.disabled = true;
+          btnEl.setAttribute("aria-busy", "true");
+        }
+        const { openStylesIODialog } = await import("./styles_io.js");
+        openStylesIODialog();
+      } catch (err) {
+        console.error("[styles-io] lazy load failed", err);
+        showToast("לא ניתן לפתוח כרגע את כלי הייצוא / ייבוא.");
+      } finally {
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.removeAttribute("aria-busy");
+        }
+      }
       break;
     }
 
