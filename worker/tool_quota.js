@@ -39,7 +39,7 @@ function rollingCountPolicy(toolName) {
   const policy = getToolPolicy(toolName);
   if (
     !policy ||
-    policy.migrationState !== "success-metered-ready" ||
+    !["success-metered-ready", "action-metered-ready"].includes(policy.migrationState) ||
     policy.freeMode !== "count" ||
     !(safeInt(policy.limit) > 0) ||
     !(safeInt(policy.windowSeconds) > 0)
@@ -73,9 +73,9 @@ async function currentCountState(user, toolName, policy, env, nowSec) {
     FROM tool_quota_events
     WHERE user_id = ?
       AND tool_name = ?
-      AND event_kind = 'success'
+      AND event_kind = ?
       AND created_at >= ?
-  `).bind(user.id, toolName, cutoff).first();
+  `).bind(user.id, toolName, policy.eventKind || "success", cutoff).first();
 
   const used = Math.max(0, safeInt(row?.used_units));
   const limit = Math.max(1, safeInt(policy.limit, 1));
@@ -119,7 +119,7 @@ async function findIdempotentEvent(user, toolName, env, idempotencyKey) {
   `).bind(user.id, toolName, idempotencyKey).first();
 }
 
-export async function consumeSuccessfulToolUse(user, toolName, env, options = {}) {
+export async function consumeToolUse(user, toolName, env, options = {}) {
   if (!user) return { ok: false, reason: "login" };
   if (user.paid || user.is_admin) {
     return { ok: true, unlimited: true, idempotent: false };
@@ -148,6 +148,7 @@ export async function consumeSuccessfulToolUse(user, toolName, env, options = {}
 
   const cutoff = rollingWindowCutoff(nowSec, policy.windowSeconds);
   const limit = Math.max(1, safeInt(policy.limit, 1));
+  const eventKind = String(policy.eventKind || "success");
 
   // One statement does the quota check and the write. D1/SQLite serializes the
   // write transaction, so two simultaneous first-use requests cannot both
@@ -155,18 +156,18 @@ export async function consumeSuccessfulToolUse(user, toolName, env, options = {}
   const inserted = await env.DB.prepare(`
     INSERT OR IGNORE INTO tool_quota_events
       (user_id, tool_name, event_kind, units, idempotency_key, created_at)
-    SELECT ?, ?, 'success', ?, ?, ?
+    SELECT ?, ?, ?, ?, ?, ?
     WHERE (
       SELECT COALESCE(SUM(units), 0)
       FROM tool_quota_events
       WHERE user_id = ?
         AND tool_name = ?
-        AND event_kind = 'success'
+        AND event_kind = ?
         AND created_at >= ?
     ) + ? <= ?
   `).bind(
-    user.id, toolName, units, idempotencyKey, nowSec,
-    user.id, toolName, cutoff,
+    user.id, toolName, eventKind, units, idempotencyKey, nowSec,
+    user.id, toolName, eventKind, cutoff,
     units, limit
   ).run();
 
@@ -194,4 +195,13 @@ export async function consumeSuccessfulToolUse(user, toolName, env, options = {}
   }
 
   return currentCountState(user, toolName, policy, env, nowSec);
+}
+
+
+export async function consumeSuccessfulToolUse(user, toolName, env, options = {}) {
+  const policy = getToolPolicy(toolName);
+  if (policy?.eventKind && policy.eventKind !== "success") {
+    return { ok: false, reason: "wrong_event_kind" };
+  }
+  return consumeToolUse(user, toolName, env, options);
 }
