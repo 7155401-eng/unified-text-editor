@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { transformFootnotesToCurlyCore } from "./docx_footnotes_to_curly.js";
 import { transformSplitFootnotesByTagCore } from "./docx_split_footnotes_by_tag.js";
+import { transformFootnoteTrackedChangesCore } from "./docx_footnote_track_changes.js";
 
 const SERVICE = "ravtext-cloudflare-docx-advanced-worker";
 const VERSION = "2026-05-26-server-extract";
@@ -25,7 +26,7 @@ function corsHeaders(id = "") {
   const headers = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-file-name, x-docx-request-id, x-footnote-split-tags",
+    "access-control-allow-headers": "content-type, x-file-name, x-docx-request-id, x-footnote-split-tags, x-footnote-track-action",
     "access-control-expose-headers": "x-docx-api, x-docx-version, x-docx-request-id, x-docx-filename, x-docx-report",
     "access-control-max-age": "86400",
     "x-docx-api": SERVICE,
@@ -520,6 +521,10 @@ function isDocxSplitFootnotesByTagPath(path) {
   return path === "/api/word-split-footnotes-by-tag";
 }
 
+function isDocxFootnoteTrackChangesPath(path) {
+  return path === "/api/word-footnote-track-changes";
+}
+
 function isClientLogPath(path) {
   return path === "/api/client-log";
 }
@@ -664,6 +669,38 @@ async function handleDocxApi(request, env, ctx) {
       });
     }
 
+    if (isDocxFootnoteTrackChangesPath(url.pathname)) {
+      let sourceName = request.headers.get("x-file-name") || "document.docx";
+      try { sourceName = decodeURIComponent(sourceName); } catch (_) {}
+
+      const action = request.headers.get("x-footnote-track-action") || "";
+      const transformed = await transformFootnoteTrackedChangesCore(arrayBuffer, {
+        filename: sourceName,
+        action,
+      });
+      const report = transformed.report || {};
+
+      dbLog(env, ctx, "info", "docx_footnote_track_changes_success", {
+        requestId: id,
+        action: report.action || action,
+        contentRevisionsFound: report.contentRevisionsFound || 0,
+        propertyChangesFound: report.propertyChangesFound || 0,
+        bodyRevisionNodesUntouched: report.bodyRevisionNodesUntouched || 0,
+      });
+
+      return new Response(transformed.bytes, {
+        status: 200,
+        headers: {
+          ...corsHeaders(id),
+          "cache-control": "no-store",
+          "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(transformed.filename)}`,
+          "x-docx-filename": encodeURIComponent(transformed.filename),
+          "x-docx-report": encodeURIComponent(JSON.stringify(report)),
+        },
+      });
+    }
+
     if (isDocxExtractPath(url.pathname)) {
       const level = url.searchParams.get("level");
       const index = url.searchParams.get("index");
@@ -709,7 +746,7 @@ export default {
       return handleStreamsScan(request, env, ctx);
     }
 
-    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname) || isDocxFootnotesToCurlyPath(url.pathname) || isDocxSplitFootnotesByTagPath(url.pathname)) {
+    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname) || isDocxFootnotesToCurlyPath(url.pathname) || isDocxSplitFootnotesByTagPath(url.pathname) || isDocxFootnoteTrackChangesPath(url.pathname)) {
       return handleDocxApi(request, env, ctx);
     }
 
@@ -721,4 +758,4 @@ export default {
   },
 };
 
-export { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };
+export { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, isDocxFootnoteTrackChangesPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };
