@@ -89,18 +89,18 @@ export function installPageNumberPreRenderDecorator() {
   registry.push(decoratePageNumberBeforeRender);
 }
 
-function applyPageNumbers() {
-  pageElements().forEach((page, i) => decoratePageNumberBeforeRender(page, i));
+function applyPageNumbers(pages = pageElements()) {
+  pages.forEach((page, i) => decoratePageNumberBeforeRender(page, i));
 }
 
 // Register as soon as the module loads: the first engine render can start before
 // the delayed UI wiring runs, and page numbering must already participate in it.
 if (typeof window !== "undefined") installPageNumberPreRenderDecorator();
 
-function applyHeaderFooter() {
+function applyHeaderFooter(pages = pageElements()) {
   const headerText = localStorage.getItem(HEADER_KEY) || "";
   const footerText = localStorage.getItem(FOOTER_KEY) || "";
-  pageElements().forEach((page) => {
+  pages.forEach((page) => {
     let header = page.querySelector(".ravtext-page-header");
     let footer = page.querySelector(".ravtext-page-footer");
     if (headerText) {
@@ -126,10 +126,10 @@ function applyHeaderFooter() {
   });
 }
 
-function applyWatermark() {
+function applyWatermark(pages = pageElements()) {
   const text = localStorage.getItem(WATERMARK_KEY) || "";
   const opacity = parseFloat(localStorage.getItem(WATERMARK_OPACITY_KEY) || "0.12");
-  pageElements().forEach((page) => {
+  pages.forEach((page) => {
     let mark = page.querySelector(".ravtext-watermark");
     if (!text) {
       mark?.remove();
@@ -246,9 +246,12 @@ function rerender() {
 }
 
 function applyAll() {
-  applyPageNumbers();
-  applyHeaderFooter();
-  applyWatermark();
+  // One DOM snapshot per pass. Each feature used to run its own global
+  // querySelectorAll(), tripling full-page traversal on every refresh.
+  const pages = pageElements();
+  applyPageNumbers(pages);
+  applyHeaderFooter(pages);
+  applyWatermark(pages);
 }
 
 // ★ משה 28/09/2026 — "אין מספרי עמודים כלל", וגם (דחיפות 1): "כשאני
@@ -268,10 +271,9 @@ let _featuresEngineHookInstalled = false;
 
 function installEngineRenderedHook() {
   if (_featuresEngineHookInstalled || typeof window === "undefined") return;
-  window.addEventListener("ravtext:engine-rendered", () => {
-    // אחרי שה-DOM התעדכן (engine סיים)
-    requestAnimationFrame(() => applyAll());
-  });
+  // The authoritative engine-rendered listener lives in wireDocumentFeatures().
+  // This helper only installs the gradual-page MutationObserver fallback.
+  // Keeping a second listener here used to repaint all pages twice per render.
 
   // ★ נמדד: שמונה שניות אחרי הטעינה כבר היו **24 עמודים** על המסך
   // ו-**אפס** תוויות; רק אחרי כ-18 שניות הן הופיעו. כלומר העמודים
