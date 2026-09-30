@@ -295,9 +295,11 @@ function showStaleServerNotice(stale) {
     return;
   }
   const size = `${Math.round((stale.chars || 0) / 1000)} אלף תווים`;
-  const msg = stale.status === 'pagehide-pending'
-    ? 'נטען העותק המקומי החדש. לא התקבל אישור שהשמירה לשרת הושלמה לפני סגירת הדף, ולכן הגרסה שבשרת לא דרסה אותו.'
-    : stale.status === 413
+  const msg = stale.status === 'local-ahead'
+    ? 'נטען העותק המקומי החדש. הוא נשמר בדפדפן לפני שהשרת אישר את אותה גרסה, ולכן העותק הישן שבשרת לא דרס אותו.'
+    : stale.status === 'pagehide-pending'
+      ? 'נטען העותק המקומי החדש. לא התקבל אישור שהשמירה לשרת הושלמה לפני סגירת הדף, ולכן הגרסה שבשרת לא דרסה אותו.'
+      : stale.status === 413
       ? `נטען העותק שלך מהמחשב. בשרת יושבת גרסה ישנה יותר, כי המסמך ` +
         `(${size}) גדול מכדי להישמר שם — לכן הוא לא נדרס.`
       : `נטען העותק שלך מהמחשב. השמירה האחרונה לשרת נכשלה ` +
@@ -345,7 +347,10 @@ async function saveDocumentNow(paneManager) {
       ? paneManager.serializeForPersistence()
       : paneManager.serialize();
     const sig = JSON.stringify(content);
-    if (sig === _lastDocSig) return;
+    if (sig === _lastDocSig) {
+      clearServerStaleIfConfirmed(sig);
+      return;
+    }
     const res = await fetch('/api/documents/current', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -455,6 +460,23 @@ export function attachAutoSync(paneManager) {
   } else if (typeof window !== 'undefined') {
     // Compatibility fallback for an older manager implementation only.
     window.addEventListener('ravtext:engine-rendered', () => {
+      scheduleDocumentSync(paneManager);
+    });
+  }
+
+  // Every successful browser-local snapshot becomes the recovery authority
+  // until the same signature is confirmed by the server. This closes the hard
+  // crash window between localStorage (350ms) and the debounced network save.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('ravtext:local-document-saved', (ev) => {
+      try {
+        const localSig = localStorage.getItem(DOC_KEY);
+        if (localSig && localSig !== _lastDocSig) {
+          markServerStale('local-ahead', ev?.detail?.chars || localSig.length);
+        } else if (localSig && localSig === _lastDocSig) {
+          clearServerStaleIfConfirmed(localSig);
+        }
+      } catch {}
       scheduleDocumentSync(paneManager);
     });
   }
