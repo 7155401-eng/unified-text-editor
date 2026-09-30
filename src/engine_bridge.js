@@ -770,7 +770,7 @@ export function paneManagerToPackerContent(paneManager) {
   const mainParagraphs = extractMainParagraphs(mainPane, paneManager);
   const streamNotes = {};
   const streamNotesRuns = {};
-  const breakSettings = loadSpacingSettings(); // משה 2026-05-13: runs לכל הערה — לעיצוב אינליין
+  const breakSettings = loadSpacingSettings();
   // Build a shared symbol → code map so expandNestedInNote can detect
   // markers embedded in note bodies without re-scanning paneManager each call.
   const paneSymbols = [];
@@ -785,15 +785,12 @@ export function paneManagerToPackerContent(paneManager) {
   }
   for (const p of paneManager.panes) {
     if (!p.streamCode) continue;
-    const withRuns = extractStreamNotesWithRuns(p);
+    const withRuns = extractStreamNotesWithRuns(p, breakSettings, paneSymbols);
     const titled = applyFirstNoteAsTitle(p.streamCode, withRuns.notes);
     streamNotes[p.streamCode] = titled;
     // אם applyFirstNoteAsTitle הסיר את ההערה הראשונה, גם נסיר את ה-runs המתאימים
     const skipped = withRuns.notes.length - titled.length;
     streamNotesRuns[p.streamCode] = withRuns.runsPerNote.slice(skipped);
-    const sym = p.symbol || `@${p.streamCode}`;
-    paneSymbols.push(sym);
-    paneSymToCode[sym] = p.streamCode;
   }
 
   // === Phase A — for each paragraph, walk main-body markers and record
