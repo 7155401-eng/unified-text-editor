@@ -89,6 +89,12 @@ test('layout engines consume central spacing snapshots and do not parse spacing 
   assert.match(v9Apply,/const storedSpacing = getStoredSpacingSettingsSnapshot\(\)/);
   assert.equal((v9Apply.match(/getStoredSpacingSettingsSnapshot\(\)/g)||[]).length,1,
     'V9 must snapshot persisted spacing only once per render path');
+  assert.match(v9Apply,/const effectiveSpacing = getSpacingSettingsSnapshot\(\)/,
+    'V9 did not read effective geometry spacing');
+  assert.match(v9Apply,/streamLineHeightRatio = safeV9LineHeightRatio\(effectiveSpacing\.streamLineHeight\)/,
+    'global stream line-height is still disconnected from V9 config');
+  assert.match(v9Apply,/streamLineHeightRatio,/,
+    'V9 config does not expose a dedicated stream pitch');
   assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidParagraphSoft", false\)/);
   assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidLineSplits", false\)/);
   assert.match(v9Apply,/readSpacingBool\(storedSpacing, "preventMidLineSplit", false\)/);
