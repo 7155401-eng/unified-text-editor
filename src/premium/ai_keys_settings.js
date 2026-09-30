@@ -7,6 +7,14 @@
 // מפתח ספק ברירת המחדל: `ravtext.ai.provider`
 
 const PROVIDERS = ["anthropic", "openai", "google", "mistral", "groq", "deepseek"];
+const PROVIDER_LABELS = Object.freeze({
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google",
+  mistral: "Mistral",
+  groq: "Groq",
+  deepseek: "DeepSeek",
+});
 const PROVIDER_KEY = "ravtext.ai.provider";
 const LEGACY_KEY = "ravtext.ai.apiKey";
 
@@ -41,6 +49,27 @@ export function getAiKeyFor(provider) {
   return localStorage.getItem(keyFor(provider)) || "";
 }
 
+function safeProviderToken(provider) {
+  return String(provider || "ai").replace(/[^a-z0-9_-]/gi, "-");
+}
+
+export function syncAiKeyToggleA11y(btn, input, provider) {
+  if (!btn || !input) return;
+  const providerName = PROVIDER_LABELS[provider] || String(provider || "AI");
+  if (!input.id) input.id = `settings-ai-key-${safeProviderToken(provider)}`;
+  const visible = input.type === "text";
+  const label = `${visible ? "הסתר" : "הצג"} מפתח API של ${providerName}`;
+  btn.setAttribute("aria-label", label);
+  btn.setAttribute("aria-controls", input.id);
+  btn.setAttribute("title", label);
+}
+
+export function toggleAiKeyVisibility(btn, input, provider) {
+  if (!input) return;
+  input.type = input.type === "password" ? "text" : "password";
+  syncAiKeyToggleA11y(btn, input, provider);
+}
+
 export function setupAiKeysSettings() {
   if (typeof document === "undefined") return;
   migrateLegacyKey();
@@ -69,15 +98,17 @@ export function setupAiKeysSettings() {
     input.addEventListener("blur", saveValue);
   });
 
-  // כפתורי הצג/הסתר
+  // כפתורי הצג/הסתר — accessible name reflects the action available
+  // right now, and aria-controls points at the exact key field.
   const toggles = document.querySelectorAll(".ai-key-toggle[data-toggle-for]");
   toggles.forEach((btn) => {
+    const provider = btn.getAttribute("data-toggle-for");
+    const input = document.querySelector(`.ai-key-input[data-provider="${provider}"]`);
+    if (!input) return;
+    syncAiKeyToggleA11y(btn, input, provider);
     btn.addEventListener("click", (ev) => {
       ev.preventDefault();
-      const provider = btn.getAttribute("data-toggle-for");
-      const input = document.querySelector(`.ai-key-input[data-provider="${provider}"]`);
-      if (!input) return;
-      input.type = input.type === "password" ? "text" : "password";
+      toggleAiKeyVisibility(btn, input, provider);
     });
   });
 }
