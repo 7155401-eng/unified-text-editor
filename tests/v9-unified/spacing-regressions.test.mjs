@@ -466,7 +466,10 @@ test('second and final opening-window row does not center its body as if the ope
  assert(last.isLast===true,'second row is not paragraph last row');
  assert(last.openingWindow===true,'last row no longer overlaps opening window');
  assert.equal(last.render.alignment,'right',
-   'last body was centered independently inside the leftover opening window');
+   'last body was centered independently inside the leftover opening window; '+JSON.stringify({
+     diagnostics:p.diagnostics,
+     lines:p.lines.map(l=>({y:l.y,x:l.x,width:l.width,natural:l.naturalWidth,text:l.render?.body?.text,align:l.render?.alignment,openingX:l.render?.opening?.x,openingWidth:l.render?.opening?.width,openingWindow:l.openingWindow,tail:l.tailRebalanced}))
+   }));
  const opening=host.render.opening;
  const visualLeft=last.x;
  const visualRight=opening.x+opening.width;
