@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
-import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow } from '../../src/engine/v9_split_policy.js';
+import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,isV9WhitespaceBreakBoundary,buildParagraphBreakCandidates } from '../../src/engine/v9_split_policy.js';
 import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
 import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
@@ -16,6 +16,25 @@ for(const raw of ['alpha@01beta gamma',' alpha  @01beta  gamma ','alpha@01@02bet
  assert.ok(!m.mainTextNet.includes('@'));
  for(const c of m.mainConsumers)assert.ok(c.anchor>=0&&c.anchor<=m.mainTextNet.length);
  assert.equal(input[0].start,at);
+});
+
+test('V9 page-break boundaries require real source whitespace',()=>{
+  const samples=[
+    ['abc[def] ghi',3,false],
+    ['abc]def ghi',4,false],
+    ['abc,def ghi',4,false],
+    ['abc def',3,true],
+    ['abc\ndef',3,true],
+    ['אבג״דה ו',3,false],
+  ];
+  for(const [text,offset,expected] of samples)
+    assert.equal(isV9WhitespaceBreakBoundary(text,offset),expected,`${JSON.stringify(text)} @ ${offset}`);
+
+  const metrics={spaceWidth:4,measureWord:w=>String(w).length*7};
+  const text='alpha[beta] gamma,delta epsilon';
+  const candidates=buildParagraphBreakCandidates(text,metrics,85,{minLineEdgeFill:.2,maxAdjustedLineEdgeFill:2,allowWordGapOnlyInEmergency:true},{emergency:true});
+  for(const cand of candidates)
+    assert.equal(isV9WhitespaceBreakBoundary(text,cand.offset),true,`illegal non-whitespace candidate: ${JSON.stringify(cand)}`);
 });
 
 test('source paragraph style becomes a semantic V9 run, separate from stream style',()=>{
