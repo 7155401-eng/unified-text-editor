@@ -335,6 +335,7 @@ function paneManagerContentSignature(paneManager) {
   // Changing which streams may nest inside which changes the packed content,
   // so it has to invalidate the cached result too.
   const streamLinksSig = streamLinksSignature();
+  const globalBreakSig = globalLineBreakSettingsSignature(loadSpacingSettings());
   const sigParts = paneManager.panes
     .map((p) => [
       p.id,
@@ -346,7 +347,7 @@ function paneManagerContentSignature(paneManager) {
       p.editor ? docKey(p.editor.state.doc) : "0",
     ].join(":"))
     .join("|");
-  return sigParts + "##" + nestedFlag + "##" + demoFlag + "##" + globalStreamOverridesSig + "##" + streamLinksSig;
+  return sigParts + "##" + nestedFlag + "##" + demoFlag + "##" + globalStreamOverridesSig + "##" + streamLinksSig + "##" + globalBreakSig;
 }
 
 function extractMainParagraphs(mainPane, paneManager) {
