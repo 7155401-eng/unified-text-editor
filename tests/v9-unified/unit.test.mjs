@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { canonicalMainText, prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from '../../src/engine/v9_source_fragments.js';
 import { layoutV9MainParagraphs, rowGeometry, partForRange } from '../../src/engine/v9_main_inline_layout.js';
 import { extractOpeningSegmentForTest } from '../../src/opening_word.js';
-import { splitMainTextAtOffset } from '../../src/engine/v9_split_policy.js';
+import { splitMainTextAtOffset, buildV9SplitPolicy, buildParagraphBreakCandidates } from '../../src/engine/v9_split_policy.js';
 
 const strips = [{ x: 0, width: 90, y_start: 0, y_end: 300 }];
 const makeEntry = (text, extras = {}) => ({ id: 'p1', index: 1, text, runs: [], mainRefs: [], typography: { fontSize: '10px' }, ...extras });
@@ -29,6 +29,18 @@ function checkGeometry(p) {
     }
   }
 }
+
+
+test('legacy audit: default page-split policy never falls back to an arbitrary word gap', () => {
+  const metrics = { spaceWidth: 1, measureWord: word => String(word).length };
+  const text = 'aaaa bbbb cccc dddd eeee ffff';
+  const policy = buildV9SplitPolicy({ preventMidLineSplit: true });
+  const normal = buildParagraphBreakCandidates(text, metrics, 10, policy, { source: 'legacy-audit' });
+  const emergency = buildParagraphBreakCandidates(text, metrics, 10, policy, { source: 'legacy-audit', emergency: true });
+  assert.ok(normal.length > 0, 'fixture produced no legal line-end candidates');
+  assert.ok(normal.every(c => c.kind !== 'word-gap'), 'normal split exposed an arbitrary word-gap candidate');
+  assert.ok(emergency.every(c => c.kind !== 'word-gap'), 'emergency split ignored the default no-mid-line policy');
+});
 
 test('canonical mapping retains explicit breaks, removes markers once', () => {
   const raw = '  @01alpha  beta\r\n gamma\t delta  ';
