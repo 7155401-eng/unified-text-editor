@@ -69,9 +69,18 @@ test('current-main autosync is source-driven, bounded, serialized and recovery-s
   };
 
   let content = { version:1, panes:[{ id:'main', content:{ text:'A' } }] };
+  let stringSnapshots = 0;
+  let objectSnapshots = 0;
   const paneManager = {
     on(type, fn){ callbacks.set(type, fn); },
-    serializeForPersistence(){ return structuredClone(content); },
+    serializeForPersistenceString(){
+      stringSnapshots++;
+      return JSON.stringify(content);
+    },
+    serializeForPersistence(){
+      objectSnapshots++;
+      return structuredClone(content);
+    },
     flushSave(){},
   };
 
@@ -126,6 +135,8 @@ test('current-main autosync is source-driven, bounded, serialized and recovery-s
     await settle();
     assert.equal(fetchCalls.length,1);
     assert.equal(fetchCalls[0].parsed.content.panes[0].content.text,'A');
+    assert.ok(stringSnapshots > 0, 'autosync should use prepared JSON snapshot strings');
+    assert.equal(objectSnapshots, 0, 'autosync should not rebuild persistence objects when string snapshots exist');
     assert.equal(storage.getItem('ravtext.doc.serverStale.v1'), null,
       'exact server confirmation should clear local-ahead');
 
