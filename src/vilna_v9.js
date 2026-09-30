@@ -2342,22 +2342,26 @@ function buildPagePlanCore(pageContent, config) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
-        // Both side streams widen below main on the same planned Y boundary.
-        lockYStart: true,
+        // v9-knee-row-grid: a knee changes WIDTH only. The commentary owns
+        // its vertical rhythm. If this boundary falls between two commentary
+        // baselines (e.g. after crown→main clearance), the crossing row stays
+        // narrow and the following normal row is the first wide row.
+        lockYStart: false,
       });
     }
     // v9-limit-full-strip3-one-line: full-width continuation is still legal after the other side
     // really ends. The one-line cap is reserved only for same-stream split
     // bridge/orphan cases; distinct streams keep the full lower area.
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    const lockFullStrip3Start = maxFullStrip3Lines > 0 || o.lockFullStrip3Start === true;
     if (fullStrip3StartY < pageBottomY && !suppressFullStrip3) {
       strips.push({
         y_start: fullStrip3StartY,
         y_end: pageBottomY,
         width: innerWidth,
         x: 0,
-        lockYStart: lockFullStrip3Start,
+        // v9-knee-row-grid: ending of the other side changes WIDTH only.
+        // Never manufacture a new baseline at its raw endY.
+        lockYStart: false,
       });
     }
 
@@ -2849,6 +2853,17 @@ function buildPagePlanCore(pageContent, config) {
   //   3. pass2 ימני שוב עם pass2Left.endY (סופי, יציב)
 
   const cap = (v) => Math.min(v, pageBottomY);
+  const occupiedSideEndY = (box) => {
+    if (!box) return mainTopY;
+    let bottom = Number.isFinite(Number(box.endY)) ? Number(box.endY) : mainTopY;
+    for (const line of (box.lines || [])) {
+      const y = Number(line?.y);
+      const h = Number(line?.lineHeightPx);
+      if (!Number.isFinite(y)) continue;
+      bottom = Math.max(bottom, y + (Number.isFinite(h) && h > 0 ? h : 0));
+    }
+    return cap(bottom);
+  };
 
   // איטרציה 1: pass2 ימני עם pass1 שמאלי
   // משה 2026-05-10: בתרחיש 1, הימני (חצי ראשון בסדר קריאה) לא מקבל strip 3
@@ -2864,18 +2879,17 @@ function buildPagePlanCore(pageContent, config) {
   if (pageContent.rightStream) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
-      otherSideEndY: pass1Left ? cap(pass1Left.endY) : mainTopY,
+      otherSideEndY: pass1Left ? occupiedSideEndY(pass1Left) : mainTopY,
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0,
-      lockFullStrip3Start: !!pass1Left,
     });
   }
   // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
   let pass2Left = null;
   let leftAssumedRightEnd = null;
   if (pageContent.leftStream) {
-    const otherEnd = pass2Right ? cap(pass2Right.endY)
-                   : pass1Right ? cap(pass1Right.endY)
+    const otherEnd = pass2Right ? occupiedSideEndY(pass2Right)
+                   : pass1Right ? occupiedSideEndY(pass1Right)
                    : mainTopY;
     leftAssumedRightEnd = otherEnd;
     pass2Left = buildSideStream(pageContent.leftStream, 'left', {
@@ -2885,14 +2899,13 @@ function buildPagePlanCore(pageContent, config) {
       // centered orphan rows, but after source-continuation rendering exists it
       // incorrectly prevents the surviving second column from using full width.
       maxFullStrip3Lines: 0,
-      lockFullStrip3Start: !!(pass2Right || pass1Right),
     });
   }
   // איטרציה 3: pass2 ימני עם pass2 שמאלי (סופי)
   if (pageContent.rightStream && pass2Left) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
       mainBottomY,
-      otherSideEndY: cap(pass2Left.endY),
+      otherSideEndY: occupiedSideEndY(pass2Left),
       // ★ משה 14/09/2026 — שורש "המרווחים הלבנים בלי סיבה":
       // הרצועה ברוחב מלא מתחת לטקסט הראשי הייתה חסומה בתרחיש הזה,
       // ולכן כשהגמרא נגמרה כל השטח שמתחתיה נשאר ריק (נמדד: מילוי 50%
@@ -2902,7 +2915,6 @@ function buildPagePlanCore(pageContent, config) {
       // שהרצף ימין→שמאל לא יישבר.
       suppressFullStrip3: false,
       maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
-      lockFullStrip3Start: !!pass2Left,
     });
   }
 
@@ -2918,13 +2930,12 @@ function buildPagePlanCore(pageContent, config) {
   // כאן מושלמת ההתכנסות: אם הימני זז, השמאלי מחושב שוב מול המיקום החדש.
   // פעם אחת בלבד — כדי שלא תיווצר לולאה.
   if (pass2Left && pass2Right && leftAssumedRightEnd !== null) {
-    const actualRightEnd = cap(pass2Right.endY);
+    const actualRightEnd = occupiedSideEndY(pass2Right);
     if (Math.abs(actualRightEnd - leftAssumedRightEnd) > 0.5) {
       const relaid = buildSideStream(pageContent.leftStream, 'left', {
         mainBottomY,
         otherSideEndY: actualRightEnd,
         maxFullStrip3Lines: 0,
-        lockFullStrip3Start: !!(pass2Right || pass1Right),
       });
       if (relaid) pass2Left = relaid;
     }
@@ -2935,7 +2946,7 @@ function buildPagePlanCore(pageContent, config) {
     const continuation = concatRichTextParts([pass2Right.overflowRich, originalLeft], '');
     const leftInput = { ...pageContent.leftStream, rich: continuation, items: [continuation.text], runs: continuation.runs };
     pass2Left = buildSideStream(leftInput, 'left', { mainBottomY,
-      otherSideEndY: cap(pass2Right.endY), maxFullStrip3Lines: 0, lockFullStrip3Start: true });
+      otherSideEndY: occupiedSideEndY(pass2Right), maxFullStrip3Lines: 0 });
     pass2Right.overflowText = ''; pass2Right.overflowRuns = []; pass2Right.overflowRich = makeRichText('');
     pass2Right.continues = true;
   }
