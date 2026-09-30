@@ -135,6 +135,10 @@ function lineStretchRatio(line, naturalSpace) {
 function handleOrphanOverflow(root, containerW) {
   const overflowing = [];
   for (const w of root.querySelectorAll(".ln-word")) {
+    // A source token containing an inline reference is explicitly atomic:
+    // no real whitespace means no legal line break, even when the token is
+    // wider than the current column.
+    if (w.classList.contains("main-ref-unbreakable-token")) continue;
     const wr = w.getBoundingClientRect();
     if (wr.width > containerW * ORPHAN_OVERFLOW_TOLERANCE) {
       w.classList.add("ln-orphan-overflow");
