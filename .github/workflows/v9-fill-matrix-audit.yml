@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - audit/v9-page-fill-matrix-20260930
+      - experiment/v9-sparse-rescue-68-strict-20260930
 
 permissions:
   contents: read
