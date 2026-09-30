@@ -59,6 +59,55 @@ test('explicit final-gap candidate budget is respected after offset ordering',()
  assert.deepEqual(selected.map(c=>c.offset),[10,20,30]);
 });
 
+
+test('planned tail redistribution counts toward the final line guard',()=>{
+ const baseLine={
+   text:'a b c d',width:100,naturalWidth:70,isLast:false,forcedBreak:false,
+   y:100,lineHeightPx:20,render:{wordSpacing:5,body:{text:'a b c d'}}
+ };
+ const mkPlan=line=>({
+   unstartedNotes:[],
+   overflow:{exceedsPage:false,mainText:'',streams:{}},
+   pageBox:{height:200,padding:0},
+   mainBox:{continues:true,lines:[line]},
+   streamBoxes:[],footerBoxes:[]
+ });
+ const candidate={kind:'visual-line-end',priority:900};
+ const policy={rejectSparsePages:false,minLineEdgeFill:.82};
+
+ const rejected=scoreV9PageCandidate(mkPlan({...baseLine}),candidate,policy,{cfg:{pageHeight:200,padding:0}});
+ assert.equal(rejected.accept,false,'ordinary short line unexpectedly bypassed final line guard');
+ assert.equal(rejected.reason,'last-main-line-not-filled');
+
+ const accepted=scoreV9PageCandidate(
+   mkPlan({...baseLine,tailRebalanced:true}),
+   candidate,policy,{cfg:{pageHeight:200,padding:0}}
+ );
+ assert.equal(accepted.accept,true,accepted.reason);
+ assert(accepted.debug.finalMainLine.effectiveFillRatio>=.82,
+   `effective fill was ignored: ${accepted.debug.finalMainLine.effectiveFillRatio}`);
+ assert.equal(accepted.debug.finalMainLine.isTailRebalancedLineEdge,true);
+});
+
+test('tail redistribution still fails the guard when gentle spacing is insufficient',()=>{
+ const line={
+   text:'a b c d',width:100,naturalWidth:60,isLast:false,forcedBreak:false,
+   y:100,lineHeightPx:20,tailRebalanced:true,
+   render:{wordSpacing:3,body:{text:'a b c d'}}
+ };
+ const plan={
+   unstartedNotes:[],
+   overflow:{exceedsPage:false,mainText:'',streams:{}},
+   pageBox:{height:200,padding:0},
+   mainBox:{continues:true,lines:[line]},
+   streamBoxes:[],footerBoxes:[]
+ };
+ const score=scoreV9PageCandidate(plan,{kind:'visual-line-end',priority:900},
+   {rejectSparsePages:false,minLineEdgeFill:.82},{cfg:{pageHeight:200,padding:0}});
+ assert.equal(score.accept,false);
+ assert.equal(score.reason,'last-main-line-not-filled');
+});
+
 test('started long-note continuation is legal and remains scoreable',()=>{
  const plan={
    unstartedNotes:[],
