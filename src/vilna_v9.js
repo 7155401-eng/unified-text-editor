@@ -2012,9 +2012,20 @@ function buildPagePlanCore(pageContent, config) {
   const sideTopY = cfg.padding + titleHeight + reservedTop;
   const crownMainGap = crownHeight > 0 ? (Number.isFinite(cfg.crownMainGapPx)
     ? Math.max(0,cfg.crownMainGapPx) : Math.max(4,mainGap)) : 0;
-  const mainTopY = sideTopY + crownHeight + crownMainGap;
+
+  // The main stream title is real page geometry, not a post-render overlay.
+  // Without a dedicated reserve, a visible main title can overlap the bottom
+  // of the crown because drawPagePlan places it exactly one titleHeight above
+  // the first main row.
+  const mainTitleText = shouldShowStreamTitle(V9_MAIN_STREAM_CODE)
+    ? String((cfg.titles || {}).main || "").trim()
+    : "";
+  const mainTitleReserve = (mainTitleText && pageContent.mainText) ? titleHeight : 0;
+
+  const mainTopY = sideTopY + crownHeight + crownMainGap + mainTitleReserve;
   result.crownBottomY = sideTopY+crownHeight;
   result.crownMainGap = crownMainGap;
+  result.mainTitleReserve = mainTitleReserve;
 
   // 3. ראשי — ניבוי אורך נאיבי כדי לחשב את הצדדים. הפלייאוט הסופי ייעשה
   // אחרי שהצדדים נמדדו, כדי לאפשר לראשי להתפשט לתוך מקום של פרשן שנגמר
