@@ -51,7 +51,7 @@ export const TOOL_POLICIES = Object.freeze({
     windowSeconds: 7 * 24 * 60 * 60,
     premiumMode: "unlimited",
     chargeOn: "success",
-    migrationState: "legacy-preflight-daily",
+    migrationState: "success-metered-ready",
   }),
   "sefaria-live": Object.freeze({
     freeMode: "count",
