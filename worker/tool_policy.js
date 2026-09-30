@@ -43,7 +43,7 @@ export const TOOL_POLICIES = Object.freeze({
     windowSeconds: 7 * 24 * 60 * 60,
     premiumMode: "unlimited",
     chargeOn: "success",
-    migrationState: "legacy-preflight-daily",
+    migrationState: "success-metered-ready",
   }),
   "sefaria-downloader": Object.freeze({
     freeMode: "count",
@@ -109,4 +109,9 @@ export function isFreePreflightUnmetered(toolName) {
 
 export function publicToolNames() {
   return Object.keys(TOOL_POLICIES);
+}
+
+export function isServerManagedSuccessTool(toolName) {
+  const p = getToolPolicy(toolName);
+  return !!p && p.migrationState === "success-metered-ready" && p.chargeOn === "success";
 }
