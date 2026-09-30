@@ -231,7 +231,8 @@ html, body {
 .editor, .editor .ProseMirror {
   font-family: var(--ravtext-editor-font-family);
   line-height: var(--ravtext-editor-line-height, 1.55);
-  font-feature-settings: "kern" 1, "liga" 1;
+  font-feature-settings: "kern" 1, "liga" 1, "mark" 1, "mkmk" 1;
+  font-kerning: normal;
   unicode-bidi: plaintext;
 }
 
@@ -1596,6 +1597,8 @@ body.light-theme .pdf-scroll-progress-fill {
   display: flex;
   flex-direction: column;
   font-family: var(--ravtext-page-font-family);
+  font-feature-settings: "kern" 1, "liga" 1, "mark" 1, "mkmk" 1;
+  font-kerning: normal;
   overflow: hidden;
   color: #222;
 }
@@ -1780,14 +1783,21 @@ body.light-theme .pdf-scroll-progress-fill {
    המודול עוטף מילים ב-.ln-word, ולכל שורה שזיהה כבעייתית בונה
    container flex עם בקרה על מתיחה ועל מילה יתומה. */
 .ln-word {
-  /* ברירת מחדל: לא לשנות כלום — רק tag למדידה. */
+  /* יחידת שבירה היא רווח מקור בלבד. סימני פיסוק וסוגריים נשארים עם המילה. */
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 .ln-orphan-overflow {
-  /* מילה אחת שרחבה יותר מהטור — אסור לתת לה לחרוג. */
+  /* גם מילה רחבה מן הטור נשארת שלמה; overflow גלוי עדיף על שבירה
+     מלאכותית בתוך רצף שאין בו רווח. */
   display: inline-block;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  max-width: none;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 .ln-line {
   /* קונטיינר flex לכל שורה שטופלה. row-reverse כי RTL. */
@@ -4297,6 +4307,8 @@ body.lang-en .toast { direction: ltr; }
   font-size: var(--ravtext-editor-size);
   line-height: 1.7;
   font-family: var(--ravtext-editor-font-family);
+  font-feature-settings: "kern" 1, "liga" 1, "mark" 1, "mkmk" 1;
+  font-kerning: normal;
   unicode-bidi: plaintext;
   min-height: 60px;
   max-height: none;
