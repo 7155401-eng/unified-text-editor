@@ -695,6 +695,35 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     } finally { page.remove();if(saved===undefined)delete settings['01'];else settings['01']=saved; }
   });
 
+  await test('B20/C7: footer streams never cover the last main-text row',()=>{
+    const page=makePage();
+    const main=Array(8).fill(neutral).join(' ');
+    const footer=Array(5).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:main,
+      rightStream:null,
+      leftStream:null,
+      footerStreams:[{id:'03',items:[footer],runs:[],rich:{text:footer,runs:[]}}]
+    },{
+      ...cfg,pageHeight:537,talmudStreams:[],
+      titles:{'03':'Footer'},
+      streamSettings:{'03':{inlineStyle:{fontSize:11}}}
+    });
+    assert(plan.mainBox?.lines?.length,'fixture produced no main rows');
+    const box=plan.footerBoxes.find(b=>b.id==='03');
+    assert(box?.lines?.length,'fixture produced no footer rows');
+    const mainBottom=Math.max(...plan.mainBox.lines.map(l=>l.y+l.lineHeightPx));
+    const footerTop=Math.min(
+      Number.isFinite(box.titleY)?box.titleY:Number.POSITIVE_INFINITY,
+      ...box.lines.map(l=>l.y)
+    );
+    assert(mainBottom<=footerTop+.1,
+      `main/footer vertical overlap: mainBottom=${mainBottom}, footerTop=${footerTop}`);
+    assertNoWordOverlap(page);
+    page.remove();
+    return {mainBottom,footerTop};
+  });
+
   await test('font preflight includes note runs, nested notes and resolved label styles',async()=>{
     const descriptor=Object.getOwnPropertyDescriptor(document,'fonts'),requests=[];
     Object.defineProperty(document,'fonts',{configurable:true,value:{load:font=>{requests.push(font);return Promise.resolve([]);},ready:Promise.resolve()}});
