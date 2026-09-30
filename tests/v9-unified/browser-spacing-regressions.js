@@ -633,6 +633,44 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+
+  await test('commentary knee never inserts a blank row when crown→main gap is off the stream grid',()=>{
+    const page=makePage();
+    const sideText=Array(38).fill(phrase).join(' ');
+    const localCfg={...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,streamSettings:{
+      '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+      '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+    }};
+    const plan=buildSinglePage(page,{
+      mainText:Array(3).fill(neutral).join(' '),
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },localCfg);
+
+    assert(plan.crownMainGap===11,`fixture lost crown→main gap: ${plan.crownMainGap}`);
+    for(const role of ['right','left']){
+      const box=plan.streamBoxes.find(b=>b.role===role);
+      assert(box&&box.lines.length>4,`missing ${role} commentary rows`);
+      const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
+      let transition=null;
+      for(let i=1;i<sorted.length;i++){
+        if(sorted[i].width>sorted[i-1].width+20){
+          transition={prev:sorted[i-1],wide:sorted[i]};
+          break;
+        }
+      }
+      assert(transition,`${role} fixture did not create a knee`);
+      const pitch=Number(transition.prev.lineHeightPx)||Number(transition.wide.lineHeightPx)||1;
+      const dy=transition.wide.y-transition.prev.y;
+      assert(dy<=pitch+.15,
+        `${role} knee inserted a blank vertical slot: dy=${dy}, pitch=${pitch}, prevY=${transition.prev.y}, wideY=${transition.wide.y}`);
+      assert(dy>=pitch-.15,
+        `${role} knee collapsed rows instead of preserving one pitch: dy=${dy}, pitch=${pitch}`);
+    }
+    page.remove();
+  });
+
   await test('two continuing side streams widen on the same vertical boundary below main',()=>{
     const page=makePage();
     const sideText=Array(34).fill(phrase).join(' ');
