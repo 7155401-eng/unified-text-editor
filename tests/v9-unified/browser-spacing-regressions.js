@@ -1347,6 +1347,8 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  // Surgically ported from audit/remaining-sep-layout-regressions-20260930 after
+  // confirming current main had no equivalent B12/C8 regression coverage.
   await test('audit B12: a visible main reference is painted at the original marker boundary',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
