@@ -1403,6 +1403,44 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     return {fill:+fill.toFixed(3),words:firstWide.wordTokens.length};
   });
 
+  await test('B20 crowded pagination: footer stream never overlaps main rows across pages',async()=>{
+    const settings=getStreamSettings(),saved=settings['03'];
+    settings['03']={...(settings['03']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const page=makePage();
+    try {
+      const main=Array(8).fill(neutral).join(' '),words=[...main.matchAll(/\S+/gu)];
+      const input=Array.from({length:5},(_,pi)=>({
+        id:`b20-crowded-${pi}`,mainText:main,
+        notes:Array.from({length:4},(_,ni)=>{
+          const w=words[Math.min(words.length-1,7+ni*12)];
+          return {stream:'03',uid:`b20-crowded-${pi}-${ni}`,num:pi*4+ni+1,
+            anchor:w.index+w[0].length,anchorAffinity:'backward',
+            text:Array(7+ni).fill(neutral).join(' ')};
+        })
+      }));
+      const localCfg={...cfg,pageHeight:300,maxPages:100,talmudStreams:['01','02'],
+        mishnaWrapOn:false,streamSettings:{'03':{inlineStyle:{fontSize:11}}}};
+      const result=await buildPages(page,input,localCfg);
+      assert(result.complete,'crowded footer fixture incomplete');
+      assert(result.pages.length>1,'crowded footer fixture did not paginate');
+      for(const [pageIndex,p] of result.pages.entries()){
+        assertNoWordOverlap(p);
+        const mains=[...p.querySelectorAll('.v9-line[data-v9-role="main"]')];
+        const footers=[...p.querySelectorAll('.v9-line[data-v9-box-id="03"]')];
+        for(const m of mains)for(const ft of footers){
+          const mx=parseFloat(m.style.left)||0,mw=parseFloat(m.style.width)||0,my=parseFloat(m.style.top)||0,mh=parseFloat(m.style.height)||0;
+          const fx=parseFloat(ft.style.left)||0,fw=parseFloat(ft.style.width)||0,fy=parseFloat(ft.style.top)||0,fh=parseFloat(ft.style.height)||0;
+          const dx=Math.min(mx+mw,fx+fw)-Math.max(mx,fx);
+          const dy=Math.min(my+mh,fy+fh)-Math.max(my,fy);
+          assert(!(dx>.5&&dy>.5),`main/footer geometry overlap on page ${pageIndex}: dx=${dx}, dy=${dy}`);
+        }
+      }
+    } finally {
+      page.remove();
+      if(saved===undefined)delete settings['03'];else settings['03']=saved;
+    }
+  });
+
   await test('B20/C7: footer streams never cover the last main-text row',()=>{
     const page=makePage();
     const main=Array(8).fill(neutral).join(' ');
