@@ -6,6 +6,7 @@ import {
   splitV9EdgeGlue,
 } from '../../src/engine/v9_bidi_controls.js';
 import { partForRange } from '../../src/engine/v9_main_inline_layout.js';
+import { v9MeasurementCacheKey } from '../../src/engine/v9_text_measurement.js';
 
 test('standalone bidi marks are layout-neutral but explicitly classified', () => {
   for (const ch of ['\u061c','\u200e','\u200f','\u2060']) {
@@ -33,4 +34,15 @@ test('partForRange preserves bidi controls in source glue and never invents punc
   assert.equal(p.leadingText,' \u200f ');
   assert.equal(p.trailingText,'\u200e ');
   assert.equal(p.leadingText+p.text+p.trailingText,text);
+});
+
+
+test('measurement cache identity includes edge bidi context', () => {
+  const base={text:"('אב",runs:[],refs:[],style:{direction:'rtl'}};
+  const rlm=v9MeasurementCacheKey({...base,leadingText:'\u200f',trailingText:''});
+  const lrm=v9MeasurementCacheKey({...base,leadingText:'\u200e',trailingText:''});
+  const none=v9MeasurementCacheKey({...base,leadingText:'',trailingText:''});
+  assert.notEqual(rlm,lrm);
+  assert.notEqual(rlm,none);
+  assert.notEqual(lrm,none);
 });
