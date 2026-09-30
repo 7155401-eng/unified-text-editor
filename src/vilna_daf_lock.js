@@ -22,6 +22,7 @@
 // עצמה היה מסכן כל מסמך אחר; עטיפה מסכנת רק את מי שהדליק את התכונה.
 
 import { buildPages as v9BuildPages } from "./vilna_v9.js";
+import { applyDocumentFeaturesToPage } from "./document_features.js";
 
 // ===================== סימן הדף =====================
 // ⟦…⟧ (U+27E6/27E7) נבחרו כי שום חלק אחר בצינור לא משתמש בהם: סימני זרם הם
@@ -31,6 +32,15 @@ export const DAF_CLOSE = "⟧";
 const LABEL_CHARS = "[^\\u27E7\\n]{0,40}";
 export const DAF_MARK_RE = new RegExp(`${DAF_OPEN}\\s*(?:דף|עמוד)\\s*(${LABEL_CHARS}?)\\s*${DAF_CLOSE}`);
 export const DAF_MARK_RE_G = new RegExp(DAF_MARK_RE.source, "g");
+
+function setFinalPageIndex(pageEl, index) {
+  if (!pageEl) return;
+  pageEl.dataset.pageIndex = String(index);
+  // buildPages may have rendered this page in a temporary segment container
+  // with a local page index. Correct its furniture synchronously before the
+  // locked-daf wrapper exposes the page in its final document position.
+  applyDocumentFeaturesToPage(pageEl, index, { atRender: true });
+}
 
 export function makeDafMark(label) {
   const clean = String(label || "").replace(new RegExp(`[${DAF_OPEN}${DAF_CLOSE}\\n]`, "g"), "").trim();
@@ -650,7 +660,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       // אחריה היא תיספר כתוכן.
       segReport.fill = built.length ? measurePageFill(built[built.length - 1], cfg) : 0;
       built.forEach((pageEl, i) => {
-        pageEl.dataset.pageIndex = String(allPages.length + i);
+        setFinalPageIndex(pageEl, allPages.length + i);
         tagPage(pageEl, seg.label, 1, settings, i, built.length);
       });
       allPages.push(...built);
@@ -723,7 +733,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         const built = (res && res.pages) || [];
         built.forEach((pageEl, i) => {
           applyPageGeom(pageEl, hi);
-          pageEl.dataset.pageIndex = String(allPages.length + i);
+          setFinalPageIndex(pageEl, allPages.length + i);
           tagPage(pageEl, seg.label, 1, settings, i, built.length);
         });
         allPages.push(...built);
@@ -750,7 +760,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         // עמודים בגודל אחיד, ולכן כל העמודים חייבים להישאר באותו יחס
         // רוחב-גובה. חיתוך התחתית הרס בדיוק את זה. הפתרון למילוי הוא
         // הקטנה יחסית של כל העמוד (המכפיל), לא חיתוך.
-        pageEl.dataset.pageIndex = String(allPages.length);
+        setFinalPageIndex(pageEl, allPages.length);
         tagPage(pageEl, seg.label, 1, settings);
         allPages.push(pageEl);
       }
@@ -819,7 +829,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
         const built = (res && res.pages) || [];
         segReport.fill = built.length ? measurePageFill(built[0], cfg) : 0;
         built.forEach((pageEl, i) => {
-          pageEl.dataset.pageIndex = String(allPages.length + i);
+          setFinalPageIndex(pageEl, allPages.length + i);
           tagPage(pageEl, seg.label, min, settings, i, built.length);
         });
         allPages.push(...built);
@@ -854,7 +864,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       const res = await buildPages(container, seg.paragraphs, scaledConfig(cfg, min));
       const built = (res && res.pages) || [];
       built.forEach((pageEl, i) => {
-        pageEl.dataset.pageIndex = String(allPages.length + i);
+        setFinalPageIndex(pageEl, allPages.length + i);
         tagPage(pageEl, seg.label, min, settings, i, built.length);
       });
       allPages.push(...built);
@@ -871,7 +881,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
       container.appendChild(pageEl);
       const fixes = resolveLineOverlaps(pageEl);
       if (fixes) segReport.overlapFixes = fixes;
-      pageEl.dataset.pageIndex = String(allPages.length);
+      setFinalPageIndex(pageEl, allPages.length);
       tagPage(pageEl, seg.label, best.scale, settings);
       allPages.push(pageEl);
     }
@@ -1093,7 +1103,7 @@ export async function buildPagesDafLocked(container, paragraphs, cfg, opts = {})
           fresh.dataset.dafPageFactor = String(Math.round(maxFactor * 1000) / 1000);
           fresh.dataset.dafUniform = "1";
           fresh.dataset.dafFontScale = String(Math.round(bestBig.k * 100) / 100);
-          fresh.dataset.pageIndex = pageEl.dataset.pageIndex;
+          setFinalPageIndex(fresh, Number(pageEl.dataset.pageIndex) || 0);
           tagPage(fresh, seg2.label, bestBig.k, settings);
           resolveLineOverlaps(fresh);
           container.replaceChild(fresh, pageEl);
