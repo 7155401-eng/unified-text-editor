@@ -857,6 +857,60 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     }finally{page.remove();}
   });
 
+  await test('stress: a carried note never separates the next same-stream note from its source',async()=>{
+    const settings=getStreamSettings(),saved=settings['01'];
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
+    const tried=[];
+    try {
+      const pageHeights=[190,220,250,280];
+      const carrySizes=[18,28,42,60];
+      const nextSizes=[3,8,14];
+      for(const pageHeight of pageHeights){
+        for(const carrySize of carrySizes){
+          for(const nextSize of nextSizes){
+            const host=makePage();
+            try{
+              const mainA=Array(9).fill(neutral).join(' ');
+              const mainB=Array(5).fill(neutral).join(' ');
+              const wordsA=[...mainA.matchAll(/\S+/gu)];
+              const wordsB=[...mainB.matchAll(/\S+/gu)];
+              const aWord=wordsA[5],bWord=wordsB[3];
+              const input=[
+                {id:'anchor-stress-a',mainText:mainA,notes:[{
+                  stream:'01',uid:`carry-${pageHeight}-${carrySize}-${nextSize}`,num:1,
+                  anchor:aWord.index+aWord[0].length,anchorAffinity:'backward',
+                  text:Array(carrySize).fill(neutral).join(' ')
+                }]},
+                {id:'anchor-stress-b',mainText:mainB,notes:[{
+                  stream:'01',uid:`next-${pageHeight}-${carrySize}-${nextSize}`,num:2,
+                  anchor:bWord.index+bWord[0].length,anchorAffinity:'backward',
+                  text:Array(nextSize).fill(neutral).join(' ')
+                }]},
+                {id:'anchor-stress-c',mainText:Array(3).fill(neutral).join(' '),notes:[]}
+              ];
+              const result=await buildPages(host,input,{...cfg,pageHeight,talmudStreams:['01','02'],maxPages:100});
+              tried.push({pageHeight,carrySize,nextSize,pages:result.pages.length,fallbacks:result.noteAnchorFallbacks||[]});
+              assert(result.complete,`incomplete stress case ${JSON.stringify(tried.at(-1))}`);
+              assert((result.noteAnchorFallbacks||[]).length===0,
+                `ANCHOR_FALLBACK_FIXTURE ${JSON.stringify(tried.at(-1))}`);
+              for(const note of input.flatMap(p=>p.notes||[])){
+                const sourceId=note.uid.startsWith('carry-')?'anchor-stress-a':'anchor-stress-b';
+                const key=`${sourceId}:01:${note.uid}`;
+                const refPage=result.pages.findIndex(p=>[...p.querySelectorAll('[data-v9-main-ref]')].some(e=>e.dataset.uid===note.uid));
+                const startPage=result.pages.findIndex(p=>p.querySelector(`[data-v9-note-start="${key}"]`));
+                assert(refPage>=0&&refPage===startPage,
+                  `ANCHOR_PAGE_MISMATCH ${JSON.stringify({pageHeight,carrySize,nextSize,uid:note.uid,refPage,startPage})}`);
+              }
+            } finally {host.remove();}
+          }
+        }
+      }
+      return {cases:tried.length};
+    } finally {
+      if(saved===undefined)delete settings['01'];else settings['01']=saved;
+    }
+  });
+
   await test('long anchored note may continue after starting with its source line',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
