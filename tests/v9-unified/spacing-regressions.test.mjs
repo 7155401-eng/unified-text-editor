@@ -326,6 +326,39 @@ test('opening that starts after a knee occupies the complete wide visual row',()
  assert(host.x<1,`wide host body did not start at full left edge: x=${host.x}`);
 });
 
+test('single-line opening after a widening knee centers the complete visual segment in the wide row',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:e=>e.id==='center-after-knee'
+    ? {position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}
+    : null,
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs([
+  {id:'lead-center-knee',text:'aa aa aa aa aa aa',runs:[],mainRefs:[]},
+  {id:'center-after-knee',text:'OPEN aa',runs:[],mainRefs:[]},
+ ],[
+  {x:50,width:50,y_start:0,y_end:15},
+  {x:0,width:100,y_start:15,y_end:100},
+ ],ctx,100);
+ const line=p.lines.find(l=>l.source?.paragraphId==='center-after-knee');
+ assert(line?.render?.opening,'opening after knee missing');
+ assert(line.isLast===true,'fixture opening row is not paragraph last line');
+ assert(line.y>=20-.01,`opening did not start in wide area: y=${line.y}`);
+ assert.equal(line.render.alignment,'right',
+  'body was centered separately from opening');
+ const total=line.width+line.render.opening.gap+line.render.opening.width;
+ assert(Math.abs(total-32)<.01,`unexpected composite width: ${total}`);
+ assert(Math.abs(line.x-34)<.01,`composite x=${line.x}, expected 34 in 100px row`);
+ assert(Math.abs(line.render.opening.x-46)<.01,
+  `opening x=${line.render.opening.x}, expected 46`);
+});
+
 test('centered hard-break line centers opening plus body as one visual segment',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
