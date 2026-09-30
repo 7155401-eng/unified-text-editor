@@ -6,10 +6,65 @@ import {
   DEFAULT_V9_MAIN_BOTTOM_GAP_PX,
   MAX_V9_MAIN_BOTTOM_GAP_PX,
   resolveV9MainBottomGapPx,
-} from '../../src/engine/v9_main_bottom_gap.js';
+} from '../../src/engine/v9_main_bottom_gap_policy.js';
 
 const v9=fs.readFileSync(new URL('../../src/vilna_v9.js',import.meta.url),'utf8');
+const v9Apply=fs.readFileSync(new URL('../../src/vilna_v9_apply.js',import.meta.url),'utf8');
+const gapPolicySource=fs.readFileSync(new URL('../../src/engine/v9_main_bottom_gap_policy.js',import.meta.url),'utf8');
 const gapSource=fs.readFileSync(new URL('../../src/engine/v9_main_bottom_gap.js',import.meta.url),'utf8');
+
+function jsFilesRecursively(root) {
+  const out = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = new URL(entry.name + (entry.isDirectory() ? '/' : ''), root);
+    if (entry.isDirectory()) out.push(...jsFilesRecursively(full));
+    else if (/\.(?:m?js)$/u.test(entry.name)) out.push(full);
+  }
+  return out;
+}
+
+const srcRoot = new URL('../../src/', import.meta.url);
+
+test('live V9 imports only the pure numeric gap policy',()=>{
+  assert(v9.includes('./engine/v9_main_bottom_gap_policy.js'),
+    'planner does not import the pure gap policy');
+  assert(v9Apply.includes('./engine/v9_main_bottom_gap_policy.js'),
+    'runtime entry does not import the pure gap policy');
+  assert(!v9.includes('./engine/v9_main_bottom_gap.js'),
+    'planner still imports the diagnostics module');
+  assert(!v9Apply.includes('./engine/v9_main_bottom_gap.js'),
+    'runtime entry still imports the diagnostics module');
+  assert(!v9Apply.includes('applyV9MainBottomGap('),
+    'runtime entry still invokes the post-layout compatibility pass');
+
+  assert(!gapPolicySource.includes('v9_opening_words_from_metadata'),
+    'pure policy loads opening-word metadata side effects');
+  assert(!gapPolicySource.includes('v9_stretch_policy'),
+    'pure policy loads stretch side effects');
+  assert(!gapPolicySource.includes('.style.'),
+    'pure policy contains DOM style mutations');
+  assert(!gapPolicySource.includes('querySelector'),
+    'pure policy inspects rendered DOM');
+});
+
+test('no production source can re-import or call the post-layout gap engine',()=>{
+  const offenders = [];
+  const callers = [];
+  for (const file of jsFilesRecursively(srcRoot)) {
+    const pathname = file.pathname.replace(/\\/gu, '/');
+    const source = fs.readFileSync(file, 'utf8');
+    if (!pathname.endsWith('/engine/v9_main_bottom_gap.js') &&
+        source.includes('v9_main_bottom_gap.js')) {
+      offenders.push(pathname);
+    }
+    if (!pathname.endsWith('/engine/v9_main_bottom_gap.js') &&
+        /\bapplyV9MainBottomGap(?:ToPage)?\s*\(/u.test(source)) {
+      callers.push(pathname);
+    }
+  }
+  assert.deepEqual(offenders,[],'production source re-imported diagnostic gap module');
+  assert.deepEqual(callers,[],'production source reintroduced a post-layout gap call');
+});
 
 test('main-bottom gap explicit values are clamped once before planning',()=>{
   assert.equal(resolveV9MainBottomGapPx(null,0),0);
