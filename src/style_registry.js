@@ -155,6 +155,31 @@ export function applyStyleToElement(el, styleIdOrName) {
   return applyTextStyleObjectToElement(el, style);
 }
 
+export function applyStreamContainerStyleToElement(el, settings = {}) {
+  if (!el) return false;
+  let applied = false;
+
+  if (settings?.styleId) {
+    applied = applyStyleToElement(el, settings.styleId) || applied;
+  }
+
+  // Runtime/editor style is applied after the selected stream style in the
+  // same order for BOTH hidden measurement DOM and final rendering. This keeps
+  // font, size, line-height and other metrics identical across pagination.
+  const runtimeStyle =
+    settings?.inlineStyle && typeof settings.inlineStyle === "object"
+      ? settings.inlineStyle
+      : (settings?.manualStyle && typeof settings.manualStyle === "object"
+          ? settings.manualStyle
+          : null);
+
+  if (runtimeStyle) {
+    applied = applyTextStyleObjectToElement(el, runtimeStyle) || applied;
+  }
+
+  return applied;
+}
+
 function readDocxOverwriteStylesDefault() {
   if (typeof document === "undefined") return true;
   const checkbox = document.querySelector(".we-overwrite-styles");
