@@ -96,6 +96,16 @@ function regexEndCandidates(text, re) {
   return out;
 }
 
+export function isV9WhitespaceBreakBoundary(text, offset) {
+  const value = String(text || "");
+  const at = Math.max(0, Math.min(value.length, Number(offset) || 0));
+  if (at <= 0 || at >= value.length) return false;
+  // A line/page boundary is legal only where the source contains real
+  // whitespace. Brackets, quotes and punctuation without whitespace stay
+  // attached to the same source token.
+  return /\s/u.test(value[at - 1]) || /\s/u.test(value[at]);
+}
+
 export function sentenceEndCandidatesForV9(text) {
   return regexEndCandidates(text, /[.!?…׃:;][\s\u00A0]*/g);
 }
@@ -175,7 +185,11 @@ export function buildParagraphBreakCandidates(text, metrics, widthPx, policy = {
     }
   }
 
-  return uniqueCandidatesByOffset(candidates).filter(c => c.offset > 0 && c.offset < String(text || "").length);
+  return uniqueCandidatesByOffset(candidates).filter(c =>
+    c.offset > 0 &&
+    c.offset < String(text || "").length &&
+    isV9WhitespaceBreakBoundary(text, c.offset)
+  );
 }
 
 /**
