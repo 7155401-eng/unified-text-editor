@@ -25,6 +25,9 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Syntax
         run: |
+          node --check cloudflare/docx_footnotes_to_curly.js
+          node --check cloudflare/docx_worker_entry.js
+          node --check worker/index.js
           node --check src/docx_tools/footnotes_to_curly.js
           node --check src/main.js
           node --check tests/docx/footnotes-to-curly.test.mjs
