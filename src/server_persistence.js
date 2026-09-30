@@ -153,6 +153,14 @@ export function applyLocalSettings(settings, { preserveExisting = false } = {}) 
 export async function loadInitialState(paneManager) {
   if (!isLoggedIn() || !paneManager) return { loaded: false };
 
+  // The server request is asynchronous while the editor is already usable.
+  // Remember the real-editor revision now so a slow response can never
+  // overwrite typing/formatting that happened while the request was in flight.
+  const contentRevisionAtStart =
+    typeof paneManager.getContentRevision === 'function'
+      ? paneManager.getContentRevision()
+      : null;
+
   try {
     const [docRes, settingsRes] = await Promise.all([
       fetch('/api/documents/current').then((r) => (r.ok ? r.json() : null)),
@@ -165,6 +173,26 @@ export async function loadInitialState(paneManager) {
 
     if (docRes && docRes.document && docRes.document.content) {
       const content = docRes.document.content;
+
+      if (
+        contentRevisionAtStart !== null &&
+        typeof paneManager.getContentRevision === 'function' &&
+        paneManager.getContentRevision() !== contentRevisionAtStart
+      ) {
+        // Persist the in-memory edit synchronously before declaring the local
+        // copy authoritative. attachAutoSync() may not be installed yet at
+        // this point, so do not rely on ravtext:local-document-saved to create
+        // the recovery marker.
+        paneManager.flushSave?.();
+        let chars = 0;
+        try { chars = (localStorage.getItem(DOC_KEY) || '').length; } catch {}
+        const localAhead = { status: 'local-ahead', chars, at: Date.now() };
+        markServerStale(localAhead.status, localAhead.chars);
+        console.warn('[persistence] local editor changed while startup server request was in flight — keeping local document');
+        showStaleServerNotice(localAhead);
+        return { loaded: false, skipped: 'local-edit-during-server-load' };
+      }
+
       // משה 2026-09-20: כאן נולד התסמין "האתר שוכח". אם השמירה האחרונה
       // לשרת נכשלה (בדרך כלל 413 — מסמך גדול), בשרת יושב עותק **ישן**.
       // עד עכשיו הוא נטען בכל פתיחה ודרס את העבודה החדשה תוך שתי שניות,
