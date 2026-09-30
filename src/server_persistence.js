@@ -121,13 +121,21 @@ function collectLocalSettings() {
   return out;
 }
 
-function applyLocalSettings(settings) {
+function applyLocalSettings(settings, { preserveExisting = false } = {}) {
   if (typeof localStorage === 'undefined' || !settings || typeof settings !== 'object') return;
   try {
     for (const [key, value] of Object.entries(settings)) {
       if (!key.startsWith(SETTINGS_PREFIX)) continue;
       if (isBlacklisted(key)) continue;
       if (value == null) continue;
+
+      // A refresh must never roll a setting back to an older server snapshot.
+      // Local controls write synchronously to localStorage; server sync is
+      // debounced/best-effort and may lag behind. Therefore the browser-local
+      // value is authoritative when it already exists, while server settings
+      // still seed missing keys on a new browser/device.
+      if (preserveExisting && localStorage.getItem(key) !== null) continue;
+
       localStorage.setItem(key, String(value));
     }
   } catch (e) {
@@ -145,7 +153,7 @@ export async function loadInitialState(paneManager) {
     ]);
 
     if (settingsRes && settingsRes.settings) {
-      applyLocalSettings(settingsRes.settings);
+      applyLocalSettings(settingsRes.settings, { preserveExisting: true });
     }
 
     if (docRes && docRes.document && docRes.document.content) {
