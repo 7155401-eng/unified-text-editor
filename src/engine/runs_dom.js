@@ -45,6 +45,9 @@ export function applyMarksToSpan(span, marks) {
   if (marks.lineHeight !== undefined && marks.lineHeight !== null && marks.lineHeight !== "") {
     span.style.lineHeight = String(marks.lineHeight);
   }
+  if (marks.fontFeatureSettings) span.style.fontFeatureSettings = String(marks.fontFeatureSettings);
+  if (marks.fontVariant) span.style.fontVariant = String(marks.fontVariant);
+  if (marks.fontKerning) span.style.fontKerning = String(marks.fontKerning);
 
   const verticalAlign = marks.verticalAlign || (marks.superscript ? "super" : (marks.subscript ? "sub" : ""));
   if (verticalAlign) {
@@ -87,9 +90,24 @@ function mergeAdjacentRuns(runs) {
   return out;
 }
 
-function cleanRun(r, len) {
-  const start = Math.max(0, Math.min(len, Number(r?.start) || 0));
-  const end = Math.max(0, Math.min(len, Number(r?.end) || 0));
+const COMBINING_MARK_RE = /\p{M}/u;
+function isCombiningMarkAt(text, index) {
+  if (!text || index < 0 || index >= text.length) return false;
+  return COMBINING_MARK_RE.test(text[index]);
+}
+
+function cleanRun(r, text) {
+  const len = text ? text.length : 0;
+  let start = Math.max(0, Math.min(len, Number(r?.start) || 0));
+  let end = Math.max(0, Math.min(len, Number(r?.end) || 0));
+
+  // Do not create a span boundary between a Hebrew base glyph and its niqqud
+  // or cantillation marks. OpenType mark/mkmk positioning requires the whole
+  // grapheme to be shaped together. Overlapping styles are merged later by
+  // normalizeRuns, so expanding a boundary is safe and deterministic.
+  while (start > 0 && isCombiningMarkAt(text, start)) start--;
+  while (end < len && isCombiningMarkAt(text, end)) end++;
+
   if (end <= start) return null;
   return { start, end, marks: r?.marks || {} };
 }
@@ -101,7 +119,7 @@ function normalizeRuns(text, runs) {
   const len = text ? text.length : 0;
   if (!len) return [];
   const list = Array.isArray(runs)
-    ? runs.map((r) => cleanRun(r, len)).filter(Boolean)
+    ? runs.map((r) => cleanRun(r, text)).filter(Boolean)
     : [];
   if (list.length === 0) return [{ start: 0, end: len, marks: {} }];
 
