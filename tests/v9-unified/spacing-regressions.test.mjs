@@ -444,6 +444,34 @@ test('centered hard-break line centers opening plus body as one visual segment',
    `opening x=${line.render.opening.x}, expected 46 for centered composite`);
 });
 
+test('second and final opening-window row does not center its body as if the opening did not exist',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs(
+  [{id:'opening-two-line-last',text:'OPEN aa aa aa aa aa aa aa',runs:[],mainRefs:[]}],
+  [{x:0,width:100,y_start:0,y_end:100}],ctx,100
+ );
+ assert.equal(p.lines.length,2,`fixture expected two text rows, got ${p.lines.length}`);
+ const host=p.lines[0],last=p.lines[1];
+ assert(host.render.opening,'opening glyph missing');
+ assert(last.isLast===true,'second row is not paragraph last row');
+ assert(last.openingWindow===true,'last row no longer overlaps opening window');
+ assert.equal(last.render.alignment,'right','last body centered independently from dropped opening');
+ const opening=host.render.opening;
+ const visualLeft=last.x;
+ const visualRight=opening.x+opening.width;
+ assert(Math.abs((visualLeft+visualRight)/2-50)<.01,
+  `opening+last-row visual center=${(visualLeft+visualRight)/2}, expected 50`);
+});
+
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={

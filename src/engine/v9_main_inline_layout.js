@@ -471,6 +471,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
       const gaps = (body.text.match(/ /g) || []).length;
       const justify = !isLast && !forcedBreak && gaps > 0;
       const natural = m.width;
+      const openingWindow = !!opening && rowY < opening.y + opening.height - EPS;
       const line = {
         layoutVersion: V9_INLINE_PLAN_VERSION,
         x: geometry.x, y: rowY, width: geometry.width, lineHeightPx: Math.max(pitch, m.height),
@@ -478,13 +479,16 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         text: entry.text.slice(sourceStart, end), runs: sliceRuns(entry.runs, sourceStart, end),
         words: entry.text.slice(sourceStart, end).trim().split(/\s+/u).filter(Boolean),
         wordTokens, naturalWidth: natural, forcedBreak, isLast,
-        openingWindow: !!opening && rowY < opening.y + opening.height - EPS,
+        openingWindow,
         openingHostFullWidth: rowGeometry(strips, rowY, Math.max(pitch, m.height), pageBottom)?.width || geometry.width,
         source: sourceMetadata(entry, sourceStart, end),
         sourceText: entry.text.slice(sourceStart, end),
         render: { body, topInset: m.topInset || 0, opening: attached,
           wordSpacing: justify ? Math.max(0, (geometry.width - natural) / gaps) : 0,
-          alignment: isLast || forcedBreak ? 'center' : 'right' },
+          // A final row that still shares vertical space with a dropped opening
+          // must stay adjacent to that opening. Centering the body by itself
+          // shifts the visible opening+body composite toward the opening side.
+          alignment: isLast && openingWindow ? 'right' : (isLast || forcedBreak ? 'center' : 'right') },
       };
       lines.push(line);
       if (attached) openingAttached = true;
