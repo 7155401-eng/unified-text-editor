@@ -175,6 +175,21 @@ test('note ownership requires a body word, not only a note number',()=>{
 for (const [raw, expected] of [['al@01pha','alpha'],['al@01@02pha','alpha'],['alpha,@01beta','alpha,beta'],['alpha @01 beta','alpha beta'],['א@01ב','אב']]) test(`reference removal never invents spaces: ${raw}`,()=>{
  const mapped=mapMainParagraphSource(raw,[],markers(raw)); assert.equal(mapped.mainTextNet,expected);
 });
+test('hidden reference collapses Word NBSP/thin-space residue to one ordinary separator',()=>{
+ const cases=[
+  ['alpha\u00a0@01\u00a0beta','alpha beta'],
+  ['alpha\u202f@01\u2009beta','alpha beta'],
+  ['alpha\u3000@01\tbeta','alpha beta'],
+  ['א\u00a0@01\u202fב','א ב'],
+ ];
+ for(const [raw,expected] of cases){
+  const mapped=mapMainParagraphSource(raw,[],markers(raw));
+  assert.equal(mapped.mainTextNet,expected,JSON.stringify(raw));
+  assert(!/[\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/u.test(mapped.mainTextNet),
+    `hidden marker left a Unicode blank slot: ${JSON.stringify(mapped.mainTextNet)}`);
+ }
+});
+
 test('nested reference removal preserves adjacent text and explicit whitespace',()=>{
  const r=mapMainParagraphSource('a@01b  c',[],[{atInPara:1,sym:'@01',code:'01'}],{normalize:false});assert.equal(r.mainTextNet,'ab  c');
  const visible=mapMainParagraphSource('a@01b',[],[{atInPara:1,sym:'@01',code:'01',replaceWith:'[1]'}],{normalize:false});assert.equal(visible.mainTextNet,'a[1]b');
