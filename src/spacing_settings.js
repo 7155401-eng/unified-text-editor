@@ -63,6 +63,7 @@ const FIELDS = [
 
 let _spacingCacheRaw = null;
 let _spacingCacheSnapshot = null;
+let _spacingStoredSnapshot = null;
 
 function readSpacingStorageRaw() {
   try {
@@ -73,21 +74,42 @@ function readSpacingStorageRaw() {
   }
 }
 
-function spacingSnapshotFromRaw(raw) {
+function spacingSnapshotsFromRaw(raw) {
   try {
-    const saved = JSON.parse(raw || "{}") || {};
-    return Object.freeze(normalizeSpacing({ ...DEFAULTS, ...saved }));
+    const parsed = JSON.parse(raw || "{}");
+    const saved = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    return {
+      stored: Object.freeze({ ...saved }),
+      effective: Object.freeze(normalizeSpacing({ ...DEFAULTS, ...saved })),
+    };
   } catch {
-    return Object.freeze(normalizeSpacing(DEFAULTS));
+    return {
+      stored: Object.freeze({}),
+      effective: Object.freeze(normalizeSpacing(DEFAULTS)),
+    };
   }
 }
 
-export function getSpacingSettingsSnapshot() {
+function ensureSpacingSnapshots() {
   const raw = readSpacingStorageRaw();
-  if (_spacingCacheSnapshot && raw === _spacingCacheRaw) return _spacingCacheSnapshot;
+  if (_spacingCacheSnapshot && _spacingStoredSnapshot && raw === _spacingCacheRaw) return;
+  const snapshots = spacingSnapshotsFromRaw(raw);
   _spacingCacheRaw = raw;
-  _spacingCacheSnapshot = spacingSnapshotFromRaw(raw);
+  _spacingStoredSnapshot = snapshots.stored;
+  _spacingCacheSnapshot = snapshots.effective;
+}
+
+export function getSpacingSettingsSnapshot() {
+  ensureSpacingSnapshots();
   return _spacingCacheSnapshot;
+}
+
+// Exact persisted keys, before DEFAULTS are merged. This is needed by legacy
+// callers whose historical fallback intentionally differs from a UI default.
+// It shares the same raw-aware parse cache as the effective snapshot.
+export function getStoredSpacingSettingsSnapshot() {
+  ensureSpacingSnapshots();
+  return _spacingStoredSnapshot;
 }
 
 export function loadSpacingSettings() {
@@ -99,6 +121,7 @@ export function saveSpacingSettings(settings) {
   const raw = JSON.stringify(next);
   localStorage.setItem(STORAGE_KEY, raw);
   _spacingCacheRaw = raw;
+  _spacingStoredSnapshot = Object.freeze({ ...next });
   _spacingCacheSnapshot = Object.freeze({ ...next });
   return next;
 }
