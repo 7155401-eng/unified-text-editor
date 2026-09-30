@@ -219,6 +219,37 @@ test('page-ending continuation rebalances the paragraph tail instead of rubber-s
  assert.ok(p.diagnostics.some(d=>d.code==='paragraph-tail-rebalanced'));
 });
 
+
+test('dropped opening does not keep a widened row trapped in the previous narrow geometry',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:e=>e.id==='opening-after-knee'
+    ? {position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}
+    : null,
+  measure:p=>{
+   const body=String(p.text||'');
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const words=body.trim()?body.trim().split(/\s+/u):[];
+   return {width:words.length?words.length*10+(words.length-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs([
+   {id:'lead',text:'pre',runs:[],mainRefs:[]},
+   {id:'opening-after-knee',text:'OPEN aa aa aa aa aa',runs:[],mainRefs:[]},
+ ],[
+   {x:0,width:50,y_start:0,y_end:15},
+   {x:0,width:100,y_start:15,y_end:100},
+ ],ctx,100);
+
+ const openingLine=p.lines.find(l=>l.render?.opening);
+ assert(openingLine,'fixture lost the opening word');
+ const wideWindowLine=p.lines.find(l=>l.y>=15-.01 && l.y<openingLine.render.opening.y+openingLine.render.opening.height-.01);
+ assert(wideWindowLine,'fixture did not create a widened row under the dropped opening');
+ assert(wideWindowLine.width>=70,
+   `opening trapped the wide row in the old narrow geometry: width=${wideWindowLine.width}, y=${wideWindowLine.y}`);
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),'preOPEN aa aa aa aa aa');
+});
+
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={
