@@ -5,6 +5,7 @@ import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engin
 import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
+import { renderPages } from '../../src/engine/renderer.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
@@ -102,6 +103,46 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       assert(page.querySelectorAll('[data-v9-main-ref]').length===(enabled?1:0),'incorrect label visibility');
     } finally {page.remove();if(previous)settings['01']=previous;else delete settings['01'];}
   });
+  await test('classic renderer keeps apostrophe + reference + following word atomic when source has no space',()=>{
+    const settings=getStreamSettings(),previous=settings['01'];
+    settings['01']={...(settings['01']||{}),mainRefEnabled:true};
+    const host=document.createElement('div'),prevSync=window.__FORCE_SYNC_RENDER__;
+    document.getElementById('test-root').append(host);
+    window.__FORCE_SYNC_RENDER__=true;
+    const renderFixture=(source,anchor,uid)=>{
+      host.replaceChildren();
+      renderPages([{
+        main:[[0,source,0,source.length,{
+          fullMainText:source,mainRuns:[],
+          mainRefs:[{stream:'01',code:'01',num:1,uid,anchor,absoluteAnchor:anchor}]
+        }]],
+        streams:{}
+      }],host);
+      return host.querySelector('.main-ref-unbreakable-token');
+    };
+    try {
+      const joined=renderFixture("ר'משה",2,'classic-no-space');
+      assert(joined,'no-space source token was not made atomic');
+      assert(joined.style.whiteSpace==='nowrap','atomic token is still CSS-breakable');
+      assert(joined.querySelector('.stream-ref'),'reference escaped atomic token');
+      const clone=joined.cloneNode(true);
+      clone.querySelectorAll('.stream-ref').forEach(el=>el.remove());
+      assert(clone.textContent==="ר'משה",'atomic wrapper did not preserve the complete no-space source token');
+
+      // A real source space remains a legal boundary: the wrapper starts only
+      // after that space and therefore does not glue the preceding token.
+      const spaced=renderFixture("ר' משה",3,'classic-real-space');
+      assert(spaced,'reference+word after a real space should still form an atomic suffix');
+      const spacedClone=spaced.cloneNode(true);
+      spacedClone.querySelectorAll('.stream-ref').forEach(el=>el.remove());
+      assert(spacedClone.textContent==='משה','real whitespace was incorrectly swallowed into the no-break token');
+    } finally {
+      window.__FORCE_SYNC_RENDER__=prevSync;
+      host.remove();
+      if(previous===undefined) delete settings['01']; else settings['01']=previous;
+    }
+  });
+
   for (const onlyOneStream of [true,false]) await test(`every styled note survives all columns and carry-over; single=${onlyOneStream}`,async()=>{
     const settings=getStreamSettings(),saved={};for(const id of ['01','02','03','04']){saved[id]=settings[id];settings[id]={mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false,noteTextPrefix:'  ',noteTextSuffix:'   ',boldOverrideEnabled:false};}
     const page=makePage();
@@ -339,6 +380,39 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     const expanded=b4.lines.some(l=>l.width>firstWidth+40 && l.y>=Math.max(...b3.lines.map(x=>x.y+x.lineHeightPx))-.1);
     assert(expanded,'04 never expands to full width below 03');
     assert(!plan.overflow.streams['03'],'short Mishnah float overflowed');
+    page.remove();
+  });
+
+  await test('per-stream Mishnah pair remains active after two fixed GPT streams',()=>{
+    const page=makePage();
+    const short='alpha beta gamma delta';
+    const long=Array(14).fill(phrase).join(' ');
+    const gpt='alpha beta gamma delta epsilon';
+    const plan=buildSinglePage(page,{
+      mainText:'main text',
+      rightStream:{id:'01',items:[gpt],runs:[],rich:{text:gpt,runs:[]}},
+      leftStream:{id:'02',items:[gpt],runs:[],rich:{text:gpt,runs:[]}},
+      footerStreams:[
+        {id:'03',items:[short],runs:[],rich:{text:short,runs:[]}},
+        {id:'04',items:[long],runs:[],rich:{text:long,runs:[]}}
+      ]
+    },{
+      ...cfg,pageHeight:720,talmudStreams:['01','02'],mishnaWrapOn:false,levels:[],
+      streamSettings:{
+        '01':{layoutRole:'gemara',inlineStyle:{fontSize:11}},
+        '02':{layoutRole:'gemara',inlineStyle:{fontSize:11}},
+        '03':{layoutRole:'mishna',mishnaSide:'right',inlineStyle:{fontSize:11}},
+        '04':{layoutRole:'mishna',inlineStyle:{fontSize:11}}
+      }
+    });
+    const b3=plan.footerBoxes.find(b=>b.id==='03'),b4=plan.footerBoxes.find(b=>b.id==='04');
+    assert(b3&&b4,'mixed GPT+Mishnah footer boxes missing');
+    assert(b3.mishnaRole==='float'&&b4.mishnaRole==='flow',
+      `per-stream Mishnah role ignored after GPT: ${b3.mishnaRole}/${b4.mishnaRole}`);
+    assert(Math.abs(b3.titleY-b4.titleY)<.1,'per-stream Mishnah pair no longer shares one geometric level');
+    assert(b3.titleWidth<plan.pageBox.innerWidth*.75,'per-stream Mishnah stream fell back to full-width footer');
+    assert(plan.streamBoxes.some(b=>b.id==='01')&&plan.streamBoxes.some(b=>b.id==='02'),
+      'fixed GPT streams disappeared while activating Mishnah pair');
     page.remove();
   });
 
