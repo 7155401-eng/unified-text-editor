@@ -112,6 +112,8 @@ function patchSideStreamFullStrip(source) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
+        // Both side streams widen below main on the same planned Y boundary.
+        lockYStart: true,
       });
     }
     // ${MARKER}: full-width continuation is still legal after the other side
@@ -335,6 +337,7 @@ function verifyInvariant(source) {
   assertIncludes(source, "lockYStart: s.lockYStart === true", "side strips pass lockYStart to flow");
   assertIncludes(source, "const maxFullStrip3Lines = Number(o.maxFullStrip3Lines) > 0", "strip3 line cap exists");
   assertIncludes(source, "const lockFullStrip3Start = maxFullStrip3Lines > 0 || o.lockFullStrip3Start === true", "full-width start lock is decoupled from one-line cap");
+  assertIncludes(source, "Both side streams widen below main on the same planned Y boundary.", "half-width widening transition remains row-locked");
   assertIncludes(source, "const isSameStreamSideSplit = isScenario1 ||", "same-stream split flag exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0", "right pass2 cap is same-stream only");
   assertIncludes(source, "lockFullStrip3Start: !!pass1Left", "right pass2 still locks full-width start when left exists");
