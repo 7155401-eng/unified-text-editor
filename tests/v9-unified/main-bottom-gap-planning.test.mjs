@@ -33,6 +33,18 @@ test('main-bottom compatibility pass is diagnostic-only',()=>{
   assert(start>=0&&end>start,'cannot isolate applyGapToPage');
   const body=gapSource.slice(start,end);
   assert(body.includes('authority: "planner"'),'diagnostic does not identify planner authority');
-  assert(!body.includes('setTop('),'main-bottom diagnostic still mutates element top');
+  assert(!body.includes('setTop('),'main-bottom diagnostic still calls a Y mutation helper');
   assert(!body.includes('.style.top ='),'main-bottom diagnostic still writes top');
+  assert(!gapSource.includes('function setTop('),'dead top-mutation helper returned to diagnostic module');
+  assert(!gapSource.includes('.style.top ='),'diagnostic module contains a hidden top mutation outside applyGapToPage');
+});
+
+test('render path has no asynchronous post-paint geometry authority',()=>{
+  const start=v9.indexOf('function renderPagePlan(plan, pageEl, cfg)');
+  const end=v9.indexOf('\n// =====================================================================\n// API ראשי',start);
+  assert(start>=0&&end>start,'cannot isolate renderPagePlan');
+  const body=v9.slice(start,end);
+  assert(!body.includes('queueMicrotask('),'render path schedules delayed geometry work');
+  assert(!body.includes('requestAnimationFrame('),'render path schedules frame-delayed geometry work');
+  assert(!body.includes('autoResolveV9CrownMainOverlap'),'render path invokes the removed overlap resolver');
 });
