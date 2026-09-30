@@ -20,7 +20,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions' || github.head_ref == 'gpt-stream-style-measurement-parity-20260930'
+    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -36,8 +36,7 @@ jobs:
           git rev-parse HEAD | tee test-results/v9-unified/commit.txt
           node --check src/vilna_v9.js
           node --check src/engine_bridge.js
-          mapfile -t unit_tests < <(find tests/v9-unified -maxdepth 1 -name '*.test.mjs' ! -name 'intro-panes.test.mjs' -print | sort)
-          node --test "${unit_tests[@]}" | tee test-results/v9-unified/unit.tap
+          node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit.tap
           test ! -f .github/workflows/v9-apply-candidate-once.yml
           test ! -f .github/v9-candidate-edits-1.b64
           test ! -f .github/v9-build-compat-edits.json
@@ -70,8 +69,7 @@ jobs:
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
       - name: Repeat unit and browser regressions after build
         run: |
-          mapfile -t unit_tests < <(find tests/v9-unified -maxdepth 1 -name '*.test.mjs' ! -name 'intro-panes.test.mjs' -print | sort)
-          node --test "${unit_tests[@]}" | tee test-results/v9-unified/unit-after-build.tap
+          node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
           cp test-results/v9-unified/browser.json test-results/v9-unified/browser-before-build.json
           node scripts/v9-unified/run-browser.mjs
       - name: Retain validation evidence
