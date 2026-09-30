@@ -1,3 +1,26 @@
+function createMergeIdempotencyKey() {
+  try {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  } catch (_) {}
+  return `nikud-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function parseNikudResponse(response, operation) {
+  let data = null;
+  try { data = await response.json(); } catch (_) {}
+  if (response.ok) return data || {};
+
+  const err = new Error(
+    data?.error === "quota_exceeded"
+      ? "המכסה השבועית למיזוג ניקוד נוצלה. בחשבון חינמי ניתן לבצע מיזוג מוצלח אחד בכל 7 ימים."
+      : (data?.message || `${operation} failed: HTTP ${response.status}`)
+  );
+  err.code = data?.error || "request_failed";
+  err.status = response.status;
+  err.resetAt = data?.resetAt ?? null;
+  throw err;
+}
+
 export const SCOPE_OFF   = "off";
 export const SCOPE_VOC   = "voc";
 export const SCOPE_CLEAN = "clean";
@@ -163,10 +186,10 @@ export async function merge(clean, vocalizedText, opts = {}) {
       sources: [["Source 1", vocalizedText]],
       mode: opts.mode || "word",
       filter_config: opts.config && opts.config.toDict ? opts.config.toDict() : opts.config,
+      idempotency_key: opts.idempotencyKey || createMergeIdempotencyKey(),
     }),
   });
-  if (!response.ok) throw new Error(`Nikud merger failed: HTTP ${response.status}`);
-  const data = await response.json();
+  const data = await parseNikudResponse(response, "Nikud merger");
   return data.result;
 }
 
@@ -180,10 +203,10 @@ export async function mergeAllSources(clean, sources, opts = {}) {
       sources,
       mode: opts.mode || "word",
       filter_config: opts.config && opts.config.toDict ? opts.config.toDict() : opts.config,
+      idempotency_key: opts.idempotencyKey || createMergeIdempotencyKey(),
     }),
   });
-  if (!response.ok) throw new Error(`Nikud merger failed: HTTP ${response.status}`);
-  const data = await response.json();
+  const data = await parseNikudResponse(response, "Nikud merger");
   return data.result;
 }
 
@@ -193,8 +216,7 @@ export async function checkText(text) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ action: "quality", text }),
   });
-  if (!response.ok) throw new Error(`Nikud quality failed: HTTP ${response.status}`);
-  const data = await response.json();
+  const data = await parseNikudResponse(response, "Nikud quality");
   return data.issues || [];
 }
 

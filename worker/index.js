@@ -184,7 +184,7 @@ export default {
     } else if (url.pathname === '/api/tools/preflight') {
       response = await handleToolPreflight(request, env);
     } else if (url.pathname === '/api/nikud-merger') {
-      response = await handleNikudMerger(request);
+      response = await handleNikudMerger(request, env);
     } else if (url.pathname === '/api/text-compare-pro') {
       response = await handleTextComparePro(request);
     } else if (url.pathname.startsWith('/api/sefaria/')) {
