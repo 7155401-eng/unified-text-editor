@@ -375,8 +375,10 @@ export function paneManagerToFrontMatterGroups(paneManager) {
   })).filter(group => group.content.length > 0);
 }
 
-async function packFrontMatterGroups(paneManager, pageGeom, isCurrent) {
-  const groups = paneManagerToFrontMatterGroups(paneManager);
+async function packFrontMatterGroups(paneManager, pageGeom, isCurrent, sourceGroups = null) {
+  const groups = Array.isArray(sourceGroups)
+    ? sourceGroups
+    : paneManagerToFrontMatterGroups(paneManager);
   const packedGroups = [];
   let totalPages = 0;
 
