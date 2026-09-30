@@ -150,7 +150,7 @@ function patchSameStreamLeftExpansion(source) {
       maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0,
       lockFullStrip3Start: !!(pass2Right || pass1Right),
     });`;
-  const after = `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+  const legacyAfter = `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
       mainBottomY,
       otherSideEndY: otherEnd,
       // Column B may expand after column A ends. The old one-line cap solved
@@ -159,7 +159,17 @@ function patchSameStreamLeftExpansion(source) {
       maxFullStrip3Lines: 0,
       lockFullStrip3Start: !!(pass2Right || pass1Right),
     });`;
+  const after = `pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+      mainBottomY,
+      otherSideEndY: otherEnd,
+      // Column B may expand after column A ends. The old one-line cap solved
+      // centered orphan rows, but after source-continuation rendering exists it
+      // incorrectly prevents the surviving second column from using full width.
+      // The width transition itself does NOT create a new Y baseline.
+      maxFullStrip3Lines: 0,
+    });`;
   if (source.includes(after)) return source;
+  if (source.includes(legacyAfter)) return source.replace(legacyAfter, after);
   if (!source.includes(before)) fail("missing same-stream left expansion anchor");
   return source.replace(before, after);
 }
@@ -187,6 +197,9 @@ function verify(source) {
   }
   if (source.includes("maxFullStrip3Lines: isSameStreamSideSplit && (pass2Right || pass1Right) ? 1 : 0")) {
     fail("same-stream column B is still one-line capped");
+  }
+  if (source.includes("lockFullStrip3Start:")) {
+    fail("legacy full-strip Y lock survived column balance patch");
   }
 }
 
