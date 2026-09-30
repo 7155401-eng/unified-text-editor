@@ -1384,6 +1384,11 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
      assert((result.noteAnchorFallbacks||[]).length===0,'active-split extension introduced anchor fallback');
      const fills=result.pages.slice(0,-1).map(p=>Number(p.dataset.v9PageFill)).filter(Number.isFinite);
      const minFill=fills.length?Math.min(...fills):1;
+     // Current-main baseline for this exact fixture was 0.541 before legal
+     // note-continuation was allowed through split extension. Keep a modest
+     // margin below the measured 0.5707 so font/runtime noise cannot erase
+     // the recovered fill without turning this into an overfitted pixel test.
+     assert(minFill>=0.56,`legal continuation no longer improves sparse active-split page: minFill=${minFill}`);
      for(const p of input){
        const rows=[...host.querySelectorAll(`[data-v9-paragraph-id="${p.id}"]`)];
        assert(rows.map(sourceText).join('')===prepareV9SourceParagraph(p).mainText,`source loss in ${p.id}`);
