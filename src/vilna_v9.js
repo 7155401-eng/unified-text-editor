@@ -28,6 +28,7 @@ import { getOpeningWordSettings } from "./opening_word.js";
 import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main_inline_layout.js";
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
+import { applyDocumentFeaturesToPage } from "./document_features.js";
 
 // משה 2026-05-13: מתאם runs המוצא ב-extractor (אופסטים בטקסט המקורי) ל-runs
 // ברמת שורת V9. עובד פר-מילה: V9 שומר words[] לכל שורה, אנחנו מאתרים כל מילה
@@ -6049,6 +6050,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     pageEl.setAttribute('dir', 'rtl');
     pageEl.dataset.pageIndex = String(pageIdx);
     pageEl.dataset.realized = '1';
+    applyDocumentFeaturesToPage(pageEl, pageIdx, { atRender: true });
     container.appendChild(pageEl);
 
     const plan = finalProbe;
