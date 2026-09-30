@@ -20,7 +20,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/fix/v9-typography-spacing-regressions'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -65,8 +65,10 @@ jobs:
       - name: Full build and source rewrite integrity
         run: |
           npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
+          git diff --exit-code -- . ':(exclude)dist/**' ':(exclude)worker-dist/**' ':(exclude)test-results/**'
           npm run build 2>&1 | tee test-results/v9-unified/build.log
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
+          git diff --exit-code -- . ':(exclude)dist/**' ':(exclude)worker-dist/**' ':(exclude)test-results/**'
       - name: Repeat unit and browser regressions after build
         run: |
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
