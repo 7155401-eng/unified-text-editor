@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
-import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates } from '../../src/engine/v9_split_policy.js';
+import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates,getLastMainLineInfo } from '../../src/engine/v9_split_policy.js';
 import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
 import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
@@ -77,6 +77,52 @@ test('sparse rescue adaptive search covers the missing physical rows from paragr
  assert(selected.some(c=>c.offset===50),'five missing rows did not include a five-row prefix');
  assert(!selected.some(c=>c.offset===500),'adaptive sparse search still starts at the paragraph tail');
  assert(selected.length>=11 && selected.length<=36,`unexpected adaptive sparse budget: ${selected.length}`);
+});
+
+
+test('planned tail redistribution counts toward the final line guard',()=>{
+ const baseLine={
+   text:'a b c d',width:100,naturalWidth:70,isLast:false,forcedBreak:false,
+   y:100,lineHeightPx:20,render:{wordSpacing:5,body:{text:'a b c d'}}
+ };
+ const mkPlan=line=>({
+   unstartedNotes:[],
+   overflow:{exceedsPage:false,mainText:'',streams:{}},
+   pageBox:{height:200,padding:0},
+   mainBox:{continues:true,lines:[line]},
+   streamBoxes:[],footerBoxes:[]
+ });
+ const candidate={kind:'visual-line-end',priority:900};
+ const policy={rejectSparsePages:false,minLineEdgeFill:.82};
+ const rejected=scoreV9PageCandidate(mkPlan({...baseLine}),candidate,policy,{cfg:{pageHeight:200,padding:0}});
+ assert.equal(rejected.accept,false,'ordinary short line unexpectedly bypassed final line guard');
+
+ const rebalanced={...baseLine,tailRebalanced:true};
+ const accepted=scoreV9PageCandidate(mkPlan(rebalanced),candidate,policy,{cfg:{pageHeight:200,padding:0}});
+ assert.equal(accepted.accept,true,accepted.reason);
+ const info=getLastMainLineInfo(mkPlan(rebalanced),policy);
+ assert(info.lastMainLineEffectiveFillRatio>=.82,
+   `effective fill was ignored: ${info.lastMainLineEffectiveFillRatio}`);
+ assert.equal(info.isTailRebalancedLineEdge,true);
+});
+
+test('tail redistribution still fails the guard when gentle spacing is insufficient',()=>{
+ const line={
+   text:'a b c d',width:100,naturalWidth:60,isLast:false,forcedBreak:false,
+   y:100,lineHeightPx:20,tailRebalanced:true,
+   render:{wordSpacing:3,body:{text:'a b c d'}}
+ };
+ const plan={
+   unstartedNotes:[],
+   overflow:{exceedsPage:false,mainText:'',streams:{}},
+   pageBox:{height:200,padding:0},
+   mainBox:{continues:true,lines:[line]},
+   streamBoxes:[],footerBoxes:[]
+ };
+ const score=scoreV9PageCandidate(plan,{kind:'visual-line-end',priority:900},
+   {rejectSparsePages:false,minLineEdgeFill:.82},{cfg:{pageHeight:200,padding:0}});
+ assert.equal(score.accept,false);
+ assert.equal(score.reason,'last-main-line-not-filled');
 });
 
 test('started long-note continuation is legal and remains scoreable',()=>{
