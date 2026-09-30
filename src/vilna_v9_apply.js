@@ -16,7 +16,7 @@
 import { nextFrame } from "./engine/background_safe_yield.js";
 import { buildPages } from "./vilna_v9.js";
 import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna_daf_lock.js";
-import { applyV9MainBottomGap, resolveV9MainBottomGapPx } from "./engine/v9_main_bottom_gap.js";
+import { resolveV9MainBottomGapPx } from "./engine/v9_main_bottom_gap_policy.js";
 import { getTalmudStreamsText } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
@@ -577,9 +577,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
 
     annotateV9RenderedSourceMetadata(container, transformedParagraphs);
 
-    // Compatibility diagnostics + non-geometric guards. The requested gap is
-    // already in the V9 plan; this function no longer moves lines/titles.
-    applyV9MainBottomGap(container);
+    // V9 final-plan geometry and typography are complete at this point.
+    // No post-layout gap/opening/stretch normalization is allowed here: the
+    // planner and its painter are the single source of truth.
 
     // סימון העמודים במצב משנ"ב — אותו סיווג שהמנוע הרגיל נותן, כדי שגם
     // כאן יחולו כללי העיצוב של התבנית ושיהיה אפשר לראות שהמצב באמת פעיל.
