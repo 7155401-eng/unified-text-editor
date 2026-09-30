@@ -31,3 +31,14 @@ test('UI exposes a dedicated introduction-pane command',()=>{
   assert.match(main,/paneRole:\s*"intro"/);
   assert.match(main,/label: `הקדמה \$\{count \+ 1\}`/);
 });
+
+test('UI removal guard keeps main protected but allows introduction panes',()=>{
+  assert.match(
+    main,
+    /case "pane-remove"[\s\S]*?a\.paneRole === "main" \|\| \(!a\.streamCode && a\.paneRole !== "intro"\)/
+  );
+  assert.doesNotMatch(
+    main,
+    /case "pane-remove"[\s\S]{0,220}?if \(!a\.streamCode\)/
+  );
+});
