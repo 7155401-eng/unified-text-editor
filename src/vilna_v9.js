@@ -4095,6 +4095,7 @@ function renderPagePlan(plan, pageEl, cfg) {
         lineEl.classList.add("v9-role-" + v9Role.replace(/[^a-z0-9_-]/gi, "-").toLowerCase());
       }
       if (box.id) lineEl.dataset.v9BoxId = String(box.id);
+      if (line.mainColumn) lineEl.dataset.v9MainColumn = String(line.mainColumn);
       // ★ משה 28/09/2026 — סימון לשורה שכבר צומצמה בזרימה עבור מילת הפתיח.
       // בלעדיו, המדידה מה-DOM שרצה אחרי הציור מצמצמת אותה **פעם שנייה**,
       // והנסיגה יוצאת כפולה מרוחב האות (נמדד: פער 106 מול אות ברוחב 49).
