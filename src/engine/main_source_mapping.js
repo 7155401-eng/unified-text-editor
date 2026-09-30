@@ -1,5 +1,14 @@
 // Text, style ranges and anchors must share one boundary map. Never align
 // marks against a second independently marker-stripped copy of the text.
+//
+// Word may surround an inline reference with NBSP/thin/narrow spaces rather
+// than ASCII U+0020. When the reference label is hidden, those characters must
+// not survive as an empty visual slot. They are ordinary horizontal separators
+// for layout purposes: normalize a run of them to ONE regular space, while
+// preserving real line breaks.
+export function isCollapsibleHorizontalSpace(ch) {
+  return /[ \t\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]/u.test(String(ch || ''));
+}
 export function mapMainParagraphSource(rawValue, runs = [], markers = [], { normalize = true } = {}) {
   const raw = String(rawValue || '');
   const removed = new Uint8Array(raw.length);
@@ -24,7 +33,7 @@ export function mapMainParagraphSource(rawValue, runs = [], markers = [], { norm
   let normalized = '';
   for (let i = 0; i < stripped.length; i++) {
     normalizedBoundary[i] = normalized.length;
-    const c = normalize && stripped[i] === '\t' ? ' ' : stripped[i];
+    const c = normalize && isCollapsibleHorizontalSpace(stripped[i]) ? ' ' : stripped[i];
     if (!normalize || c !== ' ' || !normalized.endsWith(' ')) normalized += c;
   }
   normalizedBoundary[stripped.length] = normalized.length;
