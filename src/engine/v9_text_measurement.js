@@ -73,6 +73,19 @@ export function appendV9PlannedPart(parent, part) {
   appendSemanticWhitespace(parent, part.trailingText);
 }
 
+export function v9MeasurementCacheKey(part) {
+  // Edge direction marks participate in Unicode BiDi even though they have
+  // zero visible width. They therefore belong to the measurement identity.
+  return JSON.stringify([
+    part?.leadingText || '',
+    part?.text || '',
+    part?.trailingText || '',
+    part?.runs || [],
+    part?.refs || [],
+    part?.style || {},
+  ]);
+}
+
 export function createV9TextLayoutContext(cfg, hooks = {}) {
   if (!document?.body) throw new Error('V9 layout requires a document with loaded fonts');
   const root = document.createElement('div');
@@ -139,7 +152,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     },
     measure(part) {
       if (disposed) throw new Error('Disposed V9 measurement context');
-      const key = JSON.stringify([part.text, part.runs, part.refs, part.style]);
+      const key = v9MeasurementCacheKey(part);
       const found = cache.get(key); if (found) return found;
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';
