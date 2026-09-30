@@ -1,0 +1,32 @@
+name: Temporary tool policy validation
+
+on:
+  push:
+    branches:
+      - feat/tool-policy-registry-batch-a1-20260930
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: '22' }
+      - name: Policy tests and syntax
+        run: |
+          node --check worker/tool_policy.js
+          node --check worker/tool_gate.js
+          node --check src/premium/daily_quota_gate.js
+          node --test tests/quota/*.test.mjs
+      - name: Locked install and build
+        env: { PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1' }
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+      - name: Policy tests after build
+        run: node --test tests/quota/*.test.mjs
