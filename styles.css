@@ -1596,6 +1596,12 @@ body.light-theme .pdf-scroll-progress-fill {
   display: flex;
   flex-direction: column;
   font-family: var(--ravtext-page-font-family);
+  /* Explicit Hebrew mark/mkmk shaping. Browsers normally enable these by
+     default, but keeping them explicit prevents feature resets from custom
+     styles and gives final letters/stacked niqqud the font's proper anchors. */
+  font-feature-settings: "kern" 1, "liga" 1, "mark" 1, "mkmk" 1;
+  font-kerning: normal;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
   color: #222;
 }
@@ -1780,14 +1786,17 @@ body.light-theme .pdf-scroll-progress-fill {
    המודול עוטף מילים ב-.ln-word, ולכל שורה שזיהה כבעייתית בונה
    container flex עם בקרה על מתיחה ועל מילה יתומה. */
 .ln-word {
-  /* ברירת מחדל: לא לשנות כלום — רק tag למדידה. */
+  /* A source token is atomic. Unicode line-breaking may otherwise split around
+     brackets/quotes/punctuation even when the user did not type whitespace. */
+  white-space: nowrap;
 }
 .ln-orphan-overflow {
-  /* מילה אחת שרחבה יותר מהטור — אסור לתת לה לחרוג. */
+  /* Keep the user's no-whitespace boundary rule even for an overlong token.
+     Overflow is preferable to inventing a split inside the source token. */
   display: inline-block;
   max-width: 100%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 .ln-line {
   /* קונטיינר flex לכל שורה שטופלה. row-reverse כי RTL. */
