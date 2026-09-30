@@ -384,26 +384,66 @@ function makeCheckbox(labelText, checked, onChange) {
   return label;
 }
 
-export function loadGlobalStreamOverrides() {
-  let raw = {};
-  try {
-    raw = JSON.parse(localStorage.getItem(GLOBAL_STREAM_OVERRIDES_KEY) || "{}") || {};
-  } catch (_err) {
-    raw = {};
-  }
+let _globalStreamOverridesRaw = Symbol("unread");
+let _globalStreamOverridesSnapshot = null;
+
+function normalizeGlobalStreamOverrides(rawOverrides) {
+  const source = rawOverrides && typeof rawOverrides === "object" ? rawOverrides : {};
   const out = {};
   for (const [key, def] of Object.entries(GLOBAL_OVERRIDE_DEFS)) {
-    const item = raw[key] || {};
-    out[key] = {
+    const item = source[key] && typeof source[key] === "object" ? source[key] : {};
+    out[key] = Object.freeze({
       enabled: !!item.enabled,
       value: item.value !== undefined ? item.value : def.value,
-    };
+    });
   }
-  return out;
+  return Object.freeze(out);
+}
+
+function parseGlobalStreamOverridesRaw(raw) {
+  try {
+    return JSON.parse(raw || "{}") || {};
+  } catch (_err) {
+    return {};
+  }
+}
+
+// Hot-path accessor: localStorage.getItem is cheap enough to use as the
+// invalidation probe; parsing and rebuilding all overrides is not. Comparing
+// the raw string also catches direct same-tab writes, unlike storage events.
+export function getGlobalStreamOverridesSnapshot() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(GLOBAL_STREAM_OVERRIDES_KEY);
+  } catch (_err) {
+    raw = null;
+  }
+
+  if (_globalStreamOverridesSnapshot && raw === _globalStreamOverridesRaw) {
+    return _globalStreamOverridesSnapshot;
+  }
+
+  const snapshot = normalizeGlobalStreamOverrides(parseGlobalStreamOverridesRaw(raw));
+  _globalStreamOverridesRaw = raw;
+  _globalStreamOverridesSnapshot = snapshot;
+  return snapshot;
+}
+
+// UI/legacy callers historically mutate the returned records before calling
+// saveGlobalStreamOverrides(). Preserve that API while layout callers consume
+// the immutable snapshot directly.
+export function loadGlobalStreamOverrides() {
+  const snapshot = getGlobalStreamOverridesSnapshot();
+  const copy = {};
+  for (const [key, item] of Object.entries(snapshot)) copy[key] = { ...item };
+  return copy;
 }
 
 export function saveGlobalStreamOverrides(overrides) {
-  localStorage.setItem(GLOBAL_STREAM_OVERRIDES_KEY, JSON.stringify(overrides || {}));
+  const raw = JSON.stringify(overrides || {});
+  localStorage.setItem(GLOBAL_STREAM_OVERRIDES_KEY, raw);
+  _globalStreamOverridesRaw = raw;
+  _globalStreamOverridesSnapshot = normalizeGlobalStreamOverrides(overrides);
 }
 
 // משה 2026-05-13: תשתית מיספור לזרמים (לראשי, להערה, להערה-בתוך-הערה).
@@ -602,7 +642,7 @@ export function getEffectiveStreamSettings(code) {
     ...runtime,
     ...stored,
   });
-  const overrides = loadGlobalStreamOverrides();
+  const overrides = getGlobalStreamOverridesSnapshot();
   const out = { ...base };
   for (const [key, item] of Object.entries(overrides)) {
     if (!item?.enabled) continue;
