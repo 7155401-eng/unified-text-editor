@@ -617,8 +617,8 @@ export class CaricatureWindow {
         this.quotaBar.textContent = tr("quota_ready", this.lang);
         this.quotaBar.classList.add("acc");
       } else {
-        const waitSec = Math.max(0, Number(status?.resetAt || 0) / 1000 - Date.now() / 1000);
-        this.quotaBar.textContent = tr("quota_wait", this.lang, { wait: humanize(waitSec * 1000) });
+        const waitSec = Math.max(0, Number(status?.resetAt || 0) - Date.now() / 1000);
+        this.quotaBar.textContent = tr("quota_wait", this.lang, { wait: humanize(waitSec) });
         this.quotaBar.classList.add("wait");
       }
     } catch (_) {
