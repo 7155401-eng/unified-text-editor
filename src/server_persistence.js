@@ -63,6 +63,12 @@ function isBlacklisted(key) {
 }
 
 let _docDebounceTimer = null;
+let _docMaxWaitTimer = null;
+let _docPendingManager = null;
+// Document PUTs are strictly serialized. Each queued item contains an immutable
+// snapshot captured when its debounce/max-wait expires, so an older slow request
+// can never finish after and overwrite a newer request sent in parallel.
+let _docSaveChain = Promise.resolve();
 let _settingsDebounceTimer = null;
 let _lastDocSig = '';
 let _lastSettingsSig = '';
@@ -220,6 +226,13 @@ function clearServerStale() {
   try { localStorage.removeItem(STALE_KEY); } catch {}
 }
 
+function clearServerStaleIfConfirmed(documentSig) {
+  if (!documentSig) return;
+  try {
+    if (localStorage.getItem(DOC_KEY) === documentSig) clearServerStale();
+  } catch {}
+}
+
 function staleServerCopy() {
   try {
     const raw = localStorage.getItem(STALE_KEY);
@@ -322,24 +335,30 @@ function showSaveProblem(status, chars) {
   } catch {}
 }
 
-async function saveDocumentNow(paneManager) {
+function snapshotDocumentForSync(paneManager) {
   const canSerialize = paneManager && (
     typeof paneManager.serializeForPersistence === 'function' ||
     typeof paneManager.serialize === 'function'
   );
-  if (!isLoggedIn() || !canSerialize) return;
+  if (!canSerialize) return null;
 
-  // Keep the attempted signature outside the fetch try/catch. A thrown network
-  // error has the same recovery meaning as an HTTP failure: we do not have
-  // confirmation that the server owns this newer snapshot.
-  let attemptedSig = '';
+  const content = typeof paneManager.serializeForPersistence === 'function'
+    ? paneManager.serializeForPersistence()
+    : paneManager.serialize();
+  const sig = JSON.stringify(content);
+  return { content, sig };
+}
+
+async function saveDocumentSnapshot(snapshot) {
+  if (!isLoggedIn() || !snapshot?.sig) return;
+
+  const { content, sig } = snapshot;
+  if (sig === _lastDocSig) {
+    clearServerStaleIfConfirmed(sig);
+    return;
+  }
+
   try {
-    const content = typeof paneManager.serializeForPersistence === 'function'
-      ? paneManager.serializeForPersistence()
-      : paneManager.serialize();
-    const sig = JSON.stringify(content);
-    attemptedSig = sig;
-    if (sig === _lastDocSig) return;
     const res = await fetch('/api/documents/current', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -348,11 +367,10 @@ async function saveDocumentNow(paneManager) {
     if (res.ok) {
       _lastDocSig = sig;
       _lastSaveError = 0;
-      clearServerStale();
+      // A slow older PUT may finish after the user already typed a newer local
+      // snapshot. Never let that older success clear the newer recovery flag.
+      clearServerStaleIfConfirmed(sig);
     } else {
-      // משה 2026-09-20: עד כאן הכישלון היה **שקט** — רק שורה ביומן.
-      // התוצאה: המסמך החדש לא נשמר בשרת, ובכל רענון חזר המסמך הישן
-      // תוך שתי שניות, והמשתמש חשב שהאתר "מתעלם" ממנו. עכשיו הוא רואה.
       _lastSaveError = res.status;
       markServerStale(res.status, sig.length);
       console.warn('[persistence] save document failed:', res.status,
@@ -360,13 +378,44 @@ async function saveDocumentNow(paneManager) {
       showSaveProblem(res.status, sig.length);
     }
   } catch (e) {
-    console.warn('[persistence] saveDocumentNow error:', e);
-    if (attemptedSig && attemptedSig !== _lastDocSig) {
+    console.warn('[persistence] saveDocumentSnapshot error:', e);
+    if (sig !== _lastDocSig) {
       _lastSaveError = 'network-error';
-      markServerStale('network-error', attemptedSig.length);
-      showSaveProblem('network-error', attemptedSig.length);
+      markServerStale('network-error', sig.length);
+      showSaveProblem('network-error', sig.length);
     }
   }
+}
+
+function queueDocumentSnapshot(snapshot) {
+  if (!snapshot?.sig) return _docSaveChain;
+  const run = () => saveDocumentSnapshot(snapshot);
+  // Keep the chain alive after ordinary network failures.
+  _docSaveChain = _docSaveChain.then(run, run);
+  return _docSaveChain;
+}
+
+function clearDocumentSyncTimers() {
+  if (_docDebounceTimer) clearTimeout(_docDebounceTimer);
+  if (_docMaxWaitTimer) clearTimeout(_docMaxWaitTimer);
+  _docDebounceTimer = null;
+  _docMaxWaitTimer = null;
+}
+
+function flushScheduledDocumentSync() {
+  const paneManager = _docPendingManager;
+  _docPendingManager = null;
+  clearDocumentSyncTimers();
+  if (!paneManager || !isLoggedIn()) return _docSaveChain;
+
+  let snapshot = null;
+  try {
+    snapshot = snapshotDocumentForSync(paneManager);
+  } catch (e) {
+    console.warn('[persistence] snapshotDocumentForSync failed:', e);
+    return _docSaveChain;
+  }
+  return queueDocumentSnapshot(snapshot);
 }
 
 async function saveSettingsNow() {
@@ -399,9 +448,19 @@ async function saveSettingsNow() {
 }
 
 export function scheduleDocumentSync(paneManager) {
-  if (!isLoggedIn()) return;
+  if (!isLoggedIn() || !paneManager) return;
+  _docPendingManager = paneManager;
+
+  // Trailing debounce: normal typing saves 2s after the user pauses.
   if (_docDebounceTimer) clearTimeout(_docDebounceTimer);
-  _docDebounceTimer = setTimeout(() => saveDocumentNow(paneManager), DEBOUNCE_MS);
+  _docDebounceTimer = setTimeout(flushScheduledDocumentSync, DEBOUNCE_MS);
+
+  // Non-sliding maximum wait: continuous typing may keep moving the 2s timer,
+  // but the first dirty event starts one 10s deadline that later edits cannot
+  // postpone.
+  if (!_docMaxWaitTimer) {
+    _docMaxWaitTimer = setTimeout(flushScheduledDocumentSync, DOC_SYNC_MAX_WAIT_MS);
+  }
 }
 
 export function scheduleSettingsSync() {
@@ -413,11 +472,29 @@ export function scheduleSettingsSync() {
 export function attachAutoSync(paneManager) {
   if (!isLoggedIn() || !paneManager) return;
 
-  // Document sync — listen for the engine-rendered event which fires on each
-  // (debounced) editor change after pagination completes.
-  if (typeof window !== 'undefined') {
+  // Document sync follows PaneManager's semantic persistence signal, not
+  // rendering. This covers text edits, structural changes and pane metadata
+  // even when live rendering is disabled or pagination is slow.
+  if (typeof paneManager.on === 'function') {
+    paneManager.on('persist', () => scheduleDocumentSync(paneManager));
+  } else if (typeof window !== 'undefined') {
+    // Compatibility only for a genuinely older PaneManager implementation.
     window.addEventListener('ravtext:engine-rendered', () => {
       scheduleDocumentSync(paneManager);
+    });
+  }
+
+  // A successful browser-local snapshot is the recovery authority until that
+  // exact signature is confirmed by the server. This owns recovery state here,
+  // rather than coupling PaneManager itself to server persistence.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('ravtext:local-document-saved', (ev) => {
+      try {
+        const localSig = localStorage.getItem(DOC_KEY);
+        if (!localSig) return;
+        if (localSig === _lastDocSig) clearServerStaleIfConfirmed(localSig);
+        else markServerStale('local-ahead', ev?.detail?.chars || localSig.length);
+      } catch {}
     });
   }
 
