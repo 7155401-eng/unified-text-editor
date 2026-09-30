@@ -2342,10 +2342,10 @@ function buildPagePlanCore(pageContent, config) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
-        // v9-knee-row-grid: a knee changes WIDTH only. The commentary owns
-        // its vertical rhythm. If this boundary falls between two commentary
-        // baselines (e.g. after crown→main clearance), the crossing row stays
-        // narrow and the following normal row is the first wide row.
+        // v9-knee-row-grid: width changes do not create a new vertical grid.
+        // A commentary row that crosses this Y stays narrow; the NEXT normal
+        // row may widen. This avoids blank slots when main/crown spacing is not
+        // an exact multiple of the commentary line pitch.
         lockYStart: false,
       });
     }
