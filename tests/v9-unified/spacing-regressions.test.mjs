@@ -241,12 +241,17 @@ test('dropped opening does not keep a widened row trapped in the previous narrow
    {x:0,width:100,y_start:15,y_end:100},
  ],ctx,100);
 
- const openingLine=p.lines.find(l=>l.render?.opening);
+ const openingLine=p.lines.find(l=>l.sourceText.includes('OPEN'));
  assert(openingLine,'fixture lost the opening word');
- const wideWindowLine=p.lines.find(l=>l.y>=15-.01 && l.y<openingLine.render.opening.y+openingLine.render.opening.height-.01);
- assert(wideWindowLine,'fixture did not create a widened row under the dropped opening');
- assert(wideWindowLine.width>=70,
-   `opening trapped the wide row in the old narrow geometry: width=${wideWindowLine.width}, y=${wideWindowLine.y}`);
+ assert(!openingLine.render?.opening,
+   'unsafe dropped opening remained attached across a changing right edge');
+ assert(p.lines.some(l=>(l.runs||[]).some(r=>Number(r.marks?.fontSize)===20)),
+   'opening style was lost when falling back to raised/inline');
+ const widened=p.lines.find(l=>l.y>=20-.01 && l.width>70);
+ assert(widened,
+   `opening still trapped the widened row in old geometry: ${p.lines.map(l=>`${l.y}:${l.width}`).join(',')}`);
+ assert(p.diagnostics.some(d=>d.code==='opening-raised-at-right-edge-transition'),
+   'transition fallback was not diagnosed');
  assert.equal(p.lines.map(l=>l.sourceText).join(''),'preOPEN aa aa aa aa aa');
 });
 
