@@ -8,6 +8,7 @@
 // 3. כל שינוי בעורך → debounce 2 שניות → שמירה ל-/api/documents/current + /api/settings
 
 const DEBOUNCE_MS = 2000;
+const DOC_SYNC_MAX_WAIT_MS = 10000;
 const SETTINGS_PREFIX = 'ravtext.';
 // משה 2026-05-17: הגנת נפח לסנכרון הגדרות. /api/settings לא אמור לקבל את
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
@@ -63,6 +64,9 @@ function isBlacklisted(key) {
 }
 
 let _docDebounceTimer = null;
+let _docMaxWaitTimer = null;
+let _docPendingManager = null;
+let _docSaveChain = Promise.resolve();
 let _settingsDebounceTimer = null;
 let _lastDocSig = '';
 let _lastSettingsSig = '';
@@ -220,6 +224,14 @@ function clearServerStale() {
   try { localStorage.removeItem(STALE_KEY); } catch {}
 }
 
+function clearServerStaleIfConfirmed(documentSig) {
+  try {
+    // A successful response for an older queued snapshot must never clear the
+    // recovery marker protecting newer browser-local work.
+    if (localStorage.getItem(DOC_KEY) === documentSig) clearServerStale();
+  } catch {}
+}
+
 function staleServerCopy() {
   try {
     const raw = localStorage.getItem(STALE_KEY);
@@ -281,9 +293,11 @@ function showStaleServerNotice(stale) {
     return;
   }
   const size = `${Math.round((stale.chars || 0) / 1000)} אלף תווים`;
-  const msg = stale.status === 'pagehide-pending'
-    ? 'נטען העותק המקומי החדש. לא התקבל אישור שהשמירה לשרת הושלמה לפני סגירת הדף, ולכן הגרסה שבשרת לא דרסה אותו.'
-    : stale.status === 413
+  const msg = stale.status === 'local-ahead'
+    ? 'נטען העותק המקומי החדש. הוא נשמר בדפדפן לפני שהשרת אישר את אותה גרסה, ולכן הגרסה הישנה שבשרת לא דרסה אותו.'
+    : stale.status === 'pagehide-pending'
+      ? 'נטען העותק המקומי החדש. לא התקבל אישור שהשמירה לשרת הושלמה לפני סגירת הדף, ולכן הגרסה שבשרת לא דרסה אותו.'
+      : stale.status === 413
       ? `נטען העותק שלך מהמחשב. בשרת יושבת גרסה ישנה יותר, כי המסמך ` +
         `(${size}) גדול מכדי להישמר שם — לכן הוא לא נדרס.`
       : `נטען העותק שלך מהמחשב. השמירה האחרונה לשרת נכשלה ` +
@@ -322,24 +336,29 @@ function showSaveProblem(status, chars) {
   } catch {}
 }
 
-async function saveDocumentNow(paneManager) {
+function createDocumentSnapshot(paneManager) {
   const canSerialize = paneManager && (
     typeof paneManager.serializeForPersistence === 'function' ||
     typeof paneManager.serialize === 'function'
   );
-  if (!isLoggedIn() || !canSerialize) return;
+  if (!isLoggedIn() || !canSerialize) return null;
+  const content = typeof paneManager.serializeForPersistence === 'function'
+    ? paneManager.serializeForPersistence()
+    : paneManager.serialize();
+  const sig = JSON.stringify(content);
+  return { content, sig };
+}
 
-  // Keep the attempted signature outside the fetch try/catch. A thrown network
-  // error has the same recovery meaning as an HTTP failure: we do not have
-  // confirmation that the server owns this newer snapshot.
-  let attemptedSig = '';
+async function saveDocumentSnapshot(snapshot) {
+  if (!isLoggedIn() || !snapshot) return;
+  const { content, sig } = snapshot;
+
+  if (sig === _lastDocSig) {
+    clearServerStaleIfConfirmed(sig);
+    return;
+  }
+
   try {
-    const content = typeof paneManager.serializeForPersistence === 'function'
-      ? paneManager.serializeForPersistence()
-      : paneManager.serialize();
-    const sig = JSON.stringify(content);
-    attemptedSig = sig;
-    if (sig === _lastDocSig) return;
     const res = await fetch('/api/documents/current', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -348,11 +367,8 @@ async function saveDocumentNow(paneManager) {
     if (res.ok) {
       _lastDocSig = sig;
       _lastSaveError = 0;
-      clearServerStale();
+      clearServerStaleIfConfirmed(sig);
     } else {
-      // משה 2026-09-20: עד כאן הכישלון היה **שקט** — רק שורה ביומן.
-      // התוצאה: המסמך החדש לא נשמר בשרת, ובכל רענון חזר המסמך הישן
-      // תוך שתי שניות, והמשתמש חשב שהאתר "מתעלם" ממנו. עכשיו הוא רואה.
       _lastSaveError = res.status;
       markServerStale(res.status, sig.length);
       console.warn('[persistence] save document failed:', res.status,
@@ -360,13 +376,17 @@ async function saveDocumentNow(paneManager) {
       showSaveProblem(res.status, sig.length);
     }
   } catch (e) {
-    console.warn('[persistence] saveDocumentNow error:', e);
-    if (attemptedSig && attemptedSig !== _lastDocSig) {
+    console.warn('[persistence] saveDocumentSnapshot error:', e);
+    if (sig !== _lastDocSig) {
       _lastSaveError = 'network-error';
-      markServerStale('network-error', attemptedSig.length);
-      showSaveProblem('network-error', attemptedSig.length);
+      markServerStale('network-error', sig.length);
+      showSaveProblem('network-error', sig.length);
     }
   }
+}
+
+async function saveDocumentNow(paneManager) {
+  return saveDocumentSnapshot(createDocumentSnapshot(paneManager));
 }
 
 async function saveSettingsNow() {
@@ -398,10 +418,44 @@ async function saveSettingsNow() {
   }
 }
 
-export function scheduleDocumentSync(paneManager) {
-  if (!isLoggedIn()) return;
+function clearDocumentSyncTimers() {
   if (_docDebounceTimer) clearTimeout(_docDebounceTimer);
-  _docDebounceTimer = setTimeout(() => saveDocumentNow(paneManager), DEBOUNCE_MS);
+  if (_docMaxWaitTimer) clearTimeout(_docMaxWaitTimer);
+  _docDebounceTimer = null;
+  _docMaxWaitTimer = null;
+}
+
+function queueDocumentSave(paneManager) {
+  const snapshot = createDocumentSnapshot(paneManager);
+  if (!snapshot) return _docSaveChain;
+
+  // Snapshot NOW, network later. This makes queue order deterministic: an old
+  // save cannot silently turn into newer editor state while waiting its turn.
+  const run = () => saveDocumentSnapshot(snapshot);
+  _docSaveChain = _docSaveChain.then(run, run);
+  return _docSaveChain;
+}
+
+function flushScheduledDocumentSync() {
+  const paneManager = _docPendingManager;
+  _docPendingManager = null;
+  clearDocumentSyncTimers();
+  if (paneManager) queueDocumentSave(paneManager);
+}
+
+export function scheduleDocumentSync(paneManager) {
+  if (!isLoggedIn() || !paneManager) return;
+  _docPendingManager = paneManager;
+
+  // Normal case: two seconds after the user pauses.
+  if (_docDebounceTimer) clearTimeout(_docDebounceTimer);
+  _docDebounceTimer = setTimeout(flushScheduledDocumentSync, DEBOUNCE_MS);
+
+  // Continuous editing must not postpone server persistence forever. This
+  // deadline is deliberately non-sliding until a snapshot is flushed.
+  if (!_docMaxWaitTimer) {
+    _docMaxWaitTimer = setTimeout(flushScheduledDocumentSync, DOC_SYNC_MAX_WAIT_MS);
+  }
 }
 
 export function scheduleSettingsSync() {
@@ -413,10 +467,30 @@ export function scheduleSettingsSync() {
 export function attachAutoSync(paneManager) {
   if (!isLoggedIn() || !paneManager) return;
 
-  // Document sync — listen for the engine-rendered event which fires on each
-  // (debounced) editor change after pagination completes.
-  if (typeof window !== 'undefined') {
+  // Document sync follows PaneManager persistence intent, not rendering.
+  // This covers text, structure and pane metadata even when live render is off.
+  if (typeof paneManager.on === 'function') {
+    paneManager.on('persist', () => scheduleDocumentSync(paneManager));
+  } else if (typeof window !== 'undefined') {
+    // Compatibility fallback for an older manager implementation only.
     window.addEventListener('ravtext:engine-rendered', () => {
+      scheduleDocumentSync(paneManager);
+    });
+  }
+
+  // A successful localStorage snapshot is recovery-authoritative until the
+  // server confirms that exact JSON signature. PaneManager only emits the
+  // generic event; server recovery ownership stays in this module.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('ravtext:local-document-saved', (ev) => {
+      try {
+        const localSig = localStorage.getItem(DOC_KEY);
+        if (localSig && localSig !== _lastDocSig) {
+          markServerStale('local-ahead', ev?.detail?.chars || localSig.length);
+        } else if (localSig && localSig === _lastDocSig) {
+          clearServerStaleIfConfirmed(localSig);
+        }
+      } catch {}
       scheduleDocumentSync(paneManager);
     });
   }
