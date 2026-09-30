@@ -56,24 +56,25 @@ test("caricature cooldown is one successful generation every 24 hours", () => {
   assert.equal(evaluateQuotaState(p, { last_success: t }, { nowSec: t + DAY_SECONDS }).allowed, true);
 });
 
-test("comparator session stays free while active and blocks a second weekly session after idle", () => {
+test("comparator opening never reuses the 15-minute session of another window", () => {
   const p = TOOL_POLICIES["comparator-tool"];
   const t = 1_700_000_000;
-  const active = evaluateQuotaState(p, {
+  const used = evaluateQuotaState(p, {
     window_start: t - 100,
     uses: 1,
-    last_activity: t - (SESSION_IDLE_SECONDS - 1),
+    last_activity: t - 60,
   }, { nowSec: t });
-  assert.equal(active.allowed, true);
-  assert.equal(active.activeSession, true);
+  assert.equal(used.allowed, false);
+  assert.equal(used.activeSession, false);
+  assert.equal(used.sessionIdleSeconds, SESSION_IDLE_SECONDS);
 
-  const idle = evaluateQuotaState(p, {
-    window_start: t - 100,
+  const reset = evaluateQuotaState(p, {
+    window_start: t - WEEK_SECONDS,
     uses: 1,
-    last_activity: t - SESSION_IDLE_SECONDS,
+    last_activity: t - 60,
   }, { nowSec: t });
-  assert.equal(idle.allowed, false);
-  assert.equal(idle.activeSession, false);
+  assert.equal(reset.allowed, true);
+  assert.equal(reset.remaining, 1);
 });
 
 test("unmetered desktop-parity tools remain unmetered for free users", () => {
