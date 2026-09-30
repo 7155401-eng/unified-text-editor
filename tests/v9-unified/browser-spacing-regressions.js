@@ -6,12 +6,21 @@ import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
+import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
 const cfg={pageWidth:380,pageHeight:350,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:false}};
 
 export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
+ await test('Word round-trip keeps hard breaks inside a paragraph distinct from paragraph boundaries',()=>{
+   const html='<p>אחד<br><strong>שניים</strong></p><p>שלוש</p>';
+   const out=wordMainFragmentFromEditorHtml(html);
+   assert((out.match(/<br>/g)||[]).length===1,'hard break was converted into a Word paragraph boundary');
+   assert((out.match(/<p class=MsoNormal dir=RTL><span lang=HE>/g)||[]).length===1,'editor block boundary was not converted exactly once');
+   assert(out==='אחד<br><b>שניים</b></span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>שלוש',
+     `unexpected Word fragment: ${out}`);
+ });
  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
