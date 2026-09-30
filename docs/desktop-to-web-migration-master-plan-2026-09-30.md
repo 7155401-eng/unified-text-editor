@@ -45,7 +45,7 @@ The migration contract is:
 | Main/stream columns | `src/balanced_columns.js`, stream settings/V9 | PRESENT / ACCEPTANCE NEEDED | Compare all desktop 1/2/3-column cases and min-lines behavior. |
 | Stream layout roles / side layouts | `src/stream_roles_picker.js`, `src/original_stream_columns.js`, V9 footer grouping | PRESENT / ACCEPTANCE NEEDED | Explicitly verify side-note, parallel/translation and combined-note geometry. |
 | Separate bold/emphasis styling | document/stream style system | PRESENT | Regression tests already exist for semantic bold vs selected style. |
-| Page size, spacing, document style | `page_size.js`, `page_settings.js`, `spacing_settings.js`, `document_style_settings.js` | PRESENT | Cross-walk every desktop setting. |
+| Page size, spacing, document style | `page_size.js`, `page_settings.js`, `spacing_settings.js`, `document_style_settings.js` | PRESENT / V9 STREAM LINE-HEIGHT PARITY FIXED | Global `streamLineHeight` now feeds the V9 planner as a dedicated stream pitch for crown/side/footer geometry; explicit per-stream style line-height still overrides it, while main-text pitch remains independent. Continue cross-walking note-gap/title-gap/paragraph-gap semantics separately. |
 | Headers/page numbers/document features | `document_features.js` | PRESENT / ACCEPTANCE NEEDED | Verify odd/even/header/footer behavior against desktop. |
 | Word import/export bridge | `word_bridge.js`, `word_export_serialization.js` | PRESENT | This is web Word round-trip, not the old local installer. |
 | Word footnotes → inline curly braces | `src/docx_tools/footnotes_to_curly.js` | IMPLEMENTED FROM CATALOG CONTRACT | Old repo catalog marked this capability `external-only` with no UI/pipeline implementation to port. Web implementation transforms DOCX directly, preserves rich note runs, and fails closed on orphan notes, hyperlinks, images, tables or objects. |
@@ -76,6 +76,13 @@ These must not be marked complete merely because a similarly named control exist
 - automatic page-shape beta behavior vs current V9.
 
 For each item, create a fixture from the desktop behavior, define the expected web DOM/export result, then port only the semantic rule.
+
+#### Spacing parity re-audit (2026-10-01)
+
+- ✅ V9 global stream line-height is no longer a dead UI setting. `spacing_settings.streamLineHeight` is passed into planning as `streamLineHeightRatio` and is used by the exact measured stream context plus crown/side/footer metrics.
+- ✅ Main and stream line-height are separate planner inputs; changing stream spacing does not move the main-text row grid.
+- ✅ Explicit per-stream `lineHeight` remains the highest-priority override.
+- ⚠ `streamNoteGap`, `streamTitleGap`, inter-stream gap, and old desktop `space_before/space_after/parskip` are separate semantics and must be audited independently; do not collapse them into one generic vertical-gap value.
 
 ## 3. Missing or not yet located as dedicated web tools
 
