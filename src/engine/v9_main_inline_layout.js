@@ -361,6 +361,249 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   return result;
 }
 
+
+function centerCompletedOpeningWindowTail(lines, paragraphLineStart, opening, strips, entry, context, pageBottom, diagnostics) {
+  if (!opening || paragraphLineStart < 0 || paragraphLineStart >= lines.length) return false;
+  const paragraphLines = lines.slice(paragraphLineStart);
+  if (!paragraphLines.length) return false;
+
+  const last = paragraphLines[paragraphLines.length - 1];
+  if (!(last?.isLast || last?.forcedBreak)) return false;
+
+  const windowLines = paragraphLines.filter(line =>
+    line.y < opening.y + opening.height - EPS &&
+    line.y + line.lineHeightPx > opening.y + EPS
+  );
+  if (!windowLines.length || windowLines[windowLines.length - 1] !== last) return false;
+
+  // The historical single-row case is already handled by this same search.
+  // For multiple rows, the opening is shared geometry: moving it is legal only
+  // if EVERY row that it spans can still fit its body to the left.
+  if (windowLines.some(line => !Array.isArray(line.wordTokens))) return false;
+
+  const words = windowLines.flatMap(line => line.wordTokens);
+  if (!words.length && !windowLines[0]?.render?.opening) return false;
+  for (let i = 1; i < words.length; i++) {
+    if (!(words[i].start >= words[i - 1].end)) return false;
+  }
+
+  const sourceBase = number(entry.sourceOffset ?? entry._v9SourceOffset, 0);
+  const sourceStartAbs = Number(windowLines[0]?.source?.start);
+  const sourceSegmentStart = Number.isFinite(sourceStartAbs)
+    ? Math.max(0, sourceStartAbs - sourceBase)
+    : 0;
+  const bodySegmentStart = windowLines[0]?.render?.opening
+    ? (words[0]?.start ?? Math.max(
+        sourceSegmentStart,
+        number(windowLines[0].render.opening?.part?.text?.length)
+      ))
+    : sourceSegmentStart;
+  const segmentEnd = Math.max(
+    bodySegmentStart,
+    Math.min(entry.text.length, number(last?.source?.end, entry.text.length) - sourceBase)
+  );
+
+  const rowGeometries = windowLines.map(line =>
+    rowGeometry(strips, line.y, line.lineHeightPx, pageBottom)
+  );
+  if (rowGeometries.some(g => !g)) return false;
+
+  const measureRange = (lineIndex, fromWord, toWord) => {
+    const openingOnly = toWord === fromWord && lineIndex === 0 && !!windowLines[0]?.render?.opening;
+    if (!(toWord > fromWord) && !openingOnly) return null;
+
+    const start = lineIndex === 0
+      ? bodySegmentStart
+      : (words[fromWord]?.start ?? segmentEnd);
+    const visibleEnd = toWord > fromWord ? words[toWord - 1].end : start;
+    const consumedEnd = toWord < words.length
+      ? (words[toWord]?.start ?? segmentEnd)
+      : segmentEnd;
+    const body = partForRange(entry, start, visibleEnd, consumedEnd);
+    const measured = context.measure(body);
+    if (!measured) return null;
+    const maxHeight = number(windowLines[lineIndex]?.lineHeightPx, context.lineHeight);
+    if (measured.height > maxHeight + EPS) return null;
+    return {
+      start,
+      visibleEnd,
+      end: consumedEnd,
+      body,
+      measured,
+      wordTokens: words.slice(fromWord, toWord),
+    };
+  };
+
+  const lineCount = windowLines.length;
+  const firstMinWords = windowLines[0]?.render?.opening ? 0 : 1;
+  const minimumWords = firstMinWords + Math.max(0, lineCount - 1);
+  if (words.length < minimumWords) return false;
+
+  // Build a feasible prefix partition for a proposed final-line start.
+  // Greedy-max is safe here: widths are positive and preserving more room for
+  // later rows can never make an earlier row fit better.
+  const partitionPrefix = (lastStart, candidateOpeningX, gap) => {
+    const metrics = [];
+    let from = 0;
+    for (let li = 0; li < lineCount - 1; li++) {
+      const g = rowGeometries[li];
+      const available = candidateOpeningX - gap - g.x;
+      if (!(available >= -EPS)) return null;
+
+      const rowsLeftAfter = (lineCount - 1) - (li + 1);
+      const minHere = li === 0 ? firstMinWords : 1;
+      const maxTo = lastStart - rowsLeftAfter;
+      let best = null;
+      let bestTo = -1;
+
+      for (let to = from + minHere; to <= maxTo; to++) {
+        const metric = measureRange(li, from, to);
+        if (!metric || metric.measured.width > available + EPS) break;
+        best = metric;
+        bestTo = to;
+      }
+      if (!best) return null;
+      metrics.push({ ...best, targetWidth: Math.max(0, available) });
+      from = bestTo;
+    }
+    if (from !== lastStart) return null;
+    return metrics;
+  };
+
+  let chosen = null;
+  const lastIndex = lineCount - 1;
+  const fullRow = rowGeometries[lastIndex];
+
+  // Try every legal source boundary for the final row. Prefer the solution
+  // closest to the current split, then the one with the smallest total change.
+  const currentLastCount = windowLines[lastIndex].wordTokens.length;
+  const currentLastStart = words.length - currentLastCount;
+
+  for (let lastStart = Math.max(firstMinWords + Math.max(0, lineCount - 2), 0);
+       lastStart < words.length;
+       lastStart++) {
+    const lastMetric = measureRange(lastIndex, lastStart, words.length);
+    if (!lastMetric) continue;
+
+    const bodyWidth = Math.max(0, number(lastMetric.measured.width));
+    const gap = bodyWidth > EPS ? Math.max(0, number(opening.gap)) : 0;
+    const compositeWidth = bodyWidth + gap + opening.width;
+    if (compositeWidth > fullRow.width + EPS) continue;
+
+    const compositeLeft = fullRow.x + (fullRow.width - compositeWidth) / 2;
+    const candidateOpeningX = compositeLeft + bodyWidth + gap;
+    const candidateOpeningRight = candidateOpeningX + opening.width;
+
+    let openingFits = true;
+    for (const g of rowGeometries) {
+      if (candidateOpeningX < g.x - EPS ||
+          candidateOpeningRight > g.x + g.width + EPS) {
+        openingFits = false;
+        break;
+      }
+    }
+    if (!openingFits) continue;
+
+    const prefixMetrics = partitionPrefix(lastStart, candidateOpeningX, gap);
+    if (!prefixMetrics) continue;
+
+    const movement = Math.abs(lastStart - currentLastStart);
+    const totalNatural = prefixMetrics.reduce((sum,m)=>sum+m.measured.width,0) + bodyWidth;
+    const candidate = {
+      lastStart,
+      lastMetric,
+      prefixMetrics,
+      bodyWidth,
+      gap,
+      compositeWidth,
+      compositeLeft,
+      openingX: candidateOpeningX,
+      movement,
+      totalNatural,
+    };
+    if (!chosen ||
+        candidate.movement < chosen.movement ||
+        (candidate.movement === chosen.movement && candidate.totalNatural > chosen.totalNatural)) {
+      chosen = candidate;
+    }
+  }
+
+  if (!chosen) {
+    diagnostics?.push?.({
+      code: 'opening-window-final-center-no-safe-partition',
+      paragraphId: entry.id,
+      rows: windowLines.length,
+    });
+    return false;
+  }
+
+  const allMetrics = [...chosen.prefixMetrics, chosen.lastMetric];
+  let fromWord = 0;
+  for (let li = 0; li < lineCount; li++) {
+    const old = windowLines[li];
+    const metric = allMetrics[li];
+    const isLast = li === lastIndex;
+    const ownsOpening = !!old.render?.opening;
+    const sourceRangeStart = ownsOpening ? sourceSegmentStart : metric.start;
+    const lineSourceText = entry.text.slice(sourceRangeStart, metric.end);
+
+    const gaps = (metric.body.text.match(/ /g) || []).length;
+    const targetWidth = isLast
+      ? chosen.bodyWidth
+      : chosen.prefixMetrics[li].targetWidth;
+    const justify = !isLast && !old.forcedBreak && gaps > 0;
+    const wordSpacing = justify
+      ? Math.max(0, (targetWidth - metric.measured.width) / gaps)
+      : 0;
+
+    const replacement = {
+      ...old,
+      x: isLast ? chosen.compositeLeft : rowGeometries[li].x,
+      width: targetWidth,
+      text: lineSourceText,
+      runs: sliceRuns(entry.runs || [], sourceRangeStart, metric.end),
+      words: lineSourceText.trim().split(/\s+/u).filter(Boolean),
+      wordTokens: metric.wordTokens,
+      naturalWidth: metric.measured.width,
+      isLast,
+      source: sourceMetadata(entry, sourceRangeStart, metric.end),
+      sourceText: lineSourceText,
+      render: {
+        ...old.render,
+        body: metric.body,
+        topInset: metric.measured.topInset || 0,
+        opening: ownsOpening
+          ? { ...old.render.opening, x: chosen.openingX }
+          : null,
+        wordSpacing,
+        alignment: 'right',
+      },
+    };
+
+    if (isLast) {
+      replacement.openingCompositeCentered = true;
+      replacement.openingHostX = fullRow.x;
+      replacement.openingHostFullWidth = fullRow.width;
+      replacement.openingCompositeWidth = chosen.compositeWidth;
+    }
+
+    const absoluteIndex = paragraphLineStart + paragraphLines.indexOf(old);
+    lines[absoluteIndex] = replacement;
+    fromWord += metric.wordTokens.length;
+  }
+
+  opening.x = chosen.openingX;
+  diagnostics?.push?.({
+    code: 'opening-window-final-composite-centered',
+    paragraphId: entry.id,
+    rows: windowLines.length,
+    movedBoundaryWords: chosen.movement,
+    compositeWidth: chosen.compositeWidth,
+    rowWidth: fullRow.width,
+  });
+  return true;
+}
+
 /** Main paragraphs, including their openings, are planned by this ONE flow.
  * `context.measure(part)` and the final painter use the same styled content.
  * No DOM node, browser float, scale, or guessed safety percentage is in a plan.
@@ -561,28 +804,10 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         { width: 0, height: pitch }, false, []);
     }
     if (opening) {
+      centerCompletedOpeningWindowTail(
+        lines, paragraphLineStart, opening, strips, entry, context, pageBottom, diagnostics
+      );
       y = Math.max(y, opening.y + opening.height);
-      const sole = lines.length === paragraphLineStart + 1 ? lines[paragraphLineStart] : null;
-      if (sole?.render.opening && sole.isLast) {
-        // A hard source break is already centered by V9. If that one-row
-        // paragraph also owns the opening word, center the SAME visual segment
-        // (opening + gap + body) instead of centering the body alone.
-        const base = rowGeometry(strips, opening.y, opening.height, pageBottom);
-        const total = opening.width + (sole.render.body.text ? opening.gap : 0) + sole.naturalWidth;
-        if (base && total <= base.width + EPS) {
-          sole.x = base.x + (base.width - total) / 2;
-          sole.width = Math.max(0, sole.naturalWidth);
-          // Read-only diagnostics metadata: records the exact geometry used by
-          // the planner so the report never has to infer opening centering from
-          // post-paint DOM heuristics.
-          sole.openingCompositeCentered = true;
-          sole.openingHostX = base.x;
-          sole.openingHostFullWidth = base.width;
-          sole.openingCompositeWidth = total;
-          sole.render.opening = { ...opening, x: sole.x + sole.naturalWidth + (sole.render.body.text ? opening.gap : 0) };
-          sole.render.alignment = 'right';
-        }
-      }
     }
     // A following original paragraph never inherits an opening window.
     if (entry.continuesAfter) rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
