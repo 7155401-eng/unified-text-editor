@@ -474,11 +474,17 @@ export async function transformSplitFootnotesByTagCore(arrayBuffer, {
   const matchesByTag = Object.fromEntries(normalizedTags.map(tag => [tag, 0]));
 
   for (const [id, note] of notes.entries()) {
-    const model = noteModel(note);
-    const split = splitRangesByTags(model.text, normalizedTags);
-    split.matches.forEach(m => { matchesByTag[m.tag] = (matchesByTag[m.tag] || 0) + 1; });
-
-    if (split.ranges.length <= 1) continue;
+    // First decide from all visible text whether this note is a split target.
+    // Unsupported containers (table/hyperlink/field/etc.) may hold a tag that
+    // the safe run model intentionally ignores; silently treating that as
+    // "no match" would hide data from the user. If raw text implies a split,
+    // require the entire note structure to be safe before modelling it.
+    const rawText = String(note.textContent || "");
+    const rawSplit = splitRangesByTags(rawText, normalizedTags);
+    if (rawSplit.ranges.length <= 1) {
+      rawSplit.matches.forEach(m => { matchesByTag[m.tag] = (matchesByTag[m.tag] || 0) + 1; });
+      continue;
+    }
 
     const unsafe = unsupportedFootnoteContent(note);
     if (unsafe) {
@@ -486,6 +492,18 @@ export async function transformSplitFootnotesByTagCore(arrayBuffer, {
         `הערה ${id} מכילה מבנה שאינו בטוח לפיצול אוטומטי (${unsafe}). המסמך לא שונה.`,
         "UNSUPPORTED_FOOTNOTE_CONTENT",
         { items: [{ id, kind: unsafe }] }
+      );
+    }
+
+    const model = noteModel(note);
+    const split = splitRangesByTags(model.text, normalizedTags);
+    split.matches.forEach(m => { matchesByTag[m.tag] = (matchesByTag[m.tag] || 0) + 1; });
+
+    if (split.ranges.length <= 1) {
+      throw transformError(
+        `הערה ${id} זוהתה כמועמדת לפיצול, אך לא ניתן היה למפות את התגים בבטחה ל-runs של Word.`,
+        "TAG_MAPPING_MISMATCH",
+        { id }
       );
     }
 
