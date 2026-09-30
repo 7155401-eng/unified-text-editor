@@ -158,11 +158,27 @@ test("missing referenced footnote aborts instead of deleting note infrastructure
   );
 });
 
-test("image/table/object content aborts before any output is produced", async () => {
-  for (const unsafe of ["drawing", "tbl", "object"]) {
+test("unreferenced positive footnote aborts instead of being silently deleted", async () => {
+  const input = await makeDocx({
+    body: `<w:p><w:r><w:t>A</w:t><w:footnoteReference w:id="1"/></w:r></w:p>`,
+    notes: `
+      <w:footnote w:id="1"><w:p><w:r><w:t>used</w:t></w:r></w:p></w:footnote>
+      <w:footnote w:id="2"><w:p><w:r><w:t>orphan</w:t></w:r></w:p></w:footnote>`,
+  });
+
+  await assert.rejects(
+    () => transformFootnotesToCurly(input, { filename: "orphan.docx" }),
+    err => err?.code === "UNREFERENCED_FOOTNOTES" && err.orphanIds?.includes("2")
+  );
+});
+
+test("image/table/object/hyperlink content aborts before any output is produced", async () => {
+  for (const unsafe of ["drawing", "tbl", "object", "hyperlink"]) {
     const unsafeXml = unsafe === "tbl"
       ? `<w:tbl><w:tr><w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`
-      : `<w:r><w:${unsafe}/></w:r>`;
+      : unsafe === "hyperlink"
+        ? `<w:hyperlink><w:r><w:t>link text</w:t></w:r></w:hyperlink>`
+        : `<w:r><w:${unsafe}/></w:r>`;
 
     const input = await makeDocx({
       body: `<w:p><w:r><w:footnoteReference w:id="1"/></w:r></w:p>`,
