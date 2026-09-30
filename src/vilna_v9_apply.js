@@ -22,7 +22,7 @@ import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_se
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
 import { getOpeningWordSettings } from "./opening_word.js";
-import { getSpacingSettingsSnapshot } from "./spacing_settings.js";
+import { getStoredSpacingSettingsSnapshot } from "./spacing_settings.js";
 import {
   startVilnaRenderProgress,
   hideVilnaRenderProgressImmediately,
@@ -190,7 +190,7 @@ function readIntSetting(key, fallback, min, max) {
 }
 
 function readSpacingBool(key, fallback = false) {
-  const settings = getSpacingSettingsSnapshot();
+  const settings = getStoredSpacingSettingsSnapshot();
   return typeof settings?.[key] === "boolean" ? settings[key] : fallback;
 }
 
