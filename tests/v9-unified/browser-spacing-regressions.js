@@ -327,6 +327,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
   await test('audit split-extension rescue on sparse crown+footer page',async()=>{
    const settings=getStreamSettings(),saved={};
    const host=makePage();
+   const auditNeutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר אחד עשר שנים עשר';
    const side='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
    const anchorAt=(text,index)=>{
      const words=[...String(text).matchAll(/\S+/gu)];
@@ -334,7 +335,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
      return w ? w.index+w[0].length : Math.max(0,text.length-1);
    };
    const input=Array.from({length:7},(_,pi)=>{
-     const main=Array(3+(pi%3)).fill(neutral).join(' ');
+     const main=Array(3+(pi%3)).fill(auditNeutral).join(' ');
      return {
        id:`extension-audit-${pi}`,
        mainText:main,
@@ -344,7 +345,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
          {stream:'02',uid:`extension-b-${pi}`,num:pi*3+2,anchor:anchorAt(main,12),anchorAffinity:'backward',
           text:Array(6+((pi+1)%3)).fill(side).join(' ')},
          {stream:'03',uid:`extension-f-${pi}`,num:pi*3+3,anchor:anchorAt(main,19),anchorAffinity:'backward',
-          text:Array(3+(pi%2)).fill(neutral).join(' ')}
+          text:Array(3+(pi%2)).fill(auditNeutral).join(' ')}
        ]
      };
    });
