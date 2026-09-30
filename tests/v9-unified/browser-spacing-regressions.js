@@ -38,6 +38,30 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(getComputedStyle(el).whiteSpace==='pre','note painter permits a second CSS row');
    assert(!el.classList.contains('justify'),'legacy reflow class retained');
  }
+ await test('page furniture is attached during V9 page creation, not only after engine-rendered',async()=>{
+   const savedNum=localStorage.getItem('ravtext.pageNumbers');
+   const savedHeader=localStorage.getItem('ravtext.pageHeader');
+   const savedFooter=localStorage.getItem('ravtext.pageFooter');
+   localStorage.setItem('ravtext.pageNumbers','1');
+   localStorage.setItem('ravtext.pageHeader','HEADER');
+   localStorage.setItem('ravtext.pageFooter','FOOTER');
+   const host=makePage();
+   try {
+     const result=await buildPages(host,[{id:'feature-render',mainText:neutral,notes:[]}],{...cfg,pageHeight:260,talmudStreams:[]});
+     assert(result.complete,'feature render fixture incomplete');
+     const rendered=host.querySelector(':scope > .v9-page');
+     assert(rendered,'missing rendered V9 page');
+     assert(rendered.dataset.ravtextFeaturesAppliedAtRender==='1','features were not attached at render time');
+     assert(rendered.querySelector(':scope > .ravtext-page-number-overlay')?.textContent==='א','page number missing/wrong at render time');
+     assert(rendered.querySelector(':scope > .ravtext-page-header')?.textContent==='HEADER','header missing at render time');
+     assert(rendered.querySelector(':scope > .ravtext-page-footer')?.textContent==='FOOTER','footer missing at render time');
+   } finally {
+     host.remove();
+     if(savedNum===null)localStorage.removeItem('ravtext.pageNumbers');else localStorage.setItem('ravtext.pageNumbers',savedNum);
+     if(savedHeader===null)localStorage.removeItem('ravtext.pageHeader');else localStorage.setItem('ravtext.pageHeader',savedHeader);
+     if(savedFooter===null)localStorage.removeItem('ravtext.pageFooter');else localStorage.setItem('ravtext.pageFooter',savedFooter);
+   }
+ });
  await test('rich side text with large inline bold is measured before row placement',()=>{
    const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text=Array(4).fill(neutral).join(' '),input={text,runs:[{start:4,end:26,marks:{fontSize:23,fontFamily:'monospace',bold:true}},{start:42,end:70,marks:{fontSize:9,bold:true,color:'red'}}]};
    const p=flowV9MeasuredStream(input,[{x:0,width:160,y_start:0,y_end:600}],c,600),page=makePage();
