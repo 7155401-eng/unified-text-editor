@@ -166,11 +166,17 @@ export async function loadInitialState(paneManager) {
       // מניח על השולחן את הדף הישן שכן מתויק.
       // מעכשיו: עותק שנדחה בשרת אינו דורס עבודה מקומית חדשה יותר.
       const stale = staleServerCopy();
-      if (stale && hasNewerLocalDocument(content)) {
-        console.warn('[persistence] server copy is stale (last save failed ' +
-                     `${stale.status}) — keeping the local document`);
-        showStaleServerNotice(stale);
-        return { loaded: false, skipped: 'stale-server-copy' };
+      if (stale) {
+        if (hasNewerLocalDocument(content)) {
+          console.warn('[persistence] server copy is stale (last save not confirmed ' +
+                       `${stale.status}) — keeping the local document`);
+          showStaleServerNotice(stale);
+          return { loaded: false, skipped: 'stale-server-copy' };
+        }
+        // A pagehide beacon has no response channel. If the server now matches
+        // the local snapshot, the queued write did in fact arrive and the
+        // provisional stale flag must not linger for later sessions.
+        clearServerStale();
       }
       try {
         if (typeof paneManager.load === 'function') {
@@ -272,11 +278,13 @@ function showStaleServerNotice(stale) {
     return;
   }
   const size = `${Math.round((stale.chars || 0) / 1000)} אלף תווים`;
-  const msg = stale.status === 413
-    ? `נטען העותק שלך מהמחשב. בשרת יושבת גרסה ישנה יותר, כי המסמך ` +
-      `(${size}) גדול מכדי להישמר שם — לכן הוא לא נדרס.`
-    : `נטען העותק שלך מהמחשב. השמירה האחרונה לשרת נכשלה ` +
-      `(תקלה ${stale.status}), ולכן הגרסה שבשרת לא נדרסה על שלך.`;
+  const msg = stale.status === 'pagehide-pending'
+    ? 'נטען העותק המקומי החדש. לא התקבל אישור שהשמירה לשרת הושלמה לפני סגירת הדף, ולכן הגרסה שבשרת לא דרסה אותו.'
+    : stale.status === 413
+      ? `נטען העותק שלך מהמחשב. בשרת יושבת גרסה ישנה יותר, כי המסמך ` +
+        `(${size}) גדול מכדי להישמר שם — לכן הוא לא נדרס.`
+      : `נטען העותק שלך מהמחשב. השמירה האחרונה לשרת נכשלה ` +
+        `(תקלה ${stale.status}), ולכן הגרסה שבשרת לא נדרסה על שלך.`;
   try {
     const el = document.getElementById('status');
     if (el) el.textContent = msg;
@@ -416,18 +424,36 @@ export function attachAutoSync(paneManager) {
   if (typeof window !== 'undefined') {
     window.addEventListener('pagehide', () => {
       try {
+        // Make the browser-local copy authoritative before attempting any
+        // best-effort network write. This also makes stale-server recovery
+        // independent of listener registration order.
+        paneManager.flushSave?.();
+
         const content = typeof paneManager.serializeForPersistence === 'function'
           ? paneManager.serializeForPersistence()
           : (paneManager.serialize ? paneManager.serialize() : null);
-        if (content && JSON.stringify(content) !== _lastDocSig && navigator.sendBeacon) {
-          navigator.sendBeacon(
-            '/api/documents/current',
-            new Blob(
-              [JSON.stringify({ content, title: '' })],
-              { type: 'application/json' }
-            )
-          );
+        if (content) {
+          const docSig = JSON.stringify(content);
+          if (docSig !== _lastDocSig) {
+            // sendBeacon has no response channel: mark the server copy
+            // provisionally stale before queueing. On the next load the flag
+            // is cleared automatically if server and local are identical.
+            markServerStale('pagehide-pending', docSig.length);
+            if (navigator.sendBeacon) {
+              const queued = navigator.sendBeacon(
+                '/api/documents/current?beacon=1',
+                new Blob(
+                  [JSON.stringify({ content, title: '' })],
+                  { type: 'application/json' }
+                )
+              );
+              if (!queued) {
+                console.warn('[persistence] pagehide document beacon was not queued');
+              }
+            }
+          }
         }
+
         const settings = collectLocalSettings();
         const sig = JSON.stringify(settings);
         const body = JSON.stringify({ settings });
@@ -438,7 +464,7 @@ export function attachAutoSync(paneManager) {
           navigator.sendBeacon
         ) {
           navigator.sendBeacon(
-            '/api/settings',
+            '/api/settings?beacon=1',
             new Blob(
               [body],
               { type: 'application/json' }
