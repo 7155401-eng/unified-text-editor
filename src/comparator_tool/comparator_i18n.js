@@ -4,7 +4,7 @@
 export const COMPARATOR_TR = {
   'he': {
     addPane: '📄 חלונית חדשה', split: '✂ הפרד הערות', merge: '🔗 מזג / פרק',
-    unmerge: '🔗 פרק חזרה לחלוניות', export: '💾 שמור ל-Word', import: '📂 טען מ-Word',
+    unmerge: '🔗 פרק חזרה לחלוניות', export: '⚡ מיזוג מהיר ל-DOCX', import: '📂 טען מ-Word',
     preview: '👁 עורך ויזואלי', edit: '👁 חזור לעריכה', sync: '🔗 גלילה', lines: '☷ שורות',
     prev: '▲ הקודם', next: '▼ הבא',
     t_actions: 'פעולות', t_files: 'קבצים', t_view: 'תצוגה', t_width: 'רוחב כללי',
@@ -36,7 +36,7 @@ export const COMPARATOR_TR = {
   },
   'en': {
     addPane: '📄 New Pane', split: '✂ Split Notes', merge: '🔗 Merge / Split',
-    unmerge: '🔗 Split Back', export: '💾 Save to Word', import: '📂 Load Word',
+    unmerge: '🔗 Split Back', export: '⚡ Fast merge to DOCX', import: '📂 Load Word',
     preview: '👁 Visual Editor', edit: '👁 Edit', sync: '🔗 Sync', lines: '☷ Lines',
     prev: '▲ Prev', next: '▼ Next',
     t_actions: 'Actions', t_files: 'Files', t_view: 'View', t_width: 'Global Width',
