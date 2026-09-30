@@ -1438,13 +1438,17 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
     let content = paneManagerToPackerContent(paneManager);
+    let frontMatterGroups = paneManagerToFrontMatterGroups(paneManager);
+    const preflightContent = [
+      ...frontMatterGroups.flatMap(group => group.content || []),
+      ...content,
+    ];
 
-    // משה 2026-05-07: every render must pass through the server before pagination.
-    // Without a successful preflight, the render is aborted. Universal — applies
-    // to all layouts (talmud / mishna-wrap / balanced / regular).
+    // Every visible source block, including front matter, participates in the
+    // same server preflight before any pagination work begins.
     try {
       await runPreflight({
-        contentSignature: hashContent(content),
+        contentSignature: hashContent(preflightContent),
       });
     } catch (e) {
       console.warn("[engine_bridge] preflight failed, aborting render:", e);
@@ -1454,12 +1458,26 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     }
     if (!isRenderCurrent(myToken)) return;
 
-    // v33: inject demo watermarks INTO source content BEFORE pagination —
-    // engine then measures heights including marks, so pages don't overflow.
+    // Demo marks must also cover front matter; otherwise an intro pane would be
+    // an unwatermarked export path.
     content = injectDemoWatermarksIfNeeded(content);
+    frontMatterGroups = frontMatterGroups.map(group => ({
+      ...group,
+      content: injectDemoWatermarksIfNeeded(group.content || []),
+    }));
+
+    const pageGeom = getDomPageGeom();
+    const packedFrontMatter = await packFrontMatterGroups(
+      paneManager,
+      pageGeom,
+      () => isRenderCurrent(myToken),
+      frontMatterGroups
+    );
+    if (!isRenderCurrent(myToken) || packedFrontMatter.aborted) return;
+    const frontMatterPageCount = packedFrontMatter.totalPages || 0;
     const t1 = performance.now();
 
-    if (content.length === 0) {
+    if (content.length === 0 && frontMatterPageCount === 0) {
       // KEEP_LAST_RENDER_20260907: an empty editor does not erase the last
       // render. The placeholder below is only for a screen with nothing on it.
       if (restoreLastGoodRender(pagesContainer, "empty-content")) {
@@ -1474,6 +1492,24 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       if (emptyStatusEl) emptyStatusEl.textContent = "אין תוכן";
       window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
         detail: { pages: [], content: [] },
+      }));
+      return;
+    }
+
+    if (content.length === 0 && frontMatterPageCount > 0) {
+      pagesContainer.innerHTML = "";
+      prependFrontMatterPages(pagesContainer, packedFrontMatter);
+      const totalPages = frontMatterPageCount;
+      if (pdfToolbarApi) pdfToolbarApi.setTotal(totalPages);
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.textContent = `${totalPages} עמודי הקדמה`;
+      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
+        detail: {
+          pages: [],
+          content: [],
+          frontMatterPages: frontMatterPageCount,
+          totalPages,
+        },
       }));
       return;
     }
@@ -1517,7 +1553,6 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
-    const pageGeom = getDomPageGeom();
     const pages = await domPack(content, pageGeom, {
       isCurrent: () => isRenderCurrent(myToken),
     });
