@@ -128,6 +128,233 @@ function buildPromptByType(promptType, body, P) {
   return null; // nikud_* / elevenlabs_transcribe / לא ידוע → יפול ל-GAS
 }
 
+// הנחיה הסופית לפי סוג
+// RAVTEXT_GOOGLE_DRIVE_UPLOAD_PATCH_DIRECT
+
+// RAVTEXT_GOOGLE_DRIVE_LINK_NORMALIZATION_PATCH
+function driveFileId(url) {
+  const raw = String(url || "").trim();
+  const find = (text) => {
+    const query = String(text || "").match(/[?&](?:id|file_id)=([^&#/]+)/i);
+    if (query) return decodeURIComponent(query[1]);
+    const match = String(text || "").match(/\/(?:file|document|spreadsheets|presentation|drawings)(?:\/u\/\d+)?\/d\/([^/?#]+)/i);
+    return match ? decodeURIComponent(match[1]) : "";
+  };
+  try {
+    const u = new URL(raw);
+    return u.searchParams.get("id") || u.searchParams.get("file_id") || find(u.pathname) || "";
+  } catch (_) { return find(raw); }
+}
+function driveLinkKind(url) {
+  const text = String(url || "").toLowerCase();
+  if (/\/drive\/(?:u\/\d+\/)?folders\//.test(text)) return "folder";
+  if (/forms\.google\.com\//.test(text)) return "form";
+  if (/docs\.google\.com\/document\//.test(text)) return "document";
+  if (/docs\.google\.com\/spreadsheets\//.test(text)) return "spreadsheet";
+  if (/docs\.google\.com\/presentation\//.test(text)) return "presentation";
+  if (/docs\.google\.com\/drawings\//.test(text)) return "drawing";
+  return "file";
+}
+function driveDownloadUrl(url) {
+  const raw = String(url || "").trim();
+  const id = driveFileId(raw);
+  if (!id) return raw;
+  const kind = driveLinkKind(raw);
+  if (kind === "document") return "https://docs.google.com/document/d/" + encodeURIComponent(id) + "/export?format=docx";
+  if (kind === "spreadsheet") return "https://docs.google.com/spreadsheets/d/" + encodeURIComponent(id) + "/export?format=xlsx";
+  if (kind === "presentation") return "https://docs.google.com/presentation/d/" + encodeURIComponent(id) + "/export/pptx";
+  if (kind === "drawing") return "https://docs.google.com/drawings/d/" + encodeURIComponent(id) + "/export/png";
+  return "https://drive.google.com/uc?export=download&id=" + encodeURIComponent(id);
+}
+function remoteName(body) { return String(body.drive_file_name || body.file_name || "google-drive-file").trim(); }
+function remoteType(name) {
+  const ext = String(name || "").toLowerCase().split("?")[0].split("#")[0].split(".").pop();
+  if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext)) return "video";
+  if (["jpg", "jpeg", "png", "webp", "bmp", "tif", "tiff"].includes(ext)) return "image";
+  if (ext === "pdf") return "pdf";
+  return "audio";
+}
+
+// RAVTEXT_GOOGLE_DRIVE_UPLOAD_HARDENING_PATCH
+function driveContentTypeFor(name, fallback) {
+  return fallback || detectMimeType(remoteType(name), name);
+}
+function driveConfirmFromHtml(html) {
+  const text = String(html || "");
+  const href = text.match(/href="([^"]*uc\?export=download[^"]+)"/i);
+  if (href && href[1]) return { href: href[1].replace(/&amp;/g, "&") };
+  const confirm = text.match(/[?&]confirm=([0-9A-Za-z_-]+)/);
+  const uuid = text.match(/[?&]uuid=([0-9A-Za-z_-]+)/);
+  return { confirm: confirm ? confirm[1] : "", uuid: uuid ? uuid[1] : "" };
+}
+// RAVTEXT_COMPLETE_COPYABLE_DRIVE_ERROR_LOGS
+function driveLinkFailure(body, stage, message, extra = {}) {
+  const details = typeof _driveErrDetails === "function"
+    ? _driveErrDetails(body, { stage, ...extra })
+    : { stage, provider: "google_drive", has_drive_url: !!(body && body.drive_url), ...extra };
+  return { error: "bad_request", message, details };
+}
+
+async function fetchDriveBlob(body) {
+  const original = String(body.drive_url || "").trim();
+  const linkKind = driveLinkKind(original);
+  if (linkKind === "folder") return driveLinkFailure(body, "drive_link_folder", "קישור לתיקיית Google Drive אינו קישור לקובץ. יש להדביק קישור לקובץ בודד.", { link_kind: linkKind });
+  if (linkKind === "form") return driveLinkFailure(body, "drive_link_form", "קישור ל-Google Form אינו קישור לקובץ שניתן להוריד.", { link_kind: linkKind });
+  if (!/^https?:\/\//i.test(original)) {
+    return driveLinkFailure(body, "drive_link_invalid", "קישור Google Drive אינו תקין", { link_kind: linkKind });
+  }
+  let first;
+  try {
+    first = await fetch(driveDownloadUrl(original), { redirect: "follow" });
+  } catch (e) {
+    return { error: "server_error", message: "לא הצלחתי להוריד מדרייב: " + (e && e.message ? e.message : String(e)), details: typeof _driveErrDetails === "function" ? _driveErrDetails(body, { stage: "drive_download_fetch", link_kind: linkKind, exception_message: e && e.message ? e.message : String(e) }) : { stage: "drive_download_fetch", link_kind: linkKind } };
+  }
+
+  const firstType = first.headers.get("content-type") || "";
+  if (first.ok && !/text\/html/i.test(firstType)) {
+    const name = remoteName(body);
+    return { blob: await first.blob(), name, mime: driveContentTypeFor(name, firstType) };
+  }
+  const html = await first.text().catch(() => "");
+  const confirm = driveConfirmFromHtml(html);
+  if (confirm && (confirm.href || confirm.confirm)) {
+    const nextUrl = confirm.href
+      ? new URL(confirm.href, "https://drive.google.com").toString()
+      : driveDownloadUrl(original) + "&confirm=" + encodeURIComponent(confirm.confirm) + (confirm.uuid ? "&uuid=" + encodeURIComponent(confirm.uuid) : "");
+    const cookie = first.headers.get("set-cookie");
+    const second = await fetch(nextUrl, { redirect: "follow", headers: cookie ? { cookie } : {} });
+    const secondType = second.headers.get("content-type") || "";
+    if (second.ok && !/text\/html/i.test(secondType)) {
+      const name = remoteName(body);
+      return { blob: await second.blob(), name, mime: driveContentTypeFor(name, secondType) };
+    }
+    return { error: "server_error", message: "Google Drive החזיר שגיאה " + second.status };
+  }
+  if (!first.ok) return { error: "server_error", message: "Google Drive החזיר שגיאה " + first.status, details: typeof _driveErrDetails === "function" ? _driveErrDetails(body, { stage: "drive_download_http", link_kind: linkKind, http_status: first.status, content_type: firstType }) : { stage: "drive_download_http", http_status: first.status } };
+  return {
+    error: "bad_request",
+    message: "Google Drive returned HTML instead of a downloadable file",
+    details: {
+      stage: "drive_download_not_file",
+      http_status: first.status,
+      content_type: firstType,
+      response_body: html.slice(0, 3500),
+      has_confirm: !!(confirm && (confirm.href || confirm.confirm)),
+    },
+  };
+}
+
+async function uploadDriveToGemini(apiKey, body) {
+  const remote = await fetchDriveBlob(body);
+  if (remote.error) return remote;
+  const mime = driveContentTypeFor(remote.name, remote.mime);
+  const start = await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + encodeURIComponent(apiKey), {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(remote.blob.size),
+      "X-Goog-Upload-Header-Content-Type": mime,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { display_name: remote.name } }),
+  });
+  const uploadUrl = start.headers.get("x-goog-upload-url");
+  if (!start.ok || !uploadUrl) {
+    const responseText = await start.text().catch(() => "");
+    return _driveErr(
+      start.status === 401 || start.status === 403 ? "invalid_api_key" : "server_error",
+      "Gemini Files upload start failed " + start.status + ": " + responseText,
+      body,
+      {
+        stage: "gemini_files_start",
+        http_status: start.status,
+        upload_url_present: !!uploadUrl,
+        file_name: remote.name,
+        file_size: remote.blob.size,
+        mime_type: mime,
+        response_body: _clipDriveErr(responseText),
+      }
+    );
+  }
+  const finish = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Command": "upload, finalize",
+      "X-Goog-Upload-Offset": "0",
+      "Content-Type": mime,
+      "Content-Length": String(remote.blob.size),
+    },
+    body: remote.blob,
+  });
+  const text = await finish.text();
+  if (!finish.ok) {
+    return _driveErr(
+      finish.status === 401 || finish.status === 403 ? "invalid_api_key" : "server_error",
+      "Gemini Files upload failed " + finish.status + ": " + text,
+      body,
+      {
+        stage: "gemini_files_upload_finalize",
+        http_status: finish.status,
+        file_name: remote.name,
+        file_size: remote.blob.size,
+        mime_type: mime,
+        response_body: _clipDriveErr(text),
+      }
+    );
+  }
+  let data = {};
+  try { data = JSON.parse(text); }
+  catch (e) {
+    return _driveErr("server_error", "Gemini Files returned invalid JSON", body, {
+      stage: "gemini_files_parse",
+      file_name: remote.name,
+      file_size: remote.blob.size,
+      mime_type: mime,
+      response_body: _clipDriveErr(text),
+      exception_message: e && e.message ? e.message : String(e),
+    });
+  }
+  const file = data.file || data;
+  if (!file.uri) {
+    return _driveErr("server_error", "Gemini Files upload did not return file uri", body, {
+      stage: "gemini_files_missing_uri",
+      file_name: remote.name,
+      file_size: remote.blob.size,
+      mime_type: mime,
+      response_json: data,
+    });
+  }
+  return { uri: file.uri, mimeType: file.mimeType || mime };
+}
+// RAVTEXT_ERROR_DETAILS_FOR_GEMINI_DRIVE_DIRECT
+function _clipDriveErr(value, max = 3500) {
+  return String(value || "").slice(0, max);
+}
+function _driveErrDetails(body, extra = {}) {
+  const url = String((body && body.drive_url) || "").trim();
+  let id = "";
+  try { id = driveFileId(url); } catch (_) {}
+  return {
+    provider: "gemini",
+    stage: extra.stage || "",
+    flow: "google_drive_to_gemini_files",
+    has_drive_url: !!url,
+    drive_file_id: id,
+    drive_file_name: String((body && (body.drive_file_name || body.file_name)) || ""),
+    prompt_type: String((body && body.prompt_type) || ""),
+    model: String((body && body.model) || ""),
+    ...extra,
+  };
+}
+function _driveErr(code, message, body, extra = {}) {
+  return {
+    error: code || "server_error",
+    message: message || code || "server_error",
+    details: _driveErrDetails(body, extra),
+  };
+}
+
 async function callGemini(modelName, apiKey, promptText, body) {
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' +
     modelName + ':generateContent?key=' + encodeURIComponent(apiKey);
@@ -160,6 +387,11 @@ async function callGemini(modelName, apiKey, promptText, body) {
     });
   }
 
+  if (body.drive_url) {
+    const uploadedDriveFile = await uploadDriveToGemini(apiKey, body);
+    if (uploadedDriveFile.error) return { ...uploadedDriveFile, details: uploadedDriveFile.details || _driveErrDetails(body, { stage: "gemini_files_upload" }) };
+    parts.push({ file_data: { mime_type: uploadedDriveFile.mimeType, file_uri: uploadedDriveFile.uri } });
+  }
   if (body.text) parts.push({ text: body.text });
 
   const payload = {
@@ -167,17 +399,33 @@ async function callGemini(modelName, apiKey, promptText, body) {
     generationConfig: { temperature: 0.0, maxOutputTokens: 8192 },
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const responseText = await response.text();
+  // RAVTEXT_GEMINI_503_RETRY_PATCH: retry transient provider overloads before exposing an error.
+  let response;
+  let responseText = "";
+  const retryDelaysMs = [0, 1200, 3000];
+  for (let attempt = 0; attempt < retryDelaysMs.length; attempt++) {
+    if (retryDelaysMs[attempt]) await new Promise((resolve) => setTimeout(resolve, retryDelaysMs[attempt]));
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    responseText = await response.text();
+    if (response.status !== 503) break;
+  }
 
   if (response.status !== 200) {
-    if (response.status === 401 || response.status === 403) return { error: 'invalid_api_key', message: responseText };
-    if (response.status === 429) return { error: 'ai_quota_exceeded', message: responseText };
-    return { error: 'server_error', message: 'Gemini error ' + response.status + ': ' + responseText };
+    const details = _driveErrDetails(body, {
+      stage: "gemini_generate_content",
+      http_status: response.status,
+      used_drive_url: !!body.drive_url,
+      response_body: _clipDriveErr(responseText),
+      file_data_parts: parts.filter((part) => !!part.file_data).length,
+      inline_file_parts: parts.filter((part) => !!part.inline_data).length,
+    });
+    if (response.status === 401 || response.status === 403) return { error: 'invalid_api_key', message: responseText, details };
+    if (response.status === 429) return { error: 'ai_quota_exceeded', message: responseText, details };
+    return { error: 'server_error', message: 'Gemini error ' + response.status + ': ' + responseText, details };
   }
 
   let data;
