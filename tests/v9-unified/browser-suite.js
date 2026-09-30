@@ -46,6 +46,32 @@ export async function runBrowserSuite() {
       page.remove();copied.remove();c.dispose();return{lines:p.lines.length};
     });
   }
+
+  await test('DOM continuation rebalance includes opening row and following window row',async()=>{
+    const text='OP '+Array(10).fill('aa').join(' ');
+    const c={
+      fontSize:10,lineHeight:10,
+      describeOpening:()=>({position:'dropped',start:0,end:2,marks:{fontSize:20},dropLines:2,gapPx:4}),
+      measure:p=>{
+        const opening=(p.runs||[]).some(r=>Number(r?.marks?.fontSize)===20);
+        if(opening)return {width:20,height:20,topInset:0};
+        const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;
+        return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+      }
+    };
+    const p=layoutV9MainParagraphs(
+      [{id:'tail-opening-dom',text,runs:[],mainRefs:[],continuesAfter:true}],
+      [{x:0,width:70,y_start:0,y_end:30}],c,30
+    );
+    assert(JSON.stringify(p.lines.map(l=>l.wordTokens.length))===JSON.stringify([3,3,4]),'opening tail was not globally redistributed');
+    const page=makePage();p.lines.forEach(l=>renderV9PlannedMainLine(l,page,0));inspectLines(page,p.lines);
+    assert(page.querySelectorAll('.v9-opening-glyph').length===1,'opening glyph duplicated/lost');
+    assert(p.lines[0].openingWindow&&p.lines[1].openingWindow,'opening rows left the measured window');
+    assert(p.lines.map(l=>sourceText(page.querySelector(`[data-v9-source-offset="${l.source.start}"][data-v9-paragraph-id="tail-opening-dom"]`)||document.createElement('span'))).join('')===text,
+      'DOM source continuity changed during opening-tail rebalance');
+    page.remove();
+  });
+
   for(let n=1;n<=8;n++)await test(`DOM dropped ${n} lines, next paragraph has its own opening`,async()=>{
     const cfg={mainFontSize:13,mainFontFamily:'serif',openingWordSettings:{enabled:true,target:'letter',count:1,position:'dropped',size:150,font:'inherit',dropLines:n,spaceAfter:.3}};
     const c=createV9TextLayoutContext(cfg),entries=[neutral,neutral].map((text,i)=>c.prepareEntry({text,id:`p${i}`,index:i+1,runs:[],mainRefs:[]}));
