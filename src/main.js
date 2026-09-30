@@ -61,7 +61,6 @@ import { installLoadingIndicator, setStartupLoading } from "./loading_indicator.
 import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
 import { setupFindReplace } from "./find_replace.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
-import { setupCssInjectPanel } from "./css_inject_panel.js";
 import { wireDownloadsPanel } from "./downloads_panel.js";
 import { initPwaInstallPrompt } from "./pwa_install_prompt.js";
 import { lockScopeWhileStandalone } from "./pwa_scope_lock.js";
@@ -112,7 +111,14 @@ installConsoleGuard();
 installTalmudDebugApi();
 setupFindReplace();
 setupStreamRolesPicker();
-setTimeout(setupCssInjectPanel, 500);
+setTimeout(async () => {
+  try {
+    const { setupCssInjectPanel } = await import("./css_inject_panel.js");
+    setupCssInjectPanel();
+  } catch (err) {
+    console.warn("[css-inject] deferred module load failed", err);
+  }
+}, 500);
 // Wire AI settings — multi-provider keys (משה 2026-05-09)
 setTimeout(setupAiKeysSettings, 500);
 // Premium status section in settings
