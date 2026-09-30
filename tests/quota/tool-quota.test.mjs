@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   checkToolQuotaAvailability,
+  consumeToolUse,
   consumeSuccessfulToolUse,
   quotaResetAt,
   rollingWindowCutoff,
@@ -22,8 +23,8 @@ class FakeStatement {
 
     if (this.sql.startsWith("INSERT OR IGNORE INTO tool_quota_events")) {
       const [
-        userId, toolName, units, idempotencyKey, createdAt,
-        _userId2, _toolName2, cutoff, _units2, limit,
+        userId, toolName, eventKind, units, idempotencyKey, createdAt,
+        _userId2, _toolName2, _eventKind2, cutoff, _units2, limit,
       ] = this.args;
 
       if (idempotencyKey && this.db.events.some(e =>
@@ -33,7 +34,7 @@ class FakeStatement {
       }
 
       const used = this.db.events
-        .filter(e => e.user_id === userId && e.tool_name === toolName && e.event_kind === "success" && e.created_at >= cutoff)
+        .filter(e => e.user_id === userId && e.tool_name === toolName && e.event_kind === eventKind && e.created_at >= cutoff)
         .reduce((sum, e) => sum + e.units, 0);
 
       if (used + units > limit) return { meta: { changes: 0 } };
@@ -42,7 +43,7 @@ class FakeStatement {
         id: this.db.nextId++,
         user_id: userId,
         tool_name: toolName,
-        event_kind: "success",
+        event_kind: eventKind,
         units,
         idempotency_key: idempotencyKey,
         created_at: createdAt,
@@ -54,11 +55,11 @@ class FakeStatement {
   }
   async first() {
     if (this.sql.includes("COALESCE(SUM(units), 0) AS used_units")) {
-      const [userId, toolName, cutoff] = this.args;
+      const [userId, toolName, eventKind, cutoff] = this.args;
       const events = this.db.events.filter(e =>
         e.user_id === userId &&
         e.tool_name === toolName &&
-        e.event_kind === "success" &&
+        e.event_kind === eventKind &&
         e.created_at >= cutoff
       );
       return {
@@ -166,4 +167,41 @@ test("paid nikud merger is unlimited and never writes free quota events", async 
     assert.equal(use.unlimited, true);
   }
   assert.equal(env.DB.events.length, 0);
+});
+
+
+test("sefaria downloader records the confirmed export action in its own weekly bucket", async () => {
+  const env = { DB: new FakeDb() };
+  const t0 = 5_000_000;
+
+  const before = await checkToolQuotaAvailability(freeUser, "sefaria-downloader", env, { nowSec: t0 });
+  assert.equal(before.ok, true);
+
+  const first = await consumeToolUse(freeUser, "sefaria-downloader", env, {
+    nowSec: t0,
+    idempotencyKey: "sef-export-1",
+  });
+  assert.equal(first.ok, true);
+  assert.equal(env.DB.events.length, 1);
+  assert.equal(env.DB.events[0].event_kind, "confirmed-action");
+
+  const blocked = await checkToolQuotaAvailability(freeUser, "sefaria-downloader", env, { nowSec: t0 + 1 });
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.resetAt, t0 + WEEK);
+
+  // Different event kinds are tool-policy specific; Nikud's success event does
+  // not accidentally satisfy or consume Sefaria's confirmed-action bucket.
+  env.DB.events.push({
+    id: env.DB.nextId++,
+    user_id: freeUser.id,
+    tool_name: "sefaria-downloader",
+    event_kind: "success",
+    units: 1,
+    idempotency_key: "legacy-wrong-kind",
+    created_at: t0 + WEEK + 10,
+  });
+  const afterWindow = await checkToolQuotaAvailability(freeUser, "sefaria-downloader", env, {
+    nowSec: t0 + WEEK + 11,
+  });
+  assert.equal(afterWindow.ok, true);
 });
