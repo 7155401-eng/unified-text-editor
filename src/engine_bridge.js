@@ -361,56 +361,64 @@ function extractMainParagraphs(mainPane, paneManager) {
     symbols.push(sym);
     symbolToCode[sym] = p.streamCode;
   }
-
-  if (symbols.length === 0) {
-    const paragraphs = [];
-    mainPane.editor.state.doc.descendants((node) => {
-      const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
-      if (!allowed.includes(node.type.name)) return;
-      const isTable = node.type.name === "table";
-      const paragraphText = isTable ? textFromNode(node) : textFromNode(node);
-      paragraphs.push({
-        paragraphText,
-        runs: isTable ? [] : runsFromNode(node),
-        markers: [],
-        blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
-        headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
-        style: styleMetaForNode(node),
-        tableRows: isTable ? tableRowsFromNode(node) : null,
-      });
-      return false;
-    });
-    return paragraphs;
-  }
-
   symbols.sort((a, b) => b.length - a.length);
-  const escaped = symbols.map(escapeRegex);
-  const re = new RegExp(`(${escaped.join('|')})`, 'g');
+  const re = symbols.length
+    ? new RegExp(`(${symbols.map(escapeRegex).join("|")})`, "g")
+    : null;
+  const breakSettings = loadSpacingSettings();
 
   const paragraphs = [];
   mainPane.editor.state.doc.descendants((node) => {
-    const allowed = ['paragraph', 'heading', 'codeBlock', 'blockquote', 'table'];
+    const allowed = ["paragraph", "heading", "codeBlock", "blockquote", "table"];
     if (!allowed.includes(node.type.name)) return;
     const isTable = node.type.name === "table";
-    const paragraphText = textFromNode(node);
+    const rawText = textFromNode(node);
+    const rawRuns = isTable ? [] : runsFromNode(node);
     const markers = [];
-    re.lastIndex = 0;
-    let m;
-    while ((m = re.exec(paragraphText)) !== null) {
-      markers.push({
-        sym: m[0],
-        code: symbolToCode[m[0]],
-        atInPara: m.index,
-      });
+
+    if (re) {
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(rawText)) !== null) {
+        markers.push({
+          sym: m[0],
+          code: symbolToCode[m[0]],
+          atInPara: m.index,
+        });
+      }
     }
+
+    // B8: scan apparatus markers first, then replace the configured literal
+    // code. Active stream symbols are protected and marker offsets move through
+    // the same boundary map as rich-text runs.
+    const converted = applyGlobalLineBreakCode({
+      text: rawText,
+      runs: rawRuns,
+      positions: markers.map(m => m.atInPara),
+      settings: breakSettings,
+      protectedLiterals: symbols,
+    });
+    converted.positions.forEach((pos, i) => {
+      if (markers[i]) markers[i].atInPara = pos;
+    });
+
+    let rows = isTable ? tableRowsFromNode(node) : null;
+    if (rows) {
+      rows = rows.map(row => row.map(cell => applyGlobalLineBreakCode({
+        text: cell,
+        settings: breakSettings,
+        protectedLiterals: symbols,
+      }).text));
+    }
+
     paragraphs.push({
-      paragraphText,
-      runs: isTable ? [] : runsFromNode(node),
+      paragraphText: converted.text,
+      runs: converted.runs,
       markers,
       blockType: isTable ? "table" : (node.type.name === "heading" ? "heading" : node.type.name),
       headingLevel: node.type.name === "heading" ? node.attrs?.level || 1 : null,
       style: styleMetaForNode(node),
-      tableRows: isTable ? tableRowsFromNode(node) : null,
+      tableRows: rows,
     });
     return false;
   });
