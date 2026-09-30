@@ -14,6 +14,7 @@ import {
 import * as i18n from "./nikud_i18n.js";
 import * as theme from "./nikud_theme.js";
 import { HebrewTextBox, FilterPanel, DiffView } from "./nikud_widgets.js";
+import { checkToolAllowance, consumeToolUse } from "../tool_runtime_gate.js";
 
 
 function el(tag, opts = {}, children = []) {
@@ -334,7 +335,7 @@ export class MergerTab {
   }
 
   // === מיזוג ===
-  startMerge(fromCursor = false) {
+  async startMerge(fromCursor = false) {
     let clean = this.cleanBox.getContent();
     if (!clean.trim()) {
       alert(i18n.t("empty_clean"));
@@ -350,6 +351,12 @@ export class MergerTab {
 
     if (sources.length === 0) {
       alert(i18n.t("empty_voc"));
+      return;
+    }
+
+    try {
+      await checkToolAllowance("nikud-merger", { niceName: "מיזוג ניקוד" });
+    } catch (_) {
       return;
     }
 
@@ -418,6 +425,19 @@ export class MergerTab {
           get matchRatio() { return this.matchCount / Math.max(1, this.cleanWordCount); },
         };
         result._sourceStats = mr.statsPerSource;
+      }
+      if (!result?.stopped) {
+        try {
+          await consumeToolUse("nikud-merger", {
+            niceName: "מיזוג ניקוד",
+            kind: "merge-success",
+          });
+        } catch (_) {
+          this._onError(i18n.isRtl()
+            ? "המיזוג הסתיים, אך המכסה החינמית אינה מאפשרת למסור תוצאה נוספת."
+            : "The merge finished, but the free quota does not allow another result.");
+          return;
+        }
       }
       this._onDone(result);
     } catch (err) {
