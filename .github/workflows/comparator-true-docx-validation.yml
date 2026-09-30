@@ -1,0 +1,29 @@
+name: Temporary comparator true DOCX validation
+
+on:
+  push:
+    branches:
+      - feat/comparator-true-docx-fast-merge-20260930
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Syntax
+        run: node --check src/comparator_tool/comparator_docx_export.js
+      - name: Comparator DOCX tests
+        run: node --test tests/docx/comparator-true-docx-export.test.mjs
