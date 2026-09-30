@@ -1,31 +1,21 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
+import {
+  PUBLIC_TOOL_NAMES,
+  getToolQuotaPolicy,
+  isPolicyUnmetered,
+  policyPublicView,
+  usesLegacyPreflightQuota,
+} from './tool_quota_policy.js';
+import { consumeToolQuota, getToolQuotaStatus } from './tool_quota_store.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
 
-const PUBLIC_TOOLS = new Set([
-  'nikud-merger',
-  'word-extractor',
-  'text-compare-pro',
-  'comparator-tool',
-  'sefaria-downloader',
-  'sefaria-live',
-  'torah-transcription',
-  'torah-nikud',
-  'haredi-caricature',
-  'css-ai',
-  'torah-tools',
-]);
-
-// Text upload/import through Word extractor is a core free-account workflow.
-// It should still require a logged-in free account, but it must not consume the daily quota.
-const FREE_UNMETERED_TOOLS = new Set([
-  'word-extractor',
-]);
+const PUBLIC_TOOLS = new Set(PUBLIC_TOOL_NAMES);
 
 function isFreeUnmeteredTool(toolName) {
-  return FREE_UNMETERED_TOOLS.has(String(toolName || '').trim());
+  return isPolicyUnmetered(toolName);
 }
 
 function b64url(bytes) {
@@ -104,6 +94,12 @@ async function consumeFreeUse(user, toolName, env) {
   if (isFreeUnmeteredTool(toolName)) {
     return { ok: true, unmetered: true };
   }
+  // During incremental migration, action-success/session/unit/cooldown tools
+  // keep the existing once/day preflight until their REAL action is wired to
+  // tool_quota_store in the same release. This prevents an enforcement gap.
+  if (!usesLegacyPreflightQuota(toolName)) {
+    return { ok: true, deferred: true };
+  }
 
   const usageDate = todayKey();
   const nowSec = Math.floor(Date.now() / 1000);
@@ -171,7 +167,36 @@ export async function handleToolPreflight(request, env) {
     );
   }
 
-  if (!user.paid) {
+  const policy = getToolQuotaPolicy(toolName);
+
+  // Generalized quota API. It is already safe for migrated policies and is
+  // exposed now so each tool can move atomically from its legacy gate.
+  if (body?.action === 'quota_status') {
+    const status = await getToolQuotaStatus(env, user, toolName);
+    return Response.json(status, { headers: { 'cache-control': 'no-store' } });
+  }
+
+  if (body?.action === 'quota_consume') {
+    if (usesLegacyPreflightQuota(toolName)) {
+      return Response.json(
+        {
+          error: 'quota_policy_not_migrated',
+          message: 'This tool still uses the legacy preflight quota.',
+          policy: policyPublicView(toolName),
+        },
+        { status: 409, headers: { 'cache-control': 'no-store' } }
+      );
+    }
+    const eventKey = String(body?.eventKey || request.headers.get('x-ravtext-idempotency-key') || '').trim();
+    const result = await consumeToolQuota(env, user, toolName, {
+      units: body?.units,
+      eventKey,
+    });
+    const status = result.allowed ? 200 : (result.reason === 'quota_exceeded' ? 429 : 400);
+    return Response.json(result, { status, headers: { 'cache-control': 'no-store' } });
+  }
+
+  if (!user.paid && !user.is_admin) {
     const usage = await consumeFreeUse(user, toolName, env);
     if (!usage.ok) {
       return Response.json(
@@ -197,6 +222,7 @@ export async function handleToolPreflight(request, env) {
     token,
     expiresAt: (nowSec + TOOL_TOKEN_TTL_SEC) * 1000,
     unmetered: !user?.paid && isFreeUnmeteredTool(toolName),
+    policy: policyPublicView(toolName),
   }, {
     headers: { 'cache-control': 'no-store' },
   });
