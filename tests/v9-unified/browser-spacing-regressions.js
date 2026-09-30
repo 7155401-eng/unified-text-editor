@@ -22,6 +22,24 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(out==='אחד<br><b>שניים</b></span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>שלוש',
      `unexpected Word fragment: ${out}`);
  });
+ await test('B13 Word export never invents hard breaks from paragraph boundaries',()=>{
+   const html='<p>אחד</p><p><strong>שניים</strong></p><p>שלוש</p>';
+   const out=wordMainFragmentFromEditorHtml(html);
+   assert((out.match(/<br>/g)||[]).length===0,'real paragraph boundaries became invented hard breaks');
+   assert((out.match(/<p class=MsoNormal dir=RTL><span lang=HE>/g)||[]).length===2,
+     'three editor paragraphs did not become exactly three Word paragraphs');
+   assert(out==='אחד</span></p>\n<p class=MsoNormal dir=RTL><span lang=HE><b>שניים</b></span></p>\n<p class=MsoNormal dir=RTL><span lang=HE>שלוש',
+     `unexpected paragraph-only Word fragment: ${out}`);
+ });
+
+ await test('B13 Word export preserves only the hard breaks that actually existed',()=>{
+   const html='<p>אחד<br>שניים<br><em>שלוש</em></p><p>ארבע</p>';
+   const out=wordMainFragmentFromEditorHtml(html);
+   assert((out.match(/<br>/g)||[]).length===2,'existing hard-break count changed during Word serialization');
+   assert((out.match(/<p class=MsoNormal dir=RTL><span lang=HE>/g)||[]).length===1,
+     'one real block boundary did not stay distinct from hard breaks');
+ });
+
  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
