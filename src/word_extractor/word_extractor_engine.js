@@ -7,6 +7,7 @@ import {
   SOURCE_CUSTOM, SOURCE_EXTERNAL, SOURCE_SIDENOTE, SOURCE_PARALLEL, SOURCE_BRACKETED,
   SOURCE_LABELS,
 } from "./word_extractor_i18n.js";
+import { resolveWordNoteRouting } from "./word_note_routing.js";
 
 // קבועי namespace
 export const WNS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
@@ -919,40 +920,11 @@ export async function docx_extract_simple(input, selected, opts = {}) {
   const markerMatchMode = opts.markerMatchMode || 'contains';
 
   function _res(txt, m2s, nsym) {
-    // דילוג על הערות ריקות (רווחים בלבד)
-    if (skipEmptyNotes && !txt.trim()) {
-      return [null, '', null];
-    }
-
-    const m = txt.match(/@(\d+)/);
-    if (m && m[1] in m2s) {
-      const symbol = m2s[m[1]];
-      let stripped = txt;
-
-      if (markerMatchMode === 'starts') {
-        // מתחילה ב-@N (אחרי רווחים אופציונליים)
-        const pattern = new RegExp('^\\s*@' + m[1] + '\\s*:?\\s*');
-        if (pattern.test(txt)) {
-          stripped = txt.replace(pattern, '').trim();
-          // משה 2026-05-14: אם אחרי הסרת ה-marker הטקסט ריק — לדלג גם
-          // על הקישור במקום הראשי (לפי הוראת משה).
-          if (skipEmptyNotes && !stripped) return [null, '', null];
-          return [symbol, stripped, m[1]];
-        }
-        return [null, txt.trim(), null];
-      } else {
-        // מכילה @N בכל מקום - מסיר רק את @N:
-        stripped = txt.replace(new RegExp('@' + m[1] + '\\s*:?\\s*'), '').trim();
-        if (skipEmptyNotes && !stripped) return [null, '', null];
-        return [symbol, stripped, m[1]];
-      }
-    }
-    if (nsym && !m) {
-      const trimmed = txt.trim();
-      if (skipEmptyNotes && !trimmed) return [null, '', null];
-      return [nsym, trimmed, null];
-    }
-    return [null, txt.trim(), null];
+    const routed = resolveWordNoteRouting(txt, m2s, nsym, {
+      skipEmptyNotes,
+      markerMatchMode,
+    });
+    return [routed.symbol, routed.text, routed.marker];
   }
 
   const data = await zip.read('word/document.xml');
