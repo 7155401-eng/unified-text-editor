@@ -4935,7 +4935,10 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             const movedNotes = notesBeforeAnchor(len);
             if (!movedNotes.length) continue;
             const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
-            if (noMidParagraph && !movedHasAnchoredNote) continue;
+            if (noMidParagraph && !movedHasAnchoredNote) {
+            if (auditCandidate) { auditCandidate.reason = "no-mid-paragraph"; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
           const splitText = splitMainTextAtOffset(fullText, len);
             const splitNotes = splitNotesByAnchor(
               target?.notes || [],
@@ -5000,6 +5003,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         .some(k => currentPlan.overflow.streams[k]);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
       if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
+        const extensionAudit = (typeof window !== "undefined" && window.__ravtextAuditV9ExtensionTrace === true)
+          ? { pageIdx, currentFill, secondTextLength: secondText.length, candidates: [], selected: null }
+          : null;
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
@@ -5040,6 +5046,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         let bestExtendedScore = currentFill;
         for (const extendCandidate of extendCandidates) {
           const len = extendCandidate.offset;
+          const auditCandidate = extensionAudit ? { offset: len, kind: extendCandidate.kind || "", reason: "" } : null;
           const movedNotes = notesBeforeAnchor(len);
           const movedHasAnchoredNote = movedNotes.some(n => typeof n.anchor === "number");
           if (noMidParagraph && !movedHasAnchoredNote) continue;
@@ -5052,7 +5059,10 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           );
 
           const prefix = splitText.prefixText;
-          if (!prefix) continue;
+          if (!prefix) {
+            if (auditCandidate) { auditCandidate.reason = "empty-prefix"; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
 
           const extension = splitV9Paragraph(splitInfo.secondHalf, splitText, splitNotes.before, splitNotes.after);
           const firstHalf = joinV9ParagraphFragments(splitInfo.firstHalf, extension.firstHalf,
@@ -5060,7 +5070,14 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           const secondHalf = extension.secondHalf;
           const slice = [...getSlice(splitInfo.baseN), firstHalf];
           const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
-          if (!tp || !tp.overflow || tp.overflow.mainText) continue;
+          if (!tp || !tp.overflow) {
+            if (auditCandidate) { auditCandidate.reason = "missing-plan"; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
+          if (tp.overflow.mainText) {
+            if (auditCandidate) { auditCandidate.reason = "main-overflow"; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
 
           const extensionScore = scoreV9PageCandidate(
             tp,
@@ -5068,17 +5085,26 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             v9SplitPolicy,
             { cfg, movedNotes: splitNotes.before, pageIdx, source: "extension-rescue" }
           );
-          if (!extensionScore.accept) continue;
+          if (!extensionScore.accept) {
+            if (auditCandidate) { auditCandidate.reason = "policy:" + (extensionScore.reason || "rejected"); extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
 
           const noteOverflow = hasV9StreamOverflow(tp);
 
           // Same ownership rule as the rest of V9: an already-started long note
           // may continue; only an unsafe/unstarted continuation blocks extension.
-          if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) continue;
+          if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) {
+            if (auditCandidate) { auditCandidate.reason = "unsafe-note-overflow"; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
 
           const fill = planFillRatio(tp);
 
-          if (fill < currentFill - 0.04) continue;
+          if (fill < currentFill - 0.04) {
+            if (auditCandidate) { auditCandidate.reason = "fill-regression"; auditCandidate.fill = fill; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
 
           const movedAnchoredCount = movedNotes.filter(n => typeof n.anchor === "number").length;
 
@@ -5092,12 +5118,26 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
             (carryActive ? 0 : Math.min(0.08, (len / Math.max(1, secondText.length)) * 0.08));
 
-          if (score < bestExtendedScore) continue;
+          if (score < bestExtendedScore) {
+            if (auditCandidate) { auditCandidate.reason = "score-below-current"; auditCandidate.fill = fill; auditCandidate.score = score; extensionAudit.candidates.push(auditCandidate); }
+            continue;
+          }
+          if (auditCandidate) {
+            auditCandidate.reason = "accepted-candidate";
+            auditCandidate.fill = fill;
+            auditCandidate.score = score;
+            extensionAudit.candidates.push(auditCandidate);
+            extensionAudit.selected = { ...auditCandidate };
+          }
           bestExtendedScore = score;
           bestExtended = { firstHalf, secondHalf };
         }
         if (bestExtended) {
           splitInfo = { ...splitInfo, ...bestExtended };
+        }
+        if (extensionAudit && typeof window !== "undefined") {
+          if (!Array.isArray(window.__ravtextV9ExtensionTrace)) window.__ravtextV9ExtensionTrace = [];
+          window.__ravtextV9ExtensionTrace.push(structuredClone(extensionAudit));
         }
       }
     }
