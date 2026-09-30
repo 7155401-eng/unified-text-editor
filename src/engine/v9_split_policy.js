@@ -319,6 +319,21 @@ export function getLastMainLineInfo(plan, policy = {}) {
   const width = Number(last.width) || 0;
   const naturalWidth = Number(last.naturalWidth) || 0;
   const fillRatio = width > 0 ? naturalWidth / width : 1;
+
+  // A continuation tail may have been rebalanced by the authoritative V9
+  // planner before this guard runs. In that case the natural width is only the
+  // pre-justification width; judging it alone can reject a visually/legal line
+  // that V9 already distributed gently across the paragraph tail.
+  //
+  // Count only spacing explicitly planned by the tail rebalancer. Arbitrary
+  // post-render stretching does NOT get this privilege.
+  const tailSpacing = last?.tailRebalanced === true
+    ? Math.max(0, Number(last?.render?.wordSpacing) || 0)
+    : 0;
+  const tailBodyText = String(last?.render?.body?.text ?? last?.text ?? "");
+  const tailGapSlots = tailSpacing > 0 ? (tailBodyText.match(/ /g) || []).length : 0;
+  const effectiveWidth = naturalWidth + tailSpacing * tailGapSlots;
+  const effectiveFillRatio = width > 0 ? effectiveWidth / width : 1;
   const continues = plan?.mainBox?.continues === true;
 
   const isParagraphEnd =
@@ -326,12 +341,18 @@ export function getLastMainLineInfo(plan, policy = {}) {
     last.forcedBreak === true ||
     last._v9ParagraphEnd === true;
 
+  const minLineEdgeFill = Number(policy.minLineEdgeFill) || 0.82;
   const isFilledLineEdge =
-    fillRatio >= (Number(policy.minLineEdgeFill) || 0.82);
+    fillRatio >= minLineEdgeFill;
+
+  const isTailRebalancedLineEdge =
+    last.tailRebalanced === true &&
+    effectiveFillRatio >= minLineEdgeFill;
 
   const isAdjustedLineEdge =
     last._v9AdjustedLineEnd === true ||
-    last._v9AdjustedLineEdge === true;
+    last._v9AdjustedLineEdge === true ||
+    isTailRebalancedLineEdge;
 
   const ok = isParagraphEnd || isFilledLineEdge || isAdjustedLineEdge;
 
@@ -340,8 +361,10 @@ export function getLastMainLineInfo(plan, policy = {}) {
     reason: ok ? "ok" : "last-main-line-not-filled",
     lastMainLineText: last.text || "",
     lastMainLineFillRatio: fillRatio,
+    lastMainLineEffectiveFillRatio: effectiveFillRatio,
     isParagraphEnd,
     isFilledLineEdge,
+    isTailRebalancedLineEdge,
     isAdjustedLineEdge,
     rejectedBecause: ok ? "" : "last-main-line-not-filled",
   };
@@ -359,7 +382,9 @@ export function finalMainLineGuard(plan, policy = {}, meta = {}) {
     finalMainLine: {
       text: info.lastMainLineText || "",
       fillRatio: info.lastMainLineFillRatio,
+      effectiveFillRatio: info.lastMainLineEffectiveFillRatio,
       isParagraphEnd: info.isParagraphEnd,
+      isTailRebalancedLineEdge: info.isTailRebalancedLineEdge,
       isLineEdge: info.isFilledLineEdge || info.isAdjustedLineEdge,
       rejectedBecause: info.rejectedBecause || "",
     },
