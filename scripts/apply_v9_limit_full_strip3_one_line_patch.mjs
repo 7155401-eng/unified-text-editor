@@ -98,6 +98,18 @@ function patchSideStreamFlowMetadata(source) {
 }
 
 function patchSideStreamFullStrip(source) {
+  // Current V9 invariant: both knee boundaries are already explicit width-only
+  // transitions. Do not let the legacy regex mistake the first (narrow) knee
+  // for the full-width block and duplicate strip 3 during prebuild.
+  if (
+    source.includes("v9-knee-row-grid: width changes do not create a new vertical grid.") &&
+    source.includes("v9-knee-row-grid: ending of the other side changes WIDTH only.") &&
+    source.includes("const suppressFullStrip3 = o.suppressFullStrip3 === true;") &&
+    !source.includes("lockFullStrip3Start")
+  ) {
+    return source;
+  }
+
   const replacement = `const maxFullStrip3Lines = Number(o.maxFullStrip3Lines) > 0
       ? Math.max(1, Math.floor(Number(o.maxFullStrip3Lines)))
       : 0;
