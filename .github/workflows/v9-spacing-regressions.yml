@@ -1,7 +1,7 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/v9-typography-spacing-regressions]
+    branches: [audit/full-build-rewrites-20260930]
   pull_request:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
+    if: github.ref == 'refs/heads/audit/full-build-rewrites-20260930' || github.head_ref == 'audit/full-build-rewrites-20260930'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -66,6 +66,10 @@ jobs:
         run: |
           npm run postinstall 2>&1 | tee test-results/v9-unified/postinstall.log
           npm run build 2>&1 | tee test-results/v9-unified/build.log
+          echo "=== FULL TRACKED SOURCE REWRITE AUDIT ==="
+          git diff --name-status -- . ':(exclude)dist/**' ':(exclude)worker-dist/**' ':(exclude)test-results/**'
+          echo "=== FULL TRACKED SOURCE REWRITE NUMSTAT ==="
+          git diff --numstat -- . ':(exclude)dist/**' ':(exclude)worker-dist/**' ':(exclude)test-results/**'
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
       - name: Repeat unit and browser regressions after build
         run: |
