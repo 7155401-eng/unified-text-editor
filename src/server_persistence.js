@@ -389,12 +389,15 @@ export function protectLocalDocumentAfterImport(chars = 0) {
 export function localDocumentIsSaved(paneManager) {
   try {
     if (!paneManager) return false;
-    const content = typeof paneManager.serializeForPersistence === 'function'
-      ? paneManager.serializeForPersistence()
-      : (typeof paneManager.serialize === 'function' ? paneManager.serialize() : null);
-    if (!content) return false;
-    const wanted = JSON.stringify(content);
-    return localStorage.getItem(DOC_KEY) === wanted;
+    const wanted = typeof paneManager.serializeForPersistenceString === 'function'
+      ? paneManager.serializeForPersistenceString()
+      : (() => {
+          const content = typeof paneManager.serializeForPersistence === 'function'
+            ? paneManager.serializeForPersistence()
+            : (typeof paneManager.serialize === 'function' ? paneManager.serialize() : null);
+          return content ? JSON.stringify(content) : null;
+        })();
+    return !!wanted && localStorage.getItem(DOC_KEY) === wanted;
   } catch { return false; }
 }
 
@@ -463,20 +466,27 @@ export function documentPayloadFromContentJson(contentJson) {
 
 function createDocumentSnapshot(paneManager) {
   const canSerialize = paneManager && (
+    typeof paneManager.serializeForPersistenceString === 'function' ||
     typeof paneManager.serializeForPersistence === 'function' ||
     typeof paneManager.serialize === 'function'
   );
   if (!isLoggedIn() || !canSerialize) return null;
+
+  if (typeof paneManager.serializeForPersistenceString === 'function') {
+    const sig = paneManager.serializeForPersistenceString();
+    return sig ? { sig } : null;
+  }
+
   const content = typeof paneManager.serializeForPersistence === 'function'
     ? paneManager.serializeForPersistence()
     : paneManager.serialize();
   const sig = JSON.stringify(content);
-  return { content, sig };
+  return { sig };
 }
 
 async function saveDocumentSnapshot(snapshot) {
   if (!isLoggedIn() || !snapshot) return;
-  const { content, sig } = snapshot;
+  const { sig } = snapshot;
 
   if (sig === _lastDocSig) {
     clearServerStaleIfConfirmed(sig);
@@ -659,27 +669,22 @@ export function attachAutoSync(paneManager) {
         // independent of listener registration order.
         paneManager.flushSave?.();
 
-        const content = typeof paneManager.serializeForPersistence === 'function'
-          ? paneManager.serializeForPersistence()
-          : (paneManager.serialize ? paneManager.serialize() : null);
-        if (content) {
-          const docSig = JSON.stringify(content);
-          if (docSig !== _lastDocSig) {
-            // sendBeacon has no response channel: mark the server copy
-            // provisionally stale before queueing. On the next load the flag
-            // is cleared automatically if server and local are identical.
-            markServerStale('pagehide-pending', docSig.length);
-            if (navigator.sendBeacon) {
-              const queued = navigator.sendBeacon(
-                '/api/documents/current?beacon=1',
-                new Blob(
-                  [documentPayloadFromContentJson(docSig)],
-                  { type: 'application/json' }
-                )
-              );
-              if (!queued) {
-                console.warn('[persistence] pagehide document beacon was not queued');
-              }
+        const snapshot = createDocumentSnapshot(paneManager);
+        if (snapshot && snapshot.sig !== _lastDocSig) {
+          // sendBeacon has no response channel: mark the server copy
+          // provisionally stale before queueing. On the next load the flag
+          // is cleared automatically if server and local are identical.
+          markServerStale('pagehide-pending', snapshot.sig.length);
+          if (navigator.sendBeacon) {
+            const queued = navigator.sendBeacon(
+              '/api/documents/current?beacon=1',
+              new Blob(
+                [documentPayloadFromContentJson(snapshot.sig)],
+                { type: 'application/json' }
+              )
+            );
+            if (!queued) {
+              console.warn('[persistence] pagehide document beacon was not queued');
             }
           }
         }
