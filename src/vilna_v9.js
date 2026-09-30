@@ -3966,42 +3966,30 @@ function renderPagePlan(plan, pageEl, cfg) {
         }
       }
 
-      // משה 2026-05-19: מתיחה מאוזנת לשורת חיתוך קצרה מדי.
-      // קודם רווחי מילים, אחר כך ריווח אותיות קטן, ובסוף scaleX עדין.
-      // כך נמנעים מרווחים מצחיקים בין מילים בודדות.
+      // 30/09/2026 — page-ending continuation is NOT a paragraph end.
+      // The authoritative V9 inline planner now rebalances the whole final
+      // paragraph segment before paint. This legacy fallback must therefore
+      // never compensate by distorting one row with letter-spacing/scaleX.
+      // If an old/non-unified box still reaches this path, allow only a
+      // bounded word-gap adjustment; any remaining deficit stays visible
+      // instead of turning the last row into a rubber band.
       if (useManualContinuationStretch) {
         const extra = Math.max(0, (Number(line.width) || 0) - (Number(line.naturalWidth) || 0));
         const wordsCount = Array.isArray(line.words) ? line.words.length : 0;
         const spaces = Math.max(0, wordsCount - 1);
-        const glyphs = String(line.text || '').replace(/\s+/g, '').length;
+        const gentleCap = Math.max(3.6, Math.min(8, actualFontSize * 0.65));
 
-        const maxWordExtra = Math.max(1, actualFontSize * 0.45);
-        const maxLetterExtra = Math.max(0.12, actualFontSize * 0.075);
-
-        let used = 0;
         if (spaces > 0) {
-          const wordExtra = Math.min(extra / spaces, maxWordExtra);
-          if (wordExtra > 0) {
-            lineEl.style.wordSpacing = wordExtra.toFixed(2) + 'px';
-            used += wordExtra * spaces;
-          }
+          const requested = extra / spaces;
+          const wordExtra = Math.min(requested, gentleCap);
+          if (wordExtra > 0) lineEl.style.wordSpacing = wordExtra.toFixed(2) + 'px';
+          lineEl.dataset.v9LegacyTailRequestedWordSpacing = requested.toFixed(2);
+          if (requested > gentleCap) lineEl.dataset.v9LegacyTailStretchCapped = gentleCap.toFixed(2);
         }
-
-        if (glyphs > 1 && extra > used) {
-          const letterExtra = Math.min((extra - used) / (glyphs - 1), maxLetterExtra);
-          if (letterExtra > 0) {
-            lineEl.style.letterSpacing = letterExtra.toFixed(2) + 'px';
-            used += letterExtra * (glyphs - 1);
-          }
-        }
-
-        if (extra > used + 1 && line.naturalWidth > 0) {
-          const scale = Math.min(1.12, (line.naturalWidth + (extra - used)) / line.naturalWidth);
-          if (scale > 1.001) {
-            lineEl.style.transformOrigin = 'right top';
-            lineEl.style.transform = 'scaleX(' + scale.toFixed(4) + ')';
-          }
-        }
+        lineEl.style.letterSpacing = '';
+        lineEl.style.transform = '';
+        lineEl.style.transformOrigin = '';
+        lineEl.dataset.v9LegacyTailGentleOnly = '1';
       }
 
       lineEl.style.overflow = 'visible';
