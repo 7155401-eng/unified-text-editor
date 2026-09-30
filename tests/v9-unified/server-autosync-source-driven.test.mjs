@@ -76,11 +76,17 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
 
   const fetchCalls = [];
   let releaseSlow = null;
+  let releaseLatest = null;
   const fetchStub = (url, init = {}) => {
     fetchCalls.push({ url: String(url), init, parsed: JSON.parse(init.body || '{}') });
     if (fetchCalls.length === 2) {
       return new Promise((resolve) => {
         releaseSlow = () => resolve({ ok: true, status: 200 });
+      });
+    }
+    if (fetchCalls.length === 3) {
+      return new Promise((resolve) => {
+        releaseLatest = () => resolve({ ok: true, status: 200 });
       });
     }
     return Promise.resolve({ ok: true, status: 200 });
@@ -135,12 +141,30 @@ test('document autosync follows pane changes, has max wait, and serializes netwo
     assert.equal(fetchCalls.length, 2,
       'newer save must wait for older in-flight save to finish');
 
+    // Simulate pagehide/local autosave protecting C while the older B PUT
+    // is still in flight. B may succeed, but must not clear C's marker.
+    storage.setItem('ravtext.panes.state.v1', JSON.stringify(content));
+    storage.setItem('ravtext.doc.serverStale.v1', JSON.stringify({
+      status: 'pagehide-pending',
+      chars: JSON.stringify(content).length,
+      at: Date.now(),
+    }));
+
     releaseSlow();
     await settle();
     await settle();
 
     assert.equal(fetchCalls.length, 3);
     assert.equal(fetchCalls[2].parsed.content.panes[0].content.text, 'C');
+    assert.ok(releaseLatest, 'latest C save should now be in flight');
+    assert.ok(storage.getItem('ravtext.doc.serverStale.v1'),
+      'older B success must not clear newer C recovery marker');
+
+    releaseLatest();
+    await settle();
+    await settle();
+    assert.equal(storage.getItem('ravtext.doc.serverStale.v1'), null,
+      'confirmed latest snapshot should clear its recovery marker');
   } finally {
     for (const restore of restores.reverse()) restore();
   }
