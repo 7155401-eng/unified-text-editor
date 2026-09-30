@@ -2,7 +2,7 @@
 // Text upload/import through the Word extractor is a core entry path and must remain usable
 // for logged-in free accounts without consuming the one-use daily tool quota.
 
-import { openPremiumPage } from "./premium_page.js";
+import { openPremiumPage } from "./premium_page_lazy.js";
 import { showToast } from "./time_warning.js";
 
 const TOOL_USAGE_KEY = "ravtext.daily.tools";  // { yyyy-mm-dd: { toolName: count } }
