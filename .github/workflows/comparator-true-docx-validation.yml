@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -24,6 +24,17 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         run: npm ci --ignore-scripts
       - name: Syntax
-        run: node --check src/comparator_tool/comparator_docx_export.js
+        run: |
+          node --check src/comparator_tool/comparator_docx_export.js
+          node --check src/comparator_tool/comparator_ui.js
+          node --check src/comparator_tool/comparator_integrated.js
       - name: Comparator DOCX tests
+        run: node --test tests/docx/comparator-true-docx-export.test.mjs
+      - name: Existing comparator/unit tests
+        run: |
+          if ls src/comparator_tool/*.test.* >/dev/null 2>&1; then node --test src/comparator_tool/*.test.*; fi
+          if ls tests/comparator/*.test.* >/dev/null 2>&1; then node --test tests/comparator/*.test.*; fi
+      - name: Full build
+        run: npm run build
+      - name: DOCX tests after build
         run: node --test tests/docx/comparator-true-docx-export.test.mjs
