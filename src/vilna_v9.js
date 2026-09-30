@@ -5000,9 +5000,24 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         .some(k => currentPlan.overflow.streams[k]);
       const currentHasUnsafeNoteOverflow = currentHasNoteOverflow && hasUnsafeV9StreamOverflow(currentPlan);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
+      const __extensionAudit = {
+        pageIdx,
+        currentFill,
+        rescueMinFillRatio,
+        currentHasNoteOverflow,
+        currentHasUnsafeNoteOverflow,
+        secondTextLength: secondText.length,
+        carryActive: !!carryActive,
+        noMidParagraph: !!noMidParagraph,
+        entered: false,
+        candidateCount: 0,
+        selected: null,
+        guardReason: "",
+      };
       // Safe note carry may continue after its body has started on this page.
       // Only unstarted/no-progress commentary overflow blocks split extension.
       if (!currentHasUnsafeNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
+        __extensionAudit.entered = true;
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
@@ -5039,6 +5054,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             maxCandidates: cfg.extensionGapFillMaxCandidates,
           }
         );
+        __extensionAudit.candidateCount = extendCandidates.length;
         let bestExtended = null;
         let bestExtendedScore = currentFill;
         for (const extendCandidate of extendCandidates) {
@@ -5101,7 +5117,20 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         }
         if (bestExtended) {
           splitInfo = { ...splitInfo, ...bestExtended };
+          __extensionAudit.selected = { score: bestExtendedScore };
+        } else {
+          __extensionAudit.guardReason = extendCandidates.length ? "no-accepted-candidate" : "no-candidates";
         }
+      } else if (currentHasUnsafeNoteOverflow) {
+        __extensionAudit.guardReason = "unsafe-note-overflow";
+      } else if (currentFill >= rescueMinFillRatio) {
+        __extensionAudit.guardReason = "fill-above-rescue-threshold";
+      } else if (!secondText.length) {
+        __extensionAudit.guardReason = "empty-second-half";
+      }
+      if (typeof window !== "undefined" && window.__ravtextAuditV9ExtensionTrace) {
+        if (!Array.isArray(window.__ravtextV9ExtensionTrace)) window.__ravtextV9ExtensionTrace = [];
+        window.__ravtextV9ExtensionTrace.push(structuredClone(__extensionAudit));
       }
     }
 
@@ -5433,7 +5462,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
     const writeFinalGapFillDebug = (info = {}) => {
       if (typeof window === "undefined") return;
-      window.__ravtextLastV9GapFill = {
+      const event = {
         pageIdx,
         beforeFill: Number.isFinite(info.beforeFill) ? info.beforeFill : null,
         afterFill: Number.isFinite(info.afterFill) ? info.afterFill : null,
@@ -5446,6 +5475,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         pulledTextPreview: info.pulledTextPreview || "",
         pulledNotesCount: Number.isFinite(info.pulledNotesCount) ? info.pulledNotesCount : 0,
       };
+      window.__ravtextLastV9GapFill = event;
+      if (window.__ravtextAuditV9GapFillTrace) {
+        if (!Array.isArray(window.__ravtextV9GapFillTrace)) window.__ravtextV9GapFillTrace = [];
+        window.__ravtextV9GapFillTrace.push(structuredClone(event));
+      }
     };
 
     const tryFinalGapFillRescue = () => {
