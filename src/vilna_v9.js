@@ -5849,7 +5849,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       if (!finalProbe || !finalProbe.overflow) return null;
       if (drainAloneMode) return null;
       const beforeFill = planFillRatio(finalProbe);
-      if (beforeFill >= 0.50) return null;
+      const sparseTrigger = Math.max(0.50, Number(v9SplitPolicy.minAcceptablePageFill) || 0.68);
+      if (beforeFill >= sparseTrigger) return null;
       if (bestN >= totalAvail) return null;
       if (mainOverflowTextOf(finalProbe)) return null;
       if (finalProbe.unstartedNotes?.length) return null;
@@ -5882,7 +5883,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             source: "final-sparse-rescue",
           }
         );
-        if (!candidateScore.accept && fill < 0.68) return;
+        // Strict experiment: never bypass the authoritative line-edge
+        // and note-ownership policy merely because the page fill looks better.
+        if (!candidateScore.accept) return;
 
         const score = fill + Math.min(0.08, (info.offset || fullText.length) / Math.max(1, fullText.length) * 0.08);
         if (!best || score > best.score) best = { score, fill, testSlice, testPlan, ...info };
