@@ -1,7 +1,7 @@
 name: V9 typography and spacing regression verification
 on:
   push:
-    branches: [fix/word-import-progress-v2-20260930]
+    branches: [fix/v9-typography-spacing-regressions]
   pull_request:
     branches: [main]
     paths:
@@ -20,7 +20,7 @@ defaults:
     shell: bash
 jobs:
   validate:
-    if: github.ref == 'refs/heads/fix/word-import-progress-v2-20260930' || github.head_ref == 'fix/word-import-progress-v2-20260930'
+    if: github.ref == 'refs/heads/fix/v9-typography-spacing-regressions' || github.head_ref == 'fix/v9-typography-spacing-regressions'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -36,9 +36,6 @@ jobs:
           git rev-parse HEAD | tee test-results/v9-unified/commit.txt
           node --check src/vilna_v9.js
           node --check src/engine_bridge.js
-          node --check src/word_extractor/word_extractor.worker.js
-          node --check src/word_extractor/word_extractor_dialog.js
-          node src/word_extractor/smoke_test.mjs | tee test-results/v9-unified/word-smoke.log
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit.tap
           test ! -f .github/workflows/v9-apply-candidate-once.yml
           test ! -f .github/v9-candidate-edits-1.b64
@@ -55,7 +52,7 @@ jobs:
       - name: Fetch exact baseline for build comparison
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: 375b01bd8243486b1f02f9f25211c9e9bb650be3
+          ref: 82936b7ba1720714f6ae73bda95e9791f6873856
           path: .v9-baseline
           persist-credentials: false
       - name: Build baseline with the same locked dependencies
@@ -70,7 +67,6 @@ jobs:
           node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
       - name: Repeat unit and browser regressions after build
         run: |
-          node src/word_extractor/smoke_test.mjs | tee test-results/v9-unified/word-smoke-after-build.log
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
           cp test-results/v9-unified/browser.json test-results/v9-unified/browser-before-build.json
           node scripts/v9-unified/run-browser.mjs
