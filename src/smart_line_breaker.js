@@ -85,6 +85,13 @@ function wrapWordsInSpans(root) {
       } else {
         const span = document.createElement("span");
         span.className = "ln-word";
+        // Line breaks are legal only at source whitespace. Brackets, quotes,
+        // punctuation and other visible characters remain part of the same
+        // lexical token even when the token is wider than the column.
+        span.style.whiteSpace = "nowrap";
+        span.style.overflowWrap = "normal";
+        span.style.wordBreak = "normal";
+        span.style.hyphens = "none";
         span.textContent = piece;
         frag.appendChild(span);
       }
