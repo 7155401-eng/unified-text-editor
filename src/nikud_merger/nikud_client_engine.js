@@ -153,6 +153,10 @@ export function renderAsPlain(result, acceptAll = true) {
   return parts.join("");
 }
 
+function quotaIdempotencyKey() {
+  try { return globalThis.crypto?.randomUUID?.() || ""; } catch (_) { return ""; }
+}
+
 export async function merge(clean, vocalizedText, opts = {}) {
   const response = await fetch("/api/nikud-merger", {
     method: "POST",
@@ -163,6 +167,7 @@ export async function merge(clean, vocalizedText, opts = {}) {
       sources: [["Source 1", vocalizedText]],
       mode: opts.mode || "word",
       filter_config: opts.config && opts.config.toDict ? opts.config.toDict() : opts.config,
+      quota_idempotency_key: quotaIdempotencyKey(),
     }),
   });
   if (!response.ok) throw new Error(`Nikud merger failed: HTTP ${response.status}`);
