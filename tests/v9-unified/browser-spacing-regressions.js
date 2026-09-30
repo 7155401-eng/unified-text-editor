@@ -133,6 +133,12 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
       const rows=[...page.querySelectorAll('[data-v9-layout-final]')];
       assert(rows.map(sourceText).join('')==='אלפא בית','painted source contains placeholder gap');
       assert(page.querySelectorAll('[data-v9-main-ref]').length===(enabled?1:0),'incorrect label visibility');
+       if(!enabled){
+         const body=page.querySelector('.v9-planned-line-text');
+         assert(body,'hidden-reference fixture has no planned line body');
+         assert(body.childNodes.length===1,
+           `hidden reference still fragments inline content into ${body.childNodes.length} nodes`);
+       }
     } finally {page.remove();if(previous)settings['01']=previous;else delete settings['01'];}
   });
   for (const onlyOneStream of [true,false]) await test(`every styled note survives all columns and carry-over; single=${onlyOneStream}`,async()=>{
