@@ -255,6 +255,34 @@ test('dropped opening does not keep a widened row trapped in the previous narrow
  assert.equal(p.lines.map(l=>l.sourceText).join(''),'preOPEN aa aa aa aa aa');
 });
 
+
+test('centered hard-break line centers opening plus body as one visual segment',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs(
+  [{id:'opening-hard-break',text:'OPEN aa\n',runs:[],mainRefs:[]}],
+  [{x:0,width:100,y_start:0,y_end:100}],ctx,100
+ );
+ assert.equal(p.lines.length,1);
+ const line=p.lines[0];
+ assert(line.render.opening,'opening glyph missing');
+ assert.equal(line.forcedBreak,true);
+ assert.equal(line.render.alignment,'right',
+   'hard-break body was centered independently instead of centering the opening+body segment');
+ assert(Math.abs(line.x-34)<.01,`combined segment x=${line.x}, expected 34`);
+ assert(Math.abs(line.width-10)<.01,`combined body width=${line.width}, expected natural width 10`);
+ assert(Math.abs(line.render.opening.x-46)<.01,
+   `opening x=${line.render.opening.x}, expected 46 for centered composite`);
+});
+
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={
