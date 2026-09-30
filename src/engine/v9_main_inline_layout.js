@@ -29,6 +29,16 @@ export function rowGeometry(strips, y, height, pageBottom) {
   for (const s of strips) {
     if (s.y_end <= cursor + EPS) continue;
     if (s.y_start > cursor + EPS) return null;
+
+    // Some geometry transitions are semantic row boundaries, not merely a
+    // width change: end of crown, and the point where side commentaries widen
+    // below main. A row that starts before such a boundary must not straddle it.
+    // nextSlot() will retry exactly at s.y_start, keeping both side streams on
+    // the same vertical transition and preserving the requested crown row count.
+    if (s.lockYStart === true && y < s.y_start - EPS && y + height > s.y_start + EPS) {
+      return null;
+    }
+
     left = Math.max(left, s.x);
     right = Math.min(right, s.x + s.width);
     cursor = Math.min(y + height, s.y_end);
