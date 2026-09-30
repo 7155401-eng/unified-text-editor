@@ -25,6 +25,8 @@ import {
   debugV9SplitDecision,
   hasV9StreamOverflow,
   hasUnsafeV9StreamOverflow,
+  wordEndCandidatesForV9,
+  makeBreakCandidate,
 } from "./engine/v9_split_policy.js";
 import { getOpeningWordSettings } from "./opening_word.js";
 import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main_inline_layout.js";
@@ -5044,7 +5046,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         };
         const extensionRemainingPx = Math.max(0, pageBottomForFill - planBottomY(currentPlan));
         const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
-        const extendCandidates = selectV9GapFillCandidates(
+        const staticExtendCandidates = selectV9GapFillCandidates(
           buildParagraphBreakCandidates(
             secondText,
             splitMetrics,
@@ -5058,6 +5060,25 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             maxCandidates: cfg.extensionGapFillMaxCandidates,
           }
         );
+        // AUDIT ONLY: probe the word boundaries BETWEEN static narrow-width
+        // line ends. They are not trusted as legal breaks; scoreV9PageCandidate
+        // must prove the REAL final row is a valid line edge after full layout.
+        const probeMaxOffset = staticExtendCandidates.length
+          ? Math.max(...staticExtendCandidates.map(c => c.offset))
+          : Math.min(secondText.length, 160);
+        const staticOffsets = new Set(staticExtendCandidates.map(c => c.offset));
+        const geometryProbes = wordEndCandidatesForV9(secondText)
+          .filter(offset => offset >= 2 && offset <= probeMaxOffset && !staticOffsets.has(offset))
+          .slice(0, 64)
+          .map(offset => makeBreakCandidate({
+            kind: "word-gap",
+            offset,
+            source: "extension-geometry-probe",
+            priority: 100,
+            reason: "audit actual row geometry",
+          }));
+        const extendCandidates = [...staticExtendCandidates, ...geometryProbes]
+          .sort((a, b) => a.offset - b.offset || b.priority - a.priority);
         __extensionAudit.candidateCount = extendCandidates.length;
         let bestExtended = null;
         let bestExtendedScore = currentFill;
