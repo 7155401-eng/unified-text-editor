@@ -1528,10 +1528,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       // לחסום את ה-main thread אם המשתמש שינה הגדרה תוך כדי רינדור.
       const v9Result = await applyVilnaV9FromPaneManager(content, pagesContainer, {
         isCurrent: () => isRenderCurrent(myToken),
+        pageIndexOffset: frontMatterPageCount,
       });
       if (!isRenderCurrent(myToken)) return;
       if (v9Result?.aborted) return;
-      const v9PageCount = pagesContainer.querySelectorAll(".page").length;
+      const v9BookPageCount = pagesContainer.querySelectorAll(".page").length;
+      prependFrontMatterPages(pagesContainer, packedFrontMatter);
+      const v9PageCount = frontMatterPageCount + v9BookPageCount;
       if (pdfToolbarApi) {
         pdfToolbarApi.setTotal(v9PageCount);
       }
@@ -1548,9 +1551,17 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       }
       logEvent("vilna_v9_pipeline_done", {
         pageCount: v9PageCount,
+        bookPageCount: v9BookPageCount,
+        frontMatterPageCount,
       });
       window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-        detail: { pages: [], content, v9: true },
+        detail: {
+          pages: [],
+          content,
+          v9: true,
+          frontMatterPages: frontMatterPageCount,
+          totalPages: v9PageCount,
+        },
       }));
       return;
     }
