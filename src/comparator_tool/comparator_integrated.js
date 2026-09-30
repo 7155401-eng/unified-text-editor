@@ -27,6 +27,7 @@ import {
   setFontSize,
   getLastFileName
 } from './comparator_storage.js';
+import { renderComparatorMarkerBar } from './comparator_marker_bar.js';
 
 const MC = COMPARATOR_MARKER_COLORS;
 const dm = COMPARATOR_DEFAULT_MARKERS;
@@ -334,19 +335,7 @@ export function mountComparatorIntegratedUI(rootEl, options = {}) {
 
   function updateBar(edId, syms, counts) {
     const bar = rootEl.querySelector('#markers-' + edId);
-    if (!bar) return;
-    bar.innerHTML = '';
-    syms.forEach((s, ci) => {
-      const n = counts[s.sym] || 0;
-      if (n === 0) return;
-      let html = '<span class="mc mc-' + ci + '"><span class="sym-label-bar">' + s.sym + '</span>';
-      for (let i = 1; i <= n; i++) {
-        const safeSym = s.sym.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-        html += '<span class="badge" data-action="jumpToNth" data-edid="' + edId + '" data-sym="' + safeSym + '" data-nth="' + i + '" title="' + i + '">' + i + '</span>';
-      }
-      html += '</span>';
-      bar.innerHTML += html;
-    });
+    renderComparatorMarkerBar(bar, edId, syms, counts);
   }
 
   function jumpToNth(edId, sym, nth) {
