@@ -5,6 +5,7 @@ import { canonicalMainText, prepareV9SourceParagraph, sliceV9Paragraph, splitV9P
 import { layoutV9MainParagraphs, rowGeometry, partForRange } from '../../src/engine/v9_main_inline_layout.js';
 import { extractOpeningSegmentForTest } from '../../src/opening_word.js';
 import { splitMainTextAtOffset, buildV9SplitPolicy, buildParagraphBreakCandidates } from '../../src/engine/v9_split_policy.js';
+import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 
 const strips = [{ x: 0, width: 90, y_start: 0, y_end: 300 }];
 const makeEntry = (text, extras = {}) => ({ id: 'p1', index: 1, text, runs: [], mainRefs: [], typography: { fontSize: '10px' }, ...extras });
@@ -40,6 +41,46 @@ test('legacy audit: default page-split policy never falls back to an arbitrary w
   assert.ok(normal.length > 0, 'fixture produced no legal line-end candidates');
   assert.ok(normal.every(c => c.kind !== 'word-gap'), 'normal split exposed an arbitrary word-gap candidate');
   assert.ok(emergency.every(c => c.kind !== 'word-gap'), 'emergency split ignored the default no-mid-line policy');
+});
+
+test('B3: punctuation spacing remains part of the finalized line source', () => {
+  const text='אבג, דהו. זחט; יכל: מנס';
+  const r=layoutV9MainParagraphs([makeEntry(text)], [{x:0,width:300,y_start:0,y_end:40}], makeContext(null), 40);
+  assert.equal(r.lines.length,1);
+  assert.equal(r.lines[0].render.body.text,text);
+  assert.match(r.lines[0].render.body.text, /, |\. |; |: /u);
+});
+
+test('B12: a removed main-note marker maps its label to the exact original boundary', () => {
+  const raw='אבג@01דהו זחט';
+  const mapped=mapMainParagraphSource(raw,[],[{atInPara:3,sym:'@01',code:'01'}]);
+  assert.equal(mapped.mainTextNet,'אבגדהו זחט');
+  assert.equal(mapped.mainConsumers.length,1);
+  assert.equal(mapped.mainConsumers[0].anchor,3);
+  assert.equal(mapped.mainConsumers[0].anchorAffinity,'backward');
+  const part=partForRange({
+    text:mapped.mainTextNet,runs:[],
+    mainRefs:[{...mapped.mainConsumers[0],uid:'exact-ref',num:1,formatted:'1'}],
+    typography:{fontSize:'10px'}
+  },0,mapped.mainTextNet.length,mapped.mainTextNet.length);
+  assert.equal(part.refs[0].localPos,3);
+  assert.equal(part.text.slice(0,part.refs[0].localPos),'אבג');
+  assert.equal(part.text.slice(part.refs[0].localPos),'דהו זחט');
+});
+
+test('C8: widening from a narrow strip repacks the first wide row with following words', () => {
+  const text='aaaa bbbb cccc dddd eeee ffff gggg hhhh iiii jjjj';
+  const widening=[
+    {x:60,width:40,y_start:0,y_end:20},
+    {x:0,width:100,y_start:20,y_end:100}
+  ];
+  const r=layoutV9MainParagraphs([makeEntry(text)],widening,makeContext(null),100);
+  assert.ok(r.lines.length>=4,'fixture did not span narrow and wide strips');
+  const firstWide=r.lines.find(l=>l.y>=20 && l.width>=99);
+  assert.ok(firstWide,'no first wide row found');
+  assert.ok(firstWide.wordTokens.length>=3,`wide row did not pull enough following text: ${firstWide.render.body.text}`);
+  assert.ok(firstWide.naturalWidth/firstWide.width>=0.70,
+    `first wide row remains visibly underfilled: ${firstWide.naturalWidth}/${firstWide.width}`);
 });
 
 test('canonical mapping retains explicit breaks, removes markers once', () => {
