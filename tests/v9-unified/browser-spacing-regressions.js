@@ -1,6 +1,6 @@
 import { saveTextStyles, loadTextStyles } from '../../src/style_registry.js';
 import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
-import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart } from '../../src/engine/v9_text_measurement.js';
+import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart, renderV9PlannedMainLine } from '../../src/engine/v9_text_measurement.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
 import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
 import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
@@ -11,6 +11,7 @@ import { wordMainFragmentFromEditorHtml, wordRichFragmentFromEditorHtml } from '
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 import { analyzePageElement } from '../../src/layout_analysis_report.js';
 import { applyV9MainBottomGapToPage } from '../../src/engine/v9_main_bottom_gap.js';
+import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
@@ -1141,6 +1142,51 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
         }
       }
     }finally{found.page.remove();}
+  });
+
+  await test('opening-window final row stays visibly adjacent to dropped opening in real paint',()=>{
+    const context=createV9TextLayoutContext({
+      mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
+      openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:0.2,scope:'all',
+        skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1}
+    });
+    const page=makePage();
+    try{
+      let plan=null;
+      for(let words=4;words<=18;words++){
+        const text='פתיח '+Array(words).fill('אב').join(' ');
+        const entry=context.prepareEntry({id:'ink-adjacent',index:1,text,runs:[],mainRefs:[],continues:false});
+        const candidate=layoutV9MainParagraphs([entry],[{x:0,width:100,y_start:0,y_end:100}],context,100);
+        if(candidate.lines.length===2 && candidate.lines[1].isLast && candidate.lines[1].openingWindow){plan=candidate;break;}
+      }
+      assert(plan,'fixture search did not produce a two-row paragraph ending inside the opening window');
+
+      page.style.position='relative';
+      page.style.width='100px';
+      page.style.height='100px';
+      page.style.padding='0';
+      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+
+      const rows=[...page.querySelectorAll('.v9-final-main-line')];
+      const lastEl=rows.at(-1);
+      const opening=page.querySelector('.v9-opening-glyph');
+      const body=lastEl?.querySelector('.v9-planned-line-text');
+      assert(lastEl&&opening&&body,'rendered opening fixture is incomplete');
+
+      const openingRect=opening.getBoundingClientRect();
+      const range=document.createRange();
+      range.selectNodeContents(body);
+      const bodyRect=range.getBoundingClientRect();
+      const expectedGap=Number(plan.lines.find(l=>l.render?.opening)?.render?.opening?.gap)||0;
+      const actualGap=openingRect.left-bodyRect.right;
+
+      assert(plan.lines.at(-1).render.alignment==='right',
+        'final opening-window body lost the planner adjacency policy');
+      assert(actualGap>=-0.5,'painted final body overlaps the dropped opening: gap='+actualGap.toFixed(2));
+      assert(Math.abs(actualGap-expectedGap)<=1.25,
+        'painted final body is not adjacent to opening gap: expected='+expectedGap.toFixed(2)+' actual='+actualGap.toFixed(2));
+    }finally{context.dispose();page.remove();}
   });
 
   await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
