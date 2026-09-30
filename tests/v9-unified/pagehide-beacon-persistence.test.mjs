@@ -94,6 +94,8 @@ test('pagehide flushes local state, marks server pending, and uses explicit beac
   });
 
   let flushes = 0;
+  let stringSnapshots = 0;
+  let objectSnapshots = 0;
   const content = {
     version: 1,
     activeId: 'main',
@@ -101,7 +103,14 @@ test('pagehide flushes local state, marks server pending, and uses explicit beac
   };
   const paneManager = {
     flushSave() { flushes++; },
-    serializeForPersistence() { return content; },
+    serializeForPersistenceString() {
+      stringSnapshots++;
+      return JSON.stringify(content);
+    },
+    serializeForPersistence() {
+      objectSnapshots++;
+      return content;
+    },
   };
 
   try {
@@ -109,6 +118,8 @@ test('pagehide flushes local state, marks server pending, and uses explicit beac
     h.fire('pagehide');
 
     assert.equal(flushes, 1);
+    assert.equal(stringSnapshots, 1, 'pagehide should reuse the prepared persistence string');
+    assert.equal(objectSnapshots, 0, 'pagehide should not rebuild the persistence object when a string snapshot exists');
     const stale = JSON.parse(storage.getItem(STALE_KEY));
     assert.equal(stale.status, 'pagehide-pending');
     assert.ok(stale.chars > 0);
