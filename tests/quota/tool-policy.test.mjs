@@ -4,6 +4,7 @@ import {
   TOOL_POLICIES,
   getToolPolicy,
   isFreePreflightUnmetered,
+  isServerManagedMeteredTool,
   isToolPublic,
   publicToolNames,
 } from "../../worker/tool_policy.js";
@@ -41,7 +42,6 @@ test("metered parity targets remain on legacy enforcement until success/session 
   const targets = {
     "comparator-tool": ["session", "first-session-action"],
 
-    "sefaria-downloader": ["count", "success"],
     "sefaria-live": ["count", "success"],
     "torah-nikud": ["units", "success"],
     "haredi-caricature": ["cooldown", "success"],
@@ -54,6 +54,18 @@ test("metered parity targets remain on legacy enforcement until success/session 
     assert.equal(p.migrationState, "legacy-preflight-daily", name);
     assert.equal(isFreePreflightUnmetered(name), false, name);
   }
+});
+
+test("sefaria downloader is migrated to confirmed-action metering", () => {
+  const p = TOOL_POLICIES["sefaria-downloader"];
+  assert.equal(p.freeMode, "count");
+  assert.equal(p.limit, 1);
+  assert.equal(p.windowSeconds, 7 * 24 * 60 * 60);
+  assert.equal(p.chargeOn, "confirmed-action");
+  assert.equal(p.eventKind, "confirmed-action");
+  assert.equal(p.premiumMode, "unlimited");
+  assert.equal(p.migrationState, "action-metered-ready");
+  assert.equal(isServerManagedMeteredTool("sefaria-downloader"), true);
 });
 
 test("nikud merger is migrated to server success metering", () => {
