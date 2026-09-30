@@ -90,6 +90,21 @@ test('opening skip policy is opt-in and uses measured layout facts', () => {
   assert.equal(openingWordSkipReason({skipFewerThanLines:true,minLines:3}, {lineCount:2,complete:false,firstLineFill:1}), '');
   assert.equal(openingWordSkipReason({skipShortLine:true,shortLineMinFill:0.7}, {lineCount:4,complete:true,firstLineFill:0.69}), 'short-line');
 });
+test('V9 preview omits an opening on an opted-in one-row paragraph', () => {
+  const opening={...opw,skipPolicy:{skipSingleLine:true,skipShortLine:false,skipFewerThanLines:false,minLines:3,shortLineMinFill:0.65}};
+  const r=plan('abc def ghi',opening,[{x:0,width:160,y_start:0,y_end:100}],100);
+  assert.equal(r.lines.length,1);
+  assert.equal(r.lines[0].render.opening,null);
+  assert.ok(r.diagnostics.some(d=>d.code==='opening-skipped-policy'&&d.reason==='single-line'));
+});
+
+test('V9 preview omits an opening when a complete paragraph has fewer than N rows', () => {
+  const opening={...opw,skipPolicy:{skipSingleLine:false,skipShortLine:false,skipFewerThanLines:true,minLines:3,shortLineMinFill:0.65}};
+  const r=plan('aaa bbb ccc ddd eee fff',opening,[{x:0,width:70,y_start:0,y_end:100}],100);
+  assert.equal(r.lines.length,2);
+  assert.ok(r.lines.every(l=>!l.render.opening));
+  assert.ok(r.diagnostics.some(d=>d.code==='opening-skipped-policy'&&d.reason==='fewer-than-lines'));
+});
 test('canonical mapping retains explicit breaks, removes markers once', () => {
   const raw = '  @01alpha  beta\r\n gamma\t delta  ';
   const m = canonicalMainText(raw);
