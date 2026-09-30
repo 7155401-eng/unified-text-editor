@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
-import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow } from '../../src/engine/v9_split_policy.js';
+import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates } from '../../src/engine/v9_split_policy.js';
 import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
 import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
@@ -40,6 +40,23 @@ test('backward notes and refs retain previous word at exact split and all aliase
  const joined=joinV9ParagraphFragments(h.firstHalf,h.secondHalf);
  assert.equal(joined.mainText,t);assert.equal(joined.notes[1].anchor,10);assert.equal(joined.notes[1].absoluteAnchor,10);
  assert.deepEqual(joined.mainRefs.map(r=>r.anchor),[5,10]);
+});
+
+test('final gap search starts with page-sized prefixes instead of the three largest paragraph cuts',()=>{
+ const candidates=Array.from({length:30},(_,i)=>({
+  kind:'visual-line-end',priority:900,offset:(i+1)*10,source:'test'
+ })).reverse();
+ const selected=selectV9GapFillCandidates(candidates,{remainingPx:60,lineHeight:20});
+ assert.deepEqual(selected.slice(0,5).map(c=>c.offset),[10,20,30,40,50]);
+ assert(selected.some(c=>c.offset===30),'three-row gap did not inspect a three-row prefix');
+ assert(!selected.some(c=>c.offset===300),'gap search still starts at the end of a long paragraph');
+ assert(selected.length>=8 && selected.length<30,`unexpected adaptive budget: ${selected.length}`);
+});
+
+test('explicit final-gap candidate budget is respected after offset ordering',()=>{
+ const candidates=Array.from({length:10},(_,i)=>({kind:'visual-line-end',priority:900,offset:(i+1)*10}));
+ const selected=selectV9GapFillCandidates(candidates,{remainingPx:200,lineHeight:20,maxCandidates:3});
+ assert.deepEqual(selected.map(c=>c.offset),[10,20,30]);
 });
 
 test('started long-note continuation is legal and remains scoreable',()=>{

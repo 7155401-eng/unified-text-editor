@@ -178,6 +178,45 @@ export function buildParagraphBreakCandidates(text, metrics, widthPx, policy = {
   return uniqueCandidatesByOffset(candidates).filter(c => c.offset > 0 && c.offset < String(text || "").length);
 }
 
+/**
+ * Pick the useful prefix of break candidates for filling a visible page gap.
+ *
+ * buildParagraphBreakCandidates() is priority-sorted and, within one priority,
+ * offset-descending. Taking .slice(0, 3) therefore probes the LARGEST prefixes
+ * of a long next paragraph first — exactly the ones most likely to overflow —
+ * and can miss a small prefix that would fill the current page cleanly.
+ *
+ * Gap filling is the opposite problem: start from the beginning of the next
+ * paragraph and inspect enough successive safe line ends to cover the number
+ * of physical rows that are actually missing, plus a small safety margin.
+ */
+export function selectV9GapFillCandidates(candidates = [], {
+  remainingPx = 0,
+  lineHeight = 0,
+  maxCandidates = null,
+} = {}) {
+  const ordered = uniqueCandidatesByOffset(candidates)
+    .filter(c => Number.isFinite(c?.offset) && c.offset > 0)
+    .sort((a, b) => a.offset - b.offset || b.priority - a.priority);
+
+  if (!ordered.length) return [];
+
+  const explicit = Number.parseInt(maxCandidates, 10);
+  let budget;
+  if (Number.isFinite(explicit) && explicit > 0) {
+    budget = explicit;
+  } else {
+    const h = Number(lineHeight) > 0 ? Number(lineHeight) : 1;
+    const missingLines = Math.max(1, Math.ceil(Math.max(0, Number(remainingPx) || 0) / h));
+    // A safe line-end candidate is emitted at most once per useful visual row.
+    // Six extra probes cover typography variance and note/title height without
+    // turning every long paragraph into an unbounded O(n) re-pagination loop.
+    budget = Math.min(36, Math.max(8, missingLines + 6));
+  }
+
+  return ordered.slice(0, Math.max(1, budget));
+}
+
 export function splitMainTextAtOffset(fullText, offset) {
   const text = String(fullText || "");
   const splitOffset = Math.max(0, Math.min(text.length, Number(offset) || 0));
