@@ -86,7 +86,12 @@ test('layout engines consume central spacing snapshots and do not parse spacing 
   assert.doesNotMatch(domPacker,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
 
   const v9Apply = fs.readFileSync(new URL('../../src/vilna_v9_apply.js', import.meta.url),'utf8');
-  assert.match(v9Apply,/getStoredSpacingSettingsSnapshot/);
+  assert.match(v9Apply,/const storedSpacing = getStoredSpacingSettingsSnapshot\(\)/);
+  assert.equal((v9Apply.match(/getStoredSpacingSettingsSnapshot\(\)/g)||[]).length,1,
+    'V9 must snapshot persisted spacing only once per render path');
+  assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidParagraphSoft", false\)/);
+  assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidLineSplits", false\)/);
+  assert.match(v9Apply,/readSpacingBool\(storedSpacing, "preventMidLineSplit", false\)/);
   assert.doesNotMatch(v9Apply,/localStorage\.getItem\(["']ravtext\.spacing\.v1["']\)/);
   assert.doesNotMatch(v9Apply,/JSON\.parse\([^\n]*ravtext\.spacing\.v1/);
 });
