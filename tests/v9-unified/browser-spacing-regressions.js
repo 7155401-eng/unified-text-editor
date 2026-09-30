@@ -377,6 +377,34 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     page.remove();
   });
 
+  await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
+    const page=makePage();
+    const main=Array(9).fill(neutral).join(' ');
+    const words=[...main.matchAll(/\S+/gu)];
+    const input=Array.from({length:5},(_,pi)=>({
+      id:`legacy-overflow-${pi}`,mainText:main,
+      notes:Array.from({length:6},(_,ni)=>{
+        const w=words[Math.min(words.length-1,ni*8+3)];
+        return {stream:['01','02','03'][ni%3],uid:`legacy-overflow-${pi}-${ni}`,num:ni+1,
+          anchor:w.index+w[0].length,anchorAffinity:'backward',text:Array(4+(ni%3)).fill(neutral).join(' ')};
+      })
+    }));
+    const localCfg={...cfg,pageHeight:280,maxPages:120,levels:[['01','02'],['03']],mishnaWrapOn:true,
+      streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}},'03':{cols:2,inlineStyle:{fontSize:11}}}};
+    const result=await buildPages(page,input,localCfg);
+    assert(result.complete,'heavy mixed pagination did not complete');
+    for(const [pageIndex,p] of result.pages.entries()){
+      for(const line of p.querySelectorAll('.v9-line')){
+        const top=parseFloat(line.style.top)||0;
+        const height=parseFloat(line.style.height)||line.getBoundingClientRect().height||0;
+        assert(top+height<=localCfg.pageHeight+0.75,
+          `row crosses page bottom on page ${pageIndex}: ${top}+${height} > ${localCfg.pageHeight}`);
+      }
+    }
+    page.remove();
+    return {pages:result.pages.length};
+  });
+
   await test('legacy audit: one long commentary stream really occupies both sides',()=>{
     const page=makePage();
     const main=Array(5).fill(neutral).join(' ');
