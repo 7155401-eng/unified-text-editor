@@ -42,6 +42,17 @@ const checks = [
     'function isDuplicateStreamTitleNote',
     'function applyFirstNoteAsTitle',
   ]],
+  ['src/main.js', [
+    'LIVE_RENDER_DEFAULT_OFF_IN_SOURCE',
+    'const LIVE_RENDER_CHOICE_KEY = LIVE_RENDER_KEY + ".userChoice";',
+    'if (localStorage.getItem(LIVE_RENDER_CHOICE_KEY) !== "1") return false;',
+    'function setupLiveRenderToggle()',
+  ]],
+  ['src/render_pause_controls.js', [
+    'LIVE_RENDER_DEFAULT_OFF_IN_SOURCE',
+    'const LIVE_CHOICE_KEY = LIVE_KEY + ".userChoice";',
+    'if (localStorage.getItem(LIVE_CHOICE_KEY) !== "1") return false;',
+  ]],
 ];
 
 const failures = [];
