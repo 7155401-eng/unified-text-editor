@@ -2158,16 +2158,6 @@ document.addEventListener("click", async (ev) => {
     }
 
     // === שלב 11 — ניהול חלוניות ===
-    case "pane-add-intro": {
-      const count = paneManager.getIntroPanes?.().length || paneManager.panes.filter(p => p.paneRole === "intro").length;
-      const pane = paneManager.addPane({
-        paneRole: "intro",
-        label: `הקדמה ${count + 1}`,
-        content: "<p></p>",
-      });
-      pane?.editor?.commands?.focus?.("end");
-      break;
-    }
     case "pane-add": {
       const code = paneManager.nextAvailableStreamCode();
       if (!code) { alert("הגעת ל‑99 חלוניות (מקסימום)."); break; }
@@ -2185,9 +2175,24 @@ document.addEventListener("click", async (ev) => {
       }
       break;
     }
+    case "pane-add-intro": {
+      // RAVTEXT_INTRO_PANE_COMMAND_SOURCE_OF_TRUTH
+      const introPanes = paneManager.getIntroPanes?.() || paneManager.panes.filter(p => p.paneRole === "intro");
+      const pane = paneManager.addPane({
+        paneRole: "intro",
+        label: `הקדמה ${introPanes.length + 1}`,
+        content: "<p></p>",
+      });
+      pane?.editor?.commands?.focus?.("end");
+      break;
+    }
     case "pane-remove": {
       const a = paneManager.activePane;
       if (!a) break;
+      if (a.paneRole === "intro") {
+        if (confirm(`למחוק את חלונית "${a.label}"?`)) paneManager.removePane(a.id);
+        break;
+      }
       if (!a.streamCode) { alert("חלונית ראשית — לא ניתן למחוק"); break; }
       if (confirm(`למחוק את חלונית "${a.label}"?`)) {
         paneManager.removePane(a.id);
