@@ -17,7 +17,7 @@ const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
 const cfg={pageWidth:380,pageHeight:350,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:false}};
 
-export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
+export async function runSpacingRegressions(test,{assert,makePage,sourceText,paint}) {
  await test('Word round-trip keeps hard breaks inside a paragraph distinct from paragraph boundaries',()=>{
    const html='<p>אחד<br><strong>שניים</strong></p><p>שלוש</p>';
    const out=wordMainFragmentFromEditorHtml(html);
@@ -1143,7 +1143,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       }
       assert(plan,'fixture search did not produce a two-row paragraph ending inside the opening window');
       page.style.position='relative';page.style.width='100px';page.style.height='100px';page.style.padding='0';
-      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+      for(const line of plan.lines)paint(line,page,0);
       const rows=[...page.querySelectorAll('.v9-final-main-line')];
       const lastEl=rows.at(-1);
       const opening=page.querySelector('.v9-opening-glyph');
