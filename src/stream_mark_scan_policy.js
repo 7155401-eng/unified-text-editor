@@ -23,3 +23,21 @@ export function streamMarkerContextRadius(userSymbol) {
   // missed by the large-document fast path.
   return Math.max(8, String(userSymbol || "").length + 1);
 }
+
+
+export function streamMarkerScanMode({
+  forceScan = false,
+  docChanged = false,
+  transactionMapCounts = [],
+} = {}) {
+  if (forceScan) return "full";
+  if (!docChanged) return "none";
+
+  // The changed-range coordinates used by stream_mark.js are directly
+  // comparable to oldState/newState only for the overwhelmingly common
+  // single-transaction, single-StepMap edit (normal typing/backspace).
+  // Multi-step transforms deliberately keep the conservative full scan.
+  return transactionMapCounts.length === 1 && transactionMapCounts[0] === 1
+    ? "changed-range"
+    : "full";
+}
