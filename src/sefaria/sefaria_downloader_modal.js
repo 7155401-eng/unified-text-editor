@@ -11,7 +11,8 @@ import * as meta from "./sefaria_book_metadata.js";
 import * as api from "./sefaria_api_client.js";
 import * as presets from "./sefaria_preset_manager.js";
 import { extractDh, findDhPosition } from "./sefaria_dh.js";
-import { buildAndDownloadDocx } from "./sefaria_docx_builder.js";
+import { buildDocxBlob, downloadDocxBlob } from "./sefaria_docx_builder.js";
+import { consumeToolSuccess, createToolActionIdempotencyKey } from "../tool_runtime_gate.js";
 import { t, getLang, toggleLang } from "./sefaria_i18n.js";
 
 // ────────────────────────────────────────────────────────────────────
@@ -897,8 +898,9 @@ export function openSefariaDownloader(opts) {
     exportLoadBtn.disabled = true;
     exportOnlyBtn.disabled = true;
 
+    const quotaActionKey = createToolActionIdempotencyKey("sefaria-downloader");
     try {
-      await doExport(ref, selected, loadIntoEditor);
+      await doExport(ref, selected, loadIntoEditor, quotaActionKey);
     } catch (e) {
       setStatus("❌ " + (e && e.message ? e.message : String(e)), "warn");
       modalInfo(t("err_export"), t("err_export_done_template", { err: e && e.message ? e.message : String(e), path: "log" }), "error");
@@ -922,7 +924,7 @@ export function openSefariaDownloader(opts) {
     return modalYesNo(t("confirm_title"), msg);
   }
 
-  async function doExport(ref, selected, loadIntoEditor) {
+  async function doExport(ref, selected, loadIntoEditor, quotaActionKey) {
     setStatus(t("status_loading_book_text", { ref }), "gold");
     setProgress(0.05);
     if (cancelFlag) return cancelled();
@@ -1012,7 +1014,14 @@ export function openSefariaDownloader(opts) {
     const ts = Math.floor(Date.now() / 1000);
     const filename = `${safeBook}_${ts}.docx`;
     const docTitle = `${meta.getHebrewName(currentBook)} — מאגר התורה`;
-    const { blob } = buildAndDownloadDocx(units, streamsMeta, docTitle, filename);
+    // Build completely first. Free quota is claimed only after the export is
+    // actually buildable, but before any file/result is delivered.
+    const { blob } = buildDocxBlob(units, streamsMeta, docTitle, filename);
+    await consumeToolSuccess("sefaria-downloader", {
+      idempotencyKey: quotaActionKey,
+      niceName: "הורדת ספר ממאגר התורה",
+    });
+    downloadDocxBlob(blob, filename);
 
     presets.pushRecent(currentBook, ref);
     refreshRecent();
