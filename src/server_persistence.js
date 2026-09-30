@@ -68,6 +68,7 @@ let _docMaxWaitTimer = null;
 let _docPendingManager = null;
 let _docSaveChain = Promise.resolve();
 let _settingsDebounceTimer = null;
+let _settingsSaveChain = Promise.resolve();
 let _lastDocSig = '';
 let _lastSettingsSig = '';
 let _lastFailedSettingsSig = '';
@@ -404,15 +405,21 @@ async function saveDocumentNow(paneManager) {
   return saveDocumentSnapshot(createDocumentSnapshot(paneManager));
 }
 
-async function saveSettingsNow() {
-  if (!isLoggedIn()) return;
+function createSettingsSnapshot() {
+  if (!isLoggedIn()) return null;
+  const settings = collectLocalSettings();
+  const sig = JSON.stringify(settings);
+  const body = JSON.stringify({ settings });
+  return { settings, sig, body };
+}
+
+async function saveSettingsSnapshot(snapshot) {
+  if (!isLoggedIn() || !snapshot) return;
+  const { settings, sig, body } = snapshot;
+
+  if (shouldSkipSettingsPayload(sig, body)) return;
+
   try {
-    const settings = collectLocalSettings();
-    const sig = JSON.stringify(settings);
-    const body = JSON.stringify({ settings });
-
-    if (shouldSkipSettingsPayload(sig, body)) return;
-
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
@@ -429,8 +436,20 @@ async function saveSettingsNow() {
       });
     }
   } catch (e) {
-    console.warn('[persistence] saveSettingsNow error:', e);
+    console.warn('[persistence] saveSettingsSnapshot error:', e);
   }
+}
+
+function queueSettingsSave() {
+  const snapshot = createSettingsSnapshot();
+  if (!snapshot) return _settingsSaveChain;
+
+  // Match document persistence: capture immutable browser state now, then run
+  // exactly one network write at a time. A slow older PUT can therefore never
+  // finish after and overwrite a newer PUT from this tab.
+  const run = () => saveSettingsSnapshot(snapshot);
+  _settingsSaveChain = _settingsSaveChain.then(run, run);
+  return _settingsSaveChain;
 }
 
 function clearDocumentSyncTimers() {
@@ -476,7 +495,10 @@ export function scheduleDocumentSync(paneManager) {
 export function scheduleSettingsSync() {
   if (!isLoggedIn()) return;
   if (_settingsDebounceTimer) clearTimeout(_settingsDebounceTimer);
-  _settingsDebounceTimer = setTimeout(saveSettingsNow, DEBOUNCE_MS);
+  _settingsDebounceTimer = setTimeout(() => {
+    _settingsDebounceTimer = null;
+    queueSettingsSave();
+  }, DEBOUNCE_MS);
 }
 
 export function attachAutoSync(paneManager) {
