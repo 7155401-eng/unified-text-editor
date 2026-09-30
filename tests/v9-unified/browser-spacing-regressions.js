@@ -1384,14 +1384,23 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
      assert((result.noteAnchorFallbacks||[]).length===0,'active-split extension introduced anchor fallback');
      const fills=result.pages.slice(0,-1).map(p=>Number(p.dataset.v9PageFill)).filter(Number.isFinite);
      const minFill=fills.length?Math.min(...fills):1;
-     // Current-main baseline for this exact fixture was 0.541 before legal
-     // note-continuation was allowed through split extension. Keep a modest
-     // margin below the measured 0.5707 so font/runtime noise cannot erase
-     // the recovered fill without turning this into an overfitted pixel test.
-     assert(minFill>=0.56,`legal continuation no longer improves sparse active-split page: minFill=${minFill}`);
+     // Baseline after #943 was ~0.5707: legal note carry helped, but the
+     // extension chooser still looked only at precomputed visual-line ends.
+     // Real-whitespace rescue candidates are accepted only after the final plan
+     // passes the same line-edge, ownership and overflow guards, so this exact
+     // sparse family should now stay near a normally filled page.
+     assert(minFill>=0.80,`validated whitespace extension regressed: minFill=${minFill}`);
      for(const p of input){
        const rows=[...host.querySelectorAll(`[data-v9-paragraph-id="${p.id}"]`)];
        assert(rows.map(sourceText).join('')===prepareV9SourceParagraph(p).mainText,`source loss in ${p.id}`);
+       for(const note of p.notes||[]){
+         const refPage=result.pages.findIndex(page=>
+           [...page.querySelectorAll('[data-v9-main-ref]')].some(el=>el.dataset.uid===note.uid));
+         const key=`${p.id}:${note.stream}:${note.uid}`;
+         const startPage=result.pages.findIndex(page=>page.querySelector(`[data-v9-note-start="${key}"]`));
+         assert(refPage>=0&&refPage===startPage,
+           `note ownership moved during whitespace extension: ${JSON.stringify({uid:note.uid,refPage,startPage})}`);
+       }
      }
      return {pages:result.pages.length,minFill:+minFill.toFixed(4),fills:fills.map(x=>+x.toFixed(4))};
    } finally {
