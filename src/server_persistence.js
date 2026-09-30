@@ -13,6 +13,7 @@ const SETTINGS_PREFIX = 'ravtext.';
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
 // שוב ושוב ויוצרים לולאת 413.
 const MAX_SETTINGS_SYNC_BYTES = 200 * 1024;
+const LOCAL_SETTINGS_DIRTY_KEY = 'ravtext.settings.localDirty.v1';
 
 // מפתחות שלא נסנכרן (סודיים / זמניים / מצב מסמך שאינו הגדרה):
 const SETTINGS_BLACKLIST = new Set([
@@ -40,6 +41,9 @@ const SETTINGS_BLACKLIST = new Set([
   // מפתחות מצב זמני של live overflow corrector — לא רוצים שיגיעו לשרת
   'ravtext.layout.overflowReserve.v1',
   'ravtext.layout.overflowReserve.v1.iter',
+  // Local conflict markers are browser-only metadata, never user settings.
+  LOCAL_SETTINGS_DIRTY_KEY,
+  'ravtext.doc.serverStale.v1',
 ]);
 // משה 2026-05-09: אסור לסנכרן מפתחות API של ספקי AI לשרת — הם פרטיים למשתמש.
 // הוספתי תחילית כך שכל ravtext.ai.apiKey.<provider> נחסם.
@@ -105,6 +109,15 @@ function shouldSkipSettingsPayload(sig, payload) {
   return false;
 }
 
+function localSettingsAreDirty() {
+  try { return localStorage.getItem(LOCAL_SETTINGS_DIRTY_KEY) === '1'; }
+  catch { return false; }
+}
+
+function clearLocalSettingsDirty() {
+  try { localStorage.removeItem(LOCAL_SETTINGS_DIRTY_KEY); } catch {}
+}
+
 function collectLocalSettings() {
   const out = {};
   if (typeof localStorage === 'undefined') return out;
@@ -145,7 +158,14 @@ export async function loadInitialState(paneManager) {
     ]);
 
     if (settingsRes && settingsRes.settings) {
-      applyLocalSettings(settingsRes.settings);
+      // A refresh can happen before the 2s settings debounce or pagehide beacon
+      // reaches the server. In that case the server copy is older than the
+      // browser copy and must not overwrite it during startup.
+      if (!localSettingsAreDirty()) {
+        applyLocalSettings(settingsRes.settings);
+      } else {
+        console.warn('[persistence] keeping newer unsynced local settings');
+      }
     }
 
     if (docRes && docRes.document && docRes.document.content) {
@@ -348,6 +368,7 @@ async function saveSettingsNow() {
     if (res.ok) {
       _lastSettingsSig = sig;
       _lastFailedSettingsSig = '';
+      clearLocalSettingsDirty();
     } else {
       if (res.status === 413) _lastFailedSettingsSig = sig;
       console.warn('[persistence] save settings failed:', res.status, {
@@ -386,16 +407,36 @@ export function attachAutoSync(paneManager) {
   // Settings sync — wrap localStorage.setItem to detect changes to ravtext.* keys.
   if (typeof localStorage !== 'undefined') {
     const origSet = localStorage.setItem.bind(localStorage);
+    const origRemove = localStorage.removeItem.bind(localStorage);
+    const origClear = localStorage.clear.bind(localStorage);
+    const changedSetting = (key) =>
+      typeof key === 'string' && key.startsWith(SETTINGS_PREFIX) && !isBlacklisted(key);
+    const markDirty = () => origSet(LOCAL_SETTINGS_DIRTY_KEY, '1');
+
     localStorage.setItem = function (key, value) {
       origSet(key, value);
-      if (
-        typeof key === 'string' &&
-        key.startsWith(SETTINGS_PREFIX) &&
-        !isBlacklisted(key)
-      ) {
+      if (changedSetting(key)) {
+        markDirty();
         scheduleSettingsSync();
       }
     };
+    localStorage.removeItem = function (key) {
+      const relevant = changedSetting(key);
+      origRemove(key);
+      if (relevant) {
+        markDirty();
+        scheduleSettingsSync();
+      }
+    };
+    localStorage.clear = function () {
+      origClear();
+      markDirty();
+      scheduleSettingsSync();
+    };
+
+    // If the previous page was refreshed before its debounce/Beacon completed,
+    // retry the local settings immediately after startup.
+    if (localSettingsAreDirty()) scheduleSettingsSync();
   }
 
   // Save on page hide (best-effort, sendBeacon for reliability).
