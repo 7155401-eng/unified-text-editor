@@ -5086,7 +5086,16 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             { cfg, movedNotes: splitNotes.before, pageIdx, source: "extension-rescue" }
           );
           if (!extensionScore.accept) {
-            if (auditCandidate) { auditCandidate.reason = "policy:" + (extensionScore.reason || "rejected"); extensionAudit.candidates.push(auditCandidate); }
+            if (auditCandidate) {
+              auditCandidate.reason = "policy:" + (extensionScore.reason || "rejected");
+              auditCandidate.policyDebug = extensionScore.debug || null;
+              const lastMainLine = tp?.mainBox?.lines?.[tp.mainBox.lines.length - 1] || null;
+              auditCandidate.tailRebalanced = lastMainLine?.tailRebalanced === true;
+              auditCandidate.tailWordSpacing = Number(lastMainLine?.render?.wordSpacing) || 0;
+              auditCandidate.lastNaturalWidth = Number(lastMainLine?.naturalWidth) || 0;
+              auditCandidate.lastWidth = Number(lastMainLine?.width) || 0;
+              extensionAudit.candidates.push(auditCandidate);
+            }
             continue;
           }
 
