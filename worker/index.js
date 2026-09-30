@@ -33,7 +33,7 @@ import {
   handlePaymentStatus,
   handleUsageTick,
 } from './minute_access.js';
-import { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath } from '../cloudflare/docx_worker_entry.js';
+import { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath } from '../cloudflare/docx_worker_entry.js';
 
 function visibleExpiresAtForUser(user) {
   if (!user?.expires_at) return null;
@@ -195,7 +195,7 @@ export default {
       response = await handleClientLog(request, env, ctx);
     } else if (isStreamsScanPath(url.pathname)) {
       response = await handleStreamsScan(request, env, ctx);
-    } else if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname) || isDocxFootnotesToCurlyPath(url.pathname)) {
+    } else if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname) || isDocxFootnotesToCurlyPath(url.pathname) || isDocxSplitFootnotesByTagPath(url.pathname)) {
       response = await handleDocxApi(request, env, ctx);
     } else if (url.pathname === '/api/admin/worker-logs') {
       const user = await getUserFromRequest(request, env);

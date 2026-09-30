@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { transformFootnotesToCurlyCore } from "./docx_footnotes_to_curly.js";
+import { transformSplitFootnotesByTagCore } from "./docx_split_footnotes_by_tag.js";
 
 const SERVICE = "ravtext-cloudflare-docx-advanced-worker";
 const VERSION = "2026-05-26-server-extract";
@@ -24,7 +25,7 @@ function corsHeaders(id = "") {
   const headers = {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type, x-file-name, x-docx-request-id",
+    "access-control-allow-headers": "content-type, x-file-name, x-docx-request-id, x-footnote-split-tags",
     "access-control-expose-headers": "x-docx-api, x-docx-version, x-docx-request-id, x-docx-filename, x-docx-report",
     "access-control-max-age": "86400",
     "x-docx-api": SERVICE,
@@ -515,6 +516,10 @@ function isDocxFootnotesToCurlyPath(path) {
   return path === "/api/word-footnotes-to-curly";
 }
 
+function isDocxSplitFootnotesByTagPath(path) {
+  return path === "/api/word-split-footnotes-by-tag";
+}
+
 function isClientLogPath(path) {
   return path === "/api/client-log";
 }
@@ -615,6 +620,50 @@ async function handleDocxApi(request, env, ctx) {
       });
     }
 
+    if (isDocxSplitFootnotesByTagPath(url.pathname)) {
+      let sourceName = request.headers.get("x-file-name") || "document.docx";
+      try { sourceName = decodeURIComponent(sourceName); } catch (_) {}
+
+      let tags = [];
+      const rawTags = request.headers.get("x-footnote-split-tags") || "";
+      if (rawTags) {
+        try {
+          tags = JSON.parse(decodeURIComponent(rawTags));
+        } catch {
+          throw Object.assign(new Error("כותרת התגים אינה JSON תקין."), {
+            status: 400,
+            code: "INVALID_SPLIT_TAGS_HEADER",
+          });
+        }
+      }
+
+      const transformed = await transformSplitFootnotesByTagCore(arrayBuffer, {
+        filename: sourceName,
+        tags,
+      });
+      const report = transformed.report || {};
+
+      dbLog(env, ctx, "info", "docx_split_footnotes_by_tag_success", {
+        requestId: id,
+        footnotesSplit: report.footnotesSplit || 0,
+        newFootnotesCreated: report.newFootnotesCreated || 0,
+        referencesExpanded: report.referencesExpanded || 0,
+        tags: report.tags || [],
+      });
+
+      return new Response(transformed.bytes, {
+        status: 200,
+        headers: {
+          ...corsHeaders(id),
+          "cache-control": "no-store",
+          "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(transformed.filename)}`,
+          "x-docx-filename": encodeURIComponent(transformed.filename),
+          "x-docx-report": encodeURIComponent(JSON.stringify(report)),
+        },
+      });
+    }
+
     if (isDocxExtractPath(url.pathname)) {
       const level = url.searchParams.get("level");
       const index = url.searchParams.get("index");
@@ -660,7 +709,7 @@ export default {
       return handleStreamsScan(request, env, ctx);
     }
 
-    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname) || isDocxFootnotesToCurlyPath(url.pathname)) {
+    if (isDocxImportPath(url.pathname) || isDocxExtractPath(url.pathname) || isDocxFootnotesToCurlyPath(url.pathname) || isDocxSplitFootnotesByTagPath(url.pathname)) {
       return handleDocxApi(request, env, ctx);
     }
 
@@ -672,4 +721,4 @@ export default {
   },
 };
 
-export { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };
+export { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath };
