@@ -4,6 +4,7 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "prosemirror-state";
 import { defaultLabelForCode } from "./engine_bridge.js";
+import { hasPotentialStreamMarker, streamMarkerContextRadius } from "./stream_mark_scan_policy.js";
 
 const AUTO_MARK_FULL_SCAN_LIMIT = 20000;
 
@@ -46,12 +47,6 @@ function offsetToPos(offsetMap, offset) {
   return offsetMap.length > 0 ? offsetMap[0].posInDoc : 0;
 }
 
-function hasPotentialMarker(text, userSymbol) {
-  if (!text) return false;
-  if (userSymbol) return String(text).includes(userSymbol);
-  return /@\d{1,3}/.test(String(text));
-}
-
 function rangeHasStreamMark(doc, from, to, markType) {
   let found = false;
   const start = Math.max(0, Math.min(doc.content.size, from));
@@ -65,22 +60,23 @@ function rangeHasStreamMark(doc, from, to, markType) {
   return found;
 }
 
-function transactionsTouchPotentialMarker(transactions, oldState, newState, userSymbol, markType) {
+function transactionsTouchPotentialMarker(transactions, oldState, newState, userSymbol, markType, nestedOn = false) {
+  const contextRadius = streamMarkerContextRadius(userSymbol);
   for (const tr of transactions) {
     if (tr.getMeta("forceStreamMarkScan")) return true;
     for (const map of tr.mapping.maps) {
       let touched = false;
       map.forEach((oldStart, oldEnd, newStart, newEnd) => {
         if (touched) return;
-        const newFrom = Math.max(0, Math.min(newState.doc.content.size, newStart - 8));
-        const newTo = Math.max(newFrom, Math.min(newState.doc.content.size, newEnd + 8));
-        const oldFrom = Math.max(0, Math.min(oldState.doc.content.size, oldStart - 8));
-        const oldTo = Math.max(oldFrom, Math.min(oldState.doc.content.size, oldEnd + 8));
+        const newFrom = Math.max(0, Math.min(newState.doc.content.size, newStart - contextRadius));
+        const newTo = Math.max(newFrom, Math.min(newState.doc.content.size, newEnd + contextRadius));
+        const oldFrom = Math.max(0, Math.min(oldState.doc.content.size, oldStart - contextRadius));
+        const oldTo = Math.max(oldFrom, Math.min(oldState.doc.content.size, oldEnd + contextRadius));
         const newText = newState.doc.textBetween(newFrom, newTo, "\n", "\n");
         const oldText = oldState.doc.textBetween(oldFrom, oldTo, "\n", "\n");
         touched =
-          hasPotentialMarker(newText, userSymbol) ||
-          hasPotentialMarker(oldText, userSymbol) ||
+          hasPotentialStreamMarker(newText, userSymbol, { nestedOn }) ||
+          hasPotentialStreamMarker(oldText, userSymbol, { nestedOn }) ||
           rangeHasStreamMark(oldState.doc, oldFrom, oldTo, markType);
       });
       if (touched) return true;
@@ -179,13 +175,30 @@ export const StreamMark = Mark.create({
           const storage = editorRef.storage.streamMark;
           const userSymbol = storage.symbol;
           const userStreamCode = storage.streamCode;
+
+          // Nested mode expands the set of markers a stream pane recognizes,
+          // so the fast-path gate must know about it before deciding whether
+          // a full scan is unnecessary.
+          let nestedOn = false;
+          try {
+            nestedOn = typeof window !== "undefined" &&
+              window.localStorage?.getItem("ravtext.nestedNotes") === "1";
+          } catch (_) {}
+
           const forceScan = transactions.some(t => t.getMeta("forceStreamMarkScan"));
           const docChanged = transactions.some(t => t.docChanged);
           if (!docChanged && !forceScan) return null;
           if (
             !forceScan &&
             newState.doc.content.size > AUTO_MARK_FULL_SCAN_LIMIT &&
-            !transactionsTouchPotentialMarker(transactions, oldState, newState, userSymbol, markType)
+            !transactionsTouchPotentialMarker(
+              transactions,
+              oldState,
+              newState,
+              userSymbol,
+              markType,
+              nestedOn
+            )
           ) {
             return null;
           }
@@ -197,11 +210,6 @@ export const StreamMark = Mark.create({
           // below; the second alternative captures the digits, which routes to
           // the actual code. Off by default so legacy single-symbol behavior
           // stays unchanged.
-          let nestedOn = false;
-          try {
-            nestedOn = typeof window !== "undefined" &&
-              window.localStorage?.getItem("ravtext.nestedNotes") === "1";
-          } catch (_) {}
           let re;
           if (userSymbol) {
             re = nestedOn
