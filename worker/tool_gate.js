@@ -101,7 +101,30 @@ function requestAmount(body) {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
 }
 
-function requestTimezoneOffset(body) {
+function offsetForTimeZone(timeZone) {
+  const tz = String(timeZone || "").trim();
+  if (!tz) return null;
+  try {
+    const part = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    }).formatToParts(new Date()).find(p => p.type === "timeZoneName")?.value || "";
+    const m = part.match(/^GMT(?:(\+|-)(\d{1,2})(?::?(\d{2}))?)?$/i);
+    if (!m) return null;
+    if (!m[1]) return 0;
+    const sign = m[1] === "-" ? -1 : 1;
+    return sign * ((Number(m[2]) || 0) * 60 + (Number(m[3]) || 0));
+  } catch (_) {
+    return null;
+  }
+}
+
+function requestTimezoneOffset(request, body) {
+  // Cloudflare supplies an IANA timezone from the request location. Prefer it
+  // over client input so a free user cannot reset a daily quota by spoofing
+  // Date.getTimezoneOffset(). Fallback keeps local/dev environments working.
+  const serverOffset = offsetForTimeZone(request?.cf?.timezone);
+  if (Number.isFinite(serverOffset)) return serverOffset;
   const n = Number(body?.timeZoneOffsetMinutes ?? body?.timezoneOffsetMinutes ?? 0);
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
@@ -146,7 +169,7 @@ export async function handleToolPreflight(request, env) {
 
   const action = String(body?.action || 'preflight').trim().toLowerCase();
   const amount = requestAmount(body);
-  const timezoneOffsetMinutes = requestTimezoneOffset(body);
+  const timezoneOffsetMinutes = requestTimezoneOffset(request, body);
   const common = {
     env,
     user,
