@@ -25,6 +25,7 @@ import { LineHeight, Indent, BlockSpacing, TextIndent, Insertion, Deletion } fro
 import { StreamMark, findAllStreamMarks, colorForStream } from "./stream_mark.js";
 import { TableExt, TableRowExt, TableCellExt } from "./tables_module.js";
 import { initMainStreamResizer, initResizer } from "./resizer.js";
+import { normalizePaneKind } from "./pane_kinds.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
@@ -297,11 +298,6 @@ function buildEditorExtensions() {
 }
 
 const MARKER_BAR_DEFAULT_KEY = "ravtext.markerBar.defaultCollapsed.v1";
-
-function normalizePaneKind(kind, streamCode) {
-  if (streamCode) return "stream";
-  return kind === "intro" ? "intro" : "main";
-}
 
 
 export class Pane {
