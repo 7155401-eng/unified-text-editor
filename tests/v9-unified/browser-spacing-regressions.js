@@ -1,6 +1,7 @@
 import { saveTextStyles, loadTextStyles } from '../../src/style_registry.js';
 import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
-import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart } from '../../src/engine/v9_text_measurement.js';
+import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart, renderV9PlannedMainLine } from '../../src/engine/v9_text_measurement.js';
+import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
 import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
