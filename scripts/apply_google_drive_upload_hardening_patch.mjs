@@ -48,12 +48,13 @@ function patchUiHeavyLabel() {
     }
   }
 
-  if (!src.includes('הדבק קישור Google Drive')) {
-    const oldNoteStart = 'driveRow.appendChild(el("div", { class: "tt-note" }';
-    assertHas(src, oldNoteStart, path);
-  }
-
+  // Modern UI no longer uses the old one-line "הדבק קישור" note anchor.
+  // Verify semantic invariants instead of requiring historical markup.
   assertHas(src, HEAVY_LABEL, path);
+  assertHas(src, 'קישור Google Drive', path);
+  assertHas(src, '_setDriveUrl', path);
+  assertHas(src, 'RAVTEXT_GOOGLE_DRIVE_PUBLIC_LINK_NOTICE_PATCH', path);
+  assertHas(src, 'כל מי שיש לו קישור', path);
   writeIfChanged(path, before, src);
 }
 
