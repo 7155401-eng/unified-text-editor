@@ -3806,11 +3806,11 @@ function renderPagePlan(plan, pageEl, cfg) {
       else if (!isContinuationCut && (isFullWidthOrphan || isParagraphEnd)) lineEl.className += ' center';
       else if ((shouldJustify && !stretchTooWide) || mustCompleteLine) lineEl.className += ' justify';
       lineEl.style.left = (padding + line.x) + 'px';
-      // ★ 28/09 — `renderY` הוא תיקון המרווח, והוא חי **רק בציור**.
-      // `line.y` המקורי — התוכנית — לעולם אינו משתנה, ולכן רינדור חוזר
-      // מתחיל תמיד מאותה נקודה ואינו מצטבר. ראה ההסבר המלא ליד
-      // enforceUniformLinePitch.
-      lineEl.style.top = (Number.isFinite(line.renderY) ? line.renderY : line.y) + 'px';
+      // Single geometry authority: the planner owns Y. Even if stale/debug
+      // metadata contains a historical renderY value, final paint must ignore
+      // it. A second post-plan Y authority is exactly how blank knee rows and
+      // stream/main desynchronization were created in older builds.
+      lineEl.style.top = line.y + 'px';
       lineEl.style.width = line.width + 'px';
       // ★ משה 14/09/2026 — סנכרון בין המנוע לרינדור.
       // המנוע חישב כמה מילים נכנסות בשורה לפי גודל האות של אותו זרם
