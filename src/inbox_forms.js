@@ -147,6 +147,8 @@ function openModal({ title, body, footer, width = 540 }) {
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.textContent = '×';
+  closeBtn.setAttribute('aria-label', 'סגור חלון');
+  closeBtn.title = 'סגור';
   closeBtn.style.cssText = `
     border: none; background: transparent; cursor: pointer;
     font-size: 24px; line-height: 1; color: #64748b;
