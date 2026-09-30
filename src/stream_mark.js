@@ -4,7 +4,7 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "prosemirror-state";
 import { defaultLabelForCode } from "./engine_bridge.js";
-import { hasPotentialStreamMarker } from "./stream_mark_scan_policy.js";
+import { hasPotentialStreamMarker, streamMarkerContextRadius } from "./stream_mark_scan_policy.js";
 
 const AUTO_MARK_FULL_SCAN_LIMIT = 20000;
 
@@ -61,16 +61,17 @@ function rangeHasStreamMark(doc, from, to, markType) {
 }
 
 function transactionsTouchPotentialMarker(transactions, oldState, newState, userSymbol, markType, nestedOn = false) {
+  const contextRadius = streamMarkerContextRadius(userSymbol);
   for (const tr of transactions) {
     if (tr.getMeta("forceStreamMarkScan")) return true;
     for (const map of tr.mapping.maps) {
       let touched = false;
       map.forEach((oldStart, oldEnd, newStart, newEnd) => {
         if (touched) return;
-        const newFrom = Math.max(0, Math.min(newState.doc.content.size, newStart - 8));
-        const newTo = Math.max(newFrom, Math.min(newState.doc.content.size, newEnd + 8));
-        const oldFrom = Math.max(0, Math.min(oldState.doc.content.size, oldStart - 8));
-        const oldTo = Math.max(oldFrom, Math.min(oldState.doc.content.size, oldEnd + 8));
+        const newFrom = Math.max(0, Math.min(newState.doc.content.size, newStart - contextRadius));
+        const newTo = Math.max(newFrom, Math.min(newState.doc.content.size, newEnd + contextRadius));
+        const oldFrom = Math.max(0, Math.min(oldState.doc.content.size, oldStart - contextRadius));
+        const oldTo = Math.max(oldFrom, Math.min(oldState.doc.content.size, oldEnd + contextRadius));
         const newText = newState.doc.textBetween(newFrom, newTo, "\n", "\n");
         const oldText = oldState.doc.textBetween(oldFrom, oldTo, "\n", "\n");
         touched =
