@@ -226,6 +226,14 @@ function clearServerStale() {
   try { localStorage.removeItem(STALE_KEY); } catch {}
 }
 
+function clearServerStaleIfConfirmed(documentSig) {
+  try {
+    // A successful response for an older in-flight snapshot must never clear
+    // the recovery marker of newer local work.
+    if (localStorage.getItem(DOC_KEY) === documentSig) clearServerStale();
+  } catch {}
+}
+
 function staleServerCopy() {
   try {
     const raw = localStorage.getItem(STALE_KEY);
@@ -346,7 +354,7 @@ async function saveDocumentNow(paneManager) {
     if (res.ok) {
       _lastDocSig = sig;
       _lastSaveError = 0;
-      clearServerStale();
+      clearServerStaleIfConfirmed(sig);
     } else {
       // משה 2026-09-20: עד כאן הכישלון היה **שקט** — רק שורה ביומן.
       // התוצאה: המסמך החדש לא נשמר בשרת, ובכל רענון חזר המסמך הישן
