@@ -95,6 +95,61 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    assert(right.lines[3].y+right.lines[3].lineHeightPx<=firstMain.y-7.9,'fourth actual crown line overlaps main');
    page.remove();return {mainTop:firstMain.y,crownBottom:plan.crownBottomY};
  });
+ await test('configured four-row crown paints four complete rows before body transition',()=>{
+   const page=makePage(),t=Array(18).fill(phrase).join(' ');
+   const plan=buildSinglePage(page,{
+     mainText:Array(5).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   },{...cfg,pageHeight:720,crownLines:4,streamSettings:{
+     '01':{inlineStyle:{fontSize:11,lineHeight:1.55}},
+     '02':{inlineStyle:{fontSize:11,lineHeight:1.55}}
+   }});
+   const crownBottom=plan.crownBottomY;
+   for(const role of ['right','left']){
+     const box=plan.streamBoxes.find(b=>b.role===role);
+     assert(box,'missing crown side '+role);
+     const crownRows=box.lines.filter(l=>l.y+Math.max(1,l.lineHeightPx||0)<=crownBottom+.15);
+     assert(crownRows.length>=4,`${role} crown painted only ${crownRows.length} complete rows`);
+   }
+   page.remove();
+ });
+
+ await test('main stream title reserves geometry below crown and honors titleShow',()=>{
+   const settings=getStreamSettings(),saved=settings.main;
+   const t=Array(12).fill(phrase).join(' ');
+   const content={
+     mainText:Array(4).fill(neutral).join(' '),
+     rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+     leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+     footerStreams:[]
+   };
+   try {
+     settings.main={...(settings.main||{}),titleShow:true};
+     const shown=makePage();
+     const plan=buildSinglePage(shown,content,{...cfg,pageHeight:720,crownLines:4,crownMainGapPx:8,titles:{main:'MAIN TITLE'}});
+     const title=[...shown.querySelectorAll('.v9-stream-title')].find(e=>e.textContent==='MAIN TITLE');
+     assert(title,'main title was not painted');
+     assert(plan.mainTitleReserve===plan.titleHeight,`main title reserve missing: ${plan.mainTitleReserve}/${plan.titleHeight}`);
+     const titleTop=parseFloat(title.style.top)||0;
+     const firstMain=plan.mainBox.lines[0];
+     assert(titleTop>=plan.crownBottomY+plan.crownMainGap-.15,
+       `main title overlaps crown: titleY=${titleTop}, crownBottom=${plan.crownBottomY}`);
+     assert(titleTop+plan.titleHeight<=firstMain.y+.15,'main title overlaps first main row');
+     shown.remove();
+
+     settings.main={...(settings.main||{}),titleShow:false};
+     const hidden=makePage();
+     const hiddenPlan=buildSinglePage(hidden,content,{...cfg,pageHeight:720,crownLines:4,crownMainGapPx:8,titles:{main:'MAIN TITLE'}});
+     assert(![...hidden.querySelectorAll('.v9-stream-title')].some(e=>e.textContent==='MAIN TITLE'),'hidden main title was still painted');
+     assert(hiddenPlan.mainTitleReserve===0,'hidden main title still reserved vertical space');
+     hidden.remove();
+   } finally {
+     if(saved===undefined) delete settings.main; else settings.main=saved;
+   }
+ });
+
  await test('full note pagination keeps every new note start with its main reference',async()=>{
    const settings=getStreamSettings(),saved={};for(const id of ['01','02','03']){saved[id]=settings[id];settings[id]={...settings[id],mainRefEnabled:true};}
    const page=makePage();
@@ -429,6 +484,31 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     const narrow=Math.min(...before.map(l=>l.width));
     const widened=Math.max(...after.map(l=>l.width));
     assert(widened>narrow+25,`commentary did not widen below main: ${narrow} -> ${widened}`);
+    page.remove();
+  });
+
+  await test('two continuing side streams widen on the same vertical boundary below main',()=>{
+    const page=makePage();
+    const sideText=Array(34).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'אחד שניים שלוש ארבע חמש',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:760,crownLines:2,streamSettings:{
+      '01':{inlineStyle:{fontSize:11,lineHeight:1.45}},
+      '02':{inlineStyle:{fontSize:12,lineHeight:1.6}},
+    }});
+    const mainBottom=(plan.mainBox?.y||0)+(plan.mainBox?.height||0);
+    const boxes=['right','left'].map(role=>plan.streamBoxes.find(b=>b.role===role));
+    assert(boxes.every(Boolean),'missing side boxes');
+    const firstWide=boxes.map(box=>{
+      const narrow=Math.min(...box.lines.filter(l=>l.y<mainBottom-.1).map(l=>l.width));
+      return box.lines.find(l=>l.y>=mainBottom-.1 && l.width>narrow+20);
+    });
+    assert(firstWide.every(Boolean),'fixture did not create wide continuation rows on both sides');
+    assert(Math.abs(firstWide[0].y-firstWide[1].y)<.15,
+      `wide rows start at different heights: ${firstWide[0].y} vs ${firstWide[1].y}`);
     page.remove();
   });
 
