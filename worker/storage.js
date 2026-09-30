@@ -14,6 +14,10 @@ async function requireUser(request, env) {
   return { user };
 }
 
+export function isStorageBeaconWrite(method, url) {
+  return method === 'POST' && url?.searchParams?.get('beacon') === '1';
+}
+
 export async function handleStorage(request, env, url) {
   const auth = await requireUser(request, env);
   if (auth.error) {
@@ -25,17 +29,18 @@ export async function handleStorage(request, env, url) {
 
   const path = url.pathname;
   const method = request.method;
+  const beaconWrite = isStorageBeaconWrite(method, url);
 
   if (path === '/api/documents/current' && method === 'GET') {
     return getCurrent(env, auth.user);
   }
-  if (path === '/api/documents/current' && method === 'PUT') {
+  if (path === '/api/documents/current' && (method === 'PUT' || beaconWrite)) {
     return putCurrent(request, env, auth.user);
   }
   if (path === '/api/settings' && method === 'GET') {
     return getSettings(env, auth.user);
   }
-  if (path === '/api/settings' && method === 'PUT') {
+  if (path === '/api/settings' && (method === 'PUT' || beaconWrite)) {
     return putSettings(request, env, auth.user);
   }
   if (path === '/api/settings' && method === 'PATCH') {
