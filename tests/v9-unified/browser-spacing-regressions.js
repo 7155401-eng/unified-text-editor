@@ -9,6 +9,7 @@ import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js'
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
 import { wordMainFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
+import { analyzePageElement } from '../../src/layout_analysis_report.js';
 import { applyV9MainBottomGapToPage } from '../../src/engine/v9_main_bottom_gap.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
@@ -974,6 +975,12 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       assert(Math.abs(visualWidth-hostFull)<.75,
         `opening occupies only a partial wide row: body=${op.width}, opening=${op.render.opening.width}, gap=${op.render.opening.gap}, visual=${visualWidth}, host=${hostFull}`);
       assert(op.render.opening.part.text==='פתיח',`unexpected opening segment: ${op.render.opening.part.text}`);
+
+      const analysis=analyzePageElement(found.page,0,{bottomGapWarningLines:100});
+      assert(!analysis.issues.some(i=>i.code==='knee-row-gap'),
+        `layout report falsely flags the validated knee: ${JSON.stringify(analysis.knees)}`);
+      assert(!analysis.issues.some(i=>i.code==='opening-center'),
+        `layout report falsely flags the validated opening center: ${JSON.stringify(analysis.openingCentering)}`);
 
       // Side-stream knees on the same page must also remain one normal pitch.
       for(const role of ['right','left']){
