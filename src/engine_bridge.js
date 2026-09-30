@@ -1572,7 +1572,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     if (!isRenderCurrent(myToken)) return;
 
     const t2 = performance.now();
-    renderPages(pages, pagesContainer);
+    renderPages(pages, pagesContainer, { pageIndexOffset: frontMatterPageCount });
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
@@ -2395,9 +2395,17 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     logEvent("strict_overflow_pushdown_loop_end");
     logEvent("render_pipeline_complete", {
       durationMs: Math.round(performance.now() - t2),
-      pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,
+      pageCount: frontMatterPageCount + pagesContainer.querySelectorAll(".page").length,
+      frontMatterPageCount,
     });
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
+    if (!isRenderCurrent(myToken)) { restoreLastGoodRender(pagesContainer, "superseded"); return; }
+
+    // Intro pages are deliberately attached only after all book-only layout
+    // passes finished, so neither side can pull/rebalance content across the
+    // front-matter boundary.
+    prependFrontMatterPages(pagesContainer, packedFrontMatter);
+    const totalPageCount = pagesContainer.querySelectorAll(".page").length;
     const t3 = performance.now();
     const statusEl = document.getElementById("status");
     if (statusEl) {
@@ -2407,17 +2415,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       for (const p of pages) for (const c of Object.keys(p.streams || {})) allStreams.add(c);
       const streams = Array.from(allStreams).sort((a, b) => parseInt(a) - parseInt(b)).join(", ") || "אין";
       statusEl.textContent =
-        `${pages.length} עמודים, ניצול ממוצע ${avg.toFixed(1)}% — זרמים: ${streams}`;
+        `${totalPageCount} עמודים, ניצול ממוצע גוף הספר ${avg.toFixed(1)}% — זרמים: ${streams}`;
     }
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-      detail: { pages, content },
+      detail: {
+        pages,
+        content,
+        frontMatterPages: frontMatterPageCount,
+        totalPages: totalPageCount,
+      },
     }));
 
     // ⛔⛔ משה 10/09/2026 — ראה ההסבר המלא מיד למטה.
     const RESURRECTED_POST_RENDER_IS_OFF = true;
 
     if (pdfToolbarApi) {
-      pdfToolbarApi.setTotal(pages.length);
+      pdfToolbarApi.setTotal(totalPageCount);
       // ⛔⛔ משה 10/09/2026: „רווחים מטורפים בעמודים, יותר ממה שהיה קודם”
       // ו„נראה שהוא לא מפצל קטעים”.
       //
@@ -2488,7 +2501,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       }, 1700);
     }
 
-    console.log(`[engine] ${pages.length} pages | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
+    console.log(`[engine] ${totalPageCount} pages (${frontMatterPageCount} front matter) | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
   } catch (err) {
     console.error("Engine render error:", err);
     // משה 2026-05-14: הצגת השגיאה גם בסטטוס. בלי זה ה-"מרענן..." נשאר על המסך
