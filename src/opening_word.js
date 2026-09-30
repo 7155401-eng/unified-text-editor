@@ -14,6 +14,12 @@ const DEFAULTS = {
   scope: "all",
   skipHeadings: true,
   headingMin: 80,
+  // B5 — optional eligibility rules. Defaults preserve existing documents.
+  skipShortLine: false,
+  shortLineMinFill: 0.65,
+  skipSingleLine: false,
+  skipFewerThanLines: false,
+  minLines: 3,
 };
 
 const STREAM_DEFAULTS = {
@@ -118,7 +124,42 @@ function normalizeSettings(raw = {}) {
     scope: normalizeScope(raw.scope),
     skipHeadings: raw.skipHeadings !== false,
     headingMin: clampNumber(raw.headingMin, DEFAULTS.headingMin, 0, 500),
+    skipShortLine: !!raw.skipShortLine,
+    shortLineMinFill: clampNumber(raw.shortLineMinFill, DEFAULTS.shortLineMinFill, 0.1, 1),
+    skipSingleLine: !!raw.skipSingleLine,
+    skipFewerThanLines: !!raw.skipFewerThanLines,
+    minLines: Math.round(clampNumber(raw.minLines, DEFAULTS.minLines, 2, 12)),
   };
+}
+
+export function getOpeningWordSkipPolicy(raw = {}) {
+  const settings = normalizeSettings(raw);
+  return {
+    skipShortLine: settings.skipShortLine,
+    shortLineMinFill: settings.shortLineMinFill,
+    skipSingleLine: settings.skipSingleLine,
+    skipFewerThanLines: settings.skipFewerThanLines,
+    minLines: settings.minLines,
+  };
+}
+
+// Layout facts are measured before applying an opening word.
+// If complete is false, line-count rules must not mistake a long paragraph
+// for a short one merely because the current page ended.
+export function openingWordSkipReason(raw = {}, layout = {}) {
+  const policy = getOpeningWordSkipPolicy(raw);
+  const lineCount = Math.max(0, Math.floor(Number(layout.lineCount) || 0));
+  const complete = layout.complete !== false;
+  const fill = Number(layout.firstLineFill);
+
+  if (policy.skipSingleLine && complete && lineCount === 1) return "single-line";
+  if (policy.skipFewerThanLines && complete && lineCount > 0 && lineCount < policy.minLines) {
+    return "fewer-than-lines";
+  }
+  if (policy.skipShortLine && Number.isFinite(fill) && fill < policy.shortLineMinFill) {
+    return "short-line";
+  }
+  return "";
 }
 
 export function normalizeStreamOpeningWordSettings(raw = {}) {
