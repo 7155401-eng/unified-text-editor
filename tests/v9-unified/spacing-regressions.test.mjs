@@ -296,6 +296,65 @@ test('dropped opening uses newly freed left width across an RTL fixed-right-edge
   `row after opening stayed trapped at old narrow width: ${afterOpening.width}`);
 });
 
+
+test('off-grid narrow→wide boundaries preserve one continuous row grid across many offsets',()=>{
+ const pitch=10;
+ const ctx={
+  fontSize:10,
+  lineHeight:pitch,
+  describeOpening:()=>null,
+  measure:part=>{
+   const body=String(part?.text||'').trim();
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:pitch,topInset:0};
+  }
+ };
+ const text=Array(80).fill('aa').join(' ');
+ const boundaries=[1.25,3.5,6.75,9.5,10.25,12.5,15.5,19.75,20.25,24.5,29.5,33.25];
+
+ for(const boundary of boundaries){
+  const plan=layoutV9MainParagraphs(
+   [{id:`grid-${boundary}`,text,runs:[],mainRefs:[]}],
+   [
+    {x:50,width:50,y_start:0,y_end:boundary,lockYStart:false},
+    {x:0,width:100,y_start:boundary,y_end:140,lockYStart:false},
+   ],
+   ctx,
+   140
+  );
+  assert(plan.lines.length>=4,`boundary ${boundary}: fixture produced too few rows`);
+
+  const lines=[...plan.lines].sort((a,b)=>a.y-b.y);
+  for(let i=1;i<lines.length;i++){
+   const dy=lines[i].y-lines[i-1].y;
+   assert(Math.abs(dy-pitch)<.001,
+    `boundary ${boundary}: row-grid gap/collapse at ${lines[i-1].y}->${lines[i].y}, dy=${dy}`);
+  }
+
+  const expectedWideY=Math.ceil(boundary/pitch)*pitch;
+  const firstWide=lines.find(l=>l.width>90);
+  assert(firstWide,`boundary ${boundary}: no wide continuation row`);
+  assert(Math.abs(firstWide.y-expectedWideY)<.001,
+   `boundary ${boundary}: wide row started at ${firstWide.y}, expected next grid baseline ${expectedWideY}`);
+
+  const prev=lines[lines.indexOf(firstWide)-1];
+  if(prev){
+   assert(prev.width<60,
+    `boundary ${boundary}: row crossing the knee widened early at y=${prev.y}, width=${prev.width}`);
+   assert(Math.abs(firstWide.y-prev.y-pitch)<.001,
+    `boundary ${boundary}: blank slot before first wide row`);
+  }
+
+  for(const line of lines){
+   const crosses=line.y<boundary && line.y+pitch>boundary;
+   if(crosses){
+    assert(line.width<60,
+     `boundary ${boundary}: straddling row must stay narrow, got width=${line.width}`);
+   }
+  }
+ }
+});
+
 test('opening that starts after a knee occupies the complete wide visual row',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
