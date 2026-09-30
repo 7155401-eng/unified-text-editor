@@ -1,5 +1,6 @@
 import { sliceRuns } from './runs_dom.js';
 import { sourceMetadata, referenceInV9Range } from './v9_source_fragments.js';
+import { openingWordSkipReason } from '../opening_word.js';
 
 export const V9_INLINE_PLAN_VERSION = 'v9-inline-1';
 const EPS = 1 / 64;
@@ -344,7 +345,46 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
     const paragraphLineStart = lines.length;
     const tokens = tokensOf(entry.text);
     let cursor = 0, ti = 0, opening = null, openingAttached = false;
-    const descriptor = context.describeOpening(entry);
+    let descriptor = context.describeOpening(entry);
+    if (descriptor?.skipPolicy && (
+      descriptor.skipPolicy.skipShortLine ||
+      descriptor.skipPolicy.skipSingleLine ||
+      descriptor.skipPolicy.skipFewerThanLines
+    )) {
+      // B5: evaluate eligibility against the real V9 row geometry BEFORE the
+      // opening word changes widths. The preview is the same paragraph with
+      // opening disabled, so it cannot recurse into this policy again.
+      const previewStrips = strips
+        .filter(strip => strip.y_end > y + EPS)
+        .map(strip => ({ ...strip, y_start: Math.max(strip.y_start, y) }))
+        .filter(strip => strip.y_end > strip.y_start + EPS);
+      if (previewStrips.length) {
+        const previewEntry = { ...entry, _v9OpeningWordAllowed: false };
+        const preview = layoutV9MainParagraphs(
+          [previewEntry],
+          previewStrips,
+          context,
+          pageBottom,
+          { maxLines: 0, openingPolicyPreview: true }
+        );
+        const first = preview.lines[0] || null;
+        const reason = openingWordSkipReason(descriptor.skipPolicy, {
+          lineCount: preview.lines.length,
+          complete: (preview.overflowParagraphs || []).length === 0,
+          firstLineFill: first && first.width > 0 ? first.naturalWidth / first.width : 0,
+        });
+        if (reason) {
+          diagnostics.push({
+            code: 'opening-skipped-policy',
+            paragraphId: entry.id,
+            reason,
+            lineCount: preview.lines.length,
+            firstLineFill: first && first.width > 0 ? first.naturalWidth / first.width : 0,
+          });
+          descriptor = null;
+        }
+      }
+    }
     if (descriptor) {
       if (!(descriptor.end > 0 && descriptor.end <= entry.text.length)) throw new Error('Invalid V9 opening source range');
       if (descriptor.position === 'raised') {
