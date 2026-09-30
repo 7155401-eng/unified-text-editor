@@ -109,12 +109,41 @@ test('page-ending continuation rebalances the paragraph tail instead of rubber-s
   [{x:0,width:54,y_start:0,y_end:30}],ctx,30
  );
  assert.equal(p.lines.length,3);
- assert.deepEqual(p.lines.map(l=>l.wordTokens.length),[4,3,3]);
+ assert.deepEqual(p.lines.map(l=>l.wordTokens.length),[3,3,4]);
  assert.ok(p.lines.every(l=>l.tailRebalanced===true));
  assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
  assert.ok(Math.max(...p.lines.map(l=>l.render.wordSpacing))<=6.5001,
   `tail spacing was not gently capped: ${p.lines.map(l=>l.render.wordSpacing).join(',')}`);
  assert.ok(p.diagnostics.some(d=>d.code==='paragraph-tail-rebalanced'));
+});
+
+
+test('opening-word row and the following window row participate in whole-paragraph tail rebalance',()=>{
+ const text='OP '+Array(10).fill('aa').join(' ');
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:2,marks:{fontSize:20},dropLines:2,gapPx:4}),
+  measure:p=>{
+   const opening=(p.runs||[]).some(r=>Number(r?.marks?.fontSize)===20);
+   if(opening)return {width:20,height:20,topInset:0};
+   const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const p=layoutV9MainParagraphs(
+  [{id:'tail-opening',text,runs:[],mainRefs:[],continuesAfter:true}],
+  [{x:0,width:70,y_start:0,y_end:30}],ctx,30
+ );
+ assert.equal(p.lines.length,3);
+ assert.equal(!!p.lines[0].render.opening,true,'opening glyph was lost');
+ assert.equal(p.lines[0].openingWindow,true,'opening row left the opening window');
+ assert.equal(p.lines[1].openingWindow,true,'row after opening did not remain in the opening window');
+ assert.deepEqual(p.lines.map(l=>l.wordTokens.length),[3,3,4]);
+ assert.ok(p.lines.every(l=>l.tailRebalanced===true),'opening-window rows were excluded from rebalance');
+ assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
+ assert.equal((p.lines[0].render.body.text.match(/OP/g)||[]).length,0,'opening text leaked into body measurement');
+ assert.ok(Math.max(...p.lines.map(l=>l.render.wordSpacing))<=6.5001,
+  `opening tail spacing was not gently distributed: ${p.lines.map(l=>l.render.wordSpacing).join(',')}`);
 });
 
 test('continuation tail rebalance starts only after the last explicit source line break',()=>{
