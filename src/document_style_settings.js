@@ -6,17 +6,49 @@ const DEFAULTS = {
   mainStyleId: "",
 };
 
-export function loadDocumentStyleSettings() {
+let _documentStyleCacheRaw = null;
+let _documentStyleCacheSnapshot = null;
+
+function readDocumentStyleStorageRaw() {
   try {
-    return { ...DEFAULTS, ...(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}) };
+    if (typeof localStorage === "undefined") return "";
+    return localStorage.getItem(STORAGE_KEY) || "";
   } catch {
-    return { ...DEFAULTS };
+    return "";
   }
+}
+
+function documentStyleSnapshotFromRaw(raw) {
+  try {
+    const saved = JSON.parse(raw || "{}") || {};
+    return Object.freeze({ ...DEFAULTS, ...saved });
+  } catch {
+    return Object.freeze({ ...DEFAULTS });
+  }
+}
+
+export function getDocumentStyleSettingsSnapshot() {
+  const raw = readDocumentStyleStorageRaw();
+  if (_documentStyleCacheSnapshot && raw === _documentStyleCacheRaw) {
+    return _documentStyleCacheSnapshot;
+  }
+  _documentStyleCacheRaw = raw;
+  _documentStyleCacheSnapshot = documentStyleSnapshotFromRaw(raw);
+  return _documentStyleCacheSnapshot;
+}
+
+export function loadDocumentStyleSettings() {
+  // Preserve the historical mutable-return contract for callers while avoiding
+  // repeated JSON.parse work when the stored raw value has not changed.
+  return { ...getDocumentStyleSettingsSnapshot() };
 }
 
 export function saveDocumentStyleSettings(settings) {
   const next = { ...DEFAULTS, ...(settings || {}) };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  const raw = JSON.stringify(next);
+  localStorage.setItem(STORAGE_KEY, raw);
+  _documentStyleCacheRaw = raw;
+  _documentStyleCacheSnapshot = Object.freeze({ ...next });
   return next;
 }
 
