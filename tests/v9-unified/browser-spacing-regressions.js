@@ -1400,6 +1400,68 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    }
  });
 
+  await test('actual V9 row geometry fills the sparse active-split fixture',async()=>{
+    const settings=getStreamSettings(),saved={};
+    const host=makePage();
+    const auditNeutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר אחד עשר שנים עשר';
+    const side='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
+    const anchorAt=(text,index)=>{
+      const words=[...String(text).matchAll(/\S+/gu)];
+      const w=words[Math.min(words.length-1,Math.max(0,index))];
+      return w ? w.index+w[0].length : Math.max(0,text.length-1);
+    };
+    const input=Array.from({length:7},(_,pi)=>{
+      const main=Array(3+(pi%3)).fill(auditNeutral).join(' ');
+      return {
+        id:`geometry-sparse-${pi}`,
+        mainText:main,
+        notes:[
+          {stream:'01',uid:`gsp-a-${pi}`,num:pi*3+1,anchor:anchorAt(main,5),anchorAffinity:'backward',
+           text:Array(5+(pi%3)).fill(side).join(' ')},
+          {stream:'02',uid:`gsp-b-${pi}`,num:pi*3+2,anchor:anchorAt(main,12),anchorAffinity:'backward',
+           text:Array(6+((pi+1)%3)).fill(side).join(' ')},
+          {stream:'03',uid:`gsp-f-${pi}`,num:pi*3+3,anchor:anchorAt(main,19),anchorAffinity:'backward',
+           text:Array(3+(pi%2)).fill(auditNeutral).join(' ')}
+        ]
+      };
+    });
+    try {
+      for(const id of ['01','02','03']){
+        saved[id]=settings[id];
+        settings[id]={...(settings[id]||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false,titleShow:false};
+      }
+      const result=await buildPages(host,input,{
+        ...cfg,pageWidth:380,pageHeight:360,padding:12,
+        talmudStreams:['01','02'],maxPages:120,
+        crownLines:4,crownMainGapPx:11,mainBottomGapPx:24,mishnaWrapOn:false,
+        streamSettings:{
+          '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+          '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+          '03':{inlineStyle:{fontSize:10,lineHeight:1.4},cols:1},
+        },
+        openingWordSettings:{enabled:false},
+      });
+      assert(result.complete,'actual-geometry sparse fixture incomplete');
+      assert((result.noteAnchorFallbacks||[]).length===0,
+        `actual geometry introduced anchor fallback: ${JSON.stringify(result.noteAnchorFallbacks)}`);
+      const fills=result.pages.slice(0,-1).map(p=>Number(p.dataset.v9PageFill)).filter(Number.isFinite);
+      const minFill=fills.length?Math.min(...fills):1;
+      assert(minFill>=0.80,
+        `actual V9 geometry did not fill sparse active-split page: minFill=${minFill}`);
+      for(const p of input){
+        const rows=[...host.querySelectorAll(`[data-v9-paragraph-id="${p.id}"]`)];
+        assert(rows.map(sourceText).join('')===prepareV9SourceParagraph(p).mainText,
+          `source loss in ${p.id}`);
+      }
+      return {pages:result.pages.length,minFill:+minFill.toFixed(4),fills:fills.map(x=>+x.toFixed(4))};
+    } finally {
+      host.remove();
+      for(const id of ['01','02','03']){
+        if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];
+      }
+    }
+  });
+
   await test('long anchored note may continue after starting with its source line',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
