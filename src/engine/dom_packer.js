@@ -31,6 +31,7 @@ let _measureCache = null;
 let _pageMeasureCache = null;
 let _measureStats = null;
 let _activeContentMeta = [];
+let _forceRegularMeasure = false;
 const MAX_MEASURE_CACHE_ENTRIES = 2500;
 const MAX_MEASURE_CACHE_TEXT_LENGTH = 12000;
 const MIN_CONTINUED_MAIN_CHARS = 44;
@@ -256,8 +257,8 @@ function makeMeasureKey(mainSegments, streams) {
   // משה 2026-05-14: signature של layout-context מבטיח שמדידות לא ממוחזרות
   // כשהגדרות הדף/header/footer/page-number השתנו.
   hash = hashAppend(hash, currentLayoutMeasureSignature());
-  hash = hashAppend(hash, shouldMeasureTalmudLayout() ? "talmud:1" : "talmud:0");
-  hash = hashAppend(hash, shouldMeasureMishnaWrap() ? "mishna:1" : "mishna:0");
+  hash = hashAppend(hash, !_forceRegularMeasure && shouldMeasureTalmudLayout() ? "talmud:1" : "talmud:0");
+  hash = hashAppend(hash, !_forceRegularMeasure && shouldMeasureMishnaWrap() ? "mishna:1" : "mishna:0");
   for (const seg of mainSegments || []) {
     const text = seg.text || "";
     const meta = blockMetaFor(seg.idx);
@@ -465,7 +466,9 @@ function buildMeasurePage(mainSegments, streams) {
   }
   // משה 2026-05-08: applyTalmudLayoutToPage הוסר עם מחיקת V1.
   // אם talmud דלוק → V9 רץ במסלול נפרד ו-dom_packer לא רץ בכלל.
-  if (shouldMeasureMishnaWrap()) applyMishnaWrapToPage(page, { skipServerDecision: true });
+  if (!_forceRegularMeasure && shouldMeasureMishnaWrap()) {
+    applyMishnaWrapToPage(page, { skipServerDecision: true });
+  }
   return page;
 }
 
@@ -1781,10 +1784,12 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
   const prevPageCache = _pageMeasureCache;
   const prevStats = _measureStats;
   const prevContentMeta = _activeContentMeta;
+  const prevForceRegularMeasure = _forceRegularMeasure;
   const debug = typeof window !== "undefined" && window.__DOM_PACK_DEBUG__;
   _measureCache = new Map();
   _pageMeasureCache = new WeakMap();
   _measureStats = { hits: 0, misses: 0, pageHits: 0 };
+  _forceRegularMeasure = !!opts.forceRegularLayout;
   _activeContentMeta = (content || []).map((item) => ({
     blockType: item?.blockType === "heading" ? "heading"
              : item?.blockType === "codeBlock" ? "codeBlock"
@@ -1838,6 +1843,7 @@ export async function domPack(content, geom = DOM_PAGE_GEOM, opts = {}) {
     _pageMeasureCache = prevPageCache;
     _measureStats = prevStats;
     _activeContentMeta = prevContentMeta;
+    _forceRegularMeasure = prevForceRegularMeasure;
   }
 }
 
