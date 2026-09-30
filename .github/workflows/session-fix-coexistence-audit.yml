@@ -1,0 +1,51 @@
+name: Session fix coexistence audit
+
+on:
+  push:
+    branches:
+      - audit/session-fix-coexistence-20260930
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: V9 unit + source-of-truth regressions
+        run: node --test tests/v9-unified/*.test.mjs
+      - name: Quota parity regressions
+        run: node --test tests/quota/*.test.mjs
+      - name: DOCX migration regressions
+        run: node --test tests/docx/*.test.mjs
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: V9 browser regressions
+        run: node scripts/v9-unified/run-browser.mjs
+      - name: Assert pristine source before build
+        run: git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+      - name: Build one
+        run: npm run build
+      - name: Assert build one is source-read-only
+        run: git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+      - name: Build two
+        run: npm run build
+      - name: Assert build two is source-read-only
+        run: git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+      - name: Re-run all critical regressions after builds
+        run: |
+          node --test tests/v9-unified/*.test.mjs
+          node --test tests/quota/*.test.mjs
+          node --test tests/docx/*.test.mjs
+          node scripts/v9-unified/run-browser.mjs
