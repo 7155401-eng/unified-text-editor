@@ -1,32 +1,14 @@
 import { getUserFromRequest } from './session.js';
 import { addServerWatermarksToHtml } from '../server/secure_export_html.js';
+import {
+  checkToolQuota,
+  consumeToolQuota,
+  getToolPolicy,
+  isKnownTool,
+} from './tool_quota_policy.js';
 
 const TOOL_TOKEN_TTL_SEC = 120;
 const DEMO_BLOCK_MS = 5 * 60 * 1000;
-
-const PUBLIC_TOOLS = new Set([
-  'nikud-merger',
-  'word-extractor',
-  'text-compare-pro',
-  'comparator-tool',
-  'sefaria-downloader',
-  'sefaria-live',
-  'torah-transcription',
-  'torah-nikud',
-  'haredi-caricature',
-  'css-ai',
-  'torah-tools',
-]);
-
-// Text upload/import through Word extractor is a core free-account workflow.
-// It should still require a logged-in free account, but it must not consume the daily quota.
-const FREE_UNMETERED_TOOLS = new Set([
-  'word-extractor',
-]);
-
-function isFreeUnmeteredTool(toolName) {
-  return FREE_UNMETERED_TOOLS.has(String(toolName || '').trim());
-}
 
 function b64url(bytes) {
   const bin = String.fromCharCode(...new Uint8Array(bytes));
@@ -44,10 +26,6 @@ async function signToolToken(payload, secret) {
   );
   const sig = await crypto.subtle.sign('HMAC', key, data);
   return `${b64url(data)}.${b64url(sig)}`;
-}
-
-function todayKey() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function requestTriesToDisableWatermark(body) {
@@ -100,37 +78,32 @@ async function handleSecureExportHtmlAction(request, env, body) {
   });
 }
 
-async function consumeFreeUse(user, toolName, env) {
-  if (isFreeUnmeteredTool(toolName)) {
-    return { ok: true, unmetered: true };
-  }
+function quotaStatus(result) {
+  if (result?.reason === 'in_progress') return 409;
+  if (result?.reason === 'quota') return 429;
+  if (result?.reason === 'unknown_tool') return 403;
+  return 500;
+}
 
-  const usageDate = todayKey();
-  const nowSec = Math.floor(Date.now() / 1000);
-  try {
-    const inserted = await env.DB.prepare(
-      `INSERT OR IGNORE INTO tool_usage (user_id, tool_name, usage_date, created_at)
-       VALUES (?, ?, ?, ?)`
-    ).bind(user.id, toolName, usageDate, nowSec).run();
-    if ((inserted?.meta?.changes || 0) > 0) return { ok: true };
-    return { ok: false, reason: 'quota' };
-  } catch (_) {
-    // If the D1 migration is not deployed yet, still enforce on the server
-    // with Cloudflare's edge cache instead of trusting browser storage.
-    const cache = caches.default;
-    const cacheUrl = `https://tool-usage.invalid/${encodeURIComponent(`${user.id}:${toolName}:${usageDate}`)}`;
-    try {
-      const hit = await cache.match(cacheUrl);
-      if (hit) return { ok: false, reason: 'quota' };
-      await cache.put(
-        cacheUrl,
-        new Response('1', { headers: { 'cache-control': 'public, max-age=86400' } })
-      );
-      return { ok: true };
-    } catch {
-      return { ok: false, reason: 'quota' };
-    }
-  }
+function blockedQuotaResponse(result) {
+  return Response.json({
+    error: result?.reason === 'quota' ? 'quota_exceeded' : (result?.reason || 'quota_error'),
+    message: result?.message || 'Tool quota is not available',
+    ...result,
+  }, {
+    status: quotaStatus(result),
+    headers: { 'cache-control': 'no-store' },
+  });
+}
+
+function requestAmount(body) {
+  const n = Number(body?.amount ?? body?.units ?? 1);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
+}
+
+function requestTimezoneOffset(body) {
+  const n = Number(body?.timeZoneOffsetMinutes ?? body?.timezoneOffsetMinutes ?? 0);
+  return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
 
 export async function handleToolPreflight(request, env) {
@@ -156,7 +129,7 @@ export async function handleToolPreflight(request, env) {
   }
 
   const toolName = String(body?.toolName || '').trim();
-  if (!PUBLIC_TOOLS.has(toolName)) {
+  if (!isKnownTool(toolName)) {
     return Response.json(
       { error: 'unknown_tool', message: 'Tool is not allowed' },
       { status: 403, headers: { 'cache-control': 'no-store' } }
@@ -171,14 +144,50 @@ export async function handleToolPreflight(request, env) {
     );
   }
 
-  if (!user.paid) {
-    const usage = await consumeFreeUse(user, toolName, env);
-    if (!usage.ok) {
-      return Response.json(
-        { error: 'quota_exceeded', message: 'Free accounts can use each tool once per day' },
-        { status: 429, headers: { 'cache-control': 'no-store' } }
-      );
-    }
+  const action = String(body?.action || 'preflight').trim().toLowerCase();
+  const amount = requestAmount(body);
+  const timezoneOffsetMinutes = requestTimezoneOffset(body);
+  const common = {
+    env,
+    user,
+    toolName,
+    amount,
+    timezoneOffsetMinutes,
+  };
+
+  if (action === 'consume') {
+    const result = await consumeToolQuota({
+      ...common,
+      idempotencyKey: body?.idempotencyKey || '',
+    });
+    if (!result?.ok) return blockedQuotaResponse(result);
+    return Response.json(result, { headers: { 'cache-control': 'no-store' } });
+  }
+
+  if (action !== 'preflight' && action !== 'check') {
+    return Response.json(
+      { error: 'unknown_action', message: 'Use preflight, check or consume' },
+      { status: 400, headers: { 'cache-control': 'no-store' } }
+    );
+  }
+
+  let quota = await checkToolQuota(common);
+  if (!quota?.ok) return blockedQuotaResponse(quota);
+
+  const policy = getToolPolicy(toolName);
+
+  // Only policies explicitly marked "preflight" retain the old web behavior
+  // of charging on open. Desktop-parity tools charge at success/activity.
+  if (action === 'preflight' && policy?.chargeOn === 'preflight' && !user.paid && !user.is_admin) {
+    quota = await consumeToolQuota({
+      ...common,
+      idempotencyKey: body?.idempotencyKey || '',
+    });
+    if (!quota?.ok) return blockedQuotaResponse(quota);
+  }
+
+  if (action === 'check') {
+    return Response.json(quota, { headers: { 'cache-control': 'no-store' } });
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
@@ -188,15 +197,17 @@ export async function handleToolPreflight(request, env) {
     exp: nowSec + TOOL_TOKEN_TTL_SEC,
     paid: !!user?.paid,
     email: user?.email || null,
+    quotaMode: policy?.mode || null,
+    chargeOn: policy?.chargeOn || null,
     jti: crypto.randomUUID(),
   }, env.SESSION_SECRET);
 
   return Response.json({
+    ...quota,
     ok: true,
     toolName,
     token,
     expiresAt: (nowSec + TOOL_TOKEN_TTL_SEC) * 1000,
-    unmetered: !user?.paid && isFreeUnmeteredTool(toolName),
   }, {
     headers: { 'cache-control': 'no-store' },
   });
