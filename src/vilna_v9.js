@@ -4999,7 +4999,15 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
-      if (!currentHasNoteOverflow && currentFill < rescueMinFillRatio && secondText.length > 0) {
+
+      // Never decide from the OLD partial plan that extension is impossible.
+      // Extending the same source paragraph can move the main-text anchor that
+      // an unstarted note is waiting for onto this page, turning an unsafe
+      // current overflow into a legal started-note continuation. Every proposed
+      // extension below is rebuilt from source and independently validated by
+      // scoreV9PageCandidate()/hasUnsafeV9StreamOverflow(), so skipping the
+      // search here only creates white space; it adds no safety.
+      if (currentFill < rescueMinFillRatio && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
