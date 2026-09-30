@@ -177,7 +177,7 @@ test("unreferenced positive footnote aborts instead of being silently deleted", 
 });
 
 test("image/table/object/hyperlink content aborts before any output is produced", async () => {
-  for (const unsafe of ["drawing", "tbl", "object", "hyperlink"]) {
+  for (const unsafe of ["drawing", "tbl", "object", "hyperlink", "fldChar", "sym"]) {
     const unsafeXml = unsafe === "tbl"
       ? `<w:tbl><w:tr><w:tc><w:p><w:r><w:t>x</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`
       : unsafe === "hyperlink"
