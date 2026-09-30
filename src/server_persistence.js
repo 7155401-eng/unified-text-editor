@@ -244,7 +244,7 @@ export async function loadInitialState(paneManager) {
         markServerStale(localAhead.status, localAhead.chars);
         console.warn('[persistence] local editor changed while startup server request was in flight — keeping local document');
         showStaleServerNotice(localAhead);
-        return { loaded: false, skipped: 'local-edit-during-server-load' };
+        return { loaded: false, skipped: 'local-edit-during-server-load', startupTimedOut };
       }
 
       // משה 2026-09-20: כאן נולד התסמין "האתר שוכח". אם השמירה האחרונה
