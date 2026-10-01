@@ -501,16 +501,269 @@ async function handleStreamsScan(request, env, ctx) {
   }
 }
 
+
+const DOCX_UPLOAD_PREFIX = "uploads/";
+const DOCX_UPLOAD_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
+function isDocxUploadOnlyPath(path) {
+  return path === "/api/word-chapters-upload" || path === "/api/word-chapters/upload";
+}
+function isDocxScanUploadedPath(path) {
+  return path === "/api/word-chapters-scan-upload" || path === "/api/word-chapters/scan-upload";
+}
+function isDocxExtractUploadedPath(path) {
+  return path === "/api/word-chapters-extract-upload" || path === "/api/word-chapters/extract-upload";
+}
+function isDocxFullUploadedPath(path) {
+  return path === "/api/word-chapters-full-upload" || path === "/api/word-chapters/full-upload";
+}
+function isDocxDeleteUploadPath(path) {
+  return path === "/api/word-chapters-delete-upload" || path === "/api/word-chapters/delete-upload";
+}
+
+function requireDocxUploads(env) {
+  if (!env?.DOCX_UPLOADS) {
+    throw Object.assign(new Error("DOCX_UPLOADS R2 binding is not configured."), {
+      status: 503,
+      code: "DOCX_UPLOADS_NOT_CONFIGURED",
+    });
+  }
+  return env.DOCX_UPLOADS;
+}
+
+function normalizeUploadId(value) {
+  const id = String(value || "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{15,220}$/.test(id)) {
+    throw Object.assign(new Error("Invalid or missing uploadId."), {
+      status: 400,
+      code: "INVALID_UPLOAD_ID",
+    });
+  }
+  return id;
+}
+
+function docxUploadKey(uploadId) {
+  return DOCX_UPLOAD_PREFIX + normalizeUploadId(uploadId) + ".docx";
+}
+
+async function readJsonBody(request) {
+  try { return await request.json(); } catch { return {}; }
+}
+
+function uploadIdFrom(request, url, body = {}) {
+  return url.searchParams.get("uploadId")
+    || request.headers.get("x-docx-upload-id")
+    || body?.uploadId
+    || "";
+}
+
+async function readUploadedDocx(env, uploadId) {
+  const bucket = requireDocxUploads(env);
+  const id = normalizeUploadId(uploadId);
+  const object = await bucket.get(docxUploadKey(id));
+  if (!object) {
+    throw Object.assign(new Error("Uploaded DOCX was not found or already expired."), {
+      status: 404,
+      code: "DOCX_UPLOAD_NOT_FOUND",
+    });
+  }
+  return {
+    uploadId: id,
+    arrayBuffer: await object.arrayBuffer(),
+    metadata: object.customMetadata || {},
+  };
+}
+
+async function extractFullDocumentContent(arrayBuffer, id) {
+  if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error("לא התקבל קובץ DOCX.");
+  if (arrayBuffer.byteLength > MAX_DOCX_BYTES) {
+    throw Object.assign(new Error(`DOCX גדול מדי. מגבלה: ${MAX_DOCX_BYTES} bytes.`), {
+      status: 413,
+      code: "DOCX_TOO_LARGE",
+    });
+  }
+
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const docFile = zip.file("word/document.xml");
+  if (!docFile) throw new Error("לא נמצא word/document.xml.");
+
+  const [docXml, stylesXml] = await Promise.all([
+    docFile.async("string"),
+    zip.file("word/styles.xml")?.async("string") || Promise.resolve(""),
+  ]);
+  const styles = parseStyles(stylesXml || "");
+  const { partsMeta } = bodyParts(documentBodyXml(docXml), styles);
+  const mainHtml = partsMeta.map((part) => {
+    const text = String(part.text || "").trim();
+    if (!text) return "";
+    if (part.level >= 1 && part.level <= 6) return `<h${part.level}>${escHtml(text)}</h${part.level}>`;
+    return `<p>${escHtml(text)}</p>`;
+  }).filter(Boolean).join("\n") || "<p></p>";
+
+  return {
+    ok: true,
+    serverSide: true,
+    requestId: id,
+    title: "מסמך Word מלא",
+    result: { mainHtml, streams: [], streamsHtml: [] },
+  };
+}
+
+async function handleUploadOnly(request, env, ctx) {
+  const id = request.headers.get("x-docx-request-id") || requestId();
+  if (request.method === "OPTIONS") return optionsResponse(id);
+  if (request.method !== "POST") return jsonResponse({ ok: false, requestId: id, error: "Method not allowed" }, 405, id);
+
+  try {
+    const bucket = requireDocxUploads(env);
+    const arrayBuffer = await request.arrayBuffer();
+    const bytes = arrayBuffer.byteLength;
+    if (!bytes) throw Object.assign(new Error("Empty DOCX."), { status: 400, code: "EMPTY_DOCX" });
+    if (bytes > MAX_DOCX_BYTES) throw Object.assign(new Error("DOCX too large."), { status: 413, code: "DOCX_TOO_LARGE" });
+
+    const fileHash = await sha256Hex(arrayBuffer);
+    const createdAt = Date.now();
+    const uploadId = `${fileHash}.${createdAt.toString(36)}.${requestId.replace(/[^A-Za-z0-9]/g, "").slice(-12)}`;
+    let fileName = request.headers.get("x-file-name") || "";
+    try { fileName = decodeURIComponent(fileName); } catch (_) {}
+
+    await bucket.put(docxUploadKey(uploadId), arrayBuffer, {
+      httpMetadata: {
+        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      },
+      customMetadata: {
+        fileHash,
+        bytes: String(bytes),
+        createdAt: String(createdAt),
+        requestId: id,
+        fileName,
+      },
+    });
+
+    log("log", "docx_upload_only_success", { requestId: id, uploadId, fileHash, bytes });
+    dbLog(env, ctx, "info", "docx_upload_only_success", { requestId: id, uploadId, fileHash, bytes });
+
+    return jsonResponse({
+      ok: true,
+      serverSide: true,
+      requestId: id,
+      uploadId,
+      fileHash,
+      bytes,
+      uploadedAt: createdAt,
+      expiresAt: createdAt + DOCX_UPLOAD_TTL_MS,
+    }, 200, id);
+  } catch (error) {
+    dbLog(env, ctx, "error", "docx_upload_only_failed", { requestId: id, error: error?.message || String(error) });
+    return jsonResponse({
+      ok: false,
+      requestId: id,
+      error: error?.message || String(error),
+      code: error?.code || "DOCX_UPLOAD_FAILED",
+    }, error?.status || 500, id);
+  }
+}
+
+async function handleUploadedDocxAction(request, env, ctx, action) {
+  const id = request.headers.get("x-docx-request-id") || requestId();
+  const url = new URL(request.url);
+  if (request.method === "OPTIONS") return optionsResponse(id);
+  if (request.method !== "POST" && !(action === "delete" && request.method === "DELETE")) {
+    return jsonResponse({ ok: false, requestId: id, error: "Method not allowed" }, 405, id);
+  }
+
+  try {
+    const body = request.method === "POST" ? await readJsonBody(request) : {};
+    const uploadId = normalizeUploadId(uploadIdFrom(request, url, body));
+
+    if (action === "delete") {
+      await requireDocxUploads(env).delete(docxUploadKey(uploadId));
+      dbLog(env, ctx, "info", "docx_upload_deleted", { requestId: id, uploadId });
+      return jsonResponse({ ok: true, requestId: id, uploadId, deletedAt: Date.now() }, 200, id);
+    }
+
+    const uploaded = await readUploadedDocx(env, uploadId);
+    const arrayBuffer = uploaded.arrayBuffer;
+
+    if (action === "scan") {
+      const imported = await importDocx(arrayBuffer, id);
+      return jsonResponse({
+        ...imported,
+        uploadId,
+        fileHash: uploaded.metadata.fileHash || imported.fileHash,
+        uploadedAt: Number(uploaded.metadata.createdAt) || null,
+        scannedAt: Date.now(),
+      }, 200, id);
+    }
+
+    if (action === "extract") {
+      const level = body?.level ?? url.searchParams.get("level");
+      const index = body?.index ?? url.searchParams.get("index");
+      const extracted = await extractChapterContent(arrayBuffer, level, index, id);
+      return jsonResponse({ ...extracted, uploadId, extractedAt: Date.now() }, 200, id);
+    }
+
+    if (action === "full") {
+      const full = await extractFullDocumentContent(arrayBuffer, id);
+      return jsonResponse({ ...full, uploadId, extractedAt: Date.now() }, 200, id);
+    }
+
+    throw Object.assign(new Error("Unknown uploaded DOCX action."), { status: 400 });
+  } catch (error) {
+    log("error", "uploaded_docx_action_failed", { requestId: id, action, error: error?.message || String(error) });
+    dbLog(env, ctx, "error", "uploaded_docx_action_failed", { requestId: id, action, error: error?.message || String(error) });
+    return jsonResponse({
+      ok: false,
+      requestId: id,
+      error: error?.message || String(error),
+      code: error?.code || "DOCX_UPLOAD_ACTION_FAILED",
+    }, error?.status || 500, id);
+  }
+}
+
+export async function cleanupExpiredDocxUploads(env, {
+  now = Date.now(),
+  ttlMs = DOCX_UPLOAD_TTL_MS,
+  maxDeletes = 200,
+} = {}) {
+  if (!env?.DOCX_UPLOADS) return { scanned: 0, deleted: 0, skipped: true };
+
+  let cursor;
+  let scanned = 0;
+  let deleted = 0;
+  do {
+    const page = await env.DOCX_UPLOADS.list({ prefix: DOCX_UPLOAD_PREFIX, cursor, limit: 1000 });
+    for (const item of page.objects || []) {
+      scanned += 1;
+      const createdAt = Number(item.customMetadata?.createdAt || 0);
+      if (createdAt > 0 && now - createdAt > ttlMs) {
+        await env.DOCX_UPLOADS.delete(item.key);
+        deleted += 1;
+        if (deleted >= maxDeletes) return { scanned, deleted, capped: true };
+      }
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+
+  return { scanned, deleted };
+}
+
 function isDocxImportPath(path) {
   return path === "/api/ravtext-docx-import" ||
     path === "/api/word-chapters-import" ||
     path === "/api/word-chapters/import" ||
     path === "/api/word-chapters-scan" ||
-    path === "/api/word-chapters/scan";
+    path === "/api/word-chapters/scan" ||
+    isDocxUploadOnlyPath(path) ||
+    isDocxScanUploadedPath(path) ||
+    isDocxFullUploadedPath(path) ||
+    isDocxDeleteUploadPath(path);
 }
 
 function isDocxExtractPath(path) {
-  return path === "/api/word-chapters-extract" || path === "/api/word-chapters/extract";
+  return path === "/api/word-chapters-extract" ||
+    path === "/api/word-chapters/extract" ||
+    isDocxExtractUploadedPath(path);
 }
 
 function isDocxFootnotesToCurlyPath(path) {
@@ -555,6 +808,12 @@ async function handleDocxApi(request, env, ctx) {
     contentLength: request.headers.get("content-length") || "",
     contentType: request.headers.get("content-type") || "",
   });
+
+  if (isDocxUploadOnlyPath(url.pathname)) return handleUploadOnly(request, env, ctx);
+  if (isDocxScanUploadedPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "scan");
+  if (isDocxExtractUploadedPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "extract");
+  if (isDocxFullUploadedPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "full");
+  if (isDocxDeleteUploadPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "delete");
 
   if (request.method === "OPTIONS") return optionsResponse(id);
 
