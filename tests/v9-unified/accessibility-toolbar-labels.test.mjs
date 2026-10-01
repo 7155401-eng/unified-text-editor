@@ -29,6 +29,11 @@ function expectStreamButtonAria(stream, label) {
   assert.match(html, re, `missing aria-label for marker stream ${stream}`);
 }
 
+function expectStressButtonAria(multiplier, label) {
+  const re = new RegExp(`<button(?=[^>]*data-mul=["']${multiplier}["'])(?=[^>]*class=["'][^"']*btn-stress(?:\\s|["']))(?=[^>]*title=["']${label}["'])(?=[^>]*aria-label=["']${label}["'])[^>]*>`, 'u');
+  assert.match(html, re, `missing accessible stress label for ×${multiplier}`);
+}
+
 test('audited PR #246 accessibility labels remain present on current toolbar', () => {
   expectInputAria('custom-stream-input', 'מספר זרם מותאם אישית');
   expectInputAria('jump-stream-input', 'מספר זרם מותאם אישית לקפיצה');
@@ -45,4 +50,11 @@ test('audited PR #246 accessibility labels remain present on current toolbar', (
   expectButtonAria('size-18', 'הגדר את הטקסט הנבחר ל-18px');
   expectButtonAria('size-15', 'הגדר את הטקסט הנבחר ל-15px');
   expectButtonAria('size-12', 'הגדר את הטקסט הנבחר ל-12px');
+});
+
+
+test('stress multiplier controls expose their action instead of only the multiplication token', () => {
+  for (const multiplier of [3, 10, 30, 100]) {
+    expectStressButtonAria(multiplier, `הכפל פי ${multiplier}`);
+  }
 });
