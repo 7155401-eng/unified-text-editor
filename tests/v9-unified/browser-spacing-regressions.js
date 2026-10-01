@@ -344,7 +344,46 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    }
  });
 
-  await test('classic source tokens do not break around punctuation without whitespace',async()=>{
+  await test('code/quote block semantics survive V9 measurement and paint',async()=>{
+   const page=makePage();
+   const codeText='const answer = 42;\nconsole.log(answer);';
+   const quoteText='quoted alpha beta gamma';
+   const inlineText='plain code tail';
+   const result=await buildPages(page,[
+     {id:'code-block-output',blockType:'codeBlock',mainText:codeText,notes:[]},
+     {id:'quote-block-output',blockType:'blockquote',mainText:quoteText,notes:[]},
+     {id:'inline-code-output',blockType:'paragraph',mainText:inlineText,
+       mainRuns:[{start:6,end:10,marks:{code:true}}],notes:[]}
+   ],{...cfg,talmudStreams:[],pageHeight:420,maxPages:20,openingWordSettings:{enabled:false}});
+   assert(result.complete,'code/quote V9 fixture incomplete');
+
+   const codeRows=[...page.querySelectorAll('[data-v9-paragraph-id="code-block-output"]')];
+   assert(codeRows.length>=2,'code block did not preserve its forced line break');
+   assert(codeRows.every(el=>el.dataset.v9BlockType==='codeBlock'),'code block metadata was lost');
+   assert(codeRows.every(el=>el.classList.contains('v9-block-code')),'code block paint class missing');
+   for(const el of codeRows){
+     const cs=getComputedStyle(el);
+     assert(/monospace|Consolas|Menlo|Monaco/i.test(cs.fontFamily),`code block font not monospace: ${cs.fontFamily}`);
+     assert(cs.direction==='ltr',`code block direction=${cs.direction}`);
+   }
+   assert(codeRows.map(sourceText).join('')===codeText,'code block source was lost or reordered');
+
+   const quoteRows=[...page.querySelectorAll('[data-v9-paragraph-id="quote-block-output"]')];
+   assert(quoteRows.length>0,'quote block missing');
+   assert(quoteRows.every(el=>el.dataset.v9BlockType==='blockquote'),'quote metadata was lost');
+   assert(quoteRows.every(el=>el.classList.contains('v9-block-quote')),'quote paint class missing');
+   assert(quoteRows.every(el=>getComputedStyle(el).fontStyle==='italic'),'quote did not keep italic block typography');
+
+   const inlineRow=page.querySelector('[data-v9-paragraph-id="inline-code-output"]');
+   assert(inlineRow,'inline-code paragraph missing');
+   const inline=inlineRow.querySelector('.rt-inline-code');
+   assert(inline,'inline code mark disappeared from V9 output');
+   assert(inline.textContent==='code',`inline code range drifted: ${JSON.stringify(inline.textContent)}`);
+   assert(getComputedStyle(inline).direction==='ltr','inline code direction is not LTR');
+   page.remove();
+ });
+
+ await test('classic source tokens do not break around punctuation without whitespace',async()=>{
    const link=document.createElement('link');
    link.rel='stylesheet';link.href='../../styles.css';
    document.head.appendChild(link);
