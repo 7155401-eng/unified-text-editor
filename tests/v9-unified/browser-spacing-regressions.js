@@ -212,6 +212,59 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
      if(hadRegistry)window.__ravtextPreRenderPageDecorators=savedRegistry;else delete window.__ravtextPreRenderPageDecorators;
    }
  });
+
+ await test('document page tweak -N reserves real V9 row capacity before planning',async()=>{
+   const source=[{id:'manual-push',mainText:Array(18).fill(neutral).join(' '),notes:[]}];
+   const baseCfg={...cfg,pageHeight:300,mainWidthRatio:.90,crownLines:0,talmudStreams:[],maxPages:20};
+
+   const normalHost=makePage();
+   const pushedHost=makePage();
+   try {
+     const normal=await buildPages(normalHost,source,baseCfg);
+     const pushed=await buildPages(pushedHost,source,{
+       ...baseCfg,
+       pageTweaks:{version:1,pages:{'1':{linesDiff:-2}}},
+     });
+     assert(normal.complete&&pushed.complete,'manual push fixture did not paginate completely');
+     const normalFirst=normal.pages[0],pushedFirst=pushed.pages[0];
+     const normalLines=normalFirst.querySelectorAll('.v9-role-main').length;
+     const pushedLines=pushedFirst.querySelectorAll('.v9-role-main').length;
+     const pitch=13*1.55;
+     assert(Number(pushedFirst.dataset.v9PageLinesDiff)===-2,'linesDiff did not reach final page');
+     assert(Math.abs(Number(pushedFirst.dataset.v9PageReservedBottom)-pitch*2)<.2,
+       `wrong reserved bottom: ${pushedFirst.dataset.v9PageReservedBottom}`);
+     assert(pushedLines<normalLines,
+       `-2 did not reduce first-page row capacity: normal=${normalLines}, pushed=${pushedLines}`);
+     assert(pushedFirst.scrollHeight<=pushedFirst.clientHeight+1,
+       `manual push created physical overflow: ${pushedFirst.scrollHeight}-${pushedFirst.clientHeight}`);
+   } finally {
+     normalHost.remove();pushedHost.remove();
+   }
+ });
+
+ await test('document page tweak +N is a safe pull request, never permission to overflow',async()=>{
+   const source=[
+     {id:'manual-pull-a',mainText:Array(7).fill(neutral).join(' '),notes:[]},
+     {id:'manual-pull-b',mainText:Array(12).fill(neutral).join(' '),notes:[]},
+   ];
+   const host=makePage();
+   try {
+     const result=await buildPages(host,source,{
+       ...cfg,pageHeight:280,mainWidthRatio:.90,crownLines:0,talmudStreams:[],maxPages:20,
+       pageTweaks:{version:1,pages:{'1':{linesDiff:3}}},
+     });
+     assert(result.complete,'manual pull fixture did not paginate completely');
+     const first=result.pages[0];
+     assert(Number(first.dataset.v9PageLinesDiff)===3,'positive linesDiff did not reach final page');
+     assert(Number(first.dataset.v9PagePullLines)===3,'manual pull target was lost');
+     assert(Number(first.dataset.v9PageReservedBottom)===0,'+N illegally enlarged physical page via negative reserve');
+     assert(first.scrollHeight<=first.clientHeight+1,
+       `manual +N overflowed the physical page: ${first.scrollHeight}-${first.clientHeight}`);
+     assert(!first.querySelector('.v9-line[data-v9-role="main"]')?.style.transform,
+       'manual +N used paint-time scaling instead of V9 planning');
+   } finally { host.remove(); }
+ });
+
  function assertNoWordOverlap(page) {
    const boxes=[];
    for(const line of page.querySelectorAll('.v9-line')) {
