@@ -508,6 +508,42 @@ test('dropped opening crossing a left-widening knee never traps later rows at ha
  }
 });
 
+
+test('final row inside a dropped-opening window centers the complete visual envelope',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
+  measure:p=>{
+   const body=String(p.text||'').trim();
+   if(body==='OPEN')return {width:20,height:10,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ let plan=null;
+ for(let words=3;words<=12;words++){
+  const text='OPEN '+Array(words).fill('aa').join(' ');
+  const candidate=layoutV9MainParagraphs(
+   [{id:'opening-window-center',text,runs:[],mainRefs:[]}],
+   [{x:0,width:100,y_start:0,y_end:100}],ctx,100
+  );
+  if(candidate.lines.length===2&&candidate.lines[1].isLast&&candidate.lines[1].openingWindow){
+   plan=candidate;break;
+  }
+ }
+ assert(plan,'fixture did not end on second opening-window row');
+ const host=plan.lines.find(l=>l.render?.opening);
+ const last=plan.lines.at(-1);
+ assert(host?.render?.opening,'opening missing');
+ assert(last.openingCompositeCentered===true,'final row was not composite-centered');
+ const openingRight=host.render.opening.x+host.render.opening.width;
+ const visibleCenter=(last.x+openingRight)/2;
+ assert(Math.abs(visibleCenter-50)<.001,
+  `composite center=${visibleCenter}, bodyX=${last.x}, openingRight=${openingRight}`);
+ assert(last.x+last.naturalWidth<=host.render.opening.x-host.render.opening.gap+.001,
+  'composite centering overlapped the opening');
+});
+
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={

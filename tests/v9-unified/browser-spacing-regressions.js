@@ -1144,7 +1144,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }finally{found.page.remove();}
   });
 
-  await test('opening-window final row stays visibly adjacent to dropped opening in real paint',()=>{
+  await test('opening-window final row centers actual opening+body ink as one visual segment',()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
       openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
@@ -1156,7 +1156,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       let plan=null;
       for(let words=4;words<=18;words++){
         const text='פתיח '+Array(words).fill('אב').join(' ');
-        const entry=context.prepareEntry({id:'ink-adjacent',index:1,text,runs:[],mainRefs:[],continues:false});
+        const entry=context.prepareEntry({id:'ink-center',index:1,text,runs:[],mainRefs:[],continues:false});
         const candidate=layoutV9MainParagraphs([entry],[{x:0,width:100,y_start:0,y_end:100}],context,100);
         if(candidate.lines.length===2 && candidate.lines[1].isLast && candidate.lines[1].openingWindow){plan=candidate;break;}
       }
@@ -1174,18 +1174,20 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const body=lastEl?.querySelector('.v9-planned-line-text');
       assert(lastEl&&opening&&body,'rendered opening fixture is incomplete');
 
+      const pageRect=page.getBoundingClientRect();
       const openingRect=opening.getBoundingClientRect();
       const range=document.createRange();
       range.selectNodeContents(body);
       const bodyRect=range.getBoundingClientRect();
-      const expectedGap=Number(plan.lines.find(l=>l.render?.opening)?.render?.opening?.gap)||0;
-      const actualGap=openingRect.left-bodyRect.right;
+      const left=Math.min(openingRect.left,bodyRect.left)-pageRect.left;
+      const right=Math.max(openingRect.right,bodyRect.right)-pageRect.left;
+      const center=(left+right)/2;
 
-      assert(plan.lines.at(-1).render.alignment==='right',
-        'final opening-window body lost the planner adjacency policy');
-      assert(actualGap>=-0.5,'painted final body overlaps the dropped opening: gap='+actualGap.toFixed(2));
-      assert(Math.abs(actualGap-expectedGap)<=1.25,
-        'painted final body is not adjacent to opening gap: expected='+expectedGap.toFixed(2)+' actual='+actualGap.toFixed(2));
+      assert(plan.lines.at(-1).openingCompositeCentered===true,
+        'planner did not mark composite opening-window centering');
+      assert(Math.abs(center-50)<=1.25,
+        'actual opening+body ink is off center: left='+left.toFixed(2)+' right='+right.toFixed(2)+' center='+center.toFixed(2)+'; '+
+        'line='+JSON.stringify(plan.lines.map(l=>({x:l.x,width:l.width,natural:l.naturalWidth,align:l.render.alignment,text:l.render.body.text,opening:l.render.opening&&{x:l.render.opening.x,width:l.render.opening.width}}))));
     }finally{context.dispose();page.remove();}
   });
 
