@@ -79,6 +79,25 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
   }
 });
 
+test('legacy horizontal v9MainGap does not become vertical crown clearance', async()=>{
+  const previous=globalThis.localStorage;
+  const storage=fakeStorage(JSON.stringify({v9MainGap:23}));
+  globalThis.localStorage=storage;
+  try{
+    const mod=await import('../../src/spacing_settings.js?independent-crown-gap=1');
+    const effective=mod.getSpacingSettingsSnapshot();
+    assert.equal(effective.v9MainGap,23);
+    assert.equal(effective.v9CrownMainGap,8,
+      'horizontal main-side gap leaked into independent crown-main default');
+    const saved=mod.saveSpacingSettings({...effective,v9MainGap:7,v9CrownMainGap:19});
+    assert.equal(saved.v9MainGap,7);
+    assert.equal(saved.v9CrownMainGap,19);
+  } finally {
+    if(previous===undefined) delete globalThis.localStorage;
+    else globalThis.localStorage=previous;
+  }
+});
+
 test('layout engines consume central spacing snapshots and do not parse spacing storage themselves',()=>{
   const domPacker = fs.readFileSync(new URL('../../src/engine/dom_packer.js', import.meta.url),'utf8');
   assert.match(domPacker,/getSpacingSettingsSnapshot/);
