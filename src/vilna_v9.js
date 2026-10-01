@@ -3227,57 +3227,94 @@ function buildPagePlanCore(pageContent, config) {
         const floatBottom = floatShift.bottom;
         const flowBottom = flowShift.bottom;
 
-        const floatMeasured = flowV9MeasuredStream(
-          streamRich(floatMeta.fs),
-          [{ x: floatX, width: floatWidth, y_start: bodyTop, y_end: floatBottom }],
-          floatMeta.metrics._v9TextContext,
-          floatBottom
-        );
+        const floatFits = bodyTop + floatMeta.metrics.lineHeight <= floatBottom + 0.1;
+        const flowFits = bodyTop + flowMeta.metrics.lineHeight <= flowBottom + 0.1;
+
+        let floatMeasured = {
+          lines: [],
+          endY: bodyTop,
+          overflowRich: streamRich(floatMeta.fs),
+          overflowText: streamText(floatMeta.fs),
+        };
+        if (floatFits) {
+          floatMeasured = flowV9MeasuredStream(
+            streamRich(floatMeta.fs),
+            [{ x: floatX, width: floatWidth, y_start: bodyTop, y_end: floatBottom }],
+            floatMeta.metrics._v9TextContext,
+            floatBottom
+          );
+        } else {
+          result.overflow.streams[floatMeta.fs.id] = streamRich(floatMeta.fs);
+          anyFooterTrimmed = true;
+        }
         const floatEnd = Math.max(bodyTop, floatMeasured.endY || bodyTop);
 
         const flowStrips = [];
-        if (flowBottom > bodyTop + 0.1 && floatEnd > bodyTop + 0.1) {
-          flowStrips.push({
-            x: narrowX,
-            width: narrowWidth,
-            y_start: bodyTop,
-            y_end: Math.min(floatEnd, flowBottom),
-          });
+        if (flowFits) {
+          if (floatFits && floatEnd > bodyTop + 0.1) {
+            flowStrips.push({
+              x: narrowX,
+              width: narrowWidth,
+              y_start: bodyTop,
+              y_end: Math.min(floatEnd, flowBottom),
+            });
+          }
+          if (!floatFits || floatEnd < flowBottom - 0.1) {
+            flowStrips.push({
+              x: 0,
+              width: innerWidth,
+              y_start: floatFits ? Math.max(bodyTop, floatEnd) : bodyTop,
+              y_end: flowBottom,
+            });
+          }
         }
-        if (flowBottom > Math.max(bodyTop, floatEnd) + 0.1) {
-          flowStrips.push({
-            x: 0,
-            width: innerWidth,
-            y_start: Math.max(bodyTop, floatEnd),
-            y_end: flowBottom,
-          });
-        }
-        const flowMeasured = flowV9MeasuredStream(
-          streamRich(flowMeta.fs),
-          flowStrips.length
-            ? flowStrips
-            : [{ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: flowBottom }],
-          flowMeta.metrics._v9TextContext,
-          flowBottom
-        );
 
-        pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
-          mishnaLevel: group.level >= 1 ? group.level + 1 : null,
-          mishnaRole: "float",
-          mishnaSource: group.source || "levels",
-          manualFootnoteShiftLines: floatShift.shiftLines,
-          manualFootnoteShiftReservedPx: floatShift.reservedPx,
-          streamPageBottomY: floatBottom,
-        });
-        pushFooterBox(flowMeta, flowMeasured, titleY, narrowX, narrowWidth, {
-          mishnaLevel: group.level >= 1 ? group.level + 1 : null,
-          mishnaRole: "flow",
-          mishnaSource: group.source || "levels",
-          manualFootnoteShiftLines: flowShift.shiftLines,
-          manualFootnoteShiftReservedPx: flowShift.reservedPx,
-          streamPageBottomY: flowBottom,
-        });
-        footerY = Math.max(floatMeasured.endY || bodyTop, flowMeasured.endY || bodyTop) + interStreamGap;
+        let flowMeasured = {
+          lines: [],
+          endY: bodyTop,
+          overflowRich: streamRich(flowMeta.fs),
+          overflowText: streamText(flowMeta.fs),
+        };
+        if (flowFits) {
+          flowMeasured = flowV9MeasuredStream(
+            streamRich(flowMeta.fs),
+            flowStrips.length
+              ? flowStrips
+              : [{ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: flowBottom }],
+            flowMeta.metrics._v9TextContext,
+            flowBottom
+          );
+        } else {
+          result.overflow.streams[flowMeta.fs.id] = streamRich(flowMeta.fs);
+          anyFooterTrimmed = true;
+        }
+
+        if (floatFits && floatMeasured.lines.length) {
+          pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
+            mishnaLevel: group.level >= 1 ? group.level + 1 : null,
+            mishnaRole: "float",
+            mishnaSource: group.source || "levels",
+            manualFootnoteShiftLines: floatShift.shiftLines,
+            manualFootnoteShiftReservedPx: floatShift.reservedPx,
+            streamPageBottomY: floatBottom,
+          });
+        }
+        if (flowFits && flowMeasured.lines.length) {
+          pushFooterBox(flowMeta, flowMeasured, titleY, floatFits ? narrowX : 0, floatFits ? narrowWidth : innerWidth, {
+            mishnaLevel: group.level >= 1 ? group.level + 1 : null,
+            mishnaRole: "flow",
+            mishnaSource: group.source || "levels",
+            manualFootnoteShiftLines: flowShift.shiftLines,
+            manualFootnoteShiftReservedPx: flowShift.reservedPx,
+            streamPageBottomY: flowBottom,
+          });
+        }
+
+        const renderedEnd = Math.max(
+          floatFits && floatMeasured.lines.length ? (floatMeasured.endY || bodyTop) : bodyTop,
+          flowFits && flowMeasured.lines.length ? (flowMeasured.endY || bodyTop) : bodyTop
+        );
+        footerY = renderedEnd > bodyTop ? renderedEnd + interStreamGap : footerY;
         continue;
       }
 
