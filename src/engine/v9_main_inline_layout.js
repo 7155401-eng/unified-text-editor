@@ -486,9 +486,16 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         render: { body, topInset: m.topInset || 0, opening: attached,
           wordSpacing: justify ? Math.max(0, (geometry.width - natural) / gaps) : 0,
           // A final row that still shares vertical space with a dropped opening
-          // must stay adjacent to that opening. Centering the body by itself
-          // shifts the visible opening+body composite toward the opening side.
-          alignment: isLast && openingWindow ? 'right' : (isLast || forcedBreak ? 'center' : 'right') },
+          // must be centered as ONE VISUAL SEGMENT with that opening.
+          //
+          // The opening is anchored at the RTL/right edge of the host. On a
+          // second/final window row, right-aligning the short body inside the
+          // narrow slot makes the visible union [body..opening] heavily
+          // right-shifted. Left-aligning the final body pins the opposite edge
+          // of that same host, so the opening+body visual span is centered on
+          // the host itself. A one-row paragraph is handled below by moving the
+          // opening+body together as a compact adjacent group.
+          alignment: isLast && openingWindow ? 'left' : (isLast || forcedBreak ? 'center' : 'right') },
       };
       lines.push(line);
       if (attached) openingAttached = true;
