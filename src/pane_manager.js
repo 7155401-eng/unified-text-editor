@@ -28,6 +28,7 @@ import { initMainStreamResizer, initResizer } from "./resizer.js";
 import { EditorJsonSnapshotCache } from "./editor_json_snapshot_cache.js";
 import { PersistenceTextSnapshotCache } from "./persistence_text_snapshot_cache.js";
 import { FrameCoalescer } from "./frame_coalescer.js";
+import { emptyPageTweaks, normalizePageTweaks, getPageTweak, withPageTweak, updatePageTweakMeasurements, approvePageTweakWithMeasurements } from "./page_tweaks.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
@@ -930,6 +931,9 @@ export class PaneManager {
     this._lastSyncAnchor = null;
     this.lineMode = false;
     this.merged = false;
+    // Document-scoped visual page constraints. These travel with the document
+    // snapshot; never store them as global ravtext.* settings.
+    this.pageTweaks = emptyPageTweaks();
     this._dragPaneId = null;
     this._batchDepth = 0;
     this._pendingChange = false;
@@ -967,6 +971,77 @@ export class PaneManager {
   count() { return this.panes.length; }
 
   getContentRevision() { return this._contentRevision; }
+
+  getPageTweaks() {
+    return normalizePageTweaks(this.pageTweaks);
+  }
+
+  getPageTweak(pageNumber) {
+    return getPageTweak(this.pageTweaks, pageNumber);
+  }
+
+  setPageTweak(pageNumber, patch = {}, { rerender = true } = {}) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    const next = withPageTweak(this.pageTweaks, pageNumber, patch);
+    const after = JSON.stringify(next);
+    if (before === after) return this.getPageTweak(pageNumber);
+    this.pageTweaks = next;
+    this._save();
+    if (rerender) this._emit("change");
+    return this.getPageTweak(pageNumber);
+  }
+
+  approvePageTweak(pageNumber, measurements = {}) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    this.pageTweaks = approvePageTweakWithMeasurements(this.pageTweaks, pageNumber, measurements);
+    const after = JSON.stringify(this.pageTweaks);
+    if (before !== after) this._save();
+    return this.getPageTweak(pageNumber);
+  }
+
+  updatePageTweakMeasurements(pageNumber, measurements = {}) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    this.pageTweaks = updatePageTweakMeasurements(this.pageTweaks, pageNumber, measurements);
+    const after = JSON.stringify(this.pageTweaks);
+    if (before !== after) this._save();
+    return this.getPageTweak(pageNumber);
+  }
+
+  syncPageTweakMeasurements(pageReports = []) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    let next = this.pageTweaks;
+    for (const page of pageReports || []) {
+      if (!page || !Number.isFinite(Number(page.page))) continue;
+      next = updatePageTweakMeasurements(next, page.page, {
+        bottomGapLines: page.bottomGapLines,
+        overflowPx: page.overflowPx,
+        linePitchPx: page.linePitchPx,
+      });
+    }
+    this.pageTweaks = normalizePageTweaks(next);
+    const after = JSON.stringify(this.pageTweaks);
+    if (before !== after) this._save();
+    return this.getPageTweaks();
+  }
+
+  resetPageTweak(pageNumber) {
+    return this.setPageTweak(pageNumber, {
+      linesDiff: 0,
+      status: "pending",
+      spaceLines: null,
+      overflowPx: null,
+      notes: "",
+      footnoteShift: {},
+    });
+  }
+
+  clearPageTweaks() {
+    if (!Object.keys(normalizePageTweaks(this.pageTweaks).pages).length) return false;
+    this.pageTweaks = emptyPageTweaks();
+    this._save();
+    this._emit("change");
+    return true;
+  }
 
   _beginBatch() {
     this._batchDepth++;
@@ -1163,6 +1238,7 @@ export class PaneManager {
       version: 1,
       activeId: this.activePane ? this.activePane.id : null,
       panes: this.panes.map(p => p.serialize()),
+      pageTweaks: normalizePageTweaks(this.pageTweaks),
     };
   }
 
@@ -1177,6 +1253,7 @@ export class PaneManager {
       panes: this.panes.map((p) =>
         p._serializeWithContent(this._storageJsonCache.get(p.editor))
       ),
+      pageTweaks: normalizePageTweaks(this.pageTweaks),
     };
   }
 
@@ -1188,6 +1265,7 @@ export class PaneManager {
         revision: this._persistenceRevision,
         activeId,
         docs,
+        pageTweaks: this.pageTweaks,
       },
       () => this.serializeForPersistence()
     );
@@ -1201,6 +1279,7 @@ export class PaneManager {
       this.container.innerHTML = "";
       this.panes = [];
       this.activePane = null;
+      this.pageTweaks = normalizePageTweaks(state?.pageTweaks);
       // משה 06/09/2026 (הערה 3): רשימת מספרי ההערות מתחילה ממוזערת.
       // ברירת המחדל בקוד כבר הייתה כזו, אבל מצב שנשמר פעם אחת כ"פתוח"
       // נשאר פתוח לנצח. לכן פעם אחת בלבד, בטעינה הראשונה של הגירסה הזו,

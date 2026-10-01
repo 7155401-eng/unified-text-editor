@@ -32,6 +32,7 @@ import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
+import { resolveV9PageConstraint } from "./page_tweaks.js";
 
 function runV9PageDecoratorsDuringRender(page, pageIndex) {
   if (!page || typeof window === "undefined") return;
@@ -4547,10 +4548,23 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   // כאן במקום להפיל את הרינדור. הרשימה נחשפת בסוף, כדי שהתקלה תישאר
   // גלויה וניתנת לספירה — ולא תיעלם בשקט.
   const __v9NoteAnchorFallbacks = [];
+  const __v9BaseReservedBottom = Math.max(0, Number(cfg.reservedBottom) || 0);
 
   while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
     cfg.__v9PageIndex = pageIdx;
     cfg.__v9AllowMainOverlap = __mainStuckCount >= 3;
+
+    // One page = one immutable capacity contract. Apply it BEFORE trialAtN,
+    // rescue probes and final plan construction so every planner sees exactly
+    // the same physical bottom. Never mutate geometry after render.
+    const __v9PageConstraint = resolveV9PageConstraint(cfg.pageTweaks, pageIdx, {
+      baseReservedBottom: __v9BaseReservedBottom,
+      pageHeight: cfg.pageHeight,
+      padding: cfg.padding,
+      lineHeight: (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55),
+    });
+    cfg.__v9PageConstraint = __v9PageConstraint;
+    cfg.reservedBottom = __v9PageConstraint.reservedBottom;
     // אורך הזמינות הכולל = pendingParagraph (אם קיים) + פסקאות שלא נצרכו
     const totalAvail = (pendingParagraph ? 1 : 0) + (paragraphs.length - cursor);
 
@@ -5586,11 +5600,20 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
       const triggerRatio = Number.isFinite(Number(cfg.finalGapFillTriggerRatio)) ? Number(cfg.finalGapFillTriggerRatio) : 0.84;
       const minRemainingLines = Number.isFinite(Number(cfg.finalGapFillMinRemainingLines)) ? Number(cfg.finalGapFillMinRemainingLines) : 2.5;
-      const minGain = Number.isFinite(Number(cfg.finalGapFillMinGain)) ? Number(cfg.finalGapFillMinGain) : 0.04;
+      const automaticMinGain = Number.isFinite(Number(cfg.finalGapFillMinGain)) ? Number(cfg.finalGapFillMinGain) : 0.04;
       const lineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+      const manualPullLines = Math.max(0, Number(cfg.__v9PageConstraint?.pullLines) || 0);
+      const manualPull = manualPullLines > 0;
+      const minGain = manualPull ? 0.0001 : automaticMinGain;
 
-      if (beforeFill >= triggerRatio || remainingPxBefore < lineH * minRemainingLines) {
+      // Automatic gap-fill remains conservative. An explicit +N page tweak is
+      // allowed to try even on a fairly full page, but only if there is at
+      // least real physical room; all normal fit/note/footer guards below stay.
+      if (!manualPull && (beforeFill >= triggerRatio || remainingPxBefore < lineH * minRemainingLines)) {
         return reject("not-enough-gap");
+      }
+      if (manualPull && remainingPxBefore < Math.min(lineH * 0.45, 6)) {
+        return reject("manual-no-physical-room", { manualPullLines });
       }
 
       const nextAvailable = getSlice(bestN + 1);
@@ -5622,11 +5645,24 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         ...actualGeometryCandidates,
       ].filter(c => c.offset >= 2 && c.offset < fullText.length);
 
-      const candidates = selectV9GapFillCandidates(allCandidates, {
-        remainingPx: remainingPxBefore,
-        lineHeight: lineH,
-        maxCandidates: cfg.finalGapFillMaxCandidates,
-      });
+      let candidates;
+      if (manualPull && actualGeometryCandidates.length) {
+        // Actual geometry emits one candidate per real V9 row. +N therefore
+        // means "at most N additional visual rows", not N semantic breakpoints.
+        candidates = [...actualGeometryCandidates]
+          .sort((a, b) => a.offset - b.offset)
+          .slice(0, manualPullLines);
+      } else {
+        candidates = selectV9GapFillCandidates(allCandidates, {
+          remainingPx: manualPull
+            ? Math.min(remainingPxBefore, manualPullLines * lineH)
+            : remainingPxBefore,
+          lineHeight: lineH,
+          maxCandidates: manualPull
+            ? manualPullLines
+            : cfg.finalGapFillMaxCandidates,
+        });
+      }
 
       if (!candidates.length) {
         return reject("no-candidates", { candidateCount: 0 });
@@ -6120,6 +6156,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     const plan = finalProbe;
     pageEl.dataset.v9PageFill = String(Math.round(planFillRatio(plan) * 10000) / 10000);
     pageEl.dataset.v9SparseRescue = sparseRescue?.mode || "";
+    pageEl.dataset.v9PageLinesDiff = String(__v9PageConstraint.linesDiff || 0);
+    pageEl.dataset.v9PagePushLines = String(__v9PageConstraint.pushLines || 0);
+    pageEl.dataset.v9PagePullLines = String(__v9PageConstraint.pullLines || 0);
+    pageEl.dataset.v9PageReservedBottom = String(__v9PageConstraint.reservedBottom || 0);
+    pageEl.dataset.v9PageTweakStatus = String(__v9PageConstraint.status || "pending");
     pageEl.dataset.v9CarryInChars = String(totalCarrySize(carryOver));
     pageEl.dataset.v9PendingIn = pendingParagraph ? "1" : "0";
 

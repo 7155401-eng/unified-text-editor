@@ -23,6 +23,7 @@ import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream
 import { injectMainRefs } from "./engine/note_content_builder.js";
 import { getOpeningWordSettings } from "./opening_word.js";
 import { getSpacingSettingsSnapshot, getStoredSpacingSettingsSnapshot } from "./spacing_settings.js";
+import { normalizePageTweaks } from "./page_tweaks.js";
 import {
   startVilnaRenderProgress,
   hideVilnaRenderProgressImmediately,
@@ -549,6 +550,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       // לא חריג. לכן ברירת המחדל מתהפכת: מותר לחתוך.
       preventMidLineSplit: readSpacingBool(storedSpacing, "preventMidLineSplit", false),
       openingWordSettings: preflight.openingWordSettings,
+      // One immutable snapshot for this render. Every trial/final plan for a
+      // page receives the same manual constraint.
+      pageTweaks: normalizePageTweaks(opts.pageTweaks),
     };
 
     // ★ נעילת דף (משה, 11/09/2026): כשיש בטקסט סימני ⟦דף …⟧ — כל עמוד אצלנו

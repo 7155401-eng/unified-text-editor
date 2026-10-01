@@ -1375,6 +1375,9 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       // לחסום את ה-main thread אם המשתמש שינה הגדרה תוך כדי רינדור.
       const v9Result = await applyVilnaV9FromPaneManager(content, pagesContainer, {
         isCurrent: () => isRenderCurrent(myToken),
+        pageTweaks: typeof paneManager.getPageTweaks === "function"
+          ? paneManager.getPageTweaks()
+          : null,
       });
       if (!isRenderCurrent(myToken)) return;
       if (v9Result?.aborted) return;
