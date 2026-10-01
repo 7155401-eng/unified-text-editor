@@ -41,7 +41,14 @@ try{
 
     const host=document.createElement('div');
     host.id='bidi-raster-host';
-    host.style.cssText='position:absolute;left:40px;top:40px;width:1200px;height:800px;background:white;';
+    // Every scenario is absolutely positioned. Absolute children do not grow
+    // their parent/document scroll height, so the old fixed 800px host made
+    // later probes physically outside the screenshotable page. Size the audit
+    // canvas from the number of scenarios before painting anything.
+    const auditHeight=Math.max(900,samples.length*230+320);
+    host.style.cssText=`position:absolute;left:40px;top:40px;width:1200px;height:${auditHeight}px;background:white;`;
+    document.body.style.minHeight=`${auditHeight+120}px`;
+    document.documentElement.style.minHeight=`${auditHeight+120}px`;
     document.body.append(host);
 
     const results=[];
