@@ -35,7 +35,7 @@ The migration contract is:
 | Torah nikud | `src/torah_nikud/*` | VERIFIED/PRESENT / QUOTA PARITY ACTIVE | Server-authoritative 500 characters per local calendar day; only a successful final result consumes units; Premium/Admin unlimited. |
 | Sefaria downloader | `src/sefaria/*` | VERIFIED PORT / QUOTA PARITY ACTIVE | One successful book export per rolling 7 days for Free; output is built first, quota is consumed atomically before delivery; Premium/Admin unlimited. |
 | Sefaria live verse tool | `src/sefaria/*` | VERIFIED PORT / QUOTA PARITY ACTIVE | One successful fetch operation per rolling 7 days; quota is consumed only when the first verse actually succeeds. |
-| Text Compare Pro | `src/text_compare_pro/*` | PRESENT | Deep parity audit of tabs/history/settings and old storage semantics. |
+| Text Compare Pro / Smart Compare | `src/text_compare_pro/*` | PRESENT / CURRENT WEB CAPABILITY VERIFIED | Current web code includes the Smart Compare tab, server-backed smart/integrity compute+report actions, TXT/DOCX loading, history, export/copy and settings persistence. Exact equivalence of any historical desktop launcher shortcut is not asserted here without the archived desktop launcher source. |
 | RavText comparator/editor | `src/comparator_tool/*` | PRESENT / QUOTA PARITY ACTIVE | Window opens freely; first real user action starts the one weekly 15-minute process-scoped session; reopening after use is read-only; Premium/Admin unlimited. |
 | AI transcription | `src/torah_transcription/*` | PRESENT / QUOTA PARITY ACTIVE | Transcription remains unmetered for logged-in Free users as in the old launcher; Premium also unlimited. |
 | Torah OCR | `src/torah_transcription/*` (OCR mode) | PRESENT / QUOTA PARITY ACTIVE | OCR was already embedded in the web transcription window; one successful final OCR job per rolling 7 days for Free; Premium/Admin unlimited. |
@@ -211,7 +211,7 @@ Therefore **do not port another link engine**. Any future work here should be a 
 
 1. ✅ Torah OCR: existing integrated OCR mode found and weekly free policy restored.
 2. TTS as its own provider-backed server action.
-3. bot-assisted text compare.
+3. ✅ Smart/text compare capability is present in the current web port (`text_compare_pro`). Historical desktop-launcher equivalence remains an archival-source question, not a missing web implementation.
 4. only then any new image-generation tool that was not production-ready in the desktop app.
 
 ### Batch D — visual/page tools
