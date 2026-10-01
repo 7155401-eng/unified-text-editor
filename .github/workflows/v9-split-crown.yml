@@ -1,0 +1,44 @@
+name: Split crown rich-text regression
+on:
+  pull_request:
+    branches: [main]
+    paths: ['src/**', 'tests/v9-unified/**', 'scripts/v9-unified/**', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['src/vilna_v9.js', 'tests/v9-unified/split-crown-rich.browser.js', 'scripts/v9-unified/verify-split-crown.mjs', '.github/workflows/v9-split-crown.yml']
+permissions:
+  contents: read
+jobs:
+  split-crown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Exact crown rows, grid continuity, coverage and non-overlap
+        run: |
+          node scripts/v9-unified/verify-split-crown.mjs
+          cp test-results/split-crown/report.json test-results/split-crown/before-build.json
+      - name: Build without source rewriting and repeat
+        run: |
+          npm run build
+          git diff --exit-code
+          node scripts/v9-unified/verify-split-crown.mjs
+      - name: Retain both reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: split-crown-${{ github.run_id }}
+          path: test-results/split-crown/
+          retention-days: 7
