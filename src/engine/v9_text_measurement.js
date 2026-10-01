@@ -70,10 +70,10 @@ export function appendV9PlannedPart(parent, part) {
     // can detach a combining mark or change which styles cover its base.
     if (!ref.formatted) continue;
     const pos = Math.max(cursor, Math.min(part.text.length, Number(ref.localPos) || 0));
-    if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos));
+    if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos), part.style);
     appendReference(parent, ref); cursor = pos;
   }
-  if (cursor < part.text.length) appendTextWithRuns(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length));
+  if (cursor < part.text.length) appendTextWithRuns(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length), part.style);
   appendSemanticWhitespace(parent, part.trailingText);
 }
 
