@@ -44,17 +44,29 @@ jobs:
             src/vilna_v9.js \
             src/layout_analysis_report.js \
             scripts/apply_v9_column_split_line_edge_guard_patch.mjs
+      - name: Fetch current main baseline for build comparison
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          path: .v9-baseline
+          persist-credentials: false
+      - name: Build baseline with the same locked dependencies
+        run: |
+          cmp package-lock.json .v9-baseline/package-lock.json
+          ln -s "$GITHUB_WORKSPACE/node_modules" .v9-baseline/node_modules
+          (cd .v9-baseline; npm run postinstall --if-present && npm run build)
       - name: Build twice without rewriting planner sources
         run: |
+          npm run postinstall --if-present
           npm run build
-          node scripts/v9-unified/verify-build-sources.mjs
+          node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
           git diff --exit-code -- \
             src/page_tweaks.js \
             src/vilna_v9.js \
             src/layout_analysis_report.js \
             scripts/apply_v9_column_split_line_edge_guard_patch.mjs
           npm run build
-          node scripts/v9-unified/verify-build-sources.mjs
+          node scripts/v9-unified/verify-build-sources.mjs .v9-baseline
           git diff --exit-code -- \
             src/page_tweaks.js \
             src/vilna_v9.js \
