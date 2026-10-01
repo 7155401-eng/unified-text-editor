@@ -32,7 +32,7 @@ import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
-import { resolveV9PageConstraint } from "./page_tweaks.js";
+import { resolveV9PageConstraint, resolveV9StreamShiftBottom } from "./page_tweaks.js";
 
 function runV9PageDecoratorsDuringRender(page, pageIndex) {
   if (!page || typeof window === "undefined") return;
@@ -2269,8 +2269,31 @@ function buildPagePlanCore(pageContent, config) {
     const text = streamRich.text;
     if (!text) return null;
     const o = opts || {};
+
+    // Resolve this stream's real typography BEFORE creating geometry. Manual
+    // Page Tweaker note shifts are measured in rows of THIS stream, never in
+    // main-text rows or a hard-coded 14pt desktop approximation.
+    const streamStyleId = streamSettings[streamData.id]?.styleId || "";
+    const streamResolvedStyle = composeStreamTextStyle(streamData.id);
+    const streamMetrics = getSideMetricsForStream(streamData.id);
+    streamMetrics._v9ContinuesAfter = !!streamData.syntheticContinuationAfter;
+    const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0
+      ? Number(streamResolvedStyle.fontSize)
+      : streamMetrics.fontSize;
+    const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
+    const manualShift = resolveV9StreamShiftBottom(
+      cfg.__v9PageConstraint,
+      streamData.id,
+      {
+        pageBottom: pageBottomY,
+        lineHeight: streamMetrics.lineHeight,
+        minTop: sideTopY,
+      }
+    );
+    const streamPageBottomY = manualShift.bottom;
+
     const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
-    const effectiveMainBottomY = Math.min(rawMainBottomY, pageBottomY);
+    const effectiveMainBottomY = Math.min(rawMainBottomY, streamPageBottomY);
     // משה 2026-05-08: otherSideEndY הוא ה-y שבו הצד השני נגמר (מ-pass 1).
     // אם null/undefined — מתייחסים כאל "אין צד שני" → mainTopY (כל strip 3 בעצם
     // יקבל רוחב מלא). אם >= pageBottom — הצד השני ממשיך עד תחתית הדף → רק halfWidth.
@@ -2278,7 +2301,7 @@ function buildPagePlanCore(pageContent, config) {
     const rawOtherEndY = (o.otherSideEndY !== undefined && o.otherSideEndY !== null)
       ? o.otherSideEndY
       : mainTopY;
-    const otherEndY = Math.max(effectiveMainBottomY, Math.min(rawOtherEndY, pageBottomY));
+    const otherEndY = Math.max(effectiveMainBottomY, Math.min(rawOtherEndY, streamPageBottomY));
 
     const strips = [];
 
@@ -2287,7 +2310,7 @@ function buildPagePlanCore(pageContent, config) {
       if (fullCrownSide === side) {
         strips.push({
           y_start: sideTopY,
-          y_end: Math.min(sideTopY + crownHeight, pageBottomY),
+          y_end: Math.min(sideTopY + crownHeight, streamPageBottomY),
           width: innerWidth,
           x: 0,
         });
@@ -2297,7 +2320,7 @@ function buildPagePlanCore(pageContent, config) {
         // משה 2026-05-08: כל צד 49.5% מראש (sideHalfWidth). מרווח 1% במרכז.
         strips.push({
           y_start: sideTopY,
-          y_end: Math.min(sideTopY + crownHeight, pageBottomY),
+          y_end: Math.min(sideTopY + crownHeight, streamPageBottomY),
           width: sideHalfWidth,
           x: side === 'right' ? sideRightX : 0,
         });
@@ -2353,7 +2376,7 @@ function buildPagePlanCore(pageContent, config) {
       : 0;
     const fullStrip3LineHeight = Math.max(0, getSideMetricsForStream(streamData.id)?.lineHeight || sideLineH);
     const fullStrip3StartY = (maxFullStrip3Lines > 0 && fullStrip3LineHeight > 0)
-      ? Math.max(otherEndY, pageBottomY - fullStrip3LineHeight * maxFullStrip3Lines)
+      ? Math.max(otherEndY, streamPageBottomY - fullStrip3LineHeight * maxFullStrip3Lines)
       : otherEndY;
 
     if (effectiveMainBottomY < fullStrip3StartY) {
@@ -2373,10 +2396,10 @@ function buildPagePlanCore(pageContent, config) {
     // really ends. The one-line cap is reserved only for same-stream split
     // bridge/orphan cases; distinct streams keep the full lower area.
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    if (fullStrip3StartY < pageBottomY && !suppressFullStrip3) {
+    if (fullStrip3StartY < streamPageBottomY && !suppressFullStrip3) {
       strips.push({
         y_start: fullStrip3StartY,
-        y_end: pageBottomY,
+        y_end: streamPageBottomY,
         width: innerWidth,
         x: 0,
         // v9-knee-row-grid: ending of the other side changes WIDTH only.
@@ -2384,16 +2407,6 @@ function buildPagePlanCore(pageContent, config) {
         lockYStart: false,
       });
     }
-
-    // משה 2026-05-13: בחירת ה-metrics המתאים לסגנון של הזרם הזה.
-    // אם המשתמש החיל סגנון אישי עם פונט/גודל שונה — המדידה חייבת להתאים,
-    // אחרת ה-DOM יראה משהו שונה ממה שמוחשב, ומילים יחתכו/יעלמו.
-    const streamStyleId = streamSettings[streamData.id]?.styleId || "";
-    const streamResolvedStyle = composeStreamTextStyle(streamData.id);
-    const streamMetrics = getSideMetricsForStream(streamData.id);
-    streamMetrics._v9ContinuesAfter = !!streamData.syntheticContinuationAfter;
-    const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0 ? Number(streamResolvedStyle.fontSize) : streamMetrics.fontSize;
-    const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
 
     const flowResult = flowStreamThroughStrips(
       streamRich,
@@ -2405,7 +2418,7 @@ function buildPagePlanCore(pageContent, config) {
         lockYStart: s.lockYStart === true,
       })),
       streamMetrics,
-      pageBottomY
+      streamPageBottomY
     );
 
     const lines = [];
@@ -2451,6 +2464,9 @@ function buildPagePlanCore(pageContent, config) {
       overflowRuns: flowResult.overflowRuns || [],
       overflowRich: flowResult.overflowRich || makeRichText(flowResult.overflowText || "", flowResult.overflowRuns || []),
       columnSplitLineEdgeGuard: streamData.columnSplitLineEdgeGuard || null,
+      manualFootnoteShiftLines: manualShift.shiftLines,
+      manualFootnoteShiftReservedPx: manualShift.reservedPx,
+      streamPageBottomY,
       syntheticContinuationAfter: !!streamData.syntheticContinuationAfter,
       syntheticContinuationFrom: streamData.syntheticContinuationFrom || "",
       originalStreamWasSplit: !!streamData.originalStreamWasSplit,
