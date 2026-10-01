@@ -64,6 +64,8 @@ jobs:
         run: node scripts/v9-unified/run-browser.mjs
       - name: Regular renderer BiDi regression
         run: node scripts/verify-regular-renderer-bidi.mjs
+      - name: DOCX to renderer BiDi end-to-end
+        run: node scripts/verify-docx-to-renderer-bidi-e2e.mjs
       - name: Quota regressions
         run: node --test tests/quota/*.test.mjs
       - name: DOCX regressions
@@ -84,3 +86,4 @@ jobs:
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
           node scripts/verify-regular-renderer-bidi.mjs
+          node scripts/verify-docx-to-renderer-bidi-e2e.mjs
