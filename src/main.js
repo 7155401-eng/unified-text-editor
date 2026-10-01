@@ -51,6 +51,7 @@ import { setupAiKeysSettings, getActiveAiKey, getActiveAiProvider } from "./prem
 import { setupPremiumStatusSection } from "./premium/premium_status_section.js";
 import "./premium/premium_styles.css";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
+import { finishInitialDocumentRestore } from "./startup_document_restore.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { applySpacingSettings, loadSpacingSettings, wireSpacingControls } from "./spacing_settings.js";
 import { wireDocumentStyleControls } from "./document_style_settings.js";
@@ -243,13 +244,17 @@ document.addEventListener("visibilitychange", () => {
 
 // צוות האתר 2026-05-07: סנכרון תכולה והגדרות לשרת למשתמשים מחוברים.
 // loadInitialState עוצר אם המשתמש אנונימי. אם יש תכולה שמורה — היא מחליפה את הברירת־מחדל.
-loadInitialState(paneManager).then((res) => {
-  if (res?.loaded) console.debug("[persistence] loaded document from server");
-  attachAutoSync(paneManager);
-}).catch((e) => {
-  console.warn("[persistence] init failed:", e);
-  attachAutoSync(paneManager);
-});
+const serverInitialStatePromise = loadInitialState(paneManager)
+  .then((res) => {
+    if (res?.loaded) console.debug("[persistence] loaded document from server");
+    attachAutoSync(paneManager);
+    return res;
+  })
+  .catch((e) => {
+    console.warn("[persistence] init failed:", e);
+    attachAutoSync(paneManager);
+    return { loaded: false, error: e?.message || String(e) };
+  });
 const pagesContainer = document.querySelector("#pages-container");
 
 // Final render guard:
@@ -334,7 +339,9 @@ function isLegacyDemoState() {
   } catch (_) { /* localStorage חסום — דילוג */ }
 })();
 
-// אם יש מצב שמור — משחזר. אחרת — טוען שו"ע כברירת מחדל בכל נקודת התחלה.
+// אם יש מצב שמור — משחזר מיד. אם המסמך גדול מדי לנתיב הסינכרוני
+// או שהשמירה הראשית נכשלה, מנסים recovery מקומי אסינכרוני לפני sample.
+// רק אם גם recovery וגם השרת לא סיפקו מסמך — טוענים את ברירת המחדל.
 const loadedFromStorage = paneManager.loadFromStorage();
 let initialLoadPromise = Promise.resolve();
 // LOADING_INDICATOR_20260907: down on success AND on failure. A spinner that
@@ -347,7 +354,13 @@ queueMicrotask(() => {
   setTimeout(() => setStartupLoading(false), 30000);
 });
 if (!loadedFromStorage || isLegacyDemoState()) {
-  initialLoadPromise = loadSampleByName(paneManager, "shulchan");
+  initialLoadPromise = finishInitialDocumentRestore({
+    loadedFromStorage,
+    isLegacyDemoState,
+    loadDeferredLocalRecovery: () => paneManager.loadDeferredLocalRecovery?.(),
+    serverInitialStatePromise,
+    loadSample: () => loadSampleByName(paneManager, "shulchan"),
+  });
 }
 
 const FONT_STACKS = {
@@ -1778,7 +1791,7 @@ function openResetSystemStateDialog() {
 async function runResetSystemState(opts) {
   try {
     if (opts.texts) {
-      try { paneManager.clearStorage(); } catch (_) {}
+      try { await paneManager.clearStorage(); } catch (_) {}
       try {
         if (indexedDB && indexedDB.databases) {
           const dbs = await indexedDB.databases();

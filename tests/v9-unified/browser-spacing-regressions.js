@@ -12,12 +12,63 @@ import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 import { analyzePageElement } from '../../src/layout_analysis_report.js';
 import { applyV9MainBottomGapToPage, applyV9MainBottomGap } from '../../src/engine/v9_main_bottom_gap.js';
 import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
+import {
+  writeDocumentRecoverySnapshot,
+  readDocumentRecoverySnapshot,
+  clearDocumentRecoverySnapshot,
+  queueDocumentRecoverySnapshot,
+  queueDocumentRecoveryClear,
+  flushDocumentRecoveryQueue,
+} from '../../src/document_recovery_store.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
 const cfg={pageWidth:380,pageHeight:350,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:false}};
 
 export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
+ await test('IndexedDB emergency recovery round-trips exact document JSON in real Chromium',async()=>{
+   await clearDocumentRecoverySnapshot();
+   try{
+     const text=JSON.stringify({
+       version:1,
+       activeId:'recovery-main',
+       panes:[{id:'recovery-main',paneRole:'main',content:{
+         type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'RECOVERY_SENTINEL_20261001'}]}]
+       }}],
+     });
+     assert(await writeDocumentRecoverySnapshot(text,{force:true,now:123456}),
+       'real Chromium IndexedDB write failed');
+     const stored=await readDocumentRecoverySnapshot();
+     assert(stored?.text===text,'IndexedDB did not return exact recovery JSON');
+     assert(stored?.chars===text.length,`wrong IndexedDB char count: ${stored?.chars}`);
+     assert(stored?.at===123456,`wrong IndexedDB timestamp: ${stored?.at}`);
+     assert(await clearDocumentRecoverySnapshot(),'real Chromium IndexedDB clear failed');
+     assert((await readDocumentRecoverySnapshot())===null,'IndexedDB snapshot survived explicit clear');
+   }finally{
+     await clearDocumentRecoverySnapshot();
+   }
+ });
+
+ await test('IndexedDB recovery latest-wins queue preserves the newest operation without editor imports',async()=>{
+   await clearDocumentRecoverySnapshot();
+   try{
+     const first='FIRST_RECOVERY_SHOULD_NOT_WIN';
+     const latest='LATEST_RECOVERY_MUST_WIN';
+     queueDocumentRecoverySnapshot(first,{force:true,now:100});
+     queueDocumentRecoverySnapshot(latest,{force:true,now:200});
+     await flushDocumentRecoveryQueue();
+     const stored=await readDocumentRecoverySnapshot();
+     assert(stored?.text===latest,`latest-wins queue stored ${JSON.stringify(stored?.text)}`);
+     assert(stored?.at===200,`latest-wins queue timestamp=${stored?.at}`);
+
+     queueDocumentRecoveryClear();
+     await flushDocumentRecoveryQueue();
+     assert((await readDocumentRecoverySnapshot())===null,'queued recovery clear did not win');
+   }finally{
+     await clearDocumentRecoverySnapshot();
+   }
+ });
+
  await test('Word round-trip keeps hard breaks inside a paragraph distinct from paragraph boundaries',()=>{
    const html='<p>אחד<br><strong>שניים</strong></p><p>שלוש</p>';
    const out=wordMainFragmentFromEditorHtml(html);
