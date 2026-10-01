@@ -28,7 +28,7 @@ import { initMainStreamResizer, initResizer } from "./resizer.js";
 import { EditorJsonSnapshotCache } from "./editor_json_snapshot_cache.js";
 import { PersistenceTextSnapshotCache } from "./persistence_text_snapshot_cache.js";
 import { FrameCoalescer } from "./frame_coalescer.js";
-import { emptyPageTweaks, normalizePageTweaks, getPageTweak, withPageTweak } from "./page_tweaks.js";
+import { emptyPageTweaks, normalizePageTweaks, getPageTweak, withPageTweak, updatePageTweakMeasurements, approvePageTweakWithMeasurements } from "./page_tweaks.js";
 
 const MAX_PANES = 99;
 const STORAGE_KEY = "ravtext.panes.state.v1";
@@ -991,8 +991,20 @@ export class PaneManager {
     return this.getPageTweak(pageNumber);
   }
 
-  approvePageTweak(pageNumber) {
-    return this.setPageTweak(pageNumber, { status: "approved" }, { rerender: false });
+  approvePageTweak(pageNumber, measurements = {}) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    this.pageTweaks = approvePageTweakWithMeasurements(this.pageTweaks, pageNumber, measurements);
+    const after = JSON.stringify(this.pageTweaks);
+    if (before !== after) this._save();
+    return this.getPageTweak(pageNumber);
+  }
+
+  updatePageTweakMeasurements(pageNumber, measurements = {}) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    this.pageTweaks = updatePageTweakMeasurements(this.pageTweaks, pageNumber, measurements);
+    const after = JSON.stringify(this.pageTweaks);
+    if (before !== after) this._save();
+    return this.getPageTweak(pageNumber);
   }
 
   resetPageTweak(pageNumber) {
