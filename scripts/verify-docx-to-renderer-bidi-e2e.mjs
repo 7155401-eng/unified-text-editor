@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { createServer } from 'vite';
 import { chromium } from 'playwright-chromium';
 
@@ -28,25 +29,26 @@ const samples=[
   "אבג '\u2060(דהו זח טי כל מנ) סוף",
 ];
 
+const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const xmlEscape=s=>String(s)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+const fixtures=[];
+for(const text of samples){
+  const zip=new JSZip();
+  zip.file('word/document.xml',
+    `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`);
+  const bytes=await zip.generateAsync({type:'uint8array'});
+  fixtures.push({text,bytes:Array.from(bytes)});
+}
+
 try{
   await page.goto(base,{waitUntil:'domcontentloaded'});
-  const result=await page.evaluate(async(samples)=>{
-    const [{default:JSZip},{docx_extract_simple},{renderPages}]=await Promise.all([
-      import('/node_modules/jszip/dist/jszip.min.js'),
+  const result=await page.evaluate(async(fixtures)=>{
+    const [{docx_extract_simple},{renderPages}]=await Promise.all([
       import('/src/word_extractor/word_extractor_engine.js'),
       import('/src/engine/renderer.js'),
     ]);
-
-    const W='http://schemas.openxmlformats.org/wordprocessingml/2006/main';
-    const xmlEscape=s=>String(s)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-    const makeDocx=async(text)=>{
-      const zip=new JSZip();
-      zip.file('word/document.xml',
-        `<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p><w:sectPr/></w:body></w:document>`);
-      return zip.generateAsync({type:'arraybuffer'});
-    };
 
     const charOrder=(el)=>{
       const root=el.getBoundingClientRect();
@@ -75,8 +77,9 @@ try{
     document.body.replaceChildren();
 
     try{
-      for(const source of samples){
-        const bytes=await makeDocx(source);
+      for(const fixture of fixtures){
+        const source=fixture.text;
+        const bytes=new Uint8Array(fixture.bytes).buffer;
         const extracted=await docx_extract_simple(bytes,[]);
         if(extracted.main!==source){
           failures.push({source,stage:'extract',extracted:extracted.main});
@@ -136,7 +139,7 @@ try{
     }
 
     return {ok:failures.length===0,failures};
-  },samples);
+  },fixtures);
 
   console.log(JSON.stringify(result,null,2));
   if(!result.ok)process.exitCode=1;
