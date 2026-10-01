@@ -1,10 +1,23 @@
 // engine_toolbar.js - סרגל תצוגת עמודים בסגנון PDF.js
 // מבוסס על prosemirror-edition/src/main.js מהמקור האחרון.
 
-import { downloadPagesAsPdf } from "./pdf_export.js";
 import { ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { isOutputBackgroundEnabled } from "./page_settings.js";
 import { downloadPagesAsHtml, downloadDebugSnapshot, toggleProblemHighlight } from "./debug_export.js";
+
+let _pdfExportModulePromise = null;
+
+async function loadPdfExporter() {
+  if (!_pdfExportModulePromise) {
+    _pdfExportModulePromise = import("./pdf_export.js")
+      .catch((error) => {
+        // Network/chunk failures must remain retryable on the next click.
+        _pdfExportModulePromise = null;
+        throw error;
+      });
+  }
+  return _pdfExportModulePromise;
+}
 
 function blockClientSideExportInDemo(kind = "ייצוא") {
   if (!isDemoMode()) return false;
@@ -552,6 +565,7 @@ export function setupPdfToolbar(pagesContainer) {
     btn.disabled = true;
     btn.textContent = "מכין PDF...";
     try {
+      const { downloadPagesAsPdf } = await loadPdfExporter();
       await downloadPagesAsPdf(pagesContainer, {
         filename: "ravtext-preview.pdf",
         includeBackgrounds: isOutputBackgroundEnabled(),
