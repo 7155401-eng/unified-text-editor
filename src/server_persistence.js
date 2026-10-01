@@ -9,6 +9,10 @@
 
 const DEBOUNCE_MS = 2000;
 const DOC_SYNC_MAX_WAIT_MS = 10000;
+// A hung document PUT must never hold the serialized save queue forever.
+// 30s is deliberately much longer than the normal debounce/deadline while
+// still bounding recovery on broken mobile/Wi-Fi connections.
+export const DOCUMENT_SAVE_TIMEOUT_MS = 30000;
 const SETTINGS_PREFIX = 'ravtext.';
 // משה 2026-05-17: הגנת נפח לסנכרון הגדרות. /api/settings לא אמור לקבל את
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
@@ -67,6 +71,8 @@ let _docDebounceTimer = null;
 let _docMaxWaitTimer = null;
 let _docPendingManager = null;
 let _docSaveChain = Promise.resolve();
+let _docSaveRunning = false;
+let _docQueuedSnapshot = null;
 let _settingsDebounceTimer = null;
 let _lastDocSig = '';
 let _lastSettingsSig = '';
@@ -468,9 +474,11 @@ function showSaveProblem(status, chars) {
       `אבל לא יישמר לפעם הבאה — כדאי לפצל אותו לשני מסמכים.`
     : status === 401 || status === 403
       ? 'החיבור לחשבון פג — המסמך לא נשמר. כדאי להתחבר מחדש.'
-      : status === 'network-error'
-        ? 'לא התקבל אישור מהשרת שהמסמך נשמר. העותק המקומי נשאר הקובע עד שהשמירה לשרת תאושר.'
-        : `המסמך לא נשמר בשרת (תקלה ${status}). הוא נשאר אצלך בדפדפן.`;
+      : status === 'network-timeout'
+        ? 'השמירה לשרת נתקעה זמן רב מדי ובוטלה. העותק המקומי נשאר הקובע, והשמירה הבאה תנסה שוב.'
+        : status === 'network-error'
+          ? 'לא התקבל אישור מהשרת שהמסמך נשמר. העותק המקומי נשאר הקובע עד שהשמירה לשרת תאושר.'
+          : `המסמך לא נשמר בשרת (תקלה ${status}). הוא נשאר אצלך בדפדפן.`;
   try {
     const el = document.getElementById('status');
     if (el) el.textContent = msg;
@@ -515,12 +523,26 @@ async function saveDocumentSnapshot(snapshot) {
     return;
   }
 
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timeoutId = null;
+  let timedOut = false;
+
+  if (controller) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      try { controller.abort(); } catch {}
+    }, DOCUMENT_SAVE_TIMEOUT_MS);
+  }
+
   try {
-    const res = await fetch('/api/documents/current', {
+    const init = {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: documentPayloadFromContentJson(sig),
-    });
+    };
+    if (controller) init.signal = controller.signal;
+
+    const res = await fetch('/api/documents/current', init);
     if (res.ok) {
       _lastDocSig = sig;
       _lastSaveError = 0;
@@ -533,12 +555,15 @@ async function saveDocumentSnapshot(snapshot) {
       showSaveProblem(res.status, sig.length);
     }
   } catch (e) {
-    console.warn('[persistence] saveDocumentSnapshot error:', e);
+    const failure = timedOut ? 'network-timeout' : 'network-error';
+    console.warn('[persistence] saveDocumentSnapshot error:', failure, e);
     if (sig !== _lastDocSig) {
-      _lastSaveError = 'network-error';
-      markServerStale('network-error', sig.length);
-      showSaveProblem('network-error', sig.length);
+      _lastSaveError = failure;
+      markServerStale(failure, sig.length);
+      showSaveProblem(failure, sig.length);
     }
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
   }
 }
 
@@ -586,10 +611,27 @@ function queueDocumentSave(paneManager) {
   const snapshot = createDocumentSnapshot(paneManager);
   if (!snapshot) return _docSaveChain;
 
-  // Snapshot NOW, network later. This makes queue order deterministic: an old
-  // save cannot silently turn into newer editor state while waiting its turn.
-  const run = () => saveDocumentSnapshot(snapshot);
-  _docSaveChain = _docSaveChain.then(run, run);
+  // Keep at most one waiting snapshot. While one immutable PUT is in flight,
+  // intermediate editor states have no recovery value: only the newest state
+  // should follow it. This prevents a slow connection from building an
+  // unbounded queue of stale full-document uploads.
+  _docQueuedSnapshot = snapshot;
+  if (_docSaveRunning) return _docSaveChain;
+
+  _docSaveRunning = true;
+  const drain = async () => {
+    try {
+      while (_docQueuedSnapshot) {
+        const next = _docQueuedSnapshot;
+        _docQueuedSnapshot = null;
+        await saveDocumentSnapshot(next);
+      }
+    } finally {
+      _docSaveRunning = false;
+    }
+  };
+
+  _docSaveChain = _docSaveChain.then(drain, drain);
   return _docSaveChain;
 }
 

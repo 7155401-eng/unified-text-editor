@@ -5,6 +5,7 @@ import {
   attachAutoSync,
   documentPayloadFromContentJson,
   loadInitialState,
+  DOCUMENT_SAVE_TIMEOUT_MS,
 } from '../../src/server_persistence.js';
 import { isStorageBeaconWrite } from '../../worker/storage.js';
 
@@ -175,11 +176,20 @@ test('network exception during normal document sync marks server stale', async (
 
   const previousSetTimeout = globalThis.setTimeout;
   const previousClearTimeout = globalThis.clearTimeout;
-  globalThis.setTimeout = (fn) => {
+  const skippedLongTimers = new Set();
+  let fakeTimerId = 1;
+  globalThis.setTimeout = (fn, delay = 0) => {
+    const id = fakeTimerId++;
+    if (delay >= DOCUMENT_SAVE_TIMEOUT_MS) {
+      skippedLongTimers.add(id);
+      return id;
+    }
     queueMicrotask(fn);
-    return 1;
+    return id;
   };
-  globalThis.clearTimeout = () => {};
+  globalThis.clearTimeout = (id) => {
+    skippedLongTimers.delete(id);
+  };
 
   const content = {
     version: 1,

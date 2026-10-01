@@ -88,6 +88,7 @@ test('current-main autosync is source-driven, bounded, serialized and recovery-s
   let releaseB = null;
   let releaseC = null;
   let rejectD = null;
+  let hungSignal = null;
   const fetchStub = (url, init={}) => {
     const parsed = JSON.parse(init.body || '{}');
     fetchCalls.push({ url:String(url), init, parsed });
@@ -95,6 +96,18 @@ test('current-main autosync is source-driven, bounded, serialized and recovery-s
     if (n === 2) return new Promise(resolve => { releaseB = () => resolve({ok:true,status:200}); });
     if (n === 3) return new Promise(resolve => { releaseC = () => resolve({ok:true,status:200}); });
     if (n === 4) return new Promise((_resolve,reject) => { rejectD = () => reject(new Error('offline')); });
+    if (n === 6) {
+      hungSignal = init.signal || null;
+      return new Promise((_resolve, reject) => {
+        const abort = () => {
+          const err = new Error('aborted hung PUT');
+          err.name = 'AbortError';
+          reject(err);
+        };
+        if (hungSignal?.aborted) abort();
+        else hungSignal?.addEventListener?.('abort', abort, { once: true });
+      });
+    }
     return Promise.resolve({ok:true,status:200});
   };
 
@@ -194,6 +207,46 @@ test('current-main autosync is source-driven, bounded, serialized and recovery-s
     assert.equal(fetchCalls.length,5,'save queue was poisoned after network exception');
     assert.equal(fetchCalls[4].parsed.content.panes[0].content.text,'E');
     assert.equal(storage.getItem('ravtext.doc.serverStale.v1'),null);
+
+    // F hangs indefinitely. G and H are produced while F is still in flight.
+    // The 30s request timeout must abort F, unblock the queue, and coalesce the
+    // waiting full-document uploads so only newest H is sent next.
+    content = { version:1, panes:[{ id:'main', content:{ text:'F' } }] };
+    const sigF=JSON.stringify(content);
+    storage.setItem('ravtext.panes.state.v1', sigF);
+    callbacks.get('persist')();
+    timers.runOneByDelay(2000);
+    await settle(10);
+    assert.equal(fetchCalls.length,6);
+    assert.ok(hungSignal, 'hung save did not receive an AbortSignal');
+    assert.equal(hungSignal.aborted, false);
+
+    content = { version:1, panes:[{ id:'main', content:{ text:'G' } }] };
+    const sigG=JSON.stringify(content);
+    storage.setItem('ravtext.panes.state.v1', sigG);
+    callbacks.get('persist')();
+    timers.runOneByDelay(2000);
+    await settle();
+    assert.equal(fetchCalls.length,6,'G overlapped hung F');
+
+    content = { version:1, panes:[{ id:'main', content:{ text:'H' } }] };
+    const sigH=JSON.stringify(content);
+    storage.setItem('ravtext.panes.state.v1', sigH);
+    callbacks.get('persist')();
+    timers.runOneByDelay(2000);
+    await settle();
+    assert.equal(fetchCalls.length,6,'H overlapped hung F');
+    assert.ok(timers.delays().includes(30000),'missing bounded document PUT timeout');
+
+    timers.runOneByDelay(30000);
+    await settle(14);
+    assert.equal(hungSignal.aborted, true,'hung F request was not aborted');
+    assert.equal(fetchCalls.length,7,'save queue did not resume after timeout');
+    assert.equal(fetchCalls[6].parsed.content.panes[0].content.text,'H',
+      'queued snapshots were not coalesced to newest H');
+    assert.notEqual(fetchCalls[6].parsed.content.panes[0].content.text,'G');
+    assert.equal(storage.getItem('ravtext.doc.serverStale.v1'),null,
+      'successful newest snapshot should clear timeout recovery marker');
   } finally {
     for(const restore of restores.reverse()) restore();
   }
