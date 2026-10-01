@@ -7,6 +7,8 @@ import {
   getPageTweak,
   withPageTweak,
   resolveV9PageConstraint,
+  pageFootnoteShiftLines,
+  resolveV9StreamShiftBottom,
   updatePageTweakMeasurements,
   approvePageTweakWithMeasurements,
 } from "../../src/page_tweaks.js";
@@ -45,6 +47,54 @@ test("negative lines reserve real planner height while positive lines never enla
   assert.equal(pulled.pushLines, 0);
   assert.equal(pulled.pullLines, 3);
   assert.equal(pulled.reservedBottom, base);
+});
+
+test("per-stream footnote shifts reserve rows using that stream's own pitch", () => {
+  const constraint = resolveV9PageConstraint({
+    pages: {
+      "2": {
+        footnoteShift: { "01": 2, "03": 1 },
+      },
+    },
+  }, 1, {
+    baseReservedBottom: 0,
+    pageHeight: 500,
+    padding: 20,
+    lineHeight: 18,
+  });
+
+  assert.equal(pageFootnoteShiftLines(constraint, "01"), 2);
+  assert.equal(pageFootnoteShiftLines(constraint, "03"), 1);
+  assert.equal(pageFootnoteShiftLines(constraint, "99"), 0);
+
+  const a = resolveV9StreamShiftBottom(constraint, "01", {
+    pageBottom: 460,
+    lineHeight: 15.5,
+    minTop: 100,
+  });
+  assert.equal(a.shiftLines, 2);
+  assert.equal(a.reservedPx, 31);
+  assert.equal(a.bottom, 429);
+
+  const b = resolveV9StreamShiftBottom(constraint, "03", {
+    pageBottom: 460,
+    lineHeight: 21,
+    minTop: 100,
+  });
+  assert.equal(b.shiftLines, 1);
+  assert.equal(b.reservedPx, 21);
+  assert.equal(b.bottom, 439);
+});
+
+test("footnote shift can never move a stream bottom above its own start", () => {
+  const constraint = { footnoteShift: { "01": 30 } };
+  const out = resolveV9StreamShiftBottom(constraint, "01", {
+    pageBottom: 200,
+    lineHeight: 20,
+    minTop: 150,
+  });
+  assert.equal(out.bottom, 150);
+  assert.equal(out.reservedPx, 50);
 });
 
 test("page constraints are page-specific and clamp unsafe values", () => {
