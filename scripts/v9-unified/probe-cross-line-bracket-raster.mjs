@@ -107,9 +107,41 @@ try{
     ]);
     const ah=crypto.createHash('sha256').update(apng).digest('hex');
     const nh=crypto.createHash('sha256').update(npng).digest('hex');
+    const raster=await page.evaluate(async({a64,n64})=>{
+      const load=async b64=>{
+        const img=new Image();
+        img.src='data:image/png;base64,'+b64;
+        await img.decode();
+        const c=document.createElement('canvas');
+        c.width=64;c.height=64;
+        const x=Math.floor((64-img.width)/2),y=Math.floor((64-img.height)/2);
+        c.getContext('2d').drawImage(img,x,y);
+        return c.getContext('2d').getImageData(0,0,64,64).data;
+      };
+      const a=await load(a64),n=await load(n64);
+      let direct=0,mirror=0,count=0;
+      for(let y=0;y<64;y++){
+        for(let x=0;x<64;x++){
+          const ai=(y*64+x)*4;
+          const ni=(y*64+x)*4;
+          const mi=(y*64+(63-x))*4;
+          for(let k=0;k<3;k++){
+            const d=a[ai+k]-n[ni+k];
+            const m=a[ai+k]-n[mi+k];
+            direct+=d*d;mirror+=m*m;count++;
+          }
+        }
+      }
+      return {directMse:direct/count,mirrorMse:mirror/count};
+    },{
+      a64:apng.toString('base64'),
+      n64:npng.toString('base64')
+    });
     return {
       actualHash:ah,nativeHash:nh,equal:ah===nh,
       actualBytes:apng.length,nativeBytes:npng.length,
+      ...raster,
+      mirrorWins:raster.mirrorMse+0.01<raster.directMse,
       actualBox:ab,nativeBox:nb
     };
   };
