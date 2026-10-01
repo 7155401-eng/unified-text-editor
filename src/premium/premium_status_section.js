@@ -6,7 +6,7 @@
 //   • כפתור הטענה (פותח עמוד פרמיום) + ביטול מנוי (אם יש מנוי פעיל)
 
 import { getAccountStatus, cancelSubscription } from "./payment_api.js";
-import { openPremiumPage } from "./premium_page.js";
+import { openPremiumPage } from "./premium_page_lazy.js";
 import { showToast } from "./time_warning.js";
 import { buildPhoneInput, fetchAccountPhone, savePhone } from "./phone_input.js";
 
