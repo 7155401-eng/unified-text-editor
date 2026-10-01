@@ -2111,8 +2111,16 @@ function buildPagePlanCore(pageContent, config) {
     : null;
 
   const sideTopY = cfg.padding + titleHeight + reservedTop;
-  const crownMainGap = crownHeight > 0 ? (Number.isFinite(cfg.crownMainGapPx)
-    ? Math.max(0,cfg.crownMainGapPx) : Math.max(4,mainGap)) : 0;
+  // Crown→main clearance is VERTICAL geometry and must never inherit the
+  // horizontal main↔side gap. Coupling the two axes meant changing V9 mainGap
+  // could shift mainTopY off the commentary row grid and therefore move knee
+  // boundaries. Preserve the established visual default (8px) but keep it an
+  // independent planner input.
+  const crownMainGap = crownHeight > 0
+    ? (Number.isFinite(Number(cfg.crownMainGapPx))
+        ? Math.max(0, Number(cfg.crownMainGapPx))
+        : 8)
+    : 0;
 
   // The main stream title is real page geometry, not a post-render overlay.
   // Reserve one title row in the plan so a visible main title cannot overlap
