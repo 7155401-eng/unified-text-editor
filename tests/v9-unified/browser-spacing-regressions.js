@@ -1575,6 +1575,128 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }finally{page.remove();}
   });
 
+
+  await test('stress matrix: dropped openings never preserve stale narrow width after a widening knee',()=>{
+    const cases=[
+      {pitch:10,boundary:15,dropLines:2,narrow:{x:50,width:50},wide:{x:0,width:100},expectDropped:true},
+      {pitch:12,boundary:17,dropLines:2,narrow:{x:50,width:50},wide:{x:0,width:100},expectDropped:true},
+      {pitch:10,boundary:15,dropLines:3,narrow:{x:50,width:50},wide:{x:0,width:100},expectDropped:true},
+      // Right edge changes 50 -> 100. A single dropped glyph cannot safely
+      // span both right edges, so V9 must raise it instead of trapping a row
+      // at the old half width.
+      {pitch:10,boundary:15,dropLines:2,narrow:{x:0,width:50},wide:{x:0,width:100},expectDropped:false},
+      {pitch:12,boundary:17,dropLines:3,narrow:{x:0,width:50},wide:{x:0,width:100},expectDropped:false},
+    ];
+    for(const c of cases){
+      const ctx={
+        fontSize:10,lineHeight:c.pitch,
+        describeOpening:e=>e.id==='matrix-opening'
+          ? {position:'dropped',start:0,end:5,marks:{fontSize:20},dropLines:c.dropLines,gapPx:2}
+          : null,
+        measure:p=>{
+          const body=String(p.text||'').trim();
+          if(body==='פתיח')return {width:20,height:c.pitch,topInset:0};
+          const n=body?body.split(/\s+/u).length:0;
+          return {width:n?n*10+(n-1)*2:0,height:c.pitch,topInset:0};
+        }
+      };
+      // Lead paragraph consumes two natural rows, so opening begins after the
+      // off-grid knee boundary rather than being allowed to snap to it.
+      const plan=layoutV9MainParagraphs([
+        {id:'matrix-lead',text:'aa aa aa aa aa aa',runs:[],mainRefs:[]},
+        {id:'matrix-opening',text:"פתיח אב'(גד) הו זח aa aa aa aa aa aa aa aa aa aa",runs:[],mainRefs:[]},
+      ],[
+        {...c.narrow,y_start:0,y_end:c.boundary,lockYStart:false},
+        {...c.wide,y_start:c.boundary,y_end:160,lockYStart:false},
+      ],ctx,160);
+
+      const openingLine=plan.lines.find(l=>l.source?.paragraphId==='matrix-opening'&&l.render?.opening);
+      if(c.expectDropped){
+        assert(openingLine,`dropped opening disappeared for ${JSON.stringify(c)}`);
+        assert(openingLine.y>=c.boundary-.01,`opening started before widened region: y=${openingLine.y}, boundary=${c.boundary}`);
+        assert(openingLine.openingHostFullWidth>=c.wide.width-.01,
+          `opening host preserved narrow width: host=${openingLine.openingHostFullWidth}, case=${JSON.stringify(c)}`);
+        const composite=(Number(openingLine.width)||0)+(Number(openingLine.render.opening?.gap)||0)+(Number(openingLine.render.opening?.width)||0);
+        assert(Math.abs(composite-c.wide.width)<.01,
+          `opening/body composite did not consume complete wide row: ${composite} vs ${c.wide.width}, case=${JSON.stringify(c)}`);
+      }else{
+        assert(!openingLine,`unsafe right-edge transition kept a dropped opening: ${JSON.stringify(c)}`);
+        assert(plan.diagnostics.some(d=>d.code==='opening-raised-at-right-edge-transition'),
+          `right-edge transition did not record raised fallback: ${JSON.stringify(c)}`);
+        const first=plan.lines.find(l=>l.source?.paragraphId==='matrix-opening');
+        assert(first&&first.width>=c.wide.width-.01,
+          `raised fallback still used stale narrow width: ${first?.width}, case=${JSON.stringify(c)}`);
+      }
+    }
+  });
+
+  await test('stress matrix: RTL neutral punctuation after a knee matches native Chromium ordering',()=>{
+    const samples=["אב'(גד)","אב')גד(","אב' (גד)","אב-('גד')","אב' [גד]"];
+    const pitch=10;
+    for(const sample of samples){
+      const ctx={
+        fontSize:10,lineHeight:pitch,
+        describeOpening:e=>e.id==='rtl-matrix'
+          ? {position:'dropped',start:0,end:5,marks:{fontSize:20},dropLines:2,gapPx:2}
+          : null,
+        measure:p=>{
+          const body=String(p.text||'').trim();
+          if(body==='פתיח')return {width:20,height:10,topInset:0};
+          const n=body?body.split(/\s+/u).length:0;
+          return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+        }
+      };
+      const plan=layoutV9MainParagraphs([
+        {id:'rtl-lead',text:'aa aa aa aa aa aa',runs:[],mainRefs:[]},
+        {id:'rtl-matrix',text:`פתיח ${sample} הו זח aa aa aa aa aa aa aa aa`,runs:[],mainRefs:[]},
+      ],[
+        {x:50,width:50,y_start:0,y_end:15,lockYStart:false},
+        {x:0,width:100,y_start:15,y_end:120,lockYStart:false},
+      ],ctx,120);
+      const op=plan.lines.find(l=>l.source?.paragraphId==='rtl-matrix'&&l.render?.opening);
+      assert(op,`opening missing for RTL sample ${sample}`);
+      const page=makePage();
+      try{
+        page.style.position='relative';page.style.width='100px';page.style.height='120px';
+        const host=renderV9PlannedMainLine(op,page,0);
+        const body=host.querySelector('.v9-planned-line-text');
+        assert(body&&(body.textContent||'').includes(sample),`sample left planned row: ${sample}`);
+
+        const visualOrder=(el)=>{
+          const root=el.getBoundingClientRect();
+          const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
+          const chars=[];let node,logical=0;
+          while((node=walker.nextNode())){
+            if(node.parentElement?.classList?.contains('v9-source-whitespace'))continue;
+            const value=node.nodeValue||'';
+            for(let i=0;i<value.length;i++,logical++){
+              const ch=value[i];
+              if(['\u061c','\u200e','\u200f','\u2060'].includes(ch))continue;
+              const range=document.createRange();range.setStart(node,i);range.setEnd(node,i+1);
+              const rr=range.getBoundingClientRect();
+              if(rr.width>.01||rr.height>.01)chars.push({ch,logical,x:(rr.left+rr.right)/2-root.left});
+            }
+          }
+          return chars.sort((a,b)=>a.x-b.x||a.logical-b.logical).map(x=>x.ch).join('');
+        };
+
+        const native=document.createElement('span');
+        const cs=getComputedStyle(body);
+        native.dir='rtl';
+        native.style.cssText='position:absolute;left:1000px;top:0;display:block;box-sizing:border-box;white-space:pre;';
+        native.style.width=body.style.width;
+        for(const key of ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing','wordSpacing'])native.style[key]=cs[key];
+        native.textContent=body.textContent||'';
+        document.body.appendChild(native);
+        try{
+          const actual=visualOrder(body).trim();
+          const expected=visualOrder(native).trim();
+          assert(actual===expected,`RTL punctuation differs from native for ${sample}: actual=${JSON.stringify(actual)} expected=${JSON.stringify(expected)}`);
+        }finally{native.remove();}
+      }finally{page.remove();}
+    }
+  });
+
   await test('opening-window final row centers actual opening+body ink as one visual segment',()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
