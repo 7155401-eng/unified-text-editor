@@ -5,7 +5,7 @@
 // סדר ב-RTL: appendChild שם אותם משמאל לפרופיל, כך שהאייקונים יושבים
 // בקצה החיצוני של הכותרת והאווטאר נשאר ליד הקצה ביותר.
 
-import { openPremiumPage } from "./premium_page.js";
+import { openPremiumPage } from "./premium_page_lazy.js";
 import { claimMonthlyGift } from "./payment_api.js";
 import { showToast } from "./time_warning.js";
 
