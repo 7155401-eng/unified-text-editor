@@ -1,0 +1,87 @@
+name: Finalize verified split-crown scope
+on:
+  push:
+    branches: [fix/v9-split-crown-rich-20261001]
+    paths: [.github/workflows/finalize-split-crown-scope.yml]
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: github.repository == '7155401-eng/unified-text-editor' && github.ref == 'refs/heads/fix/v9-split-crown-rich-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: e2aad9df9d7e67c5a0e10c8a2ebf566160b28a87
+      TARGET: fix/v9-split-crown-rich-20261001
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: true
+      - name: Apply exact source and test refinements
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          files={
+            'src/vilna_v9.js':('8ea33d27ac9eff74ecc38728c69c0d4f20fbd4fc','68ffd7e245b5add807b0c9f60b3da10c8c857daa'),
+            'tests/v9-unified/split-crown-rich.browser.js':('d6b64bfe5e1c9e0c2a40aaf6a8aa679b0c6b01de','fe55be1470aaf6b3ddc0173c2769e642d7d943f6'),
+            'scripts/v9-unified/verify-split-crown.mjs':('448cf88aa4863030ccb1ffc955255789273d9b2f','7f8cd9d8de08672a7cf306daeb39891b1e7e5404'),
+          }
+          def blob(p):
+            b=Path(p).read_bytes()
+            return hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
+          for p,(before,after) in files.items(): assert blob(p)==before,p
+          p=Path('src/vilna_v9.js');s=p.read_text()
+          old="    if (scenario.name !== 'one_long_split' || !(crownHeight > 0)) return null;"
+          assert s.count(old)==1
+          p.write_text(s.replace(old,"    if (scenario.name !== 'one_long_split' || !(crownHeight > 0) || !(naiveMainHeight > 0)) return null;"))
+          p=Path('tests/v9-unified/split-crown-rich.browser.js');s=p.read_text()
+          anchor='  return {total:results.length,passed:results.filter(r=>r.pass).length,'
+          block='''  // Crown clearance around a main block must not alter pages that have no
+            // main block, or where the crown was disabled. Preserve those existing paths.
+            for(const size of [13,20]) for(const noMain of [false,true]) {
+              run(`outside-split-crown/size=${size}/noMain=${noMain}`,()=>{
+                const runs=[{start:Math.floor(text.length*.5),end:text.length,marks:{fontSize:size}}];
+                const content={mainText:noMain?'':mainText,
+                  rightStream:{id:'01',items:[text],runs,rich:{text,runs}},leftStream:null,footerStreams:[]};
+                const cfg={...base,crownLines:noMain?4:0,crownMainGapPx:11};
+                const snapshot=JSON.stringify(content);
+                const page=document.createElement('div');document.body.append(page);
+                try {
+                  const plan=buildSinglePage(page,content,cfg);
+                  assert((plan.splitCrownSizing?.passes||0)===0,'crown replan ran outside a crown around main');
+                  assert(JSON.stringify(content)===snapshot,'control source changed');
+                  assert(plan.streamCoverage.every(s=>s.exact),'control source coverage mismatch');
+                  return {noMain,passes:plan.splitCrownSizing?.passes||0,coverage:plan.streamCoverage};
+                } finally {page.remove();}
+              });
+            }
+          '''
+          assert s.count(anchor)==1
+          p.write_text(s.replace(anchor,block+anchor))
+          p=Path('scripts/v9-unified/verify-split-crown.mjs');s=p.read_text()
+          assert s.count('result.total,48')==1
+          p.write_text(s.replace('result.total,48','result.total,52'))
+          for p,(before,after) in files.items(): assert blob(p)==after,p
+          PY
+          git rm .github/workflows/finalize-split-crown-scope.yml
+          git add src/vilna_v9.js tests/v9-unified/split-crown-rich.browser.js scripts/v9-unified/verify-split-crown.mjs
+          git diff --cached --check
+          node --check src/vilna_v9.js
+          node --check tests/v9-unified/split-crown-rich.browser.js
+          node --check scripts/v9-unified/verify-split-crown.mjs
+      - name: Publish only to unchanged feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          test "$(git ls-remote origin "refs/heads/$TARGET" | cut -f1)" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(v9): keep no-main and disabled-crown paths unchanged'
+          git push origin "HEAD:refs/heads/$TARGET"
+          git rev-parse HEAD HEAD^{tree}
