@@ -1545,10 +1545,64 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
 // בונה תוכנית עמוד
 // =====================================================================
 function buildPagePlan(pageContent, config = {}) {
-  if (config.__v9StreamContexts) return buildPagePlanCore(pageContent,config);
-  const contexts = new Map();
-  try { return buildPagePlanCore(pageContent,{...config,__v9StreamContexts:contexts}); }
-  finally { for (const c of contexts.values()) c.dispose(); }
+  const ownContexts = !config.__v9StreamContexts;
+  const contexts = config.__v9StreamContexts || new Map();
+  const cfg = { ...config, __v9StreamContexts: contexts };
+  try {
+    const initial = buildPagePlanCore(pageContent, cfg);
+    return reserveMeasuredFooterSpace(pageContent, cfg, initial);
+  } finally { if (ownContexts) for (const c of contexts.values()) c.dispose(); }
+}
+
+function reserveMeasuredFooterSpace(content, cfg, initial) {
+  const footers = (content.footerStreams || []).filter(s =>
+    normalizeRichTextEntry(s.rich || { text:(s.items || []).join(' '), runs:s.runs || [] }).text);
+  const ids = new Set(footers.map(s => String(s.id)));
+  const blocked = initial.unstartedNotes || [];
+  if (!ids.size || !blocked.length || blocked.some(n => !ids.has(String(n.stream))) ||
+      normalizeRichTextEntry(initial.overflow?.mainText).text) return initial;
+  // A side may fit in isolation but still leave no room for its anchored
+  // footers. Existing overflow is not a prerequisite for legal continuation.
+  const sides = (initial.streamBoxes || []).filter(b => (b.lines || []).length);
+  if (!sides.length) return initial;
+
+  const footerOnly = buildPagePlanCore({ ...content, mainText:'', mainRuns:[],
+    mainParagraphs:[], mainRefs:[], mainContinues:false, mainStartsContinued:false,
+    mainOpeningWordAllowed:false, rightStream:null, leftStream:null,
+    footerStreams:footers,
+    requiredNoteStarts:(content.requiredNoteStarts || []).filter(n => ids.has(String(n.stream)))
+      .map(n => ({ ...n, requireMainAnchor:false })),
+  }, cfg);
+  // Do not sacrifice a side stream for a footer group that itself cannot fit.
+  if ((footerOnly.unstartedNotes || []).length ||
+      (footerOnly.streamCoverage || []).some(c => !c.exact || c.remainingCharacters)) return initial;
+  const rows = footerOnly.footerBoxes.flatMap(b => b.lines || []);
+  if (!rows.length) return initial;
+  const footprint = Math.max(...rows.map(l => l.y + l.lineHeightPx)) - footerOnly.mainBottomGapPlan.baseY;
+  const pageBottom = Number(initial.pageBox?.height) - Number(initial.pageBox?.padding) - (Number(cfg.reservedBottom) || 0);
+  const limit = pageBottom - footprint;
+  const mainBottom = Math.max(0, ...(initial.mainBox?.lines || []).map(l => l.y + l.lineHeightPx));
+  const sideBottom = Math.max(...sides.map(b => Number(b.endY) || 0));
+  if (!(footprint > 0 && Number.isFinite(limit) && limit >= mainBottom && limit < sideBottom - 1/64)) return initial;
+
+  const candidate = buildPagePlanCore(content, { ...cfg, __v9FooterReservedSideBottom:limit });
+  if (normalizeRichTextEntry(candidate.overflow?.mainText).text || candidate.overflow?.exceedsPage ||
+      (candidate.unstartedNotes || []).length || hasUnsafeV9StreamOverflow(candidate) ||
+      (candidate.streamCoverage || []).some(c => !c.exact || (ids.has(String(c.stream)) && c.remainingCharacters))) return initial;
+  const all = [...(candidate.mainBox?.lines || []), ...candidate.streamBoxes.flatMap(b => b.lines || []),
+    ...candidate.footerBoxes.flatMap(b => b.lines || [])];
+  for (let i=0; i<all.length; i++) {
+    const a=all[i];
+    if (a.y + a.lineHeightPx > pageBottom + 1/64) return initial;
+    for (let j=i+1; j<all.length; j++) {
+      const b=all[j];
+      if (Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x)>1/64 &&
+          Math.min(a.y+a.lineHeightPx,b.y+b.lineHeightPx)-Math.max(a.y,b.y)>1/64) return initial;
+    }
+  }
+  candidate.footerSpaceReservation = { sideBottom:limit, measuredFooterHeight:footprint,
+    previouslyUnstarted:blocked.length, completeFooters:true, allocationTrials:1 };
+  return candidate;
 }
 function buildPagePlanCore(pageContent, config) {
   const unsplitPageContent = pageContent;
@@ -2076,7 +2130,9 @@ function buildPagePlanCore(pageContent, config) {
         minTop: sideTopY,
       }
     );
-    const streamPageBottomY = manualShift.bottom;
+    const streamPageBottomY = Number.isFinite(cfg.__v9FooterReservedSideBottom)
+      ? Math.min(manualShift.bottom, Math.max(sideTopY, cfg.__v9FooterReservedSideBottom))
+      : manualShift.bottom;
 
     const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
     const effectiveMainBottomY = Math.min(rawMainBottomY, streamPageBottomY);
