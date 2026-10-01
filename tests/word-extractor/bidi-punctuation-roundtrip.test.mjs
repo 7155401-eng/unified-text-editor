@@ -26,8 +26,14 @@ for(const source of [
   "אבג '(דהו זח טי כל מנ) סוף",
   "אבג ’(דהו זח טי כל מנ) סוף",
   "אבג ׳(דהו זח טי כל מנ) סוף",
+  "אבג \u200e'(דהו זח טי כל מנ) סוף",
+  "אבג '\u200e(דהו זח טי כל מנ) סוף",
   "אבג \u200f'(דהו זח טי כל מנ) סוף",
   "אבג '\u200f(דהו זח טי כל מנ) סוף",
+  "אבג \u061c'(דהו זח טי כל מנ) סוף",
+  "אבג '\u061c(דהו זח טי כל מנ) סוף",
+  "אבג \u2060'(דהו זח טי כל מנ) סוף",
+  "אבג '\u2060(דהו זח טי כל מנ) סוף",
 ]){
   test(`DOCX extractor preserves bracket/apostrophe code points: ${JSON.stringify(source)}`,async()=>{
     const out=await docx_extract_simple(await makeDocx(source),[]);
@@ -46,6 +52,7 @@ test("synthetic stream marker does not keep horizontal Word gap before it",async
   const stream=out.streams[0][1];
   assert(stream.includes("'@'0'1'("),stream);
   assert(stream.endsWith("(סוף)"),stream);
+  assert.equal(out.neutralizedStreamMarks,1);
 });
 
 test("synthetic stream marker preserves a real hard line break before it",async()=>{
