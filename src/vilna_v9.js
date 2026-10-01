@@ -32,7 +32,7 @@ import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
-import { resolveV9PageConstraint, pageFootnoteShiftLines } from "./page_tweaks.js";
+import { resolveV9PageConstraint, pageFootnoteShiftLines, resolveV9StreamShiftBottom } from "./page_tweaks.js";
 
 function runV9PageDecoratorsDuringRender(page, pageIndex) {
   if (!page || typeof window === "undefined") return;
