@@ -2939,7 +2939,8 @@ function buildPagePlanCore(pageContent, config) {
       pageContent.footerStreams,
       streamSettings,
       cfg.levels,
-      cfg.mishnaWrapOn
+      cfg.mishnaWrapOn,
+      cfg.talmudStreams
     );
 
     const streamRich = (fs) => fs.rich || makeRichText((fs.items || []).join(" "), fs.runs || []);
@@ -3105,7 +3106,7 @@ function buildPagePlanCore(pageContent, config) {
 
         if (floatFits && floatMeasured.lines.length) {
           pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
-            mishnaLevel: group.level >= 1 ? group.level + 1 : null,
+            mishnaLevel: group.level >= 0 ? group.level + 1 : null,
             mishnaRole: "float",
             mishnaSource: group.source || "levels",
             manualFootnoteShiftLines: floatShift.shiftLines,
@@ -3115,7 +3116,7 @@ function buildPagePlanCore(pageContent, config) {
         }
         if (flowFits && flowMeasured.lines.length) {
           pushFooterBox(flowMeta, flowMeasured, titleY, floatFits ? narrowX : 0, floatFits ? narrowWidth : innerWidth, {
-            mishnaLevel: group.level >= 1 ? group.level + 1 : null,
+            mishnaLevel: group.level >= 0 ? group.level + 1 : null,
             mishnaRole: "flow",
             mishnaSource: group.source || "levels",
             manualFootnoteShiftLines: flowShift.shiftLines,

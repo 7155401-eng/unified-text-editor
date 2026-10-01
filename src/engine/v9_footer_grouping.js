@@ -1,6 +1,6 @@
-function secondaryLevelIndex(streamId, levels, mishnaWrapOn) {
+function secondaryLevelIndex(streamId, levels, mishnaWrapOn, firstFooterLevel = 1) {
   if (!mishnaWrapOn || !Array.isArray(levels)) return -1;
-  for (let i = 1; i < levels.length; i++) {
+  for (let i = firstFooterLevel; i < levels.length; i++) {
     if ((levels[i] || []).map(String).includes(String(streamId))) return i;
   }
   return -1;
@@ -14,10 +14,18 @@ function secondaryLevelIndex(streamId, levels, mishnaWrapOn) {
  * form one Mishnah flow pair. This restores the supported mixed document shape:
  * two fixed Talmud streams + two Mishnah Berura streams below them.
  */
-export function groupV9FooterStreams(streams = [], streamSettings = {}, levels = [], mishnaWrapOn = false) {
+export function groupV9FooterStreams(streams = [], streamSettings = {}, levels = [], mishnaWrapOn = false, fixedSideStreams = []) {
   const list = Array.isArray(streams) ? streams.filter(Boolean) : [];
+  // The "other streams" control stores footer-only levels (e.g. "03,04").
+  // Level zero is reserved for sides only when sides are selected from levels.
+  // With explicitly owned sides, admit a disjoint first footer level as well;
+  // never infer that ownership from whichever streams happen to have text.
+  const fixedSides = new Set((Array.isArray(fixedSideStreams) ? fixedSideStreams.slice(0, 2) : [])
+    .filter(id => id != null && String(id).trim()).map(String));
+  const firstFooterLevel = fixedSides.size && Array.isArray(levels?.[0]) && levels[0].length &&
+    levels[0].every(id => !fixedSides.has(String(id))) ? 0 : 1;
   const explicitMishna = list.filter((fs) =>
-    secondaryLevelIndex(fs?.id, levels, mishnaWrapOn) < 0 &&
+    secondaryLevelIndex(fs?.id, levels, mishnaWrapOn, firstFooterLevel) < 0 &&
     String(streamSettings?.[fs?.id]?.layoutRole || "") === "mishna"
   );
   const pairExplicitMishna = explicitMishna.length === 2;
@@ -35,8 +43,8 @@ export function groupV9FooterStreams(streams = [], streamSettings = {}, levels =
   };
 
   for (const fs of list) {
-    const level = secondaryLevelIndex(fs.id, levels, mishnaWrapOn);
-    if (level >= 1) {
+    const level = secondaryLevelIndex(fs.id, levels, mishnaWrapOn, firstFooterLevel);
+    if (level >= firstFooterLevel) {
       addKeyed(`level:${level}`, {
         level,
         mishnaFlow: true,
