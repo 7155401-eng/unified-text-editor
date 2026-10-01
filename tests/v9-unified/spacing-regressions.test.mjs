@@ -464,7 +464,7 @@ test('second and final opening-window row does not center its body as if the ope
  assert(host.render.opening,'opening glyph missing');
  assert(last.isLast===true,'second row is not paragraph last row');
  assert(last.openingWindow===true,'last row no longer overlaps opening window');
- assert.equal(last.render.alignment,'right','last body centered independently from dropped opening');
+ assert.equal(last.render.alignment,'left','final body did not include dropped opening in its centering geometry');
  const opening=host.render.opening;
  const visualLeft=last.x;
  const visualRight=opening.x+opening.width;
