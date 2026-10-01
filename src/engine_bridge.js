@@ -1432,14 +1432,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     rememberLastGoodRender(pagesContainer);
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
-    let content = paneManagerToPackerContent(paneManager);
+    let mappedContent = paneManagerToPackerContent(paneManager);
 
-    // משה 2026-05-07: every render must pass through the server before pagination.
-    // Without a successful preflight, the render is aborted. Universal — applies
-    // to all layouts (talmud / mishna-wrap / balanced / regular).
+    // Preflight sees the complete logical document exactly once, before we
+    // introduce a pagination boundary between introduction panes and the body.
     try {
       await runPreflight({
-        contentSignature: hashContent(content),
+        contentSignature: hashContent(mappedContent),
       });
     } catch (e) {
       console.warn("[engine_bridge] preflight failed, aborting render:", e);
@@ -1449,12 +1448,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     }
     if (!isRenderCurrent(myToken)) return;
 
-    // v33: inject demo watermarks INTO source content BEFORE pagination —
-    // engine then measures heights including marks, so pages don't overflow.
-    content = injectDemoWatermarksIfNeeded(content);
+    // Demo marks are injected before partitioning so intro and body use one
+    // source transformation and cannot drift in note/ref ownership.
+    mappedContent = injectDemoWatermarksIfNeeded(mappedContent);
+    const partitioned = partitionFrontMatterContent(mappedContent, paneManager);
+    let content = partitioned.body;
+    const pageGeom = getDomPageGeom();
+    const packedFrontMatter = await packFrontMatterGroups(
+      partitioned.groups,
+      pageGeom,
+      () => isRenderCurrent(myToken)
+    );
+    if (!isRenderCurrent(myToken) || packedFrontMatter.aborted) return;
+    const frontMatterPageCount = packedFrontMatter.totalPages || 0;
     const t1 = performance.now();
 
-    if (content.length === 0) {
+    if (content.length === 0 && frontMatterPageCount === 0) {
       // KEEP_LAST_RENDER_20260907: an empty editor does not erase the last
       // render. The placeholder below is only for a screen with nothing on it.
       if (restoreLastGoodRender(pagesContainer, "empty-content")) {
@@ -1473,6 +1482,23 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
+    if (content.length === 0 && frontMatterPageCount > 0) {
+      pagesContainer.innerHTML = "";
+      prependFrontMatterPages(pagesContainer, packedFrontMatter);
+      if (pdfToolbarApi) pdfToolbarApi.setTotal(frontMatterPageCount);
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.textContent = `${frontMatterPageCount} עמודי הקדמה`;
+      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
+        detail: {
+          pages: [],
+          content: [],
+          frontMatterPages: frontMatterPageCount,
+          totalPages: frontMatterPageCount,
+        },
+      }));
+      return;
+    }
+
     // משה 2026-05-08: V9 הוא המנוע היחיד למצב גפ"ת. רץ אוטומטית כשהצ'קבוקס
     // "גפ"ת: צורת הדף" דלוק (localStorage.ravtext.talmudLayout === "1").
     // V9 בונה את כל העמודים אנליטית — מדלג על domPack, renderPages,
@@ -1485,13 +1511,16 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       // לחסום את ה-main thread אם המשתמש שינה הגדרה תוך כדי רינדור.
       const v9Result = await applyVilnaV9FromPaneManager(content, pagesContainer, {
         isCurrent: () => isRenderCurrent(myToken),
+        pageIndexOffset: frontMatterPageCount,
         pageTweaks: typeof paneManager.getPageTweaks === "function"
           ? paneManager.getPageTweaks()
           : null,
       });
       if (!isRenderCurrent(myToken)) return;
       if (v9Result?.aborted) return;
-      const v9PageCount = pagesContainer.querySelectorAll(".page").length;
+      const v9BookPageCount = pagesContainer.querySelectorAll(".page").length;
+      prependFrontMatterPages(pagesContainer, packedFrontMatter);
+      const v9PageCount = frontMatterPageCount + v9BookPageCount;
       if (pdfToolbarApi) {
         pdfToolbarApi.setTotal(v9PageCount);
       }
@@ -1508,21 +1537,28 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       }
       logEvent("vilna_v9_pipeline_done", {
         pageCount: v9PageCount,
+        bookPageCount: v9BookPageCount,
+        frontMatterPageCount,
       });
       window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-        detail: { pages: [], content, v9: true },
+        detail: {
+          pages: [],
+          content,
+          v9: true,
+          frontMatterPages: frontMatterPageCount,
+          totalPages: v9PageCount,
+        },
       }));
       return;
     }
 
-    const pageGeom = getDomPageGeom();
     const pages = await domPack(content, pageGeom, {
       isCurrent: () => isRenderCurrent(myToken),
     });
     if (!isRenderCurrent(myToken)) return;
 
     const t2 = performance.now();
-    renderPages(pages, pagesContainer);
+    renderPages(pages, pagesContainer, { pageIndexOffset: frontMatterPageCount });
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
