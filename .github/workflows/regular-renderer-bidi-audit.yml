@@ -25,5 +25,5 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
-      - name: Browser regressions
-        run: node scripts/v9-unified/run-browser.mjs
+      - name: Regular renderer BiDi audit
+        run: node scripts/audit-regular-renderer-bidi-vite.mjs
