@@ -22,13 +22,12 @@ test("premium purchase page has one lazy boundary and no static src importers", 
   for (const url of files) {
     const source = await readFile(url, "utf8");
     const rel = relative(new URL(".", ROOT).pathname, url.pathname);
-    for (const line of source.split(/\r?\n/)) {
-      if (
-        /^\s*import\b/.test(line) &&
-        /premium_page\.js["']/.test(line)
-      ) {
-        offenders.push({ file: rel, line: line.trim() });
-      }
+    const staticImport = /(?:^|\n)\s*import\s+(?!\()(?:(?!;)[\s\S])*?["'][^"']*premium_page\.js["']\s*;?/g;
+    for (const match of source.matchAll(staticImport)) {
+      offenders.push({
+        file: rel,
+        importText: match[0].trim().replace(/\s+/g, " "),
+      });
     }
   }
 
