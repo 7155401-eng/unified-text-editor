@@ -117,6 +117,59 @@ export function withPageTweak(raw, pageNumber, patch = {}) {
   return state;
 }
 
+export function pageFootnoteShiftLines(pageConstraint, streamId) {
+  const id = String(streamId ?? "").trim();
+  if (!id) return 0;
+  const map = pageConstraint?.footnoteShift && typeof pageConstraint.footnoteShift === "object"
+    ? pageConstraint.footnoteShift
+    : {};
+  return clamp(int(map[id]), 0, MAX_FOOTNOTE_SHIFT_LINES);
+}
+
+/**
+ * Resolve a manual per-stream bottom shift into the actual planner boundary.
+ *
+ * The shift is expressed in rows of the TARGET STREAM, not in main-text rows.
+ * This keeps the control stable when streams use different fonts/line heights.
+ * The resulting bottom is clamped to minTop so manual tuning can never invert
+ * or erase the stream's physical region.
+ */
+export function resolveV9StreamShiftBottom(pageConstraint, streamId, {
+  pageBottom = 0,
+  lineHeight = 0,
+  minTop = 0,
+} = {}) {
+  const shiftLines = pageFootnoteShiftLines(pageConstraint, streamId);
+  const pitch = Math.max(0, Number(lineHeight) || 0);
+  const rawBottom = Number(pageBottom) || 0;
+  const floor = Math.min(rawBottom, Math.max(0, Number(minTop) || 0));
+
+  if (!(shiftLines > 0) || !(pitch > 0) || !(rawBottom > floor)) {
+    return Object.freeze({
+      shiftLines,
+      reservedPx: 0,
+      bottom: rawBottom,
+      lineHeight: pitch,
+    });
+  }
+
+  const wantedPx = shiftLines * pitch;
+  const reservedPx = Math.min(wantedPx, Math.max(0, rawBottom - floor));
+  return Object.freeze({
+    shiftLines,
+    reservedPx,
+    bottom: rawBottom - reservedPx,
+    lineHeight: pitch,
+  });
+}
+
+/**
+ * Translate a per-page/per-stream manual note-line shift into planner geometry.
+ *
+ * This does not move any DOM nodes. It lowers the physical bottom available to
+ * that commentary stream by N of THAT STREAM'S measured row pitches. The normal
+ * V9 overflow/carry path then moves the remaining source to the next page.
+ */
 export function resolveV9PageConstraint(raw, pageIndex, {
   baseReservedBottom = 0,
   pageHeight = 0,

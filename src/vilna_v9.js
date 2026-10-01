@@ -32,7 +32,7 @@ import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
-import { resolveV9PageConstraint } from "./page_tweaks.js";
+import { resolveV9PageConstraint, pageFootnoteShiftLines, resolveV9StreamShiftBottom } from "./page_tweaks.js";
 
 function runV9PageDecoratorsDuringRender(page, pageIndex) {
   if (!page || typeof window === "undefined") return;
@@ -417,9 +417,18 @@ function v9LinesThatFit(height, lineHeight) {
 // =====================================================================
 // מזרים טקסט בפסים אנכיים בעלי רוחבים שונים
 // =====================================================================
-function flowStreamThroughStrips(input, strips, metrics, maxY) {
+function flowStreamThroughStrips(input, strips, metrics, maxY, options = {}) {
   const rich = normalizeRichTextEntry(input);
-  if (metrics._v9TextContext) return flowV9MeasuredStream(rich,strips,metrics._v9TextContext,maxY,{continuesAfter:!!metrics._v9ContinuesAfter});
+  const maxLines = Math.max(0, Math.floor(Number(options.maxLines) || 0));
+  if (metrics._v9TextContext) {
+    return flowV9MeasuredStream(
+      rich,
+      strips,
+      metrics._v9TextContext,
+      maxY,
+      { ...options, continuesAfter: !!metrics._v9ContinuesAfter }
+    );
+  }
   const lineH = metrics.lineHeight;
   const allLines = [];
 
@@ -439,7 +448,8 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
   const tokens = tokenizeRichTextForV9(rich);
   let tokenIdx = 0;
 
-  for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
+  stripLoop: for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
+    if (maxLines > 0 && allLines.length >= maxLines) break;
     const strip = strips[stripIdx];
     // v9-strip-y-end-guard: respect explicit strip bottoms. Without this,
     // a capped bridge strip can consume lines down to the next strip/pageBottom.
@@ -493,7 +503,11 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
     let linesInStrip = 0;
     const linesConsumed = [];
 
-    while (linesInStrip < availableLines && tokenIdx < tokens.length) {
+    while (
+      linesInStrip < availableLines &&
+      tokenIdx < tokens.length &&
+      (maxLines <= 0 || allLines.length + linesConsumed.length < maxLines)
+    ) {
       const line = buildOneLine(tokens, tokenIdx, strip.width, metrics);
       if (line.tokensConsumed === 0) break;
 
@@ -538,7 +552,12 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
       strips[stripIdx + 1].y_start = curY;
     }
 
-    if (tokenIdx < tokens.length && curY < nextStripY && stripIdx < strips.length - 1) {
+    if (
+      tokenIdx < tokens.length &&
+      curY < nextStripY &&
+      stripIdx < strips.length - 1 &&
+      (maxLines <= 0 || allLines.length < maxLines)
+    ) {
       const fillLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
 
       if (fillLine.tokensConsumed > 0) {
@@ -568,6 +587,7 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
     }
 
     if (tokenIdx >= tokens.length) break;
+    if (maxLines > 0 && allLines.length >= maxLines) break stripLoop;
   }
 
   const overflowRich = richTextFromRemainingTokens(tokens, tokenIdx, rich.runs);
@@ -2269,8 +2289,31 @@ function buildPagePlanCore(pageContent, config) {
     const text = streamRich.text;
     if (!text) return null;
     const o = opts || {};
+
+    // Resolve this stream's real typography BEFORE creating geometry. Manual
+    // Page Tweaker note shifts are measured in rows of THIS stream, never in
+    // main-text rows or a hard-coded 14pt desktop approximation.
+    const streamStyleId = streamSettings[streamData.id]?.styleId || "";
+    const streamResolvedStyle = composeStreamTextStyle(streamData.id);
+    const streamMetrics = getSideMetricsForStream(streamData.id);
+    streamMetrics._v9ContinuesAfter = !!streamData.syntheticContinuationAfter;
+    const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0
+      ? Number(streamResolvedStyle.fontSize)
+      : streamMetrics.fontSize;
+    const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
+    const manualShift = resolveV9StreamShiftBottom(
+      cfg.__v9PageConstraint,
+      streamData.id,
+      {
+        pageBottom: pageBottomY,
+        lineHeight: streamMetrics.lineHeight,
+        minTop: sideTopY,
+      }
+    );
+    const streamPageBottomY = manualShift.bottom;
+
     const rawMainBottomY = (o.mainBottomY !== undefined) ? o.mainBottomY : naiveMainBottomY;
-    const effectiveMainBottomY = Math.min(rawMainBottomY, pageBottomY);
+    const effectiveMainBottomY = Math.min(rawMainBottomY, streamPageBottomY);
     // משה 2026-05-08: otherSideEndY הוא ה-y שבו הצד השני נגמר (מ-pass 1).
     // אם null/undefined — מתייחסים כאל "אין צד שני" → mainTopY (כל strip 3 בעצם
     // יקבל רוחב מלא). אם >= pageBottom — הצד השני ממשיך עד תחתית הדף → רק halfWidth.
@@ -2278,7 +2321,7 @@ function buildPagePlanCore(pageContent, config) {
     const rawOtherEndY = (o.otherSideEndY !== undefined && o.otherSideEndY !== null)
       ? o.otherSideEndY
       : mainTopY;
-    const otherEndY = Math.max(effectiveMainBottomY, Math.min(rawOtherEndY, pageBottomY));
+    const otherEndY = Math.max(effectiveMainBottomY, Math.min(rawOtherEndY, streamPageBottomY));
 
     const strips = [];
 
@@ -2287,7 +2330,7 @@ function buildPagePlanCore(pageContent, config) {
       if (fullCrownSide === side) {
         strips.push({
           y_start: sideTopY,
-          y_end: Math.min(sideTopY + crownHeight, pageBottomY),
+          y_end: Math.min(sideTopY + crownHeight, streamPageBottomY),
           width: innerWidth,
           x: 0,
         });
@@ -2297,7 +2340,7 @@ function buildPagePlanCore(pageContent, config) {
         // משה 2026-05-08: כל צד 49.5% מראש (sideHalfWidth). מרווח 1% במרכז.
         strips.push({
           y_start: sideTopY,
-          y_end: Math.min(sideTopY + crownHeight, pageBottomY),
+          y_end: Math.min(sideTopY + crownHeight, streamPageBottomY),
           width: sideHalfWidth,
           x: side === 'right' ? sideRightX : 0,
         });
@@ -2353,7 +2396,7 @@ function buildPagePlanCore(pageContent, config) {
       : 0;
     const fullStrip3LineHeight = Math.max(0, getSideMetricsForStream(streamData.id)?.lineHeight || sideLineH);
     const fullStrip3StartY = (maxFullStrip3Lines > 0 && fullStrip3LineHeight > 0)
-      ? Math.max(otherEndY, pageBottomY - fullStrip3LineHeight * maxFullStrip3Lines)
+      ? Math.max(otherEndY, streamPageBottomY - fullStrip3LineHeight * maxFullStrip3Lines)
       : otherEndY;
 
     if (effectiveMainBottomY < fullStrip3StartY) {
@@ -2373,10 +2416,10 @@ function buildPagePlanCore(pageContent, config) {
     // really ends. The one-line cap is reserved only for same-stream split
     // bridge/orphan cases; distinct streams keep the full lower area.
     const suppressFullStrip3 = o.suppressFullStrip3 === true;
-    if (fullStrip3StartY < pageBottomY && !suppressFullStrip3) {
+    if (fullStrip3StartY < streamPageBottomY && !suppressFullStrip3) {
       strips.push({
         y_start: fullStrip3StartY,
-        y_end: pageBottomY,
+        y_end: streamPageBottomY,
         width: innerWidth,
         x: 0,
         // v9-knee-row-grid: ending of the other side changes WIDTH only.
@@ -2384,16 +2427,6 @@ function buildPagePlanCore(pageContent, config) {
         lockYStart: false,
       });
     }
-
-    // משה 2026-05-13: בחירת ה-metrics המתאים לסגנון של הזרם הזה.
-    // אם המשתמש החיל סגנון אישי עם פונט/גודל שונה — המדידה חייבת להתאים,
-    // אחרת ה-DOM יראה משהו שונה ממה שמוחשב, ומילים יחתכו/יעלמו.
-    const streamStyleId = streamSettings[streamData.id]?.styleId || "";
-    const streamResolvedStyle = composeStreamTextStyle(streamData.id);
-    const streamMetrics = getSideMetricsForStream(streamData.id);
-    streamMetrics._v9ContinuesAfter = !!streamData.syntheticContinuationAfter;
-    const streamFontSize = Number(streamResolvedStyle?.fontSize) > 0 ? Number(streamResolvedStyle.fontSize) : streamMetrics.fontSize;
-    const streamLineH = Math.max(streamMetrics.lineHeight, streamFontSize * 1.35);
 
     const flowResult = flowStreamThroughStrips(
       streamRich,
@@ -2405,7 +2438,7 @@ function buildPagePlanCore(pageContent, config) {
         lockYStart: s.lockYStart === true,
       })),
       streamMetrics,
-      pageBottomY
+      streamPageBottomY
     );
 
     const lines = [];
@@ -2451,6 +2484,9 @@ function buildPagePlanCore(pageContent, config) {
       overflowRuns: flowResult.overflowRuns || [],
       overflowRich: flowResult.overflowRich || makeRichText(flowResult.overflowText || "", flowResult.overflowRuns || []),
       columnSplitLineEdgeGuard: streamData.columnSplitLineEdgeGuard || null,
+      manualFootnoteShiftLines: manualShift.shiftLines,
+      manualFootnoteShiftReservedPx: manualShift.reservedPx,
+      streamPageBottomY,
       syntheticContinuationAfter: !!streamData.syntheticContinuationAfter,
       syntheticContinuationFrom: streamData.syntheticContinuationFrom || "",
       originalStreamWasSplit: !!streamData.originalStreamWasSplit,
@@ -3124,6 +3160,16 @@ function buildPagePlanCore(pageContent, config) {
       return { fs, settings, resolvedStyle, metrics, lineH };
     };
 
+    const footerShift = (meta, minTop = 0) => resolveV9StreamShiftBottom(
+      cfg.__v9PageConstraint,
+      meta?.fs?.id,
+      {
+        pageBottom,
+        lineHeight: meta?.metrics?.lineHeight || meta?.lineH || sideLineH,
+        minTop,
+      }
+    );
+
     const pushFooterBox = (meta, measured, titleY, titleX, titleWidth, extra = {}) => {
       const footerContinues = !!measured.overflowRich.text;
       if (footerContinues) {
@@ -3142,6 +3188,9 @@ function buildPagePlanCore(pageContent, config) {
         titleWidth,
         titleHeight,
         continues: footerContinues,
+        manualFootnoteShiftLines: Number(extra.manualFootnoteShiftLines) || 0,
+        manualFootnoteShiftReservedPx: Number(extra.manualFootnoteShiftReservedPx) || 0,
+        streamPageBottomY: Number(extra.streamPageBottomY) || pageBottom,
         ...extra,
       });
       return measured.endY;
@@ -3193,60 +3242,127 @@ function buildPagePlanCore(pageContent, config) {
         const floatX = floatRight ? innerWidth - floatWidth : 0;
         const narrowX = floatRight ? 0 : floatWidth + gap;
 
-        const floatMeasured = flowV9MeasuredStream(
-          streamRich(floatMeta.fs),
-          [{ x: floatX, width: floatWidth, y_start: bodyTop, y_end: pageBottom }],
-          floatMeta.metrics._v9TextContext,
-          pageBottom
-        );
+        const floatShift = footerShift(floatMeta, bodyTop);
+        const flowShift = footerShift(flowMeta, bodyTop);
+        const floatBottom = floatShift.bottom;
+        const flowBottom = flowShift.bottom;
+
+        const floatFits = bodyTop + floatMeta.metrics.lineHeight <= floatBottom + 0.1;
+        const flowFits = bodyTop + flowMeta.metrics.lineHeight <= flowBottom + 0.1;
+
+        let floatMeasured = {
+          lines: [],
+          endY: bodyTop,
+          overflowRich: streamRich(floatMeta.fs),
+          overflowText: streamText(floatMeta.fs),
+        };
+        if (floatFits) {
+          floatMeasured = flowV9MeasuredStream(
+            streamRich(floatMeta.fs),
+            [{ x: floatX, width: floatWidth, y_start: bodyTop, y_end: floatBottom }],
+            floatMeta.metrics._v9TextContext,
+            floatBottom
+          );
+        } else {
+          result.overflow.streams[floatMeta.fs.id] = streamRich(floatMeta.fs);
+          anyFooterTrimmed = true;
+        }
         const floatEnd = Math.max(bodyTop, floatMeasured.endY || bodyTop);
 
         const flowStrips = [];
-        if (floatEnd > bodyTop + 0.1) {
-          flowStrips.push({ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: Math.min(floatEnd, pageBottom) });
+        if (flowFits) {
+          if (floatFits && floatEnd > bodyTop + 0.1) {
+            flowStrips.push({
+              x: narrowX,
+              width: narrowWidth,
+              y_start: bodyTop,
+              y_end: Math.min(floatEnd, flowBottom),
+            });
+          }
+          if (!floatFits || floatEnd < flowBottom - 0.1) {
+            flowStrips.push({
+              x: 0,
+              width: innerWidth,
+              y_start: floatFits ? Math.max(bodyTop, floatEnd) : bodyTop,
+              y_end: flowBottom,
+            });
+          }
         }
-        if (floatEnd < pageBottom - 0.1) {
-          flowStrips.push({ x: 0, width: innerWidth, y_start: floatEnd, y_end: pageBottom });
-        }
-        const flowMeasured = flowV9MeasuredStream(
-          streamRich(flowMeta.fs),
-          flowStrips.length ? flowStrips : [{ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: pageBottom }],
-          flowMeta.metrics._v9TextContext,
-          pageBottom
-        );
 
-        pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
-          mishnaLevel: group.level >= 1 ? group.level + 1 : null,
-          mishnaRole: "float",
-          mishnaSource: group.source || "levels",
-        });
-        pushFooterBox(flowMeta, flowMeasured, titleY, narrowX, narrowWidth, {
-          mishnaLevel: group.level >= 1 ? group.level + 1 : null,
-          mishnaRole: "flow",
-          mishnaSource: group.source || "levels",
-        });
-        footerY = Math.max(floatMeasured.endY || bodyTop, flowMeasured.endY || bodyTop) + interStreamGap;
+        let flowMeasured = {
+          lines: [],
+          endY: bodyTop,
+          overflowRich: streamRich(flowMeta.fs),
+          overflowText: streamText(flowMeta.fs),
+        };
+        if (flowFits) {
+          flowMeasured = flowV9MeasuredStream(
+            streamRich(flowMeta.fs),
+            flowStrips.length
+              ? flowStrips
+              : [{ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: flowBottom }],
+            flowMeta.metrics._v9TextContext,
+            flowBottom
+          );
+        } else {
+          result.overflow.streams[flowMeta.fs.id] = streamRich(flowMeta.fs);
+          anyFooterTrimmed = true;
+        }
+
+        if (floatFits && floatMeasured.lines.length) {
+          pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
+            mishnaLevel: group.level >= 1 ? group.level + 1 : null,
+            mishnaRole: "float",
+            mishnaSource: group.source || "levels",
+            manualFootnoteShiftLines: floatShift.shiftLines,
+            manualFootnoteShiftReservedPx: floatShift.reservedPx,
+            streamPageBottomY: floatBottom,
+          });
+        }
+        if (flowFits && flowMeasured.lines.length) {
+          pushFooterBox(flowMeta, flowMeasured, titleY, floatFits ? narrowX : 0, floatFits ? narrowWidth : innerWidth, {
+            mishnaLevel: group.level >= 1 ? group.level + 1 : null,
+            mishnaRole: "flow",
+            mishnaSource: group.source || "levels",
+            manualFootnoteShiftLines: flowShift.shiftLines,
+            manualFootnoteShiftReservedPx: flowShift.reservedPx,
+            streamPageBottomY: flowBottom,
+          });
+        }
+
+        const renderedEnd = Math.max(
+          floatFits && floatMeasured.lines.length ? (floatMeasured.endY || bodyTop) : bodyTop,
+          flowFits && flowMeasured.lines.length ? (flowMeasured.endY || bodyTop) : bodyTop
+        );
+        footerY = renderedEnd > bodyTop ? renderedEnd + interStreamGap : footerY;
         continue;
       }
 
       // Non-Mishnah footers, and uncommon levels with more than two streams,
       // retain the stable full-width V9 path.
       for (const meta of metas) {
-        if (footerY + titleHeight + meta.lineH > pageBottom) {
+        const titleY = footerY;
+        const bodyTop = footerY + titleHeight;
+        const shift = footerShift(meta, bodyTop);
+        const streamBottom = shift.bottom;
+
+        if (bodyTop + meta.lineH > streamBottom + 0.1) {
           result.overflow.streams[meta.fs.id] = streamRich(meta.fs);
           anyFooterTrimmed = true;
           continue;
         }
         const footerCols = Math.max(1, Math.min(6, parseInt(meta.settings.cols || 1, 10) || 1));
         const colGap = Math.max(0, Number(cfg.streamHorizontalGap) || 0);
-        const titleY = footerY;
-        const bodyTop = footerY + titleHeight;
         const measured = flowV9MeasuredColumns(
           streamRich(meta.fs),
           meta.metrics._v9TextContext,
-          { top: bodyTop, bottom: pageBottom, width: innerWidth, columns: footerCols, gap: colGap }
+          { top: bodyTop, bottom: streamBottom, width: innerWidth, columns: footerCols, gap: colGap }
         );
-        pushFooterBox(meta, measured, titleY, 0, innerWidth);
+        pushFooterBox(meta, measured, titleY, 0, innerWidth, {
+          manualFootnoteShiftLines: shift.shiftLines,
+          manualFootnoteShiftReservedPx: shift.reservedPx,
+          streamPageBottomY: streamBottom,
+        });
         footerY = measured.endY + interStreamGap;
       }
     }

@@ -226,12 +226,24 @@ function patchSplitMetadata(source) {
 }
 
 function patchSideBoxMetadata(source) {
+  // Modern V9 may add unrelated planner metadata between these fields
+  // (for example Page Tweaker per-stream bottom constraints). The invariant is
+  // semantic, not adjacency-sensitive: all continuation fields must exist on
+  // the side box, but they need not be consecutive text.
+  const semanticFields = [
+    "columnSplitLineEdgeGuard: streamData.columnSplitLineEdgeGuard || null",
+    "syntheticContinuationAfter: !!streamData.syntheticContinuationAfter",
+    "syntheticContinuationFrom: streamData.syntheticContinuationFrom || \"\"",
+    "originalStreamWasSplit: !!streamData.originalStreamWasSplit",
+    "continues: !!flowResult.overflowText || !!streamData.syntheticContinuationAfter",
+  ];
+  if (semanticFields.every(field => source.includes(field))) return source;
+
   const after = `columnSplitLineEdgeGuard: streamData.columnSplitLineEdgeGuard || null,
       syntheticContinuationAfter: !!streamData.syntheticContinuationAfter,
       syntheticContinuationFrom: streamData.syntheticContinuationFrom || "",
       originalStreamWasSplit: !!streamData.originalStreamWasSplit,
       continues: !!flowResult.overflowText || !!streamData.syntheticContinuationAfter,`;
-  if (source.includes(after)) return source;
 
   const before = `continues: !!flowResult.overflowText,`;
   if (!source.includes(before)) fail("missing side box continues anchor");

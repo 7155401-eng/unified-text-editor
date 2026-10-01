@@ -233,6 +233,23 @@ function analyzeKnees(lines) {
   return out;
 }
 
+function commentaryStreamSummaries(lines) {
+  const groups = groupBy(
+    (lines || []).filter(line => line.role !== "main" && String(line.boxId || "").trim()),
+    line => String(line.boxId)
+  );
+  return [...groups.entries()]
+    .map(([id, ls]) => ({
+      id,
+      roles: [...new Set(ls.map(line => line.role).filter(Boolean))],
+      lines: ls.length,
+      medianPitchPx: round(expectedPitch(ls)),
+      yTop: round(Math.min(...ls.map(line => line.rect.top))),
+      yBottom: round(Math.max(...ls.map(line => line.rect.bottom))),
+    }))
+    .sort((a, b) => a.yTop - b.yTop || a.id.localeCompare(b.id));
+}
+
 function analyzeOverlaps(lines) {
   const ordered = [...lines].sort((a, b) => a.rect.top - b.rect.top);
   const overlaps = [];
@@ -462,6 +479,7 @@ export function analyzePageElement(page, pageIndex = 0, options = {}) {
   const knees = analyzeKnees(visible);
   const columns = analyzeTwoColumnGroups(visible);
   const openingCentering = detectCenteredOpeningAnomalies(visible);
+  const commentaryStreams = commentaryStreamSummaries(visible);
 
   const issues = [];
   const bottomGapLines = linePitch > 0 ? bottomGap / linePitch : 0;
@@ -545,6 +563,7 @@ export function analyzePageElement(page, pageIndex = 0, options = {}) {
     overlaps,
     columns,
     openingCentering,
+    commentaryStreams,
     issues,
     overallOk: !issues.some(i => i.severity === "error"),
   };
@@ -746,6 +765,42 @@ function createReportModal(report) {
         diff,
         makeTweakButton("+", "נסה למשוך שורה נוספת לעמוד אם היא נכנסת בבטחה", () => rerenderAndClose((current.linesDiff || 0) + 1))
       );
+
+      const streamShiftBox = document.createElement("div");
+      streamShiftBox.className = "layout-report-footnote-shifts";
+      for (const stream of page.commentaryStreams || []) {
+        const row = document.createElement("div");
+        row.className = "layout-report-footnote-shift-row";
+
+        const label = document.createElement("span");
+        label.className = "layout-report-footnote-shift-label";
+        label.textContent = `הערות ${stream.id}`;
+        label.title = `${stream.lines} שורות בעמוד; pitch≈${stream.medianPitchPx}px`;
+
+        const shiftValue = Math.max(0, Number(current.footnoteShift?.[stream.id]) || 0);
+        const value = document.createElement("span");
+        value.className = "layout-report-tweak-value";
+        value.textContent = String(shiftValue);
+        value.title = "מספר שורות של זרם זה שיועברו לעמוד הבא";
+
+        const setShift = (next) => {
+          const footnoteShift = { ...(current.footnoteShift || {}) };
+          const n = Math.max(0, Math.min(30, Math.trunc(Number(next) || 0)));
+          if (n > 0) footnoteShift[stream.id] = n;
+          else delete footnoteShift[stream.id];
+          pm.setPageTweak(page.page, { footnoteShift });
+          overlay.remove();
+        };
+
+        row.append(
+          label,
+          makeTweakButton("−", `החזר שורת הערות של זרם ${stream.id} לעמוד הזה`, () => setShift(shiftValue - 1)),
+          value,
+          makeTweakButton("+", `העבר שורת הערות נוספת של זרם ${stream.id} לעמוד הבא`, () => setShift(shiftValue + 1))
+        );
+        streamShiftBox.appendChild(row);
+      }
+      if (streamShiftBox.childElementCount) controls.append(streamShiftBox);
 
       const status = document.createElement("span");
       status.className = "layout-report-tweak-status";

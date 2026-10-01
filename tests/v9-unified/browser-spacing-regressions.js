@@ -266,6 +266,47 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    } finally { host.remove(); }
  });
 
+ await test('page tweak footnoteShift moves footer rows through normal V9 overflow',()=>{
+   const longFooter=Array(18).fill(phrase).join(' ');
+   const makePlan=(shiftLines)=>{
+     const page=makePage();
+     const plan=buildSinglePage(page,{
+       mainText:Array(2).fill(neutral).join(' '),
+       rightStream:null,leftStream:null,
+       footerStreams:[{id:'03',items:[longFooter],runs:[],rich:{text:longFooter,runs:[]}}],
+     },{
+       ...cfg,
+       pageHeight:300,
+       crownLines:0,
+       talmudStreams:[],
+       streamSettings:{'03':{inlineStyle:{fontSize:11,lineHeight:1.55}}},
+       __v9PageConstraint:{footnoteShift:shiftLines?{'03':shiftLines}:{}},
+     });
+     return {page,plan};
+   };
+   const base=makePlan(0),shifted=makePlan(2);
+   try {
+     const a=base.plan.footerBoxes.find(b=>b.id==='03');
+     const b=shifted.plan.footerBoxes.find(b=>b.id==='03');
+     assert(a?.lines?.length,'baseline footer fixture rendered no rows');
+     assert(b?.lines?.length,'shifted footer fixture rendered no rows');
+     assert(b.manualFootnoteShiftLines===2,'manual shift metadata missing from footer box');
+     assert(b.streamPageBottomY<a.streamPageBottomY-.1,
+       `footer bottom did not move upward: ${a.streamPageBottomY} -> ${b.streamPageBottomY}`);
+     const pitch=b.lines[0]?.lineHeightPx||17;
+     assert(Math.abs((a.streamPageBottomY-b.streamPageBottomY)-pitch*2)<.6,
+       `footer reserve is not two stream pitches: delta=${a.streamPageBottomY-b.streamPageBottomY}, pitch=${pitch}`);
+     assert(b.lines.length<a.lines.length,
+       `shift did not reduce rendered footer rows: ${a.lines.length} -> ${b.lines.length}`);
+     const baseOverflow=String(base.plan.overflow?.streams?.['03']?.text||'');
+     const shiftedOverflow=String(shifted.plan.overflow?.streams?.['03']?.text||'');
+     assert(shiftedOverflow.length>baseOverflow.length,
+       `shift did not move more footer source into overflow: ${baseOverflow.length} -> ${shiftedOverflow.length}`);
+   } finally {
+     base.page.remove();shifted.page.remove();
+   }
+ });
+
  function assertNoWordOverlap(page) {
    const boxes=[];
    for(const line of page.querySelectorAll('.v9-line')) {
@@ -981,6 +1022,68 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     assert(expanded,'04 never expands to full width below 03');
     assert(!plan.overflow.streams['03'],'short Mishnah float overflowed');
     page.remove();
+  });
+
+  await test('per-stream page tweak shifts only the requested side commentary bottom',()=>{
+    const text=Array(30).fill(phrase).join(' ');
+    const content={
+      mainText:Array(3).fill(neutral).join(' '),
+      rightStream:{id:'01',items:[text],runs:[],rich:{text,runs:[]}},
+      leftStream:{id:'02',items:[text],runs:[],rich:{text,runs:[]}},
+      footerStreams:[]
+    };
+    const basePage=makePage(),shiftPage=makePage();
+    try {
+      const common={...cfg,pageHeight:620,crownLines:2,streamSettings:{
+        '01':{inlineStyle:{fontSize:11,lineHeight:1.45}},
+        '02':{inlineStyle:{fontSize:12,lineHeight:1.60}},
+      }};
+      const base=buildSinglePage(basePage,content,{...common,__v9PageConstraint:{footnoteShift:{}}});
+      const shifted=buildSinglePage(shiftPage,content,{...common,__v9PageConstraint:{footnoteShift:{'01':1}}});
+      const baseR=base.streamBoxes.find(b=>b.id==='01'&&b.role==='right');
+      const shiftR=shifted.streamBoxes.find(b=>b.id==='01'&&b.role==='right');
+      const shiftL=shifted.streamBoxes.find(b=>b.id==='02'&&b.role==='left');
+      assert(baseR&&shiftR&&shiftL,'side shift fixture missing boxes');
+      assert(shiftR.manualFootnoteShiftLines===1,'requested right-stream shift was lost');
+      assert(shiftL.manualFootnoteShiftLines===0,'right-stream shift leaked into left stream');
+      const pitch=shiftR.lines[0]?.lineHeightPx||1;
+      assert(Math.abs((baseR.streamPageBottomY-shiftR.streamPageBottomY)-pitch)<.6,
+        `right stream bottom did not move by one own pitch: delta=${baseR.streamPageBottomY-shiftR.streamPageBottomY}, pitch=${pitch}`);
+      assert(String(shifted.overflow?.streams?.['01']?.text||'').length>=String(base.overflow?.streams?.['01']?.text||'').length,
+        'manual side shift reduced rather than increased carried source');
+    } finally {basePage.remove();shiftPage.remove();}
+  });
+
+  await test('Mishnah note shift can move one stream completely without leaving an empty title box',()=>{
+    const page=makePage();
+    const short='alpha beta gamma delta';
+    const long=Array(14).fill(phrase).join(' ');
+    try {
+      const plan=buildSinglePage(page,{
+        mainText:'main text',
+        rightStream:null,leftStream:null,
+        footerStreams:[
+          {id:'03',items:[short],runs:[],rich:{text:short,runs:[]}},
+          {id:'04',items:[long],runs:[],rich:{text:long,runs:[]}}
+        ]
+      },{
+        ...cfg,pageHeight:420,talmudStreams:['01','02'],mishnaWrapOn:true,
+        levels:[['01','02'],['03','04']],
+        streamSettings:{
+          '03':{mishnaSide:'right',inlineStyle:{fontSize:11}},
+          '04':{inlineStyle:{fontSize:11}}
+        },
+        __v9PageConstraint:{footnoteShift:{'03':30}},
+      });
+      const b3=plan.footerBoxes.find(b=>b.id==='03');
+      const b4=plan.footerBoxes.find(b=>b.id==='04');
+      assert(!b3,'fully shifted Mishnah stream left an empty box/title on this page');
+      assert(b4?.lines?.length,'surviving Mishnah stream disappeared with its shifted partner');
+      assert(b4.titleWidth>plan.pageBox.innerWidth*.9,
+        `surviving Mishnah stream did not reclaim full width: ${b4.titleWidth}/${plan.pageBox.innerWidth}`);
+      assert(String(plan.overflow?.streams?.['03']?.text||'')===short,
+        'fully shifted Mishnah source was not carried intact');
+    } finally {page.remove();}
   });
 
   await test('two fixed Talmud streams plus two explicit Mishnah streams keep 2+2 geometry',()=>{
