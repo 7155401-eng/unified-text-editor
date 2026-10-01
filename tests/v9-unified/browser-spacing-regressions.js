@@ -260,8 +260,9 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
      assert(Number(first.dataset.v9PageReservedBottom)===0,'+N illegally enlarged physical page via negative reserve');
      assert(first.scrollHeight<=first.clientHeight+1,
        `manual +N overflowed the physical page: ${first.scrollHeight}-${first.clientHeight}`);
-     assert(!first.querySelector('.v9-line[data-v9-role="main"]')?.style.transform,
-       'manual +N used paint-time scaling instead of V9 planning');
+     const transform=String(first.querySelector('.v9-line[data-v9-role="main"]')?.style.transform||'').trim();
+     assert(!transform||transform==='none',
+       `manual +N used paint-time transform instead of V9 planning: ${transform}`);
    } finally { host.remove(); }
  });
 
