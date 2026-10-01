@@ -10,7 +10,6 @@ import { appendTextWithRuns, sliceRuns } from "./engine/runs_dom.js";
 import {
   makeRichText,
   normalizeRichTextEntry,
-  trimRichText,
   concatRichTextParts,
   appendRichTextPart,
 } from "./engine/rich_text_runs.js";
@@ -296,80 +295,6 @@ function chooseCrownScenario(streams, opts) {
 // =====================================================================
 // מזרים טקסט בפסים אנכיים בעלי רוחבים שונים
 // =====================================================================
-function tokenizeRichTextForV9(entry) {
-  const rt = normalizeRichTextEntry(entry);
-  const tokens = [];
-  const re = /\n|[^\s]+/g;
-  let m;
-
-  while ((m = re.exec(rt.text)) !== null) {
-    const value = m[0];
-    tokens.push({
-      type: value === "\n" ? "break" : "word",
-      text: value,
-      start: m.index,
-      end: m.index + value.length,
-    });
-  }
-
-  return tokens;
-}
-
-function runsForLineFromWordTokens(wordTokens, sourceRuns) {
-  const lineRuns = [];
-  let lineCursor = 0;
-
-  for (let i = 0; i < wordTokens.length; i++) {
-    const tok = wordTokens[i];
-    if (i > 0) lineCursor += 1;
-
-    const wordRuns = sliceRuns(sourceRuns || [], tok.start, tok.end);
-    for (const r of wordRuns) {
-      if (!r || r.end <= r.start) continue;
-      lineRuns.push({
-        start: lineCursor + r.start,
-        end: lineCursor + r.end,
-        marks: r.marks || {},
-      });
-    }
-
-    lineCursor += tok.text.length;
-  }
-
-  return lineRuns;
-}
-
-function richTextFromRemainingTokens(tokens, startIdx, sourceRuns) {
-  let text = "";
-  const runs = [];
-
-  for (let i = startIdx; i < tokens.length; i++) {
-    const tok = tokens[i];
-
-    if (tok.type === "break") {
-      if (!text.endsWith("\n")) text += "\n";
-      continue;
-    }
-
-    if (text && !text.endsWith("\n")) text += " ";
-
-    const offset = text.length;
-    text += tok.text;
-
-    const wordRuns = sliceRuns(sourceRuns || [], tok.start, tok.end);
-    for (const r of wordRuns) {
-      if (!r || r.end <= r.start) continue;
-      runs.push({
-        start: offset + r.start,
-        end: offset + r.end,
-        marks: r.marks || {},
-      });
-    }
-  }
-
-  return trimRichText({ text, runs });
-}
-
 // =====================================================================
 // כמה שורות נכנסות ברצועה בגובה נתון
 // =====================================================================
@@ -440,83 +365,6 @@ function flowStreamThroughStrips(input, strips, metrics, maxY, options = {}) {
     maxY,
     { ...options, continuesAfter: !!metrics._v9ContinuesAfter }
   );
-}
-
-function buildOneLine(tokens, startIdx, widthPx, metrics) {
-  const spaceW = metrics.spaceWidth;
-  let curWidth = 0;
-  const lineWords = [];
-  const lineWordTokens = [];
-  let forcedBreak = false;
-  let tokensConsumed = 0;
-
-  for (let i = startIdx; i < tokens.length; i++) {
-    const tok = tokens[i];
-
-    if (tok.type === "break") {
-      tokensConsumed++;
-      forcedBreak = true;
-      break;
-    }
-
-    const wordW = metrics.measureWord(tok.text);
-    const addW = lineWords.length === 0 ? wordW : curWidth + spaceW + wordW;
-
-    // ⛔⛔⛔ משה 28/09/2026 — „המשיכה הרבה יותר דחופה ממתיחה, כי מתיחה
-    // מתאימה רק במקרה שכבר בוצעה משיכה או שאין מה למשוך".
-    //
-    // ═══ מה שנמדד על הייצוא שלו (22:40) ═══
-    //   שורות שנבדקו                         6,254
-    //   שורות שבעין נראות ריקות (פחות מ-70% דיו)  505
-    //   מהן שאפשר למשוך אליהן מילה               53
-    //   מהן שאין מה למשוך                       452
-    //
-    // ═══ למה בכלל נוצרת שורה קצרה ═══
-    // השורה כבר ממלאת את עצמה עד המקסימום. אם היא יצאה קצרה, זה מפני
-    // שהמנוע **חישב** שהמילה הבאה לא נכנסת. אבל המנוע מודד ברוחב משלו
-    // והדפדפן מסדר קצת אחרת — והמנוע שמרני, כלומר נוטה לומר „לא
-    // נכנס" גם כשבפועל כן. כל מילה כזו נדחפת לשורה הבאה בלי צורך.
-    //
-    // ⇒ סבילות קטנה: מילה שחורגת בפחות מ-1.5% מרוחב השורה — נמשכת
-    //   פנימה. זו בדיוק „משיכת התוכן מהשורה שלאחריה", והיא נעשית
-    //   ב**תכנון**, כך ש-V9 ממשיך לחשב הכול מנקודה זו והלאה.
-    //
-    // ⬛ הסף קטן במכוון: הוא סוגר את פער המדידה בלבד, ולא דוחס מילים
-    //    בכוח לשורה שבאמת מלאה.
-    // ⛔⛔⛔ משה 29/09/2026 — נמדד על **המסמך האמיתי שלו** (170 עמודים,
-    // 7,548 שורות): **246 שורות נשברות בתוך עצמן**. במדגם הגמרא שלי
-    // היו אפס — כלומר הפער בין מדידת המנוע לסידור של הדפדפן גדול
-    // יותר במסמך הזה, כנראה בגלל גופנים אחרים.
-    //
-    // שורה מיושרת רשאית לגלוש (בלי זה היישור לא עובד), ולכן טקסט
-    // שרחב אפילו במעט נשבר בתוך הקופסה ונופל על מה שמתחתיה.
-    //
-    // ⇒ שוליים של 1% בזמן הבנייה: המנוע ממלא את השורה עד 99% מרוחבה
-    //   ולא עד הסוף. זה סוגר את פער המדידה בכיוון הבטוח — עדיף
-    //   שהשורה תהיה מלאה ב-99% (ותימתח ביישור) מאשר שתגלוש.
-    const fitTolerance = 0;  // ⛔ 1% שוליים נוסה ונפסל: 246⟵240 בלבד, והוסיף עמוד
-
-    if (addW <= widthPx + fitTolerance || lineWords.length === 0) {
-      lineWords.push(tok.text);
-      lineWordTokens.push(tok);
-      curWidth = addW;
-      tokensConsumed++;
-    } else {
-      // ⛔ כאן היה צמצום רווחים כדי להכניס מילה נוספת (25/09). משה:
-      // "המנוע החדש שלך שובר שורות באמצע ללא שום הסבר" — ההסרה מיידית
-      // ומלאה, בלי טלאי. חוזרים לשבירה הרגילה בדיוק כפי שהייתה.
-      break;
-    }
-  }
-
-  return {
-    words: lineWords,
-    wordTokens: lineWordTokens,
-    wordCount: lineWords.length,
-    tokensConsumed,
-    width: curWidth,
-    forcedBreak,
-  };
 }
 
 function splitWordsAtVisualLine(text, metrics, widthPx) {
