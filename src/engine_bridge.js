@@ -9,6 +9,8 @@ import { isNestedNotesEnabled } from "./nested_notes_gate.js";
 import { canNestInside, streamLinksSignature } from "./stream_links.js";
 import { loadSpacingSettings } from "./spacing_settings.js";
 import { applyGlobalLineBreakCode, globalLineBreakSettingsSignature } from "./engine/global_line_break_code.js";
+import { partitionFrontMatterContent } from "./engine/front_matter_partition.js";
+export { partitionFrontMatterContent } from "./engine/front_matter_partition.js";
 
 function injectDemoWatermarksIfNeeded(content) {
   if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
@@ -63,7 +65,7 @@ function injectDemoWatermarksIfNeeded(content) {
   }
   return out;
 }
-import { renderPages } from "./engine/renderer.js";
+import { renderPages, renderPackedPagesToElements } from "./engine/renderer.js";
 import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 // משה 2026-05-08: V1 (talmud_layout.js) ו-V2 (talmud_engine_v2.js) ו-V8
 // (vilna_v8.js) הוסרו. V9 הוא המנוע היחיד למצב גפ"ת.
@@ -1053,6 +1055,79 @@ export function paneManagerToPackerContent(paneManager) {
   return result;
 }
 
+async function packFrontMatterGroups(groups, pageGeom, isCurrent) {
+  const packedGroups = [];
+  let totalPages = 0;
+
+  for (let index = 0; index < (groups || []).length; index++) {
+    if (typeof isCurrent === "function" && !isCurrent()) {
+      return { groups: [], totalPages: 0, aborted: true };
+    }
+    const group = groups[index];
+    const pages = await domPack(group.content || [], pageGeom, { isCurrent });
+    if (typeof isCurrent === "function" && !isCurrent()) {
+      return { groups: [], totalPages: 0, aborted: true };
+    }
+    for (const page of pages) {
+      page.frontMatter = {
+        paneId: group.paneId || "",
+        label: group.label || `הקדמה ${index + 1}`,
+        groupIndex: index,
+      };
+    }
+    packedGroups.push({ ...group, pages });
+    totalPages += pages.length;
+  }
+
+  return { groups: packedGroups, totalPages, aborted: false };
+}
+
+function frontMatterElements(packed) {
+  const elements = [];
+  let offset = 0;
+  for (const group of packed?.groups || []) {
+    const groupElements = renderPackedPagesToElements(group.pages || [], { pageIndexOffset: offset });
+    elements.push(...groupElements);
+    offset += groupElements.length;
+  }
+  return elements;
+}
+
+function prependFrontMatterPages(container, packed) {
+  if (!container || !(packed?.totalPages > 0)) return [];
+
+  const introElements = frontMatterElements(packed);
+  if (!introElements.length) return [];
+
+  const previousGet = typeof container.__getPageElement === "function"
+    ? container.__getPageElement.bind(container)
+    : null;
+  const previousRealize = typeof container.__realizePage === "function"
+    ? container.__realizePage.bind(container)
+    : null;
+  const priorCount = Number(container.__pageCount) || 0;
+
+  const fragment = document.createDocumentFragment();
+  for (const el of introElements) fragment.appendChild(el);
+  container.insertBefore(fragment, container.firstChild);
+
+  container.__getPageElement = (i) => {
+    const idx = Number(i);
+    if (idx >= 0 && idx < introElements.length) return introElements[idx] || null;
+    if (previousGet) return previousGet(idx);
+    return container.querySelector(`.page[data-page-index="${idx}"]`);
+  };
+  container.__realizePage = (i) => {
+    const idx = Number(i);
+    if (idx < introElements.length) return;
+    previousRealize?.(idx);
+  };
+
+  const bookPages = container.querySelectorAll(".page:not(.front-matter-page)").length;
+  container.__pageCount = Math.max(priorCount, introElements.length + bookPages);
+  return introElements;
+}
+
 export function configureStreamsForClick(paneManager) {
   ensureEngineStreamSettings(paneManager);
 }
@@ -1322,14 +1397,13 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     rememberLastGoodRender(pagesContainer);
     ensureEngineStreamSettings(paneManager);
     const t0 = performance.now();
-    let content = paneManagerToPackerContent(paneManager);
+    let mappedContent = paneManagerToPackerContent(paneManager);
 
-    // משה 2026-05-07: every render must pass through the server before pagination.
-    // Without a successful preflight, the render is aborted. Universal — applies
-    // to all layouts (talmud / mishna-wrap / balanced / regular).
+    // Preflight sees the complete logical document exactly once, before we
+    // introduce a pagination boundary between introduction panes and the body.
     try {
       await runPreflight({
-        contentSignature: hashContent(content),
+        contentSignature: hashContent(mappedContent),
       });
     } catch (e) {
       console.warn("[engine_bridge] preflight failed, aborting render:", e);
@@ -1339,12 +1413,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
     }
     if (!isRenderCurrent(myToken)) return;
 
-    // v33: inject demo watermarks INTO source content BEFORE pagination —
-    // engine then measures heights including marks, so pages don't overflow.
-    content = injectDemoWatermarksIfNeeded(content);
+    // Demo marks are injected before partitioning so intro and body use one
+    // source transformation and cannot drift in note/ref ownership.
+    mappedContent = injectDemoWatermarksIfNeeded(mappedContent);
+    const partitioned = partitionFrontMatterContent(mappedContent, paneManager);
+    let content = partitioned.body;
+    const pageGeom = getDomPageGeom();
+    const packedFrontMatter = await packFrontMatterGroups(
+      partitioned.groups,
+      pageGeom,
+      () => isRenderCurrent(myToken)
+    );
+    if (!isRenderCurrent(myToken) || packedFrontMatter.aborted) return;
+    const frontMatterPageCount = packedFrontMatter.totalPages || 0;
     const t1 = performance.now();
 
-    if (content.length === 0) {
+    if (content.length === 0 && frontMatterPageCount === 0) {
       // KEEP_LAST_RENDER_20260907: an empty editor does not erase the last
       // render. The placeholder below is only for a screen with nothing on it.
       if (restoreLastGoodRender(pagesContainer, "empty-content")) {
@@ -1363,6 +1447,23 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       return;
     }
 
+    if (content.length === 0 && frontMatterPageCount > 0) {
+      pagesContainer.innerHTML = "";
+      prependFrontMatterPages(pagesContainer, packedFrontMatter);
+      if (pdfToolbarApi) pdfToolbarApi.setTotal(frontMatterPageCount);
+      const statusEl = document.getElementById("status");
+      if (statusEl) statusEl.textContent = `${frontMatterPageCount} עמודי הקדמה`;
+      window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
+        detail: {
+          pages: [],
+          content: [],
+          frontMatterPages: frontMatterPageCount,
+          totalPages: frontMatterPageCount,
+        },
+      }));
+      return;
+    }
+
     // משה 2026-05-08: V9 הוא המנוע היחיד למצב גפ"ת. רץ אוטומטית כשהצ'קבוקס
     // "גפ"ת: צורת הדף" דלוק (localStorage.ravtext.talmudLayout === "1").
     // V9 בונה את כל העמודים אנליטית — מדלג על domPack, renderPages,
@@ -1375,13 +1476,16 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       // לחסום את ה-main thread אם המשתמש שינה הגדרה תוך כדי רינדור.
       const v9Result = await applyVilnaV9FromPaneManager(content, pagesContainer, {
         isCurrent: () => isRenderCurrent(myToken),
+        pageIndexOffset: frontMatterPageCount,
         pageTweaks: typeof paneManager.getPageTweaks === "function"
           ? paneManager.getPageTweaks()
           : null,
       });
       if (!isRenderCurrent(myToken)) return;
       if (v9Result?.aborted) return;
-      const v9PageCount = pagesContainer.querySelectorAll(".page").length;
+      const v9BookPageCount = pagesContainer.querySelectorAll(".page").length;
+      prependFrontMatterPages(pagesContainer, packedFrontMatter);
+      const v9PageCount = frontMatterPageCount + v9BookPageCount;
       if (pdfToolbarApi) {
         pdfToolbarApi.setTotal(v9PageCount);
       }
@@ -1398,21 +1502,28 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       }
       logEvent("vilna_v9_pipeline_done", {
         pageCount: v9PageCount,
+        bookPageCount: v9BookPageCount,
+        frontMatterPageCount,
       });
       window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-        detail: { pages: [], content, v9: true },
+        detail: {
+          pages: [],
+          content,
+          v9: true,
+          frontMatterPages: frontMatterPageCount,
+          totalPages: v9PageCount,
+        },
       }));
       return;
     }
 
-    const pageGeom = getDomPageGeom();
     const pages = await domPack(content, pageGeom, {
       isCurrent: () => isRenderCurrent(myToken),
     });
     if (!isRenderCurrent(myToken)) return;
 
     const t2 = performance.now();
-    renderPages(pages, pagesContainer);
+    renderPages(pages, pagesContainer, { pageIndexOffset: frontMatterPageCount });
     // Spec-compliant phase order: hooks fire around the layout passes so
     // any future module can hook in without surgery on the packer.
     await firePackerHook("beforeBuild", { container: pagesContainer, pages });
@@ -2238,6 +2349,14 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,
     });
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
+    if (!isRenderCurrent(myToken)) { restoreLastGoodRender(pagesContainer, "superseded"); return; }
+
+    // Attach introduction pages only after every body-only layout pass finished.
+    // This is the hard document boundary: no pull/rebalance pass may move a
+    // paragraph from an introduction into the body or vice versa.
+    prependFrontMatterPages(pagesContainer, packedFrontMatter);
+    const totalPageCount = frontMatterPageCount + pages.length;
+
     const t3 = performance.now();
     const statusEl = document.getElementById("status");
     if (statusEl) {
@@ -2247,17 +2366,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       for (const p of pages) for (const c of Object.keys(p.streams || {})) allStreams.add(c);
       const streams = Array.from(allStreams).sort((a, b) => parseInt(a) - parseInt(b)).join(", ") || "אין";
       statusEl.textContent =
-        `${pages.length} עמודים, ניצול ממוצע ${avg.toFixed(1)}% — זרמים: ${streams}`;
+        `${totalPageCount} עמודים, ניצול ממוצע גוף ${avg.toFixed(1)}% — זרמים: ${streams}`;
     }
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-      detail: { pages, content },
+      detail: {
+        pages,
+        content,
+        frontMatterPages: frontMatterPageCount,
+        totalPages: totalPageCount,
+      },
     }));
 
     // ⛔⛔ משה 10/09/2026 — ראה ההסבר המלא מיד למטה.
     const RESURRECTED_POST_RENDER_IS_OFF = true;
 
     if (pdfToolbarApi) {
-      pdfToolbarApi.setTotal(pages.length);
+      pdfToolbarApi.setTotal(totalPageCount);
       // ⛔⛔ משה 10/09/2026: „רווחים מטורפים בעמודים, יותר ממה שהיה קודם”
       // ו„נראה שהוא לא מפצל קטעים”.
       //
@@ -2328,7 +2452,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       }, 1700);
     }
 
-    console.log(`[engine] ${pages.length} pages | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
+    console.log(`[engine] ${totalPageCount} pages (${frontMatterPageCount} intro) | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
   } catch (err) {
     console.error("Engine render error:", err);
     // משה 2026-05-14: הצגת השגיאה גם בסטטוס. בלי זה ה-"מרענן..." נשאר על המסך

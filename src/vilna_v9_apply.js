@@ -494,6 +494,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
 
     const v9Config = {
       isCurrent,
+      pageIndexOffset: Math.max(0, Math.floor(Number(opts.pageIndexOffset) || 0)),
       pageWidth: geom.pageWidth,
       pageHeight: geom.pageHeight,
       reservedTop: geom.reservedTop,

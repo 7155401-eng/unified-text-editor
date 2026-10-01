@@ -4410,6 +4410,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // טוב יותר — הוא רק חשף חיתוכים שונים. עם הדגל לפחות אין חיתוכים
     // הנראים לעין. מי שרוצה זרימה חופשית של הדפדפן יכבה את ה-checkbox.
     preventMidLineSplit: true,
+    pageIndexOffset: 0,
     maxPages: Number.MAX_SAFE_INTEGER,
   }, config || {});
   // משה 2026-05-16: מדיניות פיצול פסקאות/שורות.
@@ -4443,7 +4444,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
   const pages = [];
   let cursor = 0;
-  let pageIdx = 0;
+  let pageIdx = Math.max(0, Math.floor(Number(cfg.pageIndexOffset) || 0));
+  let renderedPageCount = 0;
   const splitMetrics = new VilnaMetrics({
     fontFamily: cfg.mainFontFamily,
     fontSize: cfg.mainFontSize,
@@ -4550,7 +4552,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   const __v9NoteAnchorFallbacks = [];
   const __v9BaseReservedBottom = Math.max(0, Number(cfg.reservedBottom) || 0);
 
-  while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && pageIdx < cfg.maxPages) {
+  while ((cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph) && renderedPageCount < cfg.maxPages) {
     cfg.__v9PageIndex = pageIdx;
     cfg.__v9AllowMainOverlap = __mainStuckCount >= 3;
 
@@ -6303,12 +6305,13 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     carryOver = nextCarry;
 
     pageIdx++;
+    renderedPageCount++;
 
     // משה 2026-05-15: בין עמוד לעמוד — שחרור ה-main thread כדי שהמשתמש
     // יוכל ללחוץ/להקליד/לשנות הגדרות גם תוך כדי רינדור. אם התחיל בינתיים
     // רינדור חדש (token חדש), עוצרים כאן ומחזירים את העמודים שכבר נבנו
     // (הם נשארים על המסך עד שהרינדור החדש יחליף אותם).
-    if (pageIdx < cfg.maxPages && (cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph)) {
+    if (renderedPageCount < cfg.maxPages && (cursor < paragraphs.length || hasCarryOver(carryOver) || pendingParagraph)) {
       await yieldToBrowser();
       if (!isCurrent()) return { pages, aborted: true };
     }

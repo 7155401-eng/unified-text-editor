@@ -439,6 +439,19 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    page.remove();
  });
 
+ await test('front-matter physical offset does not consume V9 maxPages body budget',async()=>{
+   const page=makePage();
+   try {
+     const text=Array(45).fill(neutral).join(' ');
+     const result=await buildPages(page,[{id:'front-offset-body',mainText:text,notes:[]}],
+       {...cfg,pageHeight:190,talmudStreams:[],pageIndexOffset:5,maxPages:2,openingWordSettings:{enabled:false}});
+     assert(result.pages.length===2,`pageIndexOffset consumed maxPages: got ${result.pages.length}`);
+     const indices=result.pages.map(p=>Number(p.dataset.pageIndex));
+     assert(indices[0]===5&&indices[1]===6,`unexpected physical page indexes: ${indices.join(',')}`);
+     assert(result.complete===false,'fixture unexpectedly completed; it did not exercise maxPages');
+   } finally { page.remove(); }
+ });
+
  await test('classic source tokens do not break around punctuation without whitespace',async()=>{
    const link=document.createElement('link');
    link.rel='stylesheet';link.href='../../styles.css';
