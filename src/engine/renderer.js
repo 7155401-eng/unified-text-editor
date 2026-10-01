@@ -15,6 +15,7 @@ import { resolveTextStyle, normalizeTextStyle } from "../style_registry.js";
 import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
 import { referenceNoBreakRange } from "./reference_line_glue.js";
+import { mainBlockTagForType } from "./main_block_semantics.js";
 
 // משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
 // ב-note_content_builder.js. הפונקציה הזו ממירה את ה-nodes ל-DOM (עם
@@ -203,9 +204,7 @@ function mainBlockTagFor(tup) {
       ? window.__MAIN_BLOCK_META__[idx]
       : null;
   const meta = (tup && tup[4]) || globalMeta || {};
-  if (meta.blockType !== "heading") return "p";
-  const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
-  return `h${level}`;
+  return mainBlockTagForType(meta.blockType, meta.headingLevel);
 }
 
 function appendTableRows(table, rows = []) {
@@ -436,6 +435,7 @@ function createMainBlockElement(tup, paraRefs = [], usedRefs = null) {
     return table;
   }
   const p = document.createElement(mainBlockTagFor(tup));
+  if (p.tagName === "PRE") p.setAttribute("dir", "ltr");
   const segText = tup[1] || "";
   const segStart = typeof tup[2] === "number" ? tup[2] : 0;
   const segEnd = typeof tup[3] === "number" ? tup[3] : segStart + segText.length;
