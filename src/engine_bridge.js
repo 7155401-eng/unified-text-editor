@@ -1053,6 +1053,116 @@ export function paneManagerToPackerContent(paneManager) {
   return result;
 }
 
+export function partitionFrontMatterContent(content, paneManager) {
+  const all = Array.isArray(content) ? content : [];
+  const introPanes = typeof paneManager?.getIntroPanes === "function"
+    ? paneManager.getIntroPanes()
+    : (paneManager?.panes || []).filter(p => p.paneRole === "intro");
+
+  const introIds = new Set(introPanes.map(p => String(p.id || "")).filter(Boolean));
+  const byPane = new Map(introPanes.map((p, index) => [
+    String(p.id || ""),
+    { paneId: String(p.id || ""), label: p.label || `הקדמה ${index + 1}`, content: [] },
+  ]));
+  const body = [];
+  const orphanIntro = [];
+
+  for (const item of all) {
+    if (item?.paneRole !== "intro") {
+      body.push(item);
+      continue;
+    }
+    const id = String(item?.paneId || "");
+    if (id && introIds.has(id) && byPane.has(id)) byPane.get(id).content.push(item);
+    else orphanIntro.push(item);
+  }
+
+  const groups = introPanes
+    .map(p => byPane.get(String(p.id || "")))
+    .filter(group => group && group.content.length > 0);
+
+  // Legacy/restored documents may contain intro-tagged content whose pane id is
+  // no longer present. Never silently drop it: keep it as one leading group.
+  if (orphanIntro.length) {
+    groups.unshift({ paneId: "", label: "הקדמה", content: orphanIntro });
+  }
+
+  return { groups, body };
+}
+
+async function packFrontMatterGroups(groups, pageGeom, isCurrent) {
+  const packedGroups = [];
+  let totalPages = 0;
+
+  for (let index = 0; index < (groups || []).length; index++) {
+    if (typeof isCurrent === "function" && !isCurrent()) {
+      return { groups: [], totalPages: 0, aborted: true };
+    }
+    const group = groups[index];
+    const pages = await domPack(group.content || [], pageGeom, { isCurrent });
+    if (typeof isCurrent === "function" && !isCurrent()) {
+      return { groups: [], totalPages: 0, aborted: true };
+    }
+    for (const page of pages) {
+      page.frontMatter = {
+        paneId: group.paneId || "",
+        label: group.label || `הקדמה ${index + 1}`,
+        groupIndex: index,
+      };
+    }
+    packedGroups.push({ ...group, pages });
+    totalPages += pages.length;
+  }
+
+  return { groups: packedGroups, totalPages, aborted: false };
+}
+
+function frontMatterElements(packed) {
+  const elements = [];
+  let offset = 0;
+  for (const group of packed?.groups || []) {
+    const groupElements = renderPackedPagesToElements(group.pages || [], { pageIndexOffset: offset });
+    elements.push(...groupElements);
+    offset += groupElements.length;
+  }
+  return elements;
+}
+
+function prependFrontMatterPages(container, packed) {
+  if (!container || !(packed?.totalPages > 0)) return [];
+
+  const introElements = frontMatterElements(packed);
+  if (!introElements.length) return [];
+
+  const previousGet = typeof container.__getPageElement === "function"
+    ? container.__getPageElement.bind(container)
+    : null;
+  const previousRealize = typeof container.__realizePage === "function"
+    ? container.__realizePage.bind(container)
+    : null;
+  const priorCount = Number(container.__pageCount) || 0;
+
+  const fragment = document.createDocumentFragment();
+  for (const el of introElements) fragment.appendChild(el);
+  container.insertBefore(fragment, container.firstChild);
+
+  container.__getPageElement = (i) => {
+    const idx = Number(i);
+    if (idx >= 0 && idx < introElements.length) return introElements[idx] || null;
+    if (previousGet) return previousGet(idx);
+    return container.querySelector(`.page[data-page-index="${idx}"]`);
+  };
+  container.__realizePage = (i) => {
+    const idx = Number(i);
+    if (idx < introElements.length) return;
+    previousRealize?.(idx);
+  };
+
+  const bookPages = container.querySelectorAll(".page:not(.front-matter-page)").length;
+  container.__pageCount = Math.max(priorCount, introElements.length + bookPages);
+  return introElements;
+}
+
 export function configureStreamsForClick(paneManager) {
   ensureEngineStreamSettings(paneManager);
 }
