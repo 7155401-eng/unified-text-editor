@@ -21,8 +21,14 @@ function collect(file){
   imports[key]='data:text/javascript;base64,'+Buffer.from(code).toString('base64');return key;
 }
 const entry=collect(path.join(root,'tests/v9-unified/opening-window-retry.browser.js'));
+const tailEntry=collect(path.join(root,'tests/v9-unified/opening-tail-source.browser.js'));
 assert(Object.values(imports).every(Boolean));
-const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runOpeningWindowRetryChecks} from '${entry}';window.runOpeningWindowRetryChecks=runOpeningWindowRetryChecks;</script></body></html>`;
+const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runOpeningWindowRetryChecks} from '${entry}';import {runOpeningTailSourceChecks} from '${tailEntry}';window.runOpeningWindowRetryChecks=()=>{
+  const previous=runOpeningWindowRetryChecks(),tail=runOpeningTailSourceChecks();
+  return {total:previous.total+tail.total,passed:previous.passed+tail.passed,failed:previous.failed+tail.failed,
+    groups:{...previous.groups,openingTailSource:tail.total},rebalancedTailSourceCases:tail.rebalancedCases,
+    results:[...previous.results,...tail.results]};
+};</script></body></html>`;
 const out=path.join(root,'test-results/opening-window-retry');fs.mkdirSync(out,{recursive:true});
 const browser=await chromium.launch({headless:true,...(process.env.OPENING_RETRY_BROWSER?{executablePath:process.env.OPENING_RETRY_BROWSER}:{})});
 try {
@@ -36,6 +42,6 @@ try {
   Object.assign(result,{browserVersion:browser.version(),errors,requests,identities});
   fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify({total:result.total,passed:result.passed,failed:result.failed,browserVersion:result.browserVersion}));
-  assert.equal(result.total,248);assert.equal(errors.length,0);assert.equal(requests.length,0);
+  assert.equal(result.total,536);assert.equal(errors.length,0);assert.equal(requests.length,0);
   assert.equal(result.failed,0,JSON.stringify(result.results.filter(r=>!r.pass)));
 } finally {await browser.close();}

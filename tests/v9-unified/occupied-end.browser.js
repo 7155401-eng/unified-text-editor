@@ -6,6 +6,21 @@ import {runOpeningWindowRetryChecks} from './opening-window-retry.browser.js';
 
 const assert=(ok,message)=>{if(!ok)throw new Error(message);};
 const sourceOf=el=>{const copy=el.cloneNode(true);copy.querySelectorAll('[data-v9-main-ref]').forEach(n=>n.remove());return copy.textContent;};
+// The immutable pre-#1040 baseline has eight known opening-tail cases with
+// one missing ASCII separator. Account for ONLY that explicitly repaired defect
+// in the comparison oracle; every other plan/paint field still must match.
+function baselineWithCompleteOpeningSeparator(shape) {
+ const expected=structuredClone(shape);
+ const sourcePart=part=>part?(part.leadingText||'')+part.text+(part.trailingText||''):'';
+ for(const line of expected.lines){
+  const opening=sourcePart(line.render.opening?.part),body=sourcePart(line.render.body);
+  if(opening+body===line.sourceText)continue;
+  assert(line.tailRebalanced&&line.render.opening&&line.wordTokens.length>0&&
+    opening+' '+body===line.sourceText,'unexpected baseline source defect');
+  line.render.body.leadingText=' '+(line.render.body.leadingText||'');
+ }
+ return expected;
+}
 function extent(lines,origin){
  let end=origin;
  for(const line of lines){
@@ -51,7 +66,8 @@ export function runOccupiedEndChecks(baseline){
     const snapshot=JSON.stringify({entry,strips});
     const plan=layoutV9MainParagraphs([entry],strips,context,origin+245);
     const planBeforePaint=JSON.stringify(plan);
-    const {endY:baselineEnd,...baselineShape}=baseline.layoutV9MainParagraphs([entry],strips,context,origin+245);
+    const {endY:baselineEnd,...oldShape}=baseline.layoutV9MainParagraphs([entry],strips,context,origin+245);
+    const baselineShape=baselineWithCompleteOpeningSeparator(oldShape);
     const {endY:currentEnd,...currentShape}=plan;
     assert(JSON.stringify(currentShape)===JSON.stringify(baselineShape),'occupancy correction changed row content, anchors or planned placement');
     const referencePage=document.createElement('div');
@@ -62,15 +78,14 @@ export function runOccupiedEndChecks(baseline){
     assert(plan.lines.map(l=>l.sourceText).join('')+plan.overflowText===text,'source model changed');
     const renderedSourceExact=sourceOf(page)+plan.overflowText===text;
     assert(page.innerHTML===referencePage.innerHTML,'paint differs from pinned baseline');
-    // A pre-existing tail-rebalance path omits edge whitespace from DOM. Record
-    // that separate defect; equality to the baseline does NOT mean it is fixed.
+    assert(renderedSourceExact,'opening-tail source conservation regressed');
     assert(JSON.stringify({entry,strips})===snapshot,'source/styles/anchors mutated');
     assert(JSON.stringify(plan)===planBeforePaint,'painter changed the plan');
     const refs=[...plan.lines.flatMap(l=>[...(l.render.opening?.part.refs||[]),...l.render.body.refs]),...plan.overflowParagraphs.flatMap(p=>p.mainRefs)];
     assert(refs.map(r=>r.uid).sort().join(',')==='hidden,visible','reference ownership changed');
     checkRectangles(page,plan.lines);
     if(dropped){assert(page.querySelectorAll('.v9-opening-glyph').length===1,'committed opening was lost');assert(plan.endY>=origin+72,'opening window was reclaimed');}
-    return {endY:plan.endY,baselineEnd,rows:plan.lines.length,reason:plan.overflowReason,overflow:plan.overflowText.length,renderedSourceExact,remainingIssue:renderedSourceExact?null:'pre-existing-rendered-edge-whitespace'};
+    return {endY:plan.endY,baselineEnd,rows:plan.lines.length,reason:plan.overflowReason,overflow:plan.overflowText.length,renderedSourceExact};
    }finally{context.dispose();page.remove();}
   });
  }
