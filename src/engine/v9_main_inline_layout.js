@@ -472,6 +472,9 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
       const justify = !isLast && !forcedBreak && gaps > 0;
       const natural = m.width;
       const openingWindow = !!opening && rowY < opening.y + opening.height - EPS;
+      const hostGeometry = openingWindow
+        ? rowGeometry(strips, rowY, Math.max(pitch, m.height), pageBottom)
+        : null;
       const line = {
         layoutVersion: V9_INLINE_PLAN_VERSION,
         x: geometry.x, y: rowY, width: geometry.width, lineHeightPx: Math.max(pitch, m.height),
@@ -480,7 +483,8 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         words: entry.text.slice(sourceStart, end).trim().split(/\s+/u).filter(Boolean),
         wordTokens, naturalWidth: natural, forcedBreak, isLast,
         openingWindow,
-        openingHostFullWidth: rowGeometry(strips, rowY, Math.max(pitch, m.height), pageBottom)?.width || geometry.width,
+        openingHostX: hostGeometry?.x ?? geometry.x,
+        openingHostFullWidth: hostGeometry?.width || geometry.width,
         source: sourceMetadata(entry, sourceStart, end),
         sourceText: entry.text.slice(sourceStart, end),
         render: { body, topInset: m.topInset || 0, opening: attached,
