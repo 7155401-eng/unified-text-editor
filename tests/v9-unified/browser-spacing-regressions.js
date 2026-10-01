@@ -1602,8 +1602,14 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       };
       // Lead paragraph consumes two natural rows, so opening begins after the
       // off-grid knee boundary rather than being allowed to snap to it.
+      const leadText=c.expectDropped
+        // Two natural rows: opening begins fully after the off-grid knee.
+        ? 'aa aa aa aa aa aa'
+        // One natural row: opening begins at y=pitch and its 2/3-row dropped
+        // box truly crosses the right-edge transition at boundary.
+        : 'aa aa aa';
       const plan=layoutV9MainParagraphs([
-        {id:'matrix-lead',text:'aa aa aa aa aa aa',runs:[],mainRefs:[]},
+        {id:'matrix-lead',text:leadText,runs:[],mainRefs:[]},
         {id:'matrix-opening',text:"פתיח אב'(גד) הו זח aa aa aa aa aa aa aa aa aa aa",runs:[],mainRefs:[]},
       ],[
         {...c.narrow,y_start:0,y_end:c.boundary,lockYStart:false},
@@ -1623,9 +1629,15 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
         assert(!openingLine,`unsafe right-edge transition kept a dropped opening: ${JSON.stringify(c)}`);
         assert(plan.diagnostics.some(d=>d.code==='opening-raised-at-right-edge-transition'),
           `right-edge transition did not record raised fallback: ${JSON.stringify(c)}`);
-        const first=plan.lines.find(l=>l.source?.paragraphId==='matrix-opening');
-        assert(first&&first.width>=c.wide.width-.01,
-          `raised fallback still used stale narrow width: ${first?.width}, case=${JSON.stringify(c)}`);
+        const rows=plan.lines.filter(l=>l.source?.paragraphId==='matrix-opening').sort((a,b)=>a.y-b.y);
+        assert(rows.length>=2,`raised transition fixture did not create enough rows: ${JSON.stringify(c)}`);
+        assert(rows[0].width<=c.narrow.width+.01,
+          `row crossing the knee should remain narrow: ${rows[0].width}, case=${JSON.stringify(c)}`);
+        const wideRow=rows.find(l=>l.y>=c.boundary-.01 && l.width>=c.wide.width-.01);
+        assert(wideRow,`raised fallback never widened on the next natural row: ${JSON.stringify(c)}`);
+        const pitchDelta=wideRow.y-rows[0].y;
+        assert(pitchDelta>=c.pitch-.01 && Math.abs((pitchDelta/c.pitch)-Math.round(pitchDelta/c.pitch))<.02,
+          `raised fallback left the stream/main row grid: dy=${pitchDelta}, pitch=${c.pitch}, case=${JSON.stringify(c)}`);
       }
     }
   });
