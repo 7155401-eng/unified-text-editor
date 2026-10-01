@@ -444,7 +444,7 @@ test('centered hard-break line centers opening plus body as one visual segment',
    `opening x=${line.render.opening.x}, expected 46 for centered composite`);
 });
 
-test('second and final opening-window row does not center its body as if the opening did not exist',()=>{
+test('second and final opening-window row centers within the space reserved beside the opening',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
   describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
@@ -464,12 +464,15 @@ test('second and final opening-window row does not center its body as if the ope
  assert(host.render.opening,'opening glyph missing');
  assert(last.isLast===true,'second row is not paragraph last row');
  assert(last.openingWindow===true,'last row no longer overlaps opening window');
- assert.equal(last.render.alignment,'right','last body centered independently from dropped opening');
+ assert.equal(last.render.alignment,'center','last body was pushed to an edge');
  const opening=host.render.opening;
- const visualLeft=last.x;
- const visualRight=opening.x+opening.width;
- assert(Math.abs((visualLeft+visualRight)/2-50)<.01,
-  `opening+last-row visual center=${(visualLeft+visualRight)/2}, expected 50`);
+ assert.equal(last.x,0,'last row left its real host');
+ assert.equal(last.width,opening.x-opening.gap,'opening reservation was ignored');
+ const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
+ const bodyRight=bodyLeft+last.naturalWidth;
+ assert(Math.abs(bodyLeft-(opening.x-opening.gap-bodyRight))<.01,
+  'last row is not centered in the available space beside the opening');
+ assert.notEqual(last.openingCompositeCentered,true,'opening counted a second time on the last row');
 });
 
 
@@ -585,7 +588,7 @@ test('dropped opening crossing a left-widening knee never traps later rows at ha
 });
 
 
-test('final row inside a dropped-opening window centers the complete visual envelope',()=>{
+test('final row inside a dropped-opening window keeps normal last-line semantics',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
   describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
@@ -611,13 +614,15 @@ test('final row inside a dropped-opening window centers the complete visual enve
  const host=plan.lines.find(l=>l.render?.opening);
  const last=plan.lines.at(-1);
  assert(host?.render?.opening,'opening missing');
- assert(last.openingCompositeCentered===true,'final row was not composite-centered');
- const openingRight=host.render.opening.x+host.render.opening.width;
- const visibleCenter=(last.x+openingRight)/2;
- assert(Math.abs(visibleCenter-50)<.001,
-  `composite center=${visibleCenter}, bodyX=${last.x}, openingRight=${openingRight}`);
- assert(last.x+last.naturalWidth<=host.render.opening.x-host.render.opening.gap+.001,
-  'composite centering overlapped the opening');
+ assert.equal(last.render.alignment,'center','final body row has special edge alignment');
+ assert.notEqual(last.openingCompositeCentered,true,'the opening is not owned by this row');
+ const freeRight=host.render.opening.x-host.render.opening.gap;
+ assert.equal(last.x,0);
+ assert(Math.abs(last.width-freeRight)<.001,'last row did not retain its full opening-aware slot');
+ const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
+ assert(Math.abs((bodyLeft+last.naturalWidth/2)-freeRight/2)<.001,
+  'last body row is not centered inside the free slot');
+ assert(bodyLeft+last.naturalWidth<=freeRight+.001,'last body overlaps the opening');
 });
 
 test('opening-word host row and following window row belong to the same tail rebalance',()=>{

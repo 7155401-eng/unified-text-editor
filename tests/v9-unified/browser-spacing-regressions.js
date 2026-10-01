@@ -1760,53 +1760,62 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
-  await test('opening-window final row centers actual opening+body ink as one visual segment',()=>{
+  // User-reported regression: counting a dropped opening again on row two
+  // centered a bounding envelope, but pinned the actual final text to the left.
+  // The opening reserves space; the final body inherits ordinary centering.
+  for(const family of ['serif','sans-serif','monospace'])
+  for(const dropLines of [2,3,4])
+  for(const hostX of [0,19])
+  await test(`opening-window final body is centered: ${family}, drop=${dropLines}, x=${hostX}`,()=>{
     const context=createV9TextLayoutContext({
-      mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
-      openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
-        position:'dropped',dropLines:2,spaceAfter:0.2,scope:'all',
+      mainFontSize:10,mainFontFamily:family,lineHeightRatio:1,
+      openingWordSettings:{enabled:true,target:'word',count:1,font:family,size:200,weight:'bold',
+        position:'dropped',dropLines,spaceAfter:0.2,scope:'all',
         skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1}
     });
     const page=makePage();
     try{
-      let plan=null;
-      for(let words=4;words<=18;words++){
+      let plan=null,source='';
+      for(let words=4;words<=24;words++){
         const text='פתיח '+Array(words).fill('אב').join(' ');
         const entry=context.prepareEntry({id:'ink-center',index:1,text,runs:[],mainRefs:[],continues:false});
-        const candidate=layoutV9MainParagraphs([entry],[{x:0,width:100,y_start:0,y_end:100}],context,100);
-        if(candidate.lines.length===2 && candidate.lines[1].isLast && candidate.lines[1].openingWindow){plan=candidate;break;}
+        const candidate=layoutV9MainParagraphs([entry],[{x:hostX,width:100,y_start:0,y_end:150}],context,150);
+        if(candidate.lines.length===2 && candidate.lines[1].isLast && candidate.lines[1].openingWindow){plan=candidate;source=text;break;}
       }
-      assert(plan,'fixture search did not produce a two-row paragraph ending inside the opening window');
-
-      page.style.position='relative';
-      page.style.width='100px';
-      page.style.height='100px';
-      page.style.padding='0';
+      assert(plan,'fixture did not produce a two-row paragraph ending inside the opening window');
+      const before=JSON.stringify(plan);
+      page.style.width='150px';page.style.height='150px';page.style.padding='0';
       for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+      assert(JSON.stringify(plan)===before,'renderer rewrote planned geometry');
+      assert(sourceText(page)===source,'source characters were changed');
+      assert(page.querySelectorAll('.v9-opening-glyph').length===1,'opening lost or duplicated');
 
+      const last=plan.lines.at(-1),openingPlan=plan.lines[0].render.opening;
       const rows=[...page.querySelectorAll('.v9-final-main-line')];
-      const lastEl=rows.at(-1);
       const opening=page.querySelector('.v9-opening-glyph');
-      const body=lastEl?.querySelector('.v9-planned-line-text');
-      assert(lastEl&&opening&&body,'rendered opening fixture is incomplete');
+      const body=rows.at(-1)?.querySelector('.v9-planned-line-text');
+      assert(opening&&body,'rendered fixture is incomplete');
+      assert(last.render.alignment==='center','final row is not centered');
+      assert(!last.openingCompositeCentered,'opening was counted twice');
+      assert(last.render.wordSpacing===0,'final row was stretched');
+      assert(Math.abs(last.width-(openingPlan.x-openingPlan.gap-hostX))<.01,
+        'planner did not reserve the opening and its gap in the final row');
 
       const pageRect=page.getBoundingClientRect();
       const openingRect=opening.getBoundingClientRect();
-      const range=document.createRange();
-      range.selectNodeContents(body);
-      const bodyRects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
-      assert(bodyRects.length,'final body has no measurable ink');
-      const bodyLeft=Math.min(...bodyRects.map(r=>r.left));
-      const bodyRight=Math.max(...bodyRects.map(r=>r.right));
-      const left=Math.min(openingRect.left,bodyLeft)-pageRect.left;
-      const right=Math.max(openingRect.right,bodyRight)-pageRect.left;
-      const center=(left+right)/2;
-
-      assert(plan.lines.at(-1).openingCompositeCentered===true,
-        'planner did not mark composite opening-window centering');
-      assert(Math.abs(center-50)<=1.25,
-        'actual opening+body ink is off center: left='+left.toFixed(2)+' right='+right.toFixed(2)+' center='+center.toFixed(2)+'; '+
-        'line='+JSON.stringify(plan.lines.map(l=>({x:l.x,width:l.width,natural:l.naturalWidth,align:l.render.alignment,text:l.render.body.text,opening:l.render.opening&&{x:l.render.opening.x,width:l.render.opening.width}}))));
+      const range=document.createRange();range.selectNodeContents(body);
+      const rects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
+      assert(rects.length,'final body has no measurable ink');
+      const left=Math.min(...rects.map(r=>r.left));
+      const right=Math.max(...rects.map(r=>r.right));
+      const freeLeft=pageRect.left+page.clientLeft+hostX;
+      const freeRight=openingRect.left-openingPlan.gap;
+      const expectedCenter=(freeLeft+freeRight)/2;
+      const actualCenter=(left+right)/2;
+      assert(Math.abs(actualCenter-expectedCenter)<=.6,
+        `final body not centered: actual=${actualCenter}, expected=${expectedCenter}`);
+      assert(left>=freeLeft-.6 && right<=freeRight+.6,'final text overlaps the opening or leaves the host');
+      return {actualCenter,expectedCenter,freeWidth:freeRight-freeLeft};
     }finally{context.dispose();page.remove();}
   });
 
