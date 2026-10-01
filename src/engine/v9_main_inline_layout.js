@@ -587,6 +587,60 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
           sole.render.alignment = 'right';
         }
       }
+
+      // Multi-row dropped opening: if the paragraph ENDS while the dropped
+      // opening still occupies this row, centering only the body slot is wrong.
+      // The visible segment on that row is the body ink on the left PLUS the
+      // already-painted opening ink on the right. Keep the opening fixed (it
+      // also belongs to the row above) and position the final body so the
+      // complete visual envelope is centered in this row's real host geometry.
+      //
+      // Example with a 100px host and an opening ending at x=100:
+      // body-only centering puts a 10px body around x=50, so the visible
+      // envelope is ~45..100 (center ~72). Correct composite centering places
+      // the body's left edge at x=0, yielding envelope 0..100 (center 50).
+      const paragraphLines = lines.slice(paragraphLineStart);
+      const finalOpeningWindowLine = paragraphLines.length > 1
+        ? paragraphLines[paragraphLines.length - 1]
+        : null;
+      if (
+        finalOpeningWindowLine?.isLast &&
+        finalOpeningWindowLine.openingWindow &&
+        !finalOpeningWindowLine.render?.opening &&
+        finalOpeningWindowLine.naturalWidth > EPS
+      ) {
+        const host = rowGeometry(
+          strips,
+          finalOpeningWindowLine.y,
+          finalOpeningWindowLine.lineHeightPx,
+          pageBottom
+        );
+        if (host) {
+          const openingRight = opening.x + opening.width;
+          const hostCenter = host.x + host.width / 2;
+          const desiredBodyLeft = 2 * hostCenter - openingRight;
+          const rightLimit = opening.x - opening.gap;
+          const latestBodyLeft = rightLimit - finalOpeningWindowLine.naturalWidth;
+
+          // Exact composite centering is possible only while the body remains
+          // fully inside the host and does not overlap the opening. If not,
+          // preserve the already-safe adjacent layout rather than distorting it.
+          if (
+            desiredBodyLeft >= host.x - EPS &&
+            desiredBodyLeft <= latestBodyLeft + EPS
+          ) {
+            finalOpeningWindowLine.x = desiredBodyLeft;
+            finalOpeningWindowLine.width = Math.max(0, finalOpeningWindowLine.naturalWidth);
+            finalOpeningWindowLine.render.alignment = 'right';
+            finalOpeningWindowLine.openingCompositeCentered = true;
+            finalOpeningWindowLine.openingHostX = host.x;
+            finalOpeningWindowLine.openingHostFullWidth = host.width;
+            finalOpeningWindowLine.openingCompositeWidth =
+              openingRight - desiredBodyLeft;
+            finalOpeningWindowLine.openingCompositeRight = openingRight;
+          }
+        }
+      }
     }
     // A following original paragraph never inherits an opening window.
     if (entry.continuesAfter) rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
