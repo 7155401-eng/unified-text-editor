@@ -111,6 +111,24 @@ test("balanced knee keeps one row pitch and produces no knee error",()=>{
   }finally{env.restore();}
 });
 
+test("layout report exposes only commentary streams actually present on the page",()=>{
+  const env=installDom();
+  try{
+    const page=makePage(document,{height:150,padding:10});
+    addLine(page,{x:20,y:10,width:160,role:"main",boxId:"main"});
+    addLine(page,{x:210,y:10,width:90,role:"right",boxId:"01"});
+    addLine(page,{x:210,y:30,width:90,role:"right",boxId:"01"});
+    addLine(page,{x:20,y:90,width:280,role:"stream",boxId:"03"});
+    const r=analyzePageElement(page,0,{bottomGapWarningLines:10});
+    assert.deepEqual(r.commentaryStreams.map(x=>x.id),["01","03"]);
+    const s01=r.commentaryStreams.find(x=>x.id==="01");
+    const s03=r.commentaryStreams.find(x=>x.id==="03");
+    assert.equal(s01.lines,2);
+    assert.equal(s03.lines,1);
+    assert(!r.commentaryStreams.some(x=>x.id==="main"));
+  }finally{env.restore();}
+});
+
 test("off-grid knee with a manufactured blank slot is an error",()=>{
   const env=installDom();
   try{
