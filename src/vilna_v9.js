@@ -1981,7 +1981,7 @@ function buildPagePlanCore(pageContent, config) {
   // A later carry from column A can change column B's start, so that input is
   // checked again below. Increasing the reservation is monotonic and bounded.
   function replanSplitCrown(columnInputs) {
-    if (scenario.name !== 'one_long_split' || !(crownHeight > 0)) return null;
+    if (scenario.name !== 'one_long_split' || !(crownHeight > 0) || !(naiveMainHeight > 0)) return null;
     const required = Math.max(crownHeight, ...columnInputs.filter(Boolean).map(stream => {
       const rich = stream.rich || makeRichText(stream.items.join(' '), stream.runs || []);
       return measureV9CrownHeight(rich, getSideMetricsForStream(stream.id)._v9TextContext,

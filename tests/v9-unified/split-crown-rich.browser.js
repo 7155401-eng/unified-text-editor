@@ -72,6 +72,25 @@ export function runSplitCrownChecks() {
   }
   // The single-split correction must not change independent-stream selection.
   run('two-independent-streams',()=>inspect({...base,crownMainGapPx:11},{size:13,start:0,twoStreams:true}));
+  // Crown clearance around a main block must not alter pages that have no
+  // main block, or where the crown was disabled. Preserve those existing paths.
+  for(const size of [13,20]) for(const noMain of [false,true]) {
+    run(`outside-split-crown/size=${size}/noMain=${noMain}`,()=>{
+      const runs=[{start:Math.floor(text.length*.5),end:text.length,marks:{fontSize:size}}];
+      const content={mainText:noMain?'':mainText,
+        rightStream:{id:'01',items:[text],runs,rich:{text,runs}},leftStream:null,footerStreams:[]};
+      const cfg={...base,crownLines:noMain?4:0,crownMainGapPx:11};
+      const snapshot=JSON.stringify(content);
+      const page=document.createElement('div');document.body.append(page);
+      try {
+        const plan=buildSinglePage(page,content,cfg);
+        assert((plan.splitCrownSizing?.passes||0)===0,'crown replan ran outside a crown around main');
+        assert(JSON.stringify(content)===snapshot,'control source changed');
+        assert(plan.streamCoverage.every(s=>s.exact),'control source coverage mismatch');
+        return {noMain,passes:plan.splitCrownSizing?.passes||0,coverage:plan.streamCoverage};
+      } finally {page.remove();}
+    });
+  }
   return {total:results.length,passed:results.filter(r=>r.pass).length,
     failed:results.filter(r=>!r.pass).length,results};
 }
