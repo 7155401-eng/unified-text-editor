@@ -156,3 +156,67 @@ export function resolveV9PageConstraint(raw, pageIndex, {
     footnoteShift: Object.freeze({ ...tweak.footnoteShift }),
   });
 }
+
+
+export function updatePageTweakMeasurements(raw, pageNumber, {
+  bottomGapLines = null,
+  overflowPx = null,
+  linePitchPx = null,
+} = {}) {
+  const state = normalizePageTweaks(raw);
+  const key = String(Math.max(1, int(pageNumber, 1)));
+  const previous = normalizePageTweakEntry(state.pages[key] || {});
+  const next = { ...previous };
+
+  const gap = Number(bottomGapLines);
+  const overflow = Number(overflowPx);
+  const pitch = Math.max(1, Number(linePitchPx) || 1);
+
+  if (previous.status === PAGE_TWEAK_STATUS_APPROVED) {
+    const oldGap = Number(previous.spaceLines);
+    const oldOverflow = Number(previous.overflowPx);
+    let changed = false;
+
+    // Desktop used 0.3cm. In the browser use the typography itself: half a
+    // normal row is meaningful, while smaller antialias/font differences are
+    // not. Overflow uses the same half-row physical threshold.
+    if (Number.isFinite(oldGap) && Number.isFinite(gap) && Math.abs(gap - oldGap) > 0.5) changed = true;
+    if (Number.isFinite(oldOverflow) && Number.isFinite(overflow) &&
+        Math.abs(overflow - oldOverflow) > pitch * 0.5) changed = true;
+    if ((!Number.isFinite(oldOverflow) || oldOverflow <= 1) && Number.isFinite(overflow) && overflow > pitch * 0.5) {
+      changed = true;
+    }
+    if (changed) next.status = PAGE_TWEAK_STATUS_CHANGED;
+  }
+
+  if (Number.isFinite(gap)) next.spaceLines = Math.max(0, gap);
+  if (Number.isFinite(overflow)) next.overflowPx = Math.max(0, overflow);
+
+  const meaningful =
+    next.linesDiff !== 0 ||
+    next.status !== PAGE_TWEAK_STATUS_PENDING ||
+    next.spaceLines !== null ||
+    next.overflowPx !== null ||
+    next.notes ||
+    Object.keys(next.footnoteShift).length;
+
+  if (meaningful) state.pages[key] = normalizePageTweakEntry(next);
+  else delete state.pages[key];
+  return state;
+}
+
+export function approvePageTweakWithMeasurements(raw, pageNumber, {
+  bottomGapLines = null,
+  overflowPx = null,
+} = {}) {
+  let state = withPageTweak(raw, pageNumber, { status: PAGE_TWEAK_STATUS_APPROVED });
+  const key = String(Math.max(1, int(pageNumber, 1)));
+  const current = normalizePageTweakEntry(state.pages[key] || {});
+  state.pages[key] = normalizePageTweakEntry({
+    ...current,
+    status: PAGE_TWEAK_STATUS_APPROVED,
+    spaceLines: Number.isFinite(Number(bottomGapLines)) ? Math.max(0, Number(bottomGapLines)) : current.spaceLines,
+    overflowPx: Number.isFinite(Number(overflowPx)) ? Math.max(0, Number(overflowPx)) : current.overflowPx,
+  });
+  return state;
+}
