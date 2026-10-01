@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { partitionFrontMatterContent } from '../../src/engine/front_matter_partition.js';
 
 const bridgeSource = fs.readFileSync(new URL('../../src/engine_bridge.js', import.meta.url), 'utf8');
 const rendererSource = fs.readFileSync(new URL('../../src/engine/renderer.js', import.meta.url), 'utf8');
@@ -8,10 +9,41 @@ const v9Source = fs.readFileSync(new URL('../../src/vilna_v9.js', import.meta.ur
 const v9ApplySource = fs.readFileSync(new URL('../../src/vilna_v9_apply.js', import.meta.url), 'utf8');
 const smartSource = fs.readFileSync(new URL('../../src/engine/smart_packer.js', import.meta.url), 'utf8');
 
+test('front-matter partition preserves pane order, body order and orphan intro content', () => {
+  const paneManager = {
+    panes: [
+      { id:'intro-a', paneRole:'intro', label:'Intro A' },
+      { id:'intro-b', paneRole:'intro', label:'Intro B' },
+      { id:'main', paneRole:'main', label:'Main' },
+    ],
+    getIntroPanes() { return this.panes.filter(p => p.paneRole === 'intro'); },
+  };
+  const a1={id:'a1',paneRole:'intro',paneId:'intro-a'};
+  const body1={id:'b1',paneRole:'main',paneId:'main'};
+  const orphan={id:'orphan',paneRole:'intro',paneId:'deleted-pane'};
+  const a2={id:'a2',paneRole:'intro',paneId:'intro-a'};
+  const bIntro={id:'b-intro',paneRole:'intro',paneId:'intro-b'};
+  const body2={id:'b2',paneRole:'main',paneId:'main'};
+
+  const out=partitionFrontMatterContent([a1,body1,orphan,a2,bIntro,body2],paneManager);
+
+  assert.deepEqual(out.body,[body1,body2]);
+  assert.equal(out.groups.length,3);
+  assert.deepEqual(out.groups.map(g=>g.paneId),['','intro-a','intro-b']);
+  assert.deepEqual(out.groups[0].content,[orphan]);
+  assert.deepEqual(out.groups[1].content,[a1,a2]);
+  assert.deepEqual(out.groups[2].content,[bIntro]);
+
+  const flattened=[...out.groups.flatMap(g=>g.content),...out.body];
+  assert.equal(flattened.length,6,'partition lost or duplicated content');
+  assert.equal(new Set(flattened).size,6,'partition duplicated a source item');
+});
+
 test('front-matter render pipeline keeps introductions as independent pagination groups', () => {
-  assert.match(bridgeSource, /function partitionFrontMatterContent\(/);
-  assert.match(bridgeSource, /paneRole !== "intro"/);
-  assert.match(bridgeSource, /byPane\.get\(id\)\.content\.push\(item\)/);
+  const partitionSource = fs.readFileSync(new URL('../../src/engine/front_matter_partition.js', import.meta.url), 'utf8');
+  assert.match(partitionSource, /function partitionFrontMatterContent\(/);
+  assert.match(partitionSource, /paneRole !== "intro"/);
+  assert.match(partitionSource, /byPane\.get\(id\)\.content\.push\(item\)/);
   assert.match(bridgeSource, /async function packFrontMatterGroups\(/);
   assert.match(bridgeSource, /await domPack\(group\.content \|\| \[\], pageGeom/);
   assert.match(bridgeSource, /page\.frontMatter = \{/);
