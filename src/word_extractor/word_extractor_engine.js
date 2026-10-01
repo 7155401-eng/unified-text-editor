@@ -649,15 +649,12 @@ export async function read_comments(input) {
 function _trimHorizontalBeforeSyntheticMarker(parts) {
   if (!Array.isArray(parts) || !parts.length) return;
   for (let i = parts.length - 1; i >= 0; i--) {
-    if (typeof parts[i] !== "string") continue;
-    if (!parts[i]) continue;
-    // Synthetic @NN markers are structural tokens, not visible prose. A
-    // horizontal Word space immediately before the reference must not become
-    // an extra visible/layout slot. Preserve real hard line breaks.
-    const trimmed = parts[i].replace(/[ \t\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+$/gu, "");
-    parts[i] = trimmed;
-    if (trimmed || /\n$/u.test(parts[i])) break;
-    if (trimmed !== "") break;
+    if (typeof parts[i] !== "string" || parts[i].length === 0) continue;
+    // Synthetic @NN markers are structural tokens, not visible prose. Trim
+    // only the immediately-adjacent horizontal Word spacing. Never walk past
+    // that fragment and never consume a hard line break.
+    parts[i] = parts[i].replace(/[ \t\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+$/gu, "");
+    return;
   }
 }
 
