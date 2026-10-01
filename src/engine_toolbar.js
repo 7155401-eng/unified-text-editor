@@ -3,7 +3,19 @@
 
 import { ensureDemoAccess, isDemoMode } from "./demo_mode.js";
 import { isOutputBackgroundEnabled } from "./page_settings.js";
-import { downloadPagesAsHtml, downloadDebugSnapshot, toggleProblemHighlight } from "./debug_export.js";
+
+let _debugExportModulePromise = null;
+
+async function loadDebugExporter() {
+  if (!_debugExportModulePromise) {
+    _debugExportModulePromise = import("./debug_export.js")
+      .catch((error) => {
+        _debugExportModulePromise = null;
+        throw error;
+      });
+  }
+  return _debugExportModulePromise;
+}
 
 let _pdfExportModulePromise = null;
 
@@ -583,23 +595,37 @@ export function setupPdfToolbar(pagesContainer) {
 
   document.getElementById("pdf-download-html")?.addEventListener("click", async () => {
     if (blockClientSideExportInDemo("הורדת HTML Debug מקומית")) return;
-    try { await downloadPagesAsHtml(pagesContainer); }
+    try {
+      const { downloadPagesAsHtml } = await loadDebugExporter();
+      await downloadPagesAsHtml(pagesContainer);
+    }
     catch (err) { console.error("HTML export failed:", err); alert(`שגיאת הורדת HTML: ${err.message}`); }
   });
 
-  document.getElementById("pdf-debug-snapshot")?.addEventListener("click", () => {
+  document.getElementById("pdf-debug-snapshot")?.addEventListener("click", async () => {
     if (blockClientSideExportInDemo("הורדת JSON Debug מקומית")) return;
-    try { downloadDebugSnapshot(pagesContainer); }
+    try {
+      const { downloadDebugSnapshot } = await loadDebugExporter();
+      downloadDebugSnapshot(pagesContainer);
+    }
     catch (err) { console.error("Snapshot failed:", err); alert(`שגיאת צילום מצב: ${err.message}`); }
   });
 
-  document.getElementById("pdf-debug-highlight")?.addEventListener("click", (ev) => {
+  document.getElementById("pdf-debug-highlight")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
     try {
+      const { toggleProblemHighlight } = await loadDebugExporter();
       toggleProblemHighlight(pagesContainer);
-      ev.currentTarget.classList.toggle("active");
+      btn.classList.toggle("active");
     } catch (err) {
       console.error("Highlight failed:", err);
       alert(`שגיאת סימון בעיות: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.removeAttribute("aria-busy");
     }
   });
 
