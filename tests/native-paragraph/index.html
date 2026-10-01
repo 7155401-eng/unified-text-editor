@@ -8,7 +8,7 @@ pre{direction:ltr;text-align:left;font:12px/1.5 monospace;white-space:pre-wrap;m
 .native-proof-exclusion{background:#eee}
 </style>
 <h1>פתיח ופסקה אחת — השוואה למנוע הקיים</h1>
-<p class="notice">אבטיפוס מבודד, לא תיקון מותקן. בצד הניסויי מופיעים מילת הפתיח והגוף בתוך פסקת HTML אחת. אין פיצול הטקסט לשורות ואין הזזת מילים לאחר המדידה. הגופן, טווח הפתיח, העיצובים וסימוני ההערות מתקבלים מרכיבי V9 הקיימים. קבלת פסקה אחת אינה מבטיחה מרכוז משותף.</p>
+<p class="notice">אבטיפוס מבודד, לא תיקון מותקן. בצד הניסויי מופיעים מילת הפתיח והגוף בתוך פסקת HTML אחת. אין פיצול הטקסט לשורות ואין הזזת מילים לאחר המדידה. הגופן, טווח הפתיח, העיצובים וסימוני ההערות מתקבלים מרכיבי V9 הקיימים. רצף מקור ללא רווח נשמר בתוך עטיפה רגילה שאינה נשברת. קבלת פסקה אחת אינה מבטיחה מרכוז משותף. האפשרות הנוספת משנה את תיבת הפסקה לפני הציור, ולכן אינה מממשת את דרישת המראה הזהה.</p>
 <div class="controls">
 <label>גופן<select id="family"><option>serif</option><option>sans-serif</option><option>monospace</option></select></label>
 <label>מילים<input id="words" type="number" value="12" min="3" max="100"></label>
@@ -17,6 +17,7 @@ pre{direction:ltr;text-align:left;font:12px/1.5 monospace;white-space:pre-wrap;m
 <label>מנגנון<select id="mode"><option value="float">מילה שלמה בחלון צף</option><option value="initial-word">initial-letter למילה</option><option value="inline">מילה בתוך השורה — בלי חלון</option></select></label>
 <label>חלוקת שורות<select id="wrap"><option value="wrap">רגילה</option><option value="pretty">pretty</option><option value="balance">balance</option></select></label>
 <label>התרחבות<select id="exclusion"><option value="none">אין</option><option value="left">משמאל</option><option value="right">מימין</option><option value="both">משני הצדדים</option></select></label>
+<label>בדיקה נוספת<select id="joint"><option value="false">זרימה טבעית רגילה</option><option value="true">ניסוי שינוי תיבת הפסקה — לא מראה זהה</option></select></label>
 <button id="update">השוואה</button></div>
 <p id="status" role="status"></p>
 <div class="comparison"><section class="card"><h2>V9 — המימוש הנוכחי</h2><div id="v9-host" class="sample"></div></section><section class="card"><h2>הדפדפן מעמד פסקה שלמה</h2><div id="native-host" class="sample"></div></section></div>
@@ -24,7 +25,7 @@ pre{direction:ltr;text-align:left;font:12px/1.5 monospace;white-space:pre-wrap;m
 <pre id="results"></pre>
 <script type="module">
 import { showComparison } from './browser.js';
-function config(){const out={};for(const key of ['family','words','drop','width','mode','wrap','exclusion'])out[key]=document.getElementById(key).value;for(const key of ['words','drop','width'])out[key]=Number(out[key]);return out;}
+function config(){const out={};for(const key of ['family','words','drop','width','mode','wrap','exclusion','joint'])out[key]=document.getElementById(key).value;for(const key of ['words','drop','width'])out[key]=Number(out[key]);out.joint=out.joint==='true';return out;}
 const show=()=>showComparison(config()).catch(error=>document.querySelector('#status').textContent=String(error));
 document.querySelector('#update').addEventListener('click',show);show();
 </script></html>

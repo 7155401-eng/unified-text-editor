@@ -43,11 +43,15 @@ try{
  await page.route('**/*',route=>{requests.push(route.request().url());return route.abort();});
  await page.setContent(html);await page.waitForFunction(()=>!!window.nativeParagraphProof);
  const report=await page.evaluate(()=>window.nativeParagraphProof.run());
+ report.next=await page.evaluate(()=>window.nativeParagraphProof.runNext());
  report.browserVersion=browser.version();report.pageErrors=errors;report.externalRequests=requests;
  fs.writeFileSync(path.join(out,'proof.json'),JSON.stringify(report,null,2));
  assert.equal(errors.length,0,'page errors');assert.equal(requests.length,0,'unexpected network access');
  assert.equal(report.counts.total,360,'fixture matrix changed');
  assert.equal(report.counts.sourceInvariantFailures,0,'source text lost');
  assert.equal(report.counts.acceptedForProduction,0,'experimental route promoted to production');
- console.log(JSON.stringify(report.counts,null,2));
+ assert.equal(report.counts.noSpaceReferenceFailures,0,'reference no-break protection failed');
+ assert.equal(report.next.counts.protectedNoSpaceFailures,0,'a protected source word was split');
+ assert.equal(report.next.counts.hiddenGeometryFailures,0,'a hidden marker took space');
+ console.log(JSON.stringify({baseline:report.counts,next:report.next.counts},null,2));
 }finally{await browser.close();}

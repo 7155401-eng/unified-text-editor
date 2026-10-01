@@ -1,6 +1,8 @@
 import { createV9TextLayoutContext, renderV9PlannedMainLine } from '../../src/engine/v9_text_measurement.js';
 import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { renderNativeParagraph, inspectNativeParagraph } from './prototype.js';
+import { probeJointNativeGroup, renderJointNativeCandidate } from './joint-group.js';
+import { runNativeNext } from './next-browser.js';
 
 export const makeConfig=(family='serif',drop=2,percent=200,enabled=true)=>({
   mainFontFamily:family,mainFontSize:16,lineHeightRatio:1.5,
@@ -45,6 +47,7 @@ export async function runNativeProof(){
   assert(found,'two-row fixture not found');assert(!found.measurement.center.meetsReportedCentering,'unexpectedly changed native centering behavior; inspect before changing expectations');
   assert(found.measurement.contract.reasons.includes('combined-final-line-centering'),'centering defect not retained');
   centering.push(found);
+
  }
  // An actual request already in the user's backlog: no break inside a source
  // word, including an apostrophe plus a footnote anchor. Preserve the metadata.
@@ -54,6 +57,7 @@ export async function runNativeProof(){
   const entry={id:'no-space',text,runs:[{start:anchor,end:anchor+2,marks:{bold:true}}],mainRefs:[{uid:'midword',anchor,formatted:enabled?'[8]':'',cssText:'font-size:11px;vertical-align:super'}]};
   const m=withCase(makeConfig(family,2,200,false),entry,{width,mode:'inline'},inspectNativeParagraph);
   assert(m.sourcePreserved,'reference probe changed source');
+  assert(m.checks.noSpaceBreaks,'protected native source token was split');
   assert(m.references.length===(enabled?1:0),'reference visibility lost');
   const current=createV9TextLayoutContext(makeConfig(family,2,200,false));
   let baseline;
@@ -86,15 +90,21 @@ export async function runNativeProof(){
 }
 
 export async function showComparison(options={}){
- const {family='serif',words=12,drop=2,width=300,wrap='wrap',mode='float',exclusion='none'}=options;
+ const {family='serif',words=12,drop=2,width=300,wrap='wrap',mode='float',exclusion='none',joint=false}=options;
  const nativeHost=document.querySelector('#native-host'),oldHost=document.querySelector('#v9-host');
  nativeHost.replaceChildren();oldHost.replaceChildren();
  const c=createV9TextLayoutContext(makeConfig(family,drop));
  try{
   const entry=c.prepareEntry({id:'preview',index:1,text:'פתיח '+Array(words).fill('אב').join(' '),runs:[],mainRefs:[]});
-  const native=renderNativeParagraph(nativeHost,entry,c,{width,mode,wrap,exclusion,cutwidth:60,cutoff:48});
+  const nativeSettings={width,mode,wrap,exclusion,cutwidth:60,cutoff:48};
+  const candidate=joint?probeJointNativeGroup(entry,c,nativeSettings):null;
+  const finalGroup=candidate?.accepted?renderJointNativeCandidate(nativeHost,entry,c,nativeSettings,candidate.inset):null;
+  const native=finalGroup?.handle || renderNativeParagraph(nativeHost,entry,c,nativeSettings);
   await document.fonts.ready;
-  const report=inspectNativeParagraph(native);
+  const report=finalGroup?.measurement || inspectNativeParagraph(native);
+  if(candidate)report.jointProbe={found:candidate.accepted,inset:candidate.inset,
+    rowBoundariesChanged:candidate.rowBoundariesChanged,trials:candidate.trials.length,
+    reason:candidate.reason,identicalAppearance:false,productionEligible:false};
   const x=exclusion==='left'||exclusion==='both'?60:0;
   const right=exclusion==='right'||exclusion==='both'?60:0;
   const strips=exclusion==='none'?[{x:0,width,y_start:0,y_end:1500}]:[{x,width:width-x-right,y_start:0,y_end:48},{x:0,width,y_start:48,y_end:1500}];
@@ -102,8 +112,10 @@ export async function showComparison(options={}){
   oldHost.style.width=width+'px';oldHost.style.height=Math.max(planned.endY,120)+'px';
   for(const line of planned.lines)renderV9PlannedMainLine(line,oldHost,0);
   document.querySelector('#results').textContent=JSON.stringify({native:report,v9:{lines:planned.lines.length,diagnostics:planned.diagnostics,overflow:planned.overflowText}},null,2);
-  document.querySelector('#status').textContent=report.contract.reasons.length?'הניסוי עדיין אינו עומד בתנאי ההחלפה: '+report.contract.reasons.join(', '):'תנאי הבדיקה המקומית עברו. אין בכך אישור לשילוב במוצר.';
+  document.querySelector('#status').textContent=candidate
+    ?(candidate.accepted?'נמצא מרכוז משותף לפתיח ולשורה האחרונה, אך תיבת הפסקה השתנתה. אין התאמה מלאה למראה ואין אישור למוצר.':'לא נמצא מועמד מתאים לניסוי המרכוז הזה; מוצגת הזרימה הטבעית הרגילה.')
+    :(report.contract.reasons.length?'הניסוי עדיין אינו עומד בתנאי ההחלפה: '+report.contract.reasons.join(', '):'תנאי הבדיקה המקומית עברו. אין בכך אישור לשילוב במוצר.');
   return report;
  }finally{c.dispose();}
 }
-window.nativeParagraphProof={run:runNativeProof,show:showComparison};
+window.nativeParagraphProof={run:runNativeProof,runNext:()=>runNativeNext(makeConfig),show:showComparison};

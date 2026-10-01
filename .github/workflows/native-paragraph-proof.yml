@@ -28,8 +28,8 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         run: npm ci --ignore-scripts
-      - name: Guard against accepting either previous centering failure
-        run: node --test tests/native-paragraph/contracts.test.mjs
+      - name: Guard source tokens and both previous centering failures
+        run: node --test tests/native-paragraph/*.test.mjs
       - name: Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: Native source-preservation probes and explicit adoption blockers

@@ -4,6 +4,7 @@ import { appendV9PlannedPart } from '../../src/engine/v9_text_measurement.js';
 import { applyMarksToSpan } from '../../src/engine/runs_dom.js';
 import { partForRange } from '../../src/engine/v9_main_inline_layout.js';
 import { analyzeLastRow, nativeEligibility } from './contracts.js';
+import { appendNativeSourcePart } from './source-tokens.js';
 
 const keys = ['fontFamily','fontSize','fontWeight','fontStyle','fontVariant',
   'fontFeatureSettings','fontKerning','lineHeight','letterSpacing','wordSpacing',
@@ -14,7 +15,7 @@ const round = n => Math.round(n * 10000) / 10000;
 export function renderNativeParagraph(host, entry, context, config = {}) {
   if (!(host instanceof HTMLElement) || !entry || typeof entry.text !== 'string') throw new TypeError('Expected a host and a prepared source entry');
   const {width = 300, mode = 'float', wrap = 'wrap', exclusion = 'none', cutoff = 60,
-    cutwidth = 70, endAlignment = 'center'} = config;
+    cutwidth = 70, endAlignment = 'center', keepSourceTokens = true} = config;
   if (!Number.isFinite(width) || width <= 0) throw new RangeError('Invalid available width');
   if (!['float','initial-word','inline'].includes(mode) || !['wrap','balance','pretty'].includes(wrap)) throw new RangeError('Unsupported experiment');
   const before = JSON.stringify(entry), desc = context.describeOpening(entry);
@@ -55,10 +56,10 @@ export function renderNativeParagraph(host, entry, context, config = {}) {
   }
   const body = document.createElement('span'); body.className = 'native-proof-body';
   body.style.position = 'static';
-  appendV9PlannedPart(body, partForRange(entry, desc?.end || 0, entry.text.length));
+  (keepSourceTokens ? appendNativeSourcePart : appendV9PlannedPart)(body, partForRange(entry, desc?.end || 0, entry.text.length));
   p.append(body);
   return {element:p, opening, body, entry, descriptor:desc, context,
-    inputBefore:before, config:{width,mode,wrap,exclusion,cutoff,cutwidth},
+    inputBefore:before, config:{width,mode,wrap,exclusion,cutoff,cutwidth,keepSourceTokens},
     // Skip policies requiring a pre-layout eligibility pass are not silently
     // ignored in this proof. They block adoption until separately implemented.
     policySupported: !desc?.skipPolicy?.skipShortLine && !desc?.skipPolicy?.skipSingleLine && !desc?.skipPolicy?.skipFewerThanLines};
