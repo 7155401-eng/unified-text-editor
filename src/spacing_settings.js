@@ -80,18 +80,12 @@ function spacingSnapshotsFromRaw(raw) {
   try {
     const parsed = JSON.parse(raw || "{}");
     const saved = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-    // One-time compatibility migration: before v9CrownMainGap existed, V9 used
-    // v9MainGap for both the horizontal main↔side space and the vertical
-    // crown→main clearance. Preserve the user's current visual value exactly
-    // until they next save settings, then the two axes become independent.
-    const migrated = { ...saved };
-    if (!Object.prototype.hasOwnProperty.call(migrated, "v9CrownMainGap")
-        && Object.prototype.hasOwnProperty.call(migrated, "v9MainGap")) {
-      migrated.v9CrownMainGap = migrated.v9MainGap;
-    }
     return {
       stored: Object.freeze({ ...saved }),
-      effective: Object.freeze(normalizeSpacing({ ...DEFAULTS, ...migrated })),
+      // v9MainGap is horizontal main↔side spacing. Never reinterpret a legacy
+      // horizontal value as vertical crown clearance; the new vertical axis
+      // starts from its own safe default unless explicitly saved by the user.
+      effective: Object.freeze(normalizeSpacing({ ...DEFAULTS, ...saved })),
     };
   } catch {
     return {

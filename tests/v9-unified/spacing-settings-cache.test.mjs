@@ -80,27 +80,25 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
 });
 
 
-test('legacy v9MainGap migrates once into independent crown-main spacing', async()=>{
+test('legacy horizontal v9MainGap stays independent from crown-main spacing', async()=>{
   const previousStorage = globalThis.localStorage;
   const storage = fakeStorage(JSON.stringify({ v9MainGap: 23 }));
   globalThis.localStorage = storage;
 
-  // Query-bust so this test gets a fresh module cache independent of the test
-  // above and reads this fixture's raw storage on first access.
-  const mod = await import('../../src/spacing_settings.js?crown-gap-migration=1');
+  const mod = await import('../../src/spacing_settings.js?crown-gap-independent=1');
   try {
     const effective = mod.getSpacingSettingsSnapshot();
     const stored = mod.getStoredSpacingSettingsSnapshot();
     assert.equal(effective.v9MainGap,23);
-    assert.equal(effective.v9CrownMainGap,23,
-      'existing users did not preserve their previous coupled visual clearance');
+    assert.equal(effective.v9CrownMainGap,8,
+      'legacy horizontal main-side gap leaked into the new vertical crown axis');
     assert.equal(Object.prototype.hasOwnProperty.call(stored,'v9CrownMainGap'),false,
-      'read-time migration mutated the exact persisted-key snapshot');
+      'reading defaults mutated the exact persisted-key snapshot');
 
     const saved = mod.saveSpacingSettings({...effective,v9MainGap:7,v9CrownMainGap:19});
     assert.equal(saved.v9MainGap,7);
     assert.equal(saved.v9CrownMainGap,19,
-      'horizontal and vertical V9 gaps did not become independently persistent');
+      'horizontal and vertical V9 gaps did not persist independently');
   } finally {
     if (previousStorage === undefined) delete globalThis.localStorage;
     else globalThis.localStorage = previousStorage;
