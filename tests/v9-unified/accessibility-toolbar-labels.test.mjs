@@ -36,4 +36,8 @@ test('audited PR #246 accessibility labels remain present on current toolbar', (
   expectSelectAria('styles-gallery-select', 'סגנון לטקסט נבחר');
   expectSelectAria('local-font-select', 'גופנים במחשב');
   expectSelectAria('size-selected-select', 'בחר גודל לטקסט הנבחר');
+  expectButtonAria('size-24', 'הגדר את הטקסט הנבחר ל-24px');
+  expectButtonAria('size-18', 'הגדר את הטקסט הנבחר ל-18px');
+  expectButtonAria('size-15', 'הגדר את הטקסט הנבחר ל-15px');
+  expectButtonAria('size-12', 'הגדר את הטקסט הנבחר ל-12px');
 });
