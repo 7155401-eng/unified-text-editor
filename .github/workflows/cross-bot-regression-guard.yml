@@ -1,6 +1,21 @@
 name: Cross-bot regression guard
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'index.html'
+      - 'src/**'
+      - 'worker/**'
+      - 'cloudflare/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'styles.css'
+      - 'theme-base-refresh.css'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/**'
   pull_request:
     branches: [main]
     paths:
