@@ -4410,6 +4410,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // טוב יותר — הוא רק חשף חיתוכים שונים. עם הדגל לפחות אין חיתוכים
     // הנראים לעין. מי שרוצה זרימה חופשית של הדפדפן יכבה את ה-checkbox.
     preventMidLineSplit: true,
+    pageIndexOffset: 0,
     maxPages: Number.MAX_SAFE_INTEGER,
   }, config || {});
   // משה 2026-05-16: מדיניות פיצול פסקאות/שורות.
@@ -4443,7 +4444,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
   const pages = [];
   let cursor = 0;
-  let pageIdx = 0;
+  let pageIdx = Math.max(0, Math.floor(Number(cfg.pageIndexOffset) || 0));
   const splitMetrics = new VilnaMetrics({
     fontFamily: cfg.mainFontFamily,
     fontSize: cfg.mainFontSize,
