@@ -266,6 +266,47 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    } finally { host.remove(); }
  });
 
+ await test('page tweak footnoteShift moves footer rows through normal V9 overflow',()=>{
+   const longFooter=Array(18).fill(phrase).join(' ');
+   const makePlan=(shiftLines)=>{
+     const page=makePage();
+     const plan=buildSinglePage(page,{
+       mainText:Array(2).fill(neutral).join(' '),
+       rightStream:null,leftStream:null,
+       footerStreams:[{id:'03',items:[longFooter],runs:[],rich:{text:longFooter,runs:[]}}],
+     },{
+       ...cfg,
+       pageHeight:300,
+       crownLines:0,
+       talmudStreams:[],
+       streamSettings:{'03':{inlineStyle:{fontSize:11,lineHeight:1.55}}},
+       __v9PageConstraint:{footnoteShift:shiftLines?{'03':shiftLines}:{}},
+     });
+     return {page,plan};
+   };
+   const base=makePlan(0),shifted=makePlan(2);
+   try {
+     const a=base.plan.footerBoxes.find(b=>b.id==='03');
+     const b=shifted.plan.footerBoxes.find(b=>b.id==='03');
+     assert(a?.lines?.length,'baseline footer fixture rendered no rows');
+     assert(b?.lines?.length,'shifted footer fixture rendered no rows');
+     assert(b.manualFootnoteShiftLines===2,'manual shift metadata missing from footer box');
+     assert(b.streamPageBottomY<a.streamPageBottomY-.1,
+       `footer bottom did not move upward: ${a.streamPageBottomY} -> ${b.streamPageBottomY}`);
+     const pitch=b.lines[0]?.lineHeightPx||17;
+     assert(Math.abs((a.streamPageBottomY-b.streamPageBottomY)-pitch*2)<.6,
+       `footer reserve is not two stream pitches: delta=${a.streamPageBottomY-b.streamPageBottomY}, pitch=${pitch}`);
+     assert(b.lines.length<a.lines.length,
+       `shift did not reduce rendered footer rows: ${a.lines.length} -> ${b.lines.length}`);
+     const baseOverflow=String(base.plan.overflow?.streams?.['03']?.text||'');
+     const shiftedOverflow=String(shifted.plan.overflow?.streams?.['03']?.text||'');
+     assert(shiftedOverflow.length>baseOverflow.length,
+       `shift did not move more footer source into overflow: ${baseOverflow.length} -> ${shiftedOverflow.length}`);
+   } finally {
+     base.page.remove();shifted.page.remove();
+   }
+ });
+
  function assertNoWordOverlap(page) {
    const boxes=[];
    for(const line of page.querySelectorAll('.v9-line')) {
