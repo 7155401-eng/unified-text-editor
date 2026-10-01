@@ -99,15 +99,19 @@ try{
     const n=page.locator(`[data-probe-paren="${nSel}"]`);
     const [ab,nb]=await Promise.all([a.boundingBox(),n.boundingBox()]);
     if(!ab||!nb)return {error:'missing bbox'};
-    const size=60;
-    const clipFor=b=>({x:Math.max(0,b.x+b.width/2-size/2),y:Math.max(0,b.y+b.height/2-size/2),width:size,height:size});
+    // Element screenshots scroll into view and crop exactly the glyph's inline
+    // box, avoiding viewport/clip failures for samples placed lower on page.
     const [apng,npng]=await Promise.all([
-      page.screenshot({clip:clipFor(ab)}),
-      page.screenshot({clip:clipFor(nb)}),
+      a.screenshot({omitBackground:false}),
+      n.screenshot({omitBackground:false}),
     ]);
     const ah=crypto.createHash('sha256').update(apng).digest('hex');
     const nh=crypto.createHash('sha256').update(npng).digest('hex');
-    return {actualHash:ah,nativeHash:nh,equal:ah===nh,actualBox:ab,nativeBox:nb};
+    return {
+      actualHash:ah,nativeHash:nh,equal:ah===nh,
+      actualBytes:apng.length,nativeBytes:npng.length,
+      actualBox:ab,nativeBox:nb
+    };
   };
 
   for(const item of setup){
