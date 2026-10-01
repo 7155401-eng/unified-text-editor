@@ -578,6 +578,42 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    page.remove();
  });
 
+ await test('PR1047 audit: smaller inline run does not inflate measured V9 row pitch',()=>{
+   const ctx=createV9TextLayoutContext({...cfg,mainFontSize:11,mainFontFamily:'serif',lineHeightRatio:1.55,openingWordSettings:{enabled:false}});
+   const page=makePage();
+   try {
+     const part={text:'אב 12 גד',runs:[{start:3,end:5,marks:{fontSize:9,fontFamily:'serif',bold:true}}],refs:[],style:ctx.typography};
+     const host=document.createElement('span');
+     Object.assign(host.style,ctx.typography);
+     host.style.display='inline-block';
+     host.style.whiteSpace='pre';
+     page.appendChild(host);
+     appendV9PlannedPart(host,part);
+     const child=host.querySelector('span');
+     assert(child,'smaller inline run did not render as span');
+     assert(getComputedStyle(child).fontSize==='9px',`font size changed: ${getComputedStyle(child).fontSize}`);
+     const childLeading=parseFloat(getComputedStyle(child).lineHeight);
+     assert(Math.abs(childLeading-13.95)<.08,`smaller run did not receive proportional leading: ${childLeading}`);
+     const measured=ctx.measure(part);
+     assert(measured.height<=ctx.lineHeight+.08,`small run inflated measured row: ${measured.height} > ${ctx.lineHeight}`);
+
+     const explicit={text:'אב 12 גד',runs:[{start:3,end:5,marks:{fontSize:9,lineHeight:'20px',bold:true}}],refs:[],style:ctx.typography};
+     host.replaceChildren();
+     appendV9PlannedPart(host,explicit);
+     const explicitChild=host.querySelector('span');
+     assert(explicitChild?.style.lineHeight==='20px','explicit child leading was overwritten');
+
+     const large={text:'אב 12 גד',runs:[{start:3,end:5,marks:{fontSize:18,bold:true}}],refs:[],style:ctx.typography};
+     host.replaceChildren();
+     appendV9PlannedPart(host,large);
+     const largeChild=host.querySelector('span');
+     assert(!largeChild?.style.lineHeight,'larger run received derived leading');
+   } finally {
+     page.remove();
+     ctx.dispose();
+   }
+ });
+
  await test('rich side text with large inline bold is measured before row placement',()=>{
    const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text=Array(4).fill(neutral).join(' '),input={text,runs:[{start:4,end:26,marks:{fontSize:23,fontFamily:'monospace',bold:true}},{start:42,end:70,marks:{fontSize:9,bold:true,color:'red'}}]};
    const p=flowV9MeasuredStream(input,[{x:0,width:160,y_start:0,y_end:600}],c,600),page=makePage();
