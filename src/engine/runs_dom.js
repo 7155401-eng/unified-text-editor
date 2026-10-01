@@ -40,7 +40,7 @@ export function applyMarksToSpan(span, marks) {
     span.style.fontFamily = '"Consolas", "Menlo", "Monaco", monospace';
     span.style.fontSize = "0.92em";
     span.style.direction = "ltr";
-    span.style.unicodeBidi = "bidi-override";
+    span.style.unicodeBidi = "isolate";
   }
   if (marks.color) span.style.color = marks.color;
   if (marks.backgroundColor || marks.bgColor) span.style.backgroundColor = marks.backgroundColor || marks.bgColor;
