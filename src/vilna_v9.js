@@ -3149,8 +3149,11 @@ function buildPagePlanCore(pageContent, config) {
             floatMeta.metrics._v9TextContext,
             floatBottom
           );
-        } else {
-          result.overflow.streams[floatMeta.fs.id] = streamRich(floatMeta.fs);
+        }
+        // A base-height fit is only a preflight. Real styled text may produce
+        // no row; its measured remainder must survive even without a box.
+        if (floatMeasured.overflowRich.text) {
+          result.overflow.streams[floatMeta.fs.id] = floatMeasured.overflowRich;
           anyFooterTrimmed = true;
         }
         const floatEnd = Math.max(bodyTop, floatMeasured.endY || bodyTop);
@@ -3190,8 +3193,11 @@ function buildPagePlanCore(pageContent, config) {
             flowMeta.metrics._v9TextContext,
             flowBottom
           );
-        } else {
-          result.overflow.streams[flowMeta.fs.id] = streamRich(flowMeta.fs);
+        }
+        // A base-height fit is only a preflight. Real styled text may produce
+        // no row; its measured remainder must survive even without a box.
+        if (flowMeasured.overflowRich.text) {
+          result.overflow.streams[flowMeta.fs.id] = flowMeasured.overflowRich;
           anyFooterTrimmed = true;
         }
 
