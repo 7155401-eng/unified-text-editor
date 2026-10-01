@@ -686,6 +686,15 @@ export function mountComparatorUI(rootEl, options = {}) {
         }
       }
     });
+    rootEl.querySelectorAll('[data-i18n-aria]').forEach(el => {
+      const key = el.getAttribute('data-i18n-aria');
+      if (trCur[key]) el.setAttribute('aria-label', trCur[key]);
+    });
+    rootEl.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      if (trCur[key]) el.setAttribute('title', trCur[key]);
+    });
+    addToolbarTooltips();
 
     const mBtn = rootEl.querySelector('#mergeBtn');
     if (state.merged && mBtn) mBtn.textContent = trCur.unmerge;
