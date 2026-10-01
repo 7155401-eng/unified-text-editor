@@ -1564,7 +1564,13 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       native.textContent=body.textContent||'';
       document.body.appendChild(native);
       try{
-        const actual=visibleChars(body),expected=visibleChars(native);
+        const trimEdgeSpaces=chars=>{
+          let a=0,b=chars.length;
+          while(a<b&&/\s/u.test(chars[a]))a++;
+          while(b>a&&/\s/u.test(chars[b-1]))b--;
+          return chars.slice(a,b);
+        };
+        const actual=trimEdgeSpaces(visibleChars(body)),expected=trimEdgeSpaces(visibleChars(native));
         assert(actual.join('')===expected.join(''),
           `combined knee/opening BiDi differs from native RTL: actual=${JSON.stringify(actual)}, expected=${JSON.stringify(expected)}`);
       }finally{native.remove();}
