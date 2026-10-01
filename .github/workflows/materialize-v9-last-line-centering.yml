@@ -14,14 +14,12 @@ jobs:
       BASE: 7a1ba4702ebe9e2b786dad13ecd9d7e48b5ffe7f
       BASE_TREE: c2e285977fe9f686f2c7c761d220d101c2204682
       RESULT_TREE: 0aa8df48db2816c5eef89027795155234d7f826f
-      PATCH_SHA: dfb77c4d588ac81d854ffab2f79a55e53438fcc3c7b6341e7488701cfffb156b
       TARGET: fix/v9-last-line-centering-20261001
-      PATCH_GZ_BASE64: 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
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 8
           persist-credentials: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -30,18 +28,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "$BASE"
           test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
-          python3 - <<'PY'
-          import os,base64,gzip,hashlib,pathlib
-          patch=gzip.decompress(base64.b64decode(os.environ['PATCH_GZ_BASE64'],validate=True))
-          assert hashlib.sha256(patch).hexdigest()==os.environ['PATCH_SHA'], 'Patch digest mismatch'
-          pathlib.Path('/tmp/centering-fix.patch').write_bytes(patch)
-          PY
-          git rm .github/workflows/materialize-v9-last-line-centering.yml
+          cp .github/patches/restore-v9-final-line.py /tmp/restore-v9-final-line.py
+          git rm .github/workflows/materialize-v9-last-line-centering.yml .github/patches/restore-v9-final-line.py
           test "$(git write-tree)" = "$BASE_TREE"
-          git apply --index --check /tmp/centering-fix.patch
-          git apply --index /tmp/centering-fix.patch
+          python3 /tmp/restore-v9-final-line.py
+          git add src/engine/v9_main_inline_layout.js tests/v9-unified/spacing-regressions.test.mjs tests/v9-unified/browser-spacing-regressions.js tests/v9-unified/opening-final-line-centering.test.mjs
           git diff --cached --check
           test "$(git write-tree)" = "$RESULT_TREE"
           git diff --cached --stat
