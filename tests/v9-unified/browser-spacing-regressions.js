@@ -1476,66 +1476,58 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
   });
 
 
-  await test('cross-geometry opening after knee preserves native RTL apostrophe-parenthesis order',()=>{
-    const openingSettings={
-      enabled:true,target:'word',count:1,font:'serif',size:180,weight:'bold',
-      position:'dropped',dropLines:2,spaceAfter:0.3,scope:'all',
-      skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1
+  await test('opening after deterministic widening knee preserves native RTL apostrophe-parenthesis order',()=>{
+    const pitch=10;
+    const ctx={
+      fontSize:10,
+      lineHeight:pitch,
+      describeOpening:e=>e.id==='bidi-opening'
+        ? {position:'dropped',start:0,end:5,marks:{fontSize:20},dropLines:2,gapPx:2}
+        : null,
+      measure:p=>{
+        const body=String(p.text||'').trim();
+        if(body==='פתיח')return {width:20,height:10,topInset:0};
+        const n=body?body.split(/\s+/u).length:0;
+        return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+      }
     };
-    const shortSide=Array(8).fill(phrase).join(' ');
-    const longSide=Array(34).fill(phrase).join(' ');
-    const openingText="פתיח אב'(גד) הו זח טי";
-    let found=null;
 
-    for(let leadRepeats=1;leadRepeats<=18 && !found;leadRepeats++){
-      const page=makePage();
-      const lead=Array(leadRepeats).fill(neutral).join(' ');
-      const plan=buildSinglePage(page,{
-        mainText:lead+'\n'+openingText,
-        mainParagraphs:[
-          {id:'cross-bidi-lead',index:1,text:lead,runs:[],mainRefs:[],continues:false},
-          {id:'cross-bidi-opening',index:2,text:openingText,runs:[],mainRefs:[],continues:false},
-        ],
-        rightStream:{id:'01',items:[shortSide],runs:[],rich:{text:shortSide,runs:[]}},
-        leftStream:{id:'02',items:[longSide],runs:[],rich:{text:longSide,runs:[]}},
-        footerStreams:[]
-      },{
-        ...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,
-        openingWordSettings:openingSettings,
-        streamSettings:{
-          '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
-          '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
-        }
-      });
+    const plan=layoutV9MainParagraphs([
+      // Six synthetic words consume exactly two 10px-pitch rows in the
+      // 50px strip: y=0 and y=10. The opening therefore starts at y=20,
+      // fully AFTER the widening boundary at y=15.
+      {id:'bidi-lead',text:'aa aa aa aa aa aa',runs:[],mainRefs:[]},
+      {id:'bidi-opening',text:"פתיח אב'(גד) הו זח",runs:[],mainRefs:[]},
+    ],[
+      {x:50,width:50,y_start:0,y_end:15,lockYStart:false},
+      {x:0,width:100,y_start:15,y_end:100,lockYStart:false},
+    ],ctx,100);
 
-      const op=(plan.mainBox?.lines||[]).find(l=>
-        l.source?.paragraphId==='cross-bidi-opening' && l.render?.opening
-      );
-      if(!op){page.remove();continue;}
-      const prior=(plan.mainBox?.lines||[]).filter(l=>l.y<op.y-.1);
-      const narrowBefore=prior.length?Math.min(...prior.slice(-4).map(l=>Number(l.width)||0)):0;
-      const hostFull=Number(op.openingHostFullWidth)||0;
-      const plannedComposite=(Number(op.width)||0)+(Number(op.render.opening?.gap)||0)+(Number(op.render.opening?.width)||0);
-      if(hostFull>narrowBefore+20 && Math.abs(plannedComposite-hostFull)<.75) {
-        found={page,plan,op,hostFull,plannedComposite};
-      } else page.remove();
-    }
+    const op=plan.lines.find(l=>l.source?.paragraphId==='bidi-opening'&&l.render?.opening);
+    assert(op,'deterministic post-knee opening disappeared');
+    assert(Math.abs(op.y-20)<.01,`opening did not start on first natural wide row: y=${op.y}`);
+    assert(op.openingHostFullWidth>=99.9,
+      `post-knee opening host stayed narrow: ${op.openingHostFullWidth}`);
+    const plannedComposite=(Number(op.width)||0)+(Number(op.render.opening?.gap)||0)+(Number(op.render.opening?.width)||0);
+    assert(Math.abs(plannedComposite-100)<.01,
+      `opening/body allocation is not the complete wide row: composite=${plannedComposite}`);
 
-    assert(found,'fixture search never produced BiDi opening after a real widening knee');
+    const page=makePage();
     try{
-      const {page,op,hostFull,plannedComposite}=found;
-      assert(Math.abs(plannedComposite-hostFull)<.75,
-        `combined opening planner fell back to narrow allocation: composite=${plannedComposite}, host=${hostFull}`);
-      const painted=[...page.querySelectorAll('[data-v9-paragraph-id="cross-bidi-opening"]')];
-      const host=painted.find(el=>el.querySelector('.v9-opening-glyph'));
-      const body=host?.querySelector('.v9-planned-line-text');
-      const opening=host?.querySelector('.v9-opening-glyph');
-      assert(host&&body&&opening,'combined BiDi opening host missing');
+      page.style.position='relative';
+      page.style.width='100px';
+      page.style.height='100px';
+      const host=renderV9PlannedMainLine(op,page,0);
+      const body=host.querySelector('.v9-planned-line-text');
+      const opening=host.querySelector('.v9-opening-glyph');
+      assert(body&&opening,'painted deterministic opening host missing');
       assert((body.textContent||'').includes("אב'(גד)"),
-        `punctuation sample did not land on opening host: ${JSON.stringify(body.textContent)}`);
+        `neutral punctuation did not remain on the opening row: ${JSON.stringify(body.textContent)}`);
 
       const visibleChars=(el)=>{
-        const root=el.getBoundingClientRect(),walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),out=[];
+        const root=el.getBoundingClientRect();
+        const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);
+        const out=[];
         let node,logical=0;
         while((node=walker.nextNode())){
           if(node.parentElement?.classList?.contains('v9-source-whitespace'))continue;
@@ -1550,6 +1542,12 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
           }
         }
         return out.sort((a,b)=>a.center-b.center||a.logical-b.logical).map(x=>x.ch);
+      };
+      const trimEdgeSpaces=chars=>{
+        let a=0,b=chars.length;
+        while(a<b&&/\s/u.test(chars[a]))a++;
+        while(b>a&&/\s/u.test(chars[b-1]))b--;
+        return chars.slice(a,b);
       };
 
       const native=document.createElement('span');
@@ -1568,23 +1566,12 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       native.textContent=body.textContent||'';
       document.body.appendChild(native);
       try{
-        const trimEdgeSpaces=chars=>{
-          let a=0,b=chars.length;
-          while(a<b&&/\s/u.test(chars[a]))a++;
-          while(b>a&&/\s/u.test(chars[b-1]))b--;
-          return chars.slice(a,b);
-        };
-        const actual=trimEdgeSpaces(visibleChars(body)),expected=trimEdgeSpaces(visibleChars(native));
+        const actual=trimEdgeSpaces(visibleChars(body));
+        const expected=trimEdgeSpaces(visibleChars(native));
         assert(actual.join('')===expected.join(''),
-          `combined knee/opening BiDi differs from native RTL: actual=${JSON.stringify(actual)}, expected=${JSON.stringify(expected)}`);
+          `post-knee opening BiDi differs from native RTL: actual=${JSON.stringify(actual)}, expected=${JSON.stringify(expected)}`);
       }finally{native.remove();}
-
-      // Full-width allocation is an analytical V9 invariant (checked from
-      // op.width + gap + opening width above). DOM ink may legitimately be
-      // shorter when the line text itself is short; do not confuse ink width
-      // with allocated geometry. The DOM assertion in this combined test is
-      // specifically the native BiDi glyph-order comparison above.
-    }finally{found.page.remove();}
+    }finally{page.remove();}
   });
 
   await test('opening-window final row centers actual opening+body ink as one visual segment',()=>{
