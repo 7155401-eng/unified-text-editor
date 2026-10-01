@@ -62,6 +62,7 @@ import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
 import { setupFindReplace } from "./find_replace.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
 import { wireDownloadsPanel } from "./downloads_panel.js";
+import { installRibbonResponsiveLayout } from "./ribbon_responsive.js";
 import { initPwaInstallPrompt } from "./pwa_install_prompt.js";
 import { lockScopeWhileStandalone } from "./pwa_scope_lock.js";
 import { installFetchTagger } from "./pwa_install_controller.js";
@@ -1031,6 +1032,7 @@ function setupRibbonTabs() {
     }
   });
   setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
+  installRibbonResponsiveLayout(tabsBar);
 
   activateTab(localStorage.getItem("ravtext.ribbonTab") || "home");
 }
