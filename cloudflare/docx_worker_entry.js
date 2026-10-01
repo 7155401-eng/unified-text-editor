@@ -616,6 +616,12 @@ async function handleUploadOnly(request, env, ctx) {
       expiresAt: createdAt + DOCX_UPLOAD_TTL_MS,
     }, 200, id);
   } catch (error) {
+    log("error", "docx_upload_only_failed", {
+      requestId: id,
+      error: error?.message || String(error),
+      code: error?.code || null,
+      stack: error?.stack || "",
+    });
     dbLog(env, ctx, "error", "docx_upload_only_failed", { requestId: id, error: error?.message || String(error) });
     return jsonResponse({
       ok: false,
