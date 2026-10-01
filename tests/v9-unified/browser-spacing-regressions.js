@@ -1273,6 +1273,35 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     page.remove();
   });
 
+  await test('horizontal main-side gap cannot move crown-to-main vertical geometry',()=>{
+    const t=Array(10).fill(phrase).join(' ');
+    const content={
+      mainText:Array(5).fill(neutral).join(' '),
+      rightStream:{id:'01',items:[t],runs:[],rich:{text:t,runs:[]}},
+      leftStream:{id:'02',items:[t],runs:[],rich:{text:t,runs:[]}},
+      footerStreams:[]
+    };
+    const build=(mainGap,crownMainGapPx)=>{
+      const page=makePage();
+      const plan=buildSinglePage(page,content,{
+        ...cfg,pageHeight:650,crownLines:2,mainGap,
+        ...(crownMainGapPx===undefined?{}:{crownMainGapPx}),
+        streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}}}
+      });
+      page.remove();
+      return plan;
+    };
+    const narrow=build(2),wide=build(40);
+    assert(narrow.crownBottomY>0&&wide.crownBottomY>0,'fixture did not create a crown');
+    assert(Math.abs(narrow.crownMainGap-8)<.01,`default vertical crown gap drifted: ${narrow.crownMainGap}`);
+    assert(Math.abs(wide.crownMainGap-8)<.01,`horizontal mainGap leaked into crown gap: ${wide.crownMainGap}`);
+    assert(Math.abs(narrow.mainBox.y-wide.mainBox.y)<.01,
+      `mainTopY moved with horizontal mainGap: ${narrow.mainBox.y} vs ${wide.mainBox.y}`);
+    const explicit=build(40,13);
+    assert(Math.abs(explicit.crownMainGap-13)<.01,'explicit vertical crown gap ignored');
+    assert(Math.abs(explicit.mainBox.y-wide.mainBox.y-5)<.01,'explicit vertical gap did not move mainTopY independently');
+  });
+
   await test('commentary knee never inserts a blank row when crown→main gap is off the stream grid',()=>{
     const page=makePage();
     const sideText=Array(38).fill(phrase).join(' ');
