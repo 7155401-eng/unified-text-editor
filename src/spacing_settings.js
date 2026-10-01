@@ -21,6 +21,7 @@ const DEFAULTS = {
   ravtextStreamHorizontalGap: 8,
   v9LineHeight: 1.55,
   v9MainGap: 8,
+  v9CrownMainGap: 8,
   noMidLineSplits: false,
   // משה 2026-05-14: מצב נוסף "לא לפצל פיסקאות (גמיש)" — לא מפצל פיסקה
   // אבל מנסה למלא רווחים בעמוד ע"י שאיבת פיסקה הבאה מהעמוד הבא אם נכנסת.
@@ -54,6 +55,7 @@ const FIELDS = [
   ["streamTitleGap", "כותרת-תוכן", "number", 0, 40, 1],
   ["v9LineHeight", "V9: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
   ["v9MainGap", "V9: ראשי-צד", "number", 0, 60, 1],
+  ["v9CrownMainGap", "V9: כתר-ראשי", "number", 0, 60, 1],
   ["noMidLineSplits", "לא לפצל באמצע פיסקאות (קשיח)", "checkbox", 0, 1, 1],
   ["noMidParagraphSoft", "לא לפצל פיסקאות (גמיש, ימלא רווחים)", "checkbox", 0, 1, 1],
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
@@ -78,9 +80,18 @@ function spacingSnapshotsFromRaw(raw) {
   try {
     const parsed = JSON.parse(raw || "{}");
     const saved = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    // One-time compatibility migration: before v9CrownMainGap existed, V9 used
+    // v9MainGap for both the horizontal main↔side space and the vertical
+    // crown→main clearance. Preserve the user's current visual value exactly
+    // until they next save settings, then the two axes become independent.
+    const migrated = { ...saved };
+    if (!Object.prototype.hasOwnProperty.call(migrated, "v9CrownMainGap")
+        && Object.prototype.hasOwnProperty.call(migrated, "v9MainGap")) {
+      migrated.v9CrownMainGap = migrated.v9MainGap;
+    }
     return {
       stored: Object.freeze({ ...saved }),
-      effective: Object.freeze(normalizeSpacing({ ...DEFAULTS, ...saved })),
+      effective: Object.freeze(normalizeSpacing({ ...DEFAULTS, ...migrated })),
     };
   } catch {
     return {
@@ -144,6 +155,7 @@ export function applySpacingSettings(settings = loadSpacingSettings(), pagesCont
     "--ravtext-page-stream-title-gap": `${s.streamTitleGap}px`,
     "--ravtext-v9-line-height": String(s.v9LineHeight),
     "--ravtext-v9-main-gap": `${s.v9MainGap}px`,
+    "--ravtext-v9-crown-main-gap": `${s.v9CrownMainGap}px`,
   };
   for (const [name, value] of Object.entries(vars)) {
     document.documentElement.style.setProperty(name, value);
