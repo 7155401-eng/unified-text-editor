@@ -8,6 +8,9 @@ on:
     paths: ['src/vilna_v9.js', 'tests/v9-unified/split-crown-rich.browser.js', 'scripts/v9-unified/verify-split-crown.mjs', '.github/workflows/v9-split-crown.yml']
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 jobs:
   split-crown:
     runs-on: ubuntu-latest
@@ -30,12 +33,20 @@ jobs:
         run: |
           node scripts/v9-unified/verify-split-crown.mjs
           cp test-results/split-crown/report.json test-results/split-crown/before-build.json
-      - name: Build without source rewriting and repeat
+          git rev-parse HEAD > test-results/split-crown/tested-commit.txt
+          git status --porcelain > test-results/split-crown/status-before-build.txt
+      - name: Build with retained diagnostics
+        run: npm run build 2>&1 | tee test-results/split-crown/build.log
+      - name: All tracked files must remain unchanged after build
         run: |
-          npm run build
+          git diff --stat | tee test-results/split-crown/source-diff-stat.txt
+          git diff > test-results/split-crown/source-diff.patch
           git diff --exit-code
+      - name: Repeat exact crown acceptance after build
+        run: |
           node scripts/v9-unified/verify-split-crown.mjs
-      - name: Retain both reports
+          cp test-results/split-crown/report.json test-results/split-crown/after-build.json
+      - name: Retain reports and diagnostics even on failure
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
