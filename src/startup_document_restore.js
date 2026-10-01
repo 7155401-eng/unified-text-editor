@@ -13,19 +13,21 @@ export async function finishInitialDocumentRestore({
   serverInitialStatePromise = Promise.resolve({ loaded: false }),
   loadSample = async () => {},
 } = {}) {
-  if (loadedFromStorage && !isLegacyDemoState()) {
-    return { loaded: true, source: "local-storage" };
+  // Even when the fast localStorage path loaded successfully, reconcile it
+  // once with the emergency IDB snapshot. A quota failure leaves the previous
+  // localStorage value in place, so "a primary value exists" does not prove it
+  // is the newest browser-local document.
+  try {
+    const recovered = await loadDeferredLocalRecovery();
+    if (recovered && !isLegacyDemoState()) {
+      return { loaded: true, source: "local-recovery" };
+    }
+  } catch (error) {
+    console.warn("[recovery] deferred local restore failed:", error);
   }
 
-  if (!loadedFromStorage) {
-    try {
-      const recovered = await loadDeferredLocalRecovery();
-      if (recovered && !isLegacyDemoState()) {
-        return { loaded: true, source: "local-recovery" };
-      }
-    } catch (error) {
-      console.warn("[recovery] deferred local restore failed:", error);
-    }
+  if (loadedFromStorage && !isLegacyDemoState()) {
+    return { loaded: true, source: "local-storage" };
   }
 
   let serverResult = null;
