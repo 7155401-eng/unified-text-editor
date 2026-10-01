@@ -25,7 +25,13 @@ jobs:
         run: npm ci --ignore-scripts
       - name: V9 units
         run: node --test tests/v9-unified/*.test.mjs
-      - name: Chromium
+      - name: Chromium before build
         run: |
           npx --no-install playwright install --with-deps chromium
+          node scripts/v9-unified/run-browser.mjs
+      - name: Full build
+        run: npm run build
+      - name: Regressions after build
+        run: |
+          node --test tests/v9-unified/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
