@@ -418,189 +418,28 @@ function v9LinesThatFit(height, lineHeight) {
 // מזרים טקסט בפסים אנכיים בעלי רוחבים שונים
 // =====================================================================
 function flowStreamThroughStrips(input, strips, metrics, maxY, options = {}) {
+  // V9 has exactly ONE stream line planner. The historical fallback below used
+  // canvas word widths, manually advanced curY and even rewrote the next
+  // strip's y_start. That is precisely the kind of second geometry engine that
+  // can manufacture blank rows at knees when crown/main spacing or per-stream
+  // line-height changes.
+  //
+  // Every current production caller obtains metrics from
+  // getSideMetricsForStream(), which attaches the render-scoped measured DOM
+  // context. If a future caller forgets that context, fail loudly instead of
+  // silently falling back to a different row grid.
+  if (!metrics?._v9TextContext) {
+    throw new Error("V9_STREAM_CONTEXT_REQUIRED: stream flow must use the unified measured planner");
+  }
+
   const rich = normalizeRichTextEntry(input);
-  const maxLines = Math.max(0, Math.floor(Number(options.maxLines) || 0));
-  if (metrics._v9TextContext) {
-    return flowV9MeasuredStream(
-      rich,
-      strips,
-      metrics._v9TextContext,
-      maxY,
-      { ...options, continuesAfter: !!metrics._v9ContinuesAfter }
-    );
-  }
-  const lineH = metrics.lineHeight;
-  const allLines = [];
-
-  if (!Array.isArray(strips) || strips.length === 0 || !rich.text) {
-    return {
-      lines: [],
-      overflowText: rich.text,
-      overflowRuns: rich.runs,
-      overflowRich: rich,
-      consumedWords: 0,
-      totalWords: 0,
-      endY: 0,
-    };
-  }
-
-  let curY = strips[0].y_start;
-  const tokens = tokenizeRichTextForV9(rich);
-  let tokenIdx = 0;
-
-  stripLoop: for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
-    if (maxLines > 0 && allLines.length >= maxLines) break;
-    const strip = strips[stripIdx];
-    // v9-strip-y-end-guard: respect explicit strip bottoms. Without this,
-    // a capped bridge strip can consume lines down to the next strip/pageBottom.
-    const explicitStripEndY = Number.isFinite(Number(strip.y_end)) ? Number(strip.y_end) : null;
-    const nextStripY = explicitStripEndY !== null
-      ? Math.min(explicitStripEndY, maxY)
-      : ((stripIdx + 1 < strips.length) ? strips[stripIdx + 1].y_start : maxY);
-
-    if (curY < strip.y_start) curY = strip.y_start;
-
-    const availableHeight = nextStripY - curY;
-    const availableLines = v9LinesThatFit(availableHeight, lineH);
-
-    if (availableLines <= 0) {
-      if (
-        tokenIdx < tokens.length &&
-        availableHeight > 0 &&
-        stripIdx + 1 < strips.length &&
-        strips[stripIdx + 1].lockYStart !== true &&
-        strips[stripIdx + 1].width > strip.width
-      ) {
-        const bridgeLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
-        if (bridgeLine.tokensConsumed > 0) {
-          if (bridgeLine.words.length === 0 && bridgeLine.forcedBreak) {
-            tokenIdx += bridgeLine.tokensConsumed;
-          } else {
-            allLines.push({
-              y: curY,
-              width: strip.width,
-              words: bridgeLine.words,
-              wordTokens: bridgeLine.wordTokens,
-              text: bridgeLine.words.join(" "),
-              runs: runsForLineFromWordTokens(bridgeLine.wordTokens, rich.runs),
-              naturalWidth: bridgeLine.width,
-              isLast: tokenIdx + bridgeLine.tokensConsumed >= tokens.length,
-              forcedBreak: bridgeLine.forcedBreak,
-              // ⭐⭐⭐ 29/09 — הרצועה יודעת אם פינו בה מקום לאות הפתיח.
-              // השורה חייבת לשאת את הידיעה הזאת איתה, אחרת כל מי
-              // שיבדוק אותה אחר כך יחשוב שלא פינו כלום.
-              openingWindow: !!strip.openingWindow,
-              openingHostFullWidth: Number(strip.openingHostFullWidth) || 0,
-            });
-            tokenIdx += bridgeLine.tokensConsumed;
-            curY += lineH;
-          }
-        }
-      }
-      continue;
-    }
-
-    let linesInStrip = 0;
-    const linesConsumed = [];
-
-    while (
-      linesInStrip < availableLines &&
-      tokenIdx < tokens.length &&
-      (maxLines <= 0 || allLines.length + linesConsumed.length < maxLines)
-    ) {
-      const line = buildOneLine(tokens, tokenIdx, strip.width, metrics);
-      if (line.tokensConsumed === 0) break;
-
-      if (line.words.length === 0 && line.forcedBreak) {
-        tokenIdx += line.tokensConsumed;
-        continue;
-      }
-
-      linesConsumed.push(line);
-      tokenIdx += line.tokensConsumed;
-      linesInStrip++;
-    }
-
-    for (let i = 0; i < linesConsumed.length; i++) {
-      const line = linesConsumed[i];
-      const isLastLine = (i === linesConsumed.length - 1) && (tokenIdx >= tokens.length);
-
-      allLines.push({
-        y: curY + i * lineH,
-        width: strip.width,
-        words: line.words,
-        wordTokens: line.wordTokens,
-        text: line.words.join(" "),
-        runs: runsForLineFromWordTokens(line.wordTokens, rich.runs),
-        naturalWidth: line.width,
-        isLast: isLastLine,
-        forcedBreak: line.forcedBreak,
-        openingWindow: !!strip.openingWindow,
-        openingHostFullWidth: Number(strip.openingHostFullWidth) || 0,
-      });
-    }
-
-    curY += linesConsumed.length * lineH;
-
-    if (
-      stripIdx + 1 < strips.length &&
-      tokenIdx < tokens.length &&
-      curY < strips[stripIdx + 1].y_start &&
-      strips[stripIdx + 1].lockYStart !== true &&
-      strips[stripIdx + 1].width > strip.width
-    ) {
-      strips[stripIdx + 1].y_start = curY;
-    }
-
-    if (
-      tokenIdx < tokens.length &&
-      curY < nextStripY &&
-      stripIdx < strips.length - 1 &&
-      (maxLines <= 0 || allLines.length < maxLines)
-    ) {
-      const fillLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
-
-      if (fillLine.tokensConsumed > 0) {
-        if (fillLine.words.length === 0 && fillLine.forcedBreak) {
-          tokenIdx += fillLine.tokensConsumed;
-        } else {
-          const isLastFillLine = tokenIdx + fillLine.tokensConsumed >= tokens.length;
-
-          allLines.push({
-            y: curY,
-            width: strip.width,
-            words: fillLine.words,
-            wordTokens: fillLine.wordTokens,
-            text: fillLine.words.join(" "),
-            runs: runsForLineFromWordTokens(fillLine.wordTokens, rich.runs),
-            naturalWidth: fillLine.width,
-            isLast: isLastFillLine,
-            forcedBreak: fillLine.forcedBreak,
-            openingWindow: !!strip.openingWindow,
-            openingHostFullWidth: Number(strip.openingHostFullWidth) || 0,
-          });
-
-          tokenIdx += fillLine.tokensConsumed;
-          curY += lineH;
-        }
-      }
-    }
-
-    if (tokenIdx >= tokens.length) break;
-    if (maxLines > 0 && allLines.length >= maxLines) break stripLoop;
-  }
-
-  const overflowRich = richTextFromRemainingTokens(tokens, tokenIdx, rich.runs);
-
-  return {
-    lines: allLines,
-    overflowText: overflowRich.text,
-    overflowRuns: overflowRich.runs,
-    overflowRich,
-    consumedWords: tokenIdx,
-    totalWords: tokens.length,
-    endY: curY,
-  };
+  return flowV9MeasuredStream(
+    rich,
+    strips,
+    metrics._v9TextContext,
+    maxY,
+    { ...options, continuesAfter: !!metrics._v9ContinuesAfter }
+  );
 }
 
 function buildOneLine(tokens, startIdx, widthPx, metrics) {
