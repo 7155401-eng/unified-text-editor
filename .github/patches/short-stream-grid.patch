@@ -1,0 +1,205 @@
+diff --git a/src/vilna_v9.js b/src/vilna_v9.js
+--- a/src/vilna_v9.js
++++ b/src/vilna_v9.js
+@@ -2010,6 +2010,29 @@
+   // naiveMainBottomY ענק (כי הראשי הנאיבי דחוס), strip 2 חסום ב-pageBottom
+   // ו-strip 3 לא נוצר (אין מקום).
+   const pageBottomY = effectivePageBottom;
++  // A short stream below a full-width crown joins an EXISTING row grid.
++  // Its title/crown clearance used to start an independent grid, so equal-pitch
++  // streams widened at different Ys. Measure eligibility with the same planner;
++  // never force unequal or rich variable-height rows onto a guessed base pitch.
++  let sharedUniformSidePitch;
++  function uniformSidePitch() {
++    if (sharedUniformSidePitch !== undefined) return sharedUniformSidePitch;
++    sharedUniformSidePitch = 0;
++    if (scenario.name !== 'one_full_one_short') return 0;
++    const pitches = [pageContent.rightStream, pageContent.leftStream].map(stream => {
++      if (!stream) return 0;
++      const context = getSideMetricsForStream(stream.id)._v9TextContext;
++      const rich = stream.rich || makeRichText(stream.items.join(' '), stream.runs || []);
++      const probe = flowV9MeasuredStream(rich, [{x:0, width:Number.MAX_SAFE_INTEGER,
++        y_start:0, y_end:Number.MAX_SAFE_INTEGER}], context, Number.MAX_SAFE_INTEGER);
++      return !probe.overflowText && probe.lines.length && probe.lines.every(line =>
++        Math.abs(line.lineHeightPx - context.lineHeight) < 1e-6) ? context.lineHeight : 0;
++    });
++    if (pitches.every(p => p > 0) && Math.abs(pitches[0] - pitches[1]) < 1e-6) {
++      sharedUniformSidePitch = pitches[0];
++    }
++    return sharedUniformSidePitch;
++  }
+   function buildSideStream(streamData, side, opts) {
+     if (!streamData) return null;
+     const streamRich = streamData.rich
+@@ -2053,6 +2076,7 @@
+     const otherEndY = Math.max(effectiveMainBottomY, Math.min(rawOtherEndY, streamPageBottomY));
+ 
+     const strips = [];
++    let bodyStartGrid;
+     // Each column retains the requested number of wide crown rows. A taller
+     // opposite prefix reserves more shared clearance for main, not a fifth
+     // wide crown row in this column. The body continues on its existing grid.
+@@ -2163,7 +2187,7 @@
+       });
+     }
+ 
+-    const flowResult = flowStreamThroughStrips(
++    const flow = () => flowStreamThroughStrips(
+       streamRich,
+       strips.map(s => ({
+         x: s.x,
+@@ -2175,6 +2199,24 @@
+       streamMetrics,
+       streamPageBottomY
+     );
++    let flowResult = flow();
++    if (fullCrownSide && fullCrownSide !== side && rawOtherEndY > rawMainBottomY) {
++      const first = flowResult.lines[0];
++      const knee = first && flowResult.lines.find(line => line.y >= effectiveMainBottomY - 1 / 64 &&
++        line.width > first.width + 1 / 64);
++      const pitch = knee ? uniformSidePitch() : 0;
++      if (pitch > 0 && first.y < effectiveMainBottomY && strips[0]?.y_start === first.y) {
++        const requiredTop = strips[0].y_start;
++        const alignedTop = sideTopY + Math.ceil((requiredTop - sideTopY) / pitch - V9_LINE_FIT_EPSILON) * pitch;
++        // Keep title clearance, measured leading and at least one narrow row.
++        // Only the short stream's initial allocation changes, before paint.
++        if (alignedTop < effectiveMainBottomY - 1 / 64 && alignedTop > requiredTop + 1 / 64) {
++          bodyStartGrid = {anchor:sideTopY, pitch, requiredTop, alignedTop};
++          strips[0] = {...strips[0], y_start:alignedTop};
++          flowResult = flow();
++        }
++      }
++    }
+ 
+     const lines = [];
+     for (const line of flowResult.lines) {
+@@ -2222,6 +2264,7 @@
+       manualFootnoteShiftLines: manualShift.shiftLines,
+       manualFootnoteShiftReservedPx: manualShift.reservedPx,
+       streamPageBottomY,
++      ...(bodyStartGrid ? {bodyStartGrid} : {}),
+       syntheticContinuationAfter: !!streamData.syntheticContinuationAfter,
+       syntheticContinuationFrom: streamData.syntheticContinuationFrom || "",
+       originalStreamWasSplit: !!streamData.originalStreamWasSplit,
+diff --git a/tests/v9-unified/split-crown-rich.browser.js b/tests/v9-unified/split-crown-rich.browser.js
+--- a/tests/v9-unified/split-crown-rich.browser.js
++++ b/tests/v9-unified/split-crown-rich.browser.js
+@@ -94,3 +94,94 @@
+   return {total:results.length,passed:results.filter(r=>r.pass).length,
+     failed:results.filter(r=>!r.pass).length,results};
+ }
++
++// Equal-pitch streams must join the same row grid when only the long stream
++// owns the full-width crown. Unequal/variable-height controls are preservation
++// checks, NOT claims that those different-grid knees have been synchronized.
++export function runShortStreamGridChecks() {
++  const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
++  const longText=Array(24).fill(phrase).join(' ');
++  const main='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
++  const results=[];
++  function inspect({family='serif',side='left',titles=false,gap=11,ratio=1.55,kind='uniform'}={}) {
++    const mk=(id,text)=>({id,items:[text],rich:{text,runs:[]}});
++    const right=mk('01',side==='right'?phrase:longText);
++    const left=mk('02',side==='left'?phrase:longText);
++    const short=side==='right'?right:left;
++    if(kind==='rich')short.rich.runs=[{start:6,end:25,marks:{fontSize:20,color:'rgb(31,47,67)'}}];
++    if(kind==='color')for(const stream of [right,left])stream.rich.runs=[{start:6,end:25,marks:{color:'rgb(31,47,67)',underline:true}}];
++    if(kind==='multiline')short.rich.text=short.items[0]=phrase.replace('delta ','delta\n');
++    const content={mainText:main,rightStream:right,leftStream:left,footerStreams:[]};
++    const config={pageWidth:380,pageHeight:760,padding:12,mainFontSize:13,sideFontSize:11,
++      lineHeightRatio:ratio,mainFontFamily:'serif',sideFontFamily:family,crownLines:4,crownMainGapPx:gap,
++      openingWordSettings:{enabled:false},titles:titles?{'01':'First','02':'Second'}:{},
++      streamSettings:kind==='mixed'?{[short.id]:{inlineStyle:{fontSize:12,lineHeight:1.63}}}:{}};
++    const original=JSON.stringify({content,config});
++    const page=document.createElement('div');page.className='v9-page';page.style.position='relative';document.body.append(page);
++    try {
++      const plan=buildSinglePage(page,content,config);
++      assert(JSON.stringify({content,config})===original,'grid check changed source or caller settings');
++      assert(plan.crownScenario.name==='one_full_one_short','fixture did not reach the short-stream crown path');
++      assert(plan.streamCoverage.every(s=>s.exact),'grid check lost or reordered source text');
++      assert(plan.mainBox.lines.map(l=>l.sourceText??l.text).join('')+plan.overflow.mainText===main,'main source changed');
++      const boxes=plan.streamBoxes.filter(b=>['right','left'].includes(b.role));
++      assert(boxes.length===2,'fixture lost a side stream');
++      const mainBottom=Math.max(...plan.mainBox.lines.map(l=>l.y+l.lineHeightPx));
++      const knees=boxes.map(box=>{
++        const i=box.lines.findIndex((l,i)=>i>0&&l.y>=mainBottom-.02&&l.width>box.lines[i-1].width+1);
++        assert(i>0,`${box.role} fixture has no actual narrow-to-wide knee`);
++        for(let k=1;k<box.lines.length;k++) {
++          assert(Math.abs(box.lines[k].y-box.lines[k-1].y-box.lines[k-1].lineHeightPx)<.05,
++            `${box.role} inserted a gap before row ${k}`);
++        }
++        if(kind!=='mixed'&&kind!=='rich') {
++          assert(box.lines.every(l=>Math.abs(l.lineHeightPx-11*ratio)<.02),'configured line spacing was changed');
++        }
++        if(box.bodyStartGrid) {
++          const g=box.bodyStartGrid,shift=g.alignedTop-g.requiredTop;
++          assert(shift>0&&shift<g.pitch+.02,'short stream moved by a whole row or upward into its title');
++          assert(Math.abs(box.lines[0].y-g.alignedTop)<.02,'rendered start ignores the measured allocation');
++        }
++        return {role:box.role,y:box.lines[i].y,previousY:box.lines[i-1].y,
++          previousHeight:box.lines[i-1].lineHeightPx,startY:box.lines[0].y,grid:box.bodyStartGrid||null};
++      });
++      const preservationOnly=kind==='mixed'||kind==='rich';
++      const delta=Math.abs(knees[0].y-knees[1].y);
++      if(preservationOnly)assert(boxes.every(b=>!b.bodyStartGrid),'unequal/variable pitches forced onto one grid');
++      else assert(delta<.05,`equal-pitch knees are ${delta}px apart`);
++      const long=boxes.find(b=>b.role!==side);
++      const crownRows=long.lines.filter(l=>l.width>=plan.pageBox.innerWidth-.02&&
++        l.y+l.lineHeightPx<=plan.crownBottomY+.02);
++      assert(crownRows.length===4,'full crown no longer has exactly four complete rows');
++      const lines=[...plan.mainBox.lines,...boxes.flatMap(b=>b.lines)];
++      const rects=[...page.querySelectorAll('.v9-final-main-line,.v9-final-stream-line')].map(el=>({
++        x:parseFloat(el.style.left)-config.padding,y:parseFloat(el.style.top),
++        width:parseFloat(el.style.width),lineHeightPx:parseFloat(el.style.height)}));
++      assert(rects.length===lines.length,'painted/planned row counts differ');
++      for(let i=0;i<lines.length;i++) {
++        const a=lines[i],r=rects[i];
++        assert(['x','y','width','lineHeightPx'].every(k=>Math.abs(a[k]-r[k])<.02),'paint changed planned row geometry');
++        assert(a.y+a.lineHeightPx<=config.pageHeight-config.padding+.05,'row escaped the page');
++        for(let j=i+1;j<lines.length;j++) {
++          const b=lines[j],dx=Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x);
++          const dy=Math.min(a.y+a.lineHeightPx,b.y+b.lineHeightPx)-Math.max(a.y,b.y);
++          assert(dx<.2||dy<.2,'row boxes overlap after grid alignment');
++        }
++      }
++      return {acceptance:preservationOnly?'preservation-only':'synchronized-knees',mainBottom,delta,knees};
++    } finally {page.remove();}
++  }
++  function run(options) {
++    const name='short-stream-grid/'+JSON.stringify(options);
++    try {results.push({name,pass:true,...inspect(options)});}
++    catch(error){results.push({name,pass:false,error:String(error)});}
++  }
++  for(const family of ['serif','sans-serif','monospace'])for(const side of ['left','right'])
++  for(const titles of [false,true])for(const gap of [0,1,11,27])run({family,side,titles,gap});
++  for(const ratio of [1.35,1.47,1.75])for(const side of ['left','right'])
++  for(const titles of [false,true])for(const gap of [0,11])run({ratio,side,titles,gap});
++  for(const kind of ['color','multiline','mixed','rich'])for(const side of ['left','right'])
++  for(const titles of [false,true])run({kind,side,titles});
++  return {total:results.length,passed:results.filter(r=>r.pass).length,
++    failed:results.filter(r=>!r.pass).length,results};
++}
+diff --git a/scripts/v9-unified/verify-split-crown.mjs b/scripts/v9-unified/verify-split-crown.mjs
+--- a/scripts/v9-unified/verify-split-crown.mjs
++++ b/scripts/v9-unified/verify-split-crown.mjs
+@@ -22,7 +22,11 @@
+ }
+ const entry=collect(path.join(root,'tests/v9-unified/split-crown-rich.browser.js'));
+ assert(Object.values(imports).every(Boolean));
+-const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runSplitCrownChecks} from '${entry}';window.runSplitCrownChecks=runSplitCrownChecks;</script></body></html>`;
++const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runSplitCrownChecks,runShortStreamGridChecks} from '${entry}';window.runSplitCrownChecks=()=>{
++  const a=runSplitCrownChecks(),b=runShortStreamGridChecks();
++  return {total:a.total+b.total,passed:a.passed+b.passed,failed:a.failed+b.failed,
++    groups:{splitCrown:a.total,shortStreamGrid:b.total},results:[...a.results,...b.results]};
++};</script></body></html>`;
+ const out=path.join(root,'test-results/split-crown');fs.mkdirSync(out,{recursive:true});
+ const browser=await chromium.launch({headless:true,...(process.env.CROWN_TEST_BROWSER?{executablePath:process.env.CROWN_TEST_BROWSER}:{})});
+ try {
+@@ -36,6 +40,6 @@
+   Object.assign(result,{browserVersion:browser.version(),errors,requests,identities});
+   fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(result,null,2));
+   console.log(JSON.stringify({total:result.total,passed:result.passed,failed:result.failed,browserVersion:result.browserVersion}));
+-  assert.equal(result.total,52);assert.equal(errors.length,0);assert.equal(requests.length,0);
++  assert.equal(result.total,140);assert.equal(errors.length,0);assert.equal(requests.length,0);
+   assert.equal(result.failed,0,JSON.stringify(result.results.filter(r=>!r.pass)));
+ } finally {await browser.close();}
