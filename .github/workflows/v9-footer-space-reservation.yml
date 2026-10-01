@@ -1,0 +1,57 @@
+name: Anchored footer space reservation
+on:
+  pull_request:
+    branches: [main]
+    paths: ['src/**', 'tests/v9-unified/**', 'scripts/v9-unified/**', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['src/vilna_v9.js', 'tests/v9-unified/footer-space-*.browser.js', 'scripts/v9-unified/verify-footer-space-reservation.mjs', '.github/workflows/v9-footer-space-reservation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  anchored-footer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies without package scripts
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Read-only exact pre-fix baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ab24421e44262a9f52791a900598cfa7eb9879fc
+          path: .footer-space-baseline
+          persist-credentials: false
+      - name: Page allocation and full multi-page source/anchor acceptance
+        run: |
+          node scripts/v9-unified/verify-footer-space-reservation.mjs
+          cp test-results/footer-space-reservation/report.json test-results/footer-space-reservation/before-build.json
+          git rev-parse HEAD HEAD^{tree} > test-results/footer-space-reservation/tested-commit.txt
+      - name: Two builds must preserve tracked sources and tests
+        run: |
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+      - name: Repeat the same complete acceptance after build
+        run: node scripts/v9-unified/verify-footer-space-reservation.mjs
+      - name: Retain measured results and exact module identities
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: footer-space-reservation-${{ github.run_id }}
+          path: test-results/footer-space-reservation/
+          retention-days: 7
+          if-no-files-found: warn
