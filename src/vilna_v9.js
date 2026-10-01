@@ -2111,15 +2111,17 @@ function buildPagePlanCore(pageContent, config) {
     : null;
 
   const sideTopY = cfg.padding + titleHeight + reservedTop;
-  // Crown→main clearance is VERTICAL geometry and must never inherit the
-  // horizontal main↔side gap. Coupling the two axes meant changing V9 mainGap
-  // could shift mainTopY off the commentary row grid and therefore move knee
-  // boundaries. Preserve the established visual default (8px) but keep it an
-  // independent planner input.
+  // Crown→main clearance is VERTICAL geometry and must never inherit an
+  // explicitly configured horizontal main↔side gap. Historically, a direct
+  // buildPagePlan() call without app settings used the engine's 1.5%-of-page
+  // default main gap for both axes. Preserve that legacy DIRECT-ENGINE default
+  // for compatibility, but let the web app pass the semantically correct
+  // mainStreamGap as crownMainGapPx.
+  const defaultCrownMainGap = Math.max(4, Math.floor(innerWidth * 0.015));
   const crownMainGap = crownHeight > 0
     ? (Number.isFinite(Number(cfg.crownMainGapPx))
         ? Math.max(0, Number(cfg.crownMainGapPx))
-        : 8)
+        : defaultCrownMainGap)
     : 0;
 
   // The main stream title is real page geometry, not a post-render overlay.
