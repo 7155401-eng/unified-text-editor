@@ -39,6 +39,24 @@ export function flowV9MeasuredStream(input, strips, context, maxY, options = {})
     totalWords:(rich.text.match(/\S+/gu)||[]).length,endY:plan.endY };
 }
 
+// Scenario selection must use the same styled row breaker as final paint.
+// This answers only the threshold question and never approximates with Canvas.
+export function hasAtLeastV9Rows(input, context, width, rows) {
+  const target = Math.ceil(Number(rows));
+  const availableWidth = Number(width);
+  if (!Number.isFinite(target) || !(target > 0) ||
+      !Number.isFinite(availableWidth) || !(availableWidth > 0) ||
+      !normalizeRichTextEntry(input).text) return false;
+  const plan = flowV9MeasuredStream(
+    input,
+    [{ x: 0, width: availableWidth, y_start: 0, y_end: Number.MAX_SAFE_INTEGER }],
+    context,
+    Number.MAX_SAFE_INTEGER,
+    { maxLines: target }
+  );
+  return (plan.lines || []).length >= target;
+}
+
 // Crown row count is a typography constraint, not a base-font estimate.
 // Inspect only the requested leading rows using the same line planner.
 export function measureV9CrownHeight(input, context, width, rows) {
