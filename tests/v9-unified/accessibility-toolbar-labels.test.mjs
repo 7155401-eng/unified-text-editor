@@ -14,6 +14,11 @@ function expectButtonAria(cmd, label) {
   assert.match(html, re, `missing aria-label for data-cmd=${cmd}`);
 }
 
+function expectButtonIdAria(id, label) {
+  const re = new RegExp(`<button(?=[^>]*id=["']${id}["'])(?=[^>]*aria-label=["']${label}["'])[^>]*>`, 'u');
+  assert.match(html, re, `missing aria-label for #${id}`);
+}
+
 test('audited PR #246 accessibility labels remain present on current toolbar', () => {
   expectInputAria('custom-stream-input', 'מספר זרם מותאם אישית');
   expectInputAria('jump-stream-input', 'מספר זרם מותאם אישית לקפיצה');
@@ -22,4 +27,5 @@ test('audited PR #246 accessibility labels remain present on current toolbar', (
   expectButtonAria('code-block', 'בלוק קוד');
   expectButtonAria('code-inline', 'קוד בשורה');
   expectButtonAria('unlink', 'הסר קישור');
+  expectButtonIdAria('zoom-reset', 'איפוס לזום 100%');
 });
