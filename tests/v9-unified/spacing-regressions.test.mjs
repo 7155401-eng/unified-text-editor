@@ -472,6 +472,70 @@ test('second and final opening-window row does not center its body as if the ope
   `opening+last-row visual center=${(visualLeft+visualRight)/2}, expected 50`);
 });
 
+
+test('opening after a widening knee stays on the wide host across boundary/drop-line matrix',()=>{
+ const boundaries=[2.5,5,7.5,12.5,15,17.5,22.5,27.5,32.5,37.5];
+ const openingWidths=[16,24,36];
+ const dropLinesList=[2,3,4];
+ const preRowsList=[0,1,2,3,4,5];
+
+ for(const boundary of boundaries){
+  for(const openingWidth of openingWidths){
+   for(const dropLines of dropLinesList){
+    for(const preRows of preRowsList){
+     const pitch=10;
+     const ctx={
+      fontSize:10,lineHeight:pitch,
+      describeOpening:e=>e.id==='matrix-opening'
+        ? {position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines,gapPx:2}
+        : null,
+      measure:p=>{
+       const body=String(p.text||'').trim();
+       if(body==='OPEN')return {width:openingWidth,height:10,topInset:0};
+       const n=body?body.split(/\s+/u).length:0;
+       return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+      }
+     };
+     const entries=[];
+     for(let i=0;i<preRows;i++)entries.push({id:`pre-${i}`,text:'aa',runs:[],mainRefs:[]});
+     entries.push({
+      id:'matrix-opening',
+      text:'OPEN '+Array(18).fill('aa').join(' '),
+      runs:[],mainRefs:[]
+     });
+
+     const p=layoutV9MainParagraphs(entries,[
+      {x:50,width:50,y_start:0,y_end:boundary,lockYStart:false},
+      {x:0,width:100,y_start:boundary,y_end:180,lockYStart:false},
+     ],ctx,180);
+
+     const host=p.lines.find(l=>l.source?.paragraphId==='matrix-opening'&&l.render?.opening);
+     assert(host,`missing opening: boundary=${boundary} width=${openingWidth} drop=${dropLines} preRows=${preRows}`);
+
+     if(host.y>=boundary-.001){
+      assert(host.openingHostFullWidth>=99.9,
+       `opening fell back to narrow host after knee: boundary=${boundary} y=${host.y} host=${host.openingHostFullWidth} width=${openingWidth} drop=${dropLines} preRows=${preRows}`);
+      assert((host.render.opening.x+host.render.opening.width)>=99.9,
+       `opening no longer reaches wide host edge after knee: boundary=${boundary} y=${host.y} openingRight=${host.render.opening.x+host.render.opening.width}`);
+      const availableBodyWidth=host.render.opening.x-host.render.opening.gap-(host.openingHostX||0);
+      assert(availableBodyWidth>50,
+       `opening created a half-width body slot in wide region: boundary=${boundary} y=${host.y} bodySlot=${availableBodyWidth} openingWidth=${openingWidth}`);
+     }
+
+     const after=p.lines.find(l=>
+      l.source?.paragraphId==='matrix-opening' &&
+      l.y>=host.render.opening.y+host.render.opening.height-.001
+     );
+     if(after){
+      assert(after.openingHostFullWidth>=99.9 || after.width>=99.9,
+       `row after opening stayed narrow after wide knee: boundary=${boundary} y=${after.y} width=${after.width} host=${after.openingHostFullWidth}`);
+     }
+    }
+   }
+  }
+ }
+});
+
 test('dropped opening crossing a left-widening knee never traps later rows at half width',()=>{
  const pitch=10;
  const ctx={
