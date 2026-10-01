@@ -5517,3 +5517,54 @@ body.ribbon-collapsed.ribbon-peek #main-ribbon-toolbar .sep:not(.ribbon-hidden) 
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 }\n
+
+
+/* Page Tweaker — explicit document constraints inside the existing layout report.
+   These controls only submit a new V9 plan; they never reposition rendered DOM. */
+.layout-report-tweak-cell {
+  min-width: 260px;
+}
+.layout-report-tweak-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 5px;
+  direction: rtl;
+}
+.layout-report-tweak-btn {
+  min-width: 30px;
+  padding: 3px 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+  font: inherit;
+}
+.layout-report-tweak-btn:hover {
+  background: #f1f5f9;
+}
+.layout-report-tweak-btn.approve {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+.layout-report-tweak-btn.reset {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.layout-report-tweak-btn.secondary {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+.layout-report-tweak-value {
+  min-width: 30px;
+  text-align: center;
+  font-weight: 700;
+  unicode-bidi: isolate;
+}
+.layout-report-tweak-status {
+  min-width: 58px;
+  font-size: 0.88em;
+  white-space: nowrap;
+}
