@@ -69,7 +69,7 @@ import { wireCustomStyles } from "./custom_styles.js";
 import { wireTorahTools } from "./torah_tools.js";
 import { installTorahGuestGuard } from "./torah_guest_guard.js";
 import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
-import { wireNikudMergerButton } from "./nikud_merger/nikud_merger.js";
+import { wireNikudMergerButton } from "./nikud_merger_lazy_wire.js";
 import { wireTextComparePro } from "./text_compare_pro/text_compare_lazy_wire.js";
 import { wireComparatorButton } from "./comparator_tool/comparator.js";
 import { wireSefariaTools } from "./sefaria/sefaria.js";
