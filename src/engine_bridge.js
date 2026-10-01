@@ -2384,6 +2384,14 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       pageCount: pagesContainer.querySelectorAll(".page:not(.page-placeholder)").length,
     });
     await firePackerHook("afterBuild", { container: pagesContainer, pages });
+    if (!isRenderCurrent(myToken)) { restoreLastGoodRender(pagesContainer, "superseded"); return; }
+
+    // Attach introduction pages only after every body-only layout pass finished.
+    // This is the hard document boundary: no pull/rebalance pass may move a
+    // paragraph from an introduction into the body or vice versa.
+    prependFrontMatterPages(pagesContainer, packedFrontMatter);
+    const totalPageCount = frontMatterPageCount + pages.length;
+
     const t3 = performance.now();
     const statusEl = document.getElementById("status");
     if (statusEl) {
@@ -2393,17 +2401,22 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       for (const p of pages) for (const c of Object.keys(p.streams || {})) allStreams.add(c);
       const streams = Array.from(allStreams).sort((a, b) => parseInt(a) - parseInt(b)).join(", ") || "אין";
       statusEl.textContent =
-        `${pages.length} עמודים, ניצול ממוצע ${avg.toFixed(1)}% — זרמים: ${streams}`;
+        `${totalPageCount} עמודים, ניצול ממוצע גוף ${avg.toFixed(1)}% — זרמים: ${streams}`;
     }
     window.dispatchEvent(new CustomEvent("ravtext:engine-rendered", {
-      detail: { pages, content },
+      detail: {
+        pages,
+        content,
+        frontMatterPages: frontMatterPageCount,
+        totalPages: totalPageCount,
+      },
     }));
 
     // ⛔⛔ משה 10/09/2026 — ראה ההסבר המלא מיד למטה.
     const RESURRECTED_POST_RENDER_IS_OFF = true;
 
     if (pdfToolbarApi) {
-      pdfToolbarApi.setTotal(pages.length);
+      pdfToolbarApi.setTotal(totalPageCount);
       // ⛔⛔ משה 10/09/2026: „רווחים מטורפים בעמודים, יותר ממה שהיה קודם”
       // ו„נראה שהוא לא מפצל קטעים”.
       //
@@ -2474,7 +2487,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       }, 1700);
     }
 
-    console.log(`[engine] ${pages.length} pages | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
+    console.log(`[engine] ${totalPageCount} pages (${frontMatterPageCount} intro) | extract=${(t1-t0).toFixed(0)}ms pack=${(t2-t1).toFixed(0)}ms render=${(t3-t2).toFixed(0)}ms`);
   } catch (err) {
     console.error("Engine render error:", err);
     // משה 2026-05-14: הצגת השגיאה גם בסטטוס. בלי זה ה-"מרענן..." נשאר על המסך
