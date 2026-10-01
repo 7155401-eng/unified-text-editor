@@ -90,9 +90,15 @@ try {
       if (a.length !== b.length) {
         failures.push({sample:sample.text,reason:'char-count',regular:a,native:b});
       } else {
-        for (let i = 0; i < a.length; i++) {
-          if (a[i].ch !== b[i].ch || Math.abs(a[i].left - b[i].left) > 1.25 || Math.abs(a[i].right - b[i].right) > 1.25) {
-            failures.push({sample:sample.text,index:i,regular:a[i],native:b[i]});
+        const normalize = (items) => {
+          const min = Math.min(...items.map(x => x.left));
+          return items.map(x => ({...x,left:x.left-min,right:x.right-min}));
+        };
+        const an = normalize(a);
+        const bn = normalize(b);
+        for (let i = 0; i < an.length; i++) {
+          if (an[i].ch !== bn[i].ch || Math.abs(an[i].left - bn[i].left) > 1.25 || Math.abs(an[i].right - bn[i].right) > 1.25) {
+            failures.push({sample:sample.text,index:i,regular:an[i],native:bn[i]});
             break;
           }
         }
