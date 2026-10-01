@@ -1251,6 +1251,34 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     page.remove();
   });
 
+
+  await test('horizontal main-side gap cannot move crown→main vertical geometry',()=>{
+    const sideText=Array(12).fill(phrase).join(' ');
+    const content={
+      mainText:Array(5).fill(neutral).join(' '),
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    };
+    const build=(mainGap)=>{
+      const page=makePage();
+      const plan=buildSinglePage(page,content,{
+        ...cfg,pageHeight:650,crownLines:2,mainGap,
+        streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}}}
+      });
+      page.remove();
+      return plan;
+    };
+    const narrowGap=build(2),wideGap=build(40);
+    assert(narrowGap.crownBottomY>0&&wideGap.crownBottomY>0,'fixture did not create a crown');
+    assert(Math.abs(narrowGap.crownMainGap-8)<.01,
+      `unexpected default crown gap: ${narrowGap.crownMainGap}`);
+    assert(Math.abs(wideGap.crownMainGap-8)<.01,
+      `horizontal mainGap leaked into vertical crown gap: ${wideGap.crownMainGap}`);
+    assert(Math.abs(narrowGap.mainBox.y-wideGap.mainBox.y)<.01,
+      `mainTopY moved with horizontal mainGap: ${narrowGap.mainBox.y} vs ${wideGap.mainBox.y}`);
+  });
+
   await test('legacy audit: side commentaries widen after a short main text ends',()=>{
     const page=makePage();
     const sideText=Array(22).fill(phrase).join(' ');
