@@ -1,0 +1,92 @@
+name: RavText cross-session preservation audit
+
+on:
+  push:
+    branches: [audit/ravtext-cross-session-preservation-20261001]
+    paths: ['.github/workflows/ravtext-cross-session-audit.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ravtext-cross-session-preservation-audit
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  pinned-main-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      AUDIT_BASE: 66bc66b12e3def1895df70879e615009ca47e8c3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Capture immutable source and history evidence
+        run: |
+          mkdir -p audit-evidence
+          git cat-file -e "$AUDIT_BASE^{commit}"
+          git rev-parse HEAD > audit-evidence/audit-workflow-commit.txt
+          printf '%s\n' "$AUDIT_BASE" > audit-evidence/tested-base.txt
+          git for-each-ref --format='%(refname) %(objectname) %(committerdate:iso-strict)' refs/remotes/origin > audit-evidence/branch-heads.txt
+          git log "$AUDIT_BASE" --since=2026-09-29T00:00:00Z --format='%H%x09%P%x09%cI%x09%s' > audit-evidence/recent-main-history.tsv
+          git archive --format=tar.gz --output=audit-evidence/pinned-main-source.tar.gz "$AUDIT_BASE"
+          git bundle create audit-evidence/repository-history.bundle --all
+          sha256sum audit-evidence/pinned-main-source.tar.gz audit-evidence/repository-history.bundle > audit-evidence/SHA256SUMS
+      - name: Retain source and history for independent comparison
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ravtext-preservation-source-${{ github.run_id }}
+          path: audit-evidence/
+          retention-days: 1
+          compression-level: 0
+      - name: Test the exact main source, not the audit branch
+        run: git checkout --detach "$AUDIT_BASE"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: All current preservation contracts
+        run: |
+          mkdir -p audit-results
+          node --test tests/integration/*.test.mjs tests/v9-unified/*.test.mjs tests/word-extractor/*.test.mjs tests/quota/*.test.mjs tests/docx/*.test.mjs 2>&1 | tee audit-results/before-build.tap
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Current browser and BiDi checks
+        run: |
+          node scripts/v9-unified/run-browser.mjs 2>&1 | tee audit-results/browser-before.log
+          cp test-results/v9-unified/browser.json audit-results/browser-before.json
+          node scripts/verify-regular-renderer-bidi.mjs
+          node scripts/verify-docx-to-renderer-bidi-e2e.mjs
+      - name: Two builds must not overwrite tracked source
+        run: |
+          git diff --exit-code
+          npm run build 2>&1 | tee audit-results/build-1.log
+          git diff --exit-code
+          npm run build 2>&1 | tee audit-results/build-2.log
+          git diff --exit-code
+      - name: Repeat contracts and browser checks after both builds
+        run: |
+          node --test tests/integration/*.test.mjs tests/v9-unified/*.test.mjs tests/word-extractor/*.test.mjs tests/quota/*.test.mjs tests/docx/*.test.mjs 2>&1 | tee audit-results/after-build.tap
+          node scripts/v9-unified/run-browser.mjs 2>&1 | tee audit-results/browser-after.log
+          cp test-results/v9-unified/browser.json audit-results/browser-after.json
+          git diff --exit-code
+      - name: Retain all test outcomes including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ravtext-preservation-results-${{ github.run_id }}
+          path: |
+            audit-results/
+            test-results/
+          retention-days: 7
+          if-no-files-found: warn
