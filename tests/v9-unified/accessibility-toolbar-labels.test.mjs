@@ -24,6 +24,11 @@ function expectSelectAria(id, label) {
   assert.match(html, re, `missing aria-label for #${id}`);
 }
 
+function expectStreamButtonAria(stream, label) {
+  const re = new RegExp(`<button(?=[^>]*data-stream=["']${stream}["'])(?=[^>]*class=["'][^"']*btn-stream(?:\\s|["']))(?=[^>]*aria-label=["']${label}["'])[^>]*>`, 'u');
+  assert.match(html, re, `missing aria-label for marker stream ${stream}`);
+}
+
 test('audited PR #246 accessibility labels remain present on current toolbar', () => {
   expectInputAria('custom-stream-input', 'מספר זרם מותאם אישית');
   expectInputAria('jump-stream-input', 'מספר זרם מותאם אישית לקפיצה');
