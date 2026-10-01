@@ -7,11 +7,12 @@ async function read(path) {
 }
 
 test("V9 session invariants remain present in canonical source", async () => {
-  const [layout, measurement, vilna, mapping] = await Promise.all([
+  const [layout, measurement, vilna, mapping, v9Apply] = await Promise.all([
     read("src/engine/v9_main_inline_layout.js"),
     read("src/engine/v9_text_measurement.js"),
     read("src/vilna_v9.js"),
     read("src/engine/main_source_mapping.js"),
+    read("src/vilna_v9_apply.js"),
   ]);
 
   assert.match(layout, /function rebalanceContinuationTail\b/);
@@ -27,6 +28,11 @@ test("V9 session invariants remain present in canonical source", async () => {
   assert.match(vilna, /selectV9GapFillCandidates/);
   assert.match(vilna, /final-sparse-rescue/);
   assert.match(vilna, /extension-rescue/);
+
+  // Vertical crown clearance and horizontal main↔side spacing are independent
+  // planner axes. The web app must source crown clearance from mainStreamGap.
+  assert.match(v9Apply, /crownMainGapPx:\s*Math\.max\(0,\s*Number\(effectiveSpacing\.mainStreamGap\)/);
+  assert.doesNotMatch(vilna, /crownMainGap[^\n]*Math\.max\(4,\s*mainGap\)/);
 
   assert.match(mapping, /NBSP|narrow|thin/i);
   assert.match(mapping, /\u00a0|00a0/i);
