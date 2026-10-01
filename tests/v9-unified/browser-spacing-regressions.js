@@ -1178,14 +1178,17 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const range=document.createRange();
       range.selectNodeContents(body);
       const bodyRect=range.getBoundingClientRect();
-      const hostRect=lastEl.getBoundingClientRect();
+      const pageRect=page.getBoundingClientRect();
+      const lastPlan=plan.lines.at(-1);
       const visualLeft=Math.min(bodyRect.left,openingRect.left);
       const visualRight=Math.max(bodyRect.right,openingRect.right);
       const visualCenter=(visualLeft+visualRight)/2;
-      const hostCenter=(hostRect.left+hostRect.right)/2;
+      const hostCenter=pageRect.left+Number(lastPlan.openingHostX||0)+Number(lastPlan.openingHostFullWidth||lastPlan.width)/2;
 
-      assert(plan.lines.at(-1).render.alignment==='left',
+      assert(lastPlan.render.alignment==='left',
         'final opening-window body is not using composite-centering policy');
+      assert(Number(lastPlan.openingHostFullWidth)>Number(lastPlan.width)+1,
+        'fixture no longer distinguishes the full opening host from the narrow body slot');
       assert(Math.abs(visualCenter-hostCenter)<=1.25,
         'actual opening+body ink is off center: left='+visualLeft.toFixed(2)+
         ' right='+visualRight.toFixed(2)+' center='+visualCenter.toFixed(2)+
