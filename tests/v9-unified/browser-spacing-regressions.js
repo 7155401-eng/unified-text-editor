@@ -10,7 +10,7 @@ import { installPageNumberPreRenderDecorator } from '../../src/document_features
 import { wordMainFragmentFromEditorHtml, wordRichFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 import { analyzePageElement } from '../../src/layout_analysis_report.js';
-import { applyV9MainBottomGapToPage } from '../../src/engine/v9_main_bottom_gap.js';
+import { applyV9MainBottomGapToPage, applyV9MainBottomGap } from '../../src/engine/v9_main_bottom_gap.js';
 import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
@@ -1049,6 +1049,72 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     assert(diag?.applied===0&&diag?.authority==='planner',
       `post-pass is not diagnostic-only: ${JSON.stringify(diag)}`);
     page.remove();
+  });
+
+
+  await test('full post-render V9 pipeline cannot mutate finalized line geometry',()=>{
+    const page=makePage();
+    const scope=document.createElement('div');
+    page.parentNode.insertBefore(scope,page);
+    scope.appendChild(page);
+
+    const sideText=Array(30).fill(phrase).join(' ');
+    const footerText=Array(5).fill(neutral).join(' ');
+    const openingSettings={
+      enabled:true,target:'word',count:1,font:'serif',size:180,weight:'bold',
+      position:'dropped',dropLines:2,spaceAfter:.25,scope:'all',
+      skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1
+    };
+    const lead=Array(4).fill(neutral).join(' ');
+    const openingText='פתיח '+Array(7).fill(neutral).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:lead+'\n'+openingText,
+      mainParagraphs:[
+        {id:'post-geometry-lead',index:1,text:lead,runs:[],mainRefs:[],continues:false},
+        {id:'post-geometry-opening',index:2,text:openingText,runs:[],mainRefs:[],continues:false},
+      ],
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[{id:'03',items:[footerText],runs:[],rich:{text:footerText,runs:[]}}],
+      titles:{'03':'הערות'}
+    },{
+      ...cfg,pageHeight:980,crownLines:4,crownMainGapPx:11,mainBottomGapPx:28,
+      openingWordSettings:openingSettings,
+      titles:{'03':'הערות'},
+      streamSettings:{
+        '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+        '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+        '03':{inlineStyle:{fontSize:11,lineHeight:1.55}},
+      }
+    });
+
+    assert(plan.mainBox?.lines?.some(l=>l.render?.opening),'fixture has no planned opening word');
+    assert(plan.streamBoxes?.some(b=>b.lines?.length>4),'fixture has no side-stream geometry');
+
+    const positioned=[...page.querySelectorAll('.v9-line,.v9-stream-title,.v9-main-separator')];
+    const geometry=el=>[
+      el.style.top,el.style.left,el.style.width,el.style.height,
+      el.style.transform,el.style.transformOrigin,
+      el.style.wordSpacing,el.style.letterSpacing
+    ];
+    const before=positioned.map(geometry);
+
+    applyV9MainBottomGap(scope,{gapPx:50});
+    const afterFirst=positioned.map(geometry);
+    applyV9MainBottomGap(scope,{gapPx:50});
+    const afterSecond=positioned.map(geometry);
+
+    assert(JSON.stringify(afterFirst)===JSON.stringify(before),
+      'full post-render V9 pipeline changed finalized geometry on first pass');
+    assert(JSON.stringify(afterSecond)===JSON.stringify(before),
+      'full post-render V9 pipeline changed finalized geometry on repeated pass');
+
+    const finalMain=[...page.querySelectorAll('[data-v9-layout-final="v9-inline-1"]')];
+    assert(finalMain.length>0,'fixture has no canonical final main rows');
+    assert(finalMain.every(el=>!el.dataset.v9OpeningWindowFollow),
+      'legacy metadata pass resized a canonical opening-window row');
+
+    scope.remove();
   });
 
   await test('main-bottom gap never adds an extra blank slot after a lower side stream',()=>{
