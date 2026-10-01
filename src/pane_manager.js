@@ -1594,7 +1594,9 @@ export class PaneManager {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.setItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY, String(Date.now()));
     } catch {}
-    queueDocumentRecoveryClear().catch(() => {});
+    const recoveryClear = queueDocumentRecoveryClear();
+    recoveryClear.catch(() => {});
+    return recoveryClear;
   }
 }
 
