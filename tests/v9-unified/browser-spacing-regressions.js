@@ -12,12 +12,117 @@ import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 import { analyzePageElement } from '../../src/layout_analysis_report.js';
 import { applyV9MainBottomGapToPage, applyV9MainBottomGap } from '../../src/engine/v9_main_bottom_gap.js';
 import { layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
+import { PaneManager } from '../../src/pane_manager.js';
+import {
+  DOCUMENT_RECOVERY_TOMBSTONE_KEY,
+  writeDocumentRecoverySnapshot,
+  readDocumentRecoverySnapshot,
+  clearDocumentRecoverySnapshot,
+  flushDocumentRecoveryQueue,
+} from '../../src/document_recovery_store.js';
 
 const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu';
 const neutral='אחד שניים שלוש ארבע חמש שש שבע שמונה תשע עשר';
 const cfg={pageWidth:380,pageHeight:350,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:80,openingWordSettings:{enabled:false}};
 
 export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
+ await test('IndexedDB emergency recovery restores a document and reset clears it',async()=>{
+   const storageKey='ravtext.panes.state.v1';
+   const savedPrimary=localStorage.getItem(storageKey);
+   const savedTombstone=localStorage.getItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY);
+   const container=document.createElement('div');
+   document.body.appendChild(container);
+   let manager=null;
+   try {
+     localStorage.removeItem(storageKey);
+     localStorage.removeItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY);
+     await clearDocumentRecoverySnapshot();
+
+     const state={
+       version:1,
+       activeId:'recovery-main',
+       panes:[{
+         id:'recovery-main',
+         streamCode:null,
+         paneRole:'main',
+         symbol:'',
+         label:'ראשי',
+         dir:'rtl',
+         markerBarCollapsed:true,
+         collapsed:false,
+         content:{
+           type:'doc',
+           content:[{type:'paragraph',content:[{type:'text',text:'RECOVERY_SENTINEL_20261001'}]}],
+         },
+       }],
+     };
+     const text=JSON.stringify(state);
+     assert(await writeDocumentRecoverySnapshot(text,{force:true,now:123456}),
+       'real Chromium IndexedDB write failed');
+     const stored=await readDocumentRecoverySnapshot();
+     assert(stored?.text===text,'IndexedDB did not return exact recovery JSON');
+
+     manager=new PaneManager(container);
+     const recovered=await manager.loadDeferredLocalRecovery();
+     assert(recovered,'PaneManager did not restore IndexedDB recovery state');
+     assert(manager.getMainPane()?.editor?.state?.doc?.textContent==='RECOVERY_SENTINEL_20261001',
+       'restored editor content differs from recovery snapshot');
+
+     manager.clearStorage();
+     await flushDocumentRecoveryQueue();
+     assert((await readDocumentRecoverySnapshot())===null,
+       'reset left an IndexedDB recovery snapshot behind');
+     assert(Number(localStorage.getItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY)||0)>0,
+       'reset did not write synchronous recovery tombstone');
+   } finally {
+     try { manager?._clearSaveTimers?.(); } catch {}
+     try { for(const pane of manager?.panes||[]) pane.destroy?.(); } catch {}
+     container.remove();
+     await clearDocumentRecoverySnapshot();
+     if(savedPrimary===null)localStorage.removeItem(storageKey);else localStorage.setItem(storageKey,savedPrimary);
+     if(savedTombstone===null)localStorage.removeItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY);
+     else localStorage.setItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY,savedTombstone);
+   }
+ });
+
+ await test('recovery tombstone blocks an older IndexedDB snapshot before async delete finishes',async()=>{
+   const savedTombstone=localStorage.getItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY);
+   const storageKey='ravtext.panes.state.v1';
+   const savedPrimary=localStorage.getItem(storageKey);
+   const container=document.createElement('div');
+   document.body.appendChild(container);
+   let manager=null;
+   try {
+     localStorage.removeItem(storageKey);
+     await clearDocumentRecoverySnapshot();
+     const state={
+       version:1,activeId:'old-main',
+       panes:[{id:'old-main',paneRole:'main',content:{type:'doc',content:[
+         {type:'paragraph',content:[{type:'text',text:'OLD_RECOVERY_MUST_NOT_LOAD'}]}
+       ]}}],
+     };
+     assert(await writeDocumentRecoverySnapshot(JSON.stringify(state),{force:true,now:100}),
+       'could not seed old recovery snapshot');
+     localStorage.setItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY,'200');
+
+     manager=new PaneManager(container);
+     assert(!(await manager.loadDeferredLocalRecovery()),
+       'older recovery snapshot ignored reset tombstone');
+     await flushDocumentRecoveryQueue();
+     assert((await readDocumentRecoverySnapshot())===null,
+       'tombstoned recovery snapshot was not cleaned up');
+     assert(!manager.getMainPane(),'tombstoned state created editor panes');
+   } finally {
+     try { manager?._clearSaveTimers?.(); } catch {}
+     try { for(const pane of manager?.panes||[]) pane.destroy?.(); } catch {}
+     container.remove();
+     await clearDocumentRecoverySnapshot();
+     if(savedPrimary===null)localStorage.removeItem(storageKey);else localStorage.setItem(storageKey,savedPrimary);
+     if(savedTombstone===null)localStorage.removeItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY);
+     else localStorage.setItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY,savedTombstone);
+   }
+ });
+
  await test('Word round-trip keeps hard breaks inside a paragraph distinct from paragraph boundaries',()=>{
    const html='<p>אחד<br><strong>שניים</strong></p><p>שלוש</p>';
    const out=wordMainFragmentFromEditorHtml(html);
