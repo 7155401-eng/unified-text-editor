@@ -101,6 +101,39 @@ const BUILD_STAMP = (() => {
   }
 })();
 
+const RAVTEXT_BUNDLE_MODULE_AUDIT = {
+  name: 'ravtext-bundle-module-audit',
+  apply: 'build',
+  generateBundle(_options, bundle) {
+    for (const output of Object.values(bundle)) {
+      if (!output || output.type !== 'chunk' || !output.isEntry) continue;
+      const modules = Object.entries(output.modules || {})
+        .map(([id, meta]) => ({
+          id: id.replace(process.cwd() + '/', ''),
+          renderedLength: Number(meta?.renderedLength || 0),
+          originalLength: Number(meta?.originalLength || 0),
+        }))
+        .sort((a, b) => b.renderedLength - a.renderedLength);
+      const renderedTotal = modules.reduce((sum, item) => sum + item.renderedLength, 0);
+      console.log('RAVTEXT_BUNDLE_AUDIT_BEGIN ' + JSON.stringify({
+        fileName: output.fileName,
+        codeLength: output.code.length,
+        renderedTotal,
+        moduleCount: modules.length,
+      }));
+      for (const item of modules.slice(0, 140)) {
+        console.log(
+          'RAVTEXT_BUNDLE_MODULE\t' +
+          item.renderedLength + '\t' +
+          item.originalLength + '\t' +
+          item.id
+        );
+      }
+      console.log('RAVTEXT_BUNDLE_AUDIT_END ' + output.fileName);
+    }
+  },
+};
+
 export default defineConfig({
   base: BASE,
   worker: {
@@ -110,5 +143,5 @@ export default defineConfig({
     __RAVTEXT_BUILD_SHA__: JSON.stringify(BUILD_STAMP.sha),
     __RAVTEXT_BUILD_TIME__: JSON.stringify(BUILD_STAMP.when),
   },
-  plugins: [PUBLIC_CACHE_BUST, PEIMOT_TIDIO_WIDGET, CLOUDFLARE_ADVANCED_WORKER_BUILD],
+  plugins: [PUBLIC_CACHE_BUST, PEIMOT_TIDIO_WIDGET, RAVTEXT_BUNDLE_MODULE_AUDIT, CLOUDFLARE_ADVANCED_WORKER_BUILD],
 })
