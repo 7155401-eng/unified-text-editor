@@ -732,10 +732,21 @@ export async function cleanupExpiredDocxUploads(env, {
   let scanned = 0;
   let deleted = 0;
   do {
-    const page = await env.DOCX_UPLOADS.list({ prefix: DOCX_UPLOAD_PREFIX, cursor, limit: 1000 });
+    const page = await env.DOCX_UPLOADS.list({
+      prefix: DOCX_UPLOAD_PREFIX,
+      cursor,
+      limit: 1000,
+      include: ["customMetadata"],
+    });
     for (const item of page.objects || []) {
       scanned += 1;
-      const createdAt = Number(item.customMetadata?.createdAt || 0);
+      const metadataTime = Number(item.customMetadata?.createdAt || 0);
+      const uploadedTime = item.uploaded instanceof Date
+        ? item.uploaded.getTime()
+        : Date.parse(String(item.uploaded || ""));
+      const createdAt = metadataTime > 0
+        ? metadataTime
+        : (Number.isFinite(uploadedTime) ? uploadedTime : 0);
       if (createdAt > 0 && now - createdAt > ttlMs) {
         await env.DOCX_UPLOADS.delete(item.key);
         deleted += 1;
