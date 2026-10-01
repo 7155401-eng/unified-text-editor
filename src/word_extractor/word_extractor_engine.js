@@ -845,10 +845,13 @@ function _neutralizeStreamMark(_m, digits) {
 }
 
 // בטקסט רגיל — החלפה ישירה.
-function _neutralizeStreamMarksInText(text, counter) {
+function _neutralizeStreamMarksInText(text, counter = null) {
   const s = String(text || '');
   if (s.indexOf('@') < 0) return s;
-  return s.replace(STREAM_MARK_IN_NOTE_RE, (m, d) => { counter.n += 1; return _neutralizeStreamMark(m, d); });
+  return s.replace(STREAM_MARK_IN_NOTE_RE, (m, d) => {
+    if (counter && Number.isFinite(Number(counter.n))) counter.n += 1;
+    return _neutralizeStreamMark(m, d);
+  });
 }
 
 // ב-HTML — נוגעים רק בטקסט שבין התגיות, כדי לא לשבור מאפיין של תג
@@ -858,7 +861,10 @@ function _neutralizeStreamMarksInHtml(html, counter) {
   const s = String(html || '');
   if (s.indexOf('@') < 0) return s;
   return s.split(/(<[^>]*>)/g)
-    .map(part => (part.startsWith('<') ? part : _neutralizeStreamMarksInText(part, counter)))
+    // HTML mirrors the same logical note body. Do not increment the reporting
+    // counter a second time for the same marker occurrence; the canonical plain
+    // text path owns the count.
+    .map(part => (part.startsWith('<') ? part : _neutralizeStreamMarksInText(part, null)))
     .join('');
 }
 
@@ -963,8 +969,6 @@ export async function docx_extract_simple(input, selected, opts = {}) {
           if (s) {
             // ★ 28/09 — מנטרלים סימני זרם שכבר יושבים בגוף ההערה,
             // אחרת מתקבל „@01@01" והמפרסר סופר שתי הערות.
-            _trimHorizontalBeforeSyntheticMarker(pt);
-            _trimHorizontalBeforeSyntheticMarker(pt);
             _trimHorizontalBeforeSyntheticMarker(pt);
             pt.push(s); sn[s].push(`${s}${_neutralizeStreamMarksInText(c, _markGuard)}`);
             // משה 2026-05-10: גרסת HTML — מסיר את ה-marker ומוסיף את הסמל בתחילת ה-HTML
