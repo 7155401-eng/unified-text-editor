@@ -1029,31 +1029,41 @@ async function importAllChapters() {
     if (cachedIds.has(chapKey)) continue;
 
     try {
-      const chapter = await buildChapterDocx(i);
-      if (!chapter) continue;
+      let title;
+      let result;
 
-      loading(`שומר ל-cache: "${chapter.title}" (${i + 1}/${heads.length})...`);
-      const buffer = chapter.buffer.slice(0);
+      if (state?.serverSide && state?.uploadId) {
+        loading(`שומר ל-cache מהשרת: פרק ${i + 1}/${heads.length}...`);
+        const serverChapter = await extractUploadedWordChapterSafe(state.uploadId, {
+          level: selectedLevel,
+          index: i,
+        });
+        if (!serverChapter?.result) throw new Error("השרת לא החזיר תוכן פרק תקין.");
+        title = serverChapter.title || heads[i]?.title || `פרק ${i + 1}`;
+        result = serverChapter.result;
+      } else {
+        const chapter = await buildChapterDocx(i);
+        if (!chapter) continue;
+        title = chapter.title;
 
-      const [sources, notesHtmlMap] = await Promise.all([
-        find_all_note_sources(buffer.slice(0)),
-        buildNotesHtmlMapForChapter(buffer.slice(0)),
-      ]);
+        loading(`שומר ל-cache: "${chapter.title}" (${i + 1}/${heads.length})...`);
+        const buffer = chapter.buffer.slice(0);
 
-      const selected = buildSelectedSources(sources);
-      const result = await docx_extract_simple(
-        buffer.slice(0),
-        selected,
-        // ★ משה 27/09/2026 — „במסך יבוא מוורד יש אפשרות מכילה או מתחילה,
-        // כברירת מחדל שיהיה מכילה".
-        // המסלול של מסמך שלם כבר שונה ל-contains; כאן, במסלול של מסמך
-        // מחולק לפרקים, נשאר "starts" — ואותו קובץ היה מתנהג אחרת לפי
-        // הדרך שבה נטען. עכשיו שני המסלולים זהים.
-        { notesHtmlMap, skipEmptyNotes: true, markerMatchMode: "contains" }
-      );
+        const [sources, notesHtmlMap] = await Promise.all([
+          find_all_note_sources(buffer.slice(0)),
+          buildNotesHtmlMapForChapter(buffer.slice(0)),
+        ]);
+
+        const selected = buildSelectedSources(sources);
+        result = await docx_extract_simple(
+          buffer.slice(0),
+          selected,
+          { notesHtmlMap, skipEmptyNotes: true, markerMatchMode: "contains" }
+        );
+      }
 
       if (docId) {
-        await saveChapterExtraction(docId, chapKey, { title: chapter.title, result });
+        await saveChapterExtraction(docId, chapKey, { title, result });
         cachedIds.add(chapKey);
         localStorage.setItem("ravtext-cc-" + docId, JSON.stringify([...cachedIds]));
       }
