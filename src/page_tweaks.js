@@ -127,6 +127,43 @@ export function pageFootnoteShiftLines(pageConstraint, streamId) {
 }
 
 /**
+ * Resolve a manual per-stream bottom shift into the actual planner boundary.
+ *
+ * The shift is expressed in rows of the TARGET STREAM, not in main-text rows.
+ * This keeps the control stable when streams use different fonts/line heights.
+ * The resulting bottom is clamped to minTop so manual tuning can never invert
+ * or erase the stream's physical region.
+ */
+export function resolveV9StreamShiftBottom(pageConstraint, streamId, {
+  pageBottom = 0,
+  lineHeight = 0,
+  minTop = 0,
+} = {}) {
+  const shiftLines = pageFootnoteShiftLines(pageConstraint, streamId);
+  const pitch = Math.max(0, Number(lineHeight) || 0);
+  const rawBottom = Number(pageBottom) || 0;
+  const floor = Math.min(rawBottom, Math.max(0, Number(minTop) || 0));
+
+  if (!(shiftLines > 0) || !(pitch > 0) || !(rawBottom > floor)) {
+    return Object.freeze({
+      shiftLines,
+      reservedPx: 0,
+      bottom: rawBottom,
+      lineHeight: pitch,
+    });
+  }
+
+  const wantedPx = shiftLines * pitch;
+  const reservedPx = Math.min(wantedPx, Math.max(0, rawBottom - floor));
+  return Object.freeze({
+    shiftLines,
+    reservedPx,
+    bottom: rawBottom - reservedPx,
+    lineHeight: pitch,
+  });
+}
+
+/**
  * Translate a per-page/per-stream manual note-line shift into planner geometry.
  *
  * This does not move any DOM nodes. It lowers the physical bottom available to
