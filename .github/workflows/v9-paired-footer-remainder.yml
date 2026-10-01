@@ -1,0 +1,56 @@
+name: Paired footer source conservation
+on:
+  pull_request:
+    branches: [main]
+    paths: ['src/**', 'tests/v9-unified/**', 'scripts/v9-unified/**', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['src/vilna_v9.js', 'src/engine/v9_note_ownership.js', 'tests/v9-unified/paired-footer-empty-remainder.browser.js', 'scripts/v9-unified/verify-paired-footer-remainder.mjs', '.github/workflows/v9-paired-footer-remainder.yml']
+permissions:
+  contents: read
+jobs:
+  source-conservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies without package scripts
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Immutable pre-fix baseline including the latest merged leading change
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 86edae1d46747f229d16e0a1398111ee41084da4
+          path: .paired-remainder-baseline
+          persist-credentials: false
+      - name: Exact reported exception, rich carry, and complete pagination
+        run: |
+          node scripts/v9-unified/verify-paired-footer-remainder.mjs
+          cp test-results/paired-footer-remainder/report.json test-results/paired-footer-remainder/before-build.json
+          git rev-parse HEAD HEAD^{tree} > test-results/paired-footer-remainder/tested-commit.txt
+      - name: Build twice without changing source or tests
+        run: |
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+      - name: Repeat complete source conservation after builds
+        run: node scripts/v9-unified/verify-paired-footer-remainder.mjs
+      - name: Keep reports and module identities
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: paired-footer-remainder-${{ github.run_id }}
+          path: test-results/paired-footer-remainder/
+          retention-days: 7
+          if-no-files-found: warn

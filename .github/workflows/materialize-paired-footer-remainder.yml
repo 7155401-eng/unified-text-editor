@@ -1,0 +1,76 @@
+name: Apply checked paired-footer carry correction
+on:
+  push:
+    branches: [fix/v9-paired-footer-empty-remainder-20261001]
+    paths: [.github/workflows/materialize-paired-footer-remainder.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.repository == '7155401-eng/unified-text-editor' && github.ref == 'refs/heads/fix/v9-paired-footer-empty-remainder-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: 86edae1d46747f229d16e0a1398111ee41084da4
+      TARGET: fix/v9-paired-footer-empty-remainder-20261001
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply two exact measured-remainder guards only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('src/vilna_v9.js')
+          def blob(b): return hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
+          assert blob(p.read_bytes())=='198363417b642fae4eb85e8561f543f7367adad5'
+          s=p.read_text()
+          for name in ['float','flow']:
+              old=('        } else {\n'
+                   f'          result.overflow.streams[{name}Meta.fs.id] = streamRich({name}Meta.fs);\n'
+                   '          anyFooterTrimmed = true;\n'
+                   '        }')
+              new=('        }\n'
+                   '        // A base-height fit is only a preflight. Real styled text may produce\n'
+                   '        // no row; its measured remainder must survive even without a box.\n'
+                   f'        if ({name}Measured.overflowRich.text) {{\n'
+                   f'          result.overflow.streams[{name}Meta.fs.id] = {name}Measured.overflowRich;\n'
+                   '          anyFooterTrimmed = true;\n'
+                   '        }')
+              assert s.count(old)==1,name
+              s=s.replace(old,new)
+          assert blob(s.encode())=='30a6a7dd6c36f2b338b4fed2692d9d22d3c4f667'
+          p.write_text(s)
+          PY
+          test "$(git hash-object tests/v9-unified/paired-footer-empty-remainder.browser.js)" = f389fded346a95a0ce4e90a14395c062f00e58e8
+          test "$(git hash-object scripts/v9-unified/verify-paired-footer-remainder.mjs)" = 54a06f979e56c15c6715f804b6f18f5fb36d194c
+          git rm .github/workflows/materialize-paired-footer-remainder.yml
+          git add src/vilna_v9.js
+          git diff --cached --check
+          node --check src/vilna_v9.js
+          node --check tests/v9-unified/paired-footer-empty-remainder.browser.js
+          node --check scripts/v9-unified/verify-paired-footer-remainder.mjs
+          printf '%s\n' '.github/workflows/v9-paired-footer-remainder.yml' 'scripts/v9-unified/verify-paired-footer-remainder.mjs' 'src/vilna_v9.js' 'tests/v9-unified/paired-footer-empty-remainder.browser.js' | sort > /tmp/expected
+          git diff --cached --name-only "$BASE" | sort > /tmp/actual
+          diff -u /tmp/expected /tmp/actual
+      - name: Publish only to unchanged feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          test "$(git ls-remote origin "refs/heads/$TARGET" | cut -f1)" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(v9): preserve a paired footer remainder when measured layout emits zero rows'
+          git push origin "HEAD:refs/heads/$TARGET"
+          git rev-parse HEAD HEAD^{tree}
