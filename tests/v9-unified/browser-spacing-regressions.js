@@ -1497,7 +1497,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       // 50px strip: y=0 and y=10. The opening therefore starts at y=20,
       // fully AFTER the widening boundary at y=15.
       {id:'bidi-lead',text:'aa aa aa aa aa aa',runs:[],mainRefs:[]},
-      {id:'bidi-opening',text:"פתיח אב'(גד) הו זח",runs:[],mainRefs:[]},
+      {id:'bidi-opening',text:"פתיח אב'(גד) הו זח aa aa aa aa aa aa aa aa aa aa",runs:[],mainRefs:[]},
     ],[
       {x:50,width:50,y_start:0,y_end:15,lockYStart:false},
       {x:0,width:100,y_start:15,y_end:100,lockYStart:false},
@@ -1508,6 +1508,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     assert(Math.abs(op.y-20)<.01,`opening did not start on first natural wide row: y=${op.y}`);
     assert(op.openingHostFullWidth>=99.9,
       `post-knee opening host stayed narrow: ${op.openingHostFullWidth}`);
+    assert(op.isLast===false,'fixture accidentally became a centered final opening row');
     const plannedComposite=(Number(op.width)||0)+(Number(op.render.opening?.gap)||0)+(Number(op.render.opening?.width)||0);
     assert(Math.abs(plannedComposite-100)<.01,
       `opening/body allocation is not the complete wide row: composite=${plannedComposite}`);
