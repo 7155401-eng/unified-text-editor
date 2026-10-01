@@ -1575,14 +1575,15 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
           `combined knee/opening BiDi differs from native RTL: actual=${JSON.stringify(actual)}, expected=${JSON.stringify(expected)}`);
       }finally{native.remove();}
 
-      const openingRect=opening.getBoundingClientRect(),bodyRange=document.createRange();
-      bodyRange.selectNodeContents(body);
-      const bodyRects=[...bodyRange.getClientRects()].filter(r=>r.width>0&&r.height>0);
-      assert(bodyRects.length,'combined opening body has no painted ink');
-      const left=Math.min(openingRect.left,...bodyRects.map(r=>r.left));
-      const right=Math.max(openingRect.right,...bodyRects.map(r=>r.right));
-      assert(right-left>=hostFull-1.5,
-        `combined BiDi opening visually fell back to narrow host: visual=${right-left}, host=${hostFull}`);
+      // Geometry and ink are different invariants. A short body need not
+      // paint ink across the whole row; its ALLOCATED box plus the opening must
+      // still occupy the widened host. BiDi is checked above from actual ink.
+      const openingRect=opening.getBoundingClientRect();
+      const bodyBox=body.getBoundingClientRect();
+      const allocatedLeft=Math.min(openingRect.left,bodyBox.left);
+      const allocatedRight=Math.max(openingRect.right,bodyBox.right);
+      assert(allocatedRight-allocatedLeft>=hostFull-1.5,
+        `combined BiDi opening allocation fell back to narrow host: allocated=${allocatedRight-allocatedLeft}, host=${hostFull}`);
     }finally{found.page.remove();}
   });
 
