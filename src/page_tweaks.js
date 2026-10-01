@@ -133,27 +133,6 @@ export function pageFootnoteShiftLines(pageConstraint, streamId) {
  * that commentary stream by N of THAT STREAM'S measured row pitches. The normal
  * V9 overflow/carry path then moves the remaining source to the next page.
  */
-export function resolveV9StreamShiftBottom(pageConstraint, streamId, {
-  pageBottom = 0,
-  lineHeight = 0,
-  minTop = 0,
-} = {}) {
-  const bottom = Math.max(0, Number(pageBottom) || 0);
-  const top = Math.max(0, Math.min(bottom, Number(minTop) || 0));
-  const pitch = Math.max(1, Number(lineHeight) || 1);
-  const shiftLines = pageFootnoteShiftLines(pageConstraint, streamId);
-  const shiftedBottom = Math.max(top, bottom - shiftLines * pitch);
-  return Object.freeze({
-    streamId: String(streamId ?? ""),
-    shiftLines,
-    lineHeight: pitch,
-    pageBottom: bottom,
-    minTop: top,
-    bottom: shiftedBottom,
-    reservedPx: Math.max(0, bottom - shiftedBottom),
-  });
-}
-
 export function resolveV9PageConstraint(raw, pageIndex, {
   baseReservedBottom = 0,
   pageHeight = 0,
