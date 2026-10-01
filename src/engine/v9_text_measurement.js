@@ -65,6 +65,10 @@ export function appendV9PlannedPart(parent, part) {
   appendSemanticWhitespace(parent, part.leadingText);
   let cursor = 0;
   for (const ref of part.refs || []) {
+    // Hidden references remain in the source/anchor model, but must not split
+    // text or shaping runs. Splitting before appendReference skips the label
+    // can detach a combining mark or change which styles cover its base.
+    if (!ref.formatted) continue;
     const pos = Math.max(cursor, Math.min(part.text.length, Number(ref.localPos) || 0));
     if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos));
     appendReference(parent, ref); cursor = pos;

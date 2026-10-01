@@ -64,6 +64,10 @@ jobs:
         run: node scripts/v9-unified/run-browser.mjs
       - name: Hebrew combining marks match native font pixels
         run: node scripts/v9-unified/verify-combining-marks.mjs
+      - name: Hidden references preserve text shaping and planned geometry
+        run: |
+          node scripts/v9-unified/verify-hidden-reference-shaping.mjs
+          cp test-results/hidden-reference-shaping/report.json test-results/hidden-reference-shaping/before-build.json
       - name: Regular renderer BiDi regression
         run: node scripts/verify-regular-renderer-bidi.mjs
       - name: DOCX to renderer BiDi end-to-end
@@ -84,6 +88,7 @@ jobs:
         run: |
           node --test tests/v9-unified/*.test.mjs
           node scripts/v9-unified/verify-combining-marks.mjs
+          node scripts/v9-unified/verify-hidden-reference-shaping.mjs
           node --test tests/integration/*.test.mjs
           node --test tests/word-extractor/*.test.mjs
           node --test tests/quota/*.test.mjs
@@ -91,3 +96,11 @@ jobs:
           node scripts/v9-unified/run-browser.mjs
           node scripts/verify-regular-renderer-bidi.mjs
           node scripts/verify-docx-to-renderer-bidi-e2e.mjs
+      - name: Retain hidden-reference shaping evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hidden-reference-shaping-${{ github.run_id }}
+          path: test-results/hidden-reference-shaping/
+          retention-days: 7
+          if-no-files-found: warn
