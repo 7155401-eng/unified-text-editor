@@ -1902,6 +1902,60 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     page.remove();
   });
 
+  await test('paired Mishnah footer with zero measured rows keeps full rich remainder and no phantom box',()=>{
+    const mk=(id,text,kind='height')=>{
+      const key=`paired-empty:${id}`;
+      const runs=[
+        {start:0,end:text.length,marks:{v9NoteKey:key}},
+        {start:0,end:1,marks:{v9NoteStart:key}},
+      ];
+      if(kind==='height') runs.push({start:0,end:1,marks:{fontSize:200}});
+      if(kind==='width') runs.push({start:0,end:Math.min(80,text.length),marks:{fontFamily:'monospace'}});
+      return {id,items:[text],runs,rich:{text,runs}};
+    };
+    for(const target of ['03','04'])for(const role of ['float','flow'])for(const kind of ['height','width']){
+      const page=makePage();
+      try{
+        const targetText=(kind==='width'?'W'.repeat(80)+' ':'i ')+Array(90).fill('ab cde fghi').join(' ');
+        const clipped=targetText.slice(0,310);
+        const otherText=role==='float'
+          ? Array(140).fill('ab cde fghi').join(' ')
+          : 'ab cde fghi jk';
+        const targetStream=mk(target,clipped,kind);
+        const otherId=target==='03'?'04':'03';
+        const otherStream=mk(otherId,otherText,'ordinary');
+        const ordered=target==='03'?[targetStream,otherStream]:[otherStream,targetStream];
+        // Role is chosen by relative source length in the production planner.
+        if(role==='flow' && clipped.length<=otherText.length) throw new Error('invalid flow fixture');
+        if(role==='float' && clipped.length>=otherText.length) throw new Error('invalid float fixture');
+        const plan=buildSinglePage(page,{
+          mainText:'ab cd',
+          rightStream:null,
+          leftStream:null,
+          footerStreams:ordered
+        },{
+          ...cfg,
+          pageHeight:kind==='height'?180:537,
+          padding:12,
+          reservedBottom:15,
+          talmudStreams:['01','02'],
+          mishnaWrapOn:true,
+          levels:[['03','04']],
+          openingWordSettings:{enabled:false},
+          streamSettings:{'03':{inlineStyle:{fontSize:11}},'04':{inlineStyle:{fontSize:11}}}
+        });
+        const coverage=plan.streamCoverage.find(x=>x.stream===target);
+        assert(coverage?.inputCharacters===310,`paired ${target}/${role}/${kind}: wrong input coverage`);
+        assert(coverage.plannedCharacters===0,`paired ${target}/${role}/${kind}: fixture unexpectedly painted source`);
+        assert(coverage.remainingCharacters===310,`paired ${target}/${role}/${kind}: full remainder not retained`);
+        assert(plan.overflow?.streams?.[target]?.text===clipped,
+          `paired ${target}/${role}/${kind}: overflow source lost`);
+        assert(!plan.footerBoxes.some(b=>b.id===target),
+          `paired ${target}/${role}/${kind}: empty phantom box published`);
+      }finally{page.remove();}
+    }
+  });
+
   await test('short heading is not published as a one-line intermediate page',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
