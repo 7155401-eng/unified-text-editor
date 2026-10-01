@@ -386,7 +386,8 @@ export function normalizeServerScanState(serverScan, file) {
   if (!serverScan?.serverSide) return null;
   return {
     serverSide: true,
-    serverDocumentId: serverScan.serverDocumentId || serverScan.fileHash || null,
+    uploadId: serverScan.uploadId || null,
+    serverDocumentId: serverScan.uploadId || serverScan.serverDocumentId || serverScan.fileHash || null,
     fileHash: serverScan.fileHash || serverScan.serverDocumentId || null,
     fileName: file?.name || serverScan.fileName || "מסמך Word",
     heads: serverScan.heads || { 1: [], 2: [] },
