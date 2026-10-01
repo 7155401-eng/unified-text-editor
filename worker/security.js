@@ -111,6 +111,11 @@ const ENGINE_API_PREFIXES = [
   '/api/sefaria/',
   '/api/main-text-tools',
   '/api/caricature',
+  '/api/word-chapters-upload',
+  '/api/word-chapters/scan-upload',
+  '/api/word-chapters/extract-upload',
+  '/api/word-chapters/full-upload',
+  '/api/word-chapters/delete-upload',
 ];
 
 export function isEngineApi(pathname) {
@@ -180,6 +185,11 @@ const RATE_LIMITS = {
   '/api/admin': { window: 60, max: 300 },
   '/api/documents': { window: 60, max: 120 },
   '/api/settings': { window: 60, max: 120 },
+  '/api/word-chapters-upload': { window: 60, max: 8 },
+  '/api/word-chapters/scan-upload': { window: 60, max: 30 },
+  '/api/word-chapters/extract-upload': { window: 60, max: 60 },
+  '/api/word-chapters/full-upload': { window: 60, max: 12 },
+  '/api/word-chapters/delete-upload': { window: 60, max: 30 },
 };
 
 export async function checkRateLimit(request, url) {
