@@ -718,7 +718,7 @@ async function scanFile(fileObj, thisToken) {
         );
       }
     }, 1500);
-    const scanResult = await importWordChaptersOnServer(fileObj, (progress) => {
+    const directProgress = (progress) => {
       if (thisToken !== token) return;
       if (progress.stage === "upload") {
         lastPct = progress.pct;
@@ -731,7 +731,51 @@ async function scanFile(fileObj, thisToken) {
         loading("השרת מוצא כותרות...", { pct: 100, detail: `הקובץ הגיע · זמן: ${elapsed()}` });
         updateFileTabButtonProgress(100);
       }
-    });
+    };
+
+    let scanResult;
+    try {
+      const uploaded = await uploadWordChapterFileOnlySafe(fileObj, {
+        onUploadProgress(info) {
+          if (thisToken !== token) return;
+          const pct = info?.percent;
+          if (pct == null) return;
+          lastPct = pct;
+          const loaded = info.loaded || 0;
+          const loadedMB = (loaded / 1048576).toFixed(1);
+          const kbps = Math.round(loaded / 1024 / Math.max(1, (Date.now() - startedAt) / 1000));
+          loading(`מעלה פעם אחת: ${pct}%`, { pct, detail: `${loadedMB}/${sizeMB} MB · ${kbps} KB/s · זמן: ${elapsed()}` });
+          updateFileTabButtonProgress(pct);
+        },
+        onUploadDone() {
+          if (thisToken !== token) return;
+          serverProcessing = true;
+          loading("הקובץ נשמר זמנית — השרת מוצא כותרות...", { pct: 100, detail: `העלאה הסתיימה · זמן: ${elapsed()}` });
+          updateFileTabButtonProgress(100);
+        },
+      });
+      if (!uploaded?.uploadId) throw new Error("השרת לא החזיר uploadId.");
+      scanResult = await scanUploadedWordChaptersSafe(uploaded.uploadId);
+      scanResult = {
+        ...scanResult,
+        uploadId: uploaded.uploadId,
+        fileHash: scanResult?.fileHash || uploaded.fileHash || null,
+        uploadedAt: uploaded.uploadedAt || null,
+        expiresAt: uploaded.expiresAt || null,
+      };
+      serverLog("docx_upload_id_ready", {
+        uploadId: uploaded.uploadId,
+        fileName: fileObj?.name || null,
+        bytes: uploaded.bytes || fileObj?.size || 0,
+      });
+    } catch (uploadIdError) {
+      console.warn("[chapter-upload] uploadId/R2 unavailable; falling back to direct DOCX scan", uploadIdError);
+      serverLog("docx_upload_id_fallback", {
+        fileName: fileObj?.name || null,
+        error: uploadIdError?.message || String(uploadIdError),
+      });
+      scanResult = await importWordChaptersOnServer(fileObj, directProgress);
+    };
     stopTicker();
     if (thisToken !== token) return;
     const serverState = normalizeServerScanState(scanResult, fileObj);
@@ -896,10 +940,15 @@ async function importChapter(chapterIndex) {
   try {
     if (state?.serverSide) {
       loading(`מחלץ את הפרק בצד שרת: ${chapterIndex + 1}...`);
-      const serverChapter = await extractWordChapterOnServer(selectedFile, {
-        level: selectedLevel,
-        index: chapterIndex,
-      });
+      const serverChapter = state?.uploadId
+        ? await extractUploadedWordChapterSafe(state.uploadId, {
+            level: selectedLevel,
+            index: chapterIndex,
+          })
+        : await extractWordChapterOnServer(selectedFile, {
+            level: selectedLevel,
+            index: chapterIndex,
+          });
 
       if (!serverChapter?.result) {
         throw new Error("השרת לא החזיר תוכן פרק תקין.");
@@ -980,31 +1029,41 @@ async function importAllChapters() {
     if (cachedIds.has(chapKey)) continue;
 
     try {
-      const chapter = await buildChapterDocx(i);
-      if (!chapter) continue;
+      let title;
+      let result;
 
-      loading(`שומר ל-cache: "${chapter.title}" (${i + 1}/${heads.length})...`);
-      const buffer = chapter.buffer.slice(0);
+      if (state?.serverSide && state?.uploadId) {
+        loading(`שומר ל-cache מהשרת: פרק ${i + 1}/${heads.length}...`);
+        const serverChapter = await extractUploadedWordChapterSafe(state.uploadId, {
+          level: selectedLevel,
+          index: i,
+        });
+        if (!serverChapter?.result) throw new Error("השרת לא החזיר תוכן פרק תקין.");
+        title = serverChapter.title || heads[i]?.title || `פרק ${i + 1}`;
+        result = serverChapter.result;
+      } else {
+        const chapter = await buildChapterDocx(i);
+        if (!chapter) continue;
+        title = chapter.title;
 
-      const [sources, notesHtmlMap] = await Promise.all([
-        find_all_note_sources(buffer.slice(0)),
-        buildNotesHtmlMapForChapter(buffer.slice(0)),
-      ]);
+        loading(`שומר ל-cache: "${chapter.title}" (${i + 1}/${heads.length})...`);
+        const buffer = chapter.buffer.slice(0);
 
-      const selected = buildSelectedSources(sources);
-      const result = await docx_extract_simple(
-        buffer.slice(0),
-        selected,
-        // ★ משה 27/09/2026 — „במסך יבוא מוורד יש אפשרות מכילה או מתחילה,
-        // כברירת מחדל שיהיה מכילה".
-        // המסלול של מסמך שלם כבר שונה ל-contains; כאן, במסלול של מסמך
-        // מחולק לפרקים, נשאר "starts" — ואותו קובץ היה מתנהג אחרת לפי
-        // הדרך שבה נטען. עכשיו שני המסלולים זהים.
-        { notesHtmlMap, skipEmptyNotes: true, markerMatchMode: "contains" }
-      );
+        const [sources, notesHtmlMap] = await Promise.all([
+          find_all_note_sources(buffer.slice(0)),
+          buildNotesHtmlMapForChapter(buffer.slice(0)),
+        ]);
+
+        const selected = buildSelectedSources(sources);
+        result = await docx_extract_simple(
+          buffer.slice(0),
+          selected,
+          { notesHtmlMap, skipEmptyNotes: true, markerMatchMode: "contains" }
+        );
+      }
 
       if (docId) {
-        await saveChapterExtraction(docId, chapKey, { title: chapter.title, result });
+        await saveChapterExtraction(docId, chapKey, { title, result });
         cachedIds.add(chapKey);
         localStorage.setItem("ravtext-cc-" + docId, JSON.stringify([...cachedIds]));
       }

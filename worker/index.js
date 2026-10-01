@@ -33,7 +33,7 @@ import {
   handlePaymentStatus,
   handleUsageTick,
 } from './minute_access.js';
-import { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, isDocxFootnoteTrackChangesPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath } from '../cloudflare/docx_worker_entry.js';
+import { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, isDocxFootnoteTrackChangesPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath, cleanupExpiredDocxUploads } from '../cloudflare/docx_worker_entry.js';
 
 function visibleExpiresAtForUser(user) {
   if (!user?.expires_at) return null;
@@ -301,5 +301,6 @@ export default {
   // משה 2026-05-10: cron יומי — חיוב חוזר אוטומטי. רץ כל בוקר ב-04:00 UTC.
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runRecurringBilling(env).catch(() => null));
+    ctx.waitUntil(cleanupExpiredDocxUploads(env).catch(() => null));
   },
 };
