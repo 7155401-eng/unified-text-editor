@@ -1791,7 +1791,7 @@ function openResetSystemStateDialog() {
 async function runResetSystemState(opts) {
   try {
     if (opts.texts) {
-      try { paneManager.clearStorage(); } catch (_) {}
+      try { await paneManager.clearStorage(); } catch (_) {}
       try {
         if (indexedDB && indexedDB.databases) {
           const dbs = await indexedDB.databases();
