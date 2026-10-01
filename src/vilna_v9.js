@@ -2789,6 +2789,41 @@ function buildPagePlanCore(pageContent, config) {
     }
   }
 
+  // Validate final full-width ownership, not only an earlier alternating pass.
+  // The last left reflow may extend below the clearance assumed by the right.
+  // Replan from source with monotonically increasing clearance, never move DOM.
+  if (!isSameStreamSideSplit && pass2Right && pass2Left) {
+    const sideRowsOverlap = (a, b) => a.lines.some(x => b.lines.some(y =>
+      Math.min(x.x + x.width, y.x + y.width) - Math.max(x.x, y.x) > 1 / 64 &&
+      Math.min(x.y + x.lineHeightPx, y.y + y.lineHeightPx) - Math.max(x.y, y.y) > 1 / 64));
+    let rightFloor = occupiedSideEndY(pass2Left), leftFloor = occupiedSideEndY(pass2Right);
+    let pass = 0;
+    while (sideRowsOverlap(pass2Right, pass2Left) && pass < 8) {
+      rightFloor = Math.max(rightFloor, occupiedSideEndY(pass2Left));
+      leftFloor = Math.max(leftFloor, occupiedSideEndY(pass2Right));
+      pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+        mainBottomY, otherSideEndY: rightFloor,
+      });
+      leftFloor = Math.max(leftFloor, occupiedSideEndY(pass2Right));
+      pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+        mainBottomY, otherSideEndY: leftFloor,
+      });
+      pass++;
+    }
+    let conservativeFallback = false;
+    if (sideRowsOverlap(pass2Right, pass2Left)) {
+      conservativeFallback = true;
+      // Conservative finite allocation if full-width ownership cannot settle.
+      pass2Right = buildSideStream(pageContent.rightStream, 'right', {
+        mainBottomY, otherSideEndY: pageBottomY, suppressFullStrip3: true,
+      });
+      pass2Left = buildSideStream(pageContent.leftStream, 'left', {
+        mainBottomY, otherSideEndY: pageBottomY, suppressFullStrip3: true,
+      });
+    }
+    if (pass > 0) result.sideWidthReconciliation = {passes: pass, conservativeFallback};
+  }
+
   if (isSameStreamSideSplit && pass2Right?.overflowText && pageContent.leftStream) {
     const originalLeft = pageContent.leftStream.rich || makeRichText(pageContent.leftStream.items.join(' '), pageContent.leftStream.runs || []);
     const continuation = concatRichTextParts([pass2Right.overflowRich, originalLeft], '');

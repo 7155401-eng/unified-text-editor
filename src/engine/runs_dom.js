@@ -161,9 +161,30 @@ function normalizeRuns(text, runs) {
   return mergeAdjacentRuns(out);
 }
 
+// A smaller styled run must not inherit the full pixel leading of a larger
+// parent: equal pixel line boxes with different baselines can enlarge the row.
+// This hint is supplied only by the measured V9 path, equally for measure/paint.
+// Explicit run leading and raised/lowered text remain authoritative. Real glyph
+// extents are still measured by V9; this is not a fixed-height or clipping rule.
+function applyInheritedInlineLeading(span, typography) {
+  if (!typography || span.style.lineHeight || span.style.verticalAlign) return;
+  const parentSize = String(typography.fontSize || '').trim();
+  const parentLeading = String(typography.lineHeight || '').trim();
+  if (!/^\d+(?:\.\d+)?px$/.test(parentSize) || !/^\d+(?:\.\d+)?px$/.test(parentLeading)) return;
+  const base = parseFloat(parentSize), leading = parseFloat(parentLeading);
+  if (!(base > 0 && leading > 0)) return;
+  const size = String(span.style.fontSize || '').trim();
+  const match = size.match(/^(\d+(?:\.\d+)?)(px|pt|em|%)$/);
+  if (!match) return;
+  const amount = Number(match[1]);
+  const px = match[2] === 'em' ? amount * base : match[2] === '%' ? amount * base / 100
+    : match[2] === 'pt' ? amount * 4 / 3 : amount;
+  if (px > 0 && px < base) span.style.lineHeight = String(leading / base);
+}
+
 // מוסיף לתוך parent את הטקסט הנתון, מחולק ל-spans לפי runs. שומר על marks
 // כפי שהם בעורך. אם אין runs בכלל — מוסיף טקסט אחד.
-export function appendTextWithRuns(parent, text, runs) {
+export function appendTextWithRuns(parent, text, runs, inheritedTypography = null) {
   const str = String(text || "");
   if (!str) return;
   const normalized = normalizeRuns(str, runs);
@@ -177,6 +198,7 @@ export function appendTextWithRuns(parent, text, runs) {
     if (hasMarks(r.marks)) {
       const span = document.createElement("span");
       applyMarksToSpan(span, r.marks);
+      applyInheritedInlineLeading(span, inheritedTypography);
       span.textContent = slice;
       parent.appendChild(span);
     } else {
