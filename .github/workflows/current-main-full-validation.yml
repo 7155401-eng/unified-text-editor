@@ -1,0 +1,53 @@
+name: Temporary current-main full validation
+
+on:
+  push:
+    branches:
+      - verify/current-main-full-20261001
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Integration and source contracts
+        run: node --test tests/integration/*.test.mjs
+      - name: V9 unit regressions
+        run: node --test tests/v9-unified/*.test.mjs
+      - name: Quota regressions
+        run: node --test tests/quota/*.test.mjs
+      - name: DOCX regressions
+        run: node --test tests/docx/*.test.mjs
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: V9 browser regressions
+        run: node scripts/v9-unified/run-browser.mjs
+      - name: Source pristine before build
+        run: git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+      - name: Build twice
+        run: |
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
+      - name: Repeat critical regressions after build
+        run: |
+          node --test tests/integration/*.test.mjs
+          node --test tests/quota/*.test.mjs
+          node --test tests/docx/*.test.mjs
+          node --test tests/v9-unified/*.test.mjs
+          node scripts/v9-unified/run-browser.mjs
