@@ -1,0 +1,46 @@
+name: Native paragraph feasibility (not production acceptance)
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tests/native-paragraph/**'
+      - 'scripts/native-paragraph/**'
+      - '.github/workflows/native-paragraph-proof.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-paragraph-proof-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  isolated-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies without package scripts
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Guard against accepting either previous centering failure
+        run: node --test tests/native-paragraph/contracts.test.mjs
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Native source-preservation probes and explicit adoption blockers
+        run: node scripts/native-paragraph/run.mjs
+      - name: No tracked source was modified
+        run: git diff --exit-code
+      - name: Retain measurements, module hashes and offline lab
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-paragraph-feasibility-${{ github.run_id }}
+          path: test-results/native-paragraph/
+          retention-days: 7
+          if-no-files-found: warn

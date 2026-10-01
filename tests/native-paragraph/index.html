@@ -1,0 +1,30 @@
+<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RavText — אבטיפוס פסקה טבעית</title>
+<style>
+body{margin:24px;font:16px/1.6 system-ui,sans-serif;background:#fff;color:#111}h1{font-size:26px}h2{font-size:19px}
+.notice{border-inline-start:4px solid #956115;padding:8px 16px;background:#fff7e5;max-width:960px}.controls{display:flex;flex-wrap:wrap;gap:14px;margin:22px 0}label{display:flex;flex-direction:column}input,select,button{font:inherit;padding:6px}input{width:80px}
+.comparison{display:flex;flex-wrap:wrap;gap:24px}.card{padding:18px;border:1px solid #aaa;min-width:330px}.sample{direction:rtl;position:relative;padding:0;margin:0;outline:1px dashed #bbb;min-height:100px}
+pre{direction:ltr;text-align:left;font:12px/1.5 monospace;white-space:pre-wrap;max-width:1000px;background:#f5f5f5;padding:16px}
+.native-proof-exclusion{background:#eee}
+</style>
+<h1>פתיח ופסקה אחת — השוואה למנוע הקיים</h1>
+<p class="notice">אבטיפוס מבודד, לא תיקון מותקן. בצד הניסויי מופיעים מילת הפתיח והגוף בתוך פסקת HTML אחת. אין פיצול הטקסט לשורות ואין הזזת מילים לאחר המדידה. הגופן, טווח הפתיח, העיצובים וסימוני ההערות מתקבלים מרכיבי V9 הקיימים. קבלת פסקה אחת אינה מבטיחה מרכוז משותף.</p>
+<div class="controls">
+<label>גופן<select id="family"><option>serif</option><option>sans-serif</option><option>monospace</option></select></label>
+<label>מילים<input id="words" type="number" value="12" min="3" max="100"></label>
+<label>שורות פתיח<input id="drop" type="number" value="2" min="1" max="8"></label>
+<label>רוחב<input id="width" type="number" value="300" min="140" max="600"></label>
+<label>מנגנון<select id="mode"><option value="float">מילה שלמה בחלון צף</option><option value="initial-word">initial-letter למילה</option><option value="inline">מילה בתוך השורה — בלי חלון</option></select></label>
+<label>חלוקת שורות<select id="wrap"><option value="wrap">רגילה</option><option value="pretty">pretty</option><option value="balance">balance</option></select></label>
+<label>התרחבות<select id="exclusion"><option value="none">אין</option><option value="left">משמאל</option><option value="right">מימין</option><option value="both">משני הצדדים</option></select></label>
+<button id="update">השוואה</button></div>
+<p id="status" role="status"></p>
+<div class="comparison"><section class="card"><h2>V9 — המימוש הנוכחי</h2><div id="v9-host" class="sample"></div></section><section class="card"><h2>הדפדפן מעמד פסקה שלמה</h2><div id="native-host" class="sample"></div></section></div>
+<p>האזור האפור מייצג מקום שאינו פנוי לטקסט. המדידות שלהלן הן גבולות טקסט מהדפדפן, לא מדידת פיקסלים של האותיות. תרחיש שאינו עומד בתנאים אינו מסומן כפתור.</p>
+<pre id="results"></pre>
+<script type="module">
+import { showComparison } from './browser.js';
+function config(){const out={};for(const key of ['family','words','drop','width','mode','wrap','exclusion'])out[key]=document.getElementById(key).value;for(const key of ['words','drop','width'])out[key]=Number(out[key]);return out;}
+const show=()=>showComparison(config()).catch(error=>document.querySelector('#status').textContent=String(error));
+document.querySelector('#update').addEventListener('click',show);show();
+</script></html>
