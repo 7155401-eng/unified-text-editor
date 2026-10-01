@@ -1,0 +1,53 @@
+name: Capture pinned sources for local knee validation
+on:
+  push:
+    branches: [fix/v9-inherited-inline-leading-20261001]
+    paths: [.github/workflows/capture-local-knee-validation.yml]
+permissions:
+  contents: read
+jobs:
+  capture:
+    if: github.repository == '7155401-eng/unified-text-editor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ab24421e44262a9f52791a900598cfa7eb9879fc
+          path: baseline
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: a4a870abb1ddde12caf28adb994cbf22e3aea79b
+          path: candidate
+          persist-credentials: false
+      - name: Archive tracked JavaScript and validation configuration only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir evidence
+          python3 - <<'PY'
+          import pathlib,subprocess,json,hashlib,tarfile,io
+          allowed_roots=('src/','tests/v9-unified/','scripts/v9-unified/')
+          for name,sha in [('baseline','ab24421e44262a9f52791a900598cfa7eb9879fc'),('candidate','a4a870abb1ddde12caf28adb994cbf22e3aea79b')]:
+              root=pathlib.Path(name)
+              assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()==sha
+              rows=subprocess.check_output(['git','ls-tree','-r','--full-tree',sha],cwd=root,text=True).splitlines()
+              entries={}
+              with tarfile.open('evidence/'+name+'.tar','w') as tar:
+                  for row in rows:
+                      meta,path=row.split('\t',1);mode,kind,blob=meta.split()
+                      if kind!='blob' or mode!='100644': continue
+                      if not ((path.startswith(allowed_roots) and path.endswith(('.js','.mjs','.json'))) or path in ('package.json','package-lock.json','vite.config.js')): continue
+                      raw=(root/path).read_bytes()
+                      assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==blob
+                      entry=tarfile.TarInfo(path);entry.size=len(raw);entry.mode=0o644
+                      tar.addfile(entry,io.BytesIO(raw));entries[path]=blob
+              pathlib.Path('evidence/'+name+'-identities.json').write_text(json.dumps({'commit':sha,'files':entries},indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-knee-source-${{ github.run_id }}
+          path: evidence/
+          retention-days: 2
+          if-no-files-found: error
