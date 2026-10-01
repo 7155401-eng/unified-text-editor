@@ -1,5 +1,5 @@
 import { markV9NoteRuns, auditV9NoteStarts, verifyV9StreamCoverage } from "./engine/v9_note_ownership.js";
-import { streamContextForV9, measureV9CrownHeight, flowV9MeasuredStream, flowV9MeasuredColumns, splitV9StreamAtWordCount, renderV9MeasuredStreamLine } from "./engine/v9_stream_inline_layout.js";
+import { streamContextForV9, hasAtLeastV9Rows, measureV9CrownHeight, flowV9MeasuredStream, flowV9MeasuredColumns, splitV9StreamAtWordCount, renderV9MeasuredStreamLine } from "./engine/v9_stream_inline_layout.js";
 // vilna_v9.js — מנוע פריסת דף וילנא, V9.
 import { yieldToBrowser as yieldToBrowserShared } from "./engine/background_safe_yield.js";
 import { DEFAULT_V9_MAIN_BOTTOM_GAP_PX } from "./engine/v9_main_bottom_gap_policy.js";
@@ -247,18 +247,18 @@ class VilnaMetrics {
 // בוחר תרחיש כתר לפי 5 התרחישים מהמסמך
 // =====================================================================
 function chooseCrownScenario(streams, opts) {
-  const minLines = opts.crownLines || 4;
-  const m = opts.metrics;
+  const minLines = Math.max(1, Math.floor(Number(opts.crownLines) || 4));
   const halfW = opts.halfWidth;
   const fullW = opts.fullWidth;
+  const hasMeasuredRows = opts.hasMeasuredRows;
+  if (typeof hasMeasuredRows !== 'function') {
+    throw new Error('V9_CROWN_MEASUREMENT_REQUIRED: crown scenario must use the unified measured row planner');
+  }
 
   const r = streams.right;
   const l = streams.left;
-
-  function hasMinLines(text, width) {
-    if (!text) return false;
-    return m.countLines(text, width) >= minLines;
-  }
+  const hasMinLines = (stream, width) =>
+    !!stream && hasMeasuredRows(stream, width, minLines);
 
   if (!r && !l) return { name: 'no_streams' };
 
@@ -279,11 +279,11 @@ function chooseCrownScenario(streams, opts) {
 
   const longSide = rLong ? 'right' : (lLong ? 'left' : null);
   if (longSide) {
-    const longText = longSide === 'right' ? r : l;
-    if (hasMinLines(longText, fullW)) {
+    const longStream = longSide === 'right' ? r : l;
+    if (hasMinLines(longStream, fullW)) {
       return {
         name: 'one_full_one_short',
-        longSide: longSide,
+        longSide,
         shortSide: longSide === 'right' ? 'left' : 'right',
       };
     }
@@ -1706,13 +1706,22 @@ function buildPagePlanCore(pageContent, config) {
     overflow: { mainText: '', streams: {} },
   };
 
-  // 1. תרחיש כתר
-  const rText = pageContent.rightStream ? pageContent.rightStream.items.join(' ') : null;
-  const lText = pageContent.leftStream ? pageContent.leftStream.items.join(' ') : null;
+  // 1. Crown scenario — measured with the exact typography that will paint
+  // each stream. The old decision used generic Canvas sideMetrics, while crown
+  // height/final rows used per-stream DOM measurement; custom fonts/sizes could
+  // therefore be classified "short" by one engine and painted "long" by another.
+  const crownRich = (stream) => stream?.rich
+    ? normalizeRichTextEntry(stream.rich)
+    : makeRichText((stream?.items || []).join(' '), Array.isArray(stream?.runs) ? stream.runs : []);
+  const hasMeasuredCrownRows = (stream, width, rows) => {
+    if (!stream) return false;
+    const metrics = getSideMetricsForStream(stream.id);
+    return hasAtLeastV9Rows(crownRich(stream), metrics._v9TextContext, width, rows);
+  };
 
   let scenario = chooseCrownScenario(
-    { right: rText, left: lText },
-    { metrics: sideMetrics, halfWidth, fullWidth: innerWidth, crownLines: cfg.crownLines }
+    { right: pageContent.rightStream, left: pageContent.leftStream },
+    { halfWidth, fullWidth: innerWidth, crownLines: cfg.crownLines, hasMeasuredRows: hasMeasuredCrownRows }
   );
 
   // משה 2026-05-15: הכרעה פר-זרם — אם המשתמש בחר במפורש פריסה לזרם
