@@ -1007,6 +1007,23 @@ export class PaneManager {
     return this.getPageTweak(pageNumber);
   }
 
+  syncPageTweakMeasurements(pageReports = []) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    let next = this.pageTweaks;
+    for (const page of pageReports || []) {
+      if (!page || !Number.isFinite(Number(page.page))) continue;
+      next = updatePageTweakMeasurements(next, page.page, {
+        bottomGapLines: page.bottomGapLines,
+        overflowPx: page.overflowPx,
+        linePitchPx: page.linePitchPx,
+      });
+    }
+    this.pageTweaks = normalizePageTweaks(next);
+    const after = JSON.stringify(this.pageTweaks);
+    if (before !== after) this._save();
+    return this.getPageTweaks();
+  }
+
   resetPageTweak(pageNumber) {
     return this.setPageTweak(pageNumber, {
       linesDiff: 0,
