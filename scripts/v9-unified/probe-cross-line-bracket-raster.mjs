@@ -27,13 +27,17 @@ try{
     const {createV9TextLayoutContext,renderV9PlannedMainLine}=await import('../../src/engine/v9_text_measurement.js');
     const {appendTextWithRuns}=await import('../../src/engine/runs_dom.js');
 
-    const samples=[
-      "אבג '(דהו זח טי כל מנ) סע פצ קר שת",
-      "אבג ' (דהו זח טי כל מנ) סע פצ קר שת",
-      "אבג') דהו זח טי כל מנ (סע פצ' קר שת",
-      "אבג '(דהו זח טי כל מנ סע פצ קר שת) סוף",
-      "אבג '123(דהו זח טי כל מנ) סע פצ קר שת",
-    ];
+    const neutralMarks=["'","’","׳",":","-","/","123"];
+    const samples=[];
+    for(const mark of neutralMarks){
+      samples.push({text:`אבג ${mark}(דהו זח טי כל מנ) סע פצ קר שת`,opening:false,label:`plain-before-${mark}`});
+      samples.push({text:`אבג ${mark} (דהו זח טי כל מנ) סע פצ קר שת`,opening:false,label:`plain-spaced-${mark}`});
+      samples.push({text:`אבג(${mark} דהו זח טי כל מנ ${mark}) סע פצ קר שת`,opening:false,label:`plain-inside-${mark}`});
+      samples.push({text:`פתיח ${mark}(דהו זח טי כל מנ) סע פצ קר שת`,opening:true,label:`opening-before-${mark}`});
+      samples.push({text:`פתיח ${mark} (דהו זח טי כל מנ) סע פצ קר שת`,opening:true,label:`opening-spaced-${mark}`});
+    }
+    samples.push({text:"אבג') דהו זח טי כל מנ (סע פצ' קר שת",opening:false,label:"reversed-order-apostrophe"});
+    samples.push({text:"פתיח '(דהו זח טי כל מנ סע פצ קר שת) סוף",opening:true,label:"opening-long-pair"});
 
     const host=document.createElement('div');
     host.id='bidi-raster-host';
@@ -43,14 +47,19 @@ try{
     const results=[];
     let top=0;
     for(let si=0;si<samples.length;si++){
-      const text=samples[si];
+      const scenario=samples[si];
+      const text=scenario.text;
       const parens=[];
       for(let i=0;i<text.length;i++)if(text[i]==='('||text[i]===')')parens.push(i);
       const runs=parens.map((at,j)=>({start:at,end:at+1,marks:{color:j%2?'rgb(3,4,5)':'rgb(1,2,3)',backgroundColor:'rgb(250,250,250)'}}));
 
       const context=createV9TextLayoutContext({
         mainFontSize:28,mainFontFamily:'serif',lineHeightRatio:1.25,
-        openingWordSettings:{enabled:false},
+        openingWordSettings:scenario.opening ? {
+          enabled:true,target:'word',count:1,font:'serif',size:160,weight:'bold',
+          position:'dropped',dropLines:2,spaceAfter:0.25,scope:'all',
+          skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1
+        } : {enabled:false},
       });
 
       let chosen=null;
@@ -63,7 +72,7 @@ try{
           break;
         }
       }
-      if(!chosen){context.dispose();results.push({sample:text,found:false});continue;}
+      if(!chosen){context.dispose();results.push({sample:text,label:scenario.label,opening:scenario.opening,found:false});continue;}
 
       const actual=document.createElement('div');
       actual.className='probe-actual';
@@ -83,7 +92,7 @@ try{
       nativeParen.forEach((el,i)=>el.dataset.probeParen=`n-${si}-${i}`);
 
       results.push({
-        sample:text,found:true,width:chosen.width,lineByParen:chosen.lineByParen,
+        sample:text,label:scenario.label,opening:scenario.opening,found:true,width:chosen.width,lineByParen:chosen.lineByParen,
         actualCount:actualParen.length,nativeCount:nativeParen.length,
         actualIds:actualParen.map((_,i)=>`a-${si}-${i}`),
         nativeIds:nativeParen.map((_,i)=>`n-${si}-${i}`),
@@ -146,15 +155,22 @@ try{
     };
   };
 
+  let trueMirrorCount=0;
   for(const item of setup){
     if(!item.found)continue;
     item.comparisons=[];
     for(let i=0;i<Math.min(item.actualIds.length,item.nativeIds.length);i++){
-      item.comparisons.push(await compare(item.actualIds[i],item.nativeIds[i]));
+      const comparison=await compare(item.actualIds[i],item.nativeIds[i]);
+      item.comparisons.push(comparison);
+      if(comparison.mirrorWins)trueMirrorCount++;
     }
   }
 
-  console.log(JSON.stringify(setup,null,2));
+  console.log(JSON.stringify({trueMirrorCount,setup},null,2));
+  if(trueMirrorCount>0){
+    console.error(`TRUE_BRACKET_MIRRORING_DETECTED=${trueMirrorCount}`);
+    process.exitCode=2;
+  }
 } finally {
   await browser?.close();
   await new Promise(resolve=>server.close(resolve));
