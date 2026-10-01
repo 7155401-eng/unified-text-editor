@@ -1,0 +1,54 @@
+name: Materialize reviewed measured-crown salvage
+on:
+  push:
+    branches: [salvage/v9-measured-crown-decision-20261001]
+    paths: [.github/workflows/materialize-measured-crown.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.repository == '7155401-eng/unified-text-editor' && github.ref == 'refs/heads/salvage/v9-measured-crown-decision-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: 45cd773b578b824112b01ccce8b032e117c87558
+      TARGET: salvage/v9-measured-crown-decision-20261001
+      RESULT_TREE: b9210ac2804d24794ce03d2ba07c964b6462a3d0
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply only the exact reviewed source and test delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          printf '%s\n' '9454aac0e8667e2ae180c2c1512ce017cec617aa44a6f6cbfe60b2602b2ec3fa  .github/patches/measured-crown-decision.patch' | sha256sum -c -
+          cp .github/patches/measured-crown-decision.patch /tmp/measured-crown-decision.patch
+          git rm .github/patches/measured-crown-decision.patch .github/workflows/materialize-measured-crown.yml
+          git apply --index --check /tmp/measured-crown-decision.patch
+          git apply --index /tmp/measured-crown-decision.patch
+          git diff --cached --check
+          test "$(git write-tree)" = "$RESULT_TREE"
+          node --check src/vilna_v9.js
+          node --check tests/v9-unified/measured-crown-decision.browser.js
+          node --check scripts/v9-unified/verify-opening-window-retry.mjs
+          node --test tests/v9-unified/measured-crown-decision.test.mjs
+      - name: Publish only to the unchanged feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          test "$(git ls-remote origin "refs/heads/$TARGET" | cut -f1)" = "$GITHUB_SHA"
+          test "$(git write-tree)" = "$RESULT_TREE"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(v9): salvage measured crown selection with actual widths and empty-stream preservation'
+          git push origin "HEAD:refs/heads/$TARGET"
+          git rev-parse HEAD HEAD^{tree}
