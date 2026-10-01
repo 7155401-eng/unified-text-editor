@@ -22,7 +22,11 @@ function collect(file){
 }
 const entry=collect(path.join(root,'tests/v9-unified/split-crown-rich.browser.js'));
 assert(Object.values(imports).every(Boolean));
-const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runSplitCrownChecks} from '${entry}';window.runSplitCrownChecks=runSplitCrownChecks;</script></body></html>`;
+const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runSplitCrownChecks,runShortStreamGridChecks} from '${entry}';window.runSplitCrownChecks=()=>{
+  const a=runSplitCrownChecks(),b=runShortStreamGridChecks();
+  return {total:a.total+b.total,passed:a.passed+b.passed,failed:a.failed+b.failed,
+    groups:{splitCrown:a.total,shortStreamGrid:b.total},results:[...a.results,...b.results]};
+};</script></body></html>`;
 const out=path.join(root,'test-results/split-crown');fs.mkdirSync(out,{recursive:true});
 const browser=await chromium.launch({headless:true,...(process.env.CROWN_TEST_BROWSER?{executablePath:process.env.CROWN_TEST_BROWSER}:{})});
 try {
@@ -36,6 +40,6 @@ try {
   Object.assign(result,{browserVersion:browser.version(),errors,requests,identities});
   fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify({total:result.total,passed:result.passed,failed:result.failed,browserVersion:result.browserVersion}));
-  assert.equal(result.total,52);assert.equal(errors.length,0);assert.equal(requests.length,0);
+  assert.equal(result.total,140);assert.equal(errors.length,0);assert.equal(requests.length,0);
   assert.equal(result.failed,0,JSON.stringify(result.results.filter(r=>!r.pass)));
 } finally {await browser.close();}

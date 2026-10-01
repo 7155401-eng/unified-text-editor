@@ -2010,6 +2010,29 @@ function buildPagePlanCore(pageContent, config) {
   // naiveMainBottomY ענק (כי הראשי הנאיבי דחוס), strip 2 חסום ב-pageBottom
   // ו-strip 3 לא נוצר (אין מקום).
   const pageBottomY = effectivePageBottom;
+  // A short stream below a full-width crown joins an EXISTING row grid.
+  // Its title/crown clearance used to start an independent grid, so equal-pitch
+  // streams widened at different Ys. Measure eligibility with the same planner;
+  // never force unequal or rich variable-height rows onto a guessed base pitch.
+  let sharedUniformSidePitch;
+  function uniformSidePitch() {
+    if (sharedUniformSidePitch !== undefined) return sharedUniformSidePitch;
+    sharedUniformSidePitch = 0;
+    if (scenario.name !== 'one_full_one_short') return 0;
+    const pitches = [pageContent.rightStream, pageContent.leftStream].map(stream => {
+      if (!stream) return 0;
+      const context = getSideMetricsForStream(stream.id)._v9TextContext;
+      const rich = stream.rich || makeRichText(stream.items.join(' '), stream.runs || []);
+      const probe = flowV9MeasuredStream(rich, [{x:0, width:Number.MAX_SAFE_INTEGER,
+        y_start:0, y_end:Number.MAX_SAFE_INTEGER}], context, Number.MAX_SAFE_INTEGER);
+      return !probe.overflowText && probe.lines.length && probe.lines.every(line =>
+        Math.abs(line.lineHeightPx - context.lineHeight) < 1e-6) ? context.lineHeight : 0;
+    });
+    if (pitches.every(p => p > 0) && Math.abs(pitches[0] - pitches[1]) < 1e-6) {
+      sharedUniformSidePitch = pitches[0];
+    }
+    return sharedUniformSidePitch;
+  }
   function buildSideStream(streamData, side, opts) {
     if (!streamData) return null;
     const streamRich = streamData.rich
@@ -2053,6 +2076,7 @@ function buildPagePlanCore(pageContent, config) {
     const otherEndY = Math.max(effectiveMainBottomY, Math.min(rawOtherEndY, streamPageBottomY));
 
     const strips = [];
+    let bodyStartGrid;
     // Each column retains the requested number of wide crown rows. A taller
     // opposite prefix reserves more shared clearance for main, not a fifth
     // wide crown row in this column. The body continues on its existing grid.
@@ -2163,7 +2187,7 @@ function buildPagePlanCore(pageContent, config) {
       });
     }
 
-    const flowResult = flowStreamThroughStrips(
+    const flow = () => flowStreamThroughStrips(
       streamRich,
       strips.map(s => ({
         x: s.x,
@@ -2175,6 +2199,24 @@ function buildPagePlanCore(pageContent, config) {
       streamMetrics,
       streamPageBottomY
     );
+    let flowResult = flow();
+    if (fullCrownSide && fullCrownSide !== side && rawOtherEndY > rawMainBottomY) {
+      const first = flowResult.lines[0];
+      const knee = first && flowResult.lines.find(line => line.y >= effectiveMainBottomY - 1 / 64 &&
+        line.width > first.width + 1 / 64);
+      const pitch = knee ? uniformSidePitch() : 0;
+      if (pitch > 0 && first.y < effectiveMainBottomY && strips[0]?.y_start === first.y) {
+        const requiredTop = strips[0].y_start;
+        const alignedTop = sideTopY + Math.ceil((requiredTop - sideTopY) / pitch - V9_LINE_FIT_EPSILON) * pitch;
+        // Keep title clearance, measured leading and at least one narrow row.
+        // Only the short stream's initial allocation changes, before paint.
+        if (alignedTop < effectiveMainBottomY - 1 / 64 && alignedTop > requiredTop + 1 / 64) {
+          bodyStartGrid = {anchor:sideTopY, pitch, requiredTop, alignedTop};
+          strips[0] = {...strips[0], y_start:alignedTop};
+          flowResult = flow();
+        }
+      }
+    }
 
     const lines = [];
     for (const line of flowResult.lines) {
@@ -2222,6 +2264,7 @@ function buildPagePlanCore(pageContent, config) {
       manualFootnoteShiftLines: manualShift.shiftLines,
       manualFootnoteShiftReservedPx: manualShift.reservedPx,
       streamPageBottomY,
+      ...(bodyStartGrid ? {bodyStartGrid} : {}),
       syntheticContinuationAfter: !!streamData.syntheticContinuationAfter,
       syntheticContinuationFrom: streamData.syntheticContinuationFrom || "",
       originalStreamWasSplit: !!streamData.originalStreamWasSplit,
