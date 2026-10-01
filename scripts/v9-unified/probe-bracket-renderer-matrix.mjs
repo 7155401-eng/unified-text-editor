@@ -34,6 +34,19 @@ try{
       scenarios.push({label:`inside-${mark}`,text:`אבג(${mark} דהו זח טי כל מנ ${mark}) סע פצ קר שת`});
     }
 
+    // Word can preserve invisible directional marks around punctuation. These
+    // are exactly the cases most likely to look intermittent in a visual bug
+    // report because the plain characters appear identical to the user.
+    const controls=[
+      ['LRM','\u200e'],['RLM','\u200f'],['ALM','\u061c'],['WJ','\u2060']
+    ];
+    for(const [name,ctrl] of controls){
+      scenarios.push({label:`ctrl-${name}-apostrophe-before`,text:`אבג ${ctrl}'(דהו זח טי כל מנ) סע פצ קר שת`});
+      scenarios.push({label:`ctrl-${name}-apostrophe-after`,text:`אבג '${ctrl}(דהו זח טי כל מנ) סע פצ קר שת`});
+      scenarios.push({label:`ctrl-${name}-inside`,text:`אבג(${ctrl}' דהו זח טי כל מנ '${ctrl}) סע פצ קר שת`});
+      scenarios.push({label:`ctrl-${name}-between-pair`,text:`אבג (${ctrl}דהו זח טי כל מנ${ctrl}) סע פצ קר שת`});
+    }
+
     const modes=['v9-stream','regular-inline'];
     const host=document.createElement('div');
     const rowHeight=280;
