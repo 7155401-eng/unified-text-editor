@@ -55,13 +55,22 @@ export function splitV9StreamAtWordCount(input, wordCount) {
   return [sliceRichText(rich,0,at),sliceRichText(rich,at,rich.text.length)];
 }
 
-export function flowV9MeasuredColumns(input, context, {top,bottom,width,columns=1,gap=0}) {
+export function flowV9MeasuredColumns(input, context, {top,bottom,width,columns=1,gap=0,maxLines=0}) {
   const cw=columns>1?(width-gap*(columns-1))/columns:width;
   let remaining=normalizeRichTextEntry(input),endY=top;
   const lines=[];
+  let lineBudget=Math.max(0,Math.floor(Number(maxLines)||0));
   for(let column=0;column<columns && remaining.text;column++) {
+    if(lineBudget>0 && lines.length>=lineBudget) break;
     const x=(columns-1-column)*(cw+gap);
-    const p=flowV9MeasuredStream(remaining,[{x,width:cw,y_start:top,y_end:bottom}],context,bottom);
+    const remainingBudget=lineBudget>0?Math.max(0,lineBudget-lines.length):0;
+    const p=flowV9MeasuredStream(
+      remaining,
+      [{x,width:cw,y_start:top,y_end:bottom}],
+      context,
+      bottom,
+      remainingBudget>0?{maxLines:remainingBudget}:{}
+    );
     lines.push(...p.lines);remaining=p.overflowRich;endY=Math.max(endY,p.endY);
   }
   return {lines,endY,overflowRich:remaining};
