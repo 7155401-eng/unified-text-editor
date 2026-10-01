@@ -646,6 +646,21 @@ export async function read_comments(input) {
 // selected = [{source:'footnote'|'endnote'|'comment', marker:'06'|null, symbol:'@01'}, ...]
 // =====================================================================
 
+function _trimHorizontalBeforeSyntheticMarker(parts) {
+  if (!Array.isArray(parts) || !parts.length) return;
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (typeof parts[i] !== "string") continue;
+    if (!parts[i]) continue;
+    // Synthetic @NN markers are structural tokens, not visible prose. A
+    // horizontal Word space immediately before the reference must not become
+    // an extra visible/layout slot. Preserve real hard line breaks.
+    const trimmed = parts[i].replace(/[ \t\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+$/gu, "");
+    parts[i] = trimmed;
+    if (trimmed || /\n$/u.test(parts[i])) break;
+    if (trimmed !== "") break;
+  }
+}
+
 async function _dnotes_plain(zip, xml_file, note_tag) {
   const out = {};
   try {
@@ -951,6 +966,9 @@ export async function docx_extract_simple(input, selected, opts = {}) {
           if (s) {
             // ★ 28/09 — מנטרלים סימני זרם שכבר יושבים בגוף ההערה,
             // אחרת מתקבל „@01@01" והמפרסר סופר שתי הערות.
+            _trimHorizontalBeforeSyntheticMarker(pt);
+            _trimHorizontalBeforeSyntheticMarker(pt);
+            _trimHorizontalBeforeSyntheticMarker(pt);
             pt.push(s); sn[s].push(`${s}${_neutralizeStreamMarksInText(c, _markGuard)}`);
             // משה 2026-05-10: גרסת HTML — מסיר את ה-marker ומוסיף את הסמל בתחילת ה-HTML
             const rawHtml = fn_h[fid] || '';
