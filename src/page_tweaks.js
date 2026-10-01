@@ -117,6 +117,43 @@ export function withPageTweak(raw, pageNumber, patch = {}) {
   return state;
 }
 
+export function pageFootnoteShiftLines(pageConstraint, streamId) {
+  const id = String(streamId ?? "").trim();
+  if (!id) return 0;
+  const map = pageConstraint?.footnoteShift && typeof pageConstraint.footnoteShift === "object"
+    ? pageConstraint.footnoteShift
+    : {};
+  return clamp(int(map[id]), 0, MAX_FOOTNOTE_SHIFT_LINES);
+}
+
+/**
+ * Translate a per-page/per-stream manual note-line shift into planner geometry.
+ *
+ * This does not move any DOM nodes. It lowers the physical bottom available to
+ * that commentary stream by N of THAT STREAM'S measured row pitches. The normal
+ * V9 overflow/carry path then moves the remaining source to the next page.
+ */
+export function resolveV9StreamShiftBottom(pageConstraint, streamId, {
+  pageBottom = 0,
+  lineHeight = 0,
+  minTop = 0,
+} = {}) {
+  const bottom = Math.max(0, Number(pageBottom) || 0);
+  const top = Math.max(0, Math.min(bottom, Number(minTop) || 0));
+  const pitch = Math.max(1, Number(lineHeight) || 1);
+  const shiftLines = pageFootnoteShiftLines(pageConstraint, streamId);
+  const shiftedBottom = Math.max(top, bottom - shiftLines * pitch);
+  return Object.freeze({
+    streamId: String(streamId ?? ""),
+    shiftLines,
+    lineHeight: pitch,
+    pageBottom: bottom,
+    minTop: top,
+    bottom: shiftedBottom,
+    reservedPx: Math.max(0, bottom - shiftedBottom),
+  });
+}
+
 export function resolveV9PageConstraint(raw, pageIndex, {
   baseReservedBottom = 0,
   pageHeight = 0,
