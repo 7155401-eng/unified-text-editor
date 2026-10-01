@@ -16,3 +16,12 @@ test('build verifier derives baseline SHA from the checked-out baseline reposito
   assert(!/const baselineSha = ['"][0-9a-f]{40}['"]/.test(verifier),
     'verifier regressed to hard-coded baseline SHA');
 });
+
+
+test('build verifier resolves Git explicitly instead of relying on a fragile child PATH lookup',()=>{
+  assert.match(verifier,/export function resolveGitBinary/);
+  assert.match(verifier,/fs\.existsSync\(candidate\)/);
+  assert.match(verifier,/\/usr\/bin\/git/);
+  assert.match(verifier,/Git executable was not found/);
+  assert.doesNotMatch(verifier,/execFileSync\('git',\s*args/);
+});
