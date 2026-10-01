@@ -243,8 +243,16 @@ document.addEventListener("visibilitychange", () => {
 });
 
 // צוות האתר 2026-05-07: סנכרון תכולה והגדרות לשרת למשתמשים מחוברים.
-// loadInitialState עוצר אם המשתמש אנונימי. אם יש תכולה שמורה — היא מחליפה את הברירת־מחדל.
-const serverInitialStatePromise = loadInitialState(paneManager)
+// Fetches may start immediately, but a server DOCUMENT may not apply until
+// browser-local startup authority (fast localStorage / IndexedDB recovery) is
+// resolved below. Server settings still load independently in parallel.
+let resolveStartupLocalAuthority;
+const startupLocalAuthorityPromise = new Promise((resolve) => {
+  resolveStartupLocalAuthority = resolve;
+});
+const serverInitialStatePromise = loadInitialState(paneManager, {
+  mayApplyDocument: async () => !(await startupLocalAuthorityPromise),
+})
   .then((res) => {
     if (res?.loaded) console.debug("[persistence] loaded document from server");
     attachAutoSync(paneManager);
@@ -343,7 +351,36 @@ function isLegacyDemoState() {
 // או שהשמירה הראשית נכשלה, מנסים recovery מקומי אסינכרוני לפני sample.
 // רק אם גם recovery וגם השרת לא סיפקו מסמך — טוענים את ברירת המחדל.
 const loadedFromStorage = paneManager.loadFromStorage();
-let initialLoadPromise = Promise.resolve();
+const fastLocalAuthoritative = loadedFromStorage && !isLegacyDemoState();
+let startupAuthorityResolved = false;
+const resolveLocalAuthorityOnce = (value) => {
+  if (startupAuthorityResolved) return;
+  startupAuthorityResolved = true;
+  resolveStartupLocalAuthority?.(!!value);
+};
+
+let initialLoadPromise = finishInitialDocumentRestore({
+  loadedFromStorage,
+  isLegacyDemoState,
+  loadDeferredLocalRecovery: async () => {
+    let recovered = false;
+    try {
+      recovered = !!(await paneManager.loadDeferredLocalRecovery?.());
+      return recovered;
+    } finally {
+      // The server document may apply only after this comparison is complete.
+      // A valid fast local snapshot or a newer emergency recovery is authoritative.
+      resolveLocalAuthorityOnce(recovered || fastLocalAuthoritative);
+    }
+  },
+  serverInitialStatePromise,
+  loadSample: () => loadSampleByName(paneManager, "shulchan"),
+}).finally(() => {
+  // Defensive release if recovery probing itself failed before the wrapper's
+  // finally ran. Never leave the already-running server request gated forever.
+  resolveLocalAuthorityOnce(fastLocalAuthoritative);
+});
+
 // LOADING_INDICATOR_20260907: down on success AND on failure. A spinner that
 // can get stuck is worse than no spinner, so this is the single place that
 // ends the start-up phase, whatever happened.
@@ -353,15 +390,6 @@ queueMicrotask(() => {
     .finally(() => setStartupLoading(false));
   setTimeout(() => setStartupLoading(false), 30000);
 });
-if (!loadedFromStorage || isLegacyDemoState()) {
-  initialLoadPromise = finishInitialDocumentRestore({
-    loadedFromStorage,
-    isLegacyDemoState,
-    loadDeferredLocalRecovery: () => paneManager.loadDeferredLocalRecovery?.(),
-    serverInitialStatePromise,
-    loadSample: () => loadSampleByName(paneManager, "shulchan"),
-  });
-}
 
 const FONT_STACKS = {
   "David Libre": '"David Libre", "Frank Ruhl Libre", serif',

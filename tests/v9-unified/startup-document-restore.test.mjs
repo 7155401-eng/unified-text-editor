@@ -114,3 +114,70 @@ test('legacy local demo checks emergency recovery before waiting for server', as
   assert.deepEqual(order, ['recovery-miss', 'server']);
   assert(!order.includes('sample'),'sample raced ahead of the server after a recovery miss');
 });
+
+
+test('real loadInitialState waits for browser-local authority before applying server document', async () => {
+  const previousWindow = globalThis.window;
+  const previousFetch = globalThis.fetch;
+  const previousStorage = globalThis.localStorage;
+
+  const data = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => data.has(String(k)) ? data.get(String(k)) : null,
+    setItem: (k,v) => data.set(String(k), String(v)),
+    removeItem: (k) => data.delete(String(k)),
+    key: (i) => [...data.keys()][i] ?? null,
+    get length(){ return data.size; },
+  };
+  globalThis.window = { __RAVTEXT_AUTH__: { loggedIn: true } };
+  const serverContent = { version:1, panes:[{ id:'server', content:{ type:'doc', content:[] } }] };
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    status: 200,
+    json: async () => String(url).includes('/api/settings')
+      ? { settings:{} }
+      : { document:{ content:serverContent } },
+  });
+
+  let releaseGate;
+  const gate = new Promise((resolve) => { releaseGate = resolve; });
+  let loads = 0;
+  const manager = {
+    getContentRevision: () => 0,
+    load: () => { loads++; },
+    flushSave() {},
+  };
+
+  try {
+    const mod = await import('../../src/server_persistence.js?startup-authority-gate-test');
+    const pending = mod.loadInitialState(manager, {
+      mayApplyDocument: async () => await gate,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(loads, 0, 'server document applied before local authority resolved');
+
+    releaseGate(false);
+    const result = await pending;
+    assert.equal(loads, 0, 'server document overwrote browser-local authoritative state');
+    assert.equal(result.skipped, 'browser-local-startup-authoritative');
+    assert.equal(result.serverDocumentAvailable, true);
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+    if (previousStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousStorage;
+  }
+});
+
+test('main startup always reconciles emergency recovery even after fast localStorage load', async () => {
+  const fs = await import('node:fs');
+  const mainSource = fs.readFileSync(new URL('../../src/main.js', import.meta.url), 'utf8');
+  assert.match(mainSource, /const loadedFromStorage = paneManager\.loadFromStorage\(\);/);
+  assert.match(mainSource, /let initialLoadPromise = finishInitialDocumentRestore\(\{/);
+  assert(!/if\s*\(!loadedFromStorage\s*\|\|\s*isLegacyDemoState\(\)\)\s*\{\s*initialLoadPromise\s*=\s*finishInitialDocumentRestore/s.test(mainSource),
+    'recovery reconciliation is still skipped whenever fast localStorage succeeds');
+  assert.match(mainSource, /mayApplyDocument:\s*async\s*\(\)\s*=>\s*!\(await startupLocalAuthorityPromise\)/);
+});
