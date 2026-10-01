@@ -114,7 +114,6 @@ const ENGINE_API_PREFIXES = [
   '/api/word-chapters-upload',
   '/api/word-chapters/scan-upload',
   '/api/word-chapters/extract-upload',
-  '/api/word-chapters/full-upload',
   '/api/word-chapters/delete-upload',
 ];
 
@@ -188,7 +187,6 @@ const RATE_LIMITS = {
   '/api/word-chapters-upload': { window: 60, max: 8 },
   '/api/word-chapters/scan-upload': { window: 60, max: 30 },
   '/api/word-chapters/extract-upload': { window: 60, max: 60 },
-  '/api/word-chapters/full-upload': { window: 60, max: 12 },
   '/api/word-chapters/delete-upload': { window: 60, max: 30 },
 };
 
