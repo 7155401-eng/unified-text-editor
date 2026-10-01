@@ -1,0 +1,96 @@
+name: Materialize verified opening-window retry
+on:
+  push:
+    branches: [fix/v9-opening-window-retry-20261001]
+    paths: [.github/workflows/materialize-opening-window-retry.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.repository == '7155401-eng/unified-text-editor' && github.ref == 'refs/heads/fix/v9-opening-window-retry-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: 067db7bc62f7c75e0d6841c8bc30a4c3351c6aae
+      TARGET: fix/v9-opening-window-retry-20261001
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify source identity and apply only the measured retry delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('src/engine/v9_main_inline_layout.js')
+          def blob(data):
+            return hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()
+          assert blob(p.read_bytes())=='ea79d65214b141337513763c56fad69df7524149'
+          s=p.read_text()
+          anchor='\nfunction tokensOf(text) {'
+          helper='''
+          // A word that cannot fit beside the opening's first narrow row may fit on a
+          // later row after V9 widens the region. Stay on the current row grid and retry
+          // only a genuinely wider free interval; the normal measured flow still decides
+          // whether the complete word and its height fit there. Constant-width fallback
+          // remains unchanged, and no line or glyph is repositioned after paint.
+          function nextWiderOpeningRow(strips, y, pitch, opening, pageBottom) {
+            if (!(pitch > 0)) return null;
+            const current = rowGeometry(strips, y, pitch, pageBottom);
+            if (!current) return null;
+            const currentWidth = availableBeside(current, y, pitch, opening).width;
+            const end = Math.min(pageBottom, opening.y + opening.height);
+            for (let nextY = y + pitch; nextY < end - EPS; nextY += pitch) {
+              const row = rowGeometry(strips, nextY, pitch, pageBottom);
+              if (row && availableBeside(row, nextY, pitch, opening).width > currentWidth + EPS) return nextY;
+            }
+            return null;
+          }
+          '''
+          assert s.count(anchor)==1
+          s=s.replace(anchor,helper+anchor)
+          old="""          y = opening.y + opening.height;
+                    diagnostics.push({ code: 'opening-body-below', paragraphId: entry.id });
+                    continue;"""
+          new="""          const retryY = nextWiderOpeningRow(strips, y, pitch, opening, pageBottom);
+                    if (retryY !== null) {
+                      diagnostics.push({ code: 'opening-body-retry-at-wider-row', paragraphId: entry.id, fromY: y, toY: retryY });
+                      y = retryY;
+                    } else {
+                      y = opening.y + opening.height;
+                      diagnostics.push({ code: 'opening-body-below', paragraphId: entry.id });
+                    }
+                    continue;"""
+          assert s.count(old)==1
+          s=s.replace(old,new)
+          assert blob(s.encode())=='32ec3c1839173c6461005f4e68697c52cfa8d672'
+          p.write_text(s)
+          PY
+          git rm .github/workflows/materialize-opening-window-retry.yml
+          git add src/engine/v9_main_inline_layout.js
+          git diff --cached --check
+          node --check src/engine/v9_main_inline_layout.js
+          node --test tests/v9-unified/opening-window-retry.test.mjs
+          printf '%s\n' '.github/workflows/cross-bot-regression-guard.yml' 'scripts/v9-unified/verify-opening-window-retry.mjs' 'src/engine/v9_main_inline_layout.js' 'tests/v9-unified/opening-window-retry.browser.js' 'tests/v9-unified/opening-window-retry.test.mjs' | sort > /tmp/expected-paths
+          git diff --cached --name-only "$BASE" | sort > /tmp/actual-paths
+          diff -u /tmp/expected-paths /tmp/actual-paths
+      - name: Publish only to the unchanged feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          test "$(git ls-remote origin "refs/heads/$TARGET" | cut -f1)" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(v9): retry body words in newly widened opening-window rows'
+          git push origin "HEAD:refs/heads/$TARGET"
+          git rev-parse HEAD HEAD^{tree}
