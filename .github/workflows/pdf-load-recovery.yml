@@ -1,0 +1,55 @@
+name: PDF module-load recovery
+on:
+  pull_request:
+    branches: [main]
+    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/lazy-*-export.test.mjs', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', '.github/workflows/pdf-load-recovery.yml']
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Preserve existing lazy-export contracts
+        run: node --test tests/v9-unified/lazy-pdf-export.test.mjs tests/v9-unified/lazy-debug-export.test.mjs
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: User-approved recovery and actual native PDFs before build
+        run: |
+          node scripts/pdf-export/verify-load-recovery.mjs
+          cp test-results/pdf-load-recovery/report.json test-results/pdf-load-recovery/before-build.json
+          mkdir -p test-results/pdf-load-recovery/before-build
+          cp test-results/pdf-load-recovery/*.pdf test-results/pdf-load-recovery/before-build/
+      - name: Build twice with source integrity checks
+        run: |
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
+      - name: Repeat all recovery checks after build
+        run: |
+          node --test tests/v9-unified/lazy-pdf-export.test.mjs tests/v9-unified/lazy-debug-export.test.mjs
+          node scripts/pdf-export/verify-load-recovery.mjs
+      - name: Retain reports and generated PDFs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pdf-load-recovery-${{ github.run_id }}
+          path: test-results/pdf-load-recovery/
+          retention-days: 7
+          if-no-files-found: warn
