@@ -51,6 +51,7 @@ import { setupAiKeysSettings, getActiveAiKey, getActiveAiProvider } from "./prem
 import { setupPremiumStatusSection } from "./premium/premium_status_section.js";
 import "./premium/premium_styles.css";
 import { loadInitialState, attachAutoSync } from "./server_persistence.js";
+import { finishInitialDocumentRestore } from "./startup_document_restore.js";
 import { applyPageSettings, wireOutputBackgroundControl, wirePageSettingsControls } from "./page_settings.js";
 import { applySpacingSettings, loadSpacingSettings, wireSpacingControls } from "./spacing_settings.js";
 import { wireDocumentStyleControls } from "./document_style_settings.js";
@@ -353,24 +354,13 @@ queueMicrotask(() => {
   setTimeout(() => setStartupLoading(false), 30000);
 });
 if (!loadedFromStorage || isLegacyDemoState()) {
-  initialLoadPromise = (async () => {
-    if (!loadedFromStorage) {
-      try {
-        const recovered = await paneManager.loadDeferredLocalRecovery?.();
-        if (recovered && !isLegacyDemoState()) return { loaded: true, source: "local-recovery" };
-      } catch (error) {
-        console.warn("[recovery] deferred local restore failed:", error);
-      }
-
-      // The server request started earlier in parallel. Never let the sample
-      // finish after a successfully restored server document and overwrite it.
-      const serverResult = await serverInitialStatePromise;
-      if (serverResult?.loaded) return serverResult;
-    }
-
-    await loadSampleByName(paneManager, "shulchan");
-    return { loaded: true, source: "sample" };
-  })();
+  initialLoadPromise = finishInitialDocumentRestore({
+    loadedFromStorage,
+    isLegacyDemoState,
+    loadDeferredLocalRecovery: () => paneManager.loadDeferredLocalRecovery?.(),
+    serverInitialStatePromise,
+    loadSample: () => loadSampleByName(paneManager, "shulchan"),
+  });
 }
 
 const FONT_STACKS = {
