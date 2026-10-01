@@ -20,5 +20,11 @@
     "crons": [
       "0 4 * * *"
     ]
-  }
+  },
+  "r2_buckets": [
+    {
+      "binding": "DOCX_UPLOADS",
+      "bucket_name": "ravtext-docx-uploads"
+    }
+  ]
 }
