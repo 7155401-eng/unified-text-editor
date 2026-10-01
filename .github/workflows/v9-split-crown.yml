@@ -1,0 +1,85 @@
+name: Split crown rich-text regression
+on:
+  pull_request:
+    branches: [main]
+    paths: ['src/**', 'tests/v9-unified/**', 'scripts/v9-unified/**', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['src/vilna_v9.js', 'tests/v9-unified/split-crown-rich.browser.js', 'scripts/v9-unified/verify-split-crown.mjs', '.github/workflows/v9-split-crown.yml']
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  split-crown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Exact crown rows, grid continuity, coverage and non-overlap
+        run: |
+          node scripts/v9-unified/verify-split-crown.mjs
+          cp test-results/split-crown/report.json test-results/split-crown/before-build.json
+          git rev-parse HEAD > test-results/split-crown/tested-commit.txt
+          git status --porcelain > test-results/split-crown/status-before-build.txt
+          git diff --exit-code
+      - name: Checkout exact pre-fix product for generated-output comparison
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: e2aad9df9d7e67c5a0e10c8a2ebf566160b28a87
+          path: .crown-build-baseline
+          persist-credentials: false
+      - name: Build baseline with the identical locked dependencies
+        run: |
+          cmp package-lock.json .crown-build-baseline/package-lock.json
+          ln -s "$GITHUB_WORKSPACE/node_modules" .crown-build-baseline/node_modules
+          (cd .crown-build-baseline; npm run build) 2>&1 | tee test-results/split-crown/baseline-build.log
+          git -C .crown-build-baseline diff --name-only > test-results/split-crown/baseline-generated-changes.txt
+      - name: Build candidate with retained diagnostics
+        run: npm run build 2>&1 | tee test-results/split-crown/build.log
+      - name: Preserve every source file; generated changes must already exist on baseline
+        run: |
+          git diff --stat | tee test-results/split-crown/source-diff-stat.txt
+          git diff --name-only > test-results/split-crown/candidate-generated-changes.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          out=Path('test-results/split-crown')
+          baseline=set((out/'baseline-generated-changes.txt').read_text().splitlines())
+          candidate=set((out/'candidate-generated-changes.txt').read_text().splitlines())
+          generated=lambda p:p.startswith(('dist/','worker-dist/'))
+          report={'baselineChanged':sorted(baseline),'candidateChanged':sorted(candidate),
+            'baselineSourceChanges':sorted(p for p in baseline if not generated(p)),
+            'candidateSourceChanges':sorted(p for p in candidate if not generated(p)),
+            'newGeneratedPaths':sorted(candidate-baseline)}
+          (out/'build-integrity.json').write_text(json.dumps(report,indent=2))
+          assert not report['baselineSourceChanges'], 'Baseline rewrote source files'
+          assert not report['candidateSourceChanges'], 'Candidate rewrote source files'
+          assert not report['newGeneratedPaths'], 'Candidate introduced new generated-file rewrites'
+          PY
+          git diff --exit-code -- . ':(exclude)dist/**' ':(exclude)worker-dist/**'
+          git -C .crown-build-baseline diff --exit-code -- . ':(exclude)dist/**' ':(exclude)worker-dist/**'
+      - name: Repeat exact crown acceptance after build
+        run: |
+          node scripts/v9-unified/verify-split-crown.mjs
+          cp test-results/split-crown/report.json test-results/split-crown/after-build.json
+      - name: Retain reports and diagnostics even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: split-crown-${{ github.run_id }}
+          path: test-results/split-crown/
+          retention-days: 7
