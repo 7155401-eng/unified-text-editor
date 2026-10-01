@@ -1178,7 +1178,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
         for(let bodyWords=8;bodyWords<=24&&!plan;bodyWords++){
           const entries=[
             context.prepareEntry({id:'paint-knee-lead',index:1,text:Array(leadWords).fill('אב').join(' '),runs:[],mainRefs:[],continues:false}),
-            context.prepareEntry({id:'paint-knee-opening',index:2,text='פתיח '+Array(bodyWords).fill('אב').join(' '),runs:[],mainRefs:[],continues:false}),
+            context.prepareEntry({id:'paint-knee-opening',index:2,text:'פתיח '+Array(bodyWords).fill('אב').join(' '),runs:[],mainRefs:[],continues:false}),
           ];
           const candidate=layoutV9MainParagraphs(entries,[
             {x:50,width:50,y_start:0,y_end:15,lockYStart:false},
