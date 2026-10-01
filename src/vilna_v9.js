@@ -32,7 +32,7 @@ import { layoutV9MainParagraphs, V9_INLINE_PLAN_VERSION } from "./engine/v9_main
 import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFonts } from "./engine/v9_text_measurement.js";
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
-import { resolveV9PageConstraint, resolveV9StreamShiftBottom } from "./page_tweaks.js";
+import { resolveV9PageConstraint, pageFootnoteShiftLines } from "./page_tweaks.js";
 
 function runV9PageDecoratorsDuringRender(page, pageIndex) {
   if (!page || typeof window === "undefined") return;
@@ -417,9 +417,18 @@ function v9LinesThatFit(height, lineHeight) {
 // =====================================================================
 // מזרים טקסט בפסים אנכיים בעלי רוחבים שונים
 // =====================================================================
-function flowStreamThroughStrips(input, strips, metrics, maxY) {
+function flowStreamThroughStrips(input, strips, metrics, maxY, options = {}) {
   const rich = normalizeRichTextEntry(input);
-  if (metrics._v9TextContext) return flowV9MeasuredStream(rich,strips,metrics._v9TextContext,maxY,{continuesAfter:!!metrics._v9ContinuesAfter});
+  const maxLines = Math.max(0, Math.floor(Number(options.maxLines) || 0));
+  if (metrics._v9TextContext) {
+    return flowV9MeasuredStream(
+      rich,
+      strips,
+      metrics._v9TextContext,
+      maxY,
+      { ...options, continuesAfter: !!metrics._v9ContinuesAfter }
+    );
+  }
   const lineH = metrics.lineHeight;
   const allLines = [];
 
@@ -439,7 +448,8 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
   const tokens = tokenizeRichTextForV9(rich);
   let tokenIdx = 0;
 
-  for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
+  stripLoop: for (let stripIdx = 0; stripIdx < strips.length; stripIdx++) {
+    if (maxLines > 0 && allLines.length >= maxLines) break;
     const strip = strips[stripIdx];
     // v9-strip-y-end-guard: respect explicit strip bottoms. Without this,
     // a capped bridge strip can consume lines down to the next strip/pageBottom.
@@ -493,7 +503,11 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
     let linesInStrip = 0;
     const linesConsumed = [];
 
-    while (linesInStrip < availableLines && tokenIdx < tokens.length) {
+    while (
+      linesInStrip < availableLines &&
+      tokenIdx < tokens.length &&
+      (maxLines <= 0 || allLines.length + linesConsumed.length < maxLines)
+    ) {
       const line = buildOneLine(tokens, tokenIdx, strip.width, metrics);
       if (line.tokensConsumed === 0) break;
 
@@ -538,7 +552,12 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
       strips[stripIdx + 1].y_start = curY;
     }
 
-    if (tokenIdx < tokens.length && curY < nextStripY && stripIdx < strips.length - 1) {
+    if (
+      tokenIdx < tokens.length &&
+      curY < nextStripY &&
+      stripIdx < strips.length - 1 &&
+      (maxLines <= 0 || allLines.length < maxLines)
+    ) {
       const fillLine = buildOneLine(tokens, tokenIdx, strip.width, metrics);
 
       if (fillLine.tokensConsumed > 0) {
@@ -568,6 +587,7 @@ function flowStreamThroughStrips(input, strips, metrics, maxY) {
     }
 
     if (tokenIdx >= tokens.length) break;
+    if (maxLines > 0 && allLines.length >= maxLines) break stripLoop;
   }
 
   const overflowRich = richTextFromRemainingTokens(tokens, tokenIdx, rich.runs);
