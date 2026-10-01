@@ -31,6 +31,7 @@ import { FrameCoalescer } from "./frame_coalescer.js";
 import { emptyPageTweaks, normalizePageTweaks, getPageTweak, withPageTweak, updatePageTweakMeasurements, approvePageTweakWithMeasurements } from "./page_tweaks.js";
 import {
   DOCUMENT_RECOVERY_TOMBSTONE_KEY,
+  DOCUMENT_PRIMARY_SAVED_AT_KEY,
   shouldMirrorDocumentRecovery,
   queueDocumentRecoverySnapshot,
   queueDocumentRecoveryClear,
@@ -109,6 +110,25 @@ function _readRecoveryTombstone() {
 
 function _clearRecoveryTombstone() {
   try { localStorage.removeItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY); } catch {}
+}
+
+function _readPrimarySavedAt() {
+  try {
+    const value = Number(localStorage.getItem(DOCUMENT_PRIMARY_SAVED_AT_KEY) || 0);
+    return Number.isFinite(value) ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function _recordPrimarySavedAt(now = Date.now()) {
+  const value = Number(now) || Date.now();
+  try {
+    localStorage.setItem(DOCUMENT_PRIMARY_SAVED_AT_KEY, String(value));
+    return value;
+  } catch {
+    return 0;
+  }
 }
 
 function _announceEmergencyRecoverySaved(chars) {
@@ -1365,14 +1385,14 @@ export class PaneManager {
     }
   }
 
-  _scheduleRecoveryMirror(text, { force = false, announce = false } = {}) {
+  _scheduleRecoveryMirror(text, { force = false, announce = false, now = Date.now() } = {}) {
     if (typeof text !== "string" || !text) return;
     const mirror = force || shouldMirrorDocumentRecovery(text);
 
     if (mirror) {
       this._recoveryMirrorMode = true;
       _clearRecoveryTombstone();
-      queueDocumentRecoverySnapshot(text, { force: true })
+      queueDocumentRecoverySnapshot(text, { force: true, now })
         .then((saved) => {
           if (saved && announce) _announceEmergencyRecoverySaved(text.length);
         })
@@ -1405,7 +1425,11 @@ export class PaneManager {
       this._savePending = false;
       _clearStorageAlarm();
       _clearRecoveryTombstone();
-      this._scheduleRecoveryMirror(text);
+      const primarySavedAt = _recordPrimarySavedAt();
+      this._scheduleRecoveryMirror(text, {
+        now: primarySavedAt || Date.now(),
+        force: !primarySavedAt,
+      });
       try {
         window.dispatchEvent(new CustomEvent("ravtext:local-document-saved", {
           detail: { chars: text.length },
@@ -1428,7 +1452,11 @@ export class PaneManager {
           this._savePending = false;
           _clearStorageAlarm();
           _clearRecoveryTombstone();
-          this._scheduleRecoveryMirror(text);
+          const primarySavedAt = _recordPrimarySavedAt();
+          this._scheduleRecoveryMirror(text, {
+            now: primarySavedAt || Date.now(),
+            force: !primarySavedAt,
+          });
           try {
             window.dispatchEvent(new CustomEvent("ravtext:local-document-saved", {
               detail: { chars: text.length },
@@ -1520,69 +1548,87 @@ export class PaneManager {
   async loadDeferredLocalRecovery() {
     if (isStorageDisabled()) return false;
 
-    // First prefer the exact localStorage snapshot that the synchronous boot
-    // path deliberately skipped only because it exceeded the fast-load limit.
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw && raw.length > MAX_BOOT_STORAGE_BYTES) {
-        await Promise.resolve();
-        const state = JSON.parse(raw);
-        if (state && typeof state === "object" && Array.isArray(state.panes)) {
-          this.load(state);
-          this._contentRevision++;
-          this._recoveryMirrorMode = true;
-          this._scheduleRecoveryMirror(raw, { force: true });
-          try {
-            const el = document.getElementById("status");
-            if (el) el.textContent =
-              `שוחזר המסמך המקומי הגדול (${Math.round(raw.length / 1000)} אלף תווים).`;
-          } catch {}
-          return true;
-        }
-      }
-    } catch (error) {
-      console.warn("[paneManager] oversized localStorage recovery failed:", error);
-    }
-
+    let primaryText = null;
+    try { primaryText = localStorage.getItem(STORAGE_KEY); } catch {}
+    const primarySavedAt = _readPrimarySavedAt();
     const snapshot = await readDocumentRecoverySnapshot();
-    if (!snapshot) return false;
 
     // reset/clear is synchronous, while IndexedDB deletion is async. A
     // tombstone newer than the snapshot prevents an old backup from coming
     // back to life during that gap.
-    const tombstone = _readRecoveryTombstone();
-    if (tombstone && snapshot.at <= tombstone) {
-      queueDocumentRecoveryClear().catch(() => {});
-      return false;
+    if (snapshot) {
+      const tombstone = _readRecoveryTombstone();
+      if (tombstone && snapshot.at <= tombstone) {
+        queueDocumentRecoveryClear().catch(() => {});
+      } else if (primaryText && snapshot.text === primaryText) {
+        // The stores agree. Keep the mirror only while the document is large;
+        // otherwise clean up the emergency copy once.
+        this._recoveryMirrorMode = shouldMirrorDocumentRecovery(primaryText);
+        if (!this._recoveryMirrorMode) queueDocumentRecoveryClear().catch(() => {});
+      } else if (!primaryText || snapshot.at > primarySavedAt) {
+        try {
+          const state = JSON.parse(snapshot.text);
+          if (!state || typeof state !== "object" || !Array.isArray(state.panes)) {
+            queueDocumentRecoveryClear().catch(() => {});
+            return false;
+          }
+          this.load(state);
+          // load() is hydration and intentionally suppresses editor onUpdate.
+          // This bump marks recovered browser work as authoritative to the
+          // async startup server loader that may already be in flight.
+          this._contentRevision++;
+          this._recoveryMirrorMode = true;
+          try {
+            const el = document.getElementById("status");
+            if (el) el.textContent =
+              `שוחזר עותק התאוששות מקומי (${Math.round(snapshot.chars / 1000)} אלף תווים).`;
+          } catch {}
+          try {
+            window.dispatchEvent(new CustomEvent("ravtext:document-recovery-loaded", {
+              detail: { chars: snapshot.chars, at: snapshot.at },
+            }));
+          } catch {}
+          return true;
+        } catch (error) {
+          console.warn("[paneManager] IndexedDB document recovery failed:", error);
+          return false;
+        }
+      } else if (primaryText) {
+        // A successful primary save happened after the emergency snapshot.
+        // Reconcile the mirror so that a stale IDB copy cannot win later.
+        this._scheduleRecoveryMirror(primaryText, {
+          now: primarySavedAt || Date.now(),
+        });
+      }
     }
 
-    try {
-      const state = JSON.parse(snapshot.text);
-      if (!state || typeof state !== "object" || !Array.isArray(state.panes)) {
-        queueDocumentRecoveryClear().catch(() => {});
-        return false;
+    // A primary snapshot above the synchronous boot limit is still valid. Load
+    // it asynchronously after the recovery comparison so a newer emergency
+    // snapshot can win if the last primary write had failed.
+    if (primaryText && primaryText.length > MAX_BOOT_STORAGE_BYTES) {
+      try {
+        await Promise.resolve();
+        const state = JSON.parse(primaryText);
+        if (state && typeof state === "object" && Array.isArray(state.panes)) {
+          this.load(state);
+          this._contentRevision++;
+          this._scheduleRecoveryMirror(primaryText, {
+            force: true,
+            now: primarySavedAt || Date.now(),
+          });
+          try {
+            const el = document.getElementById("status");
+            if (el) el.textContent =
+              `שוחזר המסמך המקומי הגדול (${Math.round(primaryText.length / 1000)} אלף תווים).`;
+          } catch {}
+          return true;
+        }
+      } catch (error) {
+        console.warn("[paneManager] oversized localStorage recovery failed:", error);
       }
-      this.load(state);
-      // load() is hydration and intentionally suppresses editor onUpdate.
-      // This bump marks recovered browser work as authoritative to the async
-      // startup server loader that may already be in flight.
-      this._contentRevision++;
-      this._recoveryMirrorMode = true;
-      try {
-        const el = document.getElementById("status");
-        if (el) el.textContent =
-          `שוחזר עותק התאוששות מקומי (${Math.round(snapshot.chars / 1000)} אלף תווים).`;
-      } catch {}
-      try {
-        window.dispatchEvent(new CustomEvent("ravtext:document-recovery-loaded", {
-          detail: { chars: snapshot.chars, at: snapshot.at },
-        }));
-      } catch {}
-      return true;
-    } catch (error) {
-      console.warn("[paneManager] IndexedDB document recovery failed:", error);
-      return false;
     }
+
+    return false;
   }
 
   clearStorage() {
@@ -1592,6 +1638,7 @@ export class PaneManager {
     this._recoveryMirrorMode = false;
     try {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(DOCUMENT_PRIMARY_SAVED_AT_KEY);
       localStorage.setItem(DOCUMENT_RECOVERY_TOMBSTONE_KEY, String(Date.now()));
     } catch {}
     const recoveryClear = queueDocumentRecoveryClear();
