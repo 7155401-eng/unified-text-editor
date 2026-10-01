@@ -1,0 +1,66 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  emptyPageTweaks,
+  normalizePageTweaks,
+  getPageTweak,
+  withPageTweak,
+  resolveV9PageConstraint,
+} from "../../src/page_tweaks.js";
+
+test("legacy flat page_tweaks.json shape migrates into document state", () => {
+  const state = normalizePageTweaks({
+    "3": { lines_diff: 2 },
+    "7": { lines_diff: -4, notes: "בדוק שוב" },
+    junk: { lines_diff: 9 },
+  });
+  assert.equal(state.version, 1);
+  assert.equal(state.pages["3"].linesDiff, 2);
+  assert.equal(state.pages["7"].linesDiff, -4);
+  assert.equal(state.pages["7"].notes, "בדוק שוב");
+  assert.equal(state.pages.junk, undefined);
+});
+
+test("editing an approved page marks it changed", () => {
+  let state = emptyPageTweaks();
+  state = withPageTweak(state, 2, { status: "approved" });
+  assert.equal(getPageTweak(state, 2).status, "approved");
+  state = withPageTweak(state, 2, { linesDiff: -1 });
+  assert.equal(getPageTweak(state, 2).status, "changed");
+});
+
+test("negative lines reserve real planner height while positive lines never enlarge physical page", () => {
+  const base = 18;
+  const common = { baseReservedBottom: base, pageHeight: 500, padding: 20, lineHeight: 16 };
+
+  const pushed = resolveV9PageConstraint({ pages: { "1": { linesDiff: -3 } } }, 0, common);
+  assert.equal(pushed.pushLines, 3);
+  assert.equal(pushed.pullLines, 0);
+  assert.equal(pushed.reservedBottom, base + 48);
+
+  const pulled = resolveV9PageConstraint({ pages: { "1": { linesDiff: 3 } } }, 0, common);
+  assert.equal(pulled.pushLines, 0);
+  assert.equal(pulled.pullLines, 3);
+  assert.equal(pulled.reservedBottom, base);
+});
+
+test("page constraints are page-specific and clamp unsafe values", () => {
+  const state = normalizePageTweaks({
+    pages: {
+      "1": { linesDiff: -999 },
+      "2": { linesDiff: 999, footnoteShift: { "01": 999, "02": -2 } },
+    },
+  });
+  assert.equal(getPageTweak(state, 1).linesDiff, -30);
+  assert.equal(getPageTweak(state, 2).linesDiff, 30);
+  assert.deepEqual(getPageTweak(state, 2).footnoteShift, { "01": 30 });
+
+  const second = resolveV9PageConstraint(state, 1, {
+    baseReservedBottom: 0,
+    pageHeight: 100,
+    padding: 10,
+    lineHeight: 20,
+  });
+  assert.equal(second.pullLines, 30);
+  assert.equal(second.reservedBottom, 0);
+});
