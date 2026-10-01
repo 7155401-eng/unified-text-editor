@@ -380,6 +380,8 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    assert(inline,'inline code mark disappeared from V9 output');
    assert(inline.textContent==='code',`inline code range drifted: ${JSON.stringify(inline.textContent)}`);
    assert(getComputedStyle(inline).direction==='ltr','inline code direction is not LTR');
+   assert(getComputedStyle(inline).unicodeBidi==='isolate',
+     `inline code must isolate bidi without overriding character order: ${getComputedStyle(inline).unicodeBidi}`);
    page.remove();
  });
 
