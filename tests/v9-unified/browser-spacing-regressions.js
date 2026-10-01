@@ -1956,6 +1956,37 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  await test('paired footer manual shift preserves string and object rich inputs',()=>{
+    for(const family of ['serif','sans-serif','monospace'])for(const target of ['03','04'])
+    for(const stringRich of [false,true])for(const shift of [0,50]){
+      const page=makePage();
+      try{
+        const inputs={'03':'ab cd ef gh','04':'ab cd ef gh '.repeat(15)};
+        const footers=['03','04'].map(id=>({id,items:[inputs[id]],
+          rich:stringRich?inputs[id]:{text:inputs[id],runs:[]}}));
+        const content={mainText:'ab cd',rightStream:null,leftStream:null,footerStreams:footers};
+        const settings={...cfg,pageHeight:537,padding:12,reservedBottom:15,
+          mainFontFamily:family,sideFontFamily:family,talmudStreams:['01','02'],
+          levels:[['03','04']],mishnaWrapOn:true,openingWordSettings:{enabled:false},
+          __v9PageConstraint:{footnoteShift:{[target]:shift}}};
+        const before=JSON.stringify({content,settings});
+        const plan=buildSinglePage(page,content,settings);
+        assert(JSON.stringify({content,settings})===before,'manual shift mutated input');
+        assert(plan.streamCoverage.every(c=>c.exact),'rich input source coverage lost');
+        const coverage=plan.streamCoverage.find(c=>c.stream===target);
+        assert(coverage.inputCharacters===inputs[target].length,'wrong rich source length');
+        if(shift){
+          assert(coverage.plannedCharacters===0&&coverage.remainingCharacters===inputs[target].length,
+            'manual shift lost an unplaced string/object source');
+          const original=footers.find(s=>s.id===target).rich;
+          assert(JSON.stringify(plan.overflow.streams[target])===JSON.stringify(original),
+            'manual shift changed rich remainder representation');
+          assert(!plan.footerBoxes.some(b=>b.id===target),'manual shift emitted a phantom box');
+        }
+      }finally{page.remove();}
+    }
+  });
+
   await test('short heading is not published as a one-line intermediate page',async()=>{
     const settings=getStreamSettings(),saved=settings['01'];
     settings['01']={...(settings['01']||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false};
