@@ -1163,6 +1163,65 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }finally{found.page.remove();}
   });
 
+
+  await test('painted dropped opening crossing a widening knee uses newly freed width',()=>{
+    const context=createV9TextLayoutContext({
+      mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
+      openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:0.2,scope:'all',
+        skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1}
+    });
+    const page=makePage();
+    try{
+      let plan=null;
+      for(let leadWords=1;leadWords<=10&&!plan;leadWords++){
+        for(let bodyWords=8;bodyWords<=24&&!plan;bodyWords++){
+          const entries=[
+            context.prepareEntry({id:'paint-knee-lead',index:1,text:Array(leadWords).fill('אב').join(' '),runs:[],mainRefs:[],continues:false}),
+            context.prepareEntry({id:'paint-knee-opening',index:2,text='פתיח '+Array(bodyWords).fill('אב').join(' '),runs:[],mainRefs:[],continues:false}),
+          ];
+          const candidate=layoutV9MainParagraphs(entries,[
+            {x:50,width:50,y_start:0,y_end:15,lockYStart:false},
+            {x:0,width:100,y_start:15,y_end:120,lockYStart:false},
+          ],context,120);
+          const host=candidate.lines.find(l=>l.source?.paragraphId==='paint-knee-opening'&&l.render?.opening);
+          const second=candidate.lines.find(l=>l.source?.paragraphId==='paint-knee-opening'&&l.openingWindow&&host&&l.y>host.y+.1);
+          if(host&&second&&host.y<15&&host.y+host.lineHeightPx>15&&second.width>50){
+            plan=candidate;
+          }
+        }
+      }
+      assert(plan,'fixture search did not produce a dropped opening crossing the knee');
+
+      page.style.position='relative';
+      page.style.width='100px';
+      page.style.height='120px';
+      page.style.padding='0';
+      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+
+      const rows=[...page.querySelectorAll('[data-v9-paragraph-id="paint-knee-opening"]')];
+      const opening=page.querySelector('.v9-opening-glyph');
+      assert(opening&&rows.length>=2,'painted crossing-knee opening fixture incomplete');
+
+      const openingRect=opening.getBoundingClientRect();
+      const secondRow=rows.find(el=>(parseFloat(el.style.top)||0)>(parseFloat(rows[0].style.top)||0)+.1);
+      assert(secondRow,'painted second opening-window row missing');
+      const body=secondRow.querySelector('.v9-planned-line-text');
+      const range=document.createRange();range.selectNodeContents(body);
+      const bodyRect=range.getBoundingClientRect();
+      const left=Math.min(bodyRect.left,openingRect.left);
+      const right=Math.max(bodyRect.right,openingRect.right);
+      assert(right-left>=98.5,
+        `cross-knee opening paints as partial width: visual=${(right-left).toFixed(2)}, body=${bodyRect.width.toFixed(2)}, opening=${openingRect.width.toFixed(2)}`);
+
+      const after=rows.find(el=>(parseFloat(el.style.top)||0)>=(parseFloat(secondRow.style.top)||0)+9.5);
+      if(after){
+        assert((parseFloat(after.style.width)||0)>=99,
+          `row after opening window stayed half-width: ${after.style.width}`);
+      }
+    }finally{context.dispose();page.remove();}
+  });
+
   await test('opening-window final row centers actual opening+body ink as one visual segment',()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
