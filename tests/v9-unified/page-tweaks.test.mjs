@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   emptyPageTweaks,
   normalizePageTweaks,
@@ -63,4 +64,22 @@ test("page constraints are page-specific and clamp unsafe values", () => {
   });
   assert.equal(second.pullLines, 30);
   assert.equal(second.reservedBottom, 0);
+});
+
+
+test("page tweaks are wired through document persistence into V9, not global settings", async () => {
+  const [pane, bridge, apply, v9] = await Promise.all([
+    readFile(new URL("../../src/pane_manager.js", import.meta.url), "utf8"),
+    readFile(new URL("../../src/engine_bridge.js", import.meta.url), "utf8"),
+    readFile(new URL("../../src/vilna_v9_apply.js", import.meta.url), "utf8"),
+    readFile(new URL("../../src/vilna_v9.js", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(pane, /serialize\(\)[\s\S]*?pageTweaks:\s*normalizePageTweaks\(this\.pageTweaks\)/);
+  assert.match(pane, /serializeForPersistence\(\)[\s\S]*?pageTweaks:\s*normalizePageTweaks\(this\.pageTweaks\)/);
+  assert.match(pane, /this\.pageTweaks = normalizePageTweaks\(state\?\.pageTweaks\)/);
+  assert.match(bridge, /pageTweaks:[\s\S]*?paneManager\.getPageTweaks\(\)/);
+  assert.match(apply, /pageTweaks:\s*normalizePageTweaks\(opts\.pageTweaks\)/);
+  assert.match(v9, /resolveV9PageConstraint\(cfg\.pageTweaks, pageIdx/);
+  assert.match(v9, /cfg\.reservedBottom = __v9PageConstraint\.reservedBottom/);
 });
