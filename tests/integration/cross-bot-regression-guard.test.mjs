@@ -29,6 +29,12 @@ test("V9 session invariants remain present in canonical source", async () => {
   assert.match(vilna, /final-sparse-rescue/);
   assert.match(vilna, /extension-rescue/);
 
+  // Side streams, balancing probes and final painting must share one measured
+  // row planner. A missing render context is an invariant violation, never a
+  // license to fall back to the historical canvas/Y-mutation engine.
+  assert.match(vilna, /V9_STREAM_CONTEXT_REQUIRED/);
+  assert.doesNotMatch(vilna, /strips\[stripIdx \+ 1\]\.y_start\s*=\s*curY/);
+
   // Vertical crown clearance and horizontal main↔side spacing are independent
   // planner axes. The web app must source crown clearance from mainStreamGap.
   assert.match(v9Apply, /crownMainGapPx:\s*Math\.max\(0,\s*Number\(effectiveSpacing\.v9CrownMainGap\)/);
