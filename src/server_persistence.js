@@ -15,6 +15,7 @@ const DOC_SYNC_MAX_WAIT_MS = 10000;
 export const DOCUMENT_SAVE_TIMEOUT_MS = 30000;
 const SETTINGS_SYNC_MAX_WAIT_MS = 10000;
 export const SETTINGS_SAVE_TIMEOUT_MS = 30000;
+export const SETTINGS_FALLBACK_POLL_MS = 5000;
 const SETTINGS_PREFIX = 'ravtext.';
 // משה 2026-05-17: הגנת נפח לסנכרון הגדרות. /api/settings לא אמור לקבל את
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
@@ -83,12 +84,14 @@ let _settingsQueuedSnapshot = null;
 let _lastDocSig = '';
 let _lastSettingsSig = '';
 let _lastFailedSettingsSig = '';
+let _settingsServerKnown = false;
 
 // Autosync bootstrap can be retried by the main startup promise chain. Track
 // installation per PaneManager at step granularity so a partial failure can be
 // retried without duplicating listeners that were already installed.
 const _autoSyncInstallStates = new WeakMap();
 const _wrappedSettingsStorages = new WeakSet();
+const _settingsFallbackMonitors = new WeakMap();
 
 function autoSyncInstallState(paneManager) {
   let state = _autoSyncInstallStates.get(paneManager);
@@ -264,6 +267,12 @@ export async function loadInitialState(paneManager) {
       } else if (settingsFetch.error) {
         console.warn('[persistence] startup settings fetch failed:', settingsFetch.error);
       } else if (settingsFetch.data?.settings) {
+        // Remember exactly what the server confirmed before preserving newer
+        // browser-local choices. attachAutoSync() can then reconcile a real
+        // local/server difference without guessing after a failed startup GET.
+        _lastSettingsSig = JSON.stringify(settingsFetch.data.settings);
+        _settingsServerKnown = true;
+
         // Settings are independent of the document GET. Seed missing settings
         // immediately instead of making a fast endpoint wait for a hung one.
         applyLocalSettings(settingsFetch.data.settings, { preserveExisting: true });
@@ -640,9 +649,7 @@ async function saveSettingsSnapshot(snapshot) {
   }
 }
 
-function queueSettingsSave() {
-  const snapshot = createSettingsSnapshot();
-
+function queueSettingsSnapshot(snapshot) {
   // A failed/oversized latest collection also supersedes an older waiting
   // snapshot. Sending that stale waiter would move the server farther away
   // from the browser-authoritative state.
@@ -665,6 +672,50 @@ function queueSettingsSave() {
 
   _settingsSaveChain = _settingsSaveChain.then(drain, drain);
   return _settingsSaveChain;
+}
+
+function queueSettingsSave() {
+  return queueSettingsSnapshot(createSettingsSnapshot());
+}
+
+function installSettingsPollingFallback(storage) {
+  if (
+    !storage ||
+    typeof window === 'undefined' ||
+    typeof window.setInterval !== 'function'
+  ) {
+    return false;
+  }
+  if (_settingsFallbackMonitors.has(storage)) return true;
+
+  const initial = createSettingsSnapshot();
+  const monitor = {
+    lastObservedSig: initial?.sig ?? null,
+    timer: null,
+  };
+
+  monitor.timer = window.setInterval(() => {
+    const snapshot = createSettingsSnapshot();
+    if (!snapshot) return;
+    if (snapshot.sig === monitor.lastObservedSig) return;
+    monitor.lastObservedSig = snapshot.sig;
+    queueSettingsSnapshot(snapshot);
+  }, SETTINGS_FALLBACK_POLL_MS);
+
+  _settingsFallbackMonitors.set(storage, monitor);
+
+  // Only reconcile immediately when startup GET actually told us what the
+  // server has. If startup failed/timed out, the local snapshot is not enough
+  // evidence to safely replace the full server settings object.
+  if (
+    _settingsServerKnown &&
+    initial &&
+    initial.sig !== _lastSettingsSig
+  ) {
+    queueSettingsSnapshot(initial);
+  }
+
+  return true;
 }
 
 function clearDocumentSyncTimers() {
@@ -830,11 +881,30 @@ export function attachAutoSync(paneManager) {
           if (storage.setItem === wrappedSetItem) {
             _wrappedSettingsStorages.add(storage);
           } else {
-            console.warn('[persistence] localStorage.setItem could not be wrapped; settings autosync wrapper disabled');
+            const polling = installSettingsPollingFallback(storage);
+            console.warn(
+              '[persistence] localStorage.setItem could not be wrapped; ' +
+              (polling ? 'using settings polling fallback' : 'settings autosync fallback unavailable')
+            );
           }
         } catch (e) {
-          console.warn('[persistence] could not wrap localStorage.setItem for settings autosync:', e);
+          const polling = installSettingsPollingFallback(storage);
+          console.warn(
+            '[persistence] could not wrap localStorage.setItem for settings autosync; ' +
+            (polling ? 'using polling fallback:' : 'no polling fallback available:'),
+            e
+          );
         }
+      }
+    }
+
+    // Startup preserves existing browser-local choices. When the server GET
+    // succeeded, reconcile those choices now instead of waiting for another
+    // setting edit. This is safe only when the server signature is known.
+    if (_settingsServerKnown) {
+      const currentSettings = createSettingsSnapshot();
+      if (currentSettings && currentSettings.sig !== _lastSettingsSig) {
+        queueSettingsSnapshot(currentSettings);
       }
     }
 
