@@ -510,6 +510,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       streamLineHeightRatio,
       padding: 12,
       mainGap: geom.mainGap,
+      // Vertical crown→main clearance belongs to the existing general
+      // "PDF: main–notes" spacing control, not to V9's horizontal main-side gap.
+      crownMainGapPx: Math.max(0, Number(effectiveSpacing.mainStreamGap) || 0),
       streamHorizontalGap: geom.streamHorizontalGap,
       // Resolve once before pagination. V9 planning owns this geometry; the
       // later compatibility pass is diagnostic-only and must never move rows.
