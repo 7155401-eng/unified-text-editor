@@ -3140,6 +3140,16 @@ function buildPagePlanCore(pageContent, config) {
       return { fs, settings, resolvedStyle, metrics, lineH };
     };
 
+    const footerShift = (meta, minTop = 0) => resolveV9StreamShiftBottom(
+      cfg.__v9PageConstraint,
+      meta?.fs?.id,
+      {
+        pageBottom,
+        lineHeight: meta?.metrics?.lineHeight || meta?.lineH || sideLineH,
+        minTop,
+      }
+    );
+
     const pushFooterBox = (meta, measured, titleY, titleX, titleWidth, extra = {}) => {
       const footerContinues = !!measured.overflowRich.text;
       if (footerContinues) {
@@ -3158,6 +3168,9 @@ function buildPagePlanCore(pageContent, config) {
         titleWidth,
         titleHeight,
         continues: footerContinues,
+        manualFootnoteShiftLines: Number(extra.manualFootnoteShiftLines) || 0,
+        manualFootnoteShiftReservedPx: Number(extra.manualFootnoteShiftReservedPx) || 0,
+        streamPageBottomY: Number(extra.streamPageBottomY) || pageBottom,
         ...extra,
       });
       return measured.endY;
@@ -3209,37 +3222,60 @@ function buildPagePlanCore(pageContent, config) {
         const floatX = floatRight ? innerWidth - floatWidth : 0;
         const narrowX = floatRight ? 0 : floatWidth + gap;
 
+        const floatShift = footerShift(floatMeta, bodyTop);
+        const flowShift = footerShift(flowMeta, bodyTop);
+        const floatBottom = floatShift.bottom;
+        const flowBottom = flowShift.bottom;
+
         const floatMeasured = flowV9MeasuredStream(
           streamRich(floatMeta.fs),
-          [{ x: floatX, width: floatWidth, y_start: bodyTop, y_end: pageBottom }],
+          [{ x: floatX, width: floatWidth, y_start: bodyTop, y_end: floatBottom }],
           floatMeta.metrics._v9TextContext,
-          pageBottom
+          floatBottom
         );
         const floatEnd = Math.max(bodyTop, floatMeasured.endY || bodyTop);
 
         const flowStrips = [];
-        if (floatEnd > bodyTop + 0.1) {
-          flowStrips.push({ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: Math.min(floatEnd, pageBottom) });
+        if (flowBottom > bodyTop + 0.1 && floatEnd > bodyTop + 0.1) {
+          flowStrips.push({
+            x: narrowX,
+            width: narrowWidth,
+            y_start: bodyTop,
+            y_end: Math.min(floatEnd, flowBottom),
+          });
         }
-        if (floatEnd < pageBottom - 0.1) {
-          flowStrips.push({ x: 0, width: innerWidth, y_start: floatEnd, y_end: pageBottom });
+        if (flowBottom > Math.max(bodyTop, floatEnd) + 0.1) {
+          flowStrips.push({
+            x: 0,
+            width: innerWidth,
+            y_start: Math.max(bodyTop, floatEnd),
+            y_end: flowBottom,
+          });
         }
         const flowMeasured = flowV9MeasuredStream(
           streamRich(flowMeta.fs),
-          flowStrips.length ? flowStrips : [{ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: pageBottom }],
+          flowStrips.length
+            ? flowStrips
+            : [{ x: narrowX, width: narrowWidth, y_start: bodyTop, y_end: flowBottom }],
           flowMeta.metrics._v9TextContext,
-          pageBottom
+          flowBottom
         );
 
         pushFooterBox(floatMeta, floatMeasured, titleY, floatX, floatWidth, {
           mishnaLevel: group.level >= 1 ? group.level + 1 : null,
           mishnaRole: "float",
           mishnaSource: group.source || "levels",
+          manualFootnoteShiftLines: floatShift.shiftLines,
+          manualFootnoteShiftReservedPx: floatShift.reservedPx,
+          streamPageBottomY: floatBottom,
         });
         pushFooterBox(flowMeta, flowMeasured, titleY, narrowX, narrowWidth, {
           mishnaLevel: group.level >= 1 ? group.level + 1 : null,
           mishnaRole: "flow",
           mishnaSource: group.source || "levels",
+          manualFootnoteShiftLines: flowShift.shiftLines,
+          manualFootnoteShiftReservedPx: flowShift.reservedPx,
+          streamPageBottomY: flowBottom,
         });
         footerY = Math.max(floatMeasured.endY || bodyTop, flowMeasured.endY || bodyTop) + interStreamGap;
         continue;
@@ -3248,21 +3284,28 @@ function buildPagePlanCore(pageContent, config) {
       // Non-Mishnah footers, and uncommon levels with more than two streams,
       // retain the stable full-width V9 path.
       for (const meta of metas) {
-        if (footerY + titleHeight + meta.lineH > pageBottom) {
+        const titleY = footerY;
+        const bodyTop = footerY + titleHeight;
+        const shift = footerShift(meta, bodyTop);
+        const streamBottom = shift.bottom;
+
+        if (bodyTop + meta.lineH > streamBottom + 0.1) {
           result.overflow.streams[meta.fs.id] = streamRich(meta.fs);
           anyFooterTrimmed = true;
           continue;
         }
         const footerCols = Math.max(1, Math.min(6, parseInt(meta.settings.cols || 1, 10) || 1));
         const colGap = Math.max(0, Number(cfg.streamHorizontalGap) || 0);
-        const titleY = footerY;
-        const bodyTop = footerY + titleHeight;
         const measured = flowV9MeasuredColumns(
           streamRich(meta.fs),
           meta.metrics._v9TextContext,
-          { top: bodyTop, bottom: pageBottom, width: innerWidth, columns: footerCols, gap: colGap }
+          { top: bodyTop, bottom: streamBottom, width: innerWidth, columns: footerCols, gap: colGap }
         );
-        pushFooterBox(meta, measured, titleY, 0, innerWidth);
+        pushFooterBox(meta, measured, titleY, 0, innerWidth, {
+          manualFootnoteShiftLines: shift.shiftLines,
+          manualFootnoteShiftReservedPx: shift.reservedPx,
+          streamPageBottomY: streamBottom,
+        });
         footerY = measured.endY + interStreamGap;
       }
     }
