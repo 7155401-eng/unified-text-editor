@@ -94,13 +94,13 @@ test('sample runs only after recovery misses and server confirms no document', a
   assert.deepEqual(order, ['recovery-miss', 'server-empty', 'sample']);
 });
 
-test('legacy local demo waits for server before falling back to sample', async () => {
+test('legacy local demo checks emergency recovery before waiting for server', async () => {
   const order = [];
   const result = await finishInitialDocumentRestore({
     loadedFromStorage: true,
     isLegacyDemoState: () => true,
     loadDeferredLocalRecovery: async () => {
-      order.push('unexpected-recovery');
+      order.push('recovery-miss');
       return false;
     },
     serverInitialStatePromise: Promise.resolve({ loaded: true, source: 'server' }).then((value) => {
@@ -111,5 +111,6 @@ test('legacy local demo waits for server before falling back to sample', async (
   });
 
   assert.equal(result.source, 'server');
-  assert.deepEqual(order, ['server']);
+  assert.deepEqual(order, ['recovery-miss', 'server']);
+  assert(!order.includes('sample'),'sample raced ahead of the server after a recovery miss');
 });
