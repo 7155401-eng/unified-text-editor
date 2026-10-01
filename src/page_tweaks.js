@@ -56,6 +56,12 @@ export function normalizePageTweakEntry(raw = {}) {
     status,
     spaceLines: Number.isFinite(Number(raw?.spaceLines)) ? Math.max(0, Number(raw.spaceLines)) : null,
     overflowPx: Number.isFinite(Number(raw?.overflowPx)) ? Math.max(0, Number(raw.overflowPx)) : null,
+    approvedSpaceLines: Number.isFinite(Number(raw?.approvedSpaceLines))
+      ? Math.max(0, Number(raw.approvedSpaceLines))
+      : null,
+    approvedOverflowPx: Number.isFinite(Number(raw?.approvedOverflowPx))
+      ? Math.max(0, Number(raw.approvedOverflowPx))
+      : null,
     notes: String(raw?.notes || "").slice(0, 2000),
     footnoteShift: normalizeFootnoteShift(raw?.footnoteShift ?? raw?.footnote_shift),
   };
@@ -174,8 +180,12 @@ export function updatePageTweakMeasurements(raw, pageNumber, {
 
   let preserveApprovedBaseline = false;
   if (previous.status === PAGE_TWEAK_STATUS_APPROVED) {
-    const oldGap = Number(previous.spaceLines);
-    const oldOverflow = Number(previous.overflowPx);
+    const oldGap = Number.isFinite(Number(previous.approvedSpaceLines))
+      ? Number(previous.approvedSpaceLines)
+      : Number(previous.spaceLines);
+    const oldOverflow = Number.isFinite(Number(previous.approvedOverflowPx))
+      ? Number(previous.approvedOverflowPx)
+      : Number(previous.overflowPx);
     let changed = false;
 
     // The measurements stored by approvePageTweakWithMeasurements() are the
@@ -230,6 +240,12 @@ export function approvePageTweakWithMeasurements(raw, pageNumber, {
     status: PAGE_TWEAK_STATUS_APPROVED,
     spaceLines: Number.isFinite(Number(bottomGapLines)) ? Math.max(0, Number(bottomGapLines)) : current.spaceLines,
     overflowPx: Number.isFinite(Number(overflowPx)) ? Math.max(0, Number(overflowPx)) : current.overflowPx,
+    approvedSpaceLines: Number.isFinite(Number(bottomGapLines))
+      ? Math.max(0, Number(bottomGapLines))
+      : current.spaceLines,
+    approvedOverflowPx: Number.isFinite(Number(overflowPx))
+      ? Math.max(0, Number(overflowPx))
+      : current.overflowPx,
   });
   return state;
 }
