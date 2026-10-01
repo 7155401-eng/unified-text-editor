@@ -56,10 +56,14 @@ jobs:
         run: node --test tests/integration/*.test.mjs
       - name: V9 unit/source regressions
         run: node --test tests/v9-unified/*.test.mjs
+      - name: Word extractor regressions
+        run: node --test tests/word-extractor/*.test.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
         run: node scripts/v9-unified/run-browser.mjs
+      - name: Regular renderer BiDi regression
+        run: node scripts/verify-regular-renderer-bidi.mjs
       - name: Quota regressions
         run: node --test tests/quota/*.test.mjs
       - name: DOCX regressions
@@ -75,6 +79,8 @@ jobs:
       - name: Repeat cross-bot contracts after build
         run: |
           node --test tests/integration/*.test.mjs
+          node --test tests/word-extractor/*.test.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
+          node scripts/verify-regular-renderer-bidi.mjs
