@@ -599,17 +599,22 @@ function pageTweakerManager() {
 
 function syncPageMemoryFromReport(report) {
   const pm = pageTweakerManager();
-  if (!pm || typeof pm.updatePageTweakMeasurements !== "function") return;
-  for (const page of report?.pageReports || []) {
-    try {
+  if (!pm) return;
+  try {
+    if (typeof pm.syncPageTweakMeasurements === "function") {
+      pm.syncPageTweakMeasurements(report?.pageReports || []);
+      return;
+    }
+    if (typeof pm.updatePageTweakMeasurements !== "function") return;
+    for (const page of report?.pageReports || []) {
       pm.updatePageTweakMeasurements(page.page, {
         bottomGapLines: page.bottomGapLines,
         overflowPx: page.overflowPx,
         linePitchPx: page.linePitchPx,
       });
-    } catch (error) {
-      console.warn("[layout-report] page memory measurement sync failed", page.page, error);
     }
+  } catch (error) {
+    console.warn("[layout-report] page memory measurement sync failed", error);
   }
 }
 
