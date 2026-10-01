@@ -116,7 +116,9 @@ export function prepareV9SourceParagraph(p, index = 0) {
   const runs = mappedSourceRuns(p, map);
   return {
     ...p, id, mainText: map.text, mainRuns: runs, runs, mainRefs, notes,
-    _v9Source: { id, index: index + 1, text: map.text, starts: map.starts, ends: map.ends, rawLength: map.rawLength },
+    _v9Source: { id, index: index + 1, text: map.text, starts: map.starts, ends: map.ends, rawLength: map.rawLength,
+      blockType: p.blockType || ((p.isHeading || p.headingLevel) ? "heading" : "paragraph"),
+      headingLevel: p.headingLevel || (p.isHeading ? 1 : null) },
     _v9SourceOffset: 0,
     _v9SourceEnd: map.text.length,
   };
@@ -181,6 +183,8 @@ export function sourceMetadata(entry, start, end) {
     rawEnd: b > a ? (origin?.ends?.[b - 1] ?? b) : (origin?.starts?.[a] ?? a),
     paragraphStart: a === 0 && !entry.continues && entry._v9OpeningWordAllowed !== false,
     continuation: a > 0 || !!entry.continues,
+    blockType: String(origin?.blockType || entry.blockType || 'paragraph'),
+    headingLevel: origin?.headingLevel || entry.headingLevel || null,
     domain: 'canonical-main-utf16',
   };
 }

@@ -118,7 +118,8 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     typography, fontSize, lineHeight,
     get generation() { return generation; },
     prepareEntry(entry) {
-      return { ...entry, typography: { ...typography }, runs: hooks.prepareRuns?.(entry.runs || []) || entry.runs || [],
+      const entryTypography = hooks.prepareTypography?.(entry, { ...typography }) || { ...typography };
+      return { ...entry, typography: entryTypography, runs: hooks.prepareRuns?.(entry.runs || []) || entry.runs || [],
         mainRefs: hooks.prepareRefs?.(entry.mainRefs || []) || entry.mainRefs || [] };
     },
     describeOpening(entry) {
@@ -192,9 +193,12 @@ export function renderV9PlannedMainLine(line, pageEl, padding = 0) {
   Object.assign(el.dataset, { v9Role: 'main', v9BoxId: 'main', v9LayoutFinal: V9_INLINE_PLAN_VERSION,
     v9SourceStream: 'main', v9ParagraphId: src.paragraphId, v9ParagraphIndex: String(src.paragraphIndex),
     v9ParagraphStart: src.paragraphStart ? '1' : '0', v9Continuation: src.continuation ? '1' : '0',
+    v9BlockType: String(src.blockType || 'paragraph'),
     v9SourceOffset: String(src.start), v9SourceEnd: String(src.end), v9RawSourceOffset: String(src.rawStart),
     v9RawSourceEnd: String(src.rawEnd), v9SourceDomain: src.domain,
     v9OpeningWindowApplied: line.openingWindow ? '1' : '0', v9StretchPolicy: 'planned-in-v9' });
+  if (src.blockType === 'codeBlock') el.classList.add('v9-block-code');
+  else if (src.blockType === 'blockquote') el.classList.add('v9-block-quote');
   if (line.forcedBreak) el.dataset.v9ForcedBreak = '1';
   if (line.isLast) el.dataset.v9ParaLast = '1';
   if (line.openingHostFullWidth > 0) el.dataset.v9OpeningHostFullWidthPx = String(line.openingHostFullWidth);

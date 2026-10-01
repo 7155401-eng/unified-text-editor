@@ -15,6 +15,7 @@ import {
   appendRichTextPart,
 } from "./engine/rich_text_runs.js";
 import { buildNoteContentNodes, nodesToTextRuns, styleIdToMarks, applyBoldOverrideToRuns } from "./engine/note_content_builder.js";
+import { v9BlockTypography } from "./engine/main_block_semantics.js";
 import {
   buildV9SplitPolicy,
   buildParagraphBreakCandidates,
@@ -1733,6 +1734,9 @@ function createMainInlineContext(cfg) {
     decorateBase(el) {
       applyStyleToElement(el, cfg.mainStyleId);
       if (cfg.mainInlineStyle) applyTextStyleObjectToElement(el, cfg.mainInlineStyle);
+    },
+    prepareTypography(entry, baseTypography) {
+      return v9BlockTypography(entry?.blockType || entry?.source?.blockType, baseTypography);
     },
     prepareRuns(runs) {
       return v9MainBoldOverrideRuns(runs, cfg);
@@ -6358,6 +6362,8 @@ function aggregateForV9(paragraphs, titles, streamSettings, levels, talmudStream
       sourceOffset: prepared._v9SourceOffset,
       continuesAfter: !!prepared._continues,
       isHeading: prepared.blockType === "heading" || prepared.isHeading === true,
+      blockType: prepared.blockType || "paragraph",
+      headingLevel: prepared.headingLevel || null,
       text: cleanPiece,
       runs: localRuns,
       rich: makeRichText(cleanPiece, localRuns),

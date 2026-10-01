@@ -53,8 +53,11 @@ test('source-index and heading identity survive page fragments', () => {
   const p=prepareV9SourceParagraph({id:'heading-7',isHeading:true,mainText:'one two three'},6);
   const q=sliceV9Paragraph(p,4,13);
   assert.equal(q.isHeading,true);assert.equal(q._v9Source.index,7);
+  assert.equal(q._v9Source.blockType,'heading');
+  assert.equal(q._v9Source.headingLevel,1);
   assert.deepEqual(sourceMetadata({source:q._v9Source,sourceOffset:4,continues:true},0,9),{
-    paragraphId:'heading-7',paragraphIndex:7,start:4,end:13,rawStart:4,rawEnd:13,paragraphStart:false,continuation:true,domain:'canonical-main-utf16'});
+    paragraphId:'heading-7',paragraphIndex:7,start:4,end:13,rawStart:4,rawEnd:13,
+    paragraphStart:false,continuation:true,blockType:'heading',headingLevel:1,domain:'canonical-main-utf16'});
 });
 
 test('plans do not allocate a line in a gap or consume text when all slots are absent', () => {

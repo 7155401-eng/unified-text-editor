@@ -1036,8 +1036,10 @@ export function paneManagerToPackerContent(paneManager) {
         mainRuns: info.mainRuns || [],
         notes: cleanNotes,
         mainRefs: cleanMainRefs,
-        blockType: info.blockType === "heading" ? "heading" : "paragraph",
-        ...(info.blockType === "table" ? { blockType: "table", tableRows: info.tableRows || [] } : {}),
+        blockType: ["heading", "codeBlock", "blockquote", "table"].includes(info.blockType)
+          ? info.blockType
+          : "paragraph",
+        ...(info.blockType === "table" ? { tableRows: info.tableRows || [] } : {}),
         headingLevel: info.blockType === "heading" ? Math.max(1, Math.min(6, info.headingLevel || 1)) : null,
         style: info.style || {},
         paneRole: info.paneRole || "main",

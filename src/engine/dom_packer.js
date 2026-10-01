@@ -11,6 +11,7 @@ import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
 import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma, lemmaSplitIndex } from "../original_stream_columns.js";
 import { applyMainStreamColumnsToElement } from "../main_stream_columns.js";
 import { createLayoutContext, publishLayoutContextToCssVars, currentLayoutMeasureSignature } from "./layout_context.js";
+import { mainBlockTagForType } from "./main_block_semantics.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
@@ -148,16 +149,15 @@ function blockMetaFor(idx) {
   return _activeContentMeta[idx] || {};
 }
 
-function mainBlockTagFor(idx) {
-  const meta = blockMetaFor(idx);
-  if (meta.blockType === "heading") {
-    const level = Math.max(1, Math.min(6, parseInt(meta.headingLevel || 1, 10)));
-    return `h${level}`;
-  }
-  if (meta.blockType === "codeBlock") return "pre";
-  if (meta.blockType === "blockquote") return "blockquote";
-  if (meta.blockType === "table") return "table";
-  return "p";
+function mainBlockTagFor(itemOrIdx) {
+  const idx = typeof itemOrIdx === "object" && itemOrIdx !== null
+    ? (itemOrIdx.idx ?? itemOrIdx[0])
+    : itemOrIdx;
+  const directMeta = typeof itemOrIdx === "object" && itemOrIdx !== null
+    ? (itemOrIdx.meta || itemOrIdx[4] || null)
+    : null;
+  const meta = directMeta || blockMetaFor(idx) || {};
+  return mainBlockTagForType(meta.blockType, meta.headingLevel);
 }
 
 function appendTableRows(table, rows = []) {

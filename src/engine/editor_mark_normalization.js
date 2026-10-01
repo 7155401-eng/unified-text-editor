@@ -34,6 +34,7 @@ export function editorMarksToRunMarks(marks) {
     else if (name === 'italic') out.italic = true;
     else if (name === 'underline') out.underline = true;
     else if (name === 'strike') out.strike = true;
+    else if (name === 'code') out.code = true;
     else if (name === 'highlight') out.backgroundColor = attrs.color || out.backgroundColor;
   }
   return out;

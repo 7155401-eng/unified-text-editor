@@ -35,6 +35,13 @@ export function applyMarksToSpan(span, marks) {
   if (marks.underline) appendTextDecoration(span, "underline");
   if (marks.strike) appendTextDecoration(span, "line-through");
   if (marks.textDecoration) appendTextDecoration(span, marks.textDecoration);
+  if (marks.code) {
+    span.classList.add("rt-inline-code");
+    span.style.fontFamily = '"Consolas", "Menlo", "Monaco", monospace';
+    span.style.fontSize = "0.92em";
+    span.style.direction = "ltr";
+    span.style.unicodeBidi = "isolate";
+  }
   if (marks.color) span.style.color = marks.color;
   if (marks.backgroundColor || marks.bgColor) span.style.backgroundColor = marks.backgroundColor || marks.bgColor;
   if (marks.fontFamily) span.style.fontFamily = marks.fontFamily;
