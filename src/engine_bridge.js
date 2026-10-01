@@ -9,6 +9,8 @@ import { isNestedNotesEnabled } from "./nested_notes_gate.js";
 import { canNestInside, streamLinksSignature } from "./stream_links.js";
 import { loadSpacingSettings } from "./spacing_settings.js";
 import { applyGlobalLineBreakCode, globalLineBreakSettingsSignature } from "./engine/global_line_break_code.js";
+import { partitionFrontMatterContent } from "./engine/front_matter_partition.js";
+export { partitionFrontMatterContent } from "./engine/front_matter_partition.js";
 
 function injectDemoWatermarksIfNeeded(content) {
   if (!isDemoMode() || !Array.isArray(content) || content.length === 0) return content;
@@ -1051,43 +1053,6 @@ export function paneManagerToPackerContent(paneManager) {
 
   _packerContentCache = { sig, value: result };
   return result;
-}
-
-export function partitionFrontMatterContent(content, paneManager) {
-  const all = Array.isArray(content) ? content : [];
-  const introPanes = typeof paneManager?.getIntroPanes === "function"
-    ? paneManager.getIntroPanes()
-    : (paneManager?.panes || []).filter(p => p.paneRole === "intro");
-
-  const introIds = new Set(introPanes.map(p => String(p.id || "")).filter(Boolean));
-  const byPane = new Map(introPanes.map((p, index) => [
-    String(p.id || ""),
-    { paneId: String(p.id || ""), label: p.label || `הקדמה ${index + 1}`, content: [] },
-  ]));
-  const body = [];
-  const orphanIntro = [];
-
-  for (const item of all) {
-    if (item?.paneRole !== "intro") {
-      body.push(item);
-      continue;
-    }
-    const id = String(item?.paneId || "");
-    if (id && introIds.has(id) && byPane.has(id)) byPane.get(id).content.push(item);
-    else orphanIntro.push(item);
-  }
-
-  const groups = introPanes
-    .map(p => byPane.get(String(p.id || "")))
-    .filter(group => group && group.content.length > 0);
-
-  // Legacy/restored documents may contain intro-tagged content whose pane id is
-  // no longer present. Never silently drop it: keep it as one leading group.
-  if (orphanIntro.length) {
-    groups.unshift({ paneId: "", label: "הקדמה", content: orphanIntro });
-  }
-
-  return { groups, body };
 }
 
 async function packFrontMatterGroups(groups, pageGeom, isCurrent) {
