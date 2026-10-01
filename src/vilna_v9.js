@@ -3152,7 +3152,7 @@ function buildPagePlanCore(pageContent, config) {
         }
         // A base-height fit is only a preflight. Real styled text may produce
         // no row; its measured remainder must survive even without a box.
-        if (floatMeasured.overflowRich.text) {
+        if (floatMeasured.overflowText) {
           result.overflow.streams[floatMeta.fs.id] = floatMeasured.overflowRich;
           anyFooterTrimmed = true;
         }
@@ -3196,7 +3196,7 @@ function buildPagePlanCore(pageContent, config) {
         }
         // A base-height fit is only a preflight. Real styled text may produce
         // no row; its measured remainder must survive even without a box.
-        if (flowMeasured.overflowRich.text) {
+        if (flowMeasured.overflowText) {
           result.overflow.streams[flowMeta.fs.id] = flowMeasured.overflowRich;
           anyFooterTrimmed = true;
         }
