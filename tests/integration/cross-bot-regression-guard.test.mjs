@@ -31,7 +31,7 @@ test("V9 session invariants remain present in canonical source", async () => {
 
   // Vertical crown clearance and horizontal main↔side spacing are independent
   // planner axes. The web app must source crown clearance from mainStreamGap.
-  assert.match(v9Apply, /crownMainGapPx:\s*Math\.max\(0,\s*Number\(effectiveSpacing\.mainStreamGap\)/);
+  assert.match(v9Apply, /crownMainGapPx:\s*Math\.max\(0,\s*Number\(effectiveSpacing\.v9CrownMainGap\)/);
   assert.doesNotMatch(vilna, /crownMainGap[^\n]*Math\.max\(4,\s*mainGap\)/);
 
   assert.match(mapping, /NBSP|narrow|thin/i);
