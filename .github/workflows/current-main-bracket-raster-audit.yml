@@ -27,3 +27,5 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Probe cross-line bracket raster
         run: node scripts/v9-unified/probe-cross-line-bracket-raster.mjs
+      - name: Probe stream and regular-renderer bracket raster
+        run: node scripts/v9-unified/probe-bracket-renderer-matrix.mjs
