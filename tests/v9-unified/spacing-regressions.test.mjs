@@ -522,13 +522,25 @@ test('opening after a widening knee stays on the wide host across boundary/drop-
        `opening created a half-width body slot in wide region: boundary=${boundary} y=${host.y} bodySlot=${availableBodyWidth} openingWidth=${openingWidth}`);
      }
 
-     const after=p.lines.find(l=>
-      l.source?.paragraphId==='matrix-opening' &&
-      l.y>=host.render.opening.y+host.render.opening.height-.001
-     );
-     if(after){
-      assert(after.openingHostFullWidth>=99.9 || after.width>=99.9,
-       `row after opening stayed narrow after wide knee: boundary=${boundary} y=${after.y} width=${after.width} host=${after.openingHostFullWidth}`);
+     const paragraphLines=p.lines
+      .filter(l=>l.source?.paragraphId==='matrix-opening')
+      .sort((a,b)=>a.y-b.y);
+     for(let i=1;i<paragraphLines.length;i++){
+      const prev=paragraphLines[i-1],cur=paragraphLines[i];
+      const prevPitch=Number(prev.lineHeightPx)||pitch;
+      const dy=cur.y-prev.y;
+      assert(Math.abs(dy-prevPitch)<.01,
+       `opening paragraph lost row-grid continuity: boundary=${boundary} prevY=${prev.y} y=${cur.y} dy=${dy} pitch=${prevPitch}`);
+     }
+
+     // A row that STARTS before the knee but extends across it is deliberately
+     // narrow. That is the user's required "one more narrow row". Only rows
+     // whose entire row starts at/after the knee must use the wide host.
+     for(const row of paragraphLines){
+      if(row.y>=boundary-.001){
+       assert(row.openingHostFullWidth>=99.9 || row.width>=99.9,
+        `fully post-knee row stayed narrow: boundary=${boundary} y=${row.y} width=${row.width} host=${row.openingHostFullWidth}`);
+      }
      }
     }
    }
