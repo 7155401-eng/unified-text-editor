@@ -19,6 +19,11 @@ function expectButtonIdAria(id, label) {
   assert.match(html, re, `missing aria-label for #${id}`);
 }
 
+function expectSelectAria(id, label) {
+  const re = new RegExp(`<select(?=[^>]*id=["']${id}["'])(?=[^>]*aria-label=["']${label}["'])[^>]*>`, 'u');
+  assert.match(html, re, `missing aria-label for #${id}`);
+}
+
 test('audited PR #246 accessibility labels remain present on current toolbar', () => {
   expectInputAria('custom-stream-input', 'מספר זרם מותאם אישית');
   expectInputAria('jump-stream-input', 'מספר זרם מותאם אישית לקפיצה');
@@ -28,4 +33,7 @@ test('audited PR #246 accessibility labels remain present on current toolbar', (
   expectButtonAria('code-inline', 'קוד בשורה');
   expectButtonAria('unlink', 'הסר קישור');
   expectButtonIdAria('zoom-reset', 'איפוס לזום 100%');
+  expectSelectAria('styles-gallery-select', 'סגנון לטקסט נבחר');
+  expectSelectAria('local-font-select', 'גופנים במחשב');
+  expectSelectAria('size-selected-select', 'בחר גודל לטקסט הנבחר');
 });
