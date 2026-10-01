@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import JSZip from "jszip";
-import { docx_extract_simple } from "../../src/word_extractor/word_extractor_engine.js";
+import { docx_extract_simple, ensureDOMParser } from "../../src/word_extractor/word_extractor_engine.js";
 
 const W="http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+await ensureDOMParser();
 
 async function makeDocx(mainText, footnoteText=""){
   const zip=new JSZip();
