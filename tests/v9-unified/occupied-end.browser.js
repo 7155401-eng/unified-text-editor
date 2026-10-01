@@ -30,7 +30,7 @@ function extent(lines,origin){
  }
  return end;
 }
-function checkRectangles(page,lines,padding=0,previousCollisions=[]){
+function checkRectangles(page,lines,padding=0){
  const collisions=[];
  const painted=[...page.querySelectorAll('.v9-final-main-line,.v9-final-stream-line')];
  assert(painted.length===lines.length,'painted row count changed');
@@ -43,8 +43,9 @@ function checkRectangles(page,lines,padding=0,previousCollisions=[]){
    if(dx>=.2&&dy>=.2)collisions.push({i,j,dx,dy});
   }
  }
- assert(JSON.stringify(collisions)===JSON.stringify(previousCollisions),
-  'new or changed overlapping boxes relative to pinned pre-fix product');
+ // The old baseline contained two overlapping full-width side rows. The
+ // final-width reconciliation repairs them; no overlap is accepted now.
+ assert(collisions.length===0, 'overlapping boxes remain in the final plan');
  return collisions;
 }
 export function runOccupiedEndChecks(baseline){
@@ -128,9 +129,9 @@ export function runOccupiedEndChecks(baseline){
     assert(plan.streamCoverage.every(c=>c.exact),'page source coverage is not exact');
     assert(JSON.stringify({content,config})===snapshot,'page input/settings changed');
     const lines=[...plan.mainBox.lines,...plan.streamBoxes.flatMap(b=>b.lines),...plan.footerBoxes.flatMap(b=>b.lines)];
-    const remainingCollisions=checkRectangles(page,lines,config.padding,originalCollisions);
+    const remainingCollisions=checkRectangles(page,lines,config.padding);
     assert(lines.every(l=>l.y+l.lineHeightPx<=config.pageHeight-config.padding+.02),'row crosses physical page bottom');
-    return {mainEndY:plan.mainBox.endY,sideEndY:right.endY,footerBaseY:plan.mainBottomGapPlan.baseY,rows:lines.length,remainingCollisions,remainingIssue:remainingCollisions.length?'pre-existing-overlap':null};
+    return {mainEndY:plan.mainBox.endY,sideEndY:right.endY,footerBaseY:plan.mainBottomGapPlan.baseY,rows:lines.length,originalCollisions,remainingCollisions,remainingIssue:remainingCollisions.length?'pre-existing-overlap':null};
    }finally{page.remove();}
   });
  }
