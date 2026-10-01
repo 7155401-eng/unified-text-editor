@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { finishInitialDocumentRestore } from '../../src/startup_document_restore.js';
 
-test('valid fast local state returns immediately without recovery/server/sample', async () => {
+test('valid fast local state reconciles recovery once without waiting for server/sample', async () => {
   let recovery = 0, serverObserved = 0, sample = 0;
   const server = Promise.resolve().then(() => {
     serverObserved++;
@@ -12,13 +12,13 @@ test('valid fast local state returns immediately without recovery/server/sample'
   const result = await finishInitialDocumentRestore({
     loadedFromStorage: true,
     isLegacyDemoState: () => false,
-    loadDeferredLocalRecovery: async () => { recovery++; return true; },
+    loadDeferredLocalRecovery: async () => { recovery++; return false; },
     serverInitialStatePromise: server,
     loadSample: async () => { sample++; },
   });
 
   assert.equal(result.source, 'local-storage');
-  assert.equal(recovery, 0);
+  assert.equal(recovery, 1);
   assert.equal(sample, 0);
   await server;
   assert.equal(serverObserved, 1);
