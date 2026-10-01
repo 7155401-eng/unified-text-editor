@@ -172,11 +172,19 @@ export function updatePageTweakMeasurements(raw, pageNumber, {
   const overflow = Number(overflowPx);
   const pitch = Math.max(1, Number(linePitchPx) || 1);
 
+  let preserveApprovedBaseline = false;
   if (previous.status === PAGE_TWEAK_STATUS_APPROVED) {
     const oldGap = Number(previous.spaceLines);
     const oldOverflow = Number(previous.overflowPx);
     let changed = false;
 
+    // The measurements stored by approvePageTweakWithMeasurements() are the
+    // approval baseline. Do NOT slide that baseline forward on every harmless
+    // re-measurement: several sub-threshold typography changes could otherwise
+    // accumulate into a large visual drift without ever marking the page
+    // changed. Compare every approved render to the original approved snapshot
+    // until a meaningful delta actually occurs.
+    //
     // Desktop used 0.3cm. In the browser use the typography itself: half a
     // normal row is meaningful, while smaller antialias/font differences are
     // not. Overflow uses the same half-row physical threshold.
@@ -187,10 +195,15 @@ export function updatePageTweakMeasurements(raw, pageNumber, {
       changed = true;
     }
     if (changed) next.status = PAGE_TWEAK_STATUS_CHANGED;
+    else preserveApprovedBaseline = true;
   }
 
-  if (Number.isFinite(gap)) next.spaceLines = Math.max(0, gap);
-  if (Number.isFinite(overflow)) next.overflowPx = Math.max(0, overflow);
+  // Pending/changed pages keep the latest measurements. An approved page keeps
+  // its exact approval snapshot until a meaningful delta is observed.
+  if (!preserveApprovedBaseline) {
+    if (Number.isFinite(gap)) next.spaceLines = Math.max(0, gap);
+    if (Number.isFinite(overflow)) next.overflowPx = Math.max(0, overflow);
+  }
 
   const meaningful =
     next.linesDiff !== 0 ||
