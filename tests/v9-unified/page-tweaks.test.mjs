@@ -110,6 +110,33 @@ test("approved page becomes changed only after a meaningful typographic measurem
   assert.equal(getPageTweak(state, 4).status, "changed");
 });
 
+
+test("approved measurement baseline does not creep across repeated sub-threshold samples", () => {
+  let state = approvePageTweakWithMeasurements(emptyPageTweaks(), 9, {
+    bottomGapLines: 1.0,
+    overflowPx: 0,
+  });
+
+  for (const gap of [1.2, 1.4]) {
+    state = updatePageTweakMeasurements(state, 9, {
+      bottomGapLines: gap,
+      overflowPx: 1,
+      linePitchPx: 20,
+    });
+    const entry = getPageTweak(state, 9);
+    assert.equal(entry.status, "approved");
+    assert.equal(entry.spaceLines, 1.0, "approved baseline must stay fixed");
+    assert.equal(entry.overflowPx, 0, "approved overflow baseline must stay fixed");
+  }
+
+  state = updatePageTweakMeasurements(state, 9, {
+    bottomGapLines: 1.6,
+    overflowPx: 1,
+    linePitchPx: 20,
+  });
+  assert.equal(getPageTweak(state, 9).status, "changed");
+});
+
 test("new substantial overflow marks an approved page changed", () => {
   let state = approvePageTweakWithMeasurements(emptyPageTweaks(), 1, {
     bottomGapLines: 0.8,
