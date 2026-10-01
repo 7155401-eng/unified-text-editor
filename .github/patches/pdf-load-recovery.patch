@@ -1,0 +1,37 @@
+diff --git a/src/engine_toolbar.js b/src/engine_toolbar.js
+index 9acfaf0c..e470b006 100644
+--- a/src/engine_toolbar.js
++++ b/src/engine_toolbar.js
+@@ -576,8 +576,10 @@ export function setupPdfToolbar(pagesContainer) {
+     const originalText = btn.textContent;
+     btn.disabled = true;
+     btn.textContent = "מכין PDF...";
++    let pdfModuleLoaded = false;
+     try {
+       const { downloadPagesAsPdf } = await loadPdfExporter();
++      pdfModuleLoaded = true;
+       await downloadPagesAsPdf(pagesContainer, {
+         filename: "ravtext-preview.pdf",
+         includeBackgrounds: isOutputBackgroundEnabled(),
+@@ -586,7 +588,20 @@ export function setupPdfToolbar(pagesContainer) {
+       });
+     } catch (err) {
+       console.error("PDF export failed:", err);
+-      alert(`שגיאת הורדת PDF: ${err.message}`);
++      // Keep optional PDF code lazy, but do not depend on that unavailable
++      // module for recovery. Reuse the existing guarded native-print path.
++      // Never reload an editing tab, clear its storage, or silently print.
++      const nativePrint = document.getElementById("pdf-print");
++      if (!pdfModuleLoaded && nativePrint && !nativePrint.disabled) {
++        const usePrint = window.confirm(
++          "רכיב הורדת ה-PDF לא נטען. העבודה הפתוחה לא שונתה.\n\n"
++          + "אפשר לשמור PDF דרך חלון ההדפסה, בלי לרענן את האתר. "
++          + "לפתוח את חלון ההדפסה? שם יש לבחור 'שמירה כ-PDF'."
++        );
++        if (usePrint) nativePrint.click();
++      } else {
++        alert(`שגיאת הורדת PDF: ${err.message}`);
++      }
+     } finally {
+       btn.disabled = false;
+       btn.textContent = originalText;
