@@ -63,7 +63,7 @@ function injectDemoWatermarksIfNeeded(content) {
   }
   return out;
 }
-import { renderPages } from "./engine/renderer.js";
+import { renderPages, renderPackedPagesToElements } from "./engine/renderer.js";
 import { applyMishnaWrapToPages } from "./mishna_wrap_layout.js";
 // משה 2026-05-08: V1 (talmud_layout.js) ו-V2 (talmud_engine_v2.js) ו-V8
 // (vilna_v8.js) הוסרו. V9 הוא המנוע היחיד למצב גפ"ת.
