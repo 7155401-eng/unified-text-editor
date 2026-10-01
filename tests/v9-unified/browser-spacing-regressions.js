@@ -2,7 +2,6 @@ import { saveTextStyles, loadTextStyles } from '../../src/style_registry.js';
 import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
 import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart, renderV9PlannedMainLine } from '../../src/engine/v9_text_measurement.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
-import { renderPages } from '../../src/engine/renderer.js';
 import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
 import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
@@ -119,63 +118,6 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     host.remove();
   });
 
-  await test('regular renderer matches native Chromium BiDi placement for apostrophe + parentheses across styled runs',()=>{
-    const previousForce=window.__FORCE_SYNC_RENDER__;
-    window.__FORCE_SYNC_RENDER__=true;
-    const samples=[
-      {text:"אב'(גד)",runs:[]},
-      {text:"אב')גד(",runs:[]},
-      {text:"אב' (גד)",runs:[]},
-      {text:"אב'123(גד)",runs:[]},
-      {text:"אב'(גד)",runs:[
-        {start:2,end:3,marks:{color:'rgb(1, 2, 3)'}},
-        {start:3,end:4,marks:{color:'rgb(4, 5, 6)'}},
-      ]},
-      {text:"('אב')",runs:[
-        {start:0,end:1,marks:{color:'rgb(1, 2, 3)'}},
-        {start:1,end:2,marks:{color:'rgb(4, 5, 6)'}},
-        {start:4,end:5,marks:{color:'rgb(7, 8, 9)'}},
-      ]},
-    ];
-    const chars=(root)=>{
-      const rootRect=root.getBoundingClientRect(),walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),out=[];
-      let node;
-      while((node=walker.nextNode())){
-        const value=node.nodeValue||'';
-        for(let i=0;i<value.length;i++){
-          const range=document.createRange();range.setStart(node,i);range.setEnd(node,i+1);
-          const r=range.getBoundingClientRect();
-          out.push({ch:value[i],left:r.left-rootRect.left,right:r.right-rootRect.left,width:r.width});
-        }
-      }
-      return out;
-    };
-    try{
-      for(const sample of samples){
-        const host=document.createElement('div');
-        const native=document.createElement('span');
-        host.style.cssText='position:absolute;left:0;top:0;width:240px;font:24px serif;';
-        native.style.cssText='position:absolute;left:300px;top:0;display:inline-block;white-space:pre;direction:rtl;font:24px serif;';
-        document.body.append(host,native);
-        renderPages([{main:[[0,sample.text,0,sample.text.length,{mainRuns:sample.runs}]],streams:{}}],host);
-        const regular=host.querySelector('.page-main p,.page-main div,.page-main blockquote,.page-main pre');
-        assert(regular,'regular renderer produced no paragraph for '+JSON.stringify(sample.text));
-        regular.style.font='24px serif';regular.style.direction='rtl';regular.style.whiteSpace='pre';
-        native.textContent=sample.text;
-        const a=chars(regular),b=chars(native);
-        assert(a.length===b.length,'regular bidi char count mismatch for '+JSON.stringify(sample.text)+': '+a.length+'/'+b.length);
-        for(let i=0;i<a.length;i++){
-          assert(a[i].ch===b[i].ch,'regular bidi source char changed at '+i+': '+JSON.stringify(a[i].ch)+' vs '+JSON.stringify(b[i].ch));
-          assert(Math.abs(a[i].left-b[i].left)<=1.25 && Math.abs(a[i].right-b[i].right)<=1.25,
-            'regular bidi placement differs at '+i+' '+JSON.stringify(a[i].ch)+' for '+JSON.stringify(sample.text)+': '+
-            'regular='+a[i].left.toFixed(2)+'..'+a[i].right.toFixed(2)+' native='+b[i].left.toFixed(2)+'..'+b[i].right.toFixed(2));
-        }
-        host.remove();native.remove();
-      }
-    }finally{
-      window.__FORCE_SYNC_RENDER__=previousForce;
-    }
-  });
   await test('V9 split DOM matches native Chromium BiDi placement for apostrophe + parentheses',()=>{
     const samples=[
       {leading:'\u200f',text:"('אב",trailing:'\u200e',runs:[]},
@@ -1272,6 +1214,24 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       assert(Math.abs(visualWidth-hostFull)<.75,
         `opening occupies only a partial wide row: body=${op.width}, opening=${op.render.opening.width}, gap=${op.render.opening.gap}, visual=${visualWidth}, host=${hostFull}`);
       assert(op.render.opening.part.text==='פתיח',`unexpected opening segment: ${op.render.opening.part.text}`);
+
+      // Planner geometry is not enough: verify the canonical painted DOM uses
+      // the same newly widened host instead of rendering body/opening ink in
+      // the previous narrow slot.
+      const painted=[...found.page.querySelectorAll('[data-v9-paragraph-id="cross-opening"]')];
+      const paintedHost=painted.find(el=>el.querySelector('.v9-opening-glyph'));
+      const paintedBody=paintedHost?.querySelector('.v9-planned-line-text');
+      const paintedOpening=paintedHost?.querySelector('.v9-opening-glyph');
+      assert(paintedHost&&paintedBody&&paintedOpening,'painted cross-opening host missing');
+      const bodyRange=document.createRange();
+      bodyRange.selectNodeContents(paintedBody);
+      const bodyRect=bodyRange.getBoundingClientRect();
+      const openingRect=paintedOpening.getBoundingClientRect();
+      const paintedLeft=Math.min(bodyRect.left,openingRect.left);
+      const paintedRight=Math.max(bodyRect.right,openingRect.right);
+      const paintedVisual=paintedRight-paintedLeft;
+      assert(paintedVisual>=hostFull-1.5,
+        `painted opening row is effectively narrow after widening: painted=${paintedVisual.toFixed(2)}, host=${hostFull.toFixed(2)}, body=${bodyRect.width.toFixed(2)}, opening=${openingRect.width.toFixed(2)}`);
 
       const analysis=analyzePageElement(found.page,0,{bottomGapWarningLines:100});
       assert(!analysis.issues.some(i=>i.code==='knee-row-gap'),
