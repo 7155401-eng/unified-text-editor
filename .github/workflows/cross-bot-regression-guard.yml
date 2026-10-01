@@ -68,6 +68,10 @@ jobs:
         run: |
           node scripts/v9-unified/verify-hidden-reference-shaping.mjs
           cp test-results/hidden-reference-shaping/report.json test-results/hidden-reference-shaping/before-build.json
+      - name: Opening window uses newly widened rows without losing crown or knee fixes
+        run: |
+          node scripts/v9-unified/verify-opening-window-retry.mjs
+          cp test-results/opening-window-retry/report.json test-results/opening-window-retry/before-build.json
       - name: Regular renderer BiDi regression
         run: node scripts/verify-regular-renderer-bidi.mjs
       - name: DOCX to renderer BiDi end-to-end
@@ -89,6 +93,7 @@ jobs:
           node --test tests/v9-unified/*.test.mjs
           node scripts/v9-unified/verify-combining-marks.mjs
           node scripts/v9-unified/verify-hidden-reference-shaping.mjs
+          node scripts/v9-unified/verify-opening-window-retry.mjs
           node --test tests/integration/*.test.mjs
           node --test tests/word-extractor/*.test.mjs
           node --test tests/quota/*.test.mjs
@@ -102,5 +107,13 @@ jobs:
         with:
           name: hidden-reference-shaping-${{ github.run_id }}
           path: test-results/hidden-reference-shaping/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Retain opening-window retry evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opening-window-retry-${{ github.run_id }}
+          path: test-results/opening-window-retry/
           retention-days: 7
           if-no-files-found: warn

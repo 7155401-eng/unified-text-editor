@@ -89,6 +89,24 @@ function availableBeside(g, y, height, opening) {
   return { ...g, width: Math.max(0, right - g.x) };
 }
 
+// A word that cannot fit beside the opening's first narrow row may fit on a
+// later row after V9 widens the region. Stay on the current row grid and retry
+// only a genuinely wider free interval; the normal measured flow still decides
+// whether the complete word and its height fit there. Constant-width fallback
+// remains unchanged, and no line or glyph is repositioned after paint.
+function nextWiderOpeningRow(strips, y, pitch, opening, pageBottom) {
+  if (!(pitch > 0)) return null;
+  const current = rowGeometry(strips, y, pitch, pageBottom);
+  if (!current) return null;
+  const currentWidth = availableBeside(current, y, pitch, opening).width;
+  const end = Math.min(pageBottom, opening.y + opening.height);
+  for (let nextY = y + pitch; nextY < end - EPS; nextY += pitch) {
+    const row = rowGeometry(strips, nextY, pitch, pageBottom);
+    if (row && availableBeside(row, nextY, pitch, opening).width > currentWidth + EPS) return nextY;
+  }
+  return null;
+}
+
 function tokensOf(text) {
   return [...text.matchAll(/\r\n|[\r\n]|[^\s]+/gu)]
     .filter(m => !isV9StandaloneDirectionControlOnly(m[0]))
@@ -546,8 +564,14 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         if (opening && y < opening.y + opening.height - EPS) {
           if (!openingAttached) emit(partForRange(entry, cursor, cursor), cursor, cursor, { x: opening.x, width: opening.width }, opening.y,
             { width: 0, height: pitch }, false, []);
-          y = opening.y + opening.height;
-          diagnostics.push({ code: 'opening-body-below', paragraphId: entry.id });
+          const retryY = nextWiderOpeningRow(strips, y, pitch, opening, pageBottom);
+          if (retryY !== null) {
+            diagnostics.push({ code: 'opening-body-retry-at-wider-row', paragraphId: entry.id, fromY: y, toY: retryY });
+            y = retryY;
+          } else {
+            y = opening.y + opening.height;
+            diagnostics.push({ code: 'opening-body-below', paragraphId: entry.id });
+          }
           continue;
         }
         const next = strips.find(s => s.y_start > y + EPS && s.y_start < pageBottom && s.width > (slot?.width || 0));
