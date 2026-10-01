@@ -92,7 +92,7 @@ async function runPaginationChecks(){
     assert(ref>=0&&ref===start,'note did not start on its source-anchor page');
     const rows=[...current.host.querySelectorAll('.v9-final-stream-line')].filter(el=>el.dataset.v9SourceStream===note.stream);
     assert(rows.map(sourceOf).join('')===note.text,'note text not exact');
-    if(['03','04'].includes(note.stream))assert(rows.every(el=>!['right','left'].includes(el.dataset.v9BoxId)),'footer stole a fixed side');
+    if(['03','04'].includes(note.stream))assert(rows.every(el=>!['right','left'].includes(el.dataset.v9Role)),'footer stole a fixed side');
     return {stream:note.stream,referencePage:ref+1,startPage:start+1,sourceExact:true};
    });
    for(const page of current.result.pages){const lines=[...page.querySelectorAll('.v9-final-main-line,.v9-final-stream-line')].map(el=>({x:parseFloat(el.style.left),y:parseFloat(el.style.top),width:parseFloat(el.style.width),lineHeightPx:parseFloat(el.style.height)}));rectangleCheck({pageBox:{height:522,padding:12},mainBox:{lines},streamBoxes:[],footerBoxes:[]});}
