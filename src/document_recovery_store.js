@@ -18,6 +18,7 @@ export const DOCUMENT_RECOVERY_MIRROR_MIN_CHARS = 750000;
 // Deliberately NOT under the ravtext.* settings prefix: this is per-browser
 // recovery metadata and must never sync to another device.
 export const DOCUMENT_RECOVERY_TOMBSTONE_KEY = "ravtextLocal.panes.recoveryClearedAt.v1";
+export const DOCUMENT_PRIMARY_SAVED_AT_KEY = "ravtextLocal.panes.primarySavedAt.v1";
 
 let _queuedOperation = null;
 let _drainPromise = Promise.resolve();
