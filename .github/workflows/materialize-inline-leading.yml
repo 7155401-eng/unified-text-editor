@@ -1,0 +1,69 @@
+name: Materialize reviewed inline-leading candidate
+on:
+  push:
+    branches: [fix/v9-inherited-inline-leading-20261001]
+    paths: [.github/workflows/materialize-inline-leading.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.repository == '7155401-eng/unified-text-editor' && github.ref == 'refs/heads/fix/v9-inherited-inline-leading-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: 7643397724c49b87108b7ac0017c2f61ae4fbcbe
+      TARGET: fix/v9-inherited-inline-leading-20261001
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply exact reviewed delta on the unchanged base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          printf '%s\n' 'b114096ce7414b95d685c97f7d52e179efd9511ad66ffd61b15d2f9b6cd761d6  .github/patches/inherited-inline-leading.patch' | sha256sum -c -
+          cp .github/patches/inherited-inline-leading.patch /tmp/inherited-inline-leading.patch
+          git rm .github/patches/inherited-inline-leading.patch .github/workflows/materialize-inline-leading.yml
+          git apply --index --check /tmp/inherited-inline-leading.patch
+          git apply --index /tmp/inherited-inline-leading.patch
+          git diff --cached --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, subprocess, os
+          expected={
+            'src/engine/runs_dom.js':'a5b6cbd2dfeeb96ff7e57d8241e2ea001450b0ed',
+            'src/engine/v9_text_measurement.js':'c28d0ef4827586344067bf22f6b8c4f4f0e6eeee',
+            'src/vilna_v9.js':'39653910e1ab9c9bafbfe8b1ef940c3a552e6537',
+            'tests/v9-unified/occupied-end.browser.js':'60b1fbe6938dee187e485588add41588bdc28860',
+            'scripts/v9-unified/verify-opening-window-retry.mjs':'2ad6431e1590231588089af232cb0a3228a217c8',
+            'tests/v9-unified/inherited-inline-leading.test.mjs':'17927e906843caecf577562f0ea67c6a0f5400c7',
+            'tests/v9-unified/inherited-inline-leading.browser.js':'b597e5a52fae91e5848ef148486cb935f5b98b5e',
+          }
+          for path,sha in expected.items():
+            b=Path(path).read_bytes()
+            assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()==sha,path
+          changed=subprocess.check_output(['git','diff','--cached','--name-only',os.environ['BASE']],text=True).splitlines()
+          assert set(changed)==set(expected),changed
+          PY
+          node --check src/vilna_v9.js
+          node --check scripts/v9-unified/verify-opening-window-retry.mjs
+          node --check tests/v9-unified/inherited-inline-leading.browser.js
+          node --test tests/v9-unified/inherited-inline-leading.test.mjs
+      - name: Publish to the feature branch only; no force or merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          test "$(git ls-remote origin "refs/heads/$TARGET" | cut -f1)" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(v9): avoid inherited small-run leading inflation and revalidate full-width ownership'
+          git push origin "HEAD:refs/heads/$TARGET"
+          git rev-parse HEAD HEAD^{tree}

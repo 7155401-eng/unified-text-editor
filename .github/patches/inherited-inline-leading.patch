@@ -1,0 +1,170 @@
+diff --git a/src/engine/runs_dom.js b/src/engine/runs_dom.js
+--- a/src/engine/runs_dom.js
++++ b/src/engine/runs_dom.js
+@@ -161,9 +161,30 @@
+   return mergeAdjacentRuns(out);
+ }
+ 
++// A smaller styled run must not inherit the full pixel leading of a larger
++// parent: equal pixel line boxes with different baselines can enlarge the row.
++// This hint is supplied only by the measured V9 path, equally for measure/paint.
++// Explicit run leading and raised/lowered text remain authoritative. Real glyph
++// extents are still measured by V9; this is not a fixed-height or clipping rule.
++function applyInheritedInlineLeading(span, typography) {
++  if (!typography || span.style.lineHeight || span.style.verticalAlign) return;
++  const parentSize = String(typography.fontSize || '').trim();
++  const parentLeading = String(typography.lineHeight || '').trim();
++  if (!/^\d+(?:\.\d+)?px$/.test(parentSize) || !/^\d+(?:\.\d+)?px$/.test(parentLeading)) return;
++  const base = parseFloat(parentSize), leading = parseFloat(parentLeading);
++  if (!(base > 0 && leading > 0)) return;
++  const size = String(span.style.fontSize || '').trim();
++  const match = size.match(/^(\d+(?:\.\d+)?)(px|pt|em|%)$/);
++  if (!match) return;
++  const amount = Number(match[1]);
++  const px = match[2] === 'em' ? amount * base : match[2] === '%' ? amount * base / 100
++    : match[2] === 'pt' ? amount * 4 / 3 : amount;
++  if (px > 0 && px < base) span.style.lineHeight = String(leading / base);
++}
++
+ // מוסיף לתוך parent את הטקסט הנתון, מחולק ל-spans לפי runs. שומר על marks
+ // כפי שהם בעורך. אם אין runs בכלל — מוסיף טקסט אחד.
+-export function appendTextWithRuns(parent, text, runs) {
++export function appendTextWithRuns(parent, text, runs, inheritedTypography = null) {
+   const str = String(text || "");
+   if (!str) return;
+   const normalized = normalizeRuns(str, runs);
+@@ -177,6 +198,7 @@
+     if (hasMarks(r.marks)) {
+       const span = document.createElement("span");
+       applyMarksToSpan(span, r.marks);
++      applyInheritedInlineLeading(span, inheritedTypography);
+       span.textContent = slice;
+       parent.appendChild(span);
+     } else {
+diff --git a/src/engine/v9_text_measurement.js b/src/engine/v9_text_measurement.js
+--- a/src/engine/v9_text_measurement.js
++++ b/src/engine/v9_text_measurement.js
+@@ -70,10 +70,10 @@
+     // can detach a combining mark or change which styles cover its base.
+     if (!ref.formatted) continue;
+     const pos = Math.max(cursor, Math.min(part.text.length, Number(ref.localPos) || 0));
+-    if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos));
++    if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos), part.style);
+     appendReference(parent, ref); cursor = pos;
+   }
+-  if (cursor < part.text.length) appendTextWithRuns(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length));
++  if (cursor < part.text.length) appendTextWithRuns(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length), part.style);
+   appendSemanticWhitespace(parent, part.trailingText);
+ }
+ 
+diff --git a/src/vilna_v9.js b/src/vilna_v9.js
+--- a/src/vilna_v9.js
++++ b/src/vilna_v9.js
+@@ -2787,6 +2787,41 @@
+       });
+       if (relaid) pass2Left = relaid;
+     }
++  }
++
++  // Validate final full-width ownership, not only an earlier alternating pass.
++  // The last left reflow may extend below the clearance assumed by the right.
++  // Replan from source with monotonically increasing clearance, never move DOM.
++  if (!isSameStreamSideSplit && pass2Right && pass2Left) {
++    const sideRowsOverlap = (a, b) => a.lines.some(x => b.lines.some(y =>
++      Math.min(x.x + x.width, y.x + y.width) - Math.max(x.x, y.x) > 1 / 64 &&
++      Math.min(x.y + x.lineHeightPx, y.y + y.lineHeightPx) - Math.max(x.y, y.y) > 1 / 64));
++    let rightFloor = occupiedSideEndY(pass2Left), leftFloor = occupiedSideEndY(pass2Right);
++    let pass = 0;
++    while (sideRowsOverlap(pass2Right, pass2Left) && pass < 8) {
++      rightFloor = Math.max(rightFloor, occupiedSideEndY(pass2Left));
++      leftFloor = Math.max(leftFloor, occupiedSideEndY(pass2Right));
++      pass2Right = buildSideStream(pageContent.rightStream, 'right', {
++        mainBottomY, otherSideEndY: rightFloor,
++      });
++      leftFloor = Math.max(leftFloor, occupiedSideEndY(pass2Right));
++      pass2Left = buildSideStream(pageContent.leftStream, 'left', {
++        mainBottomY, otherSideEndY: leftFloor,
++      });
++      pass++;
++    }
++    let conservativeFallback = false;
++    if (sideRowsOverlap(pass2Right, pass2Left)) {
++      conservativeFallback = true;
++      // Conservative finite allocation if full-width ownership cannot settle.
++      pass2Right = buildSideStream(pageContent.rightStream, 'right', {
++        mainBottomY, otherSideEndY: pageBottomY, suppressFullStrip3: true,
++      });
++      pass2Left = buildSideStream(pageContent.leftStream, 'left', {
++        mainBottomY, otherSideEndY: pageBottomY, suppressFullStrip3: true,
++      });
++    }
++    if (pass > 0) result.sideWidthReconciliation = {passes: pass, conservativeFallback};
+   }
+ 
+   if (isSameStreamSideSplit && pass2Right?.overflowText && pageContent.leftStream) {
+diff --git a/tests/v9-unified/occupied-end.browser.js b/tests/v9-unified/occupied-end.browser.js
+--- a/tests/v9-unified/occupied-end.browser.js
++++ b/tests/v9-unified/occupied-end.browser.js
+@@ -30,7 +30,7 @@
+  }
+  return end;
+ }
+-function checkRectangles(page,lines,padding=0,previousCollisions=[]){
++function checkRectangles(page,lines,padding=0){
+  const collisions=[];
+  const painted=[...page.querySelectorAll('.v9-final-main-line,.v9-final-stream-line')];
+  assert(painted.length===lines.length,'painted row count changed');
+@@ -43,8 +43,9 @@
+    if(dx>=.2&&dy>=.2)collisions.push({i,j,dx,dy});
+   }
+  }
+- assert(JSON.stringify(collisions)===JSON.stringify(previousCollisions),
+-  'new or changed overlapping boxes relative to pinned pre-fix product');
++ // The old baseline contained two overlapping full-width side rows. The
++ // final-width reconciliation repairs them; no overlap is accepted now.
++ assert(collisions.length===0, 'overlapping boxes remain in the final plan');
+  return collisions;
+ }
+ export function runOccupiedEndChecks(baseline){
+@@ -128,9 +129,9 @@
+     assert(plan.streamCoverage.every(c=>c.exact),'page source coverage is not exact');
+     assert(JSON.stringify({content,config})===snapshot,'page input/settings changed');
+     const lines=[...plan.mainBox.lines,...plan.streamBoxes.flatMap(b=>b.lines),...plan.footerBoxes.flatMap(b=>b.lines)];
+-    const remainingCollisions=checkRectangles(page,lines,config.padding,originalCollisions);
++    const remainingCollisions=checkRectangles(page,lines,config.padding);
+     assert(lines.every(l=>l.y+l.lineHeightPx<=config.pageHeight-config.padding+.02),'row crosses physical page bottom');
+-    return {mainEndY:plan.mainBox.endY,sideEndY:right.endY,footerBaseY:plan.mainBottomGapPlan.baseY,rows:lines.length,remainingCollisions,remainingIssue:remainingCollisions.length?'pre-existing-overlap':null};
++    return {mainEndY:plan.mainBox.endY,sideEndY:right.endY,footerBaseY:plan.mainBottomGapPlan.baseY,rows:lines.length,originalCollisions,remainingCollisions,remainingIssue:remainingCollisions.length?'pre-existing-overlap':null};
+    }finally{page.remove();}
+   });
+  }
+diff --git a/scripts/v9-unified/verify-opening-window-retry.mjs b/scripts/v9-unified/verify-opening-window-retry.mjs
+--- a/scripts/v9-unified/verify-opening-window-retry.mjs
++++ b/scripts/v9-unified/verify-opening-window-retry.mjs
+@@ -24,12 +24,13 @@
+ const tailEntry=collect(path.join(root,'tests/v9-unified/opening-tail-source.browser.js'));
+ const crownEntry=collect(path.join(root,'tests/v9-unified/measured-crown-decision.browser.js'));
+ const coexistEntry=collect(path.join(root,'tests/v9-unified/opening-crown-coexistence.browser.js'));
++const leadingEntry=collect(path.join(root,'tests/v9-unified/inherited-inline-leading.browser.js'));
+ assert(Object.values(imports).every(Boolean));
+-const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runOpeningWindowRetryChecks} from '${entry}';import {runOpeningTailSourceChecks} from '${tailEntry}';import {runMeasuredCrownDecisionChecks} from '${crownEntry}';import {runOpeningCrownCoexistenceChecks} from '${coexistEntry}';window.runOpeningWindowRetryChecks=()=>{
+-  const previous=runOpeningWindowRetryChecks(),tail=runOpeningTailSourceChecks(),crown=runMeasuredCrownDecisionChecks(),coexist=runOpeningCrownCoexistenceChecks();
+-  return {total:previous.total+tail.total+crown.total+coexist.total,passed:previous.passed+tail.passed+crown.passed+coexist.passed,failed:previous.failed+tail.failed+crown.failed+coexist.failed,
+-    groups:{...previous.groups,openingTailSource:tail.total,measuredCrownDecision:crown.total,openingCrownCoexistence:coexist.total},rebalancedTailSourceCases:tail.rebalancedCases,
+-    results:[...previous.results,...tail.results,...crown.results,...coexist.results]};
++const html=`<!doctype html><html dir="rtl"><meta charset="utf-8"><body><script type="importmap">${JSON.stringify({imports}).replaceAll('</','<\\/')}</script><script type="module">import {runOpeningWindowRetryChecks} from '${entry}';import {runOpeningTailSourceChecks} from '${tailEntry}';import {runMeasuredCrownDecisionChecks} from '${crownEntry}';import {runOpeningCrownCoexistenceChecks} from '${coexistEntry}';import {runInheritedInlineLeadingChecks} from '${leadingEntry}';window.runOpeningWindowRetryChecks=()=>{
++  const previous=runOpeningWindowRetryChecks(),tail=runOpeningTailSourceChecks(),crown=runMeasuredCrownDecisionChecks(),coexist=runOpeningCrownCoexistenceChecks(),leading=runInheritedInlineLeadingChecks();
++  return {total:previous.total+tail.total+crown.total+coexist.total+leading.total,passed:previous.passed+tail.passed+crown.passed+coexist.passed+leading.passed,failed:previous.failed+tail.failed+crown.failed+coexist.failed+leading.failed,
++    groups:{...previous.groups,openingTailSource:tail.total,measuredCrownDecision:crown.total,openingCrownCoexistence:coexist.total,inheritedInlineLeading:leading.total},rebalancedTailSourceCases:tail.rebalancedCases,
++    results:[...previous.results,...tail.results,...crown.results,...coexist.results,...leading.results]};
+ };</script></body></html>`;
+ const out=path.join(root,'test-results/opening-window-retry');fs.mkdirSync(out,{recursive:true});
+ const browser=await chromium.launch({headless:true,...(process.env.OPENING_RETRY_BROWSER?{executablePath:process.env.OPENING_RETRY_BROWSER}:{})});
+@@ -44,6 +45,6 @@
+   Object.assign(result,{browserVersion:browser.version(),errors,requests,identities});
+   fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(result,null,2));
+   console.log(JSON.stringify({total:result.total,passed:result.passed,failed:result.failed,browserVersion:result.browserVersion}));
+-  assert.equal(result.total,836);assert.equal(errors.length,0);assert.equal(requests.length,0);
++  assert.equal(result.total,878);assert.equal(errors.length,0);assert.equal(requests.length,0);
+   assert.equal(result.failed,0,JSON.stringify(result.results.filter(r=>!r.pass)));
+ } finally {await browser.close();}
