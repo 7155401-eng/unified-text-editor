@@ -249,6 +249,25 @@ export function mountComparatorUI(rootEl, options = {}) {
     quotaBlocked: !!options.quotaReadOnly,
     sessionActionPending: null,
   };
+  function syncIconButtonA11y() {
+    const he = state.currentLang === 'he';
+    const setLabel = (selector, heLabel, enLabel) => {
+      const el = rootEl.querySelector(selector);
+      if (el) el.setAttribute('aria-label', he ? heLabel : enLabel);
+    };
+
+    setLabel('[data-action="toggleTheme"]', 'החלף ערכת נושא', 'Toggle theme');
+    setLabel('[data-action="changeFontSize"][data-arg="-2"]', 'הקטן גודל טקסט בשתי דרגות', 'Decrease text size by two steps');
+    setLabel('[data-action="changeFontSize"][data-arg="-1"]', 'הקטן גודל טקסט', 'Decrease text size');
+    setLabel('[data-action="changeFontSize"][data-arg="1"]', 'הגדל גודל טקסט', 'Increase text size');
+    setLabel('[data-action="changeFontSize"][data-arg="2"]', 'הגדל גודל טקסט בשתי דרגות', 'Increase text size by two steps');
+    rootEl.querySelectorAll('[data-action="removePane"]').forEach((el) => {
+      el.setAttribute('aria-label', he ? 'סגור חלונית' : 'Close pane');
+    });
+  }
+
+  syncIconButtonA11y();
+
   function lockComparatorForQuota() {
     state.quotaBlocked = true;
     Object.values(state.eds).forEach(q => {
@@ -545,6 +564,7 @@ export function mountComparatorUI(rootEl, options = {}) {
      <div class="marker-bar" id="markers-${id}"></div><div id="editor-${id}"></div>
   </div>`);
 
+    syncIconButtonA11y();
     const newResizer = rootEl.querySelector('#pane-' + id).previousElementSibling;
     if (newResizer) initResizer(newResizer);
 
@@ -685,6 +705,8 @@ export function mountComparatorUI(rootEl, options = {}) {
         }
       }
     });
+
+    syncIconButtonA11y();
 
     const mBtn = rootEl.querySelector('#mergeBtn');
     if (state.merged && mBtn) mBtn.textContent = trCur.unmerge;
