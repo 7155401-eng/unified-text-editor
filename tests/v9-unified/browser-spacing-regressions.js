@@ -1475,6 +1475,111 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }finally{found.page.remove();}
   });
 
+
+  await test('cross-geometry opening after knee preserves native RTL apostrophe-parenthesis order',()=>{
+    const openingSettings={
+      enabled:true,target:'word',count:1,font:'serif',size:180,weight:'bold',
+      position:'dropped',dropLines:2,spaceAfter:0.3,scope:'all',
+      skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1
+    };
+    const shortSide=Array(8).fill(phrase).join(' ');
+    const longSide=Array(34).fill(phrase).join(' ');
+    const openingText="פתיח אב'(גד) הו זח טי";
+    let found=null;
+
+    for(let leadRepeats=1;leadRepeats<=18 && !found;leadRepeats++){
+      const page=makePage();
+      const lead=Array(leadRepeats).fill(neutral).join(' ');
+      const plan=buildSinglePage(page,{
+        mainText:lead+'\n'+openingText,
+        mainParagraphs:[
+          {id:'cross-bidi-lead',index:1,text:lead,runs:[],mainRefs:[],continues:false},
+          {id:'cross-bidi-opening',index:2,text:openingText,runs:[],mainRefs:[],continues:false},
+        ],
+        rightStream:{id:'01',items:[shortSide],runs:[],rich:{text:shortSide,runs:[]}},
+        leftStream:{id:'02',items:[longSide],runs:[],rich:{text:longSide,runs:[]}},
+        footerStreams:[]
+      },{
+        ...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,
+        openingWordSettings:openingSettings,
+        streamSettings:{
+          '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+          '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+        }
+      });
+
+      const op=(plan.mainBox?.lines||[]).find(l=>
+        l.source?.paragraphId==='cross-bidi-opening' && l.render?.opening
+      );
+      if(!op){page.remove();continue;}
+      const prior=(plan.mainBox?.lines||[]).filter(l=>l.y<op.y-.1);
+      const narrowBefore=prior.length?Math.min(...prior.slice(-4).map(l=>Number(l.width)||0)):0;
+      const hostFull=Number(op.openingHostFullWidth)||0;
+      if(hostFull>narrowBefore+20)found={page,plan,op,hostFull};
+      else page.remove();
+    }
+
+    assert(found,'fixture search never produced BiDi opening after a real widening knee');
+    try{
+      const {page,op,hostFull}=found;
+      const painted=[...page.querySelectorAll('[data-v9-paragraph-id="cross-bidi-opening"]')];
+      const host=painted.find(el=>el.querySelector('.v9-opening-glyph'));
+      const body=host?.querySelector('.v9-planned-line-text');
+      const opening=host?.querySelector('.v9-opening-glyph');
+      assert(host&&body&&opening,'combined BiDi opening host missing');
+      assert((body.textContent||'').includes("אב'(גד)"),
+        `punctuation sample did not land on opening host: ${JSON.stringify(body.textContent)}`);
+
+      const visibleChars=(el)=>{
+        const root=el.getBoundingClientRect(),walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),out=[];
+        let node,logical=0;
+        while((node=walker.nextNode())){
+          if(node.parentElement?.classList?.contains('v9-source-whitespace'))continue;
+          const value=node.nodeValue||'';
+          for(let i=0;i<value.length;i++,logical++){
+            const ch=value[i];
+            if(['\u061c','\u200e','\u200f','\u2060'].includes(ch))continue;
+            const range=document.createRange();
+            range.setStart(node,i);range.setEnd(node,i+1);
+            const r=range.getBoundingClientRect();
+            if(r.width>.01||r.height>.01)out.push({ch,logical,center:(r.left+r.right)/2-root.left});
+          }
+        }
+        return out.sort((a,b)=>a.center-b.center||a.logical-b.logical).map(x=>x.ch);
+      };
+
+      const native=document.createElement('span');
+      const cs=getComputedStyle(body);
+      native.dir='rtl';
+      native.style.cssText='position:absolute;left:1000px;top:0;display:block;box-sizing:border-box;white-space:pre;';
+      native.style.width=body.style.width;
+      native.style.font=cs.font;
+      native.style.fontFamily=cs.fontFamily;
+      native.style.fontSize=cs.fontSize;
+      native.style.fontWeight=cs.fontWeight;
+      native.style.fontStyle=cs.fontStyle;
+      native.style.lineHeight=cs.lineHeight;
+      native.style.letterSpacing=cs.letterSpacing;
+      native.style.wordSpacing=cs.wordSpacing;
+      native.textContent=body.textContent||'';
+      document.body.appendChild(native);
+      try{
+        const actual=visibleChars(body),expected=visibleChars(native);
+        assert(actual.join('')===expected.join(''),
+          `combined knee/opening BiDi differs from native RTL: actual=${JSON.stringify(actual)}, expected=${JSON.stringify(expected)}`);
+      }finally{native.remove();}
+
+      const openingRect=opening.getBoundingClientRect(),bodyRange=document.createRange();
+      bodyRange.selectNodeContents(body);
+      const bodyRects=[...bodyRange.getClientRects()].filter(r=>r.width>0&&r.height>0);
+      assert(bodyRects.length,'combined opening body has no painted ink');
+      const left=Math.min(openingRect.left,...bodyRects.map(r=>r.left));
+      const right=Math.max(openingRect.right,...bodyRects.map(r=>r.right));
+      assert(right-left>=hostFull-1.5,
+        `combined BiDi opening visually fell back to narrow host: visual=${right-left}, host=${hostFull}`);
+    }finally{found.page.remove();}
+  });
+
   await test('opening-window final row centers actual opening+body ink as one visual segment',()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
