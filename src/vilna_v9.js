@@ -2111,8 +2111,12 @@ function buildPagePlanCore(pageContent, config) {
     : null;
 
   const sideTopY = cfg.padding + titleHeight + reservedTop;
-  const crownMainGap = crownHeight > 0 ? (Number.isFinite(cfg.crownMainGapPx)
-    ? Math.max(0,cfg.crownMainGapPx) : Math.max(4,mainGap)) : 0;
+  const defaultCrownMainGap = 8;
+  const crownMainGap = crownHeight > 0
+    ? (Number.isFinite(Number(cfg.crownMainGapPx))
+        ? Math.max(0, Number(cfg.crownMainGapPx))
+        : defaultCrownMainGap)
+    : 0;
 
   // The main stream title is real page geometry, not a post-render overlay.
   // Reserve one title row in the plan so a visible main title cannot overlap
