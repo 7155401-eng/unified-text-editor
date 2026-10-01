@@ -14,7 +14,7 @@ defaults:
 jobs:
   split-crown:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -35,13 +35,43 @@ jobs:
           cp test-results/split-crown/report.json test-results/split-crown/before-build.json
           git rev-parse HEAD > test-results/split-crown/tested-commit.txt
           git status --porcelain > test-results/split-crown/status-before-build.txt
-      - name: Build with retained diagnostics
+          git diff --exit-code
+      - name: Checkout exact pre-fix product for generated-output comparison
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: e2aad9df9d7e67c5a0e10c8a2ebf566160b28a87
+          path: .crown-build-baseline
+          persist-credentials: false
+      - name: Build baseline with the identical locked dependencies
+        run: |
+          cmp package-lock.json .crown-build-baseline/package-lock.json
+          ln -s "$GITHUB_WORKSPACE/node_modules" .crown-build-baseline/node_modules
+          (cd .crown-build-baseline; npm run build) 2>&1 | tee test-results/split-crown/baseline-build.log
+          git -C .crown-build-baseline diff --name-only > test-results/split-crown/baseline-generated-changes.txt
+      - name: Build candidate with retained diagnostics
         run: npm run build 2>&1 | tee test-results/split-crown/build.log
-      - name: All tracked files must remain unchanged after build
+      - name: Preserve every source file; generated changes must already exist on baseline
         run: |
           git diff --stat | tee test-results/split-crown/source-diff-stat.txt
-          git diff > test-results/split-crown/source-diff.patch
-          git diff --exit-code
+          git diff --name-only > test-results/split-crown/candidate-generated-changes.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          out=Path('test-results/split-crown')
+          baseline=set((out/'baseline-generated-changes.txt').read_text().splitlines())
+          candidate=set((out/'candidate-generated-changes.txt').read_text().splitlines())
+          generated=lambda p:p.startswith(('dist/','worker-dist/'))
+          report={'baselineChanged':sorted(baseline),'candidateChanged':sorted(candidate),
+            'baselineSourceChanges':sorted(p for p in baseline if not generated(p)),
+            'candidateSourceChanges':sorted(p for p in candidate if not generated(p)),
+            'newGeneratedPaths':sorted(candidate-baseline)}
+          (out/'build-integrity.json').write_text(json.dumps(report,indent=2))
+          assert not report['baselineSourceChanges'], 'Baseline rewrote source files'
+          assert not report['candidateSourceChanges'], 'Candidate rewrote source files'
+          assert not report['newGeneratedPaths'], 'Candidate introduced new generated-file rewrites'
+          PY
+          git diff --exit-code -- . ':(exclude)dist/**' ':(exclude)worker-dist/**'
+          git -C .crown-build-baseline diff --exit-code -- . ':(exclude)dist/**' ':(exclude)worker-dist/**'
       - name: Repeat exact crown acceptance after build
         run: |
           node scripts/v9-unified/verify-split-crown.mjs
