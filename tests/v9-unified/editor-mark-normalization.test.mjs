@@ -52,3 +52,9 @@ test('textStyle fontWeight survives and remains detectable as semantic bold',()=
     fontWeight:'700'
   });
 });
+
+
+test('inline code mark survives editor bridge normalization',()=>{
+  const marks=[{toJSON(){return {type:'code',attrs:{}};}}];
+  assert.deepEqual(editorMarksToRunMarks(marks),{code:true});
+});
