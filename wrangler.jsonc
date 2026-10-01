@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.jsonc",
   "name": "unified-text-editor",
-  "main": "worker/index_tidio.js",
+  "main": "worker/index_diagnostics_live.js",
   "compatibility_date": "2026-05-25",
   "observability": {
     "enabled": true
