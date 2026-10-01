@@ -84,6 +84,8 @@ jobs:
           cp test-results/occupied-end/report.json test-results/occupied-end/before-build.json
       - name: Regular renderer BiDi regression
         run: node scripts/verify-regular-renderer-bidi.mjs
+      - name: V9 bracket glyph raster matches native Chromium
+        run: node scripts/v9-unified/verify-bracket-raster.mjs
       - name: DOCX to renderer BiDi end-to-end
         run: node scripts/verify-docx-to-renderer-bidi-e2e.mjs
       - name: Quota regressions
@@ -111,6 +113,7 @@ jobs:
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
           node scripts/verify-regular-renderer-bidi.mjs
+          node scripts/v9-unified/verify-bracket-raster.mjs
           node scripts/verify-docx-to-renderer-bidi-e2e.mjs
       - name: Retain hidden-reference shaping evidence
         if: always()
