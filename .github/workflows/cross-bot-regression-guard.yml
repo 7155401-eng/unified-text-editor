@@ -72,6 +72,16 @@ jobs:
         run: |
           node scripts/v9-unified/verify-opening-window-retry.mjs
           cp test-results/opening-window-retry/report.json test-results/opening-window-retry/before-build.json
+      - name: Read-only pre-fix source for occupancy and preservation comparison
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: c617346d7bcc7688770e4dd801e7cfb954427f57
+          path: .occupied-baseline
+          persist-credentials: false
+      - name: Occupied extent excludes failed attempts and preserves emitted content
+        run: |
+          node scripts/v9-unified/verify-occupied-end.mjs
+          cp test-results/occupied-end/report.json test-results/occupied-end/before-build.json
       - name: Regular renderer BiDi regression
         run: node scripts/verify-regular-renderer-bidi.mjs
       - name: DOCX to renderer BiDi end-to-end
@@ -94,6 +104,7 @@ jobs:
           node scripts/v9-unified/verify-combining-marks.mjs
           node scripts/v9-unified/verify-hidden-reference-shaping.mjs
           node scripts/v9-unified/verify-opening-window-retry.mjs
+          node scripts/v9-unified/verify-occupied-end.mjs
           node --test tests/integration/*.test.mjs
           node --test tests/word-extractor/*.test.mjs
           node --test tests/quota/*.test.mjs
@@ -115,5 +126,13 @@ jobs:
         with:
           name: opening-window-retry-${{ github.run_id }}
           path: test-results/opening-window-retry/
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Retain occupied-end comparison and unresolved-baseline diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: occupied-end-${{ github.run_id }}
+          path: test-results/occupied-end/
           retention-days: 7
           if-no-files-found: warn

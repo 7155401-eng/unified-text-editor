@@ -390,7 +390,16 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
   const finish = (entryIndex = rawEntries.length, offset = 0, reason = '') => {
     const remaining = rawEntries.slice(entryIndex).map((e, i) => overflowEntry(e, i ? 0 : offset));
     const overflowText = remaining.map(e => e.text).join('\n');
-    return { lines: lines.map(l => freezeLine(structuredClone(l))), endY: y, overflowText, overflowParagraphs: remaining, diagnostics, overflowReason: reason, debug: null };
+    // Search can visit later strips without placing anything there. Only
+    // committed rows and opening windows occupy the page; a rejected candidate
+    // must not reserve empty space or push neighbouring streams/footers down.
+    // Keep real source-break rows and the FULL window of an emitted opening,
+    // including early page/row-limit returns before its body has finished.
+    const endY = lines.reduce((bottom, line) => Math.max(
+      bottom, line.y + line.lineHeightPx,
+      line.render.opening ? line.render.opening.y + line.render.opening.height : bottom
+    ), strips[0]?.y_start || 0);
+    return { lines: lines.map(l => freezeLine(structuredClone(l))), endY, overflowText, overflowParagraphs: remaining, diagnostics, overflowReason: reason, debug: null };
   };
   for (let ei = 0; ei < rawEntries.length; ei++) {
     const entry = { ...rawEntries[ei], runs: [...(rawEntries[ei].runs || [])] };
