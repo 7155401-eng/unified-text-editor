@@ -1144,7 +1144,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }finally{found.page.remove();}
   });
 
-  await test('opening-window final row stays visibly adjacent to dropped opening in real paint',()=>{
+  await test('opening-window final row centers actual opening plus body ink in real paint',()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
       openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
@@ -1156,7 +1156,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       let plan=null;
       for(let words=4;words<=18;words++){
         const text='פתיח '+Array(words).fill('אב').join(' ');
-        const entry=context.prepareEntry({id:'ink-adjacent',index:1,text,runs:[],mainRefs:[],continues:false});
+        const entry=context.prepareEntry({id:'ink-composite-center',index:1,text,runs:[],mainRefs:[],continues:false});
         const candidate=layoutV9MainParagraphs([entry],[{x:0,width:100,y_start:0,y_end:100}],context,100);
         if(candidate.lines.length===2 && candidate.lines[1].isLast && candidate.lines[1].openingWindow){plan=candidate;break;}
       }
@@ -1178,14 +1178,18 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const range=document.createRange();
       range.selectNodeContents(body);
       const bodyRect=range.getBoundingClientRect();
-      const expectedGap=Number(plan.lines.find(l=>l.render?.opening)?.render?.opening?.gap)||0;
-      const actualGap=openingRect.left-bodyRect.right;
+      const hostRect=lastEl.getBoundingClientRect();
+      const visualLeft=Math.min(bodyRect.left,openingRect.left);
+      const visualRight=Math.max(bodyRect.right,openingRect.right);
+      const visualCenter=(visualLeft+visualRight)/2;
+      const hostCenter=(hostRect.left+hostRect.right)/2;
 
-      assert(plan.lines.at(-1).render.alignment==='right',
-        'final opening-window body lost the planner adjacency policy');
-      assert(actualGap>=-0.5,'painted final body overlaps the dropped opening: gap='+actualGap.toFixed(2));
-      assert(Math.abs(actualGap-expectedGap)<=1.25,
-        'painted final body is not adjacent to opening gap: expected='+expectedGap.toFixed(2)+' actual='+actualGap.toFixed(2));
+      assert(plan.lines.at(-1).render.alignment==='left',
+        'final opening-window body is not using composite-centering policy');
+      assert(Math.abs(visualCenter-hostCenter)<=1.25,
+        'actual opening+body ink is off center: left='+visualLeft.toFixed(2)+
+        ' right='+visualRight.toFixed(2)+' center='+visualCenter.toFixed(2)+
+        ' hostCenter='+hostCenter.toFixed(2));
     }finally{context.dispose();page.remove();}
   });
 
