@@ -7,6 +7,8 @@ import {
   getPageTweak,
   withPageTweak,
   resolveV9PageConstraint,
+  updatePageTweakMeasurements,
+  approvePageTweakWithMeasurements,
 } from "../../src/page_tweaks.js";
 
 test("legacy flat page_tweaks.json shape migrates into document state", () => {
@@ -82,4 +84,50 @@ test("page tweaks are wired through document persistence into V9, not global set
   assert.match(apply, /pageTweaks:\s*normalizePageTweaks\(opts\.pageTweaks\)/);
   assert.match(v9, /resolveV9PageConstraint\(cfg\.pageTweaks, pageIdx/);
   assert.match(v9, /cfg\.reservedBottom = __v9PageConstraint\.reservedBottom/);
+});
+
+
+test("approved page becomes changed only after a meaningful typographic measurement delta", () => {
+  let state = emptyPageTweaks();
+  state = approvePageTweakWithMeasurements(state, 4, {
+    bottomGapLines: 1.2,
+    overflowPx: 0,
+  });
+  assert.equal(getPageTweak(state, 4).status, "approved");
+
+  state = updatePageTweakMeasurements(state, 4, {
+    bottomGapLines: 1.55,
+    overflowPx: 2,
+    linePitchPx: 20,
+  });
+  assert.equal(getPageTweak(state, 4).status, "approved");
+
+  state = updatePageTweakMeasurements(state, 4, {
+    bottomGapLines: 1.9,
+    overflowPx: 2,
+    linePitchPx: 20,
+  });
+  assert.equal(getPageTweak(state, 4).status, "changed");
+});
+
+test("new substantial overflow marks an approved page changed", () => {
+  let state = approvePageTweakWithMeasurements(emptyPageTweaks(), 1, {
+    bottomGapLines: 0.8,
+    overflowPx: 0,
+  });
+  state = updatePageTweakMeasurements(state, 1, {
+    bottomGapLines: 0.8,
+    overflowPx: 12,
+    linePitchPx: 20,
+  });
+  assert.equal(getPageTweak(state, 1).status, "changed");
+});
+
+test("layout report page tweaker submits constraints through PaneManager only", async () => {
+  const report = await readFile(new URL("../../src/layout_analysis_report.js", import.meta.url), "utf8");
+  assert.match(report, /pm\.setPageTweak\(page\.page, \{ linesDiff: nextDiff \}\)/);
+  assert.match(report, /pm\.approvePageTweak\(page\.page/);
+  assert.match(report, /pm\.resetPageTweak\(page\.page\)/);
+  assert.match(report, /pm\.clearPageTweaks\(\)/);
+  assert.doesNotMatch(report, /\.style\.(?:top|left|height|transform)\s*=/);
 });
