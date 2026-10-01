@@ -44,7 +44,7 @@ import { configureDemoGlobals, setupDemoMode, installConsoleGuard, watchPagesFor
 import { installAuthUi } from "./auth_ui.js";
 import { installHeaderPremiumIcons } from "./premium/header_icons.js";
 import { installGiftPromoBanner } from "./premium/gift_promo_banner.js";
-import { maybeAutoOpenFromUrl } from "./premium/premium_page.js";
+import { maybeAutoOpenFromUrl } from "./premium/premium_page_lazy.js";
 import { startTimeWarningEngine } from "./premium/time_warning.js";
 import { installHeaderTimer } from "./premium/header_timer.js";
 import { setupAiKeysSettings, getActiveAiKey, getActiveAiProvider } from "./premium/ai_keys_settings.js";
