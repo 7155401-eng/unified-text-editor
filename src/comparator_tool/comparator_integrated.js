@@ -6,6 +6,8 @@
 
 import {
   COMPARATOR_TR,
+  COMPARATOR_TOOLTIPS,
+  COMPARATOR_TOOLTIPS_EN,
   COMPARATOR_DEFAULT_MARKERS,
   COMPARATOR_MARKER_COLORS
 } from './comparator_i18n.js';
@@ -65,18 +67,18 @@ function buildIntegratedHTML(initialLang) {
 </div>
 <div class="tb-group">
  <span class="tb-title" data-i18n="t_width">${tr.t_width}</span>
- <input type="range" id="widthSlider" min="10" max="100" value="50" style="width:70px; margin:0 5px; cursor:pointer;" data-action="changeWidth">
+ <input type="range" id="widthSlider" min="10" max="100" value="50" style="width:70px; margin:0 5px; cursor:pointer;" data-action="changeWidth" aria-label="${escapeHtml(tr.a11yWidth)}" data-i18n-aria="a11yWidth">
 </div>
 <div style="flex:1"></div>
 <div class="tb-group">
  <span class="tb-title" data-i18n="t_theme">${tr.t_theme}</span>
- <button class="btn btn-sm" data-action="toggleTheme" title="Theme">☀️/🌙</button>
+ <button class="btn btn-sm" data-action="toggleTheme" title="${escapeHtml(tr.a11yTheme)}" aria-label="${escapeHtml(tr.a11yTheme)}" data-i18n-aria="a11yTheme" data-i18n-title="a11yTheme">☀️/🌙</button>
  <div class="sep"></div>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="-2">−−</button>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="-1">−</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="-2" aria-label="${escapeHtml(tr.a11yFontDown2)}" data-i18n-aria="a11yFontDown2">−−</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="-1" aria-label="${escapeHtml(tr.a11yFontDown1)}" data-i18n-aria="a11yFontDown1">−</button>
  <span class="font-size" id="fsLabel">15</span>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="1">+</button>
- <button class="btn btn-sm" data-action="changeFontSize" data-arg="2">++</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="1" aria-label="${escapeHtml(tr.a11yFontUp1)}" data-i18n-aria="a11yFontUp1">+</button>
+ <button class="btn btn-sm" data-action="changeFontSize" data-arg="2" aria-label="${escapeHtml(tr.a11yFontUp2)}" data-i18n-aria="a11yFontUp2">++</button>
 </div>
 <div class="tb-group">
  <span class="tb-title" data-i18n="t_nav">${tr.t_nav}</span>
@@ -138,7 +140,7 @@ function buildIntegratedHTML(initialLang) {
 <div class="pane" id="pane-2" data-id="2">
 <div class="pane-header">
 <span class="pane-title" data-i18n="notesStream" data-stream="1">${tr.notesStream} 1</span>
-<div><span class="sym-label" data-i18n="linkMarker">${tr.linkMarker}</span><input class="sym-input" id="sym-2" value="@01"></div>
+<div><span class="sym-label" data-i18n="linkMarker">${tr.linkMarker}</span><input class="sym-input" id="sym-2" value="@01" aria-label="${escapeHtml(tr.a11yMarkerInput)}" data-i18n-aria="a11yMarkerInput"></div>
 </div>
 <div class="marker-bar" id="markers-2"></div>
 <div id="editor-2"></div>
@@ -422,7 +424,7 @@ export function mountComparatorIntegratedUI(rootEl, options = {}) {
    <div class="pane" id="pane-${id}" data-id="${id}">
      <div class="pane-header">
          <span class="pane-title" data-i18n="notesStream" data-stream="${sn}">${titleText}</span>
-         <div><span class="sym-label" data-i18n="linkMarker">${markerText}</span><input class="sym-input" id="sym-${id}" value="${sym}"><button class="btn btn-sm" data-action="removePane" data-arg="${id}" style="margin:0 4px">✕</button></div>
+         <div><span class="sym-label" data-i18n="linkMarker">${markerText}</span><input class="sym-input" id="sym-${id}" value="${sym}" aria-label="${escapeHtml(trCur.a11yMarkerInput)}" data-i18n-aria="a11yMarkerInput"><button class="btn btn-sm" data-action="removePane" data-arg="${id}" aria-label="${escapeHtml(trCur.a11yRemovePane)}" data-i18n-aria="a11yRemovePane" style="margin:0 4px">✕</button></div>
      </div>
      <div class="marker-bar" id="markers-${id}"></div><div id="editor-${id}"></div>
   </div>`);
@@ -552,6 +554,15 @@ export function mountComparatorIntegratedUI(rootEl, options = {}) {
         }
       }
     });
+    rootEl.querySelectorAll('[data-i18n-aria]').forEach(el => {
+      const key = el.getAttribute('data-i18n-aria');
+      if (trCur[key]) el.setAttribute('aria-label', trCur[key]);
+    });
+    rootEl.querySelectorAll('[data-i18n-title]').forEach(el => {
+      const key = el.getAttribute('data-i18n-title');
+      if (trCur[key]) el.setAttribute('title', trCur[key]);
+    });
+    addToolbarAccessibility();
     const mBtn = rootEl.querySelector('#mergeBtn');
     if (state.merged && mBtn) mBtn.textContent = trCur.unmerge;
     Object.keys(state.eds).forEach(id => {
@@ -842,6 +853,19 @@ export function mountComparatorIntegratedUI(rootEl, options = {}) {
     highlightAll();
   }
 
+  function addToolbarAccessibility() {
+    const tooltips = state.currentLang === 'en'
+      ? COMPARATOR_TOOLTIPS_EN
+      : COMPARATOR_TOOLTIPS;
+    Object.entries(tooltips).forEach(([selector, tooltip]) => {
+      rootEl.querySelectorAll('.ql-toolbar ' + selector).forEach((element) => {
+        element.setAttribute('data-tooltip', tooltip);
+        element.setAttribute('title', tooltip);
+        element.setAttribute('aria-label', tooltip);
+      });
+    });
+  }
+
   // Action dispatcher
   const actions = {
     addPane,
@@ -889,6 +913,7 @@ export function mountComparatorIntegratedUI(rootEl, options = {}) {
   mkEd(1);
   mkEd(2);
   rootEl.querySelectorAll('.ql-editor').forEach(e => e.style.fontSize = state.fs + 'px');
+  addToolbarAccessibility();
   setTimeout(highlightAll, 500);
   if (state.quotaBlocked) setTimeout(lockComparatorForQuota, 0);
 
