@@ -26,7 +26,18 @@ function replaceOrKeep(source, before, after) {
   return source.replace(before, after);
 }
 
+function usesUnifiedMeasuredStreamPlanner(source) {
+  return source.includes("V9_STREAM_CONTEXT_REQUIRED")
+    && source.includes("return flowV9MeasuredStream(");
+}
+
+
 function patchExplicitStripEnd(source) {
+  // New V9 architecture: strip bottoms are interpreted by
+  // v9_main_inline_layout.rowGeometry(), reached through flowV9MeasuredStream().
+  // Do NOT resurrect the deleted canvas/Y-mutating fallback just to satisfy an
+  // old textual patch anchor.
+  if (usesUnifiedMeasuredStreamPlanner(source)) return source;
   if (source.includes("const explicitStripEndY = Number.isFinite(Number(strip.y_end))")) return source;
 
   const before = `    const nextStripY = (stripIdx + 1 < strips.length) ? strips[stripIdx + 1].y_start : maxY;`;
@@ -42,6 +53,7 @@ function patchExplicitStripEnd(source) {
 }
 
 function patchLockedWideStripStart(source) {
+  if (usesUnifiedMeasuredStreamPlanner(source)) return source;
   const pullBefore = `stripIdx + 1 < strips.length &&
       tokenIdx < tokens.length &&
       curY < strips[stripIdx + 1].y_start &&
@@ -341,8 +353,14 @@ function assertMissing(source, needle, label) {
 }
 
 function verifyInvariant(source) {
-  assertIncludes(source, "const explicitStripEndY = Number.isFinite(Number(strip.y_end))", "flow respects strip.y_end");
-  assertIncludes(source, "strips[stripIdx + 1].lockYStart !== true", "flow respects lockYStart");
+  if (usesUnifiedMeasuredStreamPlanner(source)) {
+    assertIncludes(source, "V9_STREAM_CONTEXT_REQUIRED", "unified measured stream planner is mandatory");
+    assertIncludes(source, "return flowV9MeasuredStream(", "stream flow delegates to measured planner");
+    assertMissing(source, "strips[stripIdx + 1].y_start = curY", "legacy stream planner Y mutation must stay deleted");
+  } else {
+    assertIncludes(source, "const explicitStripEndY = Number.isFinite(Number(strip.y_end))", "legacy flow respects strip.y_end");
+    assertIncludes(source, "strips[stripIdx + 1].lockYStart !== true", "legacy flow respects lockYStart");
+  }
   assertIncludes(source, "y_end: s.y_end", "side strips pass y_end to flow");
   assertIncludes(source, "lockYStart: s.lockYStart === true", "side strips pass lockYStart to flow");
   assertIncludes(source, "const maxFullStrip3Lines = Number(o.maxFullStrip3Lines) > 0", "strip3 line cap exists");
