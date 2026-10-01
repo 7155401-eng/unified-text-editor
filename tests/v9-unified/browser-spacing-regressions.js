@@ -1117,8 +1117,27 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       assert(plan.crownMainGap===11,`crown gap drifted: ${plan.crownMainGap}`);
       assert(hostFull>narrowBefore+20,`opening row did not actually widen: ${narrowBefore} -> ${hostFull}`);
       assert(Math.abs(visualWidth-hostFull)<.75,
-        `opening occupies only a partial wide row: body=${op.width}, opening=${op.render.opening.width}, gap=${op.render.opening.gap}, visual=${visualWidth}, host=${hostFull}`);
+        `opening occupies only a partial wide row in planner geometry: body=${op.width}, opening=${op.render.opening.width}, gap=${op.render.opening.gap}, visual=${visualWidth}, host=${hostFull}`);
       assert(op.render.opening.part.text==='פתיח',`unexpected opening segment: ${op.render.opening.part.text}`);
+
+      // Paint-level invariant: the real opening glyph + justified body ink must
+      // occupy the same full wide host. Planner numbers alone can hide a DOM
+      // regression where the body still paints in an old half-width slot.
+      const painted=[...found.page.querySelectorAll('[data-v9-paragraph-id="cross-opening"]')];
+      const paintedHost=painted.find(el=>el.querySelector('.v9-opening-glyph'));
+      const paintedBody=paintedHost?.querySelector('.v9-planned-line-text');
+      const paintedOpening=paintedHost?.querySelector('.v9-opening-glyph');
+      assert(paintedHost&&paintedBody&&paintedOpening,'painted cross-opening host missing');
+      const hostRect=paintedHost.getBoundingClientRect();
+      const bodyRange=document.createRange();
+      bodyRange.selectNodeContents(paintedBody);
+      const bodyRect=bodyRange.getBoundingClientRect();
+      const openingRect=paintedOpening.getBoundingClientRect();
+      const paintedLeft=Math.min(bodyRect.left,openingRect.left);
+      const paintedRight=Math.max(bodyRect.right,openingRect.right);
+      const paintedVisual=paintedRight-paintedLeft;
+      assert(paintedVisual>=hostFull-1.5,
+        `painted opening row is effectively half-width: painted=${paintedVisual.toFixed(2)}, host=${hostFull.toFixed(2)}, bodyRect=${bodyRect.width.toFixed(2)}, openingRect=${openingRect.width.toFixed(2)}, lineWidth=${hostRect.width.toFixed(2)}`);
 
       const analysis=analyzePageElement(found.page,0,{bottomGapWarningLines:100});
       assert(!analysis.issues.some(i=>i.code==='knee-row-gap'),
