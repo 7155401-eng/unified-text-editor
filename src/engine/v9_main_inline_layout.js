@@ -209,12 +209,16 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const sourceSegmentStart = Number.isFinite(sourceStart)
     ? Math.max(0, sourceStart - sourceBase)
     : (words[0]?.start ?? 0);
-  // When the first row owns a dropped opening, its body starts AFTER the
-  // opening source range. Re-measuring from sourceSegmentStart would duplicate
-  // the opening inside the body span.
-  const bodySegmentStart = tail[0]?.render?.opening
-    ? (words[0]?.start ?? Math.max(sourceSegmentStart, Number(tail[0].render.opening?.part?.text?.length) || 0))
+  // Partition at the exact end of the opening's source, not at the first
+  // body word. The intervening whitespace/direction controls and their note
+  // anchors still belong to this paragraph. Count semantic edge text too:
+  // the opening's visible text alone can omit a source prefix.
+  const openingPart = tail[0]?.render?.opening?.part;
+  const bodySegmentStart = openingPart
+    ? sourceSegmentStart + (openingPart.leadingText || '').length +
+      openingPart.text.length + (openingPart.trailingText || '').length
     : sourceSegmentStart;
+  const openingOnlyHost = !!openingPart && tail[0].wordTokens.length === 0;
   const segmentEnd = Math.max(bodySegmentStart, Math.min(entry.text.length, cursor));
 
   const boundaries = [];
@@ -233,12 +237,16 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
     const openingOnly = toWord === fromWord && !!tail[lineIndex]?.render?.opening;
     if (!(toWord > fromWord) && !openingOnly) return null;
+    // An opening-only host has the GLYPH's box, not a free body slot. Leave
+    // it empty; its following source glue/anchors belong to the first body row.
+    if (openingOnlyHost && lineIndex === 0 && !openingOnly) return null;
 
-    const start = lineIndex === 0
+    const start = lineIndex === 0 || (openingOnlyHost && fromWord === 0)
       ? bodySegmentStart
       : (words[fromWord]?.start ?? segmentEnd);
     const visibleEnd = toWord > fromWord ? words[toWord - 1].end : start;
-    const consumedEnd = toWord < words.length ? (words[toWord]?.start ?? segmentEnd) : segmentEnd;
+    const consumedEnd = openingOnlyHost && lineIndex === 0 ? start
+      : toWord < words.length ? (words[toWord]?.start ?? segmentEnd) : segmentEnd;
     const body = partForRange(entry, start, visibleEnd, consumedEnd);
     const measured = context.measure(body);
     const target = number(tail[lineIndex]?.width, 0);
