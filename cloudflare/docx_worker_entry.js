@@ -514,9 +514,6 @@ function isDocxScanUploadedPath(path) {
 function isDocxExtractUploadedPath(path) {
   return path === "/api/word-chapters-extract-upload" || path === "/api/word-chapters/extract-upload";
 }
-function isDocxFullUploadedPath(path) {
-  return path === "/api/word-chapters-full-upload" || path === "/api/word-chapters/full-upload";
-}
 function isDocxDeleteUploadPath(path) {
   return path === "/api/word-chapters-delete-upload" || path === "/api/word-chapters/delete-upload";
 }
@@ -571,41 +568,6 @@ async function readUploadedDocx(env, uploadId) {
     uploadId: id,
     arrayBuffer: await object.arrayBuffer(),
     metadata: object.customMetadata || {},
-  };
-}
-
-async function extractFullDocumentContent(arrayBuffer, id) {
-  if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error("לא התקבל קובץ DOCX.");
-  if (arrayBuffer.byteLength > MAX_DOCX_BYTES) {
-    throw Object.assign(new Error(`DOCX גדול מדי. מגבלה: ${MAX_DOCX_BYTES} bytes.`), {
-      status: 413,
-      code: "DOCX_TOO_LARGE",
-    });
-  }
-
-  const zip = await JSZip.loadAsync(arrayBuffer);
-  const docFile = zip.file("word/document.xml");
-  if (!docFile) throw new Error("לא נמצא word/document.xml.");
-
-  const [docXml, stylesXml] = await Promise.all([
-    docFile.async("string"),
-    zip.file("word/styles.xml")?.async("string") || Promise.resolve(""),
-  ]);
-  const styles = parseStyles(stylesXml || "");
-  const { partsMeta } = bodyParts(documentBodyXml(docXml), styles);
-  const mainHtml = partsMeta.map((part) => {
-    const text = String(part.text || "").trim();
-    if (!text) return "";
-    if (part.level >= 1 && part.level <= 6) return `<h${part.level}>${escHtml(text)}</h${part.level}>`;
-    return `<p>${escHtml(text)}</p>`;
-  }).filter(Boolean).join("\n") || "<p></p>";
-
-  return {
-    ok: true,
-    serverSide: true,
-    requestId: id,
-    title: "מסמך Word מלא",
-    result: { mainHtml, streams: [], streamsHtml: [] },
   };
 }
 
@@ -703,11 +665,6 @@ async function handleUploadedDocxAction(request, env, ctx, action) {
       return jsonResponse({ ...extracted, uploadId, extractedAt: Date.now() }, 200, id);
     }
 
-    if (action === "full") {
-      const full = await extractFullDocumentContent(arrayBuffer, id);
-      return jsonResponse({ ...full, uploadId, extractedAt: Date.now() }, 200, id);
-    }
-
     throw Object.assign(new Error("Unknown uploaded DOCX action."), { status: 400 });
   } catch (error) {
     log("error", "uploaded_docx_action_failed", { requestId: id, action, error: error?.message || String(error) });
@@ -767,7 +724,6 @@ function isDocxImportPath(path) {
     path === "/api/word-chapters/scan" ||
     isDocxUploadOnlyPath(path) ||
     isDocxScanUploadedPath(path) ||
-    isDocxFullUploadedPath(path) ||
     isDocxDeleteUploadPath(path);
 }
 
@@ -823,7 +779,6 @@ async function handleDocxApi(request, env, ctx) {
   if (isDocxUploadOnlyPath(url.pathname)) return handleUploadOnly(request, env, ctx);
   if (isDocxScanUploadedPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "scan");
   if (isDocxExtractUploadedPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "extract");
-  if (isDocxFullUploadedPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "full");
   if (isDocxDeleteUploadPath(url.pathname)) return handleUploadedDocxAction(request, env, ctx, "delete");
 
   if (request.method === "OPTIONS") return optionsResponse(id);
