@@ -1,0 +1,61 @@
+name: Materialize verified first footer level correction
+on:
+  push:
+    branches: [fix/v9-fixed-side-footer-level-20261001]
+    paths: [.github/workflows/materialize-fixed-side-footer-level.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.repository == '7155401-eng/unified-text-editor' && github.ref == 'refs/heads/fix/v9-fixed-side-footer-level-20261001'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE: ab24421e44262a9f52791a900598cfa7eb9879fc
+      TARGET: fix/v9-fixed-side-footer-level-20261001
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Exact baseline and exact reviewed source delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          test "$(git hash-object src/engine/v9_footer_grouping.js)" = 4041eb5b623fc7bed91c67cc6f2086ef37c4ebfb
+          test "$(git hash-object src/vilna_v9.js)" = 657e6618a77cf11edade858b1bad377df3da5b5a
+          printf '%s\n' 'b43becdd870f931cf58e9bf8e326fe8351d17832627370695d600f8bed98fa43  .github/patches/fixed-side-footer-level.patch' | sha256sum -c -
+          cp .github/patches/fixed-side-footer-level.patch /tmp/fixed-side-footer-level.patch
+          git rm .github/patches/fixed-side-footer-level.patch .github/workflows/materialize-fixed-side-footer-level.yml
+          git apply --index --check /tmp/fixed-side-footer-level.patch
+          git apply --index /tmp/fixed-side-footer-level.patch
+          test "$(git hash-object src/engine/v9_footer_grouping.js)" = b0d6467819efa1b7a090f834a2f46bd241e49ced
+          test "$(git hash-object src/vilna_v9.js)" = bda3151f5aea04046b9faa818efdf1c1a888efa3
+          test "$(git hash-object tests/v9-unified/fixed-side-footer-level.test.mjs)" = 9d46a76f6805ec049c81fba4d9e87b967e362792
+          test "$(git hash-object tests/v9-unified/fixed-side-footer-level.browser.js)" = c7fa87004676682269821d30478feb64360c6884
+          test "$(git hash-object scripts/v9-unified/verify-fixed-side-footer-level.mjs)" = db3a484aed28df75d3a6008d508c78adb3ae90cf
+          git diff --cached --check
+          node --check src/vilna_v9.js
+          node --check tests/v9-unified/fixed-side-footer-level.browser.js
+          node --check scripts/v9-unified/verify-fixed-side-footer-level.mjs
+          node --test tests/v9-unified/fixed-side-footer-level.test.mjs tests/v9-unified/ref-no-break-mixed-mishna.test.mjs
+          printf '%s\n' '.github/workflows/v9-fixed-side-footer-level.yml' 'scripts/v9-unified/verify-fixed-side-footer-level.mjs' 'src/engine/v9_footer_grouping.js' 'src/vilna_v9.js' 'tests/v9-unified/fixed-side-footer-level.browser.js' 'tests/v9-unified/fixed-side-footer-level.test.mjs' | sort > /tmp/expected
+          git diff --cached --name-only "$BASE" | sort > /tmp/actual
+          diff -u /tmp/expected /tmp/actual
+      - name: Publish to unchanged feature branch only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$BASE"
+          test "$(git ls-remote origin "refs/heads/$TARGET" | cut -f1)" = "$GITHUB_SHA"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(v9): honor footer-only first levels when side ownership is explicit'
+          git push origin "HEAD:refs/heads/$TARGET"
+          git rev-parse HEAD HEAD^{tree}
