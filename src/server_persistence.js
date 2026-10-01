@@ -13,6 +13,8 @@ const DOC_SYNC_MAX_WAIT_MS = 10000;
 // 30s is deliberately much longer than the normal debounce/deadline while
 // still bounding recovery on broken mobile/Wi-Fi connections.
 export const DOCUMENT_SAVE_TIMEOUT_MS = 30000;
+const SETTINGS_SYNC_MAX_WAIT_MS = 10000;
+export const SETTINGS_SAVE_TIMEOUT_MS = 30000;
 const SETTINGS_PREFIX = 'ravtext.';
 // משה 2026-05-17: הגנת נפח לסנכרון הגדרות. /api/settings לא אמור לקבל את
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
@@ -74,6 +76,10 @@ let _docSaveChain = Promise.resolve();
 let _docSaveRunning = false;
 let _docQueuedSnapshot = null;
 let _settingsDebounceTimer = null;
+let _settingsMaxWaitTimer = null;
+let _settingsSaveChain = Promise.resolve();
+let _settingsSaveRunning = false;
+let _settingsQueuedSnapshot = null;
 let _lastDocSig = '';
 let _lastSettingsSig = '';
 let _lastFailedSettingsSig = '';
@@ -123,26 +129,9 @@ function summarizeSettings(settings, limit = 20) {
     .slice(0, limit);
 }
 
-function shouldSkipSettingsPayload(sig, payload) {
-  if (sig === _lastSettingsSig) return true;
-  if (sig === _lastFailedSettingsSig) return true;
-
-  const bytes = byteSize(payload);
-  if (bytes > MAX_SETTINGS_SYNC_BYTES) {
-    _lastFailedSettingsSig = sig;
-    console.warn('[persistence] skip settings sync: payload too large', {
-      bytes,
-      maxBytes: MAX_SETTINGS_SYNC_BYTES,
-    });
-    return true;
-  }
-
-  return false;
-}
-
 function collectLocalSettings() {
   const out = {};
-  if (typeof localStorage === 'undefined') return out;
+  if (typeof localStorage === 'undefined') return null;
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -150,10 +139,39 @@ function collectLocalSettings() {
       if (isBlacklisted(key)) continue;
       out[key] = localStorage.getItem(key);
     }
+    return out;
   } catch (e) {
+    // PUT /api/settings replaces the complete server snapshot. A partial
+    // collection is therefore unsafe: fail closed rather than wiping keys that
+    // happened to sit after the storage read that threw.
     console.warn('[persistence] collectLocalSettings failed:', e);
+    return null;
   }
-  return out;
+}
+
+function createSettingsSnapshot() {
+  if (!isLoggedIn()) return null;
+  const settings = collectLocalSettings();
+  if (!settings) return null;
+
+  const sig = JSON.stringify(settings);
+  if (sig === _lastFailedSettingsSig) return null;
+
+  const body = JSON.stringify({ settings });
+  const bytes = byteSize(body);
+  if (bytes > MAX_SETTINGS_SYNC_BYTES) {
+    _lastFailedSettingsSig = sig;
+    console.warn('[persistence] skip settings sync: payload too large', {
+      bytes,
+      maxBytes: MAX_SETTINGS_SYNC_BYTES,
+    });
+    return null;
+  }
+
+  // Do not drop sig===_lastSettingsSig here. A different snapshot may already
+  // be in flight and can overwrite that confirmed server state before this
+  // snapshot reaches the head of the queue.
+  return { settings, sig, body };
 }
 
 export function applyLocalSettings(settings, { preserveExisting = false } = {}) {
@@ -571,20 +589,36 @@ async function saveDocumentNow(paneManager) {
   return saveDocumentSnapshot(createDocumentSnapshot(paneManager));
 }
 
-async function saveSettingsNow() {
-  if (!isLoggedIn()) return;
+async function saveSettingsSnapshot(snapshot) {
+  if (!isLoggedIn() || !snapshot) return;
+  const { settings, sig, body } = snapshot;
+
+  // Evaluate this only at the head of the serialized queue. See
+  // createSettingsSnapshot(): a fast revert to the last confirmed state still
+  // has to wait behind an older in-flight PUT that may change the server.
+  if (sig === _lastSettingsSig) return;
+  if (sig === _lastFailedSettingsSig) return;
+
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timeoutId = null;
+  let timedOut = false;
+
+  if (controller) {
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      try { controller.abort(); } catch {}
+    }, SETTINGS_SAVE_TIMEOUT_MS);
+  }
+
   try {
-    const settings = collectLocalSettings();
-    const sig = JSON.stringify(settings);
-    const body = JSON.stringify({ settings });
-
-    if (shouldSkipSettingsPayload(sig, body)) return;
-
-    const res = await fetch('/api/settings', {
+    const init = {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body,
-    });
+    };
+    if (controller) init.signal = controller.signal;
+
+    const res = await fetch('/api/settings', init);
     if (res.ok) {
       _lastSettingsSig = sig;
       _lastFailedSettingsSig = '';
@@ -596,8 +630,41 @@ async function saveSettingsNow() {
       });
     }
   } catch (e) {
-    console.warn('[persistence] saveSettingsNow error:', e);
+    console.warn(
+      '[persistence] save settings failed:',
+      timedOut ? 'network-timeout' : 'network-error',
+      e
+    );
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
   }
+}
+
+function queueSettingsSave() {
+  const snapshot = createSettingsSnapshot();
+
+  // A failed/oversized latest collection also supersedes an older waiting
+  // snapshot. Sending that stale waiter would move the server farther away
+  // from the browser-authoritative state.
+  _settingsQueuedSnapshot = snapshot;
+  if (!snapshot) return _settingsSaveChain;
+  if (_settingsSaveRunning) return _settingsSaveChain;
+
+  _settingsSaveRunning = true;
+  const drain = async () => {
+    try {
+      while (_settingsQueuedSnapshot) {
+        const next = _settingsQueuedSnapshot;
+        _settingsQueuedSnapshot = null;
+        await saveSettingsSnapshot(next);
+      }
+    } finally {
+      _settingsSaveRunning = false;
+    }
+  };
+
+  _settingsSaveChain = _settingsSaveChain.then(drain, drain);
+  return _settingsSaveChain;
 }
 
 function clearDocumentSyncTimers() {
@@ -657,10 +724,29 @@ export function scheduleDocumentSync(paneManager) {
   }
 }
 
+function clearSettingsSyncTimers() {
+  if (_settingsDebounceTimer) clearTimeout(_settingsDebounceTimer);
+  if (_settingsMaxWaitTimer) clearTimeout(_settingsMaxWaitTimer);
+  _settingsDebounceTimer = null;
+  _settingsMaxWaitTimer = null;
+}
+
+function flushScheduledSettingsSync() {
+  clearSettingsSyncTimers();
+  queueSettingsSave();
+}
+
 export function scheduleSettingsSync() {
   if (!isLoggedIn()) return;
+
   if (_settingsDebounceTimer) clearTimeout(_settingsDebounceTimer);
-  _settingsDebounceTimer = setTimeout(saveSettingsNow, DEBOUNCE_MS);
+  _settingsDebounceTimer = setTimeout(flushScheduledSettingsSync, DEBOUNCE_MS);
+
+  // A user dragging/repeating a setting must not postpone cross-device
+  // persistence forever.
+  if (!_settingsMaxWaitTimer) {
+    _settingsMaxWaitTimer = setTimeout(flushScheduledSettingsSync, SETTINGS_SYNC_MAX_WAIT_MS);
+  }
 }
 
 export function attachAutoSync(paneManager) {
@@ -782,21 +868,23 @@ export function attachAutoSync(paneManager) {
           }
 
           const settings = collectLocalSettings();
-          const sig = JSON.stringify(settings);
-          const body = JSON.stringify({ settings });
-          if (
-            sig !== _lastSettingsSig &&
-            sig !== _lastFailedSettingsSig &&
-            byteSize(body) <= MAX_SETTINGS_SYNC_BYTES &&
-            navigator.sendBeacon
-          ) {
-            navigator.sendBeacon(
-              '/api/settings?beacon=1',
-              new Blob(
-                [body],
-                { type: 'application/json' }
-              )
-            );
+          if (settings) {
+            const sig = JSON.stringify(settings);
+            const body = JSON.stringify({ settings });
+            if (
+              sig !== _lastSettingsSig &&
+              sig !== _lastFailedSettingsSig &&
+              byteSize(body) <= MAX_SETTINGS_SYNC_BYTES &&
+              navigator.sendBeacon
+            ) {
+              navigator.sendBeacon(
+                '/api/settings?beacon=1',
+                new Blob(
+                  [body],
+                  { type: 'application/json' }
+                )
+              );
+            }
           }
         } catch (e) { /* best effort */ }
       });
