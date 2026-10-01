@@ -53,6 +53,10 @@ export function applyMarksToSpan(span, marks) {
     span.style.lineHeight = String(marks.lineHeight);
   }
 
+  if (marks.fontFeatureSettings) span.style.fontFeatureSettings = String(marks.fontFeatureSettings);
+  if (marks.fontVariant) span.style.fontVariant = String(marks.fontVariant);
+  if (marks.fontKerning) span.style.fontKerning = String(marks.fontKerning);
+
   const verticalAlign = marks.verticalAlign || (marks.superscript ? "super" : (marks.subscript ? "sub" : ""));
   if (verticalAlign) {
     span.style.verticalAlign = verticalAlign;
@@ -94,10 +98,33 @@ function mergeAdjacentRuns(runs) {
   return out;
 }
 
-function cleanRun(r, len) {
-  const start = Math.max(0, Math.min(len, Number(r?.start) || 0));
-  const end = Math.max(0, Math.min(len, Number(r?.end) || 0));
+const COMBINING_MARK_RE = /\p{M}/u;
+function isCombiningMarkAt(text, index) {
+  if (index < 0 || index >= text.length) return false;
+  return COMBINING_MARK_RE.test(String.fromCodePoint(text.codePointAt(index)));
+}
+
+function previousCodePointStart(text, index) {
+  const previous = index - 1;
+  const unit = text.charCodeAt(previous);
+  const before = text.charCodeAt(previous - 1);
+  return previous > 0 && unit >= 0xDC00 && unit <= 0xDFFF && before >= 0xD800 && before <= 0xDBFF
+    ? previous - 1 : previous;
+}
+
+function cleanRun(r, text) {
+  const len = text.length;
+  let start = Math.max(0, Math.min(len, Number(r?.start) || 0));
+  let end = Math.max(0, Math.min(len, Number(r?.end) || 0));
+  // Reject empty/reversed ranges BEFORE expansion. A cursor inside a marked
+  // letter is not a request to format the whole letter.
   if (end <= start) return null;
+
+  // Preserve the base and its combining marks in one font/shaping run. This
+  // lets the selected font place marks beside descenders using its own anchors;
+  // no source characters, vertical offsets or font substitutions are introduced.
+  while (start > 0 && isCombiningMarkAt(text, start)) start = previousCodePointStart(text, start);
+  while (end < len && isCombiningMarkAt(text, end)) end += String.fromCodePoint(text.codePointAt(end)).length;
   return { start, end, marks: r?.marks || {} };
 }
 
@@ -108,7 +135,7 @@ function normalizeRuns(text, runs) {
   const len = text ? text.length : 0;
   if (!len) return [];
   const list = Array.isArray(runs)
-    ? runs.map((r) => cleanRun(r, len)).filter(Boolean)
+    ? runs.map((r) => cleanRun(r, text)).filter(Boolean)
     : [];
   if (list.length === 0) return [{ start: 0, end: len, marks: {} }];
 

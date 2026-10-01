@@ -62,6 +62,8 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
         run: node scripts/v9-unified/run-browser.mjs
+      - name: Hebrew combining marks match native font pixels
+        run: node scripts/v9-unified/verify-combining-marks.mjs
       - name: Regular renderer BiDi regression
         run: node scripts/verify-regular-renderer-bidi.mjs
       - name: DOCX to renderer BiDi end-to-end
@@ -80,6 +82,8 @@ jobs:
           git diff --exit-code -- index.html src worker cloudflare scripts vite.config.js package.json package-lock.json
       - name: Repeat cross-bot contracts after build
         run: |
+          node --test tests/v9-unified/*.test.mjs
+          node scripts/v9-unified/verify-combining-marks.mjs
           node --test tests/integration/*.test.mjs
           node --test tests/word-extractor/*.test.mjs
           node --test tests/quota/*.test.mjs
