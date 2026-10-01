@@ -79,6 +79,34 @@ test('spacing snapshot caches parse/normalization but invalidates on direct raw 
   }
 });
 
+
+test('legacy v9MainGap migrates once into independent crown-main spacing', async()=>{
+  const previousStorage = globalThis.localStorage;
+  const storage = fakeStorage(JSON.stringify({ v9MainGap: 23 }));
+  globalThis.localStorage = storage;
+
+  // Query-bust so this test gets a fresh module cache independent of the test
+  // above and reads this fixture's raw storage on first access.
+  const mod = await import('../../src/spacing_settings.js?crown-gap-migration=1');
+  try {
+    const effective = mod.getSpacingSettingsSnapshot();
+    const stored = mod.getStoredSpacingSettingsSnapshot();
+    assert.equal(effective.v9MainGap,23);
+    assert.equal(effective.v9CrownMainGap,23,
+      'existing users did not preserve their previous coupled visual clearance');
+    assert.equal(Object.prototype.hasOwnProperty.call(stored,'v9CrownMainGap'),false,
+      'read-time migration mutated the exact persisted-key snapshot');
+
+    const saved = mod.saveSpacingSettings({...effective,v9MainGap:7,v9CrownMainGap:19});
+    assert.equal(saved.v9MainGap,7);
+    assert.equal(saved.v9CrownMainGap,19,
+      'horizontal and vertical V9 gaps did not become independently persistent');
+  } finally {
+    if (previousStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousStorage;
+  }
+});
+
 test('layout engines consume central spacing snapshots and do not parse spacing storage themselves',()=>{
   const domPacker = fs.readFileSync(new URL('../../src/engine/dom_packer.js', import.meta.url),'utf8');
   assert.match(domPacker,/getSpacingSettingsSnapshot/);
@@ -95,6 +123,8 @@ test('layout engines consume central spacing snapshots and do not parse spacing 
     'global stream line-height is still disconnected from V9 config');
   assert.match(v9Apply,/streamLineHeightRatio,/,
     'V9 config does not expose a dedicated stream pitch');
+  assert.match(v9Apply,/crownMainGapPx:\s*Math\.max\(0,\s*Number\(effectiveSpacing\.v9CrownMainGap\)/,
+    'V9 crown clearance is not sourced from its independent vertical spacing key');
   assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidParagraphSoft", false\)/);
   assert.match(v9Apply,/readSpacingBool\(storedSpacing, "noMidLineSplits", false\)/);
   assert.match(v9Apply,/readSpacingBool\(storedSpacing, "preventMidLineSplit", false\)/);

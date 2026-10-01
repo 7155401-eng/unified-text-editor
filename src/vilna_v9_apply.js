@@ -510,6 +510,10 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       streamLineHeightRatio,
       padding: 12,
       mainGap: geom.mainGap,
+      // Dedicated vertical crown→main spacing. Legacy stored settings
+      // are migrated once from v9MainGap in spacing_settings.js, then the axes
+      // remain independent.
+      crownMainGapPx: Math.max(0, Number(effectiveSpacing.v9CrownMainGap) || 0),
       streamHorizontalGap: geom.streamHorizontalGap,
       // Resolve once before pagination. V9 planning owns this geometry; the
       // later compatibility pass is diagnostic-only and must never move rows.

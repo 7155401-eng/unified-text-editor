@@ -2111,8 +2111,18 @@ function buildPagePlanCore(pageContent, config) {
     : null;
 
   const sideTopY = cfg.padding + titleHeight + reservedTop;
-  const crownMainGap = crownHeight > 0 ? (Number.isFinite(cfg.crownMainGapPx)
-    ? Math.max(0,cfg.crownMainGapPx) : Math.max(4,mainGap)) : 0;
+  // Crown→main clearance is VERTICAL geometry and must never inherit an
+  // explicitly configured horizontal main↔side gap. Historically, a direct
+  // buildPagePlan() call without app settings used the engine's 1.5%-of-page
+  // default main gap for both axes. Preserve that legacy DIRECT-ENGINE default
+  // for compatibility, but let the web app pass the semantically correct
+  // mainStreamGap as crownMainGapPx.
+  const defaultCrownMainGap = Math.max(4, Math.floor(innerWidth * 0.015));
+  const crownMainGap = crownHeight > 0
+    ? (Number.isFinite(Number(cfg.crownMainGapPx))
+        ? Math.max(0, Number(cfg.crownMainGapPx))
+        : defaultCrownMainGap)
+    : 0;
 
   // The main stream title is real page geometry, not a post-render overlay.
   // Reserve one title row in the plan so a visible main title cannot overlap
