@@ -75,7 +75,7 @@ import { wireTextComparePro } from "./text_compare_pro/text_compare_lazy_wire.js
 import { wireComparatorButton } from "./comparator_tool/comparator_lazy_wire.js";
 import { wireSefariaTools } from "./sefaria/sefaria.js";
 // משה 2026-05-10: שחזור 3 כלי AI לעורך — טרנסקריפציה, ניקוד תורני, קריקטורה
-import { wireTorahTranscription } from "./torah_transcription/torah_transcription.js";
+import { wireTorahTranscription } from "./torah_transcription/torah_transcription_lazy_wire.js";
 import { wireTorahNikud } from "./torah_nikud/torah_nikud.js";
 import { wireCaricatureBot } from "./haredi_caricature/haredi_caricature.js";
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wirePreviewSelectionSync, wireQuickInsertActions } from "./editor_utilities.js";
