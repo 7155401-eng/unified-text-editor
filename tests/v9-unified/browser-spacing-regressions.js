@@ -1164,62 +1164,73 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
   });
 
 
-  await test('painted dropped opening crossing a widening knee uses newly freed width',()=>{
-    const context=createV9TextLayoutContext({
-      mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
-      openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
-        position:'dropped',dropLines:2,spaceAfter:0.2,scope:'all',
-        skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1}
-    });
-    const page=makePage();
-    try{
-      let plan=null;
-      for(let leadWords=1;leadWords<=10&&!plan;leadWords++){
-        for(let bodyWords=8;bodyWords<=24&&!plan;bodyWords++){
-          const entries=[
-            context.prepareEntry({id:'paint-knee-lead',index:1,text:Array(leadWords).fill('אב').join(' '),runs:[],mainRefs:[],continues:false}),
-            context.prepareEntry({id:'paint-knee-opening',index:2,text:'פתיח '+Array(bodyWords).fill('אב').join(' '),runs:[],mainRefs:[],continues:false}),
-          ];
-          const candidate=layoutV9MainParagraphs(entries,[
-            {x:50,width:50,y_start:0,y_end:15,lockYStart:false},
-            {x:0,width:100,y_start:15,y_end:120,lockYStart:false},
-          ],context,120);
-          const host=candidate.lines.find(l=>l.source?.paragraphId==='paint-knee-opening'&&l.render?.opening);
-          const second=candidate.lines.find(l=>l.source?.paragraphId==='paint-knee-opening'&&l.openingWindow&&host&&l.y>host.y+.1);
-          if(host&&second&&host.y<15&&host.y+host.lineHeightPx>15&&second.width>50){
-            plan=candidate;
+  await test('real-page search: every opening after main widening paints the full planned host width',()=>{
+    const openingSettings={
+      enabled:true,target:'word',count:1,font:'serif',size:180,weight:'bold',
+      position:'dropped',dropLines:2,spaceAfter:0.3,scope:'all',
+      skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1
+    };
+    const shortSide=Array(8).fill(phrase).join(' ');
+    const longSide=Array(42).fill(phrase).join(' ');
+    let audited=0;
+
+    for(let leadRepeats=1;leadRepeats<=18;leadRepeats++){
+      const page=makePage();
+      try{
+        const lead=Array(leadRepeats).fill(neutral).join(' ');
+        const openingText='פתיח '+Array(10).fill(neutral).join(' ');
+        const plan=buildSinglePage(page,{
+          mainText:lead+'\n'+openingText,
+          mainParagraphs:[
+            {id:'real-wide-lead',index:1,text:lead,runs:[],mainRefs:[],continues:false},
+            {id:'real-wide-opening',index:2,text:openingText,runs:[],mainRefs:[],continues:false},
+          ],
+          rightStream:{id:'01',items:[shortSide],runs:[],rich:{text:shortSide,runs:[]}},
+          leftStream:{id:'02',items:[longSide],runs:[],rich:{text:longSide,runs:[]}},
+          footerStreams:[]
+        },{
+          ...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,
+          openingWordSettings:openingSettings,
+          streamSettings:{
+            '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+            '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
           }
-        }
-      }
-      assert(plan,'fixture search did not produce a dropped opening crossing the knee');
+        });
 
-      page.style.position='relative';
-      page.style.width='100px';
-      page.style.height='120px';
-      page.style.padding='0';
-      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+        const lines=plan.mainBox?.lines||[];
+        const op=lines.find(l=>l.source?.paragraphId==='real-wide-opening'&&l.render?.opening);
+        if(!op) continue;
 
-      const rows=[...page.querySelectorAll('[data-v9-paragraph-id="paint-knee-opening"]')];
-      const opening=page.querySelector('.v9-opening-glyph');
-      assert(opening&&rows.length>=2,'painted crossing-knee opening fixture incomplete');
+        const prior=lines.filter(l=>l.y<op.y-.1);
+        if(!prior.length) continue;
+        const narrowBefore=Math.min(...prior.slice(-5).map(l=>Number(l.width)||0));
+        const hostFull=Number(op.openingHostFullWidth)||0;
+        if(!(hostFull>narrowBefore+20)) continue;
 
-      const openingRect=opening.getBoundingClientRect();
-      const secondRow=rows.find(el=>(parseFloat(el.style.top)||0)>(parseFloat(rows[0].style.top)||0)+.1);
-      assert(secondRow,'painted second opening-window row missing');
-      const body=secondRow.querySelector('.v9-planned-line-text');
-      const range=document.createRange();range.selectNodeContents(body);
-      const bodyRect=range.getBoundingClientRect();
-      const left=Math.min(bodyRect.left,openingRect.left);
-      const right=Math.max(bodyRect.right,openingRect.right);
-      assert(right-left>=98.5,
-        `cross-knee opening paints as partial width: visual=${(right-left).toFixed(2)}, body=${bodyRect.width.toFixed(2)}, opening=${openingRect.width.toFixed(2)}`);
+        const host=[...page.querySelectorAll('[data-v9-paragraph-id="real-wide-opening"]')]
+          .find(el=>el.querySelector('.v9-opening-glyph'));
+        const opening=host?.querySelector('.v9-opening-glyph');
+        const body=host?.querySelector('.v9-planned-line-text');
+        assert(host&&opening&&body,'real-page painted opening host is incomplete');
 
-      const after=rows.find(el=>(parseFloat(el.style.top)||0)>=(parseFloat(secondRow.style.top)||0)+9.5);
-      if(after){
-        assert((parseFloat(after.style.width)||0)>=99,
-          `row after opening window stayed half-width: ${after.style.width}`);
-      }
-    }finally{context.dispose();page.remove();}
+        const openingRect=opening.getBoundingClientRect();
+        const range=document.createRange();range.selectNodeContents(body);
+        const bodyRect=range.getBoundingClientRect();
+        const visualLeft=Math.min(openingRect.left,bodyRect.left);
+        const visualRight=Math.max(openingRect.right,bodyRect.right);
+        const paintedVisual=visualRight-visualLeft;
+        const plannedVisual=(Number(op.width)||0)+(Number(op.render.opening.gap)||0)+(Number(op.render.opening.width)||0);
+
+        audited++;
+        assert(Math.abs(plannedVisual-hostFull)<.9,
+          `planner produced partial opening host: lead=${leadRepeats}, planned=${plannedVisual}, host=${hostFull}, line=${JSON.stringify({x:op.x,width:op.width,y:op.y,opening:op.render.opening})}`);
+        assert(paintedVisual>=hostFull-1.5,
+          `real-page opening paints like half-width after widening: lead=${leadRepeats}, painted=${paintedVisual.toFixed(2)}, host=${hostFull.toFixed(2)}, planned=${plannedVisual.toFixed(2)}, body=${bodyRect.width.toFixed(2)}, opening=${openingRect.width.toFixed(2)}`);
+      }finally{page.remove();}
+    }
+
+    assert(audited>0,'real-page search found no opening that starts after an actual main widening');
+    return {audited};
   });
 
   await test('opening-window final row centers actual opening+body ink as one visual segment',()=>{
