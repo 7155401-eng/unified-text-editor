@@ -139,7 +139,7 @@ function lastTextLineInfo(pageMain) {
 export function measurePagesState(container) {
   if (!container) return { pages: [], maxOverflow: 0, avgGap: 0, totalGap: 0, awkwardSplits: 0 };
   const pages = Array.from(
-    container.querySelectorAll(".pages-container .page:not(.page-placeholder), .page:not(.page-placeholder)")
+    container.querySelectorAll(".pages-container .page:not(.page-placeholder):not(.front-matter-page), .page:not(.page-placeholder):not(.front-matter-page)")
   ).filter(p => p.style.display !== "none");
   if (pages.length === 0) return { pages: [], maxOverflow: 0, avgGap: 0, totalGap: 0, awkwardSplits: 0 };
   let maxOverflow = 0;
