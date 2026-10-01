@@ -53,8 +53,9 @@ test('DOCX uploadId flow uploads once, scans and extracts from R2, then deletes'
     body:bytes,
   });
   const uploadRes=await worker.fetch(uploadReq,env,ctx);
-  assert.equal(uploadRes.status,200);
-  const uploaded=await uploadRes.json();
+  const uploadText=await uploadRes.text();
+  assert.equal(uploadRes.status,200,`upload failed: ${uploadText}`);
+  const uploaded=JSON.parse(uploadText);
   assert.equal(uploaded.ok,true);
   assert.match(uploaded.uploadId,/^[A-Za-z0-9][A-Za-z0-9_.:-]{15,220}$/);
   assert.equal(bucket._map.size,1);
