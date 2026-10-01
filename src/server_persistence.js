@@ -248,7 +248,7 @@ async function fetchStartupJson(url) {
   return result;
 }
 
-export async function loadInitialState(paneManager) {
+export async function loadInitialState(paneManager, { mayApplyDocument = null } = {}) {
   if (!isLoggedIn() || !paneManager) return { loaded: false };
 
   // The server request is asynchronous while the editor is already usable.
@@ -337,6 +337,23 @@ export async function loadInitialState(paneManager) {
         clearServerStale();
       }
       try {
+        if (typeof mayApplyDocument === 'function') {
+          let allowed = false;
+          try {
+            allowed = (await mayApplyDocument({ content, startupTimedOut })) !== false;
+          } catch (gateError) {
+            console.warn('[persistence] startup document authority gate failed — keeping browser-local state', gateError);
+            allowed = false;
+          }
+          if (!allowed) {
+            return {
+              loaded: false,
+              skipped: 'browser-local-startup-authoritative',
+              serverDocumentAvailable: true,
+              startupTimedOut,
+            };
+          }
+        }
         if (typeof paneManager.load === 'function') {
           paneManager.load(content);
           _lastDocSig = JSON.stringify(content);
