@@ -22,7 +22,6 @@ try{
   await page.goto(`http://127.0.0.1:${server.address().port}/tests/v9-unified/browser-fixture.html`);
 
   const setup=await page.evaluate(async()=>{
-    const {renderPages}=await import('../../src/engine/renderer.js');
     const {createV9TextLayoutContext}=await import('../../src/engine/v9_text_measurement.js');
     const {flowV9MeasuredStream,renderV9MeasuredStreamLine}=await import('../../src/engine/v9_stream_inline_layout.js');
     const {appendTextWithRuns}=await import('../../src/engine/runs_dom.js');
@@ -35,7 +34,7 @@ try{
       scenarios.push({label:`inside-${mark}`,text:`אבג(${mark} דהו זח טי כל מנ ${mark}) סע פצ קר שת`});
     }
 
-    const modes=['v9-stream','regular-main'];
+    const modes=['v9-stream','regular-inline'];
     const host=document.createElement('div');
     const rowHeight=280;
     const total=modes.length*scenarios.length;
@@ -85,27 +84,27 @@ try{
           }
           context.dispose();
         } else {
-          window.__FORCE_SYNC_RENDER__=true;
-          renderPages([{
-            main:[[1,text,0,text.length,{mainRuns:runs,blockType:'paragraph'}]],
-            streams:{}
-          }],actual);
-          const p=actual.querySelector('.page-main p');
-          if(p){
-            Object.assign(p.style,{
-              width:'150px',fontFamily:'serif',fontSize:'28px',lineHeight:'35px',
-              direction:'rtl',whiteSpace:'normal',margin:'0',padding:'0'
-            });
-          }
-          const pageEl=actual.querySelector('.page');
-          if(pageEl){pageEl.style.width='150px';pageEl.style.height='240px';pageEl.style.margin='0';}
-          const main=actual.querySelector('.page-main');
-          if(main){main.style.width='150px';main.style.margin='0';main.style.padding='0';}
+          // This is the exact text/run primitive used by the regular renderer.
+          // Keep a normal RTL block wrapper so browser-native wrapping/BiDi is
+          // the only layout mechanism, matching page-main paragraphs.
+          actual.style.whiteSpace='normal';
+          appendTextWithRuns(actual,text,runs);
         }
 
         const native=document.createElement('div');
         native.style.left='450px'; styleBox(native,150);
-        appendTextWithRuns(native,text,runs);
+        // Baseline: preserve one continuous Unicode character stream while
+        // wrapping only parentheses in neutral spans so Playwright can capture
+        // their glyphs. These spans set no direction/unicode-bidi/style.
+        let nativeCursor=0;
+        for(const at of parens){
+          if(at>nativeCursor) native.append(document.createTextNode(text.slice(nativeCursor,at)));
+          const span=document.createElement('span');
+          span.textContent=text[at];
+          native.append(span);
+          nativeCursor=at+1;
+        }
+        if(nativeCursor<text.length) native.append(document.createTextNode(text.slice(nativeCursor)));
         host.append(native);
 
         await new Promise(requestAnimationFrame);
