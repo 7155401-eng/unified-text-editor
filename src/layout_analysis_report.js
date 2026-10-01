@@ -4,9 +4,9 @@
 // pdf_report.py/page_tweaker_ui.py, but measures the authoritative final DOM
 // instead of re-parsing RavText's rasterized PDF output.
 //
-// The analyzer is intentionally read-only. It never moves text or mutates page
-// geometry. A future page tweaker may consume this JSON, but must remain a
-// separate explicit action.
+// Measurement itself is read-only. The report also exposes explicit Page
+// Tweaker controls, but they never move final DOM: they persist a document
+// constraint and request a fresh authoritative V9 render.
 
 const PAGE_SELECTOR = ".page:not(.page-placeholder):not(.ravtext-empty-page)";
 const V9_LINE_SELECTOR = ".v9-line";
@@ -591,6 +591,49 @@ function issueSummary(page) {
   return page.issues.map(i => `${severityLabel(i)}: ${i.message}`).join(" · ");
 }
 
+function pageTweakerManager() {
+  if (typeof window === "undefined") return null;
+  const pm = window.paneManager;
+  return pm && typeof pm.getPageTweak === "function" ? pm : null;
+}
+
+function syncPageMemoryFromReport(report) {
+  const pm = pageTweakerManager();
+  if (!pm || typeof pm.updatePageTweakMeasurements !== "function") return;
+  for (const page of report?.pageReports || []) {
+    try {
+      pm.updatePageTweakMeasurements(page.page, {
+        bottomGapLines: page.bottomGapLines,
+        overflowPx: page.overflowPx,
+        linePitchPx: page.linePitchPx,
+      });
+    } catch (error) {
+      console.warn("[layout-report] page memory measurement sync failed", page.page, error);
+    }
+  }
+}
+
+function tweakStatusLabel(tweak) {
+  const status = String(tweak?.status || "pending");
+  if (status === "approved") return "✓ מאושר";
+  if (status === "changed") return "⚠ השתנה";
+  return "ממתין";
+}
+
+function makeTweakButton(text, title, onClick, className = "") {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = text;
+  btn.title = title;
+  btn.className = ["layout-report-tweak-btn", className].filter(Boolean).join(" ");
+  btn.addEventListener("click", ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    onClick();
+  });
+  return btn;
+}
+
 function downloadJson(report) {
   const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -605,6 +648,7 @@ function downloadJson(report) {
 
 function createReportModal(report) {
   document.querySelector(".layout-report-overlay")?.remove();
+  syncPageMemoryFromReport(report);
 
   const overlay = document.createElement("div");
   overlay.className = "layout-report-overlay";
@@ -652,7 +696,7 @@ function createReportModal(report) {
   table.className = "layout-report-table";
   table.innerHTML = `
     <thead><tr>
-      <th>עמוד</th><th>מילוי</th><th>רווח תחתון</th><th>גלישה</th><th>שורות</th><th>מצב</th>
+      <th>עמוד</th><th>מילוי</th><th>רווח תחתון</th><th>גלישה</th><th>שורות</th><th>מצב</th><th>תיקון ידני</th>
     </tr></thead>`;
   const tbody = document.createElement("tbody");
   for (const page of report.pageReports) {
@@ -673,6 +717,62 @@ function createReportModal(report) {
       if (index === 5) td.title = issueSummary(page);
       tr.appendChild(td);
     });
+
+    const tweakCell = document.createElement("td");
+    tweakCell.className = "layout-report-tweak-cell";
+    const pm = pageTweakerManager();
+    if (pm) {
+      const current = pm.getPageTweak(page.page);
+      const controls = document.createElement("div");
+      controls.className = "layout-report-tweak-controls";
+
+      const diff = document.createElement("span");
+      diff.className = "layout-report-tweak-value";
+      diff.textContent = (current.linesDiff > 0 ? "+" : "") + String(current.linesDiff || 0);
+      diff.title = "מספר שורות ידני לעמוד: חיובי = נסה למשוך; שלילי = פנה מקום לעמוד הבא";
+
+      const rerenderAndClose = (nextDiff) => {
+        pm.setPageTweak(page.page, { linesDiff: nextDiff });
+        overlay.remove();
+      };
+
+      controls.append(
+        makeTweakButton("−", "הפחת שורה אחת מקיבולת העמוד", () => rerenderAndClose((current.linesDiff || 0) - 1)),
+        diff,
+        makeTweakButton("+", "נסה למשוך שורה נוספת לעמוד אם היא נכנסת בבטחה", () => rerenderAndClose((current.linesDiff || 0) + 1))
+      );
+
+      const status = document.createElement("span");
+      status.className = "layout-report-tweak-status";
+      status.textContent = tweakStatusLabel(current);
+      controls.append(status);
+
+      if (current.status === "approved") {
+        controls.append(makeTweakButton("בטל אישור", "החזר את העמוד למצב ממתין", () => {
+          pm.setPageTweak(page.page, { status: "pending" }, { rerender: false });
+          status.textContent = "ממתין";
+        }, "secondary"));
+      } else {
+        controls.append(makeTweakButton("אשר", "שמור את מדדי העמוד הנוכחיים כ-baseline מאושר", () => {
+          pm.approvePageTweak(page.page, {
+            bottomGapLines: page.bottomGapLines,
+            overflowPx: page.overflowPx,
+          });
+          status.textContent = "✓ מאושר";
+        }, "approve"));
+      }
+
+      controls.append(makeTweakButton("אפס", "מחק את התיקון הידני והזיכרון של עמוד זה", () => {
+        pm.resetPageTweak(page.page);
+        overlay.remove();
+      }, "reset"));
+
+      tweakCell.appendChild(controls);
+    } else {
+      tweakCell.textContent = "—";
+    }
+    tr.appendChild(tweakCell);
+
     tr.addEventListener("click", () => {
       const pageEl = document.querySelectorAll(PAGE_SELECTOR)[page.page - 1];
       pageEl?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -708,11 +808,22 @@ function createReportModal(report) {
   json.type = "button";
   json.textContent = "הורד JSON מלא";
   json.addEventListener("click", () => downloadJson(report));
+  const clearTweaks = document.createElement("button");
+  clearTweaks.type = "button";
+  clearTweaks.textContent = "נקה תיקוני עמודים";
+  clearTweaks.title = "מחק את כל תיקוני העמודים הידניים מהמסמך";
+  clearTweaks.addEventListener("click", () => {
+    const pm = pageTweakerManager();
+    if (!pm || !Object.keys(pm.getPageTweaks?.().pages || {}).length) return;
+    if (!confirm("למחוק את כל תיקוני העמודים והאישורים במסמך?")) return;
+    pm.clearPageTweaks();
+    overlay.remove();
+  });
   const done = document.createElement("button");
   done.type = "button";
   done.className = "primary";
   done.textContent = "סגור";
-  footer.append(json, done);
+  footer.append(json, clearTweaks, done);
 
   modal.append(header, summary, tableWrap, details, footer);
   overlay.appendChild(modal);
