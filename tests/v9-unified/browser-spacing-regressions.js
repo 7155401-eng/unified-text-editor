@@ -1304,9 +1304,12 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const openingRect=opening.getBoundingClientRect();
       const range=document.createRange();
       range.selectNodeContents(body);
-      const bodyRect=range.getBoundingClientRect();
-      const left=Math.min(openingRect.left,bodyRect.left)-pageRect.left;
-      const right=Math.max(openingRect.right,bodyRect.right)-pageRect.left;
+      const bodyRects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
+      assert(bodyRects.length,'final body has no measurable ink');
+      const bodyLeft=Math.min(...bodyRects.map(r=>r.left));
+      const bodyRight=Math.max(...bodyRects.map(r=>r.right));
+      const left=Math.min(openingRect.left,bodyLeft)-pageRect.left;
+      const right=Math.max(openingRect.right,bodyRight)-pageRect.left;
       const center=(left+right)/2;
 
       assert(plan.lines.at(-1).openingCompositeCentered===true,
