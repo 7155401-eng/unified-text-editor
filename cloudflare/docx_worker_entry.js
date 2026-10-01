@@ -585,7 +585,7 @@ async function handleUploadOnly(request, env, ctx) {
 
     const fileHash = await sha256Hex(arrayBuffer);
     const createdAt = Date.now();
-    const uploadId = `${fileHash}.${createdAt.toString(36)}.${requestId.replace(/[^A-Za-z0-9]/g, "").slice(-12)}`;
+    const uploadId = `${fileHash}.${createdAt.toString(36)}.${String(id).replace(/[^A-Za-z0-9]/g, "").slice(-12)}`;
     let fileName = request.headers.get("x-file-name") || "";
     try { fileName = decodeURIComponent(fileName); } catch (_) {}
 
