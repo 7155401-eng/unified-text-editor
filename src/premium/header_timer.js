@@ -4,7 +4,7 @@
 // מתפעם), פחות מ-5 דק' (אדום מתפעם מהר). לחיצה פותחת את עמוד הפרמיום לטעינה.
 
 import { onTimerUpdate } from "./time_warning.js";
-import { openPremiumPage } from "./premium_page.js";
+import { openPremiumPage } from "./premium_page_lazy.js";
 import { installRibbonTabsGuard } from "../ribbon_tabs_guard.js";
 
 const TIMER_ID = "rt-prem-timer";
