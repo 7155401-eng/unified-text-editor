@@ -578,6 +578,80 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    page.remove();
  });
 
+ await test('PR1047 audit: smaller inline run does not inflate measured V9 row pitch',()=>{
+   const ctx=createV9TextLayoutContext({...cfg,mainFontSize:11,mainFontFamily:'serif',lineHeightRatio:1.55,openingWordSettings:{enabled:false}});
+   const page=makePage();
+   try {
+     const part={text:'אב 12 גד',runs:[{start:3,end:5,marks:{fontSize:9,fontFamily:'serif',bold:true}}],refs:[],style:ctx.typography};
+     const host=document.createElement('span');
+     Object.assign(host.style,ctx.typography);
+     host.style.display='inline-block'; host.style.whiteSpace='pre';
+     page.appendChild(host);
+     appendV9PlannedPart(host,part);
+     const child=host.querySelector('span');
+     assert(child,'smaller inline run did not render');
+     assert(getComputedStyle(child).fontSize==='9px',`font size changed: ${getComputedStyle(child).fontSize}`);
+     const childLeading=parseFloat(getComputedStyle(child).lineHeight);
+     assert(Math.abs(childLeading-13.95)<.08,`wrong proportional leading: ${childLeading}`);
+     const measured=ctx.measure(part);
+     assert(measured.height<=ctx.lineHeight+.08,`small run inflated row: ${measured.height} > ${ctx.lineHeight}`);
+     const explicit={text:'אב 12 גד',runs:[{start:3,end:5,marks:{fontSize:9,lineHeight:'20px',bold:true}}],refs:[],style:ctx.typography};
+     host.replaceChildren(); appendV9PlannedPart(host,explicit);
+     assert(host.querySelector('span')?.style.lineHeight==='20px','explicit leading overwritten');
+     const large={text:'אב 12 גד',runs:[{start:3,end:5,marks:{fontSize:18,bold:true}}],refs:[],style:ctx.typography};
+     host.replaceChildren(); appendV9PlannedPart(host,large);
+     assert(!host.querySelector('span')?.style.lineHeight,'larger run got derived leading');
+   } finally { page.remove(); ctx.dispose(); }
+ });
+
+ await test('PR1047 audit: smaller inline runs keep side-stream knees aligned without reconciliation',()=>{
+   const words=['אב','גד','הוז','חט','יכל','מנס','עפ','צקר','שת'];
+   const text=Array.from({length:130},(_,i)=>words[i%words.length]).join(' ');
+   const starts=[...text.matchAll(/\S+/g)].map(m=>[m.index,m.index+m[0].length]);
+   const cases=[];
+   for(const family of ['serif','sans-serif','monospace']) for(const exchange of [false,true]) {
+     const page=makePage();
+     try {
+       const stream=(id,step)=>({id,items:[text],rich:{text,runs:starts.filter((_,i)=>i%step===0)
+         .map(([start,end])=>({start,end,marks:{fontSize:9,fontFamily:'serif',bold:true}}))}});
+       const content={
+         mainText:Array.from({length:36},(_,i)=>words[i%words.length]).join(' '),
+         rightStream:stream('01',exchange?7:17),
+         leftStream:stream('02',exchange?17:7),
+         footerStreams:[]
+       };
+       const plan=buildSinglePage(page,content,{
+         ...cfg,pageHeight:537,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,
+         mainFontFamily:family,sideFontFamily:family,crownLines:4,crownMainGapPx:8,
+         openingWordSettings:{enabled:false}
+       });
+       assert(plan.crownScenario?.name==='two_long_parallel',`wrong scenario: ${plan.crownScenario?.name}`);
+       assert(plan.streamCoverage.every(x=>x.exact),'source coverage lost');
+       assert(!plan.sideWidthReconciliation,'unexpected side reconciliation');
+       const mainBottom=Math.max(...plan.mainBox.lines.map(l=>l.y+l.lineHeightPx));
+       const boxes=plan.streamBoxes.filter(b=>['right','left'].includes(b.role));
+       assert(boxes.length===2,'side stream missing');
+       const knees=boxes.map(box=>{
+         assert(box.lines.every(l=>Math.abs(l.lineHeightPx-17.05)<.08),
+           `row pitch inflated: ${box.lines.map(l=>l.lineHeightPx).join(',')}`);
+         const idx=box.lines.findIndex((l,i)=>i>0&&l.y>=mainBottom-.1&&l.width>box.lines[i-1].width+1);
+         assert(idx>0,'fixture has no widening knee');
+         return box.lines[idx].y;
+       });
+       assert(Math.abs(knees[0]-knees[1])<.08,`knees differ: ${knees[0]} vs ${knees[1]}`);
+       const all=[...plan.mainBox.lines,...boxes.flatMap(b=>b.lines)];
+       for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
+         const a=all[i],b=all[j];
+         const dx=Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x);
+         const dy=Math.min(a.y+a.lineHeightPx,b.y+b.lineHeightPx)-Math.max(a.y,b.y);
+         assert(dx<.2||dy<.2,`row overlap ${i}/${j}: dx=${dx},dy=${dy}`);
+       }
+       cases.push({family,exchange,knees});
+     } finally { page.remove(); }
+   }
+   return {cases};
+ });
+
  await test('rich side text with large inline bold is measured before row placement',()=>{
    const c=createV9TextLayoutContext({...cfg,mainFontSize:11}),text=Array(4).fill(neutral).join(' '),input={text,runs:[{start:4,end:26,marks:{fontSize:23,fontFamily:'monospace',bold:true}},{start:42,end:70,marks:{fontSize:9,bold:true,color:'red'}}]};
    const p=flowV9MeasuredStream(input,[{x:0,width:160,y_start:0,y_end:600}],c,600),page=makePage();
