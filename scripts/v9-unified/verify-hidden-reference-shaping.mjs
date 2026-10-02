@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import {fileURLToPath} from 'node:url';
 import {chromium} from 'playwright-chromium';
+import {verifyVisibleReferenceCombining} from './verify-visible-reference-combining.mjs';
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const imports={},identities={};
 function collect(file){
@@ -42,6 +43,9 @@ try{
   pixelCases.push({family,cluster,pass:actual.equals(expected),actualSHA256:crypto.createHash('sha256').update(actual).digest('hex'),expectedSHA256:crypto.createHash('sha256').update(expected).digest('hex')});
  }
  Object.assign(report,{browserVersion:browser.version(),pixelCases,pixelFailures:pixelCases.filter(x=>!x.pass).length,errors,requests,identities});
+ // The existing CI invocation and before/after artifact now also retain the
+ // visible-note checks; no hidden-note case is removed or relaxed.
+ report.visibleCombining = await verifyVisibleReferenceCombining();
  fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));
  console.log(JSON.stringify({total:report.total,passed:report.passed,failed:report.failed,pixelCases:pixelCases.length,pixelFailures:report.pixelFailures,browserVersion:report.browserVersion},null,2));
  assert.equal(errors.length,0,'Page errors');assert.equal(requests.length,0,'External requests');

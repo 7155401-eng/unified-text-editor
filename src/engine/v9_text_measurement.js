@@ -59,6 +59,23 @@ function appendSemanticWhitespace(parent, text) {
   flushHidden();
 }
 
+// A visible note is an inline object, not a combining-mark base. Keep a
+// base character and its following marks in one shaping run before inserting
+// that object. The cut alone moves; original ref/anchor coordinates stay intact.
+const COMBINING_MARK = /\p{M}/u;
+function referencePaintCut(text, offset) {
+  let at = Math.trunc(offset);
+  if (!(at > 0 && at < text.length)) return at;
+  const here = text.charCodeAt(at), before = text.charCodeAt(at - 1);
+  if (here >= 0xDC00 && here <= 0xDFFF && before >= 0xD800 && before <= 0xDBFF) at++;
+  while (at < text.length) {
+    const ch = String.fromCodePoint(text.codePointAt(at));
+    if (!COMBINING_MARK.test(ch)) break;
+    at += ch.length;
+  }
+  return at;
+}
+
 // Shared by the measurement probe and final paint. Reference labels and styles
 // have already been resolved: painting never reads mutable settings again.
 export function appendV9PlannedPart(parent, part) {
@@ -69,7 +86,7 @@ export function appendV9PlannedPart(parent, part) {
     // text or shaping runs. Splitting before appendReference skips the label
     // can detach a combining mark or change which styles cover its base.
     if (!ref.formatted) continue;
-    const pos = Math.max(cursor, Math.min(part.text.length, Number(ref.localPos) || 0));
+    const pos = referencePaintCut(part.text, Math.max(cursor, Math.min(part.text.length, Number(ref.localPos) || 0)));
     if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos), part.style);
     appendReference(parent, ref); cursor = pos;
   }
