@@ -69,9 +69,12 @@ async function nativeFlow({text,width,family,dropLines}){
       leftGap:line.left,rightGap:targetRight-line.right,
       fullCenterDeviation:Math.abs((line.left+line.right)/2-width/2)};
   });
+  const openingBox={left:or.left-pr.left,right:or.right-pr.left,top:or.top-pr.top,bottom:or.bottom-pr.top,gap};
+  const final=lines.at(-1)||null;
+  const fullCenterEnd=final?width/2+final.width/2:0;
+  const fullCenterSafe=!final||!final.overlapsOpening||fullCenterEnd<=openingBox.left-gap+.75;
   const out={sourceExact:p.textContent===text,width,height:p.getBoundingClientRect().height,
-    opening:{left:or.left-pr.left,right:or.right-pr.left,top:or.top-pr.top,bottom:or.bottom-pr.top,gap},
-    lines,html:p.outerHTML};
+    opening:openingBox,lines,fullCenterSafe,html:p.outerHTML};
   root.remove();return out;
 }
 async function currentV9({text,width,family,dropLines}){
@@ -94,8 +97,13 @@ async function currentV9({text,width,family,dropLines}){
         fullCenterDeviation:Math.abs(((r.left+r.right)/2-base.left)-width/2),
         wordSpacing:line.render.wordSpacing,opening:opening?{x:opening.x,y:opening.y,width:opening.width,height:opening.height,gap:opening.gap}:null};
     });
+    const opening=plan.lines.map(l=>l.render.opening).find(Boolean)||null;
+    const final=lines.at(-1)||null;
+    const fullCenterEnd=final?width/2+final.width/2:0;
+    const fullCenterSafe=!final||!final.openingWindow||!opening||fullCenterEnd<=opening.x-opening.gap+.75;
     return {sourceExact:host.textContent===text,overflow:plan.overflowText,lines,diagnostics:plan.diagnostics,
-      height:plan.endY,html:host.innerHTML};
+      opening:opening?{x:opening.x,width:opening.width,gap:opening.gap,height:opening.height}:null,
+      fullCenterSafe,height:plan.endY,html:host.innerHTML};
   }finally{ctx.dispose();host.remove();}
 }
 
@@ -114,12 +122,21 @@ export async function runNativeOpeningProof(){
     const nCounts=native.lines.map(l=>l.words),vCounts=v9.lines.map(l=>l.words);
     const diff=JSON.stringify(nCounts)!==JSON.stringify(vCounts);
     nativeLeftMisses+=nMiss;v9LeftMisses+=vMiss;nativeFinalOffCenter+=nOff;v9FinalOffCenter+=vOff;wordBreakDiffs+=Number(diff);
+    const v9OpeningClearance=v9.opening?v9.opening.x-v9.opening.gap:width;
+    const nativeFinalWidth=nFinal?.width||0;
+    const nativeBreakWouldFitV9Center=!nFinal||!nFinal.overlapsOpening||
+      width/2+nativeFinalWidth/2<=v9OpeningClearance+.75;
     records.push({family,width,count,dropLines,native:{lineCount:native.lines.length,wordCounts:nCounts,leftMisses:nMiss,
-      finalCenterDeviation:nFinal?.fullCenterDeviation??null,finalOverlapsOpening:nFinal?.overlapsOpening??false,height:native.height},
-      v9:{lineCount:v9.lines.length,wordCounts:vCounts,leftMisses:vMiss,finalCenterDeviation:vFinal?.fullCenterDeviation??null,height:v9.height},
-      wordBreaksDiffer:diff});
+      finalCenterDeviation:nFinal?.fullCenterDeviation??null,finalWidth:nativeFinalWidth,
+      finalOverlapsOpening:nFinal?.overlapsOpening??false,fullCenterSafe:native.fullCenterSafe,height:native.height},
+      v9:{lineCount:v9.lines.length,wordCounts:vCounts,leftMisses:vMiss,finalCenterDeviation:vFinal?.fullCenterDeviation??null,
+        finalWidth:vFinal?.width||0,fullCenterSafe:v9.fullCenterSafe,height:v9.height},
+      nativeBreakWouldFitV9Center,wordBreaksDiffer:diff});
   }
-  return {total:records.length,nativeLeftMisses,v9LeftMisses,nativeFinalOffCenter,v9FinalOffCenter,wordBreakDiffs,records};
+  return {total:records.length,nativeLeftMisses,v9LeftMisses,nativeFinalOffCenter,v9FinalOffCenter,wordBreakDiffs,
+    nativeBreakHelpsCenter:records.filter(r=>r.v9.finalCenterDeviation>.75&&r.nativeBreakWouldFitV9Center).length,
+    nativeBreakStillCannotCenter:records.filter(r=>r.v9.finalCenterDeviation>.75&&!r.nativeBreakWouldFitV9Center).length,
+    records};
 }
 
 export async function renderComparisonCase({family='serif',width=220,count=10,dropLines=2}={}){
