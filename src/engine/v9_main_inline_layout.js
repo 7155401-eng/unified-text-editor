@@ -680,15 +680,16 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         }
       }
 
-      // A complete two-row paragraph shares one alignment frame, including
-      // its dropped opening. Centre the last body in that frame, not in the
-      // leftover slot. Keep the opening and first row exactly where planned.
-      // A wide last row may not fit around that centre without a collision;
-      // do not force it into the opening or invent a source/line break.
-      const pair = lines.slice(paragraphLineStart);
-      const last = pair.length === 2 ? pair[1] : null;
-      if (!entry.continues && !entry.continuesAfter && pair[0]?.render.opening &&
-          !pair[0].forcedBreak && last?.isLast && last.openingWindow &&
+      // Any complete multi-row paragraph shares one alignment frame, including
+      // its dropped opening. Centre the final body in that frame whenever it
+      // still overlaps the opening window AND the measured centered body clears
+      // the fixed opening+gap. A one-row paragraph is handled above as one
+      // opening+body composite. Wide endings keep their existing free slot.
+      const paragraphLines = lines.slice(paragraphLineStart);
+      const first = paragraphLines[0] || null;
+      const last = paragraphLines.length > 1 ? paragraphLines.at(-1) : null;
+      if (!entry.continues && !entry.continuesAfter && first?.render.opening &&
+          !first.forcedBreak && last?.isLast && last.openingWindow &&
           !last.render.opening && last.wordTokens.length && last.naturalWidth > 0) {
         const frame = rowGeometry(strips, last.y, last.lineHeightPx, pageBottom);
         if (frame) {
