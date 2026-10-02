@@ -2,10 +2,10 @@ name: PDF module-load recovery
 on:
   pull_request:
     branches: [main]
-    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/lazy-*-export.test.mjs', '.github/workflows/**']
+    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/lazy-*-export.test.mjs', 'vite.config.js', '.github/workflows/**']
   push:
     branches: [main]
-    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', '.github/workflows/pdf-load-recovery.yml']
+    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'vite.config.js', '.github/workflows/pdf-load-recovery.yml']
 permissions:
   contents: read
 jobs:
@@ -34,12 +34,14 @@ jobs:
           cp test-results/pdf-load-recovery/report.json test-results/pdf-load-recovery/before-build.json
           mkdir -p test-results/pdf-load-recovery/before-build
           cp test-results/pdf-load-recovery/*.pdf test-results/pdf-load-recovery/before-build/
-      - name: Build twice with source integrity checks
+      - name: Build twice with source integrity and stable PDF chunk checks
         run: |
           git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
           npm run build
+          node scripts/pdf-export/verify-stable-chunk.mjs first
           git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
           npm run build
+          node scripts/pdf-export/verify-stable-chunk.mjs second
           git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
       - name: Repeat all recovery checks after build
         run: |
