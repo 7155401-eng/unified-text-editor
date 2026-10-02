@@ -70,6 +70,8 @@ jobs:
         run: node scripts/verify_bracket_styles.mjs
       - name: Page header/footer styling engine
         run: node scripts/verify_header_styles.mjs
+      - name: Merge integrity verifier
+        run: node scripts/verify_merge_verifier.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
@@ -139,6 +141,7 @@ jobs:
           node scripts/verify_global_fixes.mjs
           node scripts/verify_bracket_styles.mjs
           node scripts/verify_header_styles.mjs
+          node scripts/verify_merge_verifier.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
