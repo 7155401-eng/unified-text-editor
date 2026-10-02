@@ -1829,6 +1829,75 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }finally{context.dispose();page.remove();}
   });
 
+
+  await test('crown gap never inserts extra vertical space at a narrow-to-wide commentary knee',()=>{
+    const page=makePage();
+    const sideText=Array(42).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:Array(3).fill(neutral).join(' '),
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:760,crownLines:4,crownMainGapPx:11,streamSettings:{
+      '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+      '02':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+    }});
+    for(const role of ['right','left']){
+      const box=plan.streamBoxes.find(b=>b.role===role);
+      assert(box&&box.lines.length>5,`missing ${role} stream rows`);
+      const rows=[...box.lines].sort((a,b)=>a.y-b.y);
+      let knee=-1;
+      for(let i=1;i<rows.length;i++){
+        if(rows[i].width>rows[i-1].width+20){knee=i;break;}
+      }
+      assert(knee>0,`${role} fixture did not produce a knee`);
+      const prev=rows[knee-1],wide=rows[knee],pitch=prev.lineHeightPx;
+      const dy=wide.y-prev.y;
+      assert(Math.abs(dy-pitch)<.05,
+        `${role} knee gap is not one normal row: dy=${dy}, pitch=${pitch}, prevY=${prev.y}, wideY=${wide.y}`);
+      assert(wide.y>=prev.y+prev.lineHeightPx-.05,
+        `${role} wide row overlaps the previous narrow row`);
+    }
+    page.remove();
+  });
+
+  await test('dropped opening that starts after widening keeps the full host width',()=>{
+    const context=createV9TextLayoutContext({
+      mainFontFamily:'serif',mainFontSize:16,lineHeightRatio:1.5,
+      openingWordSettings:{enabled:true,target:'word',count:1,font:'inherit',size:175,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:.2,scope:'all',skipHeadings:false,
+        skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false}
+    });
+    try{
+      const strips=[
+        {x:50,width:50,y_start:0,y_end:25},
+        {x:0,width:100,y_start:25,y_end:500},
+      ];
+      const lead=context.prepareEntry({id:'lead',text:'אב אב אב אב אב אב אב אב',runs:[],mainRefs:[],_v9OpeningWordAllowed:false});
+      let fixture=null;
+      for(let n=8;n<=30&&!fixture;n++){
+        const opening=context.prepareEntry({id:'opening',text:'פתיח '+Array(n).fill('אב').join(' '),runs:[],mainRefs:[]});
+        const plan=layoutV9MainParagraphs([lead,opening],strips,context,500);
+        const rows=plan.lines.filter(l=>l.source.paragraphId==='opening');
+        const host=rows.find(l=>l.render.opening);
+        if(host&&host.y>=25-.02&&rows.length>1)fixture={plan,rows,host};
+      }
+      assert(fixture,'fixture did not place opening after widening');
+      const {rows,host}=fixture;
+      const opening=host.render.opening;
+      const full=rowGeometry(strips,host.y,host.lineHeightPx,500);
+      assert(full&&Math.abs(full.width-100)<.02,`host is not in wide geometry: ${full&&full.width}`);
+      assert(Math.abs((host.width+opening.width+opening.gap)-full.width)<.05,
+        `opening cut a newly widened host row: body=${host.width}, opening=${opening.width}, gap=${opening.gap}, full=${full.width}`);
+      const second=rows[1];
+      if(second&&second.openingWindow){
+        const g=rowGeometry(strips,second.y,second.lineHeightPx,500);
+        assert(g&&Math.abs(g.width-100)<.02,`second opening-window row lost widened geometry: ${g&&g.width}`);
+        assert(second.width<=g.width+.02,'second row exceeds allocation');
+      }
+    } finally {context.dispose();}
+  });
+
   await test('legacy audit: heavy mixed pagination keeps every rendered row inside the physical page',async()=>{
     const page=makePage();
     const main=Array(9).fill(neutral).join(' ');
