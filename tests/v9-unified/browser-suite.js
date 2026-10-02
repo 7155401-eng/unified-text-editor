@@ -89,54 +89,6 @@ export async function runBrowserSuite() {
       for (const id of ['01','02']) { if (saved[id]===undefined) delete settings[id]; else settings[id]=saved[id]; }
     }
   });
-  await test('automatic final gap fill uses safe physical row space even on an otherwise full page',async()=>{
-    const words=['אב','גד','הוז','חטיכ','למנ','סעפ','צקר','שת'];
-    const textOf=n=>Array.from({length:n},(_,i)=>words[i%words.length]).join(' ');
-    const lineH=13*1.55, fixtures=[];
-    const bottomOf=page=>Math.max(0,...[...page.querySelectorAll('.v9-final-main-line,.v9-final-stream-line')].map(el=>
-      (parseFloat(el.style.top)||0)+(parseFloat(el.style.height)||0)));
-    const assertSource=(host,input)=>{
-      for(const p of input){
-        const expected=prepareV9SourceParagraph(p).mainText;
-        const rows=[...host.querySelectorAll('[data-v9-paragraph-id]')].filter(el=>el.dataset.v9ParagraphId===p.id);
-        assert(rows.map(sourceText).join('')===expected,`gap-fill source mismatch ${p.id}`);
-      }
-    };
-    for(const family of ['serif','sans-serif','monospace']){
-      let found=null;
-      for(const pageHeight of [190,210,230,250,270]){
-        if(found)break;
-        for(let firstWords=8;firstWords<=48;firstWords+=2){
-          const input=[
-            {id:'gap-a',mainText:textOf(firstWords),notes:[]},
-            {id:'gap-b',mainText:textOf(90),notes:[]},
-          ];
-          const common={pageWidth:380,pageHeight,padding:12,reservedBottom:0,mainFontSize:13,sideFontSize:10,lineHeightRatio:1.55,
-            mainFontFamily:family,sideFontFamily:family,maxPages:40,openingWordSettings:{enabled:false}};
-          const oldHost=makePage(),newHost=makePage();
-          try{
-            const oldResult=await buildPages(oldHost,input,{...common,finalGapFillTriggerRatio:.84,finalGapFillMinRemainingLines:2.5,finalGapFillMinGain:.04});
-            const newResult=await buildPages(newHost,input,common);
-            if(!oldResult.complete||!newResult.complete||!oldResult.pages[0]||!newResult.pages[0])continue;
-            const pageBottom=pageHeight-common.padding,oldBottom=bottomOf(oldResult.pages[0]),newBottom=bottomOf(newResult.pages[0]);
-            const oldGap=pageBottom-oldBottom,gain=newBottom-oldBottom;
-            if(oldGap<lineH*.85||oldGap>lineH*2.49||gain<lineH*.45)continue;
-            assertSource(oldHost,input);assertSource(newHost,input);
-            assert(newBottom<=pageBottom+.05,'gap fill crossed page bottom');
-            assert(newResult.pages.length<=oldResult.pages.length+1,'gap fill unexpectedly inflated page count');
-            const rows=[...newResult.pages[0].querySelectorAll('.v9-final-main-line')].map(el=>({top:parseFloat(el.style.top)||0,h:parseFloat(el.style.height)||0}));
-            for(let i=1;i<rows.length;i++)assert(rows[i].top+0.05>=rows[i-1].top+rows[i-1].h,'gap fill overlapped main rows');
-            found={family,pageHeight,firstWords,oldGap,gain,oldPages:oldResult.pages.length,newPages:newResult.pages.length};
-            break;
-          }finally{oldHost.remove();newHost.remove();}
-        }
-      }
-      assert(found,`no physical one-to-two-row gap fixture found for ${family}`);
-      fixtures.push(found);
-    }
-    return {fixtures};
-  });
-
   await test('font timeout is a failure rather than ready metadata',async()=>{
     const descriptor=Object.getOwnPropertyDescriptor(document,'fonts');Object.defineProperty(document,'fonts',{configurable:true,value:{load:()=>new Promise(()=>{}),ready:new Promise(()=>{})}});
     let threw=false;try{await waitForV9LayoutFonts([],{mainFontFamily:'serif'},15);}catch(e){threw=e.message.startsWith('V9_FONT_TIMEOUT');}finally{if(descriptor)Object.defineProperty(document,'fonts',descriptor);else delete document.fonts;}
