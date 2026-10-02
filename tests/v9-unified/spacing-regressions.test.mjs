@@ -200,23 +200,27 @@ test('invisible-only word cannot consume a justification slot at line boundary',
 });
 
 
-test('page-ending continuation rebalances the paragraph tail instead of rubber-stretching one row',()=>{
+test('page-ending continuation pulls words first, then finishes exact justification when no gentler partition exists',()=>{
  const text=Array(10).fill('aa').join(' ');
  const ctx={
   fontSize:10,lineHeight:10,describeOpening:()=>null,
-  measure:p=>{const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};}
+  measure:p=>{const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;const ws=parseFloat(p.style?.wordSpacing||'0')||0;return {width:n?n*10+(n-1)*(2+ws):0,height:10,topInset:0};}
  };
  const p=layoutV9MainParagraphs(
   [{id:'tail-balance',text,runs:[],mainRefs:[],continuesAfter:true}],
   [{x:0,width:54,y_start:0,y_end:30}],ctx,30
  );
  assert.equal(p.lines.length,3);
+ // Redistribution remains first and authoritative.
  assert.deepEqual(p.lines.map(l=>l.wordTokens.length),[4,3,3]);
  assert.ok(p.lines.every(l=>l.tailRebalanced===true));
  assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
- assert.ok(Math.max(...p.lines.map(l=>l.render.wordSpacing))<=6.5001,
-  `tail spacing was not gently capped: ${p.lines.map(l=>l.render.wordSpacing).join(',')}`);
- assert.ok(p.diagnostics.some(d=>d.code==='paragraph-tail-rebalanced'));
+ // The first line is resolved gently; the two rows that cannot be improved
+ // further are now justified exactly rather than deliberately left short.
+ assert.deepEqual(p.lines.map(l=>l.render.wordSpacing),[8/3,10,10]);
+ assert.deepEqual(p.lines.map(l=>!!l.tailWordSpacingFallbackStretched),[false,true,true]);
+ assert.ok(p.lines.every(l=>l.tailWordSpacingCapped===false));
+ assert.ok(p.diagnostics.some(d=>d.code==='paragraph-tail-rebalanced'&&d.fallbackStretchedRows===2));
 });
 
 
@@ -637,7 +641,7 @@ test('final row inside a dropped-opening window keeps normal last-line semantics
  assert(bodyLeft+last.naturalWidth<=freeRight+.001,'last body overlaps the opening');
 });
 
-test('opening-word host row and following window row belong to the same tail rebalance',()=>{
+test('opening-word rows remain one paragraph: redistribute first, then finish exact justification',()=>{
  const text='OPEN aa aa aa aa aa aa';
  const ctx={
   fontSize:10,lineHeight:10,
@@ -646,7 +650,8 @@ test('opening-word host row and following window row belong to the same tail reb
    const body=String(p.text||'').trim();
    if(body==='OPEN')return {width:20,height:10,topInset:0};
    const n=body?body.split(/\s+/u).length:0;
-   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+   const ws=parseFloat(p.style?.wordSpacing||'0')||0;
+   return {width:n?n*10+(n-1)*(2+ws):0,height:10,topInset:0};
   }
  };
  const p=layoutV9MainParagraphs(
@@ -661,8 +666,11 @@ test('opening-word host row and following window row belong to the same tail reb
  assert.ok(p.lines.every(l=>l.tailRebalanced===true),'opening/window rows were split out of the paragraph rebalance');
  assert(!p.lines[0].render.body.text.includes('OPEN'),'opening text was duplicated into the body span');
  assert.equal(p.lines.map(l=>l.sourceText).join(''),text);
- assert.ok(Math.max(...p.lines.map(l=>l.render.wordSpacing))<=6.5001,
-  `opening paragraph tail was not gently distributed: ${p.lines.map(l=>l.render.wordSpacing).join(',')}`);
+ assert.deepEqual(p.lines.map(l=>l.wordTokens.length),[2,2,2]);
+ assert.deepEqual(p.lines.map(l=>l.render.wordSpacing),[10,10,32]);
+ assert.ok(p.lines.every(l=>l.tailWordSpacingFallbackStretched),'fixture should prove the no-more-words fallback beside and below the opening');
+ assert.ok(p.lines.every(l=>l.tailWordSpacingCapped===false));
+ assert.equal(p.diagnostics.find(d=>d.code==='paragraph-tail-rebalanced')?.fallbackStretchedRows,3);
 });
 
 test('continuation tail rebalance starts only after the last explicit source line break',()=>{

@@ -23,6 +23,23 @@ function normalized(plan){
  for(const b of copy.footerBoxes)if(b.mishnaSource==='levels')delete b.mishnaLevel;
  return copy;
 }
+function fixedSideSignature(boxes){
+ return (boxes||[]).map(box=>({
+  id:box.id,role:box.role,side:box.side,endY:box.endY,continues:box.continues,
+  overflowText:box.overflowText,overflowRuns:box.overflowRuns,
+  streamPageBottomY:box.streamPageBottomY,bodyStartGrid:box.bodyStartGrid||null,
+  strips:(box.strips||[]).map(s=>({x:s.x,width:s.width,y_start:s.y_start,y_end:s.y_end,lockYStart:!!s.lockYStart})),
+  lines:(box.lines||[]).map(line=>({
+   x:line.x,y:line.y,width:line.width,lineHeightPx:line.lineHeightPx,
+   forcedBreak:!!line.forcedBreak,isLast:!!line.isLast,
+   source:line.source?{start:line.source.start,end:line.source.end,paragraphId:line.source.paragraphId}:null,
+   sourceText:line.sourceText,
+   words:(line.wordTokens||[]).map(w=>({start:w.start,end:w.end,text:w.text})),
+   bodyText:line.render?.body?.text||'',
+   refs:(line.render?.body?.refs||[]).map(ref=>({uid:ref.uid,anchor:ref.anchor,localPos:ref.localPos})),
+  })),
+ }));
+}
 function singlePage(family,presence,reverse){
  const controls=document.createElement('div');controls.innerHTML='<input id="talmud-other-as-mishna" type="checkbox">'+['01','02','03','04'].map(id=>`<div class="stream" data-stream="${id}"></div>`).join('');document.body.append(controls);
  const fixed=reverse?['02','01']:['01','02'];
@@ -67,14 +84,19 @@ function singlePage(family,presence,reverse){
  const hosts=[0,1,2].map(()=>{const p=document.createElement('div');document.body.append(p);return p});
  try{
   const old=base.buildSinglePage(hosts[0],content,cfg),current=next.buildSinglePage(hosts[1],content,cfg);
-  const reference=base.buildSinglePage(hosts[2],content,{...cfg,levels:[fixed,['03','04']]});
+  // Compare the two equivalent level encodings inside the SAME candidate.
+  // Baseline equality is asserted separately by preservation cases; an
+  // unrelated main-text planner improvement must not masquerade as a footer
+  // grouping regression here.
+  const reference=next.buildSinglePage(hosts[2],content,{...cfg,levels:[fixed,['03','04']]});
   const oldPair=old.footerBoxes.filter(b=>b.mishnaRole),newPair=current.footerBoxes.filter(b=>b.mishnaRole);
   assert(oldPair.length===0,'baseline unexpectedly supports checkbox-generated first level');
   assert(newPair.length===2,'candidate did not activate both lower roles');
   assert(newPair.every(b=>b.mishnaLevel===1),'first-level provenance was lost');
   assert(JSON.stringify(normalized(current))===JSON.stringify(normalized(reference)),'short-form result differs from established expanded-level layout');
   assert(hosts[1].innerHTML===hosts[2].innerHTML,'same hierarchy painted differently');
-  assert(JSON.stringify(current.streamBoxes)===JSON.stringify(old.streamBoxes),'fixed side geometry or ownership changed');
+  assert(JSON.stringify(fixedSideSignature(current.streamBoxes))===JSON.stringify(fixedSideSignature(old.streamBoxes)),
+   'fixed side geometry or source ownership changed');
   assert(current.streamCoverage.every(c=>c.exact),'source coverage not exact');
   assert(JSON.stringify({content,cfg})===input&&window.storageSnapshot()===storageBefore,'input or storage was rewritten');
   rectangleCheck(current);
@@ -105,7 +127,7 @@ async function runPaginationChecks(){
   const stateBefore=JSON.stringify({input,cfg});
   try{
    const build=async(api,levels)=>{const host=document.createElement('div');hosts.push(host);document.body.append(host);const result=await api.buildPages(host,input,{...cfg,levels});assert(result.complete,'multi-page run incomplete');return {host,result}};
-   const reference=await build(base,[fixed,['03','04']]),current=await build(next,cfg.levels);
+   const reference=await build(next,[fixed,['03','04']]),current=await build(next,cfg.levels);
    assert(current.result.pages.length>=2,'fixture is not actually multi-page');
    assert(current.result.pages.length===reference.result.pages.length,'equivalent configuration changed page count');
    assert(current.host.innerHTML===reference.host.innerHTML,'equivalent configuration has different page HTML');

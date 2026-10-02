@@ -23,7 +23,8 @@ export function runExactParagraphAlignmentChecks(old) {
    const refs=plan=>[...plan.lines.flatMap(l=>[...(l.render.opening?.part.refs||[]),...l.render.body.refs]),...plan.overflowParagraphs.flatMap(p=>p.mainRefs||[])];
    assert(refs(b).map(r=>r.uid).sort().join('|')===(entry.mainRefs||[]).map(r=>r.uid).sort().join('|'),'reference ownership changed');
    const ranges=hosts.map(h=>[...h.querySelectorAll('.v9-planned-line-text')].map(el=>{const range=document.createRange();range.selectNodeContents(el);const r=range.getBoundingClientRect(),base=h.getBoundingClientRect();return {left:r.left-base.left,right:r.right-base.left,width:r.width,top:r.top-base.top,bottom:r.bottom-base.top}}));
-   const exact=b.lines.some(l=>l.tailExactRebalanced),center=b.lines.some(l=>l.openingParagraphCentered);
+   const exact=b.lines.some(l=>l.tailExactRebalanced),center=b.lines.some(l=>l.openingParagraphCentered),
+    fallback=b.lines.some(l=>l.tailWordSpacingFallbackStretched);
    if(exact){
     assert(a.lines.some(l=>l.tailWordSpacingCapped),'exact recovery changed an already-uncapped tail');
     assert(b.lines.every(l=>!l.tailWordSpacingCapped),'exact alternative still caps a row');
@@ -39,6 +40,22 @@ export function runExactParagraphAlignmentChecks(old) {
      }
     }
    }
+   if(fallback){
+    assert(a.lines.some(l=>l.tailWordSpacingCapped),'fallback did not reproduce a historically capped tail');
+    assert(b.lines.every(l=>!l.tailWordSpacingCapped),'fallback still reports clipped spacing');
+    for(let i=0;i<b.lines.length;i++){
+     const l=b.lines[i],prev=a.lines[i];
+     assert(l.x===prev.x&&l.y===prev.y&&l.width===prev.width&&l.lineHeightPx===prev.lineHeightPx,'fallback changed a row box');
+     assert(JSON.stringify(l.render.opening)===JSON.stringify(prev.render.opening),'fallback moved the opening');
+     assert(JSON.stringify(l.wordTokens)===JSON.stringify(prev.wordTokens),'fallback changed source word ownership after redistribution finished');
+     if(l.tailWordSpacingFallbackStretched){
+      assert(l.render.wordSpacing===l.tailWordSpacingTarget,'fallback did not apply the exact measured spacing');
+      assert(l.render.wordSpacing>0,'fallback stretch has no spacing');
+      assert(Math.abs(ranges[1][i].left-l.x)<=.04,'fallback row still misses the left edge');
+      assert(Math.abs(ranges[1][i].right-l.x-l.width)<=.04,'fallback row exceeds or misses the right edge');
+     }
+    }
+   }
    if(center){
     assert(b.lines.length===2&&b.lines[1].isLast,'centering applied beyond complete two-row paragraph');
     assert(JSON.stringify(a.lines[0])===JSON.stringify(b.lines[0]),'centering changed first row or opening');
@@ -47,8 +64,8 @@ export function runExactParagraphAlignmentChecks(old) {
     assert(rect.right<=glyph.x-glyph.gap+.04,'centred row overlaps opening or gap');
     assert(last.y===a.lines[1].y&&last.lineHeightPx===a.lines[1].lineHeightPx&&last.naturalWidth===a.lines[1].naturalWidth,'centering changed height/word size');
    }
-   if(!exact&&!center){assert(same,'unsupported case changed plan');assert(hosts[0].innerHTML===hosts[1].innerHTML,'unsupported case changed paint');}
-   return {same,exact,center,rows:b.lines.length,
+   if(!exact&&!center&&!fallback){assert(same,'unsupported case changed plan');assert(hosts[0].innerHTML===hosts[1].innerHTML,'unsupported case changed paint');}
+   return {same,exact,center,fallback,rows:b.lines.length,
     beforeUnderfilled:a.lines.filter((l,i)=>!l.isLast&&l.wordTokens.length&&ranges[0][i].left-l.x>.5).length,
     afterUnderfilled:b.lines.filter((l,i)=>!l.isLast&&l.wordTokens.length&&ranges[1][i].left-l.x>.5).length,
     maxEvaluations:Math.max(0,...b.diagnostics.map(d=>d.exactPartitionEvaluations||0)),
@@ -97,6 +114,7 @@ export function runExactParagraphAlignmentChecks(old) {
  }
  return {total:records.length,passed:records.filter(r=>r.pass).length,failed:records.filter(r=>!r.pass).length,
   exactRecovered:records.filter(r=>r.pass&&r.exact).length,centred:records.filter(r=>r.pass&&r.center).length,
+  fallbackStretched:records.filter(r=>r.pass&&r.fallback).length,
   unchanged:records.filter(r=>r.pass&&r.same).length,
   beforeUnderfilled:records.filter(r=>r.name.startsWith('original-matrix/')).reduce((n,r)=>n+(r.beforeUnderfilled||0),0),
   afterUnderfilled:records.filter(r=>r.name.startsWith('original-matrix/')).reduce((n,r)=>n+(r.afterUnderfilled||0),0),

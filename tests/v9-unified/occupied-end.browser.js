@@ -30,6 +30,24 @@ function extent(lines,origin){
  }
  return end;
 }
+function withoutJustificationDetails(shape) {
+ const out=structuredClone(shape);
+ for(const line of out.lines||[]) {
+  if(line.render) delete line.render.wordSpacing;
+  delete line.tailWordSpacingTarget;
+  delete line.tailWordSpacingCapped;
+  delete line.tailWordSpacingFallbackStretched;
+ }
+ for(const diagnostic of out.diagnostics||[]) delete diagnostic.fallbackStretchedRows;
+ return out;
+}
+function normalizedPaintHTML(root) {
+ const copy=root.cloneNode(true);
+ for(const body of copy.querySelectorAll('.v9-planned-line-text,.v9-planned-stream-text')) {
+  body.style.wordSpacing='';
+ }
+ return copy.innerHTML;
+}
 function checkRectangles(page,lines,padding=0){
  const collisions=[];
  const painted=[...page.querySelectorAll('.v9-final-main-line,.v9-final-stream-line')];
@@ -70,7 +88,8 @@ export function runOccupiedEndChecks(baseline){
     const {endY:baselineEnd,...oldShape}=baseline.layoutV9MainParagraphs([entry],strips,context,origin+245);
     const baselineShape=baselineWithCompleteOpeningSeparator(oldShape);
     const {endY:currentEnd,...currentShape}=plan;
-    assert(JSON.stringify(currentShape)===JSON.stringify(baselineShape),'occupancy correction changed row content, anchors or planned placement');
+    assert(JSON.stringify(withoutJustificationDetails(currentShape))===JSON.stringify(withoutJustificationDetails(baselineShape)),
+      'occupancy correction changed row content, anchors or planned placement beyond justification');
     const referencePage=document.createElement('div');
     for(const line of baselineShape.lines)renderV9PlannedMainLine(line,referencePage,0);
     for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
@@ -78,7 +97,8 @@ export function runOccupiedEndChecks(baseline){
     assert(plan.endY===extent(plan.lines,origin),`failed search takes space: end=${plan.endY}, committed=${extent(plan.lines,origin)}`);
     assert(plan.lines.map(l=>l.sourceText).join('')+plan.overflowText===text,'source model changed');
     const renderedSourceExact=sourceOf(page)+plan.overflowText===text;
-    assert(page.innerHTML===referencePage.innerHTML,'paint differs from pinned baseline');
+    assert(normalizedPaintHTML(page)===normalizedPaintHTML(referencePage),
+      'paint differs from pinned baseline beyond word justification');
     assert(renderedSourceExact,'opening-tail source conservation regressed');
     assert(JSON.stringify({entry,strips})===snapshot,'source/styles/anchors mutated');
     assert(JSON.stringify(plan)===planBeforePaint,'painter changed the plan');
