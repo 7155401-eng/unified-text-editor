@@ -541,8 +541,9 @@ function buildDialog() {
         </div>
         <div class="rtpt-panel" id="rtpt-panel"></div>
         <div class="rtpt-msg" id="rtpt-msg"></div>
-        <div class="rtpt-hint">קיצורי מקלדת: חצים ← → למעבר בין עמודים · plus ו-minus לשורות ·
-          Esc לסגירה. בחירת עמוד ברשימה גוללת אליו ומסמנת אותו במסך.</div>
+        <div class="rtpt-hint">קיצורי מקלדת: מקשי החִצים למעבר בין עמודים ·
+          <bdi>+</bdi> ו-<bdi>−</bdi> להורדת ומשיכת שורות ·
+          <bdi>Esc</bdi> לסגירה. בחירת עמוד ברשימה גוללת אליו ומסמנת אותו במסך.</div>
       </div>
       <div class="rtpt-foot">
         <button type="button" data-act="clear-all">נקה הכול</button>

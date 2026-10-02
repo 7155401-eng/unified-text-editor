@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>page tweaker browser fixture</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; }
+  /* עמודים מדומים בגודל סביר, כדי שהמדידה תמצא גיאומטריה אמיתית לקרוא. */
+  #pages { padding: 10px; }
+  .page { position: relative; width: 420px; height: 300px; padding: 12px;
+          box-sizing: border-box; border: 1px solid #ccc; margin: 0 0 16px; background: #fff; }
+  .v9-line { position: absolute; height: 18px; line-height: 18px; font-size: 13px; }
+  /* קבוצת האבחון שאליה הכפתור אמור להיתלות */
+  #render-safety-diagnostics-group { padding: 6px; }
+</style>
+</head>
+<body>
+  <div id="render-safety-diagnostics-group"></div>
+  <div id="pages"></div>
+
+<script type="module">
+import {
+  normalizePageTweaks,
+  withPageTweak,
+  getPageTweak,
+  updatePageTweakMeasurements,
+  approvePageTweakWithMeasurements,
+  emptyPageTweaks,
+} from "/src/page_tweaks.js";
+
+// ── עמודים מדומים ────────────────────────────────────────────────────────────
+// שלושה עמודים: הראשון מלא, השני חצי ריק (אמור להיחשב בעייתי), השלישי מלא.
+const LINE_COUNTS = [14, 4, 14];
+const pages = document.getElementById("pages");
+LINE_COUNTS.forEach((lines, pageIndex) => {
+  const page = document.createElement("div");
+  page.className = "page";
+  for (let i = 0; i < lines; i += 1) {
+    const line = document.createElement("div");
+    line.className = "v9-line v9-role-main";
+    line.style.top = `${12 + i * 18}px`;
+    line.style.right = "12px";
+    line.style.width = "396px";
+    line.textContent = `שורה ${i + 1} בעמוד ${pageIndex + 1}`;
+    page.appendChild(line);
+  }
+  pages.appendChild(page);
+});
+
+// ── מנהל חלוניות מדומה, מגובה במודל האמיתי ──────────────────────────────────
+// אין כאן העתק של הלוגיקה: כל פעולה עוברת דרך `page_tweaks.js` עצמו, ולכן
+// הבדיקה בודקת את המסך מול המודל האמיתי ולא מול חיקוי שלו.
+class FakePaneManager {
+  constructor() {
+    this.pageTweaks = emptyPageTweaks();
+    this.saveCount = 0;
+    this.renderCount = 0;
+    this.panes = [
+      { paneRole: "main", streamCode: null, label: "ראשי" },
+      { paneRole: "stream", streamCode: "01", label: "ביאור" },
+      { paneRole: "stream", streamCode: "02", label: "פשר דבר" },
+    ];
+  }
+  _save() { this.saveCount += 1; }
+  getPageTweaks() { return normalizePageTweaks(this.pageTweaks); }
+  getPageTweak(n) { return getPageTweak(this.pageTweaks, n); }
+  setPageTweak(n, patch = {}, { rerender = true } = {}) {
+    const before = JSON.stringify(normalizePageTweaks(this.pageTweaks));
+    const next = withPageTweak(this.pageTweaks, n, patch);
+    if (before === JSON.stringify(next)) return this.getPageTweak(n);
+    this.pageTweaks = next;
+    this._save();
+    if (rerender) this.renderCount += 1;
+    return this.getPageTweak(n);
+  }
+  approvePageTweak(n, measurements = {}) {
+    this.pageTweaks = approvePageTweakWithMeasurements(this.pageTweaks, n, measurements);
+    this._save();
+    return this.getPageTweak(n);
+  }
+  updatePageTweakMeasurements(n, m = {}) {
+    this.pageTweaks = updatePageTweakMeasurements(this.pageTweaks, n, m);
+    return this.getPageTweak(n);
+  }
+  syncPageTweakMeasurements(reports = []) {
+    let next = this.pageTweaks;
+    for (const r of reports) {
+      if (!r || !Number.isFinite(Number(r.page))) continue;
+      next = updatePageTweakMeasurements(next, r.page, {
+        bottomGapLines: r.bottomGapLines,
+        overflowPx: r.overflowPx,
+        linePitchPx: r.linePitchPx,
+      });
+    }
+    this.pageTweaks = normalizePageTweaks(next);
+    return this.getPageTweaks();
+  }
+  resetPageTweak(n) {
+    return this.setPageTweak(n, {
+      linesDiff: 0, status: "pending", spaceLines: null,
+      overflowPx: null, notes: "", footnoteShift: {},
+    });
+  }
+  clearPageTweaks() {
+    if (!Object.keys(normalizePageTweaks(this.pageTweaks).pages).length) return false;
+    this.pageTweaks = emptyPageTweaks();
+    this._save();
+    this.renderCount += 1;
+    return true;
+  }
+}
+
+window.paneManager = new FakePaneManager();
+
+// החלון נפתח רק כשהבדיקה מבקשת, כדי שאפשר יהיה לבדוק גם את החיבור לסרגל.
+const { wirePageTweaker } = await import("/src/page_tweaker_lazy_wire.js");
+wirePageTweaker(window.paneManager, pages);
+
+window.__fixtureReady = true;
+</script>
+</body>
+</html>

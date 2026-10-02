@@ -43,3 +43,6 @@ debug-*.png
 debug-*.ps1
 bject CreationTime, LastWriteTime, Length, FullName*
 public/__probe_doc.json
+
+# תוצרי בדיקות — נוצרים בכל הרצה, אינם מקור
+test-results/
