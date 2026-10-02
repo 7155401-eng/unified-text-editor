@@ -1,10 +1,9 @@
-name: Public release verification
+name: Public release verification (manual diagnostic)
+# The first run received HTTP 403 from the live origin even for the already
+# deployed baseline. This is not a successful deployment check and must not be
+# retried automatically on every PR/push. Preserve strict failure behavior for
+# an explicitly requested diagnostic; do not alter application access controls.
 on:
-  pull_request:
-    branches: [main]
-    paths: ['scripts/release/**', 'tests/integration/public-build-verification.test.mjs', '.github/workflows/public-release-verification.yml']
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,7 +25,7 @@ jobs:
         run: node --test tests/integration/public-build-verification.test.mjs
       - name: Read public assets and verify the published version
         env:
-          EXPECTED_COMMIT: ${{ github.event.pull_request.base.sha || github.sha }}
+          EXPECTED_COMMIT: ${{ github.sha }}
         run: node scripts/release/verify-public-build.mjs
       - name: Retain actual deployment evidence
         if: always()
