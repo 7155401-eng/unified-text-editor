@@ -8,7 +8,6 @@ const DEFAULTS = {
 
 let _documentStyleCacheRaw = null;
 let _documentStyleCacheSnapshot = null;
-let _documentStyleInitialized = false;
 
 /*
  * 💡 What: In-memory cache for configuration settings synchronized via storage events.
@@ -17,10 +16,10 @@ let _documentStyleInitialized = false;
  * 🔬 Measurement: Observe reduced main thread blocking in performance profiles during scrolling/rendering.
  */
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("storage", (e) => {
     if (e.key === STORAGE_KEY || e.key === null) {
-      _documentStyleInitialized = false;
+      _documentStyleCacheRaw = null; // force read
     }
   });
 }
@@ -43,11 +42,10 @@ function parseDocumentStyleSnapshot(raw) {
 }
 
 export function loadDocumentStyleSettings() {
-  if (!_documentStyleInitialized) {
-    const raw = readDocumentStyleStorageRaw();
+  const raw = readDocumentStyleStorageRaw();
+  if (!_documentStyleCacheSnapshot || raw !== _documentStyleCacheRaw) {
     _documentStyleCacheRaw = raw;
     _documentStyleCacheSnapshot = parseDocumentStyleSnapshot(raw);
-    _documentStyleInitialized = true;
   }
   // Keep the historical mutable-copy return contract.
   return { ..._documentStyleCacheSnapshot };
@@ -59,7 +57,6 @@ export function saveDocumentStyleSettings(settings) {
   localStorage.setItem(STORAGE_KEY, raw);
   _documentStyleCacheRaw = raw;
   _documentStyleCacheSnapshot = Object.freeze({ ...next });
-  _documentStyleInitialized = true;
   return next;
 }
 

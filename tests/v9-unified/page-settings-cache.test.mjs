@@ -37,7 +37,7 @@ test('page-settings cache detects same-tab writes and preserves runtime fallback
     'ravtext.output.includeBackground': '0',
   });
   globalThis.localStorage = storage;
-  globalThis.window = { __RAVTEXT_STORAGE_DISABLED__: false };
+  globalThis.window = { __RAVTEXT_STORAGE_DISABLED__: false, addEventListener: () => {} };
   globalThis.document = fakeDocument();
 
   const originalParse = JSON.parse;

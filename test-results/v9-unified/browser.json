@@ -1,0 +1,757 @@
+{
+  "tests": 126,
+  "passed": 126,
+  "failed": 0,
+  "results": [
+    {
+      "name": "actual DOM planned typography serif dropped",
+      "status": "pass",
+      "ms": 58,
+      "lines": 6
+    },
+    {
+      "name": "actual DOM planned typography serif raised",
+      "status": "pass",
+      "ms": 11,
+      "lines": 6
+    },
+    {
+      "name": "actual DOM planned typography sans-serif dropped",
+      "status": "pass",
+      "ms": 23,
+      "lines": 7
+    },
+    {
+      "name": "actual DOM planned typography sans-serif raised",
+      "status": "pass",
+      "ms": 14,
+      "lines": 6
+    },
+    {
+      "name": "actual DOM planned typography monospace dropped",
+      "status": "pass",
+      "ms": 23,
+      "lines": 7
+    },
+    {
+      "name": "actual DOM planned typography monospace raised",
+      "status": "pass",
+      "ms": 10,
+      "lines": 7
+    },
+    {
+      "name": "DOM dropped 1 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 6
+    },
+    {
+      "name": "DOM dropped 2 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "DOM dropped 3 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "DOM dropped 4 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "DOM dropped 5 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "DOM dropped 6 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "DOM dropped 7 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "DOM dropped 8 lines, next paragraph has its own opening",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "complete V9 paginator preserves many styled source paragraphs",
+      "status": "pass",
+      "ms": 285,
+      "pages": 6,
+      "rows": 60
+    },
+    {
+      "name": "full V9 side streams preserve source and refs enabled=true",
+      "status": "pass",
+      "ms": 1124,
+      "pages": 3,
+      "rows": 25,
+      "refs": 10
+    },
+    {
+      "name": "full V9 side streams preserve source and refs enabled=false",
+      "status": "pass",
+      "ms": 416,
+      "pages": 2,
+      "rows": 18,
+      "refs": 0
+    },
+    {
+      "name": "font timeout is a failure rather than ready metadata",
+      "status": "pass",
+      "ms": 16
+    },
+    {
+      "name": "opening-only paragraph has one terminal reference in real DOM",
+      "status": "pass",
+      "ms": 2
+    },
+    {
+      "name": "explicit breaks remain distinct under a wide opening window",
+      "status": "pass",
+      "ms": 4
+    },
+    {
+      "name": "scope and continuation rules use original paragraph identity",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "inline point sizes and requested opening size share one pixel basis",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "full paginator splits one long source without duplicate opening or lost styles",
+      "status": "pass",
+      "ms": 2473,
+      "pages": 13,
+      "rows": 121
+    },
+    {
+      "name": "page limit returns all unconsumed source instead of reporting success",
+      "status": "pass",
+      "ms": 69
+    },
+    {
+      "name": "legacy metadata and stretch passes cannot change finalized main lines",
+      "status": "pass",
+      "ms": 9
+    },
+    {
+      "name": "font generation invalidates measurements rather than reusing stale cache",
+      "status": "pass",
+      "ms": 1
+    },
+    {
+      "name": "cancelled render leaves existing destination intact",
+      "status": "pass",
+      "ms": 1
+    },
+    {
+      "name": "IndexedDB emergency recovery round-trips exact document JSON in real Chromium",
+      "status": "pass",
+      "ms": 15
+    },
+    {
+      "name": "IndexedDB recovery latest-wins queue preserves the newest operation without editor imports",
+      "status": "pass",
+      "ms": 8
+    },
+    {
+      "name": "Word round-trip keeps hard breaks inside a paragraph distinct from paragraph boundaries",
+      "status": "pass",
+      "ms": 1
+    },
+    {
+      "name": "B13 rich Word export preserves hard breaks and real block boundaries exactly",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "B13 top-level inline siblings do not become invented Word line breaks",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "B13 intentional empty editor blocks remain blank lines",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "B13 formatting whitespace between top-level blocks does not create lines",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "wrapped ribbon tabs drive the sticky toolbar offset from measured height",
+      "status": "pass",
+      "ms": 16
+    },
+    {
+      "name": "edge bidi controls remain active around neutral punctuation instead of display-none",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "V9 split DOM matches native Chromium BiDi placement for apostrophe + parentheses",
+      "status": "pass",
+      "ms": 5
+    },
+    {
+      "name": "V9 paints page numbers during page construction without a post-render event",
+      "status": "pass",
+      "ms": 8
+    },
+    {
+      "name": "document page tweak -N reserves real V9 row capacity before planning",
+      "status": "pass",
+      "ms": 494
+    },
+    {
+      "name": "document page tweak +N is a safe pull request, never permission to overflow",
+      "status": "pass",
+      "ms": 131
+    },
+    {
+      "name": "page tweak footnoteShift moves footer rows through normal V9 overflow",
+      "status": "pass",
+      "ms": 32
+    },
+    {
+      "name": "main stream layout exposes a 1/2-column control",
+      "status": "pass",
+      "ms": 7
+    },
+    {
+      "name": "shared production helper applies main stream two-column layout",
+      "status": "pass",
+      "ms": 0
+    },
+    {
+      "name": "V9 main stream flows right column then left without source loss",
+      "status": "pass",
+      "ms": 23
+    },
+    {
+      "name": "collapsed ribbon hides separator-only level but preserves real active controls",
+      "status": "pass",
+      "ms": 14
+    },
+    {
+      "name": "code/quote block semantics survive V9 measurement and paint",
+      "status": "pass",
+      "ms": 17
+    },
+    {
+      "name": "front-matter physical offset does not consume V9 maxPages body budget",
+      "status": "pass",
+      "ms": 615
+    },
+    {
+      "name": "classic source tokens do not break around punctuation without whitespace",
+      "status": "pass",
+      "ms": 15
+    },
+    {
+      "name": "Hebrew niqqud shaping features are preserved from V9 measurement to paint",
+      "status": "pass",
+      "ms": 6
+    },
+    {
+      "name": "rich side text with large inline bold is measured before row placement",
+      "status": "pass",
+      "ms": 16,
+      "rows": 8
+    },
+    {
+      "name": "B3: punctuation-adjacent spaces remain visibly present in V9 main text",
+      "status": "pass",
+      "ms": 1852
+    },
+    {
+      "name": "configured inter-note gap has no leading or trailing visible slot",
+      "status": "pass",
+      "ms": 2
+    },
+    {
+      "name": "crown uses actual stream pitch plus explicit main gap",
+      "status": "pass",
+      "ms": 59,
+      "mainTop": 106.2,
+      "crownBottom": 98.2
+    },
+    {
+      "name": "global stream line-height is a real V9 planner pitch, independent from main",
+      "status": "pass",
+      "ms": 66
+    },
+    {
+      "name": "explicit per-stream line-height overrides the global stream pitch",
+      "status": "pass",
+      "ms": 70
+    },
+    {
+      "name": "configured four-row crown paints four complete rows before body transition",
+      "status": "pass",
+      "ms": 634
+    },
+    {
+      "name": "heterogeneous crown pitches do not manufacture a blank row at crown→body transition",
+      "status": "pass",
+      "ms": 594
+    },
+    {
+      "name": "main stream title reserves geometry below crown and honors titleShow",
+      "status": "pass",
+      "ms": 163
+    },
+    {
+      "name": "full note pagination keeps every new note start with its main reference",
+      "status": "pass",
+      "ms": 2138,
+      "pages": 4,
+      "notes": 9
+    },
+    {
+      "name": "marker normalization leaves bold covering complete intended word in DOM",
+      "status": "pass",
+      "ms": 7
+    },
+    {
+      "name": "hidden mid-word reference has no invented whitespace; visible=false",
+      "status": "pass",
+      "ms": 17
+    },
+    {
+      "name": "hidden mid-word reference has no invented whitespace; visible=true",
+      "status": "pass",
+      "ms": 17
+    },
+    {
+      "name": "every styled note survives all columns and carry-over; single=true",
+      "status": "pass",
+      "ms": 11412,
+      "pages": 3,
+      "notes": 7
+    },
+    {
+      "name": "every styled note survives all columns and carry-over; single=false",
+      "status": "pass",
+      "ms": 3358,
+      "pages": 4,
+      "notes": 7
+    },
+    {
+      "name": "full crown reserves clearance above opposite side title; right",
+      "status": "pass",
+      "ms": 255
+    },
+    {
+      "name": "full crown reserves clearance above opposite side title; left",
+      "status": "pass",
+      "ms": 255
+    },
+    {
+      "name": "styled numbering is measured without inheriting justification expansion",
+      "status": "pass",
+      "ms": 1301
+    },
+    {
+      "name": "base bold style X does not promote whole main text to override Y",
+      "status": "pass",
+      "ms": 10
+    },
+    {
+      "name": "source style fontWeight 700 receives Y while base X bold alone does not",
+      "status": "pass",
+      "ms": 11
+    },
+    {
+      "name": "snapshot case: explicit Word Arial cannot beat selected X, explicit bold still gets Y",
+      "status": "pass",
+      "ms": 9
+    },
+    {
+      "name": "main bold override checkbox off preserves Word font on explicit bold",
+      "status": "pass",
+      "ms": 7
+    },
+    {
+      "name": "secondary Mishnah level 03/04 flows analytically beside and below its float",
+      "status": "pass",
+      "ms": 15
+    },
+    {
+      "name": "per-stream page tweak shifts only the requested side commentary bottom",
+      "status": "pass",
+      "ms": 2438
+    },
+    {
+      "name": "Mishnah note shift can move one stream completely without leaving an empty title box",
+      "status": "pass",
+      "ms": 41
+    },
+    {
+      "name": "two fixed Talmud streams plus two explicit Mishnah streams keep 2+2 geometry",
+      "status": "pass",
+      "ms": 159
+    },
+    {
+      "name": "main-bottom gap is reserved in the V9 plan and post-pass cannot move painted geometry",
+      "status": "pass",
+      "ms": 23
+    },
+    {
+      "name": "full post-render V9 pipeline cannot mutate finalized line geometry",
+      "status": "pass",
+      "ms": 1380
+    },
+    {
+      "name": "main-bottom gap never adds an extra blank slot after a lower side stream",
+      "status": "pass",
+      "ms": 70
+    },
+    {
+      "name": "horizontal main-side gap cannot move crown→main vertical geometry",
+      "status": "pass",
+      "ms": 387
+    },
+    {
+      "name": "legacy audit: side commentaries widen after a short main text ends",
+      "status": "pass",
+      "ms": 424
+    },
+    {
+      "name": "commentary knee never inserts a blank row when crown→main gap is off the stream grid",
+      "status": "pass",
+      "ms": 4046
+    },
+    {
+      "name": "side streams widen on their own row grids without forcing a shared off-grid boundary",
+      "status": "pass",
+      "ms": 3279
+    },
+    {
+      "name": "cross-geometry: crown gap + knee + dropped opening share one row grid and full visual width",
+      "status": "pass",
+      "ms": 630
+    },
+    {
+      "name": "opening after deterministic widening knee preserves native RTL apostrophe-parenthesis order",
+      "status": "pass",
+      "ms": 5
+    },
+    {
+      "name": "stress matrix: dropped openings never preserve stale narrow width after a widening knee",
+      "status": "pass",
+      "ms": 2
+    },
+    {
+      "name": "stress matrix: RTL neutral punctuation after a knee matches native Chromium ordering",
+      "status": "pass",
+      "ms": 7
+    },
+    {
+      "name": "opening-window final body is centered: serif, drop=2, x=0",
+      "status": "pass",
+      "ms": 7,
+      "actualCenter": 615.9921875,
+      "expectedCenter": 616,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: serif, drop=2, x=19",
+      "status": "pass",
+      "ms": 4,
+      "actualCenter": 634.9921875,
+      "expectedCenter": 635,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: serif, drop=3, x=0",
+      "status": "pass",
+      "ms": 4,
+      "actualCenter": 615.9921875,
+      "expectedCenter": 616,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: serif, drop=3, x=19",
+      "status": "pass",
+      "ms": 4,
+      "actualCenter": 634.9921875,
+      "expectedCenter": 635,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: serif, drop=4, x=0",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 615.9921875,
+      "expectedCenter": 616,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: serif, drop=4, x=19",
+      "status": "pass",
+      "ms": 4,
+      "actualCenter": 634.9921875,
+      "expectedCenter": 635,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: sans-serif, drop=2, x=0",
+      "status": "pass",
+      "ms": 7,
+      "actualCenter": 590.4765625,
+      "expectedCenter": 590.484375,
+      "freeWidth": 48.96875
+    },
+    {
+      "name": "opening-window final body is centered: sans-serif, drop=2, x=19",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 609.4765625,
+      "expectedCenter": 609.484375,
+      "freeWidth": 48.96875
+    },
+    {
+      "name": "opening-window final body is centered: sans-serif, drop=3, x=0",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 590.4765625,
+      "expectedCenter": 590.484375,
+      "freeWidth": 48.96875
+    },
+    {
+      "name": "opening-window final body is centered: sans-serif, drop=3, x=19",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 609.4765625,
+      "expectedCenter": 609.484375,
+      "freeWidth": 48.96875
+    },
+    {
+      "name": "opening-window final body is centered: sans-serif, drop=4, x=0",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 590.4765625,
+      "expectedCenter": 590.484375,
+      "freeWidth": 48.96875
+    },
+    {
+      "name": "opening-window final body is centered: sans-serif, drop=4, x=19",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 609.4765625,
+      "expectedCenter": 609.484375,
+      "freeWidth": 48.96875
+    },
+    {
+      "name": "opening-window final body is centered: monospace, drop=2, x=0",
+      "status": "pass",
+      "ms": 7,
+      "actualCenter": 615.9921875,
+      "expectedCenter": 616,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: monospace, drop=2, x=19",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 634.9921875,
+      "expectedCenter": 635,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: monospace, drop=3, x=0",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 615.9921875,
+      "expectedCenter": 616,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: monospace, drop=3, x=19",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 634.9921875,
+      "expectedCenter": 635,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: monospace, drop=4, x=0",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 615.9921875,
+      "expectedCenter": 616,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "opening-window final body is centered: monospace, drop=4, x=19",
+      "status": "pass",
+      "ms": 3,
+      "actualCenter": 634.9921875,
+      "expectedCenter": 635,
+      "freeWidth": 55.84375
+    },
+    {
+      "name": "legacy audit: heavy mixed pagination keeps every rendered row inside the physical page",
+      "status": "pass",
+      "ms": 20237,
+      "pages": 17
+    },
+    {
+      "name": "legacy audit: one long commentary stream really occupies both sides",
+      "status": "pass",
+      "ms": 321
+    },
+    {
+      "name": "legacy audit: one short commentary with no main text uses the free full width",
+      "status": "pass",
+      "ms": 5
+    },
+    {
+      "name": "legacy audit: a footer title is never published without at least one content row",
+      "status": "pass",
+      "ms": 10
+    },
+    {
+      "name": "paired Mishnah footer with zero measured rows keeps full rich remainder and no phantom box",
+      "status": "pass",
+      "ms": 120
+    },
+    {
+      "name": "paired footer manual shift preserves string and object rich inputs",
+      "status": "pass",
+      "ms": 188
+    },
+    {
+      "name": "short heading is not published as a one-line intermediate page",
+      "status": "pass",
+      "ms": 3799
+    },
+    {
+      "name": "short stream carry shares the next page instead of creating a drain-marker page",
+      "status": "pass",
+      "ms": 460
+    },
+    {
+      "name": "legal note continuation does not create very short intermediate pages",
+      "status": "pass",
+      "ms": 6521,
+      "pages": 6,
+      "minFill": 0.999
+    },
+    {
+      "name": "pending main tail plus note carry does not close an almost-empty page",
+      "status": "pass",
+      "ms": 8314,
+      "pages": 5,
+      "minFill": 0.919,
+      "mainPages": [
+        0,
+        2,
+        3
+      ],
+      "notePages": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "name": "no-mid emergency split searches page-sized prefixes for a paragraph larger than one page",
+      "status": "pass",
+      "ms": 607,
+      "pages": 4,
+      "firstFill": 0.874
+    },
+    {
+      "name": "footer note starts on the same page as its main reference under carry pressure",
+      "status": "pass",
+      "ms": 791
+    },
+    {
+      "name": "probe: split extension can fill through a legal note continuation",
+      "status": "pass",
+      "ms": 9507,
+      "pages": 11,
+      "minFill": 0.8271,
+      "fills": [
+        0.9922,
+        0.9913,
+        0.8271,
+        0.8819,
+        0.9216,
+        0.9606,
+        0.9987,
+        0.9748,
+        0.9783,
+        0.9925
+      ]
+    },
+    {
+      "name": "long anchored note may continue after starting with its source line",
+      "status": "pass",
+      "ms": 12162
+    },
+    {
+      "name": "B10: configured Talmud sides keep ownership when the left stream is empty",
+      "status": "pass",
+      "ms": 469,
+      "pages": 1,
+      "footerWidth": 356,
+      "innerWidth": 356
+    },
+    {
+      "name": "audit B12: a visible main reference is painted at the original marker boundary",
+      "status": "pass",
+      "ms": 14
+    },
+    {
+      "name": "audit C8: the first wide commentary row pulls source text forward after a narrow strip",
+      "status": "pass",
+      "ms": 9,
+      "fill": 0.951,
+      "words": 9
+    },
+    {
+      "name": "B20 crowded pagination: footer stream never overlaps main rows across pages",
+      "status": "pass",
+      "ms": 12093
+    },
+    {
+      "name": "B20/C7: footer streams never cover the last main-text row",
+      "status": "pass",
+      "ms": 434,
+      "mainBottom": 173.05,
+      "footerTop": 189.05
+    },
+    {
+      "name": "B5 selected one-line rule suppresses an opening before V9 paints it",
+      "status": "pass",
+      "ms": 8
+    },
+    {
+      "name": "B5 rules are opt-in and do not remove the same opening by default",
+      "status": "pass",
+      "ms": 7
+    },
+    {
+      "name": "font preflight includes note runs, nested notes and resolved label styles",
+      "status": "pass",
+      "ms": 1
+    }
+  ],
+  "browserVersion": "153.0.8010.12",
+  "pageErrors": []
+}

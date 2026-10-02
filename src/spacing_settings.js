@@ -66,7 +66,6 @@ const FIELDS = [
 let _spacingCacheRaw = null;
 let _spacingCacheSnapshot = null;
 let _spacingStoredSnapshot = null;
-let _spacingInitialized = false;
 
 /*
  * 💡 What: In-memory cache for configuration settings synchronized via storage events.
@@ -75,10 +74,10 @@ let _spacingInitialized = false;
  * 🔬 Measurement: Observe reduced main thread blocking in performance profiles during scrolling/rendering.
  */
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("storage", (e) => {
     if (e.key === STORAGE_KEY || e.key === null) {
-      _spacingInitialized = false;
+      _spacingCacheRaw = null; // force read
     }
   });
 }
@@ -112,13 +111,12 @@ function spacingSnapshotsFromRaw(raw) {
 }
 
 function ensureSpacingSnapshots() {
-  if (_spacingInitialized) return;
   const raw = readSpacingStorageRaw();
+  if (_spacingCacheSnapshot && _spacingStoredSnapshot && raw === _spacingCacheRaw) return;
   const snapshots = spacingSnapshotsFromRaw(raw);
   _spacingCacheRaw = raw;
   _spacingStoredSnapshot = snapshots.stored;
   _spacingCacheSnapshot = snapshots.effective;
-  _spacingInitialized = true;
 }
 
 export function getSpacingSettingsSnapshot() {
@@ -145,7 +143,6 @@ export function saveSpacingSettings(settings) {
   _spacingCacheRaw = raw;
   _spacingStoredSnapshot = Object.freeze({ ...next });
   _spacingCacheSnapshot = Object.freeze({ ...next });
-  _spacingInitialized = true;
   return next;
 }
 

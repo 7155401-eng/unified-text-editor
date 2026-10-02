@@ -14,8 +14,6 @@ let runtimeMarginsEphemeral = false;
 let runtimeOutputBackground = null;
 let runtimeOutputBackgroundRaw = undefined;
 let runtimeOutputBackgroundEphemeral = false;
-let _pageSettingsInitialized = false;
-let _outputBgInitialized = false;
 
 /*
  * 💡 What: In-memory cache for configuration settings synchronized via storage events.
@@ -24,13 +22,13 @@ let _outputBgInitialized = false;
  * 🔬 Measurement: Observe reduced main thread blocking in performance profiles during scrolling/rendering.
  */
 
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("storage", (e) => {
     if (e.key === PAGE_SETTINGS_KEY || e.key === null) {
-      _pageSettingsInitialized = false;
+      runtimeMarginsRaw = undefined; // force read
     }
     if (e.key === OUTPUT_BACKGROUND_KEY || e.key === null) {
-      _outputBgInitialized = false;
+      runtimeOutputBackgroundRaw = undefined; // force read
     }
   });
 }
@@ -75,9 +73,12 @@ function clampPx(value, fallback) {
 
 export function getPageMargins() {
   if (runtimeMargins && runtimeMarginsEphemeral) return { ...runtimeMargins };
-  if (_pageSettingsInitialized) return { ...runtimeMargins };
 
   const stored = readStorageRaw(PAGE_SETTINGS_KEY);
+  if (runtimeMargins && stored.ok && stored.raw === runtimeMarginsRaw) {
+    return { ...runtimeMargins };
+  }
+  if (!stored.ok && runtimeMargins) return { ...runtimeMargins };
 
   const saved = parseJsonRaw(stored.raw, {});
   runtimeMargins = {
@@ -88,7 +89,6 @@ export function getPageMargins() {
   };
   runtimeMarginsRaw = stored.ok ? stored.raw : undefined;
   runtimeMarginsEphemeral = false;
-  _pageSettingsInitialized = true;
   return { ...runtimeMargins };
 }
 
@@ -105,7 +105,6 @@ export function setPageMargins(next) {
   const persisted = writeStorageRaw(PAGE_SETTINGS_KEY, raw, "[page-settings] save failed:");
   runtimeMarginsEphemeral = !persisted;
   runtimeMarginsRaw = persisted ? raw : undefined;
-  _pageSettingsInitialized = true;
 
   applyPageSettings();
   return { ...runtimeMargins };
@@ -129,14 +128,16 @@ export function isOutputBackgroundEnabled() {
   if (runtimeOutputBackground !== null && runtimeOutputBackgroundEphemeral) {
     return runtimeOutputBackground;
   }
-  if (_outputBgInitialized) return runtimeOutputBackground;
 
   const stored = readStorageRaw(OUTPUT_BACKGROUND_KEY);
+  if (runtimeOutputBackground !== null && stored.ok && stored.raw === runtimeOutputBackgroundRaw) {
+    return runtimeOutputBackground;
+  }
+  if (!stored.ok && runtimeOutputBackground !== null) return runtimeOutputBackground;
 
   runtimeOutputBackground = stored.ok ? stored.raw === "1" : false;
   runtimeOutputBackgroundRaw = stored.ok ? stored.raw : undefined;
   runtimeOutputBackgroundEphemeral = false;
-  _outputBgInitialized = true;
   return runtimeOutputBackground;
 }
 
@@ -150,7 +151,6 @@ export function setOutputBackgroundEnabled(enabled) {
   );
   runtimeOutputBackgroundEphemeral = !persisted;
   runtimeOutputBackgroundRaw = persisted ? raw : undefined;
-  _outputBgInitialized = true;
   return runtimeOutputBackground;
 }
 
