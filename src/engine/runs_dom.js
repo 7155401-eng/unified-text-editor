@@ -112,6 +112,80 @@ function previousCodePointStart(text, index) {
     ? previous - 1 : previous;
 }
 
+const OPTICAL_LOWER_NIQQUD_RE = /^[\u05B0-\u05B8\u05BB\u05C7]+$/u;
+const OPTICAL_NIQQUD_PROFILES = Object.freeze({
+  // Long right descender: tuck the lower mark into the free left-side pocket.
+  "\u05DA": Object.freeze({ base: "\u05DA", xPercent: 27, raiseEm: 0.44 }),
+  // Long left descender: move the lower mark into the free right-side pocket.
+  "\u05E7": Object.freeze({ base: "\u05E7", xPercent: 73, raiseEm: 0.34 }),
+});
+
+export function opticalNiqqudProfileForCluster(cluster) {
+  const text = String(cluster || "");
+  if (!text) return null;
+  const base = String.fromCodePoint(text.codePointAt(0));
+  const profile = OPTICAL_NIQQUD_PROFILES[base];
+  if (!profile) return null;
+  const rest = text.slice(base.length);
+  if (!rest || !OPTICAL_LOWER_NIQQUD_RE.test(rest)) return null;
+  return profile;
+}
+
+function appendOpticalNiqqudCluster(parent, cluster, profile) {
+  const base = profile.base;
+  const marks = cluster.slice(base.length);
+  const wrapper = document.createElement("span");
+  wrapper.className = "rt-optical-niqqud";
+  wrapper.dataset.opticalNiqqudBase = base;
+  wrapper.dataset.opticalNiqqudX = String(profile.xPercent);
+  wrapper.dataset.opticalNiqqudRaiseEm = String(profile.raiseEm);
+  wrapper.style.position = "relative";
+  wrapper.style.display = "inline-block";
+  wrapper.style.verticalAlign = "baseline";
+  wrapper.style.whiteSpace = "pre";
+
+  // Keep source text exact in DOM order: base first, then the original marks.
+  wrapper.appendChild(document.createTextNode(base));
+  const mark = document.createElement("span");
+  mark.className = "rt-optical-niqqud-mark";
+  mark.textContent = marks;
+  mark.style.position = "absolute";
+  mark.style.display = "inline-block";
+  mark.style.pointerEvents = "none";
+  mark.style.whiteSpace = "pre";
+  mark.style.lineHeight = "1";
+  mark.style.width = "1em";
+  mark.style.textAlign = "center";
+  mark.style.left = `${profile.xPercent}%`;
+  mark.style.bottom = `${profile.raiseEm}em`;
+  mark.style.transform = "translateX(-50%)";
+  wrapper.appendChild(mark);
+  parent.appendChild(wrapper);
+}
+
+function appendTextWithOpticalNiqqud(parent, text) {
+  const str = String(text || "");
+  if (!str) return;
+  let emitted = 0;
+  for (let i = 0; i < str.length;) {
+    const base = String.fromCodePoint(str.codePointAt(i));
+    const profile = OPTICAL_NIQQUD_PROFILES[base];
+    if (!profile) { i += base.length; continue; }
+    let end = i + base.length;
+    while (end < str.length && isCombiningMarkAt(str, end)) {
+      end += String.fromCodePoint(str.codePointAt(end)).length;
+    }
+    const cluster = str.slice(i, end);
+    const clusterProfile = opticalNiqqudProfileForCluster(cluster);
+    if (!clusterProfile) { i = end; continue; }
+    if (i > emitted) parent.appendChild(document.createTextNode(str.slice(emitted, i)));
+    appendOpticalNiqqudCluster(parent, cluster, clusterProfile);
+    emitted = end;
+    i = end;
+  }
+  if (emitted < str.length) parent.appendChild(document.createTextNode(str.slice(emitted)));
+}
+
 function cleanRun(r, text) {
   const len = text.length;
   let start = Math.max(0, Math.min(len, Number(r?.start) || 0));
@@ -189,7 +263,7 @@ export function appendTextWithRuns(parent, text, runs, inheritedTypography = nul
   if (!str) return;
   const normalized = normalizeRuns(str, runs);
   if (normalized.length === 0 || !normalized.some(r => hasMarks(r.marks))) {
-    parent.appendChild(document.createTextNode(str));
+    appendTextWithOpticalNiqqud(parent, str);
     return;
   }
   for (const r of normalized) {
@@ -199,10 +273,10 @@ export function appendTextWithRuns(parent, text, runs, inheritedTypography = nul
       const span = document.createElement("span");
       applyMarksToSpan(span, r.marks);
       applyInheritedInlineLeading(span, inheritedTypography);
-      span.textContent = slice;
+      appendTextWithOpticalNiqqud(span, slice);
       parent.appendChild(span);
     } else {
-      parent.appendChild(document.createTextNode(slice));
+      appendTextWithOpticalNiqqud(parent, slice);
     }
   }
 }
