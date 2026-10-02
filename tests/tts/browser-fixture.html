@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>tts browser fixture</title>
+</head>
+<body>
+  <div id="bar">
+    <button type="button" data-action="open-tts">🔊 הקרא טקסט</button>
+  </div>
+
+<script type="module">
+// מנהל חלוניות מדומה עם טקסט שיש בו קודים — כדי לבדוק שהם לא מוקראים.
+const mkPane = (role, code, label, text) => ({
+  paneRole: role, streamCode: code, label,
+  _body: { textContent: text },
+});
+
+window.paneManager = {
+  panes: [
+    mkPane("main", null, "ראשי", "ויאמר @01 משה אל העם. זכור[2] את היום הזה {הערה פנימית} ויצאתם."),
+    mkPane("stream", "01", "ביאור", "@01 [1] זכור — לשון זכירה."),
+  ],
+  getMainPane() { return this.panes[0]; },
+};
+
+// דימוי של הספק: אין רשת ואין מפתח אמיתי. הבדיקה קובעת מה יחזור.
+window.__ttsFetchLog = [];
+window.__ttsNextStatus = 200;
+window.fetch = async (url, init) => {
+  window.__ttsFetchLog.push({ url: String(url), hasKey: !!init?.headers?.["xi-api-key"] });
+  const status = window.__ttsNextStatus;
+  if (status !== 200) {
+    return { ok: false, status, text: async () => "provider said no" };
+  }
+  return { ok: true, status: 200, blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: "audio/mpeg" }) };
+};
+
+const { wireTts } = await import("/src/tts/tts_lazy_wire.js");
+wireTts(window.paneManager);
+window.__fixtureReady = true;
+</script>
+</body>
+</html>

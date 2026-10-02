@@ -60,12 +60,16 @@ jobs:
         run: node --test tests/word-extractor/*.test.mjs
       - name: Desktop page-tweaker file compatibility
         run: node scripts/verify_page_tweaker.mjs
+      - name: Text-to-speech engine
+        run: node scripts/verify_tts_engine.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
         run: node scripts/v9-unified/run-browser.mjs
       - name: Page tweaker screen in a real browser
         run: node scripts/verify_page_tweaker_browser.mjs
+      - name: Text-to-speech screen in a real browser
+        run: node scripts/verify_tts_browser.mjs
       - name: Hebrew combining marks match native font pixels
         run: node scripts/v9-unified/verify-combining-marks.mjs
       - name: Hidden references preserve text shaping and planned geometry
@@ -114,6 +118,7 @@ jobs:
           node --test tests/integration/*.test.mjs
           node --test tests/word-extractor/*.test.mjs
           node scripts/verify_page_tweaker.mjs
+          node scripts/verify_tts_engine.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
