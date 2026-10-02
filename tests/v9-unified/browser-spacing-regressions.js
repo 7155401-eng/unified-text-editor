@@ -2420,9 +2420,8 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     settings['03']={...(settings['03']||{}),mainRefEnabled:true,noteNumEnabled:false,lemmaBold:false,titleShow:false};
     const rows=[];
     const pageBottomOf=page=>{
-      const pr=page.getBoundingClientRect();
       const els=[...page.querySelectorAll('.v9-line,.v9-stream-title,.v9-main-separator')];
-      return Math.max(0,...els.map(el=>el.getBoundingClientRect().bottom-pr.top));
+      return Math.max(0,...els.map(el=>(parseFloat(el.style.top)||0)+(parseFloat(el.style.height)||0)));
     };
     const compact=s=>String(s||'').replace(/[\s\u200e\u200f\u2060]/gu,'');
     const verifySource=(host,input,result)=>{
@@ -2474,7 +2473,8 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
           verifySource(oldHost,input,oldResult);verifySource(newHost,input,newResult);
           const pageBottom=pageHeight-common.padding;
           const oldBottom=pageBottomOf(oldResult.pages[0]),newBottom=pageBottomOf(newResult.pages[0]);
-          assert(newBottom<=pageBottom+.2,'physical gap fill crossed first-page bottom');
+          assert(newBottom<=pageBottom+.2,
+            `physical gap fill crossed first-page bottom: bottom=${newBottom}, limit=${pageBottom}`);
           assertNoWordOverlap(newResult.pages[0]);
           rows.push({
             pageHeight,noteBase,mainRepeats,
