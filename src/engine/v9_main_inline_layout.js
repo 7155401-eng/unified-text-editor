@@ -3,6 +3,7 @@ import { findV9ExactTailPartition } from './v9_exact_tail_partition.js';
 import { sourceMetadata, referenceInV9Range } from './v9_source_fragments.js';
 import { openingWordSkipReason } from '../opening_word.js';
 import { isV9StandaloneDirectionControlOnly, splitV9EdgeGlue } from './v9_bidi_controls.js';
+import { countV9JustificationGaps, hasSpecialV9JustificationSeparator } from './v9_justification_separators.js';
 
 export const V9_INLINE_PLAN_VERSION = 'v9-inline-1';
 const EPS = 1 / 64;
@@ -158,6 +159,42 @@ function continuationTailPressure(metric) {
   return 1000 + metric.deficit;
 }
 
+function resolveSpecialV9JustificationSpacing(context, body, naturalWidth, targetWidth, gaps) {
+  const initial = gaps > 0 ? Math.max(0, (targetWidth - naturalWidth) / gaps) : 0;
+  if (!(initial > 0) || !hasSpecialV9JustificationSeparator(body?.text)) return initial;
+
+  const widthAt = spacing => context.measure({
+    ...body,
+    style: { ...(body.style || context.typography || {}), wordSpacing: `${spacing}px` },
+  }).width;
+
+  // The browser does not expand every Unicode separator identically. Measure
+  // the real painted width and solve for the spacing that reaches the row edge.
+  let lo = 0;
+  let hi = Math.max(1, initial);
+  let hiWidth = widthAt(hi);
+  while (hiWidth < targetWidth - EPS && hi < 512) {
+    lo = hi;
+    hi *= 2;
+    hiWidth = widthAt(hi);
+  }
+  if (hiWidth < targetWidth - EPS) return initial;
+
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (widthAt(mid) < targetWidth) lo = mid;
+    else hi = mid;
+  }
+
+  const candidates = [lo, hi, initial];
+  let best = initial, bestError = Number.POSITIVE_INFINITY;
+  for (const spacing of candidates) {
+    const error = Math.abs(widthAt(spacing) - targetWidth);
+    if (error < bestError) { bestError = error; best = spacing; }
+  }
+  return best;
+}
+
 /**
  * A page cut is not a paragraph end.
  *
@@ -259,14 +296,20 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       return null;
     }
 
-    const gaps = (body.text.match(/ /g) || []).length;
+    const specialSeparators = hasSpecialV9JustificationSeparator(body.text);
+    const gaps = specialSeparators
+      ? countV9JustificationGaps(body.text)
+      : (body.text.match(/ /g) || []).length;
     const deficit = Math.max(0, target - measured.width);
     const metric = {
       start, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
       wordTokens: words.slice(fromWord, toWord),
       openingOnly,
     };
-    metric.pressure = openingOnly ? 0 : continuationTailPressure(metric);
+    metric.pressure = openingOnly ? 0
+      : (specialSeparators
+        ? resolveSpecialV9JustificationSpacing(context, body, measured.width, target, gaps)
+        : continuationTailPressure(metric));
     cache.set(key, metric);
     return metric;
   };
@@ -554,7 +597,10 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
       const attached = opening && !openingAttached ? opening : null;
       const sourceStart = attached ? 0 : start;
       const isLast = end >= entry.text.length && !entry.continuesAfter;
-      const gaps = (body.text.match(/ /g) || []).length;
+      const specialSeparators = hasSpecialV9JustificationSeparator(body.text);
+      const gaps = specialSeparators
+        ? countV9JustificationGaps(body.text)
+        : (body.text.match(/ /g) || []).length;
       const justify = !isLast && !forcedBreak && gaps > 0;
       const natural = m.width;
       const openingWindow = !!opening && rowY < opening.y + opening.height - EPS;
@@ -570,7 +616,11 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         source: sourceMetadata(entry, sourceStart, end),
         sourceText: entry.text.slice(sourceStart, end),
         render: { body, topInset: m.topInset || 0, opening: attached,
-          wordSpacing: justify ? Math.max(0, (geometry.width - natural) / gaps) : 0,
+          wordSpacing: justify
+            ? (specialSeparators
+              ? resolveSpecialV9JustificationSpacing(context, body, natural, geometry.width, gaps)
+              : Math.max(0, (geometry.width - natural) / gaps))
+            : 0,
           // The opening already reserves its width and gap in geometry. A
           // final body row inherits the paragraph's ordinary centering inside
           // that free slot; it is not an independent opening+body composite.

@@ -2,6 +2,7 @@ import { appendTextWithRuns, sliceRuns } from './runs_dom.js';
 import { extractOpeningSegmentForTest, getOpeningWordSkipPolicy } from '../opening_word.js';
 import { V9_INLINE_PLAN_VERSION } from './v9_main_inline_layout.js';
 import { isV9StandaloneDirectionControl } from './v9_bidi_controls.js';
+import { hasSpecialV9JustificationSeparator, needsExplicitV9JustificationSpacer } from './v9_justification_separators.js';
 
 const TYPOGRAPHY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'fontFeatureSettings', 'fontKerning', 'lineHeight', 'letterSpacing', 'wordSpacing', 'color', 'backgroundColor', 'textDecoration', 'direction'];
 const FONT_STACKS = {
@@ -76,9 +77,53 @@ function referencePaintCut(text, offset) {
   return at;
 }
 
+function appendV9ExplicitSpacer(parent, amount) {
+  const width = Number(amount);
+  if (!(width > 0)) return;
+  const spacer = document.createElement('span');
+  spacer.className = 'v9-justification-spacer';
+  spacer.setAttribute('aria-hidden', 'true');
+  spacer.dataset.v9JustificationPx = String(width);
+  spacer.style.cssText = `display:inline-block;width:${width}px;height:0;line-height:0;margin:0;padding:0;border:0;overflow:hidden;vertical-align:baseline;pointer-events:none;user-select:none;`;
+  parent.appendChild(spacer);
+}
+
+function appendV9TextSegment(parent, text, runs, typography, wordSpacingPx) {
+  const source = String(text || '');
+  const spacing = Number(wordSpacingPx) || 0;
+
+  // Preserve the historical DOM path exactly for ordinary ASCII-space text.
+  if (!source || !(spacing > 0) || !hasSpecialV9JustificationSeparator(source)) {
+    appendTextWithRuns(parent, source, runs, typography);
+    return;
+  }
+
+  let cursor = 0;
+  for (let i = 0; i < source.length;) {
+    const ch = String.fromCodePoint(source.codePointAt(i));
+    const end = i + ch.length;
+    if (needsExplicitV9JustificationSpacer(ch)) {
+      if (i > cursor) {
+        appendTextWithRuns(parent, source.slice(cursor, i), sliceRuns(runs || [], cursor, i), typography);
+      }
+      const separator = document.createElement('span');
+      separator.className = 'v9-explicit-separator';
+      separator.style.wordSpacing = '0px';
+      appendTextWithRuns(separator, source.slice(i, end), sliceRuns(runs || [], i, end), typography);
+      parent.appendChild(separator);
+      appendV9ExplicitSpacer(parent, spacing);
+      cursor = end;
+    }
+    i = end;
+  }
+  if (cursor < source.length) {
+    appendTextWithRuns(parent, source.slice(cursor), sliceRuns(runs || [], cursor, source.length), typography);
+  }
+}
+
 // Shared by the measurement probe and final paint. Reference labels and styles
 // have already been resolved: painting never reads mutable settings again.
-export function appendV9PlannedPart(parent, part) {
+export function appendV9PlannedPart(parent, part, wordSpacingPx = 0) {
   appendSemanticWhitespace(parent, part.leadingText);
   let cursor = 0;
   for (const ref of part.refs || []) {
@@ -87,10 +132,10 @@ export function appendV9PlannedPart(parent, part) {
     // can detach a combining mark or change which styles cover its base.
     if (!ref.formatted) continue;
     const pos = referencePaintCut(part.text, Math.max(cursor, Math.min(part.text.length, Number(ref.localPos) || 0)));
-    if (pos > cursor) appendTextWithRuns(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos), part.style);
+    if (pos > cursor) appendV9TextSegment(parent, part.text.slice(cursor, pos), sliceRuns(part.runs || [], cursor, pos), part.style, wordSpacingPx);
     appendReference(parent, ref); cursor = pos;
   }
-  if (cursor < part.text.length) appendTextWithRuns(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length), part.style);
+  if (cursor < part.text.length) appendV9TextSegment(parent, part.text.slice(cursor), sliceRuns(part.runs || [], cursor, part.text.length), part.style, wordSpacingPx);
   appendSemanticWhitespace(parent, part.trailingText);
 }
 
@@ -178,7 +223,10 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       const found = cache.get(key); if (found) return found;
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';
-      appendV9PlannedPart(probe, part);
+      const plannedWordSpacing = hasSpecialV9JustificationSeparator(part.text)
+        ? px(part.style?.wordSpacing, 0)
+        : 0;
+      appendV9PlannedPart(probe, part, plannedWordSpacing);
       const r = probe.getBoundingClientRect();
       const range = document.createRange(); range.selectNodeContents(probe);
       const ink = range.getBoundingClientRect();
@@ -255,7 +303,11 @@ export function renderV9PlannedMainLine(line, pageEl, padding = 0) {
   body.style.cssText = 'position:absolute;left:0;display:block;box-sizing:border-box;white-space:pre;overflow:visible;margin:0;padding:0;';
   body.style.top = `${line.render.topInset}px`; body.style.width = `${line.width}px`;
   body.style.wordSpacing = `${line.render.wordSpacing}px`; body.style.textAlign = line.render.alignment;
-  appendV9PlannedPart(body, line.render.body); el.appendChild(body);
+  appendV9PlannedPart(
+    body,
+    line.render.body,
+    hasSpecialV9JustificationSeparator(line.render.body?.text) ? (line.render.wordSpacing || 0) : 0
+  ); el.appendChild(body);
   pageEl.dataset.v9MainLayout = V9_INLINE_PLAN_VERSION;
   pageEl.appendChild(el); return el;
 }
