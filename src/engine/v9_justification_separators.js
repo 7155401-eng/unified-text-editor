@@ -12,3 +12,14 @@ export function isV9JustificationSeparator(ch) {
   if (!ch) return false;
   return /^[\t\v\f \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]$/u.test(String(ch));
 }
+
+
+export function needsExplicitV9JustificationSpacer(ch) {
+  const value = String(ch || '');
+  return isV9JustificationSeparator(value) &&
+    value !== ' ' && value !== '\u00a0' && value !== '\t';
+}
+
+export function hasV9TabSeparator(text) {
+  return String(text || '').includes('\t');
+}

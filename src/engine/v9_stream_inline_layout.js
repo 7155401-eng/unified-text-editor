@@ -109,7 +109,7 @@ export function renderV9MeasuredStreamLine(line,box,page,padding,colorClass='') 
   if(line.isLast)el.dataset.v9ParaLast='1';
   const body=document.createElement('span');body.className='v9-planned-stream-text';
   body.style.cssText=`position:absolute;left:0;display:block;box-sizing:border-box;margin:0;padding:0;top:${line.render.topInset || 0}px;white-space:pre;width:${line.width}px;`;
-  body.style.wordSpacing='0px';body.style.textAlign=line.render.alignment;
+  body.style.wordSpacing=`${line.render.wordSpacing}px`;body.style.textAlign=line.render.alignment;
   body.dataset.v9PlannedWordSpacingPx=String(line.render.wordSpacing||0);
   appendV9PlannedPart(body,line.render.body,line.render.wordSpacing||0);el.append(body);page.append(el);return el;
 }

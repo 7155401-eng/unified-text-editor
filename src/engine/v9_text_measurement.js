@@ -2,7 +2,7 @@ import { appendTextWithRuns, sliceRuns } from './runs_dom.js';
 import { extractOpeningSegmentForTest, getOpeningWordSkipPolicy } from '../opening_word.js';
 import { V9_INLINE_PLAN_VERSION } from './v9_main_inline_layout.js';
 import { isV9StandaloneDirectionControl } from './v9_bidi_controls.js';
-import { isV9JustificationSeparator } from './v9_justification_separators.js';
+import { needsExplicitV9JustificationSpacer } from './v9_justification_separators.js';
 
 const TYPOGRAPHY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'fontFeatureSettings', 'fontKerning', 'lineHeight', 'letterSpacing', 'wordSpacing', 'color', 'backgroundColor', 'textDecoration', 'direction'];
 const FONT_STACKS = {
@@ -99,12 +99,16 @@ function appendV9TextWithRuns(parent, text, runs, typography, wordSpacingPx) {
   for (let i = 0; i < source.length;) {
     const ch = String.fromCodePoint(source.codePointAt(i));
     const end = i + ch.length;
-    if (isV9JustificationSeparator(ch)) {
+    if (needsExplicitV9JustificationSpacer(ch)) {
       if (i > cursor) appendTextWithRuns(parent, source.slice(cursor, i), sliceRuns(runs || [], cursor, i), typography);
-      // Keep the exact original separator character in source/DOM. The empty
-      // spacer carries only the planned extra width, independent of Chromium's
-      // inconsistent word-spacing support for narrow/thin spaces and tabs.
-      appendTextWithRuns(parent, source.slice(i, end), sliceRuns(runs || [], i, end), typography);
+      // Preserve the original separator character but neutralize native
+      // word-spacing on THIS character only. The sibling spacer carries the
+      // planned expansion. ASCII space/NBSP/tab stay completely native.
+      const separator = document.createElement('span');
+      separator.className = 'v9-explicit-separator';
+      separator.style.wordSpacing = '0px';
+      appendTextWithRuns(separator, source.slice(i, end), sliceRuns(runs || [], i, end), typography);
+      parent.appendChild(separator);
       appendV9JustificationSpacer(parent, spacing);
       cursor = end;
     }
@@ -216,9 +220,8 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       const plannedWordSpacing = px(part.style?.wordSpacing, 0);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';
-      // V9 owns justification width explicitly so all horizontal separator
-      // characters behave identically. Native CSS word-spacing is disabled.
-      probe.style.wordSpacing = '0px';
+      // Keep native word-spacing for ordinary space/NBSP/tab. Only separators
+      // known not to expand consistently receive an explicit sibling spacer.
       appendV9PlannedPart(probe, part, plannedWordSpacing);
       const r = probe.getBoundingClientRect();
       const range = document.createRange(); range.selectNodeContents(probe);
@@ -295,7 +298,7 @@ export function renderV9PlannedMainLine(line, pageEl, padding = 0) {
   body.className = 'v9-planned-line-text';
   body.style.cssText = 'position:absolute;left:0;display:block;box-sizing:border-box;white-space:pre;overflow:visible;margin:0;padding:0;';
   body.style.top = `${line.render.topInset}px`; body.style.width = `${line.width}px`;
-  body.style.wordSpacing = '0px'; body.style.textAlign = line.render.alignment;
+  body.style.wordSpacing = `${line.render.wordSpacing}px`; body.style.textAlign = line.render.alignment;
   body.dataset.v9PlannedWordSpacingPx = String(line.render.wordSpacing || 0);
   appendV9PlannedPart(body, line.render.body, line.render.wordSpacing || 0); el.appendChild(body);
   pageEl.dataset.v9MainLayout = V9_INLINE_PLAN_VERSION;
