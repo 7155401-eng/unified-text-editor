@@ -7,7 +7,7 @@ export function runExactParagraphAlignmentChecks(old) {
  const source=host=>{const clone=host.cloneNode(true);clone.querySelectorAll('[data-v9-main-ref]').forEach(e=>e.remove());return clone.textContent};
  const cfg=(family,opening=false,drop=2)=>({mainFontSize:13,mainFontFamily:family,lineHeightRatio:1.55,openingWordSettings:{enabled:opening,target:'word',count:1,font:'inherit',size:150,weight:'bold',position:'dropped',dropLines:drop,spaceAfter:.3,scope:'all',skipHeadings:false,skipShortLine:false,skipSingleLine:false,skipFewerThanLines:false}});
  const textOf=n=>Array.from({length:n},(_,i)=>['אב','גד הו','זחטי','כלמנ','סעפצ'][i%5]).join(' ');
- function checkPair(entry,settings,strips,bottom=507){
+ function checkPair(entry,settings,strips,bottom=507,options={}){
   const before=JSON.stringify({entry,settings,strips}),ctx0=old.m.createV9TextLayoutContext(settings),ctx1=now.m.createV9TextLayoutContext(settings);
   const hosts=[0,1].map(()=>{const h=document.createElement('div');h.style.cssText='position:relative;margin:0;padding:0;';document.body.append(h);return h});
   try{
@@ -25,6 +25,21 @@ export function runExactParagraphAlignmentChecks(old) {
    const ranges=hosts.map(h=>[...h.querySelectorAll('.v9-planned-line-text')].map(el=>{const range=document.createRange();range.selectNodeContents(el);const r=range.getBoundingClientRect(),base=h.getBoundingClientRect();return {left:r.left-base.left,right:r.right-base.left,width:r.width,top:r.top-base.top,bottom:r.bottom-base.top}}));
    const exact=b.lines.some(l=>l.tailExactRebalanced),center=b.lines.some(l=>l.openingParagraphCentered),
     fallback=b.lines.some(l=>l.tailWordSpacingFallbackStretched);
+   if(options.justificationMigration){
+    for(let i=0;i<b.lines.length;i++){
+     const prev=a.lines[i],line=b.lines[i];
+     assert(line.x===prev.x&&line.y===prev.y&&line.width===prev.width&&line.lineHeightPx===prev.lineHeightPx,
+      'separator justification changed row geometry');
+     assert(JSON.stringify(line.render.opening)===JSON.stringify(prev.render.opening),
+      'separator justification moved or rewrote opening geometry');
+    }
+    return {same,exact,center,fallback,rows:b.lines.length,
+     beforeUnderfilled:a.lines.filter((l,i)=>!l.isLast&&l.wordTokens.length&&ranges[0][i].left-l.x>.5).length,
+     afterUnderfilled:b.lines.filter((l,i)=>!l.isLast&&l.wordTokens.length&&ranges[1][i].left-l.x>.5).length,
+     maxEvaluations:Math.max(0,...b.diagnostics.map(d=>d.exactPartitionEvaluations||0)),
+     beforeCenter:a.lines.length===2?(ranges[0][1].left+ranges[0][1].right)/2:null,
+     afterCenter:b.lines.length===2?(ranges[1][1].left+ranges[1][1].right)/2:null};
+   }
    if(exact){
     assert(a.lines.some(l=>l.tailWordSpacingCapped),'exact recovery changed an already-uncapped tail');
     assert(b.lines.every(l=>!l.tailWordSpacingCapped),'exact alternative still caps a row');
@@ -90,7 +105,11 @@ export function runExactParagraphAlignmentChecks(old) {
   const refs=variant==='hidden-all'?Array.from({length:text.length+1},(_,anchor)=>({uid:'h'+anchor,anchor,formatted:'',anchorAffinity:anchor%2?'forward':'backward'})):
     variant==='visible'?[{uid:'first',anchor:7,formatted:'[1]'},{uid:'last',anchor:text.length,formatted:'[2]'}]:[];
   const runs=variant==='rich'?[{start:4,end:15,marks:{fontSize:11,bold:true,color:'rgb(20,40,60)'}}]:[];
-  run(`source-conservation/${family}/${opening}/${variant}`,()=>checkPair({id:'rich-tail',text,runs,mainRefs:refs,continuesAfter:true},cfg(family,opening),[{x:13,width:174,y_start:7,y_end:507}]));
+  run(`source-conservation/${family}/${opening}/${variant}`,()=>checkPair(
+   {id:'rich-tail',text,runs,mainRefs:refs,continuesAfter:true},
+   cfg(family,opening),[{x:13,width:174,y_start:7,y_end:507}],507,
+   {justificationMigration:['tab','nbsp'].includes(variant)}
+  ));
  }
 
  // Real-source separator matrix. These are line-break opportunities that the
@@ -109,7 +128,8 @@ export function runExactParagraphAlignmentChecks(old) {
    const words=Array.from({length:36},(_,i)=>['אב','גד','הוז','חטיכ','למנ'][i%5]);
    const text=(opening?'פתיח'+separator:'')+words.join(separator);
    const entry={id:'separator-fill',text,runs:[],mainRefs:[],continuesAfter:continued};
-   const result=checkPair(entry,cfg(family,opening),[{x:13,width:174,y_start:7,y_end:507}]);
+   const result=checkPair(entry,cfg(family,opening),[{x:13,width:174,y_start:7,y_end:507}],507,
+    {justificationMigration:variant!=='space'&&variant!=='double-space'});
    assert(result.afterUnderfilled===0,`non-final rows still miss left edge: ${result.afterUnderfilled}`);
    return result;
   });
