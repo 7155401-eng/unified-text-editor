@@ -1,0 +1,99 @@
+diff --git a/tests/v9-unified/spacing-regressions.test.mjs b/tests/v9-unified/spacing-regressions.test.mjs
+--- a/tests/v9-unified/spacing-regressions.test.mjs
++++ b/tests/v9-unified/spacing-regressions.test.mjs
+@@ -444,7 +444,7 @@
+    `opening x=${line.render.opening.x}, expected 46 for centered composite`);
+ });
+ 
+-test('second and final opening-window row centers within the space reserved beside the opening',()=>{
++test('second and final opening-window row shares the paragraph centre without moving its opening',()=>{
+  const ctx={
+   fontSize:10,lineHeight:10,
+   describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
+@@ -466,12 +466,19 @@
+  assert(last.openingWindow===true,'last row no longer overlaps opening window');
+  assert.equal(last.render.alignment,'center','last body was pushed to an edge');
+  const opening=host.render.opening;
+- assert.equal(last.x,0,'last row left its real host');
+- assert.equal(last.width,opening.x-opening.gap,'opening reservation was ignored');
++ assert.equal(last.x,45,'last row did not use the full paragraph frame');
++ assert.equal(last.width,last.naturalWidth,'last row box differs from its measured text');
++ assert.equal(last.openingParagraphCentered,true);
++ assert.equal(host.x,0,'first row moved');
++ assert.equal(host.width,78,'first row lost the opening reservation');
++ assert.equal(opening.x,80,'opening moved');
+  const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
+  const bodyRight=bodyLeft+last.naturalWidth;
+- assert(Math.abs(bodyLeft-(opening.x-opening.gap-bodyRight))<.01,
+-  'last row is not centered in the available space beside the opening');
++ assert(Math.abs((bodyLeft+bodyRight)/2-50)<.01,
++  'last row is not centered in the complete paragraph');
++ assert(bodyLeft>0,'last row was pinned to the left edge');
++ assert(bodyRight<=opening.x-opening.gap,'last row overlaps the opening or its gap');
++ assert.equal(last.render.wordSpacing,0,'last row was stretched');
+  assert.notEqual(last.openingCompositeCentered,true,'opening counted a second time on the last row');
+ });
+ 
+@@ -617,11 +624,16 @@
+  assert.equal(last.render.alignment,'center','final body row has special edge alignment');
+  assert.notEqual(last.openingCompositeCentered,true,'the opening is not owned by this row');
+  const freeRight=host.render.opening.x-host.render.opening.gap;
+- assert.equal(last.x,0);
+- assert(Math.abs(last.width-freeRight)<.001,'last row did not retain its full opening-aware slot');
++ assert.equal(last.openingParagraphCentered,true);
++ assert.equal(last.x,45);
++ assert.equal(last.width,last.naturalWidth);
++ assert.equal(host.x,0,'first row moved');
++ assert.equal(host.width,78,'first row lost its original slot');
++ assert.equal(host.render.opening.x,80,'opening moved');
++ assert.equal(last.render.wordSpacing,0,'last row was stretched');
+  const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
+- assert(Math.abs((bodyLeft+last.naturalWidth/2)-freeRight/2)<.001,
+-  'last body row is not centered inside the free slot');
++ assert(Math.abs((bodyLeft+last.naturalWidth/2)-50)<.001,
++  'last body row is not centered inside the full paragraph');
+  assert(bodyLeft+last.naturalWidth<=freeRight+.001,'last body overlaps the opening');
+ });
+ 
+diff --git a/tests/v9-unified/browser-spacing-regressions.js b/tests/v9-unified/browser-spacing-regressions.js
+--- a/tests/v9-unified/browser-spacing-regressions.js
++++ b/tests/v9-unified/browser-spacing-regressions.js
+@@ -1762,7 +1762,8 @@
+ 
+   // User-reported regression: counting a dropped opening again on row two
+   // centered a bounding envelope, but pinned the actual final text to the left.
+-  // The opening reserves space; the final body inherits ordinary centering.
++  // Centre a complete two-row ending in its paragraph frame only when it
++  // physically clears the fixed opening. Wide endings retain their free slot.
+   for(const family of ['serif','sans-serif','monospace'])
+   for(const dropLines of [2,3,4])
+   for(const hostX of [0,19])
+@@ -1798,8 +1799,17 @@
+       assert(last.render.alignment==='center','final row is not centered');
+       assert(!last.openingCompositeCentered,'opening was counted twice');
+       assert(last.render.wordSpacing===0,'final row was stretched');
+-      assert(Math.abs(last.width-(openingPlan.x-openingPlan.gap-hostX))<.01,
+-        'planner did not reserve the opening and its gap in the final row');
++      const first=plan.lines[0];
++      assert(Math.abs(first.x-hostX)<.01 &&
++        Math.abs(first.width-(openingPlan.x-openingPlan.gap-hostX))<.01,
++        'first row or its opening reservation moved');
++      assert(Math.abs(openingPlan.x+openingPlan.width-hostX-100)<.01,
++        'fixed opening moved away from the original right edge');
++      const fullFrameFits=hostX+50+last.naturalWidth/2<=openingPlan.x-openingPlan.gap+1/64;
++      assert(!!last.openingParagraphCentered===fullFrameFits,
++        'centering does not respect the measured opening clearance');
++      const expectedWidth=fullFrameFits?last.naturalWidth:openingPlan.x-openingPlan.gap-hostX;
++      assert(Math.abs(last.width-expectedWidth)<.01,'wrong occupied final-row width');
+ 
+       const pageRect=page.getBoundingClientRect();
+       const openingRect=opening.getBoundingClientRect();
+@@ -1810,7 +1820,7 @@
+       const right=Math.max(...rects.map(r=>r.right));
+       const freeLeft=pageRect.left+page.clientLeft+hostX;
+       const freeRight=openingRect.left-openingPlan.gap;
+-      const expectedCenter=(freeLeft+freeRight)/2;
++      const expectedCenter=fullFrameFits?freeLeft+50:(freeLeft+freeRight)/2;
+       const actualCenter=(left+right)/2;
+       assert(Math.abs(actualCenter-expectedCenter)<=.6,
+         `final body not centered: actual=${actualCenter}, expected=${expectedCenter}`);
