@@ -64,6 +64,8 @@ jobs:
         run: node scripts/verify_tts_engine.mjs
       - name: Marker placement proposal engine
         run: node scripts/verify_marker_proposal.mjs
+      - name: Global text fixes engine
+        run: node scripts/verify_global_fixes.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
@@ -74,6 +76,8 @@ jobs:
         run: node scripts/verify_tts_browser.mjs
       - name: Marker proposal screen in a real browser
         run: node scripts/verify_marker_proposal_browser.mjs
+      - name: Global text fixes screen in a real browser
+        run: node scripts/verify_global_fixes_browser.mjs
       - name: Hebrew combining marks match native font pixels
         run: node scripts/v9-unified/verify-combining-marks.mjs
       - name: Hidden references preserve text shaping and planned geometry
@@ -124,6 +128,7 @@ jobs:
           node scripts/verify_page_tweaker.mjs
           node scripts/verify_tts_engine.mjs
           node scripts/verify_marker_proposal.mjs
+          node scripts/verify_global_fixes.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs

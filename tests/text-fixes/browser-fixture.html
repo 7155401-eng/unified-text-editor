@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><title>global fixes fixture</title></head>
+<body>
+  <div id="render-safety-diagnostics-group"></div>
+<script type="module">
+const DIRTY = "ר' משה אמר , שלום  עולם\t{הערה} וכו...";
+const mk = (role, code, label, text) => ({ paneRole: role, streamCode: code, label, _body: { textContent: text } });
+window.__original = DIRTY;
+window.paneManager = { panes: [ mk("main", null, "ראשי", DIRTY) ], getMainPane() { return this.panes[0]; } };
+const { wireGlobalFixes } = await import("/src/text_fixes/global_fixes_lazy_wire.js");
+wireGlobalFixes(window.paneManager);
+window.__fixtureReady = true;
+</script>
+</body>
+</html>
