@@ -80,6 +80,8 @@ jobs:
         run: node scripts/verify_marker_proposal_browser.mjs
       - name: Global text fixes screen in a real browser
         run: node scripts/verify_global_fixes_browser.mjs
+      - name: Bracket styling screen in a real browser
+        run: node scripts/verify_bracket_styles_browser.mjs
       - name: Hebrew combining marks match native font pixels
         run: node scripts/v9-unified/verify-combining-marks.mjs
       - name: Hidden references preserve text shaping and planned geometry

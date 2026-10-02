@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><title>bracket styles fixture</title></head>
+<body>
+  <div id="render-safety-diagnostics-group"></div>
+<script type="module">
+const TEXT = "ויאמר משה (עי' שם) אל העם [ציון] וכן {הערה} ועוד (שנית).";
+const mk = (role, code, label, text) => ({ paneRole: role, streamCode: code, label, _body: { textContent: text } });
+window.__original = TEXT;
+window.paneManager = {
+  panes: [ mk("main", null, "ראשי", TEXT), mk("stream", "01", "ביאור", "@01 [1] כאן (ציון) בלבד.") ],
+  getMainPane() { return this.panes[0]; },
+};
+const { wireBracketStyles } = await import("/src/text_fixes/bracket_styles_lazy_wire.js");
+wireBracketStyles(window.paneManager);
+window.__fixtureReady = true;
+</script>
+</body>
+</html>
