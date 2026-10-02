@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 4
           persist-credentials: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = b35e823b1270eb227ec6df65c7047510314566ad
+          test "$(git rev-parse HEAD^)" = 66dfcb30c5228207283d70b3704f4fcd953d7629
           test "$(git hash-object tests/v9-unified/spacing-regressions.test.mjs)" = 2f3b4e491af5f3b2a2e259a7860f77fc39ef0fb9
           test "$(git hash-object tests/v9-unified/browser-spacing-regressions.js)" = cfc2aaabe8ddc47a0c908a4a8e19dbe42d2200e3
           printf '%s\n' '2a45f4077929896e0833b24da401a75ff73f6f5597af42b0c13a4ed49b467026  .github/patches/alignment-existing-contracts.patch' | sha256sum -c -
