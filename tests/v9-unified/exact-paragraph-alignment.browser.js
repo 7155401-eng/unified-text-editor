@@ -92,6 +92,29 @@ export function runExactParagraphAlignmentChecks(old) {
   const runs=variant==='rich'?[{start:4,end:15,marks:{fontSize:11,bold:true,color:'rgb(20,40,60)'}}]:[];
   run(`source-conservation/${family}/${opening}/${variant}`,()=>checkPair({id:'rich-tail',text,runs,mainRefs:refs,continuesAfter:true},cfg(family,opening),[{x:13,width:174,y_start:7,y_end:507}]));
  }
+
+ // Real-source separator matrix. These are line-break opportunities that the
+ // source tokenizer already recognizes, but historical justification counted
+ // only ASCII U+0020. Require painted non-final rows to reach the left edge in
+ // both complete paragraphs and page continuations, with and without openings.
+ const separatorVariants=[
+  ['space',' '],['double-space','  '],['nbsp','\u00a0'],['nnbsp','\u202f'],
+  ['thin','\u2009'],['tab','\t']
+ ];
+ for(const family of ['serif','sans-serif','monospace'])
+ for(const opening of [false,true])
+ for(const continued of [false,true])
+ for(const [variant,separator] of separatorVariants){
+  run(`separator-fill/${family}/${opening}/${continued}/${variant}`,()=>{
+   const words=Array.from({length:36},(_,i)=>['אב','גד','הוז','חטיכ','למנ'][i%5]);
+   const text=(opening?'פתיח'+separator:'')+words.join(separator);
+   const entry={id:'separator-fill',text,runs:[],mainRefs:[],continuesAfter:continued};
+   const result=checkPair(entry,cfg(family,opening),[{x:13,width:174,y_start:7,y_end:507}]);
+   assert(result.afterUnderfilled===0,`non-final rows still miss left edge: ${result.afterUnderfilled}`);
+   return result;
+  });
+ }
+
  // Locate both collision-free and physically impossible two-row endings in
  // the UNCHANGED baseline, then evaluate the same source and settings.
  for(const family of ['serif','sans-serif','monospace'])for(const width of [174,356])for(const drop of [2,3,4])for(const withRef of [false,true])for(const safe of [false,true]){
