@@ -70,7 +70,7 @@ function readStyleSnapshot() {
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key === CUSTOM_STYLES_KEY) {
+    if (e.key === CUSTOM_STYLES_KEY || e.key === null) {
       cachedStylesRaw = STYLE_CACHE_UNREAD;
     }
   });

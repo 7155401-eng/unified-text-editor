@@ -8,6 +8,22 @@ const DEFAULTS = {
 
 let _documentStyleCacheRaw = null;
 let _documentStyleCacheSnapshot = null;
+let _documentStyleInitialized = false;
+
+/*
+ * 💡 What: In-memory cache for configuration settings synchronized via storage events.
+ * 🎯 Why: Avoids synchronous localStorage.getItem calls during tight layout/render loops.
+ * 📊 Impact: Eliminates GC pressure and I/O bottlenecks in frequent reads.
+ * 🔬 Measurement: Observe reduced main thread blocking in performance profiles during scrolling/rendering.
+ */
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      _documentStyleInitialized = false;
+    }
+  });
+}
 
 function readDocumentStyleStorageRaw() {
   try {
@@ -27,10 +43,11 @@ function parseDocumentStyleSnapshot(raw) {
 }
 
 export function loadDocumentStyleSettings() {
-  const raw = readDocumentStyleStorageRaw();
-  if (!_documentStyleCacheSnapshot || raw !== _documentStyleCacheRaw) {
+  if (!_documentStyleInitialized) {
+    const raw = readDocumentStyleStorageRaw();
     _documentStyleCacheRaw = raw;
     _documentStyleCacheSnapshot = parseDocumentStyleSnapshot(raw);
+    _documentStyleInitialized = true;
   }
   // Keep the historical mutable-copy return contract.
   return { ..._documentStyleCacheSnapshot };
@@ -42,6 +59,7 @@ export function saveDocumentStyleSettings(settings) {
   localStorage.setItem(STORAGE_KEY, raw);
   _documentStyleCacheRaw = raw;
   _documentStyleCacheSnapshot = Object.freeze({ ...next });
+  _documentStyleInitialized = true;
   return next;
 }
 

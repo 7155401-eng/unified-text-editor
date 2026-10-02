@@ -66,6 +66,22 @@ const FIELDS = [
 let _spacingCacheRaw = null;
 let _spacingCacheSnapshot = null;
 let _spacingStoredSnapshot = null;
+let _spacingInitialized = false;
+
+/*
+ * 💡 What: In-memory cache for configuration settings synchronized via storage events.
+ * 🎯 Why: Avoids synchronous localStorage.getItem calls during tight layout/render loops.
+ * 📊 Impact: Eliminates GC pressure and I/O bottlenecks in frequent reads.
+ * 🔬 Measurement: Observe reduced main thread blocking in performance profiles during scrolling/rendering.
+ */
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      _spacingInitialized = false;
+    }
+  });
+}
 
 function readSpacingStorageRaw() {
   try {
@@ -96,12 +112,13 @@ function spacingSnapshotsFromRaw(raw) {
 }
 
 function ensureSpacingSnapshots() {
+  if (_spacingInitialized) return;
   const raw = readSpacingStorageRaw();
-  if (_spacingCacheSnapshot && _spacingStoredSnapshot && raw === _spacingCacheRaw) return;
   const snapshots = spacingSnapshotsFromRaw(raw);
   _spacingCacheRaw = raw;
   _spacingStoredSnapshot = snapshots.stored;
   _spacingCacheSnapshot = snapshots.effective;
+  _spacingInitialized = true;
 }
 
 export function getSpacingSettingsSnapshot() {
@@ -128,6 +145,7 @@ export function saveSpacingSettings(settings) {
   _spacingCacheRaw = raw;
   _spacingStoredSnapshot = Object.freeze({ ...next });
   _spacingCacheSnapshot = Object.freeze({ ...next });
+  _spacingInitialized = true;
   return next;
 }
 

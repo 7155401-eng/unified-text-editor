@@ -14,6 +14,26 @@ let runtimeMarginsEphemeral = false;
 let runtimeOutputBackground = null;
 let runtimeOutputBackgroundRaw = undefined;
 let runtimeOutputBackgroundEphemeral = false;
+let _pageSettingsInitialized = false;
+let _outputBgInitialized = false;
+
+/*
+ * 💡 What: In-memory cache for configuration settings synchronized via storage events.
+ * 🎯 Why: Avoids synchronous localStorage.getItem calls during tight layout/render loops.
+ * 📊 Impact: Eliminates GC pressure and I/O bottlenecks in frequent reads.
+ * 🔬 Measurement: Observe reduced main thread blocking in performance profiles during scrolling/rendering.
+ */
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === PAGE_SETTINGS_KEY || e.key === null) {
+      _pageSettingsInitialized = false;
+    }
+    if (e.key === OUTPUT_BACKGROUND_KEY || e.key === null) {
+      _outputBgInitialized = false;
+    }
+  });
+}
 
 function storageDisabled() {
   return typeof window !== "undefined" && window.__RAVTEXT_STORAGE_DISABLED__ === true;
@@ -55,12 +75,9 @@ function clampPx(value, fallback) {
 
 export function getPageMargins() {
   if (runtimeMargins && runtimeMarginsEphemeral) return { ...runtimeMargins };
+  if (_pageSettingsInitialized) return { ...runtimeMargins };
 
   const stored = readStorageRaw(PAGE_SETTINGS_KEY);
-  if (runtimeMargins && stored.ok && stored.raw === runtimeMarginsRaw) {
-    return { ...runtimeMargins };
-  }
-  if (!stored.ok && runtimeMargins) return { ...runtimeMargins };
 
   const saved = parseJsonRaw(stored.raw, {});
   runtimeMargins = {
@@ -71,6 +88,7 @@ export function getPageMargins() {
   };
   runtimeMarginsRaw = stored.ok ? stored.raw : undefined;
   runtimeMarginsEphemeral = false;
+  _pageSettingsInitialized = true;
   return { ...runtimeMargins };
 }
 
@@ -87,6 +105,7 @@ export function setPageMargins(next) {
   const persisted = writeStorageRaw(PAGE_SETTINGS_KEY, raw, "[page-settings] save failed:");
   runtimeMarginsEphemeral = !persisted;
   runtimeMarginsRaw = persisted ? raw : undefined;
+  _pageSettingsInitialized = true;
 
   applyPageSettings();
   return { ...runtimeMargins };
@@ -110,16 +129,14 @@ export function isOutputBackgroundEnabled() {
   if (runtimeOutputBackground !== null && runtimeOutputBackgroundEphemeral) {
     return runtimeOutputBackground;
   }
+  if (_outputBgInitialized) return runtimeOutputBackground;
 
   const stored = readStorageRaw(OUTPUT_BACKGROUND_KEY);
-  if (runtimeOutputBackground !== null && stored.ok && stored.raw === runtimeOutputBackgroundRaw) {
-    return runtimeOutputBackground;
-  }
-  if (!stored.ok && runtimeOutputBackground !== null) return runtimeOutputBackground;
 
   runtimeOutputBackground = stored.ok ? stored.raw === "1" : false;
   runtimeOutputBackgroundRaw = stored.ok ? stored.raw : undefined;
   runtimeOutputBackgroundEphemeral = false;
+  _outputBgInitialized = true;
   return runtimeOutputBackground;
 }
 
@@ -133,6 +150,7 @@ export function setOutputBackgroundEnabled(enabled) {
   );
   runtimeOutputBackgroundEphemeral = !persisted;
   runtimeOutputBackgroundRaw = persisted ? raw : undefined;
+  _outputBgInitialized = true;
   return runtimeOutputBackground;
 }
 
