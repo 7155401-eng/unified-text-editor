@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>header styles fixture</title>
+<style>
+  .page { border: 1px solid #ccc; padding: 8px; margin: 0 0 10px; }
+  .ravtext-page-header { text-align: center; }
+  .ravtext-page-footer { text-align: center; }
+</style>
+</head>
+<body>
+  <div id="render-safety-diagnostics-group"></div>
+  <div id="pages">
+    <div class="page">
+      <div class="ravtext-page-header">שם הספר</div>
+      <p>תוכן עמוד ראשון</p>
+      <div class="ravtext-page-footer">א</div>
+    </div>
+    <div class="page">
+      <div class="ravtext-page-header">שם הספר</div>
+      <p>תוכן עמוד שני</p>
+      <div class="ravtext-page-footer">ב</div>
+    </div>
+    <div class="page">
+      <div class="ravtext-page-header">שם הספר</div>
+      <p>תוכן עמוד שלישי</p>
+      <div class="ravtext-page-footer">ג</div>
+    </div>
+  </div>
+
+<script type="module">
+const { wireHeaderStyles } = await import("/src/document/header_styles_lazy_wire.js");
+wireHeaderStyles(document.getElementById("pages"));
+window.__fixtureReady = true;
+</script>
+</body>
+</html>
