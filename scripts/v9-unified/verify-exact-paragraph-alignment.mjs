@@ -45,6 +45,6 @@ try{
   originalDocumentValidated:false,remainingUnderfilledRows:result.alignment.afterUnderfilled};
  fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));
  console.log(JSON.stringify({total:report.total,failed:report.failed,remainingUnderfilledRows:report.remainingUnderfilledRows}));
- assert.equal(report.total,264);assert.equal(report.failed,0,JSON.stringify([...result.alignment.records,...result.pagination.records].filter(r=>!r.pass)));
+ assert.equal(report.total,336);assert.equal(report.failed,0,JSON.stringify([...result.alignment.records,...result.pagination.records].filter(r=>!r.pass)));
  assert.equal(errors.length,0);assert.equal(requests.length,0);
 }finally{await browser.close()}
