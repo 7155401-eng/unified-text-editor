@@ -228,6 +228,70 @@ export function selectV9GapFillCandidates(candidates = [], {
   return ordered.slice(0, Math.max(1, budget));
 }
 
+export function evaluateV9PhysicalGapFillTrigger({
+  remainingPx = 0,
+  lineHeight = 0,
+  beforeFill = null,
+  cfg = {},
+  manualPull = false,
+} = {}) {
+  const remaining = Math.max(0, Number(remainingPx) || 0);
+  const lineH = Math.max(0, Number(lineHeight) || 0);
+  if (!(lineH > 0)) return { ok: false, reason: "invalid-line-height", minRemainingPx: null };
+
+  const explicitRatio = Number(cfg?.finalGapFillTriggerRatio);
+  if (!manualPull && Number.isFinite(explicitRatio) && explicitRatio > 0 &&
+      Number.isFinite(Number(beforeFill)) && Number(beforeFill) >= explicitRatio) {
+    return { ok: false, reason: "configured-fill-ratio", minRemainingPx: null };
+  }
+
+  if (manualPull) {
+    const minRemainingPx = Math.min(lineH * 0.45, 6);
+    return { ok: remaining + 1 / 64 >= minRemainingPx,
+      reason: remaining + 1 / 64 >= minRemainingPx ? "ok" : "manual-no-physical-room",
+      minRemainingPx };
+  }
+
+  const configuredLines = Number(cfg?.finalGapFillMinRemainingLines);
+  const minLines = Number.isFinite(configuredLines) && configuredLines > 0 ? configuredLines : 0.85;
+  const minRemainingPx = lineH * minLines;
+  return { ok: remaining + 1 / 64 >= minRemainingPx,
+    reason: remaining + 1 / 64 >= minRemainingPx ? "ok" : "not-enough-physical-room",
+    minRemainingPx };
+}
+
+export function evaluateV9PhysicalGapFillGain({
+  beforeBottom = 0,
+  afterBottom = 0,
+  lineHeight = 0,
+  beforeFill = null,
+  afterFill = null,
+  cfg = {},
+  manualPull = false,
+} = {}) {
+  const before = Number(beforeBottom) || 0;
+  const after = Number(afterBottom) || 0;
+  const gainPx = after - before;
+  const lineH = Math.max(0, Number(lineHeight) || 0);
+  if (!(gainPx > 1 / 64)) return { ok: false, reason: "no-bottom-gain", gainPx, minGainPx: 0 };
+
+  if (manualPull) return { ok: true, reason: "ok", gainPx, minGainPx: 1 / 64 };
+
+  const configuredRatio = Number(cfg?.finalGapFillMinGain);
+  if (Number.isFinite(configuredRatio) && configuredRatio > 0 &&
+      Number.isFinite(Number(beforeFill)) && Number.isFinite(Number(afterFill))) {
+    const ok = Number(afterFill) + 1e-9 >= Number(beforeFill) + configuredRatio;
+    return { ok, reason: ok ? "ok" : "configured-gain-ratio", gainPx, minGainPx: null };
+  }
+
+  const configuredPx = Number(cfg?.finalGapFillMinGainPx);
+  const minGainPx = Number.isFinite(configuredPx) && configuredPx > 0
+    ? configuredPx
+    : Math.max(4, lineH * 0.45);
+  const ok = gainPx + 1 / 64 >= minGainPx;
+  return { ok, reason: ok ? "ok" : "too-small-physical-improvement", gainPx, minGainPx };
+}
+
 export function splitMainTextAtOffset(fullText, offset) {
   const text = String(fullText || "");
   const splitOffset = Math.max(0, Math.min(text.length, Number(offset) || 0));

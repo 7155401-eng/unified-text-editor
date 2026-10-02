@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
-import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates,getLastMainLineInfo,isV9WhitespaceBreakBoundary,buildParagraphBreakCandidates } from '../../src/engine/v9_split_policy.js';
+import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates,evaluateV9PhysicalGapFillTrigger,evaluateV9PhysicalGapFillGain,getLastMainLineInfo,isV9WhitespaceBreakBoundary,buildParagraphBreakCandidates } from '../../src/engine/v9_split_policy.js';
 import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
 import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
 import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
@@ -70,6 +70,29 @@ test('final gap search starts with page-sized prefixes instead of the three larg
  assert(selected.some(c=>c.offset===30),'three-row gap did not inspect a three-row prefix');
  assert(!selected.some(c=>c.offset===300),'gap search still starts at the end of a long paragraph');
  assert(selected.length>=8 && selected.length<30,`unexpected adaptive budget: ${selected.length}`);
+});
+
+test('automatic final-gap fill is gated by physical row room rather than default whole-page fill ratio',()=>{
+ const nearFull=evaluateV9PhysicalGapFillTrigger({remainingPx:19,lineHeight:20,beforeFill:.94,cfg:{}});
+ assert.equal(nearFull.ok,true,JSON.stringify(nearFull));
+ assert.equal(nearFull.reason,'ok');
+ const tooSmall=evaluateV9PhysicalGapFillTrigger({remainingPx:10,lineHeight:20,beforeFill:.4,cfg:{}});
+ assert.equal(tooSmall.ok,false);
+ assert.equal(tooSmall.reason,'not-enough-physical-room');
+ const configured=evaluateV9PhysicalGapFillTrigger({remainingPx:40,lineHeight:20,beforeFill:.9,cfg:{finalGapFillTriggerRatio:.84}});
+ assert.equal(configured.ok,false);
+ assert.equal(configured.reason,'configured-fill-ratio');
+});
+
+test('default final-gap acceptance requires meaningful physical bottom gain, not four percent of page height',()=>{
+ const oneRow=evaluateV9PhysicalGapFillGain({beforeBottom:180,afterBottom:200,lineHeight:20,beforeFill:.9,afterFill:.92,cfg:{}});
+ assert.equal(oneRow.ok,true,JSON.stringify(oneRow));
+ const sliver=evaluateV9PhysicalGapFillGain({beforeBottom:180,afterBottom:184,lineHeight:20,beforeFill:.9,afterFill:.904,cfg:{}});
+ assert.equal(sliver.ok,false);
+ assert.equal(sliver.reason,'too-small-physical-improvement');
+ const explicit=evaluateV9PhysicalGapFillGain({beforeBottom:180,afterBottom:200,lineHeight:20,beforeFill:.9,afterFill:.92,cfg:{finalGapFillMinGain:.04}});
+ assert.equal(explicit.ok,false);
+ assert.equal(explicit.reason,'configured-gain-ratio');
 });
 
 test('explicit final-gap candidate budget is respected after offset ordering',()=>{
