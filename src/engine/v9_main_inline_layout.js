@@ -743,16 +743,28 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
           !last.render.opening && last.wordTokens.length && last.naturalWidth > 0) {
         const frame = rowGeometry(strips, last.y, last.lineHeightPx, pageBottom);
         if (frame) {
-          const x = frame.x + (frame.width - last.naturalWidth) / 2;
+          // The visible segment on this row is BODY + gap + the dropped opening.
+          // Center that complete envelope, not the body alone. The opening itself
+          // stays fixed because it is shared by the rows above; solve the body's
+          // left edge so [body-left .. opening-right] has the frame midpoint.
+          const frameCenter = frame.x + frame.width / 2;
+          const openingRight = opening.x + opening.width;
+          const x = frameCenter * 2 - openingRight;
           const end = x + last.naturalWidth;
           const clearance = opening.x - opening.gap;
-          if (x >= frame.x - EPS && end <= clearance + EPS) {
+          const visualLeft = x;
+          const visualRight = openingRight;
+          if (x >= frame.x - EPS && end <= clearance + EPS &&
+              visualRight <= frame.x + frame.width + EPS &&
+              Math.abs((visualLeft + visualRight) / 2 - frameCenter) <= EPS) {
             last.x = x;
             last.width = last.naturalWidth;
             last.openingParagraphCentered = true;
+            last.openingCompositeCentered = true;
             last.openingHostX = frame.x;
             last.openingHostFullWidth = frame.width;
-            last.render.alignment = 'center';
+            last.openingCompositeWidth = visualRight - visualLeft;
+            last.render.alignment = 'right';
           }
         }
       }
