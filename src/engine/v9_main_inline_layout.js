@@ -160,9 +160,12 @@ function continuationTailPressure(metric) {
 }
 
 function resolveV9JustificationSpacing(context, body, naturalWidth, targetWidth, gaps) {
-  if (!(gaps > 0) || !(targetWidth > naturalWidth + EPS)) return 0;
+  if (!(gaps > 0)) return 0;
   const initial = Math.max(0, (targetWidth - naturalWidth) / gaps);
+  // Preserve the historical formula byte-for-byte for ordinary separators,
+  // including sub-EPS positive spacing used by preservation fixtures.
   if (!hasV9TabSeparator(body?.text)) return initial;
+  if (!(targetWidth > naturalWidth + EPS)) return initial;
 
   const widthAt = spacing => context.measure({
     ...body,
