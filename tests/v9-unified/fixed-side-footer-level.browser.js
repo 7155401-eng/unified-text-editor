@@ -45,16 +45,18 @@ function singlePage(family,presence,reverse){
   const offPlan=next.buildSinglePage(offHost,offContent,offCfg);
   assert(offPlan.footerBoxes.every(b=>!b.mishnaRole),'unchecked Talmud control still produced Mishnah footer roles');
  } finally { offHost.remove(); }
+ // The dedicated control must also leave an independently OFF global mode OFF.
+ localStorage.setItem('ravtext.mishnaWrap','0');
  cb.click();
  const levels=window.readExactLevels();
  assert(JSON.stringify(levels)===JSON.stringify([['03','04']]),'actual control did not produce footer-only first level');
  assert(localStorage.getItem('ravtext.talmud.otherAsMishna')==='1','dedicated Talmud control was not persisted');
  assert(isTalmudOtherAsMishnaEnabled()===true&&renders===1,'checked Talmud control did not enable the effective gate');
- assert(localStorage.getItem('ravtext.mishnaWrap')==='1','independent global Mishnah preference was unexpectedly changed');
+ assert(localStorage.getItem('ravtext.mishnaWrap')==='0','dedicated control overwrote the independent global Mishnah preference');
  cb.click();
  assert(localStorage.getItem('ravtext.talmud.otherAsMishna')==='0','uncheck was not persisted');
  assert(isTalmudOtherAsMishnaEnabled()===false&&renders===2,'uncheck did not disable the effective gate');
- assert(localStorage.getItem('ravtext.mishnaWrap')==='1','uncheck should not overwrite the independent global preference');
+ assert(localStorage.getItem('ravtext.mishnaWrap')==='0','uncheck overwrote the independent global preference');
  cb.click();
  assert(isTalmudOtherAsMishnaEnabled()===true&&renders===3,'re-enable failed');
  const ss={'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}},'03':{inlineStyle:{fontSize:10}},'04':{inlineStyle:{fontSize:10}}};
