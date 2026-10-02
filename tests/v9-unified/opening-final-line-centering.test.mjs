@@ -62,19 +62,38 @@ test('a genuinely one-row paragraph still centers opening + gap + body together'
   assert.equal((line.x + line.render.opening.x + line.render.opening.width) / 2, 50);
 });
 
-test('last opening-window row uses the widened free slot, not stale narrow geometry', () => {
+test('last opening-window row uses the widened host and full paragraph centre when safe', () => {
   const result = plan('OPEN aa aa aa aa aa aa aa', {dropLines: 3, strips: [
     {x: 50, width: 50, y_start: 0, y_end: 15},
     {x: 0, width: 100, y_start: 15, y_end: 200},
   ]});
   assert.equal(result.lines.length, 3);
-  const last = result.lines.at(-1);
+  const first = result.lines[0], last = result.lines.at(-1);
   assert.equal(last.y, 20);
   assert.equal(last.openingWindow, true);
   assert.equal(last.render.alignment, 'center');
-  assert.equal(last.x, 0);
-  assert.equal(last.width, 78);
-  assert.equal(result.lines[0].render.opening.x, 80);
+  assert.equal(last.openingParagraphCentered, true);
+  assert.equal(last.x, (100 - last.naturalWidth) / 2);
+  assert.equal(last.width, last.naturalWidth);
+  assert.equal(last.openingHostX, 0);
+  assert.equal(last.openingHostFullWidth, 100);
+  assert.equal(first.render.opening.x, 80);
+  assert.equal(last.x + last.width / 2, 50, 'final body is not centered on the widened full host');
+  assert(last.x + last.width <= first.render.opening.x - first.render.opening.gap);
+});
+
+test('three-row paragraph ending inside opening window also uses the full paragraph centre when safe', () => {
+  const result = plan('OPEN ' + Array(13).fill('aa').join(' '), {dropLines: 3});
+  assert.equal(result.lines.length, 3);
+  const [first,,last] = result.lines;
+  assert.equal(last.openingWindow, true);
+  assert.equal(last.isLast, true);
+  assert.equal(last.openingParagraphCentered, true);
+  assert.equal(last.render.alignment, 'center');
+  assert.equal(last.x, 45);
+  assert.equal(last.width, 10);
+  assert.equal(first.render.opening.x, 80);
+  assert(last.x + last.width <= first.render.opening.x - first.render.opening.gap);
 });
 
 test('final row below the opening centers across the complete host', () => {
