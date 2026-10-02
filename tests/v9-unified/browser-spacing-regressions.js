@@ -2424,16 +2424,31 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const els=[...page.querySelectorAll('.v9-line,.v9-stream-title,.v9-main-separator')];
       return Math.max(0,...els.map(el=>el.getBoundingClientRect().bottom-pr.top));
     };
-    const verifySource=(host,input)=>{
+    const compact=s=>String(s||'').replace(/[\s\u200e\u200f\u2060]/gu,'');
+    const verifySource=(host,input,result)=>{
       for(const p of input){
         const mainRows=[...host.querySelectorAll(`[data-v9-paragraph-id="${p.id}"]`)];
         assert(mainRows.map(sourceText).join('')===p.mainText,`B20 diagnostic main source mismatch ${p.id}`);
         for(const note of p.notes||[]){
           const key=`${p.id}:${note.stream}:${note.uid}`;
-          const noteRows=[...host.querySelectorAll('[data-v9-note-key]')].filter(el=>el.dataset.v9NoteKey===key);
-          assert(noteRows.map(sourceText).join('')===note.text,`B20 diagnostic note source mismatch ${key}`);
+          const refPage=result.pages.findIndex(page=>[...page.querySelectorAll('[data-v9-main-ref]')]
+            .some(el=>el.dataset.uid===note.uid));
+          const startPage=result.pages.findIndex(page=>[...page.querySelectorAll('[data-v9-note-start]')]
+            .some(el=>el.dataset.v9NoteStart===key));
+          assert(refPage>=0&&refPage===startPage,
+            `B20 diagnostic note/source page mismatch ${key}: ref=${refPage}, start=${startPage}`);
         }
       }
+      assert((result.noteAnchorFallbacks||[]).length===0,
+        `B20 diagnostic used note anchor fallback: ${JSON.stringify(result.noteAnchorFallbacks)}`);
+      // Continuation rows do not repeat data-v9-note-key on every later span.
+      // Verify total stream source instead of reconstructing each note from
+      // implementation-specific nested spans.
+      const expected=input.flatMap(p=>p.notes||[]).filter(n=>n.stream==='03').map(n=>n.text).join('');
+      const actual=[...host.querySelectorAll('.v9-final-stream-line[data-v9-source-stream="03"]')]
+        .map(sourceText).join('');
+      assert(compact(actual)===compact(expected),
+        `B20 diagnostic stream-03 source mismatch: actual=${compact(actual).length}, expected=${compact(expected).length}`);
     };
     try{
       for(const pageHeight of [260,300,340])for(const noteBase of [4,8])for(const mainRepeats of [6,8]){
@@ -2456,7 +2471,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
             finalGapFillTriggerRatio:.84,finalGapFillMinRemainingLines:2.5,finalGapFillMinGain:.04});
           const newResult=await buildPages(newHost,input,common);
           assert(oldResult.complete&&newResult.complete,'B20 diagnostic pagination incomplete');
-          verifySource(oldHost,input);verifySource(newHost,input);
+          verifySource(oldHost,input,oldResult);verifySource(newHost,input,newResult);
           const pageBottom=pageHeight-common.padding;
           const oldBottom=pageBottomOf(oldResult.pages[0]),newBottom=pageBottomOf(newResult.pages[0]);
           assert(newBottom<=pageBottom+.2,'physical gap fill crossed first-page bottom');
