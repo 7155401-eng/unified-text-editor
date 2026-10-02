@@ -67,7 +67,11 @@ function singlePage(family,presence,reverse){
  const hosts=[0,1,2].map(()=>{const p=document.createElement('div');document.body.append(p);return p});
  try{
   const old=base.buildSinglePage(hosts[0],content,cfg),current=next.buildSinglePage(hosts[1],content,cfg);
-  const reference=base.buildSinglePage(hosts[2],content,{...cfg,levels:[fixed,['03','04']]});
+  // Compare the two equivalent level encodings inside the SAME candidate.
+  // Baseline equality is asserted separately by preservation cases; an
+  // unrelated main-text planner improvement must not masquerade as a footer
+  // grouping regression here.
+  const reference=next.buildSinglePage(hosts[2],content,{...cfg,levels:[fixed,['03','04']]});
   const oldPair=old.footerBoxes.filter(b=>b.mishnaRole),newPair=current.footerBoxes.filter(b=>b.mishnaRole);
   assert(oldPair.length===0,'baseline unexpectedly supports checkbox-generated first level');
   assert(newPair.length===2,'candidate did not activate both lower roles');
@@ -105,7 +109,7 @@ async function runPaginationChecks(){
   const stateBefore=JSON.stringify({input,cfg});
   try{
    const build=async(api,levels)=>{const host=document.createElement('div');hosts.push(host);document.body.append(host);const result=await api.buildPages(host,input,{...cfg,levels});assert(result.complete,'multi-page run incomplete');return {host,result}};
-   const reference=await build(base,[fixed,['03','04']]),current=await build(next,cfg.levels);
+   const reference=await build(next,[fixed,['03','04']]),current=await build(next,cfg.levels);
    assert(current.result.pages.length>=2,'fixture is not actually multi-page');
    assert(current.result.pages.length===reference.result.pages.length,'equivalent configuration changed page count');
    assert(current.host.innerHTML===reference.host.innerHTML,'equivalent configuration has different page HTML');
