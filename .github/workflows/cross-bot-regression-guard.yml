@@ -62,6 +62,8 @@ jobs:
         run: node scripts/verify_page_tweaker.mjs
       - name: Text-to-speech engine
         run: node scripts/verify_tts_engine.mjs
+      - name: Marker placement proposal engine
+        run: node scripts/verify_marker_proposal.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
@@ -119,6 +121,7 @@ jobs:
           node --test tests/word-extractor/*.test.mjs
           node scripts/verify_page_tweaker.mjs
           node scripts/verify_tts_engine.mjs
+          node scripts/verify_marker_proposal.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
