@@ -120,6 +120,85 @@ const OPTICAL_NIQQUD_PROFILES = Object.freeze({
   "\u05E7": Object.freeze({ base: "\u05E7", xPercent: 73, raiseEm: 0.34 }),
 });
 
+const OPTICAL_REFERENCE_MARKS = Object.freeze(["\u05B7", "\u05B8"]); // patah, qamats
+const OPTICAL_MARK_ADJUST_LIMIT_EM = 0.18;
+const opticalMarkMetricCache = new Map();
+let opticalMetricCanvasContext = null;
+
+function cssFontSizePx(value, fallback = 16) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return fallback;
+  const m = raw.match(/^(-?\d+(?:\.\d+)?)(px|pt)?$/i);
+  if (!m) return fallback;
+  const amount = Number(m[1]);
+  if (!(amount > 0)) return fallback;
+  return String(m[2] || "px").toLowerCase() === "pt" ? amount * 4 / 3 : amount;
+}
+
+function opticalTypography(parent, inheritedTypography, styleElement = null) {
+  let computed = null;
+  try {
+    if (parent?.isConnected && parent.ownerDocument?.defaultView?.getComputedStyle) {
+      computed = parent.ownerDocument.defaultView.getComputedStyle(parent);
+    }
+  } catch {}
+  const style = styleElement?.style || {};
+  const fontSize = style.fontSize || inheritedTypography?.fontSize || computed?.fontSize || "16px";
+  return {
+    fontSizePx: cssFontSizePx(fontSize, 16),
+    fontFamily: style.fontFamily || inheritedTypography?.fontFamily || computed?.fontFamily || "serif",
+    fontWeight: style.fontWeight || inheritedTypography?.fontWeight || computed?.fontWeight || "400",
+    fontStyle: style.fontStyle || inheritedTypography?.fontStyle || computed?.fontStyle || "normal",
+  };
+}
+
+function opticalCanvasContext() {
+  if (opticalMetricCanvasContext) return opticalMetricCanvasContext;
+  try {
+    const canvas = document.createElement("canvas");
+    opticalMetricCanvasContext = canvas.getContext("2d");
+  } catch {
+    opticalMetricCanvasContext = null;
+  }
+  return opticalMetricCanvasContext;
+}
+
+function opticalMarkInkCenterPx(markText, typography) {
+  const ctx = opticalCanvasContext();
+  if (!ctx || !(typography?.fontSizePx > 0)) return null;
+  const font = `${typography.fontStyle || "normal"} ${typography.fontWeight || "400"} ${typography.fontSizePx}px ${typography.fontFamily || "serif"}`;
+  const key = `${font}\u0000${markText}`;
+  if (opticalMarkMetricCache.has(key)) return opticalMarkMetricCache.get(key);
+  let center = null;
+  try {
+    ctx.font = font;
+    const metric = ctx.measureText(markText);
+    const ascent = Number(metric.actualBoundingBoxAscent);
+    const descent = Number(metric.actualBoundingBoxDescent);
+    if (Number.isFinite(ascent) && Number.isFinite(descent) && (ascent > 0 || descent > 0)) {
+      // Canvas y grows downward: negative ascent is above the baseline.
+      center = (descent - ascent) / 2;
+    }
+  } catch {}
+  opticalMarkMetricCache.set(key, center);
+  return center;
+}
+
+export function opticalNiqqudUniformAdjustmentEm(markText, typography) {
+  const mark = String(markText || "");
+  if (!mark || !(typography?.fontSizePx > 0)) return 0;
+  const current = opticalMarkInkCenterPx(mark, typography);
+  const refs = OPTICAL_REFERENCE_MARKS
+    .map(ref => opticalMarkInkCenterPx(ref, typography))
+    .filter(Number.isFinite);
+  if (!Number.isFinite(current) || refs.length !== OPTICAL_REFERENCE_MARKS.length) return 0;
+  const commonCenter = refs.reduce((sum, value) => sum + value, 0) / refs.length;
+  const delta = (commonCenter - current) / typography.fontSizePx;
+  if (!Number.isFinite(delta)) return 0;
+  return Math.max(-OPTICAL_MARK_ADJUST_LIMIT_EM, Math.min(OPTICAL_MARK_ADJUST_LIMIT_EM, delta));
+}
+
+
 export function opticalNiqqudProfileForCluster(cluster) {
   const text = String(cluster || "");
   if (!text) return null;
@@ -131,7 +210,7 @@ export function opticalNiqqudProfileForCluster(cluster) {
   return profile;
 }
 
-function appendOpticalNiqqudCluster(parent, cluster, profile) {
+function appendOpticalNiqqudCluster(parent, cluster, profile, inheritedTypography = null, styleElement = null) {
   const base = profile.base;
   const marks = cluster.slice(base.length);
   const wrapper = document.createElement("span");
@@ -144,8 +223,13 @@ function appendOpticalNiqqudCluster(parent, cluster, profile) {
   wrapper.style.verticalAlign = "baseline";
   wrapper.style.whiteSpace = "pre";
 
-  // Keep source text exact in DOM order: base first, then the original marks.
-  wrapper.appendChild(document.createTextNode(base));
+  // Keep source text exact in DOM order and make the base independently
+  // inspectable in visual acceptance tests.
+  const baseSpan = document.createElement("span");
+  baseSpan.className = "rt-optical-niqqud-base";
+  baseSpan.textContent = base;
+  wrapper.appendChild(baseSpan);
+
   const mark = document.createElement("span");
   mark.className = "rt-optical-niqqud-mark";
   mark.textContent = marks;
@@ -158,12 +242,21 @@ function appendOpticalNiqqudCluster(parent, cluster, profile) {
   mark.style.textAlign = "center";
   mark.style.left = `${profile.xPercent}%`;
   mark.style.bottom = `${profile.raiseEm}em`;
-  mark.style.transform = "translateX(-50%)";
+
+  // One visual target per base letter. Different raw offsets here are only
+  // compensation for the font glyph's own internal vertical origin; patah,
+  // qamats and the other lower marks converge on the SAME target center.
+  const typography = opticalTypography(parent, inheritedTypography, styleElement);
+  const normalizeEm = opticalNiqqudUniformAdjustmentEm(marks, typography);
+  wrapper.dataset.opticalNiqqudNormalizeEm = String(normalizeEm);
+  mark.style.transform = normalizeEm
+    ? `translate(-50%, ${normalizeEm}em)`
+    : "translateX(-50%)";
   wrapper.appendChild(mark);
   parent.appendChild(wrapper);
 }
 
-function appendTextWithOpticalNiqqud(parent, text) {
+function appendTextWithOpticalNiqqud(parent, text, inheritedTypography = null, styleElement = null) {
   const str = String(text || "");
   if (!str) return;
   let emitted = 0;
@@ -179,7 +272,7 @@ function appendTextWithOpticalNiqqud(parent, text) {
     const clusterProfile = opticalNiqqudProfileForCluster(cluster);
     if (!clusterProfile) { i = end; continue; }
     if (i > emitted) parent.appendChild(document.createTextNode(str.slice(emitted, i)));
-    appendOpticalNiqqudCluster(parent, cluster, clusterProfile);
+    appendOpticalNiqqudCluster(parent, cluster, clusterProfile, inheritedTypography, styleElement);
     emitted = end;
     i = end;
   }
@@ -263,7 +356,7 @@ export function appendTextWithRuns(parent, text, runs, inheritedTypography = nul
   if (!str) return;
   const normalized = normalizeRuns(str, runs);
   if (normalized.length === 0 || !normalized.some(r => hasMarks(r.marks))) {
-    appendTextWithOpticalNiqqud(parent, str);
+    appendTextWithOpticalNiqqud(parent, str, inheritedTypography, parent);
     return;
   }
   for (const r of normalized) {
@@ -273,10 +366,10 @@ export function appendTextWithRuns(parent, text, runs, inheritedTypography = nul
       const span = document.createElement("span");
       applyMarksToSpan(span, r.marks);
       applyInheritedInlineLeading(span, inheritedTypography);
-      appendTextWithOpticalNiqqud(span, slice);
+      appendTextWithOpticalNiqqud(span, slice, inheritedTypography, span);
       parent.appendChild(span);
     } else {
-      appendTextWithOpticalNiqqud(parent, slice);
+      appendTextWithOpticalNiqqud(parent, slice, inheritedTypography, parent);
     }
   }
 }

@@ -40,6 +40,7 @@ try {
           widthDelta:Math.abs(ar.width-er.width),
           wrapper:wr?{left:wr.left,right:wr.right,top:wr.top,bottom:wr.bottom,width:wr.width,height:wr.height}:null,
           mark:mr?{left:mr.left,right:mr.right,top:mr.top,bottom:mr.bottom,width:mr.width,height:mr.height}:null,
+          normalizeEm:wrapper?Number(wrapper.dataset.opticalNiqqudNormalizeEm||0):0,
         };
       },{moduleURL,text:item.text,family,target:item.target});
       assert.ok(diagnostic.sourcePreserved,`${name}: source changed`);
@@ -62,6 +63,22 @@ try {
       }
       results.push({name,status:'pass',...diagnostic});
     } catch (error) {results.push({name,status:'fail',error:String(error)});}
+  }
+
+  // The user's correction is specifically uniformity: patah must move down
+  // and qamats up until both share one target. Check the automatic compensation
+  // signs in every tested font; no per-mark target table is allowed.
+  for(const family of ['serif','sans-serif','monospace']){
+    const patah=results.find(r=>r.status==='pass'&&r.name===`${family}: ךַ`);
+    const qamats=results.find(r=>r.status==='pass'&&r.name===`${family}: ךָ`);
+    assert(patah&&qamats,`${family}: missing final-kaf patah/qamats results`);
+    assert(patah.normalizeEm>0,`${family}: patah was not lowered toward the common target`);
+    assert(qamats.normalizeEm<0,`${family}: qamats was not raised toward the common target`);
+    const p2=results.find(r=>r.status==='pass'&&r.name===`${family}: קַ`);
+    const q2=results.find(r=>r.status==='pass'&&r.name===`${family}: קָ`);
+    assert(p2&&q2,`${family}: missing qof patah/qamats results`);
+    assert(p2.normalizeEm>0,`${family}: qof patah was not lowered toward the common target`);
+    assert(q2.normalizeEm<0,`${family}: qof qamats was not raised toward the common target`);
   }
 
   // Numbered specimen sheet across font families and sizes. This is evidence,
