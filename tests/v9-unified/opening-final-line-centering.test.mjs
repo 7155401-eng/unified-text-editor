@@ -73,11 +73,12 @@ test('last opening-window row uses the widened host and full paragraph centre wh
   assert.equal(last.openingWindow, true);
   assert.equal(last.render.alignment, 'center');
   assert.equal(last.openingParagraphCentered, true);
-  assert.equal(last.x, 45);
-  assert.equal(last.width, 10);
+  assert.equal(last.x, (100 - last.naturalWidth) / 2);
+  assert.equal(last.width, last.naturalWidth);
   assert.equal(last.openingHostX, 0);
   assert.equal(last.openingHostFullWidth, 100);
   assert.equal(first.render.opening.x, 80);
+  assert.equal(last.x + last.width / 2, 50, 'final body is not centered on the widened full host');
   assert(last.x + last.width <= first.render.opening.x - first.render.opening.gap);
 });
 
