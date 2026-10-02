@@ -2,6 +2,7 @@
 // loaded verbatim by the runner; both complete planners are unmodified copies.
 import * as next from '../../src/vilna_v9.js';
 import {getStreamSettings} from '../../src/original_stream_columns.js';
+import {isTalmudOtherAsMishnaEnabled} from '../../src/talmud_controls.js';
 export function createFixedSideFooterChecks(base) {
 const assert=(ok,message)=>{if(!ok)throw Error(message)};
 const words=['alpha','beta','gamma','delta','epsilon','zeta','eta','theta'];
@@ -26,16 +27,39 @@ function singlePage(family,presence,reverse){
  const controls=document.createElement('div');controls.innerHTML='<input id="talmud-other-as-mishna" type="checkbox">'+['01','02','03','04'].map(id=>`<div class="stream" data-stream="${id}"></div>`).join('');document.body.append(controls);
  const fixed=reverse?['02','01']:['01','02'];
  window.localStorage.clear();localStorage.setItem('ravtext.talmudLayout','1');localStorage.setItem('ravtext.talmudLayout.streams',fixed.join(','));
+ // Reproduce the user's regression: the unrelated global preference may be ON
+ // while the dedicated Talmud checkbox is OFF. That must still mean ordinary
+ // footer layout in V9.
+ localStorage.setItem('ravtext.mishnaWrap','1');
  window.__STREAM_SETTINGS__={};
  let renders=0;
  window.installExactCheckbox(()=>renders++);
- const cb=controls.querySelector('input');assert(cb.checked===false,'control starts checked');cb.click();
+ const cb=controls.querySelector('input');assert(cb.checked===false,'control starts checked');
+ assert(isTalmudOtherAsMishnaEnabled()===false,'global Mishnah preference leaked into the Talmud-specific gate');
+ const offCfg={pageWidth:380,pageHeight:800,padding:12,mainFontSize:13,sideFontSize:10,lineHeightRatio:1.55,mainFontFamily:family,sideFontFamily:family,
+  crownLines:4,openingWordSettings:{enabled:false},mishnaWrapOn:isTalmudOtherAsMishnaEnabled(),levels:[['03','04']],talmudStreams:fixed,
+  streamSettings:{'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}},'03':{inlineStyle:{fontSize:10}},'04':{inlineStyle:{fontSize:10}}}};
+ const offContent={mainText:text(14),rightStream:['both','right'].includes(presence)?mk(fixed[0],24):null,leftStream:['both','left'].includes(presence)?mk(fixed[1],24):null,footerStreams:[mk('03',4),mk('04',75)]};
+ const offHost=document.createElement('div');document.body.append(offHost);
+ try {
+  const offPlan=next.buildSinglePage(offHost,offContent,offCfg);
+  assert(offPlan.footerBoxes.every(b=>!b.mishnaRole),'unchecked Talmud control still produced Mishnah footer roles');
+ } finally { offHost.remove(); }
+ cb.click();
  const levels=window.readExactLevels();
  assert(JSON.stringify(levels)===JSON.stringify([['03','04']]),'actual control did not produce footer-only first level');
- assert(localStorage.getItem('ravtext.mishnaWrap')==='1'&&renders===1,'control or render request did not run');
+ assert(localStorage.getItem('ravtext.talmud.otherAsMishna')==='1','dedicated Talmud control was not persisted');
+ assert(isTalmudOtherAsMishnaEnabled()===true&&renders===1,'checked Talmud control did not enable the effective gate');
+ assert(localStorage.getItem('ravtext.mishnaWrap')==='1','independent global Mishnah preference was unexpectedly changed');
+ cb.click();
+ assert(localStorage.getItem('ravtext.talmud.otherAsMishna')==='0','uncheck was not persisted');
+ assert(isTalmudOtherAsMishnaEnabled()===false&&renders===2,'uncheck did not disable the effective gate');
+ assert(localStorage.getItem('ravtext.mishnaWrap')==='1','uncheck should not overwrite the independent global preference');
+ cb.click();
+ assert(isTalmudOtherAsMishnaEnabled()===true&&renders===3,'re-enable failed');
  const ss={'01':{inlineStyle:{fontSize:11}},'02':{inlineStyle:{fontSize:11}},'03':{inlineStyle:{fontSize:10}},'04':{inlineStyle:{fontSize:10}}};
  const cfg={pageWidth:380,pageHeight:800,padding:12,mainFontSize:13,sideFontSize:10,lineHeightRatio:1.55,mainFontFamily:family,sideFontFamily:family,
- crownLines:4,openingWordSettings:{enabled:false},mishnaWrapOn:true,levels,talmudStreams:fixed,streamSettings:ss};
+ crownLines:4,openingWordSettings:{enabled:false},mishnaWrapOn:isTalmudOtherAsMishnaEnabled(),levels,talmudStreams:fixed,streamSettings:ss};
  const content={mainText:text(14),rightStream:['both','right'].includes(presence)?mk(fixed[0],24):null,leftStream:['both','left'].includes(presence)?mk(fixed[1],24):null,footerStreams:[mk('03',4),mk('04',75)]};
  const input=JSON.stringify({content,cfg}),storageBefore=window.storageSnapshot();
  const hosts=[0,1,2].map(()=>{const p=document.createElement('div');document.body.append(p);return p});

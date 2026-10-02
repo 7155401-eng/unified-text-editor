@@ -10,6 +10,7 @@
 
 const STORAGE_KEY       = "ravtext.talmudLayout";
 const STREAMS_KEY       = "ravtext.talmudLayout.streams";
+const OTHER_AS_MISHNA_KEY = "ravtext.talmud.otherAsMishna";
 const CROWN_LINES_KEY   = "ravtext.talmudLayout.crownLines";
 const MAIN_WIDTH_KEY    = "ravtext.talmudLayout.mainWidth";
 const SIDE_MODE_KEY     = "ravtext.talmudLayout.sideMode";
@@ -36,6 +37,21 @@ export function isTalmudLayoutEnabled() {
 }
 export function setTalmudLayoutEnabled(enabled) {
   localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");
+}
+
+// This is a Talmud-layout-specific switch. It must not be inferred from the
+// independent global Mishnah-wrap preference: when this control is off, V9
+// must keep the non-side streams in the ordinary pre-combined footer layout.
+export function isTalmudOtherAsMishnaEnabled() {
+  try {
+    return localStorage.getItem(OTHER_AS_MISHNA_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setTalmudOtherAsMishnaEnabled(enabled) {
+  localStorage.setItem(OTHER_AS_MISHNA_KEY, enabled ? "1" : "0");
 }
 
 export function getTalmudStreamsText() {
