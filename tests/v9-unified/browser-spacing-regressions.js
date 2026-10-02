@@ -1761,14 +1761,14 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
-  // User-reported regression: counting a dropped opening again on row two
-  // centered a bounding envelope, but pinned the actual final text to the left.
-  // Centre a complete two-row ending in its paragraph frame only when it
-  // physically clears the fixed opening. Wide endings retain their free slot.
+  // User-reported regression: the final row's visual centering must include
+  // the dropped opening whenever the complete body+opening envelope fits safely.
+  // If it cannot fit without colliding with the opening, retain the safe
+  // centered free-slot fallback instead of forcing overlap.
   for(const family of ['serif','sans-serif','monospace'])
   for(const dropLines of [2,3,4])
   for(const hostX of [0,19])
-  await test(`opening-window final body is centered: ${family}, drop=${dropLines}, x=${hostX}`,()=>{
+  await test(`opening-window final visual envelope is centered: ${family}, drop=${dropLines}, x=${hostX}`,()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:family,lineHeightRatio:1,
       openingWordSettings:{enabled:true,target:'word',count:1,font:family,size:200,weight:'bold',
@@ -1797,39 +1797,56 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const opening=page.querySelector('.v9-opening-glyph');
       const body=rows.at(-1)?.querySelector('.v9-planned-line-text');
       assert(opening&&body,'rendered fixture is incomplete');
-      assert(last.render.alignment==='center','final row is not centered');
-      assert(!last.openingCompositeCentered,'opening was counted twice');
       assert(last.render.wordSpacing===0,'final row was stretched');
+
       const first=plan.lines[0];
       assert(Math.abs(first.x-hostX)<.01 &&
         Math.abs(first.width-(openingPlan.x-openingPlan.gap-hostX))<.01,
         'first row or its opening reservation moved');
       assert(Math.abs(openingPlan.x+openingPlan.width-hostX-100)<.01,
         'fixed opening moved away from the original right edge');
-      const fullFrameFits=hostX+50+last.naturalWidth/2<=openingPlan.x-openingPlan.gap+1/64;
-      assert(!!last.openingParagraphCentered===fullFrameFits,
-        'centering does not respect the measured opening clearance');
-      const expectedWidth=fullFrameFits?last.naturalWidth:openingPlan.x-openingPlan.gap-hostX;
-      assert(Math.abs(last.width-expectedWidth)<.01,'wrong occupied final-row width');
+
+      const freeWidth=openingPlan.x-openingPlan.gap-hostX;
+      const compositeFits=last.naturalWidth<=freeWidth+1/64;
+      assert(!!last.openingParagraphCentered===compositeFits,
+        'composite centering eligibility does not match measured opening clearance');
 
       const pageRect=page.getBoundingClientRect();
       const openingRect=opening.getBoundingClientRect();
       const range=document.createRange();range.selectNodeContents(body);
       const rects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
       assert(rects.length,'final body has no measurable ink');
-      const left=Math.min(...rects.map(r=>r.left));
-      const right=Math.max(...rects.map(r=>r.right));
-      const freeLeft=pageRect.left+page.clientLeft+hostX;
+      const bodyLeft=Math.min(...rects.map(r=>r.left));
+      const bodyRight=Math.max(...rects.map(r=>r.right));
+      const frameLeft=pageRect.left+page.clientLeft+hostX;
+      const frameRight=frameLeft+100;
       const freeRight=openingRect.left-openingPlan.gap;
-      const expectedCenter=fullFrameFits?freeLeft+50:(freeLeft+freeRight)/2;
-      const actualCenter=(left+right)/2;
-      assert(Math.abs(actualCenter-expectedCenter)<=.6,
-        `final body not centered: actual=${actualCenter}, expected=${expectedCenter}`);
-      assert(left>=freeLeft-.6 && right<=freeRight+.6,'final text overlaps the opening or leaves the host');
-      return {actualCenter,expectedCenter,freeWidth:freeRight-freeLeft};
+
+      if(compositeFits){
+        assert(last.openingCompositeCentered===true,'opening was omitted from safe visual-envelope centering');
+        assert(last.render.alignment==='right','composite-centered body must retain measured width');
+        assert(Math.abs(last.width-last.naturalWidth)<.01,'composite-centered body box is not its measured width');
+        const visualLeft=Math.min(bodyLeft,openingRect.left);
+        const visualRight=Math.max(bodyRight,openingRect.right);
+        const actualCenter=(visualLeft+visualRight)/2;
+        const expectedCenter=(frameLeft+frameRight)/2;
+        assert(Math.abs(actualCenter-expectedCenter)<=.8,
+          `opening+body envelope not centered: actual=${actualCenter}, expected=${expectedCenter}`);
+        assert(bodyRight<=freeRight+.8,'composite-centered body overlaps the opening');
+        return {mode:'composite',actualCenter,expectedCenter,freeWidth};
+      }
+
+      assert(!last.openingCompositeCentered,'unsafe wide ending was forced into composite centering');
+      assert(last.render.alignment==='center','wide unsafe ending lost free-slot centering');
+      assert(Math.abs(last.width-freeWidth)<.02,'wide unsafe ending lost its free-slot width');
+      const actualCenter=(bodyLeft+bodyRight)/2;
+      const expectedCenter=(frameLeft+freeRight)/2;
+      assert(Math.abs(actualCenter-expectedCenter)<=.8,
+        `wide body fallback not centered in free slot: actual=${actualCenter}, expected=${expectedCenter}`);
+      assert(bodyLeft>=frameLeft-.8 && bodyRight<=freeRight+.8,'wide fallback overlaps the opening or leaves the host');
+      return {mode:'free-slot',actualCenter,expectedCenter,freeWidth};
     }finally{context.dispose();page.remove();}
   });
-
 
   await test('crown gap never inserts extra vertical space at a narrow-to-wide commentary knee',()=>{
     const page=makePage();
