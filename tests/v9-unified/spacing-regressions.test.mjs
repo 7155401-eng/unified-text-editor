@@ -468,22 +468,22 @@ test('second and final opening-window row shares the paragraph centre without mo
  assert(host.render.opening,'opening glyph missing');
  assert(last.isLast===true,'second row is not paragraph last row');
  assert(last.openingWindow===true,'last row no longer overlaps opening window');
- assert.equal(last.render.alignment,'center','last body was pushed to an edge');
- const opening=host.render.opening;
- assert.equal(last.x,45,'last row did not use the full paragraph frame');
- assert.equal(last.width,last.naturalWidth,'last row box differs from its measured text');
- assert.equal(last.openingParagraphCentered,true);
- assert.equal(host.x,0,'first row moved');
- assert.equal(host.width,78,'first row lost the opening reservation');
- assert.equal(opening.x,80,'opening moved');
- const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
- const bodyRight=bodyLeft+last.naturalWidth;
- assert(Math.abs((bodyLeft+bodyRight)/2-50)<.01,
-  'last row is not centered in the complete paragraph');
- assert(bodyLeft>0,'last row was pinned to the left edge');
- assert(bodyRight<=opening.x-opening.gap,'last row overlaps the opening or its gap');
- assert.equal(last.render.wordSpacing,0,'last row was stretched');
- assert.notEqual(last.openingCompositeCentered,true,'opening counted a second time on the last row');
+  assert.equal(last.render.alignment,'right','composite-centred body must keep exact measured width');
+  const opening=host.render.opening;
+  assert.equal(last.x,0,'opening+body envelope did not use the full paragraph centre');
+  assert.equal(last.width,last.naturalWidth,'last row box differs from its measured text');
+  assert.equal(last.openingParagraphCentered,true);
+  assert.equal(last.openingCompositeCentered,true);
+  assert.equal(host.x,0,'first row moved');
+  assert.equal(host.width,78,'first row lost the opening reservation');
+  assert.equal(opening.x,80,'opening moved');
+  const bodyLeft=last.x;
+  const bodyRight=bodyLeft+last.naturalWidth;
+  const openingRight=opening.x+opening.width;
+  assert(Math.abs((bodyLeft+openingRight)/2-50)<.01,
+   'complete visible segment is not centered in the paragraph');
+  assert(bodyRight<=opening.x-opening.gap,'last row overlaps the opening or its gap');
+  assert.equal(last.render.wordSpacing,0,'last row was stretched');
 });
 
 
@@ -625,20 +625,21 @@ test('final row inside a dropped-opening window keeps normal last-line semantics
  const host=plan.lines.find(l=>l.render?.opening);
  const last=plan.lines.at(-1);
  assert(host?.render?.opening,'opening missing');
- assert.equal(last.render.alignment,'center','final body row has special edge alignment');
- assert.notEqual(last.openingCompositeCentered,true,'the opening is not owned by this row');
- const freeRight=host.render.opening.x-host.render.opening.gap;
- assert.equal(last.openingParagraphCentered,true);
- assert.equal(last.x,45);
- assert.equal(last.width,last.naturalWidth);
- assert.equal(host.x,0,'first row moved');
- assert.equal(host.width,78,'first row lost its original slot');
- assert.equal(host.render.opening.x,80,'opening moved');
- assert.equal(last.render.wordSpacing,0,'last row was stretched');
- const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
- assert(Math.abs((bodyLeft+last.naturalWidth/2)-50)<.001,
-  'last body row is not centered inside the full paragraph');
- assert(bodyLeft+last.naturalWidth<=freeRight+.001,'last body overlaps the opening');
+  assert.equal(last.render.alignment,'right','composite-centred final body must keep exact measured width');
+  assert.equal(last.openingCompositeCentered,true,'opening was omitted from the visual centering envelope');
+  const freeRight=host.render.opening.x-host.render.opening.gap;
+  assert.equal(last.openingParagraphCentered,true);
+  assert.equal(last.x,0);
+  assert.equal(last.width,last.naturalWidth);
+  assert.equal(host.x,0,'first row moved');
+  assert.equal(host.width,78,'first row lost its original slot');
+  assert.equal(host.render.opening.x,80,'opening moved');
+  assert.equal(last.render.wordSpacing,0,'last row was stretched');
+  const bodyLeft=last.x;
+  const openingRight=host.render.opening.x+host.render.opening.width;
+  assert(Math.abs((bodyLeft+openingRight)/2-50)<.001,
+   'opening+body envelope is not centered inside the full paragraph');
+  assert(bodyLeft+last.naturalWidth<=freeRight+.001,'last body overlaps the opening');
 });
 
 test('opening-word rows remain one paragraph: redistribute first, then finish exact justification',()=>{
