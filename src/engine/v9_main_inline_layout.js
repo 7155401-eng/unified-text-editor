@@ -426,10 +426,13 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     maxWordSpacingAfter: current.maxPressure,
     gentleCap: gentleMax,
     ...(exactPartition ? {exactPartitionEvaluations: exactPartition.evaluations} : {}),
-    fallbackStretchedRows: current.metrics.filter((metric, i) => {
-      if (metric.end >= entry.text.length && !entry.continuesAfter) return false;
-      return metric.gaps > 0 && metric.pressure > gentleMax + EPS;
-    }).length,
+    ...(() => {
+      const count = current.metrics.filter((metric) => {
+        if (metric.end >= entry.text.length && !entry.continuesAfter) return false;
+        return metric.gaps > 0 && metric.pressure > gentleMax + EPS;
+      }).length;
+      return count > 0 ? { fallbackStretchedRows: count } : {};
+    })(),
   };
   diagnostics?.push?.(result);
   return result;
