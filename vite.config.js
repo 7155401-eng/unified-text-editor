@@ -103,6 +103,21 @@ const BUILD_STAMP = (() => {
 
 export default defineConfig({
   base: BASE,
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep only the user-triggered PDF lazy entry stable across deployments.
+        // An editing tab can legitimately stay open while a new version is
+        // deployed; its old main bundle must still be able to import PDF later.
+        // Other chunks retain content hashes and normal immutable caching.
+        chunkFileNames(chunkInfo) {
+          return chunkInfo.name === 'pdf_export'
+            ? 'assets/pdf_export.js'
+            : 'assets/[name]-[hash].js';
+        },
+      },
+    },
+  },
   worker: {
     format: 'es',
   },
