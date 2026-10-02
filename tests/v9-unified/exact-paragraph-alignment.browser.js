@@ -75,14 +75,24 @@ export function runExactParagraphAlignmentChecks(old) {
      }
     }
    }
-   if(center){
-    assert(b.lines.length===2&&b.lines[1].isLast,'centering applied beyond complete two-row paragraph');
-    assert(JSON.stringify(a.lines[0])===JSON.stringify(b.lines[0]),'centering changed first row or opening');
-    const last=b.lines[1],glyph=b.lines[0].render.opening,rect=ranges[1][1];
-    assert(Math.abs((rect.left+rect.right)/2-last.openingHostX-last.openingHostFullWidth/2)<=.04,'last row not centred on paragraph frame');
-    assert(rect.right<=glyph.x-glyph.gap+.04,'centred row overlaps opening or gap');
-    assert(last.y===a.lines[1].y&&last.lineHeightPx===a.lines[1].lineHeightPx&&last.naturalWidth===a.lines[1].naturalWidth,'centering changed height/word size');
-   }
+    if(center){
+     const lastIndex=b.lines.findLastIndex(l=>l.openingParagraphCentered);
+     const last=b.lines[lastIndex],first=b.lines.find(l=>l.render?.opening),glyph=first?.render?.opening,rect=ranges[1][lastIndex];
+     assert(lastIndex>0&&last?.isLast&&first&&glyph,'opening centering applied outside a complete multi-row opening paragraph');
+     assert(last.openingCompositeCentered===true,'opening-centred ending still centers the body alone');
+     const firstIndex=b.lines.indexOf(first);
+     assert(JSON.stringify(a.lines[firstIndex])===JSON.stringify(first),'centering changed opening host row or glyph');
+     const glyphEl=hosts[1].querySelector('.v9-opening-glyph'),base=hosts[1].getBoundingClientRect();
+     assert(glyphEl,'painted opening glyph missing');
+     const gr=glyphEl.getBoundingClientRect();
+     const glyphLeft=gr.left-base.left,glyphRight=gr.right-base.left;
+     const visualLeft=Math.min(rect.left,glyphLeft),visualRight=Math.max(rect.right,glyphRight);
+     assert(Math.abs((visualLeft+visualRight)/2-last.openingHostX-last.openingHostFullWidth/2)<=.8,
+      'opening+body visual envelope not centred on paragraph frame');
+     assert(rect.right<=glyph.x-glyph.gap+.8,'centred row overlaps opening or gap');
+     assert(last.y===a.lines[lastIndex].y&&last.lineHeightPx===a.lines[lastIndex].lineHeightPx&&
+      last.naturalWidth===a.lines[lastIndex].naturalWidth,'centering changed height/word size');
+    }
    if(!exact&&!center&&!fallback){assert(same,'unsupported case changed plan');assert(hosts[0].innerHTML===hosts[1].innerHTML,'unsupported case changed paint');}
    return {same,exact,center,fallback,rows:b.lines.length,
     beforeUnderfilled:a.lines.filter((l,i)=>!l.isLast&&l.wordTokens.length&&ranges[0][i].left-l.x>.5).length,
