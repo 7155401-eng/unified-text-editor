@@ -2415,6 +2415,67 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  await test('B20 diagnostic: compare conservative versus physical gap fill with anchored footer notes',async()=>{
+    const settings=getStreamSettings(),saved=settings['03'];
+    settings['03']={...(settings['03']||{}),mainRefEnabled:true,noteNumEnabled:false,lemmaBold:false,titleShow:false};
+    const rows=[];
+    const pageBottomOf=page=>{
+      const pr=page.getBoundingClientRect();
+      const els=[...page.querySelectorAll('.v9-line,.v9-stream-title,.v9-main-separator')];
+      return Math.max(0,...els.map(el=>el.getBoundingClientRect().bottom-pr.top));
+    };
+    const verifySource=(host,input)=>{
+      for(const p of input){
+        const mainRows=[...host.querySelectorAll(`[data-v9-paragraph-id="${p.id}"]`)];
+        assert(mainRows.map(sourceText).join('')===p.mainText,`B20 diagnostic main source mismatch ${p.id}`);
+        for(const note of p.notes||[]){
+          const key=`${p.id}:${note.stream}:${note.uid}`;
+          const noteRows=[...host.querySelectorAll('[data-v9-note-key]')].filter(el=>el.dataset.v9NoteKey===key);
+          assert(noteRows.map(sourceText).join('')===note.text,`B20 diagnostic note source mismatch ${key}`);
+        }
+      }
+    };
+    try{
+      for(const pageHeight of [260,300,340])for(const noteBase of [4,8])for(const mainRepeats of [6,8]){
+        const main=Array(mainRepeats).fill(neutral).join(' '),words=[...main.matchAll(/\S+/gu)];
+        const input=Array.from({length:4},(_,pi)=>({
+          id:`gap-note-${pageHeight}-${noteBase}-${mainRepeats}-${pi}`,
+          mainText:main,
+          notes:Array.from({length:4},(_,ni)=>{
+            const w=words[Math.min(words.length-1,5+ni*10)];
+            return {stream:'03',uid:`gap-note-${pi}-${ni}`,num:pi*4+ni+1,
+              anchor:w.index+w[0].length,anchorAffinity:'backward',
+              text:Array(noteBase+ni*2).fill(neutral).join(' ')};
+          })
+        }));
+        const common={...cfg,pageHeight,maxPages:100,talmudStreams:['01','02'],mishnaWrapOn:false,
+          streamSettings:{'03':{inlineStyle:{fontSize:11}}}};
+        const oldHost=makePage(),newHost=makePage();
+        try{
+          const oldResult=await buildPages(oldHost,input,{...common,
+            finalGapFillTriggerRatio:.84,finalGapFillMinRemainingLines:2.5,finalGapFillMinGain:.04});
+          const newResult=await buildPages(newHost,input,common);
+          assert(oldResult.complete&&newResult.complete,'B20 diagnostic pagination incomplete');
+          verifySource(oldHost,input);verifySource(newHost,input);
+          const pageBottom=pageHeight-common.padding;
+          const oldBottom=pageBottomOf(oldResult.pages[0]),newBottom=pageBottomOf(newResult.pages[0]);
+          assert(newBottom<=pageBottom+.2,'physical gap fill crossed first-page bottom');
+          assertNoWordOverlap(newResult.pages[0]);
+          rows.push({
+            pageHeight,noteBase,mainRepeats,
+            oldGap:+(pageBottom-oldBottom).toFixed(3),
+            newGap:+(pageBottom-newBottom).toFixed(3),
+            gain:+(newBottom-oldBottom).toFixed(3),
+            oldPages:oldResult.pages.length,newPages:newResult.pages.length
+          });
+        }finally{oldHost.remove();newHost.remove();}
+      }
+      return {rows:rows.sort((a,b)=>b.gain-a.gain)};
+    }finally{
+      if(saved===undefined)delete settings['03'];else settings['03']=saved;
+    }
+  });
+
   await test('B20/C7: footer streams never cover the last main-text row',()=>{
     const page=makePage();
     const main=Array(8).fill(neutral).join(' ');
