@@ -22,6 +22,7 @@ import { splitMarkersOnServer, mergeBackOnServer, inlineMergeOnServer, inlineSpl
 import { applyLineMode } from "./line_mode.js";
 import { setupPdfToolbar } from "./engine_toolbar.js";
 import { wireLayoutAnalysisReport } from "./layout_analysis_lazy_wire.js";
+import { wirePageTweaker } from "./page_tweaker_lazy_wire.js";
 import { scheduleEngineRender, setupPageClickHandler, paneManagerFromEngineDoc, defaultLabelForCode } from "./engine_bridge.js";
 import { installFinalLayoutGuard } from "./engine/final_layout_guard.js";
 import "./stream_button_labels.js";
@@ -1079,6 +1080,7 @@ function setupRibbonTabs() {
 
 setupRibbonTabs();
 wireLayoutAnalysisReport(pagesContainer);
+wirePageTweaker(paneManager, pagesContainer);
 wireDownloadsPanel();
 initPwaInstallPrompt();
 lockScopeWhileStandalone();

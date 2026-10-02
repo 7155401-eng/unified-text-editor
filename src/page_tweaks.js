@@ -27,6 +27,26 @@ const int = (v, fallback = 0) => {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+/**
+ * A measurement that may legitimately be absent.
+ *
+ * `null` means "never measured" and the whole module relies on it: the
+ * "meaningful" tests below use `!== null` to decide whether a page entry is
+ * worth keeping, and the approval baseline treats a non-finite previous value
+ * as "no baseline yet".
+ *
+ * Plain `Number(value)` cannot express that, because `Number(null)` is `0` and
+ * `Number.isFinite(0)` is `true`. Using it here made every entry carry
+ * `spaceLines: 0` / `overflowPx: 0`, so no entry was ever considered
+ * meaningless: resetting a single page left a dead entry behind, the tuned-page
+ * count was inflated, and the saved document state grew on every edit.
+ */
+const measureOrNull = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, n) : null;
+};
+
 function normalizeFootnoteShift(raw) {
   const out = {};
   if (!raw || typeof raw !== "object") return out;
@@ -54,8 +74,8 @@ export function normalizePageTweakEntry(raw = {}) {
   return {
     linesDiff: clamp(int(raw?.linesDiff ?? raw?.lines_diff), -MAX_LINES_DIFF, MAX_LINES_DIFF),
     status,
-    spaceLines: Number.isFinite(Number(raw?.spaceLines)) ? Math.max(0, Number(raw.spaceLines)) : null,
-    overflowPx: Number.isFinite(Number(raw?.overflowPx)) ? Math.max(0, Number(raw.overflowPx)) : null,
+    spaceLines: measureOrNull(raw?.spaceLines),
+    overflowPx: measureOrNull(raw?.overflowPx),
     notes: String(raw?.notes || "").slice(0, 2000),
     footnoteShift: normalizeFootnoteShift(raw?.footnoteShift ?? raw?.footnote_shift),
   };
@@ -221,8 +241,13 @@ export function updatePageTweakMeasurements(raw, pageNumber, {
   const previous = normalizePageTweakEntry(state.pages[key] || {});
   const next = { ...previous };
 
-  const gap = Number(bottomGapLines);
-  const overflow = Number(overflowPx);
+  // An omitted measurement must stay omitted. Before measureOrNull() these were
+  // plain Number() calls, so calling this with no measurements at all wrote 0/0
+  // over whatever the page already had.
+  const gapOrNull = measureOrNull(bottomGapLines);
+  const overflowOrNull = measureOrNull(overflowPx);
+  const gap = gapOrNull === null ? NaN : gapOrNull;
+  const overflow = overflowOrNull === null ? NaN : overflowOrNull;
   const pitch = Math.max(1, Number(linePitchPx) || 1);
 
   let preserveApprovedBaseline = false;
@@ -281,8 +306,8 @@ export function approvePageTweakWithMeasurements(raw, pageNumber, {
   state.pages[key] = normalizePageTweakEntry({
     ...current,
     status: PAGE_TWEAK_STATUS_APPROVED,
-    spaceLines: Number.isFinite(Number(bottomGapLines)) ? Math.max(0, Number(bottomGapLines)) : current.spaceLines,
-    overflowPx: Number.isFinite(Number(overflowPx)) ? Math.max(0, Number(overflowPx)) : current.overflowPx,
+    spaceLines: measureOrNull(bottomGapLines) ?? current.spaceLines,
+    overflowPx: measureOrNull(overflowPx) ?? current.overflowPx,
   });
   return state;
 }
