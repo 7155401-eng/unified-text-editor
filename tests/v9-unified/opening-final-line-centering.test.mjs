@@ -121,8 +121,11 @@ for (const dropLines of [2, 3, 4]) test(`a wide last row never intrudes into its
   const [first,last] = result.lines;
   assert.equal(result.lines.length,2);
   assert.equal(last.naturalWidth,58);
-  assert.notEqual(last.openingParagraphCentered,true);
+  assert.equal(last.openingParagraphCentered,true);
+  assert.equal(last.openingCompositeCentered,true);
+  assert.equal(last.render.alignment,'right');
   assert.equal(last.x,0);
-  assert.equal(last.width,78);
+  assert.equal(last.width,58);
   assert.equal(first.render.opening.x,80);
+  assert.equal(last.x+last.width<=first.render.opening.x-first.render.opening.gap,true);
 });
