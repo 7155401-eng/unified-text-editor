@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><title>merge verify fixture</title></head>
+<body>
+  <div id="render-safety-diagnostics-group"></div>
+
+<script type="module">
+// המקור, ושתי תוצאות: אחת תקינה ואחת שבה המיזוג „ברח" ואיבד קטע רצוף.
+const WORDS = Array.from({ length: 70 }, (_, i) => `מילה${i}`);
+const SOURCE = WORDS.join(" ");
+const GOOD = WORDS.join(" @01 ");                       // סימני זרם בלבד — אין אובדן
+const RUNAWAY = WORDS.slice(0, 20).concat(WORDS.slice(50)).join(" "); // 30 מילים נעלמו
+
+const mk = (role, code, label, text) => ({ paneRole: role, streamCode: code, label, _body: { textContent: text } });
+window.paneManager = {
+  panes: [
+    mk("main", null, "המקור", SOURCE),
+    mk("stream", "01", "תוצאה תקינה", GOOD),
+    mk("stream", "02", "תוצאה שברחה", RUNAWAY),
+  ],
+  getMainPane() { return this.panes[0]; },
+};
+
+const { wireMergeVerifier } = await import("/src/compare/merge_verifier_lazy_wire.js");
+wireMergeVerifier(window.paneManager);
+window.__fixtureReady = true;
+</script>
+</body>
+</html>
