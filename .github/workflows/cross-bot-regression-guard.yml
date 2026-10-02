@@ -115,6 +115,16 @@ jobs:
           node scripts/verify-regular-renderer-bidi.mjs
           node scripts/v9-unified/verify-bracket-raster.mjs
           node scripts/verify-docx-to-renderer-bidi-e2e.mjs
+      - name: Retain optical Hebrew niqqud proof
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: optical-niqqud-${{ github.run_id }}
+          path: |
+            test-results/v9-unified/combining-marks.json
+            test-results/v9-unified/optical-niqqud-specimen.png
+          retention-days: 7
+          if-no-files-found: error
       - name: Retain hidden-reference shaping evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
