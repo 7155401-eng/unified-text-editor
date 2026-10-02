@@ -2,6 +2,7 @@ import { createV9TextLayoutContext, appendV9PlannedPart } from './v9_text_measur
 import { layoutV9MainParagraphs } from './v9_main_inline_layout.js';
 import { normalizeRichTextEntry, makeRichText, sliceRichText } from './rich_text_runs.js';
 import { applyStyleToElement, applyTextStyleObjectToElement } from '../style_registry.js';
+import { hasSpecialV9JustificationSeparator } from './v9_justification_separators.js';
 
 // Streams use the SAME measured line breaker as main text. No CSS wrapping
 // after V9 has assigned absolute row positions; no scale or font-size rescue.
@@ -110,5 +111,9 @@ export function renderV9MeasuredStreamLine(line,box,page,padding,colorClass='') 
   const body=document.createElement('span');body.className='v9-planned-stream-text';
   body.style.cssText=`position:absolute;left:0;display:block;box-sizing:border-box;margin:0;padding:0;top:${line.render.topInset || 0}px;white-space:pre;width:${line.width}px;`;
   body.style.wordSpacing=`${line.render.wordSpacing}px`;body.style.textAlign=line.render.alignment;
-  appendV9PlannedPart(body,line.render.body);el.append(body);page.append(el);return el;
+  appendV9PlannedPart(
+    body,
+    line.render.body,
+    hasSpecialV9JustificationSeparator(line.render.body?.text) ? (line.render.wordSpacing || 0) : 0
+  );el.append(body);page.append(el);return el;
 }
