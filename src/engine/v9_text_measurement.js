@@ -299,7 +299,6 @@ export function renderV9PlannedMainLine(line, pageEl, padding = 0) {
   body.style.cssText = 'position:absolute;left:0;display:block;box-sizing:border-box;white-space:pre;overflow:visible;margin:0;padding:0;';
   body.style.top = `${line.render.topInset}px`; body.style.width = `${line.width}px`;
   body.style.wordSpacing = `${line.render.wordSpacing}px`; body.style.textAlign = line.render.alignment;
-  body.dataset.v9PlannedWordSpacingPx = String(line.render.wordSpacing || 0);
   appendV9PlannedPart(body, line.render.body, line.render.wordSpacing || 0); el.appendChild(body);
   pageEl.dataset.v9MainLayout = V9_INLINE_PLAN_VERSION;
   pageEl.appendChild(el); return el;
