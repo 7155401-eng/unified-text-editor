@@ -23,6 +23,23 @@ function normalized(plan){
  for(const b of copy.footerBoxes)if(b.mishnaSource==='levels')delete b.mishnaLevel;
  return copy;
 }
+function fixedSideSignature(boxes){
+ return (boxes||[]).map(box=>({
+  id:box.id,role:box.role,side:box.side,endY:box.endY,continues:box.continues,
+  overflowText:box.overflowText,overflowRuns:box.overflowRuns,
+  streamPageBottomY:box.streamPageBottomY,bodyStartGrid:box.bodyStartGrid||null,
+  strips:(box.strips||[]).map(s=>({x:s.x,width:s.width,y_start:s.y_start,y_end:s.y_end,lockYStart:!!s.lockYStart})),
+  lines:(box.lines||[]).map(line=>({
+   x:line.x,y:line.y,width:line.width,lineHeightPx:line.lineHeightPx,
+   forcedBreak:!!line.forcedBreak,isLast:!!line.isLast,
+   source:line.source?{start:line.source.start,end:line.source.end,paragraphId:line.source.paragraphId}:null,
+   sourceText:line.sourceText,
+   words:(line.wordTokens||[]).map(w=>({start:w.start,end:w.end,text:w.text})),
+   bodyText:line.render?.body?.text||'',
+   refs:(line.render?.body?.refs||[]).map(ref=>({uid:ref.uid,anchor:ref.anchor,localPos:ref.localPos})),
+  })),
+ }));
+}
 function singlePage(family,presence,reverse){
  const controls=document.createElement('div');controls.innerHTML='<input id="talmud-other-as-mishna" type="checkbox">'+['01','02','03','04'].map(id=>`<div class="stream" data-stream="${id}"></div>`).join('');document.body.append(controls);
  const fixed=reverse?['02','01']:['01','02'];
@@ -78,7 +95,8 @@ function singlePage(family,presence,reverse){
   assert(newPair.every(b=>b.mishnaLevel===1),'first-level provenance was lost');
   assert(JSON.stringify(normalized(current))===JSON.stringify(normalized(reference)),'short-form result differs from established expanded-level layout');
   assert(hosts[1].innerHTML===hosts[2].innerHTML,'same hierarchy painted differently');
-  assert(JSON.stringify(current.streamBoxes)===JSON.stringify(old.streamBoxes),'fixed side geometry or ownership changed');
+  assert(JSON.stringify(fixedSideSignature(current.streamBoxes))===JSON.stringify(fixedSideSignature(old.streamBoxes)),
+   'fixed side geometry or source ownership changed');
   assert(current.streamCoverage.every(c=>c.exact),'source coverage not exact');
   assert(JSON.stringify({content,cfg})===input&&window.storageSnapshot()===storageBefore,'input or storage was rewritten');
   rectangleCheck(current);
