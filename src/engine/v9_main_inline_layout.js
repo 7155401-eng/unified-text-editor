@@ -375,7 +375,12 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     const metric = current.metrics[i];
     const isLast = metric.end >= entry.text.length && !entry.continuesAfter;
     const rawSpacing = (!isLast && metric.gaps > 0) ? metric.pressure : 0;
-    const wordSpacing = Number.isFinite(rawSpacing) ? Math.min(rawSpacing, gentleMax) : 0;
+    // Pull words between existing rows first. If no complete partition can
+    // bring the row below the gentle cap, finish justification with the exact
+    // measured word spacing instead of deliberately leaving a visible hole.
+    // This is word-spacing only: glyphs are never scaled or letter-spaced.
+    const fallbackStretch = Number.isFinite(rawSpacing) && rawSpacing > gentleMax + EPS;
+    const wordSpacing = Number.isFinite(rawSpacing) ? rawSpacing : 0;
 
     const ownsOpening = !!old.render?.opening;
     const sourceRangeStart = ownsOpening ? sourceSegmentStart : metric.start;
@@ -405,7 +410,10 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       tailRebalanced: true,
       ...(exactPartition ? {tailExactRebalanced: true} : {}),
       tailWordSpacingTarget: Number.isFinite(rawSpacing) ? rawSpacing : null,
-      tailWordSpacingCapped: Number.isFinite(rawSpacing) && rawSpacing > gentleMax + EPS,
+      // Historical diagnostic kept explicit: the final plan no longer clips
+      // required spacing. A separate flag records rows that needed the fallback.
+      tailWordSpacingCapped: false,
+      ...(fallbackStretch ? { tailWordSpacingFallbackStretched: true } : {}),
     };
   }
 
@@ -418,6 +426,10 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     maxWordSpacingAfter: current.maxPressure,
     gentleCap: gentleMax,
     ...(exactPartition ? {exactPartitionEvaluations: exactPartition.evaluations} : {}),
+    fallbackStretchedRows: current.metrics.filter((metric, i) => {
+      if (metric.end >= entry.text.length && !entry.continuesAfter) return false;
+      return metric.gaps > 0 && metric.pressure > gentleMax + EPS;
+    }).length,
   };
   diagnostics?.push?.(result);
   return result;
