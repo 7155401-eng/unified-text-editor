@@ -1,0 +1,56 @@
+name: Exact paragraph alignment and source preservation
+on:
+  pull_request:
+    branches: [main]
+    paths: ['src/**', 'tests/v9-unified/**', 'scripts/v9-unified/**', '.github/workflows/**']
+  push:
+    branches: [main]
+    paths: ['src/engine/v9_main_inline_layout.js', 'src/engine/v9_exact_tail_partition.js', 'tests/v9-unified/exact-*', 'scripts/v9-unified/verify-exact-paragraph-alignment.mjs', '.github/workflows/v9-exact-paragraph-alignment.yml']
+permissions:
+  contents: read
+jobs:
+  alignment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Exact-search oracle and safe paragraph-centre contracts
+        run: node --test tests/v9-unified/exact-tail-partition.test.mjs tests/v9-unified/opening-final-line-centering.test.mjs
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 9c4738e1063d4692398091e2b10bae87de365487
+          path: .exact-alignment-baseline
+          persist-credentials: false
+      - name: Measured edges, collision guards, source and multi-page ownership
+        run: |
+          node scripts/v9-unified/verify-exact-paragraph-alignment.mjs
+          cp test-results/exact-paragraph-alignment/report.json test-results/exact-paragraph-alignment/before-build.json
+          git rev-parse HEAD HEAD^{tree} > test-results/exact-paragraph-alignment/tested-commit.txt
+      - name: Build twice without source changes
+        run: |
+          git diff --exit-code -- src scripts tests .github/workflows package.json package-lock.json
+          npm run build
+          git diff --exit-code -- src scripts tests .github/workflows package.json package-lock.json
+          npm run build
+          git diff --exit-code -- src scripts tests .github/workflows package.json package-lock.json
+      - name: Repeat acceptance after builds
+        run: node scripts/v9-unified/verify-exact-paragraph-alignment.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: exact-paragraph-alignment-${{ github.run_id }}
+          path: test-results/exact-paragraph-alignment/
+          retention-days: 7
+          if-no-files-found: warn
