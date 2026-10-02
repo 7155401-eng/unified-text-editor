@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><title>marker proposal fixture</title></head>
+<body>
+  <div id="render-safety-diagnostics-group"></div>
+
+<script type="module">
+// מסמך קטן שיש בו בכוונה את כל ארבעת המצבים: ברור, כפול, רחוק, ולא נמצא.
+const MAIN = [
+  "ויאמר משה אל העם זכור את היום הזה אשר יצאתם ממצרים",
+  "ועוד דברים רבים נאמרו שם באותו מעמד גדול ונורא",
+  "זכור את היום הזה נאמר שוב כאן בפעם השנייה",
+].join("\n");
+
+// ההערה הכפולה מגיעה **ראשונה** בכוונה: כך שתי ההופעות נמצאות קדימה מהסמן,
+// ונוצר ספק אמיתי. אם היא הייתה שנייה, ההערה שלפניה הייתה מקדמת את הסמן
+// מעבר להופעה הראשונה והספק היה נעלם מאליו — וזו התנהגות נכונה של המנוע.
+const STREAM = [
+  "@01 [1] זכור את היום — יש כאן כפילות בכוונה.",
+  "@01 [2] אשר יצאתם — לשון יציאה.",
+  "@01 [3] מילים שאינן במסמך כלל — הערה יתומה.",
+].join("\n");
+
+const mkPane = (role, code, label, text) => ({
+  paneRole: role, streamCode: code, label, _body: { textContent: text },
+});
+
+window.paneManager = {
+  panes: [
+    mkPane("main", null, "ראשי", MAIN),
+    mkPane("stream", "01", "ביאור", STREAM),
+  ],
+  getMainPane() { return this.panes[0]; },
+};
+
+const { wireMarkerProposal } = await import("/src/link_tools/marker_proposal_lazy_wire.js");
+wireMarkerProposal(window.paneManager);
+window.__fixtureReady = true;
+</script>
+</body>
+</html>

@@ -72,6 +72,8 @@ jobs:
         run: node scripts/verify_page_tweaker_browser.mjs
       - name: Text-to-speech screen in a real browser
         run: node scripts/verify_tts_browser.mjs
+      - name: Marker proposal screen in a real browser
+        run: node scripts/verify_marker_proposal_browser.mjs
       - name: Hebrew combining marks match native font pixels
         run: node scripts/v9-unified/verify-combining-marks.mjs
       - name: Hidden references preserve text shaping and planned geometry
