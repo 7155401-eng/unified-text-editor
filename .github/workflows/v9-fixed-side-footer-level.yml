@@ -5,7 +5,7 @@ on:
     paths: ['src/**', 'tests/v9-unified/**', 'scripts/v9-unified/**', '.github/workflows/**']
   push:
     branches: [main]
-    paths: ['src/main.js', 'src/vilna_v9.js', 'src/vilna_v9_apply.js', 'src/engine/v9_footer_grouping.js', 'tests/v9-unified/fixed-side-footer-level*', 'scripts/v9-unified/verify-fixed-side-footer-level.mjs', '.github/workflows/v9-fixed-side-footer-level.yml']
+    paths: ['src/main.js', 'src/vilna_v9.js', 'src/vilna_v9_apply.js', 'src/engine/v9_footer_grouping.js', 'tests/v9-unified/fixed-side-footer-level*', 'tests/v9-unified/talmud-other-as-mishna-gate.test.mjs', 'scripts/v9-unified/verify-fixed-side-footer-level.mjs', '.github/workflows/v9-fixed-side-footer-level.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,7 +26,7 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         run: npm ci --ignore-scripts
       - name: New grouping and unchanged earlier mixed-layout contracts
-        run: node --test tests/v9-unified/fixed-side-footer-level.test.mjs tests/v9-unified/ref-no-break-mixed-mishna.test.mjs
+        run: node --test tests/v9-unified/fixed-side-footer-level.test.mjs tests/v9-unified/talmud-other-as-mishna-gate.test.mjs tests/v9-unified/ref-no-break-mixed-mishna.test.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: Immutable pre-fix baseline
@@ -49,7 +49,7 @@ jobs:
           git diff --exit-code -- index.html src worker cloudflare scripts tests .github/workflows vite.config.js package.json package-lock.json
       - name: Repeat all checks after builds
         run: |
-          node --test tests/v9-unified/fixed-side-footer-level.test.mjs tests/v9-unified/ref-no-break-mixed-mishna.test.mjs
+          node --test tests/v9-unified/fixed-side-footer-level.test.mjs tests/v9-unified/talmud-other-as-mishna-gate.test.mjs tests/v9-unified/ref-no-break-mixed-mishna.test.mjs
           node scripts/v9-unified/verify-fixed-side-footer-level.mjs
       - name: Keep reports and source identities
         if: always()
