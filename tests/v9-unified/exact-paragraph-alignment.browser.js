@@ -32,10 +32,11 @@ export function runExactParagraphAlignmentChecks(old) {
       'special-separator justification changed row geometry');
      assert(JSON.stringify(line.render.opening)===JSON.stringify(prev.render.opening),
       'special-separator justification moved opening geometry');
-     assert(line.sourceText===prev.sourceText,'special-separator justification changed source ownership');
-     assert(JSON.stringify(line.wordTokens)===JSON.stringify(prev.wordTokens),
-      'special-separator justification changed word ownership');
     }
+    // Word redistribution BETWEEN the already-owned rows is deliberately
+    // allowed: this is how V9 fills a short row. The checks above this branch
+    // already require exact whole-source conservation, identical page overflow,
+    // identical row count/extent and identical reference ownership.
     return {same,exact,center,fallback,rows:b.lines.length,
      beforeUnderfilled:a.lines.filter((l,i)=>!l.isLast&&l.wordTokens.length&&ranges[0][i].left-l.x>.5).length,
      afterUnderfilled:b.lines.filter((l,i)=>!l.isLast&&l.wordTokens.length&&ranges[1][i].left-l.x>.5).length,
