@@ -20,6 +20,20 @@ export function footerFixture({family='serif',longSide='right',mainWords=18,foot
  return {content,cfg};
 }
 function geometry(plan){return [...(plan.mainBox?.lines||[]),...plan.streamBoxes.flatMap(b=>b.lines),...plan.footerBoxes.flatMap(b=>b.lines)];}
+function firstDifferences(a,b,limit=12){
+ const out=[];
+ const walk=(x,y,path)=>{
+  if(out.length>=limit)return;
+  if(Object.is(x,y))return;
+  const xo=x&&typeof x==='object',yo=y&&typeof y==='object';
+  if(!xo||!yo||Array.isArray(x)!==Array.isArray(y)){
+   out.push({path,left:x,right:y});return;
+  }
+  const keys=new Set([...Object.keys(x),...Object.keys(y)]);
+  for(const key of keys){if(out.length>=limit)break;walk(x[key],y[key],path?path+'.'+key:key);}
+ };
+ walk(a,b,'');return out;
+}
 export function runFooterReservationChecks({baselineBuildSinglePage}={}){
  assert(typeof baselineBuildSinglePage==='function','Pinned baseline is required for preservation checks');
  const results=[];
@@ -34,7 +48,9 @@ export function runFooterReservationChecks({baselineBuildSinglePage}={}){
    assert((plan.mainBox?.lines||[]).map(l=>l.sourceText).join('')+(plan.overflow.mainText||'')===content.mainText,'main source altered');
    if(options.mode&&options.mode!=='starved'){
     assert(!plan.footerSpaceReservation,'excluded baseline was changed');
-    assert(JSON.stringify(plan)===JSON.stringify(old)&&host.innerHTML===oldHost.innerHTML,'excluded case is not identical to original');
+    const planSame=JSON.stringify(plan)===JSON.stringify(old),htmlSame=host.innerHTML===oldHost.innerHTML;
+    assert(planSame&&htmlSame,
+      'excluded case is not identical to original: '+JSON.stringify({planSame,htmlSame,diffs:firstDifferences(old,plan)}));
     return {scope:'preservation-only',sameAsBaseline:!!old};
    }
    assert(old.unstartedNotes.some(n=>['03','04'].includes(n.stream)),'test never reproduced missing footer note');
