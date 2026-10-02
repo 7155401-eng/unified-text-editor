@@ -66,6 +66,8 @@ jobs:
         run: node scripts/verify_marker_proposal.mjs
       - name: Global text fixes engine
         run: node scripts/verify_global_fixes.mjs
+      - name: Bracket content styling engine
+        run: node scripts/verify_bracket_styles.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
@@ -129,6 +131,7 @@ jobs:
           node scripts/verify_tts_engine.mjs
           node scripts/verify_marker_proposal.mjs
           node scripts/verify_global_fixes.mjs
+          node scripts/verify_bracket_styles.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
