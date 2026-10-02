@@ -17,7 +17,7 @@ import { nextFrame } from "./engine/background_safe_yield.js";
 import { buildPages } from "./vilna_v9.js";
 import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna_daf_lock.js";
 import { resolveV9MainBottomGapPx } from "./engine/v9_main_bottom_gap_policy.js";
-import { getTalmudStreamsText } from "./talmud_controls.js";
+import { getTalmudStreamsText, isTalmudOtherAsMishnaEnabled } from "./talmud_controls.js";
 import { getMainTextStyle, loadDocumentStyleSettings } from "./document_style_settings.js";
 import { getEffectiveStreamSettings, getStreamSettings } from "./original_stream_columns.js";
 import { injectMainRefs } from "./engine/note_content_builder.js";
@@ -114,26 +114,12 @@ function readLevelsFromLocalStorage() {
   }
 }
 
-// ★ משה: "מצב משנה ברורה (משולב) — הכפתור קיים אבל אין לו השפעה ב-V9".
-//
-// נמדד 24/09/2026:
-//   במנוע הרגיל  — כבוי: 22 עמודים, 0 בתבנית · דלוק: 26 עמודים, 26 בתבנית ✔
-//   ב-V9         — כבוי: 938 שורות · דלוק: 910 שורות, אבל **אף עמוד לא קיבל
-//                  את התבנית**. כלומר הכפתור באמת לא עשה את מה שהוא מבטיח.
-//
-// השורש: ל-V9 כבר יש את כל לוגיקת הרמות של המשנ"ב — אבל ב-aggregateForV9
-// היא רצה **רק** כשרשימת זרמי הגפ"ת ריקה. ובמצב גפ"ת הרשימה הזו תמיד
-// מלאה (ברירת המחדל היא "01,02"), ולכן ענף הרמות לא נכנס לעולם.
-//
-// התיקון: כשהמתג "משנה ברורה: גלישה" דלוק, לא מעבירים למנוע את רשימת
-// זרמי הגפ"ת — וכך ענף הרמות, שכבר קיים ובדוק, הוא זה שרץ. כשהמתג כבוי
-// שום דבר לא משתנה.
+// In Talmud/V9 mode the dedicated control “other streams as Mishnah” is the
+// authoritative gate. The independent global Mishnah-wrap preference can be
+// on for other layouts and must not silently force streams 03/04 into the
+// combined Mishnah layout when this Talmud control is off.
 function isMishnaWrapOn() {
-  try {
-    return localStorage.getItem("ravtext.mishnaWrap") === "1";
-  } catch {
-    return false;
-  }
+  return isTalmudOtherAsMishnaEnabled();
 }
 
 function readPageGeomFromContainer(container) {

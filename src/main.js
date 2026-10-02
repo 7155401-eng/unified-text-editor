@@ -141,7 +141,6 @@ function wireOtherAsMishna() {
       return;
     }
     if (!talmudOn) return;
-    localStorage.setItem("ravtext.mishnaWrap", "1");
     const allCodes = new Set();
     document.querySelectorAll(".stream[data-stream]").forEach(el => {
       const c = el.getAttribute("data-stream");
