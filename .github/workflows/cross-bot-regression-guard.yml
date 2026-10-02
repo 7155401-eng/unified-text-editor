@@ -58,6 +58,8 @@ jobs:
         run: node --test tests/v9-unified/*.test.mjs
       - name: Word extractor regressions
         run: node --test tests/word-extractor/*.test.mjs
+      - name: Desktop page-tweaker file compatibility
+        run: node scripts/verify_page_tweaker.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
@@ -109,6 +111,7 @@ jobs:
           node scripts/v9-unified/verify-occupied-end.mjs
           node --test tests/integration/*.test.mjs
           node --test tests/word-extractor/*.test.mjs
+          node scripts/verify_page_tweaker.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs
