@@ -1,0 +1,48 @@
+name: Temporary live PDF asset audit
+on:
+  push:
+    branches: [audit/live-pdf-asset-20261002]
+permissions:
+  contents: read
+jobs:
+  live-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch stable PDF asset from live app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p live-pdf-audit
+          url='https://app.ravtext.com/assets/pdf_export.js'
+          code=$(curl --fail-with-body --silent --show-error --location             --connect-timeout 10 --max-time 30             --dump-header live-pdf-audit/headers.txt             --output live-pdf-audit/pdf_export.js             --write-out '%{http_code}' "$url")
+          printf '%s
+' "$code" > live-pdf-audit/status.txt
+          test "$code" = 200
+          test -s live-pdf-audit/pdf_export.js
+          mime=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{gsub("\r",""); print $2}' live-pdf-audit/headers.txt | tail -1)
+          printf '%s
+' "$mime" > live-pdf-audit/content-type.txt
+          printf '%s' "$mime" | grep -Eiq 'javascript|ecmascript|text/plain'
+          sha256sum live-pdf-audit/pdf_export.js > live-pdf-audit/sha256.txt
+          bytes=$(wc -c < live-pdf-audit/pdf_export.js)
+          test "$bytes" -gt 1000
+          printf '{"url":"%s","status":%s,"contentType":"%s","bytes":%s}
+'             "$url" "$code" "$mime" "$bytes" > live-pdf-audit/report.json
+          cat live-pdf-audit/report.json
+          cat live-pdf-audit/sha256.txt
+      - name: Record former hashed URL response without requiring it
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          curl --silent --show-error --location             --connect-timeout 10 --max-time 30             --dump-header live-pdf-audit/old-headers.txt             --output live-pdf-audit/old-body.txt             --write-out '%{http_code}
+'             'https://app.ravtext.com/assets/pdf_export-B24fTpju.js'             > live-pdf-audit/old-status.txt
+          exit 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: live-pdf-asset-audit-${{ github.run_id }}
+          path: live-pdf-audit/
+          retention-days: 3
+          if-no-files-found: error
