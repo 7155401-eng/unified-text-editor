@@ -1,4 +1,5 @@
 import { sliceRuns } from './runs_dom.js';
+import { findV9ExactTailPartition } from './v9_exact_tail_partition.js';
 import { sourceMetadata, referenceInV9Range } from './v9_source_fragments.js';
 import { openingWordSkipReason } from '../opening_word.js';
 import { isV9StandaloneDirectionControlOnly, splitV9EdgeGlue } from './v9_bidi_controls.js';
@@ -331,6 +332,39 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   }
 
   const gentleMax = continuationTailGentleSpacing(context);
+  let exactPartition = null;
+  if (current.metrics.some(m => m.gaps > 0 && m.pressure > gentleMax + EPS)) {
+    // One-word local moves can be trapped: two or more boundaries may need
+    // to change together. Before clipping a row, search complete measured
+    // partitions of this same source interval under the existing gentle cap.
+    const search = findV9ExactTailPartition({
+      wordCount: words.length,
+      rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
+      maxSpacing: gentleMax,
+      metricFor,
+    });
+    if (search.status === 'complete') {
+      const alternative = evaluate(search.boundaries);
+      const exactPaint = alternative && alternative.metrics.every((metric, i) => {
+        if (metric.pressure > gentleMax + 1e-9) return false;
+        if (metric.openingOnly) return true;
+        // Counted ASCII gaps are not a sufficient paint-width oracle for tabs,
+        // nonbreaking spaces or differently styled runs. Re-measure the actual
+        // resolved part with the proposed spacing before accepting the path.
+        const painted = context.measure({
+          ...metric.body,
+          style: {...(metric.body.style || context.typography || {}), wordSpacing: `${metric.pressure}px`},
+        });
+        return Math.abs(painted.width - metric.target) <= EPS &&
+          painted.height <= tail[i].lineHeightPx + EPS;
+      });
+      if (exactPaint) {
+        boundaries.splice(0, boundaries.length, ...search.boundaries);
+        current = alternative;
+        exactPartition = search;
+      }
+    }
+  }
   const changed = boundaries.some((v, i) => v !== initialBoundaries[i]);
   const needsCap = current.metrics.some(m => m.gaps > 0 && m.pressure > gentleMax + EPS);
   if (!changed && !needsCap) return null;
@@ -369,6 +403,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         alignment: isLast ? 'center' : 'right',
       },
       tailRebalanced: true,
+      ...(exactPartition ? {tailExactRebalanced: true} : {}),
       tailWordSpacingTarget: Number.isFinite(rawSpacing) ? rawSpacing : null,
       tailWordSpacingCapped: Number.isFinite(rawSpacing) && rawSpacing > gentleMax + EPS,
     };
@@ -382,6 +417,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     maxWordSpacingBefore: before.maxPressure,
     maxWordSpacingAfter: current.maxPressure,
     gentleCap: gentleMax,
+    ...(exactPartition ? {exactPartitionEvaluations: exactPartition.evaluations} : {}),
   };
   diagnostics?.push?.(result);
   return result;
@@ -629,10 +665,31 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         }
       }
 
-      // All other rows retain the opening-aware slot and alignment from emit().
-      // Counting the fixed opening again on the final row centers a bounding
-      // envelope but pins the actual text to the host's left edge. Only a
-      // genuinely one-row paragraph owns the composite centering above.
+      // A complete two-row paragraph shares one alignment frame, including
+      // its dropped opening. Centre the last body in that frame, not in the
+      // leftover slot. Keep the opening and first row exactly where planned.
+      // A wide last row may not fit around that centre without a collision;
+      // do not force it into the opening or invent a source/line break.
+      const pair = lines.slice(paragraphLineStart);
+      const last = pair.length === 2 ? pair[1] : null;
+      if (!entry.continues && !entry.continuesAfter && pair[0]?.render.opening &&
+          !pair[0].forcedBreak && last?.isLast && last.openingWindow &&
+          !last.render.opening && last.wordTokens.length && last.naturalWidth > 0) {
+        const frame = rowGeometry(strips, last.y, last.lineHeightPx, pageBottom);
+        if (frame) {
+          const x = frame.x + (frame.width - last.naturalWidth) / 2;
+          const end = x + last.naturalWidth;
+          const clearance = opening.x - opening.gap;
+          if (x >= frame.x - EPS && end <= clearance + EPS) {
+            last.x = x;
+            last.width = last.naturalWidth;
+            last.openingParagraphCentered = true;
+            last.openingHostX = frame.x;
+            last.openingHostFullWidth = frame.width;
+            last.render.alignment = 'center';
+          }
+        }
+      }
 
     }
     // A following original paragraph never inherits an opening window.

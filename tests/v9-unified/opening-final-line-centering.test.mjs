@@ -25,22 +25,28 @@ function plan(text, {x = 0, width = 100, dropLines = 2, continuesAfter = false, 
 }
 
 for (const x of [0, 27]) for (const dropLines of [2, 3, 4]) for (const newline of ['', '\n']) {
-  test(`last body row stays centered in opening-aware free space: x=${x}, drop=${dropLines}, hardBreak=${!!newline}`, () => {
+  test(`last body row uses the complete paragraph centre without touching the opening: x=${x}, drop=${dropLines}, hardBreak=${!!newline}`, () => {
     const result = plan('OPEN aa aa aa aa aa aa aa' + newline, {x, dropLines});
     assert.equal(result.lines.length, 2);
     const [first, last] = result.lines;
     assert.equal(last.isLast, true);
     assert.equal(last.openingWindow, true);
     assert.equal(last.render.alignment, 'center', 'final row inherited a special edge-alignment rule');
-    assert.equal(last.x, x);
-    assert.equal(last.width, 78, 'body slot must exclude the 20px opening plus its 2px gap');
+    assert.equal(last.x, x + 45);
+    assert.equal(last.width, 10, 'occupied last-row box contains only its measured text');
+    assert.equal(last.openingParagraphCentered, true);
+    assert.equal(last.openingHostX, x);
+    assert.equal(last.openingHostFullWidth, 100);
+    assert.equal(first.x, x);
+    assert.equal(first.width, 78, 'first row must still reserve the opening and gap');
     assert.equal(last.naturalWidth, 10);
     assert.equal(last.render.wordSpacing, 0, 'final row must not be stretched');
     assert.notEqual(last.openingCompositeCentered, true, 'opening painted on a previous row was counted again');
     const left = last.x + (last.width - last.naturalWidth) / 2;
     const right = left + last.naturalWidth;
-    assert.equal(left - x, first.render.opening.x - first.render.opening.gap - right,
-      'the free space on both sides of the last body must be equal');
+    assert.equal((left + right) / 2, x + 50, 'last row must share the whole paragraph centre');
+    assert(right <= first.render.opening.x - first.render.opening.gap, 'last row touches the opening or its gap');
+    assert(left > x, 'final text was pinned to the left edge');
     assert.equal(first.render.opening.x, x + 80, 'centering moved the opening away from its original row');
   });
 }
@@ -85,4 +91,15 @@ test('an artificial page continuation is not promoted into a centered paragraph 
   assert.equal(last.isLast, false);
   assert.equal(last.render.alignment, 'right');
   assert.notEqual(last.openingCompositeCentered, true);
+});
+
+for (const dropLines of [2, 3, 4]) test(`a wide last row never intrudes into its opening: ${dropLines}`, () => {
+  const result = plan('OPEN ' + Array(11).fill('aa').join(' '), {dropLines});
+  const [first,last] = result.lines;
+  assert.equal(result.lines.length,2);
+  assert.equal(last.naturalWidth,58);
+  assert.notEqual(last.openingParagraphCentered,true);
+  assert.equal(last.x,0);
+  assert.equal(last.width,78);
+  assert.equal(first.render.opening.x,80);
 });
