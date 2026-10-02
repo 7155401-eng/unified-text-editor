@@ -444,7 +444,7 @@ test('centered hard-break line centers opening plus body as one visual segment',
    `opening x=${line.render.opening.x}, expected 46 for centered composite`);
 });
 
-test('second and final opening-window row centers within the space reserved beside the opening',()=>{
+test('second and final opening-window row shares the paragraph centre without moving its opening',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
   describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2}),
@@ -466,12 +466,19 @@ test('second and final opening-window row centers within the space reserved besi
  assert(last.openingWindow===true,'last row no longer overlaps opening window');
  assert.equal(last.render.alignment,'center','last body was pushed to an edge');
  const opening=host.render.opening;
- assert.equal(last.x,0,'last row left its real host');
- assert.equal(last.width,opening.x-opening.gap,'opening reservation was ignored');
+ assert.equal(last.x,45,'last row did not use the full paragraph frame');
+ assert.equal(last.width,last.naturalWidth,'last row box differs from its measured text');
+ assert.equal(last.openingParagraphCentered,true);
+ assert.equal(host.x,0,'first row moved');
+ assert.equal(host.width,78,'first row lost the opening reservation');
+ assert.equal(opening.x,80,'opening moved');
  const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
  const bodyRight=bodyLeft+last.naturalWidth;
- assert(Math.abs(bodyLeft-(opening.x-opening.gap-bodyRight))<.01,
-  'last row is not centered in the available space beside the opening');
+ assert(Math.abs((bodyLeft+bodyRight)/2-50)<.01,
+  'last row is not centered in the complete paragraph');
+ assert(bodyLeft>0,'last row was pinned to the left edge');
+ assert(bodyRight<=opening.x-opening.gap,'last row overlaps the opening or its gap');
+ assert.equal(last.render.wordSpacing,0,'last row was stretched');
  assert.notEqual(last.openingCompositeCentered,true,'opening counted a second time on the last row');
 });
 
@@ -617,11 +624,16 @@ test('final row inside a dropped-opening window keeps normal last-line semantics
  assert.equal(last.render.alignment,'center','final body row has special edge alignment');
  assert.notEqual(last.openingCompositeCentered,true,'the opening is not owned by this row');
  const freeRight=host.render.opening.x-host.render.opening.gap;
- assert.equal(last.x,0);
- assert(Math.abs(last.width-freeRight)<.001,'last row did not retain its full opening-aware slot');
+ assert.equal(last.openingParagraphCentered,true);
+ assert.equal(last.x,45);
+ assert.equal(last.width,last.naturalWidth);
+ assert.equal(host.x,0,'first row moved');
+ assert.equal(host.width,78,'first row lost its original slot');
+ assert.equal(host.render.opening.x,80,'opening moved');
+ assert.equal(last.render.wordSpacing,0,'last row was stretched');
  const bodyLeft=last.x+(last.width-last.naturalWidth)/2;
- assert(Math.abs((bodyLeft+last.naturalWidth/2)-freeRight/2)<.001,
-  'last body row is not centered inside the free slot');
+ assert(Math.abs((bodyLeft+last.naturalWidth/2)-50)<.001,
+  'last body row is not centered inside the full paragraph');
  assert(bodyLeft+last.naturalWidth<=freeRight+.001,'last body overlaps the opening');
 });
 

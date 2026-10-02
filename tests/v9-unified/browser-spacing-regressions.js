@@ -1762,7 +1762,8 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
 
   // User-reported regression: counting a dropped opening again on row two
   // centered a bounding envelope, but pinned the actual final text to the left.
-  // The opening reserves space; the final body inherits ordinary centering.
+  // Centre a complete two-row ending in its paragraph frame only when it
+  // physically clears the fixed opening. Wide endings retain their free slot.
   for(const family of ['serif','sans-serif','monospace'])
   for(const dropLines of [2,3,4])
   for(const hostX of [0,19])
@@ -1798,8 +1799,17 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       assert(last.render.alignment==='center','final row is not centered');
       assert(!last.openingCompositeCentered,'opening was counted twice');
       assert(last.render.wordSpacing===0,'final row was stretched');
-      assert(Math.abs(last.width-(openingPlan.x-openingPlan.gap-hostX))<.01,
-        'planner did not reserve the opening and its gap in the final row');
+      const first=plan.lines[0];
+      assert(Math.abs(first.x-hostX)<.01 &&
+        Math.abs(first.width-(openingPlan.x-openingPlan.gap-hostX))<.01,
+        'first row or its opening reservation moved');
+      assert(Math.abs(openingPlan.x+openingPlan.width-hostX-100)<.01,
+        'fixed opening moved away from the original right edge');
+      const fullFrameFits=hostX+50+last.naturalWidth/2<=openingPlan.x-openingPlan.gap+1/64;
+      assert(!!last.openingParagraphCentered===fullFrameFits,
+        'centering does not respect the measured opening clearance');
+      const expectedWidth=fullFrameFits?last.naturalWidth:openingPlan.x-openingPlan.gap-hostX;
+      assert(Math.abs(last.width-expectedWidth)<.01,'wrong occupied final-row width');
 
       const pageRect=page.getBoundingClientRect();
       const openingRect=opening.getBoundingClientRect();
@@ -1810,7 +1820,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const right=Math.max(...rects.map(r=>r.right));
       const freeLeft=pageRect.left+page.clientLeft+hostX;
       const freeRight=openingRect.left-openingPlan.gap;
-      const expectedCenter=(freeLeft+freeRight)/2;
+      const expectedCenter=fullFrameFits?freeLeft+50:(freeLeft+freeRight)/2;
       const actualCenter=(left+right)/2;
       assert(Math.abs(actualCenter-expectedCenter)<=.6,
         `final body not centered: actual=${actualCenter}, expected=${expectedCenter}`);
