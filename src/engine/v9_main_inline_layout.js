@@ -3,6 +3,7 @@ import { findV9ExactTailPartition } from './v9_exact_tail_partition.js';
 import { sourceMetadata, referenceInV9Range } from './v9_source_fragments.js';
 import { openingWordSkipReason } from '../opening_word.js';
 import { isV9StandaloneDirectionControlOnly, splitV9EdgeGlue } from './v9_bidi_controls.js';
+import { countV9JustificationGaps } from './v9_justification_separators.js';
 
 export const V9_INLINE_PLAN_VERSION = 'v9-inline-1';
 const EPS = 1 / 64;
@@ -259,7 +260,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       return null;
     }
 
-    const gaps = (body.text.match(/ /g) || []).length;
+    const gaps = countV9JustificationGaps(body.text);
     const deficit = Math.max(0, target - measured.width);
     const metric = {
       start, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
@@ -554,7 +555,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
       const attached = opening && !openingAttached ? opening : null;
       const sourceStart = attached ? 0 : start;
       const isLast = end >= entry.text.length && !entry.continuesAfter;
-      const gaps = (body.text.match(/ /g) || []).length;
+      const gaps = countV9JustificationGaps(body.text);
       const justify = !isLast && !forcedBreak && gaps > 0;
       const natural = m.width;
       const openingWindow = !!opening && rowY < opening.y + opening.height - EPS;
