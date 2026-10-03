@@ -232,6 +232,15 @@ function createSvgObjectUrl(svg) {
   return URL.createObjectURL(blob);
 }
 
+function createSvgDataUrl(svg) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to build SVG data URL"));
+    reader.readAsDataURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  });
+}
+
 function canvasToJpegBytes(canvas, quality = PDF_JPEG_QUALITY) {
   return new Promise((resolve, reject) => {
     try {
@@ -506,31 +515,47 @@ async function renderPageToPdfImage(pageEl, cssText, scale = PDF_EXPORT_SCALE, {
     `<foreignObject width="${PAGE_CSS_WIDTH}" height="${PAGE_CSS_HEIGHT}">${html}</foreignObject>` +
     `</svg>`;
 
-  const img = new Image();
-  img.decoding = "sync";
-  const url = createSvgObjectUrl(svg);
+  async function renderSvgUrl(url, { revoke = false } = {}) {
+    const img = new Image();
+    img.decoding = "sync";
+    try {
+      img.src = url;
+      await imageLoaded(img);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const pdfImage = await canvasToPdfImage(canvas, ctx);
+
+      return {
+        width: canvas.width,
+        height: canvas.height,
+        ...pdfImage,
+      };
+    } finally {
+      if (revoke) URL.revokeObjectURL(url);
+    }
+  }
+
+  // Chromium marks a canvas origin-unclean when an SVG containing
+  // foreignObject is loaded through a blob: URL, even when the HTML itself is
+  // fully self-contained. Changing CSS and repeating the same blob path cannot
+  // recover that canvas. Preserve the fast blob path first, but on the exact
+  // SecurityError retry the same sanitized SVG from a data: URL on a fresh
+  // Image and fresh canvas. A data: SVG remains readable in Chromium.
   try {
-    img.src = url;
-    await imageLoaded(img);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = targetWidth;
-    canvas.height = targetHeight;
-    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const pdfImage = await canvasToPdfImage(canvas, ctx);
-
-    return {
-      width: canvas.width,
-      height: canvas.height,
-      ...pdfImage,
-    };
-  } finally {
-    URL.revokeObjectURL(url);
+    return await renderSvgUrl(createSvgObjectUrl(svg), { revoke: true });
+  } catch (err) {
+    if (!isCanvasSecurityError(err)) throw err;
+    console.warn("PDF SVG blob canvas was tainted; retrying page via data URL:", err);
+    const dataUrl = await createSvgDataUrl(svg);
+    return renderSvgUrl(dataUrl);
   }
 }
 
