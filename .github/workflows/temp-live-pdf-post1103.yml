@@ -57,6 +57,7 @@ jobs:
             rootStatus:0,
             finalUrl:'',
             moduleProbe:null,
+            foreignObjectSchemeProbe:null,
             coverProbe:null,
             exportProbe:null,
             download:null,
@@ -87,6 +88,46 @@ jobs:
                 contentType:response.headers.get('content-type')||'',
                 bytes,imported,exportType,coverRecoveryType,importError
               };
+            });
+
+            // Probe the exact browser primitive used by content-page rendering:
+            // SVG <foreignObject> drawn from blob: versus data:.
+            report.foreignObjectSchemeProbe=await page.evaluate(async()=>{
+              const svg='<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80">'
+                +'<foreignObject width="200" height="80">'
+                +'<div xmlns="http://www.w3.org/1999/xhtml" style="font:20px serif;color:black;background:white">foreignObject probe</div>'
+                +'</foreignObject></svg>';
+
+              async function probe(src,cleanup){
+                const img=new Image();
+                img.decoding='sync';
+                try{
+                  img.src=src;
+                  await (img.decode?img.decode():new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;}));
+                  const canvas=document.createElement('canvas');
+                  canvas.width=200;canvas.height=80;
+                  const ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
+                  ctx.fillStyle='white';ctx.fillRect(0,0,200,80);
+                  ctx.drawImage(img,0,0);
+                  let readOk=false,blobOk=false,readError='',blobError='';
+                  try{ctx.getImageData(0,0,1,1);readOk=true;}catch(e){readError=String(e);}
+                  try{
+                    await new Promise((resolve,reject)=>{
+                      try{
+                        canvas.toBlob(b=>b?resolve(b):reject(new Error('null blob')),'image/png');
+                      }catch(e){reject(e);}
+                    });
+                    blobOk=true;
+                  }catch(e){blobError=String(e);}
+                  return {readOk,blobOk,readError,blobError};
+                }finally{cleanup?.();}
+              }
+
+              const blobUrl=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml;charset=utf-8'}));
+              const blob=await probe(blobUrl,()=>URL.revokeObjectURL(blobUrl));
+              const dataUrl='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+              const data=await probe(dataUrl);
+              return {blob,data};
             });
 
             // Isolate the first stage. If this succeeds while full export fails,
