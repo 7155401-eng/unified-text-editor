@@ -246,6 +246,39 @@ test('page-ending continuation pulls words first, then finishes exact justificat
 });
 
 
+test('exact tail search cache preserves the plan and avoids repeating the same measured search',()=>{
+ const text=Array(10).fill('aa').join(' ');
+ let measureCalls=0;
+ const ctx={
+  fontSize:10,lineHeight:10,describeOpening:()=>null,
+  measure:p=>{
+   measureCalls++;
+   const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;
+   const ws=parseFloat(p.style?.wordSpacing||'0')||0;
+   return {width:n?n*10+(n-1)*(2+ws):0,height:10,topInset:0};
+  }
+ };
+ const entry={id:'tail-cache',text,runs:[],mainRefs:[],continuesAfter:true};
+ const strips=[{x:0,width:54,y_start:0,y_end:30}];
+
+ const first=layoutV9MainParagraphs([entry],strips,ctx,30);
+ const firstCalls=measureCalls;
+ measureCalls=0;
+ const second=layoutV9MainParagraphs([entry],strips,ctx,30);
+ const secondCalls=measureCalls;
+
+ assert.deepEqual(second,first,'cached exact-tail search changed the planned output');
+ assert(firstCalls>secondCalls,
+  `exact-tail cache did not reduce measurements: first=${firstCalls}, second=${secondCalls}`);
+
+ let freshCalls=0;
+ const freshCtx={...ctx,measure:p=>{freshCalls++;return ctx.measure(p);}};
+ const fresh=layoutV9MainParagraphs([entry],strips,freshCtx,30);
+ assert.deepEqual(fresh,first,'a fresh context changed the reference plan');
+ assert(freshCalls>secondCalls,'exact-tail cache leaked across independent render contexts');
+});
+
+
 test('dropped opening does not keep a widened row trapped in the previous narrow geometry',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
