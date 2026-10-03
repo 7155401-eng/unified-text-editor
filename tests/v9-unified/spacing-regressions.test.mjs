@@ -274,6 +274,56 @@ test('exact-tail cache reuses identical deterministic searches without changing 
  assert.equal(second.lines.map(l=>l.sourceText).join(''),text);
 });
 
+test('exact-tail cache reuses equivalent measured tails despite unrelated entry prefix metadata',()=>{
+ const tail=Array(10).fill('aa').join(' ');
+ let measureCalls=0;
+ const ctx={
+  fontSize:10,lineHeight:10,generation:0,typography:{},describeOpening:()=>null,
+  measure:p=>{
+   measureCalls++;
+   const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;
+   const ws=parseFloat(p.style?.wordSpacing||'0')||0;
+   return {width:n?n*10+(n-1)*(2+ws):0,height:10,topInset:0};
+  }
+ };
+ const strips=[{x:0,width:54,y_start:0,y_end:40}];
+ const firstText='xx\n'+tail;
+ const secondText='yy\n'+tail;
+ const firstEntry={
+  id:'tail-cache-prefix-a',text:firstText,continuesAfter:true,
+  runs:[{start:0,end:2,marks:{bold:true}}],
+  mainRefs:[{anchor:1,anchorAffinity:'backward',formatted:'',uid:'prefix-a'}],
+ };
+ const secondEntry={
+  id:'tail-cache-prefix-b',text:secondText,continuesAfter:true,
+  runs:[{start:0,end:2,marks:{italic:true}}],
+  mainRefs:[{anchor:1,anchorAffinity:'forward',formatted:'',uid:'prefix-b'}],
+ };
+
+ const first=layoutV9MainParagraphs([firstEntry],strips,ctx,40);
+ const firstCalls=measureCalls;
+ measureCalls=0;
+ const second=layoutV9MainParagraphs([secondEntry],strips,ctx,40);
+ const secondCalls=measureCalls;
+
+ assert.equal(first.lines.map(l=>l.sourceText).join(''),firstText);
+ assert.equal(second.lines.map(l=>l.sourceText).join(''),secondText);
+ const tailShape=plan=>plan.lines
+  .slice(plan.lines.findIndex(l=>l.forcedBreak)+1)
+  .map(l=>({
+   words:l.wordTokens.length,
+   width:l.width,
+   spacing:l.render.wordSpacing,
+   fallback:!!l.tailWordSpacingFallbackStretched,
+   exact:!!l.tailExactRebalanced,
+  }));
+ assert.deepEqual(tailShape(second),tailShape(first),
+  'equivalent active tails produced different exact layout');
+ assert(firstCalls>secondCalls,
+  `normalized tail cache did not reduce measurements: first=${firstCalls}, second=${secondCalls}`);
+});
+
+
 test('dropped opening does not keep a widened row trapped in the previous narrow geometry',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
