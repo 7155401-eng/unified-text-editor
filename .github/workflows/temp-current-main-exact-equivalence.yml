@@ -1,0 +1,44 @@
+name: Temporary current-main exact-output equivalence
+on:
+  push:
+    branches: [gpt56sol-v9-exact-window-a403-20261003-2340-18d5]
+permissions:
+  contents: read
+jobs:
+  equivalence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout current-main comparison baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: a403460a5b28511ebc163e584ee5f8f23bc064a8
+          path: .exact-alignment-baseline
+          persist-credentials: false
+      - name: Compare full exact-alignment output to a403 main
+        run: |
+          sed "s/9c4738e1063d4692398091e2b10bae87de365487/a403460a5b28511ebc163e584ee5f8f23bc064a8/g" \
+            scripts/v9-unified/verify-exact-paragraph-alignment.mjs \
+            > scripts/v9-unified/.verify-current-main-equivalence.mjs
+          node scripts/v9-unified/.verify-current-main-equivalence.mjs
+          rm scripts/v9-unified/.verify-current-main-equivalence.mjs
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: current-main-exact-equivalence-${{ github.run_id }}
+          path: test-results/exact-paragraph-alignment/
+          retention-days: 3
