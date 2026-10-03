@@ -1,0 +1,69 @@
+name: Temporary normalized exact-tail cache validation
+on:
+  push:
+    branches: [gpt56sol-v9-normalized-exact-cache-20261004-0120-6c4a]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Exact and spacing unit regressions
+        run: node --test tests/v9-unified/exact-tail-partition.test.mjs tests/v9-unified/spacing-regressions.test.mjs
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout exact-alignment baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 9c4738e1063d4692398091e2b10bae87de365487
+          path: .exact-alignment-baseline
+          persist-credentials: false
+      - name: Exact paragraph alignment acceptance
+        run: node scripts/v9-unified/verify-exact-paragraph-alignment.mjs
+      - name: Checkout current-main baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: d1d626e218156cb88298500b711d130a63e48f2a
+          path: .perf-baseline
+          persist-credentials: false
+      - name: Share dependencies with baseline
+        run: ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-baseline/node_modules"
+      - name: Baseline benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-baseline --out test-results/perf-baseline.json
+      - name: Candidate benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/perf-candidate.json
+      - name: Require identical render output
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const a=JSON.parse(fs.readFileSync('test-results/perf-baseline.json','utf8'));
+          const b=JSON.parse(fs.readFileSync('test-results/perf-candidate.json','utf8'));
+          const summary=[];
+          for(let i=0;i<a.cases.length;i++){
+            const x=a.cases[i],y=b.cases[i];
+            const same=x.name===y.name&&x.pages===y.pages&&x.complete===y.complete&&
+              x.sourceChars===y.sourceChars&&x.renderedChars===y.renderedChars&&x.domSha256===y.domSha256;
+            if(!same)throw new Error('Render output drift: '+JSON.stringify({baseline:x,candidate:y}));
+            summary.push({name:x.name,baselineMs:x.ms,candidateMs:y.ms,ratio:y.ms/Math.max(1,x.ms),
+              baselineMaxLongTask:x.maxLongTask,candidateMaxLongTask:y.maxLongTask});
+          }
+          console.log(JSON.stringify(summary,null,2));
+          NODE
+      - name: Build without source rewrite
+        run: |
+          git diff --exit-code -- src scripts tests .github/workflows package.json package-lock.json
+          npm run build
+          git diff --exit-code -- src scripts tests .github/workflows package.json package-lock.json
