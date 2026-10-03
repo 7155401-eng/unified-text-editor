@@ -147,6 +147,72 @@ function freezeLine(line) {
 const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
 
+// Exact-tail search is deterministic for a fixed render context, source slice,
+// style/reference state and row geometry. Reuse that exact result across
+// repeated planning passes without shrinking the solver's 4096 safety budget.
+const EXACT_TAIL_CACHE_MAX = 1024;
+const exactTailCacheByContext = new WeakMap();
+
+function exactTailCacheFor(context) {
+  let cache = exactTailCacheByContext.get(context);
+  if (!cache) {
+    cache = new Map();
+    exactTailCacheByContext.set(context, cache);
+  }
+  return cache;
+}
+
+function exactTailCacheKey({
+  context, entry, sourceBase, sourceSegmentStart, bodySegmentStart, segmentEnd,
+  words, tail, gentleMax,
+}) {
+  const refs = (entry.mainRefs || [])
+    .filter(r => referenceInV9Range(r, sourceSegmentStart, segmentEnd, entry.text.length))
+    .map(r => [
+      refAnchor(r),
+      String(r.formatted || ''),
+      String(r.cssText || ''),
+      String(r.uid || ''),
+      String(r.stream || r.code || ''),
+      String(r.num ?? ''),
+    ]);
+  return JSON.stringify([
+    Number(context?.generation) || 0,
+    sourceBase,
+    sourceSegmentStart,
+    bodySegmentStart,
+    segmentEnd,
+    entry.text.slice(sourceSegmentStart, segmentEnd),
+    sliceRuns(entry.runs || [], sourceSegmentStart, segmentEnd),
+    refs,
+    entry.typography || {},
+    words.map(w => [w.start, w.end]),
+    tail.map(line => [
+      number(line?.width, 0),
+      number(line?.lineHeightPx, context?.lineHeight),
+      !!line?.render?.opening,
+      Array.isArray(line?.wordTokens) ? line.wordTokens.length : -1,
+    ]),
+    gentleMax,
+  ]);
+}
+
+function rememberExactTailSearch(cache, key, search) {
+  const stored = Object.freeze({
+    status: search.status,
+    evaluations: search.evaluations,
+    ...(Array.isArray(search.boundaries)
+      ? { boundaries: Object.freeze([...search.boundaries]) }
+      : {}),
+  });
+  if (!cache.has(key) && cache.size >= EXACT_TAIL_CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, stored);
+  return stored;
+}
+
 function continuationTailGentleSpacing(context) {
   const fontSize = number(context?.fontSize, 13);
   return Math.max(3.6, Math.min(TAIL_REBALANCE_MAX_WORD_SPACING_PX, fontSize * 0.65));
@@ -380,12 +446,27 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     // One-word local moves can be trapped: two or more boundaries may need
     // to change together. Before clipping a row, search complete measured
     // partitions of this same source interval under the existing gentle cap.
-    const search = findV9ExactTailPartition({
-      wordCount: words.length,
-      rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
-      maxSpacing: gentleMax,
-      metricFor,
+    const exactCache = exactTailCacheFor(context);
+    const exactKey = exactTailCacheKey({
+      context,
+      entry,
+      sourceBase,
+      sourceSegmentStart,
+      bodySegmentStart,
+      segmentEnd,
+      words,
+      tail,
+      gentleMax,
     });
+    let search = exactCache.get(exactKey);
+    if (!search) {
+      search = rememberExactTailSearch(exactCache, exactKey, findV9ExactTailPartition({
+        wordCount: words.length,
+        rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
+        maxSpacing: gentleMax,
+        metricFor,
+      }));
+    }
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
       const exactPaint = alternative && alternative.metrics.every((metric, i) => {
