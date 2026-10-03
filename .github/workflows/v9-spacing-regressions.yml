@@ -52,6 +52,8 @@ jobs:
           test ! -f .github/v9-build-compat-edits.json
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
+      - name: Regular footer-only underfill probe
+        run: node scripts/v9-unified/run-regular-footer-underfill.mjs
       - name: Browser regressions before build
         run: node scripts/v9-unified/run-browser.mjs
       - name: Fetch exact baseline for build comparison
