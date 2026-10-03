@@ -257,10 +257,25 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
      ['short','כותרת תחתונה לדוגמה'],
      ['wrapped','כותרת תחתונה ארוכה במיוחד שנועדה להישבר לשתי שורות לפחות בתוך רוחב העמוד '.repeat(4)],
    ];
-   let shortHeight=0;
+   let shortHeight=0,shortReserve=0;
    try {
      await loaded;
      localStorage.setItem('ravtext.pageNumbers','1');
+
+     // Page-number baseline: a footer may consume more vertical space, but the
+     // page number itself must stay on the same physical baseline on every page.
+     localStorage.removeItem('ravtext.pageFooter');
+     publishLayoutContextToCssVars(createLayoutContext());
+     const baselinePage=makePage();
+     decoratePageNumberBeforeRender(baselinePage,0);
+     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+     const baselineNumber=baselinePage.querySelector('.ravtext-page-number-overlay');
+     assert(baselineNumber,'page-number baseline was not painted');
+     const baselinePageRect=baselinePage.getBoundingClientRect();
+     const baselineNumberRect=baselineNumber.getBoundingClientRect();
+     const baselineBottom=baselinePageRect.bottom-baselineNumberRect.bottom;
+     baselinePage.remove();
+
      for(const [label,footerText] of cases){
        localStorage.setItem('ravtext.pageFooter',footerText);
        const context=createLayoutContext();
@@ -274,16 +289,34 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
          const footer=page.querySelector('.ravtext-page-footer');
          const number=page.querySelector('.ravtext-page-number-overlay');
          assert(footer&&number,`${label}: overlays were not painted`);
-         const fr=footer.getBoundingClientRect(),nr=number.getBoundingClientRect();
+         const pr=page.getBoundingClientRect(),fr=footer.getBoundingClientRect(),nr=number.getBoundingClientRect();
          const verticalOverlap=Math.min(fr.bottom,nr.bottom)-Math.max(fr.top,nr.top);
          assert(verticalOverlap<=0.5,
            `${label}: footer/page-number overlap=${verticalOverlap.toFixed(2)}px; footer=${fr.top.toFixed(2)}..${fr.bottom.toFixed(2)}, number=${nr.top.toFixed(2)}..${nr.bottom.toFixed(2)}`);
+
+         const numberBottom=pr.bottom-nr.bottom;
+         assert(Math.abs(numberBottom-baselineBottom)<=0.5,
+           `${label}: footer moved page-number baseline: ${numberBottom.toFixed(2)} vs ${baselineBottom.toFixed(2)}`);
+         const actualGap=nr.top-fr.bottom;
+         assert(Math.abs(actualGap-context.features.footerPageNumberGap)<=0.75,
+           `${label}: measured stack gap=${actualGap.toFixed(2)} vs token=${context.features.footerPageNumberGap}`);
+
          assert(Number.isFinite(context.features.footerBottom),`${label}: footerBottom was not resolved`);
          assert(Math.abs(parseFloat(footer.style.bottom)-context.features.footerBottom)<0.01,
            `${label}: painted footer bottom drifted from layout_context`);
-         if(label==='short')shortHeight=fr.height;
-         else assert(fr.height>shortHeight+1,
-           `wrapped footer did not become taller: short=${shortHeight}, wrapped=${fr.height}`);
+         assert(context.features.footer>context.features.pageNumber,
+           `${label}: paginator did not reserve the upper stacked footer extent`);
+         assert(parseFloat(getComputedStyle(root).getPropertyValue('--ravtext-features-footer-reserved'))===context.features.footer,
+           `${label}: published footer reserve differs from measured stack`);
+
+         if(label==='short'){
+           shortHeight=fr.height;shortReserve=context.features.footer;
+         }else{
+           assert(fr.height>shortHeight+1,
+             `wrapped footer did not become taller: short=${shortHeight}, wrapped=${fr.height}`);
+           assert(context.features.footer>shortReserve,
+             `wrapped footer did not increase reserved depth: short=${shortReserve}, wrapped=${context.features.footer}`);
+         }
        } finally { page.remove(); }
      }
    } finally {
@@ -296,7 +329,7 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    }
  });
 
- await test('V9 paints page numbers during page construction without a post-render event',async()=>{
+  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
    const savedRegistry=window.__ravtextPreRenderPageDecorators;
