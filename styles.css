@@ -311,7 +311,22 @@ body > main.main {
   gap: 16px;
   flex-wrap: wrap;
 }
-.app-header-row > h1 { margin-bottom: 0; flex-shrink: 0; }
+.app-title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex-shrink: 0;
+}
+.app-title-block > h1 { margin-bottom: 0; }
+.app-subtitle {
+  margin-top: 2px;
+  margin-inline-start: 38px;
+  color: var(--muted, #5e6a7d);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: .01em;
+}
 .app-header-actions {
   display: inline-flex;
   gap: 8px;
