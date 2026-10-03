@@ -178,6 +178,25 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
   const cache = new Map();
   let generation = 0, disposed = false;
   const fontsChanged = () => { generation++; cache.clear(); };
+
+  const measuredResultFor = (el) => {
+    const r = el.getBoundingClientRect();
+    const range = document.createRange(); range.selectNodeContents(el);
+    const ink = range.getBoundingClientRect();
+    const top = ink.height ? Math.min(r.top, ink.top) : r.top;
+    const bottom = ink.height ? Math.max(r.bottom, ink.bottom) : r.bottom;
+    return Object.freeze({
+      width: Math.ceil(r.width * 64) / 64,
+      height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
+      topInset: Math.max(0, r.top - top),
+    });
+  };
+
+  const rememberMeasurement = (key, result) => {
+    if (cache.size >= 20000) cache.clear();
+    cache.set(key, result);
+    return result;
+  };
   document.fonts?.addEventListener?.('loadingdone', fontsChanged);
   document.fonts?.addEventListener?.('loadingerror', fontsChanged);
   const context = {
@@ -227,16 +246,49 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
         ? px(part.style?.wordSpacing, 0)
         : 0;
       appendV9PlannedPart(probe, part, plannedWordSpacing);
-      const r = probe.getBoundingClientRect();
-      const range = document.createRange(); range.selectNodeContents(probe);
-      const ink = range.getBoundingClientRect();
-      const top = ink.height ? Math.min(r.top, ink.top) : r.top;
-      const bottom = ink.height ? Math.max(r.bottom, ink.bottom) : r.bottom;
-      const result = Object.freeze({ width: Math.ceil(r.width * 64) / 64,
-        height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
-        topInset: Math.max(0, r.top - top) });
-      if (cache.size >= 20000) cache.clear();
-      cache.set(key, result); return result;
+      return rememberMeasurement(key, measuredResultFor(probe));
+    },
+    measureMany(parts) {
+      if (disposed) throw new Error('Disposed V9 measurement context');
+      if (!Array.isArray(parts) || parts.length === 0) return [];
+      const results = new Array(parts.length);
+      const pending = [];
+      // All pending probes are written first and only then read. This turns a
+      // DP layer from N write->layout-read cycles into one layout flush followed
+      // by read-only geometry collection. Each probe is isolated in its own
+      // block so its line box cannot affect a sibling measurement.
+      const template = probe.cloneNode(false);
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const key = v9MeasurementCacheKey(part);
+        const found = cache.get(key);
+        if (found) { results[i] = found; continue; }
+
+        const holder = document.createElement('div');
+        holder.style.cssText = 'display:block;width:max-content;height:max-content;padding:0;margin:0;border:0;';
+        const localProbe = template.cloneNode(false);
+        localProbe.replaceChildren();
+        cssApply(localProbe, part.style || typography);
+        localProbe.style.whiteSpace = 'pre';
+        localProbe.style.width = 'max-content';
+        localProbe.style.height = 'auto';
+        const plannedWordSpacing = hasSpecialV9JustificationSeparator(part.text)
+          ? px(part.style?.wordSpacing, 0)
+          : 0;
+        appendV9PlannedPart(localProbe, part, plannedWordSpacing);
+        holder.appendChild(localProbe);
+        root.appendChild(holder);
+        pending.push({i, key, holder, probe: localProbe});
+      }
+
+      try {
+        for (const item of pending) {
+          results[item.i] = rememberMeasurement(item.key, measuredResultFor(item.probe));
+        }
+      } finally {
+        for (const item of pending) item.holder.remove();
+      }
+      return results;
     },
     dispose() {
       if (disposed) return; disposed = true;
