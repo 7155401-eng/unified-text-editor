@@ -2415,6 +2415,68 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  await test('physical final-gap fill reduces a real one-to-two-row bottom gap without source loss',async()=>{
+    const settings=getStreamSettings(),saved=settings['03'];
+    settings['03']={...(settings['03']||{}),mainRefEnabled:true,noteNumEnabled:false,lemmaBold:false,titleShow:false};
+    const pageBottomOf=page=>{
+      const els=[...page.querySelectorAll('.v9-line,.v9-stream-title,.v9-main-separator')];
+      return Math.max(0,...els.map(el=>(parseFloat(el.style.top)||0)+(parseFloat(el.style.height)||0)));
+    };
+    const compact=s=>String(s||'').replace(/[\s\u200e\u200f\u2060]/gu,'');
+    const pageHeight=260,noteBase=8,mainRepeats=6;
+    const main=Array(mainRepeats).fill(neutral).join(' '),words=[...main.matchAll(/\S+/gu)];
+    const input=Array.from({length:4},(_,pi)=>({
+      id:`physical-gap-${pi}`,
+      mainText:main,
+      notes:Array.from({length:4},(_,ni)=>{
+        const w=words[Math.min(words.length-1,5+ni*10)];
+        return {stream:'03',uid:`physical-gap-note-${pi}-${ni}`,num:pi*4+ni+1,
+          anchor:w.index+w[0].length,anchorAffinity:'backward',
+          text:Array(noteBase+ni*2).fill(neutral).join(' ')};
+      })
+    }));
+    const common={...cfg,pageHeight,maxPages:100,talmudStreams:['01','02'],mishnaWrapOn:false,
+      streamSettings:{'03':{inlineStyle:{fontSize:11}}}};
+    const oldHost=makePage(),newHost=makePage();
+    try{
+      const oldResult=await buildPages(oldHost,input,{...common,
+        finalGapFillTriggerRatio:.84,finalGapFillMinRemainingLines:2.5,finalGapFillMinGain:.04});
+      const newResult=await buildPages(newHost,input,common);
+      assert(oldResult.complete&&newResult.complete,'physical-gap fixture incomplete');
+      const pageBottom=pageHeight-common.padding;
+      const oldBottom=pageBottomOf(oldResult.pages[0]),newBottom=pageBottomOf(newResult.pages[0]);
+      const gain=newBottom-oldBottom;
+      assert(gain>=20,`physical gap fill did not materially improve first page: gain=${gain}`);
+      assert(newBottom<=pageBottom+.2,`physical gap fill crossed page bottom: ${newBottom} > ${pageBottom}`);
+      assert(newResult.pages.length<=oldResult.pages.length,
+        `physical gap fill increased page count: old=${oldResult.pages.length}, new=${newResult.pages.length}`);
+      assertNoWordOverlap(newResult.pages[0]);
+
+      for(const p of input){
+        const rows=[...newHost.querySelectorAll(`[data-v9-paragraph-id="${p.id}"]`)];
+        assert(rows.map(sourceText).join('')===p.mainText,`main source mismatch ${p.id}`);
+        for(const note of p.notes){
+          const key=`${p.id}:${note.stream}:${note.uid}`;
+          const refPage=newResult.pages.findIndex(page=>[...page.querySelectorAll('[data-v9-main-ref]')]
+            .some(el=>el.dataset.uid===note.uid));
+          const startPage=newResult.pages.findIndex(page=>[...page.querySelectorAll('[data-v9-note-start]')]
+            .some(el=>el.dataset.v9NoteStart===key));
+          assert(refPage>=0&&refPage===startPage,`note/source mismatch ${key}: ${refPage}/${startPage}`);
+        }
+      }
+      assert((newResult.noteAnchorFallbacks||[]).length===0,'physical gap fill used note-anchor fallback');
+      const expected=input.flatMap(p=>p.notes).map(n=>n.text).join('');
+      const actual=[...newHost.querySelectorAll('.v9-final-stream-line[data-v9-source-stream="03"]')]
+        .map(sourceText).join('');
+      assert(compact(actual)===compact(expected),'stream source mismatch after physical gap fill');
+      return {oldGap:+(pageBottom-oldBottom).toFixed(2),newGap:+(pageBottom-newBottom).toFixed(2),
+        gain:+gain.toFixed(2),oldPages:oldResult.pages.length,newPages:newResult.pages.length};
+    }finally{
+      oldHost.remove();newHost.remove();
+      if(saved===undefined)delete settings['03'];else settings['03']=saved;
+    }
+  });
+
   await test('B20/C7: footer streams never cover the last main-text row',()=>{
     const page=makePage();
     const main=Array(8).fill(neutral).join(' ');
