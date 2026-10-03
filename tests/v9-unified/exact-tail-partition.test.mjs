@@ -14,6 +14,40 @@ function exhaustive(n, rows, cap, matrix) {
   }
   visit(0,0,0,[]);return out.sort((a,b)=>a.cost-b.cost)[0]||null;
 }
+
+
+function solveReference({wordCount,rows,maxSpacing,metricFor,maxEvaluations=4096}) {
+  const minimumRemaining=new Array(rows.length+1).fill(0);
+  for(let i=rows.length-1;i>=0;i--)
+    minimumRemaining[i]=minimumRemaining[i+1]+(rows[i].allowsEmpty?0:1);
+  if(minimumRemaining[0]>wordCount)return {status:'infeasible',evaluations:0};
+  let states=new Map([[0,{cost:0,previous:null,end:0}]]),evaluations=0;
+  for(let i=0;i<rows.length;i++){
+    const next=new Map();
+    const maximumEnd=wordCount-minimumRemaining[i+1];
+    for(const [from,state] of states){
+      const minimumEnd=i===rows.length-1?wordCount:from+(rows[i].allowsEmpty?0:1);
+      for(let to=minimumEnd;to<=maximumEnd;to++){
+        if(evaluations>=maxEvaluations)return {status:'budget-exhausted',evaluations};
+        evaluations++;
+        const metric=metricFor(i,from,to);
+        if(!metric||!Number.isFinite(metric.pressure)||metric.pressure<0||
+           metric.pressure>maxSpacing+1e-9)continue;
+        const cost=state.cost+metric.pressure*metric.pressure;
+        const known=next.get(to);
+        if(!known||cost<known.cost-1e-9)next.set(to,{cost,previous:state,end:to});
+      }
+    }
+    if(!next.size)return {status:'infeasible',evaluations};
+    states=next;
+  }
+  let state=states.get(wordCount);
+  if(!state)return {status:'infeasible',evaluations};
+  const boundaries=[];
+  while(state.previous){boundaries.push(state.end);state=state.previous;}
+  boundaries.reverse();boundaries.pop();
+  return {status:'complete',evaluations,boundaries};
+}
 for(let seed=1;seed<=128;seed++)test(`bounded exact partition agrees with exhaustive search ${seed}`,()=>{
   let state=seed;const random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/2**32);
   const n=4+seed%6,rows=Array.from({length:2+seed%3},(_,i)=>({allowsEmpty:i===0&&seed%2===0}));
@@ -58,4 +92,46 @@ for(const change of [{wordCount:0},{wordCount:1.5},{rows:[]},{maxSpacing:NaN},{m
  });
 test('rows without enough words cannot allocate empty body lines',()=>{
  assert.deepEqual(solve({wordCount:1,rows:[{},{}],maxSpacing:8,metricFor:()=>{throw Error('unexpected')}}),{status:'infeasible',evaluations:0});
+});
+
+
+for(let seed=1;seed<=256;seed++)test(`dominance pruning is result/budget identical to legacy DP ${seed}`,()=>{
+  let state=seed;
+  const random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/2**32);
+  const wordCount=4+(seed%14);
+  const rows=Array.from({length:2+(seed%5)},(_,i)=>({allowsEmpty:i===0&&seed%3===0}));
+  const maxSpacing=8;
+  const matrix=new Map();
+  for(let i=0;i<rows.length;i++)for(let from=0;from<=wordCount;from++)for(let to=from;to<=wordCount;to++){
+    const r=random();
+    matrix.set(`${i}/${from}/${to}`,r<0.22?null:Math.floor(random()*12));
+  }
+  const maxEvaluations=[3,17,73,257,4096][seed%5];
+  const metricFor=(i,from,to)=>{
+    const pressure=matrix.get(`${i}/${from}/${to}`);
+    return pressure==null?null:{pressure};
+  };
+  const expected=solveReference({wordCount,rows,maxSpacing,metricFor,maxEvaluations});
+  const actual=solve({wordCount,rows,maxSpacing,metricFor,maxEvaluations});
+  assert.deepEqual(actual,expected);
+});
+
+test('dominated transitions keep evaluation budget but avoid unnecessary metric calls',()=>{
+  let calls=0;
+  const result=solve({
+    wordCount:10,
+    rows:Array.from({length:4},()=>({})),
+    maxSpacing:8,
+    metricFor:(row,_from,to)=>{
+      calls++;
+      // Row 0 deliberately gives later states a larger accumulated cost.
+      // Later rows add zero cost, so an earlier cheaper state that already
+      // reaches the same destination mathematically dominates them.
+      return {pressure:row===0?to*0.7:0};
+    },
+  });
+  assert.equal(result.status,'complete');
+  assert.equal(result.evaluations,70,'evaluation accounting changed');
+  assert.ok(calls<result.evaluations,
+    `dominance pruning did not avoid metric work: calls=${calls}, evaluations=${result.evaluations}`);
 });
