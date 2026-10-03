@@ -80,10 +80,19 @@ check("ואין מיקום", r4.proposals[0].position, null);
 checkThat("וההסבר ברור", r4.proposals[0].reason.includes("לא נמצא"), r4.proposals[0].reason);
 
 console.log("\n[9] ⭐ קפיצה רחוקה — מסומנת, בדיוק כמו שמשה הזהיר");
-const farMain = "התחלה " + "מילת מילוי ".repeat(400) + "זכור את היום";
-const r5 = proposeMarkerPlacements(farMain, "@01 [1] זכור את היום — פירוש", { searchWindow: 200 });
-check("סומן כרחוק", r5.proposals[0].confidence, CONFIDENCE_FAR);
-checkThat("וההסבר אומר כמה רחוק", /\d+ תווים קדימה/u.test(r5.proposals[0].reason), r5.proposals[0].reason);
+// ⚠️ תוקן 03/10 אחרי מדידה על מסמך אמיתי: להערה **הראשונה** אין ממה למדוד
+// מרחק, ולכן התאמה יחידה בה היא ודאית. „רחוק" נמדד תמיד ביחס להערה שלפניה.
+const farMain = "עוגן ראשון כאן " + "מילת מילוי ".repeat(400) + "זכור את היום";
+const r5 = proposeMarkerPlacements(farMain,
+  "@01 [1] עוגן ראשון כאן — קובע את המקום\n@01 [2] זכור את היום — פירוש",
+  { searchWindow: 200 });
+check("ההערה הראשונה קובעת עוגן", r5.proposals[0].confidence, CONFIDENCE_EXACT);
+check("והשנייה סומנה כרחוקה", r5.proposals[1].confidence, CONFIDENCE_FAR);
+checkThat("וההסבר אומר כמה רחוק", /[0-9]+ תווים קדימה/u.test(r5.proposals[1].reason), r5.proposals[1].reason);
+
+console.log("\n[9ב] ⭐ הערה ראשונה — התאמה יחידה בכל המסמך היא ודאית");
+const r5b = proposeMarkerPlacements(farMain, "@01 [1] זכור את היום — פירוש", { searchWindow: 200 });
+check("ודאית, כי אין ממה למדוד מרחק", r5b.proposals[0].confidence, CONFIDENCE_EXACT);
 
 console.log("\n[10] ⭐ הערות לפי הסדר — הסמן מתקדם ואינו חוזר אחורה");
 const ordered = "אחת זכור שתיים ויצאתם שלוש סוף";

@@ -64,7 +64,22 @@ export function normalizeForMatch(text) {
  * אם אין מפריד, לוקחים את שלוש המילים הראשונות: זה מה שמקובל כדיבור מתחיל
  * קצר, ועדיף מלנחש על סמך כל ההערה.
  */
-export function extractOpeningPhrase(noteText, { maxWords = 8 } = {}) {
+/**
+ * ⚠️ נמדד על מסמכים אמיתיים של משה (03/10): **אין בהם מקפים כלל**, ולכן
+ * כשאין מפריד נלקחו 8 מילים — ובאורך כזה שיעור הציטוט צונח לאפס.
+ * המדידה: 3 מילים ⟵ 32% · 5 מילים ⟵ 7.1% · 8 מילים ⟵ ≈0.
+ * ⇒ ברירת המחדל ירדה ל-4, והחיפוש עצמו מקצר והולך (ראו `PHRASE_LADDER`).
+ */
+export const DEFAULT_MAX_PHRASE_WORDS = 4;
+
+/**
+ * סולם האורכים שהמנוע מנסה, מהארוך לקצר.
+ * ⭐ ביטוי ארוך שנמצא **פעם אחת** הוא עדות חזקה בהרבה מביטוי קצר, ולכן
+ * מנסים קודם ארוך ויורדים. 2 מילים הן הגבול התחתון — מתחת לזה זה ניחוש.
+ */
+export const PHRASE_LADDER = [5, 4, 3, 2];
+
+export function extractOpeningPhrase(noteText, { maxWords = DEFAULT_MAX_PHRASE_WORDS } = {}) {
   let body = String(noteText ?? "").replace(NOTE_HEAD, "").trim();
   if (!body) return "";
 
@@ -101,9 +116,52 @@ export function parseNotes(streamText) {
  * מוצא את כל המקומות שבהם הביטוי מופיע בטקסט הראשי.
  * מחזיר מיקומים **בטקסט המקורי**, למרות שההשוואה נעשית על גרסה מנורמלת.
  */
-export function findPhrasePositions(mainText, phrase) {
+/**
+ * מכין פעם אחת את הגרסה המנורמלת של הטקסט הראשי ואת המפה חזרה למקור.
+ *
+ * ⚠️ נמדד על מסמך אמיתי (2,518 הערות): בניית המפה מחדש לכל הערה לקחה
+ * **54 שניות**. הכנה אחת מראש מורידה את זה לשבריר.
+ */
+export function prepareMainIndex(mainText) {
+  const src = String(mainText ?? "");
+  let norm = "";
+  const map = [];
+  let lastWasSpace = true;
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    if (NIQQUD.test(ch)) { NIQQUD.lastIndex = 0; continue; }
+    NIQQUD.lastIndex = 0;
+    const isSep = /\s/u.test(ch) || PUNCT.test(ch);
+    PUNCT.lastIndex = 0;
+    if (isSep) {
+      if (lastWasSpace) continue;
+      norm += " ";
+      map.push(i);
+      lastWasSpace = true;
+    } else {
+      norm += ch;
+      map.push(i);
+      lastWasSpace = false;
+    }
+  }
+  return { norm, map };
+}
+
+export function findPhrasePositions(mainText, phrase, prepared = null) {
   const needle = normalizeForMatch(phrase);
   if (!needle) return [];
+
+  if (prepared) {
+    const hits = [];
+    let from = 0;
+    for (;;) {
+      const at = prepared.norm.indexOf(needle, from);
+      if (at === -1) break;
+      hits.push(prepared.map[at] ?? 0);
+      from = at + 1;
+    }
+    return hits;
+  }
 
   // מפה בין כל תו בגרסה המנורמלת למיקומו בטקסט המקורי, כדי שההצעה תצביע
   // על מקום אמיתי במסמך ולא על מקום בגרסה המנורמלת.
@@ -154,6 +212,31 @@ export function proposeMarkerPlacements(mainText, streamText, { searchWindow = D
   let cursor = 0;          // המיקום שאחרי הסמן הקודם שהוצע
   let lastAccepted = -1;
 
+  // מוכן פעם אחת לכל הקריאה — ולא מחדש לכל הערה.
+  const prepared = prepareMainIndex(mainText);
+
+  /**
+   * מנסה את סולם האורכים, מהארוך לקצר, ומחזיר את הראשון שנותן התאמה
+   * **יחידה** בטווח. ביטוי ארוך שנמצא פעם אחת הוא עדות חזקה בהרבה.
+   */
+  const bestPhraseHits = (raw) => {
+    let fallback = null;
+    for (const words of PHRASE_LADDER) {
+      const phrase = extractOpeningPhrase(raw, { maxWords: words });
+      if (!phrase) continue;
+      const hits = findPhrasePositions(mainText, phrase, prepared);
+      if (!hits.length) continue;
+      // ⭐ לפני שיש עוגן ראשון אין נקודת-ייחוס, ולכן אין עונש מרחק:
+      // התאמה יחידה בכל המסמך היא ודאית בפני עצמה.
+      const candidates = lastAccepted === -1
+        ? hits
+        : hits.filter((h) => h >= cursor && h - cursor <= searchWindow);
+      if (candidates.length === 1) return { phrase, hits, words };
+      if (!fallback) fallback = { phrase, hits, words };
+    }
+    return fallback;
+  };
+
   for (const note of notes) {
     const base = {
       code: note.code,
@@ -171,15 +254,21 @@ export function proposeMarkerPlacements(mainText, streamText, { searchWindow = D
       continue;
     }
 
-    const hits = findPhrasePositions(mainText, note.phrase);
-    if (!hits.length) {
+    const best = bestPhraseHits(note.raw);
+    if (!best) {
       proposals.push({ ...base, reason: "הדיבור המתחיל לא נמצא בטקסט הראשי." });
       continue;
     }
+    base.phrase = best.phrase;
+    base.phraseWords = best.words;
+    const hits = best.hits;
 
     // ⭐ הכלל של משה: לא לקפוץ רחוק. מעדיפים את ההתאמה הראשונה שאחרי הסמן
     // הקודם ובתוך החלון. אם אין כזו — זו כבר לא התאמה בטוחה.
-    const inWindow = hits.filter((h) => h >= cursor && h - cursor <= searchWindow);
+    // לפני העוגן הראשון — כל המסמך הוא הטווח.
+    const inWindow = lastAccepted === -1
+      ? hits
+      : hits.filter((h) => h >= cursor && h - cursor <= searchWindow);
     const forward = hits.filter((h) => h >= cursor);
 
     let position = null;
@@ -189,7 +278,7 @@ export function proposeMarkerPlacements(mainText, streamText, { searchWindow = D
     if (inWindow.length === 1) {
       position = inWindow[0];
       confidence = CONFIDENCE_EXACT;
-      reason = "נמצא פעם אחת, בטווח הצפוי אחרי ההערה הקודמת.";
+      reason = `נמצא פעם אחת (${best.words} מילים), בטווח הצפוי אחרי ההערה הקודמת.`;
     } else if (inWindow.length > 1) {
       position = inWindow[0];
       confidence = CONFIDENCE_AMBIGUOUS;
@@ -209,9 +298,17 @@ export function proposeMarkerPlacements(mainText, streamText, { searchWindow = D
 
     proposals.push({ ...base, position, confidence, inOrder, reason });
 
+    // ⚠️ נמדד על מסמך אמיתי (03/10): קודם הסמן התקדם **רק** אחרי התאמה ודאית.
+    // במסמך שבו ההתאמה הראשונה אינה ודאית, הסמן נתקע באפס — וכל 1,844 ההערות
+    // הבאות סומנו „רחוק", כי הן נמדדו מול תחילת המסמך במקום מול ההערה שלפניהן.
+    // ⇒ הסמן מתקדם לכל מיקום שנמצא ושאינו חוזר אחורה. **דירוג הוודאות אינו
+    // משתנה** — הוא נשאר כן ומדויק; רק נקודת-הייחוס נעשית נכונה.
+    // ⛔ הסמן מתקדם **רק** על התאמה ודאית. ניסיתי להתקדם על כל התאמה —
+    // והתוצאה הייתה 1,825 הערות „לא לפי הסדר": התאמה מוקדמת שגויה קפצה
+    // רחוק, ומשם כל השאר נראה אחורה. זה בדיוק הכשל שמשה תיאר.
     if (confidence === CONFIDENCE_EXACT && inOrder) {
       lastAccepted = position;
-      cursor = position + Math.max(1, normalizeForMatch(note.phrase).length);
+      cursor = position + Math.max(1, normalizeForMatch(base.phrase).length);
     }
   }
 
