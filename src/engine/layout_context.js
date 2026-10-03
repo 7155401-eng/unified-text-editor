@@ -112,8 +112,6 @@ function measureOverlayReserve(className, isTop, text = "מידה") {
   return measureOverlayBox(className, isTop, text).reserve;
 }
 
-const FOOTER_PAGE_NUMBER_GAP_PX = 2;
-
 export function createLayoutContext() {
   const headerText = lsGet(HEADER_KEY) || "";
   const footerText = lsGet(FOOTER_KEY) || "";
@@ -140,14 +138,16 @@ export function createLayoutContext() {
 
   // Keep the page number in its historical 4mm position. When both overlays
   // are enabled, move the footer ABOVE the measured page-number box instead of
-  // letting two centered overlays occupy the same vertical band. This is
-  // geometry, not a guessed footer height: wrapped footer text is measured
-  // independently, while the stack offset uses the page number's real box.
+  // letting two centered overlays occupy the same vertical band. The gap is an
+  // explicit CSS design token; all variable heights remain live measurements.
+  const footerPageNumberGap = pageNumberBox && footerBox
+    ? Math.max(0, cssPx("--ravtext-document-overlay-gap", 2))
+    : 0;
   const footerBottom = footerBox
-    ? Math.ceil(pageNumberBox
+    ? (pageNumberBox
       ? Math.max(
           footerBox.offset,
-          pageNumberBox.offset + pageNumberBox.height + FOOTER_PAGE_NUMBER_GAP_PX
+          pageNumberBox.offset + pageNumberBox.height + footerPageNumberGap
         )
       : footerBox.offset)
     : null;
@@ -157,7 +157,7 @@ export function createLayoutContext() {
     footer: footerBox ? reserveOverlayAtOffset(footerBox, footerBottom) : 0,
     pageNumber: pageNumberBox?.reserve || 0,
     footerBottom,
-    footerPageNumberGap: pageNumberBox && footerBox ? FOOTER_PAGE_NUMBER_GAP_PX : 0,
+    footerPageNumberGap,
   };
 
   const context = Object.freeze({
