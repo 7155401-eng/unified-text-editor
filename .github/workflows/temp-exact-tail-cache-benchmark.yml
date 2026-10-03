@@ -1,0 +1,63 @@
+name: Temporary exact-tail cache benchmark
+on:
+  push:
+    branches: [gpt56sol-v9-exact-cache-20261003-2206-b71e]
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout exact baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 319bbcee314d4015bec0079b24797bd1df9a2047
+          path: .perf-baseline
+          persist-credentials: false
+      - name: Share dependencies
+        run: ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-baseline/node_modules"
+      - name: Baseline
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-baseline --out test-results/perf-baseline.json
+      - name: Candidate
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/perf-candidate.json
+      - name: Require identical output and report speed
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const a=JSON.parse(fs.readFileSync('test-results/perf-baseline.json','utf8'));
+          const b=JSON.parse(fs.readFileSync('test-results/perf-candidate.json','utf8'));
+          const summary=[];
+          for(let i=0;i<a.cases.length;i++){
+            const x=a.cases[i],y=b.cases[i];
+            if(x.name!==y.name||x.pages!==y.pages||x.complete!==y.complete||
+               x.sourceChars!==y.sourceChars||x.renderedChars!==y.renderedChars||
+               x.domSha256!==y.domSha256){
+              throw new Error('Render output drift: '+JSON.stringify({baseline:x,candidate:y}));
+            }
+            summary.push({name:x.name,baselineMs:x.ms,candidateMs:y.ms,
+              ratio:y.ms/Math.max(1,x.ms),baselineMaxLongTask:x.maxLongTask,
+              candidateMaxLongTask:y.maxLongTask});
+          }
+          console.log(JSON.stringify(summary,null,2));
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: exact-tail-cache-benchmark-${{ github.run_id }}
+          path: test-results/perf-*.json
+          retention-days: 3
