@@ -4663,12 +4663,20 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // 1. מצא bestN_clean = מקסימום פסקאות שנכנסות נקי (כולל כל ההערות שלהן)
     let bestN_clean = 0;
     let bestCleanPlan = null;
+    let firstNonCleanN = 0;
+    let firstNonCleanPlan = null;
     for (let n = 1; n <= 50 && n <= totalAvail; n++) {
       const tp = trialAtN(n);
-      if (!fitsClean(tp)) break;
+      if (!fitsClean(tp)) {
+        firstNonCleanN = n;
+        firstNonCleanPlan = tp;
+        break;
+      }
       bestN_clean = n;
       bestCleanPlan = tp;
     }
+    const trialAtNReusingScan = (n) =>
+      firstNonCleanPlan && n === firstNonCleanN ? firstNonCleanPlan : trialAtN(n);
 
     // 2. אם נשארו פסקאות שלא נכנסו נקי — ננסה לקחת prefix של הבאה.
     // משה 2026-05-09: ★ פיצול מעוגן — ההערות מתחלקות לפי anchor (מיקום בטקסט).
@@ -4676,6 +4684,24 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // כך כל עמוד מקבל רק את הפרשנים של השורות שעליו (כמו במנוע הרגיל).
     let splitInfo = null;
     const cleanFill = planFillRatio(bestCleanPlan);
+
+    // Several rescue policies inspect exactly the same selected source slice.
+    // Reuse that immutable page plan instead of repeating DOM measurement.
+    let selectionPlanCache = null;
+    let selectionPlanCacheSplit = undefined;
+    const currentSelectionPlan = () => {
+      if (!splitInfo && bestN_clean > 0 && bestCleanPlan) return bestCleanPlan;
+      if (selectionPlanCache && selectionPlanCacheSplit === splitInfo) return selectionPlanCache;
+      const currentSlice = splitInfo
+        ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
+        : getSlice(bestN_clean);
+      selectionPlanCache = buildPagePlan(
+        aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
+        cfg
+      );
+      selectionPlanCacheSplit = splitInfo;
+      return selectionPlanCache;
+    };
     const splitTargets = (allowParagraphSplit || noMidParagraph)
 
       ? [
@@ -4958,10 +4984,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // מנגנון האיזון: מורידים עוד שורות מהראשי כדי לפנות מקום להערות שלהן,
     // אבל לא מפצלים סתם בלי הערה מעוגנת.
     if (allowParagraphSplit || noMidParagraph) {
-      const currentSlice = splitInfo
-        ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
-        : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+      const currentPlan = currentSelectionPlan();
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -5083,8 +5106,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     }
 
     if (splitInfo && (allowParagraphSplit || noMidParagraph)) {
-      const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+      const currentPlan = currentSelectionPlan();
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -5361,16 +5383,14 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     }
 
     let overflowTakeN = 0;
+    let overflowTakePlan = null;
     if (!carryActive && !noMidParagraph && bestN_clean < totalAvail) {
       const candidateN = bestN_clean + 1;
-      const tp = trialAtN(candidateN);
+      const tp = trialAtNReusingScan(candidateN);
       const ovs = (tp && tp.overflow && tp.overflow.streams) || {};
       const hasNoteOverflow = Object.keys(ovs).some(k => ovs[k]);
       const fill = planFillRatio(tp);
-      const currentSlice = splitInfo
-        ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
-        : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+      const currentPlan = currentSelectionPlan();
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -5385,6 +5405,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         (fill > currentFill + 0.08 || (currentFill < rescueMinFillRatio && fill >= currentFill - 0.04))
       ) {
         overflowTakeN = candidateN;
+        overflowTakePlan = tp;
         splitInfo = null;
       }
     }
@@ -5413,21 +5434,16 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     const UNDERFILLED_PAGE = 0.72;   // מתחת לזה העמוד נראה שבור
     const RESCUE_TARGET_FILL = 0.85; // והתוספת חייבת באמת לפתור את זה
     if (!overflowTakeN && !noMidParagraph && bestN_clean > 0 && bestN_clean < totalAvail) {
-      const currentSlice = splitInfo
-        ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
-        : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(
-        aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
-        cfg,
-      );
+      const currentPlan = currentSelectionPlan();
       const currentFill = planFillRatio(currentPlan);
       if (currentFill < UNDERFILLED_PAGE) {
         const candidateN = bestN_clean + 1;
-        const tp = trialAtN(candidateN);
+        const tp = trialAtNReusingScan(candidateN);
         const fill = planFillRatio(tp);
         const mainCut = normalizeRichTextEntry(tp?.overflow?.mainText || "").text.trim();
         if (tp && tp.overflow && !mainCut && fitsClean(tp) && fill >= RESCUE_TARGET_FILL && fill > currentFill + 0.08) {
           overflowTakeN = candidateN;
+          overflowTakePlan = tp;
           splitInfo = null;
         }
       }
@@ -5437,6 +5453,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     // עמוד drain רק עם ה-carry (בלי pending). זה משחרר את ה-carry שיוצר אצטמולציה
     // ומאפשר ל-pending להירנדר נקי בעמוד הבא. אחרת ה-carry חונק את כל הפסקאות הבאות.
     let drainAloneMode = false;
+    let drainAlonePlan = null;
     if (!splitInfo && hasCarryOver(carryOver)) {
       // בדוק אם carry לבד (slice ריק) חורג
       const carryAloneTrial = buildPagePlan(
@@ -5449,6 +5466,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         carryAloneTrial?.overflow?.exceedsPage ||
         fillsPageEnough(carryAloneTrial, cfg.carryOnlyMinRatio || 0.78)
       );
+      if (drainAloneMode) drainAlonePlan = carryAloneTrial;
     }
 
     // 3. קביעת bestN סופי
@@ -5532,7 +5550,11 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
     let finalSlice = buildFinalSlice();
     let finalContent = aggregateForV9(finalSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
-    let finalProbe = buildPagePlan(finalContent, cfg);
+    let finalProbe =
+      (drainAloneMode && drainAlonePlan) ? drainAlonePlan :
+      (!splitInfo && overflowTakeN > 0 && bestN === overflowTakeN && overflowTakePlan) ? overflowTakePlan :
+      (!splitInfo && bestN === bestN_clean && bestCleanPlan) ? bestCleanPlan :
+      buildPagePlan(finalContent, cfg);
     let finalGuardTries = 0;
 
     while (
