@@ -37,3 +37,13 @@ test("manual minute changes remain admin-only and now record the acting admin", 
   assert.match(src, /if\(!u\.is_admin\)return\{error:e\('Forbidden',403\)\}/);
   assert.match(src, /admin_user_\$\{a\.user\.id\}/);
 });
+
+
+test("admin minute UI distinguishes used, expired and current gift minutes", () => {
+  for (const path of ["admin_minutes_tab.js", "public/admin_minutes_tab.js"]) {
+    const ui = read(path);
+    assert.match(ui, /gift_seconds_expired/);
+    assert.match(ui, /דקות מתנה שפגו בסוף חודש/);
+    assert.match(ui, /מתנת החודש שעדיין נותרה/);
+  }
+});
