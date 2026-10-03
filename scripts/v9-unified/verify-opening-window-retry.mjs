@@ -45,6 +45,9 @@ try {
   Object.assign(result,{browserVersion:browser.version(),errors,requests,identities});
   fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify({total:result.total,passed:result.passed,failed:result.failed,browserVersion:result.browserVersion}));
-  assert.equal(result.total,878);assert.equal(errors.length,0);assert.equal(requests.length,0);
+  assert.equal(result.groups.specialSeparatorKnee,48);
+  assert.equal(result.total,926);
+  assert.equal(result.passed,result.total);
+  assert.equal(errors.length,0);assert.equal(requests.length,0);
   assert.equal(result.failed,0,JSON.stringify(result.results.filter(r=>!r.pass)));
 } finally {await browser.close();}
