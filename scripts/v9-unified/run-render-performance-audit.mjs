@@ -61,16 +61,19 @@ async function one(name,count){
  await document.fonts.ready;
  const input=makeInput(count,name);
  const sourceChars=input.reduce((n,p)=>n+p.mainText.length+p.notes.reduce((s,x)=>s+x.text.length,0),0);
+ window.__ravtextPerfTrace=true;
+ window.__ravtextV9Perf=null;
  const t0=performance.now();
  const result=await buildPages(host,input,config());
  const ms=performance.now()-t0;
+ const perf=structuredClone(window.__ravtextV9Perf||{});
  await sleep(0);
  observer?.disconnect();
  const html=host.innerHTML;
  const text=host.textContent||'';
  return {name,ms,pages:result.pages.length,complete:result.complete===true,sourceChars,
    renderedChars:text.length,html,longTasks,longTaskTotal:longTasks.reduce((a,b)=>a+b,0),
-   maxLongTask:longTasks.length?Math.max(...longTasks):0};
+   maxLongTask:longTasks.length?Math.max(...longTasks):0,perf};
 }
 window.runRenderPerformance=async()=>{
  const cases=[await one('long-notes',24),await one('gap-heavy',32)];
