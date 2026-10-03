@@ -5089,15 +5089,22 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
+      const extensionBottom = planBottomY(currentPlan);
+      const extensionRemainingPx = Math.max(0, pageBottomForFill - extensionBottom);
+      const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+      const extensionTrigger = evaluateV9PhysicalGapFillTrigger({
+        remainingPx: extensionRemainingPx,
+        lineHeight: extensionLineH,
+        beforeFill: currentFill,
+        cfg,
+        manualPull: false,
+      });
 
-      // Never decide from the OLD partial plan that extension is impossible.
-      // Extending the same source paragraph can move the main-text anchor that
-      // an unstarted note is waiting for onto this page, turning an unsafe
-      // current overflow into a legal started-note continuation. Every proposed
-      // extension below is rebuilt from source and independently validated by
-      // scoreV9PageCandidate()/hasUnsafeV9StreamOverflow(), so skipping the
-      // search here only creates white space; it adds no safety.
-      if (currentFill < rescueMinFillRatio && secondText.length > 0) {
+      // A page may be globally "full enough" by ratio while still wasting a
+      // visible physical row. Probe extension only when the old sparse-page
+      // rule allows it OR there is measured physical room. Candidate safety,
+      // source ownership and the historical score floor remain authoritative.
+      if ((currentFill < rescueMinFillRatio || extensionTrigger.ok) && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
@@ -5118,9 +5125,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
           return [...anchorlessFrom, ...anchoredFrom];
         };
-        const extensionRemainingPx = Math.max(0, pageBottomForFill - planBottomY(currentPlan));
-        const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
-
         let actualGeometryCandidates = [];
         try {
           const reconstructed = joinV9ParagraphFragments(splitInfo.firstHalf, splitInfo.secondHalf);
@@ -5200,8 +5204,17 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) continue;
 
           const fill = planFillRatio(tp);
-
-          if (fill < currentFill - 0.04) continue;
+          const candidateBottom = planBottomY(tp);
+          const physicalGain = evaluateV9PhysicalGapFillGain({
+            beforeBottom: extensionBottom,
+            afterBottom: candidateBottom,
+            lineHeight: extensionLineH,
+            beforeFill: currentFill,
+            afterFill: fill,
+            cfg,
+            manualPull: false,
+          });
+          if (!physicalGain.ok) continue;
 
           const movedAnchoredCount = movedNotes.filter(n => typeof n.anchor === "number").length;
 
