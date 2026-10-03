@@ -27,11 +27,11 @@ function makeInput(count,mode){
     const noteCount=mode==='gap-heavy'?2+(i%3):4;
     const notes=Array.from({length:noteCount},(_,j)=>{
       const w=matches[Math.min(matches.length-1,4+j*Math.max(3,Math.floor(matches.length/(noteCount+1))))];
-      return {stream:String((j%4)+1).padStart(2,'0'),uid:`${mode}-${i}-${j}`,num:i*10+j+1,
+      return {stream:String((j%4)+1).padStart(2,'0'),uid:mode+'-'+i+'-'+j,num:i*10+j+1,
         anchor:w.index+w[0].length,anchorAffinity:'backward',
         text:Array(2+((i+j)%4)).fill(notePhrase).join(' ')};
     });
-    return {id:`${mode}-p-${i}`,mainText,notes};
+    return {id:mode+'-p-'+i,mainText,notes};
   });
 }
 function config(){
