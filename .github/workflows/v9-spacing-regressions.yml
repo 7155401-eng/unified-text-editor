@@ -87,6 +87,8 @@ jobs:
         run: |
           node --test tests/v9-unified/*.test.mjs | tee test-results/v9-unified/unit-after-build.tap
           cp test-results/v9-unified/browser.json test-results/v9-unified/browser-before-build.json
+          cp test-results/v9-unified/regular-footer-underfill.json test-results/v9-unified/regular-footer-underfill-before-build.json
+          node scripts/v9-unified/run-regular-footer-underfill.mjs
           node scripts/v9-unified/run-browser.mjs
       - name: Retain validation evidence
         if: always()
