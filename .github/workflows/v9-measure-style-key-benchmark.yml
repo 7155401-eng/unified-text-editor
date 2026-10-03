@@ -1,0 +1,37 @@
+name: Audit V9 measurement style key
+on:
+  push:
+    branches: [audit/v9-measure-style-key-benchmark-20261004]
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install locked browser dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout exact candidate base
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: f624578258c8300a806ca07df4aadbfc5bf43520
+          path: .baseline
+          persist-credentials: false
+      - name: Benchmark base and typography-ID candidate
+        run: node scripts/v9-unified/benchmark-measure-style-key.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: v9-measure-style-key-${{ github.run_id }}
+          path: test-results/v9-unified/measure-style-key-benchmark.json
+          retention-days: 7
