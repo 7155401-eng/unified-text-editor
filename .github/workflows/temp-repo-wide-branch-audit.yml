@@ -1,0 +1,307 @@
+name: Temporary repository-wide branch and workflow audit
+
+on:
+  push:
+    branches: [gpt56sol-repo-wide-audit-20261004-0006]
+    paths: ['.github/workflows/temp-repo-wide-branch-audit.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: temp-repo-wide-audit-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch every live branch without modifying refs on GitHub
+        run: |
+          git fetch --no-tags --force origin '+refs/heads/*:refs/remotes/origin/*'
+          git rev-parse origin/main
+          git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | wc -l
+
+      - name: Classify every branch against current main
+        env:
+          AUDIT_BRANCH: gpt56sol-repo-wide-audit-20261004-0006
+        run: |
+          mkdir -p test-results/repo-audit
+          python3 - <<'PY'
+          import collections, datetime as dt, json, os, subprocess
+          from pathlib import Path
+
+          OUT = Path("test-results/repo-audit")
+          MAIN = "origin/main"
+          AUDIT_BRANCH = "origin/" + os.environ["AUDIT_BRANCH"]
+
+          def run(*args, check=True):
+              p = subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+              if check and p.returncode:
+                  raise RuntimeError(f"{' '.join(args)} failed: {p.stderr.strip()}")
+              return p
+
+          main_sha = run("git", "rev-parse", MAIN).stdout.strip()
+          refs = [
+              x.strip() for x in run(
+                  "git", "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/"
+              ).stdout.splitlines()
+              if x.strip() and x.strip() not in {"origin/HEAD", MAIN, AUDIT_BRANCH}
+          ]
+
+          now = dt.datetime.now(dt.timezone.utc)
+          rows = []
+          tip_groups = collections.defaultdict(list)
+
+          for ref in refs:
+              name = ref.removeprefix("origin/")
+              tip = run("git", "rev-parse", ref).stdout.strip()
+              tip_groups[tip].append(name)
+
+              counts = run("git", "rev-list", "--left-right", "--count", f"{MAIN}...{ref}").stdout.split()
+              behind, ahead = map(int, counts)
+
+              merged = run("git", "merge-base", "--is-ancestor", ref, MAIN, check=False).returncode == 0
+              main_ancestor = run("git", "merge-base", "--is-ancestor", MAIN, ref, check=False).returncode == 0
+
+              cherry = run("git", "cherry", MAIN, ref, check=False).stdout.splitlines()
+              patch_unique = sum(1 for line in cherry if line.startswith("+ "))
+              patch_equivalent = sum(1 for line in cherry if line.startswith("- "))
+
+              commit_iso = run("git", "show", "-s", "--format=%cI", tip).stdout.strip()
+              subject = run("git", "show", "-s", "--format=%s", tip).stdout.strip()
+              try:
+                  changed = dt.datetime.fromisoformat(commit_iso.replace("Z", "+00:00"))
+                  age_days = (now - changed).total_seconds() / 86400
+              except Exception:
+                  age_days = None
+
+              if merged:
+                  status = "fully-merged-ancestor"
+              elif ahead == 0:
+                  status = "no-ahead-commits"
+              elif patch_unique == 0:
+                  status = "patch-equivalent-only"
+              elif main_ancestor:
+                  status = "ahead-unique"
+              else:
+                  status = "diverged-unique"
+
+              merge_base = run("git", "merge-base", MAIN, ref, check=False).stdout.strip()
+              files = []
+              if merge_base and patch_unique:
+                  files = [
+                      x for x in run("git", "diff", "--name-only", f"{merge_base}..{ref}", check=False).stdout.splitlines()
+                      if x.strip()
+                  ]
+
+              prefix = name.split("/", 1)[0] if "/" in name else name.split("-", 1)[0]
+              rows.append({
+                  "branch": name,
+                  "tip": tip,
+                  "status": status,
+                  "ahead": ahead,
+                  "behind": behind,
+                  "patch_unique": patch_unique,
+                  "patch_equivalent": patch_equivalent,
+                  "main_is_ancestor": main_ancestor,
+                  "tip_is_ancestor_of_main": merged,
+                  "commit_date": commit_iso,
+                  "age_days": None if age_days is None else round(age_days, 2),
+                  "recent_7d": bool(age_days is not None and age_days <= 7),
+                  "subject": subject,
+                  "changed_file_count": len(files),
+                  "changed_files": files,
+                  "prefix": prefix,
+              })
+
+          duplicate_tips = {sha: names for sha, names in tip_groups.items() if len(names) > 1}
+          by_status = collections.Counter(r["status"] for r in rows)
+          by_prefix = collections.Counter(r["prefix"] for r in rows)
+          unique = [r for r in rows if r["patch_unique"] > 0]
+          recent_unique = [r for r in unique if r["recent_7d"]]
+          historical_unique = [r for r in unique if not r["recent_7d"]]
+
+          payload = {
+              "main_sha": main_sha,
+              "branch_count": len(rows),
+              "status_counts": dict(sorted(by_status.items())),
+              "prefix_counts": dict(by_prefix.most_common()),
+              "duplicate_tip_groups": duplicate_tips,
+              "unique_patch_branch_count": len(unique),
+              "recent_unique_patch_branch_count": len(recent_unique),
+              "historical_unique_patch_branch_count": len(historical_unique),
+              "branches": sorted(rows, key=lambda r: (r["status"], r["branch"])),
+          }
+          (OUT / "branches.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+          def fmt_row(r):
+              files = ", ".join(r["changed_files"][:8])
+              if r["changed_file_count"] > 8:
+                  files += f" … (+{r['changed_file_count']-8})"
+              return (
+                  f"| \`{r['branch']}\` | {r['status']} | {r['ahead']} | {r['behind']} | "
+                  f"{r['patch_unique']} | {r['patch_equivalent']} | {r['commit_date']} | {files} |"
+              )
+
+          lines = [
+              "# Repository-wide branch audit",
+              "",
+              f"- main: \`{main_sha}\`",
+              f"- live branches checked (excluding main and this audit branch): **{len(rows)}**",
+              f"- branches with at least one patch not equivalent to main: **{len(unique)}**",
+              f"- of those, updated in the last 7 days: **{len(recent_unique)}**",
+              f"- historical unique-patch branches (>7 days): **{len(historical_unique)}**",
+              "",
+              "## Status counts",
+              "",
+          ]
+          for key, value in sorted(by_status.items()):
+              lines.append(f"- {key}: **{value}**")
+
+          lines += [
+              "",
+              "## Recent unique-patch branches — DO NOT auto-merge",
+              "",
+              "| branch | status | ahead | behind | unique patches | equivalent patches | tip date | changed files |",
+              "|---|---:|---:|---:|---:|---:|---|---|",
+          ]
+          for r in sorted(recent_unique, key=lambda x: x["commit_date"], reverse=True):
+              lines.append(fmt_row(r))
+
+          lines += [
+              "",
+              "## Historical unique-patch branches — manual review queue",
+              "",
+              "| branch | status | ahead | behind | unique patches | equivalent patches | tip date | changed files |",
+              "|---|---:|---:|---:|---:|---:|---|---|",
+          ]
+          for r in sorted(historical_unique, key=lambda x: x["commit_date"], reverse=True):
+              lines.append(fmt_row(r))
+
+          lines += [
+              "",
+              "## Duplicate branch tips",
+              "",
+              "Branches in each group point to exactly the same commit; this is metadata duplication, not separate code.",
+              "",
+          ]
+          for sha, names in sorted(duplicate_tips.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+              lines.append(f"- \`{sha}\`: " + ", ".join(f"\`{n}\`" for n in names))
+
+          (OUT / "branches.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print(json.dumps({k: payload[k] for k in payload if k != "branches"}, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Audit retained failed Actions runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p test-results/repo-audit
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs?status=failure&per_page=100"             > test-results/repo-audit/failed-run-pages.json
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+
+          OUT = Path("test-results/repo-audit")
+          pages = json.loads((OUT / "failed-run-pages.json").read_text(encoding="utf-8"))
+          runs = []
+          for page in pages:
+              runs.extend(page.get("workflow_runs", []))
+
+          def git(*args):
+              return subprocess.run(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+          main = "origin/main"
+          branches = {
+              x.strip().removeprefix("origin/"): x.strip()
+              for x in git("git", "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin/").stdout.splitlines()
+              if x.strip().startswith("origin/") and x.strip() != "origin/HEAD"
+          }
+
+          out = []
+          for r in runs:
+              sha = r.get("head_sha") or ""
+              branch = r.get("head_branch") or ""
+              reachable = bool(sha) and git("git", "cat-file", "-e", f"{sha}^{{commit}}").returncode == 0
+              ancestor = reachable and git("git", "merge-base", "--is-ancestor", sha, main).returncode == 0
+              live_ref = branches.get(branch)
+              superseded = False
+              if live_ref and reachable:
+                  tip = git("git", "rev-parse", live_ref).stdout.strip()
+                  superseded = tip != sha
+              if ancestor:
+                  classification = "failed-commit-now-in-main-history"
+              elif live_ref and superseded:
+                  classification = "superseded-on-live-branch"
+              elif live_ref:
+                  classification = "failure-at-current-live-branch-tip"
+              elif reachable:
+                  classification = "unmerged-reachable-historical"
+              else:
+                  classification = "deleted-or-unreachable-historical"
+
+              out.append({
+                  "id": r.get("id"),
+                  "workflow": r.get("name"),
+                  "event": r.get("event"),
+                  "head_branch": branch,
+                  "head_sha": sha,
+                  "created_at": r.get("created_at"),
+                  "updated_at": r.get("updated_at"),
+                  "html_url": r.get("html_url"),
+                  "classification": classification,
+              })
+
+          counts = {}
+          for r in out:
+              counts[r["classification"]] = counts.get(r["classification"], 0) + 1
+
+          (OUT / "failed-workflows.json").write_text(
+              json.dumps({"count": len(out), "classification_counts": counts, "runs": out}, indent=2),
+              encoding="utf-8"
+          )
+          md = [
+              "# Retained failed GitHub Actions runs audit",
+              "",
+              f"- failed runs returned by GitHub retention window: **{len(out)}**",
+              "",
+              "## Classification counts",
+              "",
+          ]
+          for k, v in sorted(counts.items()):
+              md.append(f"- {k}: **{v}**")
+          md += [
+              "",
+              "## Failures at a current live branch tip",
+              "",
+              "| workflow | branch | sha | created | run |",
+              "|---|---|---|---|---|",
+          ]
+          for r in out:
+              if r["classification"] == "failure-at-current-live-branch-tip":
+                  md.append(
+                      f"| {r['workflow']} | \`{r['head_branch']}\` | \`{r['head_sha'][:12]}\` | "
+                      f"{r['created_at']} | {r['html_url']} |"
+                  )
+          (OUT / "failed-workflows.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+          print(json.dumps({"count": len(out), "classification_counts": counts}, indent=2))
+          PY
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: repository-wide-audit-${{ github.run_id }}
+          path: test-results/repo-audit/
+          retention-days: 7
+          if-no-files-found: error
