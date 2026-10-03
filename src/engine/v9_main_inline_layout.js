@@ -147,6 +147,49 @@ function freezeLine(line) {
 const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
 
+// Exact tail partitioning is deliberately exhaustive and can be invoked many
+// times while V9 evaluates temporary page candidates. The same source fragment
+// and row geometry recur across those probes, so cache the solver result for
+// the lifetime of the render-scoped measurement context. This preserves the
+// exact partition decision; it only avoids solving the identical state again.
+const _exactTailPartitionCacheByContext = new WeakMap();
+
+function exactTailPartitionCacheFor(context, sourceIdentity) {
+  if (!context || typeof context !== 'object' ||
+      !sourceIdentity || typeof sourceIdentity !== 'object') return null;
+  let bySource = _exactTailPartitionCacheByContext.get(context);
+  if (!bySource) {
+    bySource = new WeakMap();
+    _exactTailPartitionCacheByContext.set(context, bySource);
+  }
+  let cache = bySource.get(sourceIdentity);
+  if (!cache) {
+    cache = new Map();
+    bySource.set(sourceIdentity, cache);
+  }
+  return cache;
+}
+
+function exactTailPartitionStateKey({
+  sourceBase, sourceSegmentStart, bodySegmentStart, segmentEnd,
+  words, tail, gentleMax, context,
+}) {
+  const rows = tail.map(line => {
+    const tokenBounds = (line.wordTokens || [])
+      .map(word => `${word.start}:${word.end}`).join(',');
+    return [
+      number(line.width, 0),
+      number(line.lineHeightPx, context?.lineHeight),
+      line.render?.opening ? 1 : 0,
+      tokenBounds,
+    ].join(':');
+  }).join('|');
+  return [
+    sourceBase, sourceSegmentStart, bodySegmentStart, segmentEnd,
+    words.length, gentleMax, rows,
+  ].join(';');
+}
+
 function continuationTailGentleSpacing(context) {
   const fontSize = number(context?.fontSize, 13);
   return Math.max(3.6, Math.min(TAIL_REBALANCE_MAX_WORD_SPACING_PX, fontSize * 0.65));
@@ -380,12 +423,43 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     // One-word local moves can be trapped: two or more boundaries may need
     // to change together. Before clipping a row, search complete measured
     // partitions of this same source interval under the existing gentle cap.
-    const search = findV9ExactTailPartition({
-      wordCount: words.length,
-      rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
-      maxSpacing: gentleMax,
-      metricFor,
-    });
+    const sourceIdentity = entry.source || entry._v9Source || null;
+    const exactCache = exactTailPartitionCacheFor(context, sourceIdentity);
+    const exactCacheKey = exactCache ? exactTailPartitionStateKey({
+      sourceBase,
+      sourceSegmentStart,
+      bodySegmentStart,
+      segmentEnd,
+      words,
+      tail,
+      gentleMax,
+      context,
+    }) : null;
+    let search = exactCacheKey ? exactCache.get(exactCacheKey) : null;
+    if (!search) {
+      search = findV9ExactTailPartition({
+        wordCount: words.length,
+        rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
+        maxSpacing: gentleMax,
+        metricFor,
+      });
+      if (exactCacheKey) {
+        const cached = {
+          ...search,
+          ...(Array.isArray(search.boundaries) ? {boundaries: Object.freeze([...search.boundaries])} : {}),
+        };
+        Object.freeze(cached);
+        if (exactCache.size >= 256) {
+          let remove = 64;
+          for (const key of exactCache.keys()) {
+            exactCache.delete(key);
+            if (--remove <= 0) break;
+          }
+        }
+        exactCache.set(exactCacheKey, cached);
+        search = cached;
+      }
+    }
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
       const exactPaint = alternative && alternative.metrics.every((metric, i) => {
