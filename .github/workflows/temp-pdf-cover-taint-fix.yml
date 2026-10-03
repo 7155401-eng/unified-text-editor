@@ -1,0 +1,56 @@
+name: Temporary PDF cover-taint fix validation
+on:
+  push:
+    branches: [gpt56sol-main-acceptance-20261004-a403]
+    paths:
+      - 'src/pdf_export.js'
+      - 'scripts/pdf-export/verify-load-recovery.mjs'
+      - '.github/workflows/pdf-load-recovery.yml'
+      - '.github/workflows/temp-pdf-cover-taint-fix.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: temp-pdf-cover-taint-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Lazy export contracts
+        run: node --test tests/v9-unified/lazy-pdf-export.test.mjs tests/v9-unified/lazy-debug-export.test.mjs
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Real exporter and cover-taint recovery
+        run: node scripts/pdf-export/verify-load-recovery.mjs
+      - name: Build twice and verify stable PDF entry
+        run: |
+          git diff --exit-code -- src scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          node scripts/pdf-export/verify-stable-chunk.mjs cover-taint-first
+          git diff --exit-code -- src scripts tests .github/workflows vite.config.js package.json package-lock.json
+          npm run build
+          node scripts/pdf-export/verify-stable-chunk.mjs cover-taint-second
+          git diff --exit-code -- src scripts tests .github/workflows vite.config.js package.json package-lock.json
+      - name: Repeat exporter probe after build
+        run: node scripts/pdf-export/verify-load-recovery.mjs
+      - name: Retain evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pdf-cover-taint-${{ github.run_id }}
+          path: test-results/pdf-load-recovery/
+          retention-days: 7
+          if-no-files-found: error
