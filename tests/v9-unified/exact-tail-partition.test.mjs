@@ -47,3 +47,27 @@ for(const change of [{wordCount:0},{wordCount:1.5},{rows:[]},{maxSpacing:NaN},{m
 test('rows without enough words cannot allocate empty body lines',()=>{
  assert.deepEqual(solve({wordCount:1,rows:[{},{}],maxSpacing:8,metricFor:()=>{throw Error('unexpected')}}),{status:'infeasible',evaluations:0});
 });
+
+test('batched metric provider preserves the exact sequential decision and evaluation count',()=>{
+  const rows=[{allowsEmpty:false},{allowsEmpty:false},{allowsEmpty:false}];
+  const wordCount=8,maxSpacing=8;
+  const pressure=(i,a,b)=>{
+    const words=b-a;
+    if(words<1)return Infinity;
+    const target=[3,3,2][i];
+    return Math.abs(words-target)*2+(a%2)*0.25;
+  };
+  const metricFor=(i,a,b)=>({pressure:pressure(i,a,b)});
+  const sequential=solve({wordCount,rows,maxSpacing,metricFor});
+  const batches=[];
+  const batched=solve({
+    wordCount,rows,maxSpacing,metricFor,
+    metricMany:requests=>{
+      batches.push(requests.map(r=>({...r})));
+      return requests.map(r=>({pressure:pressure(r.lineIndex,r.from,r.to)}));
+    }
+  });
+  assert.deepEqual(batched,sequential);
+  assert(batches.length>0,'solver never exercised batched metrics');
+  assert(batches.some(batch=>batch.length>1),'fixture did not create a multi-metric DP layer');
+});
