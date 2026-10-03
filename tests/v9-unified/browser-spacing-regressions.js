@@ -7,6 +7,7 @@ import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.j
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
 import { installPageNumberPreRenderDecorator } from '../../src/document_features.js';
+import { createLayoutContext, publishLayoutContextToCssVars } from '../../src/engine/layout_context.js';
 import { wordMainFragmentFromEditorHtml, wordRichFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
 import { analyzePageElement } from '../../src/layout_analysis_report.js';
@@ -240,7 +241,43 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
     }
   });
 
-  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
+  await test('document footer and page number overlays do not physically overlap',async()=>{
+   const savedFooter=localStorage.getItem('ravtext.pageFooter');
+   const savedPageNumbers=localStorage.getItem('ravtext.pageNumbers');
+   const root=document.documentElement;
+   const reserveNames=['--ravtext-features-header-reserved','--ravtext-features-footer-reserved','--ravtext-features-pagenumber-reserved'];
+   const savedVars=Object.fromEntries(reserveNames.map(name=>[name,root.style.getPropertyValue(name)]));
+   const link=document.createElement('link');
+   link.rel='stylesheet';link.href='/styles.css';
+   const loaded=new Promise((resolve,reject)=>{link.onload=resolve;link.onerror=()=>reject(new Error('styles.css failed to load'));});
+   document.head.append(link);
+   const page=makePage();
+   try {
+     await loaded;
+     localStorage.setItem('ravtext.pageFooter','כותרת תחתונה לדוגמה');
+     localStorage.setItem('ravtext.pageNumbers','1');
+     publishLayoutContextToCssVars(createLayoutContext());
+
+     const footer=document.createElement('div');footer.className='ravtext-page-footer';footer.textContent='כותרת תחתונה לדוגמה';
+     const number=document.createElement('div');number.className='ravtext-page-number-overlay';number.textContent='קכג';
+     page.append(footer,number);
+     await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+
+     const f=footer.getBoundingClientRect(),n=number.getBoundingClientRect();
+     const verticalOverlap=Math.min(f.bottom,n.bottom)-Math.max(f.top,n.top);
+     assert(verticalOverlap<=0.5,
+       `footer/page-number overlap=${verticalOverlap.toFixed(2)}px; footer=${f.top.toFixed(2)}..${f.bottom.toFixed(2)}, number=${n.top.toFixed(2)}..${n.bottom.toFixed(2)}`);
+     return {verticalOverlap,footerTop:f.top,footerBottom:f.bottom,numberTop:n.top,numberBottom:n.bottom};
+   } finally {
+     page.remove();link.remove();
+     document.getElementById('ravtext-layout-context-measure-page')?.remove();
+     if(savedFooter===null)localStorage.removeItem('ravtext.pageFooter');else localStorage.setItem('ravtext.pageFooter',savedFooter);
+     if(savedPageNumbers===null)localStorage.removeItem('ravtext.pageNumbers');else localStorage.setItem('ravtext.pageNumbers',savedPageNumbers);
+     for(const name of reserveNames){const value=savedVars[name];if(value)root.style.setProperty(name,value);else root.style.removeProperty(name);}
+   }
+ });
+
+ await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
    const savedRegistry=window.__ravtextPreRenderPageDecorators;
