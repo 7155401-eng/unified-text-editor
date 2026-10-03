@@ -2,10 +2,10 @@ name: PDF module-load recovery
 on:
   pull_request:
     branches: [main]
-    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/lazy-*-export.test.mjs', 'vite.config.js', '.github/workflows/**']
+    paths: ['src/engine_toolbar.js', 'src/pdf_export.js', 'src/export_cover_page.js', 'src/export_snapshot_css.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/**', 'vite.config.js', '.github/workflows/**']
   push:
     branches: [main]
-    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'vite.config.js', '.github/workflows/pdf-load-recovery.yml']
+    paths: ['src/engine_toolbar.js', 'src/pdf_export.js', 'src/export_cover_page.js', 'src/export_snapshot_css.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/**', 'vite.config.js', '.github/workflows/pdf-load-recovery.yml']
 permissions:
   contents: read
 jobs:
@@ -28,6 +28,8 @@ jobs:
         run: node --test tests/v9-unified/lazy-pdf-export.test.mjs tests/v9-unified/lazy-debug-export.test.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
+      - name: Browser regression including tainted-cover recovery
+        run: node scripts/v9-unified/run-browser.mjs
       - name: User-approved recovery and actual native PDFs before build
         run: |
           node scripts/pdf-export/verify-load-recovery.mjs
