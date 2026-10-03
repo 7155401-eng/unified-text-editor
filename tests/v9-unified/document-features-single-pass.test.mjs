@@ -24,7 +24,7 @@ test('document features use one engine-render listener and one page snapshot per
   );
   assert.match(
     source,
-    /function applyHeaderFooter\(pages = pageElements\(\)\)[\s\S]*?pages\.forEach/,
+    /export function applyHeaderFooter\(pages = pageElements\(\), context = createLayoutContext\(\)\)[\s\S]*?pages\.forEach/,
     'header/footer standalone calls must keep a default page snapshot'
   );
   assert.match(
@@ -44,7 +44,7 @@ test('document features use one engine-render listener and one page snapshot per
     'applyAll must query the page list exactly once'
   );
   assert.match(applyAll, /applyPageNumbers\(pages\)/);
-  assert.match(applyAll, /applyHeaderFooter\(pages\)/);
+  assert.match(applyAll, /applyHeaderFooter\(pages, context\)/);
   assert.match(applyAll, /applyWatermark\(pages\)/);
 });
 
@@ -117,12 +117,46 @@ test('layout_context measures configured header/footer text and owns reserve nor
   );
   assert.match(
     source,
-    /footer:\s*footerText \? measureOverlayReserve\("ravtext-page-footer", false, footerText\) : 0/
+    /const footerBox = footerText[\s\S]*measureOverlayBox\("ravtext-page-footer", false, footerText\)/
   );
   assert.match(source, /export function layoutContextReserveValues\(context = createLayoutContext\(\)\)/);
   assert.match(
     source,
     /const reserves = layoutContextReserveValues\(context\);[\s\S]*--ravtext-features-header-reserved[\s\S]*--ravtext-features-footer-reserved[\s\S]*--ravtext-features-pagenumber-reserved/,
     'CSS reserve publication must use the same normalized values exposed to document_features'
+  );
+});
+
+test('footer and page-number stacking is measured once and painted from that geometry', async () => {
+  const layout = await readFile(
+    new URL('../../src/engine/layout_context.js', import.meta.url),
+    'utf8'
+  );
+  const features = await readFile(
+    new URL('../../src/document_features.js', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(layout, /const FOOTER_PAGE_NUMBER_GAP_PX = 2/);
+  assert.match(
+    layout,
+    /const footerBottom = footerBox[\s\S]*pageNumberBox\.offset \+ pageNumberBox\.height \+ FOOTER_PAGE_NUMBER_GAP_PX/
+  );
+  assert.match(
+    layout,
+    /footer:\s*footerBox \? reserveOverlayAtOffset\(footerBox, footerBottom\) : 0/
+  );
+  assert.match(layout, /footerBottom,/);
+
+  assert.match(
+    features,
+    /export function applyHeaderFooter\(pages = pageElements\(\), context = createLayoutContext\(\)\)/
+  );
+  assert.match(features, /const footerBottom = Number\(context\?\.features\?\.footerBottom\)/);
+  assert.match(features, /footer\.style\.bottom = `\$\{footerBottom\}px`/);
+  assert.match(
+    features,
+    /const context = \(typeof window !== "undefined" && window\.__RAVTEXT_LAYOUT_CONTEXT__\)[\s\S]*applyHeaderFooter\(pages, context\)/,
+    'page painting must reuse the pre-pagination layout context instead of recomputing a different stack'
   );
 });
