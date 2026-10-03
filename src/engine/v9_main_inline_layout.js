@@ -209,7 +209,7 @@ function resolveSpecialV9JustificationSpacing(context, body, naturalWidth, targe
  * ownership, note anchors, vertical geometry and source order while spreading
  * the required justification across the whole tail.
  */
-function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics) {
+function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics, options = {}) {
   if (!Array.isArray(lines) || !entry || !context || !(cursor > 0)) return null;
 
   const paragraphLines = lines.slice(paragraphLineStart);
@@ -376,7 +376,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
   const gentleMax = continuationTailGentleSpacing(context);
   let exactPartition = null;
-  if (current.metrics.some(m => m.gaps > 0 && m.pressure > gentleMax + EPS)) {
+  if (options.skipExactTailPartition !== true && current.metrics.some(m => m.gaps > 0 && m.pressure > gentleMax + EPS)) {
     // One-word local moves can be trapped: two or more boundaries may need
     // to change together. Before clipping a row, search complete measured
     // partitions of this same source interval under the existing gentle cap.
@@ -639,7 +639,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
             { width: 0, height: pitch }, false, []);
           y = Math.max(y, opening.y + opening.height);
         }
-        rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
+        rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics, options);
         return finish(ei, cursor, 'page-full');
       }
       y = slot.y;
@@ -694,7 +694,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         }
         const next = strips.find(s => s.y_start > y + EPS && s.y_start < pageBottom && s.width > (slot?.width || 0));
         if (next) { y = next.y_start; continue; }
-        rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
+        rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics, options);
         return finish(ei, cursor, 'unbreakable-content-or-no-row-space');
       }
       const line = emit(selected.body, cursor, selected.end, g, y, selected.m, selected.forcedBreak, selected.wordTokens);
@@ -759,7 +759,7 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
 
     }
     // A following original paragraph never inherits an opening window.
-    if (entry.continuesAfter) rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics);
+    if (entry.continuesAfter) rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics, options);
 
   }
   return finish();
