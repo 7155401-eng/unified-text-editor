@@ -226,10 +226,6 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       const key = v9MeasurementCacheKey(part);
       const found = cache.get(key);
       if (found) {
-        // True LRU: a hot measurement must not be discarded merely because
-        // 20k colder entries happened to be inserted after it.
-        cache.delete(key);
-        cache.set(key, found);
         if (perf) perf.measureCacheHits = (perf.measureCacheHits || 0) + 1;
         return found;
       }
