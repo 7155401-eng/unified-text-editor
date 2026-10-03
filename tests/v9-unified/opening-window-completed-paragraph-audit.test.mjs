@@ -55,8 +55,8 @@ test('unsafe full-frame centering keeps a completed opening tail adjacent to the
 });
 
 test('sparse completed opening tail also fails closed to adjacency without fake stretch', () => {
-  const text = 'OPEN aa bb cc';
-  const plan = fixture({ text, width: 80, wordWidth: 25, spaceWidth: 2 });
+  const text = 'OPEN aa bb';
+  const plan = fixture({ text, width: 80, wordWidth: 40, spaceWidth: 2 });
   assert.equal(plan.lines.map(line => line.sourceText).join(''), text, 'source changed');
 
   const host = plan.lines.find(line => line.render?.opening);
