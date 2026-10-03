@@ -28,6 +28,8 @@ export function installRenderPauseControls() {
     get pause() { return L("⏸ השהיית רינדור", "⏸ Pause render"); },
     get resume() { return L("▶ המשך רינדור", "▶ Resume render"); },
     get resumeRender() { return L("▶ המשך ורנדר", "▶ Resume and render"); },
+    get emptyHintRender() { return L("⟳ בנה את התצוגה עכשיו", "⟳ Build the preview now"); },
+    get emptyHintBuilding() { return L("מכין תצוגה...", "Building preview..."); },
     paused: "רינדור מושהה — אפשר לשנות כמה דברים בלי להמתין.",
     pending: "רינדור מושהה — השינויים נשמרו, אבל עדיין לא רונדרו.",
     resumeStatus: "יוצא מהשהייה — מרנדר פעם אחת את המצב האחרון...",
@@ -49,6 +51,7 @@ export function installRenderPauseControls() {
   const pages = () => byId("pages-container") || document.querySelector(".pages-container");
   const renderButton = () => byId("btn-render");
   const pauseButton = () => byId("btn-render-pause");
+  const emptyHintButton = () => byId("empty-hint-render");
 
   function setStatus(text) {
     const el = byId("status");
@@ -138,6 +141,11 @@ export function installRenderPauseControls() {
       }
       body.render-paused #status { color: #92400e; }
       body.render-running #status { color: #991b1b; }
+      #empty-hint-render.render-running {
+        opacity: 0.7;
+        pointer-events: none;
+        animation: ravtext-render-pulse .8s ease-in-out infinite;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -168,6 +176,13 @@ export function installRenderPauseControls() {
   function paint() {
     const render = renderButton();
     const pause = pauseButton();
+    const emptyBtn = emptyHintButton();
+    if (emptyBtn) {
+      emptyBtn.classList.toggle("render-running", state.running);
+      setAttr(emptyBtn, "aria-busy", state.running ? "true" : "false");
+      emptyBtn.disabled = state.running;
+      setText(emptyBtn, state.running ? T.emptyHintBuilding : T.emptyHintRender);
+    }
     if (render) {
       render.classList.toggle("render-running", state.running);
       setAttr(render, "aria-busy", state.running ? "true" : "false");
