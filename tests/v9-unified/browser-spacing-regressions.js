@@ -1849,14 +1849,64 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
-  // User-reported regression: counting a dropped opening again on row two
-  // centered a bounding envelope, but pinned the actual final text to the left.
-  // Centre a complete two-row ending in its paragraph frame only when it
-  // physically clears the fixed opening. Wide endings retain their free slot.
+  await test('unsafe completed opening tail stays adjacent to the fixed opening',()=>{
+    const context={
+      fontSize:10,lineHeight:10,
+      describeOpening:()=>({
+        position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2
+      }),
+      measure:part=>{
+        const body=String(part.text||'').trim();
+        if(body==='OPEN')return {width:20,height:10,topInset:0};
+        const n=body?body.split(/\s+/u).length:0;
+        return {width:n?n*40+(n-1)*2:0,height:10,topInset:0};
+      }
+    };
+    const source='OPEN aa bb';
+    const plan=layoutV9MainParagraphs(
+      [{id:'unsafe-opening-adjacency',text:source,runs:[],mainRefs:[]}],
+      [{x:0,width:80,y_start:0,y_end:120}],context,120
+    );
+    assert(plan.lines.length===2,`fixture expected two rows, got ${plan.lines.length}`);
+    const host=plan.lines.find(line=>line.render?.opening);
+    const last=plan.lines.at(-1);
+    assert(host?.render?.opening,'opening glyph missing');
+    assert(last.isLast&&last.openingWindow,'fixture tail no longer shares opening window');
+    assert(!last.openingParagraphCentered,'unsafe full-frame centering was incorrectly accepted');
+    assert(last.render.alignment==='right',`unsafe tail alignment=${last.render.alignment}`);
+    assert(last.render.wordSpacing===0,'unsafe tail manufactured spacing');
+
+    const openingPlan=host.render.opening;
+    const clearance=openingPlan.x-openingPlan.gap;
+    assert(Math.abs(last.x+last.width-clearance)<.01,
+      `free slot no longer ends at opening clearance: ${last.x+last.width} vs ${clearance}`);
+
+    const page=makePage();
+    try{
+      page.style.width='100px';page.style.height='120px';page.style.padding='0';
+      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+      assert(sourceText(page)===source,'source changed in unsafe adjacency fixture');
+      const body=[...page.querySelectorAll('.v9-final-main-line')].at(-1)?.querySelector('.v9-planned-line-text');
+      const opening=page.querySelector('.v9-opening-glyph');
+      assert(body&&opening,'painted unsafe adjacency fixture is incomplete');
+      const range=document.createRange();range.selectNodeContents(body);
+      const rects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
+      assert(rects.length,'unsafe tail has no visible ink');
+      const right=Math.max(...rects.map(r=>r.right));
+      const freeRight=opening.getBoundingClientRect().left-openingPlan.gap;
+      assert(Math.abs(right-freeRight)<=.6,
+        `unsafe tail detached from opening: right=${right}, openingEdge=${freeRight}`);
+    }finally{page.remove();}
+  });
+
+  // User-reported regression: a completed tail that still shares the dropped
+  // opening window must not float in the middle of only the leftover slot.
+  // Prefer true paragraph-frame centering when the natural-width body physically
+  // clears the fixed opening+gap; otherwise keep the body adjacent to the opening.
   for(const family of ['serif','sans-serif','monospace'])
   for(const dropLines of [2,3,4])
   for(const hostX of [0,19])
-  await test(`opening-window final body is centered: ${family}, drop=${dropLines}, x=${hostX}`,()=>{
+  await test(`opening-window final body centers when safe, otherwise stays adjacent: ${family}, drop=${dropLines}, x=${hostX}`,()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:family,lineHeightRatio:1,
       openingWordSettings:{enabled:true,target:'word',count:1,font:family,size:200,weight:'bold',
@@ -1885,7 +1935,6 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const opening=page.querySelector('.v9-opening-glyph');
       const body=rows.at(-1)?.querySelector('.v9-planned-line-text');
       assert(opening&&body,'rendered fixture is incomplete');
-      assert(last.render.alignment==='center','final row is not centered');
       assert(!last.openingCompositeCentered,'opening was counted twice');
       assert(last.render.wordSpacing===0,'final row was stretched');
       const first=plan.lines[0];
@@ -1896,7 +1945,9 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
         'fixed opening moved away from the original right edge');
       const fullFrameFits=hostX+50+last.naturalWidth/2<=openingPlan.x-openingPlan.gap+1/64;
       assert(!!last.openingParagraphCentered===fullFrameFits,
-        'centering does not respect the measured opening clearance');
+        'full-frame centering does not respect the measured opening clearance');
+      assert(last.render.alignment===(fullFrameFits?'center':'right'),
+        `unsafe opening tail did not fall back to adjacency: alignment=${last.render.alignment}, fullFrameFits=${fullFrameFits}`);
       const expectedWidth=fullFrameFits?last.naturalWidth:openingPlan.x-openingPlan.gap-hostX;
       assert(Math.abs(last.width-expectedWidth)<.01,'wrong occupied final-row width');
 
@@ -1909,12 +1960,14 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const right=Math.max(...rects.map(r=>r.right));
       const freeLeft=pageRect.left+page.clientLeft+hostX;
       const freeRight=openingRect.left-openingPlan.gap;
-      const expectedCenter=fullFrameFits?freeLeft+50:(freeLeft+freeRight)/2;
+      const expectedCenter=fullFrameFits?freeLeft+50:freeRight-last.naturalWidth/2;
       const actualCenter=(left+right)/2;
       assert(Math.abs(actualCenter-expectedCenter)<=.6,
-        `final body not centered: actual=${actualCenter}, expected=${expectedCenter}`);
+        `final body has wrong visual placement: actual=${actualCenter}, expected=${expectedCenter}, safeFullFrame=${fullFrameFits}`);
+      if(!fullFrameFits)assert(Math.abs(right-freeRight)<=.6,
+        `unsafe opening tail detached from opening: right=${right}, openingEdge=${freeRight}`);
       assert(left>=freeLeft-.6 && right<=freeRight+.6,'final text overlaps the opening or leaves the host');
-      return {actualCenter,expectedCenter,freeWidth:freeRight-freeLeft};
+      return {actualCenter,expectedCenter,freeWidth:freeRight-freeLeft,fullFrameFits};
     }finally{context.dispose();page.remove();}
   });
 
