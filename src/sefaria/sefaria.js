@@ -4,21 +4,60 @@
 //   🔍 השלם פסוקים בטקסט   — opens sefaria_live_modal
 // Both can pre-fill from the active stream (Moshe's "כל כלי כפעולה על זרם").
 
-import { openSefariaDownloader as openSefariaDownloaderModal } from "./sefaria_downloader_modal.js";
-import { openSefariaLive as openSefariaLiveModal } from "./sefaria_live_modal.js";
-import { t } from "./sefaria_i18n.js";
 import { assertToolAllowed } from "../tool_runtime_gate.js";
 import { hasCurrentAppLicense } from "../current_license.js";
 
-import "./sefaria_modal.css";
+let _modalCssPromise = null;
+let _downloaderModulePromise = null;
+let _liveModulePromise = null;
+
+function loadModalCss() {
+  if (!_modalCssPromise) {
+    _modalCssPromise = import("./sefaria_modal.css").catch((error) => {
+      _modalCssPromise = null;
+      throw error;
+    });
+  }
+  return _modalCssPromise;
+}
+
+function loadDownloaderModule() {
+  if (!_downloaderModulePromise) {
+    _downloaderModulePromise = Promise.all([
+      loadModalCss(),
+      import("./sefaria_downloader_modal.js"),
+    ]).then(([, module]) => module).catch((error) => {
+      _downloaderModulePromise = null;
+      throw error;
+    });
+  }
+  return _downloaderModulePromise;
+}
+
+function loadLiveModule() {
+  if (!_liveModulePromise) {
+    _liveModulePromise = Promise.all([
+      loadModalCss(),
+      import("./sefaria_live_modal.js"),
+    ]).then(([, module]) => module).catch((error) => {
+      _liveModulePromise = null;
+      throw error;
+    });
+  }
+  return _liveModulePromise;
+}
 
 export async function openSefariaDownloader(options = {}) {
   await assertToolAllowed("sefaria-downloader");
+  const { openSefariaDownloader: openSefariaDownloaderModal } =
+    await loadDownloaderModule();
   return openSefariaDownloaderModal(options);
 }
 
 export async function openSefariaLive(options = {}) {
   await assertToolAllowed("sefaria-live");
+  const { openSefariaLive: openSefariaLiveModal } =
+    await loadLiveModule();
   return openSefariaLiveModal(options);
 }
 
