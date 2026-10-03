@@ -5,7 +5,7 @@ const e=(m,s=400,x={})=>j({error:m,...x},{status:s});
 const em=x=>x?.message||String(x||'unknown_error');
 const read=async r=>{try{return await r.json()}catch{return{}}};
 const now=()=>Math.floor(Date.now()/1000);
-const mkey=()=>{const d=new Date();return`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`};
+const mkey=()=>{try{const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Jerusalem',year:'numeric',month:'2-digit'}).formatToParts(new Date()),y=parts.find(p=>p.type==='year')?.value,m=parts.find(p=>p.type==='month')?.value;if(y&&m)return`${y}-${m}`}catch(_){}const d=new Date();return`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`};
 const pos=v=>{const n=Number(v||0);return Number.isFinite(n)&&n>0?Math.floor(n):0};
 const storedExp=(r,n=now())=>{const x=Number(r?.expires_at||0);return Number.isFinite(x)&&x>0?Math.max(Math.floor(x),n):n};
 const sub=(r,n=now())=>r?.status==='active'&&r?.plan_type==='subscription'&&(!r?.expires_at||Number(r.expires_at)>=n);
