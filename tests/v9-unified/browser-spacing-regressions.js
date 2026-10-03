@@ -1867,7 +1867,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       [{id:'unsafe-opening-adjacency',text:source,runs:[],mainRefs:[]}],
       [{x:0,width:80,y_start:0,y_end:120}],context,120
     );
-    assert.equal(plan.lines.length,2,`fixture expected two rows, got ${plan.lines.length}`);
+    assert(plan.lines.length===2,`fixture expected two rows, got ${plan.lines.length}`);
     const host=plan.lines.find(line=>line.render?.opening);
     const last=plan.lines.at(-1);
     assert(host?.render?.opening,'opening glyph missing');
