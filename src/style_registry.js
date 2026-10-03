@@ -48,7 +48,19 @@ function makeStyleSnapshot(styles) {
 
 function readStyleSnapshot() {
   if (cachedStylesValid && cachedStylesRaw !== STYLE_CACHE_UNREAD) {
-    return cachedStylesSnapshot;
+    let raw;
+    try {
+      raw =
+        typeof localStorage !== "undefined"
+          ? localStorage.getItem(CUSTOM_STYLES_KEY)
+          : null;
+    } catch {
+      cachedStylesRaw = STYLE_CACHE_UNREAD;
+      cachedStylesSnapshot = Object.freeze([]);
+      cachedStylesValid = false;
+      return cachedStylesSnapshot;
+    }
+    if (raw === cachedStylesRaw) return cachedStylesSnapshot;
   }
   let raw;
   try {
