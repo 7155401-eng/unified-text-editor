@@ -10,7 +10,7 @@ import { applySecurityHeaders, checkRateLimit, isBadBot, isEngineApi, checkOrigi
 import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide, checkNonce } from './render_planner.js';
 import { handleAdmin, isConsoleGuardEnabled } from './admin.js';
-import { handleVideoGallery, handleAdminVideoGallery } from './video_gallery.js';
+import { handleVideoGallery, handleAdminVideoGallery, isVideoGalleryEnabled } from './video_gallery.js';
 import {
   handleAdminInbox,
   handlePublicInbox,
@@ -262,7 +262,10 @@ export default {
       } else {
         const user = await getUserFromRequest(request, env);
         const html = await assetResponse.text();
-        const consoleGuardEnabled = await isConsoleGuardEnabled(env);
+        const [consoleGuardEnabled, videoGalleryEnabled] = await Promise.all([
+          isConsoleGuardEnabled(env),
+          isVideoGalleryEnabled(env),
+        ]);
 
         const authState = {
           loggedIn: !!user,
@@ -274,6 +277,7 @@ export default {
           expiresAt: visibleExpiresAtForUser(user),
           balanceSeconds: user?.balance_seconds || 0,
           consoleGuardEnabled,
+          videoGalleryEnabled,
           googleClientId: env.GOOGLE_CLIENT_ID || null,
         };
 
