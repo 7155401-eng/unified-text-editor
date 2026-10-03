@@ -25,6 +25,12 @@ jobs:
         run: node --test tests/v9-unified/exact-tail-partition.test.mjs tests/v9-unified/spacing-regressions.test.mjs
       - name: Chromium
         run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout exact-alignment baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 9c4738e1063d4692398091e2b10bae87de365487
+          path: .exact-alignment-baseline
+          persist-credentials: false
       - name: Exact paragraph alignment acceptance
         run: node scripts/v9-unified/verify-exact-paragraph-alignment.mjs
       - name: Checkout exact main baseline
