@@ -307,8 +307,6 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
   const metricFor = (lineIndex, fromWord, toWord) => {
     if (fromWord < 0 || toWord < fromWord || toWord > words.length) return null;
-    const key = `${lineIndex}:${fromWord}:${toWord}`;
-    if (cache.has(key)) return cache.get(key);
 
     const openingOnly = toWord === fromWord && !!tail[lineIndex]?.render?.opening;
     if (!(toWord > fromWord) && !openingOnly) return null;
@@ -316,7 +314,16 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     // it empty; its following source glue/anchors belong to the first body row.
     if (openingOnlyHost && lineIndex === 0 && !openingOnly) return null;
 
-    const start = lineIndex === 0 || (openingOnlyHost && fromWord === 0)
+    const target = number(tail[lineIndex]?.width, 0);
+    const maxHeight = number(tail[lineIndex]?.lineHeightPx, context.lineHeight);
+    const usesBodyStart = lineIndex === 0 || (openingOnlyHost && fromWord === 0);
+    // Measurement depends on the source range and physical row geometry, not
+    // on the ordinal row number. Reuse an identical range across equal-width
+    // rows instead of forcing the browser to measure it again.
+    const key = `${fromWord}:${toWord}:${target}:${maxHeight}:${openingOnly ? 1 : 0}:${usesBodyStart ? 1 : 0}`;
+    if (cache.has(key)) return cache.get(key);
+
+    const start = usesBodyStart
       ? bodySegmentStart
       : (words[fromWord]?.start ?? segmentEnd);
     const visibleEnd = toWord > fromWord ? words[toWord - 1].end : start;
@@ -324,8 +331,6 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       : toWord < words.length ? (words[toWord]?.start ?? segmentEnd) : segmentEnd;
     const body = partForRange(entry, start, visibleEnd, consumedEnd);
     const measured = context.measure(body);
-    const target = number(tail[lineIndex]?.width, 0);
-    const maxHeight = number(tail[lineIndex]?.lineHeightPx, context.lineHeight);
 
     if (!(target > 0) || !measured || measured.width > target + EPS ||
         (measured.height > 0 && maxHeight > 0 && measured.height > maxHeight + EPS)) {
