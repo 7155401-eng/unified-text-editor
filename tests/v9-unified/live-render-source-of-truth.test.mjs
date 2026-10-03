@@ -35,3 +35,15 @@ test('pause controls use the same opt-in policy without inventing userChoice on 
   assert.match(source, /if \(options\.userChoice\) localStorage\.setItem\(LIVE_CHOICE_KEY, "1"\)/);
   assert.match(source, /setLiveEnabled\(prev === "0" \? false : true\)/);
 });
+
+
+test('empty preview render CTA follows the shared render-running state', () => {
+  const source = read('src/render_pause_controls.js');
+  assert.match(source, /get emptyHintRender\(\)/);
+  assert.match(source, /get emptyHintBuilding\(\)/);
+  assert.match(source, /const emptyHintButton = \(\) => byId\("empty-hint-render"\)/);
+  assert.match(source, /emptyBtn\.classList\.toggle\("render-running", state\.running\)/);
+  assert.match(source, /setAttr\(emptyBtn, "aria-busy", state\.running \? "true" : "false"\)/);
+  assert.match(source, /emptyBtn\.disabled = state\.running/);
+  assert.match(source, /setText\(emptyBtn, state\.running \? T\.emptyHintBuilding : T\.emptyHintRender\)/);
+});
