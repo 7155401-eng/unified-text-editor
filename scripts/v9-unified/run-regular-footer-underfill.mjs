@@ -26,10 +26,17 @@ try{
   fs.writeFileSync('test-results/regular-footer-underfill/report.json',JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));
   if(errors.length)throw new Error('Browser errors: '+errors.join(' | '));
-  if(!result.fixtureLongEnough)throw new Error('Fixture did not exceed 8 pages');
-  if(!result.sourceExact)throw new Error('Additional rebalance changed source');
-  if(result.overflow)throw new Error('Additional rebalance overflowed a page');
-  if(result.underfillReproduced)throw new Error(`REGULAR_FOOTER_UNDERFILL: additional legal passes reduce gap by ${result.improvement.toFixed(2)}px (${result.beforeGap.toFixed(2)} -> ${result.afterGap.toFixed(2)})`);
+  if(!Array.isArray(result.cases)||result.cases.length!==12)throw new Error('Expected 12 regular-layout cases');
+  const short=result.cases.filter(c=>!c.fixtureLongEnough);
+  const source=result.cases.filter(c=>!c.sourceExact);
+  const overflow=result.cases.filter(c=>c.overflow);
+  const underfill=result.cases.filter(c=>c.underfillReproduced);
+  if(short.length)throw new Error('Some fixtures did not exceed 8 pages: '+short.map(c=>c.label).join(', '));
+  if(source.length)throw new Error('Additional rebalance changed source: '+source.map(c=>c.label).join(', '));
+  if(overflow.length)throw new Error('Additional rebalance overflowed pages: '+overflow.map(c=>c.label).join(', '));
+  if(underfill.length)throw new Error('REGULAR_FOOTER_UNDERFILL: '+underfill.map(c=>
+    `${c.label} gain=${c.improvement.toFixed(2)}px gap=${c.beforeGap.toFixed(2)}->${c.afterGap.toFixed(2)}`
+  ).join(' | '));
 }finally{
   await browser?.close();
   await server.close();
