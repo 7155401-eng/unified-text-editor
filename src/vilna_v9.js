@@ -5494,7 +5494,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     };
     const droppedFootersOf = (slice) => {
       const agg = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
-      const tp = buildPagePlan(agg, cfg);
+      const tp = buildProbePagePlan(agg);
       const dropped = [];
       for (const fs of (agg.footerStreams || [])) {
         const totalText = (fs.items || []).join(' ').trim();
@@ -5512,7 +5512,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const dropped = droppedFootersOf(checkSlice);
       if (dropped.length === 0) break;
       if (splitInfo) {
-        const tp = buildPagePlan(aggregateForV9(checkSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+        const tp = buildProbePagePlan(aggregateForV9(checkSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver));
         const commentaryCount = (tp.streamBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0)
           + (tp.footerBoxes || []).reduce((sum, box) => sum + ((box && box.lines && box.lines.length) || 0), 0);
         if (commentaryCount > 0 && fillsPageEnough(tp, Math.min(0.62, cfg.gapFillMinRatio))) break;
@@ -5736,7 +5736,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           cfg.talmudStreams,
           carryOver
         );
-        const testPlan = buildPagePlan(testContent, cfg);
+        const testPlan = buildProbePagePlan(testContent);
 
         if (!testPlan || !testPlan.overflow) {
           rejectCandidate(candidate, "missing-plan");
@@ -5852,7 +5852,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       }, {
         finalSlice: [...getSlice(bestN), best.firstHalf],
         finalContent: best.testContent,
-        finalProbe: best.testPlan,
+        finalProbe: buildPagePlan(best.testContent, cfg),
         splitInfo: {
           firstHalf: best.firstHalf,
           secondHalf: best.secondHalf,
@@ -5930,7 +5930,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         const halves=splitV9Paragraph(p,st,ns.before,ns.after);
         const candidateSlice=[...finalSlice.slice(0,i),halves.firstHalf];
         const content=aggregateForV9(candidateSlice,cfg.titles,cfg.streamSettings,cfg.levels,streamsForPage(pageIdx),carryOver);
-        const probe=buildPagePlan(content,cfg);
+        const probe=buildProbePagePlan(content);
         if(probe.overflow.mainText || probe.unstartedNotes?.length || !probe.mainBox?.lines?.length)continue;
         const clean=!hasUnsafeV9StreamOverflow(probe);
         const score=i*100000000+n;
@@ -5945,7 +5945,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
            accepted.halves.secondHalf._v9Source===splitInfo.secondHalf._v9Source &&
            accepted.halves.secondHalf._v9SourceEnd===splitInfo.secondHalf._v9SourceOffset)
           accepted.halves.secondHalf=joinV9ParagraphFragments(accepted.halves.secondHalf,splitInfo.secondHalf);
-        finalSlice=accepted.slice;finalContent=accepted.content;finalProbe=accepted.probe;
+        finalSlice=accepted.slice;finalContent=accepted.content;finalProbe=buildPagePlan(accepted.content,cfg);
         splitInfo={...accepted.halves,sliceIdx:accepted.i,baseN:accepted.i};bestN=accepted.i+1;
       } else if(bestN_clean>0) {
         splitInfo=null;bestN=bestN_clean;finalSlice=getSlice(bestN);
@@ -6103,7 +6103,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           wholeSlice, cfg.titles, cfg.streamSettings, cfg.levels,
           streamsForPage(pageIdx), carryOver
         );
-        const wholePlan = buildPagePlan(wholeContent, cfg);
+        const wholePlan = buildProbePagePlan(wholeContent);
         consider(wholeSlice, wholePlan, {
           kind: "whole-paragraph",
           offset: fullText.length,
@@ -6145,7 +6145,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           testSlice, cfg.titles, cfg.streamSettings, cfg.levels,
           streamsForPage(pageIdx), carryOver
         );
-        const testPlan = buildPagePlan(testContent, cfg);
+        const testPlan = buildProbePagePlan(testContent);
         consider(testSlice, testPlan, {
           kind: candidate.kind,
           candidate,
@@ -6162,7 +6162,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         return {
           finalSlice: best.testSlice,
           finalContent: best.testContent,
-          finalProbe: best.testPlan,
+          finalProbe: buildPagePlan(best.testContent, cfg),
           bestN: bestN + 1,
           splitInfo: null,
           fill: best.fill,
@@ -6172,7 +6172,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       return {
         finalSlice: best.testSlice,
         finalContent: best.testContent,
-        finalProbe: best.testPlan,
+        finalProbe: buildPagePlan(best.testContent, cfg),
         bestN: bestN + 1,
         splitInfo: {
           firstHalf: best.halves.firstHalf,
