@@ -6,6 +6,25 @@ let host = null;
 let styleEl = null;
 let activeSession = null;
 let sessionSeq = 0;
+let lastCompletedRange = null;
+
+function normalizedRangeForSession(session) {
+  if (!session || !session.rangeEnabled) return null;
+  const fromPage = Math.max(1, Math.floor(Number(session.rangeFrom) || 1));
+  const rawTo = Number(session.rangeTo);
+  const toPage = Number.isFinite(rawTo) && rawTo > 0
+    ? Math.max(fromPage, Math.floor(rawTo))
+    : Number.MAX_SAFE_INTEGER;
+  return { enabled: true, fromPage, toPage };
+}
+
+export function getActiveRenderPageRange() {
+  return normalizedRangeForSession(activeSession);
+}
+
+export function getLastCompletedRenderPageRange() {
+  return lastCompletedRange ? { ...lastCompletedRange } : null;
+}
 
 // ★ משה, 14/09/2026: "בזמן הרינדור של העמוד האחרון עמוד 23 עדיין עומד הרבה
 // זמן על רינדור 23 עמודים". השורש: האחוזים חושבו אך ורק מספירת ה-.page.
@@ -261,6 +280,63 @@ function injectStyles() {
       white-space: nowrap;
     }
 
+    #ravtext-render-progress-ui .rtp-range {
+      margin-top: 10px;
+      padding-top: 9px;
+      border-top: 1px solid rgba(44, 90, 160, .12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 11.5px;
+      color: rgba(48, 62, 91, .9);
+    }
+
+    #ravtext-render-progress-ui .rtp-range-toggle,
+    #ravtext-render-progress-ui .rtp-range-fields {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    #ravtext-render-progress-ui .rtp-range-toggle {
+      cursor: pointer;
+      user-select: none;
+      font-weight: 750;
+      color: #284c85;
+    }
+
+    #ravtext-render-progress-ui .rtp-range-toggle input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      accent-color: #2c5aa0;
+    }
+
+    #ravtext-render-progress-ui .rtp-range-fields[hidden] {
+      display: none !important;
+    }
+
+    #ravtext-render-progress-ui .rtp-range-fields input {
+      width: 62px;
+      height: 28px;
+      box-sizing: border-box;
+      border: 1px solid rgba(44, 90, 160, .22);
+      border-radius: 7px;
+      background: rgba(255,255,255,.86);
+      color: #20304a;
+      text-align: center;
+      font: 700 12px/1 inherit;
+      padding: 3px 5px;
+    }
+
+    #ravtext-render-progress-ui .rtp-range-note {
+      flex-basis: 100%;
+      font-size: 10.5px;
+      color: rgba(61, 77, 108, .68);
+    }
+
     @keyframes rtp-card-sheen {
       0%, 55% { transform: translateX(80%); }
       100% { transform: translateX(-80%); }
@@ -313,6 +389,19 @@ function ensureHost() {
           </span>
           <span class="rtp-status" data-rtp="status">מתחיל…</span>
         </div>
+        <div class="rtp-range" data-rtp-range="wrap">
+          <label class="rtp-range-toggle">
+            <input type="checkbox" data-rtp-range="enabled" />
+            <span>רנדר רק טווח עמודים</span>
+          </label>
+          <span class="rtp-range-fields" data-rtp-range="fields" hidden>
+            <span>מעמוד</span>
+            <input type="number" min="1" step="1" inputmode="numeric" data-rtp-range="from" value="1" aria-label="עמוד התחלה" />
+            <span>עד</span>
+            <input type="number" min="1" step="1" inputmode="numeric" data-rtp-range="to" placeholder="סוף" aria-label="עמוד סיום" />
+          </span>
+          <span class="rtp-range-note">ברירת המחדל היא כל העמודים. השדות זמינים רק בזמן רינדור פעיל.</span>
+        </div>
       </div>
     </div>
   `;
@@ -329,6 +418,35 @@ function ensureHost() {
       const statusEl = document.getElementById("status");
       if (statusEl) statusEl.textContent = "הרינדור נעצר מתוך חלון ההתקדמות.";
     });
+  }
+
+  const enabled = host.querySelector('[data-rtp-range="enabled"]');
+  const fields = host.querySelector('[data-rtp-range="fields"]');
+  const from = host.querySelector('[data-rtp-range="from"]');
+  const to = host.querySelector('[data-rtp-range="to"]');
+  const syncRange = () => {
+    const session = activeSession;
+    if (!session || session.stopped) return;
+    session.rangeEnabled = !!enabled?.checked;
+    session.rangeFrom = Math.max(1, Math.floor(Number(from?.value) || 1));
+    const parsedTo = Number(to?.value);
+    session.rangeTo = Number.isFinite(parsedTo) && parsedTo > 0 ? Math.floor(parsedTo) : null;
+    if (fields) fields.hidden = !session.rangeEnabled;
+    try {
+      window.dispatchEvent(new CustomEvent("ravtext:render-page-range-change", {
+        detail: normalizedRangeForSession(session),
+      }));
+    } catch (_) {}
+  };
+  if (enabled && enabled.dataset.bound !== "1") {
+    enabled.dataset.bound = "1";
+    enabled.addEventListener("change", syncRange);
+  }
+  for (const input of [from, to]) {
+    if (!input || input.dataset.bound === "1") continue;
+    input.dataset.bound = "1";
+    input.addEventListener("input", syncRange);
+    input.addEventListener("change", syncRange);
   }
   return host;
 }
@@ -439,6 +557,9 @@ export function startVilnaRenderProgress({
     creepFrom: null,
     creepAt: 0,
     shownPercent: 0,
+    rangeEnabled: false,
+    rangeFrom: 1,
+    rangeTo: null,
     stopped: false,
     observer: null,
     timer: null,
@@ -453,6 +574,15 @@ export function startVilnaRenderProgress({
   setText("page", "עמוד 0");
   setText("count", "0 עמודים נבנו");
   setText("status", "מתחיל…");
+  const rangeEnabled = el.querySelector('[data-rtp-range="enabled"]');
+  const rangeFields = el.querySelector('[data-rtp-range="fields"]');
+  const rangeFrom = el.querySelector('[data-rtp-range="from"]');
+  const rangeTo = el.querySelector('[data-rtp-range="to"]');
+  if (rangeEnabled) rangeEnabled.checked = false;
+  if (rangeFields) rangeFields.hidden = true;
+  if (rangeFrom) rangeFrom.value = "1";
+  if (rangeTo) rangeTo.value = "";
+  lastCompletedRange = null;
 
   requestAnimationFrame(() => {
     if (activeSession === session && !session.stopped) el.classList.add("rt-visible");
@@ -474,9 +604,14 @@ export function startVilnaRenderProgress({
       }
       updateSession(session, data.percent);
     },
+    getRange() {
+      if (activeSession !== session) return normalizedRangeForSession(session);
+      return normalizedRangeForSession(session);
+    },
     finish({ totalPages } = {}) {
       if (activeSession !== session || session.stopped) return;
       const pages = Number(totalPages) || pageCountFrom(container) || session.pageCount || 0;
+      lastCompletedRange = normalizedRangeForSession(session);
       setPercent(100);
       setText("page", `עמוד ${pages}`);
       setText("count", `${pages} עמודים נבנו`);
