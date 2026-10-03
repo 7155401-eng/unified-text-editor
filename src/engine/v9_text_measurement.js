@@ -12,6 +12,7 @@ const FONT_STACKS = {
   'Segoe UI': '"Segoe UI", "David", "David Libre", sans-serif',
 };
 const px = (v, fallback = 0) => Number.parseFloat(v) || fallback;
+const V9_MEASUREMENT_CACHE_MAX = 20000;
 const clamp = (v, fallback, lo, hi) => Number.isFinite(Number(v)) ? Math.min(hi, Math.max(lo, Number(v))) : fallback;
 const cssApply = (el, style) => { for (const key of TYPOGRAPHY) if (style?.[key] != null) el.style[key] = String(style[key]); };
 
@@ -235,7 +236,13 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       const result = Object.freeze({ width: Math.ceil(r.width * 64) / 64,
         height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
         topInset: Math.max(0, r.top - top) });
-      if (cache.size >= 20000) cache.clear();
+      if (cache.size >= V9_MEASUREMENT_CACHE_MAX) {
+        // Keep the cache bounded without discarding every still-useful
+        // measurement. Map preserves insertion order, so evict exactly the
+        // oldest entry and retain the remaining hot working set.
+        const oldest = cache.keys().next().value;
+        if (oldest !== undefined) cache.delete(oldest);
+      }
       cache.set(key, result); return result;
     },
     dispose() {
