@@ -1547,13 +1547,19 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
 // בונה תוכנית עמוד
 // =====================================================================
 function buildPagePlan(pageContent, config = {}) {
+  const perf = typeof window !== "undefined" && window.__ravtextPerfTrace && window.__ravtextV9Perf;
+  const started = perf ? performance.now() : 0;
+  if (perf) perf.buildPagePlanCalls = (perf.buildPagePlanCalls || 0) + 1;
   const ownContexts = !config.__v9StreamContexts;
   const contexts = config.__v9StreamContexts || new Map();
   const cfg = { ...config, __v9StreamContexts: contexts };
   try {
     const initial = buildPagePlanCore(pageContent, cfg);
     return reserveMeasuredFooterSpace(pageContent, cfg, initial);
-  } finally { if (ownContexts) for (const c of contexts.values()) c.dispose(); }
+  } finally {
+    if (perf) perf.buildPagePlanMs = (perf.buildPagePlanMs || 0) + performance.now() - started;
+    if (ownContexts) for (const c of contexts.values()) c.dispose();
+  }
 }
 
 function reserveMeasuredFooterSpace(content, cfg, initial) {
@@ -4453,6 +4459,17 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
   const yieldToBrowser = yieldToBrowserShared;
 
   const pages = [];
+  if (typeof window !== "undefined" && window.__ravtextPerfTrace) {
+    window.__ravtextV9Perf = {
+      buildPagePlanCalls: 0,
+      buildPagePlanMs: 0,
+      trialAtNCalls: 0,
+      actualGeometryCalls: 0,
+      extensionCandidates: 0,
+      finalGapCandidates: 0,
+      sparseCandidates: 0,
+    };
+  }
   let cursor = 0;
   let pageIdx = Math.max(0, Math.floor(Number(cfg.pageIndexOffset) || 0));
   let renderedPageCount = 0;
@@ -4492,6 +4509,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     maxLength = null,
     source = "actual-v9-geometry",
   } = {}) => {
+    if (typeof window !== "undefined" && window.__ravtextPerfTrace && window.__ravtextV9Perf) window.__ravtextV9Perf.actualGeometryCalls++;
     try {
       if (!fragment?._v9Source || !String(fragment.mainText || "")) return [];
       const probeContent = aggregateForV9(
@@ -4590,6 +4608,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     };
 
     const trialAtN = (n) => {
+      if (typeof window !== "undefined" && window.__ravtextPerfTrace && window.__ravtextV9Perf) window.__ravtextV9Perf.trialAtNCalls++;
       const slice = getSlice(n);
       const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
       return buildPagePlan(aggContent, cfg);
@@ -5163,6 +5182,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             maxCandidates: cfg.extensionGapFillMaxCandidates,
           }
         );
+        if (typeof window !== "undefined" && window.__ravtextPerfTrace && window.__ravtextV9Perf) window.__ravtextV9Perf.extensionCandidates += extendCandidates.length;
         let bestExtended = null;
         let bestExtendedScore = currentFill;
         for (const extendCandidate of extendCandidates) {
@@ -5695,6 +5715,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         });
       }
 
+      if (typeof window !== "undefined" && window.__ravtextPerfTrace && window.__ravtextV9Perf) window.__ravtextV9Perf.finalGapCandidates += candidates.length;
       if (!candidates.length) {
         return reject("no-candidates", { candidateCount: 0 });
       }
@@ -6123,6 +6144,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         }
       );
 
+      if (typeof window !== "undefined" && window.__ravtextPerfTrace && window.__ravtextV9Perf) window.__ravtextV9Perf.sparseCandidates += candidates.length;
       for (const candidate of candidates) {
         const splitText = splitMainTextAtOffset(fullText, candidate.offset);
         if (!splitText.prefixText || !splitText.suffixText) continue;
