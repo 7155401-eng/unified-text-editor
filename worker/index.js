@@ -32,6 +32,7 @@ import {
   handleGiftClaim,
   handlePaymentStatus,
   handleUsageTick,
+  expirePastGiftBalances,
 } from './minute_access.js';
 import { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, isDocxFootnoteTrackChangesPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath, cleanupExpiredDocxUploads } from '../cloudflare/docx_worker_entry.js';
 
@@ -302,5 +303,8 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runRecurringBilling(env).catch(() => null));
     ctx.waitUntil(cleanupExpiredDocxUploads(env).catch(() => null));
+    // Monthly gifts never roll over. The daily cron is a backstop; normal
+    // payment/status/admin requests also run the same idempotent cleanup.
+    ctx.waitUntil(expirePastGiftBalances(env).catch(() => null));
   },
 };
