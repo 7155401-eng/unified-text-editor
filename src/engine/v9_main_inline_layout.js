@@ -384,8 +384,6 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     // One-word local moves can be trapped: two or more boundaries may need
     // to change together. Before clipping a row, search complete measured
     // partitions of this same source interval under the existing gentle cap.
-    const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
-      ? (window.__ravtextV9Perf ||= {}) : null;
     const exactStarted = perf ? performance.now() : 0;
     if (perf) perf.exactTailCalls = (perf.exactTailCalls || 0) + 1;
     const search = findV9ExactTailPartition({
