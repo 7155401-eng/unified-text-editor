@@ -25,6 +25,12 @@ const int = (v, fallback = 0) => {
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
 };
 
+function measureOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, n) : null;
+}
+
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 function normalizeFootnoteShift(raw) {
@@ -54,8 +60,8 @@ export function normalizePageTweakEntry(raw = {}) {
   return {
     linesDiff: clamp(int(raw?.linesDiff ?? raw?.lines_diff), -MAX_LINES_DIFF, MAX_LINES_DIFF),
     status,
-    spaceLines: Number.isFinite(Number(raw?.spaceLines)) ? Math.max(0, Number(raw.spaceLines)) : null,
-    overflowPx: Number.isFinite(Number(raw?.overflowPx)) ? Math.max(0, Number(raw.overflowPx)) : null,
+    spaceLines: measureOrNull(raw?.spaceLines),
+    overflowPx: measureOrNull(raw?.overflowPx),
     notes: String(raw?.notes || "").slice(0, 2000),
     footnoteShift: normalizeFootnoteShift(raw?.footnoteShift ?? raw?.footnote_shift),
   };
@@ -221,41 +227,40 @@ export function updatePageTweakMeasurements(raw, pageNumber, {
   const previous = normalizePageTweakEntry(state.pages[key] || {});
   const next = { ...previous };
 
-  const gap = Number(bottomGapLines);
-  const overflow = Number(overflowPx);
+  const gap = measureOrNull(bottomGapLines);
+  const overflow = measureOrNull(overflowPx);
   const pitch = Math.max(1, Number(linePitchPx) || 1);
 
-  let preserveApprovedBaseline = false;
   if (previous.status === PAGE_TWEAK_STATUS_APPROVED) {
-    const oldGap = Number(previous.spaceLines);
-    const oldOverflow = Number(previous.overflowPx);
+    const oldGap = measureOrNull(previous.spaceLines);
+    const oldOverflow = measureOrNull(previous.overflowPx);
     let changed = false;
 
     // The measurements stored by approvePageTweakWithMeasurements() are the
-    // approval baseline. Do NOT slide that baseline forward on every harmless
-    // re-measurement: several sub-threshold typography changes could otherwise
-    // accumulate into a large visual drift without ever marking the page
-    // changed. Compare every approved render to the original approved snapshot
-    // until a meaningful delta actually occurs.
-    //
-    // Desktop used 0.3cm. In the browser use the typography itself: half a
-    // normal row is meaningful, while smaller antialias/font differences are
-    // not. Overflow uses the same half-row physical threshold.
-    if (Number.isFinite(oldGap) && Number.isFinite(gap) && Math.abs(gap - oldGap) > 0.5) changed = true;
-    if (Number.isFinite(oldOverflow) && Number.isFinite(overflow) &&
+    // approval baseline. Do NOT slide an existing baseline forward on harmless
+    // re-measurements. A missing baseline, however, is genuinely "not measured":
+    // the first real sample establishes it instead of being compared to fake 0.
+    if (oldGap !== null && gap !== null && Math.abs(gap - oldGap) > 0.5) changed = true;
+    if (oldOverflow !== null && overflow !== null &&
         Math.abs(overflow - oldOverflow) > pitch * 0.5) changed = true;
-    if ((!Number.isFinite(oldOverflow) || oldOverflow <= 1) && Number.isFinite(overflow) && overflow > pitch * 0.5) {
+    if (oldOverflow !== null && oldOverflow <= 1 && overflow !== null && overflow > pitch * 0.5) {
       changed = true;
     }
-    if (changed) next.status = PAGE_TWEAK_STATUS_CHANGED;
-    else preserveApprovedBaseline = true;
-  }
 
-  // Pending/changed pages keep the latest measurements. An approved page keeps
-  // its exact approval snapshot until a meaningful delta is observed.
-  if (!preserveApprovedBaseline) {
-    if (Number.isFinite(gap)) next.spaceLines = Math.max(0, gap);
-    if (Number.isFinite(overflow)) next.overflowPx = Math.max(0, overflow);
+    if (changed) {
+      next.status = PAGE_TWEAK_STATUS_CHANGED;
+      if (gap !== null) next.spaceLines = gap;
+      if (overflow !== null) next.overflowPx = overflow;
+    } else {
+      // Preserve established approval baselines exactly. Fill only fields that
+      // were never measured at approval time.
+      if (oldGap === null && gap !== null) next.spaceLines = gap;
+      if (oldOverflow === null && overflow !== null) next.overflowPx = overflow;
+    }
+  } else {
+    // Pending/changed pages track the latest available measurements.
+    if (gap !== null) next.spaceLines = gap;
+    if (overflow !== null) next.overflowPx = overflow;
   }
 
   const meaningful =
@@ -281,8 +286,8 @@ export function approvePageTweakWithMeasurements(raw, pageNumber, {
   state.pages[key] = normalizePageTweakEntry({
     ...current,
     status: PAGE_TWEAK_STATUS_APPROVED,
-    spaceLines: Number.isFinite(Number(bottomGapLines)) ? Math.max(0, Number(bottomGapLines)) : current.spaceLines,
-    overflowPx: Number.isFinite(Number(overflowPx)) ? Math.max(0, Number(overflowPx)) : current.overflowPx,
+    spaceLines: measureOrNull(bottomGapLines) ?? current.spaceLines,
+    overflowPx: measureOrNull(overflowPx) ?? current.overflowPx,
   });
   return state;
 }
