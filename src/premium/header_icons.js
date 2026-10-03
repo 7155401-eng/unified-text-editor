@@ -411,7 +411,10 @@ function isVideoGalleryAdmin() {
 }
 
 async function fetchServerVideoPlaylist() {
-  const res = await fetch("/api/video-gallery/playlist", {
+  const endpoint = isVideoGalleryAdmin()
+    ? "/api/admin/video-gallery/playlist"
+    : "/api/video-gallery/playlist";
+  const res = await fetch(endpoint, {
     method: "GET",
     credentials: "same-origin",
     headers: { "Accept": "application/json" },
