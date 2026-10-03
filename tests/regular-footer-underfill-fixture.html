@@ -29,12 +29,10 @@ const sourceSignature=pages=>{
   });
 };
 
-window.runRegularFooterUnderfillProbe=async()=>{
-  const settings=getStreamSettings(),saved={};
-  const geom={pageWidth:380,pageHeight:537,maxPageHeight:244};
+function makeContent(label, count=30){
   const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda';
   const notePhrase='note body words continue naturally beneath the main text with enough material to paginate';
-  const content=Array.from({length:34},(_,i)=>{
+  return Array.from({length:count},(_,i)=>{
     const mainText=Array(2+(i%3)).fill(phrase).join(' ');
     const words=[...mainText.matchAll(/\S+/gu)];
     const a=words[Math.min(words.length-1,5+(i%7))];
@@ -43,42 +41,67 @@ window.runRegularFooterUnderfillProbe=async()=>{
       notes:[{
         stream:String((i%2)+1).padStart(2,'0'),
         num:i+1,
-        uid:`regular-footer-${i}`,
+        uid:`${label}-${i}`,
         anchor:a.index+a[0].length,
         anchorAffinity:'backward',
         text:Array(2+(i%4)).fill(notePhrase).join(' ')
       }]
     };
   });
+}
 
+window.runRegularFooterUnderfillProbe=async()=>{
+  const settings=getStreamSettings();
+  const saved={main:settings.main,'01':settings['01'],'02':settings['02']};
+  const cases=[];
   try{
-    for(const id of ['01','02']){
-      saved[id]=settings[id];
-      settings[id]={...(settings[id]||{}),inline:true,cols:1,titleShow:false,lemmaBold:false,noteNumEnabled:true};
+    for(const maxPageHeight of [220,260]){
+      for(const mainCols of [1,2]){
+        for(const streamCols of [1,2,3]){
+          settings.main={...(settings.main||{}),cols:mainCols};
+          for(const id of ['01','02']){
+            settings[id]={...(settings[id]||{}),inline:true,cols:streamCols,titleShow:false,lemmaBold:false,noteNumEnabled:true};
+          }
+
+          const geom={pageWidth:380,pageHeight:537,maxPageHeight};
+          const label=`h${maxPageHeight}-m${mainCols}-s${streamCols}`;
+          const content=makeContent(label);
+          const pages=await domPack(content,geom,{});
+          const baseline=structuredClone(pages);
+          const beforeSig=sourceSignature(baseline);
+          const beforeGap=baseline.slice(0,-1).reduce(
+            (sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0
+          );
+
+          await rebalancePages(pages,geom,{maxPasses:8,skipCompact:false});
+
+          const afterSig=sourceSignature(pages);
+          const afterGap=pages.slice(0,-1).reduce(
+            (sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0
+          );
+          const overflow=pages.some(p=>(Number(p.total)||0)>geom.maxPageHeight+.1);
+          const improvement=beforeGap-afterGap;
+          cases.push({
+            label,maxPageHeight,mainCols,streamCols,
+            pagesBefore:baseline.length,pagesAfter:pages.length,
+            fixtureLongEnough:baseline.length>8,
+            sourceExact:afterSig===beforeSig,
+            overflow,
+            beforeGap,afterGap,improvement,
+            underfillReproduced:improvement>.25
+          });
+        }
+      }
     }
-    const pages=await domPack(content,geom,{skipCompact:true});
-    const basePages=structuredClone(pages);
-    const beforeSig=sourceSignature(basePages);
-    const beforeGap=basePages.slice(0,-1).reduce((sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0);
-
-    await rebalancePages(pages,geom,{maxPasses:8,skipCompact:true});
-
-    const afterSig=sourceSignature(pages);
-    const afterGap=pages.slice(0,-1).reduce((sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0);
-    const overflow=pages.some(p=>(Number(p.total)||0)>geom.maxPageHeight+.1);
     return {
-      pages:pages.length,
-      fixtureLongEnough:basePages.length>8,
-      sourceExact:afterSig===beforeSig,
-      overflow,
-      beforeGap,
-      afterGap,
-      improvement:beforeGap-afterGap,
-      underfillReproduced:(beforeGap-afterGap)>.25
+      total:cases.length,
+      failed:cases.filter(c=>!c.fixtureLongEnough||!c.sourceExact||c.overflow||c.underfillReproduced).length,
+      underfillCases:cases.filter(c=>c.underfillReproduced).map(c=>c.label),
+      cases
     };
   } finally {
-    for(const id of ['01','02']){
-      if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];
+    for(const key of ['main','01','02']){
+      if(saved[key]===undefined)delete settings[key];else settings[key]=saved[key];
     }
   }
 };
