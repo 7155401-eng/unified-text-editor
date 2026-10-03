@@ -23,6 +23,26 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Chromium
         run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout pre-1078 baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: baa0a90226ac79b0c4b5c4ed482a65732d007586
+          path: .perf-pre1078
+          persist-credentials: false
+      - name: Checkout pre-1060 baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 9c4738e1063d4692398091e2b10bae87de365487
+          path: .perf-pre1060
+          persist-credentials: false
+      - name: Share locked dependencies with historical baselines
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-pre1078/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-pre1060/node_modules"
+      - name: Pre-1078 benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-pre1078 --out test-results/perf-pre1078.json
+      - name: Pre-1060 benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-pre1060 --out test-results/perf-pre1060.json
       - name: Checkout pinned current-main baseline
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
