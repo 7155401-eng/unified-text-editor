@@ -2,10 +2,10 @@ name: PDF module-load recovery
 on:
   pull_request:
     branches: [main]
-    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/lazy-*-export.test.mjs', 'vite.config.js', '.github/workflows/**']
+    paths: ['src/engine_toolbar.js', 'src/pdf_export.js', 'src/export_cover_page.js', 'src/export_snapshot_css.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'tests/v9-unified/lazy-*-export.test.mjs', 'vite.config.js', '.github/workflows/**']
   push:
     branches: [main]
-    paths: ['src/engine_toolbar.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'vite.config.js', '.github/workflows/pdf-load-recovery.yml']
+    paths: ['src/engine_toolbar.js', 'src/pdf_export.js', 'src/export_cover_page.js', 'src/export_snapshot_css.js', 'src/demo_mode.js', 'src/page_settings.js', 'scripts/pdf-export/**', 'vite.config.js', '.github/workflows/pdf-load-recovery.yml']
 permissions:
   contents: read
 jobs:
