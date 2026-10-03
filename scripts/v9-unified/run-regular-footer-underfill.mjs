@@ -22,8 +22,8 @@ try{
   await page.waitForFunction(()=>typeof window.runRegularFooterUnderfillProbe==='function');
   const result=await page.evaluate(()=>window.runRegularFooterUnderfillProbe());
   const report={...result,browserVersion:browser.version(),pageErrors:errors};
-  fs.mkdirSync('test-results/regular-footer-underfill',{recursive:true});
-  fs.writeFileSync('test-results/regular-footer-underfill/report.json',JSON.stringify(report,null,2));
+  fs.mkdirSync('test-results/v9-unified',{recursive:true});
+  fs.writeFileSync('test-results/v9-unified/regular-footer-underfill.json',JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));
   if(errors.length)throw new Error('Browser errors: '+errors.join(' | '));
   if(!Array.isArray(result.cases)||result.cases.length!==12)throw new Error('Expected 12 regular-layout cases');
