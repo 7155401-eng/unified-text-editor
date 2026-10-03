@@ -1,0 +1,158 @@
+name: Temporary current-main PDF acceptance probe
+
+on:
+  push:
+    branches: [gpt56sol-repo-wide-audit-20261004-0006]
+    paths: ['.github/workflows/temp-current-main-pdf-acceptance.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temp-current-main-pdf-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pdf-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check exact current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='319bbcee314d4015bec0079b24797bd1df9a2047'
+          actual="$(git ls-remote https://github.com/${GITHUB_REPOSITORY}.git refs/heads/main | cut -f1)"
+          printf 'expected=%s\nactual=%s\n' "$expected" "$actual"
+          test "$actual" = "$expected"
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 319bbcee314d4015bec0079b24797bd1df9a2047
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+
+      - name: Unit contracts for lazy PDF loading
+        run: |
+          mkdir -p test-results/pdf-current-main
+          node --test tests/v9-unified/lazy-pdf-export.test.mjs tests/v9-unified/lazy-debug-export.test.mjs             | tee test-results/pdf-current-main/unit.tap
+
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Generate actual PDFs through current-main recovery paths
+        run: |
+          node scripts/pdf-export/verify-load-recovery.mjs             | tee test-results/pdf-current-main/recovery.log
+          cp -R test-results/pdf-load-recovery/. test-results/pdf-current-main/
+
+      - name: Build exact main and verify stable PDF entry graph
+        run: |
+          npm run build | tee test-results/pdf-current-main/build.log
+          node scripts/pdf-export/verify-stable-chunk.mjs current-main             | tee test-results/pdf-current-main/stable-chunk.log
+          cp test-results/pdf-load-recovery/stable-chunk-current-main.json test-results/pdf-current-main/
+
+      - name: Probe live stable PDF asset over HTTP
+        shell: bash
+        run: |
+          set -euo pipefail
+          out='test-results/pdf-current-main/live'
+          mkdir -p "$out"
+
+          stable='https://app.ravtext.com/assets/pdf_export.js'
+          stale='https://app.ravtext.com/assets/pdf_export-B24fTpju.js'
+
+          stable_code="$(curl --silent --show-error --location             --connect-timeout 10 --max-time 45             --dump-header "$out/stable-headers.txt"             --output "$out/stable-body.js"             --write-out '%{http_code}' "$stable")"
+          printf '%s\n' "$stable_code" > "$out/stable-status.txt"
+          test "$stable_code" = '200'
+          test -s "$out/stable-body.js"
+
+          stable_type="$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{gsub("\r",""); print $2}' "$out/stable-headers.txt" | tail -1)"
+          printf '%s\n' "$stable_type" > "$out/stable-content-type.txt"
+          printf '%s' "$stable_type" | grep -Eiq 'javascript|ecmascript|text/plain'
+          test "$(wc -c < "$out/stable-body.js")" -gt 1000
+          sha256sum "$out/stable-body.js" > "$out/stable-sha256.txt"
+
+          set +e
+          stale_code="$(curl --silent --show-error --location             --connect-timeout 10 --max-time 45             --dump-header "$out/stale-headers.txt"             --output "$out/stale-body.txt"             --write-out '%{http_code}' "$stale")"
+          stale_rc=$?
+          set -e
+          printf '%s\n' "$stale_code" > "$out/stale-status.txt"
+          printf '%s\n' "$stale_rc" > "$out/stale-curl-rc.txt"
+
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root=Path('test-results/pdf-current-main/live')
+          body=(root/'stable-body.js').read_bytes()
+          headers=(root/'stable-headers.txt').read_text(errors='replace')
+          report={
+            'stableUrl':'https://app.ravtext.com/assets/pdf_export.js',
+            'stableStatus':int((root/'stable-status.txt').read_text().strip()),
+            'stableContentType':(root/'stable-content-type.txt').read_text().strip(),
+            'stableBytes':len(body),
+            'stableSha256':hashlib.sha256(body).hexdigest(),
+            'stableHeaders':headers,
+            'formerHashedUrl':'https://app.ravtext.com/assets/pdf_export-B24fTpju.js',
+            'formerHashedStatus':(root/'stale-status.txt').read_text().strip(),
+            'formerHashedCurlRc':int((root/'stale-curl-rc.txt').read_text().strip()),
+          }
+          (root/'http-report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          print(json.dumps({k:v for k,v in report.items() if k!='stableHeaders'},indent=2))
+          PY
+
+      - name: Verify browser can fetch and import the live stable module
+        shell: bash
+        run: |
+          cat > /tmp/live-pdf-import.mjs <<'EOF'
+          import { chromium } from 'playwright-chromium';
+          import fs from 'node:fs';
+          const browser = await chromium.launch({headless:true});
+          const page = await browser.newPage();
+          const errors=[];
+          page.on('pageerror', e=>errors.push(String(e)));
+          const response = await page.goto('https://app.ravtext.com/', {waitUntil:'domcontentloaded', timeout:45000});
+          const result = await page.evaluate(async () => {
+            const url = '/assets/pdf_export.js?audit=' + Date.now();
+            const fetched = await fetch(url, {cache:'no-store'});
+            const contentType = fetched.headers.get('content-type') || '';
+            const bytes = (await fetched.clone().arrayBuffer()).byteLength;
+            let imported=false, exportType='', importError='';
+            try {
+              const mod = await import(url);
+              imported = true;
+              exportType = typeof mod.downloadPagesAsPdf;
+            } catch (e) {
+              importError = String(e);
+            }
+            return {url, fetchStatus:fetched.status, contentType, bytes, imported, exportType, importError};
+          });
+          const report={rootStatus:response?.status()||0,finalUrl:page.url(),errors,result};
+          fs.mkdirSync('test-results/pdf-current-main/live',{recursive:true});
+          fs.writeFileSync('test-results/pdf-current-main/live/browser-import.json',JSON.stringify(report,null,2));
+          console.log(JSON.stringify(report,null,2));
+          if(report.rootStatus < 200 || report.rootStatus >= 400) throw new Error('live app root did not load');
+          if(errors.length) throw new Error('page errors: '+JSON.stringify(errors));
+          if(result.fetchStatus !== 200) throw new Error('stable PDF module fetch failed');
+          if(!result.imported || result.exportType !== 'function') throw new Error('stable PDF module browser import failed: '+result.importError);
+          await browser.close();
+          EOF
+          node /tmp/live-pdf-import.mjs
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: current-main-pdf-acceptance-${{ github.run_id }}
+          path: test-results/pdf-current-main/
+          retention-days: 7
+          if-no-files-found: error
