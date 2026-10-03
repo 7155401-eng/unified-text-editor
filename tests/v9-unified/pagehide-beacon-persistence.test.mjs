@@ -5,6 +5,8 @@ import {
   attachAutoSync,
   documentPayloadFromContentJson,
   loadInitialState,
+  planPagehideBeaconBodies,
+  PAGEHIDE_BEACON_BUDGET_BYTES,
   DOCUMENT_SAVE_TIMEOUT_MS,
 } from '../../src/server_persistence.js';
 import { isStorageBeaconWrite } from '../../worker/storage.js';
@@ -33,6 +35,32 @@ test('document request envelope reuses the already-serialized content JSON exact
 
   assert.equal(payload, `{"content":${sig},"title":""}`);
   assert.deepEqual(JSON.parse(payload), { content, title: '' });
+});
+
+
+test('pagehide beacon planner shares one 64 KiB budget and prioritizes document', () => {
+  const documentBody = 'd'.repeat(40 * 1024);
+  const settingsBody = 's'.repeat(30 * 1024);
+  const plan = planPagehideBeaconBodies({ documentBody, settingsBody });
+
+  assert.equal(PAGEHIDE_BEACON_BUDGET_BYTES, 64 * 1024);
+  assert.equal(plan.documentFits, true);
+  assert.equal(plan.documentBody, documentBody);
+  assert.equal(plan.settingsFits, false);
+  assert.equal(plan.settingsBody, null);
+  assert.equal(plan.remainingBytes, PAGEHIDE_BEACON_BUDGET_BYTES - documentBody.length);
+});
+
+test('oversized document does not consume beacon budget needed by small settings', () => {
+  const documentBody = 'd'.repeat(PAGEHIDE_BEACON_BUDGET_BYTES + 1);
+  const settingsBody = 's'.repeat(1024);
+  const plan = planPagehideBeaconBodies({ documentBody, settingsBody });
+
+  assert.equal(plan.documentFits, false);
+  assert.equal(plan.documentBody, null);
+  assert.equal(plan.settingsFits, true);
+  assert.equal(plan.settingsBody, settingsBody);
+  assert.equal(plan.remainingBytes, PAGEHIDE_BEACON_BUDGET_BYTES - settingsBody.length);
 });
 
 function fakeStorage(initial = {}) {
@@ -156,6 +184,61 @@ test('pagehide flushes local state, marks server pending, and uses explicit beac
     assert.ok(
       beacons.some(({ url }) => url === '/api/settings?beacon=1'),
       'settings beacon did not use explicit beacon endpoint'
+    );
+  } finally {
+    h.restore();
+  }
+});
+
+test('pagehide skips oversized document beacon but keeps stale protection and sends small settings', () => {
+  const storage = fakeStorage({ 'ravtext.theme': 'dark' });
+  const beacons = [];
+  const h = browserHarness({
+    storage,
+    sendBeacon(url, body) {
+      beacons.push({ url, body });
+      return true;
+    },
+  });
+
+  const hugeText = 'x'.repeat(PAGEHIDE_BEACON_BUDGET_BYTES + 8192);
+  const content = {
+    version: 1,
+    activeId: 'main',
+    panes: [{
+      id: 'main',
+      paneRole: 'main',
+      content: {
+        type: 'doc',
+        content: [{
+          type: 'paragraph',
+          content: [{ type: 'text', text: hugeText }],
+        }],
+      },
+    }],
+  };
+  const paneManager = {
+    flushSave() {},
+    serializeForPersistenceString() { return JSON.stringify(content); },
+  };
+
+  try {
+    attachAutoSync(paneManager);
+    h.fire('pagehide');
+
+    const stale = JSON.parse(storage.getItem(STALE_KEY));
+    assert.equal(stale.status, 'pagehide-pending');
+    assert.ok(stale.chars > PAGEHIDE_BEACON_BUDGET_BYTES);
+
+    assert.equal(
+      beacons.some(({ url }) => url === '/api/documents/current?beacon=1'),
+      false,
+      'oversized document beacon should not be attempted'
+    );
+    assert.equal(
+      beacons.some(({ url }) => url === '/api/settings?beacon=1'),
+      true,
+      'small settings beacon should still use the remaining budget'
     );
   } finally {
     h.restore();
