@@ -28,7 +28,7 @@ jobs:
           PREVIEW_URL: https://fix-faq-first-open-speed-loading-20261-67a5-unified-text-editor.7155401.workers.dev
         run: |
           mkdir -p test-results/faq-preview
-          cat > /tmp/faq-audit.mjs <<'EOF'
+          cat > faq-audit.mjs <<'EOF'
           import { chromium } from 'playwright-chromium';
           import fs from 'node:fs';
           const url=process.env.PREVIEW_URL;
@@ -79,7 +79,7 @@ jobs:
           if(warmOpenMs>300) throw new Error('warmed FAQ open too slow: '+warmOpenMs+'ms');
           if(questions<1) throw new Error('FAQ rendered no questions');
           EOF
-          node /tmp/faq-audit.mjs
+          node faq-audit.mjs
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
