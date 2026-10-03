@@ -72,8 +72,10 @@ function ensureMeasurePage() {
   return page;
 }
 
-function measureOverlayReserve(className, isTop, text = "מידה") {
-  if (typeof document === "undefined") return 0;
+function measureOverlayBox(className, isTop, text = "מידה") {
+  if (typeof document === "undefined") {
+    return { height: 0, offset: 0, padding: 0, reserve: 0 };
+  }
 
   const page = ensureMeasurePage();
   const el = document.createElement("div");
@@ -93,11 +95,24 @@ function measureOverlayReserve(className, isTop, text = "מידה") {
 
   el.remove();
 
-  // Reserve only the part that actually invades the content area.
-  // This avoids the old arbitrary padding behavior while still protecting
-  // text from page-number/header/footer overlap.
-  return Math.max(0, Math.ceil(offset + height - padding));
+  return {
+    height,
+    offset,
+    padding,
+    reserve: Math.max(0, Math.ceil(offset + height - padding)),
+  };
 }
+
+function reserveOverlayAtOffset(box, offset = box?.offset || 0) {
+  if (!box) return 0;
+  return Math.max(0, Math.ceil(Math.max(0, Number(offset) || 0) + box.height - box.padding));
+}
+
+function measureOverlayReserve(className, isTop, text = "מידה") {
+  return measureOverlayBox(className, isTop, text).reserve;
+}
+
+const FOOTER_PAGE_NUMBER_GAP_PX = 2;
 
 export function createLayoutContext() {
   const headerText = lsGet(HEADER_KEY) || "";
@@ -114,12 +129,35 @@ export function createLayoutContext() {
     packSafety: cssPx("--ravtext-page-pack-safety", 12),
   };
 
+  const footerBox = footerText
+    ? measureOverlayBox("ravtext-page-footer", false, footerText)
+    : null;
+  // Page-number width does not affect vertical reserve; use a representative
+  // multi-glyph label so the shared measurement path still exercises the real class.
+  const pageNumberBox = pageNumbersOn
+    ? measureOverlayBox("ravtext-page-number-overlay", false, "תתקצט")
+    : null;
+
+  // Keep the page number in its historical 4mm position. When both overlays
+  // are enabled, move the footer ABOVE the measured page-number box instead of
+  // letting two centered overlays occupy the same vertical band. This is
+  // geometry, not a guessed footer height: wrapped footer text is measured
+  // independently, while the stack offset uses the page number's real box.
+  const footerBottom = footerBox
+    ? Math.ceil(pageNumberBox
+      ? Math.max(
+          footerBox.offset,
+          pageNumberBox.offset + pageNumberBox.height + FOOTER_PAGE_NUMBER_GAP_PX
+        )
+      : footerBox.offset)
+    : null;
+
   const features = {
     header: headerText ? measureOverlayReserve("ravtext-page-header", true, headerText) : 0,
-    footer: footerText ? measureOverlayReserve("ravtext-page-footer", false, footerText) : 0,
-    // Page-number width does not affect vertical reserve; use a representative
-    // multi-glyph label so the shared measurement path still exercises the real class.
-    pageNumber: pageNumbersOn ? measureOverlayReserve("ravtext-page-number-overlay", false, "תתקצט") : 0,
+    footer: footerBox ? reserveOverlayAtOffset(footerBox, footerBottom) : 0,
+    pageNumber: pageNumberBox?.reserve || 0,
+    footerBottom,
+    footerPageNumberGap: pageNumberBox && footerBox ? FOOTER_PAGE_NUMBER_GAP_PX : 0,
   };
 
   const context = Object.freeze({
