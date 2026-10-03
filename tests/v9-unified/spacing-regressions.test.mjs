@@ -18,6 +18,46 @@ for(const raw of ['alpha@01beta gamma',' alpha  @01beta  gamma ','alpha@01@02bet
  assert.equal(input[0].start,at);
 });
 
+test('apostrophe + note marker + following word stays unbreakable without source whitespace',()=>{
+ const raw="alpha'@01beta gamma";
+ const mapped=mapMainParagraphSource(raw,[],markers(raw));
+ assert.equal(mapped.mainTextNet,"alpha'beta gamma");
+ assert.equal(mapped.mainConsumers.length,1);
+ const anchor=mapped.mainConsumers[0].anchor;
+ assert.equal(anchor,6);
+ assert.equal(mapped.mainConsumers[0].anchorAffinity,'backward');
+ assert.equal(isV9WhitespaceBreakBoundary(mapped.mainTextNet,anchor),false,
+  'note boundary became a legal line break without source whitespace');
+
+ const metrics={spaceWidth:4,measureWord:w=>String(w).length*5};
+ const candidates=buildParagraphBreakCandidates(
+  mapped.mainTextNet,metrics,51,
+  {minLineEdgeFill:.2,maxAdjustedLineEdgeFill:2,allowWordGapOnlyInEmergency:true},
+  {source:'apostrophe-note-glue',emergency:true}
+ );
+ assert(!candidates.some(c=>c.offset===anchor),
+  'split policy invented a break at the removed note marker');
+
+ const ctx={
+  fontSize:10,lineHeight:10,describeOpening:()=>null,
+  measure:part=>({width:String(part?.text||'').length*5,height:10,topInset:0})
+ };
+ const plan=layoutV9MainParagraphs([{
+  id:'apostrophe-note-glue',
+  text:mapped.mainTextNet,
+  runs:[],
+  mainRefs:mapped.mainConsumers,
+ }],[{x:0,width:51,y_start:0,y_end:80}],ctx,80);
+
+ assert.equal(plan.overflowText,'');
+ assert.deepEqual(plan.lines.map(l=>l.render.body.text),["alpha'beta",'gamma']);
+ assert.equal(plan.lines[0].wordTokens.length,1);
+ assert.equal(plan.lines[0].wordTokens[0].text,"alpha'beta");
+ assert(plan.lines[0].wordTokens[0].start<anchor&&plan.lines[0].wordTokens[0].end>anchor,
+  'note anchor no longer remains inside the unbroken token');
+ assert.equal(plan.lines.map(l=>l.sourceText).join(''),mapped.mainTextNet);
+});
+
 test('V9 page-break boundaries require real source whitespace',()=>{
  const samples=[
   ['abc[def] ghi',3,false],
