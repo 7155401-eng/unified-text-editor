@@ -119,13 +119,19 @@ for(let seed=1;seed<=256;seed++)test(`dominance pruning is result/budget identic
 test('dominated transitions keep evaluation budget but avoid unnecessary metric calls',()=>{
   let calls=0;
   const result=solve({
-    wordCount:35,
-    rows:Array.from({length:5},()=>({})),
+    wordCount:10,
+    rows:Array.from({length:4},()=>({})),
     maxSpacing:8,
-    metricFor:()=>{calls++;return {pressure:1};},
+    metricFor:(row,_from,to)=>{
+      calls++;
+      // Row 0 deliberately gives later states a larger accumulated cost.
+      // Later rows add zero cost, so an earlier cheaper state that already
+      // reaches the same destination mathematically dominates them.
+      return {pressure:row===0?to*0.7:0};
+    },
   });
   assert.equal(result.status,'complete');
-  assert.equal(result.evaluations,1550,'evaluation accounting changed');
+  assert.equal(result.evaluations,70,'evaluation accounting changed');
   assert.ok(calls<result.evaluations,
     `dominance pruning did not avoid metric work: calls=${calls}, evaluations=${result.evaluations}`);
 });
