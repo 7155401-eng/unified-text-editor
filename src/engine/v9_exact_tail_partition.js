@@ -25,11 +25,20 @@ export function findV9ExactTailPartition({
         // Never return a partially searched alternative when the budget ends.
         if (evaluations >= maxEvaluations) return {status: 'budget-exhausted', evaluations};
         evaluations++;
+
+        // pressure² is non-negative. If this destination already has a path
+        // whose COMPLETE cost is no greater than the current state's cost
+        // BEFORE adding this row, this transition cannot possibly improve it.
+        // Count the evaluation exactly as before so the 4096 safety budget and
+        // budget-exhausted boundary remain byte-for-byte compatible; skip only
+        // the expensive DOM-backed metricFor() call.
+        const known = next.get(to);
+        if (known && known.cost <= state.cost) continue;
+
         const metric = metricFor(i, from, to);
         if (!metric || !Number.isFinite(metric.pressure) || metric.pressure < 0 ||
             metric.pressure > maxSpacing + 1e-9) continue;
         const cost = state.cost + metric.pressure * metric.pressure;
-        const known = next.get(to);
         if (!known || cost < known.cost - 1e-9) {
           next.set(to, {cost, previous: state, end: to});
         }
