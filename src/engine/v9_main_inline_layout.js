@@ -162,18 +162,34 @@ function exactTailCacheKey({
   context, entry, sourceBase, sourceSegmentStart, bodySegmentStart, segmentEnd,
   words, tail, gentleMax,
 }) {
+  const sourceText = String(entry?.text || '');
+  const refs = (entry?.mainRefs || [])
+    .filter(ref => referenceInV9Range(ref, sourceSegmentStart, segmentEnd, sourceText.length))
+    .sort((a, b) => refAnchor(a) - refAnchor(b))
+    .map(ref => [
+      refAnchor(ref) - sourceSegmentStart,
+      String(ref.anchorAffinity || ''),
+      String(ref.formatted || ''),
+      String(ref.cssText || ''),
+    ]);
+
+  // Cache only the source interval and paint inputs that metricFor() can
+  // observe. Entry ids, text/runs/refs outside the active tail and absolute
+  // source offsets cannot affect this exact partition, but previously forced
+  // expensive misses for equivalent fragments of the same paragraph.
   return JSON.stringify([
     Number(context?.generation) || 0,
-    String(entry?.id || ''),
-    String(entry?.text || ''),
-    entry?.runs || [],
-    entry?.mainRefs || [],
+    sourceText.slice(sourceSegmentStart, segmentEnd),
+    sliceRuns(entry?.runs || [], sourceSegmentStart, segmentEnd),
+    refs,
     entry?.typography || {},
-    sourceBase,
-    sourceSegmentStart,
-    bodySegmentStart,
-    segmentEnd,
-    words.map(w => [w.start, w.end]),
+    bodySegmentStart - sourceSegmentStart,
+    segmentEnd - sourceSegmentStart,
+    segmentEnd === sourceText.length,
+    words.map(w => [
+      w.start - sourceSegmentStart,
+      w.end - sourceSegmentStart,
+    ]),
     tail.map(line => [
       Number(line?.width) || 0,
       Number(line?.lineHeightPx) || 0,
