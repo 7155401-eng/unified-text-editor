@@ -145,7 +145,7 @@ function freezeLine(line) {
 
 
 const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
-const TAIL_REBALANCE_EXACT_MAX_EVALUATIONS = 2048;
+const TAIL_REBALANCE_EXACT_MAX_EVALUATIONS = 1536;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
 
 function continuationTailGentleSpacing(context) {
