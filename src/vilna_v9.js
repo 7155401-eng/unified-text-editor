@@ -4175,6 +4175,8 @@ function makeV9RangePlaceholder(pageEl, plan, cfg, pageIdx) {
   pageEl.style.color = "#64748b";
   pageEl.style.background = "rgba(248,250,252,.72)";
   pageEl.style.border = "1px dashed rgba(100,116,139,.35)";
+  pageEl.setAttribute("hidden", "");
+  pageEl.style.display = "none";
   pageEl.textContent = `עמוד ${pageIdx + 1} — מחוץ לטווח שנבחר`;
   pageEl.__ravtextV9Plan = plan;
   pageEl.__ravtextV9Config = cfg;
