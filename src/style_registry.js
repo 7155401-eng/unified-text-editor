@@ -6,7 +6,9 @@ function safeArray(value) {
 }
 
 function normalizeSizeUnit(value, fallback = "px") {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
   if (raw === "pt") return "pt";
   if (raw === "px") return "px";
   return fallback === "pt" ? "pt" : "px";
@@ -32,21 +34,28 @@ function roundTwo(value) {
 const STYLE_CACHE_UNREAD = Symbol("style-cache-unread");
 let cachedStylesRaw = STYLE_CACHE_UNREAD;
 let cachedStylesSnapshot = Object.freeze([]);
+let cachedStylesValid = false;
 
 function cloneStyle(style) {
   return style && typeof style === "object" ? { ...style } : style;
 }
 
 function makeStyleSnapshot(styles) {
-  return Object.freeze(safeArray(styles).map(style => Object.freeze(cloneStyle(style))));
+  return Object.freeze(
+    safeArray(styles).map((style) => Object.freeze(cloneStyle(style))),
+  );
 }
 
 function readStyleSnapshot() {
+  if (cachedStylesValid && cachedStylesRaw !== STYLE_CACHE_UNREAD) {
+    return cachedStylesSnapshot;
+  }
   let raw;
   try {
-    raw = typeof localStorage !== "undefined"
-      ? localStorage.getItem(CUSTOM_STYLES_KEY)
-      : null;
+    raw =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem(CUSTOM_STYLES_KEY)
+        : null;
   } catch {
     // Keep historical behavior: unavailable storage behaves like no saved
     // custom styles, without poisoning a later successful read.
@@ -55,7 +64,10 @@ function readStyleSnapshot() {
     return cachedStylesSnapshot;
   }
 
-  if (raw === cachedStylesRaw) return cachedStylesSnapshot;
+  if (raw === cachedStylesRaw) {
+    cachedStylesValid = true;
+    return cachedStylesSnapshot;
+  }
 
   try {
     cachedStylesSnapshot = makeStyleSnapshot(JSON.parse(raw || "[]"));
@@ -65,13 +77,15 @@ function readStyleSnapshot() {
     cachedStylesSnapshot = Object.freeze([]);
   }
   cachedStylesRaw = raw;
+  cachedStylesValid = true;
   return cachedStylesSnapshot;
 }
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key === CUSTOM_STYLES_KEY) {
+    if (e.key === CUSTOM_STYLES_KEY || e.key === null) {
       cachedStylesRaw = STYLE_CACHE_UNREAD;
+      cachedStylesValid = false;
     }
   });
 }
@@ -90,12 +104,15 @@ export function saveTextStyles(styles) {
   localStorage.setItem(CUSTOM_STYLES_KEY, raw);
   cachedStylesRaw = raw;
   cachedStylesSnapshot = makeStyleSnapshot(clean);
+  cachedStylesValid = true;
   window.dispatchEvent(new CustomEvent("ravtext:styles-changed"));
 }
 
 export function resolveTextStyle(styleIdOrName) {
   if (!styleIdOrName) return null;
-  const found = readStyleSnapshot().find(s => s.id === styleIdOrName || s.name === styleIdOrName);
+  const found = readStyleSnapshot().find(
+    (s) => s.id === styleIdOrName || s.name === styleIdOrName,
+  );
   // Preserve the old mutable-object contract without exposing cache internals.
   return found ? cloneStyle(found) : null;
 }
@@ -104,16 +121,25 @@ export function normalizeTextStyle(rawStyle) {
   if (!rawStyle || typeof rawStyle !== "object") return null;
   const style = { ...rawStyle };
 
-  if (style.backgroundColor && !style.bgColor) style.bgColor = style.backgroundColor;
-  if (style.bgColor && !style.backgroundColor) style.backgroundColor = style.bgColor;
+  if (style.backgroundColor && !style.bgColor)
+    style.bgColor = style.backgroundColor;
+  if (style.bgColor && !style.backgroundColor)
+    style.backgroundColor = style.bgColor;
 
   if (style.fontSize != null && style.fontSize !== "") {
     const raw = String(style.fontSize).trim();
-    const unitFromValue = /pt$/i.test(raw) ? "pt" : /px$/i.test(raw) ? "px" : null;
+    const unitFromValue = /pt$/i.test(raw)
+      ? "pt"
+      : /px$/i.test(raw)
+        ? "px"
+        : null;
     const n = Number(raw.replace(/(?:px|pt)$/i, ""));
     if (Number.isFinite(n) && n > 0) {
       style.fontSize = n;
-      style.fontSizeUnit = normalizeSizeUnit(style.fontSizeUnit, unitFromValue || "px");
+      style.fontSizeUnit = normalizeSizeUnit(
+        style.fontSizeUnit,
+        unitFromValue || "px",
+      );
     }
   }
 
@@ -126,7 +152,11 @@ export function normalizeTextStyle(rawStyle) {
   if (rawWeight != null && rawWeight !== "") {
     const w = String(rawWeight).trim().toLowerCase();
     const numeric = Number(w);
-    if (w === "bold" || w === "bolder" || (Number.isFinite(numeric) && numeric >= 600)) {
+    if (
+      w === "bold" ||
+      w === "bolder" ||
+      (Number.isFinite(numeric) && numeric >= 600)
+    ) {
       style.bold = true;
       style.fontWeight = "700";
     } else {
@@ -140,7 +170,8 @@ export function normalizeTextStyle(rawStyle) {
 
   // משה 2026-05-17: סגנון מותאם יכול להיות גם כתב עילי או כתב תחתי.
   // שמות ישנים/חלופיים נשמרים כדי לא לשבור נתונים שכבר נשמרו מקומית.
-  if (style.superScript === true || style.sup === true) style.superscript = true;
+  if (style.superScript === true || style.sup === true)
+    style.superscript = true;
   if (style.subScript === true || style.sub === true) style.subscript = true;
   if (style.superscript && style.subscript) style.subscript = false;
 
@@ -164,7 +195,8 @@ export function applyTextStyleObjectToElement(el, rawStyle) {
   if (fontSizeCss) el.style.fontSize = fontSizeCss;
   if (style.lineHeight) el.style.lineHeight = String(style.lineHeight);
   if (style.color) el.style.color = style.color;
-  if (style.bgColor || style.backgroundColor) el.style.backgroundColor = style.bgColor || style.backgroundColor;
+  if (style.bgColor || style.backgroundColor)
+    el.style.backgroundColor = style.bgColor || style.backgroundColor;
 
   if (style.fontWeight) el.style.fontWeight = String(style.fontWeight);
   else if (style.bold) el.style.fontWeight = "700";
@@ -174,7 +206,8 @@ export function applyTextStyleObjectToElement(el, rawStyle) {
   if (style.align) el.style.textAlign = style.align;
   if (style.indent) el.style.textIndent = `${style.indent}em`;
   if (style.marginTop != null) el.style.marginTop = `${style.marginTop}px`;
-  if (style.marginBottom != null) el.style.marginBottom = `${style.marginBottom}px`;
+  if (style.marginBottom != null)
+    el.style.marginBottom = `${style.marginBottom}px`;
   if (style.superscript) {
     el.style.verticalAlign = "super";
     if (!fontSizeCss) el.style.fontSize = "0.75em";
@@ -185,7 +218,6 @@ export function applyTextStyleObjectToElement(el, rawStyle) {
 
   return true;
 }
-
 
 export function applyStyleToElement(el, styleIdOrName) {
   const style = resolveTextStyle(styleIdOrName);
@@ -207,9 +239,9 @@ export function applyStreamContainerStyleToElement(el, settings = {}) {
   const runtimeStyle =
     settings?.inlineStyle && typeof settings.inlineStyle === "object"
       ? settings.inlineStyle
-      : (settings?.manualStyle && typeof settings.manualStyle === "object"
-          ? settings.manualStyle
-          : null);
+      : settings?.manualStyle && typeof settings.manualStyle === "object"
+        ? settings.manualStyle
+        : null;
 
   if (runtimeStyle) {
     applied = applyTextStyleObjectToElement(el, runtimeStyle) || applied;
@@ -230,7 +262,9 @@ function isHebrewStyleName(name) {
 
 function linkedHebrewCharacterStyleInfo(name, stylesCatalog) {
   if (!isHebrewStyleName(name) || String(name).endsWith(" תו")) return null;
-  return stylesCatalog?.[`${name} תו`] || stylesCatalog?.[`${name} Char`] || null;
+  return (
+    stylesCatalog?.[`${name} תו`] || stylesCatalog?.[`${name} Char`] || null
+  );
 }
 
 function chooseDocxFontSizePt(name, info, stylesCatalog) {
@@ -254,7 +288,7 @@ export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
         ? true
         : readDocxOverwriteStylesDefault();
   const existing = loadTextStyles();
-  const byId = new Map(existing.map(s => [s.id, s]));
+  const byId = new Map(existing.map((s) => [s.id, s]));
   const imported = [];
   for (const [name, info] of Object.entries(stylesCatalog)) {
     if (!name) continue;
@@ -281,8 +315,14 @@ export function mergeDocxStylesIntoRegistry(stylesCatalog, options = {}) {
       align: "",
       lineHeight: info?.line_spacing || null,
       indent: null,
-      marginTop: info?.space_before_pt != null ? Math.round(Number(info.space_before_pt) * 96 / 72) : null,
-      marginBottom: info?.space_after_pt != null ? Math.round(Number(info.space_after_pt) * 96 / 72) : null,
+      marginTop:
+        info?.space_before_pt != null
+          ? Math.round((Number(info.space_before_pt) * 96) / 72)
+          : null,
+      marginBottom:
+        info?.space_after_pt != null
+          ? Math.round((Number(info.space_after_pt) * 96) / 72)
+          : null,
     };
     if (byId.has(id) && !overwriteExisting) {
       continue;
@@ -326,7 +366,8 @@ function styleOptionCss(raw) {
   const css = [];
   if (s.bold) css.push("font-weight:700");
   if (s.italic) css.push("font-style:italic");
-  if (s.fontFamily) css.push(`font-family:${String(s.fontFamily).replace(/[";]/g, "")}`);
+  if (s.fontFamily)
+    css.push(`font-family:${String(s.fontFamily).replace(/[";]/g, "")}`);
   return css.length ? ` style="${css.join(";")}"` : "";
 }
 
@@ -336,7 +377,9 @@ export function styleOptionsHtml(selected = "") {
   for (const s of styles) {
     const base = s.source === IMPORT_SOURCE ? `${s.name} · Word` : s.name;
     const label = base + styleOptionSummary(s);
-    opts.push(`<option value="${escapeAttr(s.id)}"${s.id === selected || s.name === selected ? " selected" : ""}${styleOptionCss(s)}>${escapeHtml(label)}</option>`);
+    opts.push(
+      `<option value="${escapeAttr(s.id)}"${s.id === selected || s.name === selected ? " selected" : ""}${styleOptionCss(s)}>${escapeHtml(label)}</option>`,
+    );
   }
   opts.push('<option value="__add-custom__">+ הוסף סגנון משלך...</option>');
   return opts.join("");

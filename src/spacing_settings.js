@@ -1,4 +1,8 @@
-import { loadTextStyles, saveTextStyles, styleOptionsHtml } from "./style_registry.js";
+import {
+  loadTextStyles,
+  saveTextStyles,
+  styleOptionsHtml,
+} from "./style_registry.js";
 
 const STORAGE_KEY = "ravtext.spacing.v1";
 
@@ -42,22 +46,64 @@ const DEFAULTS = {
 };
 
 const FIELDS = [
-  ["editorLineHeight", "עורך: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
+  [
+    "editorLineHeight",
+    "עורך: גובה שורה",
+    "number",
+    HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN,
+    3,
+    0.05,
+  ],
   ["editorParagraphGap", "עורך: רווח פסקה", "number", 0, 80, 1],
-  ["pageMainLineHeight", "PDF ראשי: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
+  [
+    "pageMainLineHeight",
+    "PDF ראשי: גובה שורה",
+    "number",
+    HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN,
+    3,
+    0.05,
+  ],
   ["pageMainParagraphGap", "PDF ראשי: רווח פסקה", "number", 0, 80, 1],
   ["mainStreamGap", "PDF: ראשי-הערות", "number", 0, 80, 1],
-  ["streamLineHeight", "זרמים: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
+  [
+    "streamLineHeight",
+    "זרמים: גובה שורה",
+    "number",
+    HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN,
+    3,
+    0.05,
+  ],
   ["streamGap", "בין זרמים", "number", 0, 80, 1],
   ["ravtextStreamVerticalGap", "רב טקסט: בין זרמים אנכית", "number", 0, 80, 1],
-  ["ravtextStreamHorizontalGap", "רב טקסט: בין זרמים אופקית", "number", 0, 80, 1],
+  [
+    "ravtextStreamHorizontalGap",
+    "רב טקסט: בין זרמים אופקית",
+    "number",
+    0,
+    80,
+    1,
+  ],
   ["streamNoteGap", "בין הערות", "number", 0, 40, 1],
   ["streamTitleGap", "כותרת-תוכן", "number", 0, 40, 1],
-  ["v9LineHeight", "V9: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
+  [
+    "v9LineHeight",
+    "V9: גובה שורה",
+    "number",
+    HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN,
+    3,
+    0.05,
+  ],
   ["v9MainGap", "V9: ראשי-צד", "number", 0, 60, 1],
   ["v9CrownMainGap", "V9: כתר-ראשי", "number", 0, 60, 1],
   ["noMidLineSplits", "לא לפצל באמצע פיסקאות (קשיח)", "checkbox", 0, 1, 1],
-  ["noMidParagraphSoft", "לא לפצל פיסקאות (גמיש, ימלא רווחים)", "checkbox", 0, 1, 1],
+  [
+    "noMidParagraphSoft",
+    "לא לפצל פיסקאות (גמיש, ימלא רווחים)",
+    "checkbox",
+    0,
+    1,
+    1,
+  ],
   ["preventMidLineSplit", "לא לפצל באמצע שורה", "checkbox", 0, 1, 1],
   ["globalLineBreakCodeEnabled", "מעבר שורה לפי קוד", "checkbox", 0, 1, 1],
   ["globalLineBreakCode", "קוד מעבר שורה", "text", 0, 0, 1],
@@ -66,6 +112,15 @@ const FIELDS = [
 let _spacingCacheRaw = null;
 let _spacingCacheSnapshot = null;
 let _spacingStoredSnapshot = null;
+let _spacingCacheValid = false;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY || e.key === null) {
+      _spacingCacheValid = false;
+    }
+  });
+}
 
 function readSpacingStorageRaw() {
   try {
@@ -79,7 +134,10 @@ function readSpacingStorageRaw() {
 function spacingSnapshotsFromRaw(raw) {
   try {
     const parsed = JSON.parse(raw || "{}");
-    const saved = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const saved =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : {};
     return {
       stored: Object.freeze({ ...saved }),
       // v9MainGap is horizontal main↔side spacing. Never reinterpret a legacy
@@ -96,12 +154,22 @@ function spacingSnapshotsFromRaw(raw) {
 }
 
 function ensureSpacingSnapshots() {
+  if (_spacingCacheValid && _spacingCacheSnapshot && _spacingStoredSnapshot)
+    return;
   const raw = readSpacingStorageRaw();
-  if (_spacingCacheSnapshot && _spacingStoredSnapshot && raw === _spacingCacheRaw) return;
+  if (
+    _spacingCacheSnapshot &&
+    _spacingStoredSnapshot &&
+    raw === _spacingCacheRaw
+  ) {
+    _spacingCacheValid = true;
+    return;
+  }
   const snapshots = spacingSnapshotsFromRaw(raw);
   _spacingCacheRaw = raw;
   _spacingStoredSnapshot = snapshots.stored;
   _spacingCacheSnapshot = snapshots.effective;
+  _spacingCacheValid = true;
 }
 
 export function getSpacingSettingsSnapshot() {
@@ -128,10 +196,14 @@ export function saveSpacingSettings(settings) {
   _spacingCacheRaw = raw;
   _spacingStoredSnapshot = Object.freeze({ ...next });
   _spacingCacheSnapshot = Object.freeze({ ...next });
+  _spacingCacheValid = true;
   return next;
 }
 
-export function applySpacingSettings(settings = loadSpacingSettings(), pagesContainer = null) {
+export function applySpacingSettings(
+  settings = loadSpacingSettings(),
+  pagesContainer = null,
+) {
   const s = normalizeSpacing(settings);
   const vars = {
     "--ravtext-editor-line-height": String(s.editorLineHeight),
@@ -165,12 +237,14 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
 
   panel.innerHTML = `
     <span class="stream-label-static">הגדרות כלליות - רווחים:</span>
-    ${FIELDS.map(([key, label, type, min, max, step]) => `
+    ${FIELDS.map(
+      ([key, label, type, min, max, step]) => `
       <label class="stream-col-input spacing-input">
         <span>${label}:</span>
         <input data-spacing-key="${key}" type="${type}" min="${min}" max="${max}" step="${step}">
       </label>
-    `).join("")}
+    `,
+    ).join("")}
     <span class="stream-label-static" title="הקוד נשאר בעורך; רק עותק הרינדור מחליף אותו בשבירת שורה. סימוני זרם פעילים אינם מוחלפים.">קוד מעבר שורה חל על הראשי ועל כל הזרמים ואינו משנה את המקור.</span>
     <label class="stream-col-input spacing-style-link">
       <span>סגנון:</span>
@@ -189,7 +263,8 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
       else input.value = s[key];
     }
     const styleSelect = panel.querySelector("#spacing-style-select");
-    if (styleSelect) styleSelect.innerHTML = styleOptionsHtml(styleSelect.value || "");
+    if (styleSelect)
+      styleSelect.innerHTML = styleOptionsHtml(styleSelect.value || "");
   };
 
   const commit = () => {
@@ -243,7 +318,7 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
     const id = select?.value;
     if (!id || id === "__add-custom__") return;
     const styles = loadTextStyles();
-    const idx = styles.findIndex(s => s.id === id || s.name === id);
+    const idx = styles.findIndex((s) => s.id === id || s.name === id);
     if (idx < 0) return;
     const spacing = loadSpacingSettings();
     styles[idx] = {
@@ -269,11 +344,16 @@ function normalizeSpacing(settings) {
       continue;
     }
     if (typeof DEFAULTS[key] === "string") {
-      out[key] = String(out[key] ?? "").replace(/[\r\n]/g, "").trim().slice(0, 64);
+      out[key] = String(out[key] ?? "")
+        .replace(/[\r\n]/g, "")
+        .trim()
+        .slice(0, 64);
       continue;
     }
     const n = Number(out[key]);
-    out[key] = Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : DEFAULTS[key];
+    out[key] = Number.isFinite(n)
+      ? Math.max(min, Math.min(max, n))
+      : DEFAULTS[key];
   }
   return out;
 }
@@ -281,7 +361,9 @@ function normalizeSpacing(settings) {
 function selectedStyle(panel) {
   const value = panel.querySelector("#spacing-style-select")?.value;
   if (!value || value === "__add-custom__") return null;
-  return loadTextStyles().find(s => s.id === value || s.name === value) || null;
+  return (
+    loadTextStyles().find((s) => s.id === value || s.name === value) || null
+  );
 }
 
 function ensurePanel() {
