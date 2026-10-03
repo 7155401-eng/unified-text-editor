@@ -1492,6 +1492,7 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
   const ownContext = !cfg.__v9InlineContext;
   const effectiveConfig = { ...cfg, openingWordSettings: cfg.openingWordSettings || getOpeningWordSettings() };
   const context = cfg.__v9InlineContext || createMainInlineContext(effectiveConfig);
+  const layoutOptions = cfg.__v9FastProbe === true ? { skipExactTailPartition: true } : {};
   try {
     const raw = Array.isArray(pageContent.mainParagraphs) && pageContent.mainParagraphs.length
       ? pageContent.mainParagraphs
@@ -1504,13 +1505,13 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
     }));
     const mainCols = resolveV9MainColumnCount(cfg);
     if (mainCols <= 1) {
-      const single = layoutV9MainParagraphs(entries, mainStrips, context, pageBottom);
+      const single = layoutV9MainParagraphs(entries, mainStrips, context, pageBottom, layoutOptions);
       return { ...single, mainColumnCount: 1, mainColumnGap: 0 };
     }
 
     const columnGap = resolveV9MainColumnGap(cfg);
     const columnStrips = splitV9MainStripsIntoColumns(mainStrips, columnGap);
-    const rightFlow = layoutV9MainParagraphs(entries, columnStrips.right, context, pageBottom);
+    const rightFlow = layoutV9MainParagraphs(entries, columnStrips.right, context, pageBottom, layoutOptions);
     const rightLines = (rightFlow.lines || []).map(line => ({ ...line, mainColumn: "right" }));
 
     let leftFlow = {
@@ -1524,7 +1525,7 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
     };
 
     if (Array.isArray(rightFlow.overflowParagraphs) && rightFlow.overflowParagraphs.length) {
-      leftFlow = layoutV9MainParagraphs(rightFlow.overflowParagraphs, columnStrips.left, context, pageBottom);
+      leftFlow = layoutV9MainParagraphs(rightFlow.overflowParagraphs, columnStrips.left, context, pageBottom, layoutOptions);
     }
     const leftLines = (leftFlow.lines || []).map(line => ({ ...line, mainColumn: "left" }));
     const stillOverflowing = Array.isArray(leftFlow.overflowParagraphs) && leftFlow.overflowParagraphs.length > 0;
@@ -4589,10 +4590,16 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       return out;
     };
 
+    const buildProbePagePlan = (content) =>
+      buildPagePlan(content, { ...cfg, __v9FastProbe: true });
+    const trialCache = new Map();
     const trialAtN = (n) => {
+      if (trialCache.has(n)) return trialCache.get(n);
       const slice = getSlice(n);
       const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
-      return buildPagePlan(aggContent, cfg);
+      const plan = buildProbePagePlan(aggContent);
+      trialCache.set(n, plan);
+      return plan;
     };
 
     // A plan is clean when main text fits and every required note has actually
@@ -4724,7 +4731,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         const tryPrefix = (len) => {
           const half = sliceV9Paragraph(target, 0, len, { notes: notesBeforeAnchor(len) });
           const slice = [...baseSlice, half];
-          return buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+          return buildProbePagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
         };
         const splitPlanMeta = (tp, movedNotes) => {
           if (!tp || !tp.overflow || tp.overflow.mainText || tp.unstartedNotes?.length) return null;
@@ -4922,7 +4929,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
               const secondHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).secondHalf;
 
-              const fallbackPlan = buildPagePlan(
+              const fallbackPlan = buildProbePagePlan(
                 aggregateForV9([...getSlice(baseN), firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
                 cfg
               );
@@ -4961,7 +4968,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+      const currentPlan = buildProbePagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -5037,7 +5044,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             const firstHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).firstHalf;
 
             const slice = [...baseSlice, firstHalf];
-            const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+            const tp = buildProbePagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
             if (!tp || !tp.overflow || tp.overflow.mainText) continue;
 
             const rescueScore = scoreV9PageCandidate(
@@ -5084,7 +5091,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
     if (splitInfo && (allowParagraphSplit || noMidParagraph)) {
       const currentSlice = [...getSlice(splitInfo.baseN), splitInfo.firstHalf];
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+      const currentPlan = buildProbePagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -5186,7 +5193,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             [...(splitInfo.firstHalf.notes || []), ...splitNotes.before]);
           const secondHalf = extension.secondHalf;
           const slice = [...getSlice(splitInfo.baseN), firstHalf];
-          const tp = buildPagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+          const tp = buildProbePagePlan(aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
           if (!tp || !tp.overflow || tp.overflow.mainText) continue;
 
           const extensionScore = scoreV9PageCandidate(
@@ -5310,7 +5317,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             { _emergencySplit: true }
           ).firstHalf;
           const secondHalf = splitV9Paragraph(target, splitText, splitNotes.before, splitNotes.after).secondHalf;
-          const emergencyPlan = buildPagePlan(
+          const emergencyPlan = buildProbePagePlan(
             aggregateForV9([firstHalf], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
             cfg
           );
@@ -5370,7 +5377,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
+      const currentPlan = buildProbePagePlan(aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver), cfg);
       const currentFill = planFillRatio(currentPlan);
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
@@ -5416,7 +5423,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentSlice = splitInfo
         ? [...getSlice(splitInfo.baseN), splitInfo.firstHalf]
         : getSlice(bestN_clean);
-      const currentPlan = buildPagePlan(
+      const currentPlan = buildProbePagePlan(
         aggregateForV9(currentSlice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
         cfg,
       );
@@ -5439,7 +5446,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     let drainAloneMode = false;
     if (!splitInfo && hasCarryOver(carryOver)) {
       // בדוק אם carry לבד (slice ריק) חורג
-      const carryAloneTrial = buildPagePlan(
+      const carryAloneTrial = buildProbePagePlan(
         aggregateForV9([], cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver),
         cfg
       );
