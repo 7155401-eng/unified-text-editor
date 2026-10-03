@@ -5,6 +5,8 @@ import { isV9StandaloneDirectionControl } from './v9_bidi_controls.js';
 import { hasSpecialV9JustificationSeparator, needsExplicitV9JustificationSpacer } from './v9_justification_separators.js';
 
 const TYPOGRAPHY = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontVariant', 'fontFeatureSettings', 'fontKerning', 'lineHeight', 'letterSpacing', 'wordSpacing', 'color', 'backgroundColor', 'textDecoration', 'direction'];
+const V9_MEASUREMENT_CACHE_MAX = 20000;
+const V9_MEASUREMENT_CACHE_TRIM = 2000;
 const FONT_STACKS = {
   David: '"David", "David Libre", "Frank Ruhl Libre", serif',
   'David Libre': '"David Libre", "David", "Frank Ruhl Libre", serif',
@@ -224,6 +226,10 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       const key = v9MeasurementCacheKey(part);
       const found = cache.get(key);
       if (found) {
+        // True LRU: a hot measurement must not be discarded merely because
+        // 20k colder entries happened to be inserted after it.
+        cache.delete(key);
+        cache.set(key, found);
         if (perf) perf.measureCacheHits = (perf.measureCacheHits || 0) + 1;
         return found;
       }
@@ -244,9 +250,15 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
         height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
         topInset: Math.max(0, r.top - top) });
       if (perf) perf.measureDomMs = (perf.measureDomMs || 0) + performance.now() - started;
-      if (cache.size >= 20000) {
-        if (perf) perf.measureCacheFullClears = (perf.measureCacheFullClears || 0) + 1;
-        cache.clear();
+      if (cache.size >= V9_MEASUREMENT_CACHE_MAX) {
+        let evicted = 0;
+        while (cache.size > V9_MEASUREMENT_CACHE_MAX - V9_MEASUREMENT_CACHE_TRIM) {
+          const oldest = cache.keys().next().value;
+          if (oldest === undefined) break;
+          cache.delete(oldest);
+          evicted++;
+        }
+        if (perf) perf.measureCacheEvictions = (perf.measureCacheEvictions || 0) + evicted;
       }
       cache.set(key, result);
       if (perf) perf.measureCacheMaxSize = Math.max(perf.measureCacheMaxSize || 0, cache.size);
