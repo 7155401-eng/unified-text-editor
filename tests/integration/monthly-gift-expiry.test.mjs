@@ -6,7 +6,8 @@ const src = fs.readFileSync(new URL("../../worker/minute_access.js", import.meta
 const index = fs.readFileSync(new URL("../../worker/index.js", import.meta.url), "utf8");
 const payments = fs.readFileSync(new URL("../../worker/payments.js", import.meta.url), "utf8");
 
-test("monthly gift is limited to one claim per user/month", () => {
+test("monthly gift is limited to one claim per user/month on the Israel calendar", () => {
+  assert.match(src, /Asia\/Jerusalem/);
   assert.match(src, /INSERT INTO gift_claims \(user_id, year_month, claimed_at\)/);
   assert.match(src, /reason:'already_claimed'/);
   assert.match(src, /GIFT_MINUTES_PER_MONTH=20/);
