@@ -350,10 +350,13 @@ function drawRtlText(ctx, text, x, y, maxWidth, lineHeight, options = {}) {
   return y;
 }
 
-async function renderPdfCoverImage({ contentPageCount, filename }) {
+async function renderPdfCoverImage({ contentPageCount, filename, fontStack = null }) {
   // ★ משה, 14/09/2026: דף השער חייב לשאת את גופן המסמך, אחרת העמוד הראשון
   // של ה-PDF נראה מגופן אחר מכל השאר. נמדד מהתצוגה החיה, לא מנוחש.
-  const coverFont = readDocumentFontStack();
+  //
+  // A live document font can taint Chromium's canvas. Keep it as the first
+  // choice, but allow a fresh-canvas retry with a generic system font.
+  const coverFont = fontStack || readDocumentFontStack();
   const scale = PDF_EXPORT_SCALE;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(PAGE_CSS_WIDTH * scale);
@@ -453,6 +456,23 @@ async function renderPdfCoverImage({ contentPageCount, filename }) {
     height: canvas.height,
     ...pdfImage,
   };
+}
+
+export async function renderPdfCoverImageWithRecovery({ contentPageCount, filename } = {}) {
+  try {
+    return await renderPdfCoverImage({ contentPageCount, filename });
+  } catch (err) {
+    if (!isCanvasSecurityError(err)) throw err;
+    // The first canvas already failed both lossless extraction and its JPEG
+    // fallback. A tainted canvas cannot be cleaned; start a new canvas and
+    // avoid the document font that crossed the canvas security boundary.
+    console.warn("PDF cover canvas was tainted; retrying with a safe system font:", err);
+    return renderPdfCoverImage({
+      contentPageCount,
+      filename,
+      fontStack: "serif",
+    });
+  }
 }
 
 async function renderPageToPdfImage(pageEl, cssText, scale = PDF_EXPORT_SCALE, { includeBackgrounds = false } = {}) {
@@ -639,7 +659,7 @@ export async function downloadPagesAsPdf(
 
   const totalPages = pages.length + 1;
   onProgress && onProgress(1, totalPages);
-  const coverImage = await renderPdfCoverImage({
+  const coverImage = await renderPdfCoverImageWithRecovery({
     contentPageCount: pages.length,
     filename,
   });

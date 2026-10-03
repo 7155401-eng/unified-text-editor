@@ -5,6 +5,7 @@ import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.j
 import { buildPages } from '../../src/vilna_v9.js';
 import { getStreamSettings } from '../../src/original_stream_columns.js';
 import { runBrowserEdges } from './browser-edge-suite.js';
+import { runPdfCoverTaintRecoveryChecks } from './pdf-cover-taint-recovery.browser.js';
 
 function assert(value, message) { if (!value) throw new Error(message); }
 const neutral='שָׁלוֹם עולם קטן גדול משפט נוסף לדוגמה עם מילים רבות לבדיקה חוזרת ולבדיקת שורות.';
@@ -96,5 +97,6 @@ export async function runBrowserSuite() {
   });
   await runBrowserEdges(test,{assert,makePage,sourceText,paint:renderV9PlannedMainLine,inspectLines});
   await runSpacingRegressions(test,{assert,makePage,sourceText,inspectLines});
+  await runPdfCoverTaintRecoveryChecks(test,{assert});
   return {tests:results.length,passed:results.filter(r=>r.status==='pass').length,failed:results.filter(r=>r.status==='fail').length,results};
 }
