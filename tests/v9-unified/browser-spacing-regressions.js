@@ -544,6 +544,64 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
    } finally { page.remove(); }
  });
 
+ await test('empty preview CTA follows real render lifecycle events',async()=>{
+   const frame=document.createElement('iframe');
+   frame.srcdoc=`<!doctype html><html lang="he" dir="rtl"><body>
+     <button id="btn-render">render</button>
+     <div id="pages-container">
+       <button type="button" id="empty-hint-render">⟳ בנה את התצוגה עכשיו</button>
+     </div>
+     <div id="status"></div>
+     <script type="module">
+       import '/src/render_pause_controls.js?empty-hint-lifecycle-test';
+       window.__emptyHintTestModuleLoaded=true;
+     <\/script>
+   </body></html>`;
+   document.body.appendChild(frame);
+   try{
+     await new Promise((resolve,reject)=>{
+       const timer=setTimeout(()=>reject(new Error('empty-hint iframe load timeout')),5000);
+       frame.addEventListener('load',()=>{clearTimeout(timer);resolve();},{once:true});
+     });
+     const win=frame.contentWindow,doc=frame.contentDocument;
+     const until=async(pred,msg)=>{
+       const end=performance.now()+3000;
+       while(performance.now()<end){
+         if(pred())return;
+         await new Promise(r=>setTimeout(r,20));
+       }
+       throw new Error(msg);
+     };
+     await until(()=>win.__emptyHintTestModuleLoaded&&doc.getElementById('btn-render-pause'),
+       'render pause controls did not install in iframe');
+
+     const empty=()=>doc.getElementById('empty-hint-render');
+     assert(empty()&&!empty().disabled,'empty CTA should begin enabled');
+     assert(empty().getAttribute('aria-busy')==='false','empty CTA should begin aria-busy=false');
+     assert(empty().textContent==='⟳ בנה את התצוגה עכשיו',`unexpected initial CTA label: ${empty().textContent}`);
+
+     win.dispatchEvent(new win.Event('ravtext:engine-render-start'));
+     assert(empty().disabled,'render-start did not disable empty CTA');
+     assert(empty().getAttribute('aria-busy')==='true','render-start did not set aria-busy');
+     assert(empty().classList.contains('render-running'),'render-start did not apply running class');
+     assert(empty().textContent==='מכין תצוגה...',`unexpected running CTA label: ${empty().textContent}`);
+
+     win.dispatchEvent(new win.Event('ravtext:engine-render-cancelled'));
+     assert(!empty().disabled,'cancelled render did not re-enable empty CTA');
+     assert(empty().getAttribute('aria-busy')==='false','cancelled render did not clear aria-busy');
+     assert(!empty().classList.contains('render-running'),'cancelled render left running class');
+     assert(empty().textContent==='⟳ בנה את התצוגה עכשיו','cancelled render did not restore CTA label');
+
+     win.dispatchEvent(new win.Event('ravtext:engine-render-start'));
+     win.dispatchEvent(new win.Event('ravtext:engine-rendered'));
+     assert(!empty().disabled,'completed render did not re-enable empty CTA');
+     assert(empty().getAttribute('aria-busy')==='false','completed render did not clear aria-busy');
+     assert(empty().textContent==='⟳ בנה את התצוגה עכשיו','completed render did not restore CTA label');
+   } finally {
+     frame.remove();
+   }
+ });
+
  await test('classic source tokens do not break around punctuation without whitespace',async()=>{
    const link=document.createElement('link');
    link.rel='stylesheet';link.href='../../styles.css';
