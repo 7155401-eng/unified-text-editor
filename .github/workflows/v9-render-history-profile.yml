@@ -1,0 +1,52 @@
+name: Audit V9 render history profile
+on:
+  push:
+    branches: [audit/v9-render-profile-20261004]
+permissions:
+  contents: read
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install locked browser dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Checkout PR 1092 merge (1536 budget + render cache)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 500b4e9c076a29de1dadb959807930d420206078
+          path: .versions/pr1092
+          persist-credentials: false
+      - name: Checkout PR 1095 merge (4096 budget restored)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: eb00625522fe57e6f1fc34e6b6d55baa5103ecf1
+          path: .versions/pr1095
+          persist-credentials: false
+      - name: Checkout PR 1108 merge (dominance pruning)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: cf78d066c96c5de17f6f8a173f85f43e07627362
+          path: .versions/pr1108
+          persist-credentials: false
+
+      - name: Run identical Chromium profile across versions
+        run: node scripts/v9-unified/profile-render-history.mjs
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: v9-render-history-profile-${{ github.run_id }}
+          path: test-results/v9-unified/render-history-profile.json
+          retention-days: 7
