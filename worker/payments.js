@@ -19,6 +19,7 @@
 
 import { getUserFromRequest } from './session.js';
 import { getPaymentConfig, getPackageByToken } from './payment_admin.js';
+import { handleGiftClaim, handlePaymentStatus } from './minute_access.js';
 
 const PLAN_DEFS = {
   monthly: { type: 'subscription', amount: 50,  durationSec: 30 * 24 * 60 * 60 },
@@ -511,9 +512,9 @@ export async function handlePayments(request, env, url) {
   if (path === '/api/payments/yaad/callback') return yaadCallback(request, env, url);
   if (path === '/api/payments/paypal/start' && method === 'POST') return startPaypal(request, env, url);
   if (path === '/api/payments/paypal/callback') return paypalCallback(request, env, url);
-  if (path === '/api/payments/status' && (method === 'GET' || method === 'POST')) return getStatus(request, env);
+  if (path === '/api/payments/status' && (method === 'GET' || method === 'POST')) return handlePaymentStatus(request, env);
   if (path === '/api/payments/cancel' && method === 'POST') return cancelSubscription(request, env);
-  if (path === '/api/payments/gift/claim' && method === 'POST') return claimGift(request, env);
+  if (path === '/api/payments/gift/claim' && method === 'POST') return handleGiftClaim(request, env);
 
   return new Response('Not found', { status: 404 });
 }
