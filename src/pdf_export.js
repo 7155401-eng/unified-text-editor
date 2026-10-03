@@ -350,10 +350,15 @@ function drawRtlText(ctx, text, x, y, maxWidth, lineHeight, options = {}) {
   return y;
 }
 
-async function renderPdfCoverImage({ contentPageCount, filename }) {
+async function renderPdfCoverImage({ contentPageCount, filename, fontStack = null }) {
   // ★ משה, 14/09/2026: דף השער חייב לשאת את גופן המסמך, אחרת העמוד הראשון
   // של ה-PDF נראה מגופן אחר מכל השאר. נמדד מהתצוגה החיה, לא מנוחש.
-  const coverFont = readDocumentFontStack();
+  //
+  // A downloaded document font can make Chromium's canvas non-exportable on
+  // some live origins. Keep the real document font as the first choice, but
+  // allow the caller to retry on a fresh canvas with a browser-safe generic
+  // font instead of failing the whole PDF before page rendering even starts.
+  const coverFont = fontStack || readDocumentFontStack();
   const scale = PDF_EXPORT_SCALE;
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(PAGE_CSS_WIDTH * scale);
@@ -639,10 +644,26 @@ export async function downloadPagesAsPdf(
 
   const totalPages = pages.length + 1;
   onProgress && onProgress(1, totalPages);
-  const coverImage = await renderPdfCoverImage({
-    contentPageCount: pages.length,
-    filename,
-  });
+
+  let coverImage;
+  try {
+    coverImage = await renderPdfCoverImage({
+      contentPageCount: pages.length,
+      filename,
+    });
+  } catch (err) {
+    if (!isCanvasSecurityError(err)) throw err;
+    // The cover is rendered before the content-page retry machinery below.
+    // If the measured document font taints this canvas, retry from a NEW
+    // canvas with only a generic system font. Reusing the tainted canvas can
+    // never recover, and falling back to print here would lose PDF download.
+    console.warn("PDF cover canvas was tainted; retrying with a safe system font:", err);
+    coverImage = await renderPdfCoverImage({
+      contentPageCount: pages.length,
+      filename,
+      fontStack: "serif",
+    });
+  }
 
   const legacyCssText = collectLegacyCssText();
   let cssText = legacyCssText;
