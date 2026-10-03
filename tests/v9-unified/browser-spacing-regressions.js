@@ -1849,14 +1849,14 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
-  // User-reported regression: counting a dropped opening again on row two
-  // centered a bounding envelope, but pinned the actual final text to the left.
-  // Centre a complete two-row ending in its paragraph frame only when it
-  // physically clears the fixed opening. Wide endings retain their free slot.
+  // User-reported regression: a completed tail that still shares the dropped
+  // opening window must not float in the middle of only the leftover slot.
+  // Prefer true paragraph-frame centering when the natural-width body physically
+  // clears the fixed opening+gap; otherwise keep the body adjacent to the opening.
   for(const family of ['serif','sans-serif','monospace'])
   for(const dropLines of [2,3,4])
   for(const hostX of [0,19])
-  await test(`opening-window final body is centered: ${family}, drop=${dropLines}, x=${hostX}`,()=>{
+  await test(`opening-window final body centers when safe, otherwise stays adjacent: ${family}, drop=${dropLines}, x=${hostX}`,()=>{
     const context=createV9TextLayoutContext({
       mainFontSize:10,mainFontFamily:family,lineHeightRatio:1,
       openingWordSettings:{enabled:true,target:'word',count:1,font:family,size:200,weight:'bold',
@@ -1885,7 +1885,6 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const opening=page.querySelector('.v9-opening-glyph');
       const body=rows.at(-1)?.querySelector('.v9-planned-line-text');
       assert(opening&&body,'rendered fixture is incomplete');
-      assert(last.render.alignment==='center','final row is not centered');
       assert(!last.openingCompositeCentered,'opening was counted twice');
       assert(last.render.wordSpacing===0,'final row was stretched');
       const first=plan.lines[0];
@@ -1896,7 +1895,9 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
         'fixed opening moved away from the original right edge');
       const fullFrameFits=hostX+50+last.naturalWidth/2<=openingPlan.x-openingPlan.gap+1/64;
       assert(!!last.openingParagraphCentered===fullFrameFits,
-        'centering does not respect the measured opening clearance');
+        'full-frame centering does not respect the measured opening clearance');
+      assert(last.render.alignment===(fullFrameFits?'center':'right'),
+        `unsafe opening tail did not fall back to adjacency: alignment=${last.render.alignment}, fullFrameFits=${fullFrameFits}`);
       const expectedWidth=fullFrameFits?last.naturalWidth:openingPlan.x-openingPlan.gap-hostX;
       assert(Math.abs(last.width-expectedWidth)<.01,'wrong occupied final-row width');
 
@@ -1909,12 +1910,14 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const right=Math.max(...rects.map(r=>r.right));
       const freeLeft=pageRect.left+page.clientLeft+hostX;
       const freeRight=openingRect.left-openingPlan.gap;
-      const expectedCenter=fullFrameFits?freeLeft+50:(freeLeft+freeRight)/2;
+      const expectedCenter=fullFrameFits?freeLeft+50:freeRight-last.naturalWidth/2;
       const actualCenter=(left+right)/2;
       assert(Math.abs(actualCenter-expectedCenter)<=.6,
-        `final body not centered: actual=${actualCenter}, expected=${expectedCenter}`);
+        `final body has wrong visual placement: actual=${actualCenter}, expected=${expectedCenter}, safeFullFrame=${fullFrameFits}`);
+      if(!fullFrameFits)assert(Math.abs(right-freeRight)<=.6,
+        `unsafe opening tail detached from opening: right=${right}, openingEdge=${freeRight}`);
       assert(left>=freeLeft-.6 && right<=freeRight+.6,'final text overlaps the opening or leaves the host');
-      return {actualCenter,expectedCenter,freeWidth:freeRight-freeLeft};
+      return {actualCenter,expectedCenter,freeWidth:freeRight-freeLeft,fullFrameFits};
     }finally{context.dispose();page.remove();}
   });
 
