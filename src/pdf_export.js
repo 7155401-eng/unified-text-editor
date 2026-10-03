@@ -12,7 +12,7 @@ const PDF_EXPORT_DPI = 240;
 const PDF_JPEG_QUALITY = 0.985;
 const A4_WIDTH_INCHES = 210 / 25.4;
 const PDF_EXPORT_SCALE = (PDF_EXPORT_DPI * A4_WIDTH_INCHES) / PAGE_CSS_WIDTH;
-const PRINTABLE_PAGE_SELECTOR = ".page:not(.page-placeholder):not(.ravtext-empty-page)";
+const PRINTABLE_PAGE_SELECTOR = ".page:not(.page-placeholder):not(.ravtext-empty-page):not(.ravtext-range-outside)";
 
 const EXPORT_CSS_VARS = [
   "--ravtext-page-font-family",
