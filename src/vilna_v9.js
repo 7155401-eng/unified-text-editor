@@ -4205,21 +4205,31 @@ function realizeV9RangePlaceholder(pageEl) {
   return real;
 }
 
-export function syncV9PageRange(container, rawRange = null) {
+export function syncV9PageRange(container, rawRange = null, options = {}) {
   if (!container?.querySelectorAll) return;
   const range = normalizeV9RequestedPageRange(rawRange);
+  const realizeIncluded = options.realizeIncluded === true;
   const pages = Array.from(container.querySelectorAll(".page"));
   for (const original of pages) {
     const pageIdx = Math.max(0, Math.floor(Number(original.dataset.pageIndex) || 0));
     const included = v9PageNumberInRange(pageIdx, range);
     let page = original;
-    if (included && page.classList.contains("ravtext-range-skipped")) {
+
+    // Realizing a skipped V9 page is expensive. During typing/checkbox changes
+    // we only update visibility; the final render pass realizes the selected
+    // skipped pages once, after the user's range has settled.
+    if (realizeIncluded && included && page.classList.contains("ravtext-range-skipped")) {
       page = realizeV9RangePlaceholder(page);
     }
     if (!page) continue;
+
     const outside = !!range && !included;
     page.classList.toggle("ravtext-range-outside", outside);
     if (outside) {
+      page.setAttribute("hidden", "");
+      page.style.display = "none";
+    } else if (page.classList.contains("ravtext-range-skipped")) {
+      // Keep the lightweight placeholder hidden until final realization.
       page.setAttribute("hidden", "");
       page.style.display = "none";
     } else {
