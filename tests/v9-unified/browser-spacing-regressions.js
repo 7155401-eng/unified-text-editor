@@ -3,6 +3,7 @@ import { buildPages,buildSinglePage } from '../../src/vilna_v9.js';
 import { createV9TextLayoutContext, waitForV9LayoutFonts, appendV9PlannedPart, renderV9PlannedMainLine } from '../../src/engine/v9_text_measurement.js';
 import { flowV9MeasuredStream,renderV9MeasuredStreamLine } from '../../src/engine/v9_stream_inline_layout.js';
 import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/original_stream_columns.js';
+import { domPack, rebalancePages } from '../../src/engine/dom_packer.js';
 import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
@@ -542,6 +543,80 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
      assert(indices[0]===5&&indices[1]===6,`unexpected physical page indexes: ${indices.join(',')}`);
      assert(result.complete===false,'fixture unexpectedly completed; it did not exercise maxPages');
    } finally { page.remove(); }
+ });
+
+ await test('regular footer-only pagination needs no additional legal rebalance pass',async()=>{
+   const link=document.createElement('link');
+   link.rel='stylesheet';link.href='../../styles.css';document.head.appendChild(link);
+   await new Promise((resolve,reject)=>{link.onload=resolve;link.onerror=()=>reject(new Error('styles.css did not load'));});
+
+   const settings=getStreamSettings(),saved={};
+   const geom={pageWidth:380,pageHeight:537,maxPageHeight:244};
+   const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda';
+   const notePhrase='note body words continue naturally beneath the main text with enough material to paginate';
+   const content=Array.from({length:34},(_,i)=>{
+     const mainText=Array(2+(i%3)).fill(phrase).join(' ');
+     const words=[...mainText.matchAll(/\S+/gu)];
+     const a=words[Math.min(words.length-1,5+(i%7))];
+     return {
+       mainText,
+       notes:[{
+         stream:String((i%2)+1).padStart(2,'0'),
+         num:i+1,
+         uid:`regular-footer-${i}`,
+         anchor:a.index+a[0].length,
+         anchorAffinity:'backward',
+         text:Array(2+(i%4)).fill(notePhrase).join(' ')
+       }]
+     };
+   });
+
+   const compact=s=>String(s||'').replace(/\s+/gu,'');
+   const sourceSignature=pages=>{
+     const main=new Map(),notes=new Map();
+     for(const p of pages){
+       for(const seg of p.main||[]){
+         const idx=String(seg[0]);
+         main.set(idx,(main.get(idx)||'')+compact(seg[1]));
+       }
+       for(const [code,stream] of Object.entries(p.streams||{})){
+         for(const n of stream.notes||[]){
+           const uid=String(n?.[7]?.uid||`${code}:${n?.[3]||0}:${n?.[0]||0}:${n?.[2]||0}`);
+           notes.set(uid,(notes.get(uid)||'')+compact(n?.[1]));
+         }
+       }
+     }
+     return JSON.stringify({
+       main:[...main.entries()].sort((a,b)=>+a[0]-+b[0]),
+       notes:[...notes.entries()].sort((a,b)=>a[0].localeCompare(b[0]))
+     });
+   };
+
+   try{
+     for(const id of ['01','02']){
+       saved[id]=settings[id];
+       settings[id]={...(settings[id]||{}),inline:true,cols:1,titleShow:false,lemmaBold:false,noteNumEnabled:true};
+     }
+
+     const pages=await domPack(content,geom,{skipCompact:true});
+     assert(pages.length>8,`fixture needs >8 pages, got ${pages.length}`);
+     const beforeSig=sourceSignature(pages);
+     const beforeGap=pages.slice(0,-1).reduce((sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0);
+
+     await rebalancePages(pages,geom,{maxPasses:8,skipCompact:true});
+
+     const afterSig=sourceSignature(pages);
+     const afterGap=pages.slice(0,-1).reduce((sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0);
+     assert(afterSig===beforeSig,'additional rebalance changed global main/note source');
+     assert(pages.every(p=>(Number(p.total)||0)<=geom.maxPageHeight+.1),'additional rebalance overflowed a page');
+     assert(afterGap>=beforeGap-.25,
+       `REGULAR_FOOTER_UNDERFILL: later legal passes reduce gap ${beforeGap.toFixed(2)} -> ${afterGap.toFixed(2)}`);
+
+     return {pages:pages.length,beforeGap:+beforeGap.toFixed(2),afterGap:+afterGap.toFixed(2)};
+   }finally{
+     link.remove();
+     for(const id of ['01','02']){if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];}
+   }
  });
 
  await test('classic source tokens do not break around punctuation without whitespace',async()=>{
