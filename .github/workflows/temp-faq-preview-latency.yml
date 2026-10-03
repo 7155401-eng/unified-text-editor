@@ -1,0 +1,90 @@
+name: Temporary FAQ preview latency audit
+on:
+  push:
+    branches: [audit/faq-preview-latency-20261004-0300]
+    paths: ['.github/workflows/temp-faq-preview-latency.yml']
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Measure FAQ first-open feedback and warmed open
+        env:
+          PREVIEW_URL: https://fix-faq-first-open-speed-loading-20261-67a5-unified-text-editor.7155401.workers.dev
+        run: |
+          mkdir -p test-results/faq-preview
+          cat > /tmp/faq-audit.mjs <<'EOF'
+          import { chromium } from 'playwright-chromium';
+          import fs from 'node:fs';
+          const url=process.env.PREVIEW_URL;
+          const browser=await chromium.launch({headless:true});
+
+          async function readyPage(delayFaqChunk=false){
+            const context=await browser.newContext();
+            const page=await context.newPage();
+            if(delayFaqChunk){
+              await page.route('**/*faq_panel*.js*',async route=>{
+                await new Promise(r=>setTimeout(r,800));
+                await route.continue();
+              });
+            }
+            await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+            await page.waitForSelector('#rt-prem-icon-faq',{timeout:30000});
+            return {context,page};
+          }
+
+          // Cold-intent case: click while the FAQ module is deliberately slow.
+          const cold=await readyPage(true);
+          const coldStart=Date.now();
+          await cold.page.locator('#rt-prem-icon-faq').click();
+          await cold.page.waitForFunction(()=>document.querySelector('#rt-prem-icon-faq')?.getAttribute('aria-busy')==='true',{timeout:500});
+          const feedbackMs=Date.now()-coldStart;
+          const loadingText=await cold.page.locator('#rt-prem-icon-faq .rt-prem-icon-text').textContent();
+          await cold.page.waitForSelector('#rt-faq-panel.is-open',{timeout:5000});
+          const coldOpenMs=Date.now()-coldStart;
+          await cold.context.close();
+
+          // Warm case: idle preparation should load and render before the click.
+          const warm=await readyPage(false);
+          await warm.page.waitForTimeout(2200);
+          const warmStart=Date.now();
+          await warm.page.locator('#rt-prem-icon-faq').click();
+          await warm.page.waitForSelector('#rt-faq-panel.is-open',{timeout:1500});
+          const warmOpenMs=Date.now()-warmStart;
+          const questions=await warm.page.locator('#rt-faq-panel .rt-faq-item').count();
+          await warm.context.close();
+          await browser.close();
+
+          const report={url,feedbackMs,loadingText,coldOpenMs,warmOpenMs,questions};
+          fs.writeFileSync('test-results/faq-preview/report.json',JSON.stringify(report,null,2));
+          console.log(JSON.stringify(report,null,2));
+          if(feedbackMs>250) throw new Error('loading feedback too slow: '+feedbackMs+'ms');
+          if(!String(loadingText||'').includes('טוען')) throw new Error('loading text not visible');
+          if(coldOpenMs<650) throw new Error('delay fixture did not actually delay FAQ chunk');
+          if(warmOpenMs>300) throw new Error('warmed FAQ open too slow: '+warmOpenMs+'ms');
+          if(questions<1) throw new Error('FAQ rendered no questions');
+          EOF
+          node /tmp/faq-audit.mjs
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: faq-preview-latency-${{ github.run_id }}
+          path: test-results/faq-preview/
+          retention-days: 7
+          if-no-files-found: warn
