@@ -19,6 +19,8 @@ import {
   buildV9SplitPolicy,
   buildParagraphBreakCandidates,
   selectV9GapFillCandidates,
+  evaluateV9PhysicalGapFillTrigger,
+  evaluateV9PhysicalGapFillGain,
   scoreV9PageCandidate,
   splitMainTextAtOffset,
   splitNotesByAnchor,
@@ -5556,6 +5558,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         beforeFill: Number.isFinite(info.beforeFill) ? info.beforeFill : null,
         afterFill: Number.isFinite(info.afterFill) ? info.afterFill : null,
         remainingPxBefore: Number.isFinite(info.remainingPxBefore) ? info.remainingPxBefore : null,
+        bottomBefore: Number.isFinite(info.bottomBefore) ? info.bottomBefore : null,
+        bottomAfter: Number.isFinite(info.bottomAfter) ? info.bottomAfter : null,
+        bottomGainPx: Number.isFinite(info.bottomGainPx) ? info.bottomGainPx : null,
         accepted: !!info.accepted,
         rejectedReasons: Array.isArray(info.rejectedReasons) ? info.rejectedReasons : [],
         candidateCount: Number.isFinite(info.candidateCount) ? info.candidateCount : 0,
@@ -5577,6 +5582,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           beforeFill,
           afterFill: beforeFill,
           remainingPxBefore,
+          bottomBefore: bottom,
+          bottomAfter: bottom,
+          bottomGainPx: 0,
           accepted: false,
           rejectedReasons,
           candidateCount: 0,
@@ -5608,22 +5616,22 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       if (finalProbe.overflow.exceedsPage) return reject("page-overflow");
       if (mainOverflowTextOf(finalProbe)) return reject("main-overflow");
 
-      const triggerRatio = Number.isFinite(Number(cfg.finalGapFillTriggerRatio)) ? Number(cfg.finalGapFillTriggerRatio) : 0.84;
-      const minRemainingLines = Number.isFinite(Number(cfg.finalGapFillMinRemainingLines)) ? Number(cfg.finalGapFillMinRemainingLines) : 2.5;
-      const automaticMinGain = Number.isFinite(Number(cfg.finalGapFillMinGain)) ? Number(cfg.finalGapFillMinGain) : 0.04;
       const lineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
       const manualPullLines = Math.max(0, Number(cfg.__v9PageConstraint?.pullLines) || 0);
       const manualPull = manualPullLines > 0;
-      const minGain = manualPull ? 0.0001 : automaticMinGain;
+      const trigger = evaluateV9PhysicalGapFillTrigger({
+        remainingPx: remainingPxBefore,
+        lineHeight: lineH,
+        beforeFill,
+        cfg,
+        manualPull,
+      });
 
-      // Automatic gap-fill remains conservative. An explicit +N page tweak is
-      // allowed to try even on a fairly full page, but only if there is at
-      // least real physical room; all normal fit/note/footer guards below stay.
-      if (!manualPull && (beforeFill >= triggerRatio || remainingPxBefore < lineH * minRemainingLines)) {
-        return reject("not-enough-gap");
-      }
-      if (manualPull && remainingPxBefore < Math.min(lineH * 0.45, 6)) {
-        return reject("manual-no-physical-room", { manualPullLines });
+      if (!trigger.ok) {
+        return reject(trigger.reason, {
+          manualPullLines,
+          minRemainingPx: trigger.minRemainingPx,
+        });
       }
 
       const nextAvailable = getSlice(bestN + 1);
@@ -5756,8 +5764,23 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         }
 
         const afterFill = planFillRatio(testPlan);
-        if (afterFill < beforeFill + minGain) {
-          rejectCandidate(candidate, "too-small-fill-improvement", { afterFill });
+        const afterBottom = planBottomY(testPlan);
+        const physicalGain = evaluateV9PhysicalGapFillGain({
+          beforeBottom: bottom,
+          afterBottom,
+          lineHeight: lineH,
+          beforeFill,
+          afterFill,
+          cfg,
+          manualPull,
+        });
+        if (!physicalGain.ok) {
+          rejectCandidate(candidate, physicalGain.reason, {
+            afterFill,
+            afterBottom,
+            bottomGainPx: physicalGain.gainPx,
+            minGainPx: physicalGain.minGainPx,
+          });
           continue;
         }
 
@@ -5770,6 +5793,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           best = {
             score,
             afterFill,
+            afterBottom,
+            bottomGainPx: physicalGain.gainPx,
             firstHalf,
             secondHalf,
             testContent,
@@ -5795,6 +5820,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
       return finish({
         afterFill: best.afterFill,
+        bottomAfter: best.afterBottom,
+        bottomGainPx: best.bottomGainPx,
         accepted: true,
         rejectedReasons,
         candidateCount: candidates.length,
