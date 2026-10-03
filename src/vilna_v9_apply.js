@@ -568,7 +568,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     // הדגל הזה הוא מה שמפריד ביניהם: רק כשהוא דלוק מותר לשומרים
     // לשנות את גודל הדף.
     const syncRangeDuringRender = (event) => {
-      try { syncV9PageRange(container, event?.detail || null); } catch (_) {}
+      try {
+        syncV9PageRange(container, event?.detail || null, { realizeIncluded: false });
+      } catch (_) {}
     };
     if (typeof window !== "undefined") {
       window.addEventListener("ravtext:render-page-range-change", syncRangeDuringRender);
@@ -594,7 +596,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     }
 
     const finalPageRange = progress.getRange();
-    syncV9PageRange(container, finalPageRange);
+    syncV9PageRange(container, finalPageRange, { realizeIncluded: true });
     annotateV9RenderedSourceMetadata(container, transformedParagraphs);
 
     // V9 final-plan geometry and typography are complete at this point.

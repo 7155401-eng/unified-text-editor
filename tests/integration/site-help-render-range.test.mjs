@@ -10,8 +10,10 @@ test("site title and help center are wired", () => {
   const i18n = read("src/i18n.js");
   assert.match(html, /<title>מחולל הפלא של רב טקסט<\/title>/);
   assert.match(html, /id="btn-help-center"/);
+  assert.match(html, /data-i18n="appSubtitle">רב טקסט לוורד AI<\/div>/);
   assert.match(main, /wireHelpCenter\(\)/);
   assert.match(i18n, /appTitle: "מחולל הפלא של רב טקסט"/);
+  assert.match(i18n, /appSubtitle: "רב טקסט לוורד AI"/);
 });
 
 test("render progress exposes an opt-in page range that is off by default", () => {
@@ -20,6 +22,9 @@ test("render progress exposes an opt-in page range that is off by default", () =
   assert.match(ui, /rangeEnabled: false/);
   assert.match(ui, /export function getActiveRenderPageRange/);
   assert.match(ui, /רנדר רק טווח עמודים/);
+  assert.match(ui, /dispatchRangeSync\(180\)/);
+  assert.match(ui, /requestAnimationFrame\(fire\)/);
+  assert.doesNotMatch(ui, /addEventListener\("input", syncRange\)/);
 });
 
 test("V9 range wiring preserves pagination while skipping paint outside the chosen pages", () => {
@@ -31,6 +36,8 @@ test("V9 range wiring preserves pagination while skipping paint outside the chos
   assert.match(v9, /syncV9PageRange/);
   assert.match(apply, /pageRangeProvider: \(\) => progress\.getRange\(\)/);
   assert.match(apply, /ravtext:render-page-range-change/);
+  assert.match(apply, /realizeIncluded: false/);
+  assert.match(apply, /realizeIncluded: true/);
   assert.match(bridge, /applyRenderPageRangeMask\(pagesContainer, v9Result\?\.pageRange\)/);
 });
 
@@ -56,4 +63,41 @@ test("user inquiries queue mail through the Shchiche relay without embedding a r
   assert.match(worker, /deliverPendingMailNotifications/);
   assert.match(migration, /UNIQUE\(kind, source_id\)/);
   assert.doesNotMatch(inbox, /Authorization:\s*Bearer|RAVTEXT_MAIL_BRIDGE_TOKEN|MAIL_BRIDGE_SECRET/);
+});
+
+
+test("help questions are ordered around verified stream, layout, design and link controls", () => {
+  const help = read("src/help_center.js");
+  const html = read("index.html");
+  const main = read("src/main.js");
+  const streams = read("src/original_stream_columns.js");
+  const features = read("src/document_features.js");
+
+  const streamsAt = help.indexOf('id: "streams-core"');
+  const layoutsAt = help.indexOf('id: "layouts"');
+  const designAt = help.indexOf('id: "design"');
+  const importAt = help.indexOf('id: "import"');
+  assert.ok(streamsAt >= 0 && layoutsAt > streamsAt && designAt > layoutsAt && importAt > designAt);
+
+  assert.match(html, /data-cmd="split-to-panes"/);
+  assert.match(html, /data-cmd="merge-from-panes"/);
+  assert.match(html, /id="nested-notes-toggle"/);
+  assert.match(main, /markSelectionAsStream/);
+  assert.match(main, /installStreamLinksUI/);
+
+  assert.match(streams, /layoutRoleSpan\.textContent = "פריסה:"/);
+  assert.match(streams, /\["gemara", "גמרא \(כתר\)"\]/);
+  assert.match(streams, /\["mishna", "משנה ברורה"\]/);
+  assert.match(streams, /\["onkelos", "תרגום אונקלוס"\]/);
+  assert.match(streams, /\["side_notes", "הערות צד"\]/);
+  assert.match(streams, /makeStyleSelect\("סגנון זרם:"/);
+  assert.match(streams, /makeStyleSelect\("סגנון כותרת:"/);
+  assert.match(features, /const PAGE_NUM_KEY/);
+  assert.match(features, /const HEADER_KEY/);
+  assert.match(features, /const FOOTER_KEY/);
+
+  assert.match(help, /מה הם „טקסט ראשי” ו„זרמים”\?/);
+  assert.match(help, /אפשר לקשר הערה לזרם אחר ולא רק לטקסט הראשי\?/);
+  assert.match(help, /אילו פריסות אפשר לקבוע לזרם\?/);
+  assert.match(help, /אפשר לתת עיצוב שונה לכל זרם\?/);
 });

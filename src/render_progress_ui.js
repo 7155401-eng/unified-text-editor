@@ -424,29 +424,54 @@ function ensureHost() {
   const fields = host.querySelector('[data-rtp-range="fields"]');
   const from = host.querySelector('[data-rtp-range="from"]');
   const to = host.querySelector('[data-rtp-range="to"]');
-  const syncRange = () => {
+  let rangeSyncTimer = 0;
+
+  // Keep the form itself synchronous and cheap. The old implementation
+  // dispatched a whole-document page scan on *every* number keystroke, so the
+  // checkbox and number fields felt frozen while a large document was rendering.
+  const updateRangeState = () => {
     const session = activeSession;
-    if (!session || session.stopped) return;
+    if (!session || session.stopped) return null;
     session.rangeEnabled = !!enabled?.checked;
     session.rangeFrom = Math.max(1, Math.floor(Number(from?.value) || 1));
     const parsedTo = Number(to?.value);
     session.rangeTo = Number.isFinite(parsedTo) && parsedTo > 0 ? Math.floor(parsedTo) : null;
     if (fields) fields.hidden = !session.rangeEnabled;
-    try {
-      window.dispatchEvent(new CustomEvent("ravtext:render-page-range-change", {
-        detail: normalizedRangeForSession(session),
-      }));
-    } catch (_) {}
+    return normalizedRangeForSession(session);
   };
+
+  const dispatchRangeSync = (delay = 0) => {
+    if (rangeSyncTimer) clearTimeout(rangeSyncTimer);
+    const fire = () => {
+      rangeSyncTimer = 0;
+      const detail = updateRangeState();
+      try {
+        window.dispatchEvent(new CustomEvent("ravtext:render-page-range-change", { detail }));
+      } catch (_) {}
+    };
+    if (delay > 0) rangeSyncTimer = setTimeout(fire, delay);
+    else if (typeof requestAnimationFrame === "function") requestAnimationFrame(fire);
+    else setTimeout(fire, 0);
+  };
+
   if (enabled && enabled.dataset.bound !== "1") {
     enabled.dataset.bound = "1";
-    enabled.addEventListener("change", syncRange);
+    enabled.addEventListener("change", () => {
+      updateRangeState();
+      // Let the checkbox paint before touching the page DOM.
+      dispatchRangeSync(0);
+    });
   }
   for (const input of [from, to]) {
     if (!input || input.dataset.bound === "1") continue;
     input.dataset.bound = "1";
-    input.addEventListener("input", syncRange);
-    input.addEventListener("change", syncRange);
+    input.addEventListener("input", () => {
+      // New pages immediately read this state through pageRangeProvider.
+      // Existing pages are reconciled after a short idle pause.
+      updateRangeState();
+      dispatchRangeSync(180);
+    });
+    input.addEventListener("change", () => dispatchRangeSync(0));
   }
   return host;
 }
