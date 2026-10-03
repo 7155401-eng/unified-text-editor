@@ -43,6 +43,31 @@ test('default 4096 budget preserves feasible five-row tails beyond 1536 evaluati
   assert.deepEqual(full.boundaries,[1,2,3,4]);
 });
 
+test('dominated endpoint paths keep logical budget while skipping expensive metrics',()=>{
+  const rows=[{},{},{}];
+  const metric=(counter)=>(i,from,to)=>{
+    counter.calls++;
+    // First-row endpoint 1 is much cheaper than the later first-row states.
+    // On row 2 those expensive states can never improve endpoints already
+    // reached through endpoint 1, even if their next transition had pressure 0.
+    if(i===0)return {pressure:to===1?0:5};
+    return {pressure:1};
+  };
+
+  const fullCounter={calls:0};
+  const full=solve({wordCount:6,rows,maxSpacing:8,metricFor:metric(fullCounter)});
+  assert.equal(full.status,'complete');
+  assert.equal(full.evaluations,18,'logical traversal/evaluation count changed');
+  assert.deepEqual(full.boundaries,[1,2]);
+  assert.equal(fullCounter.calls,12,'dominated transitions still invoked expensive metricFor');
+
+  const limitedCounter={calls:0};
+  const limited=solve({wordCount:6,rows,maxSpacing:8,maxEvaluations:11,metricFor:metric(limitedCounter)});
+  assert.deepEqual(limited,{status:'budget-exhausted',evaluations:11},
+    'dominance pruning changed the historical budget-exhaustion point');
+  assert.equal(limitedCounter.calls,8,'budget-preserving prune did not skip dominated metric calls');
+});
+
 test('budget exhaustion cannot return a partial candidate',()=>{
   const r=solve({wordCount:30,rows:[{},{},{},{}],maxSpacing:8,maxEvaluations:3,metricFor:()=>({pressure:1})});
   assert.deepEqual(r,{status:'budget-exhausted',evaluations:3});
