@@ -55,6 +55,9 @@ function readStyleSnapshot() {
           ? localStorage.getItem(CUSTOM_STYLES_KEY)
           : null;
     } catch {
+      // If a read failure happens after we already cached something,
+      // we must not throw; we must return the empty array and NOT poison the cache
+      // as "valid" but we do need to reset it.
       cachedStylesRaw = STYLE_CACHE_UNREAD;
       cachedStylesSnapshot = Object.freeze([]);
       cachedStylesValid = false;
