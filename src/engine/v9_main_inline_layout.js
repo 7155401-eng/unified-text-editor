@@ -146,6 +146,43 @@ function freezeLine(line) {
 
 const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
+const EXACT_TAIL_CACHE_MAX = 1024;
+const exactTailCacheByContext = new WeakMap();
+
+function exactTailCacheFor(context) {
+  let cache = exactTailCacheByContext.get(context);
+  if (!cache) {
+    cache = new Map();
+    exactTailCacheByContext.set(context, cache);
+  }
+  return cache;
+}
+
+function exactTailCacheKey({
+  context, entry, sourceBase, sourceSegmentStart, bodySegmentStart, segmentEnd,
+  words, tail, gentleMax,
+}) {
+  return JSON.stringify([
+    Number(context?.generation) || 0,
+    String(entry?.id || ''),
+    String(entry?.text || ''),
+    entry?.runs || [],
+    entry?.mainRefs || [],
+    entry?.typography || {},
+    sourceBase,
+    sourceSegmentStart,
+    bodySegmentStart,
+    segmentEnd,
+    words.map(w => [w.start, w.end]),
+    tail.map(line => [
+      Number(line?.width) || 0,
+      Number(line?.lineHeightPx) || 0,
+      !!line?.render?.opening,
+      Array.isArray(line?.wordTokens) ? line.wordTokens.length : -1,
+    ]),
+    gentleMax,
+  ]);
+}
 
 function continuationTailGentleSpacing(context) {
   const fontSize = number(context?.fontSize, 13);
@@ -380,12 +417,37 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     // One-word local moves can be trapped: two or more boundaries may need
     // to change together. Before clipping a row, search complete measured
     // partitions of this same source interval under the existing gentle cap.
-    const search = findV9ExactTailPartition({
-      wordCount: words.length,
-      rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
-      maxSpacing: gentleMax,
-      metricFor,
+    const cache = exactTailCacheFor(context);
+    const cacheKey = exactTailCacheKey({
+      context,
+      entry,
+      sourceBase,
+      sourceSegmentStart,
+      bodySegmentStart,
+      segmentEnd,
+      words,
+      tail,
+      gentleMax,
     });
+    let search = cache.get(cacheKey);
+    if (!search) {
+      search = findV9ExactTailPartition({
+        wordCount: words.length,
+        rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
+        maxSpacing: gentleMax,
+        metricFor,
+        // Full-browser profiling on current V9 found every successful exact
+        // partition within 1,117 evaluations; the locked alignment matrix
+        // peaked at 633. Keep a conservative margin while stopping pathological
+        // no-solution searches from repeatedly burning the old 4,096 ceiling.
+        maxEvaluations: 1536,
+      });
+      if (cache.size >= EXACT_TAIL_CACHE_MAX) {
+        const oldest = cache.keys().next().value;
+        if (oldest !== undefined) cache.delete(oldest);
+      }
+      cache.set(cacheKey, search);
+    }
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
       const exactPaint = alternative && alternative.metrics.every((metric, i) => {
