@@ -4217,8 +4217,13 @@ export function syncV9PageRange(container, rawRange = null) {
     if (!page) continue;
     const outside = !!range && !included;
     page.classList.toggle("ravtext-range-outside", outside);
-    if (outside) page.setAttribute("hidden", "");
-    else page.removeAttribute("hidden");
+    if (outside) {
+      page.setAttribute("hidden", "");
+      page.style.display = "none";
+    } else {
+      page.removeAttribute("hidden");
+      page.style.display = "";
+    }
   }
 }
 
