@@ -99,9 +99,10 @@ function applyPageNumbers(pages = pageElements()) {
 // the delayed UI wiring runs, and page numbering must already participate in it.
 if (typeof window !== "undefined") installPageNumberPreRenderDecorator();
 
-function applyHeaderFooter(pages = pageElements()) {
+export function applyHeaderFooter(pages = pageElements(), context = createLayoutContext()) {
   const headerText = localStorage.getItem(HEADER_KEY) || "";
   const footerText = localStorage.getItem(FOOTER_KEY) || "";
+  const footerBottom = Number(context?.features?.footerBottom);
   pages.forEach((page) => {
     let header = page.querySelector(".ravtext-page-header");
     let footer = page.querySelector(".ravtext-page-footer");
@@ -122,6 +123,11 @@ function applyHeaderFooter(pages = pageElements()) {
         page.appendChild(footer);
       }
       footer.textContent = footerText;
+      // layout_context owns the stack geometry. Persist the resolved bottom as
+      // an inline pixel value on the rendered footer so HTML/PDF clones keep
+      // the exact non-overlapping position without depending on live root vars.
+      if (Number.isFinite(footerBottom)) footer.style.bottom = `${footerBottom}px`;
+      else footer.style.removeProperty("bottom");
     } else {
       footer?.remove();
     }
@@ -199,8 +205,10 @@ function applyAll() {
   // One DOM snapshot per pass. Each feature used to run its own global
   // querySelectorAll(), tripling full-page traversal on every refresh.
   const pages = pageElements();
+  const context = (typeof window !== "undefined" && window.__RAVTEXT_LAYOUT_CONTEXT__)
+    || createLayoutContext();
   applyPageNumbers(pages);
-  applyHeaderFooter(pages);
+  applyHeaderFooter(pages, context);
   applyWatermark(pages);
 }
 
