@@ -727,6 +727,33 @@ function buildIconButton({ id, cls, title, label, html, text }) {
   return btn;
 }
 
+let faqModulePromise = null;
+
+function loadFaqModule() {
+  if (!faqModulePromise) {
+    faqModulePromise = import("../faq_panel.js").catch((err) => {
+      faqModulePromise = null;
+      throw err;
+    });
+  }
+  return faqModulePromise;
+}
+
+function warmFaqModule() {
+  return loadFaqModule()
+    .then((mod) => mod.prepareFaqPanel?.())
+    .catch(() => {});
+}
+
+function scheduleFaqWarmup() {
+  const run = () => { warmFaqModule(); };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 1800 });
+  } else {
+    window.setTimeout(run, 900);
+  }
+}
+
 export function installHeaderPremiumIcons() {
   if (typeof document === "undefined") return;
   // משה 2026-05-10: guard לפי אייקון ההגדרות (תמיד מותקן לכולם), כי היהלום לא
@@ -791,9 +818,36 @@ export function installHeaderPremiumIcons() {
       </svg>
     `,
   });
-  faqIcon.addEventListener("click", () => {
-    import("../faq_panel.js").then((m) => m.openFaqPanel()).catch(() => {});
+  const faqText = faqIcon.querySelector(".rt-prem-icon-text");
+  const setFaqLoading = (loading) => {
+    faqIcon.classList.toggle("is-loading", loading);
+    faqIcon.setAttribute("aria-busy", loading ? "true" : "false");
+    if (faqText) faqText.textContent = loading ? "טוען…" : "שאלות";
+  };
+
+  // First-open speed: fetch and prepare the FAQ module before the click when
+  // the browser is idle, and immediately on pointer/focus intent. The import
+  // promise is shared, so all paths converge on one network/module evaluation.
+  faqIcon.addEventListener("pointerenter", warmFaqModule, { passive: true });
+  faqIcon.addEventListener("focus", warmFaqModule);
+  faqIcon.addEventListener("click", async () => {
+    setFaqLoading(true);
+    try {
+      const mod = await loadFaqModule();
+      mod.openFaqPanel();
+    } catch (err) {
+      console.error("FAQ load failed:", err);
+      showToast({
+        kind: "warn",
+        title: "שאלות נפוצות",
+        msg: "טעינת השאלות נכשלה. נסו שוב.",
+        autoCloseMs: 3500,
+      });
+    } finally {
+      setFaqLoading(false);
+    }
   });
+  scheduleFaqWarmup();
 
   // משה 2026-05-09: גלגל שיניים אלגנטי עם גרדיאנט פנימי + סיבוב hover.
   // (קודם היה מפתח שוודי — חסר השראה. הגלגל מקובל יותר ומיד מזוהה כ"הגדרות".)

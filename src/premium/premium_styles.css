@@ -57,6 +57,39 @@
   margin-inline-start: 6px;
 }
 
+/* FAQ first-open loading feedback. The module normally prewarms during idle,
+   but an immediate click still gets a visible spinner instead of a frozen UI. */
+.rt-prem-icon-faq.is-loading {
+  cursor: progress;
+  color: var(--word-blue, #2B579A);
+}
+.rt-prem-icon-faq.is-loading .rt-prem-icon-glyph {
+  opacity: 0.22;
+  transform: scale(0.88);
+}
+.rt-prem-icon-faq.is-loading .rt-prem-icon-text {
+  max-width: 200px;
+  opacity: 1;
+  margin-inline-start: 6px;
+}
+.rt-prem-icon-faq.is-loading::after {
+  content: "";
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-inline-start-color: transparent;
+  border-radius: 50%;
+  animation: rt-faq-loading-spin 0.68s linear infinite;
+  pointer-events: none;
+}
+@keyframes rt-faq-loading-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rt-prem-icon-faq.is-loading::after { animation-duration: 1.4s; }
+}
+
 /* יהלום פרמיום — מהבהב + מחליף צבעים */
 .rt-prem-icon-diamond {
   background: linear-gradient(135deg, rgba(255,255,255,0.96) 0%, rgba(241,245,249,0.96) 100%);

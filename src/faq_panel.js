@@ -101,25 +101,34 @@ function entries() {
 }
 
 let allEntries = null;
+let lastRenderedFilter = null;
+let renderFrame = 0;
 
 function render(filter) {
-  if (!listEl) return;
+  if (!listEl || !allEntries) return;
   const q = String(filter || "").trim().toLowerCase();
+  if (q === lastRenderedFilter && listEl.childNodes.length) return;
+
   const rows = q ? allEntries.filter(e => e.hay.includes(q)) : allEntries;
-  listEl.textContent = "";
   const count = panel.querySelector(".rt-faq-count");
   if (count) {
     count.textContent = q
       ? `${rows.length} מתוך ${allEntries.length} שאלות`
       : `${allEntries.length} שאלות`;
   }
+
   if (!rows.length) {
     const empty = document.createElement("div");
     empty.className = "rt-faq-empty";
     empty.textContent = "לא מצאנו שאלה שמתאימה. נסו מילה אחרת.";
-    listEl.appendChild(empty);
+    listEl.replaceChildren(empty);
+    lastRenderedFilter = q;
     return;
   }
+
+  // Build off-DOM and commit once. This avoids a layout/style recalculation
+  // for every FAQ row during the first open and during search filtering.
+  const fragment = document.createDocumentFragment();
   for (const e of rows) {
     const item = document.createElement("div");
     item.className = "rt-faq-item";
@@ -130,8 +139,10 @@ function render(filter) {
     aEl.className = "rt-faq-a";
     aEl.textContent = e.a;
     item.append(qEl, aEl);
-    listEl.appendChild(item);
+    fragment.appendChild(item);
   }
+  listEl.replaceChildren(fragment);
+  lastRenderedFilter = q;
 }
 
 function onKey(ev) {
@@ -172,7 +183,13 @@ function build() {
   searchInput.className = "rt-faq-search";
   searchInput.placeholder = "חפשו כאן — למשל: רינדור, זרם, ייצוא";
   searchInput.setAttribute("aria-label", "חיפוש בשאלות נפוצות");
-  searchInput.addEventListener("input", () => render(searchInput.value));
+  searchInput.addEventListener("input", () => {
+    if (renderFrame) cancelAnimationFrame(renderFrame);
+    renderFrame = requestAnimationFrame(() => {
+      renderFrame = 0;
+      render(searchInput.value);
+    });
+  });
 
   const count = document.createElement("div");
   count.className = "rt-faq-count";
@@ -186,10 +203,15 @@ function build() {
   document.addEventListener("click", onOutside, true);
 }
 
-export function openFaqPanel() {
+export function prepareFaqPanel() {
   if (!panel) build();
   if (!allEntries) allEntries = entries();
   render(searchInput ? searchInput.value : "");
+  return panel;
+}
+
+export function openFaqPanel() {
+  prepareFaqPanel();
   panel.classList.add("is-open");
   try { searchInput.focus(); } catch (_) {}
 }
