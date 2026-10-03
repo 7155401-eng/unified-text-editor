@@ -1,0 +1,57 @@
+name: Temporary render regression bisect
+on:
+  push:
+    branches: [gpt56sol-render-perf-20261003-2149-a7d2]
+permissions:
+  contents: read
+jobs:
+  bisect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout benchmark points
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 397aba749e0ea135af5ef0085dadd23ed43dd18b
+          path: .perf-1060
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 2998a567086406860b677b39def128a8a30d2e51
+          path: .perf-1065
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 894b9958f17034ea9788819b056ad6a4e2d49144
+          path: .perf-1069
+          persist-credentials: false
+      - name: Share locked dependencies
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-1060/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-1065/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-1069/node_modules"
+      - name: Benchmark 1060
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-1060 --out test-results/perf-1060.json
+      - name: Benchmark 1065
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-1065 --out test-results/perf-1065.json
+      - name: Benchmark 1069
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-1069 --out test-results/perf-1069.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: temporary-render-bisect-${{ github.run_id }}
+          path: test-results/perf-10*.json
+          retention-days: 3
