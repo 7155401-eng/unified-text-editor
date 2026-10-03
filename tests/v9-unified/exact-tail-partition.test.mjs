@@ -47,3 +47,29 @@ for(const change of [{wordCount:0},{wordCount:1.5},{rows:[]},{maxSpacing:NaN},{m
 test('rows without enough words cannot allocate empty body lines',()=>{
  assert.deepEqual(solve({wordCount:1,rows:[{},{}],maxSpacing:8,metricFor:()=>{throw Error('unexpected')}}),{status:'infeasible',evaluations:0});
 });
+
+
+test('optional boundary windows preserve exhaustive choice inside the requested neighborhood',()=>{
+ const allowed=new Map([
+  ['0/0/2',1],['1/2/4',1],['2/4/6',1],
+  ['0/0/1',2],['1/1/3',2],['2/3/6',2],
+ ]);
+ const metricFor=(i,a,b)=>{
+  const pressure=allowed.get(`${i}/${a}/${b}`);
+  return pressure==null?null:{pressure};
+ };
+ const unrestricted=solve({wordCount:6,rows:[{},{},{}],maxSpacing:8,metricFor});
+ assert.equal(unrestricted.status,'complete');
+ assert.deepEqual(unrestricted.boundaries,[2,4]);
+ const windowed=solve({
+  wordCount:6,rows:[{},{},{}],maxSpacing:8,metricFor,
+  boundaryWindows:[{min:1,max:3},{min:3,max:5}],
+ });
+ assert.equal(windowed.status,'complete');
+ assert.deepEqual(windowed.boundaries,[2,4]);
+ const excluded=solve({
+  wordCount:6,rows:[{},{},{}],maxSpacing:8,metricFor,
+  boundaryWindows:[{min:3,max:3},{min:4,max:4}],
+ });
+ assert.equal(excluded.status,'infeasible');
+});
