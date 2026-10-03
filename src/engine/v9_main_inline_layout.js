@@ -148,6 +148,48 @@ const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
 const EXACT_TAIL_CACHE_MAX = 1024;
 const exactTailCacheByContext = new WeakMap();
+const exactTailNormalizedSeenByContext = new WeakMap();
+
+function exactTailNormalizedSeenFor(context) {
+  let seen = exactTailNormalizedSeenByContext.get(context);
+  if (!seen) {
+    seen = new Set();
+    exactTailNormalizedSeenByContext.set(context, seen);
+  }
+  return seen;
+}
+
+function exactTailNormalizedProfileKey({
+  context, entry, sourceSegmentStart, bodySegmentStart, segmentEnd,
+  words, tail, gentleMax,
+}) {
+  const refs = (entry.mainRefs || [])
+    .filter(r => referenceInV9Range(r, sourceSegmentStart, segmentEnd, entry.text.length))
+    .sort((a,b)=>refAnchor(a)-refAnchor(b))
+    .map(r => [
+      refAnchor(r) - sourceSegmentStart,
+      String(r.anchorAffinity || ''),
+      String(r.formatted || ''),
+      String(r.cssText || ''),
+    ]);
+  return JSON.stringify([
+    Number(context?.generation) || 0,
+    entry.text.slice(sourceSegmentStart, segmentEnd),
+    sliceRuns(entry.runs || [], sourceSegmentStart, segmentEnd),
+    refs,
+    entry.typography || {},
+    bodySegmentStart - sourceSegmentStart,
+    segmentEnd - sourceSegmentStart,
+    words.map(w => [w.start - sourceSegmentStart, w.end - sourceSegmentStart]),
+    tail.map(line => [
+      Number(line?.width) || 0,
+      Number(line?.lineHeightPx) || 0,
+      !!line?.render?.opening,
+      Array.isArray(line?.wordTokens) ? line.wordTokens.length : -1,
+    ]),
+    gentleMax,
+  ]);
+}
 
 function exactTailCacheFor(context) {
   let cache = exactTailCacheByContext.get(context);
@@ -430,13 +472,38 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       gentleMax,
     });
     let search = cache.get(cacheKey);
+    const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+      ? (window.__ravtextV9Perf ||= {}) : null;
+    if (perf) {
+      const normalizedKey = exactTailNormalizedProfileKey({
+        context, entry, sourceSegmentStart, bodySegmentStart, segmentEnd,
+        words, tail, gentleMax,
+      });
+      const normalizedSeen = exactTailNormalizedSeenFor(context);
+      if (search) {
+        perf.exactCacheHits = (perf.exactCacheHits || 0) + 1;
+      } else {
+        perf.exactCacheMisses = (perf.exactCacheMisses || 0) + 1;
+        if (normalizedSeen.has(normalizedKey)) {
+          perf.exactNormalizedPotentialHits = (perf.exactNormalizedPotentialHits || 0) + 1;
+        }
+      }
+      normalizedSeen.add(normalizedKey);
+    }
     if (!search) {
+      const exactStarted = perf ? performance.now() : 0;
       search = findV9ExactTailPartition({
         wordCount: words.length,
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
         maxSpacing: gentleMax,
         metricFor,
       });
+      if (perf) {
+        perf.exactSearchMs = (perf.exactSearchMs || 0) + (performance.now() - exactStarted);
+        perf.exactSearchEvaluations = (perf.exactSearchEvaluations || 0) + (search.evaluations || 0);
+        const statusKey = 'exactSearchStatus_' + String(search.status || 'unknown').replace(/[^a-z0-9]+/gi,'_');
+        perf[statusKey] = (perf[statusKey] || 0) + 1;
+      }
       if (cache.size >= EXACT_TAIL_CACHE_MAX) {
         const oldest = cache.keys().next().value;
         if (oldest !== undefined) cache.delete(oldest);
