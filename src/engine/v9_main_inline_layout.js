@@ -397,8 +397,13 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       perf.exactTailMs = (perf.exactTailMs || 0) + elapsed;
       perf.exactTailEvaluations = (perf.exactTailEvaluations || 0) + (search.evaluations || 0);
       perf.exactTailMaxEvaluations = Math.max(perf.exactTailMaxEvaluations || 0, search.evaluations || 0);
-      const key = "exactTailStatus_" + String(search.status || "unknown").replace(/[^a-z0-9]+/gi, "_");
+      const statusName = String(search.status || "unknown").replace(/[^a-z0-9]+/gi, "_");
+      const key = "exactTailStatus_" + statusName;
       perf[key] = (perf[key] || 0) + 1;
+      const maxKey = "exactTailMaxEvaluations_" + statusName;
+      perf[maxKey] = Math.max(perf[maxKey] || 0, search.evaluations || 0);
+      const sumKey = "exactTailEvaluations_" + statusName;
+      perf[sumKey] = (perf[sumKey] || 0) + (search.evaluations || 0);
     }
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
