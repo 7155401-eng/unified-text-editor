@@ -1760,6 +1760,42 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  await test('probe: actual dropped-opening + final-body ink is centered',()=>{
+    const context=createV9TextLayoutContext({
+      mainFontSize:10,mainFontFamily:'serif',lineHeightRatio:1,
+      openingWordSettings:{enabled:true,target:'word',count:1,font:'serif',size:200,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:0.2,scope:'all',
+        skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1}
+    });
+    const page=makePage();
+    try{
+      let plan=null;
+      for(let words=4;words<=18;words++){
+        const text='פתיח '+Array(words).fill('אב').join(' ');
+        const entry=context.prepareEntry({id:'ink-center-probe',index:1,text,runs:[],mainRefs:[],continues:false});
+        const candidate=layoutV9MainParagraphs([entry],[{x:0,width:100,y_start:0,y_end:100}],context,100);
+        if(candidate.lines.length===2&&candidate.lines[1].isLast&&candidate.lines[1].openingWindow){plan=candidate;break;}
+      }
+      assert(plan,'fixture search did not produce a two-row paragraph ending inside the opening window');
+      page.style.position='relative';page.style.width='100px';page.style.height='100px';page.style.padding='0';
+      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+      const rows=[...page.querySelectorAll('.v9-final-main-line')];
+      const opening=page.querySelector('.v9-opening-glyph');
+      const body=rows.at(-1)?.querySelector('.v9-planned-line-text');
+      assert(opening&&body,'rendered opening fixture is incomplete');
+      const pageRect=page.getBoundingClientRect(),openingRect=opening.getBoundingClientRect();
+      const range=document.createRange();range.selectNodeContents(body);
+      const bodyRects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
+      assert(bodyRects.length,'final body has no measurable ink');
+      const bodyLeft=Math.min(...bodyRects.map(r=>r.left)),bodyRight=Math.max(...bodyRects.map(r=>r.right));
+      const left=Math.min(openingRect.left,bodyLeft)-pageRect.left;
+      const right=Math.max(openingRect.right,bodyRight)-pageRect.left;
+      const center=(left+right)/2;
+      assert(Math.abs(center-50)<=1.25,
+        'actual opening+body ink is off center: left='+left.toFixed(2)+' right='+right.toFixed(2)+' center='+center.toFixed(2));
+    }finally{context.dispose();page.remove();}
+  });
+
   // User-reported regression: counting a dropped opening again on row two
   // centered a bounding envelope, but pinned the actual final text to the left.
   // Centre a complete two-row ending in its paragraph frame only when it
