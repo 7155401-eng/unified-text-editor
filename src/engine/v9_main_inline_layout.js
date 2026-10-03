@@ -149,6 +149,16 @@ const TAIL_REBALANCE_SCORE_EPS = 0.001;
 const EXACT_TAIL_CACHE_MAX = 1024;
 const exactTailCacheByContext = new WeakMap();
 
+export function v9TailMetricCacheKey({
+  fromWord, toWord, start, visibleEnd, consumedEnd, target, maxHeight, openingOnly,
+}) {
+  return [
+    Number(fromWord), Number(toWord),
+    Number(start), Number(visibleEnd), Number(consumedEnd),
+    Number(target), Number(maxHeight), openingOnly ? 1 : 0,
+  ].join(':');
+}
+
 function exactTailCacheFor(context) {
   let cache = exactTailCacheByContext.get(context);
   if (!cache) {
@@ -307,8 +317,6 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
   const metricFor = (lineIndex, fromWord, toWord) => {
     if (fromWord < 0 || toWord < fromWord || toWord > words.length) return null;
-    const key = `${lineIndex}:${fromWord}:${toWord}`;
-    if (cache.has(key)) return cache.get(key);
 
     const openingOnly = toWord === fromWord && !!tail[lineIndex]?.render?.opening;
     if (!(toWord > fromWord) && !openingOnly) return null;
@@ -322,10 +330,15 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     const visibleEnd = toWord > fromWord ? words[toWord - 1].end : start;
     const consumedEnd = openingOnlyHost && lineIndex === 0 ? start
       : toWord < words.length ? (words[toWord]?.start ?? segmentEnd) : segmentEnd;
-    const body = partForRange(entry, start, visibleEnd, consumedEnd);
-    const measured = context.measure(body);
     const target = number(tail[lineIndex]?.width, 0);
     const maxHeight = number(tail[lineIndex]?.lineHeightPx, context.lineHeight);
+    const key = v9TailMetricCacheKey({
+      fromWord, toWord, start, visibleEnd, consumedEnd, target, maxHeight, openingOnly,
+    });
+    if (cache.has(key)) return cache.get(key);
+
+    const body = partForRange(entry, start, visibleEnd, consumedEnd);
+    const measured = context.measure(body);
 
     if (!(target > 0) || !measured || measured.width > target + EPS ||
         (measured.height > 0 && maxHeight > 0 && measured.height > maxHeight + EPS)) {
