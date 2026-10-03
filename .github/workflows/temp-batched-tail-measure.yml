@@ -1,0 +1,74 @@
+name: Temporary batched tail measurement validation
+on:
+  push:
+    branches: [solperf-batched-tail-measure-20261003-2300-83d17b6c]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Unit regressions
+        run: node --test tests/v9-unified/*.test.mjs
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Browser regressions before build
+        run: node scripts/v9-unified/run-browser.mjs
+      - name: Checkout pinned baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 3a012d9b42435eff009cdddbb2c3fd29acec07e0
+          path: .perf-baseline
+          persist-credentials: false
+      - name: Share locked dependencies
+        run: ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-baseline/node_modules"
+      - name: Baseline benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-baseline --out test-results/perf-baseline.json
+      - name: Candidate benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/perf-candidate.json
+      - name: Require identical output and report gain
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const a=JSON.parse(fs.readFileSync('test-results/perf-baseline.json','utf8'));
+          const b=JSON.parse(fs.readFileSync('test-results/perf-candidate.json','utf8'));
+          const summary=[];
+          for(let i=0;i<a.cases.length;i++){
+            const x=a.cases[i],y=b.cases[i];
+            for(const k of ['name','pages','complete','sourceChars','renderedChars','domSha256']){
+              if(x[k]!==y[k]) throw new Error('Render output drift '+k+': '+JSON.stringify({baseline:x,candidate:y}));
+            }
+            summary.push({name:x.name,baselineMs:x.ms,candidateMs:y.ms,ratio:y.ms/Math.max(1,x.ms),
+              baselineMaxLongTask:x.maxLongTask,candidateMaxLongTask:y.maxLongTask});
+          }
+          console.log(JSON.stringify(summary,null,2));
+          NODE
+      - name: Build twice without source rewrites
+        run: |
+          git diff --exit-code -- src tests scripts
+          npm run build
+          git diff --exit-code -- src tests scripts
+          npm run build
+          git diff --exit-code -- src tests scripts
+      - name: Repeat unit and browser regressions after build
+        run: |
+          node --test tests/v9-unified/*.test.mjs
+          node scripts/v9-unified/run-browser.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: batched-tail-measure-${{ github.run_id }}
+          path: test-results/
+          retention-days: 3
