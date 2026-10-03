@@ -11,6 +11,7 @@ const number = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fal
 const refAnchor = r => Number(r.anchor ?? r.absoluteAnchor ?? r.localAnchor);
 
 const EXACT_TAIL_CACHE_LIMIT = 4096;
+const EXACT_TAIL_MAX_EVALUATIONS = 1536;
 const exactTailCaches = new WeakMap();
 
 function exactTailCacheFor(context) {
@@ -54,6 +55,7 @@ function exactTailCacheKey({
       Array.isArray(line?.wordTokens) ? line.wordTokens.length : -1,
     ]),
     gentleMax,
+    EXACT_TAIL_MAX_EVALUATIONS,
   ]);
 }
 
@@ -462,6 +464,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
         maxSpacing: gentleMax,
         metricFor,
+        maxEvaluations: EXACT_TAIL_MAX_EVALUATIONS,
       }));
     }
     if (search.status === 'complete') {
