@@ -624,7 +624,12 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
           // The opening already reserves its width and gap in geometry. A
           // final body row inherits the paragraph's ordinary centering inside
           // that free slot; it is not an independent opening+body composite.
-          alignment: isLast || forcedBreak ? 'center' : 'right' },
+          // A final row that still shares the dropped-opening window must stay
+          // adjacent to that fixed opening. Centering the body inside only the
+          // leftover slot detaches the visible tail from the opening. The later
+          // full-frame centering pass may still move it when that move is proven
+          // to clear the opening+gap.
+          alignment: isLast && openingWindow ? 'right' : (isLast || forcedBreak ? 'center' : 'right') },
       };
       lines.push(line);
       if (attached) openingAttached = true;
