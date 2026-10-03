@@ -406,6 +406,13 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       perf[sumKey] = (perf[sumKey] || 0) + (search.evaluations || 0);
     }
     if (search.status === 'complete') {
+      if (perf) {
+        const maxMove = Math.max(0, ...search.boundaries.map((boundary, i) =>
+          Math.abs(boundary - (initialBoundaries[i] ?? boundary))));
+        perf.exactTailMaxBoundaryMove = Math.max(perf.exactTailMaxBoundaryMove || 0, maxMove);
+        const moveKey = "exactTailBoundaryMove_" + Math.min(8, maxMove);
+        perf[moveKey] = (perf[moveKey] || 0) + 1;
+      }
       const alternative = evaluate(search.boundaries);
       const exactPaint = alternative && alternative.metrics.every((metric, i) => {
         if (metric.pressure > gentleMax + 1e-9) return false;
