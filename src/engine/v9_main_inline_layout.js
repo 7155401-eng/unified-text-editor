@@ -621,10 +621,11 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
               ? resolveSpecialV9JustificationSpacing(context, body, natural, geometry.width, gaps)
               : Math.max(0, (geometry.width - natural) / gaps))
             : 0,
-          // The opening already reserves its width and gap in geometry. A
-          // final body row inherits the paragraph's ordinary centering inside
-          // that free slot; it is not an independent opening+body composite.
-          alignment: isLast || forcedBreak ? 'center' : 'right' },
+          // A completed body row that still shares the dropped-opening window
+          // stays adjacent to that opening by default. The later full-frame
+          // centering pass may still center it when measured geometry proves
+          // the natural-width body clears the fixed opening + configured gap.
+          alignment: isLast && openingWindow ? 'right' : (isLast || forcedBreak ? 'center' : 'right') },
       };
       lines.push(line);
       if (attached) openingAttached = true;
