@@ -146,6 +146,13 @@ function freezeLine(line) {
 
 const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
+// Profiling on the current planner found every conclusive exact-tail search at
+// <=1117 evaluations, while only budget-exhausted searches continued to 4096.
+// Keep headroom without letting pathological probes monopolize the main thread.
+const EXACT_TAIL_MAX_EVALUATIONS = 1536;
+// Every successful current-workload partition stayed within six words of the
+// already measured row boundaries. Use eight as a conservative search margin.
+const EXACT_TAIL_BOUNDARY_RADIUS = 8;
 
 function continuationTailGentleSpacing(context) {
   const fontSize = number(context?.fontSize, 13);
@@ -385,6 +392,11 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
       maxSpacing: gentleMax,
       metricFor,
+      maxEvaluations: EXACT_TAIL_MAX_EVALUATIONS,
+      boundaryWindows: initialBoundaries.map(boundary => ({
+        min: Math.max(0, boundary - EXACT_TAIL_BOUNDARY_RADIUS),
+        max: Math.min(words.length, boundary + EXACT_TAIL_BOUNDARY_RADIUS),
+      })),
     });
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
