@@ -72,6 +72,8 @@ jobs:
         run: node scripts/verify_header_styles.mjs
       - name: Merge integrity verifier
         run: node scripts/verify_merge_verifier.mjs
+      - name: Parallel translation engine
+        run: node scripts/verify_parallel_translation.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
@@ -90,6 +92,8 @@ jobs:
         run: node scripts/verify_header_styles_browser.mjs
       - name: Merge verifier screen in a real browser
         run: node scripts/verify_merge_verifier_browser.mjs
+      - name: Parallel translation screen in a real browser
+        run: node scripts/verify_parallel_translation_browser.mjs
       - name: Hebrew combining marks match native font pixels
         run: node scripts/v9-unified/verify-combining-marks.mjs
       - name: Hidden references preserve text shaping and planned geometry
@@ -144,6 +148,7 @@ jobs:
           node scripts/verify_bracket_styles.mjs
           node scripts/verify_header_styles.mjs
           node scripts/verify_merge_verifier.mjs
+          node scripts/verify_parallel_translation.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs

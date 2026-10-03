@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="utf-8"><title>parallel fixture</title></head>
+<body>
+  <div id="render-safety-diagnostics-group"></div>
+<script type="module">
+const SRC = "פסקה ראשונה במקור.\n\nפסקה שנייה במקור.\n\nפסקה שלישית במקור.";
+const TR  = "First paragraph.\n\nSecond paragraph.";
+const mk = (role, code, label, text) => ({ paneRole: role, streamCode: code, label, _body: { textContent: text } });
+window.paneManager = {
+  panes: [ mk("main", null, "המקור", SRC), mk("stream", "01", "התרגום", TR) ],
+  getMainPane() { return this.panes[0]; },
+};
+const { wireParallelTranslation } = await import("/src/parallel/parallel_translation_lazy_wire.js");
+wireParallelTranslation(window.paneManager);
+window.__fixtureReady = true;
+</script>
+</body>
+</html>
