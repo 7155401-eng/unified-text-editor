@@ -36,7 +36,7 @@ import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
 import { wireTalmudLayoutControls } from "./talmud_controls.js";
 import { wireDafLockControls } from "./vilna_daf_ui.js";
 import { wirePageSizeControls, applyPageSize } from "./page_size.js";
-import { openVilnaImportModal, enableVilnaLayoutFor, wireVilnaImportButton } from "./vilna_import_modal.js";
+import { loadVilnaImportModule, wireVilnaImportButton } from "./vilna_import_lazy.js";
 import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
@@ -1738,6 +1738,7 @@ async function handleVilnaImport({ text, stats, book, code, autoLayout }) {
     window.__STREAM_LABELS__[code] = 'רש"י';
   } catch (_) {}
   if (autoLayout) {
+    const { enableVilnaLayoutFor } = await loadVilnaImportModule();
     enableVilnaLayoutFor(code);
     const talmudToggle = document.getElementById("talmud-layout-toggle");
     if (talmudToggle) talmudToggle.checked = true;
