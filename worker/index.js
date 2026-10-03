@@ -32,8 +32,17 @@ import {
   handleGiftClaim,
   handlePaymentStatus,
   handleUsageTick,
+  expirePastGiftBalances,
 } from './minute_access.js';
 import { handleDocxApi, isDocxImportPath, isDocxExtractPath, isDocxFootnotesToCurlyPath, isDocxSplitFootnotesByTagPath, isDocxFootnoteTrackChangesPath, handleClientLog, isClientLogPath, handleStreamsScan, isStreamsScanPath, cleanupExpiredDocxUploads } from '../cloudflare/docx_worker_entry.js';
+
+let lastGiftExpiryKickAt = 0;
+function kickGiftExpiryCleanup(env, ctx) {
+  const nowMs = Date.now();
+  if (nowMs - lastGiftExpiryKickAt < 60 * 60 * 1000) return;
+  lastGiftExpiryKickAt = nowMs;
+  try { ctx?.waitUntil?.(expirePastGiftBalances(env).catch(() => null)); } catch (_) {}
+}
 
 function visibleExpiresAtForUser(user) {
   if (!user?.expires_at) return null;
@@ -71,6 +80,9 @@ async function serveAdminPage(request, env) {
 
 export default {
   async fetch(request, env, ctx) {
+    // Backfill old monthly gifts on the first live request after deploy/month
+    // boundary. The cleanup is idempotent and runs in the background.
+    kickGiftExpiryCleanup(env, ctx);
     const url = new URL(request.url);
 
     // legacy-docx-google-redirect-20260616: Google may still index this inactive legacy DOCX route; send it home.
@@ -302,5 +314,8 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runRecurringBilling(env).catch(() => null));
     ctx.waitUntil(cleanupExpiredDocxUploads(env).catch(() => null));
+    // Monthly gifts never roll over. The daily cron is a backstop; normal
+    // payment/status/admin requests also run the same idempotent cleanup.
+    ctx.waitUntil(expirePastGiftBalances(env).catch(() => null));
   },
 };
