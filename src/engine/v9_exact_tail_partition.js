@@ -3,7 +3,7 @@
 // Every accepted row has been measured by the caller against its actual box.
 // No approximate widths, extra words, new rows, or relaxed spacing are used.
 export function findV9ExactTailPartition({
-  wordCount, rows, maxSpacing, metricFor, maxEvaluations = 4096,
+  wordCount, rows, maxSpacing, metricFor, maxEvaluations = 4096, boundaryWindows = null,
 }) {
   if (!Number.isInteger(wordCount) || wordCount < 1 || !Array.isArray(rows) ||
       !rows.length || !Number.isFinite(maxSpacing) || maxSpacing < 0 ||
@@ -20,8 +20,16 @@ export function findV9ExactTailPartition({
     const next = new Map();
     const maximumEnd = wordCount - minimumRemaining[i + 1];
     for (const [from, state] of states) {
-      const minimumEnd = i === rows.length - 1 ? wordCount : from + (rows[i].allowsEmpty ? 0 : 1);
-      for (let to = minimumEnd; to <= maximumEnd; to++) {
+      let minimumEnd = i === rows.length - 1 ? wordCount : from + (rows[i].allowsEmpty ? 0 : 1);
+      let rowMaximumEnd = maximumEnd;
+      if (i < rows.length - 1 && Array.isArray(boundaryWindows)) {
+        const window = boundaryWindows[i];
+        if (window && Number.isFinite(Number(window.min)) && Number.isFinite(Number(window.max))) {
+          minimumEnd = Math.max(minimumEnd, Math.floor(Number(window.min)));
+          rowMaximumEnd = Math.min(rowMaximumEnd, Math.floor(Number(window.max)));
+        }
+      }
+      for (let to = minimumEnd; to <= rowMaximumEnd; to++) {
         // Never return a partially searched alternative when the budget ends.
         if (evaluations >= maxEvaluations) return {status: 'budget-exhausted', evaluations};
         evaluations++;
