@@ -136,17 +136,30 @@ test('footer and page-number stacking is measured once and painted from that geo
     new URL('../../src/document_features.js', import.meta.url),
     'utf8'
   );
+  const styles = await readFile(
+    new URL('../../styles.css', import.meta.url),
+    'utf8'
+  );
 
-  assert.match(layout, /const FOOTER_PAGE_NUMBER_GAP_PX = 2/);
+  assert.match(styles, /--ravtext-document-overlay-gap:\s*2px;/);
   assert.match(
     layout,
-    /const footerBottom = footerBox[\s\S]*pageNumberBox\.offset \+ pageNumberBox\.height \+ FOOTER_PAGE_NUMBER_GAP_PX/
+    /const footerPageNumberGap = pageNumberBox && footerBox[\s\S]*cssPx\("--ravtext-document-overlay-gap", 2\)/
+  );
+  assert.match(
+    layout,
+    /const footerBottom = footerBox[\s\S]*pageNumberBox\.offset \+ pageNumberBox\.height \+ footerPageNumberGap/
+  );
+  assert.match(
+    layout,
+    /:\s*footerBox\.offset\)[\s\S]*:\s*null;/,
+    'footer-only mode must preserve the exact CSS bottom instead of rounding it'
   );
   assert.match(
     layout,
     /footer:\s*footerBox \? reserveOverlayAtOffset\(footerBox, footerBottom\) : 0/
   );
-  assert.match(layout, /footerBottom,/);
+  assert.match(layout, /footerBottom,[\s\S]*footerPageNumberGap,/);
 
   assert.match(
     features,
