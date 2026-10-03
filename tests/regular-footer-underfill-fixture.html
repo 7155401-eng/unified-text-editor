@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<meta charset="utf-8">
+<title>Regular footer underfill probe</title>
+<body>
+<div id="probe-root"></div>
+<script type="module">
+import { domPack, rebalancePages } from '/src/engine/dom_packer.js';
+import { getStreamSettings } from '/src/original_stream_columns.js';
+
+const compact=s=>String(s||'').replace(/\s+/gu,'');
+const sourceSignature=pages=>{
+  const main=new Map(),notes=new Map();
+  for(const p of pages){
+    for(const seg of p.main||[]){
+      const idx=String(seg[0]);
+      main.set(idx,(main.get(idx)||'')+compact(seg[1]));
+    }
+    for(const [code,stream] of Object.entries(p.streams||{})){
+      for(const n of stream.notes||[]){
+        const uid=String(n?.[7]?.uid||`${code}:${n?.[3]||0}:${n?.[0]||0}:${n?.[2]||0}`);
+        notes.set(uid,(notes.get(uid)||'')+compact(n?.[1]));
+      }
+    }
+  }
+  return JSON.stringify({
+    main:[...main.entries()].sort((a,b)=>+a[0]-+b[0]),
+    notes:[...notes.entries()].sort((a,b)=>a[0].localeCompare(b[0]))
+  });
+};
+
+window.runRegularFooterUnderfillProbe=async()=>{
+  const settings=getStreamSettings(),saved={};
+  const geom={pageWidth:380,pageHeight:537,maxPageHeight:244};
+  const phrase='alpha beta gamma delta epsilon zeta eta theta iota kappa lambda';
+  const notePhrase='note body words continue naturally beneath the main text with enough material to paginate';
+  const content=Array.from({length:34},(_,i)=>{
+    const mainText=Array(2+(i%3)).fill(phrase).join(' ');
+    const words=[...mainText.matchAll(/\S+/gu)];
+    const a=words[Math.min(words.length-1,5+(i%7))];
+    return {
+      mainText,
+      notes:[{
+        stream:String((i%2)+1).padStart(2,'0'),
+        num:i+1,
+        uid:`regular-footer-${i}`,
+        anchor:a.index+a[0].length,
+        anchorAffinity:'backward',
+        text:Array(2+(i%4)).fill(notePhrase).join(' ')
+      }]
+    };
+  });
+
+  try{
+    for(const id of ['01','02']){
+      saved[id]=settings[id];
+      settings[id]={...(settings[id]||{}),inline:true,cols:1,titleShow:false,lemmaBold:false,noteNumEnabled:true};
+    }
+    const pages=await domPack(content,geom,{skipCompact:true});
+    const basePages=structuredClone(pages);
+    const beforeSig=sourceSignature(basePages);
+    const beforeGap=basePages.slice(0,-1).reduce((sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0);
+
+    await rebalancePages(pages,geom,{maxPasses:8,skipCompact:true});
+
+    const afterSig=sourceSignature(pages);
+    const afterGap=pages.slice(0,-1).reduce((sum,p)=>sum+Math.max(0,geom.maxPageHeight-(Number(p.total)||0)),0);
+    const overflow=pages.some(p=>(Number(p.total)||0)>geom.maxPageHeight+.1);
+    return {
+      pages:pages.length,
+      fixtureLongEnough:basePages.length>8,
+      sourceExact:afterSig===beforeSig,
+      overflow,
+      beforeGap,
+      afterGap,
+      improvement:beforeGap-afterGap,
+      underfillReproduced:(beforeGap-afterGap)>.25
+    };
+  } finally {
+    for(const id of ['01','02']){
+      if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];
+    }
+  }
+};
+</script>
+</body></html>
