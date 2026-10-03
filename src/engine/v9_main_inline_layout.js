@@ -145,6 +145,7 @@ function freezeLine(line) {
 
 
 const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
+const TAIL_REBALANCE_EXACT_MAX_EVALUATIONS = 2048;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
 
 function continuationTailGentleSpacing(context) {
@@ -385,6 +386,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
       maxSpacing: gentleMax,
       metricFor,
+      maxEvaluations: TAIL_REBALANCE_EXACT_MAX_EVALUATIONS,
     });
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
