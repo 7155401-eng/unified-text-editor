@@ -1,0 +1,35 @@
+name: Temporary live PDF asset source audit
+on:
+  push:
+    branches: [audit/live-pdf-source-20261004-0238]
+    paths: ['.github/workflows/temp-live-pdf-source-audit.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch live stable PDF module and inspect deployed recovery marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          curl --silent --show-error --location             --connect-timeout 10 --max-time 45             -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36'             -D evidence/headers.txt             -o evidence/pdf_export.js             'https://app.ravtext.com/assets/pdf_export.js?source-audit=20261004'
+          wc -c evidence/pdf_export.js | tee evidence/bytes.txt
+          sha256sum evidence/pdf_export.js | tee evidence/sha256.txt
+          {
+            echo "safe_retry_marker=$(grep -Fq 'retrying with a safe system font' evidence/pdf_export.js && echo yes || echo no)"
+            echo "cover_recovery_symbol=$(grep -Fq 'renderPdfCoverImageWithRecovery' evidence/pdf_export.js && echo yes || echo no)"
+            echo "stable_chunk=$(grep -Fq 'pdf_export-' evidence/pdf_export.js && echo maybe-hashed-reference-present || echo no-hashed-reference-string)"
+          } | tee evidence/markers.txt
+          cat evidence/headers.txt
+          cat evidence/markers.txt
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: live-pdf-source-audit-${{ github.run_id }}
+          path: evidence/
+          retention-days: 7
+          if-no-files-found: error
