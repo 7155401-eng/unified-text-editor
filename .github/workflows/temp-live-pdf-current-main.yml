@@ -1,0 +1,135 @@
+name: Temporary live PDF current-main acceptance
+on:
+  push:
+    branches: [audit/live-pdf-current-main-20261004-0234]
+    paths: ['.github/workflows/temp-live-pdf-current-main.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  live-pdf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 60346413ac67d9439879fc1b63ad2c76e3bf3585
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Export a real PDF from the live deployed module
+        run: |
+          mkdir -p test-results/live-pdf
+          cat > live-pdf.mjs <<'EOF'
+          import { chromium } from 'playwright-chromium';
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+
+          const browser=await chromium.launch({headless:true});
+          const context=await browser.newContext({
+            acceptDownloads:true,
+            userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
+            extraHTTPHeaders:{'accept-language':'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7'}
+          });
+          const page=await context.newPage();
+          page.setDefaultTimeout(90000);
+          const errors=[];
+          const consoleErrors=[];
+          page.on('pageerror',e=>errors.push(String(e)));
+          page.on('console',m=>{if(m.type()==='error')consoleErrors.push(m.text())});
+
+          const root=await page.goto('https://app.ravtext.com/',{
+            waitUntil:'domcontentloaded',
+            timeout:45000
+          });
+
+          const moduleProbe=await page.evaluate(async()=>{
+            const url='/assets/pdf_export.js?accept='+Date.now();
+            const response=await fetch(url,{cache:'no-store'});
+            const bytes=(await response.clone().arrayBuffer()).byteLength;
+            let imported=false,exportType='',importError='';
+            try{
+              const mod=await import(url);
+              imported=true;
+              exportType=typeof mod.downloadPagesAsPdf;
+            }catch(e){importError=String(e)}
+            return {
+              status:response.status,
+              contentType:response.headers.get('content-type')||'',
+              bytes,imported,exportType,importError
+            };
+          });
+
+          await page.evaluate(()=>{
+            document.querySelector('#gpt-live-pdf-accept')?.remove();
+            const host=document.createElement('div');
+            host.id='gpt-live-pdf-accept';
+            host.className='pages-container';
+            const p=document.createElement('section');
+            p.className='page v9-page';
+            p.style.cssText='width:380px;height:537px;padding:24px;box-sizing:border-box;background:#fff;color:#222;direction:rtl;font-family:serif;font-size:22px;line-height:1.55';
+            p.innerHTML='<p class="v9-line v9-role-main" style="font-family:serif">בדיקת PDF חיה — current main</p><p>אב גד הוז חטי כלמ נסע פצק.</p>';
+            host.append(p);
+            document.body.append(host);
+          });
+
+          const downloadPromise=page.waitForEvent('download',{timeout:90000});
+          const exportPromise=page.evaluate(async()=>{
+            const mod=await import('/assets/pdf_export.js?full='+Date.now());
+            return await mod.downloadPagesAsPdf(
+              document.querySelector('#gpt-live-pdf-accept'),
+              {filename:'current-main-live.pdf',includeBackgrounds:false,fallbackToPrint:false}
+            );
+          });
+          const [download,result]=await Promise.all([downloadPromise,exportPromise]);
+          const failure=await download.failure();
+          if(failure) throw new Error('download failure: '+failure);
+          const path=await download.path();
+          if(!path) throw new Error('download path unavailable');
+          const pdf=fs.readFileSync(path);
+          const text=pdf.toString('latin1');
+          const pageCount=(text.match(/\/Type\s*\/Page(?!s)/g)||[]).length;
+          const report={
+            rootStatus:root?.status()||0,
+            finalUrl:page.url(),
+            moduleProbe,
+            exportResult:result,
+            suggestedFilename:download.suggestedFilename(),
+            pdfBytes:pdf.length,
+            pdfSha256:crypto.createHash('sha256').update(pdf).digest('hex'),
+            pdfHeader:pdf.subarray(0,8).toString('latin1'),
+            pdfPageObjects:pageCount,
+            pageErrors:errors,
+            consoleErrors
+          };
+          fs.writeFileSync('test-results/live-pdf/current-main-live.pdf',pdf);
+          fs.writeFileSync('test-results/live-pdf/report.json',JSON.stringify(report,null,2));
+          console.log(JSON.stringify(report,null,2));
+
+          if(report.rootStatus!==200) throw new Error('root HTTP '+report.rootStatus);
+          if(moduleProbe.status!==200 || !moduleProbe.imported || moduleProbe.exportType!=='function')
+            throw new Error('module failed: '+JSON.stringify(moduleProbe));
+          if(result?.fallback) throw new Error('unexpected fallback: '+JSON.stringify(result));
+          if(!report.pdfHeader.startsWith('%PDF-') || report.pdfBytes<1000)
+            throw new Error('not a real PDF');
+          if(pageCount<2) throw new Error('expected cover + content page, got '+pageCount);
+          if(errors.length) throw new Error('page errors: '+JSON.stringify(errors));
+          await browser.close();
+          EOF
+          node live-pdf.mjs
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: live-pdf-current-main-${{ github.run_id }}
+          path: test-results/live-pdf/
+          retention-days: 7
+          if-no-files-found: error
