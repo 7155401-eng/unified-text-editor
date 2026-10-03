@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {findV9ExactTailPartition as solve} from '../../src/engine/v9_exact_tail_partition.js';
 
 // An exhaustive independent oracle for tiny layered partitions.
@@ -46,4 +47,22 @@ for(const change of [{wordCount:0},{wordCount:1.5},{rows:[]},{maxSpacing:NaN},{m
  });
 test('rows without enough words cannot allocate empty body lines',()=>{
  assert.deepEqual(solve({wordCount:1,rows:[{},{}],maxSpacing:8,metricFor:()=>{throw Error('unexpected')}}),{status:'infeasible',evaluations:0});
+});
+
+
+test('feasible five-row tail beyond 1536 evaluations still completes',()=>{
+  const rows=Array.from({length:5},()=>({}));
+  const metricFor=()=>({pressure:1});
+  const full=solve({wordCount:35,rows,maxSpacing:8,metricFor});
+  assert.equal(full.status,'complete');
+  assert.ok(full.evaluations>1536,
+    `fixture no longer proves the correctness gap: evaluations=${full.evaluations}`);
+  const truncated=solve({wordCount:35,rows,maxSpacing:8,maxEvaluations:1536,metricFor});
+  assert.deepEqual(truncated,{status:'budget-exhausted',evaluations:1536});
+});
+
+test('V9 continuation-tail recovery retains the full 4096 correctness budget',()=>{
+  const source=fs.readFileSync(new URL('../../src/engine/v9_main_inline_layout.js',import.meta.url),'utf8');
+  assert.match(source,/maxEvaluations:\s*4096\s*,/,
+    'V9 exact-tail recovery must not lower the solver budget below the correctness-tested search space');
 });
