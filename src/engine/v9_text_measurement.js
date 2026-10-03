@@ -140,8 +140,9 @@ export function appendV9PlannedPart(parent, part, wordSpacingPx = 0) {
 }
 
 export function v9MeasurementCacheKey(part) {
-  // Edge direction marks participate in Unicode BiDi even though they have
-  // zero visible width. They therefore belong to the measurement identity.
+  // Public/debug identity remains fully structural and backward compatible.
+  // The hot measurement context below uses a context-local typography ID
+  // because only TYPOGRAPHY fields can affect the measured DOM.
   return JSON.stringify([
     part?.leadingText || '',
     part?.text || '',
@@ -150,6 +151,43 @@ export function v9MeasurementCacheKey(part) {
     part?.refs || [],
     part?.style || {},
   ]);
+}
+
+export function createV9MeasurementStyleIdentity() {
+  const byObject = new WeakMap();
+  const bySignature = new Map();
+  let nextId = 1;
+
+  const valuesOf = (style) => TYPOGRAPHY.map(key => style?.[key] ?? null);
+  const idForValues = (values) => {
+    const signature = JSON.stringify(values);
+    const known = bySignature.get(signature);
+    if (known !== undefined) return known;
+    const id = nextId++;
+    bySignature.set(signature, id);
+    return id;
+  };
+
+  return (style) => {
+    if (style && (typeof style === 'object' || typeof style === 'function')) {
+      const cached = byObject.get(style);
+      if (cached) {
+        let unchanged = true;
+        for (let i = 0; i < TYPOGRAPHY.length; i++) {
+          if (!Object.is(cached.values[i], style[TYPOGRAPHY[i]] ?? null)) {
+            unchanged = false;
+            break;
+          }
+        }
+        if (unchanged) return cached.id;
+      }
+      const values = valuesOf(style);
+      const id = idForValues(values);
+      byObject.set(style, { values, id });
+      return id;
+    }
+    return idForValues(valuesOf(style));
+  };
 }
 
 export function createV9TextLayoutContext(cfg, hooks = {}) {
@@ -176,6 +214,15 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
   const lineHeight = Math.max(px(typography.lineHeight, fontSize * 1.55), fontSize);
   typography.lineHeight = `${lineHeight}px`;
   const cache = new Map();
+  const styleIdentity = createV9MeasurementStyleIdentity();
+  const measurementKey = (part) => JSON.stringify([
+    part?.leadingText || '',
+    part?.text || '',
+    part?.trailingText || '',
+    part?.runs || [],
+    part?.refs || [],
+    styleIdentity(part?.style),
+  ]);
   let generation = 0, disposed = false;
   const fontsChanged = () => { generation++; cache.clear(); };
   document.fonts?.addEventListener?.('loadingdone', fontsChanged);
@@ -219,7 +266,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     },
     measure(part) {
       if (disposed) throw new Error('Disposed V9 measurement context');
-      const key = v9MeasurementCacheKey(part);
+      const key = measurementKey(part);
       const found = cache.get(key); if (found) return found;
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';
