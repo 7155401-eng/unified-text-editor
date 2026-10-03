@@ -1,3 +1,5 @@
+import { createLayoutContext, layoutContextReserveValues, publishLayoutContextToCssVars } from "./engine/layout_context.js";
+
 // Document-wide features: page numbers, headers/footers, watermark.
 // Each feature is a Layout/View toggle that paints overlays on every
 // .page element after each engine render.
@@ -145,61 +147,10 @@ function applyWatermark(pages = pageElements()) {
   });
 }
 
-function getOrCreateMeasurePage() {
-  let page = document.querySelector(".page:not(.measure-page)");
-  if (page) return page;
-  page = document.createElement("div");
-  page.className = "page";
-  // fixed, not absolute - see dom_packer.getMeasureRoot(). Absolute + a
-  // -99999px offset on a child of the static <body> is real RTL overflow
-  // on <html>; fixed is owned by the viewport and overflows nothing.
-  page.style.cssText = "position:fixed;left:-99999px;top:0;width:380px;height:537px;visibility:hidden;overflow:hidden;box-sizing:border-box;flex:none;pointer-events:none;";
-  const rootStyle = getComputedStyle(document.documentElement);
-  page.style.paddingTop = rootStyle.getPropertyValue("--ravtext-page-margin-top") || "22px";
-  page.style.paddingBottom = rootStyle.getPropertyValue("--ravtext-page-margin-bottom") || "18px";
-  page.style.paddingLeft = rootStyle.getPropertyValue("--ravtext-page-margin-left") || "24px";
-  page.style.paddingRight = rootStyle.getPropertyValue("--ravtext-page-margin-right") || "24px";
-  document.body.appendChild(page);
-  return page;
-}
-
-function measureOverlayReserved(className, isTop) {
-  const selector = "." + className;
-  let el = document.querySelector(selector);
-  const needsCleanup = !el;
-  if (!el) {
-    const page = getOrCreateMeasurePage();
-    el = document.createElement("div");
-    el.className = className;
-    el.textContent = "מידה";
-    page.appendChild(el);
-  }
-  const cs = getComputedStyle(el);
-  const height = el.getBoundingClientRect().height;
-  const offset = parseFloat(cs[isTop ? "top" : "bottom"]) || 0;
-  const pageEl = el.closest(".page");
-  let padding = isTop ? 22 : 18;
-  if (pageEl) {
-    const pageCs = getComputedStyle(pageEl);
-    const p = parseFloat(pageCs[isTop ? "paddingTop" : "paddingBottom"]);
-    if (Number.isFinite(p)) padding = p;
-  }
-  if (needsCleanup) el.remove();
-  return Math.max(0, Math.round(offset + height - padding));
-}
-
 function pxVar(name) {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name);
   const n = parseFloat(raw || "");
   return Number.isFinite(n) ? Math.round(n) : 0;
-}
-
-function setPxVarIfChanged(name, value) {
-  const next = Math.max(0, Math.round(value || 0));
-  const prev = pxVar(name);
-  if (prev === next) return false;
-  document.documentElement.style.setProperty(name, next + "px");
-  return true;
 }
 
 let _reservedRerenderTimer = null;
@@ -220,19 +171,18 @@ export function prepareDocumentFeatureReserves() {
 }
 
 export function syncReservedSpace(options = {}) {
-  const hasHeader = !!localStorage.getItem(HEADER_KEY);
-  const hasFooter = !!localStorage.getItem(FOOTER_KEY);
-  const hasPageNum = localStorage.getItem(PAGE_NUM_KEY) === "1";
+  // One measurement authority for regular pagination, V9 and post-render UI.
+  // layout_context measures the configured header/footer text against the real
+  // page CSS before pagination; this module only republishes that same result.
+  const context = createLayoutContext();
+  const reserves = layoutContextReserveValues(context);
+  const changed = (
+    pxVar("--ravtext-features-header-reserved") !== reserves.header ||
+    pxVar("--ravtext-features-footer-reserved") !== reserves.footer ||
+    pxVar("--ravtext-features-pagenumber-reserved") !== reserves.pageNumber
+  );
 
-  const headPx = hasHeader ? measureOverlayReserved("ravtext-page-header", true) : 0;
-  const footPx = hasFooter ? measureOverlayReserved("ravtext-page-footer", false) : 0;
-  const numPx = hasPageNum ? measureOverlayReserved("ravtext-page-number-overlay", false) : 0;
-
-  const changed = [
-    setPxVarIfChanged("--ravtext-features-header-reserved", headPx),
-    setPxVarIfChanged("--ravtext-features-footer-reserved", footPx),
-    setPxVarIfChanged("--ravtext-features-pagenumber-reserved", numPx),
-  ].some(Boolean);
+  publishLayoutContextToCssVars(context);
 
   if (changed && options.rerenderOnChange) {
     scheduleReservedRerender(options.reason || "reserved-space-changed");
@@ -387,9 +337,9 @@ export function wireDocumentFeatures() {
     applyAll();
 
     /*
-      Live output rule:
-      overlays are first painted, then measured.
-      If real reserved space changed, rerender once so pagination uses reality.
+      Single-source rule:
+      re-publish the same layout_context measurement used before pagination.
+      There is no second live-DOM reserve calculator that can disagree with it.
     */
     syncReservedSpace({ rerenderOnChange: false, reason: "engine-rendered" });
   });

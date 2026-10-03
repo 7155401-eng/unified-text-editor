@@ -72,13 +72,13 @@ function ensureMeasurePage() {
   return page;
 }
 
-function measureOverlayReserve(className, isTop) {
+function measureOverlayReserve(className, isTop, text = "מידה") {
   if (typeof document === "undefined") return 0;
 
   const page = ensureMeasurePage();
   const el = document.createElement("div");
   el.className = className;
-  el.textContent = "מידה";
+  el.textContent = String(text || "מידה");
   page.appendChild(el);
 
   // Force layout once, so the result represents the real current CSS.
@@ -115,9 +115,11 @@ export function createLayoutContext() {
   };
 
   const features = {
-    header: headerText ? measureOverlayReserve("ravtext-page-header", true) : 0,
-    footer: footerText ? measureOverlayReserve("ravtext-page-footer", false) : 0,
-    pageNumber: pageNumbersOn ? measureOverlayReserve("ravtext-page-number-overlay", false) : 0,
+    header: headerText ? measureOverlayReserve("ravtext-page-header", true, headerText) : 0,
+    footer: footerText ? measureOverlayReserve("ravtext-page-footer", false, footerText) : 0,
+    // Page-number width does not affect vertical reserve; use a representative
+    // multi-glyph label so the shared measurement path still exercises the real class.
+    pageNumber: pageNumbersOn ? measureOverlayReserve("ravtext-page-number-overlay", false, "תתקצט") : 0,
   };
 
   const context = Object.freeze({
@@ -135,13 +137,23 @@ export function createLayoutContext() {
   return context;
 }
 
+export function layoutContextReserveValues(context = createLayoutContext()) {
+  const features = context?.features || {};
+  return {
+    header: Math.max(0, Math.ceil(features.header || 0)),
+    footer: Math.max(0, Math.ceil(features.footer || 0)),
+    pageNumber: Math.max(0, Math.ceil(features.pageNumber || 0)),
+  };
+}
+
 export function publishLayoutContextToCssVars(context = createLayoutContext()) {
   if (typeof document === "undefined") return context;
 
   const root = document.documentElement;
-  root.style.setProperty("--ravtext-features-header-reserved", `${Math.max(0, Math.ceil(context.features.header || 0))}px`);
-  root.style.setProperty("--ravtext-features-footer-reserved", `${Math.max(0, Math.ceil(context.features.footer || 0))}px`);
-  root.style.setProperty("--ravtext-features-pagenumber-reserved", `${Math.max(0, Math.ceil(context.features.pageNumber || 0))}px`);
+  const reserves = layoutContextReserveValues(context);
+  root.style.setProperty("--ravtext-features-header-reserved", `${reserves.header}px`);
+  root.style.setProperty("--ravtext-features-footer-reserved", `${reserves.footer}px`);
+  root.style.setProperty("--ravtext-features-pagenumber-reserved", `${reserves.pageNumber}px`);
 
   return context;
 }
