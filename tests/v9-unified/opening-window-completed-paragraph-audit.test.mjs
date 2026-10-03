@@ -33,12 +33,7 @@ function fixture({text,width=100,openingWidth=20,wordWidth=10,spaceWidth=2}) {
   );
 }
 
-function paintedBodyWidth(line) {
-  const gaps = (String(line?.render?.body?.text || '').match(/ /g) || []).length;
-  return Number(line?.naturalWidth || 0) + gaps * Number(line?.render?.wordSpacing || 0);
-}
-
-test('completed two-row opening paragraph can use its whole window before declaring the tail centered', () => {
+test('unsafe full-frame centering keeps a completed opening tail adjacent to the fixed opening', () => {
   const text = 'OPEN ' + Array(12).fill('aa').join(' ');
   const plan = fixture({ text });
   assert.equal(plan.lines.length, 2, `fixture expected two rows, got ${plan.lines.length}`);
@@ -51,22 +46,15 @@ test('completed two-row opening paragraph can use its whole window before declar
   assert.equal(plan.lines.map(line => line.sourceText).join(''), text, 'source changed');
 
   const opening = host.render.opening;
-  const bodyLeft = last.x;
-  const bodyRight = bodyLeft + paintedBodyWidth(last);
-  assert(bodyRight <= opening.x - opening.gap + 0.01, 'tail overlaps opening or its configured gap');
-
-  const visualLeft = Math.min(bodyLeft, opening.x);
-  const visualRight = Math.max(bodyRight, opening.x + opening.width);
-  const expectedCenter = (Number(last.openingHostX || 0) + Number(last.openingHostFullWidth || 100) / 2);
-  const actualCenter = (visualLeft + visualRight) / 2;
-
-  assert(Math.abs(actualCenter - expectedCenter) < 0.01,
-    `completed opening paragraph is still asymmetric: center=${actualCenter}, expected=${expectedCenter}, body=${bodyLeft}..${bodyRight}, opening=${opening.x}..${opening.x + opening.width}`);
-  assert(Math.abs(bodyRight + opening.gap - opening.x) < 0.01,
-    'balanced tail must remain adjacent to the fixed opening');
+  assert.equal(last.openingParagraphCentered, undefined,
+    'fixture unexpectedly became eligible for full-frame body centering');
+  assert.equal(last.render.alignment, 'right',
+    'unsafe tail was centered independently inside the leftover opening slot');
+  assert(Math.abs(last.x + last.width + opening.gap - opening.x) < 0.01,
+    `body slot detached from opening: slotRight=${last.x + last.width}, gap=${opening.gap}, openingX=${opening.x}`);
 });
 
-test('when exact balancing is impossible, completed opening tail stays adjacent without fake stretch', () => {
+test('sparse completed opening tail also fails closed to adjacency without fake stretch', () => {
   const text = 'OPEN aa bb cc';
   const plan = fixture({ text, width: 80, wordWidth: 25, spaceWidth: 2 });
   assert.equal(plan.lines.map(line => line.sourceText).join(''), text, 'source changed');
@@ -77,11 +65,12 @@ test('when exact balancing is impossible, completed opening tail stays adjacent 
   assert(last?.openingWindow === true, 'fixture no longer ends in opening window');
 
   const opening = host.render.opening;
-  const bodyLeft = last.x;
-  const bodyRight = bodyLeft + paintedBodyWidth(last);
-  assert(bodyRight <= opening.x - opening.gap + 0.01, 'fallback overlaps opening');
-  assert(Math.abs(bodyRight + opening.gap - opening.x) < 0.01,
-    'fallback detached the last body from the opening');
-  assert(Number(last.render?.wordSpacing || 0) <= 0.01,
-    'single-word fallback manufactured word spacing');
+  assert.equal(last.openingParagraphCentered, undefined,
+    'sparse tail unexpectedly became eligible for full-frame body centering');
+  assert.equal(last.render.alignment, 'right',
+    'sparse tail detached itself by centering inside the leftover opening slot');
+  assert.equal(Number(last.render?.wordSpacing || 0), 0,
+    'sparse last row manufactured word spacing');
+  assert(Math.abs(last.x + last.width + opening.gap - opening.x) < 0.01,
+    'sparse body slot is not adjacent to the opening');
 });
