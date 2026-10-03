@@ -12,6 +12,7 @@ const refAnchor = r => Number(r.anchor ?? r.absoluteAnchor ?? r.localAnchor);
 
 const EXACT_TAIL_CACHE_LIMIT = 4096;
 const EXACT_TAIL_MAX_EVALUATIONS = 1536;
+const EXACT_TAIL_BOUNDARY_RADIUS = 8;
 const exactTailCaches = new WeakMap();
 
 function exactTailCacheFor(context) {
@@ -56,6 +57,7 @@ function exactTailCacheKey({
     ]),
     gentleMax,
     EXACT_TAIL_MAX_EVALUATIONS,
+    EXACT_TAIL_BOUNDARY_RADIUS,
   ]);
 }
 
@@ -465,6 +467,10 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         maxSpacing: gentleMax,
         metricFor,
         maxEvaluations: EXACT_TAIL_MAX_EVALUATIONS,
+        boundaryWindows: initialBoundaries.map(boundary => ({
+          min: Math.max(0, boundary - EXACT_TAIL_BOUNDARY_RADIUS),
+          max: Math.min(words.length, boundary + EXACT_TAIL_BOUNDARY_RADIUS),
+        })),
       }));
     }
     if (search.status === 'complete') {
