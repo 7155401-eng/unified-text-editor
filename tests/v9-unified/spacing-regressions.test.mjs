@@ -246,6 +246,35 @@ test('page-ending continuation pulls words first, then finishes exact justificat
 });
 
 
+test('exact-tail memoization reuses identical deterministic searches without changing layout',()=>{
+ let measureCalls=0;
+ const text=Array(10).fill('aa').join(' ');
+ const ctx={
+  fontSize:10,lineHeight:10,generation:0,typography:{},describeOpening:()=>null,
+  measure:p=>{
+   measureCalls++;
+   const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;
+   const ws=parseFloat(p.style?.wordSpacing||'0')||0;
+   return {width:n?n*10+(n-1)*(2+ws):0,height:10,topInset:0};
+  }
+ };
+ const input=[{id:'tail-cache',text,runs:[],mainRefs:[],continuesAfter:true}];
+ const strips=[{x:0,width:54,y_start:0,y_end:30}];
+
+ const first=layoutV9MainParagraphs(input,strips,ctx,30);
+ const firstCalls=measureCalls;
+ measureCalls=0;
+ const second=layoutV9MainParagraphs(input,strips,ctx,30);
+ const secondCalls=measureCalls;
+
+ assert.deepEqual(second,first,'cached exact-tail search changed the plan');
+ assert(firstCalls>secondCalls,
+  `memoization did not reduce measurements: first=${firstCalls}, second=${secondCalls}`);
+ assert(first.lines.map(l=>l.sourceText).join('')===text,'first pass changed source');
+ assert(second.lines.map(l=>l.sourceText).join('')===text,'cached pass changed source');
+});
+
+
 test('dropped opening does not keep a widened row trapped in the previous narrow geometry',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
