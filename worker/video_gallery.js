@@ -2,6 +2,7 @@ import { getUserFromRequest } from './session.js';
 
 const PLAYLIST_ID_KEY = 'VIDEO_GALLERY_PLAYLIST_ID';
 const PLAYLIST_NAME_KEY = 'VIDEO_GALLERY_PLAYLIST_NAME';
+const GALLERY_ENABLED_KEY = 'VIDEO_GALLERY_ENABLED';
 const DEFAULT_GALLERY_NAME = 'סרטוני עזרה והדרכה';
 
 function json(data, status = 200) {
@@ -120,7 +121,12 @@ async function writeSetting(env, key, value, userId) {
   ).bind(key, String(value || ''), nowSec, userId || null).run();
 }
 
+export async function isVideoGalleryEnabled(env) {
+  return (await readSetting(env, GALLERY_ENABLED_KEY)) === '1';
+}
+
 async function readServerPlaylist(env, includeItems = false) {
+  const enabled = await isVideoGalleryEnabled(env);
   const playlistId =
     parsePlaylistId(await readSetting(env, PLAYLIST_ID_KEY)) ||
     parsePlaylistId(env.VIDEO_GALLERY_PLAYLIST_ID || '');
@@ -130,6 +136,7 @@ async function readServerPlaylist(env, includeItems = false) {
     DEFAULT_GALLERY_NAME;
 
   const data = {
+    enabled,
     configured: !!playlistId,
     name,
     playlistId,
@@ -152,6 +159,17 @@ async function requireAdmin(request, env) {
 export async function handleVideoGallery(request, env, url) {
   if (request.method !== 'GET') {
     return json({ error: 'Method not allowed' }, 405);
+  }
+
+  const enabled = await isVideoGalleryEnabled(env);
+  if (!enabled) {
+    return json({
+      enabled: false,
+      configured: false,
+      name: DEFAULT_GALLERY_NAME,
+      playlistId: '',
+      items: [],
+    });
   }
 
   const playlist = await readServerPlaylist(env, true);
@@ -178,29 +196,52 @@ export async function handleAdminVideoGallery(request, env, url) {
     return json({ error: 'Bad JSON' }, 400);
   }
 
-  const playlistId = parsePlaylistId(
-    body.playlistId ||
-    body.playlist_id ||
-    body.playlist ||
-    body.list ||
-    body.url ||
-    ''
-  );
+  const current = await readServerPlaylist(env, false);
+  const hasPlaylistInput = [
+    body.playlistId,
+    body.playlist_id,
+    body.playlist,
+    body.list,
+    body.url,
+  ].some((value) => String(value || '').trim() !== '');
 
-  if (!playlistId || !isValidPlaylistId(playlistId)) {
-    return json({ error: 'Invalid playlistId' }, 400);
+  let playlistId = current.playlistId;
+  let name = current.name;
+
+  if (hasPlaylistInput) {
+    playlistId = parsePlaylistId(
+      body.playlistId ||
+      body.playlist_id ||
+      body.playlist ||
+      body.list ||
+      body.url ||
+      ''
+    );
+
+    if (!playlistId || !isValidPlaylistId(playlistId)) {
+      return json({ error: 'Invalid playlistId' }, 400);
+    }
+
+    name = String(body.name || body.title || DEFAULT_GALLERY_NAME).trim() || DEFAULT_GALLERY_NAME;
+    await writeSetting(env, PLAYLIST_ID_KEY, playlistId, auth.user.id);
+    await writeSetting(env, PLAYLIST_NAME_KEY, name, auth.user.id);
   }
 
-  const name = String(body.name || body.title || DEFAULT_GALLERY_NAME).trim() || DEFAULT_GALLERY_NAME;
+  let enabled = current.enabled;
+  if (typeof body.enabled === 'boolean') {
+    enabled = body.enabled;
+    if (enabled && !playlistId) {
+      return json({ error: 'Playlist must be configured before publishing videos' }, 400);
+    }
+    await writeSetting(env, GALLERY_ENABLED_KEY, enabled ? '1' : '0', auth.user.id);
+  }
 
-  await writeSetting(env, PLAYLIST_ID_KEY, playlistId, auth.user.id);
-  await writeSetting(env, PLAYLIST_NAME_KEY, name, auth.user.id);
-
-  const items = await fetchPlaylistVideos(playlistId);
+  const items = playlistId ? await fetchPlaylistVideos(playlistId) : [];
 
   return json({
     ok: true,
-    configured: true,
+    enabled,
+    configured: !!playlistId,
     name,
     playlistId,
     items,

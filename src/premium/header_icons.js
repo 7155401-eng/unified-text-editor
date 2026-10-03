@@ -411,7 +411,10 @@ function isVideoGalleryAdmin() {
 }
 
 async function fetchServerVideoPlaylist() {
-  const res = await fetch("/api/video-gallery/playlist", {
+  const endpoint = isVideoGalleryAdmin()
+    ? "/api/admin/video-gallery/playlist"
+    : "/api/video-gallery/playlist";
+  const res = await fetch(endpoint, {
     method: "GET",
     credentials: "same-origin",
     headers: { "Accept": "application/json" },
@@ -736,11 +739,19 @@ export function installHeaderPremiumIcons() {
 
   const auth = window.__RAVTEXT_AUTH__ || { loggedIn: false, paid: false };
 
-  const videosIcon = buildIconButton({
+  // סרטונים אינם מפורסמים כברירת מחדל. המנהל יכול עדיין לראות את
+  // האייקון לצורך תצוגה מקדימה והגדרה; משתמש רגיל רואה אותו רק אחרי
+  // שהמתג הגלובלי הופעל בממשק המנהל.
+  const showVideosIcon = auth.videoGalleryEnabled === true || auth.admin === true;
+  const videosIcon = showVideosIcon ? buildIconButton({
     id: "rt-prem-icon-videos",
     cls: "rt-prem-icon-videos",
-    title: "סרטוני הדרכה",
-    label: "פתח גלריית סרטונים",
+    title: auth.videoGalleryEnabled === true
+      ? "סרטוני הדרכה"
+      : "סרטוני הדרכה — מוסתר מהמשתמשים",
+    label: auth.videoGalleryEnabled === true
+      ? "פתח גלריית סרטונים"
+      : "פתח גלריית סרטונים לתצוגה מקדימה",
     text: "סרטונים",
     html: `
       <svg class="rt-video-icon-svg" width="21" height="21" viewBox="0 0 24 24" aria-hidden="true">
@@ -755,8 +766,8 @@ export function installHeaderPremiumIcons() {
         <path class="rt-video-icon-glint" d="M6 7.4h5.2" stroke="rgba(255,255,255,0.78)" stroke-width="1.1" stroke-linecap="round"/>
       </svg>
     `,
-  });
-  videosIcon.addEventListener("click", openVideoGallery);
+  }) : null;
+  videosIcon?.addEventListener("click", openVideoGallery);
 
   // ★ משה: "להוסיף לאייקונים למעלה שאלות נפוצות".
   // התוכן בא מטקסטי העזרה שכבר קיימים באתר — אותם הסברים בדיוק.
@@ -892,13 +903,13 @@ export function installHeaderPremiumIcons() {
     const avatarWrap1 = document.getElementById("profile-avatar-wrap");
     const ref1 = avatarWrap1 || null;
     if (ref1) {
-      actions.insertBefore(videosIcon, ref1);
+      if (videosIcon) actions.insertBefore(videosIcon, ref1);
       actions.insertBefore(faqIcon, ref1);
       actions.insertBefore(settingsIcon, ref1);
       actions.insertBefore(downloadsIcon, ref1);
       actions.insertBefore(gift, ref1);
     } else {
-      actions.appendChild(videosIcon);
+      if (videosIcon) actions.appendChild(videosIcon);
       actions.appendChild(faqIcon);
       actions.appendChild(settingsIcon);
       actions.appendChild(downloadsIcon);
@@ -949,14 +960,14 @@ export function installHeaderPremiumIcons() {
   const avatarWrap = document.getElementById("profile-avatar-wrap");
   const ref = avatarWrap || null;
   if (ref) {
-    actions.insertBefore(videosIcon, ref);
+    if (videosIcon) actions.insertBefore(videosIcon, ref);
     actions.insertBefore(faqIcon, ref);
     actions.insertBefore(settingsIcon, ref);
     actions.insertBefore(downloadsIcon, ref);
     actions.insertBefore(gift, ref);
     actions.insertBefore(diamond, ref);
   } else {
-    actions.appendChild(videosIcon);
+    if (videosIcon) actions.appendChild(videosIcon);
       actions.appendChild(faqIcon);
     actions.appendChild(settingsIcon);
     actions.appendChild(downloadsIcon);
