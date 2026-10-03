@@ -210,6 +210,9 @@ function resolveSpecialV9JustificationSpacing(context, body, naturalWidth, targe
  * the required justification across the whole tail.
  */
 function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics) {
+  const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+    ? (window.__ravtextV9Perf ||= {}) : null;
+  if (perf) perf.rebalanceTailCalls = (perf.rebalanceTailCalls || 0) + 1;
   if (!Array.isArray(lines) || !entry || !context || !(cursor > 0)) return null;
 
   const paragraphLines = lines.slice(paragraphLineStart);
@@ -377,15 +380,28 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const gentleMax = continuationTailGentleSpacing(context);
   let exactPartition = null;
   if (current.metrics.some(m => m.gaps > 0 && m.pressure > gentleMax + EPS)) {
+    if (perf) perf.exactTailTriggers = (perf.exactTailTriggers || 0) + 1;
     // One-word local moves can be trapped: two or more boundaries may need
     // to change together. Before clipping a row, search complete measured
     // partitions of this same source interval under the existing gentle cap.
+    const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+      ? (window.__ravtextV9Perf ||= {}) : null;
+    const exactStarted = perf ? performance.now() : 0;
+    if (perf) perf.exactTailCalls = (perf.exactTailCalls || 0) + 1;
     const search = findV9ExactTailPartition({
       wordCount: words.length,
       rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
       maxSpacing: gentleMax,
       metricFor,
     });
+    if (perf) {
+      const elapsed = performance.now() - exactStarted;
+      perf.exactTailMs = (perf.exactTailMs || 0) + elapsed;
+      perf.exactTailEvaluations = (perf.exactTailEvaluations || 0) + (search.evaluations || 0);
+      perf.exactTailMaxEvaluations = Math.max(perf.exactTailMaxEvaluations || 0, search.evaluations || 0);
+      const key = "exactTailStatus_" + String(search.status || "unknown").replace(/[^a-z0-9]+/gi, "_");
+      perf[key] = (perf[key] || 0) + 1;
+    }
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
       const exactPaint = alternative && alternative.metrics.every((metric, i) => {
