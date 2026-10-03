@@ -82,6 +82,22 @@ function profileMeasurement(source) {
   out += `
 export function v9MeasurementCacheKey(part) {
   const p = globalThis.__V9_PROFILE__ || (globalThis.__V9_PROFILE__ = {});
+  const ids = globalThis.__V9_PROFILE_IDENTITIES__ || (globalThis.__V9_PROFILE_IDENTITIES__ = {
+    part: new WeakSet(), runs: new WeakSet(), refs: new WeakSet(), style: new WeakSet(),
+  });
+  const countIdentity = (name, value) => {
+    if (!value || (typeof value !== 'object' && typeof value !== 'function')) return;
+    const set = ids[name];
+    const seen = set.has(value);
+    p[name + 'IdentityCalls'] = (p[name + 'IdentityCalls'] || 0) + 1;
+    if (seen) p[name + 'IdentityReuses'] = (p[name + 'IdentityReuses'] || 0) + 1;
+    else set.add(value);
+  };
+  countIdentity('part', part);
+  countIdentity('runs', part?.runs);
+  countIdentity('refs', part?.refs);
+  countIdentity('style', part?.style);
+
   const started = performance.now();
   const key = __ravtextProfileMeasurementKeyImpl(part);
   p.measureKeyCalls = (p.measureKeyCalls || 0) + 1;
