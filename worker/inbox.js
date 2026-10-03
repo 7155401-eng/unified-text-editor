@@ -10,6 +10,9 @@ const MAX_BODY = 5000;
 const MAX_NOTE = 5000;
 const MAX_DETAIL = 1000;
 const MAX_TAG = 60;
+const MAIL_RELAY_DELIVER_URL = 'https://shchiche.com/wp-json/ravtext-mail/v1/deliver';
+const MAIL_RELAY_TOKEN_TTL_SEC = 5 * 60;
+const MAIL_RETRY_MAX_DELAY_SEC = 60 * 60;
 
 function jsonRes(obj, init = {}) {
   return new Response(JSON.stringify(obj), {
@@ -44,6 +47,192 @@ async function requireAdmin(request, env) {
   if (!user) return { error: bad('Not logged in', 401) };
   if (!user.is_admin) return { error: bad('Forbidden', 403) };
   return { user };
+}
+
+async function ensureMailRelaySchema(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS mail_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      source_id INTEGER NOT NULL,
+      user_email TEXT,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      relay_token TEXT,
+      relay_expires_at INTEGER,
+      created_at INTEGER NOT NULL,
+      sent_at INTEGER,
+      next_attempt_at INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(kind, source_id)
+    )
+  `).run();
+  await env.DB.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_mail_notifications_pending ON mail_notifications(status, next_attempt_at, id)'
+  ).run();
+}
+
+function randomRelayToken() {
+  try {
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+  } catch (_) {
+    return `${crypto.randomUUID?.() || Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+}
+
+async function queueMailNotification(env, { kind, sourceId, userEmail, subject, body }) {
+  await ensureMailRelaySchema(env);
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO mail_notifications
+      (kind, source_id, user_email, subject, body, status, attempts, created_at, next_attempt_at)
+    VALUES (?, ?, ?, ?, ?, 'pending', 0, ?, ?)
+  `).bind(
+    clip(kind, 40),
+    Number(sourceId),
+    clip(userEmail || '', 320),
+    clip(subject, 300),
+    clip(body, 12000),
+    now,
+    now,
+  ).run();
+  return env.DB.prepare(
+    'SELECT id, status FROM mail_notifications WHERE kind = ? AND source_id = ?'
+  ).bind(clip(kind, 40), Number(sourceId)).first();
+}
+
+async function markMailAttemptFailed(env, row, errorText) {
+  const attempts = Math.max(0, Number(row?.attempts) || 0) + 1;
+  const delay = Math.min(MAIL_RETRY_MAX_DELAY_SEC, 60 * Math.pow(2, Math.min(attempts - 1, 6)));
+  const nextAttempt = Math.floor(Date.now() / 1000) + delay;
+  await env.DB.prepare(`
+    UPDATE mail_notifications
+    SET attempts = ?, last_error = ?, next_attempt_at = ?, relay_token = NULL, relay_expires_at = NULL
+    WHERE id = ? AND status = 'pending'
+  `).bind(attempts, clip(errorText || 'mail_relay_failed', 1000), nextAttempt, row.id).run();
+}
+
+async function deliverMailNotification(env, notificationId) {
+  await ensureMailRelaySchema(env);
+  const row = await env.DB.prepare(`
+    SELECT id, kind, source_id, user_email, subject, body, status, attempts, created_at
+    FROM mail_notifications WHERE id = ?
+  `).bind(Number(notificationId)).first();
+  if (!row || row.status === 'sent') return !!row;
+
+  const token = randomRelayToken();
+  const expires = Math.floor(Date.now() / 1000) + MAIL_RELAY_TOKEN_TTL_SEC;
+  await env.DB.prepare(`
+    UPDATE mail_notifications
+    SET relay_token = ?, relay_expires_at = ?
+    WHERE id = ? AND status = 'pending'
+  `).bind(token, expires, row.id).run();
+
+  let response;
+  try {
+    response = await fetch(MAIL_RELAY_DELIVER_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+      body: JSON.stringify({ id: row.id, token }),
+    });
+  } catch (error) {
+    await markMailAttemptFailed(env, row, error?.message || String(error));
+    return false;
+  }
+
+  let data = null;
+  let responseText = '';
+  try {
+    responseText = await response.text();
+    data = JSON.parse(responseText || '{}');
+  } catch (_) {}
+
+  if (!response.ok || data?.sent !== true) {
+    const detail = data?.error || data?.message || responseText || `HTTP ${response.status}`;
+    await markMailAttemptFailed(env, row, detail);
+    return false;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.prepare(`
+    UPDATE mail_notifications
+    SET status = 'sent', sent_at = ?, attempts = attempts + 1, last_error = NULL,
+        relay_token = NULL, relay_expires_at = NULL
+    WHERE id = ?
+  `).bind(now, row.id).run();
+  return true;
+}
+
+export async function deliverPendingMailNotifications(env, limit = 20) {
+  await ensureMailRelaySchema(env);
+  const now = Math.floor(Date.now() / 1000);
+  const rows = await env.DB.prepare(`
+    SELECT id
+    FROM mail_notifications
+    WHERE status = 'pending' AND COALESCE(next_attempt_at, 0) <= ?
+    ORDER BY id ASC
+    LIMIT ?
+  `).bind(now, Math.max(1, Math.min(100, Number(limit) || 20))).all();
+
+  let sent = 0;
+  for (const row of rows.results || []) {
+    if (await deliverMailNotification(env, row.id).catch(() => false)) sent += 1;
+  }
+  return { checked: (rows.results || []).length, sent };
+}
+
+export async function handleMailRelayPull(request, env, url) {
+  if (request.method !== 'GET') return bad('method_not_allowed', 405);
+  await ensureMailRelaySchema(env);
+  const id = Number(url.searchParams.get('id'));
+  const token = String(url.searchParams.get('token') || '');
+  if (!Number.isFinite(id) || id <= 0 || token.length < 24 || token.length > 160) {
+    return bad('invalid_relay_token', 400);
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(`
+    SELECT id, kind, source_id, user_email, subject, body, created_at
+    FROM mail_notifications
+    WHERE id = ? AND status = 'pending' AND relay_token = ? AND relay_expires_at >= ?
+  `).bind(id, token, now).first();
+  if (!row) return bad('relay_token_not_found_or_expired', 404);
+
+  return jsonRes({
+    ok: true,
+    notification: {
+      id: row.id,
+      kind: row.kind,
+      sourceId: row.source_id,
+      userEmail: row.user_email || '',
+      subject: row.subject,
+      body: row.body,
+      createdAt: row.created_at,
+    },
+  });
+}
+
+function mailBody({ kindLabel, id, userEmail, title = '', text }) {
+  const lines = [
+    'פנייה חדשה התקבלה דרך app.ravtext.com',
+    '',
+    `סוג: ${kindLabel}`,
+    `מזהה במערכת: #${id}`,
+    `מאת: ${userEmail || 'לא ידוע'}`,
+  ];
+  if (title) lines.push(`כותרת: ${title}`);
+  lines.push('', 'תוכן הפנייה:', text, '', 'הפנייה נשמרה גם בלוח המנהל של RavText.');
+  return lines.join('\n');
+}
+
+async function queueAndDeliverUserMail(env, spec) {
+  const queued = await queueMailNotification(env, spec);
+  if (!queued?.id) return false;
+  if (queued.status === 'sent') return true;
+  return deliverMailNotification(env, queued.id);
 }
 
 // ====== נתיבים פומביים (דורש login) ======
@@ -137,7 +326,21 @@ async function submitBugReport(request, env, user) {
      VALUES (?, ?, 'bug_submit', ?, ?)`
   ).bind(user.id, user.email, JSON.stringify({ id: ins.meta.last_row_id, title }), now).run().catch(() => {});
 
-  return jsonRes({ ok: true, id: ins.meta.last_row_id });
+  const mailDelivered = await queueAndDeliverUserMail(env, {
+    kind: 'bug_report',
+    sourceId: ins.meta.last_row_id,
+    userEmail: user.email,
+    subject: `RavText — דיווח באג חדש — ${title}`,
+    body: mailBody({
+      kindLabel: 'דיווח באג',
+      id: ins.meta.last_row_id,
+      userEmail: user.email,
+      title,
+      text,
+    }),
+  }).catch(() => false);
+
+  return jsonRes({ ok: true, id: ins.meta.last_row_id, mailDelivered });
 }
 
 async function submitContact(request, env, user) {
@@ -158,7 +361,20 @@ async function submitContact(request, env, user) {
      VALUES (?, ?, 'contact_submit', ?, ?)`
   ).bind(user.id, user.email, JSON.stringify({ id: ins.meta.last_row_id }), now).run().catch(() => {});
 
-  return jsonRes({ ok: true, id: ins.meta.last_row_id });
+  const mailDelivered = await queueAndDeliverUserMail(env, {
+    kind: 'contact',
+    sourceId: ins.meta.last_row_id,
+    userEmail: user.email,
+    subject: `RavText — פנייה חדשה מהאתר — ${user.email || 'משתמש'}`,
+    body: mailBody({
+      kindLabel: 'צור קשר',
+      id: ins.meta.last_row_id,
+      userEmail: user.email,
+      text,
+    }),
+  }).catch(() => false);
+
+  return jsonRes({ ok: true, id: ins.meta.last_row_id, mailDelivered });
 }
 
 async function trackUsage(request, env, user) {

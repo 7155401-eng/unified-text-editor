@@ -379,7 +379,7 @@ export function setupPdfToolbar(pagesContainer) {
     const root = document.createElement("div");
     root.id = "ravtext-print-root";
     root.setAttribute("dir", "rtl");
-    const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder):not(.ravtext-empty-page)"));
+    const pages = Array.from(pagesContainer.querySelectorAll(".page:not(.page-placeholder):not(.ravtext-empty-page):not(.ravtext-range-outside)"));
     for (const page of pages) {
       const clone = page.cloneNode(true);
       clone.classList.remove("measure-page", "page-placeholder");

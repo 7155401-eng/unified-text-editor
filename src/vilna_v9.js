@@ -4134,6 +4134,101 @@ function renderPagePlan(plan, pageEl, cfg) {
   // planning above; later passes may diagnose but never move the page.
 }
 
+function normalizeV9RequestedPageRange(raw) {
+  if (!raw || raw.enabled === false) return null;
+  const fromPage = Math.max(1, Math.floor(Number(raw.fromPage) || 1));
+  const rawTo = Number(raw.toPage);
+  const toPage = Number.isFinite(rawTo) && rawTo > 0
+    ? Math.max(fromPage, Math.floor(rawTo))
+    : Number.MAX_SAFE_INTEGER;
+  return { enabled: true, fromPage, toPage };
+}
+
+function currentV9RequestedPageRange(cfg) {
+  try {
+    const raw = typeof cfg?.pageRangeProvider === "function"
+      ? cfg.pageRangeProvider()
+      : cfg?.pageRange;
+    return normalizeV9RequestedPageRange(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function v9PageNumberInRange(pageIdx, range) {
+  if (!range) return true;
+  const pageNumber = Math.max(1, Math.floor(Number(pageIdx) || 0) + 1);
+  return pageNumber >= range.fromPage && pageNumber <= range.toPage;
+}
+
+function makeV9RangePlaceholder(pageEl, plan, cfg, pageIdx) {
+  pageEl.classList.remove("v9-page");
+  pageEl.classList.add("page-placeholder", "ravtext-range-skipped");
+  pageEl.dataset.realized = "0";
+  pageEl.style.width = plan.pageBox.width + "px";
+  pageEl.style.height = plan.pageBox.height + "px";
+  pageEl.style.boxSizing = "border-box";
+  pageEl.style.position = "relative";
+  pageEl.style.display = "flex";
+  pageEl.style.alignItems = "center";
+  pageEl.style.justifyContent = "center";
+  pageEl.style.color = "#64748b";
+  pageEl.style.background = "rgba(248,250,252,.72)";
+  pageEl.style.border = "1px dashed rgba(100,116,139,.35)";
+  pageEl.setAttribute("hidden", "");
+  pageEl.style.display = "none";
+  pageEl.textContent = `עמוד ${pageIdx + 1} — מחוץ לטווח שנבחר`;
+  pageEl.__ravtextV9Plan = plan;
+  pageEl.__ravtextV9Config = cfg;
+  return pageEl;
+}
+
+function realizeV9RangePlaceholder(pageEl) {
+  if (!pageEl?.classList?.contains("ravtext-range-skipped")) return pageEl;
+  const plan = pageEl.__ravtextV9Plan;
+  const cfg = pageEl.__ravtextV9Config;
+  if (!plan || !cfg || !pageEl.parentNode) return pageEl;
+
+  const real = document.createElement("div");
+  real.className = "page v9-page";
+  real.setAttribute("dir", "rtl");
+  for (const attr of Array.from(pageEl.attributes || [])) {
+    if (!attr.name.startsWith("data-")) continue;
+    if (attr.name === "data-realized") continue;
+    real.setAttribute(attr.name, attr.value);
+  }
+  real.dataset.realized = "1";
+  renderPagePlan(plan, real, cfg);
+  const pageIdx = Math.max(0, Math.floor(Number(real.dataset.pageIndex) || 0));
+  runV9PageDecoratorsDuringRender(real, pageIdx);
+  pageEl.parentNode.replaceChild(real, pageEl);
+  return real;
+}
+
+export function syncV9PageRange(container, rawRange = null) {
+  if (!container?.querySelectorAll) return;
+  const range = normalizeV9RequestedPageRange(rawRange);
+  const pages = Array.from(container.querySelectorAll(".page"));
+  for (const original of pages) {
+    const pageIdx = Math.max(0, Math.floor(Number(original.dataset.pageIndex) || 0));
+    const included = v9PageNumberInRange(pageIdx, range);
+    let page = original;
+    if (included && page.classList.contains("ravtext-range-skipped")) {
+      page = realizeV9RangePlaceholder(page);
+    }
+    if (!page) continue;
+    const outside = !!range && !included;
+    page.classList.toggle("ravtext-range-outside", outside);
+    if (outside) {
+      page.setAttribute("hidden", "");
+      page.style.display = "none";
+    } else {
+      page.removeAttribute("hidden");
+      page.style.display = "";
+    }
+  }
+}
+
 // =====================================================================
 // API ראשי - בונה עמוד יחיד או רב-עמודי
 // =====================================================================
@@ -6226,10 +6321,15 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       break;
     }
 
-    renderPagePlan(plan, pageEl, cfg);
-    // Document overlays that affect the page (notably page numbers) are painted
-    // while this page is being built, not by an engine-rendered/observer pass later.
-    runV9PageDecoratorsDuringRender(pageEl, pageIdx);
+    const requestedRange = currentV9RequestedPageRange(cfg);
+    if (v9PageNumberInRange(pageIdx, requestedRange)) {
+      renderPagePlan(plan, pageEl, cfg);
+      // Document overlays that affect the page (notably page numbers) are painted
+      // while this page is being built, not by an engine-rendered/observer pass later.
+      runV9PageDecoratorsDuringRender(pageEl, pageIdx);
+    } else {
+      makeV9RangePlaceholder(pageEl, plan, cfg, pageIdx);
+    }
     pages.push(pageEl);
     pageEl.dataset.v9StreamCoverage = JSON.stringify(plan.streamCoverage || []);
     pageEl.dataset.v9CrownGap = JSON.stringify({bottom:plan.crownBottomY,gap:plan.crownMainGap});

@@ -14,7 +14,7 @@
 // אין float, אין shape-outside.
 
 import { nextFrame } from "./engine/background_safe_yield.js";
-import { buildPages } from "./vilna_v9.js";
+import { buildPages, syncV9PageRange } from "./vilna_v9.js";
 import { buildPagesDafLocked, dafLockActive, readDafLockSettings } from "./vilna_daf_lock.js";
 import { resolveV9MainBottomGapPx } from "./engine/v9_main_bottom_gap_policy.js";
 import { getTalmudStreamsText, isTalmudOtherAsMishnaEnabled } from "./talmud_controls.js";
@@ -544,6 +544,9 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
       // One immutable snapshot for this render. Every trial/final plan for a
       // page receives the same manual constraint.
       pageTweaks: normalizePageTweaks(opts.pageTweaks),
+      // The progress dialog owns the optional page-range choice. Read it lazily
+      // so a choice made after rendering starts still affects subsequent pages.
+      pageRangeProvider: () => progress.getRange(),
     };
 
     // ★ נעילת דף (משה, 11/09/2026): כשיש בטקסט סימני ⟦דף …⟧ — כל עמוד אצלנו
@@ -564,18 +567,34 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     //
     // הדגל הזה הוא מה שמפריד ביניהם: רק כשהוא דלוק מותר לשומרים
     // לשנות את גודל הדף.
-    const result = dafLockOn
-      ? await buildPagesDafLocked(container, transformedParagraphs, { ...v9Config, dafLocked: true }, {
-          settings: dafSettings,
-          buildPages,
-        })
-      : await buildPages(container, transformedParagraphs, v9Config);
+    const syncRangeDuringRender = (event) => {
+      try { syncV9PageRange(container, event?.detail || null); } catch (_) {}
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("ravtext:render-page-range-change", syncRangeDuringRender);
+    }
+
+    let result;
+    try {
+      result = dafLockOn
+        ? await buildPagesDafLocked(container, transformedParagraphs, { ...v9Config, dafLocked: true }, {
+            settings: dafSettings,
+            buildPages,
+          })
+        : await buildPages(container, transformedParagraphs, v9Config);
+    } finally {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("ravtext:render-page-range-change", syncRangeDuringRender);
+      }
+    }
 
     if (result?.aborted || !isCurrent()) {
       progress.abort();
       return result;
     }
 
+    const finalPageRange = progress.getRange();
+    syncV9PageRange(container, finalPageRange);
     annotateV9RenderedSourceMetadata(container, transformedParagraphs);
 
     // V9 final-plan geometry and typography are complete at this point.
@@ -592,7 +611,7 @@ export async function applyVilnaV9FromPaneManager(paragraphs, container, opts = 
     progress.finish({
       totalPages: container.querySelectorAll(".page").length || result?.pages?.length || 0,
     });
-    return result;
+    return { ...(result || {}), pageRange: finalPageRange };
   } catch (e) {
     progress.fail(e);
     throw e;
