@@ -1350,6 +1350,27 @@ function realPageCount(container) {
   return container.querySelectorAll(".page:not(.page-placeholder)").length;
 }
 
+function applyRenderPageRangeMask(container, range) {
+  if (!container?.querySelectorAll || !range?.enabled) return;
+  const fromPage = Math.max(1, Math.floor(Number(range.fromPage) || 1));
+  const rawTo = Number(range.toPage);
+  const toPage = Number.isFinite(rawTo) && rawTo > 0
+    ? Math.max(fromPage, Math.floor(rawTo))
+    : Number.MAX_SAFE_INTEGER;
+  for (const page of container.querySelectorAll(".page")) {
+    const pageNumber = Math.max(1, Math.floor(Number(page.dataset.pageIndex) || 0) + 1);
+    const outside = pageNumber < fromPage || pageNumber > toPage;
+    page.classList.toggle("ravtext-range-outside", outside);
+    if (outside) {
+      page.setAttribute("hidden", "");
+      page.style.display = "none";
+    } else {
+      page.removeAttribute("hidden");
+      if (!page.classList.contains("ravtext-range-skipped")) page.style.display = "";
+    }
+  }
+}
+
 function resolvePagesContainer(container) {
   if (container) return container;
   if (typeof document === "undefined") return null;
@@ -1485,6 +1506,7 @@ async function _runRender(paneManager, pagesContainer, pdfToolbarApi, myToken, s
       if (v9Result?.aborted) return;
       const v9BookPageCount = pagesContainer.querySelectorAll(".page").length;
       prependFrontMatterPages(pagesContainer, packedFrontMatter);
+      applyRenderPageRangeMask(pagesContainer, v9Result?.pageRange);
       const v9PageCount = frontMatterPageCount + v9BookPageCount;
       if (pdfToolbarApi) {
         pdfToolbarApi.setTotal(v9PageCount);
