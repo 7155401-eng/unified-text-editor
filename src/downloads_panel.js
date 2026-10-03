@@ -119,9 +119,46 @@ function downloadBlob(filename, blob) {
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
   document.body.appendChild(a);
   a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+
+  // Do not revoke on the same event-loop turn. Some browsers start reading
+  // the Blob URL only after the synthetic click has returned; revoking at 0ms
+  // can cancel the download before it begins.
+  setTimeout(() => {
+    try { URL.revokeObjectURL(url); } catch (_) {}
+    a.remove();
+  }, 60_000);
+}
+
+async function pickSaveFile(suggestedName, mimeType, extension) {
+  if (typeof window.showSaveFilePicker !== "function") return null;
+  try {
+    // This function must be invoked directly from the click handler before any
+    // network await, otherwise Chromium drops transient user activation.
+    return await window.showSaveFilePicker({
+      suggestedName,
+      types: [{
+        description: suggestedName,
+        accept: { [mimeType]: [extension] },
+      }],
+    });
+  } catch (err) {
+    if (err?.name === "AbortError") return false;
+    console.warn("[downloads] save picker unavailable, falling back to browser download:", err);
+    return null;
+  }
+}
+
+async function writePickedFile(fileHandle, blob) {
+  const writable = await fileHandle.createWritable();
+  try {
+    await writable.write(blob);
+  } finally {
+    await writable.close();
+  }
 }
 
 async function writeFile(dirHandle, name, blob) {
@@ -223,9 +260,16 @@ async function clearFolderChoice() {
 }
 
 async function downloadDocumentHTML() {
+  // Ask for the save destination *before* the server roundtrip. This preserves
+  // the user's click activation and prevents Chrome/Edge from silently
+  // rejecting the eventual download after the await.
+  const picked = await pickSaveFile("ravtext-document.html", "text/html", ".html");
+  if (picked === false) return;
+
   try {
     const htmlBlob = await secureExportHtmlBlob(buildPagesSnapshotHTML());
-    downloadBlob("ravtext-document.html", htmlBlob);
+    if (picked) await writePickedFile(picked, htmlBlob);
+    else downloadBlob("ravtext-document.html", htmlBlob);
     setLastSave(`הורד דרך השרת: ${new Date().toLocaleTimeString("he-IL")}`);
   } catch (err) {
     console.error("[downloads] secure HTML export failed:", err);
@@ -233,13 +277,24 @@ async function downloadDocumentHTML() {
   }
 }
 
-function downloadDocumentJSON() {
+async function downloadDocumentJSON() {
   if (isDemoMode()) {
     alert("במצב דמו אין הורדת JSON גולמי, כי הוא יכול לעקוף סימני מים. השתמש בהורדת HTML המאובטחת דרך השרת.");
     return;
   }
-  downloadBlob("ravtext-document.json", new Blob([buildDocumentJSON()], { type: "application/json" }));
-  setLastSave(`הורד: ${new Date().toLocaleTimeString("he-IL")}`);
+
+  const picked = await pickSaveFile("ravtext-document.json", "application/json", ".json");
+  if (picked === false) return;
+
+  try {
+    const blob = new Blob([buildDocumentJSON()], { type: "application/json" });
+    if (picked) await writePickedFile(picked, blob);
+    else downloadBlob("ravtext-document.json", blob);
+    setLastSave(`הורד: ${new Date().toLocaleTimeString("he-IL")}`);
+  } catch (err) {
+    console.error("[downloads] JSON download failed:", err);
+    alert("הורדת נתוני המסמך נכשלה. נסה שוב או בחר תיקיית יעד.");
+  }
 }
 
 // ─── PWA install (כרום עצמאי, נעול לאתר) ────────────────────────────────────
