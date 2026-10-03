@@ -75,16 +75,39 @@ function exactTailCacheKey(args) {
 }
 
 function profileMeasurement(source) {
+  let out = source;
+  const keyExport = 'export function v9MeasurementCacheKey';
+  if (!out.includes(keyExport)) throw new Error('measurement key export anchor missing');
+  out = out.replace(keyExport, 'function __ravtextProfileMeasurementKeyImpl');
+  out += `
+export function v9MeasurementCacheKey(part) {
+  const p = globalThis.__V9_PROFILE__ || (globalThis.__V9_PROFILE__ = {});
+  const started = performance.now();
+  const key = __ravtextProfileMeasurementKeyImpl(part);
+  p.measureKeyCalls = (p.measureKeyCalls || 0) + 1;
+  p.measureKeyMs = (p.measureKeyMs || 0) + (performance.now() - started);
+  p.measureKeyChars = (p.measureKeyChars || 0) + String(key || '').length;
+  return key;
+}
+`;
+
   const token = '      const found = cache.get(key); if (found) return found;';
-  if (!source.includes(token)) throw new Error('measurement cache anchor missing');
-  return source.replace(token, `      const profile = globalThis.__V9_PROFILE__ || (globalThis.__V9_PROFILE__ = {});
+  if (!out.includes(token)) throw new Error('measurement cache anchor missing');
+  out = out.replace(token, `      const profile = globalThis.__V9_PROFILE__ || (globalThis.__V9_PROFILE__ = {});
       profile.measureCalls = (profile.measureCalls || 0) + 1;
       const found = cache.get(key);
       if (found) {
         profile.measureHits = (profile.measureHits || 0) + 1;
         return found;
       }
-      profile.measureMisses = (profile.measureMisses || 0) + 1;`);
+      profile.measureMisses = (profile.measureMisses || 0) + 1;
+      const __ravtextMissStarted = performance.now();`);
+
+  const endToken = '      cache.set(key, result); return result;';
+  if (!out.includes(endToken)) throw new Error('measurement miss end anchor missing');
+  out = out.replace(endToken, `      profile.measureMissMs = (profile.measureMissMs || 0) + (performance.now() - __ravtextMissStarted);
+      cache.set(key, result); return result;`);
+  return out;
 }
 
 function maybeInstrument(filename, source) {
