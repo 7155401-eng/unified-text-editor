@@ -111,13 +111,19 @@ jobs:
           PY
 
       - name: Verify browser can fetch and import the live stable module
+        if: always()
         shell: bash
         run: |
           cat > /tmp/live-pdf-import.mjs <<'EOF'
           import { chromium } from 'playwright-chromium';
           import fs from 'node:fs';
           const browser = await chromium.launch({headless:true});
-          const page = await browser.newPage();
+          const page = await browser.newPage({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36',
+            extraHTTPHeaders: {
+              'accept-language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7'
+            }
+          });
           const errors=[];
           page.on('pageerror', e=>errors.push(String(e)));
           const response = await page.goto('https://app.ravtext.com/', {waitUntil:'domcontentloaded', timeout:45000});
@@ -140,9 +146,9 @@ jobs:
           fs.mkdirSync('test-results/pdf-current-main/live',{recursive:true});
           fs.writeFileSync('test-results/pdf-current-main/live/browser-import.json',JSON.stringify(report,null,2));
           console.log(JSON.stringify(report,null,2));
-          if(report.rootStatus < 200 || report.rootStatus >= 400) throw new Error('live app root did not load');
+          if(report.rootStatus < 200 || report.rootStatus >= 400) throw new Error('live app root did not load: HTTP '+report.rootStatus);
           if(errors.length) throw new Error('page errors: '+JSON.stringify(errors));
-          if(result.fetchStatus !== 200) throw new Error('stable PDF module fetch failed');
+          if(result.fetchStatus !== 200) throw new Error('stable PDF module fetch failed: HTTP '+result.fetchStatus);
           if(!result.imported || result.exportType !== 'function') throw new Error('stable PDF module browser import failed: '+result.importError);
           await browser.close();
           EOF
