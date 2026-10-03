@@ -11,7 +11,12 @@ import { parseStreamsToHtml } from './stream_parser.js';
 import { handlePreflight, handleTalmudDecide, handleBalanceDecide, handleMishnaDecide, checkNonce } from './render_planner.js';
 import { handleAdmin, isConsoleGuardEnabled } from './admin.js';
 import { handleVideoGallery, handleAdminVideoGallery } from './video_gallery.js';
-import { handleAdminInbox, handlePublicInbox } from './inbox.js';
+import {
+  handleAdminInbox,
+  handlePublicInbox,
+  handleMailRelayPull,
+  deliverPendingMailNotifications,
+} from './inbox.js';
 import { handleStorage } from './storage.js';
 import { handlePayments } from './payments.js';
 import { handleAccount } from './account.js';
@@ -148,6 +153,8 @@ export default {
       response = await handleAdminVideoGallery(request, env, url);
     } else if (url.pathname.startsWith('/api/admin/')) {
       response = await handleAdmin(request, env, url);
+    } else if (url.pathname === '/api/mail-relay/pull') {
+      response = await handleMailRelayPull(request, env, url);
     } else if (
       url.pathname === '/api/bug-reports' ||
       url.pathname === '/api/bug-reports/public' ||
@@ -302,5 +309,6 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(runRecurringBilling(env).catch(() => null));
     ctx.waitUntil(cleanupExpiredDocxUploads(env).catch(() => null));
+    ctx.waitUntil(deliverPendingMailNotifications(env).catch(() => null));
   },
 };
