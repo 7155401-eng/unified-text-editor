@@ -1849,6 +1849,56 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  await test('unsafe completed opening tail stays adjacent to the fixed opening',()=>{
+    const context={
+      fontSize:10,lineHeight:10,
+      describeOpening:()=>({
+        position:'dropped',start:0,end:4,marks:{fontSize:20},dropLines:2,gapPx:2
+      }),
+      measure:part=>{
+        const body=String(part.text||'').trim();
+        if(body==='OPEN')return {width:20,height:10,topInset:0};
+        const n=body?body.split(/\s+/u).length:0;
+        return {width:n?n*40+(n-1)*2:0,height:10,topInset:0};
+      }
+    };
+    const source='OPEN aa bb';
+    const plan=layoutV9MainParagraphs(
+      [{id:'unsafe-opening-adjacency',text:source,runs:[],mainRefs:[]}],
+      [{x:0,width:80,y_start:0,y_end:120}],context,120
+    );
+    assert.equal(plan.lines.length,2,`fixture expected two rows, got ${plan.lines.length}`);
+    const host=plan.lines.find(line=>line.render?.opening);
+    const last=plan.lines.at(-1);
+    assert(host?.render?.opening,'opening glyph missing');
+    assert(last.isLast&&last.openingWindow,'fixture tail no longer shares opening window');
+    assert(!last.openingParagraphCentered,'unsafe full-frame centering was incorrectly accepted');
+    assert(last.render.alignment==='right',`unsafe tail alignment=${last.render.alignment}`);
+    assert(last.render.wordSpacing===0,'unsafe tail manufactured spacing');
+
+    const openingPlan=host.render.opening;
+    const clearance=openingPlan.x-openingPlan.gap;
+    assert(Math.abs(last.x+last.width-clearance)<.01,
+      `free slot no longer ends at opening clearance: ${last.x+last.width} vs ${clearance}`);
+
+    const page=makePage();
+    try{
+      page.style.width='100px';page.style.height='120px';page.style.padding='0';
+      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+      assert(sourceText(page)===source,'source changed in unsafe adjacency fixture');
+      const body=[...page.querySelectorAll('.v9-final-main-line')].at(-1)?.querySelector('.v9-planned-line-text');
+      const opening=page.querySelector('.v9-opening-glyph');
+      assert(body&&opening,'painted unsafe adjacency fixture is incomplete');
+      const range=document.createRange();range.selectNodeContents(body);
+      const rects=[...range.getClientRects()].filter(r=>r.width>0&&r.height>0);
+      assert(rects.length,'unsafe tail has no visible ink');
+      const right=Math.max(...rects.map(r=>r.right));
+      const freeRight=opening.getBoundingClientRect().left-openingPlan.gap;
+      assert(Math.abs(right-freeRight)<=.6,
+        `unsafe tail detached from opening: right=${right}, openingEdge=${freeRight}`);
+    }finally{page.remove();}
+  });
+
   // User-reported regression: a completed tail that still shares the dropped
   // opening window must not float in the middle of only the leftover slot.
   // Prefer true paragraph-frame centering when the natural-width body physically
