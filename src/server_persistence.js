@@ -21,6 +21,11 @@ const SETTINGS_PREFIX = 'ravtext.';
 // תוכן המסמך עצמו; אם משהו בכל זאת מנפח את payload ההגדרות, לא שולחים אותו
 // שוב ושוב ויוצרים לולאת 413.
 const MAX_SETTINGS_SYNC_BYTES = 200 * 1024;
+// Beacon/keepalive requests share a 64 KiB body quota per fetch group. Keep
+// one explicit pagehide budget so document + settings never exceed our own
+// share of that quota. The document gets first priority; local recovery still
+// protects it when it is too large to beacon at all.
+export const PAGEHIDE_BEACON_BUDGET_BYTES = 64 * 1024;
 
 // מפתחות שלא נסנכרן (סודיים / זמניים / מצב מסמך שאינו הגדרה):
 const SETTINGS_BLACKLIST = new Set([
@@ -119,6 +124,32 @@ function byteSize(value) {
   if (typeof Blob !== 'undefined') return new Blob([text]).size;
   if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text).length;
   return text.length;
+}
+
+export function planPagehideBeaconBodies({
+  documentBody = null,
+  settingsBody = null,
+  budgetBytes = PAGEHIDE_BEACON_BUDGET_BYTES,
+} = {}) {
+  let remainingBytes = Math.max(0, Number(budgetBytes) || 0);
+  const documentBytes = documentBody == null ? 0 : byteSize(documentBody);
+  const settingsBytes = settingsBody == null ? 0 : byteSize(settingsBody);
+
+  const documentFits = documentBody != null && documentBytes <= remainingBytes;
+  if (documentFits) remainingBytes -= documentBytes;
+
+  const settingsFits = settingsBody != null && settingsBytes <= remainingBytes;
+  if (settingsFits) remainingBytes -= settingsBytes;
+
+  return {
+    documentBody: documentFits ? documentBody : null,
+    settingsBody: settingsFits ? settingsBody : null,
+    documentBytes,
+    settingsBytes,
+    documentFits,
+    settingsFits,
+    remainingBytes,
+  };
 }
 
 function summarizeSettings(settings, limit = 20) {
@@ -925,7 +956,9 @@ export function attachAutoSync(paneManager) {
       }
     }
 
-    // Save on page hide (best-effort, sendBeacon for reliability).
+    // Save on page hide (best-effort). Beacon/keepalive bodies share one
+    // 64 KiB quota, so budget document + settings together instead of issuing
+    // requests that the browser is required to reject.
     if (!install.pagehide && typeof window !== 'undefined') {
       window.addEventListener('pagehide', () => {
         try {
@@ -934,26 +967,17 @@ export function attachAutoSync(paneManager) {
           // independent of listener registration order.
           paneManager.flushSave?.();
 
+          let documentBody = null;
           const snapshot = createDocumentSnapshot(paneManager);
           if (snapshot && snapshot.sig !== _lastDocSig) {
             // sendBeacon has no response channel: mark the server copy
             // provisionally stale before queueing. On the next load the flag
             // is cleared automatically if server and local are identical.
             markServerStale('pagehide-pending', snapshot.sig.length);
-            if (navigator.sendBeacon) {
-              const queued = navigator.sendBeacon(
-                '/api/documents/current?beacon=1',
-                new Blob(
-                  [documentPayloadFromContentJson(snapshot.sig)],
-                  { type: 'application/json' }
-                )
-              );
-              if (!queued) {
-                console.warn('[persistence] pagehide document beacon was not queued');
-              }
-            }
+            documentBody = documentPayloadFromContentJson(snapshot.sig);
           }
 
+          let settingsBody = null;
           const settings = collectLocalSettings();
           if (settings) {
             const sig = JSON.stringify(settings);
@@ -961,16 +985,51 @@ export function attachAutoSync(paneManager) {
             if (
               sig !== _lastSettingsSig &&
               sig !== _lastFailedSettingsSig &&
-              byteSize(body) <= MAX_SETTINGS_SYNC_BYTES &&
-              navigator.sendBeacon
+              byteSize(body) <= MAX_SETTINGS_SYNC_BYTES
             ) {
-              navigator.sendBeacon(
-                '/api/settings?beacon=1',
-                new Blob(
-                  [body],
-                  { type: 'application/json' }
-                )
-              );
+              settingsBody = body;
+            }
+          }
+
+          const plan = planPagehideBeaconBodies({
+            documentBody,
+            settingsBody,
+          });
+          const canBeacon =
+            typeof navigator !== 'undefined' &&
+            typeof navigator.sendBeacon === 'function';
+
+          if (documentBody && !plan.documentFits) {
+            console.warn(
+              '[persistence] pagehide document exceeds beacon keepalive budget; local recovery remains authoritative',
+              { bytes: plan.documentBytes, budgetBytes: PAGEHIDE_BEACON_BUDGET_BYTES }
+            );
+          } else if (plan.documentBody && canBeacon) {
+            const queued = navigator.sendBeacon(
+              '/api/documents/current?beacon=1',
+              new Blob([plan.documentBody], { type: 'application/json' })
+            );
+            if (!queued) {
+              console.warn('[persistence] pagehide document beacon was not queued');
+            }
+          }
+
+          if (settingsBody && !plan.settingsFits) {
+            console.warn(
+              '[persistence] pagehide settings skipped because document/settings exceed shared beacon budget',
+              {
+                documentBytes: plan.documentFits ? plan.documentBytes : 0,
+                settingsBytes: plan.settingsBytes,
+                budgetBytes: PAGEHIDE_BEACON_BUDGET_BYTES,
+              }
+            );
+          } else if (plan.settingsBody && canBeacon) {
+            const queued = navigator.sendBeacon(
+              '/api/settings?beacon=1',
+              new Blob([plan.settingsBody], { type: 'application/json' })
+            );
+            if (!queued) {
+              console.warn('[persistence] pagehide settings beacon was not queued');
             }
           }
         } catch (e) { /* best effort */ }
