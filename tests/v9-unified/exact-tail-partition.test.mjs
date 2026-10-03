@@ -31,6 +31,18 @@ for(let seed=1;seed<=128;seed++)test(`bounded exact partition agrees with exhaus
     assert.equal(cost,expected.cost);
   }
 });
+test('default 4096 budget preserves feasible five-row tails beyond 1536 evaluations',()=>{
+  const rows=Array.from({length:5},()=>({}));
+  const metricFor=()=>({pressure:1});
+  const limited=solve({wordCount:35,rows,maxSpacing:8,maxEvaluations:1536,metricFor});
+  assert.deepEqual(limited,{status:'budget-exhausted',evaluations:1536});
+
+  const full=solve({wordCount:35,rows,maxSpacing:8,metricFor});
+  assert.equal(full.status,'complete');
+  assert.equal(full.evaluations,1550);
+  assert.deepEqual(full.boundaries,[1,2,3,4]);
+});
+
 test('budget exhaustion cannot return a partial candidate',()=>{
   const r=solve({wordCount:30,rows:[{},{},{},{}],maxSpacing:8,maxEvaluations:3,metricFor:()=>({pressure:1})});
   assert.deepEqual(r,{status:'budget-exhausted',evaluations:3});
