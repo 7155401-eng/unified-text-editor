@@ -429,14 +429,24 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       tail,
       gentleMax,
     });
+    const perf = typeof window !== 'undefined' && window.__ravtextPerfTrace
+      ? (window.__ravtextV9Perf ||= {}) : null;
     let search = cache.get(cacheKey);
-    if (!search) {
+    if (search) {
+      if (perf) perf.exactTailCacheHits = (perf.exactTailCacheHits || 0) + 1;
+    } else {
+      if (perf) perf.exactTailCacheMisses = (perf.exactTailCacheMisses || 0) + 1;
+      const exactStarted = perf ? performance.now() : 0;
       search = findV9ExactTailPartition({
         wordCount: words.length,
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
         maxSpacing: gentleMax,
         metricFor,
       });
+      if (perf) {
+        perf.exactTailSearchMs = (perf.exactTailSearchMs || 0) + performance.now() - exactStarted;
+        perf.exactTailEvaluations = (perf.exactTailEvaluations || 0) + (search.evaluations || 0);
+      }
       if (cache.size >= EXACT_TAIL_CACHE_MAX) {
         const oldest = cache.keys().next().value;
         if (oldest !== undefined) cache.delete(oldest);
