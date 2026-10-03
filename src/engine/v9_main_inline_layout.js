@@ -145,6 +145,11 @@ function freezeLine(line) {
 
 
 const TAIL_REBALANCE_MAX_WORD_SPACING_PX = 8;
+// 2026-10-04 performance profile: successful exact recoveries in the full
+// acceptance/benchmark matrices completed by 1117 evaluations, while the
+// pathological searches consumed the old 4096 ceiling and still returned
+// budget-exhausted. Keep ~37% headroom over the observed successful maximum.
+const TAIL_REBALANCE_EXACT_MAX_EVALUATIONS = 1536;
 const TAIL_REBALANCE_SCORE_EPS = 0.001;
 
 function continuationTailGentleSpacing(context) {
@@ -385,6 +390,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
       maxSpacing: gentleMax,
       metricFor,
+      maxEvaluations: TAIL_REBALANCE_EXACT_MAX_EVALUATIONS,
     });
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
