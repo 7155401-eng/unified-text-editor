@@ -26,6 +26,67 @@ test("legacy flat page_tweaks.json shape migrates into document state", () => {
   assert.equal(state.pages.junk, undefined);
 });
 
+test("explicit null measurements stay null and do not create dead page entries", () => {
+  const normalized = normalizePageTweaks({
+    pages: {
+      "3": { spaceLines: null, overflowPx: null },
+    },
+  });
+  assert.deepEqual(normalized.pages, {});
+
+  const entry = getPageTweak({ pages: { "3": { spaceLines: null, overflowPx: null } } }, 3);
+  assert.equal(entry.spaceLines, null);
+  assert.equal(entry.overflowPx, null);
+});
+
+test("measurement update with no measurements does not invent zero baselines", () => {
+  let state = emptyPageTweaks();
+  state = updatePageTweakMeasurements(state, 5);
+  assert.deepEqual(state.pages, {});
+
+  state = withPageTweak(state, 5, { status: "approved" });
+  state = updatePageTweakMeasurements(state, 5);
+  const entry = getPageTweak(state, 5);
+  assert.equal(entry.status, "approved");
+  assert.equal(entry.spaceLines, null);
+  assert.equal(entry.overflowPx, null);
+});
+
+test("first real sample establishes missing approved baseline instead of comparing against fake zero", () => {
+  let state = approvePageTweakWithMeasurements(emptyPageTweaks(), 6);
+  let entry = getPageTweak(state, 6);
+  assert.equal(entry.status, "approved");
+  assert.equal(entry.spaceLines, null);
+  assert.equal(entry.overflowPx, null);
+
+  state = updatePageTweakMeasurements(state, 6, {
+    bottomGapLines: 1.25,
+    overflowPx: 18,
+    linePitchPx: 20,
+  });
+  entry = getPageTweak(state, 6);
+  assert.equal(entry.status, "approved");
+  assert.equal(entry.spaceLines, 1.25);
+  assert.equal(entry.overflowPx, 18);
+
+  state = updatePageTweakMeasurements(state, 6, {
+    bottomGapLines: 1.45,
+    overflowPx: 20,
+    linePitchPx: 20,
+  });
+  entry = getPageTweak(state, 6);
+  assert.equal(entry.status, "approved");
+  assert.equal(entry.spaceLines, 1.25, "established approved gap baseline must not creep");
+  assert.equal(entry.overflowPx, 18, "established approved overflow baseline must not creep");
+
+  state = updatePageTweakMeasurements(state, 6, {
+    bottomGapLines: 2.0,
+    overflowPx: 33,
+    linePitchPx: 20,
+  });
+  assert.equal(getPageTweak(state, 6).status, "changed");
+});
+
 test("editing an approved page marks it changed", () => {
   let state = emptyPageTweaks();
   state = withPageTweak(state, 2, { status: "approved" });
