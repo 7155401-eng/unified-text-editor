@@ -91,6 +91,7 @@ import { wireFootnoteTrackChangesTool } from "./docx_tools/footnote_track_change
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
+import { wireHelpCenter } from "./help_center.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 try {
@@ -1711,6 +1712,7 @@ document.getElementById("btn-render")?.addEventListener("click", () => {
 // משה 2026-05-09: כפתורי דיווח באג / צור קשר. פעם פתחו mailto;
 // עכשיו פותחים מודלים שנשלחים ל-Worker → D1 → פאנל המנהל.
 wireInboxButtons();
+wireHelpCenter();
 
 // AUTO_RENDER_GATE_20260907: אלה שלושת המקומות שבהם הרינדור התחיל לבד.
 // stream_picker ממלא שני זרמים ברירת-מחדל 1.5 שניות אחרי הטעינה ומשגר
