@@ -436,11 +436,10 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
         maxSpacing: gentleMax,
         metricFor,
-        // Full-browser profiling on current V9 found every successful exact
-        // partition within 1,117 evaluations; the locked alignment matrix
-        // peaked at 633. Keep a conservative margin while stopping pathological
-        // no-solution searches from repeatedly burning the old 4,096 ceiling.
-        maxEvaluations: 1536,
+        // Correctness bound, not a performance tuning knob: a feasible
+        // 35-word / 5-row partition needs 1,550 evaluations. Retain the
+        // solver's full 4,096 search budget and optimize reuse instead.
+        maxEvaluations: 4096,
       });
       if (cache.size >= EXACT_TAIL_CACHE_MAX) {
         const oldest = cache.keys().next().value;
