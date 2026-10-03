@@ -19,6 +19,8 @@ import {
   buildV9SplitPolicy,
   buildParagraphBreakCandidates,
   selectV9GapFillCandidates,
+  evaluateV9PhysicalGapFillTrigger,
+  evaluateV9PhysicalGapFillGain,
   scoreV9PageCandidate,
   splitMainTextAtOffset,
   splitNotesByAnchor,
@@ -5087,15 +5089,22 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       const currentHasNoteOverflow = Object.keys((currentPlan && currentPlan.overflow && currentPlan.overflow.streams) || {})
         .some(k => currentPlan.overflow.streams[k]);
       const secondText = (splitInfo.secondHalf?.mainText || '').trim();
+      const extensionBottom = planBottomY(currentPlan);
+      const extensionRemainingPx = Math.max(0, pageBottomForFill - extensionBottom);
+      const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+      const extensionTrigger = evaluateV9PhysicalGapFillTrigger({
+        remainingPx: extensionRemainingPx,
+        lineHeight: extensionLineH,
+        beforeFill: currentFill,
+        cfg,
+        manualPull: false,
+      });
 
-      // Never decide from the OLD partial plan that extension is impossible.
-      // Extending the same source paragraph can move the main-text anchor that
-      // an unstarted note is waiting for onto this page, turning an unsafe
-      // current overflow into a legal started-note continuation. Every proposed
-      // extension below is rebuilt from source and independently validated by
-      // scoreV9PageCandidate()/hasUnsafeV9StreamOverflow(), so skipping the
-      // search here only creates white space; it adds no safety.
-      if (currentFill < rescueMinFillRatio && secondText.length > 0) {
+      // A page may be globally "full enough" by ratio while still wasting a
+      // visible physical row. Probe extension only when the old sparse-page
+      // rule allows it OR there is measured physical room. Candidate safety,
+      // source ownership and the historical score floor remain authoritative.
+      if ((currentFill < rescueMinFillRatio || extensionTrigger.ok) && secondText.length > 0) {
         const secondNotes = splitInfo.secondHalf.notes || [];
         const anchored = secondNotes.filter(n => typeof n.anchor === 'number');
         const anchorless = secondNotes.filter(n => typeof n.anchor !== 'number');
@@ -5116,9 +5125,6 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
             .map(n => ({ ...n, anchor: n.anchor >= len ? n.anchor - len : 0 }));
           return [...anchorlessFrom, ...anchoredFrom];
         };
-        const extensionRemainingPx = Math.max(0, pageBottomForFill - planBottomY(currentPlan));
-        const extensionLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
-
         let actualGeometryCandidates = [];
         try {
           const reconstructed = joinV9ParagraphFragments(splitInfo.firstHalf, splitInfo.secondHalf);
@@ -5198,8 +5204,17 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           if (noteOverflow && hasUnsafeV9StreamOverflow(tp)) continue;
 
           const fill = planFillRatio(tp);
-
-          if (fill < currentFill - 0.04) continue;
+          const candidateBottom = planBottomY(tp);
+          const physicalGain = evaluateV9PhysicalGapFillGain({
+            beforeBottom: extensionBottom,
+            afterBottom: candidateBottom,
+            lineHeight: extensionLineH,
+            beforeFill: currentFill,
+            afterFill: fill,
+            cfg,
+            manualPull: false,
+          });
+          if (!physicalGain.ok) continue;
 
           const movedAnchoredCount = movedNotes.filter(n => typeof n.anchor === "number").length;
 
@@ -5556,6 +5571,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         beforeFill: Number.isFinite(info.beforeFill) ? info.beforeFill : null,
         afterFill: Number.isFinite(info.afterFill) ? info.afterFill : null,
         remainingPxBefore: Number.isFinite(info.remainingPxBefore) ? info.remainingPxBefore : null,
+        bottomBefore: Number.isFinite(info.bottomBefore) ? info.bottomBefore : null,
+        bottomAfter: Number.isFinite(info.bottomAfter) ? info.bottomAfter : null,
+        bottomGainPx: Number.isFinite(info.bottomGainPx) ? info.bottomGainPx : null,
         accepted: !!info.accepted,
         rejectedReasons: Array.isArray(info.rejectedReasons) ? info.rejectedReasons : [],
         candidateCount: Number.isFinite(info.candidateCount) ? info.candidateCount : 0,
@@ -5577,6 +5595,9 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           beforeFill,
           afterFill: beforeFill,
           remainingPxBefore,
+          bottomBefore: bottom,
+          bottomAfter: bottom,
+          bottomGainPx: 0,
           accepted: false,
           rejectedReasons,
           candidateCount: 0,
@@ -5608,22 +5629,22 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       if (finalProbe.overflow.exceedsPage) return reject("page-overflow");
       if (mainOverflowTextOf(finalProbe)) return reject("main-overflow");
 
-      const triggerRatio = Number.isFinite(Number(cfg.finalGapFillTriggerRatio)) ? Number(cfg.finalGapFillTriggerRatio) : 0.84;
-      const minRemainingLines = Number.isFinite(Number(cfg.finalGapFillMinRemainingLines)) ? Number(cfg.finalGapFillMinRemainingLines) : 2.5;
-      const automaticMinGain = Number.isFinite(Number(cfg.finalGapFillMinGain)) ? Number(cfg.finalGapFillMinGain) : 0.04;
       const lineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
       const manualPullLines = Math.max(0, Number(cfg.__v9PageConstraint?.pullLines) || 0);
       const manualPull = manualPullLines > 0;
-      const minGain = manualPull ? 0.0001 : automaticMinGain;
+      const trigger = evaluateV9PhysicalGapFillTrigger({
+        remainingPx: remainingPxBefore,
+        lineHeight: lineH,
+        beforeFill,
+        cfg,
+        manualPull,
+      });
 
-      // Automatic gap-fill remains conservative. An explicit +N page tweak is
-      // allowed to try even on a fairly full page, but only if there is at
-      // least real physical room; all normal fit/note/footer guards below stay.
-      if (!manualPull && (beforeFill >= triggerRatio || remainingPxBefore < lineH * minRemainingLines)) {
-        return reject("not-enough-gap");
-      }
-      if (manualPull && remainingPxBefore < Math.min(lineH * 0.45, 6)) {
-        return reject("manual-no-physical-room", { manualPullLines });
+      if (!trigger.ok) {
+        return reject(trigger.reason, {
+          manualPullLines,
+          minRemainingPx: trigger.minRemainingPx,
+        });
       }
 
       const nextAvailable = getSlice(bestN + 1);
@@ -5756,8 +5777,23 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
         }
 
         const afterFill = planFillRatio(testPlan);
-        if (afterFill < beforeFill + minGain) {
-          rejectCandidate(candidate, "too-small-fill-improvement", { afterFill });
+        const afterBottom = planBottomY(testPlan);
+        const physicalGain = evaluateV9PhysicalGapFillGain({
+          beforeBottom: bottom,
+          afterBottom,
+          lineHeight: lineH,
+          beforeFill,
+          afterFill,
+          cfg,
+          manualPull,
+        });
+        if (!physicalGain.ok) {
+          rejectCandidate(candidate, physicalGain.reason, {
+            afterFill,
+            afterBottom,
+            bottomGainPx: physicalGain.gainPx,
+            minGainPx: physicalGain.minGainPx,
+          });
           continue;
         }
 
@@ -5770,6 +5806,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
           best = {
             score,
             afterFill,
+            afterBottom,
+            bottomGainPx: physicalGain.gainPx,
             firstHalf,
             secondHalf,
             testContent,
@@ -5795,6 +5833,8 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
 
       return finish({
         afterFill: best.afterFill,
+        bottomAfter: best.afterBottom,
+        bottomGainPx: best.bottomGainPx,
         accepted: true,
         rejectedReasons,
         candidateCount: candidates.length,
