@@ -23,13 +23,23 @@ export function findV9ExactTailPartition({
       const minimumEnd = i === rows.length - 1 ? wordCount : from + (rows[i].allowsEmpty ? 0 : 1);
       for (let to = minimumEnd; to <= maximumEnd; to++) {
         // Never return a partially searched alternative when the budget ends.
+        // Dominance pruning below deliberately still consumes this logical
+        // evaluation, preserving the exact 4096-budget traversal semantics.
         if (evaluations >= maxEvaluations) return {status: 'budget-exhausted', evaluations};
         evaluations++;
+
+        // Every transition adds pressure² >= 0. If this state's accumulated
+        // cost already cannot beat the best path known for the SAME endpoint,
+        // even a zero-pressure transition cannot replace it. Skip only the
+        // expensive caller measurement; traversal order and evaluation count
+        // remain identical to the unpruned solver.
+        const known = next.get(to);
+        if (known && state.cost >= known.cost - 1e-9) continue;
+
         const metric = metricFor(i, from, to);
         if (!metric || !Number.isFinite(metric.pressure) || metric.pressure < 0 ||
             metric.pressure > maxSpacing + 1e-9) continue;
         const cost = state.cost + metric.pressure * metric.pressure;
-        const known = next.get(to);
         if (!known || cost < known.cost - 1e-9) {
           next.set(to, {cost, previous: state, end: to});
         }
