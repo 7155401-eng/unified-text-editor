@@ -268,28 +268,48 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const initialBoundaries = boundaries.slice();
   const cache = new Map();
 
-  const metricFor = (lineIndex, fromWord, toWord) => {
-    if (fromWord < 0 || toWord < fromWord || toWord > words.length) return null;
+  const prepareMetric = (lineIndex, fromWord, toWord) => {
+    if (fromWord < 0 || toWord < fromWord || toWord > words.length) {
+      return {resolved: true, value: null};
+    }
     const key = `${lineIndex}:${fromWord}:${toWord}`;
-    if (cache.has(key)) return cache.get(key);
+    if (cache.has(key)) return {resolved: true, value: cache.get(key)};
 
     const openingOnly = toWord === fromWord && !!tail[lineIndex]?.render?.opening;
-    if (!(toWord > fromWord) && !openingOnly) return null;
+    if (!(toWord > fromWord) && !openingOnly) return {resolved: true, value: null};
     // An opening-only host has the GLYPH's box, not a free body slot. Leave
     // it empty; its following source glue/anchors belong to the first body row.
-    if (openingOnlyHost && lineIndex === 0 && !openingOnly) return null;
+    if (openingOnlyHost && lineIndex === 0 && !openingOnly) {
+      cache.set(key, null);
+      return {resolved: true, value: null};
+    }
 
-    const start = lineIndex === 0 || (openingOnlyHost && fromWord === 0)
+    const metricStart = lineIndex === 0 || (openingOnlyHost && fromWord === 0)
       ? bodySegmentStart
       : (words[fromWord]?.start ?? segmentEnd);
-    const visibleEnd = toWord > fromWord ? words[toWord - 1].end : start;
-    const consumedEnd = openingOnlyHost && lineIndex === 0 ? start
+    const visibleEnd = toWord > fromWord ? words[toWord - 1].end : metricStart;
+    const consumedEnd = openingOnlyHost && lineIndex === 0 ? metricStart
       : toWord < words.length ? (words[toWord]?.start ?? segmentEnd) : segmentEnd;
-    const body = partForRange(entry, start, visibleEnd, consumedEnd);
-    const measured = context.measure(body);
-    const target = number(tail[lineIndex]?.width, 0);
-    const maxHeight = number(tail[lineIndex]?.lineHeightPx, context.lineHeight);
+    const body = partForRange(entry, metricStart, visibleEnd, consumedEnd);
+    return {
+      resolved: false,
+      key,
+      lineIndex,
+      fromWord,
+      toWord,
+      openingOnly,
+      start: metricStart,
+      visibleEnd,
+      consumedEnd,
+      body,
+      target: number(tail[lineIndex]?.width, 0),
+      maxHeight: number(tail[lineIndex]?.lineHeightPx, context.lineHeight),
+    };
+  };
 
+  const finishMetric = (prepared, measured) => {
+    const {key, lineIndex, fromWord, toWord, openingOnly, start: metricStart,
+      visibleEnd, consumedEnd, body, target, maxHeight} = prepared;
     if (!(target > 0) || !measured || measured.width > target + EPS ||
         (measured.height > 0 && maxHeight > 0 && measured.height > maxHeight + EPS)) {
       cache.set(key, null);
@@ -302,7 +322,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       : (body.text.match(/ /g) || []).length;
     const deficit = Math.max(0, target - measured.width);
     const metric = {
-      start, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
+      start: metricStart, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
       wordTokens: words.slice(fromWord, toWord),
       openingOnly,
     };
@@ -312,6 +332,34 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         : continuationTailPressure(metric));
     cache.set(key, metric);
     return metric;
+  };
+
+  const metricFor = (lineIndex, fromWord, toWord) => {
+    const prepared = prepareMetric(lineIndex, fromWord, toWord);
+    if (prepared.resolved) return prepared.value;
+    return finishMetric(prepared, context.measure(prepared.body));
+  };
+
+  const metricMany = (requests) => {
+    const results = new Array(requests.length);
+    const pending = [];
+    for (let i = 0; i < requests.length; i++) {
+      const req = requests[i];
+      const prepared = prepareMetric(req.lineIndex, req.from, req.to);
+      if (prepared.resolved) results[i] = prepared.value;
+      else pending.push({i, prepared});
+    }
+    if (!pending.length) return results;
+
+    const bodies = pending.map(item => item.prepared.body);
+    const measured = typeof context.measureMany === 'function' && bodies.length > 1
+      ? context.measureMany(bodies)
+      : bodies.map(body => context.measure(body));
+    for (let i = 0; i < pending.length; i++) {
+      const item = pending[i];
+      results[item.i] = finishMetric(item.prepared, measured[i]);
+    }
+    return results;
   };
 
   const evaluate = (candidateBoundaries) => {
@@ -385,6 +433,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
       maxSpacing: gentleMax,
       metricFor,
+      metricMany,
     });
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
