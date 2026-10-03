@@ -22,11 +22,39 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Chromium
         run: npx --no-install playwright install --with-deps chromium
-      - name: Profile cache behavior
-        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/cache-profile.json
+      - name: Checkout corrected-main baseline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: eb00625522fe57e6f1fc34e6b6d55baa5103ecf1
+          path: .cache-baseline
+          persist-credentials: false
+      - name: Share dependencies with baseline
+        run: ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.cache-baseline/node_modules"
+      - name: Baseline benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .cache-baseline --out test-results/cache-baseline.json
+      - name: LRU candidate benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/cache-candidate.json
+      - name: Require identical render output
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const a=JSON.parse(fs.readFileSync('test-results/cache-baseline.json','utf8'));
+          const b=JSON.parse(fs.readFileSync('test-results/cache-candidate.json','utf8'));
+          const summary=[];
+          for(let i=0;i<a.cases.length;i++){
+            const x=a.cases[i],y=b.cases[i];
+            const same=x.name===y.name&&x.pages===y.pages&&x.complete===y.complete&&
+              x.sourceChars===y.sourceChars&&x.renderedChars===y.renderedChars&&x.domSha256===y.domSha256;
+            if(!same)throw new Error('Render output drift: '+JSON.stringify({baseline:x,candidate:y}));
+            summary.push({name:x.name,baselineMs:x.ms,candidateMs:y.ms,ratio:y.ms/Math.max(1,x.ms),
+              baselineMaxLongTask:x.maxLongTask,candidateMaxLongTask:y.maxLongTask,
+              candidatePerf:y.perf});
+          }
+          console.log(JSON.stringify(summary,null,2));
+          NODE
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: v9-cache-profile-${{ github.run_id }}
-          path: test-results/cache-profile.json
+          path: test-results/cache-*.json
           retention-days: 3
