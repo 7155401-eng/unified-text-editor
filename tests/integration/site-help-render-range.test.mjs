@@ -40,3 +40,20 @@ test("print and PDF exclude pages outside the selected range", () => {
   assert.match(toolbar, /:not\(\.ravtext-range-outside\)/);
   assert.match(pdf, /:not\(\.ravtext-range-outside\)/);
 });
+
+
+test("user inquiries queue mail through the Shchiche relay without embedding a reusable secret", () => {
+  const inbox = read("worker/inbox.js");
+  const worker = read("worker/index.js");
+  const migration = read("migrations/0011_mail_notifications.sql");
+  assert.match(inbox, /MAIL_RELAY_DELIVER_URL = 'https:\/\/shchiche\.com\/wp-json\/ravtext-mail\/v1\/deliver'/);
+  assert.match(inbox, /crypto\.getRandomValues/);
+  assert.match(inbox, /relay_expires_at/);
+  assert.match(inbox, /queueAndDeliverUserMail/);
+  assert.match(inbox, /kind: 'contact'/);
+  assert.match(inbox, /kind: 'bug_report'/);
+  assert.match(worker, /url\.pathname === '\/api\/mail-relay\/pull'/);
+  assert.match(worker, /deliverPendingMailNotifications/);
+  assert.match(migration, /UNIQUE\(kind, source_id\)/);
+  assert.doesNotMatch(inbox, /Authorization:\s*Bearer|RAVTEXT_MAIL_BRIDGE_TOKEN|MAIL_BRIDGE_SECRET/);
+});
