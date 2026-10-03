@@ -74,6 +74,8 @@ jobs:
         run: node scripts/verify_merge_verifier.mjs
       - name: Parallel translation engine
         run: node scripts/verify_parallel_translation.mjs
+      - name: Separate stream note gaps
+        run: node scripts/verify_stream_spacing.mjs
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
       - name: V9 browser regressions
@@ -149,6 +151,7 @@ jobs:
           node scripts/verify_header_styles.mjs
           node scripts/verify_merge_verifier.mjs
           node scripts/verify_parallel_translation.mjs
+          node scripts/verify_stream_spacing.mjs
           node --test tests/quota/*.test.mjs
           node --test tests/docx/*.test.mjs
           node scripts/v9-unified/run-browser.mjs

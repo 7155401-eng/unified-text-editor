@@ -17,6 +17,16 @@ const DEFAULTS = {
   streamGap: 4,
   streamNoteGap: 1,
   streamTitleGap: 1,
+  // ⭐ העברה מהתוכנה הקודמת (פריט 5 בביקורת): שם היו `space_before` ו-
+  // `space_after` **נפרדים** לכל הערה (0.3 ו-0.2 ס״מ), וכאן היה ערך אחד
+  // לשניהם — ואי-הסימטריה, שמקובלת בספרים, אבדה.
+  // ⛔ `null` פירושו „כמו שהיה" — נופל חזרה ל-`streamNoteGap`. ולכן ברירת
+  // המחדל **אינה משנה שום דבר** במסמכים קיימים.
+  streamNoteGapBefore: null,
+  streamNoteGapAfter: null,
+  // ⭐ `parskip` של התוכנה הישנה: רווח בין פסקאות **בתוך** הערה אחת.
+  // לא היה קיים כאן כלל. 0 = ההתנהגות הנוכחית.
+  streamParagraphGap: 0,
   ravtextStreamVerticalGap: 4,
   ravtextStreamHorizontalGap: 8,
   v9LineHeight: 1.55,
@@ -52,6 +62,9 @@ const FIELDS = [
   ["ravtextStreamVerticalGap", "רב טקסט: בין זרמים אנכית", "number", 0, 80, 1],
   ["ravtextStreamHorizontalGap", "רב טקסט: בין זרמים אופקית", "number", 0, 80, 1],
   ["streamNoteGap", "בין הערות", "number", 0, 40, 1],
+  ["streamNoteGapBefore", "לפני הערה (ריק = כמו „בין הערות”)", "number", 0, 40, 1],
+  ["streamNoteGapAfter", "אחרי הערה (ריק = כמו „בין הערות”)", "number", 0, 40, 1],
+  ["streamParagraphGap", "בין פסקאות בתוך הערה", "number", 0, 40, 1],
   ["streamTitleGap", "כותרת-תוכן", "number", 0, 40, 1],
   ["v9LineHeight", "V9: גובה שורה", "number", HEBREW_MARKS_SAFE_LINE_HEIGHT_MIN, 3, 0.05],
   ["v9MainGap", "V9: ראשי-צד", "number", 0, 60, 1],
@@ -146,6 +159,12 @@ export function applySpacingSettings(settings = loadSpacingSettings(), pagesCont
     "--ravtext-editor-stream-vertical-gap": `${s.ravtextStreamVerticalGap}px`,
     "--ravtext-editor-stream-horizontal-gap": `${s.ravtextStreamHorizontalGap}px`,
     "--ravtext-page-stream-note-gap": `${s.streamNoteGap}px`,
+    // נופלים חזרה ל-note-gap כשלא נקבע ערך — ולכן אין שינוי כברירת מחדל.
+    "--ravtext-page-stream-note-gap-before":
+      `${s.streamNoteGapBefore === null || s.streamNoteGapBefore === undefined ? s.streamNoteGap : s.streamNoteGapBefore}px`,
+    "--ravtext-page-stream-note-gap-after":
+      `${s.streamNoteGapAfter === null || s.streamNoteGapAfter === undefined ? s.streamNoteGap : s.streamNoteGapAfter}px`,
+    "--ravtext-page-stream-paragraph-gap": `${s.streamParagraphGap || 0}px`,
     "--ravtext-page-stream-title-gap": `${s.streamTitleGap}px`,
     "--ravtext-v9-line-height": String(s.v9LineHeight),
     "--ravtext-v9-main-gap": `${s.v9MainGap}px`,
@@ -261,9 +280,25 @@ export function wireSpacingControls({ pagesContainer, rerender }) {
   applySpacingSettings(loadSpacingSettings(), pagesContainer);
 }
 
+/**
+ * שדות שבהם `null` הוא ערך חוקי ומשמעותו „לא נקבע — התנהג כמו קודם".
+ *
+ * ⛔⛔ בלי הרשימה הזאת `typeof null` הוא `"object"`, הערך נופל לענף המספרי,
+ * ו-`Number(null)` הוא **0** — כלומר „כמו שהיה" היה הופך ל„רווח אפס" ומשנה
+ * את המראה של כל מסמך קיים. זו בדיוק המלכודת שתוקנה גם ב-`page_tweaks.js`.
+ */
+const NULLABLE_FIELDS = new Set(["streamNoteGapBefore", "streamNoteGapAfter"]);
+
 function normalizeSpacing(settings) {
   const out = { ...DEFAULTS, ...(settings || {}) };
   for (const [key, , , min, max] of FIELDS) {
+    if (NULLABLE_FIELDS.has(key)) {
+      const raw = out[key];
+      if (raw === null || raw === undefined || raw === "") { out[key] = null; continue; }
+      const n = Number(raw);
+      out[key] = Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : null;
+      continue;
+    }
     if (typeof DEFAULTS[key] === "boolean") {
       out[key] = !!out[key];
       continue;
@@ -298,3 +333,11 @@ function ensurePanel() {
   panel.dir = "rtl";
   anchor.insertAdjacentElement("beforebegin", panel);
 }
+
+/**
+ * חשיפה לבדיקות בלבד. אינה משנה שום התנהגות ואינה בשימוש בקוד החי —
+ * קיימת כדי שאפשר יהיה לבדוק את הנרמול בלי דפדפן.
+ */
+export function __testOnlyNormalizeSpacing(settings) { return normalizeSpacing(settings); }
+export const __testOnlyFields = FIELDS;
+export const __testOnlyDefaults = DEFAULTS;
