@@ -71,6 +71,8 @@ jobs:
               className:btn?.className||'',
               text:btn?.textContent||'',
               html:btn?.innerHTML||'',
+              ariaLabel:btn?.getAttribute('aria-label')||'',
+              title:btn?.title||'',
               spinner:btn ? getComputedStyle(btn,'::after').content : ''
             };
           });
@@ -96,8 +98,8 @@ jobs:
           if(feedbackMs>250) throw new Error('loading feedback too slow: '+feedbackMs+'ms');
           if(loadingState.busy!=='true'||!loadingState.className.includes('is-loading'))
             throw new Error('loading state not visible: '+JSON.stringify(loadingState));
-          if(!String(loadingState.text||'').includes('טוען'))
-            throw new Error('loading text not visible: '+JSON.stringify(loadingState));
+          if(!loadingState.ariaLabel.includes('טוען')||!loadingState.title.includes('טוען'))
+            throw new Error('accessible loading label not visible: '+JSON.stringify(loadingState));
           if(!loadingState.spinner || loadingState.spinner==='none')
             throw new Error('spinner pseudo-element not visible: '+JSON.stringify(loadingState));
           if(coldOpenMs<650) throw new Error('delay fixture did not actually delay FAQ chunk');
