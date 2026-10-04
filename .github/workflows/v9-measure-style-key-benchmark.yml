@@ -2,6 +2,8 @@ name: Audit V9 measurement style key
 on:
   push:
     branches: [perf/v9-measure-style-identity-current-main-20261004]
+  pull_request:
+    branches: [main]
 permissions:
   contents: read
 jobs:
