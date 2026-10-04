@@ -2526,6 +2526,82 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  await test('audit B15/B21: first non-final commentary row starts at its allocated RTL edge',async()=>{
+    const settings=getStreamSettings();
+    const saved01=settings['01'],saved02=settings['02'];
+    const variants=[
+      {name:'number-off',noteNumEnabled:false,leading:'',continuation:false},
+      {name:'number-on',noteNumEnabled:true,leading:'',continuation:false},
+      {name:'leading-spaces',noteNumEnabled:false,leading:'   ',continuation:false},
+      {name:'continuation-leading-spaces',noteNumEnabled:false,leading:'   ',continuation:true},
+    ];
+    const measured=[];
+    try {
+      for(const variant of variants){
+        settings['01']={...(settings['01']||{}),mainRefEnabled:false,noteNumEnabled:variant.noteNumEnabled,lemmaBold:false,titleShow:false};
+        settings['02']={...(settings['02']||{}),mainRefEnabled:false,noteNumEnabled:false,lemmaBold:false,titleShow:false};
+        const host=makePage();
+        try {
+          const main=Array(6).fill(neutral).join(' ');
+          const words=[...main.matchAll(/\S+/gu)];
+          const noteText=variant.leading+Array(10).fill(phrase).join(' ');
+          const peerText=Array(10).fill(phrase).join(' ');
+          const input=[{
+            id:`b15-origin-${variant.name}`,
+            mainText:main,
+            notes:[
+              {stream:'01',uid:`b15-right-${variant.name}`,num:1,
+                anchor:words[6].index+words[6][0].length,anchorAffinity:'backward',
+                isContinuation:variant.continuation,text:noteText},
+              {stream:'02',uid:`b15-left-${variant.name}`,num:1,
+                anchor:words[14].index+words[14][0].length,anchorAffinity:'backward',
+                text:peerText},
+            ]
+          }];
+          const result=await buildPages(host,input,{
+            ...cfg,pageHeight:537,maxPages:40,talmudStreams:['01','02'],crownLines:4,
+            titles:{},
+            streamSettings:{
+              ...(cfg.streamSettings||{}),
+              '01':{inlineStyle:{fontSize:11}},
+              '02':{inlineStyle:{fontSize:11}},
+            }
+          });
+          assert(result.complete,`${variant.name}: fixture did not complete`);
+          const rows=[...host.querySelectorAll('.v9-final-stream-line[data-v9-source-stream="01"]')];
+          assert(rows.length>2,`${variant.name}: stream 01 fixture too short`);
+          const first=rows.find(el=>el.dataset.v9ParaLast!=='1');
+          assert(first,`${variant.name}: no non-final stream row found`);
+          const body=first.querySelector('.v9-planned-stream-text');
+          assert(body,`${variant.name}: first row has no planned text span`);
+          assert(getComputedStyle(first).textIndent==='0px',`${variant.name}: line inherited text-indent`);
+          assert(parseFloat(getComputedStyle(first).paddingInlineStart||'0')===0,`${variant.name}: line inherited inline padding`);
+
+          const lineRect=first.getBoundingClientRect();
+          const range=document.createRange();range.selectNodeContents(body);
+          const rects=[...range.getClientRects()].filter(r=>r.width>.01&&r.height>.01);
+          assert(rects.length,`${variant.name}: first row has no visible ink`);
+          const inkRight=Math.max(...rects.map(r=>r.right));
+          const rightGap=lineRect.right-inkRight;
+          assert(Math.abs(rightGap)<=1,
+            `${variant.name}: first commentary row is indented ${rightGap.toFixed(2)}px from allocated RTL edge`);
+
+          const hidden=[...body.querySelectorAll('.v9-source-whitespace')]
+            .map(el=>({text:el.textContent||'',display:getComputedStyle(el).display}));
+          assert(hidden.every(x=>x.display==='none'),
+            `${variant.name}: source edge whitespace became visible geometry`);
+          measured.push({variant:variant.name,rightGap:+rightGap.toFixed(2),rows:rows.length,
+            firstText:(body.textContent||'').slice(0,60),hidden});
+        } finally { host.remove(); }
+      }
+      return {measured};
+    } finally {
+      if(saved01===undefined)delete settings['01'];else settings['01']=saved01;
+      if(saved02===undefined)delete settings['02'];else settings['02']=saved02;
+    }
+  });
+
+
   await test('audit C8: the first wide commentary row pulls source text forward after a narrow strip',()=>{
     const ctx=createV9TextLayoutContext({...cfg,mainFontSize:11});
     const text=Array(8).fill(phrase).join(' ');
