@@ -25,7 +25,7 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Measure FAQ first-open feedback and warmed open
         env:
-          PREVIEW_URL: https://fix-faq-first-open-speed-loading-20261-67a5-unified-text-editor.7155401.workers.dev
+          PREVIEW_URL: https://01ec7fa9-unified-text-editor.7155401.workers.dev
         run: |
           mkdir -p test-results/faq-preview
           cat > faq-audit.mjs <<'EOF'
