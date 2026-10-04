@@ -105,7 +105,7 @@ jobs:
             };
           });
           await cold.page.waitForSelector('#rt-faq-panel.is-open',{timeout:5000});
-          const coldOpenMs=Date.now()-coldStart;
+          const coldOpenMs=Date.now()-coldCommandStart;
           await cold.context.close();
 
           const warm=await pageWith(false);
