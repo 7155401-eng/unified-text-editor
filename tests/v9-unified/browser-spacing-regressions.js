@@ -723,7 +723,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
      clone.querySelectorAll('[data-v9-main-ref],.v9-source-whitespace').forEach(n=>n.remove());
      return clone.textContent||'';
    };
-   const trimEdgeGlue=(s)=>String(s||'').replace(/^[ \\t\\u200e\\u200f\\u2060]+|[ \\t\\u200e\\u200f\\u2060]+$/gu,'');
+   const trimEdgeGlue=(s)=>String(s||'').replace(/^[ \t\u200e\u200f\u2060]+|[ \t\u200e\u200f\u2060]+$/gu,'');
    try {
      for(const cols of [1,2]){
        settings.main={...(settings.main||{}),cols};
