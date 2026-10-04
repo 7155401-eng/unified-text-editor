@@ -478,6 +478,9 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     });
     let search = cache.get(cacheKey);
     if (!search) {
+      const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+        ? (window.__ravtextV9Perf ||= {}) : null;
+      const exactStarted = perf ? performance.now() : 0;
       search = findV9ExactTailPartition({
         wordCount: words.length,
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
@@ -485,6 +488,13 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         metricFor,
         metricBatchFor,
       });
+      if (perf) {
+        perf.exactSearchCalls = (perf.exactSearchCalls || 0) + 1;
+        perf.exactSearchMs = (perf.exactSearchMs || 0) + performance.now() - exactStarted;
+        perf.exactSearchEvaluations = (perf.exactSearchEvaluations || 0) + (search.evaluations || 0);
+        const key = "exactSearchStatus_" + String(search.status || "unknown").replace(/[^a-z0-9]+/gi, "_");
+        perf[key] = (perf[key] || 0) + 1;
+      }
       if (cache.size >= EXACT_TAIL_CACHE_MAX) {
         const oldest = cache.keys().next().value;
         if (oldest !== undefined) cache.delete(oldest);
