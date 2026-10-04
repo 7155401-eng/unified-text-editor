@@ -215,3 +215,34 @@ test("expired hours access deactivates, but subscription status is preserved", a
   assert.deepEqual({ ...hours },{balance_seconds:0,status:"unauthorized",plan_type:null});
   assert.deepEqual({ ...subscription },{balance_seconds:0,status:"active",plan_type:"subscription"});
 });
+
+
+test("expiry leaves the current-month gift row and balance untouched", async () => {
+  const env = makeEnv();
+  await ensureGiftMinuteUsageSchema(env);
+  exec(env,
+    "INSERT INTO users(id,balance_seconds,status,plan_type) VALUES(?,?,?,?)",
+    8,2600,"active","hours");
+  exec(env,
+    "INSERT INTO gift_minute_usage(user_id,year_month,seconds_granted,seconds_used,seconds_expired,created_at,claimed_at) VALUES(?,?,?,?,?,?,?)",
+    8,"2026-09",1200,300,0,1,1);
+  exec(env,
+    "INSERT INTO gift_minute_usage(user_id,year_month,seconds_granted,seconds_used,seconds_expired,created_at,claimed_at) VALUES(?,?,?,?,?,?,?)",
+    8,"2026-10",1200,100,0,2,2);
+
+  const result = await expireUserGiftBalance(env,8,{cutoff:"2026-10"});
+  assert.equal(result.expiredSeconds,900);
+  assert.equal(result.balanceRemovedSeconds,900);
+  assert.equal(result.balanceSeconds,1700);
+
+  const oldGift=row(env,
+    "SELECT seconds_used,seconds_expired FROM gift_minute_usage WHERE user_id=8 AND year_month='2026-09'");
+  const currentGift=row(env,
+    "SELECT seconds_used,seconds_expired FROM gift_minute_usage WHERE user_id=8 AND year_month='2026-10'");
+  assert.deepEqual({ ...oldGift },{seconds_used:1200,seconds_expired:900});
+  assert.deepEqual({ ...currentGift },{seconds_used:100,seconds_expired:0});
+  assert.deepEqual(
+    { ...row(env,"SELECT balance_seconds,status,plan_type FROM users WHERE id=8") },
+    {balance_seconds:1700,status:"active",plan_type:"hours"}
+  );
+});
