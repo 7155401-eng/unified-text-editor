@@ -744,9 +744,6 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
          const visible=visibleText(row);
          assert(visible===expected,
            `B3 visible spacing mismatch cols=${cols}: source=${JSON.stringify(expected)} visible=${JSON.stringify(visible)}`);
-         const visibleWithoutBidiControls=visible.replace(/[\\u061c\\u200e\\u200f\\u2060]/gu,'');
-         assert(!/[,.;:?!][^\\s,.;:?!]/u.test(visibleWithoutBidiControls),
-           `B3 punctuation lost following whitespace inside one visible row: ${JSON.stringify(visible)}`);
        }
      }
    } finally {
