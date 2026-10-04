@@ -444,13 +444,22 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     }
     if (!search) {
       const exactStarted = perf ? performance.now() : 0;
+      const exactMetricMissesBefore = perf ? (perf.metricForLocalMisses || 0) : 0;
+      const exactMetricHitsBefore = perf ? (perf.metricForLocalHits || 0) : 0;
       search = findV9ExactTailPartition({
         wordCount: words.length,
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
         maxSpacing: gentleMax,
-        metricFor,
+        metricFor:(lineIndex,fromWord,toWord)=>{
+          if (perf) perf.exactMetricRequests = (perf.exactMetricRequests || 0) + 1;
+          return metricFor(lineIndex,fromWord,toWord);
+        },
       });
       if (perf) {
+        perf.exactMetricLocalMisses = (perf.exactMetricLocalMisses || 0) +
+          ((perf.metricForLocalMisses || 0) - exactMetricMissesBefore);
+        perf.exactMetricLocalHits = (perf.exactMetricLocalHits || 0) +
+          ((perf.metricForLocalHits || 0) - exactMetricHitsBefore);
         perf.exactSearchMs = (perf.exactSearchMs || 0) + (performance.now() - exactStarted);
         perf.exactSearchEvaluations = (perf.exactSearchEvaluations || 0) + (search.evaluations || 0);
         perf.exactSearchMaxEvaluations = Math.max(perf.exactSearchMaxEvaluations || 0, search.evaluations || 0);
