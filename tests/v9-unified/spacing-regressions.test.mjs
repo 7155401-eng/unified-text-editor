@@ -114,6 +114,38 @@ test('B23: measured commentary stream rows break only on real source whitespace'
  }
 });
 
+test('B40: following paragraph never inherits a completed opening window',()=>{
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:e=>e.id==='b40-opening'
+   ? {position:'dropped',start:0,end:5,marks:{fontSize:20},dropLines:2,gapPx:2}
+   : null,
+  measure:p=>{
+   const body=String(p?.text||'').trim();
+   if(body==='פתיח')return {width:20,height:20,topInset:0};
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const plan=layoutV9MainParagraphs([
+  {id:'b40-opening',text:'פתיח אב',runs:[],mainRefs:[]},
+  {id:'b40-after',text:'גד הו זח טי כל מנ',runs:[],mainRefs:[]},
+ ],[{x:0,width:100,y_start:0,y_end:120}],ctx,120);
+ const first=plan.lines.filter(l=>l.source?.paragraphId==='b40-opening');
+ const after=plan.lines.filter(l=>l.source?.paragraphId==='b40-after');
+ assert(first.length&&after.length,'fixture did not render both source paragraphs');
+ const opening=first.find(l=>l.render?.opening)?.render?.opening;
+ assert(opening,'fixture did not place a dropped opening');
+ const next=after[0];
+ assert.equal(next.openingWindow,false,'following paragraph inherited the previous opening window');
+ assert.equal(next.render?.opening,null,'following paragraph received a duplicate opening');
+ assert(Math.abs(next.x)<1e-9&&Math.abs(next.width-100)<1e-9,
+  'following paragraph stayed indented: x='+next.x+', width='+next.width);
+ assert(next.y+1e-9>=opening.y+opening.height,
+  'following paragraph rose into previous opening: nextY='+next.y+', openingBottom='+(opening.y+opening.height));
+ assert.equal(plan.lines.map(l=>l.sourceText).join(''),'פתיח אבגד הו זח טי כל מנ');
+});
+
 test('source paragraph style becomes a semantic V9 run, separate from stream style',()=>{
  const p=prepareV9SourceParagraph({
    id:'source-style-bold',
