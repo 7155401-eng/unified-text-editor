@@ -73,7 +73,12 @@ jobs:
               html:btn?.innerHTML||'',
               ariaLabel:btn?.getAttribute('aria-label')||'',
               title:btn?.title||'',
-              spinner:btn ? getComputedStyle(btn,'::after').content : ''
+              spinner:btn ? {
+                content:getComputedStyle(btn,'::after').content,
+                animationName:getComputedStyle(btn,'::after').animationName,
+                width:getComputedStyle(btn,'::after').width,
+                height:getComputedStyle(btn,'::after').height
+              } : null
             };
           });
           await cold.page.waitForSelector('#rt-faq-panel.is-open',{timeout:5000});
@@ -100,8 +105,9 @@ jobs:
             throw new Error('loading state not visible: '+JSON.stringify(loadingState));
           if(!loadingState.ariaLabel.includes('טוען')||!loadingState.title.includes('טוען'))
             throw new Error('accessible loading label not visible: '+JSON.stringify(loadingState));
-          if(!loadingState.spinner || loadingState.spinner==='none')
-            throw new Error('spinner pseudo-element not visible: '+JSON.stringify(loadingState));
+          if(!loadingState.spinner || loadingState.spinner.animationName!=='rt-faq-loading-spin' ||
+             loadingState.spinner.content==='none' || loadingState.spinner.width==='auto')
+            throw new Error('spinner animation not visible: '+JSON.stringify(loadingState));
           if(coldOpenMs<650) throw new Error('delay fixture did not actually delay FAQ chunk');
           if(warmOpenMs>300) throw new Error('warmed FAQ open too slow: '+warmOpenMs+'ms');
           if(questions<1) throw new Error('FAQ rendered no questions');
