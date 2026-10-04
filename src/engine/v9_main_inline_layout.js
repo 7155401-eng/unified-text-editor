@@ -149,6 +149,16 @@ const TAIL_REBALANCE_SCORE_EPS = 0.001;
 const EXACT_TAIL_CACHE_MAX = 1024;
 const exactTailCacheByContext = new WeakMap();
 
+export function v9TailMetricCacheKey({
+  fromWord, toWord, start, visibleEnd, consumedEnd, target, maxHeight, openingOnly,
+}) {
+  return [
+    Number(fromWord), Number(toWord),
+    Number(start), Number(visibleEnd), Number(consumedEnd),
+    Number(target), Number(maxHeight), openingOnly ? 1 : 0,
+  ].join(':');
+}
+
 function exactTailCacheFor(context) {
   let cache = exactTailCacheByContext.get(context);
   if (!cache) {
@@ -355,10 +365,10 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   };
 
   const metricFor = (lineIndex, fromWord, toWord) => {
-    const key = `${lineIndex}:${fromWord}:${toWord}`;
-    if (cache.has(key)) return cache.get(key);
     const descriptor = metricDescriptor(lineIndex, fromWord, toWord);
     if (!descriptor) return null;
+    const key = v9TailMetricCacheKey(descriptor);
+    if (cache.has(key)) return cache.get(key);
     const metric = finalizeMetric(descriptor, context.measure(descriptor.body));
     cache.set(key, metric);
     return metric;
@@ -371,14 +381,14 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
 
     for (let i = 0; i < transitions.length; i++) {
       const { from, to } = transitions[i];
-      const key = `${lineIndex}:${from}:${to}`;
-      if (cache.has(key)) {
-        output[i] = cache.get(key);
-        continue;
-      }
       const descriptor = metricDescriptor(lineIndex, from, to);
       if (!descriptor) {
         output[i] = null;
+        continue;
+      }
+      const key = v9TailMetricCacheKey(descriptor);
+      if (cache.has(key)) {
+        output[i] = cache.get(key);
         continue;
       }
       pending.push({ i, key, descriptor });
