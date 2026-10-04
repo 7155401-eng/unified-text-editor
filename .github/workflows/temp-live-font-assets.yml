@@ -1,0 +1,101 @@
+name: Temporary live font asset audit
+on:
+  push:
+    branches: [audit/live-font-assets-20261004]
+    paths: ['.github/workflows/temp-live-font-assets.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ec02f751cabb1244e168e25817bc42a0583fb1ab
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Inspect public CSS and font assets
+        run: |
+          mkdir -p test-results/live-font-assets
+          cat > live-font-audit.mjs <<'EOF'
+          import { chromium } from 'playwright-chromium';
+          import fs from 'node:fs';
+          const browser=await chromium.launch({headless:true});
+          const page=await browser.newPage({
+            userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/154 Safari/537.36'
+          });
+          const requests=[];
+          page.on('response',r=>{
+            const type=r.request().resourceType();
+            const url=r.url();
+            if(type==='font'||/\.(woff2?|ttf|otf)(?:\?|$)/i.test(url)) requests.push({type,url,status:r.status(),contentType:r.headers()['content-type']||''});
+          });
+          const root=await page.goto('https://app.ravtext.com/',{waitUntil:'networkidle',timeout:60000});
+          const data=await page.evaluate(()=>{
+            const faces=[];
+            for(const sheet of [...document.styleSheets]){
+              let rules=[];
+              try{rules=[...sheet.cssRules]}catch{}
+              for(const rule of rules){
+                if(rule.type===CSSRule.FONT_FACE_RULE){
+                  faces.push({
+                    family:rule.style.getPropertyValue('font-family'),
+                    src:rule.style.getPropertyValue('src'),
+                    weight:rule.style.getPropertyValue('font-weight'),
+                    style:rule.style.getPropertyValue('font-style'),
+                    sheet:sheet.href||'inline'
+                  });
+                }
+              }
+            }
+            const computed=new Set();
+            for(const el of [...document.querySelectorAll('*')].slice(0,2500)){
+              const f=getComputedStyle(el).fontFamily;
+              if(f)computed.add(f);
+            }
+            const cssLinks=[...document.querySelectorAll('link[rel="stylesheet"]')].map(x=>x.href);
+            return {faces,computed:[...computed],cssLinks,title:document.title,url:location.href};
+          });
+          const report={rootStatus:root?.status()||0,...data,fontRequests:requests};
+          fs.writeFileSync('test-results/live-font-assets/report.json',JSON.stringify(report,null,2));
+          console.log(JSON.stringify(report,null,2));
+          await browser.close();
+          EOF
+          node live-font-audit.mjs
+      - name: Fetch public CSS text and search known font names
+        run: |
+          python3 - <<'PY'
+          import json,re,urllib.request,pathlib
+          p=pathlib.Path('test-results/live-font-assets/report.json')
+          r=json.loads(p.read_text())
+          names=['FrankRuehl','Rashi DP','PFT_Vilna','VILNA','Vilna','וילנא']
+          out=[]
+          for u in r.get('cssLinks',[]):
+              try:
+                  req=urllib.request.Request(u,headers={'User-Agent':'Mozilla/5.0'})
+                  txt=urllib.request.urlopen(req,timeout=30).read().decode('utf-8','replace')
+                  matches=[n for n in names if n.lower() in txt.lower()]
+                  faces=re.findall(r'@font-face\s*\{[^}]*\}',txt,re.I|re.S)
+                  out.append({'url':u,'bytes':len(txt),'knownNameMatches':matches,'fontFaceCount':len(faces),'fontFaces':faces[:100]})
+              except Exception as e:
+                  out.append({'url':u,'error':str(e)})
+          pathlib.Path('test-results/live-font-assets/css-audit.json').write_text(json.dumps(out,ensure_ascii=False,indent=2))
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: live-font-assets-${{ github.run_id }}
+          path: test-results/live-font-assets/
+          retention-days: 7
+          if-no-files-found: warn
