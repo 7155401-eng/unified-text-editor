@@ -238,6 +238,78 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       if (cache.size >= 20000) cache.clear();
       cache.set(key, result); return result;
     },
+    measureMany(parts) {
+      if (disposed) throw new Error('Disposed V9 measurement context');
+      const input = Array.isArray(parts) ? parts : [];
+      if (!input.length) return [];
+
+      const out = new Array(input.length);
+      const pending = new Map();
+
+      for (let i = 0; i < input.length; i++) {
+        const part = input[i];
+        const key = v9MeasurementCacheKey(part);
+        const found = cache.get(key);
+        if (found) { out[i] = found; continue; }
+        const existing = pending.get(key);
+        if (existing) {
+          existing.indices.push(i);
+        } else {
+          pending.set(key, { key, part, indices:[i] });
+        }
+      }
+
+      // Keep each DOM batch bounded. All probes in a chunk are inserted before
+      // the first geometry read, so Chromium can satisfy the chunk with one
+      // layout flush instead of one mutation/read cycle per exact-tail edge.
+      const entries = [...pending.values()];
+      const BATCH = 128;
+      for (let offset = 0; offset < entries.length; offset += BATCH) {
+        const chunk = entries.slice(offset, offset + BATCH);
+        const mounted = [];
+
+        for (const item of chunk) {
+          const holder = document.createElement('div');
+          holder.style.cssText = 'position:absolute;left:0;top:0;width:max-content;height:max-content;padding:0;margin:0;border:0;';
+          const node = probe.cloneNode(false);
+          node.replaceChildren();
+          cssApply(node, item.part.style || typography);
+          node.style.whiteSpace = 'pre';
+          node.style.width = 'max-content';
+          node.style.height = 'auto';
+          const plannedWordSpacing = hasSpecialV9JustificationSeparator(item.part.text)
+            ? px(item.part.style?.wordSpacing, 0)
+            : 0;
+          appendV9PlannedPart(node, item.part, plannedWordSpacing);
+          holder.appendChild(node);
+          root.appendChild(holder);
+          mounted.push({ item, holder, node });
+        }
+
+        try {
+          for (const { item, node } of mounted) {
+            const r = node.getBoundingClientRect();
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const ink = range.getBoundingClientRect();
+            const top = ink.height ? Math.min(r.top, ink.top) : r.top;
+            const bottom = ink.height ? Math.max(r.bottom, ink.bottom) : r.bottom;
+            const result = Object.freeze({
+              width: Math.ceil(r.width * 64) / 64,
+              height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
+              topInset: Math.max(0, r.top - top),
+            });
+            if (cache.size >= 20000) cache.clear();
+            cache.set(item.key, result);
+            for (const index of item.indices) out[index] = result;
+          }
+        } finally {
+          for (const { holder } of mounted) holder.remove();
+        }
+      }
+
+      return out;
+    },
     dispose() {
       if (disposed) return; disposed = true;
       document.fonts?.removeEventListener?.('loadingdone', fontsChanged);
