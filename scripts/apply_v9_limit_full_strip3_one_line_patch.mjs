@@ -371,9 +371,17 @@ function verifyInvariant(source) {
   assertIncludes(source, "y_end: s.y_end", "side strips pass y_end to flow");
   assertIncludes(source, "lockYStart: s.lockYStart === true", "side strips pass lockYStart to flow");
   assertIncludes(source, "const maxFullStrip3Lines = Number(o.maxFullStrip3Lines) > 0", "strip3 line cap exists");
-  assertIncludes(source, "v9-knee-row-grid: width changes do not create a new vertical grid.", "half-width widening transition stays on commentary row grid");
-  assertIncludes(source, "v9-knee-row-grid: ending of the other side changes WIDTH only.", "full-width widening transition stays on commentary row grid");
-  assertIncludes(source, "lockYStart: false,", "commentary knee must not force an off-grid row start");
+  const hasLegacyIndependentKnee =
+    source.includes("v9-knee-row-grid: width changes do not create a new vertical grid.") &&
+    source.includes("v9-knee-row-grid: ending of the other side changes WIDTH only.") &&
+    source.includes("lockYStart: false,");
+  const hasSharedDistinctMainKnee =
+    source.includes("const lockSharedMainKnee = o.lockSharedMainKnee === true;") &&
+    source.includes("lockYStart: lockSharedMainKnee,") &&
+    source.includes("lockYStart: lockSharedMainKnee && Math.abs(fullStrip3StartY - effectiveMainBottomY) < 1 / 64,");
+  if (!hasLegacyIndependentKnee && !hasSharedDistinctMainKnee) {
+    fail("commentary widening knee invariant");
+  }
   assertMissing(source, "lockFullStrip3Start:", "legacy full-strip Y lock must not be reintroduced");
   assertIncludes(source, "const isSameStreamSideSplit = isScenario1 ||", "same-stream split flag exists");
   assertIncludes(source, "maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0", "right pass2 cap is same-stream only");
