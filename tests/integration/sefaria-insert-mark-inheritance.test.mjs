@@ -115,8 +115,9 @@ test("audit B25: replacing a bold selection with plain generated HTML stays plai
 });
 
 async function insertGeneratedHtmlPlain(editor, html) {
-  return editor.chain().focus()
-    .deleteSelection()
+  let chain = editor.chain().focus();
+  if (!editor.state.selection.empty) chain = chain.deleteSelection();
+  return chain
     .command(({ tr }) => {
       tr.setStoredMarks([]);
       return true;
