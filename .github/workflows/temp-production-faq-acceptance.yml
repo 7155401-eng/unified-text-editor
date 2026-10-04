@@ -74,10 +74,26 @@ jobs:
           const cold=await pageWith(true);
           await cold.page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
           await cold.page.waitForSelector('#rt-prem-icon-faq',{timeout:30000});
-          const coldStart=Date.now();
+          await cold.page.evaluate(()=>{
+            const btn=document.querySelector('#rt-prem-icon-faq');
+            window.__faqProdTiming={clickAt:null,busyAt:null};
+            btn?.addEventListener('click',()=>{
+              window.__faqProdTiming.clickAt=performance.now();
+            },{capture:true,once:true});
+            const observer=new MutationObserver(()=>{
+              if(btn?.getAttribute('aria-busy')==='true'){
+                window.__faqProdTiming.busyAt=performance.now();
+                observer.disconnect();
+              }
+            });
+            if(btn) observer.observe(btn,{attributes:true,attributeFilter:['aria-busy','class']});
+          });
+          const coldCommandStart=Date.now();
           await cold.page.locator('#rt-prem-icon-faq').click();
           await cold.page.waitForFunction(()=>document.querySelector('#rt-prem-icon-faq')?.getAttribute('aria-busy')==='true',{timeout:500});
-          const feedbackMs=Date.now()-coldStart;
+          const commandFeedbackMs=Date.now()-coldCommandStart;
+          const browserTiming=await cold.page.evaluate(()=>window.__faqProdTiming||{});
+          const feedbackMs=(Number(browserTiming.busyAt)-Number(browserTiming.clickAt));
           const loadingState=await cold.page.evaluate(()=>{
             const btn=document.querySelector('#rt-prem-icon-faq');
             const ps=btn?getComputedStyle(btn,'::after'):null;
@@ -104,10 +120,11 @@ jobs:
           await warm.context.close();
           await browser.close();
 
-          const report={deployed,sourceProbe,feedbackMs,loadingState,coldOpenMs,warmOpenMs,questions};
+          const report={deployed,sourceProbe,feedbackMs,commandFeedbackMs,browserTiming,loadingState,coldOpenMs,warmOpenMs,questions};
           fs.writeFileSync('test-results/faq-production/report.json',JSON.stringify(report,null,2));
           console.log(JSON.stringify(report,null,2));
-          if(feedbackMs>300) throw new Error('production loading feedback too slow '+feedbackMs+'ms');
+          if(!Number.isFinite(feedbackMs)||feedbackMs<0||feedbackMs>50)
+            throw new Error('production click-to-loading DOM response too slow '+feedbackMs+'ms');
           if(loadingState.busy!=='true'||!loadingState.className.includes('is-loading')) throw new Error('production loading state missing');
           if(!loadingState.ariaLabel.includes('טוען')) throw new Error('production loading label missing');
           if(loadingState.spinner?.animationName!=='rt-faq-loading-spin') throw new Error('production spinner animation missing');
