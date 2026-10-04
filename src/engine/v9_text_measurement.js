@@ -266,8 +266,23 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     },
     measure(part) {
       if (disposed) throw new Error('Disposed V9 measurement context');
+      const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+        ? (window.__ravtextV9Perf ||= {}) : null;
+      const started = perf ? performance.now() : 0;
+      if (perf) perf.measureCalls = (perf.measureCalls || 0) + 1;
+      const keyStarted = perf ? performance.now() : 0;
       const key = measurementKey(part);
-      const found = cache.get(key); if (found) return found;
+      if (perf) perf.measureKeyMs = (perf.measureKeyMs || 0) + (performance.now() - keyStarted);
+      const found = cache.get(key);
+      if (found) {
+        if (perf) {
+          perf.measureCacheHits = (perf.measureCacheHits || 0) + 1;
+          perf.measureMs = (perf.measureMs || 0) + (performance.now() - started);
+        }
+        return found;
+      }
+      if (perf) perf.measureCacheMisses = (perf.measureCacheMisses || 0) + 1;
+      const domStarted = perf ? performance.now() : 0;
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';
       const plannedWordSpacing = hasSpecialV9JustificationSeparator(part.text)
@@ -283,21 +298,40 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
         height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
         topInset: Math.max(0, r.top - top) });
       if (cache.size >= 20000) cache.clear();
-      cache.set(key, result); return result;
+      cache.set(key, result);
+      if (perf) {
+        perf.measureDomMs = (perf.measureDomMs || 0) + (performance.now() - domStarted);
+        perf.measureMs = (perf.measureMs || 0) + (performance.now() - started);
+      }
+      return result;
     },
     measureMany(parts) {
       if (disposed) throw new Error('Disposed V9 measurement context');
+      const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+        ? (window.__ravtextV9Perf ||= {}) : null;
+      const started = perf ? performance.now() : 0;
       const input = Array.isArray(parts) ? parts : [];
       if (!input.length) return [];
+      if (perf) {
+        perf.measureManyCalls = (perf.measureManyCalls || 0) + 1;
+        perf.measureManyInputParts = (perf.measureManyInputParts || 0) + input.length;
+      }
 
       const out = new Array(input.length);
       const pending = new Map();
 
       for (let i = 0; i < input.length; i++) {
         const part = input[i];
+        const keyStarted = perf ? performance.now() : 0;
         const key = measurementKey(part);
+        if (perf) perf.measureManyKeyMs = (perf.measureManyKeyMs || 0) + (performance.now() - keyStarted);
         const found = cache.get(key);
-        if (found) { out[i] = found; continue; }
+        if (found) {
+          out[i] = found;
+          if (perf) perf.measureManyCacheHits = (perf.measureManyCacheHits || 0) + 1;
+          continue;
+        }
+        if (perf) perf.measureManyCacheMisses = (perf.measureManyCacheMisses || 0) + 1;
         const existing = pending.get(key);
         if (existing) {
           existing.indices.push(i);
@@ -307,9 +341,12 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       }
 
       const entries = [...pending.values()];
+      if (perf) perf.measureManyUniqueMisses = (perf.measureManyUniqueMisses || 0) + entries.length;
       const BATCH = 128;
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
+        const batchStarted = perf ? performance.now() : 0;
+        if (perf) perf.measureManyChunks = (perf.measureManyChunks || 0) + 1;
         const mounted = [];
 
         for (const item of chunk) {
@@ -349,9 +386,11 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
           }
         } finally {
           for (const { holder } of mounted) holder.remove();
+          if (perf) perf.measureManyChunkMs = (perf.measureManyChunkMs || 0) + (performance.now() - batchStarted);
         }
       }
 
+      if (perf) perf.measureManyMs = (perf.measureManyMs || 0) + (performance.now() - started);
       return out;
     },
     dispose() {
