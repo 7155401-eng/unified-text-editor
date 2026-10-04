@@ -305,15 +305,11 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const initialBoundaries = boundaries.slice();
   const cache = new Map();
 
-  const metricFor = (lineIndex, fromWord, toWord) => {
+  const metricDescriptor = (lineIndex, fromWord, toWord) => {
     if (fromWord < 0 || toWord < fromWord || toWord > words.length) return null;
-    const key = `${lineIndex}:${fromWord}:${toWord}`;
-    if (cache.has(key)) return cache.get(key);
 
     const openingOnly = toWord === fromWord && !!tail[lineIndex]?.render?.opening;
     if (!(toWord > fromWord) && !openingOnly) return null;
-    // An opening-only host has the GLYPH's box, not a free body slot. Leave
-    // it empty; its following source glue/anchors belong to the first body row.
     if (openingOnlyHost && lineIndex === 0 && !openingOnly) return null;
 
     const start = lineIndex === 0 || (openingOnlyHost && fromWord === 0)
@@ -323,13 +319,21 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     const consumedEnd = openingOnlyHost && lineIndex === 0 ? start
       : toWord < words.length ? (words[toWord]?.start ?? segmentEnd) : segmentEnd;
     const body = partForRange(entry, start, visibleEnd, consumedEnd);
-    const measured = context.measure(body);
-    const target = number(tail[lineIndex]?.width, 0);
-    const maxHeight = number(tail[lineIndex]?.lineHeightPx, context.lineHeight);
+    return {
+      lineIndex, fromWord, toWord, start, visibleEnd, consumedEnd, body,
+      target:number(tail[lineIndex]?.width, 0),
+      maxHeight:number(tail[lineIndex]?.lineHeightPx, context.lineHeight),
+      openingOnly,
+    };
+  };
+
+  const finalizeMetric = (descriptor, measured) => {
+    if (!descriptor) return null;
+    const { fromWord, toWord, start, visibleEnd, consumedEnd,
+      body, target, maxHeight, openingOnly } = descriptor;
 
     if (!(target > 0) || !measured || measured.width > target + EPS ||
         (measured.height > 0 && maxHeight > 0 && measured.height > maxHeight + EPS)) {
-      cache.set(key, null);
       return null;
     }
 
@@ -339,16 +343,59 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       : (body.text.match(/ /g) || []).length;
     const deficit = Math.max(0, target - measured.width);
     const metric = {
-      start, end: consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
-      wordTokens: words.slice(fromWord, toWord),
+      start, end:consumedEnd, visibleEnd, body, measured, target, gaps, deficit,
+      wordTokens:words.slice(fromWord, toWord),
       openingOnly,
     };
     metric.pressure = openingOnly ? 0
       : (specialSeparators
         ? resolveSpecialV9JustificationSpacing(context, body, measured.width, target, gaps)
         : continuationTailPressure(metric));
+    return metric;
+  };
+
+  const metricFor = (lineIndex, fromWord, toWord) => {
+    const key = `${lineIndex}:${fromWord}:${toWord}`;
+    if (cache.has(key)) return cache.get(key);
+    const descriptor = metricDescriptor(lineIndex, fromWord, toWord);
+    if (!descriptor) return null;
+    const metric = finalizeMetric(descriptor, context.measure(descriptor.body));
     cache.set(key, metric);
     return metric;
+  };
+
+  const metricBatchFor = (lineIndex, transitions) => {
+    const output = new Array(transitions.length);
+    const pending = [];
+    const parts = [];
+
+    for (let i = 0; i < transitions.length; i++) {
+      const { from, to } = transitions[i];
+      const key = `${lineIndex}:${from}:${to}`;
+      if (cache.has(key)) {
+        output[i] = cache.get(key);
+        continue;
+      }
+      const descriptor = metricDescriptor(lineIndex, from, to);
+      if (!descriptor) {
+        output[i] = null;
+        continue;
+      }
+      pending.push({ i, key, descriptor });
+      parts.push(descriptor.body);
+    }
+
+    const measured = typeof context.measureMany === 'function'
+      ? context.measureMany(parts)
+      : parts.map(part => context.measure(part));
+
+    for (let j = 0; j < pending.length; j++) {
+      const { i, key, descriptor } = pending[j];
+      const metric = finalizeMetric(descriptor, measured[j]);
+      cache.set(key, metric);
+      output[i] = metric;
+    }
+    return output;
   };
 
   const evaluate = (candidateBoundaries) => {
@@ -436,6 +483,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
         maxSpacing: gentleMax,
         metricFor,
+        metricBatchFor,
       });
       if (cache.size >= EXACT_TAIL_CACHE_MAX) {
         const oldest = cache.keys().next().value;
