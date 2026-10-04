@@ -2111,6 +2111,7 @@ function buildPagePlanCore(pageContent, config) {
     const text = streamRich.text;
     if (!text) return null;
     const o = opts || {};
+    const lockSharedMainKnee = o.lockSharedMainKnee === true;
 
     // Resolve this stream's real typography BEFORE creating geometry. Manual
     // Page Tweaker note shifts are measured in rows of THIS stream, never in
@@ -2236,11 +2237,11 @@ function buildPagePlanCore(pageContent, config) {
         y_end: fullStrip3StartY,
         width: sideHalfWidth,
         x: side === 'right' ? sideRightX : 0,
-        // v9-knee-row-grid: width changes do not create a new vertical grid.
-        // A commentary row that crosses this Y stays narrow; the NEXT normal
-        // row may widen. This avoids blank slots when main/crown spacing is not
-        // an exact multiple of the commentary line pitch.
-        lockYStart: false,
+        // Distinct side streams must expose the main→side widening boundary at
+        // the same physical Y. When requested, a row that would straddle the
+        // shared knee is retried from the knee instead of letting each stream's
+        // private line-height phase choose a different widening Y.
+        lockYStart: lockSharedMainKnee,
       });
     }
     // v9-limit-full-strip3-one-line: full-width continuation is still legal after the other side
@@ -2253,9 +2254,10 @@ function buildPagePlanCore(pageContent, config) {
         y_end: streamPageBottomY,
         width: innerWidth,
         x: 0,
-        // v9-knee-row-grid: ending of the other side changes WIDTH only.
-        // Never manufacture a new baseline at its raw endY.
-        lockYStart: false,
+        // Only the main-text knee is shared. A later other-stream ending keeps
+        // its own natural grid; if this full-width strip starts exactly at the
+        // main knee (because the other side already ended), honor the same lock.
+        lockYStart: lockSharedMainKnee && Math.abs(fullStrip3StartY - effectiveMainBottomY) < 1 / 64,
       });
     }
 
@@ -2781,6 +2783,8 @@ function buildPagePlanCore(pageContent, config) {
     !!pageContent.leftStream &&
     pageContent.rightStream.id === pageContent.leftStream.id
   );
+  const lockDistinctSideMainKnee = !isSameStreamSideSplit &&
+    !!pageContent.rightStream && !!pageContent.leftStream;
   let pass2Right = null;
   if (pageContent.rightStream) {
     pass2Right = buildSideStream(pageContent.rightStream, 'right', {
@@ -2788,6 +2792,7 @@ function buildPagePlanCore(pageContent, config) {
       otherSideEndY: pass1Left ? occupiedSideEndY(pass1Left) : mainTopY,
       suppressFullStrip3: isScenario1,
       maxFullStrip3Lines: isSameStreamSideSplit && pass1Left ? 1 : 0,
+      lockSharedMainKnee: lockDistinctSideMainKnee,
     });
   }
   // איטרציה 2: pass2 שמאלי עם pass2 ימני (אם קיים, אחרת pass1)
@@ -2805,6 +2810,7 @@ function buildPagePlanCore(pageContent, config) {
       // centered orphan rows, but after source-continuation rendering exists it
       // incorrectly prevents the surviving second column from using full width.
       maxFullStrip3Lines: 0,
+      lockSharedMainKnee: lockDistinctSideMainKnee,
     });
   }
   // איטרציה 3: pass2 ימני עם pass2 שמאלי (סופי)
@@ -2821,6 +2827,7 @@ function buildPagePlanCore(pageContent, config) {
       // שהרצף ימין→שמאל לא יישבר.
       suppressFullStrip3: false,
       maxFullStrip3Lines: isSameStreamSideSplit && pass2Left ? 1 : 0,
+      lockSharedMainKnee: lockDistinctSideMainKnee,
     });
   }
 
@@ -2842,6 +2849,7 @@ function buildPagePlanCore(pageContent, config) {
         mainBottomY,
         otherSideEndY: actualRightEnd,
         maxFullStrip3Lines: 0,
+        lockSharedMainKnee: lockDistinctSideMainKnee,
       });
       if (relaid) pass2Left = relaid;
     }
@@ -2861,10 +2869,12 @@ function buildPagePlanCore(pageContent, config) {
       leftFloor = Math.max(leftFloor, occupiedSideEndY(pass2Right));
       pass2Right = buildSideStream(pageContent.rightStream, 'right', {
         mainBottomY, otherSideEndY: rightFloor,
+        lockSharedMainKnee: lockDistinctSideMainKnee,
       });
       leftFloor = Math.max(leftFloor, occupiedSideEndY(pass2Right));
       pass2Left = buildSideStream(pageContent.leftStream, 'left', {
         mainBottomY, otherSideEndY: leftFloor,
+        lockSharedMainKnee: lockDistinctSideMainKnee,
       });
       pass++;
     }
@@ -2874,9 +2884,11 @@ function buildPagePlanCore(pageContent, config) {
       // Conservative allocation if full-width ownership cannot converge.
       pass2Right = buildSideStream(pageContent.rightStream, 'right', {
         mainBottomY, otherSideEndY: pageBottomY, suppressFullStrip3: true,
+        lockSharedMainKnee: lockDistinctSideMainKnee,
       });
       pass2Left = buildSideStream(pageContent.leftStream, 'left', {
         mainBottomY, otherSideEndY: pageBottomY, suppressFullStrip3: true,
+        lockSharedMainKnee: lockDistinctSideMainKnee,
       });
     }
     if (pass > 0) result.sideWidthReconciliation = { passes: pass, conservativeFallback };
