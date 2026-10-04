@@ -36,7 +36,7 @@ import { wireMishnaWrapToggle } from "./mishna_wrap_layout.js";
 import { wireTalmudLayoutControls } from "./talmud_controls.js";
 import { wireDafLockControls } from "./vilna_daf_ui.js";
 import { wirePageSizeControls, applyPageSize } from "./page_size.js";
-import { loadVilnaImportModule, wireVilnaImportButton } from "./vilna_import_lazy.js";
+import { loadVilnaImportModule } from "./vilna_import_lazy.js";
 import { wireOpeningWordControls } from "./opening_word.js";
 import { applyLanguage, toggleLanguage } from "./i18n.js";
 import { exportWord, importWord, setupWordBridge } from "./word_bridge.js";
@@ -68,17 +68,17 @@ import { initPwaInstallPrompt } from "./pwa_install_prompt.js";
 import { lockScopeWhileStandalone } from "./pwa_scope_lock.js";
 import { installFetchTagger } from "./pwa_install_controller.js";
 import { wireCustomStyles } from "./custom_styles.js";
-import { wireTorahTools } from "./torah_tools.js";
+import { wireTorahToolbarLazy } from "./torah_toolbar_lazy_wire.js";
 import { installTorahGuestGuard } from "./torah_guest_guard.js";
 import { isToolPreviewAllowed, revealToolButtons } from "./tool_preview_gate.js";
 import { wireNikudMergerButton } from "./nikud_merger_lazy_wire.js";
 import { wireTextComparePro } from "./text_compare_pro/text_compare_lazy_wire.js";
 import { wireComparatorButton } from "./comparator_tool/comparator_lazy_wire.js";
-import { wireSefariaTools } from "./sefaria/sefaria.js";
+
 // משה 2026-05-10: שחזור 3 כלי AI לעורך — טרנסקריפציה, ניקוד תורני, קריקטורה
-import { wireTorahTranscription } from "./torah_transcription/torah_transcription_lazy_wire.js";
-import { wireTorahNikud } from "./torah_nikud_lazy_wire.js";
-import { wireCaricatureBot } from "./haredi_caricature_lazy_wire.js";
+
+
+
 import { wireWordCount, wireFullscreen, wireZoom, wireFormattingMarks, wireSpellcheck, wirePreviewSelectionSync, wireQuickInsertActions } from "./editor_utilities.js";
 import { tryUseTool } from "./premium/daily_quota_gate.js";
 import { wireWordLikeTools, insertMath, insertMermaid, insertComment, autoNumberClauses, insertChapterHeading } from "./word_like_tools.js";
@@ -303,7 +303,6 @@ setupPageClickHandler(paneManager, pagesContainer);
 setupWordBridge(paneManager, rerenderPages);
 wireTextComparePro(paneManager);
 wireComparatorButton(paneManager);
-wireSefariaTools(paneManager);
 installLinkMismatchReporter(paneManager);
 
 const PANE_LAYOUT_KEY = "ravtext.panes.streamLayout";
@@ -1080,6 +1079,7 @@ function setupRibbonTabs() {
 }
 
 setupRibbonTabs();
+wireTorahToolbarLazy(paneManager, handleVilnaImport);
 wireLayoutAnalysisReport(pagesContainer);
 wireDownloadsPanel();
 initPwaInstallPrompt();
@@ -1167,30 +1167,12 @@ if (localStorage.getItem("ravtext.lineNumbers") === "1") {
   document.body.classList.add("show-line-numbers");
 }
 revealToolButtons();
-// משה 2026-05-14: גם אורחים צריכים לראות את כלי הטאב התורני (משה דיווח שזה ריק).
-// הכלים עצמם משתמשים ב-torah_guest_guard לחסום פעולות שדורשות חשבון, אבל
-// הכפתורים צריכים להופיע.
-setTimeout(() => {
-  wireTorahTools(paneManager);
-  wireSefariaTools(paneManager);
-  revealToolButtons();
-}, 200);
 
-// משה 2026-05-14: ביטול loggedIn gate שגולס+PR #208 הוסיפו. הכפתורים שהוזרקו
-// ע"י wire* פעולות עצמן מטופלות ע"י torah_guest_guard לחסום פעולות שדורשות
-// חשבון. בלי הסרת ה-gate, אורחים ראו טאב תורני ריק.
+// The heavy Torah toolbar is owned by wireTorahToolbarLazy(), installed right
+// after setupRibbonTabs(). Optional buttons are attached only after the base
+// toolbar finishes replacing its contents.
 if (isToolPreviewAllowed("nikud-merger")) {
   setTimeout(() => wireNikudMergerButton(paneManager), 220);
-}
-// משה 2026-05-10: 3 כלי AI שחזרו ל-main
-if (isToolPreviewAllowed("torah-transcription")) {
-  setTimeout(() => wireTorahTranscription(paneManager), 222);
-}
-if (isToolPreviewAllowed("torah-nikud")) {
-  setTimeout(() => wireTorahNikud(paneManager), 224);
-}
-if (isToolPreviewAllowed("haredi-caricature")) {
-  setTimeout(() => wireCaricatureBot(paneManager), 226);
 }
 
 setTimeout(() => wireWordLikeTools(paneManager), 250);
@@ -1756,9 +1738,8 @@ async function handleVilnaImport({ text, stats, book, code, autoLayout }) {
   });
 }
 
-// הכפתור נכנס לסרגל התורני אחרי ש-wireTorahTools בנה אותו מחדש (הוא מוחק
-// את כל תוכן הסרגל, ולכן כפתור סטטי ב-HTML לא היה שורד).
-setTimeout(() => wireVilnaImportButton(paneManager, handleVilnaImport), 260);
+// The Vilna button is attached by the lazy toolbar orchestrator after the
+// base toolbar has finished replacing its contents.
 wireMishnaWrapToggle(settingRerenderPages);
 wireOpeningWordControls(settingRerenderPages);
 
