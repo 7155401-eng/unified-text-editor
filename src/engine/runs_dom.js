@@ -295,10 +295,32 @@ function cleanRun(r, text) {
   return { start, end, marks: r?.marks || {} };
 }
 
+function normalizeDisjointRuns(len, list) {
+  const out = [];
+  let cursor = 0;
+
+  for (const r of list) {
+    // Editor/TipTap runs normally arrive in source order and do not overlap.
+    // cleanRun() can intentionally expand a boundary across combining marks;
+    // if that creates an overlap (or input order is unusual), fall back to the
+    // full overlap resolver below so later-mark precedence remains identical.
+    if (r.start < cursor) return null;
+
+    if (r.start > cursor) {
+      out.push({ start: cursor, end: r.start, marks: {} });
+    }
+    out.push({ start: r.start, end: r.end, marks: r.marks || {} });
+    cursor = r.end;
+  }
+
+  if (cursor < len) out.push({ start: cursor, end: len, marks: {} });
+  return mergeAdjacentRuns(out);
+}
+
 // מנקה רשימת runs בצורה יציבה: במקום לתת ל-run אחד לדרוס run חופף לפי סדר
 // מקרי, חותכים את הטקסט לפי כל נקודות הגבול וממזגים את כל ה-marks החופפים.
 // זה מונע קפיצות של bold/color באמצע מילה כאשר קיימים כמה marks באותו טווח.
-function normalizeRuns(text, runs) {
+export function normalizeRuns(text, runs) {
   const len = text ? text.length : 0;
   if (!len) return [];
   const list = Array.isArray(runs)
@@ -306,6 +328,15 @@ function normalizeRuns(text, runs) {
     : [];
   if (list.length === 0) return [{ start: 0, end: len, marks: {} }];
 
+  // Common measured-render path: source-order, disjoint runs. This produces
+  // exactly the same filled gaps + adjacent-run merge as the general resolver
+  // in O(r), instead of rebuilding every boundary segment against every run.
+  const linear = normalizeDisjointRuns(len, list);
+  if (linear) return linear;
+
+  // Rare/complex path: overlaps, out-of-order ranges, or combining-mark
+  // expansion that made two runs intersect. Preserve the historical O(r²)
+  // precedence semantics byte-for-byte: later runs overwrite earlier marks.
   const points = new Set([0, len]);
   for (const r of list) {
     points.add(r.start);
