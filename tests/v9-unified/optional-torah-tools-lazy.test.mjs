@@ -7,17 +7,21 @@ async function source(path) {
 }
 
 test("optional Torah tool implementations stay outside the startup import graph", async () => {
-  const [main, nikudWire, caricatureWire] = await Promise.all([
+  const [main, toolbarWire, nikudWire, caricatureWire] = await Promise.all([
     source("src/main.js"),
+    source("src/torah_toolbar_lazy_wire.js"),
     source("src/torah_nikud_lazy_wire.js"),
     source("src/haredi_caricature_lazy_wire.js"),
   ]);
 
-  assert.match(main, /from "\.\/torah_nikud_lazy_wire\.js"/);
-  assert.match(main, /from "\.\/haredi_caricature_lazy_wire\.js"/);
+  assert.match(main, /from "\.\/torah_toolbar_lazy_wire\.js"/);
+  assert.doesNotMatch(main, /from "\.\/torah_nikud_lazy_wire\.js"/);
+  assert.doesNotMatch(main, /from "\.\/haredi_caricature_lazy_wire\.js"/);
   assert.doesNotMatch(main, /from "\.\/torah_nikud\/torah_nikud\.js"/);
   assert.doesNotMatch(main, /from "\.\/haredi_caricature\/haredi_caricature\.js"/);
 
+  assert.match(toolbarWire, /import\("\.\/torah_nikud_lazy_wire\.js"\)/);
+  assert.match(toolbarWire, /import\("\.\/haredi_caricature_lazy_wire\.js"\)/);
   assert.match(nikudWire, /import\("\.\/torah_nikud\/torah_nikud\.js"\)/);
   assert.match(caricatureWire, /import\("\.\/haredi_caricature\/haredi_caricature\.js"\)/);
 
