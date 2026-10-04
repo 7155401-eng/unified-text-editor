@@ -135,3 +135,25 @@ test('dominated transitions keep evaluation budget but avoid unnecessary metric 
   assert.ok(calls<result.evaluations,
     `dominance pruning did not avoid metric work: calls=${calls}, evaluations=${result.evaluations}`);
 });
+
+
+test('guaranteed mid-row budget exhaustion skips every doomed-row metric call',()=>{
+  let calls=0;
+  const result=solve({
+    wordCount:20,
+    rows:[{},{},{},{}],
+    maxSpacing:8,
+    maxEvaluations:40,
+    metricFor:()=>{
+      calls++;
+      return {pressure:0};
+    },
+  });
+
+  // Row 0 has 17 candidates and is fully evaluated. Row 1 has 153
+  // candidates but only 23 evaluations remain, so legacy semantics guarantee
+  // budget-exhausted before row 1 can complete. The optimized solver must
+  // preserve the public result while avoiding those 23 useless measurements.
+  assert.deepEqual(result,{status:'budget-exhausted',evaluations:40});
+  assert.equal(calls,17);
+});
