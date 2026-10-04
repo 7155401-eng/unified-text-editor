@@ -668,9 +668,25 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         const height = Math.max(pitch * descriptor.dropLines, m.height);
         const slot = nextSlot(strips, y, height, pageBottom);
         if (!slot) return finish(ei, 0, 'opening-does-not-fit-page');
-        if (m.width > slot.width + EPS) return finish(ei, 0, 'opening-wider-than-allocated-region');
-
-        if (droppedOpeningCrossesRightEdgeTransition(strips, slot.y, height, pitch, pageBottom)) {
+        if (m.width > slot.width + EPS) {
+          // Only degrade the opening EFFECT when the original source at its
+          // ordinary typography can actually fit this host. If the source word
+          // itself is unbreakably wider than the region, preserve the historical
+          // explicit overflow contract instead of hiding a genuine fit failure.
+          const ordinaryPart = partForRange(entry, 0, descriptor.end, descriptor.end);
+          const ordinaryMeasure = context.measure(ordinaryPart);
+          if (ordinaryMeasure.width > slot.width + EPS) {
+            return finish(ei, 0, 'opening-wider-than-allocated-region');
+          }
+          diagnostics.push({
+            code: 'opening-skipped-too-wide',
+            paragraphId: entry.id,
+            openingWidth: m.width,
+            ordinaryWidth: ordinaryMeasure.width,
+            availableWidth: slot.width,
+          });
+          descriptor = null;
+        } else if (droppedOpeningCrossesRightEdgeTransition(strips, slot.y, height, pitch, pageBottom)) {
           // A single dropped glyph cannot occupy two different right edges.
           // Keeping it dropped would strand the later widened row at the old
           // narrow width. Preserve the configured opening style as an inline
