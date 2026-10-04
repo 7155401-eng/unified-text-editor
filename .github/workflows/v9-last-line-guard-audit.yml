@@ -1,0 +1,37 @@
+name: Temporary V9 last-line guard audit
+on:
+  push:
+    branches: [audit/v9-last-line-guard-mainf8c-20261004]
+    paths:
+      - 'src/vilna_v9.js'
+      - 'scripts/v9-unified/audit-last-line-guard.mjs'
+      - '.github/workflows/v9-last-line-guard-audit.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Audit selected page ends
+        run: node scripts/v9-unified/audit-last-line-guard.mjs
+      - name: Retain audit
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: v9-last-line-audit-${{ github.run_id }}
+          path: test-results/v9-unified/last-line-audit.json
+          retention-days: 7
+          if-no-files-found: warn
