@@ -307,7 +307,10 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       }
 
       const entries = [...pending.values()];
-      const BATCH = 128;
+      // Larger chunks amortize DOM mount/layout overhead while preserving the
+      // same per-part geometry and cache semantics. Keep bounded to avoid an
+      // unreasonably large off-screen measurement subtree.
+      const BATCH = 512;
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
         const mounted = [];
