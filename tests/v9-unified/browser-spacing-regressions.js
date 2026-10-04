@@ -6,7 +6,7 @@ import { getStreamSettings, updateOriginalStreamColumnsPanel } from '../../src/o
 import { applyMainStreamColumnsToElement } from '../../src/main_stream_columns.js';
 import { prepareV9SourceParagraph } from '../../src/engine/v9_source_fragments.js';
 import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js';
-import { installPageNumberPreRenderDecorator, applyHeaderFooter, decoratePageNumberBeforeRender } from '../../src/document_features.js';
+import { installPageNumberPreRenderDecorator, installDocumentFeaturePreRenderDecorators, applyHeaderFooter, decoratePageNumberBeforeRender } from '../../src/document_features.js';
 import { createLayoutContext, publishLayoutContextToCssVars } from '../../src/engine/layout_context.js';
 import { wordMainFragmentFromEditorHtml, wordRichFragmentFromEditorHtml } from '../../src/word_export_serialization.js';
 import { fitRibbonTabs } from '../../src/ribbon_tabs_guard.js';
@@ -329,7 +329,49 @@ export async function runSpacingRegressions(test,{assert,makePage,sourceText}) {
    }
  });
 
-  await test('V9 paints page numbers during page construction without a post-render event',async()=>{
+  await test('V9 paints header, footer and page number through one pre-render pipeline',async()=>{
+   const savedHeader=localStorage.getItem('ravtext.pageHeader');
+   const savedFooter=localStorage.getItem('ravtext.pageFooter');
+   const savedNumbers=localStorage.getItem('ravtext.pageNumbers');
+   const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
+   const savedRegistry=window.__ravtextPreRenderPageDecorators;
+   const host=makePage();
+   try {
+     localStorage.setItem('ravtext.pageHeader','כותרת עליונה');
+     localStorage.setItem('ravtext.pageFooter','כותרת תחתונה');
+     localStorage.setItem('ravtext.pageNumbers','1');
+     window.__ravtextPreRenderPageDecorators=[];
+     installDocumentFeaturePreRenderDecorators();
+
+     const result=await buildPages(host,[{id:'document-overlay-pre-render',mainText:Array(10).fill(neutral).join(' '),notes:[]}],
+       {...cfg,pageHeight:260,talmudStreams:[],maxPages:20});
+     assert(result.complete,'document overlay pre-render fixture incomplete');
+     assert(result.pages.length>0,'document overlay pre-render fixture produced no page');
+
+     for(const [pageIndex,page] of result.pages.entries()){
+       const header=page.querySelector('.ravtext-page-header');
+       const footer=page.querySelector('.ravtext-page-footer');
+       const number=page.querySelector('.ravtext-page-number-overlay');
+       assert(header?.textContent==='כותרת עליונה',`page ${pageIndex}: header was not painted during render`);
+       assert(footer?.textContent==='כותרת תחתונה',`page ${pageIndex}: footer was not painted during render`);
+       assert(number,`page ${pageIndex}: page number was not painted during render`);
+       assert(page.dataset.ravtextHeaderFooterPaint==='during-render',
+         `page ${pageIndex}: header/footer fell back to post-render paint`);
+       assert(page.dataset.ravtextPageNumberPaint==='during-render',
+         `page ${pageIndex}: page number fell back to post-render paint`);
+       assert(Number.isFinite(parseFloat(footer.style.bottom)),
+         `page ${pageIndex}: footer did not preserve layout_context stack geometry`);
+     }
+   } finally {
+     host.remove();
+     if(savedHeader===null)localStorage.removeItem('ravtext.pageHeader');else localStorage.setItem('ravtext.pageHeader',savedHeader);
+     if(savedFooter===null)localStorage.removeItem('ravtext.pageFooter');else localStorage.setItem('ravtext.pageFooter',savedFooter);
+     if(savedNumbers===null)localStorage.removeItem('ravtext.pageNumbers');else localStorage.setItem('ravtext.pageNumbers',savedNumbers);
+     if(hadRegistry)window.__ravtextPreRenderPageDecorators=savedRegistry;else delete window.__ravtextPreRenderPageDecorators;
+   }
+ });
+
+ await test('V9 paints page numbers during page construction without a post-render event',async()=>{
    const savedSetting=localStorage.getItem('ravtext.pageNumbers');
    const hadRegistry=Object.prototype.hasOwnProperty.call(window,'__ravtextPreRenderPageDecorators');
    const savedRegistry=window.__ravtextPreRenderPageDecorators;

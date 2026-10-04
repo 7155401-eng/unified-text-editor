@@ -10,6 +10,8 @@ const FOOTER_KEY = "ravtext.pageFooter";
 const WATERMARK_KEY = "ravtext.watermark";
 const WATERMARK_OPACITY_KEY = "ravtext.watermarkOpacity";
 
+let _currentDocumentLayoutContext = null;
+
 function pageElements() {
   return document.querySelectorAll(
     "#pages-container .page:not(.page-placeholder):not(.ravtext-empty-page), " +
@@ -81,14 +83,73 @@ export function decoratePageNumberBeforeRender(page, pageIndex) {
   page.dataset.ravtextPageNumberPaint = "during-render";
 }
 
-export function installPageNumberPreRenderDecorator() {
-  if (typeof window === "undefined") return;
-  const registry = Array.isArray(window.__ravtextPreRenderPageDecorators)
+function preRenderRegistry() {
+  if (typeof window === "undefined") return null;
+  return Array.isArray(window.__ravtextPreRenderPageDecorators)
     ? window.__ravtextPreRenderPageDecorators
     : (window.__ravtextPreRenderPageDecorators = []);
-  if (registry.includes(decoratePageNumberBeforeRender)) return;
+}
+
+export function installPageNumberPreRenderDecorator() {
+  const registry = preRenderRegistry();
+  if (!registry || registry.includes(decoratePageNumberBeforeRender)) return;
   decoratePageNumberBeforeRender.__ravtextPreRenderOrder = 20;
   registry.push(decoratePageNumberBeforeRender);
+}
+
+export function decorateHeaderFooterBeforeRender(
+  page,
+  _pageIndex,
+  context = _currentDocumentLayoutContext || createLayoutContext(),
+) {
+  if (!page || page.classList?.contains("page-placeholder") || page.classList?.contains("ravtext-empty-page")) return;
+  const headerText = localStorage.getItem(HEADER_KEY) || "";
+  const footerText = localStorage.getItem(FOOTER_KEY) || "";
+  const footerBottom = Number(context?.features?.footerBottom);
+
+  let header = page.querySelector(".ravtext-page-header");
+  let footer = page.querySelector(".ravtext-page-footer");
+
+  if (headerText) {
+    if (!header) {
+      header = document.createElement("div");
+      header.className = "ravtext-page-header";
+      page.insertBefore(header, page.firstChild);
+    }
+    header.textContent = headerText;
+  } else {
+    header?.remove();
+  }
+
+  if (footerText) {
+    if (!footer) {
+      footer = document.createElement("div");
+      footer.className = "ravtext-page-footer";
+      page.appendChild(footer);
+    }
+    footer.textContent = footerText;
+    // layout_context owns the stack geometry. Persist the resolved bottom as
+    // an inline pixel value on the rendered footer so HTML/PDF clones keep
+    // the exact non-overlapping position without depending on live root vars.
+    if (Number.isFinite(footerBottom)) footer.style.bottom = `${footerBottom}px`;
+    else footer.style.removeProperty("bottom");
+  } else {
+    footer?.remove();
+  }
+
+  page.dataset.ravtextHeaderFooterPaint = "during-render";
+}
+
+export function installHeaderFooterPreRenderDecorator() {
+  const registry = preRenderRegistry();
+  if (!registry || registry.includes(decorateHeaderFooterBeforeRender)) return;
+  decorateHeaderFooterBeforeRender.__ravtextPreRenderOrder = 10;
+  registry.push(decorateHeaderFooterBeforeRender);
+}
+
+export function installDocumentFeaturePreRenderDecorators() {
+  installHeaderFooterPreRenderDecorator();
+  installPageNumberPreRenderDecorator();
 }
 
 function applyPageNumbers(pages = pageElements()) {
@@ -96,42 +157,11 @@ function applyPageNumbers(pages = pageElements()) {
 }
 
 // Register as soon as the module loads: the first engine render can start before
-// the delayed UI wiring runs, and page numbering must already participate in it.
-if (typeof window !== "undefined") installPageNumberPreRenderDecorator();
+// the delayed UI wiring runs, so all page overlays already participate in it.
+if (typeof window !== "undefined") installDocumentFeaturePreRenderDecorators();
 
 export function applyHeaderFooter(pages = pageElements(), context = createLayoutContext()) {
-  const headerText = localStorage.getItem(HEADER_KEY) || "";
-  const footerText = localStorage.getItem(FOOTER_KEY) || "";
-  const footerBottom = Number(context?.features?.footerBottom);
-  pages.forEach((page) => {
-    let header = page.querySelector(".ravtext-page-header");
-    let footer = page.querySelector(".ravtext-page-footer");
-    if (headerText) {
-      if (!header) {
-        header = document.createElement("div");
-        header.className = "ravtext-page-header";
-        page.insertBefore(header, page.firstChild);
-      }
-      header.textContent = headerText;
-    } else {
-      header?.remove();
-    }
-    if (footerText) {
-      if (!footer) {
-        footer = document.createElement("div");
-        footer.className = "ravtext-page-footer";
-        page.appendChild(footer);
-      }
-      footer.textContent = footerText;
-      // layout_context owns the stack geometry. Persist the resolved bottom as
-      // an inline pixel value on the rendered footer so HTML/PDF clones keep
-      // the exact non-overlapping position without depending on live root vars.
-      if (Number.isFinite(footerBottom)) footer.style.bottom = `${footerBottom}px`;
-      else footer.style.removeProperty("bottom");
-    } else {
-      footer?.remove();
-    }
-  });
+  pages.forEach((page, i) => decorateHeaderFooterBeforeRender(page, i, context));
 }
 
 function applyWatermark(pages = pageElements()) {
@@ -172,7 +202,7 @@ function scheduleReservedRerender(reason) {
 }
 
 export function prepareDocumentFeatureReserves() {
-  installPageNumberPreRenderDecorator();
+  installDocumentFeaturePreRenderDecorators();
   return syncReservedSpace({ rerenderOnChange: false, reason: "pre-pack" });
 }
 
@@ -181,6 +211,7 @@ export function syncReservedSpace(options = {}) {
   // layout_context measures the configured header/footer text against the real
   // page CSS before pagination; this module only republishes that same result.
   const context = createLayoutContext();
+  _currentDocumentLayoutContext = context;
   const reserves = layoutContextReserveValues(context);
   const changed = (
     pxVar("--ravtext-features-header-reserved") !== reserves.header ||
@@ -287,7 +318,7 @@ function installRealizedPageHook() {
 }
 
 export function wireDocumentFeatures() {
-  installPageNumberPreRenderDecorator();
+  installDocumentFeaturePreRenderDecorators();
   const pageNumCb = document.getElementById("doc-page-numbers-toggle");
   const headerInput = document.getElementById("doc-header-input");
   const footerInput = document.getElementById("doc-footer-input");
