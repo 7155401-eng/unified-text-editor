@@ -19,6 +19,26 @@ export function findV9ExactTailPartition({
   for (let i = 0; i < rows.length; i++) {
     const next = new Map();
     const maximumEnd = wordCount - minimumRemaining[i + 1];
+
+    // evaluations advances for every candidate transition, regardless of
+    // metric feasibility or dominance. Therefore if this whole row contains
+    // more candidates than the remaining budget, the legacy loop is
+    // guaranteed to stop mid-row with budget-exhausted and discard the
+    // partially-built next map. Detect that outcome before any DOM-backed
+    // metricFor() calls in the doomed row.
+    const remainingBudget = maxEvaluations - evaluations;
+    let rowEvaluations = 0;
+    for (const [from] of states) {
+      const minimumEnd = i === rows.length - 1
+        ? wordCount
+        : from + (rows[i].allowsEmpty ? 0 : 1);
+      if (minimumEnd > maximumEnd) continue;
+      rowEvaluations += maximumEnd - minimumEnd + 1;
+      if (rowEvaluations > remainingBudget) {
+        return {status: 'budget-exhausted', evaluations: maxEvaluations};
+      }
+    }
+
     for (const [from, state] of states) {
       const minimumEnd = i === rows.length - 1 ? wordCount : from + (rows[i].allowsEmpty ? 0 : 1);
       for (let to = minimumEnd; to <= maximumEnd; to++) {
