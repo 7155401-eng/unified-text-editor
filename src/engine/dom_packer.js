@@ -6,12 +6,13 @@
 import { streamColorIndex } from "./schema.js";
 import { applyMishnaWrapToPage, isMishnaWrapEnabled } from "../mishna_wrap_layout.js";
 import { applyMainTextStyleToElement } from "../document_style_settings.js";
-import { applyStyleToElement, applyStreamContainerStyleToElement } from "../style_registry.js";
+import { applyStreamContainerStyleToElement } from "../style_registry.js";
 import { appendTextWithRuns, sliceRuns } from "./runs_dom.js";
-import { getEffectiveStreamSettings, applyBarStyleToElement, shouldBoldStreamLemma, lemmaSplitIndex } from "../original_stream_columns.js";
+import { getEffectiveStreamSettings, shouldBoldStreamLemma, lemmaSplitIndex } from "../original_stream_columns.js";
 import { applyMainStreamColumnsToElement } from "../main_stream_columns.js";
 import { createLayoutContext, publishLayoutContextToCssVars, currentLayoutMeasureSignature } from "./layout_context.js";
 import { mainBlockTagForType } from "./main_block_semantics.js";
+import { createRegularMainStreamTitle, createRegularStreamTitle } from "./regular_stream_title.js";
 // משה 2026-05-08: V9 הוא המנוע למצב גפ"ת. dom_packer לא רץ במצב גפ"ת
 // (V9 בונה דפים מאפס בלי domPack). הקוד שמדידת talmud-layout נשאר כאן
 // בתור no-op כדי לא לשבור קריאות. isTalmudLayoutEnabled עברה לקובץ controls.
@@ -336,6 +337,10 @@ function buildMeasurePage(mainSegments, streams) {
   main.className = "page-main";
   applyMainTextStyleToElement(main);
   applyMainStreamColumnsToElement(main);
+  if ((mainSegments || []).length > 0) {
+    const mainTitle = createRegularMainStreamTitle();
+    if (mainTitle) main.appendChild(mainTitle);
+  }
   let lastIdx = null;
   let lastP = null;
   const mainRunCursors = new Map();
@@ -389,12 +394,8 @@ function buildMeasurePage(mainSegments, streams) {
         : true;
       s.style.textAlignLast = lastLineCenter ? "center" : "right";
 
-      const title = document.createElement("div");
-      title.className = "stream-title";
-      title.textContent = streamTitleForCode(code);
-      applyStyleToElement(title, settings.titleStyleId);
-      applyBarStyleToElement(title, settings);
-      s.appendChild(title);
+      const title = createRegularStreamTitle(code, streamTitleForCode(code));
+      if (title) s.appendChild(title);
 
       // Default = inline (continuous notes); user can toggle off per-stream.
       const notesInline = typeof settings.inline === "boolean" ? settings.inline : true;

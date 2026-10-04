@@ -5,7 +5,6 @@ import {
   getEffectiveStreamSettings,
   formatStreamNumber,
   shouldBoldStreamNumber,
-  applyBarStyleToElement,
   styleIdForStreamNumber,
   boldOverrideStyleIdForStream,
   _streamBoolSetting,
@@ -16,6 +15,7 @@ import { appendTextWithRuns, applyMarksToSpan } from "./runs_dom.js";
 import { buildNoteContentNodes } from "./note_content_builder.js";
 import { referenceNoBreakRange } from "./reference_line_glue.js";
 import { mainBlockTagForType } from "./main_block_semantics.js";
+import { createRegularMainStreamTitle, createRegularStreamTitle } from "./regular_stream_title.js";
 
 // משה 2026-05-15: מנגנון יחיד לבניית תוכן ההערה — buildNoteContentNodes
 // ב-note_content_builder.js. הפונקציה הזו ממירה את ה-nodes ל-DOM (עם
@@ -496,14 +496,8 @@ function createStreamElement(streamCode, streamData, streamNumLastPage, pageInde
     wrap.style.textAlignLast = "right";
   }
 
-  const title = document.createElement("div");
-  title.className = "stream-title";
-  title.textContent = streamTitleForCode(streamCode);
-  applyStyleToElement(title, settings.titleStyleId);
-  // משה 2026-05-13: שליטת "פס מעל המפרש" — לוגיקה מאוחדת בין V9 לרגיל.
-  // לוקח barShow/barPreset/barColor/barThickness מההגדרות.
-  applyBarStyleToElement(title, settings);
-  wrap.appendChild(title);
+  const title = createRegularStreamTitle(streamCode, streamTitleForCode(streamCode));
+  if (title) wrap.appendChild(title);
 
   const notes = notesArr;
   // Default = inline (continuous notes); user can toggle off per-stream.
@@ -631,6 +625,10 @@ function createPageElement(pageData, paraIdxLastPage, pageIndex, streamNumLastPa
   main.className = "page-main";
   applyMainTextStyleToElement(main);
   applyMainStreamColumnsToElement(main);
+  if (pageHasMain) {
+    const mainTitle = createRegularMainStreamTitle();
+    if (mainTitle) main.appendChild(mainTitle);
+  }
   let lastIdx = null;
   let lastP = null;
   for (const tup of pageData.main) {
