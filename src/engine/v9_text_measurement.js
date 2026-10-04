@@ -311,13 +311,15 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
         const mounted = [];
+        const fragment = document.createDocumentFragment();
 
         for (const item of chunk) {
-          const holder = document.createElement('div');
-          holder.style.cssText = 'position:absolute;left:0;top:0;width:max-content;height:max-content;padding:0;margin:0;border:0;';
           const node = probe.cloneNode(false);
           node.replaceChildren();
           cssApply(node, item.part.style || typography);
+          node.style.position = 'absolute';
+          node.style.left = '0';
+          node.style.top = '0';
           node.style.whiteSpace = 'pre';
           node.style.width = 'max-content';
           node.style.height = 'auto';
@@ -325,10 +327,10 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             ? px(item.part.style?.wordSpacing, 0)
             : 0;
           appendV9PlannedPart(node, item.part, plannedWordSpacing);
-          holder.appendChild(node);
-          root.appendChild(holder);
-          mounted.push({ item, holder, node });
+          fragment.appendChild(node);
+          mounted.push({ item, node });
         }
+        root.appendChild(fragment);
 
         try {
           for (const { item, node } of mounted) {
@@ -348,7 +350,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             for (const index of item.indices) out[index] = result;
           }
         } finally {
-          for (const { holder } of mounted) holder.remove();
+          for (const { node } of mounted) node.remove();
         }
       }
 
