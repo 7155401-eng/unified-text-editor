@@ -1,0 +1,125 @@
+name: Temporary production FAQ acceptance
+on:
+  push:
+    branches: [audit/faq-production-post1126-20261004]
+    paths: ['.github/workflows/temp-production-faq-acceptance.yml']
+permissions:
+  contents: read
+jobs:
+  prod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 2d00aa40753d7e6affa3c565c16f487d6868b1d5
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Install Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Wait for production bundle and verify FAQ behavior
+        run: |
+          mkdir -p test-results/faq-production
+          cat > faq-production-audit.mjs <<'EOF'
+          import { chromium } from 'playwright-chromium';
+          import fs from 'node:fs';
+
+          const url='https://app.ravtext.com/';
+          const browser=await chromium.launch({headless:true});
+
+          async function pageWith(delayFaqChunk=false){
+            const context=await browser.newContext({
+              userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36'
+            });
+            const page=await context.newPage();
+            if(delayFaqChunk){
+              await page.route('**/*faq_panel*.js*',async route=>{
+                await new Promise(r=>setTimeout(r,800));
+                await route.continue();
+              });
+            }
+            return {context,page};
+          }
+
+          let deployed=false,sourceProbe=null;
+          for(let attempt=1;attempt<=12;attempt++){
+            const {context,page}=await pageWith(false);
+            try{
+              const root=await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+              if(root?.status()!==200) throw new Error('root HTTP '+root?.status());
+              sourceProbe=await page.evaluate(async()=>{
+                const entry=[...document.scripts].map(s=>s.src).find(src=>/\/assets\/.*\.js/.test(src))||'';
+                if(!entry)return {entry:'',hasFaqWarmup:false,entryBytes:0};
+                const source=await (await fetch(entry+'?prod-faq='+Date.now(),{cache:'no-store'})).text();
+                return {entry,entryBytes:source.length,hasFaqWarmup:source.includes('FAQ load failed:')&&source.includes('aria-busy')};
+              });
+              if(sourceProbe.hasFaqWarmup){deployed=true;break;}
+            } finally {
+              await context.close();
+            }
+            await new Promise(r=>setTimeout(r,15000));
+          }
+          if(!deployed){
+            fs.writeFileSync('test-results/faq-production/report.json',JSON.stringify({deployed,sourceProbe},null,2));
+            throw new Error('production did not expose FAQ warmup marker within polling window: '+JSON.stringify(sourceProbe));
+          }
+
+          const cold=await pageWith(true);
+          await cold.page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+          await cold.page.waitForSelector('#rt-prem-icon-faq',{timeout:30000});
+          const coldStart=Date.now();
+          await cold.page.locator('#rt-prem-icon-faq').click();
+          await cold.page.waitForFunction(()=>document.querySelector('#rt-prem-icon-faq')?.getAttribute('aria-busy')==='true',{timeout:500});
+          const feedbackMs=Date.now()-coldStart;
+          const loadingState=await cold.page.evaluate(()=>{
+            const btn=document.querySelector('#rt-prem-icon-faq');
+            const ps=btn?getComputedStyle(btn,'::after'):null;
+            return {
+              busy:btn?.getAttribute('aria-busy')||'',
+              ariaLabel:btn?.getAttribute('aria-label')||'',
+              className:btn?.className||'',
+              spinner:ps?{content:ps.content,animationName:ps.animationName,width:ps.width,height:ps.height}:null
+            };
+          });
+          await cold.page.waitForSelector('#rt-faq-panel.is-open',{timeout:5000});
+          const coldOpenMs=Date.now()-coldStart;
+          await cold.context.close();
+
+          const warm=await pageWith(false);
+          await warm.page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+          await warm.page.waitForSelector('#rt-prem-icon-faq',{timeout:30000});
+          await warm.page.waitForTimeout(2200);
+          const warmStart=Date.now();
+          await warm.page.locator('#rt-prem-icon-faq').click();
+          await warm.page.waitForSelector('#rt-faq-panel.is-open',{timeout:1500});
+          const warmOpenMs=Date.now()-warmStart;
+          const questions=await warm.page.locator('#rt-faq-panel .rt-faq-item').count();
+          await warm.context.close();
+          await browser.close();
+
+          const report={deployed,sourceProbe,feedbackMs,loadingState,coldOpenMs,warmOpenMs,questions};
+          fs.writeFileSync('test-results/faq-production/report.json',JSON.stringify(report,null,2));
+          console.log(JSON.stringify(report,null,2));
+          if(feedbackMs>300) throw new Error('production loading feedback too slow '+feedbackMs+'ms');
+          if(loadingState.busy!=='true'||!loadingState.className.includes('is-loading')) throw new Error('production loading state missing');
+          if(!loadingState.ariaLabel.includes('טוען')) throw new Error('production loading label missing');
+          if(loadingState.spinner?.animationName!=='rt-faq-loading-spin') throw new Error('production spinner animation missing');
+          if(warmOpenMs>300) throw new Error('production warmed FAQ open too slow '+warmOpenMs+'ms');
+          if(questions<1) throw new Error('production FAQ has no questions');
+          EOF
+          node faq-production-audit.mjs
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: production-faq-acceptance-${{ github.run_id }}
+          path: test-results/faq-production/
+          retention-days: 7
+          if-no-files-found: warn
