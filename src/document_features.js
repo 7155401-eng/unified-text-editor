@@ -160,7 +160,7 @@ function applyPageNumbers(pages = pageElements()) {
 // the delayed UI wiring runs, so all page overlays already participate in it.
 if (typeof window !== "undefined") installDocumentFeaturePreRenderDecorators();
 
-export function applyHeaderFooter(pages = pageElements(), context = _currentDocumentLayoutContext || createLayoutContext()) {
+export function applyHeaderFooter(pages = pageElements(), context = createLayoutContext()) {
   pages.forEach((page, i) => decorateHeaderFooterBeforeRender(page, i, context));
 }
 
