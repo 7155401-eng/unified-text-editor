@@ -311,6 +311,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
         const mounted = [];
+        const fragment = document.createDocumentFragment();
 
         for (const item of chunk) {
           const holder = document.createElement('div');
@@ -326,10 +327,11 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             : 0;
           appendV9PlannedPart(node, item.part, plannedWordSpacing);
           holder.appendChild(node);
-          root.appendChild(holder);
+          fragment.appendChild(holder);
           mounted.push({ item, holder, node });
         }
 
+        root.appendChild(fragment);
         try {
           for (const { item, node } of mounted) {
             const r = node.getBoundingClientRect();
@@ -348,7 +350,9 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             for (const index of item.indices) out[index] = result;
           }
         } finally {
-          for (const { holder } of mounted) holder.remove();
+          // Restore the original measurement probe in one DOM mutation instead
+          // of removing every temporary holder separately.
+          root.replaceChildren(probe);
         }
       }
 
