@@ -11,6 +11,7 @@ import { formatCitation as _formatCitation, formatRefLabel as _formatRefLabel } 
 import { showMatchDialog as _showMatchDialog } from "./sefaria_match_dialog.js";
 import { findVerseInSelection as _findVerseInSelection } from "./sefaria_locate.js";
 import { parseUserRef as _parseUserRef } from "./sefaria_parse_ref.js";
+import { insertExternalEditorContent } from "./editor_external_content.js";
 
 const GIMATRIA_VALUES = {
   "א": 1, "ב": 2, "ג": 3, "ד": 4, "ה": 5, "ו": 6, "ז": 7, "ח": 8, "ט": 9,
@@ -511,7 +512,7 @@ export function wireTorahTools(paneManager) {
       const citation = " " + (ref.wholeChapter
         ? `(${ref.book} ${numberToHebrewLetters(ref.chap)})`
         : buildCitation(ref.book, ref.chap, ref.verse, ref.corpus));
-      ed.chain().focus().insertContent(text + citation).run();
+      insertExternalEditorContent(ed, text + citation);
       status.textContent = "הוכנס.";
       setTimeout(() => { status.textContent = ""; }, 2000);
     } catch (e) {
@@ -651,18 +652,15 @@ export function wireTorahTools(paneManager) {
               ? `${citationHtml}&nbsp;${verseHtml}`
               : `${verseHtml}&nbsp;${citationHtml}`)
           : verseHtml;
-        ed.chain().focus()
-          .setTextSelection({ from: targetFrom, to: targetTo })
-          .deleteSelection()
-          .insertContent(html)
-          .run();
+        insertExternalEditorContent(ed, html, {
+          selection: { from: targetFrom, to: targetTo },
+        });
       } else if (citationHtml) {
         const insertAt = pos === "before" ? targetFrom : targetTo;
         const html = pos === "before" ? `${citationHtml}&nbsp;` : `&nbsp;${citationHtml}`;
-        ed.chain().focus()
-          .setTextSelection({ from: insertAt, to: insertAt })
-          .insertContent(html)
-          .run();
+        insertExternalEditorContent(ed, html, {
+          selection: { from: insertAt, to: insertAt },
+        });
       } else {
         // Cite-only button + user unchecked source in dialog → nothing to do.
         status.textContent = "לא בוצעה פעולה — סמן ניקוד או מקור בדיאלוג";
@@ -813,11 +811,9 @@ export function wireTorahTools(paneManager) {
       const html = citationHtml
         ? `${verseHtml}&nbsp;${citationHtml}`
         : verseHtml;
-      ed.chain().focus()
-        .setTextSelection({ from: sel.from, to: sel.to })
-        .deleteSelection()
-        .insertContent(html)
-        .run();
+      insertExternalEditorContent(ed, html, {
+        selection: { from: sel.from, to: sel.to },
+      });
       status.textContent = `הוכנס: ${_formatRefLabel(match)}`;
       setTimeout(() => { status.textContent = ""; }, 3000);
     } catch (e) {
