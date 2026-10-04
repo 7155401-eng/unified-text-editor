@@ -1447,6 +1447,32 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     page.remove();
   });
 
+  await test('two continuing side streams widen on the same vertical boundary below main',()=>{
+    const page=makePage();
+    const sideText=Array(34).fill(phrase).join(' ');
+    const plan=buildSinglePage(page,{
+      mainText:'אחד שניים שלוש ארבע חמש',
+      rightStream:{id:'01',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      leftStream:{id:'02',items:[sideText],runs:[],rich:{text:sideText,runs:[]}},
+      footerStreams:[]
+    },{...cfg,pageHeight:760,crownLines:2,streamSettings:{
+      '01':{inlineStyle:{fontSize:11,lineHeight:1.45}},
+      '02':{inlineStyle:{fontSize:12,lineHeight:1.6}},
+    }});
+    const mainBottom=(plan.mainBox?.y||0)+(plan.mainBox?.height||0);
+    const boxes=['right','left'].map(role=>plan.streamBoxes.find(b=>b.role===role));
+    assert(boxes.every(Boolean),'missing side boxes');
+    const firstWide=boxes.map(box=>{
+      const prior=box.lines.filter(l=>l.y<mainBottom-.1);
+      const narrow=prior.length ? Math.min(...prior.map(l=>l.width)) : Math.min(...box.lines.map(l=>l.width));
+      return box.lines.find(l=>l.y>=mainBottom-.1 && l.width>narrow+20);
+    });
+    assert(firstWide.every(Boolean),'fixture did not create wide continuation rows on both sides');
+    assert(Math.abs(firstWide[0].y-firstWide[1].y)<.15,
+      `wide rows start at different heights: ${firstWide[0].y} vs ${firstWide[1].y}`);
+    page.remove();
+  });
+
   await test('commentary knee never inserts a blank row when crown→main gap is off the stream grid',()=>{
     const page=makePage();
     const sideText=Array(38).fill(phrase).join(' ');
