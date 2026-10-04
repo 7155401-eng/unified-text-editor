@@ -4775,7 +4775,17 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       return out;
     };
 
+    const __trialSeenN = new Set();
     const trialAtN = (n) => {
+      if (typeof window !== "undefined" && window.__ravtextPerfTrace) {
+        const perf = (window.__ravtextV9Perf ||= {});
+        perf.trialAtNCalls = (perf.trialAtNCalls || 0) + 1;
+        if (__trialSeenN.has(n)) perf.trialAtNRepeatCalls = (perf.trialAtNRepeatCalls || 0) + 1;
+        else {
+          __trialSeenN.add(n);
+          perf.trialAtNUniqueCalls = (perf.trialAtNUniqueCalls || 0) + 1;
+        }
+      }
       const slice = getSlice(n);
       const aggContent = aggregateForV9(slice, cfg.titles, cfg.streamSettings, cfg.levels, streamsForPage(pageIdx), carryOver);
       return buildPagePlan(aggContent, cfg);
