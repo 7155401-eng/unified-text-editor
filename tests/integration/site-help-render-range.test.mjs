@@ -7,11 +7,15 @@ const read = (p) => fs.readFileSync(new URL("../../" + p, import.meta.url), "utf
 test("site title and help center are wired", () => {
   const html = read("index.html");
   const main = read("src/main.js");
+  const helpLazy = read("src/help_center_lazy_wire.js");
   const i18n = read("src/i18n.js");
   assert.match(html, /<title>מחולל הפלא של רב טקסט<\/title>/);
   assert.match(html, /id="btn-help-center"/);
   assert.match(html, /data-i18n="appSubtitle">רב טקסט לוורד AI<\/div>/);
-  assert.match(main, /wireHelpCenter\(\)/);
+  assert.match(main, /wireHelpCenterLazy\(\)/);
+  assert.doesNotMatch(main, /from\s+["']\.\/help_center\.js["']/);
+  assert.match(helpLazy, /import\(["']\.\/help_center\.js["']\)/);
+  assert.match(helpLazy, /id="btn-help-center"|getElementById\("btn-help-center"\)/);
   assert.match(i18n, /appTitle: "מחולל הפלא של רב טקסט"/);
   assert.match(i18n, /appSubtitle: "רב טקסט לוורד AI"/);
 });
