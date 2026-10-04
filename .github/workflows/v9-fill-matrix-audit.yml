@@ -29,10 +29,10 @@ jobs:
         run: npx --no-install playwright install --with-deps chromium
       - name: Run fill audit
         run: node scripts/v9-unified/run-fill-audit.mjs
-      - name: Retain audit
+      - name: Inspect worst fill pages\n        run: node scripts/v9-unified/run-fill-focus.mjs\n      - name: Retain audit
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: v9-fill-audit-${{ github.run_id }}
-          path: test-results/v9-unified/fill-audit.json
+          path: |\n            test-results/v9-unified/fill-audit.json\n            test-results/v9-unified/fill-focus.json
           retention-days: 7
