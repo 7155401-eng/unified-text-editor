@@ -6238,7 +6238,15 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       // Active splits are handled only by extension-rescue / tail rejoin above.
       if (splitInfo) return null;
       const beforeFill = planFillRatio(finalProbe);
-      if (beforeFill >= 0.50) return null;
+      const sparseLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+      const sparsePhysicalTrigger = evaluateV9PhysicalGapFillTrigger({
+        remainingPx: Math.max(0, pageBottomForFill - planBottomY(finalProbe)),
+        lineHeight: sparseLineH,
+        beforeFill,
+        cfg,
+        manualPull: false,
+      });
+      if (!sparsePhysicalTrigger.ok) return null;
       if (bestN >= totalAvail) return null;
       if (mainOverflowTextOf(finalProbe)) return null;
       if (finalProbe.unstartedNotes?.length) return null;
