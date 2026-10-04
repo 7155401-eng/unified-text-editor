@@ -24,7 +24,8 @@ export function wireFindReplaceLazy() {
     try {
       const mod = await loadFindReplaceModule();
       window.removeEventListener("keydown", onFirstFind);
-      window.__ravtextFindReplaceLazyBound = false;
+      // Keep the sentinel set after handoff so a repeated app bootstrap/HMR
+      // cannot install a second lazy Ctrl+F handler beside the full one.
       mod.setupFindReplace();
       mod.openFindReplace();
     } catch (error) {
