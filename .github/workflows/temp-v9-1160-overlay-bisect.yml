@@ -1,0 +1,57 @@
+name: Temporary V9 1160 overlay bisect
+on:
+  push:
+    branches: [gpt56sol-v9-bisect-1160-overlays-20261004-0555-3e2b]
+permissions:
+  contents: read
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22', cache: npm}
+      - name: Locked dependencies
+        env: {PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'}
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout before stream position
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 63b12887c260da114d9d2c28e9ee6736af1cfba6
+          path: .perf-63b
+          persist-credentials: false
+      - name: Checkout stream position fix
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 2518b6fce53a2891cdfffaaabb4eb8aec840c94e
+          path: .perf-2518
+          persist-credentials: false
+      - name: Checkout overlay pipeline
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 5be0198fd2573a2458210892fa45feb4338c3ad7
+          path: .perf-5be
+          persist-credentials: false
+      - name: Share dependencies
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-63b/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-2518/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-5be/node_modules"
+      - name: Benchmark 63b
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-63b --out test-results/perf-63b.json
+      - name: Benchmark 2518
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-2518 --out test-results/perf-2518.json
+      - name: Benchmark 5be
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-5be --out test-results/perf-5be.json
+      - name: Benchmark latest
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/perf-latest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: v9-1160-overlay-bisect-${{ github.run_id }}
+          path: test-results/perf-*.json
+          retention-days: 3
