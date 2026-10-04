@@ -60,9 +60,50 @@ try{
       host.style.cssText='position:relative;width:400px;';
       document.body.appendChild(host);
       try{
+        window.__ravtextAuditV9SplitTrace=true;
+        window.__ravtextV9SplitDecisionTrace=[];
         const built=await buildPages(host,input,{...baseCfg,preventMidLineSplit});
+        const trace=[...(window.__ravtextV9SplitDecisionTrace||[])]
+          .filter(item=>item?.pageIdx===2||item?.pageIdx===6)
+          .map(item=>({
+            pageIdx:item.pageIdx,
+            targetSliceIdx:item.targetSliceIdx,
+            bestN_clean:item.bestN_clean,
+            fullTextLength:item.fullTextLength,
+            reason:item.reason||null,
+            selectedPriority:item.selectedPriority??null,
+            selectedMode:item.selectedMode||null,
+            selected:item.selected?{
+              firstText:item.selected.firstHalf?.mainText||'',
+              secondText:item.selected.secondHalf?.mainText||'',
+              firstNotes:(item.selected.firstHalf?.notes||[]).map(n=>({num:n.num,stream:n.stream,anchor:n.anchor})),
+              secondNotes:(item.selected.secondHalf?.notes||[]).map(n=>({num:n.num,stream:n.stream,anchor:n.anchor})),
+            }:null,
+            candidates:(item.candidates||[]).map(c=>({
+              offset:c.offset,
+              kind:c.kind,
+              priority:c.priority,
+              meta:c.meta?{
+                fill:c.meta.fill,
+                score:c.meta.score,
+                lineCount:c.meta.lineCount,
+                commentaryCount:c.meta.commentaryCount,
+                hasNoteOverflow:c.meta.hasNoteOverflow,
+              }:null,
+              policy:c.policyScore?{
+                accept:c.policyScore.accept,
+                reason:c.policyScore.reason,
+                fill:c.policyScore.fill,
+                mainLines:c.policyScore.mainLines,
+                commentaryLines:c.policyScore.commentaryLines,
+              }:null,
+            })),
+          }));
+        window.__ravtextAuditV9SplitTrace=false;
+        window.__ravtextV9SplitDecisionTrace=[];
         return {
           complete:built.complete,
+          trace,
           pages:built.pages.map((p,index)=>{
             const lines=[...p.querySelectorAll('.v9-line')];
             const main=lines.filter(el=>el.dataset.v9Role==='main');
