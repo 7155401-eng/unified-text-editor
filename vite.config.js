@@ -84,6 +84,24 @@ const CLOUDFLARE_ADVANCED_WORKER_BUILD = {
   },
 };
 
+const BUNDLE_PROFILE_AUDIT = {
+  name: 'bundle-profile-audit',
+  generateBundle(_options, bundle) {
+    for (const [fileName, output] of Object.entries(bundle)) {
+      if (!output || output.type !== 'chunk' || !output.isEntry) continue;
+      const modules = Object.entries(output.modules || {})
+        .map(([id, info]) => ({
+          id: id.replace(process.cwd(), ''),
+          renderedLength: Number(info?.renderedLength || 0),
+          originalLength: Number(info?.originalLength || 0),
+        }))
+        .sort((a, b) => b.renderedLength - a.renderedLength);
+      console.log('[bundle-profile] entry', fileName, 'codeBytes=' + (output.code?.length || 0));
+      console.log('[bundle-profile] top-modules', JSON.stringify(modules.slice(0, 80)));
+    }
+  },
+};
+
 // ★ משה 27/09/2026 — "שיהיה גירסה על כל ענף למעלה מספר גירסה כדי שנדע
 // אם התעדכן משהו".
 // המספר מ-package.json הוא 0.1.0 והוא לא משתנה בין דחיפה לדחיפה, ולכן
@@ -125,5 +143,5 @@ export default defineConfig({
     __RAVTEXT_BUILD_SHA__: JSON.stringify(BUILD_STAMP.sha),
     __RAVTEXT_BUILD_TIME__: JSON.stringify(BUILD_STAMP.when),
   },
-  plugins: [PUBLIC_CACHE_BUST, PEIMOT_TIDIO_WIDGET, CLOUDFLARE_ADVANCED_WORKER_BUILD],
+  plugins: [PUBLIC_CACHE_BUST, PEIMOT_TIDIO_WIDGET, BUNDLE_PROFILE_AUDIT, CLOUDFLARE_ADVANCED_WORKER_BUILD],
 })
