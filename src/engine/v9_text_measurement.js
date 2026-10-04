@@ -307,7 +307,9 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       }
 
       const entries = [...pending.values()];
-      const BATCH = 128;
+      // Smaller batches bound one synchronous DOM measurement burst so the
+      // renderer yields shorter main-thread tasks while preserving geometry.
+      const BATCH = 64;
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
         const mounted = [];
