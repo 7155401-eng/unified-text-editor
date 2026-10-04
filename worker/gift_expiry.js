@@ -1,6 +1,8 @@
 export const GIFT_TIME_ZONE = "Asia/Jerusalem";
 const DEFAULT_GIFT_SECONDS = 20 * 60;
 const UNPAID_STATUS = "unauthorized";
+const schemaReadyByDb = new WeakMap();
+const expiryChecksByDb = new WeakMap();
 
 const positiveInt = (value) => {
   const n = Number(value || 0);
@@ -23,39 +25,59 @@ export function giftMonthKey(at = new Date()) {
 }
 
 export async function ensureGiftMinuteUsageSchema(env, giftSeconds = DEFAULT_GIFT_SECONDS) {
+  const db = env?.DB;
+  if (!db?.prepare) throw new Error("gift_expiry_missing_db");
+
+  const existing = schemaReadyByDb.get(db);
+  if (existing) return existing;
+
+  const work = (async () => {
+    try {
+      await db.prepare(`CREATE TABLE IF NOT EXISTS gift_minute_usage (
+        user_id INTEGER NOT NULL,
+        year_month TEXT NOT NULL,
+        seconds_granted INTEGER NOT NULL DEFAULT 0,
+        seconds_used INTEGER NOT NULL DEFAULT 0,
+        seconds_expired INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        claimed_at INTEGER,
+        PRIMARY KEY (user_id, year_month)
+      )`).run();
+    } catch (_) {}
+    try {
+      await db.prepare("ALTER TABLE gift_minute_usage ADD COLUMN claimed_at INTEGER").run();
+    } catch (_) {}
+    try {
+      await db.prepare("ALTER TABLE gift_minute_usage ADD COLUMN seconds_expired INTEGER NOT NULL DEFAULT 0").run();
+    } catch (_) {}
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_gift_minute_usage_user ON gift_minute_usage(user_id, created_at)").run();
+    } catch (_) {}
+    try {
+      await db.prepare("UPDATE gift_minute_usage SET claimed_at = COALESCE(claimed_at, created_at) WHERE claimed_at IS NULL").run();
+    } catch (_) {}
+    try {
+      await db.prepare("UPDATE gift_minute_usage SET seconds_expired = COALESCE(seconds_expired, 0)").run();
+    } catch (_) {}
+    try {
+      await db.prepare(`INSERT OR IGNORE INTO gift_minute_usage
+        (user_id, year_month, seconds_granted, seconds_used, seconds_expired, created_at, claimed_at)
+        SELECT user_id, year_month, ?, 0, 0, claimed_at, claimed_at
+        FROM gift_claims`).bind(positiveInt(giftSeconds) || DEFAULT_GIFT_SECONDS).run();
+    } catch (_) {}
+
+    // Cache schema readiness only after the column needed by expiry is
+    // actually queryable. Transient setup failures therefore retry later.
+    await db.prepare("SELECT seconds_expired FROM gift_minute_usage LIMIT 1").all();
+  })();
+
+  schemaReadyByDb.set(db, work);
   try {
-    await env.DB.prepare(`CREATE TABLE IF NOT EXISTS gift_minute_usage (
-      user_id INTEGER NOT NULL,
-      year_month TEXT NOT NULL,
-      seconds_granted INTEGER NOT NULL DEFAULT 0,
-      seconds_used INTEGER NOT NULL DEFAULT 0,
-      seconds_expired INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      claimed_at INTEGER,
-      PRIMARY KEY (user_id, year_month)
-    )`).run();
-  } catch (_) {}
-  try {
-    await env.DB.prepare("ALTER TABLE gift_minute_usage ADD COLUMN claimed_at INTEGER").run();
-  } catch (_) {}
-  try {
-    await env.DB.prepare("ALTER TABLE gift_minute_usage ADD COLUMN seconds_expired INTEGER NOT NULL DEFAULT 0").run();
-  } catch (_) {}
-  try {
-    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_gift_minute_usage_user ON gift_minute_usage(user_id, created_at)").run();
-  } catch (_) {}
-  try {
-    await env.DB.prepare("UPDATE gift_minute_usage SET claimed_at = COALESCE(claimed_at, created_at) WHERE claimed_at IS NULL").run();
-  } catch (_) {}
-  try {
-    await env.DB.prepare("UPDATE gift_minute_usage SET seconds_expired = COALESCE(seconds_expired, 0)").run();
-  } catch (_) {}
-  try {
-    await env.DB.prepare(`INSERT OR IGNORE INTO gift_minute_usage
-      (user_id, year_month, seconds_granted, seconds_used, seconds_expired, created_at, claimed_at)
-      SELECT user_id, year_month, ?, 0, 0, claimed_at, claimed_at
-      FROM gift_claims`).bind(positiveInt(giftSeconds) || DEFAULT_GIFT_SECONDS).run();
-  } catch (_) {}
+    return await work;
+  } catch (error) {
+    schemaReadyByDb.delete(db);
+    throw error;
+  }
 }
 
 function requireBatch(env) {
@@ -181,6 +203,44 @@ export async function expireUserGiftBalance(
     status: afterUser?.status ?? null,
     planType: afterUser?.plan_type ?? null,
   };
+}
+
+export async function expireUserGiftBalanceOnce(
+  env,
+  userId,
+  { cutoff = giftMonthKey(), giftSeconds = DEFAULT_GIFT_SECONDS } = {}
+) {
+  const uid = Number(userId);
+  const key = String(cutoff || giftMonthKey());
+  if (!Number.isFinite(uid) || uid <= 0) {
+    return { ok: false, cutoff: key, error: "invalid_user_id" };
+  }
+
+  const db = env?.DB;
+  if (!db || (typeof db !== "object" && typeof db !== "function")) {
+    return expireUserGiftBalance(env, uid, { cutoff: key, giftSeconds });
+  }
+
+  let state = expiryChecksByDb.get(db);
+  if (!state || state.cutoff !== key) {
+    state = { cutoff: key, users: new Set() };
+    expiryChecksByDb.set(db, state);
+  }
+  if (state.users.has(uid)) {
+    return {
+      ok: true,
+      cutoff: key,
+      userId: uid,
+      cached: true,
+      expiredSeconds: 0,
+      balanceRemovedSeconds: 0,
+      rowsAffected: 0,
+    };
+  }
+
+  const result = await expireUserGiftBalance(env, uid, { cutoff: key, giftSeconds });
+  if (result?.ok) state.users.add(uid);
+  return result;
 }
 
 export async function expireAllGiftBalances(
