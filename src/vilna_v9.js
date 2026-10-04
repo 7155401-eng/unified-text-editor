@@ -6238,15 +6238,36 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       // Active splits are handled only by extension-rescue / tail rejoin above.
       if (splitInfo) return null;
       const beforeFill = planFillRatio(finalProbe);
-      const sparseLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
-      const sparsePhysicalTrigger = evaluateV9PhysicalGapFillTrigger({
-        remainingPx: Math.max(0, pageBottomForFill - planBottomY(finalProbe)),
-        lineHeight: sparseLineH,
-        beforeFill,
-        cfg,
-        manualPull: false,
-      });
-      if (!sparsePhysicalTrigger.ok) return null;
+      if (typeof window !== "undefined" && window.__ravtextAuditV9SparseGuardTrace) {
+        const sparseLineH = (Number(cfg.mainFontSize) || 13) * (Number(cfg.lineHeightRatio) || 1.55);
+        const sparsePhysicalTrigger = evaluateV9PhysicalGapFillTrigger({
+          remainingPx: Math.max(0, pageBottomForFill - planBottomY(finalProbe)),
+          lineHeight: sparseLineH,
+          beforeFill,
+          cfg,
+          manualPull: false,
+        });
+        const trace = Array.isArray(window.__ravtextV9SparseGuardTrace)
+          ? window.__ravtextV9SparseGuardTrace
+          : (window.__ravtextV9SparseGuardTrace = []);
+        trace.push({
+          pageIdx,
+          beforeFill,
+          splitInfo: !!splitInfo,
+          drainAloneMode: !!drainAloneMode,
+          bestN,
+          totalAvail,
+          mainOverflow: !!mainOverflowTextOf(finalProbe),
+          unstartedNotes: (finalProbe.unstartedNotes || []).length,
+          unsafeStreamOverflow: hasUnsafeV9StreamOverflow(finalProbe),
+          physicalRemainingPx: Math.max(0, pageBottomForFill - planBottomY(finalProbe)),
+          physicalTrigger: sparsePhysicalTrigger,
+          carryStreams: Object.keys(carryOver?.streams || {}).filter(k => carryOver.streams[k]),
+          hasRightOverflow: !!finalProbe.overflow?.streams?.[finalContent?.rightStream?.id],
+          hasLeftOverflow: !!finalProbe.overflow?.streams?.[finalContent?.leftStream?.id],
+        });
+      }
+      if (beforeFill >= 0.50) return null;
       if (bestN >= totalAvail) return null;
       if (mainOverflowTextOf(finalProbe)) return null;
       if (finalProbe.unstartedNotes?.length) return null;
