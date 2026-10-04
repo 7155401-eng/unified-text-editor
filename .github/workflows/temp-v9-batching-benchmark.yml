@@ -1,0 +1,52 @@
+name: Temporary V9 batching benchmark
+on:
+  push:
+    branches: [gpt56sol-v9-batching-benchmark-20261004-0328-2d6f]
+permissions:
+  contents: read
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout pre-batching
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 94a621d35b595e8d8ca5074a3e816da2a7b08c1b
+          path: .perf-prebatch
+          persist-credentials: false
+      - name: Checkout batching-only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 44913e5ee61809ceb028b99367e28f9da68b3252
+          path: .perf-batch
+          persist-credentials: false
+      - name: Share dependencies
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-prebatch/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-batch/node_modules"
+      - name: Pre-batching benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-prebatch --out test-results/perf-prebatch.json
+      - name: Batching-only benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-batch --out test-results/perf-batch.json
+      - name: Current-main benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/perf-current.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: v9-batching-benchmark-${{ github.run_id }}
+          path: test-results/perf-*.json
+          retention-days: 3
