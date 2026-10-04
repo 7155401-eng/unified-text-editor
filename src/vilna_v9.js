@@ -6392,6 +6392,12 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     container.appendChild(pageEl);
 
     const plan = finalProbe;
+    if (typeof window !== "undefined" && window.__ravtextCaptureV9SelectedPlans === true) {
+      const auditPlans = Array.isArray(window.__ravtextSelectedV9Plans)
+        ? window.__ravtextSelectedV9Plans
+        : (window.__ravtextSelectedV9Plans = []);
+      auditPlans.push({ pageIdx, plan });
+    }
     pageEl.dataset.v9PageFill = String(Math.round(planFillRatio(plan) * 10000) / 10000);
     pageEl.dataset.v9SparseRescue = sparseRescue?.mode || "";
     pageEl.dataset.v9PageLinesDiff = String(__v9PageConstraint.linesDiff || 0);
