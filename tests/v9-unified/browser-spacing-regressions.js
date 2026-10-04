@@ -1920,6 +1920,34 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     }
   });
 
+  await test('real sans-serif 500% opening degrades safely instead of dropping the paragraph',()=>{
+    const context=createV9TextLayoutContext({
+      mainFontSize:13,mainFontFamily:'sans-serif',lineHeightRatio:1.55,
+      openingWordSettings:{enabled:true,target:'word',count:1,font:'sans-serif',size:500,weight:'bold',
+        position:'dropped',dropLines:2,spaceAfter:0.3,scope:'all',
+        skipHeadings:false,skipSingleLine:false,skipShortLine:false,skipFewerThanLines:false,minLines:1}
+    });
+    const page=makePage();
+    try{
+      const source="פתיח אב'(גד) "+Array(28).fill('אב').join(' ');
+      const entry=context.prepareEntry({id:'real-too-wide-opening',index:1,text:source,runs:[],mainRefs:[],continues:false});
+      const plan=layoutV9MainParagraphs([entry],[{x:10,width:140,y_start:0,y_end:400}],context,400);
+      assert(plan.overflowParagraphs.length===0,'real 500% opening left the whole paragraph in overflow');
+      assert(plan.lines.length>0,'real 500% opening produced no fallback rows');
+      assert(plan.lines.map(l=>l.sourceText).join('')===source,'real 500% fallback changed source text');
+      assert(!plan.lines.some(l=>l.render?.opening),'physically impossible dropped opening remained attached');
+      const diag=plan.diagnostics.find(d=>d.code==='opening-skipped-too-wide');
+      assert(diag&&diag.openingWidth>diag.availableWidth,
+        `real 500% opening did not record a justified fallback: ${JSON.stringify(diag)}`);
+
+      page.style.width='160px';page.style.height='420px';page.style.padding='0';
+      for(const line of plan.lines)renderV9PlannedMainLine(line,page,0);
+      assert(page.querySelectorAll('.v9-opening-glyph').length===0,'fallback unexpectedly painted an opening glyph');
+      assert(sourceText(page)===source,'painted 500% fallback lost source characters');
+      assert((page.textContent||'').includes('פתיח'),'fallback did not paint the opening word as ordinary text');
+    }finally{context.dispose();page.remove();}
+  });
+
   await test('unsafe completed opening tail stays adjacent to the fixed opening',()=>{
     const context={
       fontSize:10,lineHeight:10,
