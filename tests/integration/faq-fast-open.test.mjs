@@ -15,7 +15,8 @@ test('FAQ first open preloads one shared module and shows loading feedback', asy
   assert.match(header, /addEventListener\("focus", warmFaqModule\)/);
   assert.match(header, /classList\.toggle\("is-loading", loading\)/);
   assert.match(header, /setAttribute\("aria-busy", loading \? "true" : "false"\)/);
-  assert.match(header, /faqText\.textContent = loading \? "טוען…" : "שאלות"/);
+  assert.match(header, /loading \? "טוען שאלות נפוצות" : "פתח שאלות נפוצות"/);
+  assert.match(header, /faqIcon\.title = loading \? "טוען שאלות נפוצות…" : "שאלות נפוצות"/);
   assert.match(header, /const mod = await loadFaqModule\(\)/);
   assert.doesNotMatch(header, /faqIcon\.addEventListener\("click", \(\) => \{\s*import\(/);
 });
