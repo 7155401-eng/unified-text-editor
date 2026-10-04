@@ -137,6 +137,51 @@ test('dominated transitions keep evaluation budget but avoid unnecessary metric 
 });
 
 
+
+
+for(let seed=1;seed<=192;seed++)test(`batched metrics preserve legacy DP result and evaluation accounting ${seed}`,()=>{
+  let state=seed*104729;
+  const random=()=>((state=(Math.imul(state,1664525)+1013904223)>>>0)/2**32);
+  const wordCount=4+(seed%14);
+  const rows=Array.from({length:2+(seed%5)},(_,i)=>({allowsEmpty:i===0&&seed%3===0}));
+  const maxSpacing=8;
+  const matrix=new Map();
+  for(let i=0;i<rows.length;i++)for(let from=0;from<=wordCount;from++)for(let to=from;to<=wordCount;to++){
+    const r=random();
+    matrix.set(`${i}/${from}/${to}`,r<0.22?null:Math.floor(random()*12));
+  }
+  const maxEvaluations=[3,17,73,257,4096][seed%5];
+  const scalar=(i,from,to)=>{
+    const pressure=matrix.get(`${i}/${from}/${to}`);
+    return pressure==null?null:{pressure};
+  };
+  const expected=solveReference({wordCount,rows,maxSpacing,metricFor:scalar,maxEvaluations});
+  const actual=solve({
+    wordCount,rows,maxSpacing,maxEvaluations,
+    metricFor:()=>{throw Error('scalar metricFor should not run when batch is supplied')},
+    metricBatchFor:(row,transitions)=>transitions.map(({from,to})=>scalar(row,from,to)),
+  });
+  assert.deepEqual(actual,expected);
+});
+
+test('batched metrics are not requested for a row guaranteed to exhaust the remaining budget',()=>{
+  let batchCalls=0;
+  const result=solve({
+    wordCount:20,
+    rows:[{},{},{},{}],
+    maxSpacing:8,
+    maxEvaluations:40,
+    metricFor:()=>{throw Error('scalar metricFor should not run')},
+    metricBatchFor:(_row,transitions)=>{
+      batchCalls++;
+      assert.equal(transitions.length,17,'only the fully affordable first row should be batched');
+      return transitions.map(()=>({pressure:0}));
+    },
+  });
+  assert.deepEqual(result,{status:'budget-exhausted',evaluations:40});
+  assert.equal(batchCalls,1);
+});
+
 test('guaranteed mid-row budget exhaustion skips every doomed-row metric call',()=>{
   let calls=0;
   const result=solve({
