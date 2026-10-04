@@ -149,19 +149,73 @@ const TAIL_REBALANCE_SCORE_EPS = 0.001;
 const EXACT_TAIL_CACHE_MAX = 1024;
 const exactTailCacheByContext = new WeakMap();
 
-function exactTailCacheFor(context) {
-  let cache = exactTailCacheByContext.get(context);
-  if (!cache) {
-    cache = new Map();
-    exactTailCacheByContext.set(context, cache);
+function exactTailCacheStateFor(context) {
+  let state = exactTailCacheByContext.get(context);
+  if (!state) {
+    state = { fallback:new Map(), bySource:new WeakMap(), order:[], size:0 };
+    exactTailCacheByContext.set(context, state);
   }
-  return cache;
+  return state;
+}
+
+function exactTailCacheBucket(state, entry) {
+  const source = entry?._v9Source;
+  if (!source || (typeof source !== 'object' && typeof source !== 'function')) return state.fallback;
+  let bucket = state.bySource.get(source);
+  if (!bucket) {
+    bucket = new Map();
+    state.bySource.set(source, bucket);
+  }
+  return bucket;
+}
+
+function exactTailCacheGet(context, entry, key) {
+  const state = exactTailCacheStateFor(context);
+  return exactTailCacheBucket(state, entry).get(key);
+}
+
+function exactTailCacheSet(context, entry, key, value) {
+  const state = exactTailCacheStateFor(context);
+  const bucket = exactTailCacheBucket(state, entry);
+  if (bucket.has(key)) {
+    bucket.set(key, value);
+    return;
+  }
+  while (state.size >= EXACT_TAIL_CACHE_MAX && state.order.length) {
+    const oldest = state.order.shift();
+    if (oldest.bucket.delete(oldest.key)) state.size--;
+  }
+  bucket.set(key, value);
+  state.order.push({bucket, key});
+  state.size++;
 }
 
 function exactTailCacheKey({
   context, entry, sourceBase, sourceSegmentStart, bodySegmentStart, segmentEnd,
   words, tail, gentleMax,
 }) {
+  const source = entry?._v9Source;
+  if (source && (typeof source === 'object' || typeof source === 'function')) {
+    const absoluteStart = sourceBase + sourceSegmentStart;
+    const absoluteBodyStart = sourceBase + bodySegmentStart;
+    const absoluteEnd = sourceBase + segmentEnd;
+    return [
+      Number(context?.generation) || 0,
+      absoluteStart,
+      absoluteBodyStart,
+      absoluteEnd,
+      segmentEnd === String(entry?.text || '').length ? 1 : 0,
+      words.length,
+      ...tail.flatMap(line => [
+        Number(line?.width) || 0,
+        Number(line?.lineHeightPx) || 0,
+        line?.render?.opening ? 1 : 0,
+        Array.isArray(line?.wordTokens) ? line.wordTokens.length : -1,
+      ]),
+      gentleMax,
+    ].join('|');
+  }
+
   return JSON.stringify([
     Number(context?.generation) || 0,
     String(entry?.id || ''),
@@ -464,7 +518,6 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
     // One-word local moves can be trapped: two or more boundaries may need
     // to change together. Before clipping a row, search complete measured
     // partitions of this same source interval under the existing gentle cap.
-    const cache = exactTailCacheFor(context);
     const cacheKey = exactTailCacheKey({
       context,
       entry,
@@ -476,7 +529,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       tail,
       gentleMax,
     });
-    let search = cache.get(cacheKey);
+    let search = exactTailCacheGet(context, entry, cacheKey);
     if (!search) {
       search = findV9ExactTailPartition({
         wordCount: words.length,
@@ -485,11 +538,7 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         metricFor,
         metricBatchFor,
       });
-      if (cache.size >= EXACT_TAIL_CACHE_MAX) {
-        const oldest = cache.keys().next().value;
-        if (oldest !== undefined) cache.delete(oldest);
-      }
-      cache.set(cacheKey, search);
+      exactTailCacheSet(context, entry, cacheKey, search);
     }
     if (search.status === 'complete') {
       const alternative = evaluate(search.boundaries);
