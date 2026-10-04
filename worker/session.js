@@ -1,6 +1,8 @@
 // צוות האתר 2026-05-07: HMAC-signed session cookie. payload = base64(JSON), signature = base64(HMAC-SHA256).
 // בלי תלות ב-DB לקריאת זהות (מהיר). DB נבדק שוב לוודא שהמנוי עדיין פעיל.
 
+import { expireUserGiftBalanceOnce } from './gift_expiry.js';
+
 const COOKIE_NAME = 'ravtext_session';
 const COOKIE_TTL_SEC = 7 * 24 * 60 * 60;
 
@@ -70,10 +72,22 @@ export async function getUserFromRequest(request, env) {
   if (!payload || !payload.email) return null;
   const nowSec = Math.floor(Date.now() / 1000);
   if (payload.exp && payload.exp < nowSec) return null;
-  const row = await env.DB.prepare(
+  let row = await env.DB.prepare(
     'SELECT id, email, status, expires_at, is_admin, plan_type, balance_seconds FROM users WHERE email = ?'
   ).bind(payload.email).first();
   if (!row) return null;
+
+  // Monthly gift expiry is part of authentication state: every consumer of
+  // getUserFromRequest must see the same fresh balance/paid decision. The core
+  // caches a successful per-user check for the current Israel calendar month,
+  // so ordinary API requests do not keep re-scanning the gift ledger.
+  const giftExpiry = await expireUserGiftBalanceOnce(env, row.id).catch(() => null);
+  if (giftExpiry?.ok && giftExpiry.expiredSeconds > 0) {
+    row = await env.DB.prepare(
+      'SELECT id, email, status, expires_at, is_admin, plan_type, balance_seconds FROM users WHERE email = ?'
+    ).bind(payload.email).first();
+    if (!row) return null;
+  }
 
   // צוות האתר 2026-07-26:
   // דקות שנרכשו/הוענקו הן יתרה פעילה, לא תוקף שעון. לכן משתמש עם balance_seconds>0
