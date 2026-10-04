@@ -201,7 +201,7 @@ test("external-content helper clears ProseMirror stored marks inside the inserti
   );
   assert.match(helper, /\.command\(\(\{ tr \}\) => \{/);
   assert.match(helper, /tr\.setStoredMarks\(\[\]\)/);
-  assert.doesNotMatch(helper, /unsetAllMarks\(\)/);
+  assert.doesNotMatch(helper, /\.unsetAllMarks\s*\(/);
 });
 
 test("Sefaria and fetched-source actions use the external-content boundary", () => {
