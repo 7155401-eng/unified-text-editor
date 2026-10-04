@@ -5,7 +5,7 @@ on:
     paths: ['src/**', 'tests/v9-unified/**', 'scripts/v9-unified/**', '.github/workflows/**']
   push:
     branches: [main]
-    paths: ['src/engine/v9_main_inline_layout.js', 'src/engine/v9_exact_tail_partition.js', 'tests/v9-unified/exact-*', 'scripts/v9-unified/verify-exact-paragraph-alignment.mjs', '.github/workflows/v9-exact-paragraph-alignment.yml']
+    paths: ['src/engine/v9_main_inline_layout.js', 'src/engine/v9_exact_tail_partition.js', 'src/engine/v9_text_measurement.js', 'tests/v9-unified/exact-*', 'scripts/v9-unified/verify-exact-paragraph-alignment.mjs', 'scripts/v9-unified/verify-batched-measurement.mjs', '.github/workflows/v9-exact-paragraph-alignment.yml']
 permissions:
   contents: read
 jobs:
@@ -28,6 +28,8 @@ jobs:
         run: node --test tests/v9-unified/exact-tail-partition.test.mjs tests/v9-unified/opening-final-line-centering.test.mjs
       - name: Chromium
         run: npx --no-install playwright install --with-deps chromium
+      - name: Batched measurement matches sequential DOM geometry
+        run: node scripts/v9-unified/verify-batched-measurement.mjs
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: 9c4738e1063d4692398091e2b10bae87de365487
@@ -46,7 +48,9 @@ jobs:
           npm run build
           git diff --exit-code -- src scripts tests .github/workflows package.json package-lock.json
       - name: Repeat acceptance after builds
-        run: node scripts/v9-unified/verify-exact-paragraph-alignment.mjs
+        run: |
+          node scripts/v9-unified/verify-exact-paragraph-alignment.mjs
+          node scripts/v9-unified/verify-batched-measurement.mjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

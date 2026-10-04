@@ -3,11 +3,13 @@
 // Every accepted row has been measured by the caller against its actual box.
 // No approximate widths, extra words, new rows, or relaxed spacing are used.
 export function findV9ExactTailPartition({
-  wordCount, rows, maxSpacing, metricFor, maxEvaluations = 4096,
+  wordCount, rows, maxSpacing, metricFor, metricBatchFor = null, maxEvaluations = 4096,
 }) {
   if (!Number.isInteger(wordCount) || wordCount < 1 || !Array.isArray(rows) ||
       !rows.length || !Number.isFinite(maxSpacing) || maxSpacing < 0 ||
-      typeof metricFor !== 'function' || !Number.isInteger(maxEvaluations) || maxEvaluations < 1) {
+      typeof metricFor !== 'function' ||
+      (metricBatchFor != null && typeof metricBatchFor !== 'function') ||
+      !Number.isInteger(maxEvaluations) || maxEvaluations < 1) {
     return {status: 'invalid-input', evaluations: 0};
   }
   const minimumRemaining = new Array(rows.length + 1).fill(0);
@@ -39,6 +41,22 @@ export function findV9ExactTailPartition({
       }
     }
 
+    let batchedMetrics = null;
+    let batchedIndex = 0;
+    if (metricBatchFor) {
+      const transitions = [];
+      for (const [from] of states) {
+        const minimumEnd = i === rows.length - 1
+          ? wordCount
+          : from + (rows[i].allowsEmpty ? 0 : 1);
+        for (let to = minimumEnd; to <= maximumEnd; to++) transitions.push({from, to});
+      }
+      batchedMetrics = metricBatchFor(i, transitions);
+      if (!Array.isArray(batchedMetrics) || batchedMetrics.length !== transitions.length) {
+        throw new Error('V9 exact-tail metricBatchFor must return one metric per transition');
+      }
+    }
+
     for (const [from, state] of states) {
       const minimumEnd = i === rows.length - 1 ? wordCount : from + (rows[i].allowsEmpty ? 0 : 1);
       for (let to = minimumEnd; to <= maximumEnd; to++) {
@@ -53,9 +71,10 @@ export function findV9ExactTailPartition({
         // budget-exhausted boundary remain byte-for-byte compatible; skip only
         // the expensive DOM-backed metricFor() call.
         const known = next.get(to);
+        const batchedMetric = batchedMetrics ? batchedMetrics[batchedIndex++] : undefined;
         if (known && known.cost <= state.cost) continue;
 
-        const metric = metricFor(i, from, to);
+        const metric = batchedMetrics ? batchedMetric : metricFor(i, from, to);
         if (!metric || !Number.isFinite(metric.pressure) || metric.pressure < 0 ||
             metric.pressure > maxSpacing + 1e-9) continue;
         const cost = state.cost + metric.pressure * metric.pressure;
