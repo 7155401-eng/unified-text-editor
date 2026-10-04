@@ -90,7 +90,8 @@ import { wireSplitFootnotesByTagTool } from "./docx_tools/split_footnotes_by_tag
 import { wireFootnoteTrackChangesTool } from "./docx_tools/footnote_track_changes.js";
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
-import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
+import { trackUsage } from "./usage_tracker.js";
+import { wireInboxButtonsLazy } from "./inbox_forms_lazy_wire.js";
 import { wireHelpCenterLazy } from "./help_center_lazy_wire.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
@@ -1711,7 +1712,7 @@ document.getElementById("btn-render")?.addEventListener("click", () => {
 
 // משה 2026-05-09: כפתורי דיווח באג / צור קשר. פעם פתחו mailto;
 // עכשיו פותחים מודלים שנשלחים ל-Worker → D1 → פאנל המנהל.
-wireInboxButtons();
+wireInboxButtonsLazy();
 wireHelpCenterLazy();
 
 // AUTO_RENDER_GATE_20260907: אלה שלושת המקומות שבהם הרינדור התחיל לבד.
