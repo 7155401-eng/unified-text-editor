@@ -219,8 +219,19 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     },
     measure(part) {
       if (disposed) throw new Error('Disposed V9 measurement context');
+      const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+        ? (window.__ravtextV9Perf ||= {}) : null;
+      if (perf) perf.measureCalls = (perf.measureCalls || 0) + 1;
+      const keyStarted = perf ? performance.now() : 0;
       const key = v9MeasurementCacheKey(part);
-      const found = cache.get(key); if (found) return found;
+      if (perf) perf.measureKeyMs = (perf.measureKeyMs || 0) + (performance.now() - keyStarted);
+      const found = cache.get(key);
+      if (found) {
+        if (perf) perf.measureCacheHits = (perf.measureCacheHits || 0) + 1;
+        return found;
+      }
+      if (perf) perf.measureCacheMisses = (perf.measureCacheMisses || 0) + 1;
+      const domStarted = perf ? performance.now() : 0;
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';
       const plannedWordSpacing = hasSpecialV9JustificationSeparator(part.text)
@@ -235,7 +246,11 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       const result = Object.freeze({ width: Math.ceil(r.width * 64) / 64,
         height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
         topInset: Math.max(0, r.top - top) });
-      if (cache.size >= 20000) cache.clear();
+      if (perf) perf.measureDomMs = (perf.measureDomMs || 0) + (performance.now() - domStarted);
+      if (cache.size >= 20000) {
+        if (perf) perf.measureCacheClears = (perf.measureCacheClears || 0) + 1;
+        cache.clear();
+      }
       cache.set(key, result); return result;
     },
     dispose() {
