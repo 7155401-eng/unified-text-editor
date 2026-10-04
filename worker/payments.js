@@ -32,8 +32,6 @@ const PACK_DEFS = {
   h20: { type: 'hours', amount: 70, hours: 20 },
 };
 
-const GIFT_MINUTES_PER_MONTH = 20;
-
 function jsonResponse(obj, init = {}) {
   return new Response(JSON.stringify(obj), {
     status: init.status || 200,
@@ -49,11 +47,6 @@ function randomToken(bytes = 18) {
   const arr = new Uint8Array(bytes);
   crypto.getRandomValues(arr);
   return Array.from(arr).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-function thisMonthKey() {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function resolvePlanOrPack(body) {
@@ -438,30 +431,6 @@ async function applySuccessfulPayment(env, intent, externalTxnId, tokens = {}) {
   await env.DB.prepare("UPDATE payment_intents SET status = 'completed' WHERE id = ?").bind(intent.id).run();
 }
 
-// =============== Status ===============
-async function getStatus(request, env) {
-  const user = await getUserFromRequest(request, env);
-  if (!user) return jsonResponse({ paid: false, planType: null, expiresAt: null, balanceSeconds: 0 });
-  const row = await env.DB.prepare(
-    'SELECT plan_type, expires_at, balance_seconds FROM users WHERE id = ?'
-  ).bind(user.id).first();
-  const nowSec = Math.floor(Date.now() / 1000);
-  const expiresAtSec = row?.expires_at || 0;
-  const expired = expiresAtSec > 0 && expiresAtSec < nowSec;
-  const expiresAtMs = expiresAtSec ? expiresAtSec * 1000 : null;
-  // משה 2026-06-05: יתרה אחרי שתוקף פג היא חסרת תועלת — אסור להחזיר אותה
-  // ל-UI כי המסך "החשבון שלך" יציג "יתרה שנותרה: 20 דקות" והמשתמש יחשוב
-  // שיש לו זמן זמין בעוד שבפועל החלון לשימוש בו הסתיים.
-  const effectiveBalance = expired ? 0 : (row?.balance_seconds || 0);
-  return jsonResponse({
-    paid: !!user.paid,
-    planType: row?.plan_type || null,
-    expiresAt: expiresAtMs,
-    balanceSeconds: effectiveBalance,
-    email: user.email,
-  });
-}
-
 // =============== Cancel subscription ===============
 async function cancelSubscription(request, env) {
   const user = await getUserFromRequest(request, env);
@@ -474,33 +443,6 @@ async function cancelSubscription(request, env) {
     "UPDATE users SET subscription_active = 0, plan_renew_at = 0, cancelled_at = ?, cancellation_reason = ? WHERE id = ?"
   ).bind(nowSec, reason || null, user.id).run();
   return jsonResponse({ ok: true });
-}
-
-// =============== Monthly gift ===============
-async function claimGift(request, env) {
-  const user = await getUserFromRequest(request, env);
-  if (!user) return jsonError('נדרש להתחבר תחילה', 401);
-  const monthKey = thisMonthKey();
-  const nowSec = Math.floor(Date.now() / 1000);
-
-  // Try insert; if exists → already claimed
-  try {
-    await env.DB.prepare(
-      'INSERT INTO gift_claims (user_id, year_month, claimed_at) VALUES (?, ?, ?)'
-    ).bind(user.id, monthKey, nowSec).run();
-  } catch {
-    return jsonResponse({ granted: false, reason: 'already_claimed' });
-  }
-
-  const giftSeconds = GIFT_MINUTES_PER_MONTH * 60;
-  const row = await env.DB.prepare('SELECT balance_seconds, expires_at, status FROM users WHERE id = ?').bind(user.id).first();
-  const newBalance = (row?.balance_seconds || 0) + giftSeconds;
-  const newExpire = Math.max(row?.expires_at || nowSec, nowSec) + giftSeconds;
-  await env.DB.prepare(
-    "UPDATE users SET status = CASE WHEN status = 'unauthorized' THEN 'active' ELSE status END, plan_type = COALESCE(plan_type,'hours'), balance_seconds = ?, expires_at = ? WHERE id = ?"
-  ).bind(newBalance, newExpire, user.id).run();
-
-  return jsonResponse({ granted: true, addedSeconds: giftSeconds, newBalance });
 }
 
 // =============== Router ===============
