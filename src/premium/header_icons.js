@@ -818,11 +818,14 @@ export function installHeaderPremiumIcons() {
       </svg>
     `,
   });
-  const faqText = faqIcon.querySelector(".rt-prem-icon-text");
   const setFaqLoading = (loading) => {
     faqIcon.classList.toggle("is-loading", loading);
     faqIcon.setAttribute("aria-busy", loading ? "true" : "false");
-    if (faqText) faqText.textContent = loading ? "טוען…" : "שאלות";
+    faqIcon.setAttribute(
+      "aria-label",
+      loading ? "טוען שאלות נפוצות" : "פתח שאלות נפוצות",
+    );
+    faqIcon.title = loading ? "טוען שאלות נפוצות…" : "שאלות נפוצות";
   };
 
   // First-open speed: fetch and prepare the FAQ module before the click when
