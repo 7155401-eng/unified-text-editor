@@ -247,6 +247,9 @@ function resolveSpecialV9JustificationSpacing(context, body, naturalWidth, targe
  * the required justification across the whole tail.
  */
 function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, context, diagnostics) {
+  const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+    ? (window.__ravtextV9Perf ||= {}) : null;
+  if (perf) perf.rebalanceTailCalls = (perf.rebalanceTailCalls || 0) + 1;
   if (!Array.isArray(lines) || !entry || !context || !(cursor > 0)) return null;
 
   const paragraphLines = lines.slice(paragraphLineStart);
@@ -306,9 +309,14 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   const cache = new Map();
 
   const metricFor = (lineIndex, fromWord, toWord) => {
+    if (perf) perf.metricForCalls = (perf.metricForCalls || 0) + 1;
     if (fromWord < 0 || toWord < fromWord || toWord > words.length) return null;
     const key = `${lineIndex}:${fromWord}:${toWord}`;
-    if (cache.has(key)) return cache.get(key);
+    if (cache.has(key)) {
+      if (perf) perf.metricForLocalHits = (perf.metricForLocalHits || 0) + 1;
+      return cache.get(key);
+    }
+    if (perf) perf.metricForLocalMisses = (perf.metricForLocalMisses || 0) + 1;
 
     const openingOnly = toWord === fromWord && !!tail[lineIndex]?.render?.opening;
     if (!(toWord > fromWord) && !openingOnly) return null;
@@ -430,13 +438,25 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       gentleMax,
     });
     let search = cache.get(cacheKey);
+    if (perf) {
+      if (search) perf.exactCacheHits = (perf.exactCacheHits || 0) + 1;
+      else perf.exactCacheMisses = (perf.exactCacheMisses || 0) + 1;
+    }
     if (!search) {
+      const exactStarted = perf ? performance.now() : 0;
       search = findV9ExactTailPartition({
         wordCount: words.length,
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
         maxSpacing: gentleMax,
         metricFor,
       });
+      if (perf) {
+        perf.exactSearchMs = (perf.exactSearchMs || 0) + (performance.now() - exactStarted);
+        perf.exactSearchEvaluations = (perf.exactSearchEvaluations || 0) + (search.evaluations || 0);
+        perf.exactSearchMaxEvaluations = Math.max(perf.exactSearchMaxEvaluations || 0, search.evaluations || 0);
+        const statusKey = 'exactSearchStatus_' + String(search.status || 'unknown').replace(/[^a-z0-9]+/gi,'_');
+        perf[statusKey] = (perf[statusKey] || 0) + 1;
+      }
       if (cache.size >= EXACT_TAIL_CACHE_MAX) {
         const oldest = cache.keys().next().value;
         if (oldest !== undefined) cache.delete(oldest);
