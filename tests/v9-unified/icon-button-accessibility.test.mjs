@@ -30,6 +30,9 @@ for (const file of [
     assert.match(text, /\[data-action="changeFontSize"\]\[data-arg="-1"\]/);
     assert.match(text, /\[data-action="changeFontSize"\]\[data-arg="1"\]/);
     assert.match(text, /\[data-action="changeFontSize"\]\[data-arg="2"\]/);
+    assert.match(text, /setLabel\('#widthSlider', 'רוחב כללי', 'Global width'\)/);
+    assert.match(text, /querySelectorAll\('input\.sym-input\[id\^="sym-"\]'\)/);
+    assert.match(text, /Pane link marker/);
     assert.match(text, /querySelectorAll\('\[data-action="removePane"\]'\)/);
 
     const calls = text.match(/syncIconButtonA11y\(\);/g) || [];
