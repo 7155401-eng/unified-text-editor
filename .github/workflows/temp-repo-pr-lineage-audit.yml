@@ -1,0 +1,230 @@
+name: Temporary repository PR-lineage audit
+on:
+  push:
+    branches: [audit/repo-pr-lineage-20261004]
+    paths: ['.github/workflows/temp-repo-pr-lineage-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ec02f751cabb1244e168e25817bc42a0583fb1ab
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch all live branch refs
+        run: git fetch --no-tags --force origin '+refs/heads/*:refs/remotes/origin/*'
+      - name: Fetch PR lineage and retained failed Actions metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p test-results/repo-lineage
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/pulls?state=all&per_page=100" > test-results/repo-lineage/pr-pages.json
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/actions/runs?status=failure&per_page=100" > test-results/repo-lineage/failed-run-pages.json
+      - name: Classify branch lineage against exact main
+        env:
+          AUDIT_BRANCH: audit/repo-pr-lineage-20261004
+        run: |
+          python3 - <<'PY'
+          import collections, datetime as dt, json, os, subprocess
+          from pathlib import Path
+
+          OUT=Path('test-results/repo-lineage')
+          MAIN='origin/main'
+          AUDIT='origin/'+os.environ['AUDIT_BRANCH']
+
+          def run(*args, check=True):
+              p=subprocess.run(args,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+              if check and p.returncode:
+                  raise RuntimeError(' '.join(args)+': '+p.stderr.strip())
+              return p
+
+          def exists(sha):
+              return bool(sha) and run('git','cat-file','-e',f'{sha}^{{commit}}',check=False).returncode==0
+
+          def ancestor(a,b):
+              return exists(a) and run('git','merge-base','--is-ancestor',a,b,check=False).returncode==0
+
+          main_sha=run('git','rev-parse',MAIN).stdout.strip()
+          pages=json.loads((OUT/'pr-pages.json').read_text())
+          prs=[p for page in pages for p in page]
+          by_branch=collections.defaultdict(list)
+          for p in prs:
+              ref=((p.get('head') or {}).get('ref') or '')
+              if ref:
+                  by_branch[ref].append({
+                    'number':p.get('number'),
+                    'title':p.get('title') or '',
+                    'state':p.get('state'),
+                    'draft':bool(p.get('draft')),
+                    'merged_at':p.get('merged_at'),
+                    'closed_at':p.get('closed_at'),
+                    'head_sha':((p.get('head') or {}).get('sha') or ''),
+                    'base_ref':((p.get('base') or {}).get('ref') or ''),
+                    'html_url':p.get('html_url') or '',
+                  })
+
+          refs=[
+              x.strip() for x in run('git','for-each-ref','--format=%(refname:short)','refs/remotes/origin/').stdout.splitlines()
+              if x.strip() and x.strip() not in {'origin/HEAD',MAIN,AUDIT}
+          ]
+          now=dt.datetime.now(dt.timezone.utc)
+          rows=[]
+          for ref in refs:
+              name=ref.removeprefix('origin/')
+              tip=run('git','rev-parse',ref).stdout.strip()
+              behind,ahead=map(int,run('git','rev-list','--left-right','--count',f'{MAIN}...{ref}').stdout.split())
+              merged_ancestor=ancestor(tip,main_sha)
+              cherry=run('git','cherry',MAIN,ref,check=False).stdout.splitlines()
+              patch_unique=sum(1 for x in cherry if x.startswith('+ '))
+              patch_equiv=sum(1 for x in cherry if x.startswith('- '))
+              iso=run('git','show','-s','--format=%cI',tip).stdout.strip()
+              subj=run('git','show','-s','--format=%s',tip).stdout.strip()
+              try:
+                  changed=dt.datetime.fromisoformat(iso.replace('Z','+00:00'))
+                  age=(now-changed).total_seconds()/86400
+              except Exception:
+                  age=None
+
+              branch_prs=sorted(by_branch.get(name,[]),key=lambda p:(p.get('merged_at') or p.get('closed_at') or '',p.get('number') or 0))
+              exact_merged=[p for p in branch_prs if p['merged_at'] and p['head_sha']==tip]
+              exact_open=[p for p in branch_prs if p['state']=='open' and p['head_sha']==tip]
+              exact_closed_unmerged=[p for p in branch_prs if not p['merged_at'] and p['state']=='closed' and p['head_sha']==tip]
+              merged_ancestors=[p for p in branch_prs if p['merged_at'] and ancestor(p['head_sha'],tip)]
+              latest_merged_ancestor=merged_ancestors[-1] if merged_ancestors else None
+              post_merge_count=None
+              if latest_merged_ancestor:
+                  post_merge_count=int(run('git','rev-list','--count',f"{latest_merged_ancestor['head_sha']}..{tip}").stdout.strip() or '0')
+
+              if merged_ancestor:
+                  category='tip-in-main-history'
+              elif exact_merged:
+                  category='exact-pr-head-was-merged'
+              elif patch_unique==0:
+                  category='patch-equivalent-to-main'
+              elif latest_merged_ancestor and (post_merge_count or 0)>0:
+                  category='post-merge-unique-commits'
+              elif exact_open:
+                  category='open-pr-current-head'
+              elif exact_closed_unmerged:
+                  category='closed-unmerged-current-head'
+              elif name.startswith('backup/'):
+                  category='backup-unique'
+              elif name.startswith(('audit/','experiment/','research/','verify/')):
+                  category='audit-experiment-unique'
+              else:
+                  category='unreviewed-unique'
+
+              merge_base=run('git','merge-base',MAIN,ref,check=False).stdout.strip()
+              files=[]
+              if patch_unique and merge_base:
+                  files=[x for x in run('git','diff','--name-only',f'{merge_base}..{ref}',check=False).stdout.splitlines() if x.strip()]
+
+              rows.append({
+                'branch':name,'tip':tip,'category':category,
+                'ahead':ahead,'behind':behind,'patch_unique':patch_unique,'patch_equivalent':patch_equiv,
+                'tip_date':iso,'age_days':None if age is None else round(age,2),'subject':subj,
+                'changed_file_count':len(files),'changed_files':files,
+                'prs':branch_prs,
+                'latest_merged_ancestor_pr':latest_merged_ancestor,
+                'post_merge_commit_count':post_merge_count,
+              })
+
+          counts=collections.Counter(r['category'] for r in rows)
+          review=[r for r in rows if r['category'] in {
+              'post-merge-unique-commits','closed-unmerged-current-head','unreviewed-unique'
+          }]
+          recent_review=[r for r in review if r['age_days'] is not None and r['age_days'] <= 30]
+          payload={
+              'main_sha':main_sha,'branch_count':len(rows),'pr_count':len(prs),
+              'category_counts':dict(sorted(counts.items())),
+              'manual_review_count':len(review),'recent_manual_review_count':len(recent_review),
+              'manual_review':sorted(review,key=lambda r:(r['tip_date'],r['branch']),reverse=True),
+              'branches':sorted(rows,key=lambda r:(r['category'],r['branch'])),
+          }
+          (OUT/'branch-lineage.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+
+          md=[
+            '# Repository PR-lineage audit','',
+            f"- main: `{main_sha}`",
+            f"- live branches checked: **{len(rows)}**",
+            f"- PRs indexed: **{len(prs)}**",
+            f"- manual-review queue: **{len(review)}**",
+            f"- manual-review updated in last 30d: **{len(recent_review)}**",'',
+            '## Category counts',''
+          ]
+          for k,v in sorted(counts.items()):
+              md.append(f'- {k}: **{v}**')
+          md += ['','## Manual review queue','',
+                 '| branch | category | unique patches | ahead | behind | last tip | post-merge commits | files |',
+                 '|---|---|---:|---:|---:|---|---:|---|']
+          for r in sorted(review,key=lambda x:x['tip_date'],reverse=True):
+              fs=', '.join(r['changed_files'][:8])
+              if r['changed_file_count']>8: fs+=f" … (+{r['changed_file_count']-8})"
+              md.append(f"| `{r['branch']}` | {r['category']} | {r['patch_unique']} | {r['ahead']} | {r['behind']} | {r['tip_date']} | {r['post_merge_commit_count'] if r['post_merge_commit_count'] is not None else ''} | {fs} |")
+          (OUT/'branch-lineage.md').write_text('\n'.join(md)+'\n',encoding='utf-8')
+          print(json.dumps({k:v for k,v in payload.items() if k not in {'branches','manual_review'}},ensure_ascii=False,indent=2))
+          PY
+      - name: Classify retained failed Actions runs with branch lineage
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          OUT=Path('test-results/repo-lineage')
+          branch_payload=json.loads((OUT/'branch-lineage.json').read_text())
+          by_branch={r['branch']:r for r in branch_payload['branches']}
+          pages=json.loads((OUT/'failed-run-pages.json').read_text())
+          runs=[r for page in pages for r in page.get('workflow_runs',[])]
+
+          def git(*args):
+              return subprocess.run(args,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+
+          main='origin/main'
+          live={x.strip().removeprefix('origin/'):x.strip()
+                for x in git('git','for-each-ref','--format=%(refname:short)','refs/remotes/origin/').stdout.splitlines()
+                if x.strip().startswith('origin/') and x.strip()!='origin/HEAD'}
+          out=[]
+          for r in runs:
+              sha=r.get('head_sha') or ''; branch=r.get('head_branch') or ''
+              reachable=bool(sha) and git('git','cat-file','-e',f'{sha}^{{commit}}').returncode==0
+              ancestor=reachable and git('git','merge-base','--is-ancestor',sha,main).returncode==0
+              ref=live.get(branch); superseded=False; current_tip=False
+              if ref and reachable:
+                  tip=git('git','rev-parse',ref).stdout.strip()
+                  superseded=tip!=sha
+                  current_tip=tip==sha
+              if ancestor: cls='failed-commit-now-in-main-history'
+              elif ref and superseded: cls='superseded-on-live-branch'
+              elif ref and current_tip: cls='failure-at-current-live-branch-tip'
+              elif reachable: cls='unmerged-reachable-historical'
+              else: cls='deleted-or-unreachable-historical'
+              out.append({
+                'id':r.get('id'),'workflow':r.get('name'),'event':r.get('event'),
+                'branch':branch,'sha':sha,'created_at':r.get('created_at'),
+                'html_url':r.get('html_url'),'classification':cls,
+                'branch_category':(by_branch.get(branch) or {}).get('category'),
+              })
+          counts={}
+          for x in out: counts[x['classification']]=counts.get(x['classification'],0)+1
+          current=[x for x in out if x['classification']=='failure-at-current-live-branch-tip']
+          payload={'count':len(out),'classification_counts':counts,'current_tip_failures':current}
+          (OUT/'failed-workflows.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps({
+            'failed_run_count':len(out),'classification_counts':counts,
+            'current_tip_failure_count':len(current),
+            'current_tip_failures':current
+          },ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: repository-pr-lineage-${{ github.run_id }}
+          path: test-results/repo-lineage/
+          retention-days: 7
+          if-no-files-found: error
