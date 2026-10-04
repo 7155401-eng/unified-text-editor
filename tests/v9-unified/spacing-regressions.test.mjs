@@ -4,7 +4,7 @@ import { mapMainParagraphSource } from '../../src/engine/main_source_mapping.js'
 import { prepareV9SourceParagraph,splitV9Paragraph,joinV9ParagraphFragments,sliceV9Paragraph } from '../../src/engine/v9_source_fragments.js';
 import { splitMainTextAtOffset,splitNotesByAnchor,scoreV9PageCandidate,hasUnsafeV9StreamOverflow,selectV9GapFillCandidates,evaluateV9PhysicalGapFillTrigger,evaluateV9PhysicalGapFillGain,getLastMainLineInfo,isV9WhitespaceBreakBoundary,buildParagraphBreakCandidates } from '../../src/engine/v9_split_policy.js';
 import { partForRange,layoutV9MainParagraphs } from '../../src/engine/v9_main_inline_layout.js';
-import { splitV9StreamAtWordCount } from '../../src/engine/v9_stream_inline_layout.js';
+import { splitV9StreamAtWordCount,flowV9MeasuredStream } from '../../src/engine/v9_stream_inline_layout.js';
 import { markV9NoteRuns,auditV9NoteStarts,verifyV9StreamCoverage } from '../../src/engine/v9_note_ownership.js';
 
 const markers=raw=>[...raw.matchAll(/@\d\d/gu)].map(m=>({atInPara:m.index,sym:m[0],code:m[0].slice(1)}));
@@ -75,6 +75,43 @@ test('V9 page-break boundaries require real source whitespace',()=>{
  const candidates=buildParagraphBreakCandidates(text,metrics,85,{minLineEdgeFill:.2,maxAdjustedLineEdgeFill:2,allowWordGapOnlyInEmergency:true},{emergency:true});
  for(const cand of candidates)
   assert.equal(isV9WhitespaceBreakBoundary(text,cand.offset),true,`illegal non-whitespace candidate: ${JSON.stringify(cand)}`);
+});
+
+test('B23: measured commentary stream rows break only on real source whitespace',()=>{
+ const text="alpha'beta gamma,delta epsilon zeta eta theta iota";
+ const ctx={
+  streamId:'01',fontSize:10,lineHeight:10,describeOpening:()=>null,
+  prepareEntry:entry=>entry,
+  measure:part=>({width:String(part?.text||'').length*5,height:10,topInset:0})
+ };
+ const plan=flowV9MeasuredStream(
+  {text,runs:[]},
+  [{x:0,width:58,y_start:0,y_end:100}],
+  ctx,
+  100
+ );
+ assert.equal(plan.overflowText,'');
+ assert(plan.lines.length>=3,'fixture did not create enough commentary rows');
+ assert.equal(plan.lines.map(l=>l.sourceText).join(''),text,'stream source changed while wrapping');
+
+ let offset=0;
+ for(let i=0;i<plan.lines.length;i++){
+  const line=plan.lines[i];
+  assert(line.wordTokens.length>0,`row ${i} has no complete word token`);
+  offset+=line.sourceText.length;
+  if(i<plan.lines.length-1){
+   assert.equal(
+    isV9WhitespaceBreakBoundary(text,offset),
+    true,
+    `stream row ${i} ended inside a source token at offset ${offset}`
+   );
+  }
+  for(const token of line.wordTokens){
+   assert(token.end>token.start,`row ${i} contains an empty token`);
+   assert.equal(text.slice(token.start,token.end),token.text,
+    `row ${i} token was split or rebased incorrectly`);
+  }
+ }
 });
 
 test('source paragraph style becomes a semantic V9 run, separate from stream style',()=>{
