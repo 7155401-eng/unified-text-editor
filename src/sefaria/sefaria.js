@@ -6,6 +6,7 @@
 
 import { assertToolAllowed } from "../tool_runtime_gate.js";
 import { hasCurrentAppLicense } from "../current_license.js";
+import { insertExternalEditorContent } from "../editor_external_content.js";
 
 let _modalCssPromise = null;
 let _downloaderModulePromise = null;
@@ -86,7 +87,7 @@ function _insertHtmlAtCursor(paneManager, html) {
   try {
     const ed = paneManager && paneManager.getActiveEditor && paneManager.getActiveEditor();
     if (!ed) return;
-    ed.chain().focus().insertContent(html).run();
+    insertExternalEditorContent(ed, html);
   } catch (_) {}
 }
 
