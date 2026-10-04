@@ -34,6 +34,7 @@ test('find/replace lazy wire hands Ctrl+F to the full module exactly once after 
   assert.match(lazy, /window\.removeEventListener\(["']keydown["'],\s*onFirstFind\)/);
   assert.match(lazy, /mod\.setupFindReplace\(\)/);
   assert.match(lazy, /mod\.openFindReplace\(\)/);
+  assert.doesNotMatch(lazy, /__ravtextFindReplaceLazyBound\s*=\s*false/);
 
   const removeAt = lazy.indexOf('window.removeEventListener("keydown", onFirstFind)');
   const setupAt = lazy.indexOf('mod.setupFindReplace()');
