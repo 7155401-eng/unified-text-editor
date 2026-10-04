@@ -30,3 +30,7 @@ export function createRegularStreamTitle(streamCode, fallbackText = "", { main =
   applyBarStyleToElement(title, settings);
   return title;
 }
+
+export function createRegularMainStreamTitle() {
+  return createRegularStreamTitle(MAIN_STREAM_CODE, "", { main: true });
+}
