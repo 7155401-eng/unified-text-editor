@@ -164,6 +164,30 @@ for(let seed=1;seed<=192;seed++)test(`batched metrics preserve legacy DP result 
   assert.deepEqual(actual,expected);
 });
 
+test('batched dominance pruning avoids measuring transitions that cannot improve the DP',()=>{
+  let batchedTransitions=0;
+  const metric=(row,_from,to)=>({pressure:row===0?to*0.7:0});
+  const expected=solveReference({
+    wordCount:10,
+    rows:Array.from({length:4},()=>({})),
+    maxSpacing:8,
+    metricFor:metric,
+  });
+  const actual=solve({
+    wordCount:10,
+    rows:Array.from({length:4},()=>({})),
+    maxSpacing:8,
+    metricFor:()=>{throw Error('scalar metricFor should not run when batch is supplied')},
+    metricBatchFor:(row,transitions)=>{
+      batchedTransitions+=transitions.length;
+      return transitions.map(({from,to})=>metric(row,from,to));
+    },
+  });
+  assert.deepEqual(actual,expected);
+  assert.ok(batchedTransitions<actual.evaluations,
+    `batched dominance pruning did not reduce metric work: batched=${batchedTransitions}, evaluations=${actual.evaluations}`);
+});
+
 test('batched metrics are not requested for a row guaranteed to exhaust the remaining budget',()=>{
   let batchCalls=0;
   const result=solve({
