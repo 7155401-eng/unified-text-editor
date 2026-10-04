@@ -50,7 +50,11 @@ test("lazy transcription wire preserves immediate toolbar entry points and gates
   assert.match(wire, /"torah-ocr"[\s\S]*openTranscriptionWindow\(manager, \{ initialMode: "ocr" \}\)/);
   assert.match(wire, /"torah-transcription"[\s\S]*openLinguisticEditingWindow\(manager\)/);
 
-  const main = await readFile(new URL("src/main.js", ROOT), "utf8");
-  assert.match(main, /torah_transcription\/torah_transcription_lazy_wire\.js/);
+  const [main, toolbarWire] = await Promise.all([
+    readFile(new URL("src/main.js", ROOT), "utf8"),
+    readFile(new URL("src/torah_toolbar_lazy_wire.js", ROOT), "utf8"),
+  ]);
+  assert.match(main, /torah_toolbar_lazy_wire\.js/);
+  assert.match(toolbarWire, /import\("\.\/torah_transcription\/torah_transcription_lazy_wire\.js"\)/);
   assert.doesNotMatch(main, /from "\.\/torah_transcription\/torah_transcription\.js"/);
 });
