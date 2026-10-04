@@ -34,6 +34,7 @@ import { createV9TextLayoutContext, renderV9PlannedMainLine, waitForV9LayoutFont
 import { prepareV9SourceParagraph, sliceV9Paragraph, splitV9Paragraph, joinV9ParagraphFragments } from "./engine/v9_source_fragments.js";
 import { groupV9FooterStreams } from "./engine/v9_footer_grouping.js";
 import { resolveV9PageConstraint, pageFootnoteShiftLines, resolveV9StreamShiftBottom } from "./page_tweaks.js";
+import { resolveV9TalmudStreamSlots } from "./engine/v9_stream_position.js";
 
 function runV9PageDecoratorsDuringRender(page, pageIndex) {
   if (!page || typeof window === "undefined") return;
@@ -1829,11 +1830,10 @@ function buildPagePlanCore(pageContent, config) {
         }
       }
     } else if (dominantRole === "mishna" || dominantRole === "onkelos" || dominantRole === "side_notes") {
-      // צד הראשי בלי כתר. כל ה-3 משתמשים ב-one_short_no_crown לעת עתה.
-      // TODO (משה ביקש): onkelos ו-side_notes צריכים את המיקום הספציפי
-      // (פנימי/חיצוני/ימין/שמאל) שהמשתמש בחר ב-layoutPosition, ופונט
-      // ברירת מחדל קטן יותר ל-side_notes. כרגע משתמשים בפריסת no_crown
-      // הקיימת כסקפולדינג.
+      // צד הראשי בלי כתר. onkelos/side_notes כבר הוצבו בצד הפיזי
+      // שבחר המשתמש (inner/outer/right/left) לפני aggregateForV9.
+      // TODO נפרד: ברירת מחדל של פונט קטן יותר ל-side_notes עדיין לא הוגדרה,
+      // ולכן הוא ממשיך להשתמש בטיפוגרפיית הזרם/ברירת המחדל הקיימת.
       if ((rStream && !lStream) || (lStream && !rStream)) {
         scenario = {
           name: "one_short_no_crown",
@@ -4713,18 +4713,27 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
     }
   };
 
-  // ★ משה 28/09/2026 — "בהגדרות מצוין פנימי/חיצוני... בעמוד אי-זוגי הוא
-  // היה צריך להיות ימני ובעמוד זוגי הוא היה צריך להיות שמאלי!!"
-  // ההגדרה נשמרה ומעולם לא נקראה — חיפוש חישוב זוגיות עמוד בכל הקובץ
-  // החזיר אפס תוצאות, ולכן הראשון ברשימה תמיד ישב מימין.
-  // כאן, כשהמצב "פנימי/חיצוני", הצדדים מתחלפים בעמודים הזוגיים בדיוק
-  // כפי שמשה תיאר. בשאר המצבים ("ימין/שמאל", "אוטומטי") שום דבר לא זז.
+  // Physical side selection happens before aggregateForV9 so the planner,
+  // ownership checks and painter all see one source of truth. Per-stream
+  // onkelos/side_notes layoutPosition overrides the global side mode; without
+  // such an explicit request, the historical inner/outer behavior is preserved.
   const streamsForPage = (pageNo) => {
-    const list = cfg.talmudStreams;
-    if (!Array.isArray(list) || list.length < 2) return list;
-    if (cfg.sideMode !== "inner-outer") return list;
-    const isOdd = (pageNo + 1) % 2 === 1;      // pageIdx 0 = עמוד א = אי-זוגי
-    return isOdd ? list : [list[1], list[0], ...list.slice(2)];
+    const resolved = resolveV9TalmudStreamSlots({
+      streams: cfg.talmudStreams,
+      streamSettings: cfg.streamSettings,
+      pageIndex: pageNo,
+      sideMode: cfg.sideMode,
+    });
+    if (resolved.conflicts.length && typeof console !== "undefined") {
+      for (const conflict of resolved.conflicts) {
+        console.warn(
+          "[v9] conflicting layoutPosition requests for " + conflict.side +
+          ": stream " + conflict.keptStream + " keeps the requested side; stream " +
+          conflict.displacedStream + " uses the remaining side."
+        );
+      }
+    }
+    return resolved.streams;
   };
 
   // „חייבים שאם משהו עולה שלפחות במקרה חירום יהיה חפיפה בלי מחיקה".
