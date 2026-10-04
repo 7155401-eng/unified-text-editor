@@ -282,7 +282,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       const result = Object.freeze({ width: Math.ceil(r.width * 64) / 64,
         height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
         topInset: Math.max(0, r.top - top) });
-      if (cache.size >= 20000) cache.clear();
+      if (cache.size >= 100000) cache.clear();
       cache.set(key, result); return result;
     },
     measureMany(parts) {
@@ -343,7 +343,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
               height: Math.ceil(Math.max(lineHeight, bottom - top) * 64) / 64,
               topInset: Math.max(0, r.top - top),
             });
-            if (cache.size >= 20000) cache.clear();
+            if (cache.size >= 100000) cache.clear();
             cache.set(item.key, result);
             for (const index of item.indices) out[index] = result;
           }
