@@ -33,62 +33,66 @@ try{
     const input=Array.from({length:7},(_,pi)=>{
       const main=Array(3+(pi%3)).fill(neutral).join(' ');
       return {
-        id:`focus-${pi}`,
-        mainText:main,
+        id:`focus-${pi}`,mainText:main,
         notes:[
           {stream:'01',uid:`focus-a-${pi}`,num:pi*3+1,anchor:anchorAt(main,5),anchorAffinity:'backward',text:Array(5+(pi%3)).fill(sideText).join(' ')},
           {stream:'02',uid:`focus-b-${pi}`,num:pi*3+2,anchor:anchorAt(main,12),anchorAffinity:'backward',text:Array(6+((pi+1)%3)).fill(sideText).join(' ')},
         ]
       };
     });
-    const settings=getStreamSettings();
-    const saved={};
+    const settings=getStreamSettings(),saved={};
     for(const id of ['01','02']){
       saved[id]=settings[id];
       settings[id]={...(settings[id]||{}),mainRefEnabled:true,noteNumEnabled:true,lemmaBold:false,titleShow:false};
     }
-    const host=document.createElement('div');
-    host.style.cssText='position:relative;width:400px;';
-    document.body.appendChild(host);
-    try{
-      const cfg={
-        pageWidth:380,pageHeight:360,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,
-        mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:120,
-        crownLines:4,crownMainGapPx:0,mainBottomGapPx:0,mishnaWrapOn:false,
-        streamSettings:{
-          '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
-          '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
-        },
-        openingWordSettings:{enabled:false},
-      };
-      const built=await buildPages(host,input,cfg);
-      const pages=built.pages.map((p,index)=>{
-        const lines=[...p.querySelectorAll('.v9-line')].map((el,i)=>({
-          i,
-          role:el.dataset.v9Role||'',
-          paragraphId:el.dataset.v9ParagraphId||'',
-          sourceStream:el.dataset.v9SourceStream||'',
-          sourceStart:el.dataset.v9SourceStart||'',
-          sourceEnd:el.dataset.v9SourceEnd||'',
-          top:parseFloat(el.style.top)||0,
-          height:parseFloat(el.style.height)||0,
-          left:parseFloat(el.style.left)||0,
-          width:parseFloat(el.style.width)||0,
-          text:(el.textContent||'').replace(/[\u200e\u200f\u2060]/g,''),
-        }));
+    const baseCfg={
+      pageWidth:380,pageHeight:360,padding:12,mainFontSize:13,sideFontSize:11,lineHeightRatio:1.55,
+      mainFontFamily:'serif',sideFontFamily:'serif',talmudStreams:['01','02'],maxPages:120,
+      crownLines:4,crownMainGapPx:0,mainBottomGapPx:0,mishnaWrapOn:false,
+      streamSettings:{
+        '01':{inlineStyle:{fontSize:11,lineHeight:1.47}},
+        '02':{inlineStyle:{fontSize:12,lineHeight:1.63}},
+      },
+      openingWordSettings:{enabled:false},
+    };
+    const run=async(preventMidLineSplit)=>{
+      const host=document.createElement('div');
+      host.style.cssText='position:relative;width:400px;';
+      document.body.appendChild(host);
+      try{
+        const built=await buildPages(host,input,{...baseCfg,preventMidLineSplit});
         return {
-          index,
-          fill:Number(p.dataset.v9PageFill),
-          mainPass:p.dataset.v9MainPass||'',
-          lines,
-          bottom:Math.max(0,...lines.map(l=>l.top+l.height)),
+          complete:built.complete,
+          pages:built.pages.map((p,index)=>{
+            const lines=[...p.querySelectorAll('.v9-line')];
+            const main=lines.filter(el=>el.dataset.v9Role==='main');
+            const right=lines.filter(el=>el.dataset.v9Role==='right');
+            const left=lines.filter(el=>el.dataset.v9Role==='left');
+            const bottom=Math.max(0,...lines.map(el=>(parseFloat(el.style.top)||0)+(parseFloat(el.style.height)||0)));
+            return {
+              index,
+              fill:Number(p.dataset.v9PageFill),
+              bottom,
+              mainLines:main.length,
+              rightLines:right.length,
+              leftLines:left.length,
+              mainIds:[...new Set(main.map(el=>el.dataset.v9ParagraphId).filter(Boolean))],
+              firstMain:(main[0]?.textContent||'').replace(/[\u200e\u200f\u2060]/g,''),
+              lastMain:(main.at(-1)?.textContent||'').replace(/[\u200e\u200f\u2060]/g,''),
+              mainPass:p.dataset.v9MainPass||'',
+            };
+          }).filter(p=>[1,2,3,5,6,7].includes(p.index)),
         };
-      });
-      return {complete:built.complete,pages:pages.filter(p=>[1,2,3,5,6,7].includes(p.index))};
+      }finally{host.remove();}
+    };
+    try{
+      return {
+        protected:await run(true),
+        free:await run(false),
+      };
     }finally{
-      host.remove();
       for(const id of ['01','02']){
-        if(saved[id]===undefined)delete settings[id]; else settings[id]=saved[id];
+        if(saved[id]===undefined)delete settings[id];else settings[id]=saved[id];
       }
     }
   });
