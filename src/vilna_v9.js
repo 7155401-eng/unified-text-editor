@@ -1547,13 +1547,20 @@ function flowMainParagraphsThroughStrips(pageContent, mainStrips, mainMetrics, c
 // בונה תוכנית עמוד
 // =====================================================================
 function buildPagePlan(pageContent, config = {}) {
+  const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+    ? (window.__ravtextV9Perf ||= {}) : null;
+  const started = perf ? performance.now() : 0;
+  if (perf) perf.buildPagePlanCalls = (perf.buildPagePlanCalls || 0) + 1;
   const ownContexts = !config.__v9StreamContexts;
   const contexts = config.__v9StreamContexts || new Map();
   const cfg = { ...config, __v9StreamContexts: contexts };
   try {
     const initial = buildPagePlanCore(pageContent, cfg);
     return reserveMeasuredFooterSpace(pageContent, cfg, initial);
-  } finally { if (ownContexts) for (const c of contexts.values()) c.dispose(); }
+  } finally {
+    if (perf) perf.buildPagePlanMs = (perf.buildPagePlanMs || 0) + (performance.now() - started);
+    if (ownContexts) for (const c of contexts.values()) c.dispose();
+  }
 }
 
 function reserveMeasuredFooterSpace(content, cfg, initial) {
