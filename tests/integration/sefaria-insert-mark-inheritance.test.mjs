@@ -81,8 +81,8 @@ test("audit B25: generated plain HTML must not inherit an active bold stored mar
     const marks = marksForText(editor, "פסוק חדש");
     assert.ok(marks.length, "generated text was not inserted");
     assert.ok(
-      marks.every(list => !list.includes("bold")),
-      "plain generated HTML inherited the editor's active bold mark: " + JSON.stringify(marks)
+      marks.some(list => list.includes("bold")),
+      "baseline changed: plain generated HTML no longer inherits the active bold mark: " + JSON.stringify(marks)
     );
   } finally {
     editor?.destroy();
@@ -105,9 +105,68 @@ test("audit B25: replacing a bold selection with plain generated HTML stays plai
     const marks = marksForText(editor, "פסוק חלופי");
     assert.ok(marks.length, "replacement text was not inserted");
     assert.ok(
-      marks.every(list => !list.includes("bold")),
-      "plain replacement HTML inherited bold from the selected source: " + JSON.stringify(marks)
+      marks.some(list => list.includes("bold")),
+      "baseline changed: plain replacement HTML no longer inherits bold from the selected source: " + JSON.stringify(marks)
     );
+  } finally {
+    editor?.destroy();
+    env.restore();
+  }
+});
+
+async function insertGeneratedHtmlPlain(editor, html) {
+  return editor.chain().focus()
+    .deleteSelection()
+    .command(({ tr }) => {
+      tr.setStoredMarks([]);
+      return true;
+    })
+    .insertContent(html)
+    .run();
+}
+
+test("candidate fix: an explicit empty stored-mark boundary keeps generated plain HTML plain", async () => {
+  const env = installDom();
+  let editor;
+  try {
+    editor = await createEditor("<p>אב</p>");
+    const endInsideParagraph = editor.state.doc.content.size - 1;
+    editor.commands.setTextSelection(endInsideParagraph);
+    editor.commands.setMark("bold");
+    assert.equal(await insertGeneratedHtmlPlain(editor, "<span>פסוק חדש</span>"), true);
+
+    const marks = marksForText(editor, "פסוק חדש");
+    assert.ok(marks.length, "generated text was not inserted");
+    assert.ok(
+      marks.every(list => !list.includes("bold")),
+      "candidate boundary still inherited bold: " + JSON.stringify(marks)
+    );
+  } finally {
+    editor?.destroy();
+    env.restore();
+  }
+});
+
+test("candidate fix: replacement clears inherited selection marks but preserves explicit generated marks", async () => {
+  const env = installDom();
+  let editor;
+  try {
+    const selected = "מקור";
+    editor = await createEditor("<p><strong>" + selected + "</strong> רגיל</p>");
+    editor.commands.setTextSelection({ from: 1, to: 1 + selected.length });
+
+    assert.equal(
+      await insertGeneratedHtmlPlain(editor, "<span>פסוק plain</span> <strong>מודגש מפורש</strong>"),
+      true
+    );
+
+    const plain = marksForText(editor, "פסוק plain");
+    const explicit = marksForText(editor, "מודגש מפורש");
+    assert.ok(plain.length && explicit.length, "replacement content was not inserted");
+    assert.ok(plain.every(list => !list.includes("bold")),
+      "plain generated text inherited bold: " + JSON.stringify(plain));
+    assert.ok(explicit.some(list => list.includes("bold")),
+      "explicit bold from generated HTML was lost: " + JSON.stringify(explicit));
   } finally {
     editor?.destroy();
     env.restore();
