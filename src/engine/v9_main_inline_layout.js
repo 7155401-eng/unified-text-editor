@@ -365,6 +365,13 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
   };
 
   const metricBatchFor = (lineIndex, transitions) => {
+    const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+      ? (window.__ravtextV9Perf ||= {}) : null;
+    const started = perf ? performance.now() : 0;
+    if (perf) {
+      perf.metricBatchCalls = (perf.metricBatchCalls || 0) + 1;
+      perf.metricBatchTransitions = (perf.metricBatchTransitions || 0) + transitions.length;
+    }
     const output = new Array(transitions.length);
     const pending = [];
     const parts = [];
@@ -394,6 +401,10 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       const metric = finalizeMetric(descriptor, measured[j]);
       cache.set(key, metric);
       output[i] = metric;
+    }
+    if (perf) {
+      perf.metricBatchPendingParts = (perf.metricBatchPendingParts || 0) + parts.length;
+      perf.metricBatchMs = (perf.metricBatchMs || 0) + (performance.now() - started);
     }
     return output;
   };
@@ -477,7 +488,13 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
       gentleMax,
     });
     let search = cache.get(cacheKey);
-    if (!search) {
+    const perf = typeof window !== "undefined" && window.__ravtextPerfTrace
+      ? (window.__ravtextV9Perf ||= {}) : null;
+    if (search) {
+      if (perf) perf.exactSearchCacheHits = (perf.exactSearchCacheHits || 0) + 1;
+    } else {
+      if (perf) perf.exactSearchCacheMisses = (perf.exactSearchCacheMisses || 0) + 1;
+      const exactStarted = perf ? performance.now() : 0;
       search = findV9ExactTailPartition({
         wordCount: words.length,
         rows: tail.map(line => ({allowsEmpty: !!line.render?.opening && line.wordTokens.length === 0})),
@@ -485,6 +502,12 @@ function rebalanceContinuationTail(lines, paragraphLineStart, entry, cursor, con
         metricFor,
         metricBatchFor,
       });
+      if (perf) {
+        perf.exactSearchMs = (perf.exactSearchMs || 0) + (performance.now() - exactStarted);
+        perf.exactSearchEvaluations = (perf.exactSearchEvaluations || 0) + (search.evaluations || 0);
+        const statusKey = "exactStatus_" + String(search.status || "unknown").replace(/[^a-z0-9]+/gi, "_");
+        perf[statusKey] = (perf[statusKey] || 0) + 1;
+      }
       if (cache.size >= EXACT_TAIL_CACHE_MAX) {
         const oldest = cache.keys().next().value;
         if (oldest !== undefined) cache.delete(oldest);
