@@ -41,24 +41,29 @@ export function findV9ExactTailPartition({
       }
     }
 
-    let batchedMetrics = null;
-    let batchedIndex = 0;
-    if (metricBatchFor) {
-      const transitions = [];
-      for (const [from] of states) {
-        const minimumEnd = i === rows.length - 1
-          ? wordCount
-          : from + (rows[i].allowsEmpty ? 0 : 1);
-        for (let to = minimumEnd; to <= maximumEnd; to++) transitions.push({from, to});
-      }
-      batchedMetrics = metricBatchFor(i, transitions);
-      if (!Array.isArray(batchedMetrics) || batchedMetrics.length !== transitions.length) {
-        throw new Error('V9 exact-tail metricBatchFor must return one metric per transition');
-      }
-    }
-
     for (const [from, state] of states) {
       const minimumEnd = i === rows.length - 1 ? wordCount : from + (rows[i].allowsEmpty ? 0 : 1);
+
+      // Preserve the historical state/to iteration order, but batch only the
+      // transitions that are not already mathematically dominated by a path
+      // produced by an earlier state. This combines DOM batching with the
+      // dominance pruning below instead of measuring transitions that will be
+      // discarded immediately afterwards.
+      let stateMetrics = null;
+      let stateMetricIndex = 0;
+      if (metricBatchFor && minimumEnd <= maximumEnd) {
+        const transitions = [];
+        for (let to = minimumEnd; to <= maximumEnd; to++) {
+          const known = next.get(to);
+          if (known && known.cost <= state.cost) continue;
+          transitions.push({from, to});
+        }
+        stateMetrics = metricBatchFor(i, transitions);
+        if (!Array.isArray(stateMetrics) || stateMetrics.length !== transitions.length) {
+          throw new Error('V9 exact-tail metricBatchFor must return one metric per transition');
+        }
+      }
+
       for (let to = minimumEnd; to <= maximumEnd; to++) {
         // Never return a partially searched alternative when the budget ends.
         if (evaluations >= maxEvaluations) return {status: 'budget-exhausted', evaluations};
@@ -69,12 +74,13 @@ export function findV9ExactTailPartition({
         // BEFORE adding this row, this transition cannot possibly improve it.
         // Count the evaluation exactly as before so the 4096 safety budget and
         // budget-exhausted boundary remain byte-for-byte compatible; skip only
-        // the expensive DOM-backed metricFor() call.
+        // the expensive DOM-backed metric work.
         const known = next.get(to);
-        const batchedMetric = batchedMetrics ? batchedMetrics[batchedIndex++] : undefined;
         if (known && known.cost <= state.cost) continue;
 
-        const metric = batchedMetrics ? batchedMetric : metricFor(i, from, to);
+        const metric = stateMetrics
+          ? stateMetrics[stateMetricIndex++]
+          : metricFor(i, from, to);
         if (!metric || !Number.isFinite(metric.pressure) || metric.pressure < 0 ||
             metric.pressure > maxSpacing + 1e-9) continue;
         const cost = state.cost + metric.pressure * metric.pressure;
