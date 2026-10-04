@@ -668,9 +668,21 @@ export function layoutV9MainParagraphs(rawEntries, rawStrips, context, pageBotto
         const height = Math.max(pitch * descriptor.dropLines, m.height);
         const slot = nextSlot(strips, y, height, pageBottom);
         if (!slot) return finish(ei, 0, 'opening-does-not-fit-page');
-        if (m.width > slot.width + EPS) return finish(ei, 0, 'opening-wider-than-allocated-region');
-
-        if (droppedOpeningCrossesRightEdgeTransition(strips, slot.y, height, pitch, pageBottom)) {
+        if (m.width > slot.width + EPS) {
+          // The configured opening size is allowed to be very large. If its
+          // measured glyph is wider than the physical host, dropping the whole
+          // paragraph into overflow makes valid source text disappear. Preserve
+          // the paragraph and skip only the opening decoration for this entry.
+          // Normal line planning below will render the same source/runs without
+          // inventing scale, clipping or a second layout authority.
+          diagnostics.push({
+            code: 'opening-skipped-too-wide',
+            paragraphId: entry.id,
+            openingWidth: m.width,
+            availableWidth: slot.width,
+          });
+          descriptor = null;
+        } else if (droppedOpeningCrossesRightEdgeTransition(strips, slot.y, height, pitch, pageBottom)) {
           // A single dropped glyph cannot occupy two different right edges.
           // Keeping it dropped would strand the later widened row at the old
           // narrow width. Preserve the configured opening style as an inline
