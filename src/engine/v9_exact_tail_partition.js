@@ -51,6 +51,12 @@ export function findV9ExactTailPartition({
           : from + (rows[i].allowsEmpty ? 0 : 1);
         for (let to = minimumEnd; to <= maximumEnd; to++) transitions.push({from, to});
       }
+      const perf = typeof window !== 'undefined' && window.__ravtextPerfTrace
+        ? (window.__ravtextV9Perf ||= {}) : null;
+      if (perf) {
+        perf.exactBatchCalls = (perf.exactBatchCalls || 0) + 1;
+        perf.exactBatchTransitions = (perf.exactBatchTransitions || 0) + transitions.length;
+      }
       batchedMetrics = metricBatchFor(i, transitions);
       if (!Array.isArray(batchedMetrics) || batchedMetrics.length !== transitions.length) {
         throw new Error('V9 exact-tail metricBatchFor must return one metric per transition');
@@ -72,7 +78,14 @@ export function findV9ExactTailPartition({
         // the expensive DOM-backed metricFor() call.
         const known = next.get(to);
         const batchedMetric = batchedMetrics ? batchedMetrics[batchedIndex++] : undefined;
-        if (known && known.cost <= state.cost) continue;
+        if (known && known.cost <= state.cost) {
+          if (batchedMetrics && typeof window !== 'undefined' && window.__ravtextPerfTrace) {
+            const perf = (window.__ravtextV9Perf ||= {});
+            perf.exactBatchDominatedAfterMeasure =
+              (perf.exactBatchDominatedAfterMeasure || 0) + 1;
+          }
+          continue;
+        }
 
         const metric = batchedMetrics ? batchedMetric : metricFor(i, from, to);
         if (!metric || !Number.isFinite(metric.pressure) || metric.pressure < 0 ||
