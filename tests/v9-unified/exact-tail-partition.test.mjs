@@ -136,6 +136,25 @@ test('dominated transitions keep evaluation budget but avoid unnecessary metric 
     `dominance pruning did not avoid metric work: calls=${calls}, evaluations=${result.evaluations}`);
 });
 
+test('batched dominance pruning skips measurements without changing evaluation accounting',()=>{
+  let measuredTransitions=0;
+  const result=solve({
+    wordCount:10,
+    rows:Array.from({length:4},()=>({})),
+    maxSpacing:8,
+    metricFor:()=>{throw Error('scalar metricFor should not run when batch is supplied')},
+    metricBatchFor:(row,transitions)=>{
+      measuredTransitions+=transitions.length;
+      return transitions.map(({to})=>({pressure:row===0?to*0.7:0}));
+    },
+  });
+  assert.equal(result.status,'complete');
+  assert.equal(result.evaluations,70,'batched pruning changed evaluation accounting');
+  assert.ok(measuredTransitions<result.evaluations,
+    `batched dominance pruning did not avoid metric work: measured=${measuredTransitions}, evaluations=${result.evaluations}`);
+});
+
+
 
 
 
