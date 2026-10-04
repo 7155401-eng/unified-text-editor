@@ -2847,13 +2847,14 @@ function buildPagePlanCore(pageContent, config) {
     }
   }
 
+  const sideRowsOverlap = (a, b) => a.lines.some(x => b.lines.some(y =>
+    Math.min(x.x + x.width, y.x + y.width) - Math.max(x.x, y.x) > 1 / 64 &&
+    Math.min(x.y + x.lineHeightPx, y.y + y.lineHeightPx) - Math.max(x.y, y.y) > 1 / 64));
+
   // Final ownership validation: a later left-side reflow can extend below the
   // clearance previously used by the right side. Replan from source only when
   // distinct side streams still overlap; never shift painted DOM.
   if (!isSameStreamSideSplit && pass2Right && pass2Left) {
-    const sideRowsOverlap = (a, b) => a.lines.some(x => b.lines.some(y =>
-      Math.min(x.x + x.width, y.x + y.width) - Math.max(x.x, y.x) > 1 / 64 &&
-      Math.min(x.y + x.lineHeightPx, y.y + y.lineHeightPx) - Math.max(x.y, y.y) > 1 / 64));
     let rightFloor = occupiedSideEndY(pass2Left), leftFloor = occupiedSideEndY(pass2Right);
     let pass = 0;
     while (sideRowsOverlap(pass2Right, pass2Left) && pass < 8) {
@@ -2880,6 +2881,79 @@ function buildPagePlanCore(pageContent, config) {
       });
     }
     if (pass > 0) result.sideWidthReconciliation = { passes: pass, conservativeFallback };
+  }
+
+  // Distinct streams can have different measured line pitches. Their strip
+  // boundary below main is shared, but a purely independent row grid can make
+  // the first visibly wider row start at different Y values. Synchronize only
+  // that knee when both streams actually reach it and the adjustment is safe:
+  // move the earlier continuation down to the later knee and absorb the delta
+  // into the preceding narrow row's box. This keeps row boxes contiguous,
+  // preserves source order/widths, and never changes already-synchronized pages.
+  const synchronizeDistinctSideMainKnee = (rightBox, leftBox) => {
+    if (!rightBox || !leftBox || rightBox.id === leftBox.id) return null;
+    const kneeFor = (box) => {
+      const lines = box.lines || [];
+      for (let i = 1; i < lines.length; i++) {
+        const prev = lines[i - 1], line = lines[i];
+        if (line.y < mainBottomY - 1 / 64) continue;
+        if (line.width <= prev.width + 1 / 64) continue;
+        return { box, lines, index: i, prev, line };
+      }
+      return null;
+    };
+    const knees = [kneeFor(rightBox), kneeFor(leftBox)];
+    if (knees.some(k => !k)) return null;
+    const targetY = Math.max(...knees.map(k => Number(k.line.y)));
+    if (!Number.isFinite(targetY) || Math.abs(knees[0].line.y - knees[1].line.y) <= 0.05) return null;
+
+    const snapshots = knees.map(k => ({
+      k,
+      endY: k.box.endY,
+      rows: k.lines.map(line => ({ line, y: line.y, lineHeightPx: line.lineHeightPx })),
+    }));
+    const restore = () => {
+      for (const snapshot of snapshots) {
+        snapshot.k.box.endY = snapshot.endY;
+        for (const row of snapshot.rows) {
+          row.line.y = row.y;
+          row.line.lineHeightPx = row.lineHeightPx;
+        }
+      }
+    };
+
+    for (const k of knees) {
+      const delta = targetY - k.line.y;
+      if (delta <= 0.05) continue;
+      const previousBottom = k.prev.y + k.prev.lineHeightPx;
+      const last = k.lines[k.lines.length - 1];
+      const lastBottom = last.y + last.lineHeightPx;
+      // Do not create a hidden whole-row spacer or push content off the page.
+      if (Math.abs(previousBottom - k.line.y) > 0.05 ||
+          delta >= k.prev.lineHeightPx - 0.05 ||
+          lastBottom + delta > pageBottomY + 0.05) {
+        restore();
+        return null;
+      }
+      k.prev.lineHeightPx += delta;
+      for (let i = k.index; i < k.lines.length; i++) k.lines[i].y += delta;
+      if (Number.isFinite(Number(k.box.endY))) k.box.endY = Number(k.box.endY) + delta;
+    }
+
+    if (sideRowsOverlap(rightBox, leftBox)) {
+      restore();
+      return null;
+    }
+    const syncedY = knees.map(k => k.line.y);
+    if (Math.abs(syncedY[0] - syncedY[1]) > 0.05) {
+      restore();
+      return null;
+    }
+    return { y: syncedY[0], deltas: knees.map((k, i) => syncedY[i] - snapshots[i].rows[k.index].y) };
+  };
+  if (!isSameStreamSideSplit && pass2Right && pass2Left) {
+    const kneeSync = synchronizeDistinctSideMainKnee(pass2Right, pass2Left);
+    if (kneeSync) result.sideMainKneeSync = kneeSync;
   }
 
   if (isSameStreamSideSplit && pass2Right?.overflowText && pageContent.leftStream) {
