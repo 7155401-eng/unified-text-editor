@@ -307,10 +307,11 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       }
 
       const entries = [...pending.values()];
-      const BATCH = 128;
+      const BATCH = 512;
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
         const mounted = [];
+        const fragment = document.createDocumentFragment();
 
         for (const item of chunk) {
           const holder = document.createElement('div');
@@ -326,9 +327,10 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             : 0;
           appendV9PlannedPart(node, item.part, plannedWordSpacing);
           holder.appendChild(node);
-          root.appendChild(holder);
+          fragment.appendChild(holder);
           mounted.push({ item, holder, node });
         }
+        root.appendChild(fragment);
 
         try {
           for (const { item, node } of mounted) {
