@@ -49,9 +49,10 @@ try{
       const width=Number(line.width)||0,natural=Number(line.naturalWidth)||0;
       const fillRatio=width>0?natural/width:1;
       const alignment=String(line?.render?.alignment||'');
+      const wordSpacing=Number(line?.render?.wordSpacing)||0;
       return {
-        kind,id,exists:true,fillRatio:+fillRatio.toFixed(4),alignment,
-        acceptable:!!line.isLast||!!line.forcedBreak||!!line.tailRebalanced||alignment==='justify'||fillRatio>=.82,
+        kind,id,exists:true,fillRatio:+fillRatio.toFixed(4),alignment,wordSpacing:+wordSpacing.toFixed(4),
+        acceptable:!!line.isLast||!!line.forcedBreak||!!line.tailRebalanced||wordSpacing>0||fillRatio>=.82,
         isLast:!!line.isLast,forcedBreak:!!line.forcedBreak,tailRebalanced:!!line.tailRebalanced,
         width:+width.toFixed(2),naturalWidth:+natural.toFixed(2),
         source:line.source||null,text:String(line.sourceText??line.render?.body?.text??''),
