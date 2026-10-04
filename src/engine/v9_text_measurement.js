@@ -287,11 +287,19 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     },
     measureMany(parts) {
       if (disposed) throw new Error('Disposed V9 measurement context');
+      const perf = typeof window !== 'undefined' && window.__ravtextPerfTrace
+        ? (window.__ravtextV9Perf ||= {}) : null;
+      const manyStarted = perf ? performance.now() : 0;
       const input = Array.isArray(parts) ? parts : [];
       if (!input.length) return [];
+      if (perf) {
+        perf.measureManyCalls = (perf.measureManyCalls || 0) + 1;
+        perf.measureManyInputParts = (perf.measureManyInputParts || 0) + input.length;
+      }
 
       const out = new Array(input.length);
       const pending = new Map();
+      const lookupStarted = perf ? performance.now() : 0;
 
       for (let i = 0; i < input.length; i++) {
         const part = input[i];
@@ -307,10 +315,15 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       }
 
       const entries = [...pending.values()];
+      if (perf) {
+        perf.measureManyLookupMs = (perf.measureManyLookupMs || 0) + (performance.now() - lookupStarted);
+        perf.measureManyUniqueMisses = (perf.measureManyUniqueMisses || 0) + entries.length;
+      }
       const BATCH = 128;
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
         const mounted = [];
+        const mountStarted = perf ? performance.now() : 0;
 
         for (const item of chunk) {
           const holder = document.createElement('div');
@@ -329,13 +342,23 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
           root.appendChild(holder);
           mounted.push({ item, holder, node });
         }
+        if (perf) {
+          perf.measureManyMountMs = (perf.measureManyMountMs || 0) + (performance.now() - mountStarted);
+          perf.measureManyMountedNodes = (perf.measureManyMountedNodes || 0) + mounted.length;
+          perf.measureManyChunks = (perf.measureManyChunks || 0) + 1;
+        }
 
         try {
           for (const { item, node } of mounted) {
+            const rectStarted = perf ? performance.now() : 0;
             const r = node.getBoundingClientRect();
+            if (perf) perf.measureManyNodeRectMs = (perf.measureManyNodeRectMs || 0) + (performance.now() - rectStarted);
+            const rangeStarted = perf ? performance.now() : 0;
             const range = document.createRange();
             range.selectNodeContents(node);
             const ink = range.getBoundingClientRect();
+            if (perf) perf.measureManyRangeRectMs = (perf.measureManyRangeRectMs || 0) + (performance.now() - rangeStarted);
+            const resultStarted = perf ? performance.now() : 0;
             const top = ink.height ? Math.min(r.top, ink.top) : r.top;
             const bottom = ink.height ? Math.max(r.bottom, ink.bottom) : r.bottom;
             const result = Object.freeze({
@@ -346,12 +369,16 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             if (cache.size >= 20000) cache.clear();
             cache.set(item.key, result);
             for (const index of item.indices) out[index] = result;
+            if (perf) perf.measureManyResultMs = (perf.measureManyResultMs || 0) + (performance.now() - resultStarted);
           }
         } finally {
+          const cleanupStarted = perf ? performance.now() : 0;
           for (const { holder } of mounted) holder.remove();
+          if (perf) perf.measureManyCleanupMs = (perf.measureManyCleanupMs || 0) + (performance.now() - cleanupStarted);
         }
       }
 
+      if (perf) perf.measureManyMs = (perf.measureManyMs || 0) + (performance.now() - manyStarted);
       return out;
     },
     dispose() {
