@@ -142,16 +142,21 @@ export async function runV9FillAudit() {
               window.__ravtextV9GapFillTrace=[];
               window.__ravtextAuditV9ExtensionTrace=true;
               window.__ravtextV9ExtensionTrace=[];
+              window.__ravtextAuditV9SparseGuardTrace=true;
+              window.__ravtextV9SparseGuardTrace=[];
               const result=await buildPages(host,input,config);
               const splitTrace=[...(window.__ravtextV9SplitDecisionTrace||[])];
               const gapFillTrace=[...(window.__ravtextV9GapFillTrace||[])];
               const extensionTrace=[...(window.__ravtextV9ExtensionTrace||[])];
+              const sparseGuardTrace=[...(window.__ravtextV9SparseGuardTrace||[])];
               window.__ravtextV9SplitDecisionTrace=[];
               window.__ravtextAuditV9SplitTrace=false;
               window.__ravtextV9GapFillTrace=[];
               window.__ravtextAuditV9GapFillTrace=false;
               window.__ravtextV9ExtensionTrace=[];
               window.__ravtextAuditV9ExtensionTrace=false;
+              window.__ravtextV9SparseGuardTrace=[];
+              window.__ravtextAuditV9SparseGuardTrace=false;
               if(!result.complete) throw new Error(`incomplete matrix scenario ${JSON.stringify({crownLines,crownMainGapPx,opening,includeFooter})}`);
               const stats=result.pages.map(pageStats);
               const intermediate=stats.slice(0,-1).filter(x=>Number.isFinite(x.fill));
@@ -182,6 +187,24 @@ export async function runV9FillAudit() {
                     selectedKind:g.selectedKind,
                     selectedOffset:g.selectedOffset,
                     rejectedReasons:(g.rejectedReasons||[]).slice(0,20),
+                  })),
+                sparseGuardTrace:sparseGuardTrace
+                  .filter(e=>Number.isFinite(Number(e?.beforeFill)) && Number(e.beforeFill)<.84)
+                  .map(e=>({
+                    pageIdx:e.pageIdx,
+                    beforeFill:e.beforeFill,
+                    splitInfo:e.splitInfo,
+                    drainAloneMode:e.drainAloneMode,
+                    bestN:e.bestN,
+                    totalAvail:e.totalAvail,
+                    mainOverflow:e.mainOverflow,
+                    unstartedNotes:e.unstartedNotes,
+                    unsafeStreamOverflow:e.unsafeStreamOverflow,
+                    physicalRemainingPx:e.physicalRemainingPx,
+                    physicalTrigger:e.physicalTrigger,
+                    carryStreams:e.carryStreams,
+                    hasRightOverflow:e.hasRightOverflow,
+                    hasLeftOverflow:e.hasLeftOverflow,
                   })),
                 extensionTrace:extensionTrace
                   .filter(e=>Number.isFinite(Number(e?.currentFill)) && Number(e.currentFill)<.84)
@@ -223,6 +246,12 @@ export async function runV9FillAudit() {
       .filter(g=>!g.accepted)
       .sort((a,b)=>Number(a.beforeFill)-Number(b.beforeFill))
       .slice(0,30),
+    worstSparseGuardReasons:[...scenarios]
+      .flatMap(s=>(s.sparseGuardTrace||[]).map(e=>({
+        crownLines:s.crownLines,crownMainGapPx:s.crownMainGapPx,opening:s.opening,includeFooter:s.includeFooter,...e
+      })))
+      .sort((a,b)=>Number(a.beforeFill)-Number(b.beforeFill))
+      .slice(0,50),
     worstExtensionDecisions:[...scenarios]
       .flatMap(s=>(s.extensionTrace||[]).map(e=>({
         crownLines:s.crownLines,crownMainGapPx:s.crownMainGapPx,opening:s.opening,includeFooter:s.includeFooter,...e
