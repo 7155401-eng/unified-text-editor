@@ -1,0 +1,70 @@
+name: Audit V9 tail metric reuse
+on:
+  push:
+    branches: [perf/v9-tail-metric-reuse-main63b1-20261004]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Checkout exact PR base
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 63b12887c260da114d9d2c28e9ee6736af1cfba6
+          path: .baseline
+          persist-credentials: false
+      - name: Benchmark base and head
+        run: |
+          mkdir -p test-results/v9-unified
+          node scripts/v9-unified/benchmark-tail-metric-reuse.mjs .baseline | tee test-results/v9-unified/tail-metric-base.json
+          node scripts/v9-unified/benchmark-tail-metric-reuse.mjs . | tee test-results/v9-unified/tail-metric-head.json
+      - name: Require identical plans and real measurement-call reduction
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const base = JSON.parse(fs.readFileSync('test-results/v9-unified/tail-metric-base.json','utf8'));
+          const head = JSON.parse(fs.readFileSync('test-results/v9-unified/tail-metric-head.json','utf8'));
+          const b = new Map(base.fixtures.map(x => [x.name, x]));
+          let improved = 0;
+          for (const h of head.fixtures) {
+            const old = b.get(h.name);
+            if (!old) throw new Error('missing base fixture: ' + h.name);
+            for (const key of ['planHash','sourceHash','lines','overflowChars']) {
+              if (h[key] !== old[key]) {
+                throw new Error(h.name + ' changed ' + key + ': ' + old[key] + ' -> ' + h[key]);
+              }
+            }
+            if (JSON.stringify(h.diagnostics) !== JSON.stringify(old.diagnostics)) {
+              throw new Error(h.name + ' changed diagnostics');
+            }
+            if (h.uniqueMeasureInputs !== old.uniqueMeasureInputs) {
+              throw new Error(h.name + ' changed unique measurement inputs: ' +
+                old.uniqueMeasureInputs + ' -> ' + h.uniqueMeasureInputs);
+            }
+            if (h.measureCalls > old.measureCalls) {
+              throw new Error(h.name + ' increased measure calls: ' +
+                old.measureCalls + ' -> ' + h.measureCalls);
+            }
+            if (h.measureCalls < old.measureCalls) improved++;
+            console.log(h.name + ': calls ' + old.measureCalls + ' -> ' + h.measureCalls +
+              ', unique=' + h.uniqueMeasureInputs + ', ms ' + old.elapsedMs + ' -> ' + h.elapsedMs);
+          }
+          if (!improved) throw new Error('no fixture reduced measure calls; optimization not proven');
+          console.log('fixtures with fewer measure calls:', improved);
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: v9-tail-metric-audit-${{ github.run_id }}
+          path: test-results/v9-unified/
+          retention-days: 7
