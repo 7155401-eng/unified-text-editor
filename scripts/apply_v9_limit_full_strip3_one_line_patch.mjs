@@ -114,10 +114,17 @@ function patchSideStreamFullStrip(source) {
   // transitions. Do not let the legacy regex mistake the first (narrow) knee
   // for the full-width block and duplicate strip 3 during prebuild.
   if (
-    source.includes("v9-knee-row-grid: width changes do not create a new vertical grid.") &&
-    source.includes("v9-knee-row-grid: ending of the other side changes WIDTH only.") &&
     source.includes("const suppressFullStrip3 = o.suppressFullStrip3 === true;") &&
-    !source.includes("lockFullStrip3Start")
+    !source.includes("lockFullStrip3Start") && (
+      (
+        source.includes("v9-knee-row-grid: width changes do not create a new vertical grid.") &&
+        source.includes("v9-knee-row-grid: ending of the other side changes WIDTH only.")
+      ) || (
+        source.includes("const lockSharedMainKnee = o.lockSharedMainKnee === true;") &&
+        source.includes("lockYStart: lockSharedMainKnee,") &&
+        source.includes("lockYStart: lockSharedMainKnee && Math.abs(fullStrip3StartY - effectiveMainBottomY) < 1 / 64,")
+      )
+    )
   ) {
     return source;
   }
