@@ -27,8 +27,6 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Install Chromium
         run: npx --no-install playwright install --with-deps chromium
-      - name: Run fill audit
-        run: node scripts/v9-unified/run-fill-audit.mjs
       - name: Inspect worst fill pages
         run: node scripts/v9-unified/run-fill-focus.mjs
       - name: Retain audit
@@ -37,6 +35,5 @@ jobs:
         with:
           name: v9-fill-audit-${{ github.run_id }}
           path: |
-            test-results/v9-unified/fill-audit.json
             test-results/v9-unified/fill-focus.json
           retention-days: 7
