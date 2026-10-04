@@ -149,7 +149,7 @@ export function installHeaderFooterPreRenderDecorator() {
 
 export function installDocumentFeaturePreRenderDecorators() {
   installHeaderFooterPreRenderDecorator();
-  installDocumentFeaturePreRenderDecorators();
+  installPageNumberPreRenderDecorator();
 }
 
 function applyPageNumbers(pages = pageElements()) {
