@@ -6238,7 +6238,7 @@ async function buildPagesWithInlineContext(container, paragraphs, config) {
       // Active splits are handled only by extension-rescue / tail rejoin above.
       if (splitInfo) return null;
       const beforeFill = planFillRatio(finalProbe);
-      if (beforeFill >= 0.50) return null;
+      if (beforeFill >= 0.82) return null;
       if (bestN >= totalAvail) return null;
       if (mainOverflowTextOf(finalProbe)) return null;
       if (finalProbe.unstartedNotes?.length) return null;
