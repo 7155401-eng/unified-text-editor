@@ -1507,7 +1507,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     page.remove();
   });
 
-  await test('side streams widen on their own row grids without forcing a shared off-grid boundary',()=>{
+  await test('shared side-stream knee does not create a full blank commentary row',()=>{
     const page=makePage();
     const sideText=Array(34).fill(phrase).join(' ');
     const plan=buildSinglePage(page,{
@@ -1522,6 +1522,7 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
     const mainBottom=(plan.mainBox?.y||0)+(plan.mainBox?.height||0);
     const boxes=['right','left'].map(role=>plan.streamBoxes.find(b=>b.role===role));
     assert(boxes.every(Boolean),'missing side boxes');
+    const wideRows=[];
     for(const box of boxes){
       const sorted=[...box.lines].sort((a,b)=>a.y-b.y);
       const prior=sorted.filter(l=>l.y<mainBottom-.1);
@@ -1531,9 +1532,12 @@ await test('collapsed ribbon hides separator-only level but preserves real activ
       const prev=sorted[wideIndex-1],wide=sorted[wideIndex];
       const pitch=Number(prev.lineHeightPx)||Number(wide.lineHeightPx)||1;
       const dy=wide.y-prev.y;
-      assert(Math.abs(dy-pitch)<.2,
-        `${box.role} widened off its own row grid: dy=${dy}, pitch=${pitch}`);
+      assert(dy>0&&dy<pitch*2-.1,
+        `${box.role} shared knee inserted a full blank row: dy=${dy}, pitch=${pitch}`);
+      wideRows.push(wide);
     }
+    assert(Math.abs(wideRows[0].y-wideRows[1].y)<.15,
+      `shared knee drifted: ${wideRows[0].y} vs ${wideRows[1].y}`);
     assertNoWordOverlap(page);
     page.remove();
   });
