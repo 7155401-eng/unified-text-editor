@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - audit/v9-fill-matrix-current-main-20261004
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
