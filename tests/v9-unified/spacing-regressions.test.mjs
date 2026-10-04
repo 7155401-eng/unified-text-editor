@@ -351,6 +351,34 @@ test('exact-tail cache reuses identical deterministic searches without changing 
  assert.equal(second.lines.map(l=>l.sourceText).join(''),text);
 });
 
+test('dropped opening wider than its physical host skips decoration without losing source',()=>{
+ const source='OPEN aa aa aa aa aa';
+ const ctx={
+  fontSize:10,lineHeight:10,
+  describeOpening:()=>({position:'dropped',start:0,end:4,marks:{fontSize:50},dropLines:2,gapPx:2}),
+  measure:p=>{
+   if((p.runs||[]).some(r=>Number(r?.marks?.fontSize)===50)){
+    return {width:180,height:50,topInset:0};
+   }
+   const body=String(p.text||'').trim();
+   const n=body?body.split(/\s+/u).length:0;
+   return {width:n?n*10+(n-1)*2:0,height:10,topInset:0};
+  }
+ };
+ const plan=layoutV9MainParagraphs(
+  [{id:'too-wide-opening',text:source,runs:[],mainRefs:[]}],
+  [{x:0,width:100,y_start:0,y_end:120}],ctx,120
+ );
+ assert.equal(plan.overflowParagraphs.length,0,'too-wide opening pushed the whole paragraph to overflow');
+ assert(plan.lines.length>0,'too-wide opening produced no normal fallback rows');
+ assert.equal(plan.lines.map(l=>l.sourceText).join(''),source,'too-wide fallback changed source text');
+ assert(!plan.lines.some(l=>l.render?.opening),'impossible dropped opening was still attached');
+ const diag=plan.diagnostics.find(d=>d.code==='opening-skipped-too-wide');
+ assert(diag,'too-wide opening did not record its fallback');
+ assert(diag.openingWidth>diag.availableWidth,
+  `fallback diagnostic is not physically justified: ${JSON.stringify(diag)}`);
+});
+
 test('dropped opening does not keep a widened row trapped in the previous narrow geometry',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
