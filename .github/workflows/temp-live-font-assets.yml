@@ -40,7 +40,8 @@ jobs:
             const url=r.url();
             if(type==='font'||/\.(woff2?|ttf|otf)(?:\?|$)/i.test(url)) requests.push({type,url,status:r.status(),contentType:r.headers()['content-type']||''});
           });
-          const root=await page.goto('https://app.ravtext.com/',{waitUntil:'networkidle',timeout:60000});
+          const root=await page.goto('https://app.ravtext.com/',{waitUntil:'domcontentloaded',timeout:45000});
+          await page.waitForTimeout(3500);
           const data=await page.evaluate(()=>{
             const faces=[];
             for(const sheet of [...document.styleSheets]){
@@ -73,6 +74,7 @@ jobs:
           EOF
           node live-font-audit.mjs
       - name: Fetch public CSS text and search known font names
+        if: always()
         run: |
           python3 - <<'PY'
           import json,re,urllib.request,pathlib
