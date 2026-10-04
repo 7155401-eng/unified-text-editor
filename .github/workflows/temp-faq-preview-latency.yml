@@ -50,11 +50,30 @@ jobs:
 
           // Cold-intent case: click while the FAQ module is deliberately slow.
           const cold=await readyPage(true);
+          const sourceProbe=await cold.page.evaluate(async()=>{
+            const entry=[...document.scripts].map(s=>s.src).find(src=>/\/assets\/.*\.js/.test(src))||'';
+            if(!entry)return {entry:'',hasFaqWarmup:false,entryBytes:0};
+            const source=await (await fetch(entry,{cache:'no-store'})).text();
+            return {
+              entry,
+              entryBytes:source.length,
+              hasFaqWarmup:source.includes('FAQ load failed:') && source.includes('aria-busy')
+            };
+          });
           const coldStart=Date.now();
           await cold.page.locator('#rt-prem-icon-faq').click();
           await cold.page.waitForFunction(()=>document.querySelector('#rt-prem-icon-faq')?.getAttribute('aria-busy')==='true',{timeout:500});
           const feedbackMs=Date.now()-coldStart;
-          const loadingText=await cold.page.locator('#rt-prem-icon-faq .rt-prem-icon-text').textContent();
+          const loadingState=await cold.page.evaluate(()=>{
+            const btn=document.querySelector('#rt-prem-icon-faq');
+            return {
+              busy:btn?.getAttribute('aria-busy')||'',
+              className:btn?.className||'',
+              text:btn?.textContent||'',
+              html:btn?.innerHTML||'',
+              spinner:btn ? getComputedStyle(btn,'::after').content : ''
+            };
+          });
           await cold.page.waitForSelector('#rt-faq-panel.is-open',{timeout:5000});
           const coldOpenMs=Date.now()-coldStart;
           await cold.context.close();
@@ -70,11 +89,17 @@ jobs:
           await warm.context.close();
           await browser.close();
 
-          const report={url,feedbackMs,loadingText,coldOpenMs,warmOpenMs,questions};
+          const report={url,sourceProbe,feedbackMs,loadingState,coldOpenMs,warmOpenMs,questions};
           fs.writeFileSync('test-results/faq-preview/report.json',JSON.stringify(report,null,2));
           console.log(JSON.stringify(report,null,2));
+          if(!sourceProbe.hasFaqWarmup) throw new Error('preview does not contain FAQ warmup code: '+JSON.stringify(sourceProbe));
           if(feedbackMs>250) throw new Error('loading feedback too slow: '+feedbackMs+'ms');
-          if(!String(loadingText||'').includes('טוען')) throw new Error('loading text not visible');
+          if(loadingState.busy!=='true'||!loadingState.className.includes('is-loading'))
+            throw new Error('loading state not visible: '+JSON.stringify(loadingState));
+          if(!String(loadingState.text||'').includes('טוען'))
+            throw new Error('loading text not visible: '+JSON.stringify(loadingState));
+          if(!loadingState.spinner || loadingState.spinner==='none')
+            throw new Error('spinner pseudo-element not visible: '+JSON.stringify(loadingState));
           if(coldOpenMs<650) throw new Error('delay fixture did not actually delay FAQ chunk');
           if(warmOpenMs>300) throw new Error('warmed FAQ open too slow: '+warmOpenMs+'ms');
           if(questions<1) throw new Error('FAQ rendered no questions');
