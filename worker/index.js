@@ -22,6 +22,7 @@ import { handlePayments } from './payments.js';
 import { handleAccount } from './account.js';
 import { handlePaymentAdmin, handlePackageLookup } from './payment_admin.js';
 import { runRecurringBilling, handleManualRecur } from './recurring.js';
+import { expireAllGiftBalances } from './gift_expiry.js';
 import { handleCaricature } from './caricature.js';
 import { handleCaricatureAdmin } from './caricature_admin.js';
 import { handleAiChat, handleAiTools } from './ai_tools.js';
@@ -311,7 +312,13 @@ export default {
 
   // משה 2026-05-10: cron יומי — חיוב חוזר אוטומטי. רץ כל בוקר ב-04:00 UTC.
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(runRecurringBilling(env).catch(() => null));
+    // Both recurring billing and gift expiry can update user account state.
+    // Serialize them so two cron tasks never race on the same balance row.
+    ctx.waitUntil(
+      runRecurringBilling(env)
+        .catch(() => null)
+        .then(() => expireAllGiftBalances(env).catch(() => null))
+    );
     ctx.waitUntil(cleanupExpiredDocxUploads(env).catch(() => null));
     ctx.waitUntil(deliverPendingMailNotifications(env).catch(() => null));
   },
