@@ -266,3 +266,24 @@ test("worker cron serializes global gift expiry after recurring billing", () => 
   assert.doesNotMatch(scheduled,/ctx\.waitUntil\(expireAllGiftBalances\(/,
     "gift expiry must not race recurring billing in a separate waitUntil");
 });
+
+
+test("payment routing has one gift/status implementation and admin UI exposes expiry", () => {
+  const payments=fs.readFileSync(new URL("../../worker/payments.js",import.meta.url),"utf8");
+  assert.match(payments,/import \{ handleGiftClaim, handlePaymentStatus \} from '\.\/minute_access\.js';/);
+  assert.match(payments,/return handlePaymentStatus\(request, env\)/);
+  assert.match(payments,/return handleGiftClaim\(request, env\)/);
+  assert.doesNotMatch(payments,/function thisMonthKey\(/);
+  assert.doesNotMatch(payments,/async function getStatus\(/);
+  assert.doesNotMatch(payments,/async function claimGift\(/);
+
+  for(const relative of ["../../admin_minutes_tab.js","../../public/admin_minutes_tab.js"]){
+    const ui=fs.readFileSync(new URL(relative,import.meta.url),"utf8");
+    assert.match(ui,/gift_seconds_expired/);
+    assert.match(ui,/דקות מתנה שפגו בסוף חודש/);
+    assert.match(ui,/מתנת החודש שעדיין נותרה/);
+  }
+
+  const worker=fs.readFileSync(new URL("../../worker/index.js",import.meta.url),"utf8");
+  assert.match(worker,/admin_minutes_tab\.js\?v=20261004a/);
+});
