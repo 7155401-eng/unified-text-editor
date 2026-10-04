@@ -64,7 +64,7 @@ async function serveAdminPage(request, env) {
   const html = await assetResponse.text();
   const scripts = [
     '<script src="/admin_troubleshooting_tab.js?v=20260518a" defer></script>',
-    '<script src="/admin_minutes_tab.js?v=20260726a" defer></script>',
+    '<script src="/admin_minutes_tab.js?v=20261004a" defer></script>',
   ].join('');
   const injected = html.includes('</body>')
     ? html.replace('</body>', `${scripts}</body>`)
