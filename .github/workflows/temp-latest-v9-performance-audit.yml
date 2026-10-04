@@ -1,0 +1,48 @@
+name: Temporary latest V9 performance audit
+on:
+  push:
+    branches: [gpt56sol-v9-latest-perf-audit-20261004-0452-c1a4]
+permissions:
+  contents: read
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22', cache: npm}
+      - name: Locked dependencies
+        env: {PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'}
+        run: npm ci --ignore-scripts
+      - name: Chromium
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Checkout batching-only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: 44913e5ee61809ceb028b99367e28f9da68b3252
+          path: .perf-batch
+          persist-credentials: false
+      - name: Checkout pre-cachekey
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: d5ed3a0761d9cd37cbd7f680fac886f470d1127d
+          path: .perf-prekey
+          persist-credentials: false
+      - name: Share dependencies
+        run: |
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-batch/node_modules"
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$GITHUB_WORKSPACE/.perf-prekey/node_modules"
+      - name: Batching-only benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-batch --out test-results/perf-batch.json
+      - name: Pre-cachekey benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root .perf-prekey --out test-results/perf-prekey.json
+      - name: Latest-main benchmark
+        run: node scripts/v9-unified/run-render-performance-audit.mjs --root . --out test-results/perf-latest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: latest-v9-perf-${{ github.run_id }}
+          path: test-results/perf-*.json
+          retention-days: 3
