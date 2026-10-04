@@ -351,6 +351,52 @@ test('exact-tail cache reuses identical deterministic searches without changing 
  assert.equal(second.lines.map(l=>l.sourceText).join(''),text);
 });
 
+test('exact-tail cache reuses the same canonical source range across V9 fragments',()=>{
+ const tail=Array(10).fill('aa').join(' ');
+ const prepared=prepareV9SourceParagraph({id:'source-cache-fragment',mainText:'xx\n'+tail,mainRuns:[],notes:[]});
+ const fragment=sliceV9Paragraph(prepared,3,prepared.mainText.length);
+ const makeCtx=()=>{
+  let calls=0;
+  const ctx={
+   fontSize:10,lineHeight:10,generation:0,typography:{},describeOpening:()=>null,
+   measure:p=>{
+    calls++;
+    const body=String(p.text||'').trim(),n=body?body.split(/\s+/u).length:0;
+    const ws=parseFloat(p.style?.wordSpacing||'0')||0;
+    return {width:n?n*10+(n-1)*(2+ws):0,height:10,topInset:0};
+   },
+   get calls(){return calls;},
+   reset(){calls=0;},
+  };
+  return ctx;
+ };
+ const stripsWhole=[{x:0,width:54,y_start:0,y_end:40}];
+ const stripsTail=[{x:0,width:54,y_start:10,y_end:40}];
+
+ const shared=makeCtx();
+ const whole=layoutV9MainParagraphs([{
+  ...prepared,text:prepared.mainText,runs:prepared.mainRuns,mainRefs:prepared.mainRefs||[],continuesAfter:true
+ }],stripsWhole,shared,40);
+ assert(whole.lines.some(l=>l.forcedBreak),'fixture lost the source line break');
+ shared.reset();
+ const cached=layoutV9MainParagraphs([{
+  ...fragment,text:fragment.mainText,runs:fragment.mainRuns,mainRefs:fragment.mainRefs||[],continuesAfter:true
+ }],stripsTail,shared,40);
+ const cachedCalls=shared.calls;
+
+ const fresh=makeCtx();
+ const uncached=layoutV9MainParagraphs([{
+  ...fragment,text:fragment.mainText,runs:fragment.mainRuns,mainRefs:fragment.mainRefs||[],continuesAfter:true
+ }],stripsTail,fresh,40);
+ const freshCalls=fresh.calls;
+
+ assert.deepEqual(cached,uncached,'canonical-source cache changed the fragment plan');
+ assert(freshCalls>cachedCalls,
+  `canonical-source memoization did not reduce measurements: cached=${cachedCalls}, fresh=${freshCalls}`);
+ assert.equal(cached.lines.map(l=>l.sourceText).join(''),tail);
+});
+
+
 test('dropped opening does not keep a widened row trapped in the previous narrow geometry',()=>{
  const ctx={
   fontSize:10,lineHeight:10,
