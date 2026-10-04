@@ -58,9 +58,13 @@ export function findV9ExactTailPartition({
           if (known && known.cost <= state.cost) continue;
           transitions.push({from, to});
         }
-        stateMetrics = metricBatchFor(i, transitions);
-        if (!Array.isArray(stateMetrics) || stateMetrics.length !== transitions.length) {
-          throw new Error('V9 exact-tail metricBatchFor must return one metric per transition');
+        if (transitions.length) {
+          stateMetrics = metricBatchFor(i, transitions);
+          if (!Array.isArray(stateMetrics) || stateMetrics.length !== transitions.length) {
+            throw new Error('V9 exact-tail metricBatchFor must return one metric per transition');
+          }
+        } else {
+          stateMetrics = [];
         }
       }
 
