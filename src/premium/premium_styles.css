@@ -75,6 +75,8 @@
 .rt-prem-icon-faq.is-loading::after {
   content: "";
   position: absolute;
+  top: 8px;
+  inset-inline-start: 8px;
   width: 15px;
   height: 15px;
   border: 2px solid currentColor;
