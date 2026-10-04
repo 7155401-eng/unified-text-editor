@@ -176,6 +176,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
   const lineHeight = Math.max(px(typography.lineHeight, fontSize * 1.55), fontSize);
   typography.lineHeight = `${lineHeight}px`;
   const cache = new Map();
+  const profileSeenKeys = new Set();
   let generation = 0, disposed = false;
   const fontsChanged = () => { generation++; cache.clear(); };
   document.fonts?.addEventListener?.('loadingdone', fontsChanged);
@@ -230,7 +231,12 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
         if (perf) perf.measureCacheHits = (perf.measureCacheHits || 0) + 1;
         return found;
       }
-      if (perf) perf.measureCacheMisses = (perf.measureCacheMisses || 0) + 1;
+      if (perf) {
+        perf.measureCacheMisses = (perf.measureCacheMisses || 0) + 1;
+        if (profileSeenKeys.has(key)) perf.measureRepeatMisses = (perf.measureRepeatMisses || 0) + 1;
+        else perf.measureFirstMisses = (perf.measureFirstMisses || 0) + 1;
+        profileSeenKeys.add(key);
+      }
       const domStarted = perf ? performance.now() : 0;
       probe.replaceChildren(); cssApply(probe, part.style || typography);
       probe.style.whiteSpace = 'pre'; probe.style.width = 'max-content'; probe.style.height = 'auto';
