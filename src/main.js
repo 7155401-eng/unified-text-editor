@@ -60,7 +60,7 @@ import { setupSettingsPane } from "./settings_pane.js";
 import { setupStreamPicker } from "./stream_picker.js";
 import { installLoadingIndicator, setStartupLoading } from "./loading_indicator.js";
 import { setupMishnaLevelsPicker } from "./mishna_levels_picker.js";
-import { setupFindReplace } from "./find_replace.js";
+import { wireFindReplaceLazy } from "./find_replace_lazy_wire.js";
 import { setupStreamRolesPicker } from "./stream_roles_picker.js";
 import { wireDownloadsPanel } from "./downloads_panel.js";
 import { installRibbonResponsiveLayout } from "./ribbon_responsive.js";
@@ -91,7 +91,7 @@ import { wireFootnoteTrackChangesTool } from "./docx_tools/footnote_track_change
 import { isNestedNotesEnabled as isNestedNotesGateOn } from "./nested_notes_gate.js";
 import { installLinkMismatchReporter } from "./link_mismatch_reporter.js";
 import { wireInboxButtons, trackUsage } from "./inbox_forms.js";
-import { wireHelpCenter } from "./help_center.js";
+import { wireHelpCenterLazy } from "./help_center_lazy_wire.js";
 import inlineSampleText from "../samples/sample-hebrew.txt?raw";
 configureDemoGlobals();
 try {
@@ -111,7 +111,7 @@ maybeAutoOpenFromUrl();
 startTimeWarningEngine();
 installConsoleGuard();
 installTalmudDebugApi();
-setupFindReplace();
+wireFindReplaceLazy();
 setupStreamRolesPicker();
 setTimeout(async () => {
   try {
@@ -1712,7 +1712,7 @@ document.getElementById("btn-render")?.addEventListener("click", () => {
 // משה 2026-05-09: כפתורי דיווח באג / צור קשר. פעם פתחו mailto;
 // עכשיו פותחים מודלים שנשלחים ל-Worker → D1 → פאנל המנהל.
 wireInboxButtons();
-wireHelpCenter();
+wireHelpCenterLazy();
 
 // AUTO_RENDER_GATE_20260907: אלה שלושת המקומות שבהם הרינדור התחיל לבד.
 // stream_picker ממלא שני זרמים ברירת-מחדל 1.5 שניות אחרי הטעינה ומשגר
