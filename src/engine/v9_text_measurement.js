@@ -223,6 +223,19 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     part?.refs || [],
     styleIdentity(part?.style),
   ]);
+  const MEASURE_MANY_BATCH = 128;
+  const measurementPool = [];
+  const ensureMeasurementPool = () => {
+    while (measurementPool.length < MEASURE_MANY_BATCH) {
+      const holder = document.createElement('div');
+      holder.style.cssText = 'position:absolute;left:0;top:0;width:max-content;height:max-content;padding:0;margin:0;border:0;display:none;';
+      const node = probe.cloneNode(false);
+      node.replaceChildren();
+      holder.appendChild(node);
+      root.appendChild(holder);
+      measurementPool.push({ holder, node });
+    }
+  };
   let generation = 0, disposed = false;
   const fontsChanged = () => { generation++; cache.clear(); };
   document.fonts?.addEventListener?.('loadingdone', fontsChanged);
@@ -307,30 +320,32 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       }
 
       const entries = [...pending.values()];
-      const BATCH = 128;
-      for (let offset = 0; offset < entries.length; offset += BATCH) {
-        const chunk = entries.slice(offset, offset + BATCH);
+      ensureMeasurementPool();
+      const probeStyleSnapshot = probe.style.cssText;
+      for (let offset = 0; offset < entries.length; offset += MEASURE_MANY_BATCH) {
+        const chunk = entries.slice(offset, offset + MEASURE_MANY_BATCH);
         const mounted = [];
 
-        for (const item of chunk) {
-          const holder = document.createElement('div');
-          holder.style.cssText = 'position:absolute;left:0;top:0;width:max-content;height:max-content;padding:0;margin:0;border:0;';
-          const node = probe.cloneNode(false);
-          node.replaceChildren();
-          cssApply(node, item.part.style || typography);
-          node.style.whiteSpace = 'pre';
-          node.style.width = 'max-content';
-          node.style.height = 'auto';
-          const plannedWordSpacing = hasSpecialV9JustificationSeparator(item.part.text)
-            ? px(item.part.style?.wordSpacing, 0)
-            : 0;
-          appendV9PlannedPart(node, item.part, plannedWordSpacing);
-          holder.appendChild(node);
-          root.appendChild(holder);
-          mounted.push({ item, holder, node });
-        }
-
         try {
+          for (let i = 0; i < chunk.length; i++) {
+            const item = chunk[i];
+            const { holder, node } = measurementPool[i];
+            holder.style.display = 'block';
+            node.replaceChildren();
+            // A fresh clone inherits the probe's current inline style. Reusing
+            // a pooled node must reproduce that exact per-call starting state.
+            node.style.cssText = probeStyleSnapshot;
+            cssApply(node, item.part.style || typography);
+            node.style.whiteSpace = 'pre';
+            node.style.width = 'max-content';
+            node.style.height = 'auto';
+            const plannedWordSpacing = hasSpecialV9JustificationSeparator(item.part.text)
+              ? px(item.part.style?.wordSpacing, 0)
+              : 0;
+            appendV9PlannedPart(node, item.part, plannedWordSpacing);
+            mounted.push({ item, holder, node });
+          }
+
           for (const { item, node } of mounted) {
             const r = node.getBoundingClientRect();
             const range = document.createRange();
@@ -348,7 +363,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             for (const index of item.indices) out[index] = result;
           }
         } finally {
-          for (const { holder } of mounted) holder.remove();
+          for (const { holder } of mounted) holder.style.display = 'none';
         }
       }
 
