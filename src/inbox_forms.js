@@ -367,34 +367,7 @@ async function renderMyContactsInto(target) {
   }
 }
 
-let trackInflight = false;
-const trackQueue = [];
-
-async function flushTrackQueue() {
-  if (trackInflight || trackQueue.length === 0) return;
-  trackInflight = true;
-  const next = trackQueue.shift();
-  try {
-    await fetch('/api/usage/track', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(next),
-      keepalive: true,
-    });
-  } catch (_) {
-    // לוג שימוש לא חובה — שגיאות נבלעות בשקט.
-  } finally {
-    trackInflight = false;
-    if (trackQueue.length > 0) flushTrackQueue();
-  }
-}
-
-export function trackUsage(event, detail = null) {
-  if (!isLoggedIn()) return;
-  if (!event || typeof event !== 'string') return;
-  trackQueue.push({ event, detail });
-  flushTrackQueue();
-}
+export { trackUsage } from "./usage_tracker.js";
 
 const STATUS_LABELS = {
   new: 'חדש',
