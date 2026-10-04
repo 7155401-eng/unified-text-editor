@@ -261,6 +261,10 @@ export function mountComparatorUI(rootEl, options = {}) {
     setLabel('[data-action="changeFontSize"][data-arg="-1"]', 'הקטן גודל טקסט', 'Decrease text size');
     setLabel('[data-action="changeFontSize"][data-arg="1"]', 'הגדל גודל טקסט', 'Increase text size');
     setLabel('[data-action="changeFontSize"][data-arg="2"]', 'הגדל גודל טקסט בשתי דרגות', 'Increase text size by two steps');
+    setLabel('#widthSlider', 'רוחב כללי', 'Global width');
+    rootEl.querySelectorAll('input.sym-input[id^="sym-"]').forEach((el) => {
+      el.setAttribute('aria-label', he ? 'סימן קישור לחלונית' : 'Pane link marker');
+    });
     rootEl.querySelectorAll('[data-action="removePane"]').forEach((el) => {
       el.setAttribute('aria-label', he ? 'סגור חלונית' : 'Close pane');
     });
