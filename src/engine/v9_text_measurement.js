@@ -223,6 +223,9 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
     part?.refs || [],
     styleIdentity(part?.style),
   ]);
+  const batchHost = document.createElement('div');
+  batchHost.style.display = 'contents';
+  root.appendChild(batchHost);
   let generation = 0, disposed = false;
   const fontsChanged = () => { generation++; cache.clear(); };
   document.fonts?.addEventListener?.('loadingdone', fontsChanged);
@@ -311,6 +314,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
       for (let offset = 0; offset < entries.length; offset += BATCH) {
         const chunk = entries.slice(offset, offset + BATCH);
         const mounted = [];
+        const fragment = document.createDocumentFragment();
 
         for (const item of chunk) {
           const holder = document.createElement('div');
@@ -326,10 +330,11 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             : 0;
           appendV9PlannedPart(node, item.part, plannedWordSpacing);
           holder.appendChild(node);
-          root.appendChild(holder);
-          mounted.push({ item, holder, node });
+          fragment.appendChild(holder);
+          mounted.push({ item, node });
         }
 
+        batchHost.appendChild(fragment);
         try {
           for (const { item, node } of mounted) {
             const r = node.getBoundingClientRect();
@@ -348,7 +353,7 @@ export function createV9TextLayoutContext(cfg, hooks = {}) {
             for (const index of item.indices) out[index] = result;
           }
         } finally {
-          for (const { holder } of mounted) holder.remove();
+          batchHost.replaceChildren();
         }
       }
 
