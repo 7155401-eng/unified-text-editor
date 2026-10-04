@@ -1,0 +1,53 @@
+name: Temporary Sep30 surgical patch-equivalence audit
+on:
+  push:
+    branches: [audit/sep30-surgical-cherry-20261004]
+    paths: ['.github/workflows/temp-sep30-cherry-audit.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: f57c81149afbc3550acec35c57fd6a33044bfe31
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch only the historical branch
+        run: git fetch --no-tags origin 'refs/heads/fix/v9-sep30-surgical-regressions:refs/remotes/origin/fix/v9-sep30-surgical-regressions'
+      - name: Classify unique historical patches against current main
+        run: |
+          mkdir -p test-results/sep30-audit
+          {
+            echo '# git cherry current-main vs historical branch'
+            git cherry origin/main origin/fix/v9-sep30-surgical-regressions
+            echo
+            echo '# ahead commits with metadata'
+            git log --reverse --format='%H%x09%cI%x09%s' origin/main..origin/fix/v9-sep30-surgical-regressions
+          } | tee test-results/sep30-audit/cherry.txt
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          def run(*args):
+              return subprocess.run(args,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=True).stdout
+          cherry={}
+          for line in run('git','cherry','origin/main','origin/fix/v9-sep30-surgical-regressions').splitlines():
+              if not line.strip(): continue
+              status,sha=line.split(None,1)
+              cherry[sha.strip()]=status
+          rows=[]
+          for line in run('git','log','--reverse','--format=%H%x09%cI%x09%s','origin/main..origin/fix/v9-sep30-surgical-regressions').splitlines():
+              sha,date,subject=line.split('\t',2)
+              patch=run('git','show','--format=','--name-only',sha).splitlines()
+              rows.append({'sha':sha,'date':date,'subject':subject,'cherry':cherry.get(sha),'files':[x for x in patch if x.strip()]})
+          Path('test-results/sep30-audit/report.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(rows,ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: sep30-surgical-cherry-${{ github.run_id }}
+          path: test-results/sep30-audit/
+          retention-days: 7
